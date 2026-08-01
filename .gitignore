@@ -1,12 +1,15 @@
 node_modules/
 dist/
+.test-dist/
 coverage/
 .tmp/
 *.log
+*.tgz
 .env
 .env.*
 !.env.example
 artifacts/verification/**/raw/
 artifacts/verification/**/*.cast
 artifacts/verification/**/*.gif
+!artifacts/verification/w0/*.gif
 artifacts/verification/**/*.mp4

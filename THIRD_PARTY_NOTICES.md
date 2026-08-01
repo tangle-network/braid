@@ -1,6 +1,6 @@
 # Third-party notices
 
-No third-party source file has been copied into Braid as of 2026-08-01.
+Braid contains one test-only adaptation from Pi.
 
 The implementation is expected to depend on and adapt behavior from the following MIT-licensed projects.
 
@@ -18,7 +18,7 @@ Before copied or substantially adapted code is committed, add one row below with
 
 | Braid path | Upstream source | Source commit | License | Adaptation |
 | --- | --- | --- | --- | --- |
-| None yet | Not applicable | Not applicable | Not applicable | Not applicable |
+| `test/support/virtual-terminal.ts` | [`earendil-works/pi`, `packages/tui/test/virtual-terminal.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/test/virtual-terminal.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Changed imports to the published Pi TUI package and applied Braid formatting; production code does not include this file. |
 
 The original copyright and license notice must remain with every substantial copied portion.
 

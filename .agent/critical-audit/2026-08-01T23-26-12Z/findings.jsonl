@@ -1,0 +1,13 @@
+{"priorId":1,"severity":"HIGH","resolution":"resolved","evidence":"packed PTY signal probe -> altLeave:true,pasteOff:true,cursorShow:true,exitCode:130; scripts/verify-package.mjs:334-337"}
+{"priorId":2,"severity":"HIGH","resolution":"resolved","evidence":"test/rpc.test.ts:97-136 and compiled RPC test -> duplicate replay plus REQUEST_ID_CONFLICT"}
+{"priorId":3,"severity":"HIGH","resolution":"resolved","evidence":"replay probe -> replayRevision:13,currentRevision:13,replayMessages:4; test/application.test.ts:39-65"}
+{"priorId":4,"severity":"HIGH","resolution":"resolved","evidence":"packed package proof -> stateWriteSymlinkSafe:true; src/bin/braid.ts:20-39"}
+{"priorId":5,"severity":"HIGH","resolution":"resolved","evidence":"sanitizer probe -> bidiRemoved:true; test/sanitize.test.ts:5-25 covers 12 of 12 Bidi_Control code points"}
+{"priorId":6,"severity":"MEDIUM","resolution":"resolved","evidence":"test/application.test.ts:75-114 passes aborted, blocked, and unconfigured status assertions"}
+{"priorId":7,"severity":"MEDIUM","resolution":"resolved","evidence":"TUI probe -> afterCancel:aborted,armed:true,stoppedBeforeQuit:false,stoppedAfterSecondIdlePress:true; test/tui.test.ts:131-168"}
+{"priorId":8,"severity":"MEDIUM","resolution":"resolved","evidence":"RPC probe -> malformed optional parameter returned INVALID_PARAMS and app messages remained 0; test/rpc.test.ts:139-190"}
+{"priorId":9,"severity":"MEDIUM","resolution":"resolved","evidence":"function-scoped WeakRef probe -> completionStateCollectible:true; src/app/application.ts:29-33,163-178"}
+{"priorId":10,"severity":"MEDIUM","resolution":"resolved","evidence":"newline probe preserved exact leading and consecutive newlines; test/application.test.ts:67-73"}
+{"priorId":11,"severity":"MEDIUM","resolution":"resolved","evidence":"composition probe -> default not connected/automatic and fixture deterministic fixture/fixture-deterministic; test/application.test.ts:111-114"}
+{"priorId":12,"severity":"MEDIUM","resolution":"resolved","evidence":"packed package proof launched 40x12,80x24,120x40,200x60 with 9 events at each size; scripts/verify-package.mjs:296-362"}
+{"priorId":13,"severity":"MEDIUM","resolution":"resolved","evidence":"20,000-request live-map probe grew 318344 bytes versus 22585480 bytes before; independent post-GC probe grew 60224 bytes; test/rpc.test.ts:246-411 permanently covers entry, payload, oversize, conflict, and operation safety; independent verdict APPROVE"}

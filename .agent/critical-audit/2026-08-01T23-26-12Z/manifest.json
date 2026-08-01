@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid W0 post-fix re-audit",
+  "files": 76,
+  "base": "af60a1b1cbff1c6a901748075fb77bcc36cb675c",
+  "head": "WORKTREE",
+  "reauditOf": ".agent/critical-audit/2026-08-01T22-56-47Z",
+  "projectType": "TypeScript ESM package",
+  "reviewers": [
+    "A: Codex gpt-5.6-luna xhigh, all 12 prior findings",
+    "B: operator, packed package, PTY, and memory probes",
+    "C: Codex gpt-5.6-luna xhigh, bounded RPC replay regression and tests"
+  ],
+  "mode": "serial",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "resolved": 13,
+    "dropped": 0
+  }
+}

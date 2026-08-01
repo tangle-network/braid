@@ -1,0 +1,4 @@
+allowBuilds:
+  node-pty: true
+minimumReleaseAgeExclude:
+  - '@tangle-network/agent-runtime@0.117.0'

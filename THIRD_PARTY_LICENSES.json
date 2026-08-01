@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "license": "MIT",
+      "name": "@asteasolutions/zod-to-openapi"
+    },
+    {
+      "license": "MIT",
+      "name": "@earendil-works/pi-tui"
+    },
+    {
+      "license": "MIT",
+      "name": "@hono/node-server"
+    },
+    {
+      "license": "MIT",
+      "name": "@noble/hashes"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-core"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-eval"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-interface"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-knowledge"
+    },
+    {
+      "license": "Unknown",
+      "name": "@tangle-network/agent-profile-materialize"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-runtime"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/sandbox"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "b4a"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "bare-events"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "bare-fs"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "bare-path"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "bare-stream"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "bare-url"
+    },
+    {
+      "license": "CC0-1.0",
+      "name": "binary-search"
+    },
+    {
+      "license": "MIT",
+      "name": "chalk"
+    },
+    {
+      "license": "MIT",
+      "name": "cheminfo-types"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "events-universal"
+    },
+    {
+      "license": "MIT",
+      "name": "fast-fifo"
+    },
+    {
+      "license": "MIT",
+      "name": "fft.js"
+    },
+    {
+      "license": "MIT",
+      "name": "get-east-asian-width"
+    },
+    {
+      "license": "ISC",
+      "name": "graceful-fs"
+    },
+    {
+      "license": "MIT",
+      "name": "hono"
+    },
+    {
+      "license": "MIT",
+      "name": "is-any-array"
+    },
+    {
+      "license": "MIT",
+      "name": "linear-sum-assignment"
+    },
+    {
+      "license": "MIT",
+      "name": "marked"
+    },
+    {
+      "license": "MIT",
+      "name": "ml-array-max"
+    },
+    {
+      "license": "MIT",
+      "name": "ml-array-min"
+    },
+    {
+      "license": "MIT",
+      "name": "ml-array-rescale"
+    },
+    {
+      "license": "MIT",
+      "name": "ml-matrix"
+    },
+    {
+      "license": "MIT",
+      "name": "ml-spectra-processing"
+    },
+    {
+      "license": "MIT",
+      "name": "ml-xsadd"
+    },
+    {
+      "license": "MIT",
+      "name": "openapi3-ts"
+    },
+    {
+      "license": "MIT",
+      "name": "proper-lockfile"
+    },
+    {
+      "license": "MIT",
+      "name": "re2js"
+    },
+    {
+      "license": "MIT",
+      "name": "retry"
+    },
+    {
+      "license": "ISC",
+      "name": "signal-exit"
+    },
+    {
+      "license": "CC-BY-3.0",
+      "name": "spdx-exceptions"
+    },
+    {
+      "license": "MIT",
+      "name": "spdx-expression-parse"
+    },
+    {
+      "license": "CC0-1.0",
+      "name": "spdx-license-ids"
+    },
+    {
+      "license": "MIT",
+      "name": "streamx"
+    },
+    {
+      "license": "MIT",
+      "name": "tar-stream"
+    },
+    {
+      "license": "MIT",
+      "name": "teex"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "text-decoder"
+    },
+    {
+      "license": "ISC",
+      "name": "yaml"
+    },
+    {
+      "license": "MIT",
+      "name": "zod"
+    }
+  ]
+}

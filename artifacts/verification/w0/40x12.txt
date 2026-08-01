@@ -1,0 +1,12 @@
+ braid  Braid starter  pi ·
+ deterministic fixture
+
+ Show Braid's first working turn
+
+ Fixture response through pi: Show
+ Braid's first working turn
+────────────────────────────────────────
+
+────────────────────────────────────────
+ ready  ctrl+p commands · ctrl+c
+ clear/cancel/quit

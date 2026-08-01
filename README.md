@@ -12,10 +12,22 @@ Provider packages own transport to CLI Bridge and Tangle.
 
 ## Status
 
-This repository contains the complete product and implementation contract before application code is added.
+The W0 vertical slice is implemented: one `braid` binary, one reducer, one JSONL control interface, and one real Pi terminal transcript and composer all drive `agent-runtime`.
+The packed binary has deterministic keyboard and JSONL proof, but live CLI Bridge and Tangle connections are not implemented yet.
 The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-01.
 
-The first implementation goal is to satisfy every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
+![Braid terminal at 80×24](artifacts/verification/w0/80x24.png)
+
+Run the deterministic slice locally:
+
+```bash
+pnpm install
+pnpm run build
+node dist/bin/braid.js --fixture deterministic
+```
+
+Run `pnpm check`, `pnpm run test:package`, and `pnpm run capture:w0` to reproduce the current checks and terminal captures.
+The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 
 ## The central decision
 

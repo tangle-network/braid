@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid W0 uncommitted implementation",
+  "files": 64,
+  "base": "af60a1b1cbff1c6a901748075fb77bcc36cb675c",
+  "head": "WORKTREE",
+  "projectType": "TypeScript ESM package",
+  "reviewers": [
+    "A: Codex gpt-5.6-luna xhigh, correctness and security",
+    "B: operator, architecture and quality",
+    "C: operator, contract and real-system coverage"
+  ],
+  "mode": "serial",
+  "verdict": "REQUEST_CHANGES",
+  "counts": {
+    "critical": 0,
+    "high": 5,
+    "medium": 7,
+    "low": 0,
+    "dropped": 0
+  }
+}

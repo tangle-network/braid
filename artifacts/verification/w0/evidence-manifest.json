@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "milestone": "W0",
+  "generatedAt": "2026-08-01T23:30:27.000Z",
+  "sourceBase": "af60a1b1cbff1c6a901748075fb77bcc36cb675c",
+  "package": {
+    "name": "@tangle-network/braid",
+    "version": "0.1.0",
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "sha256": "64c5f1e97723a1467d0e3f2e683e93d8a9566e2ba8e9a4a0d8238b973ad6142e"
+  },
+  "environment": {
+    "node": "v24.13.0",
+    "terminal": "node-pty/xterm-256color",
+    "platform": "linux-x64",
+    "fixture": "deterministic"
+  },
+  "results": {
+    "tests": {
+      "passed": 21,
+      "failed": 0
+    },
+    "referenceSizes": [
+      {
+        "columns": 40,
+        "rows": 12,
+        "packedEvents": 9
+      },
+      {
+        "columns": 80,
+        "rows": 24,
+        "packedEvents": 9
+      },
+      {
+        "columns": 120,
+        "rows": 40,
+        "packedEvents": 9
+      },
+      {
+        "columns": 200,
+        "rows": 60,
+        "packedEvents": 9
+      }
+    ],
+    "rpcRecords": 14,
+    "productionDependencyPackages": 49,
+    "alternateScreenRestored": true,
+    "sigintRestored": true,
+    "stateWriteSymlinkSafe": true,
+    "inlineStayedInMainScreen": true,
+    "keyboardMatchesRpc": true,
+    "piTuiPresent": true,
+    "forbiddenAgentApplications": []
+  },
+  "requirements": [
+    {
+      "id": "VT-01",
+      "status": "pass",
+      "evidence": [
+        "package-proof.json",
+        "80x24-flow.gif",
+        "test/tui.test.ts"
+      ]
+    },
+    {
+      "id": "VT-02",
+      "status": "pass",
+      "evidence": [
+        "test/tui.test.ts",
+        "40x12.png",
+        "80x24.png",
+        "120x40.png",
+        "200x60.png"
+      ]
+    },
+    {
+      "id": "VT-03",
+      "status": "pass",
+      "evidence": [
+        "package-proof.json",
+        "test/rpc.test.ts"
+      ]
+    },
+    {
+      "id": "VT-04",
+      "status": "pass",
+      "evidence": [
+        "test/reducer.test.ts",
+        "test/application.test.ts"
+      ]
+    },
+    {
+      "id": "VT-05",
+      "status": "pass",
+      "evidence": [
+        "package-proof.json",
+        "test/tui.test.ts",
+        "capture-manifest.json"
+      ]
+    },
+    {
+      "id": "VT-06",
+      "status": "pass",
+      "evidence": [
+        "scripts/check-dependencies.mjs",
+        "scripts/check-boundaries.mjs",
+        "THIRD_PARTY_LICENSES.json"
+      ]
+    }
+  ],
+  "audit": {
+    "verdict": "APPROVE",
+    "resolvedFindings": 13,
+    "unresolvedFindings": 0,
+    "evidence": ".agent/critical-audit/2026-08-01T23-26-12Z"
+  }
+}

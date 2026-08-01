@@ -46,6 +46,9 @@ The first command must initialize a protocol version and workspace.
 
 `requestId` is unique per client connection and is echoed by every direct response.
 
+Braid defensively replays the most recent 256 request responses within an 8 MiB payload budget.
+Clients must still keep request identifiers unique; durable mutation safety comes from `operationId`, which remains effective after the response window is evicted.
+
 A command that can mutate durable Braid state or external state must include a caller-created `operationId` in its input envelope.
 
 The identifier is globally stable across client connections and Braid process restarts.
@@ -105,7 +108,7 @@ This includes profile and connection changes, conversation and branch changes, s
 
 Malformed JSON, unknown protocol version, duplicate request identifier with changed body, invalid command, invalid parameters, stale revision precondition, and command in the wrong state produce distinct stable errors.
 
-Repeating an identical request identifier on one connection returns the original direct response.
+Repeating an identical request identifier while its response remains in the bounded connection cache returns the original direct response.
 
 Repeating a stable operation through a new connection reconciles the journaled operation instead of dispatching it twice.
 

@@ -1,0 +1,17 @@
+import { ProcessTerminal } from '@earendil-works/pi-tui'
+
+const ENTER_ALTERNATE_SCREEN = '\u001b[?1049h'
+const LEAVE_ALTERNATE_SCREEN = '\u001b[?1049l'
+
+export class AlternateScreenTerminal extends ProcessTerminal {
+  override start(onInput: (data: string) => void, onResize: () => void): void {
+    super.start(onInput, onResize)
+    this.write(ENTER_ALTERNATE_SCREEN)
+    this.clearScreen()
+  }
+
+  override stop(): void {
+    this.write(LEAVE_ALTERNATE_SCREEN)
+    super.stop()
+  }
+}

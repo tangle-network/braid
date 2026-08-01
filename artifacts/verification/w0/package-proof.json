@@ -1,0 +1,33 @@
+{
+  "tarball": "tangle-network-braid-0.1.0.tgz",
+  "sha256": "64c5f1e97723a1467d0e3f2e683e93d8a9566e2ba8e9a4a0d8238b973ad6142e",
+  "version": "0.1.0",
+  "rpcRecords": 14,
+  "referenceSizes": [
+    {
+      "columns": 40,
+      "rows": 12,
+      "events": 9
+    },
+    {
+      "columns": 80,
+      "rows": 24,
+      "events": 9
+    },
+    {
+      "columns": 120,
+      "rows": 40,
+      "events": 9
+    },
+    {
+      "columns": 200,
+      "rows": 60,
+      "events": 9
+    }
+  ],
+  "alternateScreenRestored": true,
+  "sigintRestored": true,
+  "stateWriteSymlinkSafe": true,
+  "inlineStayedInMainScreen": true,
+  "keyboardMatchesRpc": true
+}

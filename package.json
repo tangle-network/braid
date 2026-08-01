@@ -1,0 +1,69 @@
+{
+  "name": "@tangle-network/braid",
+  "version": "0.1.0",
+  "description": "A universal terminal interface for portable agent profiles",
+  "type": "module",
+  "bin": {
+    "braid": "./dist/bin/braid.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/views/headless/protocol.d.ts",
+      "import": "./dist/views/headless/protocol.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_LICENSES.json",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "packageManager": "pnpm@11.18.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tangle-network/braid.git"
+  },
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json",
+    "capture:w0": "pnpm run build && node scripts/capture-w0.mjs",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run boundaries && pnpm run dependencies:check && pnpm run attribution && pnpm run licenses:check && pnpm run test",
+    "clean": "node scripts/clean.mjs",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "boundaries": "node scripts/check-boundaries.mjs",
+    "dependencies:check": "node scripts/check-dependencies.mjs",
+    "attribution": "node scripts/check-attribution.mjs",
+    "licenses:generate": "node scripts/generate-licenses.mjs",
+    "licenses:check": "node scripts/generate-licenses.mjs --check",
+    "test": "node scripts/clean-tests.mjs && tsc -p tsconfig.test.json && node scripts/run-tests.mjs",
+    "test:package": "pnpm run build && node scripts/verify-package.mjs",
+    "pack:check": "pnpm pack --pack-destination .tmp",
+    "proof:w0": "pnpm run build && node scripts/verify-package.mjs --record artifacts/verification/w0/package-proof.json && node scripts/capture-w0.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-tui": "0.83.0",
+    "@tangle-network/agent-eval": "0.139.2",
+    "@tangle-network/agent-interface": "0.40.0",
+    "@tangle-network/agent-runtime": "0.117.0",
+    "@tangle-network/sandbox": "0.15.2",
+    "chalk": "5.6.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.6",
+    "@types/node": "24.10.1",
+    "@xterm/headless": "5.5.0",
+    "node-pty": "1.1.0",
+    "typescript": "7.0.2"
+  }
+}

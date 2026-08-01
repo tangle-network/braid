@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-01T23:28:12.161Z",
+  "command": "pnpm run capture:w0",
+  "fixture": "deterministic",
+  "terminal": "node-pty/xterm-256color",
+  "node": "v24.13.0",
+  "artifacts": [
+    {
+      "path": "40x12.png",
+      "sha256": "2f062a644ce89050128f97ac2ff76fb54776e60f3d635bed9b1767e5e8e87b59",
+      "columns": 40,
+      "rows": 12,
+      "mode": "truecolor"
+    },
+    {
+      "path": "40x12.txt",
+      "sha256": "2e547bb9eea750c89dfbe1a22d0814f7f4465a49047498921f56d73a47c80be5",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24.png",
+      "sha256": "e6b1df97f2f43e1df324a7baecaccf7959f8942e568623452e30e97529d94b42",
+      "columns": 80,
+      "rows": 24,
+      "mode": "truecolor"
+    },
+    {
+      "path": "80x24.txt",
+      "sha256": "bd9f54febf38dec7c60612ec79a6a4bc033e2e6ebaacc44f61bd1e0da3debf19",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40.png",
+      "sha256": "75207c5763f6f913b29f7f029fc175fea45fda10f50954f80817836e0eb29ad5",
+      "columns": 120,
+      "rows": 40,
+      "mode": "truecolor"
+    },
+    {
+      "path": "120x40.txt",
+      "sha256": "c17412c1f47c194799b9997099a008fe9cab3e5e0cf5b57cf48e534067cc51e3",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60.png",
+      "sha256": "b06cb0ba7d5f693d3677e8c0bc1513335bff299a8b383059c7cbf17f894f4a2d",
+      "columns": 200,
+      "rows": 60,
+      "mode": "truecolor"
+    },
+    {
+      "path": "200x60.txt",
+      "sha256": "5605015da39904cf68444288032115ef60e7f70146206d43ec139440c4090e69",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "80x24-flow.gif",
+      "sha256": "2d4b1041dcfcf28c586567b63b52d95f4912fabacc111e2585afa3b653fda94e",
+      "columns": 80,
+      "rows": 24
+    }
+  ]
+}
