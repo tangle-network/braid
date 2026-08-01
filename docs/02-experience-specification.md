@@ -1,0 +1,479 @@
+# Experience specification
+
+## Experience target
+
+Braid should feel as immediate as Pi, as deliberate about approvals as Kimi Code, and more explicit than either about profiles, execution location, replay, and fork provenance.
+
+The transcript and composer remain visually dominant.
+
+Configuration, event detail, graphs, and supervision appear only when requested or when a run needs attention.
+
+No screen uses decorative cards, repeated labels, or explanatory copy that restates visible controls.
+
+## Launch behavior
+
+`braid` opens the current directory in full-screen alternate-screen mode.
+
+`braid --inline` uses the terminal's main screen and preserves scrollback.
+
+`braid --plain` emits a non-interactive readable event stream with color and cursor control disabled.
+
+`braid rpc` starts the JSONL headless interface defined in the verification plan.
+
+`braid --conversation <id>` opens an existing conversation.
+
+`braid --profile <ref>` selects a profile for a new conversation or proposes a profile change for the opened branch.
+
+`braid --connection <id>` selects a configured connection.
+
+Command-line profile, connection, runner, model, and effort values are run defaults and never silently rewrite a profile source.
+
+An invalid argument exits nonzero with a one-line error and one actionable correction.
+
+## Startup states
+
+### Ready configuration exists
+
+Braid restores the most recent conversation for the current workspace when that preference is enabled.
+
+Otherwise it opens an empty conversation with the last valid profile and connection selected for the workspace.
+
+The first frame renders before any network discovery completes, and asynchronous status appears in the status line without blocking editor input.
+
+### First run
+
+The first-run overlay asks for a profile and a connection.
+
+The profile step lists discovered project profiles, user profiles, and importable paths.
+
+The connection step offers detected local CLI Bridge, Tangle inference, and Tangle sandbox setup.
+
+The confirmation view shows profile name and digest, connection, runner, model, effort, working directory, and unsupported profile dimensions.
+
+Only the credential or endpoint fields required by the selected connection are requested.
+
+The overlay can be cancelled without creating files or partially storing credentials.
+
+### Recoverable startup failure
+
+If the local database is locked, incompatible, or fails integrity checking, Braid shows the exact state and offers retry, read-only export, or restore from the pre-migration backup.
+
+Braid never creates an empty replacement database over an unreadable one.
+
+If a connection is unavailable, the conversation opens offline and retains full navigation and export behavior.
+
+## Main shell
+
+### Standard layout from 80 to 119 columns
+
+```text
+ Braid  profile:reviewer  local:cli-bridge  pi/claude-sonnet  high
+───────────────────────────────────────────────────────────────────────────────
+ user   Explain the failing integration test.
+
+ agent  I found the failure in the session replay path.
+        ├ tool  rg "Last-Event-ID" src
+        └ result  4 matches
+
+        The reconnect starts one event too early …
+
+───────────────────────────────────────────────────────────────────────────────
+ > _
+───────────────────────────────────────────────────────────────────────────────
+ main • running  12.4k in / 1.8k out  $0.08  00:37  queue:0  ctrl+p commands
+```
+
+The top line identifies the product, profile, connection, runner, model, and effort in one scan.
+
+The transcript consumes all remaining vertical space above the composer.
+
+The composer grows from one line to at most 40% of terminal height, then scrolls internally.
+
+The status line identifies branch, run state, usage, elapsed time, queue count, and one contextual shortcut.
+
+The status line omits unavailable values instead of displaying empty placeholders.
+
+### Wide layout at 120 columns and above
+
+```text
+ Braid  profile:reviewer  cloud:tangle  codex/gpt-5.6  xhigh
+──────────────────────────────────────────────────────────────┬──────────────────────
+ transcript                                                    │ Activity
+                                                               │ run  streaming  00:37
+ agent output                                                  │ tool read  complete
+                                                               │ worker test  running
+                                                               │ interaction  1 waiting
+                                                               │ cost  $0.08
+──────────────────────────────────────────────────────────────┴──────────────────────
+ > _
+─────────────────────────────────────────────────────────────────────────────────────
+ fix/replay • running  env:sbx_…  checkpoint:none  queue:0  ctrl+g graph
+```
+
+The right pane is optional and defaults to activity while a run is active.
+
+The user may switch the pane among activity, graph, details, workspace, and hidden.
+
+The pane never reduces the transcript below 72 columns; below that boundary it becomes an overlay.
+
+### Narrow layout below 80 columns
+
+The transcript, composer, and one compact status line remain visible.
+
+The top line collapses to profile and run state.
+
+Selectors, interactions, details, activity, and graph occupy the full viewport as focused overlays.
+
+Long status values truncate in the middle so identity suffixes remain visible.
+
+No primary action requires a side-by-side pane.
+
+At 40×12, the composer remains at least three rows while focused and the active interaction response remains reachable without mouse input.
+
+## Transcript
+
+User messages, assistant text, reasoning, tool calls, tool results, artifacts, warnings, errors, analyses, and system notices use distinct semantic styles.
+
+Role and state are never communicated by color alone.
+
+Repeated streaming updates replace the affected message part by stable part identifier instead of appending a new row.
+
+Collapsed reasoning shows a one-line summary, elapsed time, and disclosure marker.
+
+Expanded reasoning is visually subordinate to the final answer and can be disabled by profile, provider policy, or user preference.
+
+Tool calls show state, concise subject, duration, and an expandable sanitized preview.
+
+Known tool subjects receive specialized views for shell commands, diffs, files, URLs, searches, agents, skills, and task lists.
+
+Unknown tools render name, arguments, result, and error through a generic safe inspector.
+
+Large outputs use bounded previews and open in a searchable overlay without discarding the original event.
+
+Binary data is represented by metadata and an explicit open or save action rather than emitted into the terminal.
+
+Warnings remain attached to the run event that caused them.
+
+A terminal error shows whether the run is failed, cancelled, expired, or unknown and never implies that a retry is safe when idempotency is unavailable.
+
+Selecting a transcript item opens details with source event identifier, run, provider cursor, timing, usage, profile digest, and raw normalized data after secret redaction.
+
+## Composer
+
+The editor supports multiline input, selection, undo and redo, kill ring behavior, clipboard paste, history, completion, Unicode, combining marks, wide characters, emoji, and IME composition.
+
+`Enter` sends when the run is idle.
+
+`Alt+Enter` and configurable `Ctrl+J` insert a newline.
+
+When a run is active, ordinary `Enter` queues the input for the next turn by default.
+
+`/steer <text>` delivers text to the active run only when the runtime reports live steering support.
+
+`/queue <text>` always adds a next-turn input and displays its position.
+
+The busy composer labels its current behavior as `queue` or `steer`, and `Alt+S` toggles the mode when steering is available.
+
+Queued inputs can be opened, reordered, edited, or removed before admission.
+
+Pasted text larger than the configured preview threshold appears as a folded paste block and requires the normal send action.
+
+Dropped or pasted file paths can be attached only after workspace-path validation.
+
+Image attachments appear only when both the active provider path and terminal support the required input and preview capabilities.
+
+The composer preserves unsent content per branch across navigation and restart, but encrypts or excludes content marked secret.
+
+## Command system
+
+Slash commands are typed, discoverable, capability-aware operations registered in one command registry.
+
+The registry owns parsing, completion, availability, help, confirmation, execution, and headless command identity.
+
+Built-in commands have priority over profile resource commands.
+
+Profile commands are addressed as `/profile:<name>` when their name conflicts with a built-in.
+
+Typing `//text` sends `/text` to the agent as ordinary prompt content.
+
+An unknown slash command is not sent to the agent and opens a correction list.
+
+| Command | Required behavior |
+| --- | --- |
+| `/new` | Create an empty conversation after preserving the current draft |
+| `/open [query]` | Search and open conversations by title, workspace, profile, runner, branch, and date |
+| `/profile [ref]` | Inspect, select, import, or edit an `AgentProfile` |
+| `/connection [id]` | Inspect, create, test, select, or remove a connection reference |
+| `/runner [name]` | Set or clear a run-level runner preference through canonical compatibility helpers |
+| `/model [name]` | Set or clear a run-level model override and show whether the runner honors it |
+| `/effort [level]` | Set or clear reasoning effort using canonical allowed values |
+| `/branch [message]` | Create a new conversation branch at the selected or named message boundary |
+| `/clone` | Duplicate the active branch into a new conversation with fresh execution identity |
+| `/fork [--workspace]` | Preview and create a conversation fork, optionally with a real environment checkpoint and fork |
+| `/graph` | Open the conversation, analysis, run, environment, and worker graph |
+| `/ask <question>` | Run a cited trace analysis against the selected frozen source |
+| `/analyze <failure|cost|tools|improvement>` | Run a named trace-analysis recipe against the selected source |
+| `/compare <left> <right>` | Create a paired comparison of two frozen run or branch sources |
+| `/approve [scope]` | Accept the focused pending interaction using an allowed scope |
+| `/reject [feedback]` | Decline the focused pending interaction with optional feedback when accepted by its schema |
+| `/automate` | Inspect, create, disable, or remove scoped interaction response rules |
+| `/queue <text>` | Add input to the active branch's admission queue |
+| `/steer <text>` | Deliver runtime steering to the active run when supported |
+| `/cancel` | Request explicit cancellation and wait for a confirmed terminal or honest unknown state |
+| `/activity` | Open run events, tools, workers, usage, receipts, and logs |
+| `/export` | Export selected conversation, branch, trace, analysis, or redacted diagnostic bundle |
+| `/settings` | Open user, workspace, appearance, retention, keymap, and update settings |
+| `/help [query]` | Search commands, keys, concepts, and current capability explanations |
+| `/quit` | Persist drafts, leave durable runs detached unless explicitly cancelled, and exit |
+
+Command completion searches names, aliases, descriptions, profile commands, and currently valid arguments.
+
+Unavailable commands remain searchable and explain the exact missing capability rather than disappearing without explanation.
+
+Destructive or externally consequential commands show the resolved target before confirmation.
+
+## Global keyboard behavior
+
+| Key | Behavior |
+| --- | --- |
+| `Ctrl+P` | Open the command palette |
+| `Ctrl+O` | Open the conversation selector |
+| `Ctrl+G` | Open or focus the graph |
+| `Ctrl+K` | Open the profile, connection, runner, model, and effort switcher |
+| `Tab` | Accept or advance completion; move focus only when no completion is active |
+| `Shift+Tab` | Move focus backward |
+| `Esc` | Close the top overlay or leave the current selection mode |
+| `Ctrl+C` | Clear selected composer text, otherwise clear composer text, otherwise request active-run cancellation, otherwise require a second press to exit |
+| `Ctrl+D` | Exit only when the composer is empty, no modal is open, and no foreground action requires a decision |
+| `PageUp` / `PageDown` | Scroll the focused transcript or list by one viewport |
+| `Home` / `End` | Move within the editor or to list boundaries according to focus |
+| `Alt+Up` / `Alt+Down` | Navigate adjacent branches or graph nodes |
+| `F2` | Toggle the wide activity pane |
+| `?` | Open contextual help outside the composer, or type a question mark inside it |
+
+Keybindings are remappable from named actions rather than raw handler code.
+
+The UI detects keybinding conflicts at configuration load and refuses ambiguous mandatory actions.
+
+Kitty keyboard mode is enabled only after terminal capability negotiation and always has a legacy fallback.
+
+## Selectors and overlays
+
+Every searchable selector shares one behavior for query, result count, current selection, paging, loading, empty, error, and cancel states.
+
+The title names the object being selected and does not repeat an instruction already implied by the editor.
+
+Search starts immediately and never moves selection to a different item after the user has navigated unless the selected item disappears.
+
+Long lists virtualize rows and preserve the selected stable identifier across refresh.
+
+The footer shows only keys valid in the current overlay.
+
+Overlays are coordinated by one modal controller so an interaction cannot appear behind a profile picker or another interaction.
+
+Foreground interactions preempt non-destructive selectors after preserving their query and selection.
+
+No overlay can trap focus or leave the composer receiving hidden keystrokes.
+
+## Profile and run configuration
+
+The compact switcher opens on five rows: profile, connection, runner, model, and effort.
+
+Changing profile replaces the effective agent definition only after validation and confirmation when a branch already has activity.
+
+Changing connection affects the next admitted run and may require a new environment or provider session.
+
+Changing runner, model, or effort creates a branch-local run override and never edits the source profile unless the user explicitly selects `Save to profile`.
+
+Each selector marks values as exact, snapped, ignored, unavailable, or unverified against the active provider.
+
+The confirmation view lists every profile dimension the connection cannot honor.
+
+Unsupported required fields block the run.
+
+Unsupported optional fields require an explicit continue decision and become part of the run receipt.
+
+The full profile editor groups identity, prompt, models, runner, permissions, tools, MCP, Hub connections, subagents, resources, hooks, modes, confidentiality, and extensions without creating a parallel schema.
+
+Unknown extension fields remain round-trippable and visible in a raw validated view.
+
+## Interactions
+
+An interaction is a runtime-delivered request with a stable identifier, kind, prompt, answer specification, optional subject, timeout behavior, and allowed outcomes.
+
+Questions, permissions, and plans have specialized views, while unknown kinds use the generic answer specification.
+
+The modal header shows the requesting run, profile, runner, and remaining timeout when present.
+
+The body shows the prompt and a sanitized subject preview.
+
+The response area is generated from text, number, boolean, select, or secret answer specifications and enforces required values, defaults, and constraints before submission.
+
+Permission views show only response scopes allowed by the request, such as once, session, or persistent policy.
+
+Persistent approval requires a second confirmation that names the exact subject pattern and storage scope.
+
+Plan review offers accept, request revision with feedback, and reject only when those outcomes can be encoded by the shared interaction contract.
+
+Secret responses are masked, excluded from history and persistence, and passed directly to the provider response call.
+
+An interaction with any secret answer field cannot create or match an automation rule in the first release; `/automate` explains that the response must remain manual.
+
+Concurrent interactions enter a stable FIFO queue per arrival sequence and display the total waiting count.
+
+Session-scoped automation may resolve matching non-secret queued requests only after its exact rule is persisted and shown in the interaction audit.
+
+Timeout displays whether the provider applied a default, declined, cancelled, or remains unknown.
+
+Restart restores unresolved interaction metadata and asks the provider whether each request is still active before accepting a response.
+
+A response retry reuses the same operation identifier and never answers twice.
+
+## Run lifecycle experience
+
+| State | Display and allowed action |
+| --- | --- |
+| `starting` | Spinner with resolved profile, connection, runner, and operation identifier; cancel is available |
+| `running` | Streaming output, elapsed time, usage, queue, activity, steer when supported, and cancel |
+| `waiting` | Interaction count and focused decision; unrelated branches remain navigable |
+| `detached` | Run continues remotely; reconnect and cancel remain available when supported |
+| `reconnecting` | Last accepted cursor and retry attempt are visible; no duplicate local submission occurs |
+| `cancelling` | Input admission stops and Braid waits for a terminal provider snapshot |
+| `completed` | Terminal outcome, usage, duration, receipts, and follow-up composer |
+| `cancelled` | Provider-confirmed cancellation and any partial output remain visible |
+| `failed` | Structured failure, retry safety, provider state, and diagnostic export |
+| `expired` | Environment or session expiry is explicit and continuation is disabled |
+| `unknown` | Braid states that provider truth is unavailable and offers only safe status refresh, export, or a new run |
+
+Transport disconnect changes a durable run to detached or reconnecting, never directly to cancelled or failed.
+
+Closing Braid leaves detachable runs active by default and lists them on next launch.
+
+Non-detachable foreground runs require an explicit choice to cancel or keep Braid open before exit.
+
+## Conversation selector
+
+The selector searches title, workspace, branch, profile, runner, model, connection, status, and date.
+
+Each result shows title, active branch, last activity, profile, workspace, and any running or waiting count.
+
+Running and waiting conversations sort ahead of recent idle conversations unless the query defines another order.
+
+Archive is reversible and does not cancel runs.
+
+Delete names the conversation and retained external environments, then uses the operating system trash path when possible.
+
+Opening a conversation restores its graph, selected branch, scroll anchor, draft, and current provider bindings.
+
+## Fork preview
+
+The fork preview is one comparison, not a wizard of decorative steps.
+
+It shows source and destination values for transcript boundary, profile digest, run overrides, provider session, environment, checkpoint, working tree state, untracked files, queued input, and pending interactions.
+
+A conversation fork marks provider session as `new` and environment as `shared` unless a real workspace fork is selected.
+
+A workspace fork requires checkpoint and fork capabilities and shows the resulting environment as `new from checkpoint`.
+
+Cross-runner forks show that process memory does not transfer and list the normalized context that will be sent.
+
+Pending interactions never copy into a fork as answerable requests.
+
+## Graph
+
+The graph is a terminal tree whose nodes are conversations, branches, turns, runs, analyses, environments, checkpoints, supervisors, and workers.
+
+Edges name their meaning: continued, branched at, cloned, handed off, analyzed, compared, checkpointed, forked environment, spawned, or supervised.
+
+Node rows show type, concise title, status, runner, elapsed time, and cost when known.
+
+Selecting a node updates the details pane and `Enter` navigates to its transcript or activity.
+
+The graph supports collapse, search, status filtering, runner filtering, and jump to waiting interaction.
+
+It never fabricates causality from timestamps when an explicit identifier link is absent.
+
+## Analysis experience
+
+`/ask` defaults to the active completed or failed run and prompts for a source when the branch contains multiple eligible runs.
+
+The pending analysis row shows source, analyst profile, analysis recipe, budget, and cancel action.
+
+Completed findings show severity or confidence only when provided by the analyst contract, followed by exact trace citations.
+
+Every citation opens the bounded source event or span and identifies unavailable evidence honestly.
+
+The analysis footer shows source digest, analyst profile digest, model, tokens, cost, wall time, and judge version when evaluated.
+
+`Send findings to branch` creates a quoted user-controlled attachment and records which findings were selected.
+
+`Fork from analysis` creates a new branch with selected findings as explicit context, not hidden system text.
+
+`Compare` shows each measured field for both sides and discloses missing or asymmetric data before a verdict.
+
+## Runtime activity and supervisor experience
+
+The activity view consumes runtime-owned snapshots and controls rather than reading supervisor files.
+
+It lists root run, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
+
+Worker hierarchy uses indentation and connecting lines, with status text in addition to color.
+
+Steering names the exact worker and records the delivered text or signal as a control event.
+
+Cancellation names the exact run or worker, requires confirmation when descendants are affected, and waits for runtime confirmation.
+
+If runtime control is available only in-process, Braid labels the action unavailable after reconnect instead of writing a file request.
+
+## Appearance and accessibility
+
+Braid supports true color, 256 color, 16 color, `NO_COLOR`, and a high-contrast theme.
+
+Semantic styles always include a textual or structural distinction.
+
+Themes define background, foreground, muted, accent, success, warning, error, selected, border, diff-add, diff-remove, reasoning, and each transcript role.
+
+Braid never assumes a dark background.
+
+All width calculations use terminal cell width and are tested with CJK, combining characters, emoji sequences, and bidirectional text fixtures.
+
+IME composition is never interpreted as a command before commit.
+
+Mouse selection and wheel scrolling are optional enhancements and no operation requires them.
+
+`--plain` and headless state output provide a cursor-control-free route for assistive technology and log capture.
+
+Animation can be disabled, and reduced-motion mode replaces spinners with stable state text.
+
+## Loading, empty, and error states
+
+Every asynchronous list distinguishes loading, loaded-empty, stale, unavailable, unauthorized, and failed.
+
+An empty conversation focuses the composer and shows one concise line naming the selected profile and connection.
+
+An empty profile list offers import and creation.
+
+An empty connection list opens setup.
+
+An empty graph explains that the first run creates its first node.
+
+An offline connection retains cached metadata with a stale marker and does not show an empty list.
+
+Errors preserve user input, identify the failed operation, and state whether retry is idempotent.
+
+Background errors enter the activity view and status line without stealing composer focus unless user action is required.
+
+## Experience acceptance
+
+| ID | Required proof |
+| --- | --- |
+| UX-01 | Main, wide, and narrow layouts pass virtual-terminal snapshots and real terminal captures at all four reference sizes. |
+| UX-02 | A keyboard-only recording completes first-run setup, one turn, one interaction, one fork, one analysis, and conversation reopen at 80×24. |
+| UX-03 | The same controller trace produces equivalent terminal state and headless state for every primary command. |
+| UX-04 | Streaming replacement by part identifier produces no duplicated text under 1,000 randomized update sequences. |
+| UX-05 | CJK, combining-mark, emoji, bidirectional, IME, paste, and resize fixtures retain valid cell layout and input content. |
+| UX-06 | Every unavailable feature explains the missing reported capability in both the command palette and direct invocation. |
+| UX-07 | Interaction queues, timeouts, restart, manual secret answers, secret-automation rejection, and scoped non-secret automation pass deterministic and live-provider flows. |
+| UX-08 | Fork preview accurately describes all three fork types and blocks workspace claims without checkpoint and fork capabilities. |
+| UX-09 | Unknown, detached, reconnecting, cancelling, and expired states remain distinct in reducer tests and visual captures. |
+| UX-10 | No required workflow contains an unreachable control at 40×12 or depends on color, mouse input, or an unrecorded shortcut. |

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-08-01T21:55:26Z",
+  "scope": "Complete staged Braid planning repository",
+  "projectType": "Documentation-first TypeScript terminal application",
+  "baseTree": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "auditedTree": "f7cefa27883269816f2a023e4a02e3db5cede5b9",
+  "fileCount": 20,
+  "reviewers": [
+    {
+      "id": "A",
+      "lens": "correctness and security",
+      "status": "complete"
+    },
+    {
+      "id": "B",
+      "lens": "architecture and quality",
+      "status": "interrupted after the user asked to stop expanding the review"
+    },
+    {
+      "id": "C",
+      "lens": "standards, personas, and real-system coverage",
+      "status": "not run after the user asked to stop expanding the review"
+    }
+  ],
+  "initialVerdict": "REQUEST_CHANGES",
+  "initialCounts": {
+    "critical": 0,
+    "high": 6,
+    "medium": 4,
+    "low": 0,
+    "dropped": 0
+  },
+  "reaudit": {
+    "status": "APPROVE",
+    "resolved": 10,
+    "total": 10,
+    "method": "deterministic content assertions against the corrected worktree"
+  },
+  "notInspected": [
+    "Implementation code, because this repository intentionally contains the pre-implementation contract only",
+    "Full reviewer B and reviewer C passes, stopped at the user's direction"
+  ]
+}

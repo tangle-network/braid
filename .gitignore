@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.tmp/
+*.log
+.env
+.env.*
+!.env.example
+artifacts/verification/**/raw/
+artifacts/verification/**/*.cast
+artifacts/verification/**/*.gif
+artifacts/verification/**/*.mp4
