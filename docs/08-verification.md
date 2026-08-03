@@ -120,6 +120,38 @@ The protocol schema is published in the npm package and checked for backward com
 
 End of input performs the same safe shutdown as `shutdown` with the configured default and returns a meaningful process exit code.
 
+### W6 cancellation, restart, and evidence rules
+
+Cancellation is a two-party operation.
+
+Braid first records `run.cancel.requested`, then asks the runtime port for provider acknowledgement while the run is shown as `cancelling`.
+
+Local stream abortion is only cleanup and never proves that the provider stopped.
+
+An acknowledgement records `aborted`; a rejected, missing, or timed-out acknowledgement records `unknown` with the reason.
+
+The current W6 storage adapter is a narrow append-only `JournalPort` backed by a mode-600, fsynced JSONL file.
+
+It loads the event ledger before any dispatch, so a restart replays an existing operation identifier and does not start the provider twice.
+
+This port is the production-shaped integration boundary until the shared SQLite storage package is connected; Braid does not implement a second execution or storage system.
+
+`shutdown` is operation-bearing in JSONL, plain mode, command-key paths, signal handling, and the terminal command palette.
+
+All of those paths commit one `application.shutdown.requested` event before waiting for idle or cancellation completion.
+
+Assistant message text and every rendered part pass through the same sanitized character and line bounds before Pi TUI receives them.
+
+The packed proof runs send, graph, unavailable command, retry, cancellation, and shutdown through terminal, RPC, and plain mode.
+
+RPC and plain mode use separate stdout and stderr pipes; only terminal mode uses a pseudoterminal.
+
+Visual state captures use one signal-triggered semantic record with a matching revision, and interaction and fork captures contain real fixture `answerSpec` and fork-preview data.
+
+Every raster manifest records the Pi TUI, PTY, emulator, Node, `agg`, ImageMagick, font, color mode, packed binary, and tarball provenance.
+
+Package proof builds an isolated copy, records a digest of the exact source copy, packs that build, and installs the resulting tarball before running the binary.
+
 ## Deterministic test adapter
 
 The deterministic provider implements the production execution, profile validation, interaction, session, workspace, analysis, and supervisor ports without network or subprocesses.
@@ -384,7 +416,7 @@ Each case runs on at least three representative source fixtures and includes a s
 
 ## Release evidence manifest
 
-The release process writes `artifacts/verification/<version>/manifest.json` and a readable `report.md`.
+The release process validates staged results from `artifacts/verification/release/checks.json`, then writes `artifacts/verification/<version>/manifest.json` and `artifacts/verification/<version>/report.md`.
 
 Large recordings, raw traces, and live logs may live in immutable CI or release storage, while the manifest stores content hashes and authenticated links.
 
@@ -398,25 +430,63 @@ The manifest contains the following top-level data.
   "packageIntegrity": "sha512-…",
   "startedAt": "<iso>",
   "finishedAt": "<iso>",
-  "sourceState": {},
-  "dependencies": [],
-  "environments": [],
+  "sourceState": {
+    "clean": true,
+    "commit": "<sha>",
+    "treeSha256": "<tree-sha>",
+    "tarballSha256": "<sha256>",
+    "tarballArtifactId": "package-tarball",
+    "specificationDigests": []
+  },
+  "dependencies": [
+    { "name": "@tangle-network/agent-runtime", "version": "<exact>", "integrity": "sha512-…" }
+  ],
+  "environments": [
+    { "id": "linux-release", "kind": "ci", "details": {} }
+  ],
   "checks": [],
-  "requirements": {},
+  "requirements": {
+    "UX-01": { "checks": ["virtual-terminal"], "artifacts": ["80x24-frame"] }
+  },
   "artifacts": [],
   "liveResources": [],
   "cleanup": [],
-  "signatures": []
+  "signatures": [
+    {
+      "algorithm": "ed25519",
+      "keyId": "sha256:…",
+      "payloadSha256": "<sha256>",
+      "signature": "<base64>"
+    }
+  ]
 }
 ```
 
 Each check records identifier, category, required status, command, working directory, environment identifier, start and end, exit code, attempt count, measured fields, result, stdout and stderr artifact hashes, and failure details.
 
+Each check also carries an Ed25519 receipt over every check field, including the exact command, build digest, exit code, and stdout and stderr digests.
+
+The verifier accepts only the public key pinned in `release/execution-public-key.pem`; the private key is supplied through `BRAID_RELEASE_SIGNING_KEY_PATH`, must have owner-only permissions, and is never stored in the repository or evidence.
+
+The verifier rejects check identifiers outside the fixed command list and the requirement identifiers extracted from these specification documents.
+
+Every accepted check command must be one of the fixed commands below and its category must match that command.
+
+Timestamps use canonical millisecond UTC form such as `2026-08-02T07:00:00.000Z`, and the recorded duration must equal their difference.
+
+Measurements are typed scalar values, full distributions, or explicit unavailable or uncaptured records with a reason.
+
+A distribution records unit, sample count, minimum, median, p90, p95, p99, and maximum as finite ordered numbers.
+
+Passing checks set `failureDetails` to `null` and identify stdout and stderr as `{ "artifactId": "…", "sha256": "…" }`, including zero-byte output artifacts rather than omitting either stream.
+
+The release verifier requires every stable command row below, rejects every unreferenced check, and requires `UP-*`, `LIVE-*`, `PERF-*`, and `EVAL-*` requirements to cite an identically named check record of the appropriate category.
+
 Each requirement maps to one or more check identifiers and artifact identifiers.
 
 A zero, null, unavailable, or uncaptured measured field remains in the manifest with its reason.
 
-The verifier fails when a required identifier from any specification document is absent, duplicated, skipped, stale, run against another build digest, or linked only to an inadmissible proof type.
+The verifier fails when a required identifier from any specification document is absent, duplicated, skipped, stale, unsigned, run against another build digest, or linked only to an inadmissible proof type.
 
 Live resource cleanup records each environment, checkpoint, session, temporary repository, and credential with confirmed or unresolved state.
 
@@ -426,28 +496,35 @@ The release cannot complete with an unresolved externally billable test resource
 
 Implementation must provide the following stable scripts.
 
-| Command | Scope |
-| --- | --- |
-| `pnpm check` | Format, lint, strict types, boundaries, schemas, licenses, and build |
-| `pnpm test:unit` | Unit and normal property tests |
-| `pnpm test:contract` | Shared port and capability conformance |
-| `pnpm test:rpc` | Packed-binary JSONL protocol tests |
-| `pnpm test:virtual-terminal` | Cell, layout, Unicode, and state snapshots |
-| `pnpm test:pty` | Packed-binary real terminal keyboard and lifecycle tests |
-| `pnpm test:storage` | Encrypted production journal, migration, integrity, replay, retention, redaction, backups, and concurrent access |
-| `pnpm test:crash` | Production SQLite forced-kill recovery at every durable commit boundary |
-| `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
-| `pnpm test:performance` | All required Braid overhead measurements |
-| `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
-| `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
-| `pnpm test:live:supervisor` | Runtime worker observation and control |
-| `pnpm test:live:analysis` | Real frozen trace and analyst path |
-| `pnpm test:eval` | Judge calibration and semantic release cases |
-| `pnpm test:install` | Packed package across supported release platforms |
-| `pnpm capture:visual` | Deterministic real-binary captures and manifests |
-| `pnpm verify:release` | Validate and assemble every required result into one signed evidence manifest |
+| Check ID | Command | Scope |
+| --- | --- | --- |
+| `repository` | `pnpm check` | Format, lint, strict types, boundaries, dependency/license metadata, deterministic checks, and the release manifest check |
+| `unit` | `pnpm test:unit` | Unit and normal property tests |
+| `contract` | `pnpm test:contract` | Shared port and capability conformance |
+| `coordination` | `pnpm test:coordination` | Durable effect admission, digest conflict, and dispatch serialization |
+| `rpc` | `pnpm test:rpc` | JSONL protocol tests |
+| `rpc-packed` | `pnpm test:rpc:packed` | Packed-binary JSONL protocol tests |
+| `virtual-terminal` | `pnpm test:virtual-terminal` | Cell, layout, Unicode, keyboard, and state snapshots |
+| `pty` | `pnpm test:pty` | Packed-binary real terminal keyboard and lifecycle tests |
+| `storage` | `pnpm test:storage` | Encrypted production journal, migration, integrity, replay, retention, redaction, backups, and concurrent access |
+| `crash` | `pnpm test:crash` | Production SQLite forced-kill recovery at every durable commit boundary |
+| `security` | `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
+| `performance` | `pnpm test:performance` | Reducer, coordination, and storage overhead measurements; the full PERF-01..10 matrix lands in W12 |
+| `live` | `pnpm test:live` | Aggregate live scope guard |
+| `live-bridge` | `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
+| `live-tangle` | `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
+| `live-supervisor` | `pnpm test:live:supervisor` | Runtime worker observation and control |
+| `live-analysis` | `pnpm test:live:analysis` | Real frozen trace and analyst path |
+| `eval` | `pnpm test:eval` | Judge calibration and semantic release cases |
+| `install` | `pnpm test:install` | Packed package across supported release platforms |
+| `capture` | `pnpm test:capture` | Deterministic W0 real-binary captures |
+| `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
+| `release` | `pnpm check:release` | Release manifest and evidence-set check |
+| `verify:release` | `pnpm verify:release` | Validate and assemble every required result into one signed evidence manifest from an isolated clean tracked checkout |
 
-The live-provider, evaluation, and final evidence-manifest commands remain later release surfaces; the W5 commands above are implemented in this repository.
+The deterministic local commands are implemented in this repository.
+
+Live-provider and semantic-evaluation commands return a typed unavailable result until protected credentials, deployments, and evidence stores are supplied.
 
 ## Verification acceptance
 

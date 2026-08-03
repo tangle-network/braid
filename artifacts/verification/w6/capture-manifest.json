@@ -1,0 +1,487 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-08-03T06:37:41.136Z",
+  "command": "pnpm capture:visual",
+  "binary": "clean npm install from generated tarball",
+  "binarySha256": "7b4bf6953c9c39cfd35cd831738d69cbfd39f4b718f21ebebc30d3d2e1d42827",
+  "tarball": "tangle-network-braid-0.1.0.tgz",
+  "tarballSha256": "3a13e1d42463f230666eec108983346195e6b11b317a4a29d57ba5cb7f026552",
+  "fixture": "deterministic",
+  "terminal": "node-pty/xterm-256color",
+  "node": "v24.13.0",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.83.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@5.5.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "states": [
+    {
+      "name": "empty",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/empty.json",
+        "plain-frame": "states/empty.txt",
+        "asciicast": "raw/empty.cast",
+        "ansi": "states/empty.ansi",
+        "png": "states/empty.png"
+      }
+    },
+    {
+      "name": "active-streaming",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/active-streaming.json",
+        "plain-frame": "states/active-streaming.txt",
+        "asciicast": "raw/active-streaming.cast",
+        "ansi": "states/active-streaming.ansi",
+        "png": "states/active-streaming.png"
+      }
+    },
+    {
+      "name": "interaction",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/interaction.json",
+        "plain-frame": "states/interaction.txt",
+        "asciicast": "raw/interaction.cast",
+        "ansi": "states/interaction.ansi",
+        "png": "states/interaction.png"
+      }
+    },
+    {
+      "name": "fork-preview",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/fork-preview.json",
+        "plain-frame": "states/fork-preview.txt",
+        "asciicast": "raw/fork-preview.cast",
+        "ansi": "states/fork-preview.ansi",
+        "png": "states/fork-preview.png"
+      }
+    },
+    {
+      "name": "graph-or-analysis",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/graph-or-analysis.json",
+        "plain-frame": "states/graph-or-analysis.txt",
+        "asciicast": "raw/graph-or-analysis.cast",
+        "ansi": "states/graph-or-analysis.ansi",
+        "png": "states/graph-or-analysis.png"
+      }
+    },
+    {
+      "name": "narrow",
+      "columns": 40,
+      "rows": 12,
+      "artifacts": {
+        "semantic-state": "states/narrow.json",
+        "plain-frame": "states/narrow.txt",
+        "asciicast": "raw/narrow.cast",
+        "ansi": "states/narrow.ansi",
+        "png": "states/narrow.png"
+      }
+    },
+    {
+      "name": "failure-or-reconnect",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/failure-or-reconnect.json",
+        "plain-frame": "states/failure-or-reconnect.txt",
+        "asciicast": "raw/failure-or-reconnect.cast",
+        "ansi": "states/failure-or-reconnect.ansi",
+        "png": "states/failure-or-reconnect.png"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "40x12.txt",
+      "sha256": "a00f393bf1e2a3223e6e023e1d7ba04347ce54f256135b182a01f8858ff5f8e3",
+      "kind": "terminal-frame",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-plain.txt",
+      "sha256": "1afc3634d6dc1061ddf67915117a0f8f90e9e7c1e1fa50bf5e2e0387bd5fa58f",
+      "kind": "plain-frame",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12.png",
+      "sha256": "370cb78658ac126c30e9f5b512d8d559e01429e577f6cb616e188087b1de5b0d",
+      "kind": "png",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24.txt",
+      "sha256": "58881d9b87b7d36445ebe84cb5cece8a73a097663dc0517b19d83542487ce04f",
+      "kind": "terminal-frame",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-plain.txt",
+      "sha256": "1afc3634d6dc1061ddf67915117a0f8f90e9e7c1e1fa50bf5e2e0387bd5fa58f",
+      "kind": "plain-frame",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24.png",
+      "sha256": "dd232fb27a9561d8536b4ca15db2a136dcccfecb04928d32212940b6c3b882d2",
+      "kind": "png",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40.txt",
+      "sha256": "0622cf81ab5b52cf70853b2fb753941e6f314361ed91891f40d247ca4117bc8c",
+      "kind": "terminal-frame",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-plain.txt",
+      "sha256": "1afc3634d6dc1061ddf67915117a0f8f90e9e7c1e1fa50bf5e2e0387bd5fa58f",
+      "kind": "plain-frame",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40.png",
+      "sha256": "69ab9c425db5c8560fc92fcad0b854219f5348979625916b9545e723baa478dd",
+      "kind": "png",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60.txt",
+      "sha256": "2558676b34dedf6d238361b35ea92bf96b91fd169f82d558b7257ec20c0fb26f",
+      "kind": "terminal-frame",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-plain.txt",
+      "sha256": "1afc3634d6dc1061ddf67915117a0f8f90e9e7c1e1fa50bf5e2e0387bd5fa58f",
+      "kind": "plain-frame",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60.png",
+      "sha256": "b6a07e1bb7a153458599b163ace38783dc301d8153cd8f35349b1b098241b1b6",
+      "kind": "png",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/empty.json",
+      "sha256": "432b59ac74fbe1b9d8b897cee1c8ba1b4c59d1b524ed3706b689fce1b2c7e19c",
+      "kind": "semantic-state",
+      "state": "empty",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/empty.txt",
+      "sha256": "0fa049b76144be56765217f98832d556da4bc07350db8d737da3cf65ac990931",
+      "kind": "plain-frame",
+      "state": "empty",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/empty.cast",
+      "sha256": "04d7dbf820170913dd3149c5e6fa494671b3146b2c19be1ff1573f42d0d1b4f9",
+      "kind": "asciicast",
+      "state": "empty",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/empty.ansi",
+      "sha256": "603c6349deada6830c8eb53785ecb4317dcefc26e5e08d7556ecabe8d736c9d9",
+      "kind": "ansi",
+      "state": "empty",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/empty.png",
+      "sha256": "2059aa3e36e28d1ea5d5e37f16808e59c8c626b20f01f7b785d05002403e294d",
+      "kind": "png",
+      "state": "empty",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/active-streaming.json",
+      "sha256": "0ba86734d8bc1f9079a41f02d136511b56b87d7602909038e6889128bdd473a2",
+      "kind": "semantic-state",
+      "state": "active-streaming",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/active-streaming.txt",
+      "sha256": "d66abbaa8b6907f7f28adbda3f354d0fa8567236639209f982fbb5aa6b4e249f",
+      "kind": "plain-frame",
+      "state": "active-streaming",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/active-streaming.cast",
+      "sha256": "f7a2f3966154b954a4eb5129cacaeb15954e82bba6dd50013fa3f4aa72e525f0",
+      "kind": "asciicast",
+      "state": "active-streaming",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/active-streaming.ansi",
+      "sha256": "bccfed7d28425b6d9bee0e0dd9bc16a1d278321e2d20de54410f0961532679d1",
+      "kind": "ansi",
+      "state": "active-streaming",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/active-streaming.png",
+      "sha256": "028c5cb706121716c88baadb32f5bad1e7c5c4a510320bc9d0897c0657d22a78",
+      "kind": "png",
+      "state": "active-streaming",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/interaction.json",
+      "sha256": "b32d44c7ece8852c0f647a04c75c38579ee695a2246d68ac381ae4dcc205fff9",
+      "kind": "semantic-state",
+      "state": "interaction",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/interaction.txt",
+      "sha256": "4e5f8750a4607c477b06947003cca7fcc28b70967ba4fb316bce082d896aa4a8",
+      "kind": "plain-frame",
+      "state": "interaction",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/interaction.cast",
+      "sha256": "599522e3d8485b4b41982b81c359f32bb1233890804b167ca8dc51921ab15610",
+      "kind": "asciicast",
+      "state": "interaction",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/interaction.ansi",
+      "sha256": "a743d2a567115bbb1978e294529b11ce204a8b20687a24e089b9d0cb3f22076d",
+      "kind": "ansi",
+      "state": "interaction",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/interaction.png",
+      "sha256": "d001005af36912ec92db66cb23f288e0c19589e40ef8b9ace29d9d5d1a8cd59d",
+      "kind": "png",
+      "state": "interaction",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.json",
+      "sha256": "644f6ebbab3d7093ae8ae527a7798bf31ddc535d6c4afdd6031f64e0c97ecaee",
+      "kind": "semantic-state",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.txt",
+      "sha256": "4d4fcdef73e1849a2381e3a588442e0fe36ab10b94615ce82e191dc36d24e61f",
+      "kind": "plain-frame",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/fork-preview.cast",
+      "sha256": "868287680a25cf4307baad12d099bf3723bb26bc82da6210d1f54992fd018ad1",
+      "kind": "asciicast",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.ansi",
+      "sha256": "f592e119ef9c91bacf6d5b11827e07c772cdcf1f3a8c3e1ab5ed84fd95f7e551",
+      "kind": "ansi",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.png",
+      "sha256": "ac6b42ac60f3644d5ccd9735eb054fe092ed137f7c0627da9db463d02385e0a3",
+      "kind": "png",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/graph-or-analysis.json",
+      "sha256": "8ea330aaf6a7caf6c5dc81f9fc15ce925ff960ab32784bc6f42ea76f6079ef1f",
+      "kind": "semantic-state",
+      "state": "graph-or-analysis",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/graph-or-analysis.txt",
+      "sha256": "f4f4e4053265cc303156aadf99436f4d0f739c8068b9feb9af7557af0629a1cc",
+      "kind": "plain-frame",
+      "state": "graph-or-analysis",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/graph-or-analysis.cast",
+      "sha256": "ebeb727c1f44277a3b72033f0e14d1373397d66b2c7207ebe405e4576138ae81",
+      "kind": "asciicast",
+      "state": "graph-or-analysis",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/graph-or-analysis.ansi",
+      "sha256": "fe80a8a64b238bbe370bae8d772655b6d57185721f5188454f899d84144c70b9",
+      "kind": "ansi",
+      "state": "graph-or-analysis",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/graph-or-analysis.png",
+      "sha256": "fece023ac7c68757cf1a4e49212cab222f20159e77fe76624063a195d3773271",
+      "kind": "png",
+      "state": "graph-or-analysis",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/narrow.json",
+      "sha256": "eb766aa4dd0c41e4a97b3563fad6fc8972a84deec46734c610c18bf926bfeadd",
+      "kind": "semantic-state",
+      "state": "narrow",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/narrow.txt",
+      "sha256": "0049cdfef3b32d82ac0a2f543bc0663d3d31c16ff39515398e5df88607aa0a97",
+      "kind": "plain-frame",
+      "state": "narrow",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/narrow.cast",
+      "sha256": "e4f7a04d008c1d933b4869f2bd2f5718b604fe26937946ace4ef63f3d81abdaa",
+      "kind": "asciicast",
+      "state": "narrow",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/narrow.ansi",
+      "sha256": "d4e33edb2111f259447f768fdc20481cef2c714558b16196287550c14c58df14",
+      "kind": "ansi",
+      "state": "narrow",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/narrow.png",
+      "sha256": "eafde1c0995bd9bddbb3a2c81f2cef0c0485872277621ab6256ff1c9243cf54e",
+      "kind": "png",
+      "state": "narrow",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/failure-or-reconnect.json",
+      "sha256": "21e1391c071a2a9eeb9f6f380f634166567ef11be2ac06223ec178f66d8d89a4",
+      "kind": "semantic-state",
+      "state": "failure-or-reconnect",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/failure-or-reconnect.txt",
+      "sha256": "7b9597035f005d0b054456cd64550f11795005e69ee69783cb69f742ab707093",
+      "kind": "plain-frame",
+      "state": "failure-or-reconnect",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/failure-or-reconnect.cast",
+      "sha256": "f0fcf8582cc4a1b3383407f4d47a3c34e0bacd89088c8d0306a11d091dc2a49f",
+      "kind": "asciicast",
+      "state": "failure-or-reconnect",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/failure-or-reconnect.ansi",
+      "sha256": "82861fbea8b670a8d861c1c9bd420d06d656e353e99dfff85d1db65ab249fc72",
+      "kind": "ansi",
+      "state": "failure-or-reconnect",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/failure-or-reconnect.png",
+      "sha256": "7ce25935cc515b76e8548b4b07afc243fe3ccd247713bad7cfb4838dbc49f926",
+      "kind": "png",
+      "state": "failure-or-reconnect",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-flow.gif",
+      "sha256": "55ce8908fc03d616b1ac096e7b5f72e91996fe758236a077ae194e6339a6443d",
+      "kind": "flow",
+      "columns": 80,
+      "rows": 24
+    }
+  ]
+}

@@ -1,14 +1,11 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
-import { canonicalDigest } from '../domain/canonical.js'
-import type { EffectRecord as DomainEffectRecord, OperationKind } from '../domain/entities.js'
-import type { BraidEvent, BraidEventEnvelope, TurnUsage } from '../domain/events.js'
-import type { BranchId, ConversationId } from '../domain/ids.js'
-import { createEffectId, type Digest, type OperationId, parseOperationId } from '../domain/ids.js'
+import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import type { BranchId, ConversationId, OperationId } from '../domain/ids.js'
+import { parseOperationId } from '../domain/ids.js'
 import { assertBraidState } from '../domain/invariants.js'
+import { redactBraidEvent, redactSensitiveText } from '../domain/redaction.js'
 import { reduceEvent, replayEvents } from '../domain/reducer.js'
 import { type BraidState, initialState } from '../domain/state.js'
-import { containsUnsafeControlCharacter } from '../domain/text.js'
 import type { Clock } from '../ports/clock.js'
 import type {
   EffectStoragePort,
@@ -17,12 +14,18 @@ import type {
 } from '../ports/effect-storage.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
-import {
-  type EffectDispatchResult,
-  effectRequestDigest,
-  SerializedEffectCoordinator,
-} from './effect-coordinator.js'
+import { effectRequestDigest, SerializedEffectCoordinator } from './effect-coordinator.js'
+import { projectEffectRecord } from './effect-projection.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
+import {
+  cancelRequestDigest,
+  DEFAULT_CANCEL_REASON,
+  OperationLedger,
+  type OperationRecord,
+  shutdownRequestDigest,
+} from './operation-ledger.js'
+import { safeDiagnostic } from './provider-values.js'
+import { RunLifecycle } from './run-lifecycle.js'
 
 export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
 
@@ -41,11 +44,37 @@ export interface SendReceipt {
   readonly completion: Promise<BraidState>
 }
 
-interface OperationRecord {
-  readonly digest: string
-  readonly runId: string
-  completion: Promise<void>
+export interface CancelInput {
+  readonly operationId: string
+  readonly runId?: string
+  readonly reason?: string
 }
+
+export type CancelReceipt = SendReceipt
+
+export interface ShutdownReceipt {
+  readonly operationId: string
+  readonly revision: number
+  readonly replayed: boolean
+  readonly completion: Promise<BraidState>
+}
+
+export interface BraidApplicationOptions {
+  readonly profile: Readonly<AgentProfile>
+  readonly execution: ExecutionPort
+  readonly clock: Clock
+  readonly ids: IdSource
+  readonly journal?: JournalPort
+  readonly effectStorage?: EffectStoragePort
+  readonly effectCoordinator?: SerializedEffectCoordinator
+  readonly conversationId?: ConversationId
+  readonly branchId?: BranchId
+  readonly cancelTimeoutMs?: number
+}
+
+const CANCEL_WAIT_MS = 5_000
+const MAX_MESSAGE_BYTES = 1024 * 1024
+const RUN_EFFECT_KIND = 'run.execute'
 
 export class AppError extends Error {
   readonly code: string
@@ -57,79 +86,18 @@ export class AppError extends Error {
   }
 }
 
-function usageFromFinal(event: Extract<RuntimeStreamEvent, { type: 'final' }>): TurnUsage {
-  const metadata = event.metadata ?? {}
-  const tokenUsage =
-    metadata.tokenUsage && typeof metadata.tokenUsage === 'object'
-      ? (metadata.tokenUsage as Record<string, unknown>)
-      : {}
-  const input = finiteNonNegativeNumber(tokenUsage.input)
-  const output = finiteNonNegativeNumber(tokenUsage.output)
-  const costUsd = finiteNonNegativeNumber(metadata.costUsd, undefined)
-  const model = safePublicIdentifier(metadata.model)
-  return {
-    input,
-    output,
-    ...(costUsd === undefined ? {} : { costUsd }),
-    ...(model === undefined ? {} : { model }),
-  }
-}
-
-function finiteNonNegativeNumber(value: unknown): number
-function finiteNonNegativeNumber(value: unknown, fallback: undefined): number | undefined
-function finiteNonNegativeNumber(value: unknown, fallback = 0): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback
-}
-
-function safePublicIdentifier(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  const text = value.trim()
-  return /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(text) && !SENSITIVE_DIAGNOSTIC.test(text)
-    ? text
-    : undefined
-}
-
-const SENSITIVE_DIAGNOSTIC =
-  /(?:secret|password|passphrase|token|bearer|authorization|credential|private(?:[_-]?key)?|api[-_]?key|session(?:[_-]?key)?|access[_-]?key|client[_-]?secret|signature|signed[_-]?url|nonce)/iu
-const SAFE_DIAGNOSTIC = /^[A-Za-z0-9][A-Za-z0-9 .,_'()[\]-]{0,159}$/u
-
-function safeDiagnostic(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') return fallback
-  const text = value.trim()
-  if (
-    text.length === 0 ||
-    !SAFE_DIAGNOSTIC.test(text) ||
-    containsUnsafeControlCharacter(text) ||
-    SENSITIVE_DIAGNOSTIC.test(text)
-  ) {
-    return fallback
-  }
-  return text
-}
-
 export class BraidApplication {
-  readonly #execution: ExecutionPort
   readonly #ids: IdSource
   readonly #journal: JournalPort
   readonly #effects: SerializedEffectCoordinator
-  readonly #operations = new Map<string, OperationRecord>()
+  readonly #operations = new OperationLedger()
   readonly #subscribers = new Set<AppSubscriber>()
+  readonly #lifecycle: RunLifecycle
   #state: BraidState
-  #activeAbort: AbortController | undefined
 
-  constructor(options: {
-    readonly profile: Readonly<AgentProfile>
-    readonly execution: ExecutionPort
-    readonly clock: Clock
-    readonly ids: IdSource
-    readonly journal?: JournalPort
-    readonly effectStorage?: EffectStoragePort
-    readonly effectCoordinator?: SerializedEffectCoordinator
-    readonly conversationId?: ConversationId
-    readonly branchId?: BranchId
-  }) {
-    this.#execution = options.execution
+  constructor(options: BraidApplicationOptions) {
     this.#ids = options.ids
+    const executionProfile = structuredClone(options.profile)
     const defaultJournal = new FailClosedJournal(options.clock)
     this.#journal = options.journal ?? defaultJournal
     this.#effects =
@@ -137,12 +105,25 @@ export class BraidApplication {
       new SerializedEffectCoordinator(options.effectStorage ?? defaultJournal, options.clock, {
         onRecord: (record) => this.#recordEffect(record),
       })
-    const baseState = initialState(structuredClone(options.profile), {
-      ...(options.conversationId === undefined ? {} : { conversationId: options.conversationId }),
-      ...(options.branchId === undefined ? {} : { branchId: options.branchId }),
-    })
-    this.#state = replayEvents(baseState, this.#journal.all())
+    const persisted = this.#journal.all()
+    this.#state = replayEvents(
+      initialState(executionProfile, {
+        ...(options.conversationId === undefined ? {} : { conversationId: options.conversationId }),
+        ...(options.branchId === undefined ? {} : { branchId: options.branchId }),
+      }),
+      persisted,
+    )
     assertBraidState(this.#state)
+    this.#lifecycle = new RunLifecycle({
+      execution: options.execution,
+      profile: executionProfile,
+      cancelTimeoutMs: options.cancelTimeoutMs ?? CANCEL_WAIT_MS,
+      state: () => this.state(),
+      commit: (event) => this.#commit(event),
+      flush: () => this.#journal.flush?.() ?? Promise.resolve(),
+    })
+    this.#operations.restore(persisted)
+    this.#lifecycle.reconcileAfterRestart()
   }
 
   state(): BraidState {
@@ -169,20 +150,15 @@ export class BraidApplication {
   }
 
   send(input: SendInput): SendReceipt {
-    const text = input.text
     if (this.#state.workspace === null) {
       throw new AppError('NOT_INITIALIZED', 'Initialize a workspace before sending')
     }
-    let operationId: OperationId
-    try {
-      operationId = parseOperationId(input.operationId)
-    } catch {
-      throw new AppError('INVALID_OPERATION_ID', 'send requires a valid operationId')
-    }
-    if (!text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
-    if (Buffer.byteLength(text, 'utf8') > 1024 * 1024) {
+    const operationId = this.#operationId(input.operationId, 'send')
+    if (Buffer.byteLength(input.text, 'utf8') > MAX_MESSAGE_BYTES) {
       throw new AppError('MESSAGE_TOO_LARGE', 'Message must not exceed 1 MiB')
     }
+    const text = redactSensitiveText(input.text)
+    if (!text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
 
     const conversationId = input.conversationId ?? this.#state.conversationId
     const branchId = input.branchId ?? this.#state.branchId
@@ -190,64 +166,18 @@ export class BraidApplication {
       throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is not open')
     }
 
-    const effectIntent = {
+    const intent = {
       operationId,
-      effectKind: 'run.execute',
+      effectKind: RUN_EFFECT_KIND,
       request: { conversationId, branchId, text, profile: this.#state.profile },
     } as const
-    const digest = effectRequestDigest(effectIntent)
-    const persisted = this.#effects.current(operationId)
-    if (persisted && persisted.requestDigest !== digest) {
-      this.#effects.start(effectIntent, {
-        dispatch: async () => ({ status: 'failed', detail: 'OPERATION_CONFLICT' }),
-      })
-      throw new AppError(
-        'OPERATION_CONFLICT',
-        `Operation ${operationId} was already used with different input`,
-      )
-    }
-    const previous = this.#operations.get(operationId)
-    if (!previous && persisted) {
-      if (
-        persisted.status === 'terminal' ||
-        persisted.status === 'acknowledged' ||
-        persisted.status === 'failed'
-      ) {
-        const persistedRun = this.#state.runs.find((run) => run.operationId === operationId)
-        if (persistedRun) {
-          return {
-            operationId,
-            runId: persistedRun.id,
-            revision: this.#state.revision,
-            replayed: true,
-            completion: Promise.resolve(this.state()),
-          }
-        }
-      }
-      throw new AppError(
-        'OPERATION_REQUIRES_RECONCILIATION',
-        `Operation ${operationId} needs provider reconciliation before it can be retried`,
-      )
-    }
-    if (previous) {
-      if (previous.digest !== digest) {
-        throw new AppError(
-          'OPERATION_CONFLICT',
-          `Operation ${operationId} was already used with different input`,
-        )
-      }
-      return {
-        operationId,
-        runId: previous.runId,
-        revision: this.#state.revision,
-        replayed: true,
-        completion: previous.completion.then(() => this.state()),
-      }
-    }
+    const digest = effectRequestDigest(intent)
+    const replayed = this.#admitSend(operationId, digest)
+    if (replayed) return replayed
+
     if (this.#state.activeRunId) {
       throw new AppError('RUN_ACTIVE', `Run ${this.#state.activeRunId} is still active`)
     }
-
     if (this.#state.draft !== text) this.#commit({ kind: 'draft.changed', text })
     const runId = this.#ids.next('run')
     const turnId = this.#ids.next('turn')
@@ -263,46 +193,23 @@ export class BraidApplication {
     })
 
     const operation: OperationRecord = {
+      kind: 'send',
       digest,
       runId,
       completion: Promise.resolve(),
     }
     this.#operations.set(operationId, operation)
-    const abort = new AbortController()
-    this.#activeAbort = abort
     try {
       const effect = this.#effects.start(
-        {
-          ...effectIntent,
-          metadata: { runId, turnId },
-        },
-        {
-          dispatch: (context) => this.#execute(context.operationId, runId, text, abort),
-        },
+        { ...intent, metadata: { runId, turnId } },
+        { dispatch: (context) => this.#lifecycle.execute(context.operationId, runId, text) },
       )
       operation.completion = effect.completion.then(async () => {
         await this.#journal.flush?.()
       })
     } catch (error) {
-      if (this.#activeAbort) this.#activeAbort = undefined
       this.#operations.delete(operationId)
-      if (this.#state.activeRunId === runId) {
-        try {
-          this.#commit({
-            kind: 'run.finished',
-            runId,
-            status: 'failed',
-            finalText: '',
-            usage: { input: 0, output: 0 },
-            error: safeDiagnostic(
-              error instanceof Error ? error.message : error,
-              'EFFECT_START_FAILED',
-            ),
-          })
-        } catch {
-          // The original journal failure is the actionable error.
-        }
-      }
+      this.#abandonRun(runId, error)
       throw error
     }
 
@@ -315,16 +222,96 @@ export class BraidApplication {
     }
   }
 
+  cancel(input: CancelInput): CancelReceipt {
+    const operationId = this.#operationId(input.operationId, 'cancel')
+    const existing = this.#operations.get(operationId)
+    const runId = input.runId ?? this.#state.activeRunId ?? existing?.runId
+    if (!runId) throw new AppError('UNKNOWN_RUN', 'There is no run to cancel')
+    const reason = redactSensitiveText(input.reason ?? DEFAULT_CANCEL_REASON)
+    const digest = cancelRequestDigest(runId, reason)
+    if (existing) return this.#replayReceipt(operationId, existing, 'cancel', digest)
+
+    if (this.#state.activeRunId !== runId) {
+      throw new AppError('UNKNOWN_RUN', `Run ${runId} is not active`)
+    }
+    const run = this.#state.runs.find((candidate) => candidate.id === runId)
+    if (run?.status !== 'streaming') {
+      throw new AppError('UNKNOWN_RUN', `Run ${runId} is not cancellable`)
+    }
+    const operation: OperationRecord = {
+      kind: 'cancel',
+      digest,
+      runId,
+      completion: Promise.resolve(),
+    }
+    this.#operations.set(operationId, operation)
+    operation.completion = this.#lifecycle.startCancellation(operationId, runId, reason)
+    return {
+      operationId,
+      runId,
+      revision: this.#state.revision,
+      replayed: false,
+      completion: operation.completion.then(() => this.state()),
+    }
+  }
+
   cancelActive(): boolean {
-    if (!this.#activeAbort || this.#activeAbort.signal.aborted) return false
-    this.#activeAbort.abort(new Error('Cancelled by user'))
-    return true
+    const runId = this.#state.activeRunId
+    if (!runId || !this.#lifecycle.canCancel()) return false
+    try {
+      this.cancel({ operationId: this.#ids.next('operation'), runId })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  canCancel(): boolean {
+    return this.#lifecycle.canCancel()
+  }
+
+  shutdown(input: { readonly operationId: string }): ShutdownReceipt {
+    const operationId = this.#operationId(input.operationId, 'shutdown')
+    const digest = shutdownRequestDigest()
+    const existing = this.#operations.get(operationId)
+    if (existing) {
+      const replay = this.#replayReceipt(operationId, existing, 'shutdown', digest)
+      return {
+        operationId: replay.operationId,
+        revision: replay.revision,
+        replayed: replay.replayed,
+        completion: replay.completion,
+      }
+    }
+    this.#commit({ kind: 'application.shutdown.requested', operationId })
+    const runId = this.#state.activeRunId
+    const run = runId ? this.#state.runs.find((candidate) => candidate.id === runId) : undefined
+    const operation: OperationRecord = {
+      kind: 'shutdown',
+      digest,
+      ...(runId ? { runId } : {}),
+      completion: Promise.resolve(),
+    }
+    this.#operations.set(operationId, operation)
+    operation.completion =
+      runId && run?.status === 'streaming'
+        ? this.#lifecycle.startCancellation(operationId, runId, 'Shutdown requested')
+        : this.waitForIdle().then(() => undefined)
+    return {
+      operationId,
+      revision: this.#state.revision,
+      replayed: false,
+      completion: operation.completion.then(() => this.state()),
+    }
   }
 
   async waitForIdle(): Promise<BraidState> {
     const activeRun = this.#state.activeRunId
     if (!activeRun) return this.state()
-    const operation = [...this.#operations.values()].find((entry) => entry.runId === activeRun)
+    const pending = this.#operations.forRun(activeRun)
+    const operation =
+      pending.find((entry) => entry.kind === 'cancel') ??
+      pending.find((entry) => entry.kind === 'send')
     if (operation) await operation.completion
     return this.state()
   }
@@ -333,97 +320,97 @@ export class BraidApplication {
     await this.#journal.close?.()
   }
 
-  async #execute(
-    operationId: string,
-    runId: string,
-    text: string,
-    abort: AbortController,
-  ): Promise<EffectDispatchResult> {
-    let terminalSeen = false
-    let terminalDurable = false
-    let terminalStatus: string | undefined
-    let dispatchStarted = false
+  #operationId(value: string, command: string): OperationId {
     try {
-      await this.#journal.flush?.()
-      dispatchStarted = true
-      const stream = this.#execution.streamTurn({
-        operationId,
-        runId,
-        text,
-        profile: this.#state.profile,
-        signal: abort.signal,
-      })
-      for await (const runtimeEvent of stream) {
-        if (runtimeEvent.type === 'text_delta' && runtimeEvent.text) {
-          this.#commit({ kind: 'run.text.delta', runId, text: runtimeEvent.text })
-        } else if (runtimeEvent.type === 'final' && !terminalSeen) {
-          terminalStatus = runtimeEvent.status
-          this.#commit({
-            kind: 'run.finished',
-            runId,
-            status: runtimeEvent.status,
-            finalText: runtimeEvent.text ?? '',
-            usage: usageFromFinal(runtimeEvent),
-            ...(runtimeEvent.error
-              ? { error: safeDiagnostic(runtimeEvent.error.message, 'RUNTIME_FINAL_ERROR') }
-              : {}),
-          })
-          terminalSeen = true
-          await this.#journal.flush?.()
-          terminalDurable = true
-          break
-        }
-      }
-      if (!terminalSeen) throw new Error('Runtime stream ended without a final event')
+      return parseOperationId(value)
+    } catch {
+      throw new AppError('INVALID_OPERATION_ID', `${command} requires a valid operationId`)
+    }
+  }
+
+  /**
+   * Decides whether a send may dispatch, is an exact replay, or must be
+   * reconciled. Durable effect storage answers this across process restarts;
+   * the in-process ledger only shortens the answer for a live operation.
+   */
+  #admitSend(operationId: OperationId, digest: string): SendReceipt | undefined {
+    const persisted = this.#effects.current(operationId)
+    if (persisted && persisted.requestDigest !== digest) {
+      this.#effects.start(
+        { operationId, effectKind: RUN_EFFECT_KIND, request: { digest } },
+        { dispatch: async () => ({ status: 'failed', detail: 'OPERATION_CONFLICT' }) },
+      )
+      throw new AppError(
+        'OPERATION_CONFLICT',
+        `Operation ${operationId} was already used with different input`,
+      )
+    }
+    const previous = this.#operations.get(operationId)
+    if (previous) {
+      const replay = this.#replayReceipt(operationId, previous, 'send', digest)
+      if (!previous.runId) throw new AppError('OPERATION_CONFLICT', 'Operation has no run')
+      return replay
+    }
+    if (!persisted) return undefined
+    const persistedRun = this.#state.runs.find((run) => run.operationId === operationId)
+    if (persisted.status !== 'pending' && persisted.status !== 'conflict' && persistedRun) {
       return {
-        status: terminalStatus === 'completed' ? 'terminal' : 'failed',
-        ...(terminalStatus === undefined ? {} : { detail: terminalStatus }),
+        operationId,
+        runId: persistedRun.id,
+        revision: this.#state.revision,
+        replayed: true,
+        completion: Promise.resolve(this.state()),
       }
-    } catch (error) {
-      if (!terminalDurable) {
-        const message = safeDiagnostic(
-          error instanceof Error ? error.message : String(error),
-          dispatchStarted ? 'RUNTIME_STREAM_ERROR' : 'RUNTIME_DISPATCH_ERROR',
-        )
-        try {
-          this.#commit({
-            kind: 'run.finished',
-            runId,
-            status: abort.signal.aborted ? 'aborted' : dispatchStarted ? 'unknown' : 'failed',
-            finalText: '',
-            usage: { input: 0, output: 0 },
-            error: message,
-          })
-          await this.#journal.flush?.()
-        } catch (commitError) {
-          return {
-            status: dispatchStarted ? 'unknown' : 'failed',
-            detail: safeDiagnostic(
-              commitError instanceof Error ? commitError.message : commitError,
-              dispatchStarted ? 'RUNTIME_OUTCOME_NOT_DURABLE' : 'RUNTIME_FAILURE_NOT_DURABLE',
-            ),
-          }
-        }
-      }
-      return terminalDurable
-        ? {
-            status: terminalStatus === 'completed' ? 'terminal' : 'failed',
-            ...(terminalStatus === undefined ? {} : { detail: terminalStatus }),
-          }
-        : {
-            status: dispatchStarted ? 'unknown' : 'failed',
-            detail: safeDiagnostic(
-              error instanceof Error ? error.message : error,
-              dispatchStarted ? 'RUNTIME_OUTCOME_UNKNOWN' : 'RUNTIME_DISPATCH_FAILED',
-            ),
-          }
-    } finally {
-      if (this.#activeAbort === abort) this.#activeAbort = undefined
+    }
+    throw new AppError(
+      'OPERATION_REQUIRES_RECONCILIATION',
+      `Operation ${operationId} needs provider reconciliation before it can be retried`,
+    )
+  }
+
+  #replayReceipt(
+    operationId: OperationId,
+    existing: OperationRecord,
+    kind: OperationRecord['kind'],
+    digest: string,
+  ): SendReceipt {
+    if (existing.kind !== kind || existing.digest !== digest) {
+      throw new AppError(
+        'OPERATION_CONFLICT',
+        `Operation ${operationId} was already used with different input`,
+      )
+    }
+    return {
+      operationId,
+      runId: existing.runId ?? '',
+      revision: this.#state.revision,
+      replayed: true,
+      completion: existing.completion.then(() => this.state()),
+    }
+  }
+
+  /** A run that never reached durable admission must not stay active forever. */
+  #abandonRun(runId: string, cause: unknown): void {
+    if (this.#state.activeRunId !== runId) return
+    try {
+      this.#commit({
+        kind: 'run.finished',
+        runId,
+        status: 'failed',
+        finalText: '',
+        usage: { input: 0, output: 0 },
+        error: safeDiagnostic(
+          cause instanceof Error ? cause.message : cause,
+          'EFFECT_START_FAILED',
+        ),
+      })
+    } catch {
+      // The original journal failure is the actionable error.
     }
   }
 
   #commit(event: BraidEvent): void {
-    const envelope = this.#journal.envelope(this.#state, event)
+    const envelope = this.#journal.envelope(this.#state, redactBraidEvent(event))
     const nextState = reduceEvent(this.#state, envelope)
     this.#journal.append(envelope)
     this.#state = nextState
@@ -437,30 +424,6 @@ export class BraidApplication {
   }
 
   #recordEffect(record: StoredEffectRecord): void {
-    const effectId = createEffectId(
-      `effect-${record.operationId}-${record.requestDigest.slice(0, 24)}`,
-    )
-    const outcomeDigest =
-      record.detail === undefined && record.externalReference === undefined
-        ? undefined
-        : canonicalDigest({
-            status: record.status,
-            detail: record.detail ?? null,
-            externalReference: record.externalReference ?? null,
-          })
-    const operationKind: OperationKind = record.effectKind === 'run.execute' ? 'send' : 'custom'
-    const effect: DomainEffectRecord = {
-      id: effectId,
-      operationId: record.operationId as import('../domain/ids.js').OperationId,
-      effectKind: record.effectKind,
-      requestDigest: record.requestDigest as Digest,
-      kind: operationKind,
-      status: record.status,
-      attempt: record.attempt,
-      ...(outcomeDigest === undefined ? {} : { outcomeDigest: outcomeDigest as Digest }),
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    }
-    this.#commit({ kind: 'effect.upserted', effect })
+    this.#commit({ kind: 'effect.upserted', effect: projectEffectRecord(record) })
   }
 }

@@ -42,6 +42,7 @@ import type {
   WorkspaceId,
 } from './ids.js'
 import { createBranchId, createConversationId } from './ids.js'
+import { redactProfile } from './redaction.js'
 
 export type { BraidMessage, BraidRun, MessageStatus, MessageRole, RunStatus } from './entities.js'
 
@@ -119,7 +120,7 @@ export function initialState(
     branchId: identity.branchId ?? createBranchId('branch-1'),
     selectedProfileId: null,
     selectedConnectionId: null,
-    profile,
+    profile: redactProfile(profile),
     draft: '',
     messages: [],
     messageParts: [],

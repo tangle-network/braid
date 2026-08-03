@@ -74,24 +74,22 @@ function finalizeReducedState(state: BraidState): BraidState {
   return finalized
 }
 
-function isLegacyEvent(event: BraidEvent): event is Extract<
-  BraidEvent,
-  {
-    readonly kind:
-      | 'workspace.opened'
-      | 'draft.changed'
-      | 'run.requested'
-      | 'run.text.delta'
-      | 'run.finished'
-  }
-> {
-  return (
-    event.kind === 'workspace.opened' ||
-    event.kind === 'draft.changed' ||
-    event.kind === 'run.requested' ||
-    event.kind === 'run.text.delta' ||
-    event.kind === 'run.finished'
-  )
+const LEGACY_EVENT_KINDS = [
+  'workspace.opened',
+  'draft.changed',
+  'run.requested',
+  'run.text.delta',
+  'run.cancel.requested',
+  'run.finished',
+  'application.shutdown.requested',
+] as const
+
+type LegacyEventKind = (typeof LEGACY_EVENT_KINDS)[number]
+
+function isLegacyEvent(
+  event: BraidEvent,
+): event is Extract<BraidEvent, { readonly kind: LegacyEventKind }> {
+  return (LEGACY_EVENT_KINDS as readonly string[]).includes(event.kind)
 }
 
 export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): BraidState {

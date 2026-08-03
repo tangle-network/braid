@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
 
@@ -8,12 +9,15 @@ async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
   yield `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`
 }
 
+function controllerFor(app: ReturnType<typeof createBraidApplication>) {
+  return createApplicationUiController(app)
+}
+
 test('JSONL send acknowledges before events and returns final semantic state', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
-  const code = await runRpc(
-    app,
-    requestInput([
+  async function* input(): AsyncGenerator<string> {
+    yield `${[
       {
         version: 1,
         requestId: 'req-init',
@@ -31,15 +35,23 @@ test('JSONL send acknowledges before events and returns final semantic state', a
           text: 'hello Braid',
         },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
-    ]),
-    {
-      write: (chunk) => {
-        output += chunk
-        return true
-      },
+    ]
+      .map((request) => JSON.stringify(request))
+      .join('\n')}\n`
+    await app.waitForIdle()
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'req-stop',
+      operationId: 'op-stop-1',
+      command: 'shutdown',
+    })}\n`
+  }
+  const code = await runRpc(controllerFor(app), input(), {
+    write: (chunk) => {
+      output += chunk
+      return true
     },
-  )
+  })
   const responses = output
     .trim()
     .split('\n')
@@ -59,15 +71,75 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   assert.ok(firstRunEvent > sendAck)
   assert.equal(finalState?.type, 'state')
   if (finalState?.type !== 'state') assert.fail('missing final state')
+  assert.equal(finalState.projection, 'full')
+  if (finalState.projection !== 'full') assert.fail('expected full state')
   assert.equal(finalState.state.messages[1]?.text, 'Fixture response through pi: hello Braid')
   assert.equal(finalState.state.runs[0]?.status, 'completed')
+})
+
+test('JSONL cancel interrupts an active send and reports the terminal state', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
+  let output = ''
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-init',
+        command: 'initialize',
+        params: { workspace: '/workspace', subscribe: true },
+      },
+      {
+        version: 1,
+        requestId: 'req-send',
+        operationId: 'op-cancel-send',
+        command: 'send',
+        params: { text: 'cancel this active turn' },
+      },
+      {
+        version: 1,
+        requestId: 'req-cancel',
+        operationId: 'op-cancel-active',
+        command: 'cancel_run',
+        params: { runId: 'run-000001', reason: 'test cancellation' },
+      },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-cancel',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const responses = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+  assert.ok(
+    responses.some(
+      (response) => response.type === 'event' && response.event.kind === 'run.cancel.requested',
+    ),
+  )
+  const cancelState = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'req-cancel',
+  )
+  assert.equal(cancelState?.type, 'state')
+  if (cancelState?.type !== 'state') assert.fail('missing cancellation state')
+  if (cancelState.projection !== 'full') assert.fail('expected full cancellation state')
+  assert.equal(cancelState.state.runs[0]?.status, 'aborted')
 })
 
 test('JSONL requires initialize and stable operation identity', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -94,7 +166,7 @@ test('JSONL replays identical request IDs and rejects changed bodies', async () 
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -104,8 +176,18 @@ test('JSONL replays identical request IDs and rejects changed bodies', async () 
       },
       { version: 1, requestId: 'req-state', command: 'get_state' },
       { version: 1, requestId: 'req-state', command: 'get_state' },
-      { version: 1, requestId: 'req-state', command: 'shutdown' },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-state',
+        operationId: 'op-state-shutdown',
+        command: 'shutdown',
+      },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-2',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -132,11 +214,77 @@ test('JSONL replays identical request IDs and rejects changed bodies', async () 
   assert.equal(conflict.code, 'REQUEST_ID_CONFLICT')
 })
 
+test('JSONL summary projection omits full transcript and profile data', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  let output = ''
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-summary',
+        command: 'get_state',
+        params: { projection: 'summary' },
+      },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-3',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const summary = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+    .find((response) => response.type === 'state' && response.requestId === 'req-summary')
+  assert.equal(summary?.type, 'state')
+  if (summary?.type !== 'state') assert.fail('missing summary state')
+  assert.equal(summary.projection, 'summary')
+  if (summary.projection !== 'summary') assert.fail('wrong state projection')
+  assert.equal(summary.state.messageCount, 0)
+  assert.equal('messages' in summary.state, false)
+  assert.equal('profile' in summary.state, false)
+  assert.equal('view' in summary, false)
+})
+
+test('headless state redacts generic secret keys, secret contexts, and credential URLs', () => {
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    profile: {
+      ...DETERMINISTIC_PROFILE,
+      metadata: {
+        secret: 'CANARY-SECRET',
+        secretAnswer: 'CANARY-ANSWER',
+        token: 'CANARY-TOKEN',
+        callback: 'https://user:CANARY@example.com/?token=CANARY',
+        challenge: { secret: true, answer: 'CANARY-CONTEXT' },
+      },
+    },
+  })
+  const serialized = JSON.stringify(controllerFor(app).state())
+  assert.equal(serialized.includes('CANARY'), false)
+  assert.match(serialized, /\[redacted\]/u)
+})
+
 test('JSONL rejects wrong optional types and unknown fields', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -163,7 +311,12 @@ test('JSONL rejects wrong optional types and unknown fields', async () => {
         command: 'get_state',
         params: { extra: true },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-4',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -189,7 +342,7 @@ test('JSONL operation replay returns current state after later sends', async () 
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -218,7 +371,12 @@ test('JSONL operation replay returns current state after later sends', async () 
         command: 'send',
         params: { text: 'first' },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-5',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -235,6 +393,8 @@ test('JSONL operation replay returns current state after later sends', async () 
 
   assert.equal(replayState?.type, 'state')
   if (replayState?.type !== 'state') assert.fail('missing replay state')
+  assert.equal(replayState.projection, 'full')
+  if (replayState.projection !== 'full') assert.fail('expected full replay state')
   assert.equal(replayState.state.messages.length, 4)
   assert.equal(replayState.state.revision, app.state().revision)
 })
@@ -248,7 +408,7 @@ test('JSONL bounds direct-response replay while operation replay stays safe', as
     command: 'get_state',
   }))
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -278,7 +438,12 @@ test('JSONL bounds direct-response replay while operation replay stays safe', as
         command: 'send',
         params: { text: 'execute once' },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-6',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -326,10 +491,10 @@ test('JSONL evicts oldest responses when the replay payload budget is full', asy
     await app.send({ operationId: 'op-after-cache', text: 'advance state' }).completion
     yield `${JSON.stringify({ version: 1, requestId: 'req-c', command: 'get_state' })}\n`
     yield `${JSON.stringify({ version: 1, requestId: 'req-a', command: 'get_state' })}\n`
-    yield `${JSON.stringify({ version: 1, requestId: 'req-stop', command: 'shutdown' })}\n`
+    yield `${JSON.stringify({ version: 1, requestId: 'req-stop', operationId: 'op-stop-7', command: 'shutdown' })}\n`
   }
 
-  await runRpc(app, input(), {
+  await runRpc(controllerFor(app), input(), {
     write: (chunk) => {
       const response = JSON.parse(chunk) as BraidResponse
       if (
@@ -364,7 +529,7 @@ test('JSONL rejects replay when one direct response exceeds the payload budget',
     readonly bytes: number
   }> = []
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -384,7 +549,12 @@ test('JSONL rejects replay when one direct response exceeds the payload budget',
         command: 'initialize',
         params: { workspace: '/other' },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-8',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {

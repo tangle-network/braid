@@ -37,9 +37,11 @@ const scopeFiles = {
     'domain-ids.test.js',
     'domain-invariants.test.js',
     'domain-reducer.test.js',
+    'domain-text.test.js',
     'reducer.test.js',
     'sanitize.test.js',
     'scripts.test.js',
+    'w6-ui.test.js',
   ],
   contract: [
     'application.test.js',
@@ -48,10 +50,11 @@ const scopeFiles = {
     'domain-reducer.test.js',
     'reducer.test.js',
     'scripts.test.js',
+    'w6-contract.test.js',
   ],
   coordination: ['coordination.test.js', 'effect-admission.test.js'],
-  rpc: ['rpc.test.js'],
-  'virtual-terminal': ['tui.test.js'],
+  rpc: ['rpc.test.js', 'w6-contract.test.js'],
+  'virtual-terminal': ['keyboard.test.js', 'tui.test.js', 'w6-ui.test.js'],
   storage: [
     'coordination.test.js',
     'effect-admission.test.js',
@@ -59,9 +62,20 @@ const scopeFiles = {
     'domain-reducer.test.js',
     'storage-crash.test.js',
   ],
-  security: ['coordination.test.js', 'sanitize.test.js', 'storage.test.js', 'security.test.js'],
+  security: [
+    'coordination.test.js',
+    'sanitize.test.js',
+    'storage.test.js',
+    'security.test.js',
+    'w6-contract.test.js',
+  ],
   crash: ['storage.test.js', 'storage-crash.test.js'],
-  performance: ['coordination.test.js', 'reducer.test.js', 'storage-performance.test.js'],
+  performance: [
+    'coordination.test.js',
+    'performance.test.js',
+    'reducer.test.js',
+    'storage-performance.test.js',
+  ],
 }
 const selectedTests =
   scope === undefined

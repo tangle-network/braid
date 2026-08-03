@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CombinedAutocompleteProvider, Editor, TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -27,9 +28,10 @@ test('the real Braid root renders and sends at all four reference sizes', async 
     const tui = new TUI(terminal)
     const app = createBraidApplication({ fixture: 'deterministic' })
     app.initialize('/workspace')
+    const controller = createApplicationUiController(app)
     let operation = 0
     const view = new BraidTerminalApp({
-      app,
+      controller,
       tui,
       theme: createBraidTheme(false),
       workspace: '/workspace',
@@ -107,8 +109,9 @@ test('the searchable command overlay restores editor focus after close', async (
   const tui = new TUI(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
   const view = new BraidTerminalApp({
-    app,
+    controller,
     tui,
     theme: createBraidTheme(false),
     workspace: '/workspace',
@@ -133,12 +136,14 @@ test('Ctrl+C clears, cancels, then requires a second idle press to quit', async 
   const tui = new TUI(terminal)
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 100 })
   app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
+  let operation = 0
   const view = new BraidTerminalApp({
-    app,
+    controller,
     tui,
     theme: createBraidTheme(false),
     workspace: '/workspace',
-    nextOperationId: () => 'op-cancel-flow',
+    nextOperationId: () => `op-cancel-flow-${++operation}`,
   })
   let stopped = false
   const done = view.start().then(() => {

@@ -1,4 +1,5 @@
-import type { RunRecord, TurnRecord } from './entities.js'
+import { canonicalDigest } from './canonical.js'
+import type { OperationRecord, RunRecord, TurnRecord } from './entities.js'
 import type { BraidEvent, BraidEventEnvelope } from './events.js'
 import { parseMessageId, parseOperationId, parseRunId, parseTurnId } from './ids.js'
 import { DomainInvariantError } from './invariants.js'
@@ -11,11 +12,33 @@ import {
   legacyMessage,
   legacyTextPart,
   operationForRun,
+  runStatusTerminal,
   updateMessageFinal,
   updateMessageText,
   updateRun,
   upsert,
 } from './reducer-helpers.js'
+
+function legacyOperation(
+  state: BraidState,
+  operationId: ReturnType<typeof parseOperationId>,
+  event: BraidEvent,
+  at: string,
+  shape: Pick<OperationRecord, 'kind'> & Partial<Pick<OperationRecord, 'target'>>,
+): OperationRecord {
+  const existing = state.operations.find((entry) => entry.id === operationId)
+  return (
+    existing ?? {
+      id: operationId,
+      kind: shape.kind,
+      requestDigest: canonicalDigest(event),
+      status: 'pending',
+      ...(shape.target === undefined ? {} : { target: shape.target }),
+      createdAt: at,
+      updatedAt: at,
+    }
+  )
+}
 
 export function reduceLegacyEvent(
   state: BraidState,
@@ -27,7 +50,9 @@ export function reduceLegacyEvent(
         | 'draft.changed'
         | 'run.requested'
         | 'run.text.delta'
+        | 'run.cancel.requested'
         | 'run.finished'
+        | 'application.shutdown.requested'
     }
   >,
   envelope: BraidEventEnvelope,
@@ -115,6 +140,33 @@ export function reduceLegacyEvent(
         throw new DomainInvariantError(`Text arrived for inactive run ${runId}`)
       return updateMessageText(state, runId, event.text, at)
     }
+    case 'run.cancel.requested': {
+      const runId = parseRunId(event.runId)
+      const run = find(state.runs, runId, 'Run')
+      if (runStatusTerminal(run.status)) {
+        throw new DomainInvariantError(`Cancellation requested for terminal run ${runId}`)
+      }
+      return {
+        ...updateRun(state, { ...run, status: 'cancelling' }, at),
+        operations: upsert(
+          state.operations,
+          legacyOperation(state, parseOperationId(event.operationId), event, at, {
+            kind: 'cancel-run',
+            target: { kind: 'run', id: runId },
+          }),
+        ),
+      }
+    }
+    case 'application.shutdown.requested':
+      return {
+        ...state,
+        operations: upsert(
+          state.operations,
+          legacyOperation(state, parseOperationId(event.operationId), event, at, {
+            kind: 'custom',
+          }),
+        ),
+      }
     case 'run.finished': {
       const runId = parseRunId(event.runId)
       const run = find(state.runs, runId, 'Run')

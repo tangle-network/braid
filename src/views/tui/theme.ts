@@ -2,6 +2,8 @@ import type { EditorTheme, MarkdownTheme, SelectListTheme } from '@earendil-work
 import { Chalk } from 'chalk'
 
 export interface BraidTheme {
+  readonly highContrast: boolean
+  readonly reducedMotion: boolean
   readonly brand: (text: string) => string
   readonly accent: (text: string) => string
   readonly text: (text: string) => string
@@ -15,10 +17,24 @@ export interface BraidTheme {
   readonly select: SelectListTheme
 }
 
-export function createBraidTheme(colors: boolean): BraidTheme {
+export interface BraidThemeOptions {
+  readonly colors?: boolean
+  readonly highContrast?: boolean
+  readonly reducedMotion?: boolean
+}
+
+export function createBraidTheme(options: boolean | BraidThemeOptions): BraidTheme {
+  const resolved = typeof options === 'boolean' ? { colors: options } : options
+  const colors = resolved.colors ?? true
+  const highContrast = resolved.highContrast ?? false
+  const reducedMotion = resolved.reducedMotion ?? false
   const chalk = new Chalk({ level: colors ? 3 : 0 })
-  const accent = (text: string) => chalk.rgb(119, 166, 255)(text)
-  const muted = (text: string) => chalk.rgb(135, 145, 165)(text)
+  const accent = (text: string) =>
+    highContrast ? chalk.bold.white(text) : chalk.rgb(119, 166, 255)(text)
+  const muted = (text: string) =>
+    highContrast ? chalk.white(text) : chalk.rgb(135, 145, 165)(text)
+  const text = (value: string) =>
+    highContrast ? chalk.bold.white(value) : chalk.rgb(225, 230, 240)(value)
   const select: SelectListTheme = {
     selectedPrefix: accent,
     selectedText: (text) => chalk.bold(accent(text)),
@@ -27,9 +43,11 @@ export function createBraidTheme(colors: boolean): BraidTheme {
     noMatch: muted,
   }
   return {
+    highContrast,
+    reducedMotion,
     brand: (text) => chalk.bold.rgb(151, 190, 255)(text),
     accent,
-    text: (text) => chalk.rgb(225, 230, 240)(text),
+    text,
     muted,
     danger: (text) => chalk.rgb(255, 111, 120)(text),
     warning: (text) => chalk.rgb(255, 194, 92)(text),

@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 2,
+  "state": "empty",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "7b4bf6953c9c39cfd35cd831738d69cbfd39f4b718f21ebebc30d3d2e1d42827",
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "3a13e1d42463f230666eec108983346195e6b11b317a4a29d57ba5cb7f026552"
+  },
+  "dimensions": {
+    "columns": 80,
+    "rows": 24
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.83.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@5.5.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 1,
+  "frame": " braid  Braid starter  pi · deterministic fixture\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\n ready for a message  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 1,
+      "sequence": 1,
+      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "profile": {
+        "name": "Braid starter",
+        "description": "A portable starter profile for the Braid terminal",
+        "harness": "pi",
+        "model": {
+          "default": "fixture/deterministic",
+          "reasoningEffort": "none"
+        }
+      },
+      "draft": "",
+      "messages": [],
+      "runs": [],
+      "activeRunId": null,
+      "lastError": null
+    },
+    "view": {
+      "revision": 1,
+      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "profileName": "Braid starter",
+      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "connection": "deterministic fixture",
+      "branch": "branch-1",
+      "status": "empty",
+      "statusText": "ready for a message",
+      "queueCount": 0,
+      "messages": [],
+      "hiddenMessageCount": 0,
+      "runs": [],
+      "interactions": [],
+      "activity": [],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "conv-1",
+          "status": "empty",
+          "depth": 0
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "branch-1",
+          "status": "empty",
+          "depth": 0
+        }
+      ],
+      "capabilities": {
+        "conversation.create": {
+          "available": false,
+          "source": "application",
+          "reason": "Conversation creation is not exposed by the current application core"
+        },
+        "conversation.open": {
+          "available": false,
+          "source": "application",
+          "reason": "Conversation search is not exposed by the current application core"
+        },
+        "profile.select": {
+          "available": false,
+          "source": "application",
+          "reason": "Profile catalog and editing are not exposed by the current application core"
+        },
+        "connection.select": {
+          "available": false,
+          "source": "application",
+          "reason": "Connection setup is not exposed by the current application core"
+        },
+        "run.runner": {
+          "available": false,
+          "source": "application",
+          "reason": "Runner overrides require the current profile compatibility helpers"
+        },
+        "run.model": {
+          "available": false,
+          "source": "application",
+          "reason": "Model overrides require provider capabilities from the current connection"
+        },
+        "run.effort": {
+          "available": false,
+          "source": "application",
+          "reason": "Effort overrides require provider capabilities from the current connection"
+        },
+        "conversation.branch": {
+          "available": false,
+          "source": "application",
+          "reason": "Branch creation is not exposed by the current application core"
+        },
+        "conversation.clone": {
+          "available": false,
+          "source": "application",
+          "reason": "Conversation cloning is not exposed by the current application core"
+        },
+        "conversation.fork": {
+          "available": false,
+          "source": "application",
+          "reason": "Fork planning requires the current conversation and environment graph"
+        },
+        "analysis.ask": {
+          "available": false,
+          "source": "application",
+          "reason": "Trace analysis requires the current agent-eval adapter"
+        },
+        "analysis.recipe": {
+          "available": false,
+          "source": "application",
+          "reason": "Trace analysis recipes require the current agent-eval adapter"
+        },
+        "analysis.compare": {
+          "available": false,
+          "source": "application",
+          "reason": "Comparisons require the current agent-eval adapter"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "run.queue": {
+          "available": false,
+          "source": "application",
+          "reason": "Queued turns are not exposed by the current application core"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "application",
+          "reason": "Live steering is not reported by the current runtime adapter"
+        },
+        "export.create": {
+          "available": false,
+          "source": "application",
+          "reason": "Redacted export is not exposed by the current storage adapter"
+        },
+        "settings.open": {
+          "available": false,
+          "source": "application",
+          "reason": "Settings persistence is not exposed by the current application core"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "run.send": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no active run to cancel"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "transcript",
+      "appearance": {
+        "color": "truecolor",
+        "highContrast": false,
+        "reducedMotion": false
+      }
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "kind": "workspace.opened",
+          "workspace": "/home/drew/code/.worktrees/braid-integration"
+        }
+      }
+    ]
+  }
+}

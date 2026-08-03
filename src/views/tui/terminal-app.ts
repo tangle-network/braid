@@ -1,85 +1,112 @@
 import {
-  Box,
   CombinedAutocompleteProvider,
-  Container,
-  Editor,
-  Markdown,
+  type Editor,
   matchesKey,
-  Spacer,
-  Text,
   type TUI,
 } from '@earendil-works/pi-tui'
-import type { BraidApplication } from '../../app/application.js'
-import { buildAppView, type AppView, type MessageView } from '../../app/view-model.js'
-import type { BraidState } from '../../domain/state.js'
-import { CommandPalette, type PaletteCommand } from './command-palette.js'
+import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import {
+  commandAvailability,
+  commandIntent,
+  commandItems,
+  isMutatingCommand,
+  parseCommandInput,
+  type CommandName,
+} from '../shared/command-registry.js'
+import type { BraidViewModel, InteractionView } from '../shared/models.js'
+import { sanitizeTitle } from '../shared/sanitize.js'
+import { ModalCoordinator } from './modal-coordinator.js'
+import { BraidShell } from './terminal-shell.js'
+import { TerminalOverlayController } from './terminal-overlays.js'
 import type { BraidTheme } from './theme.js'
+import { InteractionShell } from './interaction.js'
 
 export interface BraidTerminalOptions {
-  readonly app: BraidApplication
+  readonly controller: BraidUiController
   readonly tui: TUI
   readonly theme: BraidTheme
   readonly workspace: string
   readonly nextOperationId: () => string
+  readonly startupMessages?: readonly { readonly title: string; readonly reason: string }[]
 }
 
 export class BraidTerminalApp {
-  readonly #app: BraidApplication
+  readonly #controller: BraidUiController
   readonly #tui: TUI
   readonly #theme: BraidTheme
-  readonly #transcript = new Container()
-  readonly #dock = new Container()
-  readonly #editor: Editor
-  readonly #status = new Text('', 1, 0)
+  readonly #workspace: string
   readonly #nextOperationId: () => string
+  readonly #shell: BraidShell
+  readonly #modals: ModalCoordinator
+  readonly #overlays: TerminalOverlayController
   readonly #done: Promise<void>
   readonly #resolveDone: () => void
   readonly #unsubscribe: () => void
   readonly #removeInputListener: () => void
-  #overlayClose: (() => void) | undefined
   #quitTimer: ReturnType<typeof setTimeout> | undefined
   #quitArmed = false
   #stopped = false
+  #activityVisible = true
+  #interactionOpen = false
+  #interactionKey: string | undefined
+  #pendingInteractionKey: string | undefined
 
   constructor(options: BraidTerminalOptions) {
-    this.#app = options.app
+    this.#controller = options.controller
     this.#tui = options.tui
     this.#theme = options.theme
+    this.#workspace = options.workspace
     this.#nextOperationId = options.nextOperationId
+    this.#modals = new ModalCoordinator(options.tui)
     let resolveDone: () => void = () => {}
     this.#done = new Promise<void>((resolve) => {
       resolveDone = resolve
     })
     this.#resolveDone = resolveDone
 
-    this.#editor = new Editor(this.#tui, this.#theme.editor, { paddingX: 1 })
-    this.#editor.setAutocompleteProvider(
+    this.#shell = new BraidShell(
+      options.tui,
+      options.theme,
+      () => options.tui.terminal.rows,
+      (text) => this.#submit(text),
+      () => this.#tui.requestRender(),
+    )
+    this.#overlays = new TerminalOverlayController({
+      theme: options.theme,
+      controller: options.controller,
+      modals: this.#modals,
+      editor: this.#shell.editor,
+      dispatchCommand: (command, args) => this.#dispatchCommand(command, args),
+      openSurface: (surface) => this.#overlays.openSurface(surface),
+      openHelp: (query) => this.#overlays.openHelp(query),
+    })
+    this.#shell.editor.setAutocompleteProvider(
       new CombinedAutocompleteProvider(
-        [
-          { name: 'help', description: 'Keyboard and commands' },
-          { name: 'quit', description: 'Close Braid' },
-        ],
+        commandItems(this.#controller.view().capabilities).map((item) => ({
+          name: item.value,
+          description: item.description ?? '',
+        })),
         options.workspace,
         null,
       ),
     )
-    this.#editor.onSubmit = (text) => this.#submit(text)
-
-    this.#dock.addChild(this.#editor)
-    this.#dock.addChild(this.#status)
-    this.#mountLayout()
-    this.#unsubscribe = this.#app.subscribe((state) => this.#render(state))
+    options.tui.addChild(this.#shell)
+    this.#unsubscribe = this.#controller.subscribe((view) => this.#render(view))
     this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleGlobalInput(data))
-    this.#render(this.#app.state())
+    this.#render(this.#controller.view())
+    for (const message of options.startupMessages ?? [])
+      this.#overlays.openUnavailable(message.title, message.reason)
   }
 
   get editor(): Editor {
-    return this.#editor
+    return this.#shell.editor
   }
 
   start(): Promise<void> {
-    this.#tui.setFocus(this.#editor)
+    this.#tui.terminal.setTitle(sanitizeTitle(`Braid — ${this.#workspace}`))
     this.#tui.start()
+    if (this.#modals.hasOpen()) this.#modals.focusTop()
+    else this.#tui.setFocus(this.#shell.editor)
     return this.#done
   }
 
@@ -87,128 +114,195 @@ export class BraidTerminalApp {
     if (this.#stopped) return
     this.#stopped = true
     if (this.#quitTimer) clearTimeout(this.#quitTimer)
+    this.#modals.closeAll()
     this.#removeInputListener()
     this.#unsubscribe()
     this.#tui.stop()
     this.#resolveDone()
   }
 
-  #mountLayout(): void {
-    this.#tui.addChild(this.#transcript)
-    this.#tui.addChild(this.#dock)
-  }
-
-  #render(state: BraidState): void {
-    const view = buildAppView(state)
-    this.#transcript.clear()
-    this.#transcript.addChild(this.#header(view))
-    if (view.hiddenMessageCount > 0) {
-      this.#transcript.addChild(
-        new Text(this.#theme.muted(`${view.hiddenMessageCount} earlier messages hidden`), 1, 0),
-      )
+  #render(view: BraidViewModel): void {
+    this.#shell.setView(view, this.#quitArmed)
+    this.#shell.setActivityVisible(this.#activityVisible)
+    const interaction = view.interactions[0]
+    const interactionKey = interaction
+      ? `${interaction.runId}:${interaction.interactionId}`
+      : undefined
+    if (!interaction) {
+      this.#pendingInteractionKey = undefined
+      if (this.#interactionOpen) {
+        this.#interactionOpen = false
+        this.#interactionKey = undefined
+        this.#modals.closeTop()
+      }
+    } else if (
+      interactionKey &&
+      interactionKey !== this.#pendingInteractionKey &&
+      (!this.#interactionOpen || interactionKey !== this.#interactionKey)
+    ) {
+      this.openInteraction(interaction)
     }
-    for (const message of view.messages) this.#transcript.addChild(this.#message(message))
-    if (view.messages.length === 0) {
-      this.#transcript.addChild(new Spacer(1))
-      this.#transcript.addChild(
-        new Text(this.#theme.muted('Write a message, or press Ctrl+P for commands.'), 1, 0),
-      )
-    }
-
-    const effectiveStatus = this.#quitArmed ? 'aborted' : view.status
-    const statusColor =
-      effectiveStatus === 'failed'
-        ? this.#theme.danger
-        : effectiveStatus === 'running' ||
-            effectiveStatus === 'blocked' ||
-            effectiveStatus === 'aborted'
-          ? this.#theme.warning
-          : this.#theme.success
-    const statusText = this.#quitArmed ? 'press ctrl+c again to quit' : view.statusText
-    this.#status.setText(
-      `${statusColor(statusText)}  ${this.#theme.muted('ctrl+p commands · ctrl+c clear/cancel/quit')}`,
-    )
-    this.#editor.disableSubmit = view.status === 'running'
-    this.#editor.borderColor = view.status === 'running' ? this.#theme.warning : this.#theme.accent
     this.#tui.requestRender()
   }
 
-  #header(view: AppView): Text {
-    return new Text(
-      `${this.#theme.brand('braid')}  ${this.#theme.text(view.profileName)}  ${this.#theme.muted(
-        `${view.runner} · ${view.connection}`,
-      )}`,
-      1,
-      1,
-    )
-  }
-
-  #message(message: MessageView): Container {
-    const container = new Container()
-    if (message.role === 'user') {
-      const box = new Box(1, 0, this.#theme.userBackground)
-      box.addChild(new Markdown(message.text, 0, 0, this.#theme.markdown))
-      container.addChild(box)
-      return container
-    }
-
-    container.addChild(new Spacer(1))
-    if (message.text) {
-      container.addChild(new Markdown(message.text, 1, 0, this.#theme.markdown))
-    } else if (message.status === 'streaming') {
-      container.addChild(new Text(this.#theme.muted('Working…'), 1, 0))
-    }
-    if (message.status === 'failed' || message.status === 'blocked') {
-      container.addChild(new Text(this.#theme.danger(message.status), 1, 0))
-    } else if (message.status === 'aborted') {
-      container.addChild(new Text(this.#theme.warning('cancelled'), 1, 0))
-    }
-    return container
-  }
-
   #submit(rawText: string): void {
-    const text = rawText.trim()
-    if (!text) return
-    if (text === '/quit') {
-      this.stop()
+    if (!rawText.trim()) return
+    const parsed = parseCommandInput(rawText)
+    if (parsed.kind === 'unknown') {
+      this.#overlays.openCorrection(parsed.name, parsed.suggestions)
       return
     }
-    if (text === '/help') {
-      this.#openPalette()
+    if (parsed.kind === 'invalid') {
+      this.#overlays.openUnavailable('Invalid command', parsed.message)
+      return
+    }
+    if (parsed.kind === 'command') {
+      this.#shell.editor.addToHistory(rawText)
+      this.#shell.editor.setText('')
+      this.#dispatchCommand(parsed.name, parsed.args)
       return
     }
 
-    this.#editor.addToHistory(rawText)
-    this.#editor.setText('')
-    try {
-      const receipt = this.#app.send({ operationId: this.#nextOperationId(), text: rawText })
-      void receipt.completion.finally(() => {
-        this.#editor.disableSubmit = false
-        this.#tui.requestRender()
-      })
-    } catch {
-      this.#editor.setText(rawText)
-      this.#tui.requestRender()
+    const view = this.#controller.view()
+    const capability = view.activeRunId
+      ? view.capabilities['run.queue']
+      : view.capabilities['run.send']
+    if (!capability?.available) {
+      this.#shell.editor.setText(rawText)
+      this.#overlays.openUnavailable(
+        view.activeRunId ? 'Queue unavailable' : 'Send unavailable',
+        capability?.reason ?? 'The current connection cannot accept this message',
+      )
+      return
     }
+    this.#shell.editor.addToHistory(rawText)
+    this.#shell.editor.setText('')
+    const operationId = this.#nextOperationId()
+    const intent: BraidIntent = view.activeRunId
+      ? { type: 'queue', operationId, text: parsed.text }
+      : { type: 'send', operationId, text: parsed.text }
+    void this.#dispatch(intent, rawText)
+  }
+
+  #dispatchCommand(command: CommandName, args: readonly string[]): void {
+    const availability = commandAvailability(command, this.#controller.view().capabilities)
+    if (!availability.available) {
+      this.#overlays.openUnavailable(
+        `/${command}`,
+        availability.reason ?? 'Capability is unavailable',
+      )
+      return
+    }
+    const operationId = isMutatingCommand(command) ? this.#nextOperationId() : undefined
+    const intent = commandIntent(command, args, operationId)
+    if (intent.type === 'open-surface') {
+      if (intent.surface === 'activity') this.#activityVisible = true
+      void this.#dispatch(intent).then((result) => {
+        if (result.kind !== 'accepted' || this.#stopped) return
+        if (intent.surface === 'help') this.#overlays.openHelp(intent.query ?? '')
+        else this.#overlays.openSurface(intent.surface)
+      })
+      return
+    }
+    if (intent.type === 'shutdown') {
+      void this.#dispatch(intent).then((result) => {
+        if (result.kind === 'accepted') this.stop()
+      })
+      return
+    }
+    void this.#dispatch(intent).then((result) => {
+      if (result.kind === 'accepted' && command === 'fork') this.#overlays.openSurface('fork')
+    })
+  }
+
+  #dispatch(intent: BraidIntent, restoreText?: string): Promise<UiDispatchResult> {
+    return this.#controller.dispatch(intent).then((result) => {
+      if (this.#stopped) return result
+      if (result.kind === 'unavailable') {
+        this.#overlays.openUnavailable('Unavailable', result.reason)
+        if (restoreText) this.#shell.editor.setText(restoreText)
+      } else if (result.kind === 'error') {
+        this.#overlays.openUnavailable(result.code, result.message)
+        if (restoreText) this.#shell.editor.setText(restoreText)
+      }
+      this.#tui.requestRender()
+      return result
+    })
   }
 
   #handleGlobalInput(data: string): { consume?: boolean } | undefined {
+    if (matchesKey(data, 'escape') && this.#tui.hasOverlay()) {
+      if (this.#interactionOpen) return undefined
+      this.#modals.closeTop()
+      return { consume: true }
+    }
+    if (this.#interactionOpen) return undefined
     if (!matchesKey(data, 'ctrl+c')) this.#disarmQuit()
     if (matchesKey(data, 'ctrl+p')) {
-      this.#openPalette()
+      this.#overlays.openCommandPalette()
+      return { consume: true }
+    }
+    if (matchesKey(data, 'ctrl+o')) {
+      const availability = commandAvailability('open', this.#controller.view().capabilities)
+      if (availability.available) this.#overlays.openSelector('conversation')
+      else
+        this.#overlays.openUnavailable(
+          '/open',
+          availability.reason ?? 'Conversation search is unavailable',
+        )
+      return { consume: true }
+    }
+    if (matchesKey(data, 'ctrl+g')) {
+      this.#overlays.openSurface('graph')
+      return { consume: true }
+    }
+    if (matchesKey(data, 'ctrl+k')) {
+      this.#overlays.openSelector('profile')
+      return { consume: true }
+    }
+    if (matchesKey(data, 'f2')) {
+      this.#activityVisible = !this.#activityVisible
+      this.#render(this.#controller.view())
+      return { consume: true }
+    }
+    if (matchesKey(data, '?') && this.#shell.editor.getText().length === 0) {
+      this.#overlays.openHelp('')
+      return { consume: true }
+    }
+    if (
+      matchesKey(data, 'ctrl+d') &&
+      !this.#tui.hasOverlay() &&
+      !this.#shell.editor.getText() &&
+      !this.#controller.view().activeRunId
+    ) {
+      this.#requestShutdown()
       return { consume: true }
     }
     if (matchesKey(data, 'ctrl+c') && !this.#tui.hasOverlay()) {
-      if (this.#editor.getText()) {
-        this.#editor.setText('')
+      if (this.#shell.editor.getText()) {
+        this.#shell.editor.setText('')
         return { consume: true }
       }
-      if (this.#app.cancelActive()) return { consume: true }
-      if (this.#quitArmed) this.stop()
-      else this.#armQuit()
+      if (this.#controller.view().activeRunId) {
+        void this.#dispatch({ type: 'cancel-run', operationId: this.#nextOperationId() })
+        return { consume: true }
+      }
+      if (this.#quitArmed) {
+        this.#requestShutdown()
+      } else {
+        this.#armQuit()
+      }
       return { consume: true }
     }
     return undefined
+  }
+
+  #requestShutdown(): void {
+    void this.#dispatch({ type: 'shutdown', operationId: this.#nextOperationId() }).then(
+      (result) => {
+        if (result.kind === 'accepted') this.stop()
+      },
+    )
   }
 
   #armQuit(): void {
@@ -217,9 +311,9 @@ export class BraidTerminalApp {
     this.#quitTimer = setTimeout(() => {
       this.#quitTimer = undefined
       this.#quitArmed = false
-      this.#render(this.#app.state())
+      this.#render(this.#controller.view())
     }, 2_000)
-    this.#render(this.#app.state())
+    this.#render(this.#controller.view())
   }
 
   #disarmQuit(): void {
@@ -227,26 +321,34 @@ export class BraidTerminalApp {
     this.#quitArmed = false
     if (this.#quitTimer) clearTimeout(this.#quitTimer)
     this.#quitTimer = undefined
-    this.#render(this.#app.state())
+    this.#render(this.#controller.view())
   }
 
-  #openPalette(): void {
-    if (this.#tui.hasOverlay()) return
-    const palette = new CommandPalette(this.#theme, (command) => this.#handlePalette(command))
-    const handle = this.#tui.showOverlay(palette, {
-      anchor: 'center',
-      width: '70%',
-      minWidth: 28,
-      maxHeight: 12,
+  openInteraction(interaction: InteractionView): void {
+    this.#interactionOpen = true
+    this.#interactionKey = `${interaction.runId}:${interaction.interactionId}`
+    const shell = new InteractionShell(interaction, this.#theme, (response) => {
+      this.#interactionOpen = false
+      this.#pendingInteractionKey = this.#interactionKey
+      this.#interactionKey = undefined
+      this.#modals.closeTop()
+      const key = this.#pendingInteractionKey
+      void this.#dispatch({
+        type: 'respond-interaction',
+        operationId: this.#nextOperationId(),
+        runId: interaction.runId,
+        interactionId: interaction.interactionId,
+        response,
+      }).then((result) => {
+        if (this.#stopped) return
+        const current = this.#controller.view().interactions[0]
+        const currentKey = current ? `${current.runId}:${current.interactionId}` : undefined
+        if (result.kind !== 'accepted' && current && currentKey === key) {
+          this.#pendingInteractionKey = undefined
+          this.openInteraction(current)
+        }
+      })
     })
-    this.#overlayClose = () => {
-      handle.hide()
-      this.#overlayClose = undefined
-    }
-  }
-
-  #handlePalette(command: PaletteCommand): void {
-    this.#overlayClose?.()
-    if (command === 'quit') this.stop()
+    this.#modals.open(shell, { anchor: 'center', width: '90%', maxHeight: '90%' })
   }
 }

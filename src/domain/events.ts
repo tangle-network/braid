@@ -91,12 +91,22 @@ export type LegacyBraidEvent =
       readonly text: string
     }
   | {
+      readonly kind: 'run.cancel.requested'
+      readonly operationId: string
+      readonly runId: string
+      readonly reason?: string
+    }
+  | {
       readonly kind: 'run.finished'
       readonly runId: string
       readonly status: 'completed' | 'failed' | 'aborted' | 'blocked' | 'unknown'
       readonly finalText: string
       readonly usage: TurnUsage
       readonly error?: string
+    }
+  | {
+      readonly kind: 'application.shutdown.requested'
+      readonly operationId: string
     }
 
 export interface InteractionResponseRequested {
@@ -205,6 +215,7 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
   switch (event.kind) {
     case 'run.requested':
     case 'run.text.delta':
+    case 'run.cancel.requested':
     case 'run.finished':
     case 'run.bound':
     case 'run.status.changed':
@@ -216,6 +227,7 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
       return event.runId
     case 'workspace.opened':
     case 'draft.changed':
+    case 'application.shutdown.requested':
     case 'workspace.recorded':
     case 'profile.registered':
     case 'profile.selected':

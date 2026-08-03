@@ -40,6 +40,7 @@ export interface CompositionOptions {
   readonly journal?: JournalPort
   readonly effectStorage?: EffectStoragePort
   readonly effectCoordinator?: SerializedEffectCoordinator
+  readonly cancelTimeoutMs?: number
 }
 
 export interface DurableCompositionOptions
@@ -69,12 +70,14 @@ function isEffectStorage(value: JournalPort): value is JournalPort & EffectStora
 
 export function createBraidApplication(options: CompositionOptions = {}): BraidApplication {
   const isFixture = options.fixture === 'deterministic'
-  const execution = new AgentRuntimeExecutionPort((input) =>
-    isFixture
-      ? deterministicBackend(input, {
-          ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
-        })
-      : unconfiguredBackend(input),
+  const execution = new AgentRuntimeExecutionPort(
+    (input) =>
+      isFixture
+        ? deterministicBackend(input, {
+            ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
+          })
+        : unconfiguredBackend(input),
+    isFixture ? async () => ({ status: 'cancelled' as const }) : undefined,
   )
   const clock = options.clock ?? (isFixture ? new FixedClock() : new SystemClock())
   const journal =
@@ -91,6 +94,7 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
     ...(options.effectCoordinator === undefined
       ? {}
       : { effectCoordinator: options.effectCoordinator }),
+    ...(options.cancelTimeoutMs === undefined ? {} : { cancelTimeoutMs: options.cancelTimeoutMs }),
   })
 }
 
@@ -137,6 +141,9 @@ export async function createDurableBraidApplication(
       ...(options.effectCoordinator === undefined
         ? {}
         : { effectCoordinator: options.effectCoordinator }),
+      ...(options.cancelTimeoutMs === undefined
+        ? {}
+        : { cancelTimeoutMs: options.cancelTimeoutMs }),
     })
     return { app, storage }
   } catch (error) {

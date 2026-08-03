@@ -14,9 +14,11 @@ Provider packages own transport to CLI Bridge and Tangle.
 
 The W0 vertical slice is implemented: one `braid` binary, one reducer, one JSONL control interface, and one real Pi terminal transcript and composer all drive `agent-runtime`.
 W5 is implemented: the domain graph and exhaustive reducer cover the durable product state, effect intents are serialized before external dispatch, and production composition opens an encrypted SQLite journal through `StoragePort` and the operating-system credential port.
+W6 is implemented on that core: the terminal and headless surfaces share one command registry, one view model, and one operation ledger, with deterministic keyboard, JSONL, redaction, provider-cancellation reconciliation, restart-safe operation replay, and capability-unavailable proof.
 The packed binary has deterministic keyboard and JSONL proof, but live CLI Bridge and Tangle connections are not implemented yet.
 The deterministic `MemoryJournal` remains fixture-only; production startup fails closed if the pinned encrypted SQLite binding or credential facility is unavailable.
 The storage binding is pinned to `better-sqlite3-multiple-ciphers@12.11.1`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
+Live-provider, semantic-evaluation, and release-manifest completion remain unavailable until their W12 and W13 implementations and evidence land.
 The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-02.
 
 ![Braid terminal at 80×24](artifacts/verification/w0/80x24.png)
@@ -29,9 +31,35 @@ pnpm run build
 node dist/bin/braid.js --fixture deterministic
 ```
 
-Run `pnpm check`, `pnpm run test:storage`, `pnpm run test:crash`, `pnpm run test:security`, `pnpm run test:performance`, `pnpm run test:install`, and `pnpm run test:capture` to reproduce the W5 checks and terminal captures.
-The stable checks are `test:unit`, `test:contract`, `test:coordination`, `test:rpc`, `test:virtual-terminal`, `test:pty`, `test:storage`, `test:crash`, `test:security`, `test:performance`, `test:live`, `test:install`, `test:capture`, and `check:release`.
-`test:live` fails closed with an explicit external prerequisite until the published provider adapters and credentials are available.
+Run the checks with the stable command map below.
+Commands marked unavailable fail with exit code 2 and a plain explanation; they do not substitute a narrower test and do not create a release claim.
+
+| Check | Command | Behavior |
+| --- | --- | --- |
+| repository | `pnpm check` | Runs local format, lint, types, boundaries, dependency/license metadata, deterministic tests, and the release manifest check |
+| unit | `pnpm test:unit` | Runs the local unit suite |
+| contract | `pnpm test:contract` | Runs the local contract suite |
+| coordination | `pnpm test:coordination` | Runs durable effect admission and serialization checks |
+| rpc | `pnpm test:rpc` | Runs the JSONL protocol suite |
+| rpc (packed) | `pnpm test:rpc:packed` | Runs the packed JSONL protocol suite |
+| virtual-terminal | `pnpm test:virtual-terminal` | Runs virtual-terminal state, keyboard, and layout checks |
+| pty | `pnpm test:pty` | Runs packed real-terminal checks |
+| storage | `pnpm test:storage` | Runs encrypted SQLite journal, projection, and retention checks |
+| crash | `pnpm test:crash` | Runs forced-kill, restore-recovery, and two-process admission checks |
+| security | `pnpm test:security` | Runs redaction, credential-boundary, and dependency-boundary checks |
+| performance | `pnpm test:performance` | Runs the reducer, coordination, and storage performance checks |
+| live | `pnpm test:live` | Unavailable without protected live credentials and evidence |
+| live-bridge | `pnpm test:live:bridge` | Unavailable without protected live credentials and evidence |
+| live-tangle | `pnpm test:live:tangle` | Unavailable without protected live credentials and evidence |
+| live-supervisor | `pnpm test:live:supervisor` | Unavailable without protected live credentials and evidence |
+| live-analysis | `pnpm test:live:analysis` | Unavailable without protected live credentials and evidence |
+| eval | `pnpm test:eval` | Unavailable until calibrated semantic evidence exists |
+| install | `pnpm test:install` | Runs packed install, storage, and keyboard/RPC proof |
+| capture | `pnpm test:capture` | Captures the W0 terminal artifacts from the packed binary |
+| visual | `pnpm capture:visual` | Captures the required W6 state artifacts from the packed binary |
+| release | `pnpm check:release` | Checks the release manifest and evidence set |
+| verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with external signing key and complete evidence |
+
 The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 
 ## The central decision

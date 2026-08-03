@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-02",
-  "scope": "W5 god-object preservation refactor",
+  "date": "2026-08-03",
+  "scope": "W5 durable core and W6 handwritten production TypeScript",
   "before": {
     "production_typescript_files_over_500_lines": 6,
     "largest_files": {
@@ -25,5 +25,74 @@
     "format_and_lint": "pass",
     "dependency_scan": "blocked by sandbox EPERM when script spawns pnpm",
     "knip_and_madge": "unavailable because npx could not reach registry.npmjs.org"
+  },
+  "w6": {
+    "capturedAt": "2026-08-03T04:53:00.000Z",
+    "commands": [
+      {
+        "metric": "type errors",
+        "command": "npx tsc --noEmit",
+        "exitCode": 0,
+        "value": 0,
+        "output": "npm warn Unknown project config \\\"strict-peer-dependencies\\\". This will stop working in the next major version of npm. npm warning; Node NO_COLOR/FORCE_COLOR warning."
+      },
+      {
+        "metric": "dead exports/files/deps",
+        "command": "npx knip --reporter json",
+        "exitCode": 1,
+        "value": null,
+        "status": "unavailable: package not installed and registry lookup failed with EAI_AGAIN",
+        "output": "npm error code EAI_AGAIN; request to https://registry.npmjs.org/knip failed"
+      },
+      {
+        "metric": "cycles",
+        "command": "npx madge --circular src/",
+        "exitCode": 1,
+        "value": null,
+        "status": "unavailable: package not installed and registry lookup failed with EAI_AGAIN",
+        "output": "npm error code EAI_AGAIN; request to https://registry.npmjs.org/madge failed"
+      },
+      {
+        "metric": "duplication",
+        "command": "npx jscpd --min-lines 6 --min-tokens 50 src/",
+        "exitCode": 1,
+        "value": null,
+        "status": "unavailable: package not installed and registry lookup failed with EAI_AGAIN",
+        "output": "npm error code EAI_AGAIN; request to https://registry.npmjs.org/jscpd failed"
+      },
+      {
+        "metric": "escape hatches",
+        "command": "grep -rEn \\\"as any|: any|@ts-(ignore|expect-error)\\\" src/ | wc -l",
+        "exitCode": 0,
+        "value": 0,
+        "output": "0"
+      },
+      {
+        "metric": "debt markers",
+        "command": "grep -rEn \\\"TODO|FIXME|HACK|XXX\\\" src/ | wc -l",
+        "exitCode": 0,
+        "value": 0,
+        "output": "0"
+      },
+      {
+        "metric": "top churn files",
+        "command": "git log --format= --name-only | sort | uniq -c | sort -rn | head -10",
+        "exitCode": 0,
+        "value": 10,
+        "output": "2 docs/08-verification.md\\n2 THIRD_PARTY_NOTICES.md\\n2 README.md\\n2 .gitignore\\n2 .agent/skill-runs.jsonl\\n1 tsconfig.test.json\\n1 tsconfig.json\\n1 tsconfig.build.json\\n1 test/tui.test.ts\\n1 test/support/virtual-terminal.ts"
+      },
+      {
+        "metric": "handwritten production TypeScript files over 500 lines",
+        "command": "find src -type f -name '*.ts' -print0 | xargs -0 wc -l | sort -rn",
+        "exitCode": 0,
+        "value": 4,
+        "files": {
+          "src/adapters/tui/application-ui-controller.ts": 793,
+          "src/views/headless/rpc.ts": 758,
+          "src/views/tui/terminal-app.ts": 633,
+          "src/app/application.ts": 535
+        }
+      }
+    ]
   }
 }

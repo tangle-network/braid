@@ -22,7 +22,7 @@ export class MemoryJournal implements JournalPort, EffectStoragePort {
   }
 
   append(envelope: BraidEventEnvelope): void {
-    this.#events.push(envelope)
+    this.#events.push(structuredClone(envelope))
   }
 
   all(): readonly BraidEventEnvelope[] {

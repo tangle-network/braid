@@ -122,6 +122,44 @@ export {
   type BraidRequest,
   type BraidResponse,
 } from './views/headless/protocol.js'
-export { sanitizeTerminalText } from './views/shared/sanitize.js'
 export { StorageJournal } from './app/storage-journal.js'
 export { FailClosedJournal } from './app/fail-closed-journal.js'
+export {
+  createApplicationUiController,
+  ApplicationUiController,
+  buildBraidViewModel,
+} from './adapters/tui/application-ui-controller.js'
+export {
+  COMMAND_DEFINITIONS,
+  COMMAND_NAMES,
+  commandAvailability,
+  commandItems,
+  completeCommands,
+  parseCommandInput,
+} from './views/shared/command-registry.js'
+export type {
+  BraidIntent,
+  BraidUiController,
+  UiDispatchResult,
+  UiEvent,
+} from './views/shared/intents.js'
+export type {
+  AnalysisView,
+  BraidViewModel,
+  CapabilityMap,
+  ForkPreviewView,
+  HeadlessState,
+  InteractionView,
+  ViewStatus,
+} from './views/shared/models.js'
+export {
+  sanitizeClipboardText,
+  sanitizeDiff,
+  sanitizeForSurface,
+  sanitizeImageAlt,
+  sanitizeMarkdown,
+  sanitizeNotification,
+  sanitizeTerminalText,
+  sanitizeTitle,
+  sanitizeUrl,
+} from './views/shared/sanitize.js'

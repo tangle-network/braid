@@ -14,7 +14,9 @@ export function applyDomainEvent(
         | 'draft.changed'
         | 'run.requested'
         | 'run.text.delta'
+        | 'run.cancel.requested'
         | 'run.finished'
+        | 'application.shutdown.requested'
     }
   >,
   at: string,

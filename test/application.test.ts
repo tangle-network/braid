@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { buildAppView } from '../src/app/view-model.js'
+import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { JournalPort } from '../src/ports/effect-storage.js'
 import type { ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
+import { MAX_RENDERED_TEXT_CHARS } from '../src/views/shared/sanitize.js'
 
 test('one send streams through runtime and reaches one terminal result', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -361,4 +364,329 @@ test('events after the first final result are ignored', async () => {
 
   assert.equal(state.messages[1]?.text, 'first final')
   assert.equal(app.events().filter((entry) => entry.event.kind === 'run.text.delta').length, 0)
+})
+
+test('provider errors and profile values are redacted before state and journal commit', async () => {
+  let providerSawRawProfile = false
+  const execution: ExecutionPort = {
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      providerSawRawProfile = JSON.stringify(input.profile).includes('CANARY-RAW-PROFILE')
+      yield* []
+      throw new Error(
+        'request failed https://user:CANARY-URL@example.com/?token=CANARY-QUERY Bearer CANARY-BEARER',
+      )
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: {
+      ...DETERMINISTIC_PROFILE,
+      metadata: {
+        rawProfile: 'CANARY-RAW-PROFILE',
+        mcpConfig: { command: 'CANARY-MCP-CONFIG' },
+        attestationNonce: 'CANARY-ATTESTATION-NONCE',
+        authorization: 'Bearer CANARY-PROFILE-BEARER',
+      },
+    },
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-redaction-profile', text: 'trigger provider error' }).completion
+  assert.equal(providerSawRawProfile, true)
+  const serialized = JSON.stringify({ state: app.state(), events: app.events() })
+  assert.equal(serialized.includes('CANARY'), false)
+  assert.match(serialized, /\[redacted(?: link| bearer)?\]/u)
+  assert.equal(app.state().runs[0]?.status, 'failed')
+  assert.equal(app.state().lastError?.includes('CANARY'), false)
+  const controller = createApplicationUiController(app)
+  const surfaces = JSON.stringify({
+    state: controller.state(),
+    view: controller.view(),
+    events: controller.events(),
+  })
+  assert.equal(surfaces.includes('CANARY'), false)
+  assert.equal(controller.view().statusText.includes('CANARY'), false)
+})
+
+test('cancel uses the operation ledger and replays after terminal completion', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-cancel-ledger', text: 'cancel this turn' })
+  const first = app.cancel({ operationId: 'op-cancel-stable', runId: send.runId })
+  const firstState = await first.completion
+  assert.equal(firstState.runs[0]?.status, 'aborted')
+  assert.equal(
+    app.events().filter((entry) => entry.event.kind === 'run.cancel.requested').length,
+    1,
+  )
+  const replay = app.cancel({ operationId: 'op-cancel-stable', runId: send.runId })
+  assert.equal(replay.replayed, true)
+  assert.equal((await replay.completion).runs[0]?.status, 'aborted')
+  assert.equal(
+    app.events().filter((entry) => entry.event.kind === 'run.cancel.requested').length,
+    1,
+  )
+  assert.throws(
+    () => app.cancel({ operationId: 'op-cancel-stable', runId: 'run-another' }),
+    (error: unknown) => error instanceof AppError && error.code === 'OPERATION_CONFLICT',
+  )
+})
+
+test('cancel resolves unknown when the adapter cannot confirm the provider outcome', async () => {
+  const execution: ExecutionPort = {
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      await new Promise<void>(() => {})
+      yield { type: 'text_delta', text: 'never emitted' }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 100,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-send-ignores-abort', text: 'wait for unknown' })
+  const cancel = app.cancel({ operationId: 'op-cancel-ignores-abort', runId: send.runId })
+  const state = await app.waitForIdle()
+
+  assert.equal(state.activeRunId, null)
+  assert.equal(state.runs[0]?.status, 'unknown')
+  assert.equal((await cancel.completion).runs[0]?.status, 'unknown')
+  assert.match(state.lastError ?? '', /could not be confirmed/iu)
+})
+
+test('provider acknowledgement, not local abort, settles cancellation', async () => {
+  let providerCancellationCalls = 0
+  let releaseStream: (() => void) | undefined
+  let streamStarted!: () => void
+  const streamReady = new Promise<void>((resolve) => {
+    streamStarted = resolve
+  })
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted()
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+      })
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'provider acknowledged the late result',
+        text: 'late provider result',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-late', intent: 'late result' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+    async cancelRun(): Promise<{ readonly status: 'cancelled' }> {
+      providerCancellationCalls += 1
+      return { status: 'cancelled' }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 5_000,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-provider-cancel', text: 'provider cancellation' })
+  await streamReady
+  const startedAt = performance.now()
+  const cancel = app.cancel({ operationId: 'op-provider-cancel-request', runId: send.runId })
+  const state = await cancel.completion
+
+  assert.equal(providerCancellationCalls, 1)
+  assert.equal(state.runs[0]?.status, 'aborted')
+  assert.equal(state.lastError, 'Cancellation acknowledged by the provider')
+  assert.ok(performance.now() - startedAt < 1_000)
+
+  releaseStream?.()
+  await send.completion
+})
+
+test('a restarted application replays the journal instead of redispatching', async () => {
+  let streamStarts = 0
+  let streamStarted!: () => void
+  let releaseStream: (() => void) | undefined
+  const streamReady = new Promise<void>((resolve) => {
+    streamStarted = resolve
+  })
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarts += 1
+      streamStarted()
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+      })
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'provider acknowledged the restart test',
+        text: 'should not be dispatched twice',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-restart', intent: 'restart test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+    async cancelRun(): Promise<{ readonly status: 'cancelled' }> {
+      return { status: 'cancelled' }
+    },
+  }
+  const durable = new MemoryJournal(new FixedClock())
+  const first = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal: durable,
+    effectStorage: durable,
+    cancelTimeoutMs: 100,
+  })
+  first.initialize('/workspace')
+  const send = first.send({ operationId: 'op-durable-send', text: 'restart me' })
+  await streamReady
+
+  const restarted = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal: durable,
+    effectStorage: durable,
+    cancelTimeoutMs: 100,
+  })
+  assert.equal(restarted.state().runs[0]?.status, 'unknown')
+  assert.throws(
+    () => restarted.send({ operationId: 'op-durable-send', text: 'restart me' }),
+    (error: unknown) =>
+      error instanceof AppError && error.code === 'OPERATION_REQUIRES_RECONCILIATION',
+  )
+  assert.equal(streamStarts, 1)
+  assert.equal(restarted.events().filter((entry) => entry.event.kind === 'run.requested').length, 1)
+
+  const shutdown = restarted.shutdown({ operationId: 'op-durable-shutdown' })
+  assert.equal(shutdown.replayed, false)
+  await shutdown.completion
+  const shutdownReplay = restarted.shutdown({ operationId: 'op-durable-shutdown' })
+  assert.equal(shutdownReplay.replayed, true)
+  await shutdownReplay.completion
+  assert.equal(
+    restarted.events().filter((entry) => entry.event.kind === 'application.shutdown.requested')
+      .length,
+    1,
+  )
+
+  releaseStream?.()
+  await send.completion
+})
+
+test('restart reconciles an in-flight cancellation to honest unknown and replays it', async () => {
+  const journal = new MemoryJournal(new FixedClock())
+  const seeded: readonly BraidEventEnvelope[] = [
+    {
+      sequence: 1,
+      revision: 1,
+      occurredAt: '2026-08-01T00:00:00.000Z',
+      event: { kind: 'workspace.opened', workspace: '/workspace' },
+    },
+    {
+      sequence: 2,
+      revision: 2,
+      occurredAt: '2026-08-01T00:00:00.000Z',
+      event: {
+        kind: 'run.requested',
+        operationId: 'op-send-restart',
+        runId: 'run-restart',
+        turnId: 'turn-restart',
+        userMessageId: 'message-user',
+        assistantMessageId: 'message-assistant',
+        text: 'restart this turn',
+      },
+    },
+    {
+      sequence: 3,
+      revision: 3,
+      occurredAt: '2026-08-01T00:00:00.000Z',
+      event: {
+        kind: 'run.cancel.requested',
+        operationId: 'op-cancel-restart',
+        runId: 'run-restart',
+        reason: 'user requested cancellation',
+      },
+    },
+  ]
+  for (const envelope of seeded) journal.append(envelope)
+
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution: { streamTurn: async function* () {} },
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+
+  assert.equal(app.state().runs[0]?.status, 'unknown')
+  assert.equal(app.state().messages[1]?.status, 'incomplete')
+  const finalEvent = app.events().at(-1)?.event
+  assert.equal(finalEvent?.kind, 'run.finished')
+  if (finalEvent?.kind !== 'run.finished') assert.fail('missing restart reconciliation event')
+  assert.equal(finalEvent.status, 'unknown')
+  const replayed = app.cancel({
+    operationId: 'op-cancel-restart',
+    runId: 'run-restart',
+    reason: 'user requested cancellation',
+  })
+  assert.equal(replayed.replayed, true)
+  assert.equal((await replayed.completion).runs[0]?.status, 'unknown')
+})
+
+test('assistant parts are bounded before the terminal renderer sees them', async () => {
+  const oversized = 'x'.repeat(MAX_RENDERED_TEXT_CHARS + 1_024)
+  const execution: ExecutionPort = {
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'provider returned the bounded fixture',
+        text: oversized,
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-large', intent: 'large output' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-large', text: 'large output' }).completion
+  const assistant = createApplicationUiController(app).view().messages.at(-1)
+  assert.ok(assistant)
+  assert.ok(
+    (assistant?.parts[0]?.text.length ?? Number.POSITIVE_INFINITY) <= MAX_RENDERED_TEXT_CHARS,
+  )
+  assert.equal(assistant?.parts[0]?.text.includes('\u001b'), false)
 })

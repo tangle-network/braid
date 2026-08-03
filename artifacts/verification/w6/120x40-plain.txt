@@ -1,0 +1,8 @@
+Braid ready — /home/drew/code/.worktrees/braid-integration
+[2] draft.changed — W6 plain proof
+[3] run.requested — W6 plain proof
+[4] effect.upserted
+[5] application.shutdown.requested
+[6] run.cancel.requested
+[7] run.finished — Cancellation acknowledged by the provider
+[8] effect.upserted
