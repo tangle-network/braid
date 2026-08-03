@@ -1,0 +1,12 @@
+{
+  "skill": "critical-audit",
+  "timestamp": "2026-08-02T13-11-39Z",
+  "project": "braid",
+  "target": "W5 application core, encrypted storage, credential boundaries, tests, scripts, and docs",
+  "base": "603c08a",
+  "workingTreeFiles": 54,
+  "reviewMethod": "independent source inspection plus focused deterministic checks",
+  "nativeCoverage": "blocked by absent better-sqlite3-multiple-ciphers@12.11.1",
+  "packageCoverage": "blocked by absent node-pty",
+  "verdict": "APPROVE_WITH_ENVIRONMENT_BLOCKER"
+}

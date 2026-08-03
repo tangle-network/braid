@@ -201,22 +201,36 @@ The live cleanup report must confirm every test environment and checkpoint is de
 
 `tangle-network/braid`
 
+### W5 delivered 2026-08-02
+
+W5 adds the complete domain graph, exhaustive reducer, atomic durable effect admission, encrypted SQLite journal, operating-system credential port, protected headless key sources, durable restore recovery, and release checks.
+
+The coordinator records `pending` before a handler can dispatch, binds an operation to a canonical request digest, reconciles identical retries, records `acknowledged`, `failed`, `unknown`, `terminal`, and `conflict` outcomes, and fails closed when a pending external operation cannot be reconciled.
+
+Production composition opens `better-sqlite3-multiple-ciphers@12.11.1` through `StoragePort` and the operating-system credential port; the deterministic in-memory adapter remains available through the same ports for the fixture.
+
+Stable unit, contract, coordination, RPC, virtual-terminal, PTY, storage, crash, security, performance, live-prerequisite, install, capture, and release-check scripts are included.
+
 ### Deliverables
 
 - Implement branded identifiers, domain invariants, graph entities, typed intents, journal events, pure reducer, and effect descriptions.
-- Implement one serialized effect coordinator with operation identifiers bound to canonical request digests and explicit acknowledged, failed, unknown, conflict, and terminal outcomes.
-- Implement the SQLite journal, transactional projections, WAL, SQLCipher-equivalent encryption, per-conversation content keys held outside SQLite, integrity checks, backups, migrations, rebuild, retention, key destruction, and verified redaction rewrite.
+- Implement one serialized effect coordinator with atomic operation admission, operation identifiers bound to canonical request digests, and explicit acknowledged, failed, unknown, conflict, and terminal outcomes.
+- Implement the SQLite journal, incremental transactional projections, WAL, SQLCipher-equivalent encryption, per-conversation content keys held outside SQLite, integrity checks, no-clobber backups, manifest-based restore recovery, migrations, rebuild, retention, tombstoned deletion, key destruction, and verified redaction rewrite.
 - Store profile snapshots, connection references, conversations, branches, turns, runs, messages, parts, interactions, analyses, graph edges, drafts, queues, rules, and bindings.
 - Implement duplicate-event, sequence-gap, cursor, missing-history, and projection-checksum behavior.
 - Implement the operating-system credential port and accept headless database keys only through a protected file descriptor or mode-0600 file outside the workspace.
 - Implement startup recovery and non-terminal run reconciliation hooks.
-- Add deterministic forced-kill tests at every external and storage boundary.
+- Add production-adapter forced-kill tests at every SQLite durable commit and filesystem transition boundary, plus a two-process effect-admission test and native 10k/100k measurements.
 
 ### Done when
 
 `AR-03` through `AR-07`, `AR-10`, `PR-09`, `PC-08` through `PC-10`, `CF-01`, `CF-08`, `SE-01`, `SE-02`, `SE-06`, `SE-07`, and the storage rows of the reliability matrix pass.
 
 Incremental projection and full journal replay must produce matching canonical checksums for the release property-test corpus.
+
+W5 is complete in source when the focused coordinator, reducer, security, storage, crash, package, and release-contract checks pass against the exact production dependencies.
+
+The external live-provider prerequisite remains a later release check and is reported as an external blocker rather than simulated by the W5 fixture.
 
 ## W6: Terminal and headless interfaces
 

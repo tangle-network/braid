@@ -1,4 +1,5 @@
 allowBuilds:
+  better-sqlite3-multiple-ciphers: true
   node-pty: true
 minimumReleaseAgeExclude:
   - '@tangle-network/agent-runtime@0.117.0'

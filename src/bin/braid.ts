@@ -2,11 +2,12 @@
 
 import { constants } from 'node:fs'
 import { mkdir, open, rename, rm, type FileHandle } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { ProcessTerminal, TUI } from '@earendil-works/pi-tui'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
-import { createBraidApplication } from '../app/composition.js'
+import { createBraidApplication, createDurableBraidApplication } from '../app/composition.js'
 import { runRpc } from '../views/headless/rpc.js'
 import { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import { createBraidTheme } from '../views/tui/theme.js'
@@ -56,59 +57,76 @@ async function main(): Promise<number> {
     return 0
   }
 
-  const app = createBraidApplication({
-    ...(options.fixture ? { fixture: options.fixture, chunkDelayMs: 12 } : {}),
-  })
-
-  if (options.mode === 'rpc') {
-    const exitCode = await runRpc(app, process.stdin, process.stdout)
-    if (options.recordState) await recordState(options.recordState, app)
-    return exitCode
+  const workspace = resolve(options.workspace)
+  let storage: Awaited<ReturnType<typeof createDurableBraidApplication>>['storage'] | undefined
+  let selectedApp: ReturnType<typeof createBraidApplication>
+  if (options.fixture) {
+    selectedApp = createBraidApplication({ fixture: options.fixture, chunkDelayMs: 12 })
+  } else {
+    const durable = await createDurableBraidApplication({
+      path: join(homedir(), '.local', 'state', 'braid', 'braid.sqlite'),
+      workspaceRoot: workspace,
+    })
+    selectedApp = durable.app
+    storage = durable.storage
   }
 
-  app.initialize(resolve(options.workspace))
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    process.stderr.write('Interactive mode requires a terminal; use `braid rpc` for JSONL.\n')
-    return 2
-  }
-
-  const terminal = options.inline ? new ProcessTerminal() : new AlternateScreenTerminal()
-  const tui = new TUI(terminal)
-  const colors = !options.noColor && process.env.NO_COLOR === undefined
-  let operation = 0
-  const nextOperationId = options.fixture
-    ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
-    : () => `op-${randomUUID()}`
-  const view = new BraidTerminalApp({
-    app,
-    tui,
-    theme: createBraidTheme(colors),
-    workspace: resolve(options.workspace),
-    nextOperationId,
-  })
-  let signalExitCode: number | undefined
-  const stopFromSignal = (exitCode: number) => {
-    signalExitCode ??= exitCode
-    app.cancelActive()
-    view.stop()
-  }
-  const onInterrupt = () => stopFromSignal(130)
-  const onTerminate = () => stopFromSignal(143)
-  const onHangup = () => stopFromSignal(129)
-  process.once('SIGINT', onInterrupt)
-  process.once('SIGTERM', onTerminate)
-  process.once('SIGHUP', onHangup)
   try {
-    await view.start()
-    await app.waitForIdle()
+    if (options.mode === 'rpc') {
+      const exitCode = await runRpc(selectedApp, process.stdin, process.stdout)
+      if (options.recordState) await recordState(options.recordState, selectedApp)
+      return exitCode
+    }
+
+    selectedApp.initialize(workspace)
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      process.stderr.write('Interactive mode requires a terminal; use `braid rpc` for JSONL.\n')
+      return 2
+    }
+
+    const terminal = options.inline ? new ProcessTerminal() : new AlternateScreenTerminal()
+    const tui = new TUI(terminal)
+    const colors = !options.noColor && process.env.NO_COLOR === undefined
+    let operation = 0
+    const nextOperationId = options.fixture
+      ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
+      : () => `op-${randomUUID()}`
+    const view = new BraidTerminalApp({
+      app: selectedApp,
+      tui,
+      theme: createBraidTheme(colors),
+      workspace: resolve(options.workspace),
+      nextOperationId,
+    })
+    let signalExitCode: number | undefined
+    const stopFromSignal = (exitCode: number) => {
+      signalExitCode ??= exitCode
+      selectedApp.cancelActive()
+      view.stop()
+    }
+    const onInterrupt = () => stopFromSignal(130)
+    const onTerminate = () => stopFromSignal(143)
+    const onHangup = () => stopFromSignal(129)
+    process.once('SIGINT', onInterrupt)
+    process.once('SIGTERM', onTerminate)
+    process.once('SIGHUP', onHangup)
+    try {
+      await view.start()
+      await selectedApp.waitForIdle()
+    } finally {
+      process.off('SIGINT', onInterrupt)
+      process.off('SIGTERM', onTerminate)
+      process.off('SIGHUP', onHangup)
+      view.stop()
+    }
+    if (options.recordState) await recordState(options.recordState, selectedApp)
+    return signalExitCode ?? 0
   } finally {
-    process.off('SIGINT', onInterrupt)
-    process.off('SIGTERM', onTerminate)
-    process.off('SIGHUP', onHangup)
-    view.stop()
+    await selectedApp.close().catch(async (error) => {
+      await storage?.close().catch(() => undefined)
+      throw error
+    })
   }
-  if (options.recordState) await recordState(options.recordState, app)
-  return signalExitCode ?? 0
 }
 
 main()

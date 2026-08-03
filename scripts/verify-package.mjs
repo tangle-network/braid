@@ -18,6 +18,12 @@ function cleanEnvironment(extra = {}) {
   return environment
 }
 
+function installEnvironment() {
+  const environment = cleanEnvironment({ npm_config_ignore_scripts: 'false' })
+  delete environment.NPM_CONFIG_IGNORE_SCRIPTS
+  return environment
+}
+
 async function run(file, args, options = {}) {
   return await new Promise((resolve, reject) => {
     const child = spawn(file, args, {
@@ -276,9 +282,76 @@ try {
     join(installRoot, 'package.json'),
     `${JSON.stringify({ name: 'braid-clean-install-proof', private: true })}\n`,
   )
-  await run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball], {
+  await run('npm', ['install', '--no-audit', '--no-fund', tarball], {
     cwd: installRoot,
+    env: installEnvironment(),
   })
+  const storageSmoke = join(installRoot, 'storage-smoke.mjs')
+  await writeFile(
+    storageSmoke,
+    `
+import assert from 'node:assert/strict'
+import { readFile, mkdtemp, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  MemoryCredentialStore,
+  openSqliteStorage,
+  canonicalDigest,
+  createConversationId,
+  createEventId,
+  createOperationId,
+  createRunId,
+  createWorkspaceId,
+  credentialRef,
+} from '@tangle-network/braid'
+
+const root = await mkdtemp(join(tmpdir(), 'braid-packed-storage-'))
+const database = join(root, 'braid.sqlite')
+const backup = join(root, 'braid.backup')
+const credentials = new MemoryCredentialStore()
+const canary = 'PACKED_W5_RAW_BYTE_CANARY'
+const storage = await openSqliteStorage({
+  path: database,
+  workspaceRoot: root,
+  credentialStore: credentials,
+  databaseKeyRef: credentialRef('cred:v1:packed-database'),
+})
+try {
+  const event = {
+    workspaceId: createWorkspaceId('workspace-packed'),
+    conversationId: createConversationId('conversation-packed'),
+    runId: createRunId('run-packed'),
+    eventId: createEventId('event-packed'),
+    sequence: 1,
+    kind: 'run.finished',
+    payload: { text: canary },
+    occurredAt: '2026-08-02T00:00:00.000Z',
+    terminal: true,
+  }
+  await storage.append([event])
+  assert.equal((await storage.replay({ runId: event.runId })).events[0]?.payloadState, 'available')
+  assert.equal((await storage.integrity()).ok, true)
+  const backupRequest = { path: backup }
+  await storage.backup({
+    path: backup,
+    operation: {
+      operationId: createOperationId('op-packed-backup'),
+      kind: 'backup',
+      request: backupRequest,
+      requestDigest: canonicalDigest(backupRequest),
+    },
+  })
+  for (const path of [database, backup, database + '-wal', database + '-shm']) {
+    assert.equal((await readFile(path).catch(() => Buffer.alloc(0))).includes(Buffer.from(canary)), false, path)
+  }
+  assert.ok((await stat(backup)).size > 0)
+} finally {
+  await storage.close()
+}
+`,
+  )
+  await run(process.execPath, [storageSmoke], { cwd: installRoot })
   const binary = join(
     installRoot,
     'node_modules',

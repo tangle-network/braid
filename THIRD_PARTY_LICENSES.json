@@ -15,6 +15,14 @@
     },
     {
       "license": "MIT",
+      "name": "@napi-rs/keyring-linux-x64-gnu"
+    },
+    {
+      "license": "MIT",
+      "name": "@napi-rs/keyring"
+    },
+    {
+      "license": "MIT",
       "name": "@noble/hashes"
     },
     {
@@ -70,8 +78,28 @@
       "name": "bare-url"
     },
     {
+      "license": "MIT",
+      "name": "base64-js"
+    },
+    {
+      "license": "MIT",
+      "name": "better-sqlite3-multiple-ciphers"
+    },
+    {
       "license": "CC0-1.0",
       "name": "binary-search"
+    },
+    {
+      "license": "MIT",
+      "name": "bindings"
+    },
+    {
+      "license": "MIT",
+      "name": "bl"
+    },
+    {
+      "license": "MIT",
+      "name": "buffer"
     },
     {
       "license": "MIT",
@@ -82,8 +110,32 @@
       "name": "cheminfo-types"
     },
     {
+      "license": "ISC",
+      "name": "chownr"
+    },
+    {
+      "license": "MIT",
+      "name": "decompress-response"
+    },
+    {
+      "license": "MIT",
+      "name": "deep-extend"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "detect-libc"
+    },
+    {
+      "license": "MIT",
+      "name": "end-of-stream"
+    },
+    {
       "license": "Apache-2.0",
       "name": "events-universal"
+    },
+    {
+      "license": "(MIT OR WTFPL)",
+      "name": "expand-template"
     },
     {
       "license": "MIT",
@@ -95,7 +147,19 @@
     },
     {
       "license": "MIT",
+      "name": "file-uri-to-path"
+    },
+    {
+      "license": "MIT",
+      "name": "fs-constants"
+    },
+    {
+      "license": "MIT",
       "name": "get-east-asian-width"
+    },
+    {
+      "license": "MIT",
+      "name": "github-from-package"
     },
     {
       "license": "ISC",
@@ -104,6 +168,18 @@
     {
       "license": "MIT",
       "name": "hono"
+    },
+    {
+      "license": "BSD-3-Clause",
+      "name": "ieee754"
+    },
+    {
+      "license": "ISC",
+      "name": "inherits"
+    },
+    {
+      "license": "ISC",
+      "name": "ini"
     },
     {
       "license": "MIT",
@@ -116,6 +192,18 @@
     {
       "license": "MIT",
       "name": "marked"
+    },
+    {
+      "license": "MIT",
+      "name": "mimic-response"
+    },
+    {
+      "license": "MIT",
+      "name": "minimist"
+    },
+    {
+      "license": "MIT",
+      "name": "mkdirp-classic"
     },
     {
       "license": "MIT",
@@ -143,7 +231,23 @@
     },
     {
       "license": "MIT",
+      "name": "napi-build-utils"
+    },
+    {
+      "license": "MIT",
+      "name": "node-abi"
+    },
+    {
+      "license": "ISC",
+      "name": "once"
+    },
+    {
+      "license": "MIT",
       "name": "openapi3-ts"
+    },
+    {
+      "license": "MIT",
+      "name": "prebuild-install"
     },
     {
       "license": "MIT",
@@ -151,15 +255,43 @@
     },
     {
       "license": "MIT",
+      "name": "pump"
+    },
+    {
+      "license": "(BSD-2-Clause OR MIT OR Apache-2.0)",
+      "name": "rc"
+    },
+    {
+      "license": "MIT",
       "name": "re2js"
+    },
+    {
+      "license": "MIT",
+      "name": "readable-stream"
     },
     {
       "license": "MIT",
       "name": "retry"
     },
     {
+      "license": "MIT",
+      "name": "safe-buffer"
+    },
+    {
+      "license": "ISC",
+      "name": "semver"
+    },
+    {
       "license": "ISC",
       "name": "signal-exit"
+    },
+    {
+      "license": "MIT",
+      "name": "simple-concat"
+    },
+    {
+      "license": "MIT",
+      "name": "simple-get"
     },
     {
       "license": "CC-BY-3.0",
@@ -179,6 +311,18 @@
     },
     {
       "license": "MIT",
+      "name": "string_decoder"
+    },
+    {
+      "license": "MIT",
+      "name": "strip-json-comments"
+    },
+    {
+      "license": "MIT",
+      "name": "tar-fs"
+    },
+    {
+      "license": "MIT",
       "name": "tar-stream"
     },
     {
@@ -188,6 +332,18 @@
     {
       "license": "Apache-2.0",
       "name": "text-decoder"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "tunnel-agent"
+    },
+    {
+      "license": "MIT",
+      "name": "util-deprecate"
+    },
+    {
+      "license": "ISC",
+      "name": "wrappy"
     },
     {
       "license": "ISC",

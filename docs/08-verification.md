@@ -148,6 +148,41 @@ Static checks include formatting, lint, strict type checking, dependency boundar
 
 The package test installs the packed tarball in a clean directory and runs `braid --version`, `braid --help`, one headless deterministic turn, and one virtual-terminal deterministic turn.
 
+### W5 application-core, storage, and release checks
+
+W5 has stable package entry points for `test:unit`, `test:contract`, `test:coordination`, `test:rpc`, `test:virtual-terminal`, `test:pty`, `test:storage`, `test:crash`, `test:security`, `test:performance`, `test:live`, `test:install`, `test:capture`, and `check:release`.
+
+`test:storage` exercises the coordinator, the deterministic storage adapter, and the production SQLite adapter for atomic pending admission, serialized execution, duplicate reconciliation, conflict recording, encrypted payloads, WAL, foreign keys, replay cursors, missing history, projections, backups, approved-root and no-clobber enforcement, restore, retention, redaction, key destruction, migration interruption, lock handling, and commit failure.
+
+`test:crash` runs a compiled child process that is killed before and after every SQLite commit boundary and every backup, restore-manifest, copy, move, install, cleanup, and publication boundary, then reopens the database and checks integrity and durable outcome state.
+
+`test:security` checks protected headless key sources, operating-system credential availability, secret canaries, secret-designated interaction values, and production fail-closed behavior.
+
+`test:install` and `test:pty` run the packed-package proof, while `test:capture` runs the deterministic terminal capture.
+
+`test:live` exits nonzero with a precise external prerequisite message because live provider services and credentials are not available in this repository's deterministic test environment.
+
+`test:coordination` includes a two-process native SQLite race that proves one external dispatch for one operation identifier.
+
+`test:performance` records native SQLite append measurements at 10,000 and 100,000 events and verifies the resulting event count and integrity report.
+
+The native storage test commands fail with an explicit prerequisite when the exact encrypted SQLite package is absent; they never convert missing production coverage into a passing or silently skipped result.
+
+The reducer property test generates 1,000 histories and compares incremental reduction with full replay by canonical projection checksum.
+
+The production adapter, not `MemoryStorage`, is the proof source for encryption, crash recovery, backup, restore, content-key destruction, and concurrent reader/writer behavior.
+
+### W5 requirement mapping
+
+| Requirement | Proof in this repository |
+| --- | --- |
+| `AR-03`–`AR-07`, `AR-10` | `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, `scripts/check-boundaries.mjs`, `scripts/check-dependencies.mjs`, `test/scripts.test.ts` |
+| `PR-09` | Restarted SQLite projection checksum and `StorageJournal.fromStorage` replay in `test/storage.test.ts` |
+| `PC-08`–`PC-10` | `test/security.test.ts`, headless key validation, credential-port availability failure, and package metadata checks |
+| `CF-01`, `CF-08` | Branded graph identifiers, operation/effect records, duplicate-event and conflict tests in `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, and `test/coordination.test.ts` |
+| `SE-01`, `SE-02`, `SE-06`, `SE-07` | Secret rejection, raw-byte canaries, wrong-key rejection, protected key-source tests, and dependency/license checks |
+| `ST-01`–`ST-10` | Production SQLite encryption, atomic commit, duplicate/gap/replay, forced-kill, migration, integrity, retention/redaction, provider-state non-guessing, and concurrent-writer tests |
+
 ### Layer 2: unit and property checks
 
 Unit checks cover parsers, canonicalization, digests, redaction, reducers, commands, selectors, view-model builders, layout, capability decisions, state machines, and storage queries.
@@ -399,7 +434,8 @@ Implementation must provide the following stable scripts.
 | `pnpm test:rpc` | Packed-binary JSONL protocol tests |
 | `pnpm test:virtual-terminal` | Cell, layout, Unicode, and state snapshots |
 | `pnpm test:pty` | Packed-binary real terminal keyboard and lifecycle tests |
-| `pnpm test:storage` | Encryption, journal, migration, integrity, and crash recovery |
+| `pnpm test:storage` | Encrypted production journal, migration, integrity, replay, retention, redaction, backups, and concurrent access |
+| `pnpm test:crash` | Production SQLite forced-kill recovery at every durable commit boundary |
 | `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
 | `pnpm test:performance` | All required Braid overhead measurements |
 | `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
@@ -411,7 +447,7 @@ Implementation must provide the following stable scripts.
 | `pnpm capture:visual` | Deterministic real-binary captures and manifests |
 | `pnpm verify:release` | Validate and assemble every required result into one signed evidence manifest |
 
-These commands do not exist in the planning-only repository yet and are implementation deliverables, not claims of current functionality.
+The live-provider, evaluation, and final evidence-manifest commands remain later release surfaces; the W5 commands above are implemented in this repository.
 
 ## Verification acceptance
 

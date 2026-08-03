@@ -13,8 +13,11 @@ Provider packages own transport to CLI Bridge and Tangle.
 ## Status
 
 The W0 vertical slice is implemented: one `braid` binary, one reducer, one JSONL control interface, and one real Pi terminal transcript and composer all drive `agent-runtime`.
+W5 is implemented: the domain graph and exhaustive reducer cover the durable product state, effect intents are serialized before external dispatch, and production composition opens an encrypted SQLite journal through `StoragePort` and the operating-system credential port.
 The packed binary has deterministic keyboard and JSONL proof, but live CLI Bridge and Tangle connections are not implemented yet.
-The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-01.
+The deterministic `MemoryJournal` remains fixture-only; production startup fails closed if the pinned encrypted SQLite binding or credential facility is unavailable.
+The storage binding is pinned to `better-sqlite3-multiple-ciphers@12.11.1`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
+The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-02.
 
 ![Braid terminal at 80×24](artifacts/verification/w0/80x24.png)
 
@@ -26,7 +29,9 @@ pnpm run build
 node dist/bin/braid.js --fixture deterministic
 ```
 
-Run `pnpm check`, `pnpm run test:package`, and `pnpm run capture:w0` to reproduce the current checks and terminal captures.
+Run `pnpm check`, `pnpm run test:storage`, `pnpm run test:crash`, `pnpm run test:security`, `pnpm run test:performance`, `pnpm run test:install`, and `pnpm run test:capture` to reproduce the W5 checks and terminal captures.
+The stable checks are `test:unit`, `test:contract`, `test:coordination`, `test:rpc`, `test:virtual-terminal`, `test:pty`, `test:storage`, `test:crash`, `test:security`, `test:performance`, `test:live`, `test:install`, `test:capture`, and `check:release`.
+`test:live` fails closed with an explicit external prerequisite until the published provider adapters and credentials are available.
 The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 
 ## The central decision
@@ -68,6 +73,7 @@ That boundary gives Braid a polished interface quickly without creating a second
 | [Renderer decision](docs/decisions/001-pi-tui-renderer.md) | Why Braid depends on Pi TUI instead of cloning a whole app |
 | [Runtime boundary decision](docs/decisions/002-runtime-boundary.md) | Why execution and interaction control stay upstream |
 | [Persistence decision](docs/decisions/003-local-event-journal.md) | What Braid stores and which system remains authoritative |
+| [Encrypted storage decision](docs/decisions/005-encrypted-sqlite-and-credential-boundaries.md) | SQLite cipher, content keys, credential facilities, and headless key boundaries |
 
 The ranked source-reuse hypothesis is recorded in [`.agent/hypotheses/2026-08-01-terminal-ui-base.md`](.agent/hypotheses/2026-08-01-terminal-ui-base.md).
 

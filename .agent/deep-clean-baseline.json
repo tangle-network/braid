@@ -1,0 +1,29 @@
+{
+  "date": "2026-08-02",
+  "scope": "W5 god-object preservation refactor",
+  "before": {
+    "production_typescript_files_over_500_lines": 6,
+    "largest_files": {
+      "src/adapters/storage/sqlite.ts": 3600,
+      "src/domain/reducer.ts": 1036,
+      "src/domain/invariants.ts": 1013,
+      "src/domain/entities.ts": 826,
+      "src/adapters/storage/memory.ts": 810,
+      "src/domain/ids.ts": 577
+    },
+    "escape_hatches": 0,
+    "debt_markers": 0
+  },
+  "after": {
+    "production_typescript_files_over_500_lines": 0,
+    "largest_production_typescript_file": "466 src/app/application.ts"
+  },
+  "checks": {
+    "typecheck": "pass",
+    "full_test_matrix": "pass",
+    "production_build": "pass",
+    "format_and_lint": "pass",
+    "dependency_scan": "blocked by sandbox EPERM when script spawns pnpm",
+    "knip_and_madge": "unavailable because npx could not reach registry.npmjs.org"
+  }
+}
