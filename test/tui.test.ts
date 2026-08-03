@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CombinedAutocompleteProvider, Editor, TUI, visibleWidth } from '@earendil-works/pi-tui'
 import { createBraidApplication } from '../src/app/composition.js'
+import { DeterministicInteractionRuntime } from '../src/testing/deterministic-interaction-runtime.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -48,6 +49,52 @@ test('the real Braid root renders and sends at all four reference sizes', async 
     assert.match(screen, /Fixture response through pi/u)
     for (const line of terminal.getViewport()) assert.ok(visibleWidth(line) <= columns)
 
+    view.stop()
+    await done
+  }
+})
+
+test('interaction keyboard flow renders at all reference sizes and answers through the controller', async () => {
+  for (const [columns, rows] of SIZES) {
+    const terminal = new VirtualTerminal(columns, rows)
+    const tui = new TUI(terminal)
+    const runtime = new DeterministicInteractionRuntime()
+    const app = createBraidApplication({ fixture: 'deterministic', interactionRuntime: runtime })
+    app.initialize('/workspace')
+    runtime.registerPending('run-tui-interaction', 'tui-question')
+    app.receiveInteraction({
+      runId: 'run-tui-interaction',
+      request: {
+        id: 'tui-question',
+        kind: 'question',
+        title: 'Confirm terminal interaction',
+        subject: { type: 'command', command: 'git status' },
+        answerSpec: {
+          fields: [{ type: 'text', name: 'value', label: 'Value', required: true }],
+        },
+      },
+    })
+    const view = new BraidTerminalApp({
+      app,
+      tui,
+      theme: createBraidTheme(false),
+      workspace: '/workspace',
+      nextOperationId: () => `op-tui-${columns}`,
+    })
+    const done = view.start()
+    await terminal.waitForRender()
+    assert.match(terminal.getViewport().join('\n'), /interaction/u)
+    terminal.sendInput('answer')
+    terminal.sendInput('\r')
+    await waitUntil(() => app.state().interactions[0]?.status === 'resolved')
+    assert.deepEqual(runtime.calls, [
+      {
+        key: 'run-tui-interaction:tui-question',
+        operationId: `op-tui-${columns}`,
+        outcome: 'accepted',
+      },
+    ])
+    for (const line of terminal.getViewport()) assert.ok(visibleWidth(line) <= columns)
     view.stop()
     await done
   }

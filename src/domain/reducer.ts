@@ -1,6 +1,7 @@
 import type { AgentTaskStatus } from '@tangle-network/agent-runtime'
 import type { BraidEventEnvelope } from './events.js'
 import type { BraidMessage, BraidRun, BraidState, MessageStatus, RunStatus } from './state.js'
+import { answerSpecContainsSecret } from './interaction.js'
 
 function assertNextEnvelope(state: BraidState, envelope: BraidEventEnvelope): void {
   if (envelope.sequence !== state.sequence + 1) {
@@ -120,6 +121,79 @@ export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): Br
         ),
       }
     }
+    case 'interaction.requested': {
+      if (
+        answerSpecContainsSecret(event.interaction.request.answerSpec) &&
+        event.interaction.request.default?.data !== undefined
+      ) {
+        throw new Error('Secret interaction requests cannot contain default answer data')
+      }
+      if (state.interactions.some((interaction) => interaction.key === event.interaction.key)) {
+        return { ...state, ...base }
+      }
+      return {
+        ...state,
+        ...base,
+        interactions: [...state.interactions, event.interaction],
+      }
+    }
+    case 'interaction.response.requested': {
+      if (event.containsSecret && event.publicData !== undefined) {
+        throw new Error('Secret interaction responses cannot contain public data')
+      }
+      return {
+        ...state,
+        ...base,
+        interactions: state.interactions.map((interaction) =>
+          interaction.key === event.key
+            ? { ...interaction, status: 'responding', updatedAt: envelope.occurredAt }
+            : interaction,
+        ),
+      }
+    }
+    case 'interaction.resolved': {
+      if (event.resolution?.containsSecret && event.resolution.publicData !== undefined) {
+        throw new Error('Secret interaction resolution cannot contain public data')
+      }
+      return {
+        ...state,
+        ...base,
+        interactions: state.interactions.map((interaction) =>
+          interaction.key === event.key
+            ? {
+                ...interaction,
+                status: event.status,
+                updatedAt: envelope.occurredAt,
+                ...(event.resolution === undefined ? {} : { resolution: event.resolution }),
+              }
+            : interaction,
+        ),
+      }
+    }
+    case 'automation.rule.created':
+      return { ...state, ...base, rules: [...state.rules, event.rule] }
+    case 'automation.rule.disabled':
+      return {
+        ...state,
+        ...base,
+        rules: state.rules.map((rule) =>
+          rule.id === event.ruleId ? { ...rule, enabled: false } : rule,
+        ),
+      }
+    case 'automation.rule.deleted':
+      return { ...state, ...base, rules: state.rules.filter((rule) => rule.id !== event.ruleId) }
+    case 'automation.rule.used':
+      return {
+        ...state,
+        ...base,
+        rules: state.rules.map((rule) =>
+          rule.id === event.ruleId ? { ...rule, uses: rule.uses + 1 } : rule,
+        ),
+      }
+    case 'automation.audit.recorded':
+      return { ...state, ...base, automationAudits: [...state.automationAudits, event.audit] }
+    case 'feedback.decision.recorded':
+      return { ...state, ...base, feedbackDecisions: [...state.feedbackDecisions, event.decision] }
     default: {
       const exhaustive: never = event
       return exhaustive

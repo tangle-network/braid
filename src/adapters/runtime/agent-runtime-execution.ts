@@ -1,5 +1,6 @@
 import { streamAgentTurn, type AgentTurnBackend } from '@tangle-network/agent-runtime/kernel'
 import type { ExecuteTurnInput, ExecutionPort } from '../../ports/execution.js'
+import type { InteractionRuntimePort } from '../../ports/interactions.js'
 
 export type AgentTurnBackendResolver = (
   input: ExecuteTurnInput,
@@ -7,9 +8,11 @@ export type AgentTurnBackendResolver = (
 
 export class AgentRuntimeExecutionPort implements ExecutionPort {
   readonly #resolveBackend: AgentTurnBackendResolver
+  readonly interactions: InteractionRuntimePort | undefined
 
-  constructor(resolveBackend: AgentTurnBackendResolver) {
+  constructor(resolveBackend: AgentTurnBackendResolver, interactions?: InteractionRuntimePort) {
     this.#resolveBackend = resolveBackend
+    this.interactions = interactions
   }
 
   async *streamTurn(input: ExecuteTurnInput) {

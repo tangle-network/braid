@@ -4,6 +4,7 @@ import { FixedClock, SystemClock, type Clock } from '../ports/clock.js'
 import { RandomIds, SequenceIds, type IdSource } from '../ports/ids.js'
 import { deterministicBackend, unconfiguredBackend } from '../testing/deterministic-backend.js'
 import { BraidApplication } from './application.js'
+import type { InteractionRuntimePort } from '../ports/interactions.js'
 
 export const STARTER_PROFILE: Readonly<AgentProfile> = defineAgentProfile({
   name: 'Braid starter',
@@ -26,16 +27,19 @@ export interface CompositionOptions {
   readonly ids?: IdSource
   readonly profile?: Readonly<AgentProfile>
   readonly chunkDelayMs?: number
+  readonly interactionRuntime?: InteractionRuntimePort
 }
 
 export function createBraidApplication(options: CompositionOptions = {}): BraidApplication {
   const isFixture = options.fixture === 'deterministic'
-  const execution = new AgentRuntimeExecutionPort((input) =>
-    isFixture
-      ? deterministicBackend(input, {
-          ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
-        })
-      : unconfiguredBackend(input),
+  const execution = new AgentRuntimeExecutionPort(
+    (input) =>
+      isFixture
+        ? deterministicBackend(input, {
+            ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
+          })
+        : unconfiguredBackend(input),
+    options.interactionRuntime,
   )
   return new BraidApplication({
     profile: options.profile ?? (isFixture ? DETERMINISTIC_PROFILE : STARTER_PROFILE),

@@ -1,4 +1,10 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AutomationAuditRecord,
+  AutomationRuleRecord,
+  FeedbackDecisionRecord,
+  InteractionRecord,
+} from './interaction-state.js'
 
 export type MessageRole = 'user' | 'assistant'
 export type MessageStatus = 'complete' | 'streaming' | 'failed' | 'aborted' | 'blocked'
@@ -37,6 +43,10 @@ export interface BraidState {
   readonly runs: readonly BraidRun[]
   readonly activeRunId: string | null
   readonly lastError: string | null
+  readonly interactions: readonly InteractionRecord[]
+  readonly rules: readonly AutomationRuleRecord[]
+  readonly automationAudits: readonly AutomationAuditRecord[]
+  readonly feedbackDecisions: readonly FeedbackDecisionRecord[]
 }
 
 export function initialState(profile: Readonly<AgentProfile>): BraidState {
@@ -53,5 +63,9 @@ export function initialState(profile: Readonly<AgentProfile>): BraidState {
     runs: [],
     activeRunId: null,
     lastError: null,
+    interactions: [],
+    rules: [],
+    automationAudits: [],
+    feedbackDecisions: [],
   }
 }

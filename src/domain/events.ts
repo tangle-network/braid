@@ -1,4 +1,5 @@
 import type { AgentTaskStatus } from '@tangle-network/agent-runtime'
+import type { InteractionEvent } from './interaction-state.js'
 
 export interface TurnUsage {
   readonly input: number
@@ -38,8 +39,10 @@ export type BraidEvent =
       readonly usage: TurnUsage
       readonly error?: string
     }
+  | InteractionEvent
 
 export interface BraidEventEnvelope {
+  readonly eventId?: string
   readonly sequence: number
   readonly revision: number
   readonly occurredAt: string

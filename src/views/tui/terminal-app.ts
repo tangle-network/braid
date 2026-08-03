@@ -14,6 +14,11 @@ import { buildAppView, type AppView, type MessageView } from '../../app/view-mod
 import type { BraidState } from '../../domain/state.js'
 import { CommandPalette, type PaletteCommand } from './command-palette.js'
 import type { BraidTheme } from './theme.js'
+import {
+  keyboardAnswerForView,
+  responseForInteractionIntent,
+} from '../shared/interaction-intent.js'
+import type { InteractionViewModel } from '../shared/interaction.js'
 
 export interface BraidTerminalOptions {
   readonly app: BraidApplication
@@ -99,7 +104,7 @@ export class BraidTerminalApp {
   }
 
   #render(state: BraidState): void {
-    const view = buildAppView(state)
+    const view = buildAppView(state, this.#app.interactionCapabilities())
     this.#transcript.clear()
     this.#transcript.addChild(this.#header(view))
     if (view.hiddenMessageCount > 0) {
@@ -108,6 +113,8 @@ export class BraidTerminalApp {
       )
     }
     for (const message of view.messages) this.#transcript.addChild(this.#message(message))
+    const interaction = view.interactions[0]
+    if (interaction) this.#transcript.addChild(this.#interaction(interaction))
     if (view.messages.length === 0) {
       this.#transcript.addChild(new Spacer(1))
       this.#transcript.addChild(
@@ -120,6 +127,7 @@ export class BraidTerminalApp {
       effectiveStatus === 'failed'
         ? this.#theme.danger
         : effectiveStatus === 'running' ||
+            effectiveStatus === 'waiting' ||
             effectiveStatus === 'blocked' ||
             effectiveStatus === 'aborted'
           ? this.#theme.warning
@@ -166,9 +174,40 @@ export class BraidTerminalApp {
     return container
   }
 
+  #interaction(view: InteractionViewModel): Container {
+    const container = new Container()
+    const scope = view.allowedScopes.length > 0 ? ` · scopes: ${view.allowedScopes.join(', ')}` : ''
+    container.addChild(
+      new Text(this.#theme.warning(`[${view.surface}] ${view.title}${scope}`), 1, 0),
+    )
+    if (view.body) container.addChild(new Markdown(view.body, 1, 0, this.#theme.markdown))
+    if (view.subject?.target) {
+      container.addChild(
+        new Text(this.#theme.muted(`${view.subject.title}: ${view.subject.target}`), 1, 0),
+      )
+    }
+    container.addChild(
+      new Text(
+        view.canRespond
+          ? this.#theme.muted('Enter an answer in the composer · Ctrl+C clears · Esc cancels')
+          : this.#theme.danger(
+              view.answerSpec.error ?? view.capabilityError ?? 'Only cancellation is available',
+            ),
+        1,
+        0,
+      ),
+    )
+    return container
+  }
+
   #submit(rawText: string): void {
     const text = rawText.trim()
     if (!text) return
+    const interaction = this.#app.interactionController()?.views()[0]
+    if (interaction) {
+      this.#submitInteraction(interaction, rawText)
+      return
+    }
     if (text === '/quit') {
       this.stop()
       return
@@ -192,11 +231,71 @@ export class BraidTerminalApp {
     }
   }
 
+  #submitInteraction(view: InteractionViewModel, rawText: string): void {
+    if (!view.canRespond) return
+    const intent = keyboardAnswerForView(view, rawText)
+    const response = responseForInteractionIntent(view.interactionId, intent)
+    const operationId = this.#nextOperationId()
+    this.#editor.setText('')
+    void this.#app
+      .respondInteraction({
+        runId: view.runId,
+        interactionId: view.interactionId,
+        ...(view.providerSessionId === undefined
+          ? {}
+          : { providerSessionId: view.providerSessionId }),
+        ...(view.profileDigest === undefined ? {} : { profileDigest: view.profileDigest }),
+        ...(view.connectionId === undefined ? {} : { connectionId: view.connectionId }),
+        ...(view.workspaceId === undefined ? {} : { workspaceId: view.workspaceId }),
+        ...(view.runner === undefined ? {} : { runner: view.runner }),
+        operationId,
+        response,
+      })
+      .then((result) => {
+        if (
+          result.status === 'invalid' ||
+          result.status === 'stale' ||
+          result.status === 'conflict'
+        ) {
+          this.#editor.setText(rawText)
+        }
+        this.#tui.requestRender()
+      })
+      .catch(() => {
+        this.#editor.setText(rawText)
+        this.#tui.requestRender()
+      })
+  }
+
   #handleGlobalInput(data: string): { consume?: boolean } | undefined {
     if (!matchesKey(data, 'ctrl+c')) this.#disarmQuit()
     if (matchesKey(data, 'ctrl+p')) {
       this.#openPalette()
       return { consume: true }
+    }
+    if (matchesKey(data, 'escape')) {
+      const interaction = this.#app.interactionController()?.views()[0]
+      if (interaction) {
+        void this.#app.cancelInteraction({
+          runId: interaction.runId,
+          interactionId: interaction.interactionId,
+          ...(interaction.providerSessionId === undefined
+            ? {}
+            : { providerSessionId: interaction.providerSessionId }),
+          ...(interaction.profileDigest === undefined
+            ? {}
+            : { profileDigest: interaction.profileDigest }),
+          ...(interaction.connectionId === undefined
+            ? {}
+            : { connectionId: interaction.connectionId }),
+          ...(interaction.workspaceId === undefined
+            ? {}
+            : { workspaceId: interaction.workspaceId }),
+          ...(interaction.runner === undefined ? {} : { runner: interaction.runner }),
+          operationId: this.#nextOperationId(),
+        })
+        return { consume: true }
+      }
     }
     if (matchesKey(data, 'ctrl+c') && !this.#tui.hasOverlay()) {
       if (this.#editor.getText()) {

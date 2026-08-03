@@ -1,0 +1,19 @@
+{
+  "scope": "Braid W9 interaction controller, domain, ports, headless, TUI, and tests",
+  "base": "603c08a48ff307d3f54b1c20e5a2e5b5f2ef3149",
+  "head": "WORKTREE",
+  "projectType": "TypeScript ESM package",
+  "reviewers": ["A-correctness-security", "B-architecture-quality", "C-standards-real-system"],
+  "mode": "serial",
+  "verification": [
+    "biome lint src test -> pass",
+    "node scripts/check-boundaries.mjs -> pass",
+    "strict alternate TypeScript compile src+test -> pass",
+    "compiled node --test src+test -> 6 of 6 files pass",
+    "packed build with skipLibCheck -> pass"
+  ],
+  "unverified": [
+    "official pnpm check/build/test could not start because pnpm dependency-store SQLite is not writable in this sandbox",
+    "live provider interaction path is not available in the installed agent-runtime contract"
+  ]
+}

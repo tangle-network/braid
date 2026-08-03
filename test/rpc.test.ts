@@ -1,12 +1,96 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { FixedClock } from '../src/ports/clock.js'
+import { SequenceIds } from '../src/ports/ids.js'
+import { DeterministicInteractionRuntime } from '../src/testing/deterministic-interaction-runtime.js'
+import {
+  keyboardAnswerForView,
+  responseForInteractionIntent,
+} from '../src/views/shared/interaction-intent.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
 
 async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
   yield `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`
 }
+
+test('keyboard and headless interaction submission share one canonical response', async () => {
+  const runtime = new DeterministicInteractionRuntime()
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    interactionRuntime: runtime,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+  })
+  runtime.registerPending('run-equivalence', 'interaction-equivalence')
+  app.receiveInteraction({
+    runId: 'run-equivalence',
+    request: {
+      id: 'interaction-equivalence',
+      kind: 'question',
+      title: 'Provide a value',
+      answerSpec: {
+        fields: [{ type: 'text', name: 'value', label: 'Value', required: true }],
+      },
+    },
+  })
+  const view = app.interactionController()?.views()[0]
+  assert.ok(view)
+  const keyboardResponse = responseForInteractionIntent(
+    view.interactionId,
+    keyboardAnswerForView(view, 'same answer'),
+  )
+  let output = ''
+  const code = await runRpc(
+    app,
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-init-equivalence',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-respond-equivalence',
+        operationId: 'op-equivalence',
+        command: 'respond_interaction',
+        params: {
+          runId: 'run-equivalence',
+          interactionId: 'interaction-equivalence',
+          response: keyboardResponse,
+        },
+      },
+      { version: 1, requestId: 'req-stop-equivalence', command: 'shutdown' },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const responses = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+  const acknowledgement = responses.find(
+    (response) => response.type === 'ack' && response.requestId === 'req-respond-equivalence',
+  )
+  assert.equal(code, 0)
+  assert.equal(acknowledgement?.type, 'ack')
+  if (acknowledgement?.type !== 'ack') assert.fail('missing interaction acknowledgement')
+  assert.equal(acknowledgement.interactionStatus, 'accepted')
+  assert.equal(app.state().interactions[0]?.status, 'resolved')
+  assert.deepEqual(runtime.calls, [
+    {
+      key: 'run-equivalence:interaction-equivalence',
+      operationId: 'op-equivalence',
+      outcome: 'accepted',
+    },
+  ])
+})
 
 test('JSONL send acknowledges before events and returns final semantic state', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })

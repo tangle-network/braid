@@ -1,5 +1,7 @@
 import type { BraidState, MessageStatus } from '../domain/state.js'
+import type { InteractionCapabilities } from '../domain/interaction-state.js'
 import { sanitizeTerminalText } from '../views/shared/sanitize.js'
+import { buildInteractionViews, type InteractionViewModel } from '../views/shared/interaction.js'
 
 const MAX_VISIBLE_MESSAGES = 200
 const MAX_VISIBLE_MESSAGE_CHARS = 200_000
@@ -17,10 +19,11 @@ export interface AppView {
   readonly runner: string
   readonly model: string
   readonly connection: string
-  readonly status: 'ready' | 'running' | 'failed' | 'blocked' | 'aborted'
+  readonly status: 'ready' | 'running' | 'waiting' | 'failed' | 'blocked' | 'aborted'
   readonly statusText: string
   readonly messages: readonly MessageView[]
   readonly hiddenMessageCount: number
+  readonly interactions: readonly InteractionViewModel[]
 }
 
 function visibleTail(text: string): string {
@@ -28,7 +31,7 @@ function visibleTail(text: string): string {
   return `…\n${text.slice(-MAX_VISIBLE_MESSAGE_CHARS)}`
 }
 
-export function buildAppView(state: BraidState): AppView {
+export function buildAppView(state: BraidState, capabilities?: InteractionCapabilities): AppView {
   const hiddenMessageCount = Math.max(0, state.messages.length - MAX_VISIBLE_MESSAGES)
   const messages = state.messages.slice(-MAX_VISIBLE_MESSAGES).map((message) => ({
     id: message.id,
@@ -38,25 +41,32 @@ export function buildAppView(state: BraidState): AppView {
   }))
   const fixture = state.profile.model?.default === 'fixture/deterministic'
   const latestRun = state.runs.at(-1)
-  const status = state.activeRunId
-    ? 'running'
-    : latestRun?.status === 'failed'
-      ? 'failed'
-      : latestRun?.status === 'blocked'
-        ? 'blocked'
-        : latestRun?.status === 'aborted'
-          ? 'aborted'
-          : 'ready'
-  const statusText =
-    status === 'running'
-      ? 'working'
-      : status === 'failed'
-        ? (latestRun?.error ?? state.lastError ?? 'failed')
-        : status === 'blocked'
+  const interactions = buildInteractionViews(state, new Date().toISOString(), capabilities)
+  const status = state.interactions.some(
+    (interaction) => interaction.status === 'pending' || interaction.status === 'responding',
+  )
+    ? 'waiting'
+    : state.activeRunId
+      ? 'running'
+      : latestRun?.status === 'failed'
+        ? 'failed'
+        : latestRun?.status === 'blocked'
           ? 'blocked'
-          : status === 'aborted'
-            ? 'cancelled'
+          : latestRun?.status === 'aborted'
+            ? 'aborted'
             : 'ready'
+  const statusText =
+    status === 'waiting'
+      ? `${state.interactions.filter((interaction) => interaction.status === 'pending').length} interaction(s) waiting`
+      : status === 'running'
+        ? 'working'
+        : status === 'failed'
+          ? (latestRun?.error ?? state.lastError ?? 'failed')
+          : status === 'blocked'
+            ? 'blocked'
+            : status === 'aborted'
+              ? 'cancelled'
+              : 'ready'
 
   return Object.freeze({
     revision: state.revision,
@@ -68,5 +78,6 @@ export function buildAppView(state: BraidState): AppView {
     statusText: sanitizeTerminalText(statusText),
     messages: Object.freeze(messages),
     hiddenMessageCount,
+    interactions,
   })
 }

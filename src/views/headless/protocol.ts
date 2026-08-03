@@ -1,3 +1,4 @@
+import type { InteractionResponse } from '@tangle-network/agent-interface'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import type { BraidState } from '../../domain/state.js'
 
@@ -32,6 +33,23 @@ export interface SendRequest {
   }
 }
 
+export interface RespondInteractionRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly operationId: string
+  readonly command: 'respond_interaction'
+  readonly params: {
+    readonly runId: string
+    readonly interactionId: string
+    readonly providerSessionId?: string
+    readonly profileDigest?: string
+    readonly connectionId?: string
+    readonly workspaceId?: string
+    readonly runner?: string
+    readonly response: InteractionResponse
+  }
+}
+
 export interface ShutdownRequest {
   readonly version: 1
   readonly requestId: string
@@ -39,7 +57,12 @@ export interface ShutdownRequest {
   readonly params?: Record<string, never>
 }
 
-export type BraidRequest = InitializeRequest | GetStateRequest | SendRequest | ShutdownRequest
+export type BraidRequest =
+  | InitializeRequest
+  | GetStateRequest
+  | SendRequest
+  | RespondInteractionRequest
+  | ShutdownRequest
 
 export interface AckResponse {
   readonly version: 1
@@ -48,6 +71,8 @@ export interface AckResponse {
   readonly revision: number
   readonly operationId?: string
   readonly replayed?: boolean
+  readonly interactionStatus?: string
+  readonly reason?: string
 }
 
 export interface EventResponse {
@@ -55,6 +80,7 @@ export interface EventResponse {
   readonly type: 'event'
   readonly sequence: number
   readonly revision: number
+  readonly eventId?: string
   readonly event: BraidEventEnvelope['event']
 }
 

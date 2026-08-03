@@ -5,6 +5,7 @@ import { buildAppView } from '../src/app/view-model.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
+import { parseInteractionRequest } from '../src/domain/interaction.js'
 
 function envelopes(events: readonly BraidEvent[]): BraidEventEnvelope[] {
   return events.map((event, index) => ({
@@ -68,5 +69,52 @@ test('replay rejects a sequence gap', () => {
         },
       ]),
     /does not follow/u,
+  )
+})
+
+test('replay rejects secret interaction data in a persisted response event', () => {
+  const parsed = parseInteractionRequest({
+    id: 'secret-replay',
+    kind: 'question',
+    title: 'Credential',
+    answerSpec: { fields: [{ type: 'secret', name: 'token', label: 'Token' }] },
+  })
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) assert.fail('secret request should parse')
+  const requestEvent: BraidEvent = {
+    kind: 'interaction.requested',
+    interaction: {
+      key: 'run-secret-replay:secret-replay',
+      runId: 'run-secret-replay',
+      interactionId: 'secret-replay',
+      request: parsed.request,
+      status: 'pending',
+      arrivalSequence: 1,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    },
+  }
+  const state = replayEvents(initialState(STARTER_PROFILE), envelopes([requestEvent]))
+  const malicious: BraidEvent = {
+    kind: 'interaction.response.requested',
+    key: 'run-secret-replay:secret-replay',
+    runId: 'run-secret-replay',
+    interactionId: 'secret-replay',
+    operationId: 'op-secret-replay',
+    outcome: 'accepted',
+    publicData: { token: 'CANARY-SECRET' },
+    containsSecret: true,
+  }
+  assert.throws(
+    () =>
+      replayEvents(state, [
+        {
+          sequence: state.sequence + 1,
+          revision: state.revision + 1,
+          occurredAt: '2026-08-01T00:00:01.000Z',
+          event: malicious,
+        },
+      ]),
+    /Secret interaction responses cannot contain public data/u,
   )
 })

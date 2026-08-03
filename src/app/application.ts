@@ -7,6 +7,15 @@ import { initialState, type BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
+import type {
+  CancelInteractionInput,
+  InteractionReceiveResult,
+  InteractionResponseResult,
+  InteractionRuntimePort,
+  ReceiveInteractionInput,
+  RespondInteractionInput,
+} from '../ports/interactions.js'
+import { InteractionController } from '../controllers/interaction-controller.js'
 import { MemoryJournal } from './journal.js'
 
 export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
@@ -66,6 +75,7 @@ export class BraidApplication {
   readonly #journal: MemoryJournal
   readonly #operations = new Map<string, OperationRecord>()
   readonly #subscribers = new Set<AppSubscriber>()
+  readonly #interactionController?: InteractionController
   #state: BraidState
   #activeAbort: AbortController | undefined
 
@@ -74,11 +84,27 @@ export class BraidApplication {
     readonly execution: ExecutionPort
     readonly clock: Clock
     readonly ids: IdSource
+    readonly interactionRuntime?: InteractionRuntimePort
+    readonly feedbackCapture?: boolean
   }) {
     this.#execution = options.execution
     this.#ids = options.ids
     this.#journal = new MemoryJournal(options.clock)
     this.#state = initialState(structuredClone(options.profile))
+    const interactionRuntime = options.interactionRuntime ?? options.execution.interactions
+    if (interactionRuntime) {
+      this.#interactionController = new InteractionController({
+        runtime: interactionRuntime,
+        clock: options.clock,
+        ids: options.ids,
+        ...(options.feedbackCapture === undefined
+          ? {}
+          : { feedbackCapture: options.feedbackCapture }),
+      })
+      this.#interactionController.subscribe((_state, envelope) =>
+        this.#commit(envelope.event, envelope.eventId),
+      )
+    }
   }
 
   state(): BraidState {
@@ -92,6 +118,58 @@ export class BraidApplication {
   subscribe(subscriber: AppSubscriber): () => void {
     this.#subscribers.add(subscriber)
     return () => this.#subscribers.delete(subscriber)
+  }
+
+  interactionController(): InteractionController | undefined {
+    return this.#interactionController
+  }
+
+  interactionCapabilities(): InteractionRuntimePort['capabilities'] | undefined {
+    return this.#interactionController?.capabilities()
+  }
+
+  receiveInteraction(input: ReceiveInteractionInput): InteractionReceiveResult & {
+    readonly automation: Promise<InteractionResponseResult | undefined>
+  } {
+    if (!this.#interactionController) {
+      throw new AppError(
+        'INTERACTION_UNAVAILABLE',
+        'The selected runtime does not expose interaction responses',
+      )
+    }
+    return this.#interactionController.receive(input)
+  }
+
+  respondInteraction(input: RespondInteractionInput): Promise<InteractionResponseResult> {
+    if (!this.#interactionController) {
+      return Promise.reject(
+        new AppError(
+          'INTERACTION_UNAVAILABLE',
+          'The selected runtime does not expose interaction responses',
+        ),
+      )
+    }
+    return this.#interactionController.respond(input)
+  }
+
+  cancelInteraction(input: CancelInteractionInput): Promise<InteractionResponseResult> {
+    if (!this.#interactionController) {
+      return Promise.reject(
+        new AppError(
+          'INTERACTION_UNAVAILABLE',
+          'The selected runtime does not expose interaction responses',
+        ),
+      )
+    }
+    return this.#interactionController.cancel(input)
+  }
+
+  reconcileInteractions(input?: {
+    readonly runId?: string
+    readonly signal?: AbortSignal
+  }): Promise<void> {
+    if (!this.#interactionController) return Promise.resolve()
+    return this.#interactionController.reconcile(input)
   }
 
   initialize(workspace: string): BraidState {
@@ -240,8 +318,8 @@ export class BraidApplication {
     }
   }
 
-  #commit(event: BraidEvent): void {
-    const envelope = this.#journal.envelope(this.#state, event)
+  #commit(event: BraidEvent, eventId?: string): void {
+    const envelope = this.#journal.envelope(this.#state, event, eventId)
     const nextState = reduceEvent(this.#state, envelope)
     this.#journal.append(envelope)
     this.#state = nextState
