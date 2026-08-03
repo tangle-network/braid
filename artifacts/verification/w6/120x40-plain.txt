@@ -1,4 +1,4 @@
-Braid ready — /home/drew/code/.worktrees/braid-w6-ui
+Braid ready — /home/drew/code/.worktrees/braid-w12-structure
 [2] draft.changed — W6 plain proof
 [3] run.requested — W6 plain proof
 [4] application.shutdown.requested

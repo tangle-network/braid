@@ -1,0 +1,16 @@
+{
+  "scope": "Braid release scripts and module-size checker",
+  "baseSha": "ab9eea8ff28a3eb4f4a0cd33755f98632177536c",
+  "headSha": "ab9eea8ff28a3eb4f4a0cd33755f98632177536c",
+  "projectType": "package.json",
+  "reviewers": ["A-correctness-security", "B-architecture-quality", "C-real-system-coverage"],
+  "mode": "serial",
+  "filesReviewed": 20,
+  "findings": 0,
+  "evidence": {
+    "static": "pnpm check → pass; node --check scripts/*.mjs → pass",
+    "boundary": "node scripts/test-release-evidence.mjs → pass",
+    "package": "node scripts/verify-package.mjs --record /tmp/braid-package-proof-record.json → exit 0",
+    "visual": "pnpm run capture:visual → exit 0"
+  }
+}

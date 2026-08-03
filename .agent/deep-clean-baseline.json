@@ -1,13 +1,13 @@
 {
-  "scope": "W6 handwritten production TypeScript",
-  "capturedAt": "2026-08-03T04:53:00.000Z",
+  "scope": "W12 handwritten production TypeScript and release JavaScript",
+  "capturedAt": "2026-08-03T06:40:48.000Z",
   "commands": [
     {
       "metric": "type errors",
-      "command": "npx tsc --noEmit",
+      "command": "pnpm run typecheck",
       "exitCode": 0,
       "value": 0,
-      "output": "npm warn Unknown project config \\\"strict-peer-dependencies\\\". This will stop working in the next major version of npm. npm warning; Node NO_COLOR/FORCE_COLOR warning."
+      "output": "tsc -p tsconfig.json --noEmit"
     },
     {
       "metric": "dead exports/files/deps",
@@ -55,16 +55,16 @@
       "output": "2 docs/08-verification.md\\n2 THIRD_PARTY_NOTICES.md\\n2 README.md\\n2 .gitignore\\n2 .agent/skill-runs.jsonl\\n1 tsconfig.test.json\\n1 tsconfig.json\\n1 tsconfig.build.json\\n1 test/tui.test.ts\\n1 test/support/virtual-terminal.ts"
     },
     {
-      "metric": "handwritten production TypeScript files over 500 lines",
-      "command": "find src -type f -name '*.ts' -print0 | xargs -0 wc -l | sort -rn",
-      "exitCode": 0,
-      "value": 4,
+      "metric": "handwritten production and release files over 500 lines",
+      "command": "node scripts/check-module-size.mjs",
+      "exitCode": 1,
+      "value": 3,
       "files": {
-        "src/adapters/tui/application-ui-controller.ts": 793,
-        "src/views/headless/rpc.ts": 758,
-        "src/views/tui/terminal-app.ts": 633,
-        "src/app/application.ts": 535
-      }
+        "scripts/capture-visual.mjs": 662,
+        "scripts/verify-package.mjs": 807,
+        "scripts/verify-release.mjs": 675
+      },
+      "output": "Module size check failed:\\nscripts/capture-visual.mjs: 662 lines (limit 500)\\nscripts/verify-package.mjs: 807 lines (limit 500)\\nscripts/verify-release.mjs: 675 lines (limit 500)"
     }
   ]
 }

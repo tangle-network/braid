@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "99d3747711e42c537092eb4284d163a8cadea36fb35df339a90ce8154c7c3dbe",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "47566fb3f7611b1e6756cbc4518314bc6a2a321f5aea3878e1b7171946474795"
+    "tarballSha256": "cb693bff5e70831ecc2ce094f8917fbd92cdaeab2ca35205bbbb174447875b9e"
   },
   "dimensions": {
     "columns": 80,
@@ -38,7 +38,7 @@
       "schemaVersion": 1,
       "revision": 3,
       "sequence": 3,
-      "workspace": "/home/drew/code/.worktrees/braid-w6-ui",
+      "workspace": "/home/drew/code/.worktrees/braid-w12-structure",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "profile": {
@@ -82,7 +82,7 @@
     },
     "view": {
       "revision": 3,
-      "workspace": "/home/drew/code/.worktrees/braid-w6-ui",
+      "workspace": "/home/drew/code/.worktrees/braid-w12-structure",
       "profileName": "Braid starter",
       "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
       "runner": "pi",
@@ -319,7 +319,7 @@
         "kind": "workspace.opened",
         "payload": {
           "kind": "workspace.opened",
-          "workspace": "/home/drew/code/.worktrees/braid-w6-ui"
+          "workspace": "/home/drew/code/.worktrees/braid-w12-structure"
         }
       },
       {
