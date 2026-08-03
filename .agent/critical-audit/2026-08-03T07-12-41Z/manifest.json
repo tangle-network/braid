@@ -1,0 +1,15 @@
+{
+  "baseSha": "776aaea3febd16a8f7d1617c7879bf0e929a96c7",
+  "headSha": "776aaea3febd16a8f7d1617c7879bf0e929a96c7",
+  "workingTree": true,
+  "scope": ["docs/07-security-and-privacy.md", "src/domain/redaction.ts", "test/sanitize.test.ts"],
+  "projectType": "package.json",
+  "reviewers": ["A-correctness-security", "B-architecture-quality", "C-standards-coverage"],
+  "mode": "serial",
+  "reAudit": ".agent/critical-audit/2026-08-03T07-08-25Z",
+  "checks": [
+    "pnpm exec tsc -p tsconfig.test.json && node --test .test-dist/test/sanitize.test.js -> 10/10",
+    "pnpm check -> 142/142",
+    "pnpm run build plus explicit controls -> 13/13 and 5000/5000 random inputs"
+  ]
+}

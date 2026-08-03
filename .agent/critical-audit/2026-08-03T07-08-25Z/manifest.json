@@ -1,0 +1,18 @@
+{
+  "baseSha": "776aaea3febd16a8f7d1617c7879bf0e929a96c7",
+  "headSha": "776aaea3febd16a8f7d1617c7879bf0e929a96c7",
+  "workingTree": true,
+  "scope": ["docs/07-security-and-privacy.md", "src/domain/redaction.ts", "test/sanitize.test.ts"],
+  "projectType": "package.json",
+  "reviewers": ["A-correctness-security", "B-architecture-quality", "C-standards-coverage"],
+  "mode": "serial",
+  "callsiteSample": [
+    "src/views/shared/sanitize.ts:29",
+    "src/bin/plain.ts:22",
+    "src/views/headless/rpc.ts:29"
+  ],
+  "checks": [
+    "pnpm exec tsc -p tsconfig.test.json && node --test .test-dist/test/sanitize.test.js -> 10/10",
+    "pnpm check -> 142/142"
+  ]
+}

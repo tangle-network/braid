@@ -199,7 +199,9 @@ All model, runner, tool, file, diff, URL, log, error, profile, and provider stri
 
 Raw C0 and C1 controls are removed except normalized newline and tab where the component explicitly permits them.
 
-ESC, CSI, DCS, APC, PM, and OSC sequences from untrusted content are rendered as visible escaped text or removed with an audit marker.
+ESC, CSI, DCS, SOS, APC, PM, and OSC sequences from untrusted content are rendered as visible escaped text or removed with an audit marker.
+
+One shared finite-state sanitizer recognizes both ESC-prefixed and C1 forms, suppresses control bodies through their terminator or end of input, and runs before terminal, plain, and headless projections.
 
 OSC 52 clipboard writes are always blocked from rendered content.
 
