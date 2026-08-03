@@ -1,56 +1,110 @@
-const BIDI_CONTROLS = /\p{Bidi_Control}/gu
+import {
+  isSensitiveFieldName,
+  redactSensitiveText,
+  redactSensitiveUrls,
+  redactStructuredValue,
+} from '../../domain/redaction.js'
+
+export type UntrustedSurface =
+  | 'text'
+  | 'markdown'
+  | 'diff'
+  | 'link'
+  | 'clipboard'
+  | 'title'
+  | 'notification'
+  | 'image'
+
+export interface SanitizedValue {
+  readonly value: string
+  readonly removedControls: boolean
+  readonly removedBidi: boolean
+}
+
+export { isSensitiveFieldName, redactSensitiveText, redactSensitiveUrls, redactStructuredValue }
+
+export const MAX_RENDERED_TEXT_CHARS = 200_000
+export const MAX_RENDERED_TEXT_LINES = 4_000
 
 export function sanitizeTerminalText(input: string): string {
-  let output = ''
-  let state: 'normal' | 'escape' | 'csi' | 'osc' | 'string' | 'osc-escape' | 'string-escape' =
-    'normal'
+  return redactSensitiveText(input)
+}
 
-  for (const character of input) {
-    const code = character.codePointAt(0) ?? 0
-    switch (state) {
-      case 'normal':
-        if (character === '\u001b') {
-          state = 'escape'
-        } else if (character === '\u009b') {
-          state = 'csi'
-        } else if (character === '\u009d') {
-          state = 'osc'
-        } else if (character === '\u0090' || character === '\u0098' || character === '\u009e') {
-          state = 'string'
-        } else if (character === '\n' || character === '\t') {
-          output += character
-        } else if ((code >= 0x20 && code < 0x7f) || code > 0x9f) {
-          output += character
-        }
-        break
-      case 'escape':
-        if (character === '[') state = 'csi'
-        else if (character === ']') state = 'osc'
-        else if (character === 'P' || character === '^' || character === '_') state = 'string'
-        else state = 'normal'
-        break
-      case 'csi':
-        if (code >= 0x40 && code <= 0x7e) state = 'normal'
-        break
-      case 'osc':
-        if (character === '\u0007') state = 'normal'
-        else if (character === '\u001b') state = 'osc-escape'
-        break
-      case 'string':
-        if (character === '\u001b') state = 'string-escape'
-        break
-      case 'osc-escape':
-        state = character === '\\' ? 'normal' : 'osc'
-        break
-      case 'string-escape':
-        state = character === '\\' ? 'normal' : 'string'
-        break
-      default: {
-        const exhaustive: never = state
-        return exhaustive
-      }
-    }
+/** Bound text after terminal sanitization, before any renderer parses it. */
+export function boundVisibleText(input: string): string {
+  let value = sanitizeTerminalText(input)
+  const lines = value.split('\n')
+  if (lines.length > MAX_RENDERED_TEXT_LINES) {
+    value = `…\n${lines.slice(-MAX_RENDERED_TEXT_LINES).join('\n')}`
   }
+  if (value.length > MAX_RENDERED_TEXT_CHARS) {
+    value = `…\n${Array.from(value)
+      .slice(-(MAX_RENDERED_TEXT_CHARS - 2))
+      .join('')}`
+  }
+  return value
+}
 
-  return output.replace(BIDI_CONTROLS, '')
+export function sanitizeForSurface(input: string, _surface: UntrustedSurface): SanitizedValue {
+  const value = redactSensitiveText(input)
+  return {
+    value,
+    removedControls: value !== input,
+    removedBidi: /\p{Bidi_Control}/u.test(input),
+  }
+}
+
+export function sanitizeUrl(input: string): string | undefined {
+  const value = sanitizeTerminalText(input).trim()
+  try {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol)) return undefined
+    if (url.username || url.password) return undefined
+    for (const key of url.searchParams.keys()) if (isSensitiveFieldName(key)) return undefined
+    const fragment = url.hash.slice(1)
+    if (fragment) {
+      const fragmentParameters = new URLSearchParams(fragment)
+      for (const key of fragmentParameters.keys()) if (isSensitiveFieldName(key)) return undefined
+    }
+    return url.toString()
+  } catch {
+    return undefined
+  }
+}
+
+function truncateCodePoints(value: string, limit: number): string {
+  return Array.from(value).slice(0, limit).join('')
+}
+
+export function sanitizeMarkdown(input: string): string {
+  return redactSensitiveUrls(sanitizeForSurface(input, 'markdown').value)
+}
+
+export function sanitizeDiff(input: string): string {
+  return sanitizeForSurface(input, 'diff').value
+}
+
+export function sanitizeClipboardText(input: string): string {
+  return sanitizeForSurface(input, 'clipboard').value
+}
+
+export function sanitizeTitle(input: string): string {
+  const value = sanitizeForSurface(input, 'title')
+    .value.replace(/[\n\t]+/gu, ' ')
+    .trim()
+  return truncateCodePoints(value, 120)
+}
+
+export function sanitizeNotification(input: string): string {
+  const value = sanitizeForSurface(input, 'notification')
+    .value.replace(/[\n\t]+/gu, ' ')
+    .trim()
+  return truncateCodePoints(value, 512)
+}
+
+export function sanitizeImageAlt(input: string): string {
+  const value = sanitizeForSurface(input, 'image')
+    .value.replace(/[\n\t]+/gu, ' ')
+    .trim()
+  return truncateCodePoints(value, 512)
 }

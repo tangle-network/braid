@@ -1,8 +1,7 @@
 import type { BraidState, MessageStatus } from '../domain/state.js'
-import { sanitizeTerminalText } from '../views/shared/sanitize.js'
+import { boundVisibleText, sanitizeTerminalText } from '../views/shared/sanitize.js'
 
 const MAX_VISIBLE_MESSAGES = 200
-const MAX_VISIBLE_MESSAGE_CHARS = 200_000
 
 export interface MessageView {
   readonly id: string
@@ -17,15 +16,14 @@ export interface AppView {
   readonly runner: string
   readonly model: string
   readonly connection: string
-  readonly status: 'ready' | 'running' | 'failed' | 'blocked' | 'aborted'
+  readonly status: 'ready' | 'running' | 'cancelling' | 'failed' | 'blocked' | 'aborted' | 'unknown'
   readonly statusText: string
   readonly messages: readonly MessageView[]
   readonly hiddenMessageCount: number
 }
 
 function visibleTail(text: string): string {
-  if (text.length <= MAX_VISIBLE_MESSAGE_CHARS) return text
-  return `…\n${text.slice(-MAX_VISIBLE_MESSAGE_CHARS)}`
+  return boundVisibleText(text)
 }
 
 export function buildAppView(state: BraidState): AppView {
@@ -38,25 +36,36 @@ export function buildAppView(state: BraidState): AppView {
   }))
   const fixture = state.profile.model?.default === 'fixture/deterministic'
   const latestRun = state.runs.at(-1)
-  const status = state.activeRunId
-    ? 'running'
-    : latestRun?.status === 'failed'
-      ? 'failed'
-      : latestRun?.status === 'blocked'
-        ? 'blocked'
-        : latestRun?.status === 'aborted'
-          ? 'aborted'
-          : 'ready'
+  const activeRun = state.activeRunId
+    ? state.runs.find((run) => run.id === state.activeRunId)
+    : undefined
+  const status = activeRun
+    ? activeRun.status === 'cancelling'
+      ? 'cancelling'
+      : 'running'
+    : latestRun?.status === 'unknown'
+      ? 'unknown'
+      : latestRun?.status === 'failed'
+        ? 'failed'
+        : latestRun?.status === 'blocked'
+          ? 'blocked'
+          : latestRun?.status === 'aborted'
+            ? 'aborted'
+            : 'ready'
   const statusText =
     status === 'running'
       ? 'working'
-      : status === 'failed'
-        ? (latestRun?.error ?? state.lastError ?? 'failed')
-        : status === 'blocked'
-          ? 'blocked'
-          : status === 'aborted'
-            ? 'cancelled'
-            : 'ready'
+      : status === 'cancelling'
+        ? 'cancelling'
+        : status === 'failed'
+          ? (latestRun?.error ?? state.lastError ?? 'failed')
+          : status === 'blocked'
+            ? 'blocked'
+            : status === 'aborted'
+              ? 'cancelled'
+              : status === 'unknown'
+                ? 'unknown'
+                : 'ready'
 
   return Object.freeze({
     revision: state.revision,

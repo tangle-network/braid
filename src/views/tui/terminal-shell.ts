@@ -1,0 +1,137 @@
+import { Container, Editor, Text, type TUI, truncateToWidth } from '@earendil-works/pi-tui'
+import type { BraidViewModel } from '../shared/models.js'
+import { sanitizeNotification, sanitizeTerminalText } from '../shared/sanitize.js'
+import { ActivityView } from './activity.js'
+import { layoutFor } from './layout.js'
+import type { BraidTheme } from './theme.js'
+import { TranscriptView } from './transcript.js'
+
+export class BraidShell extends Container {
+  readonly #transcript: TranscriptView
+  readonly #activity: ActivityView
+  readonly #editor: Editor
+  readonly #status: Text
+  readonly #theme: BraidTheme
+  readonly #rows: () => number
+  #view: BraidViewModel | undefined
+  #showActivity = true
+  #quitArmed = false
+
+  constructor(
+    tui: TUI,
+    theme: BraidTheme,
+    rows: () => number,
+    onSubmit: (text: string) => void,
+    onChange: (text: string) => void,
+  ) {
+    super()
+    this.#theme = theme
+    this.#rows = rows
+    this.#transcript = new TranscriptView(theme)
+    this.#activity = new ActivityView(theme)
+    this.#editor = new Editor(tui, theme.editor, { paddingX: 1 })
+    this.#status = new Text('', 1, 0)
+    this.#editor.onSubmit = onSubmit
+    this.#editor.onChange = onChange
+    this.addChild(this.#transcript)
+    this.addChild(this.#activity)
+    this.addChild(this.#editor)
+    this.addChild(this.#status)
+  }
+
+  get editor(): Editor {
+    return this.#editor
+  }
+
+  setActivityVisible(visible: boolean): void {
+    this.#showActivity = visible
+    this.invalidate()
+  }
+
+  setView(view: BraidViewModel, quitArmed: boolean): void {
+    this.#view = view
+    this.#quitArmed = quitArmed
+    this.#transcript.setView(view)
+    this.#activity.setView(view)
+    const status = quitArmed ? 'press ctrl+c again to quit' : view.statusText
+    const color =
+      view.status === 'failed' || view.status === 'storage-failure'
+        ? this.#theme.danger
+        : view.status === 'running' || view.status === 'waiting' || quitArmed
+          ? this.#theme.warning
+          : this.#theme.success
+    this.#status.setText(
+      `${color(sanitizeNotification(status))}  ${this.#theme.muted('ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit')}`,
+    )
+    this.#editor.disableSubmit = false
+    this.#editor.borderColor = view.status === 'running' ? this.#theme.warning : this.#theme.accent
+    this.invalidate()
+  }
+
+  override render(width: number): string[] {
+    const view = this.#view
+    if (!view) return super.render(width)
+    const layout = layoutFor(width, this.#rows())
+    const editorLines = this.#editor.render(width)
+    const statusText =
+      view.status === 'failed' || view.status === 'storage-failure'
+        ? this.#theme.danger
+        : view.status === 'running' || view.status === 'waiting' || this.#quitArmed
+          ? this.#theme.warning
+          : this.#theme.success
+    if (width < 80) {
+      const label = this.#quitArmed ? 'ctrl+c again to quit' : sanitizeNotification(view.statusText)
+      this.#status.setText(
+        `${statusText(truncateToWidth(label, Math.max(8, width - 20), '…'))} ${this.#theme.muted('ctrl+c cancel/quit')}`,
+      )
+    } else {
+      const label = this.#quitArmed
+        ? 'press ctrl+c again to quit'
+        : sanitizeNotification(view.statusText)
+      this.#status.setText(
+        `${statusText(label)}  ${this.#theme.muted('ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit')}`,
+      )
+    }
+    const statusLines = this.#status.render(width)
+    const dock = [...editorLines, ...statusLines]
+    const contentRows = Math.max(1, layout.rows - dock.length)
+    const transcriptLines = this.#tail(this.#transcript.render(layout.transcriptWidth), contentRows)
+    const activityLines =
+      layout.mode === 'wide' && this.#showActivity
+        ? this.#tail(this.#activity.render(layout.activityWidth), contentRows)
+        : []
+    const content: string[] = []
+    for (let index = 0; index < contentRows; index += 1) {
+      const transcript = transcriptLines[index] ?? ''
+      if (activityLines.length === 0) {
+        content.push(truncateToWidth(transcript, width, '…', true))
+      } else {
+        const activity = activityLines[index] ?? ''
+        content.push(
+          `${truncateToWidth(transcript, layout.transcriptWidth, '…', true)}${' '.repeat(layout.gap)}${truncateToWidth(activity, layout.activityWidth, '…', true)}`,
+        )
+      }
+    }
+    return [...content, ...dock].slice(-layout.rows)
+  }
+
+  #tail(lines: readonly string[], count: number): string[] {
+    return lines.slice(Math.max(0, lines.length - count))
+  }
+}
+
+export class UnavailablePanel extends Container {
+  constructor(theme: BraidTheme, title: string, reason: string) {
+    super()
+    this.addChild(new Text(theme.warning(sanitizeTerminalText(title)), 1, 0))
+    this.addChild(new Text(sanitizeTerminalText(reason), 1, 0))
+    this.addChild(
+      new Text(
+        theme.muted('This action is visible but unavailable in the current capabilities.'),
+        1,
+        0,
+      ),
+    )
+    this.addChild(new Text(theme.muted('esc close'), 1, 0))
+  }
+}

@@ -6,7 +6,7 @@ The implementation is expected to depend on and adapt behavior from the followin
 
 | Project | Planned use | Source inspected | License |
 | --- | --- | --- | --- |
-| [`@earendil-works/pi-tui`](https://github.com/earendil-works/pi/tree/master/packages/tui) | Runtime dependency for rendering, layout, input, and overlays; planned test-only adaptation of `test/virtual-terminal.ts` if no public testing export exists | `earendil-works/pi@a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT |
+| [`@earendil-works/pi-tui`](https://github.com/earendil-works/pi/tree/master/packages/tui) | Runtime dependency for rendering, layout, input, and overlays; test-only adaptation of `test/virtual-terminal.ts` | `earendil-works/pi@a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT |
 | [Pi coding agent](https://github.com/earendil-works/pi/tree/master/packages/coding-agent) | Behavioral reference and possible selective adaptation of selectors, transcript components, and session-tree presentation | `earendil-works/pi@a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT |
 | [Kimi Code](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | Behavioral reference and possible selective adaptation of approval, question, queue, and modal coordination components | `MoonshotAI/kimi-code@e22479a62eed9c3b78a67b313f4332c2c0ba9670` | MIT |
 | [OpenCode](https://github.com/anomalyco/opencode) | Architecture and interaction reference only | `anomalyco/opencode@32f278b48f1a495611165d8a9f1ace0b512933e2` | MIT |

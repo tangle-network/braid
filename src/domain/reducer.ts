@@ -1,5 +1,6 @@
 import type { AgentTaskStatus } from '@tangle-network/agent-runtime'
 import type { BraidEventEnvelope } from './events.js'
+import { redactBraidEvent } from './redaction.js'
 import type { BraidMessage, BraidRun, BraidState, MessageStatus, RunStatus } from './state.js'
 
 function assertNextEnvelope(state: BraidState, envelope: BraidEventEnvelope): void {
@@ -11,7 +12,7 @@ function assertNextEnvelope(state: BraidState, envelope: BraidEventEnvelope): vo
   }
 }
 
-function terminalStatus(status: AgentTaskStatus): {
+function terminalStatus(status: AgentTaskStatus | 'unknown'): {
   message: MessageStatus
   run: RunStatus
 } {
@@ -24,6 +25,8 @@ function terminalStatus(status: AgentTaskStatus): {
       return { message: 'aborted', run: 'aborted' }
     case 'blocked':
       return { message: 'blocked', run: 'blocked' }
+    case 'unknown':
+      return { message: 'incomplete', run: 'unknown' }
     default:
       throw new Error(`Unknown terminal status: ${status}`)
   }
@@ -32,7 +35,7 @@ function terminalStatus(status: AgentTaskStatus): {
 export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): BraidState {
   assertNextEnvelope(state, envelope)
   const base = { revision: envelope.revision, sequence: envelope.sequence }
-  const event = envelope.event
+  const event = redactBraidEvent(envelope.event)
 
   switch (event.kind) {
     case 'workspace.opened':
@@ -87,6 +90,27 @@ export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): Br
         ),
       }
     }
+    case 'run.cancel.requested': {
+      const run = state.runs.find((candidate) => candidate.id === event.runId)
+      if (!run) throw new Error(`Cancellation requested for unknown run ${event.runId}`)
+      if (
+        run.status === 'completed' ||
+        run.status === 'failed' ||
+        run.status === 'aborted' ||
+        run.status === 'unknown'
+      ) {
+        throw new Error(`Cancellation requested for terminal run ${event.runId}`)
+      }
+      return {
+        ...state,
+        ...base,
+        runs: state.runs.map((candidate) =>
+          candidate.id === event.runId
+            ? { ...candidate, status: 'cancelling' as const }
+            : candidate,
+        ),
+      }
+    }
     case 'run.finished': {
       const statuses = terminalStatus(event.status)
       const runExists = state.runs.some((run) => run.id === event.runId)
@@ -120,6 +144,8 @@ export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): Br
         ),
       }
     }
+    case 'application.shutdown.requested':
+      return { ...state, ...base }
     default: {
       const exhaustive: never = event
       return exhaustive

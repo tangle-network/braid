@@ -43,6 +43,9 @@ export function deterministicBackend(
     kind,
     start: () => sessionFor(input, kind),
     async *stream(_backendInput, context): AsyncIterable<RuntimeStreamEvent> {
+      if (process.env.BRAID_FIXTURE_FAILURE === '1') {
+        throw new Error('Deterministic fixture failure')
+      }
       for (const chunk of chunks) {
         if (options.chunkDelayMs) {
           await delay(options.chunkDelayMs, undefined, { signal: context.signal })

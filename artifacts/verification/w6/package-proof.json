@@ -1,0 +1,67 @@
+{
+  "tarball": "tangle-network-braid-0.1.0.tgz",
+  "sha256": "8ecb1282042adfa3880a1e3b5006dfe8d5c3708d057828147ad64a78d7861569",
+  "version": "0.1.0",
+  "gitCommit": "603c08a48ff307d3f54b1c20e5a2e5b5f2ef3149",
+  "treeSha256": "ff08d44ee7d9204a37215ec409ddc6769027572c",
+  "sourceDigest": "29889aaf700cab2650fcd36d9d1d9f636ed560f2a0669cf6711e25f31d61f00a",
+  "isolatedBuild": true,
+  "sourceCheckout": "isolated-copy-of-worktree",
+  "rpcRecords": 28,
+  "referenceSizes": [
+    {
+      "columns": 40,
+      "rows": 12,
+      "events": 22
+    },
+    {
+      "columns": 80,
+      "rows": 24,
+      "events": 22
+    },
+    {
+      "columns": 120,
+      "rows": 40,
+      "events": 22
+    },
+    {
+      "columns": 200,
+      "rows": 60,
+      "events": 22
+    }
+  ],
+  "alternateScreenRestored": true,
+  "sigintRestored": true,
+  "stateWriteSymlinkSafe": true,
+  "inlineStayedInMainScreen": true,
+  "keyboardMatchesRpc": true,
+  "eventLedgerMatchesRpc": true,
+  "flowParity": {
+    "rpc": [
+      "send",
+      "graph",
+      "unavailable",
+      "retry",
+      "cancel",
+      "shutdown"
+    ],
+    "terminal": [
+      "send",
+      "graph",
+      "unavailable",
+      "retry",
+      "cancel",
+      "shutdown"
+    ],
+    "plain": [
+      "send",
+      "graph",
+      "unavailable",
+      "retry",
+      "cancel",
+      "shutdown"
+    ],
+    "allFlowsMatch": true
+  },
+  "plainRecordState": true
+}

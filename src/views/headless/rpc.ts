@@ -1,177 +1,138 @@
-import { AppError, type BraidApplication } from '../../app/application.js'
-import { canonicalDigest } from '../../domain/canonical.js'
-import type { BraidEventEnvelope } from '../../domain/events.js'
+import type { BraidUiController, UiEvent } from '../shared/intents.js'
+import { canonicalDigest } from '../shared/canonical.js'
+import { redactSensitiveText, sanitizeTerminalText } from '../shared/sanitize.js'
 import {
   BRAID_PROTOCOL_VERSION,
-  type BraidRequest,
   type BraidResponse,
   type ErrorResponse,
+  type StateProjection,
 } from './protocol.js'
+import { linesOf, parseRequest, requestIdOf, RpcParseError } from './rpc-parser.js'
+import {
+  RPC_REPLAY_MAX_BYTES,
+  RPC_REPLAY_MAX_ENTRIES,
+  type RequestRecord,
+  type RpcInput,
+  type RpcOutput,
+} from './rpc-types.js'
 
-export interface RpcInput extends AsyncIterable<string | Uint8Array> {}
-
-export interface RpcOutput {
-  write(chunk: string): boolean
-}
-
-export const RPC_REPLAY_MAX_ENTRIES = 256
-export const RPC_REPLAY_MAX_BYTES = 8 * 1024 * 1024
-
-interface RequestRecord {
-  readonly digest: string
-  readonly responses: string[]
-  bytes: number
-  replayable: boolean
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function requestIdOf(value: unknown): string | undefined {
-  if (!isRecord(value)) return undefined
-  return typeof value.requestId === 'string' ? value.requestId : undefined
-}
-
-function assertAllowedKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-  label: string,
-): void {
-  const unknown = Object.keys(value).find((key) => !allowed.includes(key))
-  if (unknown) throw new AppError('INVALID_PARAMS', `${label} contains unknown field ${unknown}`)
-}
-
-function parseRequest(line: string): BraidRequest {
-  let value: unknown
-  try {
-    value = JSON.parse(line)
-  } catch {
-    throw new AppError('MALFORMED_JSON', 'Input is not valid JSON')
-  }
-  if (!isRecord(value)) throw new AppError('INVALID_REQUEST', 'Request must be an object')
-  if (value.version !== BRAID_PROTOCOL_VERSION) {
-    throw new AppError('UNSUPPORTED_VERSION', 'Only protocol version 1 is supported')
-  }
-  if (typeof value.requestId !== 'string' || value.requestId.length === 0) {
-    throw new AppError('INVALID_REQUEST_ID', 'requestId must be a non-empty string')
-  }
-  if (typeof value.command !== 'string') {
-    throw new AppError('INVALID_COMMAND', 'command must be a string')
-  }
-  if (!isRecord(value.params) && value.params !== undefined) {
-    throw new AppError('INVALID_PARAMS', 'params must be an object')
-  }
-
-  const params = isRecord(value.params) ? value.params : {}
-  switch (value.command) {
-    case 'initialize':
-      assertAllowedKeys(value, ['version', 'requestId', 'command', 'params'], 'initialize')
-      assertAllowedKeys(params, ['workspace', 'subscribe'], 'initialize.params')
-      if (typeof params.workspace !== 'string') {
-        throw new AppError('INVALID_PARAMS', 'initialize.params.workspace must be a string')
-      }
-      if (params.subscribe !== undefined && typeof params.subscribe !== 'boolean') {
-        throw new AppError('INVALID_PARAMS', 'initialize.params.subscribe must be a boolean')
-      }
-      return {
-        version: 1,
-        requestId: value.requestId,
-        command: 'initialize',
-        params: {
-          workspace: params.workspace,
-          ...(typeof params.subscribe === 'boolean' ? { subscribe: params.subscribe } : {}),
-        },
-      }
-    case 'get_state':
-      assertAllowedKeys(value, ['version', 'requestId', 'command', 'params'], 'get_state')
-      assertAllowedKeys(params, [], 'get_state.params')
-      return { version: 1, requestId: value.requestId, command: 'get_state' }
-    case 'send':
-      assertAllowedKeys(value, ['version', 'requestId', 'operationId', 'command', 'params'], 'send')
-      assertAllowedKeys(params, ['text', 'conversationId', 'branchId'], 'send.params')
-      if (typeof value.operationId !== 'string' || value.operationId.length === 0) {
-        throw new AppError('OPERATION_ID_REQUIRED', 'send requires operationId')
-      }
-      if (typeof params.text !== 'string') {
-        throw new AppError('INVALID_PARAMS', 'send.params.text must be a string')
-      }
-      if (params.conversationId !== undefined && typeof params.conversationId !== 'string') {
-        throw new AppError('INVALID_PARAMS', 'send.params.conversationId must be a string')
-      }
-      if (params.branchId !== undefined && typeof params.branchId !== 'string') {
-        throw new AppError('INVALID_PARAMS', 'send.params.branchId must be a string')
-      }
-      return {
-        version: 1,
-        requestId: value.requestId,
-        operationId: value.operationId,
-        command: 'send',
-        params: {
-          text: params.text,
-          ...(typeof params.conversationId === 'string'
-            ? { conversationId: params.conversationId }
-            : {}),
-          ...(typeof params.branchId === 'string' ? { branchId: params.branchId } : {}),
-        },
-      }
-    case 'shutdown':
-      assertAllowedKeys(value, ['version', 'requestId', 'command', 'params'], 'shutdown')
-      assertAllowedKeys(params, [], 'shutdown.params')
-      return { version: 1, requestId: value.requestId, command: 'shutdown' }
-    default:
-      throw new AppError('UNKNOWN_COMMAND', `Unknown command: ${value.command}`)
-  }
-}
-
-async function* linesOf(input: RpcInput): AsyncGenerator<string> {
-  const decoder = new TextDecoder()
-  let buffered = ''
-  for await (const chunk of input) {
-    buffered += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
-    let newline = buffered.indexOf('\n')
-    while (newline >= 0) {
-      const line = buffered.slice(0, newline)
-      buffered = buffered.slice(newline + 1)
-      if (line.length > 0) yield line
-      newline = buffered.indexOf('\n')
-    }
-  }
-  buffered += decoder.decode()
-  if (buffered.length > 0) yield buffered
-}
+export type { RpcInput, RpcOutput }
+export { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES }
 
 function errorResponse(error: unknown, requestId?: string): ErrorResponse {
-  if (error instanceof AppError) {
+  if (error instanceof RpcParseError) {
     return {
-      version: 1,
+      version: BRAID_PROTOCOL_VERSION,
       type: 'error',
       ...(requestId ? { requestId } : {}),
       code: error.code,
-      message: error.message,
+      message: sanitizeTerminalText(error.message),
       retryable: false,
+      ...(error.choices ? { choices: error.choices } : {}),
+    }
+  }
+  if (error && typeof error === 'object' && 'kind' in error) {
+    const result = error as {
+      readonly kind?: string
+      readonly code?: string
+      readonly reason?: string
+      readonly message?: string
+      readonly retryable?: boolean
+    }
+    if (result.kind === 'unavailable') {
+      return {
+        version: BRAID_PROTOCOL_VERSION,
+        type: 'error',
+        ...(requestId ? { requestId } : {}),
+        code: result.code ?? 'CAPABILITY_UNAVAILABLE',
+        message: sanitizeTerminalText(result.reason ?? 'Capability is unavailable'),
+        retryable: false,
+      }
+    }
+    if (result.kind === 'error') {
+      return {
+        version: BRAID_PROTOCOL_VERSION,
+        type: 'error',
+        ...(requestId ? { requestId } : {}),
+        code: result.code ?? 'INTERNAL_ERROR',
+        message: sanitizeTerminalText(result.message ?? 'The command failed'),
+        retryable: result.retryable ?? false,
+      }
     }
   }
   return {
-    version: 1,
+    version: BRAID_PROTOCOL_VERSION,
     type: 'error',
     ...(requestId ? { requestId } : {}),
     code: 'INTERNAL_ERROR',
-    message: error instanceof Error ? error.message : String(error),
+    message: redactSensitiveText(error instanceof Error ? error.message : 'Internal error'),
     retryable: false,
   }
 }
 
+function stateResponse(
+  controller: BraidUiController,
+  requestId: string,
+  projection: StateProjection = 'full',
+): BraidResponse {
+  const view = controller.view()
+  if (projection === 'summary') {
+    const state = controller.state()
+    return {
+      version: BRAID_PROTOCOL_VERSION,
+      type: 'state',
+      requestId,
+      revision: view.revision,
+      projection,
+      state: {
+        schemaVersion: state.schemaVersion,
+        revision: state.revision,
+        sequence: state.sequence,
+        workspace: state.workspace,
+        conversationId: state.conversationId,
+        branchId: state.branchId,
+        profileName: view.profileName,
+        status: view.status,
+        messageCount: state.messages.length,
+        runCount: state.runs.length,
+        interactionCount: view.interactions.length,
+        activeRunId: state.activeRunId,
+        lastError: state.lastError,
+      },
+    }
+  }
+  return {
+    version: BRAID_PROTOCOL_VERSION,
+    type: 'state',
+    requestId,
+    revision: view.revision,
+    projection,
+    state: controller.state(),
+    view,
+  }
+}
+
+function eventResponse(event: UiEvent): BraidResponse {
+  return {
+    version: BRAID_PROTOCOL_VERSION,
+    type: 'event',
+    sequence: event.sequence,
+    revision: event.revision,
+    event,
+  }
+}
+
 export async function runRpc(
-  app: BraidApplication,
+  controller: BraidUiController,
   input: RpcInput,
   output: RpcOutput,
 ): Promise<number> {
   let initialized = false
   let subscribed = false
-  let bufferedEvents: BraidEventEnvelope[] | undefined
-  let replayBytes = 0
+  let bufferedEvents: UiEvent[] | undefined
+  const pendingCompletions = new Set<Promise<void>>()
   const requests = new Map<string, RequestRecord>()
+  let replayBytes = 0
   const write = (response: BraidResponse) => output.write(`${JSON.stringify(response)}\n`)
   const trimReplayHistory = () => {
     while (requests.size > RPC_REPLAY_MAX_ENTRIES || replayBytes > RPC_REPLAY_MAX_BYTES) {
@@ -183,7 +144,7 @@ export async function runRpc(
   }
   const rememberResponse = (record: RequestRecord, response: BraidResponse) => {
     const line = `${JSON.stringify(response)}\n`
-    const bytes = Buffer.byteLength(line)
+    const bytes = new TextEncoder().encode(line).byteLength
     if (record.replayable && record.bytes + bytes <= RPC_REPLAY_MAX_BYTES) {
       record.responses.push(line)
       record.bytes += bytes
@@ -197,19 +158,13 @@ export async function runRpc(
     }
     output.write(line)
   }
-  const unsubscribe = app.subscribe((_state, envelope) => {
-    if (!subscribed) return
+  const unsubscribe = controller.subscribe((_view, event) => {
+    if (!event || !subscribed) return
     if (bufferedEvents) {
-      bufferedEvents.push(envelope)
+      bufferedEvents.push(event)
       return
     }
-    write({
-      version: 1,
-      type: 'event',
-      sequence: envelope.sequence,
-      revision: envelope.revision,
-      event: envelope.event,
-    })
+    write(eventResponse(event))
   })
 
   try {
@@ -230,7 +185,7 @@ export async function runRpc(
           if (previous.digest !== digest) {
             write(
               errorResponse(
-                new AppError(
+                new RpcParseError(
                   'REQUEST_ID_CONFLICT',
                   `requestId ${request.requestId} was already used with different input`,
                 ),
@@ -240,7 +195,7 @@ export async function runRpc(
           } else if (!previous.replayable) {
             write(
               errorResponse(
-                new AppError(
+                new RpcParseError(
                   'REQUEST_REPLAY_UNAVAILABLE',
                   `The cached response for requestId ${request.requestId} exceeded the replay limit`,
                 ),
@@ -260,45 +215,64 @@ export async function runRpc(
           else write(response)
         }
         if (!initialized && request.command !== 'initialize') {
-          throw new AppError('INITIALIZE_REQUIRED', 'The first command must be initialize')
+          throw new RpcParseError('INITIALIZE_REQUIRED', 'The first command must be initialize')
         }
+        if (request.command === 'send') await Promise.all(pendingCompletions)
 
         switch (request.command) {
           case 'initialize': {
-            if (initialized) throw new AppError('ALREADY_INITIALIZED', 'Already initialized')
             subscribed = request.params.subscribe ?? false
-            app.initialize(request.params.workspace)
+            bufferedEvents = subscribed ? [] : undefined
+            const result = await controller.initialize(request.params.workspace)
+            if (result.kind !== 'accepted') {
+              bufferedEvents = undefined
+              respond(errorResponse(result, request.requestId))
+              break
+            }
             initialized = true
-            const state = app.state()
             respond({
-              version: 1,
+              version: BRAID_PROTOCOL_VERSION,
               type: 'ack',
               requestId: request.requestId,
-              revision: state.revision,
+              revision: result.revision,
+              command: request.command,
             })
+            for (const event of bufferedEvents ?? []) respond(eventResponse(event))
+            bufferedEvents = undefined
+            respond(stateResponse(controller, request.requestId))
+            break
+          }
+          case 'get_state':
+            respond(
+              stateResponse(controller, request.requestId, request.params?.projection ?? 'full'),
+            )
+            break
+          case 'subscribe': {
+            subscribed = true
             respond({
-              version: 1,
-              type: 'state',
+              version: BRAID_PROTOCOL_VERSION,
+              type: 'ack',
               requestId: request.requestId,
-              revision: state.revision,
-              state,
+              revision: controller.view().revision,
+              command: request.command,
             })
             break
           }
-          case 'get_state': {
-            const state = app.state()
+          case 'unsubscribe': {
+            subscribed = false
             respond({
-              version: 1,
-              type: 'state',
+              version: BRAID_PROTOCOL_VERSION,
+              type: 'ack',
               requestId: request.requestId,
-              revision: state.revision,
-              state,
+              revision: controller.view().revision,
+              command: request.command,
             })
             break
           }
           case 'send': {
             bufferedEvents = []
-            const receipt = app.send({
+            const result = await controller.dispatch({
+              type: 'send',
               operationId: request.operationId,
               text: request.params.text,
               ...(request.params.conversationId
@@ -306,47 +280,88 @@ export async function runRpc(
                 : {}),
               ...(request.params.branchId ? { branchId: request.params.branchId } : {}),
             })
+            if (result.kind !== 'accepted') {
+              bufferedEvents = undefined
+              respond(errorResponse(result, request.requestId))
+              break
+            }
             respond({
-              version: 1,
+              version: BRAID_PROTOCOL_VERSION,
               type: 'ack',
               requestId: request.requestId,
               operationId: request.operationId,
-              revision: receipt.revision,
-              replayed: receipt.replayed,
+              revision: result.revision,
+              ...(result.replayed === undefined ? {} : { replayed: result.replayed }),
+              command: request.command,
             })
-            for (const envelope of bufferedEvents) {
-              write({
-                version: 1,
-                type: 'event',
-                sequence: envelope.sequence,
-                revision: envelope.revision,
-                event: envelope.event,
-              })
-            }
+            for (const event of bufferedEvents) respond(eventResponse(event))
             bufferedEvents = undefined
-            const state = await receipt.completion
-            respond({
-              version: 1,
-              type: 'state',
-              requestId: request.requestId,
-              revision: state.revision,
-              state,
-            })
+            if (result.completion) {
+              let tracked: Promise<void>
+              tracked = result.completion.finally(() => pendingCompletions.delete(tracked))
+              pendingCompletions.add(tracked)
+              void tracked.then(() => respond(stateResponse(controller, request.requestId)))
+            } else {
+              respond(stateResponse(controller, request.requestId))
+            }
             break
           }
           case 'shutdown': {
-            const state = await app.waitForIdle()
+            const result = await controller.dispatch({
+              type: 'shutdown',
+              operationId: request.operationId,
+            })
+            if (result.kind !== 'accepted') {
+              respond(errorResponse(result, request.requestId))
+              break
+            }
             respond({
-              version: 1,
+              version: BRAID_PROTOCOL_VERSION,
               type: 'ack',
               requestId: request.requestId,
-              revision: state.revision,
+              revision: result.revision,
+              operationId: request.operationId,
+              command: request.command,
             })
+            if (result.completion) await result.completion
+            await Promise.all(pendingCompletions)
             return 0
           }
           default: {
-            const exhaustive: never = request
-            return exhaustive
+            const generic = request
+            if (generic.command === 'cancel_run') bufferedEvents = []
+            const result = await controller.dispatch({
+              type: 'headless-command',
+              command: generic.command,
+              ...(generic.operationId ? { operationId: generic.operationId } : {}),
+              params: generic.params,
+            })
+            if (result.kind !== 'accepted') {
+              respond(errorResponse(result, request.requestId))
+              break
+            }
+            respond({
+              version: BRAID_PROTOCOL_VERSION,
+              type: 'ack',
+              requestId: request.requestId,
+              revision: result.revision,
+              ...(generic.operationId ? { operationId: generic.operationId } : {}),
+              command: generic.command,
+            })
+            if (generic.command === 'cancel_run') {
+              for (const event of bufferedEvents ?? []) respond(eventResponse(event))
+              bufferedEvents = undefined
+              if (result.completion) await result.completion
+              respond(stateResponse(controller, request.requestId))
+            }
+            if (
+              generic.command === 'get_graph' ||
+              generic.command === 'get_activity' ||
+              generic.command === 'get_details'
+            ) {
+              respond(stateResponse(controller, request.requestId))
+            }
+            break
           }
         }
       } catch (error) {
@@ -356,6 +371,12 @@ export async function runRpc(
         else write(response)
       }
     }
+    const eofShutdown = await controller.dispatch({
+      type: 'shutdown',
+      operationId: 'rpc-eof-shutdown',
+    })
+    if (eofShutdown.kind === 'accepted' && eofShutdown.completion) await eofShutdown.completion
+    await Promise.all(pendingCompletions)
     return 0
   } finally {
     unsubscribe()

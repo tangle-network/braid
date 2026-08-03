@@ -1,0 +1,12 @@
+ braid  Braid starter  ready for a mes…
+
+ Write a message, or press Ctrl+P for
+ commands.
+
+
+
+
+────────────────────────────────────────
+
+────────────────────────────────────────
+ ready for a message ctrl+c cancel/quit

@@ -2,11 +2,20 @@
 
 import { constants } from 'node:fs'
 import { mkdir, open, rename, rm, type FileHandle } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ProcessTerminal, TUI } from '@earendil-works/pi-tui'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { createBraidApplication } from '../app/composition.js'
+import { createApplicationUiController } from '../adapters/tui/application-ui-controller.js'
+import { redactProviderError } from '../domain/redaction.js'
+import type { BraidIntent, BraidUiController } from '../views/shared/intents.js'
+import {
+  commandIntent,
+  isMutatingCommand,
+  type CommandName,
+} from '../views/shared/command-registry.js'
+import { runPlain } from './plain.js'
 import { runRpc } from '../views/headless/rpc.js'
 import { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import { createBraidTheme } from '../views/tui/theme.js'
@@ -15,10 +24,12 @@ import { HELP, parseArgs, type CliOptions } from './args.js'
 
 async function recordState(
   path: string,
-  app: ReturnType<typeof createBraidApplication>,
+  controller: BraidUiController,
+  capturePhase: 'final' | 'atomic-signal-frame' = 'final',
 ): Promise<void> {
   const target = resolve(path)
   const temporary = `${target}.${randomUUID()}.tmp`
+  const payload = `${JSON.stringify({ schemaVersion: 2, capturePhase, state: controller.state(), view: controller.view(), events: controller.events() }, null, 2)}\n`
   await mkdir(dirname(target), { recursive: true })
   let file: FileHandle | undefined = await open(
     temporary,
@@ -26,9 +37,7 @@ async function recordState(
     0o600,
   )
   try {
-    await file.writeFile(
-      `${JSON.stringify({ schemaVersion: 1, state: app.state(), events: app.events() }, null, 2)}\n`,
-    )
+    await file.writeFile(payload)
     await file.sync()
     await file.close()
     file = undefined
@@ -44,7 +53,7 @@ async function main(): Promise<number> {
   try {
     options = parseArgs(process.argv.slice(2), process.cwd())
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n\n${HELP}`)
+    process.stderr.write(`${redactProviderError(error)}\n\n${HELP}`)
     return 2
   }
   if (options.help) {
@@ -57,16 +66,74 @@ async function main(): Promise<number> {
   }
 
   const app = createBraidApplication({
-    ...(options.fixture ? { fixture: options.fixture, chunkDelayMs: 12 } : {}),
+    ...(options.fixture
+      ? {
+          fixture: options.fixture,
+          chunkDelayMs: (() => {
+            const configured = Number(process.env.BRAID_FIXTURE_CHUNK_DELAY_MS ?? 12)
+            return Number.isFinite(configured) && configured >= 0 ? configured : 12
+          })(),
+        }
+      : {}),
+    journalPath:
+      process.env.BRAID_JOURNAL_PATH ?? join(resolve(options.workspace), '.braid', 'events.jsonl'),
   })
+  const controller = createApplicationUiController(
+    app,
+    {
+      color:
+        options.plain || options.noColor || process.env.NO_COLOR !== undefined
+          ? 'none'
+          : 'truecolor',
+      highContrast: options.highContrast,
+      reducedMotion: options.reducedMotion,
+    },
+    options.uiFixture,
+  )
+
+  let operation = 0
+  const nextOperationId = options.fixture
+    ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
+    : () => `op-${randomUUID()}`
+  const startupIntents = (): BraidIntent[] => {
+    const commands: Array<[CommandName, string | undefined]> = [
+      ['open', options.conversation],
+      ['profile', options.profile],
+      ['connection', options.connection],
+      ['runner', options.runner],
+      ['model', options.model],
+      ['effort', options.effort],
+    ]
+    return commands.flatMap(([command, value]) => {
+      if (!value) return []
+      return [
+        commandIntent(command, [value], isMutatingCommand(command) ? nextOperationId() : undefined),
+      ]
+    })
+  }
 
   if (options.mode === 'rpc') {
-    const exitCode = await runRpc(app, process.stdin, process.stdout)
-    if (options.recordState) await recordState(options.recordState, app)
+    const exitCode = await runRpc(controller, process.stdin, process.stdout)
+    if (options.recordState) await recordState(options.recordState, controller)
     return exitCode
   }
 
-  app.initialize(resolve(options.workspace))
+  const workspace = resolve(options.workspace)
+  if (options.plain) {
+    const exitCode = await runPlain(controller, workspace, process.stdin, process.stdout, {
+      initialIntents: startupIntents(),
+    })
+    if (options.recordState) await recordState(options.recordState, controller)
+    return exitCode
+  }
+
+  const initialized = await controller.initialize(workspace)
+  if (initialized.kind !== 'accepted') {
+    process.stderr.write(
+      `${initialized.kind === 'unavailable' ? initialized.reason : initialized.message}\n`,
+    )
+    return 2
+  }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write('Interactive mode requires a terminal; use `braid rpc` for JSONL.\n')
     return 2
@@ -75,22 +142,48 @@ async function main(): Promise<number> {
   const terminal = options.inline ? new ProcessTerminal() : new AlternateScreenTerminal()
   const tui = new TUI(terminal)
   const colors = !options.noColor && process.env.NO_COLOR === undefined
-  let operation = 0
-  const nextOperationId = options.fixture
-    ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
-    : () => `op-${randomUUID()}`
+  const startupMessages: Array<{ readonly title: string; readonly reason: string }> = []
+  for (const intent of startupIntents()) {
+    const result = await controller.dispatch(intent)
+    if (result.kind !== 'accepted') {
+      startupMessages.push({
+        title: intent.type === 'run-command' ? `/${intent.command}` : 'startup option',
+        reason: result.kind === 'unavailable' ? result.reason : result.message,
+      })
+    }
+  }
   const view = new BraidTerminalApp({
-    app,
+    controller,
     tui,
-    theme: createBraidTheme(colors),
-    workspace: resolve(options.workspace),
+    theme: createBraidTheme({
+      colors,
+      highContrast: options.highContrast,
+      reducedMotion: options.reducedMotion,
+    }),
+    workspace,
     nextOperationId,
+    startupMessages,
   })
   let signalExitCode: number | undefined
+  let signalSnapshot: Promise<void> | undefined
+  let frameSnapshot: Promise<void> | undefined
   const stopFromSignal = (exitCode: number) => {
     signalExitCode ??= exitCode
-    app.cancelActive()
-    view.stop()
+    if (process.env.BRAID_CAPTURE_STATE_BEFORE_CANCEL === '1' && options.recordState) {
+      signalSnapshot ??= recordState(`${options.recordState}.signal`, controller)
+    }
+    void controller.dispatch({ type: 'shutdown', operationId: nextOperationId() }).then(
+      () => view.stop(),
+      () => view.stop(),
+    )
+  }
+  const onFrameSnapshot = () => {
+    if (options.recordState)
+      frameSnapshot ??= recordState(
+        `${options.recordState}.frame`,
+        controller,
+        'atomic-signal-frame',
+      )
   }
   const onInterrupt = () => stopFromSignal(130)
   const onTerminate = () => stopFromSignal(143)
@@ -98,16 +191,20 @@ async function main(): Promise<number> {
   process.once('SIGINT', onInterrupt)
   process.once('SIGTERM', onTerminate)
   process.once('SIGHUP', onHangup)
+  process.once('SIGUSR2', onFrameSnapshot)
   try {
     await view.start()
     await app.waitForIdle()
   } finally {
+    await signalSnapshot
+    await frameSnapshot
     process.off('SIGINT', onInterrupt)
     process.off('SIGTERM', onTerminate)
     process.off('SIGHUP', onHangup)
+    process.off('SIGUSR2', onFrameSnapshot)
     view.stop()
   }
-  if (options.recordState) await recordState(options.recordState, app)
+  if (options.recordState) await recordState(options.recordState, controller)
   return signalExitCode ?? 0
 }
 
@@ -116,6 +213,6 @@ main()
     process.exitCode = exitCode
   })
   .catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`)
+    process.stderr.write(`${redactProviderError(error)}\n`)
     process.exitCode = 1
   })

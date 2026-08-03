@@ -1,0 +1,24 @@
+ braid  Braid starter  pi · deterministic fixture
+
+ Write a message, or press Ctrl+P for commands.
+
+
+     permission
+     Allow the fixture tool to inspect the selected file?
+     subject: src/app/application.ts
+     target: read-only
+     The fixture requests a bounded read for a real interaction preview.
+     export class BraidApplication {
+       cancel(input: CancelInput) { …
+
+     yes/no
+    >
+
+     1:accept  2:reject  3:cancel
+
+     enter submit · esc cancel
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+ ready for a message  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit

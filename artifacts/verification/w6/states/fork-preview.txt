@@ -1,0 +1,24 @@
+ braid  Braid starter  pi · deterministic fixture
+
+ Write a message, or press Ctrl+P for commands.
+
+
+
+
+
+     fork preview
+
+     kind: workspace
+     source: workspace:/workspace
+     destination: workspace:/workspace-fork
+     conversation context: conv-1 / branch-1 → conv-fork-1 / branch-1
+     profile snapshot: digest:fixture-source → digest:fixture-copy
+     workspace state: checkpoint:fixture-1 → checkpoint:fixture-1
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+ ready for a message  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit

@@ -1,8 +1,22 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import { redactProfile } from './redaction.js'
 
 export type MessageRole = 'user' | 'assistant'
-export type MessageStatus = 'complete' | 'streaming' | 'failed' | 'aborted' | 'blocked'
-export type RunStatus = 'streaming' | 'completed' | 'failed' | 'aborted' | 'blocked'
+export type MessageStatus =
+  | 'complete'
+  | 'streaming'
+  | 'failed'
+  | 'aborted'
+  | 'blocked'
+  | 'incomplete'
+export type RunStatus =
+  | 'streaming'
+  | 'cancelling'
+  | 'completed'
+  | 'failed'
+  | 'aborted'
+  | 'blocked'
+  | 'unknown'
 
 export interface BraidMessage {
   readonly id: string
@@ -47,7 +61,7 @@ export function initialState(profile: Readonly<AgentProfile>): BraidState {
     workspace: null,
     conversationId: 'conv-1',
     branchId: 'branch-1',
-    profile,
+    profile: redactProfile(profile),
     draft: '',
     messages: [],
     runs: [],

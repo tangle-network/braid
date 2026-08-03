@@ -1,0 +1,40 @@
+ braid  Braid starter  pi · deterministic fixture                                            activity
+ W6 visual proof
+                                                                                             completed run run-000001
+ Fixture response through pi: W6 visual proof
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ completed  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit

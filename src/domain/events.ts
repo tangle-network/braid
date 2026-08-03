@@ -31,12 +31,22 @@ export type BraidEvent =
       readonly text: string
     }
   | {
+      readonly kind: 'run.cancel.requested'
+      readonly operationId: string
+      readonly runId: string
+      readonly reason?: string
+    }
+  | {
       readonly kind: 'run.finished'
       readonly runId: string
-      readonly status: AgentTaskStatus
+      readonly status: AgentTaskStatus | 'unknown'
       readonly finalText: string
       readonly usage: TurnUsage
       readonly error?: string
+    }
+  | {
+      readonly kind: 'application.shutdown.requested'
+      readonly operationId: string
     }
 
 export interface BraidEventEnvelope {

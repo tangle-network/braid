@@ -1,0 +1,24 @@
+ braid  Braid starter  pi · deterministic fixture
+
+ Write a message, or press Ctrl+P for commands.
+
+
+
+
+
+
+
+     conversation graph
+
+     empty        conversation conv-1
+     empty        branch branch-1
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+ ready for a message  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit

@@ -12,8 +12,10 @@ Provider packages own transport to CLI Bridge and Tangle.
 
 ## Status
 
-The W0 vertical slice is implemented: one `braid` binary, one reducer, one JSONL control interface, and one real Pi terminal transcript and composer all drive `agent-runtime`.
-The packed binary has deterministic keyboard and JSONL proof, but live CLI Bridge and Tangle connections are not implemented yet.
+The W6 terminal and headless surfaces are implemented: one `braid` binary, one reducer, one JSONL control interface, and one Pi terminal transcript and composer all drive the shared application core.
+The packed binary has deterministic keyboard, JSONL, redaction, provider-cancellation reconciliation, restart-safe operation replay, and capability-unavailable proof.
+W6 uses a narrow fsynced event-journal port for operation identity until the shared SQLite storage package is connected; this does not claim full storage completion.
+Storage, full performance, live-provider, semantic-evaluation, and release-manifest completion remain unavailable until their W5, W12, and W13 implementations and evidence land.
 The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-01.
 
 ![Braid terminal at 80×24](artifacts/verification/w0/80x24.png)
@@ -26,7 +28,29 @@ pnpm run build
 node dist/bin/braid.js --fixture deterministic
 ```
 
-Run `pnpm check`, `pnpm run test:package`, and `pnpm run capture:w0` to reproduce the current checks and terminal captures.
+Run the current W6 checks with the stable command map below.
+Commands marked unavailable fail with exit code 2 and a plain explanation; they do not substitute a narrower test and do not create a release claim.
+
+| Check | Command | W6 behavior |
+| --- | --- | --- |
+| repository | `pnpm check` | Runs local format, lint, types, boundaries, dependency/license metadata, and deterministic checks |
+| unit | `pnpm test:unit` | Runs the local unit suite |
+| contract | `pnpm test:contract` | Runs the local contract suite |
+| rpc | `pnpm test:rpc` | Runs the packed JSONL protocol suite |
+| virtual-terminal | `pnpm test:virtual-terminal` | Runs virtual-terminal state and layout checks |
+| pty | `pnpm test:pty` | Runs packed real-terminal checks |
+| storage | `pnpm test:storage` | Unavailable until W5 storage exists |
+| security | `pnpm test:security` | Runs current W6 redaction and boundary checks |
+| performance | `pnpm test:performance` | Unavailable until the PERF-01..10 matrix exists |
+| live-bridge | `pnpm test:live:bridge` | Unavailable without protected live credentials and evidence |
+| live-tangle | `pnpm test:live:tangle` | Unavailable without protected live credentials and evidence |
+| live-supervisor | `pnpm test:live:supervisor` | Unavailable without protected live credentials and evidence |
+| live-analysis | `pnpm test:live:analysis` | Unavailable without protected live credentials and evidence |
+| eval | `pnpm test:eval` | Unavailable until calibrated semantic evidence exists |
+| install | `pnpm test:install` | Runs packed install and keyboard/RPC proof |
+| visual | `pnpm capture:visual` | Captures required W6 state artifacts from the packed binary |
+| verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with external signing key and complete evidence |
+
 The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 
 ## The central decision

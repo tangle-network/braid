@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "skill": "critical-audit",
+  "scope": "Braid W6 terminal and headless interfaces",
+  "base": "603c08a48ff307d3f54b1c20e5a2e5b5f2ef3149",
+  "head": "worktree",
+  "files": 63,
+  "reviewers": ["A-correctness-security", "B-architecture-quality", "C-real-system-coverage"],
+  "mode": "serial",
+  "notInspected": [
+    "Live provider and deployment behavior requiring protected credentials",
+    "W5 storage implementation changing on a sibling worktree"
+  ],
+  "checks": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "unitAndContract": "9 of 9 test files pass",
+    "packedRpc": "16 JSONL responses pass",
+    "pty": "4 of 4 reference sizes pass",
+    "boundaries": "pass",
+    "attribution": "pass",
+    "licenses": "pass with manifest fallback"
+  }
+}
