@@ -3,9 +3,9 @@
   "state": "active-streaming",
   "source": {
     "binary": "packed real binary from clean npm install",
-    "binarySha256": "abbc7d58b48a991469ec8dc103bd1e9479d22466f8ac77687aea24cf7b77a562",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "b1d5ba5b3c81034647fe9247d94a6f4662c7a22e6a501f6f226c36208e64d046"
+    "tarballSha256": "c795f05973fef4353024c23a14271de114d3bcc8943ba676c43c4dd12c324bb0"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 4,
-  "frame": "braid  cwd  braid-integration  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel                  fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture             Enter queues input\n",
+  "frame": "braid  cwd  repo  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel                  fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture             Enter queues input\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 4,
       "sequence": 4,
-      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "workspace": "/tmp/braid-publish.Jme9u3/repo",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -102,7 +102,7 @@
     },
     "view": {
       "revision": 4,
-      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "workspace": "/tmp/braid-publish.Jme9u3/repo",
       "profileName": "Braid starter",
       "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
       "runner": "pi",
@@ -385,7 +385,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-integration"
+            "workspace": "/tmp/braid-publish.Jme9u3/repo"
           }
         }
       },
@@ -494,10 +494,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-828b827114a401588cb9b30b",
+              "id": "effect-op-terminal-000002-39ad9758b4932ff8a4ef9652",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "828b827114a401588cb9b30be0407e2d76e2215e748e21fbd6176300fcafedd9",
+              "requestDigest": "39ad9758b4932ff8a4ef9652a9621453ecbff18f8a1cfc8d90205293cc9385e4",
               "kind": "send",
               "status": "pending",
               "attempt": 1,

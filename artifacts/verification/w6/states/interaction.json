@@ -3,9 +3,9 @@
   "state": "interaction",
   "source": {
     "binary": "packed real binary from clean npm install",
-    "binarySha256": "abbc7d58b48a991469ec8dc103bd1e9479d22466f8ac77687aea24cf7b77a562",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "b1d5ba5b3c81034647fe9247d94a6f4662c7a22e6a501f6f226c36208e64d046"
+    "tarballSha256": "c795f05973fef4353024c23a14271de114d3bcc8943ba676c43c4dd12c324bb0"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-integration  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n     permission · approve or reject\n     run: fixture-run-1 · Braid starter @ pi · queue 1 · timeout not rep...\n     Allow the fixture tool to inspect the selected file?\n     will: approve · reject · cancel\n     request: src/app/application.ts · read-only\n     detail: The fixture requests a bounded read for a real interaction ...\n     export class BraidApplication {\n     answer: y approve · n reject\n    >\n     keys: alt+1 approve · alt+2 reject · alt+3 cancel\n     enter submit · esc cancel\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
+  "frame": "braid  cwd  repo  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n     permission · approve or reject\n     run: fixture-run-1 · Braid starter @ pi · queue 1 · timeout unknown\n     Allow the fixture tool to inspect the selected file?\n     will: approve · reject · cancel\n     request: src/app/application.ts · read-only\n     detail: The fixture requests a bounded read for a real interaction ...\n     export class BraidApplication {\n     answer: y approve · n reject\n    >\n     keys: alt+1 approve · alt+2 reject · alt+3 cancel\n     enter submit · esc cancel\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "workspace": "/tmp/braid-publish.Jme9u3/repo",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -69,7 +69,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "workspace": "/tmp/braid-publish.Jme9u3/repo",
       "profileName": "Braid starter",
       "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
       "runner": "pi",
@@ -298,7 +298,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-integration"
+            "workspace": "/tmp/braid-publish.Jme9u3/repo"
           }
         }
       }

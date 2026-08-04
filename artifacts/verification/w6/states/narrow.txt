@@ -1,4 +1,4 @@
-braid  cwd  braid-integration
+braid  cwd  repo
 
  Write a message, or press Ctrl+P for
  commands.

@@ -1,4 +1,4 @@
-braid  cwd  braid-integration  ·  session  New conversation
+braid  cwd  repo  ·  session  New conversation
  W6 failure state
 
  error · unknown

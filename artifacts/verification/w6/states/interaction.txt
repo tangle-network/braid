@@ -1,11 +1,11 @@
-braid  cwd  braid-integration  ·  session  New conversation
+braid  cwd  repo  ·  session  New conversation
 
  Write a message, or press Ctrl+P for commands.
 
 
 
      permission · approve or reject
-     run: fixture-run-1 · Braid starter @ pi · queue 1 · timeout not rep...
+     run: fixture-run-1 · Braid starter @ pi · queue 1 · timeout unknown
      Allow the fixture tool to inspect the selected file?
      will: approve · reject · cancel
      request: src/app/application.ts · read-only

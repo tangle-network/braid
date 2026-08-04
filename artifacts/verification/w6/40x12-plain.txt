@@ -1,4 +1,4 @@
-Braid ready — /home/drew/code/.worktrees/braid-integration
+Braid ready — /tmp/braid-publish.Jme9u3/repo
 status: ready for a message
 conversation: New conversation; branch: branch-1
 profile: Braid starter; runner: pi; connection: deterministic fixture

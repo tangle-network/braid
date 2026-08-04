@@ -212,19 +212,26 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
 }
 
 function castFor(result, events, title) {
+  const lastEventAt = events.at(-1)?.[0] ?? 0
+  // agg samples a percentage position before applying an output event that lands
+  // exactly at the cast duration. A later no-op makes every split final write
+  // visible in the selected raster without changing the terminal frame.
+  const settledEvents = [...events, [Number((lastEventAt + 0.01).toFixed(6)), 'o', '\u001b[0m']]
   const header = {
     version: 2,
     width: result.columns,
     height: result.rows,
     timestamp: Math.floor(Date.now() / 1_000),
-    duration: events.at(-1)?.[0] ?? 0,
+    duration: settledEvents.at(-1)[0],
     idle_time_limit: 1,
     command: 'packed braid --fixture deterministic',
     title,
     env: { TERM: 'xterm-256color' },
     stdin: true,
   }
-  return [JSON.stringify(header), ...events.map((event) => JSON.stringify(event)), ''].join('\n')
+  return [JSON.stringify(header), ...settledEvents.map((event) => JSON.stringify(event)), ''].join(
+    '\n',
+  )
 }
 
 async function plainFrame() {
