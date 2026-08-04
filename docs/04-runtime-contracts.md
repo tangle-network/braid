@@ -2,27 +2,38 @@
 
 ## Purpose
 
-This document separates capabilities that exist today from capabilities Braid requires upstream.
+This document separates capabilities available in Braid's installed packages from capabilities that must remain disabled.
 
-Braid implementation must not turn a planned or partially wired capability into a product claim.
+Braid must not turn a type declaration, capability flag, or planned method into a product claim without a real Braid flow proving it.
+
+When a current package blocks a real Braid flow, Braid records the unavailable action, preserves the rest of the product, and files an upstream issue with the exact reproduction.
 
 ## Evidence baseline
 
-The following versions and commits were read directly on 2026-08-01.
+The following published versions were queried from npm and their installed declarations were inspected directly on 2026-08-04.
 
-| Package or repository | Published version | Source commit inspected | Relevant fact |
-| --- | ---: | --- | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.40.0` | `agent-sdk@32acb32ec43d0040a734a81ddbf516ee5079bf0f` | Canonical profile, capabilities, environment, stream, and interaction types |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.117.0` | `agent-runtime@9b2005d43186144cb7cbf606b98637434bee3c8f` on `origin/main` | Source is versioned `0.118.0` and exports an unreleased `./tui` surface |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.140.1` | `agent-eval@0eb2e324c12eb0d8b1e937ce00d345fa446d52ce` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| [`cli-bridge`](https://github.com/drewstone/cli-bridge) | Server repository | `cli-bridge@8dcff3e29f0afb73358ad7ba27a9301acbffa8f7` | Local runner materialization, OpenAI-compatible streaming, durable run routes, and backend adapters |
-| `@tangle-network/agent-provider-cli-bridge` | `0.3.0` | Published tarball inspected | Environment adapter over CLI Bridge with replay and explicit cancel, but no detach or interaction response |
-| `@tangle-network/agent-provider-tangle` | `0.4.6` | Published tarball inspected | Environment adapter over `@tangle-network/sandbox` with sessions, replay, workspace, checkpoint, and fork |
-| `@tangle-network/sandbox` | `0.15.2` | Published version checked | Tangle cloud sandbox client used by the provider |
+| Package | Installed version | Braid boundary |
+| --- | ---: | --- |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.43.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.128.0` | Sole execution layer; public box, executor, chat, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `0.3.4` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
+| `@tangle-network/agent-provider-tangle` | `0.4.10` | Tangle environment adapter over the sandbox client |
+| `@tangle-network/sandbox` | `0.18.0` | Tangle cloud client used by the provider |
 
-The source `agent-runtime@0.118.0` peer range for `agent-eval` is `>=0.139.2 <0.140.0`, while the published current `agent-eval` is `0.140.1`.
+The installed runtime publishes `agent-eval >=0.143.0 <0.144.0`, `agent-interface >=0.43.0 <0.44.0`, and optional `sandbox >=0.17.2 <0.18.0` as peer ranges.
 
-That mismatch is an upstream integration item and Braid must not bypass it with an ignored peer warning.
+Braid exercises runtime `0.128.0` with eval `0.144.1` and sandbox `0.18.0`, explicitly allows those tested combinations in pnpm, and tracks the stale runtime peer declarations in [agent-runtime issue 734](https://github.com/tangle-network/agent-runtime/issues/734) and [agent-runtime issue 737](https://github.com/tangle-network/agent-runtime/issues/737).
+
+### Installed package boundary
+
+Braid composes the current provider packages through `agent-runtime` and keeps all provider-specific construction in adapters.
+
+The CLI Bridge and Tangle providers remain transport implementations rather than alternate application shells.
+
+The current interface exposes optional interaction-response methods, but neither installed provider declaration exposes that operation and the runtime turn API does not add one.
+
+Braid therefore renders interactions but disables response actions for those providers until a real run proves support.
 
 At implementation start and before every release, rerun `npm view @tangle-network/<package> version` and inspect the installed declarations because these packages change frequently.
 
@@ -115,15 +126,15 @@ Raw `deliver` can support live steering only after a typed runtime adapter defin
 
 ### Runtime supervisor interface
 
-The current source exports `@tangle-network/agent-runtime/tui` and a diagnostic `agent-runtime-top` binary from the unreleased `0.118.0` package source.
+The published runtime exports an experimental `@tangle-network/agent-runtime/tui` module and an `agent-runtime-top` binary.
 
-The module owns snapshot loading and presentation types for `.agent/supervisor/<id>` state, including workers, spend, tokens, latency, logs, and steering inboxes.
+The module owns snapshot loading and presentation types for runtime supervisor state, including workers, spend, tokens, latency, and logs.
 
 That read model belongs in runtime because the on-disk layout is runtime-owned.
 
-The current monitor writes `cancel.request.json`, but a repository-wide search at `9b2005d` found no reader for that file.
+Braid may adapt `loadTopSnapshot` into its own worker view, but it must not copy the runtime file layout or embed the separate terminal application.
 
-The current monitor's file cancellation is therefore not a functional cancellation path and cannot be used by Braid.
+The module does not export its write-side steer and cancellation operations as a reusable API, so Braid does not advertise those controls through this surface.
 
 ## Existing CLI Bridge server contract
 
@@ -163,7 +174,7 @@ These behaviors may be suitable for isolated benchmark automation under an expli
 
 ## Existing CLI Bridge provider contract
 
-The published `@tangle-network/agent-provider-cli-bridge@0.3.0` resolves the bridge model from a turn override, provider default, or profile harness and model.
+The published `@tangle-network/agent-provider-cli-bridge@0.3.4` resolves the bridge model from a turn override, provider default, or profile harness and model.
 
 It sends stable `executionId` values as bridge run identifiers when they satisfy the bridge identifier rules.
 
@@ -183,7 +194,7 @@ It exposes no generalized interaction response.
 
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.4.6` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.4.10` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
 
 Its default capabilities report full canonical profile dimensions, live and replay streaming, detach, turn idempotency, session continuation, session list and messages, workspace read/write/exec/git/upload/download, checkpoint and fork, placement, usage, and confidentiality.
 
@@ -202,6 +213,17 @@ Its capability claims must still be proven against a real current Tangle deploym
 Paired comparisons retain outcomes and costs across two frozen candidates.
 
 `analyzeTraces`, `buildDefaultAnalystRegistry`, `runExact`, and `runExactStream` provide bounded trace-analysis workflows with exact citations, findings, cost, and latency.
+
+The current DSPy RLM engine accepts a caller-owned model function, stable public call reference, and execution recorder instead of a provider URL or credential.
+Braid gives each analyst invocation one explicit runtime transport attempt by default so its recorded usage and cost cannot hide additional paid retries.
+
+Braid binds that function to the selected profile, connection, effective model, and runtime package version.
+
+`agent-runtime` executes each canonical text-message request through `runAgentTaskStream`; Braid returns normalized output, measured token usage, priced cost, terminal status, and finite redacted execution evidence to `agent-eval`.
+
+The callback rejects multimodal and request-level thinking controls because runtime `0.128.0` does not expose those fields on its OpenAI-compatible backend.
+
+Reasoning remains an `AgentProfile` setting, and unsupported callback shapes fail before a provider call rather than being silently dropped.
 
 Default analysis can combine deterministic checks with failure-mode, knowledge-gap, knowledge-poisoning, and improvement analysts when an engine is configured.
 

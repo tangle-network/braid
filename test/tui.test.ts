@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CombinedAutocompleteProvider, Editor, TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -27,9 +28,10 @@ test('the real Braid root renders and sends at all four reference sizes', async 
     const tui = new TUI(terminal)
     const app = createBraidApplication({ fixture: 'deterministic' })
     app.initialize('/workspace')
+    const controller = createApplicationUiController(app)
     let operation = 0
     const view = new BraidTerminalApp({
-      app,
+      controller,
       tui,
       theme: createBraidTheme(false),
       workspace: '/workspace',
@@ -46,6 +48,10 @@ test('the real Braid root renders and sends at all four reference sizes', async 
     assert.match(screen, /braid/u)
     assert.match(screen, /hello Braid/u)
     assert.match(screen, /Fixture response through pi/u)
+    assert.equal(
+      app.state().drafts.find((draft) => draft.branchId === app.state().branchId)?.text,
+      '',
+    )
     for (const line of terminal.getViewport()) assert.ok(visibleWidth(line) <= columns)
 
     view.stop()
@@ -107,8 +113,9 @@ test('the searchable command overlay restores editor focus after close', async (
   const tui = new TUI(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
   const view = new BraidTerminalApp({
-    app,
+    controller,
     tui,
     theme: createBraidTheme(false),
     workspace: '/workspace',
@@ -128,17 +135,186 @@ test('the searchable command overlay restores editor focus after close', async (
   await done
 })
 
+test('global shortcuts cannot replace an open overlay or discard its query', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TUI(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'op-overlay-focus',
+  })
+  const done = view.start()
+
+  terminal.sendInput('\u0010')
+  terminal.sendInput('quit')
+  await terminal.waitForRender()
+  terminal.sendInput('\u0007')
+  await terminal.waitForRender()
+  const screen = terminal.getViewport().join('\n')
+  assert.match(screen, /Commands/u)
+  assert.match(screen, /\/quit/u)
+  assert.doesNotMatch(screen, /conversation graph/u)
+
+  terminal.sendInput('\u001b')
+  view.stop()
+  await done
+})
+
+test('conversation commands work through the real terminal input path', async () => {
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TUI(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-conversation-ui-${++operation}`,
+  })
+  const done = view.start()
+
+  terminal.sendInput('/new Terminal workflow')
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().conversations.length === 2)
+  assert.equal(
+    app.state().conversations.find((conversation) => conversation.id === app.state().conversationId)
+      ?.title,
+    'Terminal workflow',
+  )
+
+  terminal.sendInput('message before branch')
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().runs.length === 1)
+  await app.waitForIdle()
+  const messageId = app.state().messages.find((message) => message.role === 'user')?.id
+  assert(messageId)
+  terminal.sendInput(`/branch ${messageId}`)
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().branches.length === 3)
+
+  terminal.sendInput('/clone Terminal copy')
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().conversations.length === 3)
+  assert.equal(
+    app.state().conversations.find((conversation) => conversation.id === app.state().conversationId)
+      ?.title,
+    'Terminal copy',
+  )
+
+  terminal.sendInput('/fork')
+  terminal.sendInput('\r')
+  await waitUntil(() => controller.view().forkPreview !== undefined)
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /fork preview/iu)
+  terminal.sendInput('\u001b')
+
+  terminal.sendInput('/export markdown')
+  terminal.sendInput('\r')
+  await waitUntil(() => controller.view().notice?.includes('MARKDOWN') === true)
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /prepared markdown export/iu)
+
+  terminal.sendInput('\u000f')
+  await terminal.waitForRender()
+  const selector = terminal.getViewport().join('\n')
+  assert.match(selector, /Terminal workflow/u)
+  assert.match(selector, /Terminal copy/u)
+  terminal.sendInput('\u001b')
+
+  view.stop()
+  await done
+})
+
+test('the terminal saves and restores independent unsent conversation drafts', async () => {
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TUI(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const firstConversationId = app.state().conversationId
+  const firstBranchId = app.state().branchId
+  await app.conversations.lifecycle.rename({
+    operationId: 'op-draft-ui-rename-first',
+    conversationId: firstConversationId,
+    title: 'Alpha draft source',
+  })
+  const secondConversation = await app.conversations.lifecycle.create({
+    operationId: 'op-draft-ui-create-second',
+    title: 'Beta draft target',
+  })
+  await app.conversations.lifecycle.open({
+    operationId: 'op-draft-ui-open-first',
+    conversationId: firstConversationId,
+    branchId: firstBranchId,
+  })
+  const controller = createApplicationUiController(app)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-draft-ui-${++operation}`,
+  })
+  const done = view.start()
+
+  terminal.sendInput('alpha unsent draft')
+  await waitUntil(
+    () =>
+      app.state().drafts.find((draft) => draft.branchId === firstBranchId)?.text ===
+      'alpha unsent draft',
+  )
+  terminal.sendInput('\u000f')
+  await waitUntil(() => terminal.getViewport().join('\n').includes('type to filter'))
+  terminal.sendInput('Beta draft target')
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().conversationId === secondConversation.id)
+  assert.equal(view.editor.getText(), '')
+
+  terminal.sendInput('beta unsent draft')
+  await waitUntil(
+    () =>
+      app.state().drafts.find((draft) => draft.branchId === secondConversation.activeBranchId)
+        ?.text === 'beta unsent draft',
+  )
+  terminal.sendInput('\u000f')
+  await waitUntil(() => terminal.getViewport().join('\n').includes('type to filter'))
+  terminal.sendInput('Alpha draft source')
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().conversationId === firstConversationId)
+  await waitUntil(() => view.editor.getText() === 'alpha unsent draft')
+  assert.equal(
+    app.state().drafts.find((draft) => draft.branchId === firstBranchId)?.text,
+    'alpha unsent draft',
+  )
+  assert.equal(
+    app.state().drafts.find((draft) => draft.branchId === secondConversation.activeBranchId)?.text,
+    'beta unsent draft',
+  )
+
+  view.stop()
+  await done
+})
+
 test('Ctrl+C clears, cancels, then requires a second idle press to quit', async () => {
   const terminal = new VirtualTerminal(80, 24)
   const tui = new TUI(terminal)
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 100 })
   app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
+  let operation = 0
   const view = new BraidTerminalApp({
-    app,
+    controller,
     tui,
     theme: createBraidTheme(false),
     workspace: '/workspace',
-    nextOperationId: () => 'op-cancel-flow',
+    nextOperationId: () => `op-cancel-flow-${++operation}`,
   })
   let stopped = false
   const done = view.start().then(() => {
@@ -161,7 +337,7 @@ test('Ctrl+C clears, cancels, then requires a second idle press to quit', async 
   terminal.sendInput('\u0003')
   await terminal.waitForRender()
   assert.equal(stopped, false)
-  assert.match(terminal.getViewport().join('\n'), /press ctrl\+c again to quit/u)
+  assert.match(terminal.getViewport().join('\n'), /ctrl\+c again to quit/u)
   terminal.sendInput('\u0003')
   await done
   assert.equal(stopped, true)

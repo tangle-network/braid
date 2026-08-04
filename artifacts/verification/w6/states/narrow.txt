@@ -1,0 +1,12 @@
+braid  cwd  braid-integration
+
+ Write a message, or press Ctrl+P for
+ commands.
+
+
+
+────────────────────────────────────────
+
+────────────────────────────────────────
+ready for a message
+Braid starter

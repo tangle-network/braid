@@ -34,8 +34,20 @@ if (!packages.has('@earendil-works/pi-tui')) {
 if (violations.length > 0) {
   process.stderr.write(`Forbidden dependency graph entries:\n${violations.join('\n')}\n`)
   process.exitCode = 1
-} else {
-  process.stdout.write(
-    `Production dependency graph: ${packages.size} packages; Pi TUI present; no copied agent application\n`,
-  )
+  process.exit()
 }
+
+try {
+  execFileSync('pnpm', ['audit', '--prod', '--audit-level', 'high'], {
+    cwd: new URL('../', import.meta.url),
+    stdio: 'inherit',
+  })
+} catch {
+  process.stderr.write('Production dependency audit found a high or critical vulnerability\n')
+  process.exitCode = 1
+}
+
+if (process.exitCode !== 1)
+  process.stdout.write(
+    `Production dependency graph: ${packages.size} packages; Pi TUI present; no copied agent application; no high or critical audit finding\n`,
+  )

@@ -222,6 +222,7 @@ An unknown slash command is not sent to the agent and opens a correction list.
 | `/cancel` | Request explicit cancellation and wait for a confirmed terminal or honest unknown state |
 | `/activity` | Open run events, tools, workers, usage, receipts, and logs |
 | `/export` | Export selected conversation, branch, trace, analysis, or redacted diagnostic bundle |
+| `/import <path>` | Restore a redacted Braid conversation as an offline local copy |
 | `/settings` | Open user, workspace, appearance, retention, keymap, and update settings |
 | `/help [query]` | Search commands, keys, concepts, and current capability explanations |
 | `/quit` | Persist drafts, leave durable runs detached unless explicitly cancelled, and exit |
@@ -442,6 +443,8 @@ IME composition is never interpreted as a command before commit.
 Mouse selection and wheel scrolling are optional enhancements and no operation requires them.
 
 `--plain` and headless state output provide a cursor-control-free route for assistive technology and log capture.
+
+Plain output emits no terminal control metadata, and accessibility-configured TUI output suppresses titles, hyperlinks, and other OSC metadata.
 
 Animation can be disabled, and reduced-motion mode replaces spinners with stable state text.
 

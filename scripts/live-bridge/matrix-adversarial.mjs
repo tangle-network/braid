@@ -1,0 +1,193 @@
+import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { runCommand } from './command.mjs'
+import { appendBounded, RpcSession, sleep } from './process.mjs'
+import { evidenceValue, redactString } from './redaction.mjs'
+
+async function runRedactionMatrix() {
+  const value = evidenceValue({
+    output: 'safe output with no credential material',
+    tokenCount: 17,
+    tokenizer: 'keep',
+    secretSauce: 'keep',
+    apiKeyId: 'keep',
+    credentialConfigured: true,
+    credentialRef: 'cred:v1:opaque',
+  })
+  assert.equal(value.tokenCount, 17)
+  assert.equal(value.tokenizer, 'keep')
+  assert.equal(value.secretSauce, 'keep')
+  assert.equal(value.apiKeyId, 'keep')
+  assert.equal(value.credentialConfigured, true)
+  assert.equal(value.credentialRef, 'cred:v1:opaque')
+}
+
+async function runProcessMatrix() {
+  const root = await mkdtemp(join(tmpdir(), 'braid-live-process-proof-'))
+  const pidPath = join(root, 'descendant.pid')
+  const script = [
+    "import { spawn } from 'node:child_process'",
+    "import { writeFileSync } from 'node:fs'",
+    "const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' })",
+    'writeFileSync(process.env.PID_PATH, String(child.pid))',
+    "process.on('SIGTERM', () => {})",
+    'setInterval(() => {}, 1000)',
+  ].join(';')
+  let descendantPid
+  try {
+    const result = await runCommand(process.execPath, ['-e', script], {
+      cwd: root,
+      timeoutMs: 250,
+      env: { PID_PATH: pidPath },
+    })
+    descendantPid = Number(await readFile(pidPath, 'utf8'))
+    assert.equal(result.timedOut, true)
+    assert.equal(result.termination.forcedKill, true)
+    assert.equal(
+      result.termination.strategy,
+      process.platform === 'win32' ? 'windows-taskkill-tree' : 'process-group',
+    )
+    if (process.platform === 'win32') {
+      assert.equal(result.cleanupOk, false)
+      assert.equal(result.termination.cleanupStatus, 'unsupported')
+    } else {
+      assert.equal(result.cleanupOk, true)
+      let alive = true
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        try {
+          process.kill(descendantPid, 0)
+        } catch {
+          alive = false
+          break
+        }
+        await sleep(50)
+      }
+      assert.equal(alive, false)
+    }
+
+    const naturalPidPath = join(root, 'natural-descendant.pid')
+    const naturalScript = [
+      "import { spawn } from 'node:child_process'",
+      "import { writeFileSync } from 'node:fs'",
+      "const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' })",
+      'writeFileSync(process.env.PID_PATH, String(child.pid))',
+      'setTimeout(() => process.exit(0), 20)',
+    ].join(';')
+    const natural = await runCommand(process.execPath, ['-e', naturalScript], {
+      cwd: root,
+      timeoutMs: 5_000,
+      env: { PID_PATH: naturalPidPath },
+    })
+    const naturalDescendantPid = Number(await readFile(naturalPidPath, 'utf8'))
+    assert.equal(natural.code, 0)
+    if (process.platform === 'win32') {
+      assert.equal(natural.cleanupOk, false)
+      assert.equal(natural.termination.cleanupStatus, 'unsupported')
+    } else {
+      assert.equal(natural.cleanupOk, true)
+      assert.equal(natural.termination.termSent || natural.termination.killSent, true)
+      let alive = true
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        try {
+          process.kill(naturalDescendantPid, 0)
+        } catch {
+          alive = false
+          break
+        }
+        await sleep(50)
+      }
+      assert.equal(alive, false)
+    }
+
+    const rpcScript = join(root, 'rpc-natural.mjs')
+    const rpcPidPath = join(root, 'rpc-descendant.pid')
+    const rpcSource = [
+      "import { spawn } from 'node:child_process'",
+      "import { writeFileSync } from 'node:fs'",
+      'process.stdin.resume()',
+      "process.stdin.on('end', () => { const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' }); writeFileSync(process.env.PID_PATH, String(child.pid)); setTimeout(() => process.exit(0), 20) })",
+    ].join('\n')
+    await writeFile(rpcScript, rpcSource)
+    const rpc = new RpcSession(
+      rpcScript,
+      root,
+      {
+        ...process.env,
+        PID_PATH: rpcPidPath,
+      },
+      1_000,
+    )
+    const rpcResult = await rpc.close()
+    assert.equal(rpcResult.termination.exited, true)
+    if (process.platform === 'win32') {
+      assert.equal(rpcResult.termination.cleanupStatus, 'unsupported')
+    } else {
+      assert.equal(rpcResult.termination.cleanupStatus, 'kill')
+      assert.equal(rpcResult.termination.termSent, true)
+      assert.equal(rpcResult.termination.descendantsExited, true)
+      assert.equal(rpcResult.termination.descendantsVerified, true)
+    }
+
+    const canary = 'chunked-boundary-canary-3e6a'
+    const chunks = [
+      `${'🙂'.repeat(600)}https://operator:`,
+      canary.slice(0, 12),
+      `${canary.slice(12)}@bridge.example/v1/chat?access_`,
+      `token=${canary}&safe=keep`,
+    ]
+    const chunkScript = [
+      `const chunks = ${JSON.stringify(chunks)}`,
+      'let index = 0',
+      'const emit = () => { if (index === chunks.length) process.exit(0); process.stdout.write(chunks[index]); process.stderr.write(chunks[index++]); setTimeout(emit, 10) }',
+      'emit()',
+    ].join(';')
+    const captured = await runCommand(process.execPath, ['-e', chunkScript], {
+      cwd: root,
+      maxOutputBytes: 180,
+    })
+    const redacted = redactString(captured.stdout)
+    const redactedStderr = redactString(captured.stderr)
+    assert.equal(captured.code, 0)
+    assert.equal(captured.cleanupOk, true)
+    assert.equal(Buffer.byteLength(captured.stdout, 'utf8') <= 180, true)
+    assert.equal(
+      Buffer.byteLength(captured.stdout, 'utf8') < Buffer.byteLength(chunks.join(''), 'utf8'),
+      true,
+    )
+    assert.equal(redacted.includes(canary), false)
+    assert.equal(redacted.includes(canary.slice(0, 10)), false)
+    assert.equal(redacted.includes(canary.slice(-10)), false)
+    assert.equal(redacted.includes('Bearer chunked'), false)
+    assert.equal(redacted.includes('operator:'), false)
+    assert.equal(redacted.includes('safe=keep'), true)
+    assert.equal(redactedStderr.includes(canary), false)
+    assert.equal(redactedStderr.includes(canary.slice(0, 10)), false)
+    assert.equal(redactedStderr.includes(canary.slice(-10)), false)
+    assert.equal(redactedStderr.includes('Bearer chunked'), false)
+    assert.equal(redactedStderr.includes('operator:'), false)
+    assert.equal(redactedStderr.includes('safe=keep'), true)
+    assert.equal(appendBounded('🙂🙂', '', 5).includes('\ufffd'), false)
+    assert.equal(Buffer.byteLength(appendBounded('🙂🙂', '', 5), 'utf8') <= 5, true)
+  } finally {
+    if (process.platform === 'win32')
+      for (const pid of [
+        descendantPid,
+        Number(await readFile(join(root, 'natural-descendant.pid'), 'utf8').catch(() => '0')),
+      ]) {
+        if (!Number.isInteger(pid) || pid <= 0) continue
+        await runCommand('taskkill', ['/PID', String(pid), '/T', '/F'], {
+          cwd: root,
+          timeoutMs: 2_000,
+        })
+      }
+    await rm(root, { force: true, recursive: true })
+  }
+}
+
+export async function runAdversarialMatrix() {
+  await runRedactionMatrix()
+  await runProcessMatrix()
+}

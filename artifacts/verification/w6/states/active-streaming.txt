@@ -1,0 +1,24 @@
+braid  cwd  braid-integration  ·  session  New conversation
+ W6 active streaming
+
+ working…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+streaming · Ctrl+C cancel                  fixture/deterministic · thinking none
+Braid starter · runner pi · deterministic fixture             Enter queues input

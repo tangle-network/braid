@@ -1,14 +1,32 @@
-import type { BraidState, MessageStatus } from '../domain/state.js'
-import { sanitizeTerminalText } from '../views/shared/sanitize.js'
+import type { RuntimeEventSummary } from '../domain/runtime-events.js'
+import type {
+  BraidMessagePart,
+  BraidState,
+  MessagePartKind,
+  MessageRole,
+  MessageStatus,
+} from '../domain/state.js'
+import { boundVisibleText, sanitizeTerminalText } from '../views/shared/sanitize.js'
 
 const MAX_VISIBLE_MESSAGES = 200
-const MAX_VISIBLE_MESSAGE_CHARS = 200_000
+const MAX_VISIBLE_PARTS = 512
+const MAX_VISIBLE_PART_CHARS = 32_000
 
 export interface MessageView {
   readonly id: string
-  readonly role: 'user' | 'assistant'
+  readonly role: MessageRole
   readonly text: string
   readonly status: MessageStatus
+  readonly parts: readonly MessagePartView[]
+}
+
+export interface MessagePartView {
+  readonly id: string
+  readonly kind: MessagePartKind
+  readonly text: string
+  readonly status?: string
+  readonly toolName?: string
+  readonly title?: string
 }
 
 export interface AppView {
@@ -17,15 +35,53 @@ export interface AppView {
   readonly runner: string
   readonly model: string
   readonly connection: string
-  readonly status: 'ready' | 'running' | 'failed' | 'blocked' | 'aborted'
+  readonly status:
+    | 'ready'
+    | 'running'
+    | 'failed'
+    | 'blocked'
+    | 'aborted'
+    | 'cancelled'
+    | 'unknown'
+    | 'expired'
+    | 'detached'
+    | 'reconnecting'
+    | 'cancelling'
   readonly statusText: string
   readonly messages: readonly MessageView[]
   readonly hiddenMessageCount: number
+  readonly activities: readonly {
+    readonly id: string
+    readonly type: string
+    readonly label: string
+    readonly detail?: string
+  }[]
+  readonly eventDetails: readonly RuntimeEventSummary[]
 }
 
 function visibleTail(text: string): string {
-  if (text.length <= MAX_VISIBLE_MESSAGE_CHARS) return text
-  return `…\n${text.slice(-MAX_VISIBLE_MESSAGE_CHARS)}`
+  return boundVisibleText(text)
+}
+
+function detailText(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value) ?? ''
+  } catch {
+    return '[unavailable]'
+  }
+}
+
+function partView(part: BraidMessagePart): MessagePartView {
+  const detail = part.text ?? part.error ?? (part.result === undefined ? part.input : part.result)
+  return {
+    id: part.id,
+    kind: part.kind,
+    text: sanitizeTerminalText(visibleTail(detailText(detail).slice(0, MAX_VISIBLE_PART_CHARS))),
+    ...(part.status === undefined ? {} : { status: sanitizeTerminalText(part.status) }),
+    ...(part.toolName === undefined ? {} : { toolName: sanitizeTerminalText(part.toolName) }),
+    ...(part.title === undefined ? {} : { title: sanitizeTerminalText(part.title) }),
+  }
 }
 
 export function buildAppView(state: BraidState): AppView {
@@ -35,28 +91,56 @@ export function buildAppView(state: BraidState): AppView {
     role: message.role,
     text: sanitizeTerminalText(visibleTail(message.text)),
     status: message.status,
+    parts: Object.freeze(message.parts.slice(-MAX_VISIBLE_PARTS).map(partView)),
   }))
   const fixture = state.profile.model?.default === 'fixture/deterministic'
   const latestRun = state.runs.at(-1)
+  const activities =
+    latestRun?.activity.slice(-MAX_VISIBLE_PARTS).map((item) => ({
+      id: item.id,
+      type: item.type,
+      label: sanitizeTerminalText(item.label),
+      ...(item.detail === undefined ? {} : { detail: sanitizeTerminalText(item.detail) }),
+    })) ?? []
   const status = state.activeRunId
-    ? 'running'
+    ? latestRun?.status === 'reconnecting'
+      ? 'reconnecting'
+      : latestRun?.status === 'cancelling'
+        ? 'cancelling'
+        : 'running'
     : latestRun?.status === 'failed'
       ? 'failed'
       : latestRun?.status === 'blocked'
         ? 'blocked'
         : latestRun?.status === 'aborted'
           ? 'aborted'
-          : 'ready'
-  const statusText =
-    status === 'running'
-      ? 'working'
-      : status === 'failed'
-        ? (latestRun?.error ?? state.lastError ?? 'failed')
-        : status === 'blocked'
-          ? 'blocked'
-          : status === 'aborted'
+          : latestRun?.status === 'cancelled'
             ? 'cancelled'
-            : 'ready'
+            : latestRun?.status === 'unknown'
+              ? 'unknown'
+              : latestRun?.status === 'expired'
+                ? 'expired'
+                : latestRun?.status === 'detached'
+                  ? 'detached'
+                  : 'ready'
+  const statusText =
+    status === 'running' || status === 'reconnecting'
+      ? 'working'
+      : status === 'cancelling'
+        ? 'cancelling'
+        : status === 'failed'
+          ? (latestRun?.error ?? state.lastError ?? 'failed')
+          : status === 'blocked'
+            ? 'blocked'
+            : status === 'aborted' || status === 'cancelled'
+              ? 'cancelled'
+              : status === 'unknown'
+                ? 'unknown'
+                : status === 'expired'
+                  ? 'expired'
+                  : status === 'detached'
+                    ? 'background'
+                    : 'ready'
 
   return Object.freeze({
     revision: state.revision,
@@ -68,5 +152,7 @@ export function buildAppView(state: BraidState): AppView {
     statusText: sanitizeTerminalText(statusText),
     messages: Object.freeze(messages),
     hiddenMessageCount,
+    activities: Object.freeze(activities),
+    eventDetails: Object.freeze(latestRun?.eventDetails.slice(-MAX_VISIBLE_PARTS) ?? []),
   })
 }

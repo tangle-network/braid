@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 2,
+  "state": "comparison",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "abbc7d58b48a991469ec8dc103bd1e9479d22466f8ac77687aea24cf7b77a562",
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "b1d5ba5b3c81034647fe9247d94a6f4662c7a22e6a501f6f226c36208e64d046"
+  },
+  "dimensions": {
+    "columns": 80,
+    "rows": 24
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.83.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 1,
+  "frame": "braid  cwd  braid-integration  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n    /compare · frozen runs\n    saved result: replayed from the local journal\n    baseline run: run-fixture-baseline\n    baseline source: bbbbbbbbbbbbbbb…bbbbbbbb\n    baseline outcome: completed · cost: 0.014 · source: frozen run field...\n    candidate run: run-fixture-candidate\n    candidate source: ccccccccccccccc…cccccccc\n    candidate outcome: completed · cost: 0.009 · source: frozen run fiel...\n    sample: 1 paired · 0 baseline-only · 0 candidate-only\n    PgUp/PgDn · page 1/9 · esc close\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 1,
+      "sequence": 1,
+      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "profile": {
+        "name": "Braid starter",
+        "description": "A portable starter profile for the Braid terminal",
+        "harness": "pi",
+        "model": {
+          "default": "fixture/deterministic",
+          "reasoningEffort": "none"
+        }
+      },
+      "draft": "",
+      "messages": [],
+      "runs": [],
+      "interactions": [],
+      "queue": [],
+      "activeRunId": null,
+      "lastError": null
+    },
+    "view": {
+      "revision": 1,
+      "workspace": "/home/drew/code/.worktrees/braid-integration",
+      "profileName": "Braid starter",
+      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "connection": "deterministic fixture",
+      "conversationId": "conv-1",
+      "conversationTitle": "New conversation",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "active": true,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "branch": "branch-1",
+      "status": "empty",
+      "statusText": "Comparison complete: 1 paired run",
+      "queueCount": 0,
+      "queue": [],
+      "messages": [],
+      "hiddenMessageCount": 0,
+      "runs": [],
+      "interactions": [],
+      "activity": [],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "New conversation",
+          "status": "complete",
+          "depth": 0,
+          "edgeLabel": "attached"
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "Main",
+          "status": "complete",
+          "depth": 1,
+          "edgeLabel": "attached"
+        }
+      ],
+      "capabilities": {
+        "conversation.create": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.open": {
+          "available": true,
+          "source": "application"
+        },
+        "run.runner": {
+          "available": false,
+          "source": "application",
+          "reason": "Runner overrides require the current profile compatibility helpers"
+        },
+        "run.model": {
+          "available": false,
+          "source": "application",
+          "reason": "Model overrides require provider capabilities from the current connection"
+        },
+        "run.effort": {
+          "available": false,
+          "source": "application",
+          "reason": "Effort overrides require provider capabilities from the current connection"
+        },
+        "conversation.branch": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.clone": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.fork": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.ask": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.recipe": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.compare": {
+          "available": true,
+          "source": "application"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "export.create": {
+          "available": true,
+          "source": "application"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "profile.select": {
+          "available": true,
+          "source": "application"
+        },
+        "connection.select": {
+          "available": true,
+          "source": "application"
+        },
+        "settings.open": {
+          "available": true,
+          "source": "application"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "draft.write": {
+          "available": true,
+          "source": "application"
+        },
+        "run.send": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no active run to cancel"
+        },
+        "run.queue": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.detach": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconnect": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconcile": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "transcript",
+      "appearance": {
+        "color": "256",
+        "highContrast": false,
+        "reducedMotion": false
+      },
+      "notice": "Comparison complete: 1 paired run"
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "value": {
+            "kind": "workspace.opened",
+            "workspace": "/home/drew/code/.worktrees/braid-integration"
+          }
+        }
+      }
+    ]
+  }
+}

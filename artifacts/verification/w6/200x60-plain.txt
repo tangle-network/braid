@@ -1,0 +1,15 @@
+Braid ready — /home/drew/code/.worktrees/braid-integration
+status: ready for a message
+conversation: New conversation; branch: branch-1
+profile: Braid starter; runner: pi; connection: deterministic fixture
+appearance: none; high contrast off; reduced motion off
+event 2: draft.changed; status: ready for a message
+event 3: run.requested: W6 plain proof; status: streaming
+event 4: effect.upserted; status: streaming
+event 5: application.shutdown.requested; status: streaming
+event 6: run.text.delta: Fixture resp; status: streaming
+event 7: run.text.delta: onse through; status: streaming
+event 8: run.text.delta: pi: W6 plai; status: streaming
+event 9: run.text.delta: n proof; status: streaming
+event 10: run.finished: Fixture response through pi: W6 plain proof; status: completed
+event 11: effect.upserted; status: completed

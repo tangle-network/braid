@@ -7,9 +7,10 @@
  * @source-license MIT
  * @adaptation Imports Pi's published Terminal type and follows Braid formatting.
  */
+
+import type { Terminal } from '@earendil-works/pi-tui'
 import type { Terminal as XtermTerminalType } from '@xterm/headless'
 import xterm from '@xterm/headless'
-import type { Terminal } from '@earendil-works/pi-tui'
 
 const XtermTerminal = xterm.Terminal
 

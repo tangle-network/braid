@@ -1,0 +1,40 @@
+braid  cwd  braid-integration  ·  session  New conversation  ·  branch  branch-1
+ W6 visual proof
+
+ Fixture response through pi: W6 visual proof
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+completed                                                                          fixture/deterministic · thinking none
+Braid starter · runner pi · deterministic fixture                                                        Ctrl+P commands

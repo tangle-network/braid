@@ -89,7 +89,7 @@ Errors use stable machine codes plus concise human text and never include secret
 | `list_profiles` / `select_profile` / `validate_profile` / `save_profile` | Drive canonical profile workflows |
 | `list_connections` / `test_connection` / `select_connection` | Drive connection workflows without exposing secret values |
 | `set_run_override` | Set runner, model, effort, or mode for the next run |
-| `new_conversation` / `list_conversations` / `open_conversation` | Drive conversation navigation |
+| `new_conversation` / `list_conversations` / `open_conversation` / `rename_conversation` / `archive_conversation` / `delete_conversation` | Drive conversation navigation and lifecycle |
 | `set_draft` / `send` / `queue` / `remove_queued` / `steer` | Drive input and active-run behavior |
 | `respond_interaction` | Submit a typed canonical response with stable operation identity |
 | `cancel_run` | Request and await explicit cancellation state events |
@@ -97,12 +97,12 @@ Errors use stable machine codes plus concise human text and never include secret
 | `ask` / `analyze` / `compare` / `promote_analysis` | Drive `agent-eval` workflows |
 | `get_graph` / `get_activity` / `get_details` | Query semantic product views |
 | `steer_worker` / `cancel_worker` | Drive typed runtime supervisor controls |
-| `export` | Produce a redacted export and digest |
+| `export` / `import_conversation` | Produce or safely restore a redacted conversation with a verified digest |
 | `shutdown` | Persist state and apply configured detach or cancel behavior |
 
 The published protocol schema marks every mutating command as operation-bearing and rejects it when `operationId` is absent.
 
-This includes profile and connection changes, conversation and branch changes, send and queue changes, interaction response, cancellation, fork execution, analysis and promotion, worker control, export creation, and deletion.
+This includes profile and connection changes, conversation and branch changes, conversation import, send and queue changes, interaction response, cancellation, fork execution, analysis and promotion, worker control, export creation, and deletion.
 
 ### Protocol behavior
 
@@ -119,6 +119,38 @@ Reusing an operation identifier with a different command or canonical parameter 
 The protocol schema is published in the npm package and checked for backward compatibility within a major version.
 
 End of input performs the same safe shutdown as `shutdown` with the configured default and returns a meaningful process exit code.
+
+### Cancellation, restart, and evidence rules
+
+Cancellation is a two-party operation.
+
+Braid first records `run.cancel.requested`, then asks the runtime port for provider acknowledgement while the run is shown as `cancelling`.
+
+Local stream abortion is only cleanup and never proves that the provider stopped.
+
+An acknowledgement records `aborted`; a rejected, missing, or timed-out acknowledgement records `unknown` with the reason.
+
+Production uses encrypted SQLite behind `StoragePort`, including the event journal, canonical projection, operation ledger, immutable run receipts, snapshots, backups, recovery markers, and content-key lifecycle.
+
+It loads and verifies durable state before any dispatch, so a restart reconciles an existing operation identifier instead of starting the provider twice.
+
+The deterministic memory journal remains fixture-only and composes through the same application ports.
+
+`shutdown` is operation-bearing in JSONL, plain mode, command-key paths, signal handling, and the terminal command palette.
+
+All of those paths commit one `application.shutdown.requested` event before waiting for idle or cancellation completion.
+
+Assistant message text and every rendered part pass through the same sanitized character and line bounds before Pi TUI receives them.
+
+The packed proof runs send, graph, unavailable command, retry, cancellation, and shutdown through terminal, RPC, and plain mode.
+
+RPC and plain mode use separate stdout and stderr pipes; only terminal mode uses a pseudoterminal.
+
+Visual state captures use one signal-triggered semantic record with a matching revision, and interaction and fork captures contain real fixture `answerSpec` and fork-preview data.
+
+Every raster manifest records the Pi TUI, PTY, emulator, Node, `agg`, ImageMagick, font, color mode, packed binary, and tarball provenance.
+
+Package proof builds an isolated copy, records a digest of the exact source copy, packs that build, and installs the resulting tarball before running the binary.
 
 ## Deterministic test adapter
 
@@ -146,7 +178,44 @@ The fake adapter cannot satisfy any check labeled live.
 
 Static checks include formatting, lint, strict type checking, dependency boundaries, exhaustive event handling, generated schema freshness, package exports, license inventory, vulnerability policy, and build.
 
+The repository-owned module-cycle check walks every `src` TypeScript module, includes type-only imports and re-exports, resolves relative `.js` specifiers to `.ts`, reports exact strongly connected components, rejects a zero-module scan, and runs in `pnpm check` with a deterministic synthetic-cycle self-test.
+
 The package test installs the packed tarball in a clean directory and runs `braid --version`, `braid --help`, one headless deterministic turn, and one virtual-terminal deterministic turn.
+
+### W5 application-core, storage, and release checks
+
+W5 has stable package entry points for `test:unit`, `test:contract`, `test:coordination`, `test:rpc`, `test:virtual-terminal`, `test:pty`, `test:storage`, `test:crash`, `test:security`, `test:performance`, `test:live`, `test:install`, `test:capture`, and `check:release`.
+
+`test:storage` exercises the coordinator, the deterministic storage adapter, and the production SQLite adapter for atomic pending admission, serialized execution, duplicate reconciliation, conflict recording, encrypted payloads, WAL, foreign keys, replay cursors, missing history, projections, backups, approved-root and no-clobber enforcement, restore, retention, redaction, key destruction, migration interruption, lock handling, and commit failure.
+
+`test:crash` runs a compiled child process that is killed before and after every SQLite commit boundary and every backup, restore-manifest, copy, move, install, cleanup, and publication boundary, then reopens the database and checks integrity and durable outcome state.
+
+`test:security` checks protected headless key sources, operating-system credential availability, secret canaries, secret-designated interaction values, and production fail-closed behavior.
+
+`test:install` and `test:pty` run the packed-package proof, while `test:capture` runs the deterministic terminal capture.
+
+`test:live` exits nonzero with a precise external prerequisite message because live provider services and credentials are not available in this repository's deterministic test environment.
+
+`test:coordination` includes a two-process native SQLite race that proves one external dispatch for one operation identifier.
+
+`test:performance` records native SQLite append measurements at 10,000 and 100,000 events and verifies the resulting event count and integrity report.
+
+The native storage test commands fail with an explicit prerequisite when the exact encrypted SQLite package is absent; they never convert missing production coverage into a passing or silently skipped result.
+
+The reducer property test generates 1,000 histories and compares incremental reduction with full replay by canonical projection checksum.
+
+The production adapter, not `MemoryStorage`, is the proof source for encryption, crash recovery, backup, restore, content-key destruction, and concurrent reader/writer behavior.
+
+### W5 requirement mapping
+
+| Requirement | Proof in this repository |
+| --- | --- |
+| `AR-03`–`AR-07`, `AR-10` | `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, `scripts/check-boundaries.mjs`, `scripts/check-dependencies.mjs`, `test/scripts.test.ts` |
+| `PR-09` | Restarted SQLite projection checksum and `StorageJournal.fromStorage` replay in `test/storage.test.ts` |
+| `PC-08`–`PC-10` | `test/security.test.ts`, headless key validation, credential-port availability failure, and package metadata checks |
+| `CF-01`, `CF-08` | Branded graph identifiers, operation/effect records, duplicate-event and conflict tests in `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, and `test/coordination.test.ts` |
+| `SE-01`, `SE-02`, `SE-06`, `SE-07` | Secret rejection, raw-byte canaries, wrong-key rejection, protected key-source tests, and dependency/license checks |
+| `ST-01`–`ST-10` | Production SQLite encryption, atomic commit, duplicate/gap/replay, forced-kill, migration, integrity, retention/redaction, provider-state non-guessing, and concurrent-writer tests |
 
 ### Layer 2: unit and property checks
 
@@ -202,6 +271,8 @@ The required flow types a prompt, edits multiline input, selects profile and run
 
 Tests cover alternate-screen and inline modes, legacy and Kitty keyboard modes, `NO_COLOR`, 16-color, high-contrast, reduced-motion, and plain output.
 
+The accessibility proof rejects every OSC title, hyperlink, progress, or equivalent metadata sequence; it does not allowlist individual OSC forms.
+
 Forced `SIGINT`, `SIGTERM`, stream failure, and process kill verify terminal restoration and database recovery.
 
 ### Layer 7: live integrations
@@ -249,7 +320,7 @@ The published package is downloaded from the registry after publication and its 
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |
 | LIVE-10 | Confidential Tangle path | Requested placement remains unverified until valid attestation is checked; negative nonce and measurement tests fail |
 | LIVE-11 | Runtime supervisor | Real root and worker stream, spend and status update, typed steering effect, typed cancellation effect, and reconnectable control |
-| LIVE-12 | `agent-eval` trace analysis | Real source run freezes, analyst executes, citations resolve, source remains unchanged, and selected finding promotion records provenance |
+| LIVE-12 | `agent-eval` trace analysis | Real source run freezes, the selected profile and connection execute analyst model calls through `agent-runtime`, usage and cost receipts settle, citations resolve, source remains unchanged, and selected finding promotion records provenance |
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
 
@@ -300,8 +371,8 @@ Every report includes hardware, operating system, Node version, terminal, dimens
 
 | ID | Boundary | Target |
 | --- | --- | --- |
-| PERF-01 | Process start to first visible frame, warm database, 20 runs | p95 ≤ 250 ms |
-| PERF-02 | Process start to first visible frame, cold 100,000-event database, 20 runs | p95 ≤ 1,000 ms |
+| PERF-01 | Process start to first visible frame, warm database and primed Node compile cache, 20 runs | p95 ≤ 250 ms |
+| PERF-02 | Process start to first visible frame, cold 100,000-event database and a fresh empty Node compile cache for every run, 20 runs | p95 ≤ 1,000 ms |
 | PERF-03 | Key byte received to updated frame while idle, 1,000 keys | p95 ≤ 50 ms and p99 ≤ 100 ms |
 | PERF-04 | Runtime event received to updated frame at 100 events/s, 10,000 events | p95 ≤ 50 ms with zero missing or duplicate event |
 | PERF-05 | Replay and reduce 10,000 committed events | p95 ≤ 2 seconds |
@@ -349,7 +420,7 @@ Each case runs on at least three representative source fixtures and includes a s
 
 ## Release evidence manifest
 
-The release process writes `artifacts/verification/<version>/manifest.json` and a readable `report.md`.
+The release process validates staged results from `artifacts/verification/release/checks.json`, then writes `artifacts/verification/<version>/manifest.json` and `artifacts/verification/<version>/report.md`.
 
 Large recordings, raw traces, and live logs may live in immutable CI or release storage, while the manifest stores content hashes and authenticated links.
 
@@ -363,25 +434,63 @@ The manifest contains the following top-level data.
   "packageIntegrity": "sha512-…",
   "startedAt": "<iso>",
   "finishedAt": "<iso>",
-  "sourceState": {},
-  "dependencies": [],
-  "environments": [],
+  "sourceState": {
+    "clean": true,
+    "commit": "<sha>",
+    "treeSha256": "<tree-sha>",
+    "tarballSha256": "<sha256>",
+    "tarballArtifactId": "package-tarball",
+    "specificationDigests": []
+  },
+  "dependencies": [
+    { "name": "@tangle-network/agent-runtime", "version": "<exact>", "integrity": "sha512-…" }
+  ],
+  "environments": [
+    { "id": "linux-release", "kind": "ci", "details": {} }
+  ],
   "checks": [],
-  "requirements": {},
+  "requirements": {
+    "UX-01": { "checks": ["virtual-terminal"], "artifacts": ["80x24-frame"] }
+  },
   "artifacts": [],
   "liveResources": [],
   "cleanup": [],
-  "signatures": []
+  "signatures": [
+    {
+      "algorithm": "ed25519",
+      "keyId": "sha256:…",
+      "payloadSha256": "<sha256>",
+      "signature": "<base64>"
+    }
+  ]
 }
 ```
 
 Each check records identifier, category, required status, command, working directory, environment identifier, start and end, exit code, attempt count, measured fields, result, stdout and stderr artifact hashes, and failure details.
 
+Each check also carries an Ed25519 receipt over every check field, including the exact command, build digest, exit code, and stdout and stderr digests.
+
+The verifier accepts only the public key pinned in `release/execution-public-key.pem`; the private key is supplied through `BRAID_RELEASE_SIGNING_KEY_PATH`, must have owner-only permissions, and is never stored in the repository or evidence.
+
+The verifier rejects check identifiers outside the fixed command list and the requirement identifiers extracted from these specification documents.
+
+Every accepted check command must be one of the fixed commands below and its category must match that command.
+
+Timestamps use canonical millisecond UTC form such as `2026-08-02T07:00:00.000Z`, and the recorded duration must equal their difference.
+
+Measurements are typed scalar values, full distributions, or explicit unavailable or uncaptured records with a reason.
+
+A distribution records unit, sample count, minimum, median, p90, p95, p99, and maximum as finite ordered numbers.
+
+Passing checks set `failureDetails` to `null` and identify stdout and stderr as `{ "artifactId": "…", "sha256": "…" }`, including zero-byte output artifacts rather than omitting either stream.
+
+The release verifier requires every stable command row below, rejects every unreferenced check, and requires `UP-*`, `LIVE-*`, `PERF-*`, and `EVAL-*` requirements to cite an identically named check record of the appropriate category.
+
 Each requirement maps to one or more check identifiers and artifact identifiers.
 
 A zero, null, unavailable, or uncaptured measured field remains in the manifest with its reason.
 
-The verifier fails when a required identifier from any specification document is absent, duplicated, skipped, stale, run against another build digest, or linked only to an inadmissible proof type.
+The verifier fails when a required identifier from any specification document is absent, duplicated, skipped, stale, unsigned, run against another build digest, or linked only to an inadmissible proof type.
 
 Live resource cleanup records each environment, checkpoint, session, temporary repository, and credential with confirmed or unresolved state.
 
@@ -391,27 +500,37 @@ The release cannot complete with an unresolved externally billable test resource
 
 Implementation must provide the following stable scripts.
 
-| Command | Scope |
-| --- | --- |
-| `pnpm check` | Format, lint, strict types, boundaries, schemas, licenses, and build |
-| `pnpm test:unit` | Unit and normal property tests |
-| `pnpm test:contract` | Shared port and capability conformance |
-| `pnpm test:rpc` | Packed-binary JSONL protocol tests |
-| `pnpm test:virtual-terminal` | Cell, layout, Unicode, and state snapshots |
-| `pnpm test:pty` | Packed-binary real terminal keyboard and lifecycle tests |
-| `pnpm test:storage` | Encryption, journal, migration, integrity, and crash recovery |
-| `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
-| `pnpm test:performance` | All required Braid overhead measurements |
-| `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
-| `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
-| `pnpm test:live:supervisor` | Runtime worker observation and control |
-| `pnpm test:live:analysis` | Real frozen trace and analyst path |
-| `pnpm test:eval` | Judge calibration and semantic release cases |
-| `pnpm test:install` | Packed package across supported release platforms |
-| `pnpm capture:visual` | Deterministic real-binary captures and manifests |
-| `pnpm verify:release` | Validate and assemble every required result into one signed evidence manifest |
+| Check ID | Command | Scope |
+| --- | --- | --- |
+| `repository` | `pnpm check` | Format, lint, strict types, boundaries, dependency/license metadata, deterministic checks, and the release manifest check |
+| `unit` | `pnpm test:unit` | Unit and normal property tests |
+| `contract` | `pnpm test:contract` | Shared port and capability conformance |
+| `coordination` | `pnpm test:coordination` | Durable effect admission, digest conflict, and dispatch serialization |
+| `rpc` | `pnpm test:rpc` | JSONL protocol tests |
+| `rpc-packed` | `pnpm test:rpc:packed` | Packed-binary JSONL protocol tests |
+| `virtual-terminal` | `pnpm test:virtual-terminal` | Cell, layout, Unicode, keyboard, and state snapshots |
+| `pty` | `pnpm test:pty` | Packed-binary real terminal keyboard and lifecycle tests |
+| `storage` | `pnpm test:storage` | Encrypted production journal, migration, integrity, replay, retention, redaction, backups, and concurrent access |
+| `crash` | `pnpm test:crash` | Production SQLite forced-kill recovery at every durable commit boundary |
+| `security` | `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
+| `performance` | `pnpm test:performance` | Reducer, coordination, and storage overhead measurements; the full PERF-01..10 matrix lands in W12 |
+| `live` | `pnpm test:live` | Aggregate live scope guard |
+| `live-bridge` | `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
+| `live-tangle` | `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
+| `live-supervisor` | `pnpm test:live:supervisor` | Runtime worker observation and control |
+| `live-analysis` | `pnpm test:live:analysis` | Real frozen trace and analyst path |
+| `eval` | `pnpm test:eval` | Judge calibration and semantic release cases |
+| `install` | `pnpm test:install` | Packed package across supported release platforms |
+| `capture` | `pnpm test:capture` | Deterministic baseline real-binary captures |
+| `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
+| `release` | `pnpm check:release` | Release manifest and evidence-set check |
+| `verify:release` | `pnpm verify:release` | Validate and assemble every required result into one signed evidence manifest from an isolated clean tracked checkout |
 
-These commands do not exist in the planning-only repository yet and are implementation deliverables, not claims of current functionality.
+The deterministic local commands are implemented in this repository.
+
+The opt-in CLI Bridge flow and semantic evaluation implementation are present and execute when their configured runners are available.
+
+Tangle, supervisor, and live-analysis commands return a typed unavailable result until protected credentials, deployments, and evidence stores are supplied.
 
 ## Verification acceptance
 

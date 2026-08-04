@@ -1,0 +1,24 @@
+braid  cwd  braid-integration  ·  session  New conversation
+
+ Write a message, or press Ctrl+P for commands.
+
+
+
+
+    /compare · frozen runs
+    saved result: replayed from the local journal
+    baseline run: run-fixture-baseline
+    baseline source: bbbbbbbbbbbbbbb…bbbbbbbb
+    baseline outcome: completed · cost: 0.014 · source: frozen run field...
+    candidate run: run-fixture-candidate
+    candidate source: ccccccccccccccc…cccccccc
+    candidate outcome: completed · cost: 0.009 · source: frozen run fiel...
+    sample: 1 paired · 0 baseline-only · 0 candidate-only
+    PgUp/PgDn · page 1/9 · esc close
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+ready for a message                        fixture/deterministic · thinking none
+Braid starter · runner pi · deterministic fixture                Ctrl+P commands

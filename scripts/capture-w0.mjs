@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import * as pty from 'node-pty'
 import xterm from '@xterm/headless'
+import * as pty from 'node-pty'
 
 const run = promisify(execFile)
 const repository = new URL('../', import.meta.url).pathname
@@ -73,7 +73,7 @@ async function capture(columns, rows) {
 
   await waitFor(() => screen.includes('braid'), `${columns}x${rows} header`)
   input('\u0010')
-  await waitFor(() => screen.includes('Commands') && screen.includes('/quit'), 'command overlay')
+  await waitFor(() => screen.includes('Commands') && screen.includes('/help'), 'command overlay')
   input('q')
   await waitFor(() => screen.includes('/quit') && !screen.includes('/help'), 'command search')
   input('\u001b')

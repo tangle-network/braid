@@ -5,6 +5,7 @@ import { buildAppView } from '../src/app/view-model.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
+import { MAX_RENDERED_TEXT_CHARS } from '../src/views/shared/sanitize.js'
 
 function envelopes(events: readonly BraidEvent[]): BraidEventEnvelope[] {
   return events.map((event, index) => ({
@@ -50,9 +51,16 @@ test('10,000 streamed events replay without duplication or event loss', () => {
   assert.equal(state.messages[1]?.text.length, delta.length * deltaCount)
   assert.equal(state.messages[1]?.text, response)
   assert.equal(view.messages.length, 2)
-  assert.equal(view.messages[1]?.text.length, 200_002)
+  assert.equal(view.messages[1]?.text.length, MAX_RENDERED_TEXT_CHARS)
   assert.equal(view.messages[1]?.text.startsWith('…\n'), true)
-  assert.equal(view.messages[1]?.text.endsWith(response.slice(-200_000)), true)
+  assert.equal(
+    view.messages[1]?.text.endsWith(
+      Array.from(response)
+        .slice(-(MAX_RENDERED_TEXT_CHARS - 2))
+        .join(''),
+    ),
+    true,
+  )
 })
 
 test('replay rejects a sequence gap', () => {

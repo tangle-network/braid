@@ -1,84 +1,271 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
-import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidEvent, BraidEventEnvelope, TurnUsage } from '../domain/events.js'
-import { reduceEvent } from '../domain/reducer.js'
-import { initialState, type BraidState } from '../domain/state.js'
+import { randomUUID } from 'node:crypto'
+import type { AgentProfile, InteractionResponse } from '@tangle-network/agent-interface'
+import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import { providerEventKey } from '../domain/events.js'
+import { assertBraidState } from '../domain/invariants.js'
+import type {
+  ContextTransferReceipt,
+  NativeContextBoundaryProof,
+  RunAdmissionReceipt,
+} from '../domain/receipts.js'
+import { redactSensitiveText } from '../domain/redaction.js'
+import { replayEvents } from '../domain/reducer.js'
+import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
+import { type BraidState, initialState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
-import type { ExecutionPort } from '../ports/execution.js'
+import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
+import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
+import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
+import type { PortViews } from './application-port-builder.js'
+import type {
+  ControlEffectRequest,
+  ReconnectInput,
+  RuntimeEventIngestionResult,
+} from './application-ports.js'
+import { wireApplicationRuntime } from './application-runtime-wiring.js'
+import type {
+  AppSubscriber,
+  ControlReceipt,
+  InteractionReceipt,
+  QueueReceipt,
+  SendInput,
+  SendReceipt,
+  ShutdownReceipt,
+} from './application-types.js'
+import { executeControlEffect } from './control-effects.js'
+import { createConversationActions } from './conversation-composition.js'
+import { ConversationOperationCoordinator } from './conversation-operation-coordinator.js'
+import type { ConversationActions } from './conversations.js'
+import { createDurableSender } from './durable-send.js'
+import { SerializedEffectCoordinator } from './effect-coordinator.js'
+import { projectEffectRecord } from './effect-projection.js'
+import { AppError } from './errors.js'
+import { FailClosedJournal } from './fail-closed-journal.js'
+import { createIntelligenceActions, type IntelligenceActions } from './intelligence-actions.js'
+import { respondInteraction as respondInteractionController } from './interaction-controller.js'
 import { MemoryJournal } from './journal.js'
+import { legacyCancel } from './legacy-cancel.js'
+import {
+  admitRun,
+  continueNative,
+  runEffectRequest,
+  sendRun,
+  sendRunAsync,
+  validateNativeProof,
+} from './run-admission.js'
+import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
+import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
+import { snapshotRunExecution } from './run-execution-snapshot.js'
+import { ingestRuntimeEvent } from './run-ingestion.js'
+import { createRunLedger } from './run-ledger.js'
+import { reconcileRun, reconnectRun } from './run-replay.js'
+import { isTerminal, waitForIdle } from './run-status.js'
+import { shutdownApplication } from './shutdown-controller.js'
 
-export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
+export type { SendInput, SendReceipt } from './application-types.js'
+export { AppError } from './errors.js'
 
-export interface SendInput {
-  readonly operationId: string
-  readonly text: string
-  readonly conversationId?: string
-  readonly branchId?: string
-}
+import {
+  type ApplicationJournal,
+  admitPersistedSend,
+  isEffectStorage,
+  reconcileRestartRun,
+  restoreApplicationOperations,
+} from './application-support.js'
+import {
+  commitEvent,
+  commitEventAndWait,
+  commitEventAndWaitRecovery,
+  commitEventRecovery,
+  type TransitionHost,
+} from './application-transition.js'
+import {
+  type ConfigurationActionTransition,
+  createConfigurationActionTransition,
+} from './configuration-action-transition.js'
+import { createInMemoryOperationFingerprint } from './operation-fingerprint.js'
+import { RuntimeSelection } from './runtime-selection.js'
 
-export interface SendReceipt {
-  readonly operationId: string
-  readonly runId: string
-  readonly revision: number
-  readonly replayed: boolean
-  readonly completion: Promise<BraidState>
-}
+export type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 
-interface OperationRecord {
-  readonly digest: string
-  readonly runId: string
-  completion: Promise<void>
-}
-
-export class AppError extends Error {
-  readonly code: string
-
-  constructor(code: string, message: string) {
-    super(message)
-    this.name = 'AppError'
-    this.code = code
-  }
-}
-
-function usageFromFinal(event: Extract<RuntimeStreamEvent, { type: 'final' }>): TurnUsage {
-  const metadata = event.metadata ?? {}
-  const tokenUsage =
-    metadata.tokenUsage && typeof metadata.tokenUsage === 'object'
-      ? (metadata.tokenUsage as Record<string, unknown>)
-      : {}
-  const input = typeof tokenUsage.input === 'number' ? tokenUsage.input : 0
-  const output = typeof tokenUsage.output === 'number' ? tokenUsage.output : 0
-  const costUsd = typeof metadata.costUsd === 'number' ? metadata.costUsd : undefined
-  const model = typeof metadata.model === 'string' ? metadata.model : undefined
-  return {
-    input,
-    output,
-    ...(costUsd === undefined ? {} : { costUsd }),
-    ...(model === undefined ? {} : { model }),
-  }
-}
+const MAX_MESSAGE_BYTES = 1024 * 1024
+const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
 
 export class BraidApplication {
+  readonly conversations: ConversationActions
+  readonly intelligence: IntelligenceActions
+  readonly configuration: ConfigurationActionTransition
+  readonly runtimeSelection: RuntimeSelection
   readonly #execution: ExecutionPort
+  readonly #executionProfile: Readonly<AgentProfile>
   readonly #ids: IdSource
-  readonly #journal: MemoryJournal
-  readonly #operations = new Map<string, OperationRecord>()
+  readonly #clock: Clock
+  readonly #journal: ApplicationJournal
+  readonly #effects: SerializedEffectCoordinator
+  readonly #ledger = createRunLedger()
+  readonly #conversationOperations = new ConversationOperationCoordinator()
   readonly #subscribers = new Set<AppSubscriber>()
+  readonly #controlOwner = `braid-control-${randomUUID()}`
+  readonly #cancelTimeoutMs: number
+  readonly #asynchronousJournal: boolean
+  readonly #portViews: PortViews
+  readonly #transition: TransitionHost
+  readonly #durableSender: (input: RunExecutionSnapshot) => SendReceipt
+  #transitionTail: Promise<void> = Promise.resolve()
+  #storageFailure: unknown
+  #cleanupUncertain: string | undefined
+  #restartReconciliation: Promise<void> = Promise.resolve()
   #state: BraidState
-  #activeAbort: AbortController | undefined
 
-  constructor(options: {
-    readonly profile: Readonly<AgentProfile>
-    readonly execution: ExecutionPort
-    readonly clock: Clock
-    readonly ids: IdSource
-  }) {
+  constructor(options: BraidApplicationOptions) {
     this.#execution = options.execution
+    this.#executionProfile = structuredClone(options.profile)
+    this.runtimeSelection = new RuntimeSelection(this.#executionProfile)
     this.#ids = options.ids
-    this.#journal = new MemoryJournal(options.clock)
-    this.#state = initialState(structuredClone(options.profile))
+    this.#clock = options.clock
+    const fallback =
+      options.journal === undefined && options.effectStorage === undefined
+        ? new MemoryJournal(options.clock)
+        : new FailClosedJournal(options.clock)
+    this.#journal = options.journal ?? fallback
+    this.#asynchronousJournal = this.#journal.asynchronous === true
+    const effectStorage =
+      options.effectStorage ?? (isEffectStorage(this.#journal) ? this.#journal : fallback)
+    const fallbackFingerprint = createInMemoryOperationFingerprint()
+    const fingerprint = (input: {
+      readonly effectKind: string
+      readonly request: unknown
+    }): string =>
+      (effectStorage as import('../ports/effect-storage.js').EffectStoragePort).fingerprint?.(
+        input,
+      ) ?? fallbackFingerprint.fingerprint(input)
+    this.#effects =
+      options.effectCoordinator ??
+      new SerializedEffectCoordinator(effectStorage, options.clock, {
+        onRecord: (record) => this.#recordEffect(record),
+      })
+    this.#cancelTimeoutMs = options.cancelTimeoutMs ?? DEFAULT_CANCEL_TIMEOUT_MS
+
+    const persisted = this.#journal.replay?.() ?? this.#journal.all()
+    for (const envelope of persisted) {
+      const key = providerEventKey(envelope.event)
+      if (key) this.#ledger.addProviderEvent(key)
+    }
+    const restored = this.#journal.initialState?.()
+    const baseState =
+      restored ??
+      initialState(this.#executionProfile, {
+        ...(options.conversationId === undefined ? {} : { conversationId: options.conversationId }),
+        ...(options.branchId === undefined ? {} : { branchId: options.branchId }),
+      })
+    this.#state = replayEvents(baseState, persisted)
+    assertBraidState(this.#state)
+    this.runtimeSelection.syncFromState(this.#state)
+    const runtime = wireApplicationRuntime({
+      currentState: () => this.#state,
+      setState: (state) => {
+        this.#state = state
+      },
+      profile: () => this.runtimeSelection.profile(),
+      commit: (event) => this.#commit(event),
+      commitAndWait: (event) => {
+        if (this.#asynchronousJournal) return this.#commitAndWait(event)
+        this.#commit(event)
+        return undefined
+      },
+      commitAndWaitRecovery: (event) => {
+        if (this.#asynchronousJournal) return this.#commitAndWaitRecovery(event)
+        commitEventRecovery(this.#transition, event)
+        return undefined
+      },
+      execution: this.#execution,
+      ledger: this.#ledger,
+      clock: this.#clock,
+      ids: this.#ids,
+      effects: this.#effects,
+      journal: this.#journal,
+      subscribers: this.#subscribers,
+      asynchronousJournal: this.#asynchronousJournal,
+      transitionTail: () => this.#transitionTail,
+      setTransitionTail: (tail) => {
+        this.#transitionTail = tail
+      },
+      storageFailure: () => this.#storageFailure,
+      markStorageFailure: (error) => {
+        this.#storageFailure ??= error
+      },
+      flush: () => this.whenDurable(),
+      executeControl: (input) => this.#executeControl(input),
+      admitPersistedSend: (operationId, digest) =>
+        admitPersistedSend({
+          effects: this.#effects,
+          operations: this.#ledger,
+          state: () => this.#state,
+          operationId,
+          digest,
+        }),
+      fingerprint,
+      send: (input) => this.send(input),
+    })
+    this.#portViews = runtime.ports
+    this.#transition = runtime.transition
+    this.configuration = createConfigurationActionTransition(this.#transition)
+    this.intelligence = createIntelligenceActions(
+      {
+        currentState: () => this.#state,
+        eventHistory: () => this.#journal.all(),
+        commit: (event) => this.#commit(event),
+        commitAndWait: (event) => {
+          if (this.#asynchronousJournal) return this.#commitAndWait(event)
+          this.#commit(event)
+          return undefined
+        },
+        now: () => this.#clock.now(),
+      },
+      options.intelligence,
+    )
+    this.conversations = createConversationActions({
+      state: () => this.#state,
+      now: () => this.#clock.now(),
+      commit: async (event) => {
+        if (this.#asynchronousJournal) await this.#commitAndWait(event)
+        else this.#commit(event)
+      },
+      coordinate: (input, action) =>
+        this.#conversationOperations.run(input.operationId, input.digest, action),
+      ...(options.conversationStorage === undefined
+        ? {}
+        : { storage: options.conversationStorage }),
+    })
+    restoreApplicationOperations(persisted, {
+      state: () => this.#state,
+      ledger: this.#ledger,
+    })
+    const runReconciliation = reconcileRestartRun(this.#portViews.restart)
+    this.#restartReconciliation = runReconciliation
+      .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
+      .catch((error: unknown) => {
+        this.#storageFailure ??= error
+        throw error
+      })
+    this.#durableSender = createDurableSender({
+      currentState: () => this.#state,
+      ids: this.#ids,
+      restartReconciliation: this.#restartReconciliation,
+      transitionTail: () => this.#transitionTail,
+      admitPersistedSend: (operationId, digest) =>
+        admitPersistedSend({
+          effects: this.#effects,
+          operations: this.#ledger,
+          state: () => this.#state,
+          operationId,
+          digest,
+        }),
+      requestDigest: (_state, value) =>
+        fingerprint({ effectKind: 'run.execute', request: runEffectRequest(value) }),
+      sendAsync: (value, ids) => sendRunAsync(this.#portViews.asyncAdmission, value, ids),
+    })
   }
 
   state(): BraidState {
@@ -89,6 +276,28 @@ export class BraidApplication {
     return this.#journal.all()
   }
 
+  storageFailure(): string | undefined {
+    if (this.#storageFailure === undefined) return undefined
+    return this.#storageFailure instanceof Error ? this.#storageFailure.message : 'Storage failure'
+  }
+
+  cleanupUncertain(): string | undefined {
+    return this.#cleanupUncertain
+  }
+
+  markCleanupUncertain(reason: string): void {
+    this.#cleanupUncertain = redactSensitiveText(reason).slice(0, 512)
+    const runId = this.#state.activeRunId
+    if (runId) this.#ledger.getAbort(runId)?.abort(new Error('Cleanup deadline exceeded'))
+  }
+
+  async whenDurable(): Promise<void> {
+    await this.#restartReconciliation
+    await this.#transitionTail
+    await this.#journal.flush?.()
+    if (this.#storageFailure !== undefined) throw this.#storageFailure
+  }
+
   subscribe(subscriber: AppSubscriber): () => void {
     this.#subscribers.add(subscriber)
     return () => this.#subscribers.delete(subscriber)
@@ -97,154 +306,223 @@ export class BraidApplication {
   initialize(workspace: string): BraidState {
     if (!workspace) throw new AppError('INVALID_WORKSPACE', 'Workspace must not be empty')
     if (this.#state.workspace === workspace) return this.state()
-    if (this.#state.workspace !== null) {
+    if (this.#state.workspace !== null)
       throw new AppError('ALREADY_INITIALIZED', 'Braid is already initialized')
-    }
     this.#commit({ kind: 'workspace.opened', workspace })
     return this.state()
   }
 
   send(input: SendInput): SendReceipt {
-    const text = input.text
-    if (this.#state.workspace === null) {
-      throw new AppError('NOT_INITIALIZED', 'Initialize a workspace before sending')
+    assertWritable(this.#storageFailure)
+    operationId(input.operationId, 'send')
+    if (Buffer.byteLength(input.text, 'utf8') > MAX_MESSAGE_BYTES)
+      throw new AppError('MESSAGE_TOO_LARGE', 'Message must not exceed 1 MiB')
+    if (!input.text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
+    const snapshot = snapshotRunExecution(
+      input,
+      this.#state,
+      this.runtimeSelection.profile(),
+      this.#state.selectedConnectionId ?? undefined,
+    )
+    validateNativeProof(this.#portViews.admission, snapshot)
+    if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {
+      assertWritable(this.#storageFailure)
+      return this.#durableSender(snapshot)
     }
-    if (!input.operationId) {
-      throw new AppError('OPERATION_ID_REQUIRED', 'send requires operationId')
+    try {
+      return sendRun(this.#portViews.admission, snapshot)
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'ASYNC_ADMISSION_REQUIRED') throw error
+      return this.#durableSender(snapshot)
     }
-    if (!text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
+  }
 
-    const conversationId = input.conversationId ?? this.#state.conversationId
-    const branchId = input.branchId ?? this.#state.branchId
-    if (conversationId !== this.#state.conversationId || branchId !== this.#state.branchId) {
-      throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is not open')
-    }
+  queueInput(input: {
+    readonly operationId: string
+    readonly text: string
+    readonly runId?: string
+  }): QueueReceipt {
+    return queueRunInput(this.#portViews.queue, input)
+  }
 
-    const digest = canonicalDigest({
-      command: 'send',
-      conversationId,
-      branchId,
-      text,
-      profile: this.#state.profile,
-    })
-    const previous = this.#operations.get(input.operationId)
-    if (previous) {
-      if (previous.digest !== digest) {
-        throw new AppError(
-          'OPERATION_CONFLICT',
-          `Operation ${input.operationId} was already used with different input`,
-        )
-      }
-      return {
-        operationId: input.operationId,
-        runId: previous.runId,
-        revision: this.#state.revision,
-        replayed: true,
-        completion: previous.completion.then(() => this.state()),
-      }
-    }
-    if (this.#state.activeRunId) {
-      throw new AppError('RUN_ACTIVE', `Run ${this.#state.activeRunId} is still active`)
-    }
+  async steer(input: {
+    readonly operationId: string
+    readonly runId?: string
+    readonly text: string
+  }): Promise<ControlReceipt> {
+    return steerRun(this.#portViews.control, input)
+  }
 
-    if (this.#state.draft !== text) this.#commit({ kind: 'draft.changed', text })
-    const runId = this.#ids.next('run')
-    const turnId = this.#ids.next('turn')
-    this.#commit({
-      kind: 'run.requested',
-      operationId: input.operationId,
-      runId,
-      turnId,
-      userMessageId: this.#ids.next('message'),
-      assistantMessageId: this.#ids.next('message'),
-      text,
-    })
+  async cancelRun(input: {
+    readonly operationId: string
+    readonly runId?: string
+    readonly reason?: string
+    readonly terminalStatus?: 'cancelled' | 'aborted'
+    readonly legacy?: boolean
+  }): Promise<ControlReceipt> {
+    return cancelRun(this.#portViews.control, input)
+  }
 
-    const operation: OperationRecord = {
-      digest,
-      runId,
-      completion: Promise.resolve(),
-    }
-    this.#operations.set(input.operationId, operation)
-    this.#activeAbort = new AbortController()
-    operation.completion = this.#execute(input.operationId, runId, text, this.#activeAbort)
-
-    return {
-      operationId: input.operationId,
-      runId,
-      revision: this.#state.revision,
-      replayed: false,
-      completion: operation.completion.then(() => this.state()),
-    }
+  cancel(input: CancelInput): CancelReceipt {
+    return legacyCancel(
+      {
+        state: () => this.#state,
+        snapshot: () => this.state(),
+        ledger: this.#ledger,
+        cancelRun: (value) => this.cancelRun(value),
+      },
+      input,
+    )
   }
 
   cancelActive(): boolean {
-    if (!this.#activeAbort || this.#activeAbort.signal.aborted) return false
-    this.#activeAbort.abort(new Error('Cancelled by user'))
-    return true
-  }
-
-  async waitForIdle(): Promise<BraidState> {
-    const activeRun = this.#state.activeRunId
-    if (!activeRun) return this.state()
-    const operation = [...this.#operations.values()].find((entry) => entry.runId === activeRun)
-    if (operation) await operation.completion
-    return this.state()
-  }
-
-  async #execute(
-    operationId: string,
-    runId: string,
-    text: string,
-    abort: AbortController,
-  ): Promise<void> {
-    let terminalSeen = false
+    const runId = this.#state.activeRunId
+    if (!runId) return false
     try {
-      const stream = this.#execution.streamTurn({
-        operationId,
-        runId,
-        text,
-        profile: this.#state.profile,
-        signal: abort.signal,
-      })
-      for await (const runtimeEvent of stream) {
-        if (runtimeEvent.type === 'text_delta' && runtimeEvent.text) {
-          this.#commit({ kind: 'run.text.delta', runId, text: runtimeEvent.text })
-        } else if (runtimeEvent.type === 'final') {
-          terminalSeen = true
-          this.#commit({
-            kind: 'run.finished',
-            runId,
-            status: runtimeEvent.status,
-            finalText: runtimeEvent.text ?? '',
-            usage: usageFromFinal(runtimeEvent),
-            ...(runtimeEvent.error ? { error: runtimeEvent.error.message } : {}),
-          })
-        }
-      }
-      if (!terminalSeen) throw new Error('Runtime stream ended without a final event')
-    } catch (error) {
-      if (!terminalSeen) {
-        const message = error instanceof Error ? error.message : String(error)
-        this.#commit({
-          kind: 'run.finished',
-          runId,
-          status: abort.signal.aborted ? 'aborted' : 'failed',
-          finalText: '',
-          usage: { input: 0, output: 0 },
-          error: message,
-        })
-      }
-    } finally {
-      if (this.#activeAbort === abort) this.#activeAbort = undefined
+      this.cancel({ operationId: this.#ids.next('operation'), runId })
+      return true
+    } catch {
+      return false
     }
   }
 
+  canCancel(): boolean {
+    const runId = this.#state.activeRunId
+    const run = runId ? this.#state.runs.find((candidate) => candidate.id === runId) : undefined
+    const abort = runId ? this.#ledger.getAbort(runId) : undefined
+    return Boolean(run && !isTerminal(run.status) && run.capabilities.controls.cancel && abort)
+  }
+
+  async detachRun(input: {
+    readonly operationId: string
+    readonly runId?: string
+  }): Promise<ControlReceipt> {
+    return detachRun(this.#portViews.control, input)
+  }
+
+  async respondInteraction(input: {
+    readonly operationId: string
+    readonly runId: string
+    readonly interactionId: string
+    readonly response: InteractionResponse
+  }): Promise<InteractionReceipt> {
+    const opId = operationId(input.operationId, 'respond-interaction')
+    return respondInteractionController({
+      operationId: opId,
+      runId: input.runId,
+      interactionId: input.interactionId,
+      response: input.response,
+      state: this.#portViews.state,
+      events: () => this.events(),
+      commitAndWait: this.#portViews.journal.commitAndWait,
+      ledger: this.#ledger,
+      effects: this.#effects,
+      execution: this.#execution,
+      owner: this.#controlOwner,
+      whenDurable: () => this.whenDurable(),
+    })
+  }
+
+  async #executeControl(
+    input: ControlEffectRequest,
+  ): Promise<import('../ports/execution.js').ControlAcknowledgement> {
+    return executeControlEffect({
+      effects: this.#effects,
+      execution: this.#execution,
+      request: input,
+      owner: this.#controlOwner,
+      timeoutMs: this.#cancelTimeoutMs,
+      whenDurable: () => this.whenDurable(),
+    })
+  }
+
+  async reconnectRun(input: ReconnectInput): Promise<BraidState> {
+    return reconnectRun(this.#portViews.replay, input)
+  }
+
+  async reconcileRun(input: ReconnectInput): Promise<BraidState> {
+    return reconcileRun(this.#portViews.replay, input)
+  }
+
+  async continueNative(input: {
+    readonly operationId: string
+    readonly text: string
+    readonly runId?: string
+  }): Promise<SendReceipt> {
+    return continueNative(this.#portViews.nativeContinuation, input)
+  }
+
+  shutdown(input: {
+    readonly operationId: string
+    readonly mode?: 'wait' | 'detach' | 'cancel'
+  }): ShutdownReceipt {
+    const opId = operationId(input.operationId, 'shutdown')
+    return shutdownApplication({
+      operationId: opId,
+      ...(input.mode === undefined ? {} : { mode: input.mode }),
+      state: () => this.#state,
+      ledger: this.#ledger,
+      commit: (event) => this.#commit(event),
+      cancelRun: (value) => this.cancelRun(value),
+      detachRun: (value) => this.detachRun(value),
+      waitForIdle: () => this.waitForIdle(),
+    })
+  }
+
+  async waitForIdle(): Promise<BraidState> {
+    return waitForIdle(this.#portViews.status)
+  }
+
+  async close(): Promise<void> {
+    let failure: unknown
+    try {
+      await this.whenDurable()
+    } catch (error) {
+      failure = error
+    } finally {
+      await this.#journal.close?.()
+    }
+    if (failure !== undefined) throw failure
+  }
+
+  ingestRuntimeEvent(envelope: RuntimeEventEnvelope): RuntimeEventIngestionResult {
+    return ingestRuntimeEvent(this.#portViews.ingestion, envelope) as RuntimeEventIngestionResult
+  }
+
+  admit(
+    input: ExecuteTurnInput,
+    conversationId: string,
+    branchId: string,
+    contextTransfer?: ContextTransferReceipt,
+    turnId?: string,
+    contextPlanDigest?: string,
+    nativeContextBoundaryProof?: NativeContextBoundaryProof,
+  ): RunAdmissionReceipt {
+    return admitRun(
+      this.#portViews.admission,
+      input,
+      conversationId,
+      branchId,
+      contextTransfer,
+      turnId,
+      contextPlanDigest,
+      nativeContextBoundaryProof,
+    )
+  }
+
+  #recordEffect(record: import('../ports/effect-storage.js').EffectRecord): void {
+    this.#commit({ kind: 'effect.upserted', effect: projectEffectRecord(record) })
+  }
+
   #commit(event: BraidEvent): void {
-    const envelope = this.#journal.envelope(this.#state, event)
-    const nextState = reduceEvent(this.#state, envelope)
-    this.#journal.append(envelope)
-    this.#state = nextState
-    for (const subscriber of this.#subscribers) subscriber(this.state(), structuredClone(envelope))
+    commitEvent(this.#transition, event)
+  }
+
+  #commitAndWait(event: BraidEvent): Promise<void> {
+    return commitEventAndWait(this.#transition, event)
+  }
+
+  #commitAndWaitRecovery(event: BraidEvent): Promise<void> {
+    return commitEventAndWaitRecovery(this.#transition, event)
   }
 }
