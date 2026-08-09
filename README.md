@@ -21,7 +21,7 @@ Generalized interaction responses remain capability-disabled because the install
 The deterministic `MemoryJournal` remains fixture-only; production startup fails closed if the pinned encrypted SQLite binding or credential facility is unavailable.
 The storage binding is pinned to `better-sqlite3-multiple-ciphers@13.0.3`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
 Tangle, supervisor-control, full live-analysis, multi-platform installation, and signed release evidence remain required before the complete release contract is satisfied.
-Every push and pull request now runs the complete repository check and installs the packed package on Node 22.19.0.
+Every push to `main` and every pull request targeting `main` runs the complete repository check and installs the packed package on Node 22.19.0.
 The contract is based on current package and source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, and Pi through 2026-08-09, with the recorded Kimi Code, OpenCode, and Hermes Agent design references retained from the initial comparison.
 
 ![Braid terminal at 80×24](artifacts/verification/w6/80x24.png)
