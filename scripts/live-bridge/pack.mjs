@@ -83,12 +83,35 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
       { install },
     )
   }
-  const binary = join(
-    installRoot,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'braid.cmd' : 'braid',
+  const packageRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid')
+  const packageMetadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+  const binEntry =
+    typeof packageMetadata.bin === 'string' ? packageMetadata.bin : packageMetadata.bin?.braid
+  if (typeof binEntry !== 'string' || binEntry.length === 0) {
+    throw new LiveBridgeError(
+      'PACK_BINARY_FAILED',
+      'The packed Braid package does not declare its executable entry point',
+      exitCodes.failed,
+    )
+  }
+  const binary = resolve(packageRoot, binEntry)
+  const packageRelativeBinary = relative(packageRoot, binary)
+  if (
+    packageRelativeBinary.startsWith('..') ||
+    resolve(packageRoot, packageRelativeBinary) !== binary
   )
+    throw new LiveBridgeError(
+      'PACK_BINARY_FAILED',
+      'The packed Braid executable resolves outside its installed package',
+      exitCodes.failed,
+    )
+  const binaryInfo = await lstat(binary)
+  if (!binaryInfo.isFile() || binaryInfo.isSymbolicLink())
+    throw new LiveBridgeError(
+      'PACK_BINARY_FAILED',
+      'The packed Braid executable is not a regular package file',
+      exitCodes.failed,
+    )
   const version = await runCommand(process.execPath, [binary, '--version'], { cwd: installRoot })
   evidence.version = version
   if (version.code !== 0 || version.cleanupOk !== true)

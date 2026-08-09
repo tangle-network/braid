@@ -91,6 +91,10 @@ export class StreamingRedactor {
     return this.retained
   }
 
+  snapshot() {
+    return this.retained
+  }
+
   finish() {
     if (this.finished) return this.retained
     this.retained = appendBounded(this.retained, redactString(this.pending), this.maxBytes)

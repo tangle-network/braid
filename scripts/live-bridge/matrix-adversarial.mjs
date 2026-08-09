@@ -3,8 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { StreamingRedactor } from './capture.mjs'
 import { runCommand } from './command.mjs'
 import { appendBounded, RpcSession, sleep } from './process.mjs'
+import { windowsTreeFromRows } from './process-tree.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
 
 async function runRedactionMatrix() {
@@ -23,6 +25,24 @@ async function runRedactionMatrix() {
   assert.equal(value.apiKeyId, 'keep')
   assert.equal(value.credentialConfigured, true)
   assert.equal(value.credentialRef, 'cred:v1:opaque')
+
+  const stream = new StreamingRedactor()
+  stream.push('bridge ready\n')
+  assert.equal(typeof stream.snapshot(), 'string')
+  stream.push('request complete\nbridge stopped\n')
+  const finished = stream.finish()
+  assert.equal(finished.includes('bridge ready'), true)
+  assert.equal(finished.includes('request complete'), true)
+  assert.equal(finished.includes('bridge stopped'), true)
+
+  const windowsTree = windowsTreeFromRows(100, [
+    { processId: 101, parentProcessId: 100 },
+    { processId: 102, parentProcessId: 101 },
+    { processId: 200, parentProcessId: 1 },
+  ])
+  assert.deepEqual(windowsTree.pids, [101, 102])
+  assert.equal(windowsTree.gone, false)
+  assert.equal(windowsTreeFromRows(100, []).gone, true)
 }
 
 async function runProcessMatrix() {
@@ -50,23 +70,20 @@ async function runProcessMatrix() {
       result.termination.strategy,
       process.platform === 'win32' ? 'windows-taskkill-tree' : 'process-group',
     )
-    if (process.platform === 'win32') {
-      assert.equal(result.cleanupOk, false)
-      assert.equal(result.termination.cleanupStatus, 'unsupported')
-    } else {
-      assert.equal(result.cleanupOk, true)
-      let alive = true
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        try {
-          process.kill(descendantPid, 0)
-        } catch {
-          alive = false
-          break
-        }
-        await sleep(50)
+    assert.equal(result.cleanupOk, true)
+    assert.equal(result.termination.descendantsExited, true)
+    assert.equal(result.termination.descendantsVerified, true)
+    let alive = true
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        process.kill(descendantPid, 0)
+      } catch {
+        alive = false
+        break
       }
-      assert.equal(alive, false)
+      await sleep(50)
     }
+    assert.equal(alive, false)
 
     const naturalPidPath = join(root, 'natural-descendant.pid')
     const naturalScript = [
@@ -83,24 +100,19 @@ async function runProcessMatrix() {
     })
     const naturalDescendantPid = Number(await readFile(naturalPidPath, 'utf8'))
     assert.equal(natural.code, 0)
-    if (process.platform === 'win32') {
-      assert.equal(natural.cleanupOk, false)
-      assert.equal(natural.termination.cleanupStatus, 'unsupported')
-    } else {
-      assert.equal(natural.cleanupOk, true)
-      assert.equal(natural.termination.termSent || natural.termination.killSent, true)
-      let alive = true
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        try {
-          process.kill(naturalDescendantPid, 0)
-        } catch {
-          alive = false
-          break
-        }
-        await sleep(50)
+    assert.equal(natural.cleanupOk, true)
+    assert.equal(natural.termination.termSent || natural.termination.killSent, true)
+    alive = true
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        process.kill(naturalDescendantPid, 0)
+      } catch {
+        alive = false
+        break
       }
-      assert.equal(alive, false)
+      await sleep(50)
     }
+    assert.equal(alive, false)
 
     const rpcScript = join(root, 'rpc-natural.mjs')
     const rpcPidPath = join(root, 'rpc-descendant.pid')
@@ -122,14 +134,10 @@ async function runProcessMatrix() {
     )
     const rpcResult = await rpc.close()
     assert.equal(rpcResult.termination.exited, true)
-    if (process.platform === 'win32') {
-      assert.equal(rpcResult.termination.cleanupStatus, 'unsupported')
-    } else {
-      assert.equal(rpcResult.termination.cleanupStatus, 'kill')
-      assert.equal(rpcResult.termination.termSent, true)
-      assert.equal(rpcResult.termination.descendantsExited, true)
-      assert.equal(rpcResult.termination.descendantsVerified, true)
-    }
+    assert.equal(['term', 'kill'].includes(rpcResult.termination.cleanupStatus), true)
+    assert.equal(rpcResult.termination.termSent || rpcResult.termination.killSent, true)
+    assert.equal(rpcResult.termination.descendantsExited, true)
+    assert.equal(rpcResult.termination.descendantsVerified, true)
 
     const canary = 'chunked-boundary-canary-3e6a'
     const chunks = [

@@ -164,12 +164,10 @@ export async function verifyReconnect(session, result, runId, finalRun, provider
 }
 
 export async function verifyCancel(session, result, target, finalRun, providerCapabilities) {
-  const advertisedByRun = finalRun?.capabilities?.controls?.cancel === true
-  const availability = capabilityAvailability(
-    providerCapabilities.controls?.cancel,
-    advertisedByRun,
-  )
-  if (!availability.advertised) {
+  const advertisedByNormalRun = finalRun?.capabilities?.controls?.cancel === true
+  const advertisedByProvider = capabilityAdvertised(providerCapabilities.controls?.cancel)
+  if (!advertisedByProvider && !advertisedByNormalRun) {
+    const availability = capabilityAvailability(providerCapabilities.controls?.cancel, false)
     const cancel = {
       ...requestBase(`cancel-${target.key}`, 'cancel_run', `op-live-cancel-${target.key}`),
       params: { runId: finalRun.id, reason: 'live packed smoke cancellation' },
@@ -185,7 +183,8 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
       attemptedRun: false,
       response: evidenceValue(cancelResponse),
       advertisedByProvider: availability.advertisedByProvider,
-      advertisedByRun,
+      advertisedByNormalRun,
+      advertisedByRun: false,
       advertised: false,
       status: cancelSemanticStatus(cancelResponse, finalRun, false),
     }
@@ -208,9 +207,21 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   )
   result.cancel = { prompt: cancelPrompt, send: evidenceValue(cancelSendResponse) }
   if (cancelSendResponse.type !== 'ack' || typeof cancelSendResponse.runId !== 'string') {
+    result.cancel.advertisedByProvider = advertisedByProvider
+    result.cancel.advertisedByNormalRun = advertisedByNormalRun
+    result.cancel.advertised = advertisedByProvider || advertisedByNormalRun
     result.cancel.status = 'not-admitted'
     return
   }
+  const advertisedByRun = cancelSendResponse.admission?.capabilities?.controls?.cancel === true
+  const availability = capabilityAvailability(
+    providerCapabilities.controls?.cancel,
+    advertisedByRun,
+  )
+  result.cancel.advertisedByProvider = availability.advertisedByProvider
+  result.cancel.advertisedByNormalRun = advertisedByNormalRun
+  result.cancel.advertisedByRun = advertisedByRun
+  result.cancel.advertised = availability.advertised
   await sleep(25)
   const cancel = {
     ...requestBase(`cancel-${target.key}`, 'cancel_run', `op-live-cancel-${target.key}`),
@@ -224,6 +235,11 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
     30_000,
   )
   result.cancel.response = evidenceValue(cancelResponse)
+  if (!availability.advertised) {
+    result.cancel.attemptedRun = true
+    result.cancel.status = cancelSemanticStatus(cancelResponse, undefined, false)
+    return
+  }
   const cancelStateResponse = await session
     .waitFor(
       'cancel terminal state',
@@ -235,9 +251,6 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   const cancelledRun = runFromState(cancelStateResponse?.state, cancelSendResponse.runId)
   result.cancel.run = evidenceValue(cancelledRun)
   result.cancel.attemptedRun = true
-  result.cancel.advertisedByProvider = availability.advertisedByProvider
-  result.cancel.advertisedByRun = advertisedByRun
-  result.cancel.advertised = availability.advertised
   result.cancel.status = cancelSemanticStatus(cancelResponse, cancelledRun, availability.advertised)
 }
 

@@ -92,11 +92,23 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
     })
     child.once('close', (code, signal) => resolveExit({ code, signal, error: spawnError }))
   })
-  const stopChild = async () => ({
-    termination: await terminateProcess(child),
-    stdout: stdoutCapture.finish(),
-    stderr: stderrCapture.finish(),
-  })
+  let stopPromise
+  const stopChild = async () => {
+    if (stopPromise !== undefined) return stopPromise
+    stopPromise = (async () => {
+      const processResult = {
+        termination: await terminateProcess(child),
+        exit: await Promise.race([exit, sleep(1_000).then(() => ({ timeout: true }))]),
+        stdout: stdoutCapture.finish(),
+        stderr: stderrCapture.finish(),
+      }
+      if (evidence.launch?.process !== undefined) {
+        evidence.launch.process = { ...evidence.launch.process, ...processResult }
+      }
+      return processResult
+    })()
+    return stopPromise
+  }
   const deadline = Date.now() + Number(process.env.BRAID_CLI_BRIDGE_START_TIMEOUT_MS ?? 30_000)
   let health = initialHealth
   while (Date.now() < deadline) {
@@ -114,8 +126,8 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
     command: 'pnpm start',
     health,
     process: {
-      stdout: stdoutCapture.finish(),
-      stderr: stderrCapture.finish(),
+      stdout: stdoutCapture.snapshot(),
+      stderr: stderrCapture.snapshot(),
       exited,
     },
   }
@@ -128,8 +140,8 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
       {
         health,
         process: {
-          stdout: stdoutCapture.finish(),
-          stderr: stderrCapture.finish(),
+          stdout: stdoutCapture.snapshot(),
+          stderr: stderrCapture.snapshot(),
           exited,
         },
       },
