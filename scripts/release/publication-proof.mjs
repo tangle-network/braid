@@ -10,6 +10,7 @@ import {
   validateReleaseInputEnvelope,
 } from '../release-evidence.mjs'
 import { readRegularFileNoFollow } from '../release-files.mjs'
+import { readAndValidateNpmProvenance } from './npm-provenance.mjs'
 
 export const REQUIRED_RELEASE_TARGETS = Object.freeze([
   Object.freeze({ id: 'linux-x64', platform: 'linux', architecture: 'x64' }),
@@ -111,6 +112,7 @@ export async function createPublicationProof({
   const root = resolve(artifactRoot)
   const candidate = await readPhase({ artifactRoot: root, phase: 'candidate', packageProof })
   const registry = await readPhase({ artifactRoot: root, phase: 'registry', packageProof })
+  const provenance = await readAndValidateNpmProvenance({ artifactRoot: root, packageProof })
   const completion = strictIsoTimestamp(completedAt, 'Publication proof completion')
   for (const result of [...candidate, ...registry])
     assert(
@@ -127,6 +129,8 @@ export async function createPublicationProof({
     requiredTargets: REQUIRED_RELEASE_TARGETS,
     candidate,
     registry,
+    provenance: provenance.summary,
+    provenanceDigest: provenance.canonicalDigest,
     completedAt,
   }
 }
@@ -154,6 +158,8 @@ export async function applyPublicationProof({ evidence, artifactRoot, packagePro
       'requiredTargets',
       'candidate',
       'registry',
+      'provenance',
+      'provenanceDigest',
       'completedAt',
     ],
     [],
@@ -183,7 +189,16 @@ export async function applyPublicationProof({ evidence, artifactRoot, packagePro
     'Publication proof predates release checks',
   )
 
-  const publicationArtifacts = [artifact('publication-proof', proofPath, proofBytes)]
+  const provenance = await readAndValidateNpmProvenance({ artifactRoot: root, packageProof })
+  assert(
+    canonicalJson(proof.provenance) === canonicalJson(provenance.summary) &&
+      proof.provenanceDigest === provenance.canonicalDigest,
+    'Publication proof npm provenance differs',
+  )
+  const publicationArtifacts = [
+    artifact('publication-proof', proofPath, proofBytes),
+    provenance.artifact,
+  ]
   for (const phase of ['candidate', 'registry']) {
     for (const result of proof[phase]) {
       const bytes = await readRegularFileNoFollow(

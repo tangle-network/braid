@@ -29,7 +29,6 @@ export const REQUIRED_CHECKS = new Map([
   ['crash', { category: 'subprocess', command: 'pnpm test:crash' }],
   ['security', { category: 'security', command: 'pnpm test:security' }],
   ['performance', { category: 'performance', command: 'pnpm test:performance' }],
-  ['live', { category: 'live', command: 'pnpm test:live' }],
   ['live-bridge', { category: 'live', command: 'pnpm test:live:bridge' }],
   ['live-tangle', { category: 'live', command: 'pnpm test:live:tangle' }],
   ['live-supervisor', { category: 'live', command: 'pnpm test:live:supervisor' }],
@@ -38,6 +37,7 @@ export const REQUIRED_CHECKS = new Map([
   ['install', { category: 'release', command: 'pnpm test:install' }],
   ['capture', { category: 'terminal', command: 'pnpm test:capture' }],
   ['visual', { category: 'terminal', command: 'pnpm capture:visual' }],
+  ['independent-review', { category: 'release', command: 'pnpm test:independent-review' }],
   ['release', { category: 'release', command: 'pnpm check:release' }],
 ])
 
@@ -46,13 +46,16 @@ export const RELEASE_ASSEMBLY_COMMAND = Object.freeze({
   command: 'pnpm verify:release',
 })
 
-export const RELEASE_COMMANDS = new Map([
-  ...REQUIRED_CHECKS,
-  ['verify:release', RELEASE_ASSEMBLY_COMMAND],
-])
+const LIVE_AGGREGATE_COMMAND = Object.freeze({ category: 'live', command: 'pnpm test:live' })
+
+export const RELEASE_COMMANDS = new Map()
+for (const [id, command] of REQUIRED_CHECKS) {
+  if (id === 'live-bridge') RELEASE_COMMANDS.set('live', LIVE_AGGREGATE_COMMAND)
+  RELEASE_COMMANDS.set(id, command)
+}
+RELEASE_COMMANDS.set('verify:release', RELEASE_ASSEMBLY_COMMAND)
 
 export const EXACT_REQUIREMENT_CHECK_CATEGORIES = new Map([
-  ['UP', new Set(['contract', 'live'])],
   ['LIVE', new Set(['live'])],
   ['PERF', new Set(['performance'])],
   ['EVAL', new Set(['eval'])],

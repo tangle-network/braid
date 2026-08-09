@@ -1,4 +1,5 @@
-import { join } from 'node:path'
+import { lstat, readdir } from 'node:fs/promises'
+import { extname, join, relative } from 'node:path'
 
 import { readRegularFileNoFollow } from '../release-files.mjs'
 
@@ -8,6 +9,60 @@ function assert(condition, message) {
 
 function artifactPrefix(checkId) {
   return `check-${checkId.replaceAll(/[^A-Za-z0-9._-]/gu, '_')}-evidence-`
+}
+
+function mediaType(path) {
+  switch (extname(path).toLowerCase()) {
+    case '.json':
+    case '.jsonl':
+      return 'application/json'
+    case '.png':
+      return 'image/png'
+    case '.gif':
+      return 'image/gif'
+    case '.md':
+    case '.txt':
+    case '.log':
+      return 'text/plain; charset=utf-8'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+function evidenceDirectory(checkId) {
+  if (checkId === 'performance' || /^PERF-[0-9]{2}$/u.test(checkId)) return 'performance'
+  if (checkId === 'eval' || /^EVAL-[0-9]{2}$/u.test(checkId)) return 'eval'
+  if (checkId === 'live-bridge' || /^LIVE-0[1-5]$/u.test(checkId)) return 'live/bridge'
+  if (checkId === 'live-tangle' || /^LIVE-(?:0[6-9]|10)$/u.test(checkId)) return 'live/tangle'
+  if (checkId === 'live-supervisor' || checkId === 'LIVE-11') return 'live/supervisor'
+  if (checkId === 'live-analysis' || checkId === 'LIVE-12') return 'live/analysis'
+  if (checkId === 'independent-review') return 'review'
+  return undefined
+}
+
+async function filesUnder(artifactRoot, directory) {
+  const root = join(artifactRoot, directory)
+  const rootInfo = await lstat(root)
+  assert(
+    rootInfo.isDirectory() && !rootInfo.isSymbolicLink(),
+    `${directory} is not a real directory`,
+  )
+  const files = []
+  async function walk(path) {
+    const entries = await readdir(path, { withFileTypes: true })
+    for (const entry of entries) {
+      const child = join(path, entry.name)
+      assert(!entry.isSymbolicLink(), `${relative(artifactRoot, child)} is a symlink`)
+      if (entry.isDirectory()) await walk(child)
+      else {
+        assert(entry.isFile(), `${relative(artifactRoot, child)} is not a regular file`)
+        files.push(relative(artifactRoot, child))
+        assert(files.length <= 20_000, `${directory} produced too many evidence files`)
+      }
+    }
+  }
+  await walk(root)
+  return files.sort()
 }
 
 export function restoredCheckArtifacts(checkId, artifacts) {
@@ -22,7 +77,21 @@ export async function registerCheckArtifacts({ checkId, artifactRoot, store }) {
       : checkId === 'visual'
         ? 'w6/capture-manifest.json'
         : undefined
-  if (!manifestPath) return []
+  if (!manifestPath) {
+    const directory = evidenceDirectory(checkId)
+    if (!directory) return []
+    const registered = []
+    for (const [index, path] of (await filesUnder(artifactRoot, directory)).entries())
+      registered.push(
+        await store.register({
+          id: `${artifactPrefix(checkId)}${String(index + 1).padStart(5, '0')}`,
+          path,
+          mediaType: mediaType(path),
+        }),
+      )
+    assert(registered.length > 0, `${checkId} produced no retained evidence files`)
+    return registered
+  }
   const manifest = JSON.parse(
     (await readRegularFileNoFollow(join(artifactRoot, manifestPath))).toString('utf8'),
   )

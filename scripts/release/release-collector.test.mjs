@@ -285,6 +285,11 @@ test('structured child results require an unambiguous passed marker and one meas
     ['LIVE-02'],
   )
   assert.notEqual(structuredChildEvidence('live', exactOutput, 3, 'LIVE-03').result, 'passed')
+  assert.notEqual(structuredChildEvidence('live', exactOutput, 3, 'UP-08').result, 'passed')
+  assert.notEqual(
+    structuredChildEvidence('contract', Buffer.from('contract passed\n'), 3, 'UP-01').result,
+    'passed',
+  )
   for (const output of [
     `BRAID_RELEASE_MEASUREMENTS_JSON=${measurement}\n`,
     `BRAID_RELEASE_RESULT_JSON={"status":"failed","reason":"no"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${measurement}\n`,
@@ -540,6 +545,15 @@ test('one local catalog check produces redacted artifacts and a signed collectio
       verifyManifestSignature(result.manifest, publicKey)
       const serialized = JSON.stringify(result)
       assert(!serialized.includes('secret-value'))
+
+      await rm(result.paths.manifest)
+      const resumed = await collectReleaseEvidence({
+        ...collectionOptions,
+        now: () => Date.now() + 60_000,
+      })
+      assert.equal(resumed.result, 'passed')
+      assert.equal(resumed.envelope.finishedAt, result.envelope.finishedAt)
+      verifyManifestSignature(resumed.manifest, publicKey)
 
       const partialPath = result.paths.partial
       const originalPartial = await readFile(partialPath, 'utf8')

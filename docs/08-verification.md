@@ -196,7 +196,7 @@ W5 has stable package entry points for `test:unit`, `test:contract`, `test:coord
 
 `test:install` and `test:pty` run the packed-package proof, while `test:capture` runs the deterministic terminal capture.
 
-`test:live` exits nonzero with a precise external prerequisite message because live provider services and credentials are not available in this repository's deterministic test environment.
+`test:live` runs the four protected live product commands in sequence and exits nonzero when any required provider service, credential, behavior, or cleanup proof is unavailable.
 
 `test:coordination` includes a two-process native SQLite race that proves one external dispatch for one operation identifier.
 
@@ -547,7 +547,7 @@ Implementation must provide the following stable scripts.
 | `crash` | `pnpm test:crash` | Production SQLite forced-kill recovery at every durable commit boundary |
 | `security` | `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
 | `performance` | `pnpm test:performance` | Reducer, coordination, and storage overhead measurements; the full PERF-01..10 matrix lands in W12 |
-| `live` | `pnpm test:live` | Aggregate live scope guard |
+| `live` | `pnpm test:live` | Aggregate protected live product flows |
 | `live-bridge` | `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
 | `live-tangle` | `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
 | `live-supervisor` | `pnpm test:live:supervisor` | Runtime worker observation and control |
@@ -556,6 +556,7 @@ Implementation must provide the following stable scripts.
 | `install` | `pnpm test:install` | Packed package across supported release platforms |
 | `capture` | `pnpm test:capture` | Deterministic baseline real-binary captures |
 | `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
+| `independent-review` | `pnpm test:independent-review` | Verify a separately signed threat and ownership review for the exact candidate |
 | `release` | `pnpm check:release` | Release manifest and evidence-set check |
 | `verify:release` | `pnpm verify:release` | Validate publication proof and assemble every required result into one signed evidence manifest from an isolated clean tracked checkout |
 

@@ -9,6 +9,7 @@ import { bindingForCheck } from './build-identity.mjs'
 import { redactText } from './command-runner.mjs'
 
 const STRUCTURED_CATEGORIES = new Set(['eval', 'live', 'performance'])
+const EXACT_MEASUREMENT_CHECK = /^(?:UP|LIVE|PERF|EVAL)-[0-9]{2}$/u
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -80,7 +81,8 @@ export function structuredChildEvidence(category, stdoutBytes, durationMs, check
   } catch (error) {
     return unavailableEvidence(category, error.message)
   }
-  if (!STRUCTURED_CATEGORIES.has(category)) {
+  const exactMeasurementRequired = EXACT_MEASUREMENT_CHECK.test(checkId)
+  if (!STRUCTURED_CATEGORIES.has(category) && !exactMeasurementRequired) {
     if (measurementMarkers.length > 0) {
       return unavailableEvidence(category, `${category} emitted an unexpected measurement marker`)
     }
@@ -161,7 +163,7 @@ export function structuredChildEvidence(category, stdoutBytes, durationMs, check
     return unavailableEvidence(category, error.message)
   }
   let selectedMeasurements = measurements
-  if (/^(LIVE|PERF|EVAL)-[0-9]{2}$/u.test(checkId)) {
+  if (exactMeasurementRequired) {
     selectedMeasurements = measurements.filter((measurement) => measurement.name === checkId)
     if (selectedMeasurements.length !== 1)
       return unavailableEvidence(category, `${checkId} emitted no unique matching measurement`)

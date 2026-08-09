@@ -42,9 +42,11 @@ jobs:
 
       - name: Confirm an exact main commit
         env:
+          DISPATCH_COMMIT: ${{ github.sha }}
           REQUESTED_COMMIT: ${{ inputs.commit }}
         run: |
           test "$(git rev-parse HEAD)" = "$REQUESTED_COMMIT"
+          test "$REQUESTED_COMMIT" = "$DISPATCH_COMMIT"
           test "$(printf '%s' "$REQUESTED_COMMIT" | wc -c)" = 40
           git fetch origin main
           git merge-base --is-ancestor "$REQUESTED_COMMIT" origin/main
@@ -59,6 +61,14 @@ jobs:
 
       - name: Configure external release storage
         run: echo "BRAID_RELEASE_ARTIFACT_ROOT=$RUNNER_TEMP/braid-release" >> "$GITHUB_ENV"
+
+      - name: Restore resumable release state
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/braid-release
+          key: braid-release-${{ inputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            braid-release-${{ inputs.commit }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -90,6 +100,15 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
 
+      - name: Restore the independent review attestation
+        env:
+          REVIEW_ATTESTATION_BASE64: ${{ secrets.BRAID_REVIEW_ATTESTATION_BASE64 }}
+        run: |
+          test -n "$REVIEW_ATTESTATION_BASE64"
+          mkdir -p "$BRAID_RELEASE_ARTIFACT_ROOT/review"
+          printf '%s' "$REVIEW_ATTESTATION_BASE64" | base64 --decode > "$BRAID_RELEASE_ARTIFACT_ROOT/review/attestation.json"
+          chmod 600 "$BRAID_RELEASE_ARTIFACT_ROOT/review/attestation.json"
+
       - name: Run and sign the complete release checks
         env:
           BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
@@ -99,6 +118,22 @@ jobs:
           --artifact-root "$BRAID_RELEASE_ARTIFACT_ROOT"
           --tarball "candidate/${{ steps.metadata.outputs.archive }}"
           --signing-key "$BRAID_RELEASE_SIGNING_KEY_PATH"
+
+      - name: Preserve resumable release state
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/braid-release
+          key: braid-release-${{ inputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload partial release state
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-release-partial-${{ inputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/braid-release
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Qualify the pre-publication candidate
         env:
@@ -113,6 +148,7 @@ jobs:
           name: braid-release-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
           if-no-files-found: error
+          overwrite: true
           retention-days: 90
 
   platform-smoke:
@@ -208,6 +244,25 @@ jobs:
             npm publish "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" --provenance --access public
           fi
 
+      - name: Verify and retain npm provenance
+        env:
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          AUDIT_ROOT="$RUNNER_TEMP/braid-npm-audit"
+          mkdir -p "$AUDIT_ROOT"
+          cd "$AUDIT_ROOT"
+          npm init --yes >/dev/null
+          npm install --no-audit --no-fund --ignore-scripts "@tangle-network/braid@$VERSION"
+          npm audit signatures --json --include-attestations > "$RUNNER_TEMP/npm-audit-signatures.json"
+
+      - name: Upload npm provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-npm-provenance-${{ inputs.commit }}
+          path: ${{ runner.temp }}/npm-audit-signatures.json
+          if-no-files-found: error
+          retention-days: 90
+
   post-publish-smoke:
     needs: [candidate, publish]
     strategy:
@@ -299,6 +354,11 @@ jobs:
           pattern: braid-registry-smoke-${{ inputs.commit }}-*
           path: ${{ runner.temp }}/braid-release/publication/registry
           merge-multiple: true
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-npm-provenance-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release/publication
 
       - name: Restore the release signing key
         env:

@@ -1,6 +1,7 @@
 import { execFile as execFileCallback } from 'node:child_process'
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import {
   REQUIRED_PERFORMANCE_IDS,
@@ -12,10 +13,12 @@ import { createPerformanceMeasurement, releaseMeasurement } from './statistics.m
 const execFile = promisify(execFileCallback)
 
 export const repository = new URL('../../', import.meta.url).pathname.replace(/\/$/u, '')
-export const outputDirectory = `${repository}/artifacts/verification/performance`
-export const rawReportPath = `${outputDirectory}/raw.json`
-export const smokeReportPath = `${outputDirectory}/smoke.json`
-export const releaseReportPath = `${outputDirectory}/release-measurements.json`
+export const outputDirectory = process.env.BRAID_PERFORMANCE_OUTPUT_DIR
+  ? resolve(process.env.BRAID_PERFORMANCE_OUTPUT_DIR)
+  : join(repository, 'artifacts', 'verification', 'performance')
+export const rawReportPath = join(outputDirectory, 'raw.json')
+export const smokeReportPath = join(outputDirectory, 'smoke.json')
+export const releaseReportPath = join(outputDirectory, 'release-measurements.json')
 export const command = process.env.BRAID_PERFORMANCE_COMMAND ?? 'pnpm run test:performance'
 export const FULL_REPETITIONS = 20
 export const processTerminal =
@@ -232,5 +235,5 @@ export async function writeReports(measurements, report, mode) {
       { mode: 0o600 },
     )
   }
-  return { complete, releaseValidation, path: targetPath }
+  return { complete, releaseMeasurements, releaseValidation, path: targetPath }
 }

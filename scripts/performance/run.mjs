@@ -251,6 +251,10 @@ async function run() {
       `Performance proof failed; see ${fullReport.path}`,
     )
     process.stdout.write(`Performance proof passed; raw report: ${fullReport.path}\n`)
+    process.stdout.write('BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n')
+    process.stdout.write(
+      `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({ measurements: fullReport.releaseMeasurements })}\n`,
+    )
   } finally {
     process.removeListener('SIGINT', onSignal)
     process.removeListener('SIGTERM', onSignal)

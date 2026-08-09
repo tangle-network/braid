@@ -51,7 +51,7 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | crash | `pnpm test:crash` | Runs forced-kill, restore-recovery, and two-process admission checks |
 | security | `pnpm test:security` | Runs redaction, credential-boundary, and dependency-boundary checks |
 | performance | `pnpm test:performance` | Runs the reducer, coordination, and storage performance checks |
-| live | `pnpm test:live` | Unavailable without protected live credentials and evidence |
+| live | `pnpm test:live` | Runs every protected live product flow in sequence |
 | live-bridge | `pnpm test:live:bridge` | Runs the opt-in packed CLI Bridge and runner flow with `BRAID_LIVE_BRIDGE=1` |
 | live-tangle | `pnpm test:live:tangle` | Unavailable without protected live credentials and evidence |
 | live-supervisor | `pnpm test:live:supervisor` | Unavailable without protected live credentials and evidence |
@@ -60,6 +60,7 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | install | `pnpm test:install` | Runs packed install, storage, and keyboard/RPC proof |
 | capture | `pnpm test:capture` | Captures the baseline terminal artifacts from the packed binary |
 | visual | `pnpm capture:visual` | Captures the required W6 state artifacts from the packed binary |
+| independent review | `pnpm test:independent-review` | Verifies a separately signed review bound to the exact candidate |
 | release | `pnpm check:release` | Checks the release manifest and evidence set |
 | verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with external signing key and complete evidence |
 

@@ -261,5 +261,27 @@ export async function main() {
           },
   }
   process.stdout.write(`${JSON.stringify(evidenceValue(summary))}\n`)
+  process.stdout.write(
+    `BRAID_RELEASE_RESULT_JSON=${JSON.stringify({
+      status,
+      ...(status === 'passed'
+        ? {}
+        : { reason: evidence.error?.code ?? 'live bridge check did not pass' }),
+    })}\n`,
+  )
+  if (status === 'passed') {
+    process.stdout.write(
+      `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({
+        measurements: [
+          {
+            kind: 'scalar',
+            name: 'live-bridge-targets',
+            unit: 'count',
+            value: evidence.targets.length,
+          },
+        ],
+      })}\n`,
+    )
+  }
   process.exitCode = exitCode
 }

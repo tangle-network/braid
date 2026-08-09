@@ -69,22 +69,43 @@ const archiveName = `${packageJson.name.replace(/^@/u, '').replace('/', '-')}-${
 const candidateRoot = join(artifactRoot, 'candidate')
 const tarballPath = join(candidateRoot, archiveName)
 const packageProofPath = join(artifactRoot, 'w6', 'package-proof.json')
-for (const path of [tarballPath, packageProofPath])
-  assert(!(await stat(path).catch(() => undefined)), `Release output already exists: ${path}`)
+const existingTarball = await stat(tarballPath).catch(() => undefined)
+const existingProof = await stat(packageProofPath).catch(() => undefined)
+assert(Boolean(existingTarball) === Boolean(existingProof), 'Restored candidate is incomplete')
 
-await run(
-  process.execPath,
-  [
-    join(repository, 'scripts', 'verify-package.mjs'),
-    '--record',
-    packageProofPath,
-    '--tarball-output',
-    tarballPath,
-  ],
-  { cwd: repository },
-)
+if (!existingTarball) {
+  await run(
+    process.execPath,
+    [
+      join(repository, 'scripts', 'verify-package.mjs'),
+      '--record',
+      packageProofPath,
+      '--tarball-output',
+      tarballPath,
+    ],
+    { cwd: repository },
+  )
+}
 
 const packageProof = JSON.parse(await readFile(packageProofPath, 'utf8'))
+const head = await new Promise((resolvePromise, reject) => {
+  let stdout = ''
+  const child = spawn('git', ['rev-parse', 'HEAD'], {
+    cwd: repository,
+    shell: false,
+    stdio: ['ignore', 'pipe', 'inherit'],
+  })
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk
+  })
+  child.once('error', reject)
+  child.once('close', (code) =>
+    code === 0 ? resolvePromise(stdout.trim()) : reject(new Error(`git rev-parse exited ${code}`)),
+  )
+})
+assert(packageProof.version === packageJson.version, 'Package proof version differs')
+assert(packageProof.gitCommit === head, 'Restored candidate commit differs')
 assert(packageProof.tarball === basename(tarballPath), 'Package proof archive name differs')
 assert(packageProof.sha256 === (await sha256(tarballPath)), 'Package proof archive digest differs')
 assert(packageProof.packageFileManifest?.entries?.length > 0, 'Package proof has no file manifest')

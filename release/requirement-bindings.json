@@ -279,7 +279,7 @@
     "checks": ["security"]
   },
   "SE-12": {
-    "checks": ["release"]
+    "checks": ["independent-review"]
   },
   "ST-01": {
     "checks": ["storage"]
@@ -312,46 +312,46 @@
     "checks": ["coordination"]
   },
   "UP-01": {
-    "checks": ["UP-01"]
+    "checks": ["contract"]
   },
   "UP-02": {
-    "checks": ["UP-02"]
+    "checks": ["contract"]
   },
   "UP-03": {
-    "checks": ["UP-03"]
+    "checks": ["contract"]
   },
   "UP-04": {
-    "checks": ["UP-04"]
+    "checks": ["contract"]
   },
   "UP-05": {
-    "checks": ["UP-05"]
+    "checks": ["contract"]
   },
   "UP-06": {
-    "checks": ["UP-06"]
+    "checks": ["contract"]
   },
   "UP-07": {
-    "checks": ["UP-07"]
+    "checks": ["contract"]
   },
   "UP-08": {
-    "checks": ["UP-08"]
+    "checks": ["live-bridge"]
   },
   "UP-09": {
-    "checks": ["UP-09"]
+    "checks": ["live-tangle"]
   },
   "UP-10": {
-    "checks": ["UP-10"]
+    "checks": ["contract"]
   },
   "UP-11": {
-    "checks": ["UP-11"]
+    "checks": ["contract"]
   },
   "UP-12": {
-    "checks": ["UP-12"]
+    "checks": ["contract"]
   },
   "UP-13": {
-    "checks": ["UP-13"]
+    "checks": ["contract"]
   },
   "UP-14": {
-    "checks": ["UP-14"]
+    "checks": ["live-tangle"]
   },
   "US-01": {
     "checks": ["repository"]
@@ -381,7 +381,7 @@
     "checks": ["security"]
   },
   "US-10": {
-    "checks": ["release"]
+    "checks": ["independent-review"]
   },
   "UX-01": {
     "checks": ["virtual-terminal", "visual"]
@@ -423,7 +423,20 @@
     "checks": ["repository"]
   },
   "VR-04": {
-    "checks": ["live"]
+    "checks": [
+      "LIVE-01",
+      "LIVE-02",
+      "LIVE-03",
+      "LIVE-04",
+      "LIVE-05",
+      "LIVE-06",
+      "LIVE-07",
+      "LIVE-08",
+      "LIVE-09",
+      "LIVE-10",
+      "LIVE-11",
+      "LIVE-12"
+    ]
   },
   "VR-05": {
     "checks": ["live-bridge"]

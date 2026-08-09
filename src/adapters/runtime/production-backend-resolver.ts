@@ -20,6 +20,7 @@ import { readConnectionCredential } from '../connections/production-connection-c
 import {
   connectionEndpoint,
   normalizeCliBridgeProviderBaseUrl,
+  normalizeTangleInferenceRuntimeBaseUrl,
 } from '../connections/production-connection-endpoints.js'
 import type { ProductionConnectionOptions } from '../connections/production-connection-types.js'
 import type {
@@ -153,7 +154,7 @@ async function resolveTangleInferenceBackend(
   const backend = resolveAgentBackend({
     kind: 'tcloud',
     apiKey: credential ?? '',
-    baseUrl: endpoint,
+    baseUrl: normalizeTangleInferenceRuntimeBaseUrl(endpoint, connectionId),
     model,
     label: 'tangle-inference',
     ...(options.fetch ? { fetchImpl: options.fetch } : {}),

@@ -35,6 +35,7 @@ const requiredFiles = [
   'src/adapters/credentials/os.ts',
   'docs/decisions/004-application-effect-coordination.md',
   'docs/decisions/005-encrypted-sqlite-and-credential-boundaries.md',
+  'release/review-execution-public-key.pem',
 ]
 for (const path of requiredFiles) {
   await readFile(new URL(`../${path}`, import.meta.url))

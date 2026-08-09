@@ -254,6 +254,7 @@ export async function collectReleaseEvidence({
   const partial = await optionalJson(paths.partial)
   const finalInput = await optionalJson(paths.checks)
   let startedAt = timestamp(now())
+  let checkpointFinishedAt
   if (partial) {
     await validateCheckpoint(partial, {
       artifactRoot: evidenceRoot,
@@ -262,6 +263,7 @@ export async function collectReleaseEvidence({
       publicKey: keys.publicObject,
     })
     startedAt = partial.envelope.startedAt
+    checkpointFinishedAt = partial.envelope.finishedAt
     for (const artifact of partial.envelope.artifacts) artifacts.set(artifact.id, artifact)
     for (const check of partial.envelope.checks) checks.set(check.id, check)
     for (const check of partial.envelope.checks)
@@ -292,6 +294,12 @@ export async function collectReleaseEvidence({
     ...environment,
     BRAID_RELEASE_ARTIFACT_ROOT: evidenceRoot,
     BRAID_RELEASE_TARBALL: resolve(evidenceRoot, identity.tarballPath),
+    BRAID_EVAL_OUTPUT_DIR: join(evidenceRoot, 'eval'),
+    BRAID_LIVE_ANALYSIS_EVIDENCE: join(evidenceRoot, 'live', 'analysis', 'evidence.json'),
+    BRAID_LIVE_BRIDGE_EVIDENCE: join(evidenceRoot, 'live', 'bridge', 'evidence.json'),
+    BRAID_LIVE_SUPERVISOR_EVIDENCE: join(evidenceRoot, 'live', 'supervisor', 'evidence.json'),
+    BRAID_LIVE_TANGLE_EVIDENCE: join(evidenceRoot, 'live', 'tangle', 'evidence.json'),
+    BRAID_PERFORMANCE_OUTPUT_DIR: join(evidenceRoot, 'performance'),
   }
   for (const checkId of selected) {
     if (checks.has(checkId)) continue
@@ -390,11 +398,12 @@ export async function collectReleaseEvidence({
       publicKey: keys.publicObject,
     })
     await writeCheckpoint(paths.partial, value, writeOptions)
+    checkpointFinishedAt = envelope.finishedAt
   }
   const envelope = stateEnvelope({
     identity,
     startedAt,
-    finishedAt: timestamp(now()),
+    finishedAt: finalInput?.finishedAt ?? checkpointFinishedAt ?? timestamp(now()),
     checks,
     environments,
     artifacts,

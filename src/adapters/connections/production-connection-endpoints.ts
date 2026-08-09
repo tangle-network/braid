@@ -54,6 +54,20 @@ export function normalizeCliBridgeRuntimeBaseUrl(
   endpoint: string,
   connectionId?: ConnectionId,
 ): string {
+  return normalizeOpenAiCompatibleRuntimeBaseUrl(endpoint, connectionId)
+}
+
+export function normalizeTangleInferenceRuntimeBaseUrl(
+  endpoint: string,
+  connectionId?: ConnectionId,
+): string {
+  return normalizeOpenAiCompatibleRuntimeBaseUrl(endpoint, connectionId)
+}
+
+function normalizeOpenAiCompatibleRuntimeBaseUrl(
+  endpoint: string,
+  connectionId?: ConnectionId,
+): string {
   const url = parseHttpEndpoint(endpoint, connectionId)
   const path = url.pathname.replace(/\/+$/u, '')
   if (path === '' || path === '/') url.pathname = '/v1'

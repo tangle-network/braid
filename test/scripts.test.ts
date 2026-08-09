@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,6 +30,8 @@ const { prepareEvalCandidate } = await import('../scripts/eval/candidate.mjs')
 const publicationProofSupport = await import('../scripts/release/publication-proof.mjs')
 const { applyPublicationProof, createPublicationProof, REQUIRED_RELEASE_TARGETS } =
   publicationProofSupport
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const { validateIndependentReview } = await import('../scripts/release/independent-review.mjs')
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -49,6 +52,7 @@ test('W5 exposes stable checks for every requested release surface', () => {
     'test:live',
     'test:install',
     'test:capture',
+    'test:independent-review',
     'check:release',
   ]
   for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
@@ -226,7 +230,7 @@ test('the release catalog exactly covers every stable verification command', asy
   assert.equal(releaseCheckEntry('PERF-10')?.command, 'pnpm test:performance')
   assert.equal(releaseCheckEntry('EVAL-06')?.command, 'pnpm test:eval')
   const evidenceIds = requiredEvidenceCheckIds(['PR-01', 'UP-01', 'LIVE-06', 'PERF-10', 'EVAL-06'])
-  assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 4)
+  assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 3)
   assert.equal(evidenceIds.includes('verify:release'), false)
 })
 
@@ -349,6 +353,45 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
   }
 })
 
+test('independent review approval is signed and bound to the exact candidate', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const packageProof = {
+    gitCommit: 'a'.repeat(40),
+    sha256: 'b'.repeat(64),
+    packageFileManifest: { digest: 'c'.repeat(64) },
+  }
+  const unsigned = {
+    schema: 'braid.independent-review.v1',
+    reviewer: { id: 'reviewer-1', system: 'independent-review-system' },
+    candidate: {
+      gitCommit: packageProof.gitCommit,
+      tarballSha256: packageProof.sha256,
+      packageFileManifestDigest: packageProof.packageFileManifest.digest,
+    },
+    verdict: 'approved',
+    reviewedAt: '2026-08-09T01:00:00.000Z',
+    threatFixturesReproduced: true,
+    architectureOwnershipConfirmed: true,
+    findings: [],
+  }
+  const attestation = {
+    ...unsigned,
+    signature: {
+      algorithm: 'ed25519',
+      value: sign(null, Buffer.from(canonicalJson(unsigned)), privateKey).toString('base64'),
+    },
+  }
+  assert.deepEqual(validateIndependentReview(attestation, { packageProof, publicKey }), unsigned)
+  assert.throws(
+    () =>
+      validateIndependentReview(
+        { ...attestation, candidate: { ...attestation.candidate, tarballSha256: 'd'.repeat(64) } },
+        { packageProof, publicKey },
+      ),
+    /archive differs/u,
+  )
+})
+
 test('the final release proof requires matching candidate and registry smokes on every platform', async () => {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-publication-proof-'))
   const packageProof = {
@@ -359,6 +402,67 @@ test('the final release proof requires matching candidate and registry smokes on
   }
   const completedAt = '2026-08-09T01:00:00.000Z'
   try {
+    const candidateDirectory = join(artifactRoot, 'candidate')
+    const candidateBytes = Buffer.from('candidate archive bytes')
+    await mkdir(candidateDirectory, { recursive: true })
+    await writeFile(join(candidateDirectory, packageProof.tarball), candidateBytes)
+    const provenancePayload = {
+      subject: [
+        {
+          name: 'pkg:npm/%40tangle-network/braid@0.1.0',
+          digest: { sha512: createHash('sha512').update(candidateBytes).digest('hex') },
+        },
+      ],
+      predicateType: 'https://slsa.dev/provenance/v1',
+      predicate: {
+        buildDefinition: {
+          externalParameters: {
+            workflow: {
+              ref: 'refs/heads/main',
+              repository: 'https://github.com/tangle-network/braid',
+              path: '.github/workflows/release.yml',
+            },
+          },
+          resolvedDependencies: [
+            {
+              uri: 'git+https://github.com/tangle-network/braid@refs/heads/main',
+              digest: { gitCommit: packageProof.gitCommit },
+            },
+          ],
+        },
+        runDetails: {
+          builder: { id: 'https://github.com/actions/runner/github-hosted' },
+          metadata: {
+            invocationId: 'https://github.com/tangle-network/braid/actions/runs/123/attempts/1',
+          },
+        },
+      },
+    }
+    await mkdir(join(artifactRoot, 'publication'), { recursive: true })
+    await writeFile(
+      join(artifactRoot, 'publication', 'npm-audit-signatures.json'),
+      `${JSON.stringify({
+        invalid: [],
+        missing: [],
+        verified: [
+          {
+            name: '@tangle-network/braid',
+            version: packageProof.version,
+            attestations: { provenance: { predicateType: provenancePayload.predicateType } },
+            attestationBundles: [
+              {
+                predicateType: provenancePayload.predicateType,
+                bundle: {
+                  dsseEnvelope: {
+                    payload: Buffer.from(JSON.stringify(provenancePayload)).toString('base64'),
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      })}\n`,
+    )
     for (const phase of ['candidate', 'registry']) {
       const directory = join(artifactRoot, 'publication', phase)
       await mkdir(directory, { recursive: true })
@@ -420,8 +524,8 @@ test('the final release proof requires matching candidate and registry smokes on
     }
     const augmented = await applyPublicationProof({ evidence, artifactRoot, packageProof })
     assert.equal(augmented.evidence.finishedAt, completedAt)
-    assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 8)
-    assert.equal(augmented.evidence.artifacts.length, 8)
+    assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 9)
+    assert.equal(augmented.evidence.artifacts.length, 9)
 
     const registryPath = join(artifactRoot, 'publication', 'registry', 'linux-x64.json')
     const mismatched = JSON.parse(await readFile(registryPath, 'utf8'))
