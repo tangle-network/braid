@@ -4,17 +4,17 @@ import { managedSpawn, observeNaturalExit, terminateProcess } from './process.mj
 export async function runCommand(command, args, options) {
   const startedAt = Date.now()
   const maxOutputBytes = options.maxOutputBytes ?? 256_000
+  const child = await managedSpawn(command, args, {
+    cwd: options.cwd,
+    env: {
+      ...process.env,
+      ...options.env,
+      NO_COLOR: '1',
+      NODE_NO_WARNINGS: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
   return await new Promise((resolveResult) => {
-    const child = managedSpawn(command, args, {
-      cwd: options.cwd,
-      env: {
-        ...process.env,
-        ...options.env,
-        NO_COLOR: '1',
-        NODE_NO_WARNINGS: '1',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
     let stdout = ''
     let stderr = ''
     const stdoutCapture = new StreamingRedactor(maxOutputBytes)

@@ -67,6 +67,10 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | release | `pnpm check:release` | Checks the release manifest and evidence set |
 | verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with complete evidence before archive endorsement |
 
+When `BRAID_CLI_BRIDGE_START=1`, the live command finds a sibling `cli-bridge` checkout by default; `BRAID_CLI_BRIDGE_DIR` can select another checkout.
+On Linux, selecting Pi also starts the local bridge with its required `fs-jail` policy unless the operator explicitly supplied a bridge isolation policy.
+The generated `AgentProfile` stores runner, provider, and model separately and adds the runner prefix only to the CLI Bridge request route.
+
 The manual GitHub release workflow accepts one full commit SHA from `main`.
 It creates one tarball under an external `BRAID_RELEASE_ARTIFACT_ROOT`, runs every candidate check against those bytes, and uploads that same tarball for platform tests and npm publication.
 `pnpm verify:candidate` qualifies the pre-publication results before a separate code-free job endorses the complete candidate archive.

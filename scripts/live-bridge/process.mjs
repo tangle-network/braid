@@ -3,7 +3,13 @@ import { spawn } from 'node:child_process'
 import { StreamingRedactor } from './capture.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
-import { processTreeStatus, sendTreeSignal, waitForTreeGone } from './process-tree.mjs'
+import {
+  processTreeStatus,
+  releaseProcessTree,
+  sendTreeSignal,
+  waitForTreeGone,
+} from './process-tree.mjs'
+import { spawnWindowsJob } from './windows-job-host.mjs'
 
 const defaultNaturalExitTimeoutMs = 2_000
 const defaultTermTimeoutMs = 2_000
@@ -15,11 +21,9 @@ export function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
 }
 
-export function managedSpawn(command, args, options) {
-  return spawn(command, args, {
-    ...options,
-    detached: process.platform !== 'win32',
-  })
+export async function managedSpawn(command, args, options) {
+  if (process.platform === 'win32') return await spawnWindowsJob(command, args, options)
+  return spawn(command, args, { ...options, detached: true })
 }
 
 function hasExited(child) {
@@ -44,7 +48,7 @@ function waitForExit(child, timeoutMs) {
 }
 
 function terminationResult(child, values) {
-  const tree = values.tree ?? processTreeStatus(child.pid)
+  const tree = values.tree ?? processTreeStatus(child)
   return {
     strategy: values.strategy,
     termTimeoutMs: values.termTimeoutMs,
@@ -77,8 +81,8 @@ export async function observeNaturalExit(
       exited: false,
       cleanupStatus: 'still-running',
     })
-  const tree = await waitForTreeGone(child.pid, treeTimeoutMs)
-  return terminationResult(child, {
+  const tree = await waitForTreeGone(child, treeTimeoutMs)
+  const result = terminationResult(child, {
     strategy: tree.supported ? 'natural-exit' : 'unsupported',
     termTimeoutMs: naturalExitTimeoutMs,
     killTimeoutMs: treeTimeoutMs,
@@ -88,13 +92,15 @@ export async function observeNaturalExit(
     cleanupStatus: tree.supported && tree.gone ? 'natural-exit' : 'unsupported',
     tree,
   })
+  if (result.cleanupStatus === 'natural-exit') releaseProcessTree(child)
+  return result
 }
 
 export async function terminateProcess(
   child,
   { termTimeoutMs = defaultTermTimeoutMs, killTimeoutMs = defaultKillTimeoutMs } = {},
 ) {
-  const initialTree = processTreeStatus(child.pid)
+  const initialTree = processTreeStatus(child)
   const initialExited = hasExited(child)
   let termSignal
   let killSignal
@@ -102,17 +108,24 @@ export async function terminateProcess(
   let killSent = false
   let exited = initialExited
   let tree = initialTree
-  if (!tree.supported || !tree.gone) {
-    termSignal = await sendTreeSignal(child, 'SIGTERM')
-    termSent = termSignal.sent
-    exited = exited || (await waitForExit(child, termTimeoutMs))
-    tree = await waitForTreeGone(child.pid, termTimeoutMs)
-  }
-  if (!tree.supported || !tree.gone) {
+  const usesWindowsJob = tree.mechanism === 'windows-job-object'
+  if (usesWindowsJob && !tree.gone) {
     killSignal = await sendTreeSignal(child, 'SIGKILL')
     killSent = killSignal.sent
     exited = exited || (await waitForExit(child, killTimeoutMs))
-    tree = await waitForTreeGone(child.pid, killTimeoutMs)
+    tree = await waitForTreeGone(child, killTimeoutMs)
+  }
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
+    termSignal = await sendTreeSignal(child, 'SIGTERM')
+    termSent = termSignal.sent
+    exited = exited || (await waitForExit(child, termTimeoutMs))
+    tree = await waitForTreeGone(child, termTimeoutMs)
+  }
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
+    killSignal = await sendTreeSignal(child, 'SIGKILL')
+    killSent = killSignal.sent
+    exited = exited || (await waitForExit(child, killTimeoutMs))
+    tree = await waitForTreeGone(child, killTimeoutMs)
   }
   const strategy =
     termSignal?.method ??
@@ -127,7 +140,7 @@ export async function terminateProcess(
         : tree.gone
           ? 'kill'
           : 'descendants-still-running'
-  return terminationResult(child, {
+  const result = terminationResult(child, {
     strategy,
     termTimeoutMs,
     killTimeoutMs,
@@ -139,6 +152,8 @@ export async function terminateProcess(
     killSignal,
     tree,
   })
+  releaseProcessTree(child)
+  return result
 }
 
 async function boundedExit(exit, timeoutMs) {
@@ -158,9 +173,18 @@ export class RpcSession {
     this.stderrCapture = new StreamingRedactor()
     this.buffer = ''
     this.waiters = new Set()
-    this.child = managedSpawn(process.execPath, [binary, 'rpc'], {
-      cwd: workspace,
-      env,
+  }
+
+  static async create(binary, workspace, env, timeoutMs) {
+    const session = new RpcSession(binary, workspace, env, timeoutMs)
+    await session.#start()
+    return session
+  }
+
+  async #start() {
+    this.child = await managedSpawn(process.execPath, [this.binary, 'rpc'], {
+      cwd: this.workspace,
+      env: this.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     this.exit = new Promise((resolveExit, rejectExit) => {

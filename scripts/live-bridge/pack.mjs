@@ -3,6 +3,7 @@ import { lstat, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 import { nativeInstallEnvironment } from '../native-install-environment.mjs'
+import { npmInvocation, pnpmInvocation } from '../release/platform.mjs'
 import { runCommand } from './command.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
@@ -15,7 +16,8 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
   registerTemp(installRoot)
   evidence.temp = { packRoot: packRoot ?? null, installRoot }
   if (packRoot) {
-    const build = await runCommand('pnpm', ['run', 'build'], { cwd: repository })
+    const buildCommand = pnpmInvocation(['run', 'build'])
+    const build = await runCommand(buildCommand.file, buildCommand.args, { cwd: repository })
     evidence.build = build
     if (build.code !== 0 || build.cleanupOk !== true) {
       throw new LiveBridgeError(
@@ -25,7 +27,8 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
         { build },
       )
     }
-    const pack = await runCommand('pnpm', ['pack', '--pack-destination', packRoot], {
+    const packCommand = pnpmInvocation(['pack', '--pack-destination', packRoot])
+    const pack = await runCommand(packCommand.file, packCommand.args, {
       cwd: repository,
     })
     evidence.packCommand = pack
@@ -66,7 +69,8 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
     '--no-fund',
     tarball,
   ]
-  const install = await runCommand('npm', installArgs, {
+  const installCommand = npmInvocation(installArgs)
+  const install = await runCommand(installCommand.file, installCommand.args, {
     cwd: installRoot,
     env: nativeInstallEnvironment(),
   })
@@ -79,12 +83,35 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
       { install },
     )
   }
-  const binary = join(
-    installRoot,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'braid.cmd' : 'braid',
+  const packageRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid')
+  const packageMetadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+  const binEntry =
+    typeof packageMetadata.bin === 'string' ? packageMetadata.bin : packageMetadata.bin?.braid
+  if (typeof binEntry !== 'string' || binEntry.length === 0) {
+    throw new LiveBridgeError(
+      'PACK_BINARY_FAILED',
+      'The packed Braid package does not declare its executable entry point',
+      exitCodes.failed,
+    )
+  }
+  const binary = resolve(packageRoot, binEntry)
+  const packageRelativeBinary = relative(packageRoot, binary)
+  if (
+    packageRelativeBinary.startsWith('..') ||
+    resolve(packageRoot, packageRelativeBinary) !== binary
   )
+    throw new LiveBridgeError(
+      'PACK_BINARY_FAILED',
+      'The packed Braid executable resolves outside its installed package',
+      exitCodes.failed,
+    )
+  const binaryInfo = await lstat(binary)
+  if (!binaryInfo.isFile() || binaryInfo.isSymbolicLink())
+    throw new LiveBridgeError(
+      'PACK_BINARY_FAILED',
+      'The packed Braid executable is not a regular package file',
+      exitCodes.failed,
+    )
   const version = await runCommand(process.execPath, [binary, '--version'], { cwd: installRoot })
   evidence.version = version
   if (version.code !== 0 || version.cleanupOk !== true)

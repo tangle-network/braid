@@ -63,6 +63,13 @@ export function capabilityAdvertised(value) {
   return typeof value === 'object' && value.available !== false
 }
 
+export function capabilityAvailability(providerValue, effectiveValue) {
+  return {
+    advertisedByProvider: capabilityAdvertised(providerValue),
+    advertised: capabilityAdvertised(effectiveValue),
+  }
+}
+
 export function assertSemanticOutcome(name, status, advertised, details = {}) {
   const expected = advertised ? 'verified' : 'reported-unavailable'
   if (status === expected) return

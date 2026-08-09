@@ -9,6 +9,34 @@ import { LiveBridgeError } from './errors.mjs'
 import { errorEvidence } from './evidence.mjs'
 import { evidenceValue } from './redaction.mjs'
 
+export function profileForBridgeTarget(target) {
+  const parts = target.modelId.split('/')
+  const harness = parts.shift()
+  const provider = parts.shift()
+  const model = parts.join('/')
+  if (
+    harness !== target.backend ||
+    provider === undefined ||
+    provider.length === 0 ||
+    model.length === 0 ||
+    parts.some((part) => part.length === 0)
+  ) {
+    throw new LiveBridgeError(
+      'TARGET_MODEL_ROUTE_INVALID',
+      `CLI Bridge target ${target.modelId} must be <runner>/<provider>/<model> and agree with backend ${target.backend}`,
+      exitCodes.unavailable,
+      { target: target.modelId, backend: target.backend },
+    )
+  }
+  return {
+    name: `Braid live ${target.modelId}`,
+    description: 'Opt-in packed CLI Bridge smoke profile',
+    version: '0.1.0',
+    harness,
+    model: { provider, default: model, reasoningEffort: 'none' },
+  }
+}
+
 export async function installBridgeCredential(evidence, repository) {
   const token = bridgeAuthToken()
   if (token === undefined) return undefined
@@ -36,7 +64,7 @@ export async function installBridgeCredential(evidence, repository) {
   }
 }
 
-export async function probePackedAnalysisReadiness(installRoot, endpoint, modelId) {
+export async function probePackedAnalysisReadiness(installRoot, endpoint, target) {
   const distRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid', 'dist')
   try {
     const [runnerModule, adapterModule] = await Promise.all([
@@ -46,11 +74,7 @@ export async function probePackedAnalysisReadiness(installRoot, endpoint, modelI
       ),
     ])
     const runner = await runnerModule.resolvePythonRunner()
-    const profile = {
-      name: `Braid live ${modelId}`,
-      harness: modelId.split('/')[0],
-      model: { default: modelId },
-    }
+    const profile = profileForBridgeTarget(target)
     const connection = {
       id: 'connection-live-cli-bridge',
       kind: 'cli-bridge',
@@ -116,8 +140,8 @@ export async function loadProviderCapabilities(installRoot) {
   return module.defaultCliBridgeCapabilities()
 }
 
-export async function writeTargetConfig(root, endpoint, modelId, credential) {
-  const key = modelId
+export async function writeTargetConfig(root, endpoint, target, credential) {
+  const key = target.modelId
     .replaceAll(/[^a-z0-9]+/giu, '-')
     .replace(/^-|-$/gu, '')
     .toLowerCase()
@@ -127,14 +151,7 @@ export async function writeTargetConfig(root, endpoint, modelId, credential) {
   await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
   const profileFile = `profile-${key}.json`
   const profilePath = join(profileDirectory, profileFile)
-  const harness = modelId.split('/')[0]
-  const profile = {
-    name: `Braid live ${modelId}`,
-    description: 'Opt-in packed CLI Bridge smoke profile',
-    version: '0.1.0',
-    harness,
-    model: { default: modelId, reasoningEffort: 'none' },
-  }
+  const profile = profileForBridgeTarget(target)
   const connectionId = 'connection-live-cli-bridge'
   const now = new Date().toISOString()
   const databaseKeyFile = join(root, `database-key-${key}`)

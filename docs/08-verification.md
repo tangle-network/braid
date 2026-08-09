@@ -566,6 +566,20 @@ The deterministic local commands are implemented in this repository.
 
 The opt-in CLI Bridge flow and semantic evaluation implementation are present and execute when their configured runners are available.
 
+The live driver writes portable profiles with separate runner, provider, and model fields, resolves a sibling CLI Bridge checkout by default, and supplies Pi's Linux `fs-jail` floor only when no operator policy is already present.
+
+Managed Windows commands enter a non-breakaway kill-on-close Job Object atomically during creation through `PROC_THREAD_ATTRIBUTE_JOB_LIST`, then begin execution with their original arguments, environment, working directory, and standard streams.
+
+The named Job Object host terminates residual members, waits for its active process count to reach zero, and writes a drain receipt only after cleanup is confirmed.
+
+Forced cleanup uses a separate controller that opens the named Job Object, terminates it, and acknowledges success only after its active process count reaches zero.
+
+Pull-request checks reproduce forced, natural-exit, RPC, detached-grandchild, and controlling-parent-crash cases, independently probe every fixture PID after cleanup, and run the portable cleanup matrix on Windows, macOS, and Linux.
+
+Capability checks use the effective per-run values returned by `agent-runtime`; broader provider-environment support remains recorded as evidence but cannot enable an action that the composed run disabled.
+
+When cancellation is unavailable, the live driver checks the rejected control against the completed run instead of starting another generation that cannot be cancelled.
+
 Tangle, supervisor, and live-analysis commands return a typed unavailable result until protected credentials, deployments, and evidence stores are supplied.
 
 The release workflow uses `pnpm release:prepare`, `pnpm release:collect`, and `pnpm verify:candidate` before publication.
