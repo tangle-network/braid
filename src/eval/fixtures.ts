@@ -10,6 +10,7 @@ import { compareFrozenRuns } from '../app/analysis-comparison-facts.js'
 import { freezeAnalysisSource } from '../app/analysis-source.js'
 import { DETERMINISTIC_PROFILE } from '../app/composition.js'
 import { ConversationBranches } from '../app/conversation-branches.js'
+import { createInteractionRequest } from '../app/interaction-request.js'
 import { resolveEffectiveProfile } from '../app/profile-selection.js'
 import { createProfileRecord } from '../app/profile-sources.js'
 import { canonicalDigest } from '../domain/canonical.js'
@@ -160,8 +161,10 @@ function permissionRequest(
   command: string,
   responseScopes: readonly ('interaction' | 'session' | 'persistent')[],
 ): InteractionRequest {
-  return {
-    id: `interaction-eval-${suffix}`,
+  const interactionId = `interaction-eval-${suffix}`
+  const runId = `run-permission-${suffix}`
+  return createInteractionRequest({
+    id: interactionId,
     kind: 'permission',
     title: 'Permission required before running a command',
     body: `Braid paused before running ${command}. Choose a scope or deny the request.`,
@@ -170,7 +173,15 @@ function permissionRequest(
     responseScopes: [...responseScopes],
     timeoutMs: 30_000,
     onTimeout: 'fail',
-  }
+    binding: {
+      runId,
+      provider: 'eval-fixture',
+      environmentId: 'environment-eval',
+      sessionId: 'session-eval',
+      executionId: runId,
+      interactionId,
+    },
+  })
 }
 
 function permissionOutput(

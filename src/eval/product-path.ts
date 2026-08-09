@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AnalysisComparisonResult } from '../app/analysis-comparison-contracts.js'
 import type { ForkPlan } from '../app/conversation-types.js'
+import { interactionResponseBinding, parseInteractionRequest } from '../app/interaction-request.js'
 import type { AnalysisRecord } from '../domain/entities.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { canonicalDigest } from '../domain/canonical.js'
@@ -207,10 +208,14 @@ function renderInteraction(source: unknown): ProductOutput {
   if (value.interaction === null || typeof value.interaction !== 'object')
     return unavailableProductOutput(source, 'EVAL-02 fixture has no complete InteractionRequest')
   const runId = typeof value.run?.id === 'string' ? value.run.id : 'run-eval-interaction'
+  const request = parseInteractionRequest(value.interaction)
+  if (request === undefined)
+    return unavailableProductOutput(source, 'EVAL-02 fixture has no valid InteractionRequest')
   const event: BraidEvent = {
     kind: 'run.interaction',
     runId,
-    request: value.interaction as never,
+    request,
+    responseBinding: interactionResponseBinding(request),
     provider: { eventId: `provider-interaction-${runId}`, providerSequence: 1 },
   }
   const projected = productPresenters().projectSemanticEvent({

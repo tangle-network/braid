@@ -14,18 +14,22 @@ The following published versions were queried from npm and their installed decla
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.43.1` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.46.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.128.0` | Sole execution layer; public box, executor, chat, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.4` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `0.3.5` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.4.11` | Tangle environment adapter over the sandbox client |
-| `@tangle-network/sandbox` | `0.19.2` | Tangle cloud client used by the provider |
+| `@tangle-network/agent-provider-cli-bridge` | `0.4.2` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
+| `@tangle-network/agent-provider-tangle` | `0.6.0` | Tangle environment adapter over the sandbox client |
+| `@tangle-network/sandbox` | `0.19.3` | Tangle cloud client used by the provider |
 
 The installed runtime publishes `agent-eval >=0.143.0 <0.144.0`, `agent-interface >=0.43.0 <0.44.0`, and optional `sandbox >=0.17.2 <0.18.0` as peer ranges.
 
-Braid exercises runtime `0.128.0` with the internally consistent interface `0.43.1`, eval `0.144.4`, CLI Bridge adapter `0.3.5`, Tangle adapter `0.4.11`, and sandbox `0.19.2` release set.
+Braid exercises runtime `0.128.0` with interface `0.46.0`, eval `0.144.4`, CLI Bridge adapter `0.4.2`, Tangle adapter `0.6.0`, and sandbox `0.19.3`.
 
-The exact eval and sandbox exceptions in `pnpm-workspace.yaml` acknowledge runtime `0.128.0`'s stale peer metadata; [agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) records both the metadata lag and why sandbox `0.19.3` plus interface `0.45.0` cannot yet replace this set.
+The interface, CLI Bridge, and Tangle packages were published together from `tangle-network/agent-sdk` commit `dd695617ce48021f6b1064e531d213bec0b0b5f4`, and their registry integrity hashes were checked before this update.
+
+The workspace override resolves every transitive `agent-interface` dependency to `0.46.0`; the package's release audit proved that this version retains every public symbol used by the older dependency graph.
+
+The exact interface, eval, and sandbox exceptions in `pnpm-workspace.yaml` acknowledge runtime `0.128.0`'s stale peer metadata; [agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) records the metadata lag.
 
 ### Installed package boundary
 
@@ -180,7 +184,7 @@ These behaviors may be suitable for isolated benchmark automation under an expli
 
 ## Existing CLI Bridge provider contract
 
-The published `@tangle-network/agent-provider-cli-bridge@0.3.5` resolves the bridge model from a turn override, provider default, or profile harness and model.
+The published `@tangle-network/agent-provider-cli-bridge@0.4.2` resolves the bridge model from a turn override, provider default, or profile harness and model.
 
 It sends stable `executionId` values as bridge run identifiers when they satisfy the bridge identifier rules.
 
@@ -200,7 +204,7 @@ It exposes no generalized interaction response.
 
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.4.11` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.6.0` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
 
 Its default capabilities report full canonical profile dimensions, live and replay streaming, detach, turn idempotency, session continuation, session list and messages, workspace read/write/exec/git/upload/download, checkpoint and fork, placement, usage, and confidentiality.
 

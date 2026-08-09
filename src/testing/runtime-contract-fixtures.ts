@@ -1,4 +1,5 @@
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
+import { createInteractionRequest } from '../app/interaction-request.js'
 
 const RECEIVED_AT = '2026-08-01T00:00:00.000Z'
 
@@ -11,7 +12,7 @@ function event(value: unknown): BraidRuntimeEvent {
  * These are normalized events, not runner output, so the fixture does not
  * encode a provider parser or a second execution path.
  */
-export function runtimeContractEvents(): readonly BraidRuntimeEvent[] {
+export function runtimeContractEvents(runId = 'run-000001'): readonly BraidRuntimeEvent[] {
   return [
     event({
       type: 'message.part.updated',
@@ -65,14 +66,22 @@ export function runtimeContractEvents(): readonly BraidRuntimeEvent[] {
     }),
     event({
       type: 'interaction',
-      request: {
+      request: createInteractionRequest({
         id: 'interaction-1',
         kind: 'question',
         title: 'Continue?',
         answerSpec: {
           fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
         },
-      },
+        binding: {
+          runId,
+          provider: 'fixture-provider',
+          environmentId: 'environment-contract',
+          sessionId: 'session-contract',
+          executionId: runId,
+          interactionId: 'interaction-1',
+        },
+      }),
     }),
     event({
       type: 'final',
@@ -87,7 +96,7 @@ export function runtimeContractEvents(): readonly BraidRuntimeEvent[] {
 }
 
 export function runtimeContractEnvelopes(runId: string): readonly RuntimeEventEnvelope[] {
-  return runtimeContractEvents().map((runtimeEvent, index) => ({
+  return runtimeContractEvents(runId).map((runtimeEvent, index) => ({
     runId,
     eventId: `${runId}:contract:${index + 1}`,
     sequence: index + 1,

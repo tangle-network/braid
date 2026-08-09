@@ -1,13 +1,8 @@
-import type { InteractionResponse } from '@tangle-network/agent-interface'
+import type { InteractionResponseCommand } from '@tangle-network/agent-interface'
 import type { ControlAcknowledgement, ExecutionPort } from '../ports/execution.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 
-export interface InteractionEffectRequest {
-  readonly operationId: string
-  readonly runId: string
-  readonly interactionId: string
-  readonly response: InteractionResponse
-}
+export type InteractionEffectRequest = InteractionResponseCommand
 
 export async function executeInteractionEffect(input: {
   readonly effects: SerializedEffectCoordinator
@@ -22,10 +17,10 @@ export async function executeInteractionEffect(input: {
       operationId: request.operationId,
       effectKind: 'interaction.respond',
       request,
-      serializationKey: `run:${request.runId}:interaction`,
+      serializationKey: `run:${request.binding.runId}:interaction`,
       metadata: {
-        runId: request.runId,
-        interactionId: request.interactionId,
+        runId: request.binding.runId,
+        interactionId: request.binding.interactionId,
         owner: input.owner,
       },
     },
@@ -69,7 +64,7 @@ async function dispatchResponse(
   if (!execution.respondInteraction)
     return { status: 'unknown', detail: 'INTERACTION_RESPONSE_UNAVAILABLE' }
   try {
-    const result = await execution.respondInteraction(request)
+    const result = await execution.respondInteraction({ command: request })
     if (result.outcome === 'accepted' || result.outcome === 'already-applied') {
       return {
         status: 'acknowledged',

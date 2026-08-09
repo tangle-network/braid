@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   type InteractionRequest,
+  type InteractionRequestMaterial,
   type InteractionResponse,
+  type InteractionResponseCommand,
   permissionAnswerSpec,
 } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
@@ -21,6 +23,13 @@ import {
 } from '../src/app/automation-rules.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { checkInteractionResponse } from '../src/app/interaction-response.js'
+import {
+  createInteractionRequest,
+  interactionRequestMaterial,
+  interactionResponseBinding,
+  parseInteractionRequest,
+  rebindInteractionRequest,
+} from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { replayEvents } from '../src/domain/reducer.js'
@@ -35,21 +44,31 @@ const NOW = '2026-08-01T00:00:00.000Z'
 
 function questionRequest(
   id = 'interaction-question',
-  overrides: Partial<InteractionRequest> = {},
+  overrides: Partial<InteractionRequestMaterial> = {},
 ): InteractionRequest {
-  return {
-    id,
-    kind: 'question',
-    title: 'Continue the operation?',
-    answerSpec: {
+  const interactionId = overrides.id ?? id
+  return createInteractionRequest({
+    id: interactionId,
+    kind: overrides.kind ?? 'question',
+    title: overrides.title ?? 'Continue the operation?',
+    answerSpec: overrides.answerSpec ?? {
       fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
     },
-    ...overrides,
-  }
+    ...(overrides.body === undefined ? {} : { body: overrides.body }),
+    ...(overrides.subject === undefined ? {} : { subject: overrides.subject }),
+    ...(overrides.responseScopes === undefined ? {} : { responseScopes: overrides.responseScopes }),
+    ...(overrides.allowedOutcomes === undefined
+      ? {}
+      : { allowedOutcomes: overrides.allowedOutcomes }),
+    ...(overrides.default === undefined ? {} : { default: overrides.default }),
+    ...(overrides.timeoutMs === undefined ? {} : { timeoutMs: overrides.timeoutMs }),
+    ...(overrides.onTimeout === undefined ? {} : { onTimeout: overrides.onTimeout }),
+    binding: overrides.binding ?? interactionBinding(interactionId),
+  })
 }
 
 function permissionRequest(id = 'interaction-permission'): InteractionRequest {
-  return {
+  return createInteractionRequest({
     id,
     kind: 'permission',
     title: 'Allow the operation?',
@@ -58,12 +77,25 @@ function permissionRequest(id = 'interaction-permission'): InteractionRequest {
       responseScopes: ['interaction', 'session', 'persistent'],
     }),
     responseScopes: ['interaction', 'session', 'persistent'],
+    binding: interactionBinding(id),
+  })
+}
+
+function interactionBinding(interactionId: string, runId = 'run-interaction') {
+  return {
+    runId,
+    provider: 'test-provider',
+    environmentId: 'environment-test',
+    sessionId: 'session-test',
+    executionId: runId,
+    interactionId,
   }
 }
 
 function interaction(request: InteractionRequest, runId = 'run-interaction'): BraidInteraction {
   return {
     request,
+    responseBinding: interactionResponseBinding(request),
     runId,
     source: { occurredAt: NOW },
     status: 'pending',
@@ -107,15 +139,25 @@ function interactionExecution(request: InteractionRequest): {
   readonly execution: ExecutionPort
   readonly responses: () => number
   readonly lastResponse: () => InteractionResponse | undefined
+  readonly lastCommand: () => InteractionResponseCommand | undefined
   readonly release: () => void
 } {
   let responseCount = 0
   let lastResponse: InteractionResponse | undefined
+  let lastCommand: InteractionResponseCommand | undefined
   let releaseStream: (() => void) | undefined
   const execution: ExecutionPort = {
     capabilities: () => DEFAULT_RUN_CAPABILITIES,
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
-      yield { type: 'interaction', request }
+      yield {
+        type: 'interaction',
+        request: rebindInteractionRequest(request, {
+          ...request.binding,
+          runId: input.runId,
+          executionId: input.runId,
+          ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+        }),
+      }
       await new Promise<void>((resolve) => {
         releaseStream = resolve
         if (input.signal.aborted) resolve()
@@ -124,15 +166,17 @@ function interactionExecution(request: InteractionRequest): {
     },
     respondInteraction: async (input) => {
       responseCount += 1
-      lastResponse = structuredClone(input.response)
+      lastCommand = structuredClone(input.command)
+      lastResponse = structuredClone(input.command.response)
       releaseStream?.()
-      return { operationId: input.operationId, outcome: 'accepted' as const }
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
     },
   }
   return {
     execution,
     responses: () => responseCount,
     lastResponse: () => lastResponse,
+    lastCommand: () => lastCommand,
     release: () => releaseStream?.(),
   }
 }
@@ -258,6 +302,43 @@ test('secret answers are validated in memory but never become public data or aut
   )
 })
 
+test('sensitive request context stays usable through a redacted display copy', async () => {
+  const canary = 'SECRET_REQUEST_CONTEXT_CANARY'
+  const request = questionRequest('interaction-sensitive-context', {
+    subject: {
+      type: 'tool',
+      toolName: 'deploy',
+      input: { apiKey: canary, target: 'production' },
+    },
+  })
+  const provider = interactionExecution(request)
+  const app = applicationFor(provider.execution)
+  app.send({ operationId: 'operation-send-sensitive-context', text: 'deploy' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+
+  const stored = app.state().runs[0]?.interactions[0]
+  assert.ok(stored)
+  assert.equal(stored.request.kind, 'question')
+  assert.ok(parseInteractionRequest(stored.request))
+  assert.deepEqual(stored.request.subject, {
+    type: 'tool',
+    toolName: 'deploy',
+    input: { apiKey: '[redacted]', target: 'production' },
+  })
+  assert.notEqual(stored.request.requestDigest, stored.responseBinding.requestDigest)
+  assert.equal(JSON.stringify(app.events()).includes(canary), false)
+
+  await app.respondInteraction({
+    operationId: 'operation-respond-sensitive-context',
+    runId: stored.runId,
+    interactionId: request.id,
+    response: { id: request.id, outcome: 'declined' },
+  })
+  const command = provider.lastCommand()
+  assert.ok(command)
+  assert.deepEqual(command.binding, stored.responseBinding)
+})
+
 test('permission scope validation only accepts grants offered by the request', () => {
   const request = permissionRequest()
   const once = checkInteractionResponse(request, {
@@ -269,7 +350,10 @@ test('permission scope validation only accepts grants offered by the request', (
   assert.throws(
     () =>
       checkInteractionResponse(
-        { ...request, responseScopes: ['interaction'] },
+        createInteractionRequest({
+          ...interactionRequestMaterial(request),
+          responseScopes: ['interaction'],
+        }),
         { id: request.id, outcome: 'accepted', data: { grant: ['allow_session'] } },
       ),
     (error: unknown) => error instanceof AppError && error.code === 'INVALID_INTERACTION_RESPONSE',
@@ -297,6 +381,13 @@ test('application interaction response is idempotent, conflict-safe, and survive
   })
   assert.equal(first.acknowledgement.outcome, 'accepted')
   assert.equal(provider.responses(), 1)
+  const command = provider.lastCommand()
+  const storedRequest = app.state().runs[0]?.interactions[0]?.request
+  assert.ok(command)
+  assert.ok(storedRequest)
+  assert.equal(command.binding.runId, first.runId)
+  assert.equal(command.binding.interactionId, request.id)
+  assert.equal(command.binding.requestDigest, storedRequest.requestDigest)
 
   await assert.rejects(
     app.respondInteraction({
@@ -388,14 +479,21 @@ test('the terminal API never reports an unconfirmed interaction response as acce
   let releaseStream: (() => void) | undefined
   const execution: ExecutionPort = {
     capabilities: () => DEFAULT_RUN_CAPABILITIES,
-    async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {
-      yield { type: 'interaction', request }
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      yield {
+        type: 'interaction',
+        request: rebindInteractionRequest(request, {
+          ...request.binding,
+          runId: input.runId,
+          executionId: input.runId,
+        }),
+      }
       await new Promise<void>((resolve) => {
         releaseStream = resolve
       })
     },
     respondInteraction: async (input) => ({
-      operationId: input.operationId,
+      operationId: input.command.operationId,
       outcome: 'unknown',
       detail: 'The provider did not confirm the response',
     }),

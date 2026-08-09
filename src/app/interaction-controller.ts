@@ -6,7 +6,10 @@ import { createFeedbackDecisionId } from '../domain/ids.js'
 import { effectRequestDigest } from './effect-coordinator.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 import { executeInteractionEffect, type InteractionEffectRequest } from './interaction-effects.js'
-import { checkInteractionResponse } from './interaction-response.js'
+import {
+  checkInteractionResponse,
+  createInteractionResponseCommand,
+} from './interaction-response.js'
 import type { InteractionReceipt } from './application-types.js'
 import type { JournalWriter, StateReader } from './application-ports.js'
 import type { RunLedger } from './run-ledger.js'
@@ -42,14 +45,13 @@ export async function respondInteraction(
   if (!interaction)
     throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
   const checked = checkInteractionResponse(interaction.request, input.response)
-  const request: InteractionEffectRequest = {
-    operationId: input.operationId,
-    runId: input.runId,
-    interactionId: input.interactionId,
-    response: checked.response,
-  }
+  const request: InteractionEffectRequest = createInteractionResponseCommand(
+    interaction.responseBinding,
+    input.operationId,
+    checked.response,
+  )
   const digest = effectRequestDigest({ effectKind: 'interaction.respond', request })
-  assertBinding(input, run)
+  assertBinding(input, run, interaction.responseBinding)
   const recorded = recordedInteractionOperation(input.events(), input.operationId)
   if (recorded.conflict) throw new AppError('OPERATION_CONFLICT', recorded.conflict)
   if (recorded.requested !== undefined)
@@ -161,11 +163,22 @@ export async function respondInteraction(
   }
 }
 
-function assertBinding(input: InteractionControllerInput, run: ReturnType<typeof findRun>): void {
-  if (input.providerSessionId !== undefined && input.providerSessionId !== run.providerSessionId) {
+function assertBinding(
+  input: InteractionControllerInput,
+  run: ReturnType<typeof findRun>,
+  binding: import('@tangle-network/agent-interface').InteractionBinding,
+): void {
+  if (
+    binding.runId !== input.runId ||
+    binding.interactionId !== input.interactionId ||
+    (run.providerSessionId !== undefined && binding.sessionId !== run.providerSessionId) ||
+    (run.environmentId !== undefined && binding.environmentId !== run.environmentId) ||
+    (run.receipt.provider !== undefined && binding.provider !== run.receipt.provider) ||
+    (input.providerSessionId !== undefined && binding.sessionId !== input.providerSessionId)
+  ) {
     throw new AppError(
       'INTERACTION_BINDING_MISMATCH',
-      'The response belongs to a different provider session',
+      'The response belongs to a different run, provider session, or environment',
     )
   }
 }
