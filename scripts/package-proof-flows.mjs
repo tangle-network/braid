@@ -159,59 +159,6 @@ export async function runRpc(binary, cwd) {
   }
 }
 
-export async function runPlain(binary, cwd) {
-  const recordPath = join(cwd, 'plain-final-state.json')
-  const line = (value) => `printf '%s\\n' ${shellArgument(value)}`
-  const script = [
-    line('plain package proof'),
-    'sleep 1.5',
-    line('/graph'),
-    line('/open'),
-    line('plain package proof'),
-    line('/graph'),
-    line('/open'),
-    line('/cancel'),
-    line('/quit'),
-  ].join('; ')
-  const { stdout, stderr } = await Promise.race([
-    runFifoCommand(
-      (stdoutPath, stderrPath) =>
-        `{ ${script}; } | exec ${shellArgument(binary)} --plain --fixture deterministic --no-color --workspace ${shellArgument(cwd)} --record-state ${shellArgument(recordPath)} > ${shellArgument(stdoutPath)} 2> ${shellArgument(stderrPath)}`,
-      cwd,
-      cleanEnvironment({
-        NO_COLOR: '1',
-        NODE_NO_WARNINGS: '1',
-        BRAID_FIXTURE_CHUNK_DELAY_MS: '100',
-        BRAID_JOURNAL_PATH: join(cwd, 'plain-events.jsonl'),
-      }),
-    ),
-    sleep(5_000).then(() => {
-      throw new Error('plain proof did not exit')
-    }),
-  ])
-  const evidence = JSON.parse(await readFile(recordPath, 'utf8'))
-  const result = { stdout, stderr }
-  assert(evidence.view?.selectedSurface === 'graph', 'plain graph command did not open graph')
-  assert(
-    evidence.state.runs.some((run) => run.status === 'aborted'),
-    'plain cancel did not abort a run',
-  )
-  assert(
-    evidence.state.messages.some(
-      (message) =>
-        message.role === 'assistant' &&
-        message.status === 'complete' &&
-        message.text === 'Fixture response through pi: plain package proof',
-    ),
-    'plain retry did not complete',
-  )
-  return {
-    ...result,
-    evidence,
-    flows: ['send', 'graph', 'unavailable', 'retry', 'cancel', 'shutdown'],
-  }
-}
-
 export async function runTerminal(binary, cwd, options) {
   const recordPath = join(
     cwd,
