@@ -4,13 +4,12 @@ import { StreamingRedactor } from './capture.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import {
-  prepareProcessTreeTracking,
   processTreeStatus,
-  registerProcessTree,
   releaseProcessTree,
   sendTreeSignal,
   waitForTreeGone,
 } from './process-tree.mjs'
+import { spawnWindowsJob } from './windows-job-host.mjs'
 
 const defaultNaturalExitTimeoutMs = 2_000
 const defaultTermTimeoutMs = 2_000
@@ -23,18 +22,8 @@ export function sleep(ms) {
 }
 
 export async function managedSpawn(command, args, options) {
-  const tracker = await prepareProcessTreeTracking()
-  try {
-    const child = spawn(command, args, {
-      ...options,
-      detached: process.platform !== 'win32',
-    })
-    registerProcessTree(child, tracker)
-    return child
-  } catch (error) {
-    tracker?.release()
-    throw error
-  }
+  if (process.platform === 'win32') return await spawnWindowsJob(command, args, options)
+  return spawn(command, args, { ...options, detached: true })
 }
 
 function hasExited(child) {

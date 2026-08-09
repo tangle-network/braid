@@ -1,14 +1,8 @@
 import { spawn } from 'node:child_process'
 
-import {
-  prepareWindowsProcessTracking,
-  registerWindowsProcess,
-  releaseWindowsProcess,
-  windowsProcessStatus,
-} from './windows-process-tracker.mjs'
+import { releaseWindowsJob, windowsJobStatus } from './windows-job-host.mjs'
 
 const pollMs = 25
-const windowsEventQuietMs = 250
 const taskkillTimeoutMs = 2_000
 
 function childHasExited(child) {
@@ -27,21 +21,12 @@ function processGroupPresent(pid) {
   }
 }
 
-export async function prepareProcessTreeTracking() {
-  if (process.platform !== 'win32') return undefined
-  return await prepareWindowsProcessTracking()
-}
-
-export function registerProcessTree(child, tracker) {
-  if (process.platform === 'win32') registerWindowsProcess(child, tracker)
-}
-
 export function releaseProcessTree(child) {
-  if (process.platform === 'win32') releaseWindowsProcess(child)
+  if (process.platform === 'win32') releaseWindowsJob(child)
 }
 
 export function processTreeStatus(child) {
-  if (process.platform === 'win32') return windowsProcessStatus(child, childHasExited(child))
+  if (process.platform === 'win32') return windowsJobStatus(child, childHasExited(child))
   const present = processGroupPresent(child.pid)
   if (present === undefined)
     return {
@@ -54,30 +39,11 @@ export function processTreeStatus(child) {
 
 export async function waitForTreeGone(child, timeoutMs) {
   const deadline = Date.now() + timeoutMs
-  let quietSince
-  let quietVersion
   while (true) {
     const status = processTreeStatus(child)
     if (!status.supported) return status
-    if (Date.now() >= deadline) {
-      if (process.platform !== 'win32' || !status.gone) return status
-      return {
-        ...status,
-        gone: false,
-        reason: 'Windows process events did not remain quiet before the cleanup timeout',
-      }
-    }
-    if (!status.gone) {
-      quietSince = undefined
-      quietVersion = undefined
-    } else if (process.platform !== 'win32') {
-      return status
-    } else if (quietVersion !== status.version) {
-      quietSince = Date.now()
-      quietVersion = status.version
-    } else if (Date.now() - quietSince >= windowsEventQuietMs) {
-      return status
-    }
+    if (status.gone) return status
+    if (Date.now() >= deadline) return status
     await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())))
   }
 }

@@ -7,7 +7,18 @@ import { StreamingRedactor } from './capture.mjs'
 import { runCommand } from './command.mjs'
 import { appendBounded, RpcSession, sleep } from './process.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
-import { WindowsProcessTracker } from './windows-process-tracker.mjs'
+
+async function waitForPidGone(pid) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return true
+    }
+    await sleep(50)
+  }
+  return false
+}
 
 async function runRedactionMatrix() {
   const value = evidenceValue({
@@ -34,22 +45,6 @@ async function runRedactionMatrix() {
   assert.equal(finished.includes('bridge ready'), true)
   assert.equal(finished.includes('request complete'), true)
   assert.equal(finished.includes('bridge stopped'), true)
-
-  const monitor = { supported: true, unsubscribe() {} }
-  const tracker = new WindowsProcessTracker(monitor)
-  tracker.attach(100)
-  tracker.record({ type: 'start', processId: 100, parentProcessId: 1, createdAt: '1' })
-  tracker.record({ type: 'start', processId: 101, parentProcessId: 100, createdAt: '2' })
-  tracker.record({ type: 'start', processId: 102, parentProcessId: 101, createdAt: '3' })
-  tracker.record({ type: 'stop', processId: 101, createdAt: '4' })
-  const windowsTree = tracker.status(false)
-  assert.deepEqual(windowsTree.pids, [100, 102])
-  assert.equal(windowsTree.gone, false)
-  assert.deepEqual(windowsTree.roots, [100, 102])
-  tracker.record({ type: 'stop', processId: 100, createdAt: '5' })
-  assert.deepEqual(tracker.status(true).pids, [102])
-  tracker.record({ type: 'stop', processId: 102, createdAt: '6' })
-  assert.equal(tracker.status(true).gone, true)
 }
 
 async function runProcessMatrix() {
@@ -81,17 +76,7 @@ async function runProcessMatrix() {
     assert.equal(result.cleanupOk, true, JSON.stringify(result.termination))
     assert.equal(result.termination.descendantsExited, true)
     assert.equal(result.termination.descendantsVerified, true)
-    let alive = true
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      try {
-        process.kill(descendantPid, 0)
-      } catch {
-        alive = false
-        break
-      }
-      await sleep(50)
-    }
-    assert.equal(alive, false)
+    assert.equal(await waitForPidGone(descendantPid), true)
 
     const naturalPidPath = join(root, 'natural-descendant.pid')
     const orphanSource = [
@@ -114,18 +99,9 @@ async function runProcessMatrix() {
     const naturalDescendantPid = Number(await readFile(naturalPidPath, 'utf8'))
     assert.equal(natural.code, 0)
     assert.equal(natural.cleanupOk, true, JSON.stringify(natural.termination))
-    assert.equal(natural.termination.termSent || natural.termination.killSent, true)
-    alive = true
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      try {
-        process.kill(naturalDescendantPid, 0)
-      } catch {
-        alive = false
-        break
-      }
-      await sleep(50)
-    }
-    assert.equal(alive, false)
+    if (process.platform === 'win32') assert.equal(natural.termination.tree.kernelContained, true)
+    else assert.equal(natural.termination.termSent || natural.termination.killSent, true)
+    assert.equal(await waitForPidGone(naturalDescendantPid), true)
 
     const rpcScript = join(root, 'rpc-natural.mjs')
     const rpcPidPath = join(root, 'rpc-descendant.pid')
@@ -146,15 +122,28 @@ async function runProcessMatrix() {
       1_000,
     )
     const rpcResult = await rpc.close()
-    assert.equal(rpcResult.termination.exited, true)
+    const rpcDescendantPid = Number(await readFile(rpcPidPath, 'utf8').catch(() => '0'))
     assert.equal(
-      ['term', 'kill'].includes(rpcResult.termination.cleanupStatus),
+      Number.isInteger(rpcDescendantPid) && rpcDescendantPid > 0,
       true,
-      JSON.stringify(rpcResult.termination),
+      JSON.stringify(rpcResult),
     )
-    assert.equal(rpcResult.termination.termSent || rpcResult.termination.killSent, true)
+    assert.equal(rpcResult.termination.exited, true)
+    assert.equal(rpcResult.exit.code, 0, JSON.stringify(rpcResult))
+    if (process.platform === 'win32') {
+      assert.equal(rpcResult.termination.cleanupStatus, 'natural-exit')
+      assert.equal(rpcResult.termination.tree.kernelContained, true)
+    } else {
+      assert.equal(
+        ['term', 'kill'].includes(rpcResult.termination.cleanupStatus),
+        true,
+        JSON.stringify(rpcResult.termination),
+      )
+      assert.equal(rpcResult.termination.termSent || rpcResult.termination.killSent, true)
+    }
     assert.equal(rpcResult.termination.descendantsExited, true)
     assert.equal(rpcResult.termination.descendantsVerified, true)
+    assert.equal(await waitForPidGone(rpcDescendantPid), true)
 
     const canary = 'chunked-boundary-canary-3e6a'
     const chunks = [
