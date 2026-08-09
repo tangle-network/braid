@@ -224,7 +224,7 @@ An unknown slash command is not sent to the agent and opens a correction list.
 | `/compare <left> <right>` | Create a paired comparison of two frozen run or branch sources |
 | `/approve [scope]` | Accept the focused pending interaction using an allowed scope |
 | `/reject [feedback]` | Decline the focused pending interaction with optional feedback when accepted by its schema |
-| `/automate` | Inspect, create, disable, or remove scoped interaction response rules |
+| `/automate <list|create|update|dry-run|disable|delete>` | Inspect and manage scoped interaction response rules |
 | `/queue <text>` | Add input to the active branch's admission queue |
 | `/steer <text>` | Deliver runtime steering to the active run when supported |
 | `/cancel` | Request explicit cancellation and wait for a confirmed terminal or honest unknown state |

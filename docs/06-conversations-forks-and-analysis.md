@@ -392,7 +392,13 @@ The queue evaluates rules in deterministic priority order and records matched, s
 
 Conflicting rules fail closed and require user response.
 
-`/automate` always supports list, inspect, disable, delete, and dry-run against pending interactions.
+`/automate list` returns complete sanitized rule records, so a separate inspect path cannot drift from the list view.
+
+`/automate create` and `/automate update` accept the same typed parameter object as the headless `automation_create` and `automation_update` commands.
+
+`/automate dry-run <run-id> <interaction-id>` evaluates a pending interaction without sending a response.
+
+`/automate disable <rule-id>` and `/automate delete <rule-id>` preserve their audited lifecycle through the same application actions used by headless clients.
 
 ## Graph and analysis acceptance
 
