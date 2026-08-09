@@ -33,7 +33,8 @@ const { applyPublicationProof, createPublicationProof, REQUIRED_RELEASE_TARGETS 
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { validateIndependentReview } = await import('../scripts/release/independent-review.mjs')
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
-const { npmExecutable, portableEvidencePath } = await import('../scripts/release/platform.mjs')
+const platformSupport = await import('../scripts/release/platform.mjs')
+const { npmInvocation, pnpmInvocation, portableEvidencePath } = platformSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
 const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
@@ -249,8 +250,40 @@ test('the release catalog exactly covers every stable verification command', asy
 })
 
 test('release subprocesses and recorded paths are portable to Windows', () => {
-  assert.equal(npmExecutable('linux'), 'npm')
-  assert.equal(npmExecutable('win32'), 'npm.cmd')
+  assert.deepEqual(npmInvocation(['install'], { platform: 'linux' }), {
+    file: 'npm',
+    args: ['install'],
+  })
+  assert.deepEqual(
+    npmInvocation(['install'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+    }),
+    {
+      file: 'C:\\node\\node.exe',
+      args: ['C:\\node\\node_modules\\npm\\bin\\npm-cli.js', 'install'],
+    },
+  )
+  assert.deepEqual(
+    pnpmInvocation(['pack'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      environment: { npm_execpath: 'C:\\pnpm\\pnpm.cjs' },
+    }),
+    {
+      file: 'C:\\node\\node.exe',
+      args: ['C:\\pnpm\\pnpm.cjs', 'pack'],
+    },
+  )
+  assert.throws(
+    () =>
+      pnpmInvocation(['pack'], {
+        platform: 'win32',
+        execPath: 'C:\\node\\node.exe',
+        environment: {},
+      }),
+    /pnpm JavaScript entry point/u,
+  )
   assert.equal(
     portableEvidencePath('<temporary>\\install\\node_modules\\@tangle-network'),
     '<temporary>/install/node_modules/@tangle-network',

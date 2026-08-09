@@ -65,7 +65,12 @@ async function makeRepo() {
   await mkdir(join(root, 'docs'), { recursive: true })
   await writeFile(
     join(root, 'package.json'),
-    `${JSON.stringify({ name: '@example/braid', version: '1.0.0', dependencies: {} })}\n`,
+    `${JSON.stringify({
+      name: '@example/braid',
+      version: '1.0.0',
+      packageManager: 'pnpm@11.18.0',
+      dependencies: {},
+    })}\n`,
   )
   await writeFile(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
   await writeFile(
@@ -79,7 +84,9 @@ async function makeRepo() {
   git(root, 'add', 'package.json', 'pnpm-lock.yaml', 'docs/requirements.md')
   git(root, 'commit', '-qm', 'fixture')
   const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  const packageJsonBytes = Buffer.from(`${JSON.stringify(packageJson)}\n`)
+  const packedPackageJson = { ...packageJson }
+  delete packedPackageJson.packageManager
+  const packageJsonBytes = Buffer.from(`${JSON.stringify(packedPackageJson)}\n`)
   const tarballPath = join(artifactRoot, 'example-braid-1.0.0.tgz')
   const tarballBytes = tarArchive([
     { name: 'package/', type: 'directory' },
@@ -736,5 +743,72 @@ test('a restored failed check is retried with a new recorded attempt', async () 
     assert.equal(retried.envelope.checks[0]?.attempt, 2)
     assert.equal(calls, 2)
     assert.deepEqual(retried.manifest.signatures, [])
+  })
+})
+
+test('a failed exact record retries every record and artifact from its shared command', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    let calls = 0
+    const runCheck = async ({ checkId, environment }) => {
+      calls += 1
+      const measurement = calls === 1 ? 'EVAL-02' : 'EVAL-01'
+      await mkdir(environment.BRAID_EVAL_OUTPUT_DIR, { recursive: true })
+      await writeFile(
+        join(environment.BRAID_EVAL_OUTPUT_DIR, 'evidence.json'),
+        `${JSON.stringify({ attempt: calls, measurement })}\n`,
+      )
+      const output =
+        'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
+        `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({
+          measurements: [{ kind: 'scalar', name: measurement, unit: 'fixtures-passed', value: 3 }],
+        })}\n`
+      const processResult = await executeArgv({
+        file: process.execPath,
+        args: ['-e', `process.stdout.write(${JSON.stringify(output)})`],
+        cwd: root,
+        environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      })
+      return {
+        checkId,
+        category: 'eval',
+        command: 'pnpm test:eval',
+        argv: ['pnpm', 'test:eval'],
+        ...processResult,
+      }
+    }
+    const options = {
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['eval', 'EVAL-01'] } },
+      checkIds: ['eval', 'EVAL-01'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck,
+    }
+    const failed = await collectReleaseEvidence(options)
+    assert.equal(failed.result, 'failed')
+    assert.deepEqual(
+      failed.envelope.checks.map(({ id, attempt, result }) => ({ id, attempt, result })),
+      [
+        { id: 'EVAL-01', attempt: 1, result: 'uncaptured' },
+        { id: 'eval', attempt: 1, result: 'passed' },
+      ],
+    )
+
+    const retried = await collectReleaseEvidence(options)
+    assert.equal(retried.result, 'passed')
+    assert.equal(calls, 2)
+    assert.deepEqual(
+      retried.envelope.checks.map(({ id, attempt, result }) => ({ id, attempt, result })),
+      [
+        { id: 'EVAL-01', attempt: 2, result: 'passed' },
+        { id: 'eval', attempt: 2, result: 'passed' },
+      ],
+    )
+    const evidenceArtifacts = retried.envelope.artifacts.filter(({ id }) =>
+      id.includes('-evidence-'),
+    )
+    assert(evidenceArtifacts.every(({ sha256 }) => sha256 === evidenceArtifacts[0]?.sha256))
   })
 })

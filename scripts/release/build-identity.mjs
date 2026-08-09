@@ -196,6 +196,12 @@ function packageManifestFromProof(proof) {
   return candidates[0]
 }
 
+function sourceManifestAsPackedByPnpm(packageJson) {
+  const packed = { ...packageJson }
+  delete packed.packageManager
+  return packed
+}
+
 export async function readBuildIdentity({
   repository,
   artifactRoot,
@@ -275,7 +281,7 @@ export async function readBuildIdentity({
     packageFileBytesFromTarball(tarballBytes, 'package/package.json').toString('utf8'),
   )
   assert(
-    canonicalJson(packedPackageJson) === canonicalJson(packageJson),
+    canonicalJson(packedPackageJson) === canonicalJson(sourceManifestAsPackedByPnpm(packageJson)),
     'Packed package.json differs from HEAD',
   )
   return {

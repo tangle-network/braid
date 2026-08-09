@@ -154,9 +154,12 @@ function restorePassedChecks({
   const sourceEnvironments = new Map(
     envelope.environments.map((environment) => [environment.id, environment]),
   )
+  const commandsToRetry = new Set(
+    envelope.checks.filter((check) => check.result !== 'passed').map((check) => check.command),
+  )
   for (const check of envelope.checks) {
     previousAttempts.set(check.id, Math.max(previousAttempts.get(check.id) ?? 0, check.attempt))
-    if (check.result !== 'passed') continue
+    if (check.result !== 'passed' || commandsToRetry.has(check.command)) continue
     const existing = checks.get(check.id)
     if (existing) {
       assert(

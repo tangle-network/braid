@@ -4,7 +4,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { installPackedBraid } from '../packed-binary.mjs'
-import { npmExecutable } from '../release/platform.mjs'
+import { npmInvocation } from '../release/platform.mjs'
 import { createPerformanceLifecycle } from './lifecycle.mjs'
 import { installedPackageRoot } from './packed-runtime.mjs'
 import { runProcessMeasurements } from './process-measurements.mjs'
@@ -71,7 +71,8 @@ async function createContext(mode, lifecycle) {
       'node_modules',
       'better-sqlite3-multiple-ciphers',
     )
-    await execFile(npmExecutable(), ['run', 'install', '--prefix', sqlitePackage], {
+    const npm = npmInvocation(['run', 'install', '--prefix', sqlitePackage])
+    await execFile(npm.file, npm.args, {
       cwd: context.packed.installRoot,
     })
     lifecycle.throwIfAborted()

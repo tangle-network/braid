@@ -31,7 +31,7 @@ import {
   sourceDigest,
 } from './package-proof-runtime.mjs'
 import { packageFileManifestFromTarball } from './release/package-archive.mjs'
-import { npmExecutable, pnpmExecutable } from './release/platform.mjs'
+import { npmInvocation, pnpmInvocation } from './release/platform.mjs'
 import { writeExclusiveAtomic } from './release-files.mjs'
 import { assertNoSecretArtifacts } from './scan-secret-artifacts.mjs'
 
@@ -161,8 +161,10 @@ const packRoot = suppliedTarballPath ? undefined : await mkdtemp(join(tmpdir(), 
 const installRoot = await mkdtemp(join(tmpdir(), 'braid-install-'))
 try {
   const sourcePackageJson = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'))
-  if (packRoot)
-    await run(pnpmExecutable(), ['pack', '--pack-destination', packRoot], { cwd: repository })
+  if (packRoot) {
+    const pnpm = pnpmInvocation(['pack', '--pack-destination', packRoot])
+    await run(pnpm.file, pnpm.args, { cwd: repository })
+  }
   const tarballName = packRoot
     ? (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
     : basename(suppliedTarballPath)
@@ -177,7 +179,8 @@ try {
     join(installRoot, 'package.json'),
     `${JSON.stringify({ name: 'braid-clean-install-proof', private: true })}\n`,
   )
-  await run(npmExecutable(), ['install', '--no-audit', '--no-fund', tarball], {
+  const npm = npmInvocation(['install', '--no-audit', '--no-fund', tarball])
+  await run(npm.file, npm.args, {
     cwd: installRoot,
     env: installEnvironment(),
   })

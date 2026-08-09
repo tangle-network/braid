@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { npmExecutable, portableEvidencePath } from './platform.mjs'
+import { fileURLToPath } from 'node:url'
+import { npmInvocation, portableEvidencePath } from './platform.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -79,9 +79,8 @@ try {
   if (registrySpec) {
     const packRoot = join(smokeRoot, 'registry')
     await mkdir(packRoot)
-    await run(npmExecutable(), ['pack', registrySpec, '--pack-destination', packRoot], {
-      cwd: smokeRoot,
-    })
+    const npm = npmInvocation(['pack', registrySpec, '--pack-destination', packRoot])
+    await run(npm.file, npm.args, { cwd: smokeRoot })
     const archives = (await readdir(packRoot)).filter((name) => name.endsWith('.tgz'))
     assert(archives.length === 1, 'Registry download did not produce exactly one tarball')
     tarballPath = join(packRoot, archives[0])
@@ -96,19 +95,16 @@ try {
     join(smokeRoot, 'package.json'),
     `${JSON.stringify({ name: 'braid-platform-smoke', private: true })}\n`,
   )
-  await run(
-    npmExecutable(),
-    [
-      'install',
-      '--prefix',
-      installRoot,
-      '--no-audit',
-      '--no-fund',
-      '--package-lock=false',
-      tarballPath,
-    ],
-    { cwd: smokeRoot },
-  )
+  const npm = npmInvocation([
+    'install',
+    '--prefix',
+    installRoot,
+    '--no-audit',
+    '--no-fund',
+    '--package-lock=false',
+    tarballPath,
+  ])
+  await run(npm.file, npm.args, { cwd: smokeRoot })
   const packageRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid')
   const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert(packageJson.version === proof.version, 'Installed package version differs')
@@ -126,34 +122,19 @@ try {
     'Installed plain flow did not complete',
   )
 
-  const braid = await import(pathToFileURL(join(packageRoot, 'dist', 'index.js')).href)
   const storageRoot = join(smokeRoot, 'storage')
   await mkdir(storageRoot)
-  const credentials = new braid.MemoryCredentialStore()
-  const storage = await braid.openSqliteStorage({
-    path: join(storageRoot, 'braid.sqlite'),
-    workspaceRoot: storageRoot,
-    credentialStore: credentials,
-    databaseKeyRef: braid.credentialRef('cred:v1:platform-smoke'),
-  })
-  try {
-    const event = {
-      workspaceId: braid.createWorkspaceId('workspace-platform-smoke'),
-      conversationId: braid.createConversationId('conversation-platform-smoke'),
-      runId: braid.createRunId('run-platform-smoke'),
-      eventId: braid.createEventId('event-platform-smoke'),
-      sequence: 1,
-      kind: 'run.finished',
-      payload: { platform: process.platform },
-      occurredAt: '2026-08-09T00:00:00.000Z',
-      terminal: true,
-    }
-    await storage.append([event])
-    assert((await storage.replay({ runId: event.runId })).events.length === 1, 'Replay failed')
-    assert((await storage.integrity()).ok === true, 'Encrypted storage integrity failed')
-  } finally {
-    await storage.close()
-  }
+  const storageProcess = await run(
+    process.execPath,
+    [
+      fileURLToPath(new URL('./storage-smoke-child.mjs', import.meta.url)),
+      packageRoot,
+      storageRoot,
+    ],
+    { cwd: smokeRoot },
+  )
+  const storageResult = JSON.parse(storageProcess.stdout)
+  assert(storageResult.encryptedStorage === true, 'Encrypted storage smoke failed')
 
   smokeResult = {
     schema: 'braid.package-smoke.v1',
