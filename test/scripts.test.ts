@@ -249,7 +249,7 @@ test('the release catalog exactly covers every stable verification command', asy
   assert.equal(evidenceIds.includes('verify:release'), false)
 })
 
-test('release subprocesses and recorded paths are portable to Windows', () => {
+test('release subprocesses and recorded paths are portable to Windows', async () => {
   assert.deepEqual(npmInvocation(['install'], { platform: 'linux' }), {
     file: 'npm',
     args: ['install'],
@@ -288,6 +288,12 @@ test('release subprocesses and recorded paths are portable to Windows', () => {
     portableEvidencePath('<temporary>\\install\\node_modules\\@tangle-network'),
     '<temporary>/install/node_modules/@tangle-network',
   )
+  const candidatePreparation = await readFile(
+    new URL('../../scripts/release/prepare-candidate.mjs', import.meta.url),
+    'utf8',
+  )
+  assert.match(candidatePreparation, /pnpmInvocation\(\['run', 'build'\]\)/u)
+  assert.doesNotMatch(candidatePreparation, /run\('pnpm'/u)
 })
 
 test('upstream requirements require successful owning-repository checks', () => {
