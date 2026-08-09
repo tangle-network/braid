@@ -1,8 +1,9 @@
-import {
-  type InteractionRequest,
-  InteractionRequestSchema,
-  type Part,
-  type StreamEvent,
+import type {
+  InteractionBinding,
+  InteractionRequest,
+  InteractionRequestMaterial,
+  Part,
+  StreamEvent,
 } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type {
@@ -15,6 +16,12 @@ import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
 import type { BraidMessagePart, RunStatus } from '../domain/state.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
+import {
+  createInteractionRequest,
+  interactionRequestMaterial,
+  interactionResponseBinding,
+  parseInteractionRequest,
+} from './interaction-request.js'
 import {
   finiteNonNegativeNumber,
   safeDiagnostic,
@@ -34,20 +41,49 @@ function safeValue(value: unknown): unknown {
   })
 }
 
-function safeInteractionRequest(value: unknown, runId: string): InteractionRequest {
-  const parsed = InteractionRequestSchema.safeParse(value)
-  if (!parsed.success) return invalidInteractionRequest(runId)
-  const bounded = InteractionRequestSchema.safeParse(safeValue(parsed.data))
-  return bounded.success ? bounded.data : invalidInteractionRequest(runId)
+interface SafeInteractionRequest {
+  readonly request: InteractionRequest
+  readonly responseBinding: InteractionBinding
 }
 
-function invalidInteractionRequest(runId: string): InteractionRequest {
-  return {
-    id: `${runId}:interaction:invalid`,
+function safeInteractionRequest(value: unknown, runId: string): SafeInteractionRequest {
+  const parsed = parseInteractionRequest(value)
+  if (parsed === undefined || parsed.binding.runId !== runId)
+    return invalidInteractionRequest(runId)
+  const material = safeValue(interactionRequestMaterial(parsed))
+  if (material === null || typeof material !== 'object' || Array.isArray(material))
+    return invalidInteractionRequest(runId)
+  try {
+    const request = createInteractionRequest({
+      ...(material as InteractionRequestMaterial),
+      binding: { ...parsed.binding },
+    })
+    return { request, responseBinding: interactionResponseBinding(parsed) }
+  } catch {
+    return invalidInteractionRequest(runId)
+  }
+}
+
+function invalidInteractionRequest(runId: string): SafeInteractionRequest {
+  const exactRunId = safePublicIdentifier(runId) ?? 'run-invalid'
+  const interactionId = `${exactRunId}:interaction:invalid`
+  const request = createInteractionRequest({
+    id: interactionId,
     kind: 'provider.invalid.interaction',
     title: 'Provider interaction unavailable',
     answerSpec: { fields: [] },
-  }
+    allowedOutcomes: ['cancelled'],
+    onTimeout: 'fail',
+    binding: {
+      runId: exactRunId,
+      provider: 'braid',
+      environmentId: 'environment-invalid',
+      sessionId: 'session-invalid',
+      executionId: exactRunId,
+      interactionId,
+    },
+  })
+  return { request, responseBinding: interactionResponseBinding(request) }
 }
 
 export function usageFromMetadata(metadata: Record<string, unknown> | undefined): TurnUsage {
@@ -347,7 +383,7 @@ export function providerEventFor(
       return {
         kind: 'run.interaction',
         runId,
-        request: safeInteractionRequest(event.request, runId),
+        ...safeInteractionRequest(event.request, runId),
         provider,
       }
     case 'interaction.cancel':

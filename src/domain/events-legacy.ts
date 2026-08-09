@@ -1,4 +1,4 @@
-import type { InteractionRequest } from '@tangle-network/agent-interface'
+import type { InteractionBinding, InteractionRequest } from '@tangle-network/agent-interface'
 import type { AgentTaskStatus } from '@tangle-network/agent-runtime'
 import type { BraidMessagePart } from './state.js'
 import type { Digest } from './ids.js'
@@ -126,6 +126,7 @@ export type LegacyBraidEvent =
       readonly kind: 'run.interaction'
       readonly runId: string
       readonly request: InteractionRequest
+      readonly responseBinding: InteractionBinding
       readonly provider: ProviderEventMeta
     }
   | {

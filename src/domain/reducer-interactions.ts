@@ -42,6 +42,7 @@ export function reduceInteractionEvent(
       const source = sourceFromProvider(event.provider) ?? {}
       const interaction: BraidInteraction = {
         request: event.request,
+        responseBinding: event.responseBinding,
         runId: event.runId,
         source,
         status: 'pending',

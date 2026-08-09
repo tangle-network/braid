@@ -1,4 +1,4 @@
-import type { InteractionRequest } from '@tangle-network/agent-interface'
+import type { InteractionBinding, InteractionRequest } from '@tangle-network/agent-interface'
 import type { RunAdmissionReceipt, RunCapabilities } from './run-contracts.js'
 import type { RuntimeEventSummary } from './runtime-events.js'
 
@@ -47,6 +47,7 @@ export interface RuntimeMessageFields {
 
 export interface BraidInteraction {
   readonly request: InteractionRequest
+  readonly responseBinding: InteractionBinding
   readonly runId: string
   readonly source: MessagePartSource
   readonly status: 'pending' | 'responding' | 'declined' | 'cancelled' | 'resolved' | 'unknown'

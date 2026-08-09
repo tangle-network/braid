@@ -1,7 +1,7 @@
 import type {
   AgentEnvironmentCapabilities,
   AgentProfile,
-  InteractionResponse,
+  InteractionResponseCommand,
 } from '@tangle-network/agent-interface'
 import type { RunCapabilities } from '../domain/receipts.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
@@ -101,9 +101,7 @@ export interface ExecutionPort {
     readonly signal?: AbortSignal
   }): Promise<ProviderRunSnapshot | null>
   respondInteraction?(input: {
-    readonly runId: string
-    readonly operationId: string
-    readonly response: InteractionResponse
+    readonly command: InteractionResponseCommand
     readonly signal?: AbortSignal
   }): Promise<ControlAcknowledgement>
   reconnect?(input: {

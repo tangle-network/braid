@@ -1,4 +1,4 @@
-import { InteractionRequestSchema, type InteractionRequest } from '@tangle-network/agent-interface'
+import type { InteractionRequest } from '@tangle-network/agent-interface'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { AutomationRuleScope } from '../domain/entities-interactions.js'
 import type { AutomationRuleMatcher } from '../domain/entities-runtime.js'
@@ -11,6 +11,7 @@ import {
   type StoredAutomationRule,
 } from './automation-matching.js'
 import { checkInteractionResponse, interactionHasSecretField } from './interaction-response.js'
+import { parseInteractionRequest } from './interaction-request.js'
 import type { AutomationContext, CreateAutomationRuleInput } from './automation-rule-types.js'
 
 export interface NormalizedAutomationRule {
@@ -139,10 +140,10 @@ export function interactionRequestDigest(request: InteractionRequest): Digest {
 }
 
 function parseRequest(value: InteractionRequest): InteractionRequest {
-  const parsed = InteractionRequestSchema.safeParse(value)
-  if (!parsed.success)
+  const parsed = parseInteractionRequest(value)
+  if (parsed === undefined)
     throw new AppError('INVALID_INTERACTION_REQUEST', 'Interaction request is invalid')
-  return parsed.data
+  return parsed
 }
 
 function assertAutomationScope(
