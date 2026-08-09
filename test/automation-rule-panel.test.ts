@@ -177,6 +177,15 @@ test('Escape cancels the rule list and the editor without producing a payload', 
   assert.equal(cancelled, 2)
 })
 
+test('empty rule management names the product state without offering an unusable action', () => {
+  const rendered = panel().render(80).join('\n')
+
+  assert.match(rendered, /No saved automation rules/u)
+  assert.match(rendered, /pending request with Alt\+A/u)
+  assert.doesNotMatch(rendered, /matching commands|ctrl\+n new/u)
+  assert.doesNotMatch(rendered, /^> /mu)
+})
+
 test('rule management remains within the reference terminal sizes', () => {
   const view = panel({ rules, interaction })
   for (const [columns, rows] of [

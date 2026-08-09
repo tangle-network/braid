@@ -134,24 +134,6 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
     }
   }
 
-  async respondInteraction(input: {
-    readonly command: import('@tangle-network/agent-interface').InteractionResponseCommand
-    readonly signal?: AbortSignal
-  }): Promise<ControlAcknowledgement> {
-    // agent-runtime 0.128 owns the live session but exposes no interaction
-    // response operation. Keep this capability explicitly unknown until the
-    // shared runtime contract provides one; never emulate it with a local
-    // abort or a provider-private call.
-    void input.command.binding.runId
-    void input.command.response
-    void input.signal
-    return {
-      operationId: input.command.operationId,
-      outcome: 'unknown',
-      detail: 'The current agent-runtime release has no response channel',
-    }
-  }
-
   async *streamTurn(input: ExecuteTurnInput): AsyncGenerator<RuntimeStreamEvent> {
     const localAbort = new AbortController()
     const stop = () => localAbort.abort(input.signal.reason)

@@ -257,6 +257,7 @@ test('automation commands work through the command controller and Escape remains
     prompt: 'Continue?',
     answerSpec: { kind: 'boolean', required: true },
     allowedOutcomes: ['accept', 'cancel'],
+    responseScopes: ['once'],
     queuePosition: 0,
     secret: false,
   }
@@ -268,6 +269,16 @@ test('automation commands work through the command controller and Escape remains
   interactionShell.handleInput('\u001b')
   interactionShell.handleInput('\u001b')
   assert.deepEqual(responses, [{ outcome: 'cancel' }])
+
+  const automationResponses: unknown[] = []
+  const automationShell = new InteractionShell(
+    shell,
+    createBraidTheme({ colors: false, reducedMotion: true }),
+    () => {},
+    (response) => automationResponses.push(response),
+  )
+  automationShell.handleInput('\u001ba')
+  assert.deepEqual(automationResponses, [{ outcome: 'accept', value: true }])
 
   const parsed = parseRequest(
     JSON.stringify({
@@ -296,4 +307,32 @@ test('automation commands work through the command controller and Escape remains
       ),
     /response\.id must match interactionId/u,
   )
+})
+
+test('the terminal creates a rule from a typed interaction response without JSON input', async () => {
+  const source = request('interaction-typed-automation')
+  const provider = interactionExecution(source)
+  const app = createBraidApplication({ fixture: 'deterministic', execution: provider.execution })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'operation-send-typed-automation', text: 'continue' })
+  await waitFor(() => app.state().runs[0]?.interactions.length === 1)
+  const interaction = app.state().runs[0]?.interactions[0]
+  assert(interaction)
+
+  const result = await createApplicationUiController(app).dispatch({
+    type: 'create-interaction-automation',
+    operationId: 'operation-create-typed-automation',
+    ruleId: 'rule-typed-automation',
+    runId: interaction.runId,
+    interactionId: interaction.request.id,
+    response: { outcome: 'accept', value: true },
+    responseScope: 'once',
+    confirmPersistent: false,
+  })
+  await send.completion
+
+  assert.equal(result.kind, 'accepted')
+  assert.deepEqual(app.state().rules[0]?.answer, { continue: true })
+  assert.equal(provider.responses(), 1)
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'resolved')
 })

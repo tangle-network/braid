@@ -9,6 +9,7 @@ export async function executeInteractionEffect(input: {
   readonly execution: ExecutionPort
   readonly request: InteractionEffectRequest
   readonly owner: string
+  readonly timeoutMs: number
   readonly whenDurable: () => Promise<void>
 }): Promise<ControlAcknowledgement> {
   const { request } = input
@@ -26,9 +27,9 @@ export async function executeInteractionEffect(input: {
     },
     {
       dispatch: async () => {
-        return dispatchResponse(input.execution, request)
+        return dispatchResponse(input.execution, request, input.timeoutMs)
       },
-      reconcile: async () => dispatchResponse(input.execution, request),
+      reconcile: async () => dispatchResponse(input.execution, request, input.timeoutMs),
     },
   )
   const record = await effect.completion
@@ -50,13 +51,14 @@ export async function executeInteractionEffect(input: {
   return {
     operationId: request.operationId,
     outcome: 'unknown',
-    detail: 'INTERACTION_RESPONSE_UNKNOWN',
+    detail: interactionDetail(record.detail, 'INTERACTION_RESPONSE_UNKNOWN'),
   }
 }
 
 async function dispatchResponse(
   execution: ExecutionPort,
   request: InteractionEffectRequest,
+  timeoutMs: number,
 ): Promise<{
   readonly status: 'acknowledged' | 'failed' | 'unknown'
   readonly detail: string
@@ -64,7 +66,13 @@ async function dispatchResponse(
   if (!execution.respondInteraction)
     return { status: 'unknown', detail: 'INTERACTION_RESPONSE_UNAVAILABLE' }
   try {
-    const result = await execution.respondInteraction({ command: request })
+    const controller = new AbortController()
+    const result = await interactionResponseDeadline(
+      execution.respondInteraction({ command: request, signal: controller.signal }),
+      controller,
+      request.operationId,
+      timeoutMs,
+    )
     if (result.outcome === 'accepted' || result.outcome === 'already-applied') {
       return {
         status: 'acknowledged',
@@ -83,6 +91,30 @@ async function dispatchResponse(
     }
   } catch {
     return { status: 'unknown', detail: 'INTERACTION_RESPONSE_UNKNOWN' }
+  }
+}
+
+async function interactionResponseDeadline(
+  action: Promise<ControlAcknowledgement>,
+  controller: AbortController,
+  operationId: string,
+  timeoutMs: number,
+): Promise<ControlAcknowledgement> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<ControlAcknowledgement>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort(new Error('Interaction response acknowledgement deadline elapsed'))
+      resolve({
+        operationId,
+        outcome: 'unknown',
+        detail: 'INTERACTION_RESPONSE_TIMEOUT',
+      })
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([action, timeout])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
 }
 

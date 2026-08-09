@@ -8,7 +8,7 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui'
 import type { InteractionOutcome, InteractionView } from '../shared/models.js'
-import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { sanitizeDiff, sanitizeTerminalText } from '../shared/sanitize.js'
 import type { BraidTheme } from './theme.js'
 
 const OUTCOME_KEYS = [
@@ -114,6 +114,28 @@ export function runContext(interaction: InteractionView): string {
     .filter((value) => value.length > 0)
     .join(' @ ')
   return `run: ${sanitizeTerminalText(interaction.runId)}${requester ? ` · ${requester}` : ''} · queue ${interaction.queuePosition + 1} · ${timeout}`
+}
+
+export function interactionSubjectComponents(
+  interaction: InteractionView,
+  theme: BraidTheme,
+  compact: boolean,
+): readonly Component[] {
+  const subject = interaction.subject
+  if (subject === undefined) return []
+  if (isSecretInteraction(interaction))
+    return [new TruncatedText(theme.muted('request: secret input · details hidden'), 1, 0)]
+  const title = sanitizeTerminalText(subject.title)
+  const target = subject.target ? ` · ${sanitizeTerminalText(subject.target)}` : ''
+  return [
+    new TruncatedText(theme.muted(`request: ${title}${target}`), 1, 0),
+    ...(compact || subject.detail === undefined
+      ? []
+      : [new TruncatedText(`detail: ${sanitizeTerminalText(subject.detail)}`, 1, 0)]),
+    ...(compact || subject.preview?.[0] === undefined
+      ? []
+      : [new TruncatedText(sanitizeDiff(subject.preview[0]), 1, 0)]),
+  ]
 }
 
 export function consequence(

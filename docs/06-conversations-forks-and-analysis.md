@@ -380,6 +380,8 @@ An interaction whose answer specification contains any `secret` field is ineligi
 
 `/automate` rejects that request with a stable error, and no rule, journal event, audit row, or export stores the secret answer value.
 
+The terminal's primary `/automate` path is a searchable rule manager with typed response and scope editors; JSON subcommands remain available for scripts and advanced use.
+
 A future design may automate a credential reference, but it must never persist or replay the resolved secret value.
 
 Matchers are structured fields rather than regular expressions over rendered text whenever the interaction subject exposes structure.
@@ -393,6 +395,10 @@ The queue evaluates rules in deterministic priority order and records matched, s
 Braid evaluates a newly persisted interaction after durable ingestion, reevaluates pending interactions after rule creation or update, and resumes interrupted automatic responses after restart.
 
 Each automatic response uses an identifier derived from the interaction and the current rule definitions, while use counters are excluded so a reserved response can resume without consuming the rule twice.
+
+The response operation and exact reserved non-secret rule are part of materialized interaction state, so snapshot compaction cannot discard automatic-response ownership or change the answer on restart.
+
+Every provider response attempt has a bounded acknowledgement deadline and abort signal; a provider that does not settle becomes an explicit unknown result without blocking rule changes or application shutdown.
 
 Conflicting rules fail closed and require user response.
 

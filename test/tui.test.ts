@@ -6,8 +6,15 @@ import {
   TuiMainScreen,
   visibleWidth,
 } from '@earendil-works/pi-tui'
+import type { InteractionRequestMaterial } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import {
+  createInteractionRequest,
+  rebindInteractionRequest,
+} from '../src/app/interaction-request.js'
+import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
+import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -26,6 +33,122 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
 }
+
+function automationInteractionExecution(): {
+  readonly execution: ExecutionPort
+  readonly responses: () => number
+} {
+  const material: InteractionRequestMaterial = {
+    id: 'interaction-terminal-automation',
+    kind: 'question',
+    title: 'Continue automatically?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    responseScopes: ['interaction', 'session', 'persistent'],
+    binding: {
+      runId: 'run-terminal-automation',
+      provider: 'test-provider',
+      environmentId: 'environment-terminal-automation',
+      sessionId: 'session-terminal-automation',
+      executionId: 'run-terminal-automation',
+      interactionId: 'interaction-terminal-automation',
+    },
+  }
+  const request = createInteractionRequest(material)
+  let responses = 0
+  let release: (() => void) | undefined
+  return {
+    execution: {
+      capabilities: () => DEFAULT_RUN_CAPABILITIES,
+      async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+        yield {
+          type: 'interaction',
+          request: rebindInteractionRequest(request, {
+            ...request.binding,
+            runId: input.runId,
+            executionId: input.runId,
+          }),
+        }
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+      },
+      respondInteraction: async (input) => {
+        responses += 1
+        release?.()
+        return { operationId: input.command.operationId, outcome: 'accepted' as const }
+      },
+    },
+    responses: () => responses,
+  }
+}
+
+test('/automate opens the keyboard rule manager instead of requiring JSON', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `operation-automation-view-${++operation}`,
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('/automate')
+    terminal.sendInput('\r')
+    await waitUntil(() => /automation rules/iu.test(terminal.getViewport().join('\n')))
+    const screen = terminal.getViewport().join('\n')
+    assert.match(screen, /automation rules/iu)
+    assert.match(screen, /No saved automation rules/iu)
+    assert.match(screen, /pending request with Alt\+A/iu)
+    assert.doesNotMatch(screen, /matching commands|ctrl\+n new/iu)
+    assert.doesNotMatch(screen, /JSON object/iu)
+  } finally {
+    view.stop()
+    await done
+  }
+})
+
+test('Alt+A creates a session rule and answers the real pending interaction', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const provider = automationInteractionExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution: provider.execution })
+  app.initialize('/workspace')
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `operation-terminal-automation-${++operation}`,
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('ask for approval')
+    terminal.sendInput('\r')
+    await waitUntil(() => /Continue automatically\?/u.test(terminal.getViewport().join('\n')))
+    terminal.sendInput('\u001ba')
+    await waitUntil(() => /new automation rule/iu.test(terminal.getViewport().join('\n')))
+    terminal.sendInput('\r')
+    await waitUntil(() => /rule scope/iu.test(terminal.getViewport().join('\n')))
+    terminal.sendInput('session')
+    terminal.sendInput('\r')
+    await waitUntil(() => provider.responses() === 1)
+
+    assert.equal(app.state().rules[0]?.responseScope, 'session')
+    assert.deepEqual(app.state().rules[0]?.answer, { continue: true })
+    assert.equal(app.state().runs[0]?.interactions[0]?.status, 'resolved')
+  } finally {
+    view.stop()
+    await done
+  }
+})
 
 test('the real Braid root renders and sends at all four reference sizes', async () => {
   for (const [columns, rows] of SIZES) {

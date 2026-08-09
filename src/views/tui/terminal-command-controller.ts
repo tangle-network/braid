@@ -108,6 +108,13 @@ export class TerminalCommandController {
       this.#overlays.openConnectionEditor()
       return
     }
+    if (
+      command === 'automate' &&
+      (args.length === 0 || (args.length === 1 && args[0] === 'list'))
+    ) {
+      this.#overlays.openAutomation()
+      return
+    }
     if (command !== 'approve' && command !== 'reject') {
       const availability = commandAvailability(command, this.#controller.view().capabilities)
       if (!availability.available) {

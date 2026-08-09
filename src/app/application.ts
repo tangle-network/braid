@@ -16,6 +16,7 @@ import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
+import { ApplicationInteractionActions } from './application-interaction-actions.js'
 import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 import type { PortViews } from './application-port-builder.js'
 import type {
@@ -33,7 +34,7 @@ import type {
   SendReceipt,
   ShutdownReceipt,
 } from './application-types.js'
-import { type AutomationActions, createAutomationActions } from './automation-actions.js'
+import type { AutomationActions } from './automation-actions.js'
 import { executeControlEffect } from './control-effects.js'
 import { createConversationActions } from './conversation-composition.js'
 import { ConversationOperationCoordinator } from './conversation-operation-coordinator.js'
@@ -44,8 +45,6 @@ import { projectEffectRecord } from './effect-projection.js'
 import { AppError } from './errors.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
 import { createIntelligenceActions, type IntelligenceActions } from './intelligence-actions.js'
-import { respondInteraction as respondInteractionController } from './interaction-controller.js'
-import { InteractionAutomationCoordinator } from './interaction-automation-coordinator.js'
 import { MemoryJournal } from './journal.js'
 import { legacyCancel } from './legacy-cancel.js'
 import {
@@ -107,7 +106,7 @@ export class BraidApplication {
   readonly #effects: SerializedEffectCoordinator
   readonly #ledger = createRunLedger()
   readonly #conversationOperations = new ConversationOperationCoordinator()
-  readonly #automationCoordinator: InteractionAutomationCoordinator
+  readonly #interactions: ApplicationInteractionActions
   readonly #subscribers = new Set<AppSubscriber>()
   readonly #controlOwner = `braid-control-${randomUUID()}`
   readonly #cancelTimeoutMs: number
@@ -150,7 +149,6 @@ export class BraidApplication {
         onRecord: (record) => this.#recordEffect(record),
       })
     this.#cancelTimeoutMs = options.cancelTimeoutMs ?? DEFAULT_CANCEL_TIMEOUT_MS
-    let automationCoordinator: InteractionAutomationCoordinator | undefined
 
     const persisted = this.#journal.replay?.() ?? this.#journal.all()
     for (const envelope of persisted) {
@@ -167,6 +165,26 @@ export class BraidApplication {
     this.#state = replayEvents(baseState, persisted)
     assertBraidState(this.#state)
     this.runtimeSelection.syncFromState(this.#state)
+    this.#interactions = new ApplicationInteractionActions({
+      state: () => this.#state,
+      events: () => this.#journal.all(),
+      commitAndWait: (event) => {
+        if (this.#asynchronousJournal) return this.#commitAndWait(event)
+        this.#commit(event)
+        return undefined
+      },
+      now: () => this.#clock.now(),
+      execution: this.#execution,
+      ledger: this.#ledger,
+      effects: this.#effects,
+      owner: this.#controlOwner,
+      ports: () => this.#portViews,
+      whenDurable: () => this.whenDurable(),
+      ...(options.interactionResponseTimeoutMs === undefined
+        ? {}
+        : { responseTimeoutMs: options.interactionResponseTimeoutMs }),
+    })
+    this.automation = this.#interactions.automation
     const runtime = wireApplicationRuntime({
       currentState: () => this.#state,
       setState: (state) => {
@@ -212,35 +230,11 @@ export class BraidApplication {
         }),
       fingerprint,
       send: (input) => this.send(input),
-      afterRuntimeEvent: (envelope, result) => {
-        if (!result.accepted || envelope.event.type !== 'interaction') return
-        const interactionId = envelope.event.request.id
-        const target = this.#state.runs
-          .find((run) => run.id === envelope.runId)
-          ?.interactions.find((interaction) => interaction.request.id === interactionId)
-        if (target !== undefined) void automationCoordinator?.schedule(target)
-      },
+      afterRuntimeEvent: (envelope, result) =>
+        this.#interactions.acceptRuntimeEvent(envelope, result),
     })
     this.#portViews = runtime.ports
     this.#transition = runtime.transition
-    this.automation = createAutomationActions({
-      state: () => this.#state,
-      events: () => this.#journal.all(),
-      commitAndWait: (event) => {
-        if (this.#asynchronousJournal) return this.#commitAndWait(event)
-        this.#commit(event)
-        return undefined
-      },
-      now: () => this.#clock.now(),
-      respond: (input) => this.#respondInteraction(input, true),
-      reconcilePending: () => automationCoordinator?.reconcile() ?? Promise.resolve(),
-    })
-    automationCoordinator = new InteractionAutomationCoordinator({
-      state: () => this.#state,
-      events: () => this.#journal.all(),
-      apply: (input) => this.automation.apply(input),
-    })
-    this.#automationCoordinator = automationCoordinator
     this.configuration = createConfigurationActionTransition(this.#transition)
     this.intelligence = createIntelligenceActions(
       {
@@ -281,7 +275,7 @@ export class BraidApplication {
         throw error
       })
     this.#automationReconciliation = this.#restartReconciliation.then(() =>
-      this.#automationCoordinator.reconcile(),
+      this.#interactions.reconcile(),
     )
     this.#durableSender = createDurableSender({
       currentState: () => this.#state,
@@ -427,6 +421,10 @@ export class BraidApplication {
     return Boolean(run && !isTerminal(run.status) && run.capabilities.controls.cancel && abort)
   }
 
+  canRespondToInteractions(): boolean {
+    return this.#interactions.canRespond()
+  }
+
   async detachRun(input: {
     readonly operationId: string
     readonly runId?: string
@@ -440,34 +438,7 @@ export class BraidApplication {
     readonly interactionId: string
     readonly response: InteractionResponse
   }): Promise<InteractionReceipt> {
-    return this.#respondInteraction(input, false)
-  }
-
-  async #respondInteraction(
-    input: {
-      readonly operationId: string
-      readonly runId: string
-      readonly interactionId: string
-      readonly response: InteractionResponse
-    },
-    automated: boolean,
-  ): Promise<InteractionReceipt> {
-    const opId = operationId(input.operationId, 'respond-interaction')
-    return respondInteractionController({
-      operationId: opId,
-      runId: input.runId,
-      interactionId: input.interactionId,
-      response: input.response,
-      state: this.#portViews.state,
-      events: () => this.events(),
-      commitAndWait: this.#portViews.journal.commitAndWait,
-      ledger: this.#ledger,
-      effects: this.#effects,
-      execution: this.#execution,
-      owner: this.#controlOwner,
-      whenDurable: () => this.whenDurable(),
-      automated,
-    })
+    return this.#interactions.respond(input)
   }
 
   async #executeControl(
@@ -525,7 +496,7 @@ export class BraidApplication {
     try {
       await this.whenDurable()
       await this.#automationReconciliation
-      await this.#automationCoordinator.whenIdle()
+      await this.#interactions.whenIdle()
       await this.whenDurable()
     } catch (error) {
       failure = error

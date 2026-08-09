@@ -1,4 +1,4 @@
-Braid ready — /home/drew/code/.worktrees/braid-production
+Braid ready — /home/drew/code/braid-automation-main-wt
 status: ready for a message
 conversation: New conversation; branch: branch-1
 profile: Braid starter; runner: pi; connection: deterministic fixture

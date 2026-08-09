@@ -96,7 +96,7 @@ export interface ApplyAutomationInput extends AutomationStoreInput {
   readonly context: AutomationContext
   readonly respond: (
     response: InteractionResponse,
-    options: { readonly automated: true },
+    options: { readonly automated: true; readonly rule: StoredAutomationRule },
   ) => Promise<InteractionReceipt>
 }
 

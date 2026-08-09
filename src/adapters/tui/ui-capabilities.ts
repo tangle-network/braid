@@ -2,7 +2,7 @@ import type { BraidState } from '../../domain/state.js'
 import type { CapabilityMap } from '../../views/shared/models.js'
 import type { UiFixture } from './ui-fixtures.js'
 
-export const UNSUPPORTED: Readonly<Record<string, string>> = Object.freeze({
+export const UNSUPPORTED = Object.freeze({
   'conversation.create': 'Conversation creation is not exposed by the current application core',
   'conversation.open': 'Conversation search is not exposed by the current application core',
   'run.runner': 'Runner overrides require the current profile compatibility helpers',
@@ -17,12 +17,13 @@ export const UNSUPPORTED: Readonly<Record<string, string>> = Object.freeze({
   'interaction.respond': 'Interaction response is not exposed by the current runtime adapter',
   'interaction.automation': 'Interaction automation requires the shared response contract',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
-})
+} satisfies Readonly<Record<string, string>>)
 
 export function capabilityMap(
   state: BraidState,
   canCancel = true,
   fixture?: UiFixture,
+  canRespond = false,
 ): CapabilityMap {
   const active = state.activeRunId !== null
   const deterministicFixture = state.profile.model?.default === 'fixture/deterministic'
@@ -69,7 +70,20 @@ export function capabilityMap(
   capabilities['activity.read'] = { available: true, source: 'local' }
   capabilities['graph.read'] = { available: true, source: 'local' }
   capabilities['details.read'] = { available: true, source: 'local' }
-  capabilities['interaction.automation'] = { available: true, source: 'application' }
+  capabilities['interaction.respond'] = canRespond
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: UNSUPPORTED['interaction.respond'],
+      }
+  capabilities['interaction.automation'] = canRespond
+    ? { available: true, source: 'application' }
+    : {
+        available: false,
+        source: 'application',
+        reason: UNSUPPORTED['interaction.automation'],
+      }
   capabilities['draft.write'] =
     state.workspace === null
       ? {

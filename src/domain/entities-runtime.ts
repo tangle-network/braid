@@ -18,8 +18,7 @@ import type {
   WorkerId,
   WorkspaceId,
 } from './ids.js'
-import type { IsoDateTime } from './entities-base.js'
-import type { NonSecretInteractionData } from './entities-interactions.js'
+import type { IsoDateTime, NonSecretInteractionData } from './entities-base.js'
 
 export type EnvironmentLifecycle =
   | 'requested'

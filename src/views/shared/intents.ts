@@ -1,6 +1,7 @@
 import type { CommandName } from './command-table.js'
 import type { HeadlessCommandName } from './headless-commands.js'
 import type { RunAdmissionReceipt } from '../../domain/receipts.js'
+import type { AutomationRuleScope } from '../../domain/entities-interactions.js'
 
 export type InteractionResponseValue =
   | {
@@ -34,6 +35,16 @@ export type BraidIntent =
       readonly runId: string
       readonly interactionId: string
       readonly response: InteractionResponseValue
+    }
+  | {
+      readonly type: 'create-interaction-automation'
+      readonly operationId: string
+      readonly ruleId: string
+      readonly runId: string
+      readonly interactionId: string
+      readonly response: InteractionResponseValue
+      readonly responseScope: AutomationRuleScope
+      readonly confirmPersistent: boolean
     }
   | {
       readonly type: 'run-command'

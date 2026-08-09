@@ -80,7 +80,9 @@ export async function applyAutomation(
   assertAutomationSafe(input.interaction.request)
   const context = evaluationContext(input.context, input.now?.() ?? new Date().toISOString())
   const requestDigest = interactionRequestDigest(input.interaction.request)
-  const priorReservation = findRuleUseReservation(input.events(), operationId)
+  const priorReservation =
+    findRuleUseReservation(input.events(), operationId) ??
+    interactionRuleUseReservation(input.interaction, operationId)
   const prior = findAuditOperation(input.events(), operationId)
   if (prior !== undefined) {
     if (prior.requestDigest !== requestDigest)
@@ -137,9 +139,15 @@ export async function applyAutomation(
         )
       evaluation = evaluationFromReservation(concurrentReservation)
       rule = concurrentReservation
+    } else {
+      rule = findRuleUseReservation(input.events(), operationId) ?? {
+        ...rule,
+        uses: rule.uses + 1,
+      }
     }
   }
-  const response = await input.respond(checked.response, { automated: true })
+  const response = await input.respond(checked.response, { automated: true, rule })
+  await response.completion
   const applied =
     response.acknowledgement.outcome === 'accepted' ||
     response.acknowledgement.outcome === 'already-applied'
@@ -166,6 +174,16 @@ export async function applyAutomation(
     response,
     revision: input.state().revision,
   }
+}
+
+function interactionRuleUseReservation(
+  interaction: BraidInteraction,
+  operationId: string,
+): StoredAutomationRule | undefined {
+  const response = interaction.responseOperation
+  if (response?.operationId !== operationId || response.automationRule === undefined)
+    return undefined
+  return response.automationRule as StoredAutomationRule
 }
 
 function evaluationFromReservation(rule: StoredAutomationRule): AutomationEvaluation {

@@ -201,6 +201,9 @@ export function interactionViews(state: BraidState): InteractionView[] {
         ...(subject === undefined ? {} : { subject }),
         answerSpec,
         allowedOutcomes: knownKind ? ['accept', 'reject', 'cancel'] : ['deny', 'cancel'],
+        responseScopes: (request.responseScopes ?? ['interaction']).map((scope) =>
+          scope === 'interaction' ? 'once' : scope,
+        ),
         ...(request.timeoutMs === undefined ? {} : { remainingMs: request.timeoutMs }),
         queuePosition: views.length,
         secret: fields.some(

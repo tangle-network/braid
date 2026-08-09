@@ -181,6 +181,7 @@ export interface InteractionView {
   readonly subject?: SubjectView
   readonly answerSpec: AnswerSpecView
   readonly allowedOutcomes: readonly InteractionOutcome[]
+  readonly responseScopes: readonly import('../../domain/entities-interactions.js').AutomationRuleScope[]
   readonly remainingMs?: number
   readonly queuePosition: number
   readonly secret: boolean

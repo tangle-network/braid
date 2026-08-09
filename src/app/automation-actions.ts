@@ -3,11 +3,12 @@ import type {
   AutomationRuleScope,
   NonSecretInteractionData,
 } from '../domain/entities-interactions.js'
-import type { AutomationRuleMatcher } from '../domain/entities-runtime.js'
+import type { AutomationRuleMatcher, AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEventEnvelope } from '../domain/events.js'
 import type { BraidInteraction } from '../domain/runtime-projection.js'
 import type { BraidState } from '../domain/state.js'
 import type { AutomationRuleMetadata } from './automation-matching.js'
+import { SerializedActionQueue } from './action-serialization.js'
 import type {
   ApplyAutomationReceipt,
   AutomationContext,
@@ -99,9 +100,12 @@ export function createAutomationActions(options: {
     readonly runId: string
     readonly interactionId: string
     readonly response: import('@tangle-network/agent-interface').InteractionResponse
+    readonly automationRule?: AutomationRuleRecord
   }) => Promise<import('./application-types.js').InteractionReceipt>
   readonly reconcilePending?: () => Promise<void>
+  readonly canRespond: () => boolean
 }): AutomationActions {
+  const queue = new SerializedActionQueue()
   const store = (): AutomationStoreInput => ({
     state: options.state,
     events: options.events,
@@ -111,62 +115,82 @@ export function createAutomationActions(options: {
 
   return {
     create: async (input) => {
-      const target = targetFor(options.state(), input.runId, input.interactionId)
-      const request = requestFor(target, input.request)
-      const receipt = await createAutomationRule({
-        ...store(),
-        ...input,
-        request,
-        context: contextFor(options.state(), target, input.context),
+      const receipt = await queue.run(async () => {
+        const target = targetFor(options.state(), input.runId, input.interactionId)
+        const request = requestFor(target, input.request)
+        return createAutomationRule({
+          ...store(),
+          ...input,
+          request,
+          context: contextFor(options.state(), target, input.context),
+        })
       })
       await options.reconcilePending?.()
       return receipt
     },
     update: async (input) => {
-      const target = targetFor(options.state(), input.runId, input.interactionId)
-      const request = input.request ?? target?.request
-      const receipt = await updateAutomationRule({
-        ...store(),
-        ...input,
-        ...(request === undefined ? {} : { request }),
-        context: contextFor(options.state(), target, input.context),
+      const receipt = await queue.run(async () => {
+        const target = targetFor(options.state(), input.runId, input.interactionId)
+        const request = input.request ?? target?.request
+        return updateAutomationRule({
+          ...store(),
+          ...input,
+          ...(request === undefined ? {} : { request }),
+          context: contextFor(options.state(), target, input.context),
+        })
       })
       await options.reconcilePending?.()
       return receipt
     },
-    dryRun: async (input) => {
-      const state = options.state()
-      const target = targetFor(state, input.runId, input.interactionId)
-      if (target === undefined)
-        throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
-      return dryRunAutomation({
-        ...store(),
-        operationId: input.operationId,
-        interaction: target,
-        context: contextFor(state, target, input.context),
-      })
+    dryRun: (input) =>
+      queue.run(async () => {
+        const state = options.state()
+        const target = targetFor(state, input.runId, input.interactionId)
+        if (target === undefined)
+          throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+        return dryRunAutomation({
+          ...store(),
+          operationId: input.operationId,
+          interaction: target,
+          context: contextFor(state, target, input.context),
+        })
+      }),
+    apply: (input) =>
+      queue.run(async () => {
+        if (!options.canRespond())
+          throw new AppError(
+            'CAPABILITY_UNAVAILABLE',
+            'The current runtime cannot acknowledge interaction responses',
+          )
+        const state = options.state()
+        const target = targetFor(state, input.runId, input.interactionId)
+        if (target === undefined)
+          throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+        return applyAutomation({
+          ...store(),
+          operationId: input.operationId,
+          interaction: target,
+          context: contextFor(state, target, undefined),
+          respond: (response, { rule }) =>
+            options.respond({
+              operationId: input.operationId,
+              runId: input.runId,
+              interactionId: input.interactionId,
+              response,
+              automationRule: rule,
+            }),
+        })
+      }),
+    disable: async (input) => {
+      const receipt = await queue.run(() => disableAutomationRule({ ...store(), ...input }))
+      await options.reconcilePending?.()
+      return receipt
     },
-    apply: async (input) => {
-      const state = options.state()
-      const target = targetFor(state, input.runId, input.interactionId)
-      if (target === undefined)
-        throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
-      return applyAutomation({
-        ...store(),
-        operationId: input.operationId,
-        interaction: target,
-        context: contextFor(state, target, undefined),
-        respond: (response) =>
-          options.respond({
-            operationId: input.operationId,
-            runId: input.runId,
-            interactionId: input.interactionId,
-            response,
-          }),
-      })
+    delete: async (input) => {
+      const receipt = await queue.run(() => deleteAutomationRule({ ...store(), ...input }))
+      await options.reconcilePending?.()
+      return receipt
     },
-    disable: (input) => disableAutomationRule({ ...store(), ...input }),
-    delete: (input) => deleteAutomationRule({ ...store(), ...input }),
     list: () => structuredClone(options.state().rules) as readonly StoredAutomationRule[],
   }
 }
@@ -216,6 +240,7 @@ function contextFor(
 ): AutomationContext {
   const run =
     target === undefined ? undefined : state.runs.find((candidate) => candidate.id === target.runId)
+  const providerSessionId = run?.providerSessionId ?? target?.responseBinding.sessionId
   return {
     ...(state.workspaceId === null ? {} : { workspaceId: state.workspaceId }),
     ...(run?.receipt.profileDigest === undefined
@@ -227,7 +252,7 @@ function contextFor(
     ...(run?.receipt.requested.runner === undefined
       ? {}
       : { runner: run.receipt.requested.runner }),
-    ...(run?.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(provided ?? {}),
   }
 }

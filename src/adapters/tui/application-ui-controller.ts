@@ -79,6 +79,7 @@ export class ApplicationUiController implements BraidUiController {
         app.canCancel(),
         app.storageFailure(),
         app.cleanupUncertain(),
+        app.canRespondToInteractions(),
       ),
       state,
     )
@@ -92,7 +93,12 @@ export class ApplicationUiController implements BraidUiController {
         ? decorated
         : freezeView({
             ...decorated,
-            capabilities: capabilityMap(state, app.canCancel(), this.#fixture),
+            capabilities: capabilityMap(
+              state,
+              app.canCancel(),
+              this.#fixture,
+              app.canRespondToInteractions(),
+            ),
           })
     if (this.#fixture === 'interaction' && !this.#interactionResolved) {
       return freezeView({

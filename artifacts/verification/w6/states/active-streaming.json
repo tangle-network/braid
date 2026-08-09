@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb"
+    "tarballSha256": "02d4b6c9ff1651fa04d73b5777decfb05546f87a39d61453424f6c41e5f7c9d1"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 4,
-  "frame": "braid  cwd  braid-production  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel                  fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture             Enter queues input\n",
+  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel                  fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture             Enter queues input\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 4,
       "sequence": 4,
-      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "workspace": "/home/drew/code/braid-automation-main-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -102,7 +102,7 @@
     },
     "view": {
       "revision": 4,
-      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "workspace": "/home/drew/code/braid-automation-main-wt",
       "profileName": "Braid starter",
       "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
       "runner": "pi",
@@ -286,7 +286,7 @@
         },
         "interaction.respond": {
           "available": false,
-          "source": "application",
+          "source": "runtime",
           "reason": "Interaction response is not exposed by the current runtime adapter"
         },
         "interaction.automation": {
@@ -385,7 +385,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-production"
+            "workspace": "/home/drew/code/braid-automation-main-wt"
           }
         }
       },
@@ -494,10 +494,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-747c78d8d8da8c3181c075a6",
+              "id": "effect-op-terminal-000002-c92cacd0996329a33a907350",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "747c78d8d8da8c3181c075a64462d2319a6e4f3e604fbaf17ad53b5a948ff12f",
+              "requestDigest": "c92cacd0996329a33a907350d240376c3c9845ff870b06db3ede4dcb2f3a7f37",
               "kind": "send",
               "status": "pending",
               "attempt": 1,

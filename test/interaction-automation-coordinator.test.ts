@@ -10,10 +10,14 @@ import {
   type InteractionAutomationTarget,
   interactionAutomationOperationId,
 } from '../src/app/interaction-automation-coordinator.js'
+import { ruleUseReservationId } from '../src/app/automation-rule-persistence.js'
+import { automationOperationRecord } from '../src/app/automation-rule-store.js'
 import {
   createInteractionRequest,
   interactionResponseBinding,
 } from '../src/app/interaction-request.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
+import { createOperationId } from '../src/domain/ids.js'
 import type { BraidState } from '../src/domain/state.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 
@@ -81,6 +85,39 @@ function stateFor(...targets: readonly InteractionAutomationTarget[]): BraidStat
       interactions: targets.filter((item) => item.runId === runId),
     })),
   } as unknown as BraidState
+}
+
+function stateWithRules(
+  rules: BraidState['rules'],
+  ...targets: readonly InteractionAutomationTarget[]
+): BraidState {
+  return { ...stateFor(...targets), rules }
+}
+
+function reservedRuleUse(
+  operationId: string,
+  rule: BraidState['rules'][number],
+): BraidEventEnvelope {
+  const reservedRule = { ...rule, uses: rule.uses + 1 }
+  return {
+    sequence: 1,
+    revision: 1,
+    occurredAt: NOW,
+    event: {
+      kind: 'rule.upserted',
+      rule: reservedRule,
+      operation: automationOperationRecord(
+        ruleUseReservationId(operationId, rule.id),
+        canonicalDigest({
+          kind: 'automation.rule.use',
+          operationId,
+          ruleId: rule.id,
+          uses: reservedRule.uses,
+        }),
+        NOW,
+      ),
+    },
+  }
 }
 
 test('derives one stable operation ID from the run and request digest', () => {
@@ -156,6 +193,36 @@ test('duplicate scheduling shares one in-flight application', async () => {
   assert.deepEqual(calls, ['interaction-duplicate'])
 })
 
+test('a queued attempt reschedules itself when the rule policy changes', async () => {
+  const item = target('interaction-policy-change')
+  const originalRule = {
+    id: 'rule-original-policy',
+    enabled: true,
+    matcher: { interactionKind: 'question' },
+    answer: { continue: true },
+    responseScope: 'once',
+    createdAt: NOW,
+    uses: 0,
+  } as BraidState['rules'][number]
+  const changedRule = { ...originalRule, answer: { continue: false } }
+  let rules: BraidState['rules'] = [originalRule]
+  const calls: string[] = []
+  const coordinator = new InteractionAutomationCoordinator({
+    state: () => stateWithRules(rules, item),
+    events: () => [],
+    apply: async ({ operationId }) => {
+      calls.push(operationId)
+    },
+  })
+
+  const scheduled = coordinator.schedule(item)
+  rules = [changedRule]
+  await scheduled
+  await coordinator.whenIdle()
+
+  assert.deepEqual(calls, [interactionAutomationOperationId(item.runId, item.request, rules)])
+})
+
 test('a failed application reports the error and does not poison later work', async () => {
   const failed = target('interaction-failed')
   const succeeds = target('interaction-succeeds')
@@ -206,18 +273,68 @@ test('reconcile schedules every pending interaction after restart', async () => 
   assert.deepEqual(calls, ['interaction-pending-a', 'interaction-pending-b'])
 })
 
-test('reconcile resumes a response requested by this coordinator', async () => {
+test('reconcile resumes a reserved automatic response after the policy changes', async () => {
   const item = target('interaction-own-response')
-  const operationId = interactionAutomationOperationId(item.runId, item.request)
+  const reservedRule = {
+    id: 'rule-reserved-response',
+    enabled: true,
+    matcher: { interactionKind: 'question' },
+    answer: { continue: true },
+    responseScope: 'once',
+    createdAt: NOW,
+    maximumUses: 2,
+    uses: 0,
+  } as BraidState['rules'][number]
+  const changedRule = { ...reservedRule, answer: { continue: false } }
+  const operationId = interactionAutomationOperationId(item.runId, item.request, [reservedRule])
   const responding = target(item.request.id, item.runId, 'responding')
+  const reservation = reservedRuleUse(operationId, reservedRule)
   const calls: string[] = []
   const coordinator = new InteractionAutomationCoordinator({
-    state: () => stateFor(responding),
-    events: () => [requestedResponse(responding, operationId)],
+    state: () => stateWithRules([changedRule], responding),
+    events: () => [reservation, requestedResponse(responding, operationId)],
     apply: async (input) => {
       calls.push(input.operationId)
       assert.equal(input.runId, responding.runId)
       assert.equal(input.interactionId, responding.request.id)
+    },
+  })
+
+  await coordinator.reconcile()
+  assert.deepEqual(calls, [operationId])
+})
+
+test('reconcile resumes an automatic response from saved interaction state without old events', async () => {
+  const item = target('interaction-saved-response')
+  const reservedRule = {
+    id: 'rule-saved-response',
+    enabled: true,
+    matcher: { interactionKind: 'question' },
+    answer: { continue: true },
+    responseScope: 'once',
+    createdAt: NOW,
+    maximumUses: 2,
+    uses: 1,
+  } as BraidState['rules'][number]
+  const changedRule = { ...reservedRule, answer: { continue: false } }
+  const operationId = interactionAutomationOperationId(item.runId, item.request, [
+    { ...reservedRule, uses: 0 },
+  ])
+  const responding: InteractionAutomationTarget = {
+    ...target(item.request.id, item.runId, 'responding'),
+    responseOperation: {
+      operationId: createOperationId(operationId),
+      outcome: 'accepted',
+      containsSecret: false,
+      automationRule: reservedRule,
+    },
+  }
+  const calls: string[] = []
+  const coordinator = new InteractionAutomationCoordinator({
+    state: () => stateWithRules([changedRule], responding),
+    events: () => [],
+    apply: async (input) => {
+      calls.push(input.operationId)
     },
   })
 

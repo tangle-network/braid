@@ -52,6 +52,7 @@ export interface CompositionOptions {
   readonly effectStorage?: EffectStoragePort
   readonly effectCoordinator?: SerializedEffectCoordinator
   readonly cancelTimeoutMs?: number
+  readonly interactionResponseTimeoutMs?: number
   readonly execution?: ExecutionPort
   readonly backendResolver?: AgentTurnBackendResolver
   readonly production?: ProductionCompositionConfig
@@ -165,6 +166,9 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
       ? {}
       : { effectCoordinator: options.effectCoordinator }),
     ...(options.cancelTimeoutMs === undefined ? {} : { cancelTimeoutMs: options.cancelTimeoutMs }),
+    ...(options.interactionResponseTimeoutMs === undefined
+      ? {}
+      : { interactionResponseTimeoutMs: options.interactionResponseTimeoutMs }),
   })
 }
 
@@ -237,6 +241,9 @@ export async function createDurableBraidApplication(
       ...(options.cancelTimeoutMs === undefined
         ? {}
         : { cancelTimeoutMs: options.cancelTimeoutMs }),
+      ...(options.interactionResponseTimeoutMs === undefined
+        ? {}
+        : { interactionResponseTimeoutMs: options.interactionResponseTimeoutMs }),
     })
     return { app, storage }
   } catch (error) {

@@ -5,6 +5,7 @@ import type { OperationId } from '../domain/ids.js'
 import { createOperationId } from '../domain/ids.js'
 import type { BraidInteraction } from '../domain/runtime-projection.js'
 import type { BraidState } from '../domain/state.js'
+import { findRuleUseReservation } from './automation-rule-persistence.js'
 import { interactionRequestDigest } from './automation-rule-validation.js'
 
 export type InteractionAutomationTarget = BraidInteraction
@@ -94,7 +95,10 @@ export class InteractionAutomationCoordinator {
         this.#options.state(),
         this.#options.events(),
       )
-      if (currentOperationId !== scheduledOperationId) return
+      if (currentOperationId !== scheduledOperationId) {
+        if (currentOperationId !== undefined) void this.schedule(current)
+        return
+      }
       target = current
       await this.#options.apply({
         operationId: scheduledOperationId,
@@ -140,10 +144,15 @@ function operationForTarget(
   state: BraidState,
   events: readonly BraidEventEnvelope[],
 ): OperationId | undefined {
-  const operationId = interactionAutomationOperationId(target.runId, target.request, state.rules)
-  if (target.status === 'pending') return operationId
+  if (target.status === 'pending')
+    return interactionAutomationOperationId(target.runId, target.request, state.rules)
   if (target.status !== 'responding') return undefined
-  return requestedResponseOperation(events, target) === operationId ? operationId : undefined
+  if (target.responseOperation?.automationRule !== undefined)
+    return target.responseOperation.operationId
+  const requested = requestedResponseOperation(events, target)
+  if (requested === undefined || findRuleUseReservation(events, requested) === undefined)
+    return undefined
+  return createOperationId(requested)
 }
 
 function requestedResponseOperation(

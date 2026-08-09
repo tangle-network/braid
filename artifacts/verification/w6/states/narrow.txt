@@ -1,4 +1,4 @@
-braid  cwd  braid-production
+braid  cwd  braid-automation-main-wt
 
  Write a message, or press Ctrl+P for
  commands.

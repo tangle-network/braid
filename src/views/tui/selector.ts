@@ -21,6 +21,9 @@ export interface SearchableSelectorOptions {
   readonly query?: string
   readonly selectedValue?: string
   readonly footer?: string
+  readonly emptyText?: string
+  readonly noMatchText?: string
+  readonly hideInputWhenEmpty?: boolean
   readonly onAction?: (key: string, item: SelectItem | null) => void
   readonly onSelect: (item: SelectItem) => void
   readonly onCancel: () => void
@@ -47,6 +50,9 @@ export class SearchableSelector extends Container implements Focusable {
   #items: readonly SelectItem[]
   readonly #theme: BraidTheme
   readonly #maxVisible: number
+  readonly #emptyText: string | undefined
+  readonly #noMatchText: string | undefined
+  readonly #inputHidden: boolean
   #focused = false
   readonly #selectedValue: string | undefined
 
@@ -55,6 +61,9 @@ export class SearchableSelector extends Container implements Focusable {
     this.#items = options.items.map(safeItem)
     this.#theme = options.theme
     this.#maxVisible = Math.max(1, Math.min(10, Math.floor(options.maxVisible ?? 8)))
+    this.#emptyText = safeOptionalText(options.emptyText)
+    this.#noMatchText = safeOptionalText(options.noMatchText)
+    this.#inputHidden = options.hideInputWhenEmpty === true && this.#items.length === 0
     this.#selectedValue = options.selectedValue
     this.#onSelect = options.onSelect
     this.#onCancel = options.onCancel
@@ -78,8 +87,10 @@ export class SearchableSelector extends Container implements Focusable {
     this.#list.onCancel = () => this.#onCancel()
     this.addChild(this.#title)
     this.addChild(new Spacer(1))
-    this.addChild(this.#input)
-    this.addChild(new Spacer(1))
+    if (!this.#inputHidden) {
+      this.addChild(this.#input)
+      this.addChild(new Spacer(1))
+    }
     this.addChild(this.#list)
     this.addChild(new Spacer(1))
     this.addChild(this.#footer)
@@ -111,6 +122,10 @@ export class SearchableSelector extends Container implements Focusable {
     this.invalidate()
   }
 
+  selectedItem(): SelectItem | undefined {
+    return this.#list.getSelectedItem() ?? undefined
+  }
+
   handleInput(data: string): void {
     if (this.#onAction !== undefined) {
       const key = actionKey(data)
@@ -136,6 +151,7 @@ export class SearchableSelector extends Container implements Focusable {
       this.#onCancel()
       return
     }
+    if (this.#inputHidden) return
     this.#input.handleInput(data)
     this.#applyFilter()
   }
@@ -160,11 +176,22 @@ export class SearchableSelector extends Container implements Focusable {
   }
 
   #createList(items: readonly SelectItem[] = this.#items): SelectList {
-    const list = new SelectList([...items], this.#maxVisible, this.#theme.select)
+    const message = this.#items.length === 0 ? this.#emptyText : this.#noMatchText
+    const selectTheme =
+      message === undefined
+        ? this.#theme.select
+        : { ...this.#theme.select, noMatch: () => this.#theme.select.noMatch(`  ${message}`) }
+    const list = new SelectList([...items], this.#maxVisible, selectTheme)
     list.onSelect = (item) => this.#onSelect(item)
     list.onCancel = () => this.#onCancel()
     return list
   }
+}
+
+function safeOptionalText(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const safe = sanitizeTerminalText(value).trim()
+  return safe.length === 0 ? undefined : safe
 }
 
 function actionKey(data: string): string | undefined {

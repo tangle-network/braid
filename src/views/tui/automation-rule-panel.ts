@@ -88,7 +88,10 @@ export class AutomationRulePanel extends Container implements Focusable {
       items: this.#rules.map(ruleItem),
       theme: this.#theme,
       maxVisible: 3,
-      footer: 'enter select · ctrl+n new · ctrl+a off · ctrl+d del · esc close',
+      emptyText: 'No saved automation rules',
+      noMatchText: 'No matching automation rules',
+      hideInputWhenEmpty: true,
+      footer: this.#ruleListFooter(),
       onAction: (action, item) => {
         if (action === 'new') {
           this.#beginCreate()
@@ -104,6 +107,22 @@ export class AutomationRulePanel extends Container implements Focusable {
       onCancel: () => this.#cancel(),
     })
     this.#setContent(before, selector)
+  }
+
+  #ruleListFooter(): string {
+    const canCreate =
+      this.#interaction !== undefined && ruleCreationReason(this.#interaction) === undefined
+    if (this.#rules.length === 0 && !canCreate)
+      return this.#interaction === undefined
+        ? 'create from a pending request with Alt+A · esc close'
+        : 'this request stays manual · esc close'
+    return [
+      'type to filter',
+      ...(this.#onSelect === undefined ? [] : ['enter select']),
+      ...(canCreate ? ['ctrl+n new'] : []),
+      ...(this.#rules.length === 0 ? [] : ['ctrl+a off', 'ctrl+d del']),
+      'esc close',
+    ].join(' · ')
   }
 
   #beginCreate(): void {
