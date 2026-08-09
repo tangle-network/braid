@@ -19,6 +19,8 @@ export interface ProductionStartupLoadOptions {
   readonly cliBridgeEndpoint?: string
   /** Optional in-memory bridge authorization; never persisted in startup config. */
   readonly bridgeAuth?: string
+  /** Optional in-memory Tangle authorization; never persisted in startup config. */
+  readonly tangleAuth?: string
   /** Discovery timeout for /health and /v1/models. */
   readonly discoveryTimeoutMs?: number
   /** Realistic bounded timeout for a cold first-run model request. */

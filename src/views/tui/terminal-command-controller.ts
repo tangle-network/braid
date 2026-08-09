@@ -104,6 +104,10 @@ export class TerminalCommandController {
       this.#overlays.openConnection()
       return
     }
+    if (command === 'connection' && args[0] === 'create') {
+      this.#overlays.openConnectionEditor()
+      return
+    }
     if (command !== 'approve' && command !== 'reject') {
       const availability = commandAvailability(command, this.#controller.view().capabilities)
       if (!availability.available) {

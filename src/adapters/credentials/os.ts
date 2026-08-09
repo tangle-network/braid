@@ -148,10 +148,23 @@ abstract class NativeCredentialStore implements CredentialPort {
   }
 
   async remove(ref: CredentialRef): Promise<void> {
+    const entry = this.#entry(ref)
     try {
-      await this.#entry(ref).deleteCredential()
+      const removed = await entry.deleteCredential()
+      if (removed) return
+      const remaining = await entry.getSecret()
+      try {
+        if (remaining === undefined || remaining.length === 0) return
+      } finally {
+        remaining?.fill(0)
+      }
+      throw new CredentialError(
+        'CREDENTIAL_REMOVE_FAILED',
+        'The credential store reported success without removing the credential',
+      )
     } catch (error) {
       if (isMissingCredential(error)) return
+      if (error instanceof CredentialError) throw error
       throw new CredentialError('CREDENTIAL_REMOVE_FAILED', 'The credential could not be removed', {
         cause: error,
       })

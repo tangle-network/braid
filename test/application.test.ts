@@ -739,6 +739,53 @@ test('application replacement presents the new profile to frame subscribers', as
   await Promise.all([oldApp.close(), nextApp.close()])
 })
 
+test('a selected production connection enables terminal sends for non-fixture models', async () => {
+  const profile = defineAgentProfile({
+    name: 'Production profile',
+    harness: 'opencode',
+    model: { default: 'provider/production-model' },
+  })
+  const connection: ConnectionRecord = {
+    id: createConnectionId('connection-production-send-capability'),
+    kind: 'cli-bridge',
+    name: 'Production CLI Bridge',
+    endpoint: 'http://127.0.0.1:3344',
+    providerOptions: { transport: 'local' },
+    createdAt: '2026-08-09T00:00:00.000Z',
+    updatedAt: '2026-08-09T00:00:00.000Z',
+    lastHealth: { status: 'healthy', checkedAt: '2026-08-09T00:00:00.000Z' },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = createBraidApplication({
+    profile,
+    backendResolver: deterministicBackend,
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app, {}, undefined, {
+    connections: [connection],
+  })
+  assert.equal(controller.view().capabilities['run.send']?.available, false)
+  const selected = await controller.dispatch({
+    type: 'headless-command',
+    command: 'select_connection',
+    operationId: 'operation-select-production-send-capability',
+    params: { connectionId: connection.id },
+  })
+  assert.equal(selected.kind, 'accepted')
+  assert.equal(controller.view().capabilities['run.send']?.available, true)
+  const sent = await controller.dispatch({
+    type: 'send',
+    operationId: 'operation-production-send-capability',
+    text: 'production send is available',
+  })
+  assert.equal(sent.kind, 'accepted')
+  await controller.waitForIdle()
+  assert.equal(controller.view().runs.at(-1)?.status, 'completed')
+  await app.close()
+})
+
 test('events after the first final result are ignored', async () => {
   const journal = new MemoryJournal(new FixedClock())
   const app = new BraidApplication({

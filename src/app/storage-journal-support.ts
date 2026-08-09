@@ -144,6 +144,8 @@ export function runOperationId(event: BraidEvent): OperationId | undefined {
       return event.operation?.id
     case 'conversation.deleted':
       return event.operation.id
+    case 'connection.removed':
+      return event.operation.id
     case 'draft.recorded':
       return event.operation?.id
     case 'operation.requested':

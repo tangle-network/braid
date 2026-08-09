@@ -231,6 +231,8 @@ Bearer credentials use the credential store and are never embedded in the endpoi
 
 Connection setup verifies bridge identity, version, health, and capability response before allowing runner discovery.
 
+Remote cleartext Bridge discovery is rejected before Braid transmits a bearer credential or makes a discovery request.
+
 Braid sends caller operation, run, session, workspace, and profile identities exactly and never reuses one user's run identifier with changed input.
 
 The bridge must bind response and cancellation operations to the authenticated caller and original run identity.

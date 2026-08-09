@@ -9,31 +9,38 @@ import {
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { ConfigurationReview } from './configuration-review.js'
 import {
+  ConfigurationCredential,
+  type ConfigurationCommit,
+  configurationNeedsCredential,
+  mountConfigurationCredential,
+  PreparedCredential,
+} from './configuration-credential.js'
+import {
   APPLY_SELECTION,
   BACK_TO_CONNECTION,
   BACK_TO_PROFILE,
   CANCEL_CONFIGURATION,
-  compactReviewSummary,
   configurationExplanation,
   configurationFooter,
   configurationItems,
+  configurationReviewSummaries,
   configurationTitle,
   DOWN_ARROW,
-  reviewSummary,
 } from './configuration-wizard-presentation.js'
 import { SearchableSelector } from './selector.js'
 import type { BraidTheme } from './theme.js'
 
-type ConfigurationControl = SearchableSelector | ConfigurationReview
+type ConfigurationControl = SearchableSelector | ConfigurationReview | ConfigurationCredential
 
 export interface ConfigurationWizardOptions extends ConfigurationSessionOptions {
   readonly theme: BraidTheme
-  readonly onCommit: (selection: ConfigurationSelection) => void | Promise<void>
+  readonly onCommit: ConfigurationCommit
   readonly onComplete: (selection: ConfigurationSelection) => void
   readonly onCancel: () => void
   readonly confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues
   readonly diagnostics?: readonly string[]
   readonly requestRender?: () => void
+  readonly requiresCredential?: (connection: ConfigurationSelection['connection']) => boolean
 }
 
 export type TerminalConfigurationOptions = ConfigurationSessionOptions &
@@ -41,12 +48,10 @@ export type TerminalConfigurationOptions = ConfigurationSessionOptions &
     readonly openOnStart?: boolean
     readonly confirmation?: ConfigurationWizardOptions['confirmation']
     readonly diagnostics?: readonly string[]
+    readonly requiresCredential?: ConfigurationWizardOptions['requiresCredential']
   }
 
-/**
- * A two-step, keyboard-first configuration flow.
- * It only receives opaque connection records and never asks for credential values.
- */
+/** Keyboard-first profile, destination, credential, and review flow. */
 export class ConfigurationWizard extends Container implements Focusable {
   readonly #theme: BraidTheme
   readonly #session: ConfigurationSession
@@ -56,10 +61,12 @@ export class ConfigurationWizard extends Container implements Focusable {
   readonly #confirmation: ConfigurationWizardOptions['confirmation']
   readonly #diagnostics: readonly string[]
   readonly #requestRender: (() => void) | undefined
+  readonly #requiresCredential: ConfigurationWizardOptions['requiresCredential']
   #selector: ConfigurationControl
   #focused = false
   #busy = false
   #commitError: string | undefined
+  readonly #credential = new PreparedCredential()
 
   constructor(options: ConfigurationWizardOptions) {
     super()
@@ -71,6 +78,7 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#confirmation = options.confirmation
     this.#diagnostics = Object.freeze([...(options.diagnostics ?? [])])
     this.#requestRender = options.requestRender
+    this.#requiresCredential = options.requiresCredential
     this.#selector = new SearchableSelector({
       title: 'configuration',
       items: [],
@@ -111,10 +119,16 @@ export class ConfigurationWizard extends Container implements Focusable {
       this.addChild(new Text(this.#theme.danger(sanitizeTerminalText(this.#commitError)), 1, 0))
     }
     if (state.step === 'confirm' || state.step === 'complete') {
+      const summaries = configurationReviewSummaries(
+        this.#session,
+        state,
+        this.#confirmation,
+        this.#credential.prepared,
+      )
       this.#selector = new ConfigurationReview({
         theme: this.#theme,
-        summary: reviewSummary(this.#session, state, this.#confirmation),
-        compactSummary: compactReviewSummary(this.#session, state, this.#confirmation),
+        summary: summaries.summary,
+        compactSummary: summaries.compact,
         title: applied
           ? 'selection applied'
           : configurationTitle(state, this.#busy, this.#commitError),
@@ -174,6 +188,7 @@ export class ConfigurationWizard extends Container implements Focusable {
       return
     }
     if (state.step === 'profile') {
+      this.#clearCredential()
       const next = this.#session.selectProfile(value)
       this.#commitError = next.error?.message
       this.#renderStage(next)
@@ -181,22 +196,30 @@ export class ConfigurationWizard extends Container implements Focusable {
     }
     if (state.step === 'connection') {
       if (value === BACK_TO_PROFILE) {
+        this.#clearCredential()
         this.#commitError = undefined
         this.#renderStage(this.#session.backTo('profile'))
         return
       }
       const next = this.#session.selectConnection(value)
       this.#commitError = next.error?.message
-      this.#renderStage(next)
+      if (
+        next.error === undefined &&
+        configurationNeedsCredential(this.#session, this.#requiresCredential)
+      )
+        this.#renderCredential(next)
+      else this.#renderStage(next)
       return
     }
     if (state.step !== 'confirm' && state.step !== 'complete') return
     if (value === BACK_TO_CONNECTION) {
+      this.#clearCredential()
       this.#commitError = undefined
       this.#renderStage(this.#session.backTo('connection'))
       return
     }
     if (value === BACK_TO_PROFILE) {
+      this.#clearCredential()
       this.#commitError = undefined
       this.#renderStage(this.#session.backTo('profile'))
       return
@@ -218,21 +241,59 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#commitError = undefined
     this.#renderStage(this.#session.state)
     try {
-      await this.#onCommit(selection)
+      await this.#onCommit(selection, this.#credential.value)
+      this.#clearCredential()
       this.#busy = false
       this.#renderStage(this.#session.state)
       this.#onComplete(selection)
     } catch (error) {
+      this.#clearCredential()
       this.#busy = false
       this.#commitError =
         error instanceof Error ? error.message : 'The selection could not be applied'
-      this.#renderStage(this.#session.state)
+      if (configurationNeedsCredential(this.#session, this.#requiresCredential))
+        this.#renderCredential(this.#session.state)
+      else this.#renderStage(this.#session.state)
     }
   }
 
   #cancel(): void {
     if (this.#busy) return
+    this.#clearCredential()
     this.#session.cancel()
     this.#onCancel()
+  }
+
+  #renderCredential(state: ConfigurationSessionState): void {
+    let selection: ConfigurationSelection
+    try {
+      selection = this.#session.previewSelection()
+    } catch {
+      this.#renderStage(state)
+      return
+    }
+    this.#selector = mountConfigurationCredential({
+      container: this,
+      theme: this.#theme,
+      connectionName: selection.connection.name,
+      focused: this.#focused,
+      ...(this.#requestRender === undefined ? {} : { requestRender: this.#requestRender }),
+      ...(this.#commitError === undefined ? {} : { error: this.#commitError }),
+      onSubmit: (credential) => {
+        this.#credential.replace(credential)
+        this.#commitError = undefined
+        this.#renderStage(state)
+      },
+      onCancel: () => {
+        this.#clearCredential()
+        this.#commitError = undefined
+        this.#renderStage(this.#session.backTo('connection'))
+      },
+    })
+  }
+
+  #clearCredential(): void {
+    this.#credential.clear()
+    if (this.#selector instanceof ConfigurationCredential) this.#selector.dispose()
   }
 }

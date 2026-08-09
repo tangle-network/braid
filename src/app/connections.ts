@@ -102,6 +102,41 @@ export class ConnectionRegistry implements ConnectionCatalog {
   }
 }
 
+/** Saved connection identity wins; newer journal observations may refresh only health fields. */
+export function mergeConnectionTelemetry(
+  saved: ConnectionRecord,
+  observed: ConnectionRecord,
+): ConnectionRecord {
+  if (
+    saved.kind !== observed.kind ||
+    saved.workspaceId !== observed.workspaceId ||
+    saved.endpoint !== observed.endpoint ||
+    saved.credentialRef !== observed.credentialRef ||
+    canonicalDigest(saved.providerOptions) !== canonicalDigest(observed.providerOptions)
+  ) {
+    return saved
+  }
+  const savedHealthAt = 'checkedAt' in saved.lastHealth ? saved.lastHealth.checkedAt : undefined
+  const observedHealthAt =
+    'checkedAt' in observed.lastHealth ? observed.lastHealth.checkedAt : undefined
+  const lastHealth =
+    observedHealthAt !== undefined &&
+    (savedHealthAt === undefined || observedHealthAt > savedHealthAt)
+      ? observed.lastHealth
+      : saved.lastHealth
+  const savedModelAt = saved.lastModelVerification?.checkedAt
+  const observedModelAt = observed.lastModelVerification?.checkedAt
+  const lastModelVerification =
+    observedModelAt !== undefined && (savedModelAt === undefined || observedModelAt > savedModelAt)
+      ? observed.lastModelVerification
+      : saved.lastModelVerification
+  return {
+    ...saved,
+    lastHealth,
+    ...(lastModelVerification === undefined ? {} : { lastModelVerification }),
+  }
+}
+
 function parseSelectionId(input: ConnectionSelectionInput): ConnectionId {
   try {
     return parseConnectionId(input.connectionId)
@@ -122,6 +157,57 @@ function validateRecord(record: ConnectionRecord): ConnectionRecord {
 }
 
 function assertSecretFree(record: ConnectionRecord): void {
+  const allowedKeys = new Set([
+    'id',
+    'workspaceId',
+    'kind',
+    'name',
+    'endpoint',
+    'credentialRef',
+    'providerOptions',
+    'createdAt',
+    'updatedAt',
+    'lastHealth',
+    'lastModelVerification',
+  ])
+  for (const key of Object.keys(record)) {
+    if (!allowedKeys.has(key)) {
+      throw new ConnectionError(
+        'SECRET_IN_CONNECTION_RECORD',
+        'Connection records may contain references, not provider-native or credential material',
+        { connectionId: record.id },
+      )
+    }
+  }
+  const healthKeys = new Set(['status', 'checkedAt', 'message'])
+  for (const key of Object.keys(record.lastHealth)) {
+    if (!healthKeys.has(key)) {
+      throw new ConnectionError(
+        'SECRET_IN_CONNECTION_RECORD',
+        'Connection health metadata may not contain provider-native or credential material',
+        { connectionId: record.id },
+      )
+    }
+  }
+  if (record.lastModelVerification !== undefined) {
+    const verificationKeys = new Set([
+      'model',
+      'status',
+      'checkedAt',
+      'code',
+      'httpStatus',
+      'message',
+    ])
+    for (const key of Object.keys(record.lastModelVerification)) {
+      if (!verificationKeys.has(key)) {
+        throw new ConnectionError(
+          'SECRET_IN_CONNECTION_RECORD',
+          'Connection verification metadata may not contain provider-native or credential material',
+          { connectionId: record.id },
+        )
+      }
+    }
+  }
   const strings = [
     record.name,
     record.endpoint,

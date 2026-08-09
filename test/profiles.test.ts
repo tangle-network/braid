@@ -38,7 +38,7 @@ import {
 
 const profileCapabilities: AgentProfileCapabilities = {
   namedProfiles: true,
-  systemPrompt: true,
+  systemPrompt: { replace: true, append: true },
   instructions: true,
   tools: true,
   permissions: true,
@@ -217,7 +217,7 @@ test('the installed canonical profile schema round-trips every field and extensi
   assert.equal(canonicalCandidateJson(imported.profile), json)
   assert.deepEqual(imported.profile.extensions, fullProfile.extensions)
   assert.deepEqual(imported.profile.resources, fullProfile.resources)
-  assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, '0.43.1')
+  assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, '0.45.0')
 })
 
 test('unknown canonical fields fail closed while namespaced extensions remain opaque', () => {

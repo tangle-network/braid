@@ -19,6 +19,7 @@ async function waitFor(predicate, label, timeoutMs = 15_000) {
 
 const LIVE_BRIDGE_ENDPOINT = 'http://127.0.0.1:3344'
 const LIVE_GLM_MODEL = 'opencode/zai-coding-plan/glm-5.2'
+const LIVE_GLM_PORTABLE_MODEL = 'zai-coding-plan/glm-5.2'
 
 async function readLiveJson(path) {
   const controller = new AbortController()
@@ -113,9 +114,28 @@ export async function runPackedFirstRun(binary, repository) {
         } catch (error) {
           throw new Error(`packed setup did not activate\n${output}`, { cause: error })
         }
+        session.write('\r')
+        await sleep(250)
       }
+      const responseOffset = output.length
       session.write(`${prompt}\r`)
-      await waitFor(() => output.includes(expectedResponse), 'packed real response')
+      try {
+        await waitFor(
+          () => {
+            const replyOffset = output.indexOf(expectedResponse, responseOffset)
+            if (replyOffset < 0) return false
+            const completedOutput = output.slice(replyOffset + expectedResponse.length)
+            return (
+              completedOutput.includes('completed') ||
+              completedOutput.includes('ready for a message')
+            )
+          },
+          'packed real response',
+          120_000,
+        )
+      } catch (error) {
+        throw new Error(`packed response missing ${expectedResponse}\n${output}`, { cause: error })
+      }
       session.write('\u0003')
       await waitFor(
         () =>
@@ -139,8 +159,10 @@ export async function runPackedFirstRun(binary, repository) {
   }
 
   try {
-    const firstPrompt = 'Reply with exactly BRAID_LIVE_GLM_OK and nothing else.'
-    const restartPrompt = 'Reply with exactly BRAID_LIVE_GLM_RESTART_OK and nothing else.'
+    const firstPrompt =
+      'Join these pieces without spaces and reply only with the result: BRAID_ + LIVE_ + GLM_OK'
+    const restartPrompt =
+      'Join these pieces without spaces and reply only with the result: BRAID_ + LIVE_ + GLM_ + RESTART_OK'
     const firstOutput = await runTui(
       [
         '--workspace',
@@ -163,7 +185,7 @@ export async function runPackedFirstRun(binary, repository) {
     const savedConnection = saved.connections?.[0]
     if (savedProfile?.harness !== 'opencode')
       throw new Error(`packed setup saved the wrong runner\n${firstOutput}`)
-    if (savedProfile?.model?.default !== LIVE_GLM_MODEL)
+    if (savedProfile?.model?.default !== LIVE_GLM_PORTABLE_MODEL)
       throw new Error(`packed setup did not persist the discovered model\n${JSON.stringify(saved)}`)
     if (savedConnection?.endpoint !== LIVE_BRIDGE_ENDPOINT)
       throw new Error(

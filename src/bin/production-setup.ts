@@ -1,6 +1,7 @@
 export type { PreparedProductionSelection } from './production-setup-credentials.js'
 export {
   prepareProductionSelection,
+  productionConnectionNeedsCredential,
   recoverPendingProductionCredential,
 } from './production-setup-credentials.js'
 export {

@@ -1,6 +1,7 @@
 import type { ConnectionRecord, OperationRecord, ProfileRecord } from '../domain/entities.js'
 import type { BraidEvent } from '../domain/events.js'
 import type { BraidState } from '../domain/state.js'
+import { canonicalDigest } from '../domain/canonical.js'
 import { commitEventsAndWaitAtRevision, type TransitionHost } from './application-transition.js'
 
 export type ConfigurationOperation = OperationRecord & {
@@ -29,6 +30,16 @@ export interface ConfigurationActionTransition {
     readonly operation: ConfigurationOperation & { readonly kind: 'connection-change' }
     readonly expectedRevision?: number
   }) => Promise<BraidState>
+  readonly upsertConnection: (input: {
+    readonly connection: ConnectionRecord
+    readonly operation: ConfigurationOperation & { readonly kind: 'connection-change' }
+    readonly expectedRevision?: number
+  }) => Promise<BraidState>
+  readonly removeConnection: (input: {
+    readonly connection: ConnectionRecord
+    readonly operation: ConfigurationOperation & { readonly kind: 'connection-change' }
+    readonly expectedRevision?: number
+  }) => Promise<BraidState>
   readonly updateConnectionHealth: (input: {
     readonly connection: ConnectionRecord
     readonly operation: ConfigurationOperation & { readonly kind: 'connection-change' }
@@ -38,6 +49,10 @@ export interface ConfigurationActionTransition {
 export function createConfigurationActionTransition(
   host: TransitionHost,
 ): ConfigurationActionTransition {
+  const shouldUpsertConnection = (connection: ConnectionRecord): boolean => {
+    const current = host.state().connections.find((candidate) => candidate.id === connection.id)
+    return current === undefined || canonicalDigest(current) !== canonicalDigest(connection)
+  }
   const commit = (events: readonly BraidEvent[], expectedRevision?: number): Promise<BraidState> =>
     commitEventsAndWaitAtRevision(host, events, expectedRevision).then(() => host.state())
   const requestOperation: ConfigurationActionTransition['requestOperation'] = ({
@@ -75,11 +90,35 @@ export function createConfigurationActionTransition(
     expectedRevision,
   }) => {
     const events: BraidEvent[] = []
-    if (!host.state().connections.some((candidate) => candidate.id === connection.id)) {
+    if (shouldUpsertConnection(connection)) {
       events.push({ kind: 'connection.upserted', connection })
     }
     events.push({ kind: 'connection.selected', connectionId: connection.id })
     events.push({ kind: 'operation.updated', operation })
+    return commit(events, expectedRevision)
+  }
+  const upsertConnection: ConfigurationActionTransition['upsertConnection'] = ({
+    connection,
+    operation,
+    expectedRevision,
+  }) =>
+    commit(
+      [
+        { kind: 'connection.upserted', connection },
+        { kind: 'operation.updated', operation },
+      ],
+      expectedRevision,
+    )
+  const removeConnection: ConfigurationActionTransition['removeConnection'] = ({
+    connection,
+    operation,
+    expectedRevision,
+  }) => {
+    const events: BraidEvent[] = []
+    if (shouldUpsertConnection(connection)) {
+      events.push({ kind: 'connection.upserted', connection })
+    }
+    events.push({ kind: 'connection.removed', connectionId: connection.id, operation })
     return commit(events, expectedRevision)
   }
   const updateConnectionHealth: ConfigurationActionTransition['updateConnectionHealth'] = ({
@@ -97,6 +136,8 @@ export function createConfigurationActionTransition(
     selectProfile,
     saveProfile,
     selectConnection,
+    upsertConnection,
+    removeConnection,
     updateConnectionHealth,
   })
 }

@@ -17,7 +17,8 @@ import {
 } from '../app/profiles.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { redactProviderError } from '../domain/redaction.js'
-import { credentialRef } from '../ports/credentials.js'
+import { recoverPendingConnectionCredentialRemoval } from './production-connection-credential-cleanup.js'
+import { defaultProductionCredentialRefResolver } from './production-credential-reference.js'
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupLoadOptions } from './production-setup-types.js'
@@ -336,6 +337,15 @@ export async function loadProductionStartup(
       ? {}
       : { credentialContext: options.credentialContext }),
   })
+  await recoverPendingConnectionCredentialRemoval(configPath, {
+    ...(options.credentialStore === undefined ? {} : { credentialStore: options.credentialStore }),
+    ...(options.credentialContext === undefined
+      ? {}
+      : { credentialContext: options.credentialContext }),
+    ...(options.credentialRefResolver === undefined
+      ? {}
+      : { credentialRefResolver: options.credentialRefResolver }),
+  })
   const profileValue = options.profileReference ?? document.profile
   if (profileValue === undefined) {
     throw new ProductionStartupError(
@@ -384,7 +394,7 @@ export async function loadProductionStartup(
       ? {}
       : {
           credentialRefResolver:
-            options.credentialRefResolver ?? ((ref) => credentialRef(`cred:v1:${ref}`)),
+            options.credentialRefResolver ?? defaultProductionCredentialRefResolver,
         }),
   }
   return {

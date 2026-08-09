@@ -24,33 +24,7 @@ export async function readConnectionCredential(
     }
     return undefined
   }
-  if (!options.credentials || !options.credentialRefResolver) {
-    throw new ConnectionError(
-      'CONNECTION_CREDENTIAL_REF_UNMAPPED',
-      'The durable credential reference has no secure credential-store mapping; configure the connection again',
-      { connectionId: record.id },
-    )
-  }
-  let portRef: CredentialRef
-  try {
-    portRef = credentialRef(await options.credentialRefResolver(record.credentialRef))
-  } catch {
-    throw new ConnectionError(
-      'CONNECTION_CREDENTIAL_REF_UNMAPPED',
-      'The durable credential reference could not be mapped',
-      { connectionId: record.id },
-    )
-  }
-  let handle: Awaited<ReturnType<CredentialPort['resolve']>>
-  try {
-    handle = await options.credentials.resolve(portRef)
-  } catch {
-    throw new ConnectionError(
-      'CONNECTION_CREDENTIAL_UNAVAILABLE',
-      'The referenced credential is unavailable from the operating-system credential store; add it there and retry',
-      { connectionId: record.id },
-    )
-  }
+  const handle = await resolveConnectionCredentialHandle(record, record.credentialRef, options)
   let bytes: Uint8Array | undefined
   try {
     bytes = handle.read()
@@ -72,10 +46,57 @@ export async function readConnectionCredential(
     )
   } finally {
     bytes?.fill(0)
-    try {
-      handle.dispose()
-    } catch {
-      // A secret handle must not prevent the caller from failing closed.
-    }
+    disposeCredentialHandle(handle)
+  }
+}
+
+/** Proves that a caller-supplied durable id maps to an existing protected value. */
+export async function assertConnectionCredentialReference(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+): Promise<void> {
+  if (record.credentialRef === undefined) return
+  const handle = await resolveConnectionCredentialHandle(record, record.credentialRef, options)
+  disposeCredentialHandle(handle)
+}
+
+async function resolveConnectionCredentialHandle(
+  record: ConnectionRecord,
+  credentialReference: NonNullable<ConnectionRecord['credentialRef']>,
+  options: ProductionConnectionOptions,
+): Promise<Awaited<ReturnType<CredentialPort['resolve']>>> {
+  if (!options.credentials || !options.credentialRefResolver) {
+    throw new ConnectionError(
+      'CONNECTION_CREDENTIAL_REF_UNMAPPED',
+      'The durable credential reference has no secure credential-store mapping; configure the connection again',
+      { connectionId: record.id },
+    )
+  }
+  let portRef: CredentialRef
+  try {
+    portRef = credentialRef(await options.credentialRefResolver(credentialReference))
+  } catch {
+    throw new ConnectionError(
+      'CONNECTION_CREDENTIAL_REF_UNMAPPED',
+      'The durable credential reference could not be mapped',
+      { connectionId: record.id },
+    )
+  }
+  try {
+    return await options.credentials.resolve(portRef)
+  } catch {
+    throw new ConnectionError(
+      'CONNECTION_CREDENTIAL_UNAVAILABLE',
+      'The referenced credential is unavailable from the operating-system credential store; add it there and retry',
+      { connectionId: record.id },
+    )
+  }
+}
+
+function disposeCredentialHandle(handle: Awaited<ReturnType<CredentialPort['resolve']>>): void {
+  try {
+    handle.dispose()
+  } catch {
+    // A secret handle must not prevent the caller from failing closed.
   }
 }

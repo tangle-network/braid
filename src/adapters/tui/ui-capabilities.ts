@@ -26,6 +26,7 @@ export function capabilityMap(
 ): CapabilityMap {
   const active = state.activeRunId !== null
   const deterministicFixture = state.profile.model?.default === 'fixture/deterministic'
+  const configuredConnection = state.selectedConnectionId !== null
   const capabilities: Record<
     string,
     {
@@ -97,7 +98,7 @@ export function capabilityMap(
         }
   }
   capabilities['run.send'] =
-    state.workspace !== null && !active && deterministicFixture
+    state.workspace !== null && !active && (deterministicFixture || configuredConnection)
       ? { available: true, source: 'provider' }
       : {
           available: false,

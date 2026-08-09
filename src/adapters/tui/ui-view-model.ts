@@ -35,6 +35,9 @@ export function buildBraidViewModel(
   const profile = state.profile as Readonly<AgentProfile>
   const fixture = profile.model?.default === 'fixture/deterministic'
   const profileDigest = canonicalDigest(profile)
+  const selectedConnection = state.connections.find(
+    (connection) => connection.id === state.selectedConnectionId,
+  )
   const selectedConversation = state.conversations.find(
     (conversation) => conversation.id === state.conversationId,
   )
@@ -66,7 +69,9 @@ export function buildBraidViewModel(
     ...(profile.model?.reasoningEffort
       ? { effort: sanitizeTerminalText(profile.model.reasoningEffort) }
       : {}),
-    connection: fixture ? 'deterministic fixture' : 'not connected',
+    connection: fixture
+      ? 'deterministic fixture'
+      : sanitizeTerminalText(selectedConnection?.name ?? 'not connected'),
     conversationId: state.conversationId,
     conversationTitle: sanitizeTerminalText(selectedConversation?.title ?? 'New conversation'),
     conversations: Object.freeze(

@@ -35,13 +35,13 @@ const CREATE_FLAGS =
   constants.O_NONBLOCK |
   constants.O_NOFOLLOW
 
-const journalLocks = new Map<
+const privateFileLocks = new Map<
   number,
   { readonly directoryFd: number; readonly leaf: string; readonly leafPath: string }
 >()
 
 /** A small crash-recovery lock; stale owners are safe to reclaim within the opened parent directory. */
-export function acquireJournalLock(path: string): number {
+export function acquirePrivateFileLock(path: string, description = 'Private storage'): number {
   const parent = openParent(path)
   for (;;) {
     let handle: number | undefined
@@ -53,15 +53,15 @@ export function acquireJournalLock(path: string): number {
         const bytes = readAt(parent.fd, parent.leaf, parent.leafPath, 128)
         const ownerText = bytes?.toString('utf8').trim()
         if (!ownerText || !/^\d+$/.test(ownerText)) {
-          throw new Error('Private conversation storage lock is corrupt or incomplete')
+          throw new Error(`${description} lock is corrupt or incomplete`)
         }
         const owner = Number(ownerText)
         if (!Number.isSafeInteger(owner) || owner <= 0) {
-          throw new Error('Private conversation storage lock has an invalid owner')
+          throw new Error(`${description} lock has an invalid owner`)
         }
         try {
           process.kill(owner, 0)
-          throw new Error('Private conversation storage is busy in another process')
+          throw new Error(`${description} is busy in another process`)
         } catch (probeError) {
           if (errorCode(probeError) !== 'ESRCH') throw probeError
           unlinkAt(parent.fd, parent.leaf, parent.leafPath)
@@ -75,7 +75,7 @@ export function acquireJournalLock(path: string): number {
         offset += writeSync(handle, ownerBytes, offset, ownerBytes.byteLength - offset)
       }
       fsyncSync(handle)
-      journalLocks.set(handle, {
+      privateFileLocks.set(handle, {
         directoryFd: parent.fd,
         leaf: parent.leaf,
         leafPath: parent.leafPath,
@@ -84,7 +84,7 @@ export function acquireJournalLock(path: string): number {
     } catch (error) {
       if (handle !== undefined) {
         closeSync(handle)
-        journalLocks.delete(handle)
+        privateFileLocks.delete(handle)
       }
       closeSync(parent.fd)
       throw error
@@ -92,15 +92,15 @@ export function acquireJournalLock(path: string): number {
   }
 }
 
-export function releaseJournalLock(path: string, handle: number): void {
-  const lock = journalLocks.get(handle)
+export function releasePrivateFileLock(path: string, handle: number): void {
+  const lock = privateFileLocks.get(handle)
   if (lock === undefined) {
     throw new SafeFileError(
       'SAFE_FILE_LOCK_NOT_OWNED' satisfies SafeFileErrorCode,
       `Private conversation storage lock is not owned by this process: ${path}`,
     )
   }
-  journalLocks.delete(handle)
+  privateFileLocks.delete(handle)
   let failure: unknown
   try {
     closeSync(handle)

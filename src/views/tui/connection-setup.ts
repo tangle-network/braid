@@ -30,6 +30,8 @@ interface ConnectionSetupOptions {
   readonly nextOperationId?: () => string
   readonly query?: string
   readonly onCancel?: () => void
+  readonly onCreate?: () => void
+  readonly onRemove?: (connection: ConnectionSummary) => void
 }
 
 const CONNECTION_REFRESH_TIMEOUT_MS = 2_000
@@ -39,6 +41,8 @@ export class ConnectionSetupViewPanel extends Container implements Focusable {
   readonly #controller: BraidUiController | undefined
   readonly #nextOperationId: (() => string) | undefined
   readonly #onCancel: (() => void) | undefined
+  readonly #onCreate: (() => void) | undefined
+  readonly #onRemove: ((connection: ConnectionSummary) => void) | undefined
   readonly #status = new ResponsiveText('', 1, 0)
   readonly #detail = new ResponsiveText('', 1, 0)
   #selector: SearchableSelector | undefined
@@ -54,6 +58,8 @@ export class ConnectionSetupViewPanel extends Container implements Focusable {
     this.#controller = options.controller
     this.#nextOperationId = options.nextOperationId
     this.#onCancel = options.onCancel
+    this.#onCreate = options.onCreate
+    this.#onRemove = options.onRemove
     if (this.#controller !== undefined) {
       this.#buildSelector(options.query ?? '')
       void this.#refresh().catch((error: unknown) => {
@@ -93,11 +99,19 @@ export class ConnectionSetupViewPanel extends Container implements Focusable {
       items: [],
       query,
       maxVisible: 5,
-      footer: 'enter select · ^T test · esc close',
+      footer:
+        this.#onCreate === undefined
+          ? 'enter select · ^T test · esc close'
+          : 'enter select · ^N new · ^T test · ^D remove · esc close',
       theme: this.#theme,
       onSelect: (item) => void this.#select(item),
       onAction: (key, item) => {
         if (item !== null && key === 'test' && !this.#busy) void this.#test(item)
+        if (key === 'new' && !this.#busy) this.#onCreate?.()
+        if (item !== null && key === 'delete' && !this.#busy) {
+          const connection = this.#connections.find((candidate) => candidate.id === item.value)
+          if (connection !== undefined) this.#onRemove?.(connection)
+        }
       },
       onCancel: () => this.#onCancel?.(),
     })

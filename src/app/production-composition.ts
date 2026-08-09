@@ -1,5 +1,6 @@
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
+import { connectionEndpoint } from '../adapters/connections/production-connection-endpoints.js'
 import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
@@ -67,6 +68,7 @@ const SUPPORTED_CONNECTION_KINDS = new Set<ConnectionRecord['kind']>([
 
 export function createProductionComposition(
   config: ProductionCompositionConfig,
+  liveConnections?: ConnectionRegistry,
 ): ProductionComposition {
   if (!config || config.profile === undefined) {
     throw new ProductionCompositionError(
@@ -117,15 +119,32 @@ export function createProductionComposition(
     }
   }
 
-  let connections: ConnectionRegistry
+  let validatedConnections: ConnectionRegistry
   try {
-    connections = new ConnectionRegistry(config.connections)
+    validatedConnections = new ConnectionRegistry(config.connections)
+    for (const record of validatedConnections.list()) {
+      connectionEndpoint(record, config.connectionOptions)
+    }
   } catch (error) {
     throw new ProductionCompositionError(
       'PRODUCTION_CONNECTION_INVALID',
       'The production connection configuration is invalid or contains secret material',
       error,
     )
+  }
+  const connections = liveConnections ?? validatedConnections
+  if (liveConnections !== undefined) {
+    const configured = validatedConnections.list()
+    const live = liveConnections.list()
+    if (
+      configured.length !== live.length ||
+      configured.some((record) => liveConnections.get(record.id)?.updatedAt !== record.updatedAt)
+    ) {
+      throw new ProductionCompositionError(
+        'PRODUCTION_CONNECTION_INVALID',
+        'The live connection catalog does not match the production configuration',
+      )
+    }
   }
 
   let connection: ConnectionRecord
