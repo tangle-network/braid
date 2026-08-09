@@ -2,8 +2,11 @@ overrides:
   hono: 4.13.0
   undici: 7.29.0
 peerDependencyRules:
+  # agent-runtime 0.128.0 predates this coherent 0.43.1 package cohort.
+  # Remove both exceptions when https://github.com/tangle-network/agent-runtime/issues/746 ships.
   allowedVersions:
-    '@tangle-network/agent-eval': 0.144.1
+    '@tangle-network/agent-eval': 0.144.4
+    '@tangle-network/sandbox': 0.19.2
 allowBuilds:
   better-sqlite3-multiple-ciphers: true
   esbuild: true
@@ -11,8 +14,8 @@ allowBuilds:
 ignoreScripts: false
 minimumReleaseAgeExclude:
   - '@tangle-network/agent-runtime@0.126.0 || 0.128.0'
-  - '@tangle-network/agent-eval@0.143.0 || 0.144.0 || 0.144.1 || 0.144.3'
+  - '@tangle-network/agent-eval@0.143.0 || 0.144.0 || 0.144.1 || 0.144.3 || 0.144.4'
   - '@tangle-network/agent-knowledge@7.0.8'
   - '@tangle-network/agent-profile-materialize@0.10.2'
-  - '@tangle-network/sandbox@0.17.3 || 0.18.0'
+  - '@tangle-network/sandbox@0.17.3 || 0.18.0 || 0.19.2'
   - hono@4.13.0

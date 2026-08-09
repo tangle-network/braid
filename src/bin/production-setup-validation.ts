@@ -1,4 +1,5 @@
 import { harnessHonorsEffort, harnessHonorsModel } from '@tangle-network/agent-interface'
+import { materializeBridgeModelRoute } from '../adapters/connections/cli-bridge-model-route.js'
 import { readConnectionCredential } from '../adapters/connections/production-connections.js'
 import type {
   ConfigurationEffectiveValues,
@@ -116,8 +117,14 @@ export async function validateProductionSelection(
       detail: `Model validation is not available for ${selection.connection.kind}; provider authentication remains unverified.`,
     }
   }
-  const model = selection.profile.profile.model?.default?.trim()
-  if (!model) throw new Error('Setup cannot validate a profile without a model.default value')
+  const profile = selection.profile.profile
+  const authoredModel = profile.model?.default?.trim()
+  if (!authoredModel)
+    throw new Error('Setup cannot validate a profile without a model.default value')
+  if (profile.harness === undefined) {
+    throw new Error('Setup cannot validate a CLI Bridge profile without a runner')
+  }
+  const model = materializeBridgeModelRoute(profile.harness, authoredModel, profile.model?.provider)
   const endpoint = selection.connection.endpoint
   if (!endpoint) {
     throw new Error(

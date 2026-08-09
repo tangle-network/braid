@@ -140,7 +140,7 @@ if (nativeStorageRequired) {
     createRequire(import.meta.url).resolve('better-sqlite3-multiple-ciphers')
   } catch {
     process.stderr.write(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed; install dependencies with lifecycle scripts before running storage or crash tests\n',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed; install dependencies with lifecycle scripts before running storage or crash tests\n',
     )
     process.exit(2)
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
-import { TUI } from '@earendil-works/pi-tui'
+import { TuiMainScreen } from '@earendil-works/pi-tui'
 import {
   AgentEvalAnalystAdapter,
   type AnalystRegistryPort,
@@ -151,7 +151,7 @@ test('the terminal opens saved ask and comparison results instead of reducing th
   const candidateRunId = await createCompletedRun(app, 'terminal candidate')
   const controller = createApplicationUiController(app)
   const terminal = new VirtualTerminal(100, 30)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   let operation = 0
   const view = new BraidTerminalApp({
     controller,

@@ -71,30 +71,44 @@ function statusForRun(state: BraidState, run: BraidState['runs'][number]): ViewS
   }
 }
 
-function partFor(message: BraidState['messages'][number]): TranscriptPartView[] {
-  const parts = message.parts.map(semanticPart)
+function partFor(
+  message: BraidState['messages'][number],
+  visibleMessageText: string,
+): TranscriptPartView[] {
+  const parts = message.parts.map((part) =>
+    semanticPart(
+      part,
+      part.kind === 'text' && part.text === message.text ? visibleMessageText : undefined,
+    ),
+  )
   if (parts.length > 0) return parts
-  const text = boundVisibleText(message.text)
-  return text
+  return visibleMessageText
     ? [
         {
           id: `${message.id}:text`,
           kind: 'text' as const,
-          text,
+          text: visibleMessageText,
           status: message.status === 'streaming' ? ('running' as const) : ('complete' as const),
         },
       ]
     : []
 }
 
-function messagesFor(state: BraidState): MessageView[] {
+function messagesFor(
+  state: BraidState,
+  options: { readonly completeText?: boolean } = {},
+): MessageView[] {
   const branchExists = state.branches.some((branch) => branch.id === state.branchId)
   const visible = branchExists ? messagesVisibleOnBranch(state, state.branchId) : state.messages
-  return visible.slice(-MAX_VISIBLE_MESSAGES).map((message) =>
-    Object.freeze({
+  return visible.slice(-MAX_VISIBLE_MESSAGES).map((message) => {
+    // Canonical message text is sanitized and byte-bounded before it enters state.
+    // The terminal keeps that complete value so history navigation can restore it;
+    // headless snapshots retain the smaller display projection by default.
+    const text = options.completeText ? message.text : boundVisibleText(message.text)
+    return Object.freeze({
       id: message.id,
       role: message.role,
-      text: sanitizeTerminalText(boundVisibleText(message.text)),
+      text,
       status:
         message.status === 'aborted'
           ? ('cancelled' as const)
@@ -102,10 +116,10 @@ function messagesFor(state: BraidState): MessageView[] {
             ? ('incomplete' as const)
             : message.status,
       ...(message.runId ? { runId: message.runId } : {}),
-      parts: Object.freeze(partFor(message)),
+      parts: Object.freeze(partFor(message, text)),
       ...(message.partsTruncated ? { partsTruncated: true } : {}),
-    }),
-  )
+    })
+  })
 }
 
 export function runViews(state: BraidState): RunView[] {

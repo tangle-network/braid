@@ -69,6 +69,10 @@ test('startup responsibilities stay split into bounded modules', async () => {
 
   const runtime = await readFile(new URL('src/bin/braid-runtime.ts', root), 'utf8')
   const interfaceRunner = await readFile(new URL('src/bin/interface-runner.ts', root), 'utf8')
+  const startupBuild = await readFile(new URL('scripts/build-startup.mjs', root), 'utf8')
   assert.match(runtime, /connections: production\.connections/u)
   assert.match(interfaceRunner, /input\.profileConnectionOptions/u)
+  assert.match(startupBuild, /minifySyntax: true/u)
+  assert.match(startupBuild, /minifyWhitespace: true/u)
+  assert.match(startupBuild, /minifyIdentifiers: false/u)
 })

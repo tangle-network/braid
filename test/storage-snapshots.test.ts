@@ -200,7 +200,7 @@ test('snapshot modules stay bounded and acyclic', async () => {
 test('latest valid generation restores after a process restart', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-snapshot-restart-'))
@@ -240,7 +240,7 @@ test('latest valid generation restores after a process restart', async (t) => {
 test('append with a snapshot rolls back the event when snapshot storage fails', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-snapshot-atomic-'))
@@ -281,7 +281,7 @@ test('append with a snapshot rolls back the event when snapshot storage fails', 
 test('snapshot writes fail closed when an event id is ambiguous', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-snapshot-ambiguous-'))
@@ -309,7 +309,7 @@ test('snapshot writes fail closed when an event id is ambiguous', async (t) => {
 test('redaction erases snapshot keys before rollback and falls back to journal replay', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-snapshot-key-retain-'))
@@ -386,7 +386,7 @@ test('redaction erases snapshot keys before rollback and falls back to journal r
 test('production snapshots are encrypted, bounded, replayable, and key-deletable', async () => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-snapshot-'))
@@ -539,7 +539,7 @@ test('production snapshots are encrypted, bounded, replayable, and key-deletable
 test('a checksum-valid but impossible materialized state is quarantined once', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-snapshot-domain-'))

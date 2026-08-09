@@ -72,12 +72,12 @@ function detailText(value: unknown): string {
   }
 }
 
-function partView(part: BraidMessagePart): MessagePartView {
+function partView(part: BraidMessagePart, visibleText?: string): MessagePartView {
   const detail = part.text ?? part.error ?? (part.result === undefined ? part.input : part.result)
   return {
     id: part.id,
     kind: part.kind,
-    text: sanitizeTerminalText(visibleTail(detailText(detail).slice(0, MAX_VISIBLE_PART_CHARS))),
+    text: visibleText ?? visibleTail(detailText(detail).slice(0, MAX_VISIBLE_PART_CHARS)),
     ...(part.status === undefined ? {} : { status: sanitizeTerminalText(part.status) }),
     ...(part.toolName === undefined ? {} : { toolName: sanitizeTerminalText(part.toolName) }),
     ...(part.title === undefined ? {} : { title: sanitizeTerminalText(part.title) }),
@@ -86,13 +86,22 @@ function partView(part: BraidMessagePart): MessagePartView {
 
 export function buildAppView(state: BraidState): AppView {
   const hiddenMessageCount = Math.max(0, state.messages.length - MAX_VISIBLE_MESSAGES)
-  const messages = state.messages.slice(-MAX_VISIBLE_MESSAGES).map((message) => ({
-    id: message.id,
-    role: message.role,
-    text: sanitizeTerminalText(visibleTail(message.text)),
-    status: message.status,
-    parts: Object.freeze(message.parts.slice(-MAX_VISIBLE_PARTS).map(partView)),
-  }))
+  const messages = state.messages.slice(-MAX_VISIBLE_MESSAGES).map((message) => {
+    const text = visibleTail(message.text)
+    return {
+      id: message.id,
+      role: message.role,
+      text,
+      status: message.status,
+      parts: Object.freeze(
+        message.parts
+          .slice(-MAX_VISIBLE_PARTS)
+          .map((part) =>
+            partView(part, part.kind === 'text' && part.text === message.text ? text : undefined),
+          ),
+      ),
+    }
+  })
   const fixture = state.profile.model?.default === 'fixture/deterministic'
   const latestRun = state.runs.at(-1)
   const activities =

@@ -1,8 +1,9 @@
 import { performance } from 'node:perf_hooks'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { TUI } from '@earendil-works/pi-tui'
+import { TuiMainScreen } from '@earendil-works/pi-tui'
 import { HeadlessTerminal } from './headless-terminal.mjs'
 import { loadPackedRuntime } from './packed-runtime.mjs'
+import { summarizeStage } from './stage-timings.mjs'
 
 const REFERENCE_DIMENSIONS = Object.freeze([
   Object.freeze([40, 12]),
@@ -109,7 +110,7 @@ export async function measurePackedResizeStream({
     lastGeneratedAt: undefined,
   }
   const terminal = new HeadlessTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = runtime.index.createBraidApplication({
     execution: streamingExecution({
       intervalMs: eventIntervalMs,
@@ -125,6 +126,7 @@ export async function measurePackedResizeStream({
     color: 'none',
     reducedMotion: true,
   })
+  const frameTimings = []
   const terminalApp = new runtime.terminal.BraidTerminalApp({
     controller,
     tui,
@@ -134,8 +136,12 @@ export async function measurePackedResizeStream({
       let next = 0
       return () => `op-perf-resize-ui-${++next}`
     })(),
+    onFrameTiming: (timing) => frameTimings.push(timing),
   })
   const completedFrames = []
+  const piRenderSamples = []
+  const terminalFlushSamples = []
+  const resizeCallSamples = []
   let resizeEpoch = 0
   let runId
   let terminalStarted = false
@@ -143,12 +149,17 @@ export async function measurePackedResizeStream({
   const originalDoRender = tui.doRender.bind(tui)
   tui.doRender = () => {
     const renderEpoch = resizeEpoch
+    const renderStartedAt = performance.now()
     try {
       originalDoRender()
+      piRenderSamples.push(performance.now() - renderStartedAt)
+      const flushStartedAt = performance.now()
       void terminal.flush().then(() => {
+        const completedAt = performance.now()
+        terminalFlushSamples.push(completedAt - flushStartedAt)
         completedFrames.push({
           epoch: renderEpoch,
-          completedAt: performance.now(),
+          completedAt,
           columns: terminal.columns,
           rows: terminal.rows,
           invalidCells: invalidCellCount(terminal),
@@ -186,6 +197,8 @@ export async function measurePackedResizeStream({
       const epoch = ++resizeEpoch
       const resizeStartedAt = performance.now()
       terminal.resize(columns, rows)
+      const resizeCallMs = performance.now() - resizeStartedAt
+      resizeCallSamples.push(resizeCallMs)
       let resizeFrame
       await waitFor(
         () => {
@@ -210,6 +223,7 @@ export async function measurePackedResizeStream({
         requested: { columns, rows },
         dimensions,
         elapsedMs: performance.now() - resizeStartedAt,
+        resizeCallMs,
         frameCompletions: completedFrames.length,
         frameCompletedAt: resizeFrame.completedAt,
         acceptedEvents: run?.eventCount ?? 0,
@@ -317,6 +331,16 @@ export async function measurePackedResizeStream({
       perResize,
       qualityPassed: failureReasons.length === 0,
       failureReasons,
+      stageTimings: {
+        resizeCallMs: summarizeStage(resizeCallSamples),
+        frameQueueMs: summarizeStage(frameTimings.map((timing) => timing.queueDelayMs)),
+        viewProjectionMs: summarizeStage(frameTimings.map((timing) => timing.projectionMs)),
+        terminalViewApplyMs: summarizeStage(frameTimings.map((timing) => timing.subscriberMs)),
+        piRenderMs: summarizeStage(piRenderSamples),
+        terminalFlushMs: summarizeStage(terminalFlushSamples),
+        resizeToVisibleMs: summarizeStage(perResize.map((sample) => sample.elapsedMs)),
+        combinedUpdatesPerFrame: summarizeStage(frameTimings.map((timing) => timing.queuedUpdates)),
+      },
       provenance: {
         packageRoot,
         stream: 'packed Braid application + packed Pi terminal headless path',

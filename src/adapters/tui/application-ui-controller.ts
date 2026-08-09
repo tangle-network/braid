@@ -6,6 +6,7 @@ import type {
   UiDispatchResult,
   UiEvent,
   UiSubscriber,
+  UiSubscriptionOptions,
 } from '../../views/shared/intents.js'
 import type { BraidViewModel, HeadlessState } from '../../views/shared/models.js'
 import { freezeView } from '../../views/shared/models.js'
@@ -17,15 +18,27 @@ import { capabilityMap } from './ui-capabilities.js'
 import { errorResult } from './ui-dispatch-error.js'
 import { FIXTURE_FORK, FIXTURE_INTERACTION, type UiFixture } from './ui-fixtures.js'
 import { toEvent, toHeadlessState } from './ui-projection.js'
+import { createUiSubscriberDelivery, type UiSubscriberDelivery } from './ui-subscriber-delivery.js'
 import { buildBraidViewModel, type UiAppearanceOptions } from './ui-view-model.js'
 
 export type { UiAppearanceOptions, UiFixture }
 export { buildBraidViewModel }
 
+interface ActiveUiSubscription {
+  readonly options: UiSubscriptionOptions
+  readonly delivery: UiSubscriberDelivery
+  unsubscribe(): void
+}
+
+interface UiSubscriberRegistration {
+  readonly options: UiSubscriptionOptions
+  active: ActiveUiSubscription
+}
+
 export class ApplicationUiController implements BraidUiController {
   #app: BraidApplication
   readonly #subscribers = new Set<UiSubscriber>()
-  readonly #subscriptions = new Map<UiSubscriber, () => void>()
+  readonly #subscriptions = new Map<UiSubscriber, UiSubscriberRegistration>()
   readonly #appearance: UiAppearanceOptions
   readonly #fixture: UiFixture | undefined
   #profileConnections:
@@ -54,15 +67,18 @@ export class ApplicationUiController implements BraidUiController {
   }
 
   view(): BraidViewModel {
-    const state = this.#app.state()
+    return this.#project(this.#app.state(), this.#app)
+  }
+
+  #project(state: BraidState, app: BraidApplication): BraidViewModel {
     const view = withRunUsage(
       buildBraidViewModel(
         state,
         this.#selectedSurface,
         this.#appearance,
-        this.#app.canCancel(),
-        this.#app.storageFailure(),
-        this.#app.cleanupUncertain(),
+        app.canCancel(),
+        app.storageFailure(),
+        app.cleanupUncertain(),
       ),
       state,
     )
@@ -76,7 +92,7 @@ export class ApplicationUiController implements BraidUiController {
         ? decorated
         : freezeView({
             ...decorated,
-            capabilities: capabilityMap(state, this.#app.canCancel(), this.#fixture),
+            capabilities: capabilityMap(state, app.canCancel(), this.#fixture),
           })
     if (this.#fixture === 'interaction' && !this.#interactionResolved) {
       return freezeView({
@@ -105,12 +121,18 @@ export class ApplicationUiController implements BraidUiController {
     return freezeView(this.#app.events().map(toEvent))
   }
 
-  subscribe(subscriber: UiSubscriber): () => void {
+  subscribe(subscriber: UiSubscriber, options: UiSubscriptionOptions = {}): () => void {
+    this.#subscriptions.get(subscriber)?.active.unsubscribe()
     this.#subscribers.add(subscriber)
-    const unsubscribeApp = this.#subscribeToApp(subscriber)
-    this.#subscriptions.set(subscriber, unsubscribeApp)
+    const frozenOptions = Object.freeze({ ...options })
+    const registration: UiSubscriberRegistration = {
+      options: frozenOptions,
+      active: this.#subscribeToApp(subscriber, frozenOptions),
+    }
+    this.#subscriptions.set(subscriber, registration)
     return () => {
-      this.#subscriptions.get(subscriber)?.()
+      if (this.#subscriptions.get(subscriber) !== registration) return
+      registration.active.unsubscribe()
       this.#subscriptions.delete(subscriber)
       this.#subscribers.delete(subscriber)
     }
@@ -120,21 +142,24 @@ export class ApplicationUiController implements BraidUiController {
     if (next === this.#app) return
     next.initialize(workspace)
     await next.whenDurable()
-    const nextSubscriptions = new Map<UiSubscriber, () => void>()
+    const nextSubscriptions = new Map<UiSubscriber, ActiveUiSubscription>()
     try {
       for (const subscriber of this.#subscribers) {
-        nextSubscriptions.set(subscriber, this.#subscribeToApp(subscriber, next))
+        const current = this.#subscriptions.get(subscriber)
+        if (current !== undefined) {
+          nextSubscriptions.set(subscriber, this.#subscribeToApp(subscriber, current.options, next))
+        }
       }
-      for (const unsubscribe of this.#subscriptions.values()) unsubscribe()
     } catch (error) {
-      for (const unsubscribe of nextSubscriptions.values()) unsubscribe()
+      for (const subscription of nextSubscriptions.values()) subscription.unsubscribe()
       throw error
     }
+    for (const registration of this.#subscriptions.values()) registration.active.unsubscribe()
     this.#app = next
     this.#profileConnections = undefined
-    this.#subscriptions.clear()
-    for (const [subscriber, unsubscribe] of nextSubscriptions) {
-      this.#subscriptions.set(subscriber, unsubscribe)
+    for (const [subscriber, subscription] of nextSubscriptions) {
+      const registration = this.#subscriptions.get(subscriber)
+      if (registration !== undefined) registration.active = subscription
     }
     this.#notify()
   }
@@ -207,33 +232,37 @@ export class ApplicationUiController implements BraidUiController {
   }
 
   #notify(): void {
-    for (const subscriber of this.#subscribers) {
+    for (const registration of this.#subscriptions.values()) {
       try {
-        subscriber(this.view())
+        registration.active.delivery.refresh()
       } catch {
         // Subscriber failures must not make an already-committed app swap fail.
       }
     }
   }
 
-  #subscribeToApp(subscriber: UiSubscriber, app = this.#app): () => void {
-    return app.subscribe((state, envelope) => {
-      const event = toEvent(envelope)
-      subscriber(
-        withRunUsage(
-          buildBraidViewModel(
-            state,
-            this.#selectedSurface,
-            this.#appearance,
-            app.canCancel(),
-            app.storageFailure(),
-            app.cleanupUncertain(),
-          ),
-          state,
-        ),
-        event,
-      )
+  #subscribeToApp(
+    subscriber: UiSubscriber,
+    options: UiSubscriptionOptions,
+    app = this.#app,
+  ): ActiveUiSubscription {
+    const delivery = createUiSubscriberDelivery({
+      subscriber,
+      options,
+      currentView: () => this.view(),
+      project: (state) => this.#project(state, app),
     })
+    const unsubscribeApp = app.subscribe((state, envelope) => {
+      delivery.push(state, toEvent(envelope))
+    })
+    return {
+      options,
+      delivery,
+      unsubscribe: () => {
+        unsubscribeApp()
+        delivery.dispose()
+      },
+    }
   }
 }
 

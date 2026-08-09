@@ -95,6 +95,25 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
     visualProof.artifacts.some((artifact) => artifact.path === '80x24-flow.gif'),
     'Visual proof is missing 80x24-flow.gif',
   )
+  assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === 'raw/transcript-keyboard.cast' && artifact.kind === 'keyboard-asciicast',
+    ),
+    'Visual proof is missing the transcript keyboard asciicast',
+  )
+  assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === '80x24-transcript-keyboard.gif' && artifact.kind === 'keyboard-flow',
+    ),
+    'Visual proof is missing the transcript keyboard GIF',
+  )
+  assert(
+    JSON.stringify(visualProof.keyboardFlow?.steps) ===
+      JSON.stringify(['8 completed turns', 'Page Up', 'Alt+Home', 'Page Down', 'Alt+End']),
+    'Visual proof transcript keyboard steps differ',
+  )
   const artifactPaths = new Set()
   for (const artifact of visualProof.artifacts) {
     assert(

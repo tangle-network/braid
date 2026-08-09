@@ -11,6 +11,7 @@ import { createStateDefinitions } from './capture-visual-definitions.mjs'
 import {
   captureProvenance,
   createArtifactFor,
+  writeCastGif,
   writeFlowGif,
   writeRaster,
 } from './capture-visual-support.mjs'
@@ -35,8 +36,8 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
-async function waitFor(predicate, label) {
-  const deadline = Date.now() + 5_000
+async function waitFor(predicate, label, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
   while (!predicate()) {
     if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
     await sleep(20)
@@ -201,7 +202,7 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
     output: () => output,
     screen: () => screen,
     snapshot,
-    waitFor: (predicate, label) => waitFor(predicate, `${name} ${label}`),
+    waitFor: (predicate, label, timeoutMs) => waitFor(predicate, `${name} ${label}`, timeoutMs),
     waitForStable,
     closeNormally,
     closeWithSignal,
@@ -320,6 +321,52 @@ async function baselineCapture(columns, rows) {
         terminal.events.slice(0, point.eventCount),
         `Braid W6 ${columns}x${rows}`,
       ),
+    }
+  } finally {
+    await terminal.dispose()
+  }
+}
+
+async function transcriptKeyboardCapture() {
+  const terminal = await spawnTerminal('transcript-keyboard', 80, 24)
+  const prompts = Array.from(
+    { length: 8 },
+    (_, index) => `keyboard-flow-${String(index + 1).padStart(2, '0')}`,
+  )
+  try {
+    await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
+    for (const prompt of prompts) {
+      terminal.input(prompt)
+      terminal.input('\r')
+      await terminal.waitFor(
+        () => normalized(terminal.screen()).includes(`Fixture response through pi: ${prompt}`),
+        `${prompt} response`,
+      )
+      await terminal.waitForStable(`${prompt} final frame`)
+    }
+    terminal.input('\u001b[5~')
+    await terminal.waitForStable('Page Up frame')
+    terminal.input('\u001b[1;3H')
+    await terminal.waitFor(
+      () => normalized(terminal.screen()).includes(prompts[0]),
+      'Alt+Home first turn',
+      15_000,
+    )
+    await terminal.waitForStable('Alt+Home frame')
+    terminal.input('\u001b[6~')
+    await terminal.waitForStable('Page Down frame')
+    terminal.input('\u001b[1;3F')
+    await terminal.waitFor(
+      () => normalized(terminal.screen()).includes(prompts.at(-1)),
+      'Alt+End final turn',
+      15_000,
+    )
+    await terminal.waitForStable('Alt+End frame')
+    const events = [...terminal.events]
+    await terminal.closeNormally()
+    return {
+      cast: castFor(terminal, events, 'Braid transcript keyboard navigation'),
+      steps: ['8 completed turns', 'Page Up', 'Alt+Home', 'Page Down', 'Alt+End'],
     }
   } finally {
     await terminal.dispose()
@@ -476,6 +523,17 @@ try {
   await writeFlowGif(join(stateRoot, 'empty.png'), join(outputRoot, '80x24.png'), flowGif)
   artifacts.push(await artifactFor(flowGif, 'flow', 80, 24))
 
+  const keyboardFlow = await transcriptKeyboardCapture()
+  const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
+  const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
+  await writeFile(keyboardCast, keyboardFlow.cast)
+  await writeCastGif(keyboardCast, keyboardGif)
+  const keyboardArtifacts = [
+    await artifactFor(keyboardCast, 'keyboard-asciicast', 80, 24),
+    await artifactFor(keyboardGif, 'keyboard-flow', 80, 24),
+  ]
+  artifacts.push(...keyboardArtifacts)
+
   const manifestPath = join(outputRoot, 'capture-manifest.json')
   const provenance = await captureProvenance()
   await writeFile(
@@ -493,6 +551,10 @@ try {
         terminal: 'node-pty/xterm-256color',
         node: process.version,
         provenance,
+        keyboardFlow: {
+          steps: keyboardFlow.steps,
+          artifacts: keyboardArtifacts.map((artifact) => artifact.path),
+        },
         states: stateManifests,
         artifacts,
       },

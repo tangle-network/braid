@@ -155,7 +155,7 @@ export async function writeTargetConfig(root, endpoint, modelId, credential) {
     `${JSON.stringify(
       {
         format: 'braid-startup-config',
-        schemaVersion: 1,
+        schemaVersion: 2,
         profile: `profiles/${profileFile}`,
         connectionId,
         connections: [connection],

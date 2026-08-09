@@ -24,7 +24,7 @@ const childPath = join(process.cwd(), '.test-dist/test/effect-admission-child.js
 test('two SQLite processes admit one external effect', async () => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const root = await mkdtemp(join(tmpdir(), 'braid-effect-admission-'))

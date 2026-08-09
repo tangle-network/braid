@@ -183,7 +183,7 @@ export function persistableProductionProfile(profile: Readonly<AgentProfile>): A
 function serializedSelection(selection: ConfigurationSelection, databaseKeyFile?: string): string {
   return `${canonicalCandidateJson({
     format: 'braid-startup-config',
-    schemaVersion: 1,
+    schemaVersion: 2,
     profile: persistableProductionProfile(selection.profile.profile),
     connectionId: selection.connection.id,
     connections: [selection.connection],

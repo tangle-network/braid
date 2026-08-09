@@ -14,14 +14,14 @@ Provider packages own transport to CLI Bridge and Tangle.
 
 Braid's production CLI/TUI, encrypted local state, profile and connection setup, runtime dispatch, conversations, branches, graphs, interactions, and analysis commands are implemented.
 The terminal and headless surfaces share one command registry, one view model, and one durable operation ledger.
-The CLI Bridge path is implemented and was proven from a clean packed install on 2026-08-04 with Pi/GLM-5.2 and Codex through first-run setup, two-turn session continuity, normalized events, process restart, transcript recovery, and a post-restart turn.
+The CLI Bridge path is implemented and was proven from a clean packed install on 2026-08-09 with Pi/GLM-5.2 and Codex through first-run setup, two-turn session continuity, normalized events, process restart, transcript recovery, and a post-restart turn.
 The Tangle inference and sandbox paths are implemented against the current provider packages but still require protected live-deployment proof before they are advertised as release-complete.
 `/ask`, `/analyze`, `/compare`, trace citations, and analysis promotion are implemented; the semantic evaluation command performs pilot, calibration, and release-case checks when a judge model is configured.
 Generalized interaction responses remain capability-disabled because the installed runtime and providers do not expose a run-bound response operation.
 The deterministic `MemoryJournal` remains fixture-only; production startup fails closed if the pinned encrypted SQLite binding or credential facility is unavailable.
-The storage binding is pinned to `better-sqlite3-multiple-ciphers@12.11.1`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
+The storage binding is pinned to `better-sqlite3-multiple-ciphers@13.0.3`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
 Tangle, supervisor-control, full live-analysis, multi-platform installation, and signed release evidence remain required before the complete release contract is satisfied.
-The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent through 2026-08-04.
+The contract is based on current package and source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, and Pi through 2026-08-09, with the recorded Kimi Code, OpenCode, and Hermes Agent design references retained from the initial comparison.
 
 ![Braid terminal at 80×24](artifacts/verification/w6/80x24.png)
 

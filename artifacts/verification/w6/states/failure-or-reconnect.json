@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "c795f05973fef4353024c23a14271de114d3bcc8943ba676c43c4dd12c324bb0"
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.83.0",
+      "package": "@earendil-works/pi-tui@0.84.1",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.13.0",
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 7,
-  "frame": "braid  cwd  repo  ·  session  New conversation\n W6 failure state\n\n error · unknown\n RUNTIME_BACKEND_ERROR\n failed\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\noutcome failed · operation op-terminal-000002              fixture/deterministic\nBraid starter · runner pi                       /export preserve · /new continue\n",
+  "frame": "braid  cwd  braid-production  ·  session  New conversation\n W6 failure state\n\n error · unknown\n RUNTIME_BACKEND_ERROR\n failed\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\noutcome failed · operation op-terminal-000002              fixture/deterministic\nBraid starter · runner pi                       /export preserve · /new continue\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 7,
       "sequence": 7,
-      "workspace": "/tmp/braid-publish.Jme9u3/repo",
+      "workspace": "/home/drew/code/.worktrees/braid-production",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -112,7 +112,7 @@
     },
     "view": {
       "revision": 7,
-      "workspace": "/tmp/braid-publish.Jme9u3/repo",
+      "workspace": "/home/drew/code/.worktrees/braid-production",
       "profileName": "Braid starter",
       "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
       "runner": "pi",
@@ -404,7 +404,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/tmp/braid-publish.Jme9u3/repo"
+            "workspace": "/home/drew/code/.worktrees/braid-production"
           }
         }
       },
@@ -513,10 +513,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-c0e481872f33bbcc2466f568",
+              "id": "effect-op-terminal-000002-db94ab8ae7ae0aca3217987b",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "c0e481872f33bbcc2466f568bfb3eb43d66eb3d0558d8b74c3f3a297e0e997ba",
+              "requestDigest": "db94ab8ae7ae0aca3217987bb7fb4524c95cf25f6a3774326cb22c28eb775d30",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -534,7 +534,7 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-04T06:06:25.451Z",
+            "occurredAt": "2026-08-09T11:07:41.142Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "error": {
@@ -552,7 +552,7 @@
           "source": {
             "eventId": "run-000001:runtime:2",
             "providerSequence": 2,
-            "occurredAt": "2026-08-04T06:06:25.456Z",
+            "occurredAt": "2026-08-09T11:07:41.146Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "status": "failed",
@@ -575,10 +575,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-c0e481872f33bbcc2466f568",
+              "id": "effect-op-terminal-000002-db94ab8ae7ae0aca3217987b",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "c0e481872f33bbcc2466f568bfb3eb43d66eb3d0558d8b74c3f3a297e0e997ba",
+              "requestDigest": "db94ab8ae7ae0aca3217987bb7fb4524c95cf25f6a3774326cb22c28eb775d30",
               "kind": "send",
               "status": "failed",
               "attempt": 1,

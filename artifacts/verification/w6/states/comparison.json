@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "c795f05973fef4353024c23a14271de114d3bcc8943ba676c43c4dd12c324bb0"
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.83.0",
+      "package": "@earendil-works/pi-tui@0.84.1",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.13.0",
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  repo  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n    /compare · frozen runs\n    saved result: replayed from the local journal\n    baseline run: run-fixture-baseline\n    baseline source: bbbbbbbbbbbbbbb…bbbbbbbb\n    baseline outcome: completed · cost: 0.014 · source: frozen run field...\n    candidate run: run-fixture-candidate\n    candidate source: ccccccccccccccc…cccccccc\n    candidate outcome: completed · cost: 0.009 · source: frozen run fiel...\n    sample: 1 paired · 0 baseline-only · 0 candidate-only\n    PgUp/PgDn · page 1/9 · esc close\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
+  "frame": "braid  cwd  braid-production  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n    /compare · frozen runs\n    saved result: replayed from the local journal\n    baseline run: run-fixture-baseline\n    baseline source: bbbbbbbbbbbbbbb…bbbbbbbb\n    baseline outcome: completed · cost: 0.014 · source: frozen run field...\n    candidate run: run-fixture-candidate\n    candidate source: ccccccccccccccc…cccccccc\n    candidate outcome: completed · cost: 0.009 · source: frozen run fiel...\n    sample: 1 paired · 0 baseline-only · 0 candidate-only\n    PgUp/PgDn · page 1/9 · esc close\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/tmp/braid-publish.Jme9u3/repo",
+      "workspace": "/home/drew/code/.worktrees/braid-production",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -69,7 +69,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/tmp/braid-publish.Jme9u3/repo",
+      "workspace": "/home/drew/code/.worktrees/braid-production",
       "profileName": "Braid starter",
       "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
       "runner": "pi",
@@ -268,7 +268,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/tmp/braid-publish.Jme9u3/repo"
+            "workspace": "/home/drew/code/.worktrees/braid-production"
           }
         }
       }

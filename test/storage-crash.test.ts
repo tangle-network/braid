@@ -383,7 +383,7 @@ test('forced-kill cases enumerate every SQLite commit point', async () => {
 test('production SQLite recovers at every commit and external key/file boundary after forced kill', async () => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   for (const current of crashCases) {

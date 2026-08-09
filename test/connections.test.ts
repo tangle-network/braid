@@ -313,7 +313,9 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   assert.equal(cliBackend.kind, 'sandbox-plan')
   if (cliBackend.kind === 'sandbox-plan') {
     assert.equal(cliBackend.createInput.backend, 'pi')
-    assert.equal(cliBackend.turnOptions.model, 'openai/gpt-5')
+    assert.deepEqual(cliBackend.createInput.profile, profile('openai/gpt-5', 'pi'))
+    assert.equal(cliBackend.turnOptions.model, 'pi/openai/gpt-5')
+    assert.equal('timeoutMs' in cliBackend.turnOptions, false)
   }
 
   const sandboxBackend = await resolveProductionBackend(options, turnInput(profile()), {
@@ -337,37 +339,65 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   )
 })
 
-test('CLI Bridge preserves matching runner routes and rejects crossed routes', async () => {
+test('CLI Bridge materializes portable models into routes and rejects incompatible runners', async () => {
   const bridge = connection('cli-bridge', 'route', 'http://127.0.0.1:4010')
   const options: ProductionBackendResolverOptions = {
     connections: new ConnectionRegistry([bridge]),
     workspaceCwd: '/tmp/braid-bridge-route',
     select: () => ({ connection: { connectionId: bridge.id } }),
   }
-  const prepared = await resolveProductionBackend(
+  const prepared = await resolveProductionBackend(options, turnInput(profile('default', 'codex')), {
+    connection: { connectionId: bridge.id },
+    runner: 'codex',
+    model: 'default',
+  })
+  assert.equal(prepared.kind, 'sandbox-plan')
+  if (prepared.kind === 'sandbox-plan') {
+    assert.equal(prepared.createInput.backend, 'codex')
+    assert.equal(prepared.turnOptions.model, 'codex/default')
+  }
+  const priorPiProfile = profile('pi/tangle-router/glm-5.2', 'pi')
+  const priorPi = await resolveProductionBackend(options, turnInput(priorPiProfile), {
+    connection: { connectionId: bridge.id },
+  })
+  assert.equal(priorPi.kind, 'sandbox-plan')
+  if (priorPi.kind === 'sandbox-plan') {
+    assert.deepEqual(priorPi.createInput.profile, priorPiProfile)
+    assert.equal(priorPi.turnOptions.model, 'pi/tangle-router/glm-5.2')
+  }
+  const priorCodexProfile = profile('codex/default', 'codex')
+  const priorCodex = await resolveProductionBackend(options, turnInput(priorCodexProfile), {
+    connection: { connectionId: bridge.id },
+  })
+  assert.equal(priorCodex.kind, 'sandbox-plan')
+  if (priorCodex.kind === 'sandbox-plan') {
+    assert.deepEqual(priorCodex.createInput.profile, priorCodexProfile)
+    assert.equal(priorCodex.turnOptions.model, 'codex/default')
+  }
+  const priorOverride = await resolveProductionBackend(
     options,
-    turnInput(profile('codex/default', 'codex')),
+    turnInput(profile('default', 'codex')),
     {
       connection: { connectionId: bridge.id },
       runner: 'codex',
       model: 'codex/default',
     },
   )
-  assert.equal(prepared.kind, 'sandbox-plan')
-  if (prepared.kind === 'sandbox-plan') {
-    assert.equal(prepared.createInput.backend, 'codex')
-    assert.equal(prepared.turnOptions.model, 'codex/default')
-  }
+  assert.equal(priorOverride.kind, 'sandbox-plan')
+  if (priorOverride.kind === 'sandbox-plan')
+    assert.equal(priorOverride.turnOptions.model, 'codex/default')
   await assert.rejects(
     () =>
-      resolveProductionBackend(options, turnInput(profile('codex/default', 'pi')), {
+      resolveProductionBackend(options, turnInput(profile('zai-coding-plan/glm-5.2', 'codex')), {
         connection: { connectionId: bridge.id },
-        runner: 'pi',
-        model: 'codex/default',
+        runner: 'codex',
+        model: 'zai-coding-plan/glm-5.2',
       }),
     (error: unknown) =>
       error instanceof ConnectionError &&
       error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
-      /harness=pi.*model=codex\/default.*not changed.*runner=codex/iu.test(error.message),
+      /runner=codex.*model=zai-coding-plan\/glm-5\.2.*not changed.*runner=opencode/iu.test(
+        error.message,
+      ),
   )
 })

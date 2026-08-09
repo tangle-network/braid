@@ -36,6 +36,7 @@ export async function runRuntimeMeasurement(context, capture) {
         accepted: measured.accepted,
         renderedEvents: measured.renderedEvents,
         producerIntervalMs: intervalMs,
+        stageTimings: measured.stageTimings,
       },
       environment: environment({
         dimensions: '80x24',

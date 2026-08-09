@@ -237,7 +237,7 @@ export function projectSemanticEvent(
   }
 }
 
-export function semanticPart(part: BraidMessagePart): TranscriptPartView {
+export function semanticPart(part: BraidMessagePart, visibleText?: string): TranscriptPartView {
   const kind: TranscriptPartView['kind'] =
     part.kind === 'tool-call'
       ? 'tool'
@@ -251,7 +251,7 @@ export function semanticPart(part: BraidMessagePart): TranscriptPartView {
   return {
     id: part.id,
     kind,
-    text: boundVisibleText(part.text ?? part.title ?? ''),
+    text: visibleText ?? boundVisibleText(part.text ?? part.title ?? ''),
     ...(part.status && isPartStatus(part.status) ? { status: part.status } : {}),
     ...(part.title === undefined
       ? {}

@@ -1,8 +1,10 @@
 import { basename, join, resolve } from 'node:path'
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import {
-  bridgeCatalogRunner,
+  bridgeCatalogTarget,
   bridgeRunnerSupportsModel,
+  materializeBridgeModelRoute,
+  qualifyBridgeProfileModel,
 } from '../adapters/connections/cli-bridge-model-route.js'
 import type {
   ProfileDiscoveryResult,
@@ -16,8 +18,9 @@ import type { BridgeModel } from './production-bridge-discovery.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
 
 interface CompatibleBridgeModel {
-  readonly id: string
+  readonly route: string
   readonly runner: HarnessType
+  readonly model: string
 }
 
 export interface ProfileProjection {
@@ -55,30 +58,28 @@ export function trustedProfileSources(
   }))
 }
 
-function modelRunner(model: BridgeModel): HarnessType | undefined {
-  const candidate = bridgeCatalogRunner(model.id, model.backend)
+function compatibleModel(model: BridgeModel): CompatibleBridgeModel | undefined {
+  const candidate = bridgeCatalogTarget(model.id, model.backend)
   if (candidate === undefined) return undefined
   const profile = validateProfileShape({
     name: 'Braid model candidate',
-    harness: candidate,
-    model: { default: model.id },
+    harness: candidate.runner,
+    model: { default: candidate.model },
   })
   if (!profile.ok || profile.profile?.harness === undefined) return undefined
-  return bridgeRunnerSupportsModel(profile.profile.harness, model.id)
-    ? profile.profile.harness
-    : undefined
+  return bridgeRunnerSupportsModel(profile.profile.harness, candidate.model) ? candidate : undefined
 }
 
 function compatibleModels(models: readonly BridgeModel[]): readonly CompatibleBridgeModel[] {
   const unique = new Map<string, CompatibleBridgeModel>()
-  for (const model of models) {
-    const runner = modelRunner(model)
-    if (runner === undefined) continue
-    const key = `${runner}\u0000${model.id}`
-    unique.set(key, { id: model.id, runner })
+  for (const advertised of models) {
+    const model = compatibleModel(advertised)
+    if (model === undefined) continue
+    const key = `${model.runner}\u0000${model.model}`
+    unique.set(key, model)
   }
   return [...unique.values()].sort((left, right) =>
-    compareCodeUnits(`${left.id}\u0000${left.runner}`, `${right.id}\u0000${right.runner}`),
+    compareCodeUnits(`${left.route}\u0000${left.runner}`, `${right.route}\u0000${right.runner}`),
   )
 }
 
@@ -88,7 +89,10 @@ function hasRunnableTarget(profile: Readonly<AgentProfile>): boolean {
     profile.harness !== undefined &&
     model !== undefined &&
     model.length > 0 &&
-    bridgeRunnerSupportsModel(profile.harness, model)
+    bridgeRunnerSupportsModel(
+      profile.harness,
+      qualifyBridgeProfileModel(model, profile.model?.provider),
+    )
   )
 }
 
@@ -96,7 +100,7 @@ function targetKey(profile: Readonly<AgentProfile>): string | undefined {
   const runner = profile.harness
   const model = profile.model?.default?.trim()
   if (runner === undefined || model === undefined || model.length === 0) return undefined
-  return `${runner}\u0000${model}`
+  return materializeBridgeModelRoute(runner, model, profile.model?.provider)
 }
 
 function generatedProfile(
@@ -105,11 +109,11 @@ function generatedProfile(
   candidate: CompatibleBridgeModel,
 ): ProfileRecord | undefined {
   const candidateProfile = {
-    name: `CLI Bridge · ${candidate.runner} · ${candidate.id}`,
+    name: `CLI Bridge · ${candidate.runner} · ${candidate.model}`,
     description: `Advertised by the CLI Bridge model catalog at ${endpoint}.`,
     harness: candidate.runner,
     model: {
-      default: candidate.id,
+      default: candidate.model,
       ...(options.effort === undefined ? {} : { reasoningEffort: options.effort }),
     },
   }
@@ -118,14 +122,14 @@ function generatedProfile(
     !validated.ok ||
     validated.profile === undefined ||
     validated.profile.harness === undefined ||
-    !bridgeRunnerSupportsModel(validated.profile.harness, candidate.id)
+    !bridgeRunnerSupportsModel(validated.profile.harness, candidate.model)
   ) {
     return undefined
   }
   return createProfileRecord(
     {
       kind: 'inline',
-      reference: `braid:first-run-cli-bridge:${candidate.runner}:${candidate.id}`,
+      reference: `braid:first-run-cli-bridge:${candidate.route}`,
       label: 'Advertised CLI Bridge model',
       writable: false,
       trusted: true,
@@ -153,7 +157,9 @@ export function projectSetupProfiles(
   const explicitRunner = options.runner?.trim()
   const matching = candidates.filter(
     (candidate) =>
-      (explicitModel === undefined || candidate.id === explicitModel) &&
+      (explicitModel === undefined ||
+        candidate.route === explicitModel ||
+        candidate.model === explicitModel) &&
       (explicitRunner === undefined || candidate.runner === explicitRunner),
   )
   const diagnostics = discovered.issues.map((issue) =>
@@ -161,7 +167,9 @@ export function projectSetupProfiles(
   )
   if (
     explicitModel !== undefined &&
-    !candidates.some((candidate) => candidate.id === explicitModel)
+    !candidates.some(
+      (candidate) => candidate.route === explicitModel || candidate.model === explicitModel,
+    )
   ) {
     diagnostics.push(
       `Requested model ${explicitModel} was not advertised by the CLI Bridge at ${endpoint}; the full catalog remains available and any matching trusted profile will still be validated when selected`,
@@ -199,7 +207,7 @@ export function projectSetupProfiles(
     const generated = generatedProfile(options, endpoint, candidate)
     if (generated === undefined) {
       diagnostics.push(
-        `Advertised model ${candidate.id} could not be represented by the installed agent-interface package; it was not offered`,
+        `Advertised model ${candidate.route} could not be represented by the installed agent-interface package; it was not offered`,
       )
       continue
     }
@@ -213,7 +221,9 @@ export function projectSetupProfiles(
   const explicitProfileMatches = profiles.filter((record) => {
     const model = record.profile.model?.default
     return (
-      (explicitModel === undefined || model === explicitModel) &&
+      (explicitModel === undefined ||
+        model === explicitModel ||
+        targetKey(record.profile) === explicitModel) &&
       (explicitRunner === undefined || record.profile.harness === explicitRunner)
     )
   })
@@ -224,7 +234,7 @@ export function projectSetupProfiles(
       : profiles.find(
           (record) =>
             record.profile.harness === initialCandidate.runner &&
-            record.profile.model?.default === initialCandidate.id,
+            targetKey(record.profile) === initialCandidate.route,
         )) ?? explicitProfileMatches[0]
   if (profiles.length === 0) {
     diagnostics.push(

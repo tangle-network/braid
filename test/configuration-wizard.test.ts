@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TUI } from '@earendil-works/pi-tui'
+import { TuiMainScreen } from '@earendil-works/pi-tui'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
@@ -163,7 +163,7 @@ test('the terminal extension opens first-run setup and returns focus after cance
     makeProfile(),
   )
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const view = new BraidTerminalApp({
@@ -256,7 +256,7 @@ test('mounted first-run setup preserves choices and fits keyboard guidance at na
     [80, 24],
   ] as const) {
     const terminal = new VirtualTerminal(columns, rows)
-    const tui = new TUI(terminal)
+    const tui = new TuiMainScreen(terminal)
     const app = createBraidApplication({ fixture: 'deterministic' })
     app.initialize('/workspace')
     const view = new BraidTerminalApp({
@@ -355,7 +355,7 @@ test('mounted setup exposes apply errors with retry and cancel controls', async 
     makeProfile(),
   )
   const terminal = new VirtualTerminal(40, 12)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const view = new BraidTerminalApp({
@@ -411,7 +411,7 @@ test('mounted setup redraws when a long asynchronous apply finishes', async () =
     finishCommit = resolve
   })
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const view = new BraidTerminalApp({

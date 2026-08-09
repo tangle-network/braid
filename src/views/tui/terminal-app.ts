@@ -1,6 +1,11 @@
 import { CombinedAutocompleteProvider, type Editor, type TUI } from '@earendil-works/pi-tui'
 import { commandItems } from '../shared/command-registry.js'
-import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import type {
+  BraidIntent,
+  BraidUiController,
+  UiDispatchResult,
+  UiFrameTiming,
+} from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
@@ -25,6 +30,7 @@ export interface BraidTerminalOptions {
   readonly keymap?: BraidKeymap
   readonly configuration?: TerminalConfigurationOptions
   readonly startupMessages?: readonly { readonly title: string; readonly reason: string }[]
+  readonly onFrameTiming?: (timing: UiFrameTiming) => void
 }
 
 export class BraidTerminalApp {
@@ -147,7 +153,10 @@ export class BraidTerminalApp {
     })
     this.#shell.editor.setAutocompleteProvider(autocomplete)
     options.tui.addChild(this.#shell)
-    this.#unsubscribe = this.#controller.subscribe((view) => this.#render(view))
+    this.#unsubscribe = this.#controller.subscribe((view) => this.#render(view), {
+      delivery: 'frame',
+      ...(options.onFrameTiming === undefined ? {} : { onFrameTiming: options.onFrameTiming }),
+    })
     this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
     this.#render(this.#controller.view())
     if (keymapDiagnostic) {

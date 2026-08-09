@@ -176,7 +176,6 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
       let terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> | undefined
       for await (const event of streamAgentTurn(materialized.backend, input.text, {
         signal: localAbort.signal,
-        timeoutMs: 30_000,
         preserveToolParts: true,
       })) {
         if (event.type === 'final') terminal = event

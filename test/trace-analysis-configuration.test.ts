@@ -167,6 +167,23 @@ test('materializes the selected AgentProfile runner into the CLI Bridge model ro
   assert.equal(result.engine.executionConfig.model, 'pi/tangle-router/glm-5.2')
 })
 
+test('trace analysis accepts a prior matching CLI Bridge route without doubling it', async () => {
+  const selected = connection('cli-bridge', 'prior-profile-route', 'http://127.0.0.1:4010')
+  const result = await createTraceAnalysisAdapter(
+    baseOptions(selected, {
+      profile: {
+        harness: 'pi',
+        model: { default: 'pi/tangle-router/glm-5.2' },
+      },
+    }),
+  )
+
+  assert.equal(result.status, 'engine-configured')
+  if (result.status !== 'engine-configured') return
+  assert.equal(result.model, 'pi/tangle-router/glm-5.2')
+  assert.equal(result.engine.executionConfig.model, 'pi/tangle-router/glm-5.2')
+})
+
 test('rejects a CLI Bridge runner and model mismatch before probing Python', async () => {
   let probes = 0
   const selected = connection('cli-bridge', 'profile-mismatch', 'http://127.0.0.1:4010')

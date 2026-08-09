@@ -73,7 +73,7 @@ const controller = terminalRuntime.createApplicationUiController(durable.app, {
   reducedMotion: true,
 })
 const terminal = new terminalRuntime.ProcessTerminal()
-const tui = new terminalRuntime.TUI(terminal)
+const tui = new terminalRuntime.TuiMainScreen(terminal)
 const terminalApp = new terminalRuntime.BraidTerminalApp({
   controller,
   tui,

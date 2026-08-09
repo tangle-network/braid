@@ -251,7 +251,7 @@ No test imports an internal controller to claim headless protocol proof.
 
 Braid's test-only implementation of Pi TUI's public `Terminal` interface renders the real root component and application core at 40×12, 80×24, 120×40, and 200×60.
 
-The adapter is derived from Pi's test helper with immutable source and license attribution because `@earendil-works/pi-tui@0.83.0` does not publish that helper.
+The adapter is derived from Pi's test helper with immutable source and license attribution because `@earendil-works/pi-tui@0.84.1` does not publish that helper.
 
 The output assertion includes cell character, width, semantic style, cursor, focus, overlay bounds, clipped rows, and hidden content.
 
@@ -324,6 +324,18 @@ The published package is downloaded from the registry after publication and its 
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
 
+### Current core-path observations
+
+On 2026-08-09, the packed public setup, RPC dispatch, durable transcript, native continuation, process restart, and post-restart send passed separately against CLI Bridge commit `33695db` for Pi 0.83.0 with `tangle-router/glm-5.2` in 136.492 seconds and Codex CLI 0.147.0 with its default model in 43.462 seconds.
+
+Both loopback-only Bridge instances used host execution for this product-flow check; both turns and the post-restart turn retained one provider session identifier.
+
+The two records share source tree `5c411d9`, tarball SHA-256 `4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb`, and installed binary SHA-256 `141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f`.
+
+An aggregate run proved that the current bridge cannot enable its process-wide Pi isolation requirement and Codex 0.147.0 together because Codex receives a read-only `CODEX_HOME`; [CLI Bridge issue 130](https://github.com/drewstone/cli-bridge/issues/130) records the upstream defect, while the separate passing artifacts remain `artifacts/verification/live-core/pi.json` and `artifacts/verification/live-core/codex.json`.
+
+These observations prove the shared core flow only; they do not claim the broader interaction, tool, replay-cursor, cancellation, Tangle, or analysis rows in the required live matrix.
+
 ## Runner conformance
 
 CLI Bridge may advertise a runner as interactive only after the following real flow passes at its pinned minimum version.
@@ -368,6 +380,12 @@ Performance measures Braid overhead separately from provider latency.
 Reference measurements run from the packed production build on a named dedicated Linux x64 CI machine with no competing job, and repeat on one current macOS arm64 machine.
 
 Every report includes hardware, operating system, Node version, terminal, dimensions, database size, event count, warm or cold state, repetitions, minimum, median, p90, p95, p99, and maximum.
+
+Streaming and resize reports also include millisecond distributions for application commit, display queue, view projection, terminal view application, Pi render, terminal flush, and updates represented by each frame.
+
+A streaming update counts as visible only after Pi completes its render, the headless terminal flushes the output, and the expected unique event marker appears in the terminal cells.
+
+The packed startup entries use syntax and whitespace minification while retaining identifiers and source maps, and startup measurements execute the packed tarball rather than source files.
 
 | ID | Boundary | Target |
 | --- | --- | --- |

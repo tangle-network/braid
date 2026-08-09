@@ -11,7 +11,7 @@ import {
   createApplicationUiController,
   createBraidTheme,
   ProcessTerminal,
-  TUI,
+  TuiMainScreen,
 } from '../startup/terminal-runtime.js'
 import { runRpc } from '../views/headless/rpc.js'
 import {
@@ -161,7 +161,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
   }
 
   const terminal = options.inline ? new ProcessTerminal() : new AlternateScreenTerminal()
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const colors = !options.noColor && process.env.NO_COLOR === undefined
   const startupMessages: Array<{ readonly title: string; readonly reason: string }> = []
   for (const intent of startupIntents()) {

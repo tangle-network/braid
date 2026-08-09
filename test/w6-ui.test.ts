@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
@@ -22,7 +22,11 @@ import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { metricsFor, TerminalChrome } from '../src/views/tui/terminal-chrome.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { TranscriptView } from '../src/views/tui/transcript.js'
+import {
+  STREAMING_TAIL_BYTES,
+  streamingTailText,
+  TranscriptView,
+} from '../src/views/tui/transcript.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const theme = createBraidTheme({ colors: false, highContrast: true, reducedMotion: true })
@@ -188,7 +192,7 @@ test('no-color and reduced-motion TUI suppress terminal metadata', async () => {
   const terminal = new VirtualTerminal(80, 24)
   const titles: string[] = []
   terminal.setTitle = (title) => titles.push(title)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const view = viewFor('ready')
   const controller = {
     view: () => view,
@@ -355,9 +359,53 @@ test('transcript history stays anchored while reading and follows new output at 
   assert.match(transcript.render(80).join('\n'), /turn-13/u)
 })
 
+test('streaming transcript bounds the live tail and restores full history on demand', () => {
+  const text = `old-stream-marker\n${'history-line\n'.repeat(4_100)}${'word '.repeat(45_000)}latest-stream-marker`
+  const transcript = new TranscriptView(theme)
+  transcript.setViewportRows(6)
+  transcript.setView({
+    ...viewFor('streaming'),
+    messages: [
+      {
+        id: 'long-stream',
+        role: 'assistant',
+        text,
+        status: 'streaming',
+        parts: [{ id: 'long-stream:text', kind: 'text', text, status: 'running' }],
+      },
+    ],
+  })
+
+  const tail = transcript.render(80).join('\n')
+  assert.doesNotMatch(tail, /old-stream-marker/u)
+  assert.match(tail, /latest-stream-marker/u)
+
+  assert.equal(transcript.handleInput('\u001b[H'), true)
+  assert.match(transcript.render(80).join('\n'), /old-stream-marker/u)
+  assert.equal(transcript.followTail, false)
+
+  assert.equal(transcript.handleInput('\u001b[F'), true)
+  assert.match(transcript.render(80).join('\n'), /latest-stream-marker/u)
+  assert.equal(transcript.followTail, true)
+})
+
+test('streaming tail stays within 32 KiB and starts on complete graphemes', () => {
+  const graphemes = ['漢', 'e\u0301', '👍🏽', '🇺🇸', '👩🏽‍💻']
+  for (const grapheme of graphemes) {
+    const text = `prefix-${grapheme.repeat(20_000)}-suffix`
+    const tail = streamingTailText(text, true)
+    assert.ok(Buffer.byteLength(tail, 'utf8') <= STREAMING_TAIL_BYTES)
+    assert.match(tail, /^…\n/u)
+    assert.equal(tail.slice(2).startsWith(grapheme), true)
+    assert.match(tail, /-suffix$/u)
+  }
+  const combiningBoundary = streamingTailText(`${'x'.repeat(40_000)}\u0301suffix`, true)
+  assert.notEqual(combiningBoundary.codePointAt(2), 0x0301)
+})
+
 test('drafts keep plain Home and End while Alt bounds and Page keys move history', () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const shell = new BraidShell(
     tui,
     theme,
@@ -610,7 +658,7 @@ test('approve and reject commands resolve the focused pending interaction', asyn
 test('unconfigured runs preserve drafts while active runs queue input', async () => {
   for (const fixture of [false, true]) {
     const terminal = new VirtualTerminal(80, 24)
-    const tui = new TUI(terminal)
+    const tui = new TuiMainScreen(terminal)
     const app = createBraidApplication(
       fixture
         ? { fixture: 'deterministic', chunkDelayMs: 100 }
@@ -649,7 +697,7 @@ test('unconfigured runs preserve drafts while active runs queue input', async ()
 
 test('conversation shortcut opens the searchable conversation picker', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const view = new BraidTerminalApp({

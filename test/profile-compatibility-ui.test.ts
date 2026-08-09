@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
-import { TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { createProfileRecord } from '../src/app/profiles.js'
@@ -155,7 +155,7 @@ test('profile validation reaches the same mismatch presenter through real termin
     profiles: [incompatibleRecord, compatibleRecord],
   })
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   let operation = 0
   const view = new BraidTerminalApp({
     controller,

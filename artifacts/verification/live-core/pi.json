@@ -1,8 +1,15 @@
 {
+  "schemaVersion": 1,
   "claim": "packed-public-configure-dispatch-restart",
   "command": "node scripts/live-core/run.mjs",
   "endpoint": "http://127.0.0.1:3346",
-  "startedAt": "2026-08-09T09:43:42.933Z",
+  "startedAt": "2026-08-09T11:23:13.948Z",
+  "source": {
+    "commit": "418cefbc04329e5e3c6f46ef15cdb8bd480331da",
+    "indexTree": "5c411d9553be1700ee43603e4cc83deb2585e4cf",
+    "stagedPatchSha256": "3803e8fdd821d043f428e228f703743c2c9d1fc9f0ad36578dfcfb337f06ab66",
+    "packageVersion": "0.1.0"
+  },
   "targets": [
     {
       "runner": "pi",
@@ -29,7 +36,7 @@
           "name": "CLI Bridge · pi · tangle-router/glm-5.2"
         },
         "connectionId": "connection-local-cli-bridge",
-        "configDigest": "f91f5ff4363a86abe8e36bcdd9ef8cb014505647cdd1f48a6b0ea0f43725e100"
+        "configDigest": "abcc85d4c5c5af45deb80a51d42998f1da1d7a4f813be91bd8d9d0ca6196c245"
       },
       "select": {
         "profileRef": "profile-99ae18aa7fe44bedcef4f561d2b42d3a1e98a1bd06746f83a9f40d4377b034ee",
@@ -66,7 +73,7 @@
             "endpoint": "http://127.0.0.1:3346",
             "credentialConfigured": false,
             "health": {
-              "checkedAt": "2026-08-09T09:43:57.685Z",
+              "checkedAt": "2026-08-09T11:23:49.113Z",
               "status": "healthy"
             },
             "capabilityHints": [
@@ -87,20 +94,20 @@
           {
             "label": "turn 1",
             "operationId": "op-live-core-send-1",
-            "runId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "prompt": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
             "terminalState": {
-              "id": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-              "turnId": "turn-742f3ca2-5ddd-44ea-906e-217baab36e10",
+              "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "turnId": "turn-755845a2-ddda-4672-b74c-3e102e8a6b57",
               "operationId": "op-live-core-send-1",
               "status": "completed",
-              "inputTokens": 1390,
-              "outputTokens": 7,
+              "inputTokens": 19812,
+              "outputTokens": 77,
               "costUsd": 0,
               "model": "pi/tangle-router/glm-5.2",
               "completeness": "unavailable",
-              "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-              "contentBytes": 52
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "contentBytes": 54
             },
             "output": "ACK_NONCE_STORED",
             "transcript": [
@@ -119,42 +126,43 @@
               "draft.changed",
               "run.requested",
               "effect.upserted",
-              "run.text.delta",
+              "run.tool.call",
               "run.usage",
+              "run.text.delta",
               "run.finished"
             ],
-            "elapsedMs": 9414,
-            "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "elapsedMs": 63908,
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "continuation": true,
             "receipt": {
               "profileDigest": "c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
-              "requestDigest": "43104effd03c2fe45b36173b406cd5b3003cddcee47f613f3bd3f2fff0f3481e",
+              "requestDigest": "28b0a58b85b324b8040aa4b97fd38e39fe038c66c4c98b8dfb5edc12d253b10c",
               "capabilitiesDigest": "fecf56f909d35629e7107c28983f573b88df34e7c4afe0395fdaec172e7778b8",
-              "admittedAt": "2026-08-09T09:44:08.082Z",
+              "admittedAt": "2026-08-09T11:24:10.177Z",
               "provider": "agent-runtime",
-              "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-              "environmentId": "env-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "environmentId": "env-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
               "admissionStatus": "admitted",
-              "digest": "4b6494c94e3ad1978937f89774c17cf4e69da1a3b5b5e9865773e22648763637",
-              "materializationDigest": "4907e120775fb4a2d388f2356fc5df271beaa89c24a0506f921e47d07f8b4344"
+              "digest": "6e46bcf7ef700f7bb6bd8fe3bd9db1a2d38f39550ed83dd61c0da037e08b2a2b",
+              "materializationDigest": "7b40a960912c71409d34037f443e3e8222d5f331618e986de966441e5604a7ad"
             }
           },
           {
             "label": "turn 2",
             "operationId": "op-live-core-send-2",
-            "runId": "run-38ac2766-6155-46dc-a86a-94971566161a",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
             "prompt": "What exact nonce did I ask you to remember? Reply with only the nonce.",
             "terminalState": {
-              "id": "run-38ac2766-6155-46dc-a86a-94971566161a",
-              "turnId": "turn-fb9334fb-f360-4651-af0a-3bc3d83ec378",
+              "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+              "turnId": "turn-91df42e4-7da5-40dc-b12f-eacefe8ecc2b",
               "operationId": "op-live-core-send-2",
               "status": "completed",
-              "inputTokens": 1415,
-              "outputTokens": 80,
+              "inputTokens": 10402,
+              "outputTokens": 13,
               "costUsd": 0,
               "model": "pi/tangle-router/glm-5.2",
               "completeness": "unavailable",
-              "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
               "contentBytes": 64
             },
             "output": "BraidCoreNonce-PI-7Q4M",
@@ -178,20 +186,20 @@
               "run.usage",
               "run.finished"
             ],
-            "elapsedMs": 9919,
-            "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "elapsedMs": 24765,
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "continuation": true,
             "receipt": {
               "profileDigest": "c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
-              "requestDigest": "a4843c124a25dffdf1f9462ce39212339704d431f3c4df3a72011800d84d1071",
+              "requestDigest": "c618e977fcb16120914cbfe1ffc24d01b92ab2b1a8c9a05d96e4fc4f5d83d6df",
               "capabilitiesDigest": "fecf56f909d35629e7107c28983f573b88df34e7c4afe0395fdaec172e7778b8",
-              "admittedAt": "2026-08-09T09:44:17.463Z",
+              "admittedAt": "2026-08-09T11:25:14.081Z",
               "provider": "agent-runtime",
-              "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-              "environmentId": "env-braid-run-38ac2766-6155-46dc-a86a-94971566161a",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "environmentId": "env-braid-run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
               "admissionStatus": "admitted",
-              "digest": "f61dea2021f57f63f806e70ef8c014c41c6b79d1a603bba85d5bbdfe3b259c83",
-              "materializationDigest": "392fe396dc93498904cbed2f6fcc27c671f4da643c9b47fc3ff486ebb6b9b70f"
+              "digest": "953e2dc9bcae496cb8c8f953eef264427aad970a3fc94bce27c41cf97ad3683d",
+              "materializationDigest": "573ae6179a8e17e3f19d082d782fbe88da644ab056aa38673bb6a4e0e8713a46"
             }
           }
         ],
@@ -200,148 +208,166 @@
       "restart": {
         "preRestartTranscript": [
           {
-            "id": "message-fe09e14f-e3ec-473d-b358-53b2f825e117",
+            "id": "message-f38c2074-97a0-419d-881e-9c6ab20e7126",
             "role": "user",
             "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
             "status": "complete",
-            "runId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "parts": [
               {
-                "id": "part-message-fe09e14f-e3ec-473d-b358-53b2f825e117",
+                "id": "part-message-f38c2074-97a0-419d-881e-9c6ab20e7126",
                 "kind": "text",
                 "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED."
               }
             ]
           },
           {
-            "id": "message-2cfc39ea-b4c4-465e-96ae-821cb7b1e3c1",
+            "id": "message-1c0c27ef-f455-4305-9706-f461ca42f53a",
             "role": "assistant",
             "text": "ACK_NONCE_STORED",
             "status": "complete",
-            "runId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "parts": [
               {
-                "id": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903:text",
+                "id": "call_a5fc00c1936c44a9a302bb17",
+                "kind": "tool",
+                "text": "",
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:1",
+                "toolName": "memory_write",
+                "callId": "call_a5fc00c1936c44a9a302bb17",
+                "input": {}
+              },
+              {
+                "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:text",
                 "kind": "text",
                 "text": "ACK_NONCE_STORED",
-                "sourceEventId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903:runtime:4"
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:7"
               }
             ]
           },
           {
-            "id": "message-e258a584-c6fa-4ae0-8c42-840263873cfd",
+            "id": "message-b8b4e692-1fb5-470f-906e-05c803110b55",
             "role": "user",
             "text": "What exact nonce did I ask you to remember? Reply with only the nonce.",
             "status": "complete",
-            "runId": "run-38ac2766-6155-46dc-a86a-94971566161a",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
             "parts": [
               {
-                "id": "part-message-e258a584-c6fa-4ae0-8c42-840263873cfd",
+                "id": "part-message-b8b4e692-1fb5-470f-906e-05c803110b55",
                 "kind": "text",
                 "text": "What exact nonce did I ask you to remember? Reply with only the nonce."
               }
             ]
           },
           {
-            "id": "message-b1c14eb0-7397-4a5b-95d0-09e19c9dc8b4",
+            "id": "message-d8e7be40-9af8-4928-8708-79292ca7ed5c",
             "role": "assistant",
             "text": "BraidCoreNonce-PI-7Q4M",
             "status": "complete",
-            "runId": "run-38ac2766-6155-46dc-a86a-94971566161a",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
             "parts": [
               {
-                "id": "run-38ac2766-6155-46dc-a86a-94971566161a:text",
+                "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:text",
                 "kind": "text",
                 "text": "BraidCoreNonce-PI-7Q4M",
-                "sourceEventId": "run-38ac2766-6155-46dc-a86a-94971566161a:runtime:11"
+                "sourceEventId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:runtime:11"
               }
             ]
           }
         ],
         "state": [
           {
-            "id": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-            "turnId": "turn-742f3ca2-5ddd-44ea-906e-217baab36e10",
+            "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "turnId": "turn-755845a2-ddda-4672-b74c-3e102e8a6b57",
             "operationId": "op-live-core-send-1",
             "status": "completed",
-            "inputTokens": 1390,
-            "outputTokens": 7,
+            "inputTokens": 19812,
+            "outputTokens": 77,
             "costUsd": 0,
             "model": "pi/tangle-router/glm-5.2",
             "completeness": "unavailable",
-            "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-            "contentBytes": 52
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "contentBytes": 54
           },
           {
-            "id": "run-38ac2766-6155-46dc-a86a-94971566161a",
-            "turnId": "turn-fb9334fb-f360-4651-af0a-3bc3d83ec378",
+            "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "turnId": "turn-91df42e4-7da5-40dc-b12f-eacefe8ecc2b",
             "operationId": "op-live-core-send-2",
             "status": "completed",
-            "inputTokens": 1415,
-            "outputTokens": 80,
+            "inputTokens": 10402,
+            "outputTokens": 13,
             "costUsd": 0,
             "model": "pi/tangle-router/glm-5.2",
             "completeness": "unavailable",
-            "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "contentBytes": 64
           }
         ],
         "transcript": [
           {
-            "id": "message-fe09e14f-e3ec-473d-b358-53b2f825e117",
+            "id": "message-f38c2074-97a0-419d-881e-9c6ab20e7126",
             "role": "user",
             "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
             "status": "complete",
-            "runId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "parts": [
               {
-                "id": "part-message-fe09e14f-e3ec-473d-b358-53b2f825e117",
+                "id": "part-message-f38c2074-97a0-419d-881e-9c6ab20e7126",
                 "kind": "text",
                 "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED."
               }
             ]
           },
           {
-            "id": "message-2cfc39ea-b4c4-465e-96ae-821cb7b1e3c1",
+            "id": "message-1c0c27ef-f455-4305-9706-f461ca42f53a",
             "role": "assistant",
             "text": "ACK_NONCE_STORED",
             "status": "complete",
-            "runId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "parts": [
               {
-                "id": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903:text",
+                "id": "call_a5fc00c1936c44a9a302bb17",
+                "kind": "tool",
+                "text": "",
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:1",
+                "toolName": "memory_write",
+                "callId": "call_a5fc00c1936c44a9a302bb17",
+                "input": {}
+              },
+              {
+                "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:text",
                 "kind": "text",
                 "text": "ACK_NONCE_STORED",
-                "sourceEventId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903:runtime:4"
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:7"
               }
             ]
           },
           {
-            "id": "message-e258a584-c6fa-4ae0-8c42-840263873cfd",
+            "id": "message-b8b4e692-1fb5-470f-906e-05c803110b55",
             "role": "user",
             "text": "What exact nonce did I ask you to remember? Reply with only the nonce.",
             "status": "complete",
-            "runId": "run-38ac2766-6155-46dc-a86a-94971566161a",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
             "parts": [
               {
-                "id": "part-message-e258a584-c6fa-4ae0-8c42-840263873cfd",
+                "id": "part-message-b8b4e692-1fb5-470f-906e-05c803110b55",
                 "kind": "text",
                 "text": "What exact nonce did I ask you to remember? Reply with only the nonce."
               }
             ]
           },
           {
-            "id": "message-b1c14eb0-7397-4a5b-95d0-09e19c9dc8b4",
+            "id": "message-d8e7be40-9af8-4928-8708-79292ca7ed5c",
             "role": "assistant",
             "text": "BraidCoreNonce-PI-7Q4M",
             "status": "complete",
-            "runId": "run-38ac2766-6155-46dc-a86a-94971566161a",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
             "parts": [
               {
-                "id": "run-38ac2766-6155-46dc-a86a-94971566161a:text",
+                "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:text",
                 "kind": "text",
                 "text": "BraidCoreNonce-PI-7Q4M",
-                "sourceEventId": "run-38ac2766-6155-46dc-a86a-94971566161a:runtime:11"
+                "sourceEventId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:runtime:11"
               }
             ]
           }
@@ -357,19 +383,19 @@
         "safeFollowUp": {
           "status": "resumed",
           "operationId": "op-live-core-send-after-restart",
-          "runId": "run-60fe9274-bbc7-433f-8f9c-242ddc4d6cc6",
+          "runId": "run-f7b0842c-016f-4a24-906b-16f7c9627995",
           "output": "LIVE_CORE_FOLLOWUP_OK",
           "terminalState": {
-            "id": "run-60fe9274-bbc7-433f-8f9c-242ddc4d6cc6",
-            "turnId": "turn-250d2f29-2afc-44d6-a0c4-e2e53feef1a9",
+            "id": "run-f7b0842c-016f-4a24-906b-16f7c9627995",
+            "turnId": "turn-60ad2b33-354b-45fb-8c90-5d9def053e6e",
             "operationId": "op-live-core-send-after-restart",
             "status": "completed",
-            "inputTokens": 1439,
+            "inputTokens": 10416,
             "outputTokens": 8,
             "costUsd": 0,
             "model": "pi/tangle-router/glm-5.2",
             "completeness": "unavailable",
-            "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
             "contentBytes": 62
           },
           "eventTypes": [
@@ -380,19 +406,19 @@
             "run.usage",
             "run.finished"
           ],
-          "elapsedMs": 6973,
-          "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
+          "elapsedMs": 22786,
+          "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
           "receipt": {
             "profileDigest": "c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
-            "requestDigest": "df6091628f0551e8a1e3caf08d02e00373e955a24314e185e6bcb62c806ca3fa",
+            "requestDigest": "23ec0ed5751d32b3e6f931e9e8b090012e2a8b19cb59c1fb12bbb3b51ac6cf62",
             "capabilitiesDigest": "fecf56f909d35629e7107c28983f573b88df34e7c4afe0395fdaec172e7778b8",
-            "admittedAt": "2026-08-09T09:44:28.532Z",
+            "admittedAt": "2026-08-09T11:25:40.222Z",
             "provider": "agent-runtime",
-            "providerSessionId": "session-braid-run-bf3898eb-1b8d-4492-842c-fc3c88dc7903",
-            "environmentId": "env-braid-run-60fe9274-bbc7-433f-8f9c-242ddc4d6cc6",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "environmentId": "env-braid-run-f7b0842c-016f-4a24-906b-16f7c9627995",
             "admissionStatus": "admitted",
-            "digest": "3a0218f57a4a1ef7d574e0f06df835c9daf792c5637813ab78ebeae199887a9e",
-            "materializationDigest": "76521a212f9170b7c10161fa03b6f3bcd0b89c61fcb804098251d36f5fbfe3fe"
+            "digest": "486b7f1bed0053d3266c2875bb15908c7c92fe70db5978e14eabe5f18908b05c",
+            "materializationDigest": "dd0c03296853ce8a4844e1a95f9732c79186909cd01612b878ce7cf8ee87a872"
           }
         },
         "commands": [
@@ -401,7 +427,7 @@
             "requestId": "live-core-1",
             "command": "initialize",
             "params": {
-              "workspace": "/tmp/braid-live-core-lKxV6j/target-pi-ZK16d3/workspace",
+              "workspace": "/tmp/braid-live-core-zGOJBO/target-pi-dQAc3G/workspace",
               "subscribe": true
             }
           },
@@ -419,7 +445,7 @@
             "command": "get_details",
             "params": {
               "entityType": "run",
-              "entityId": "run-bf3898eb-1b8d-4492-842c-fc3c88dc7903"
+              "entityId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987"
             }
           },
           {
@@ -428,7 +454,7 @@
             "command": "get_details",
             "params": {
               "entityType": "run",
-              "entityId": "run-38ac2766-6155-46dc-a86a-94971566161a"
+              "entityId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2"
             }
           },
           {
@@ -436,7 +462,7 @@
             "requestId": "live-core-5",
             "command": "reconnect",
             "params": {
-              "runId": "run-38ac2766-6155-46dc-a86a-94971566161a"
+              "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2"
             },
             "operationId": "op-live-core-reconnect-1"
           },
@@ -457,7 +483,7 @@
             "command": "get_details",
             "params": {
               "entityType": "run",
-              "entityId": "run-60fe9274-bbc7-433f-8f9c-242ddc4d6cc6"
+              "entityId": "run-f7b0842c-016f-4a24-906b-16f7c9627995"
             }
           },
           {
@@ -473,51 +499,25 @@
             "requestId": "live-core-9",
             "command": "shutdown",
             "params": {},
-            "operationId": "op-live-core-shutdown-1786268675491"
+            "operationId": "op-live-core-shutdown-1786274763002"
           }
         ],
         "postRestartSendCount": 1
       },
-      "elapsedMs": 40309
-    },
-    {
-      "runner": "codex",
-      "model": "default",
-      "route": "codex/default",
-      "profile": {
-        "harness": "codex",
-        "model": "default"
-      },
-      "connection": {
-        "kind": "cli-bridge",
-        "endpoint": "http://127.0.0.1:3346"
-      },
-      "commands": [],
-      "status": "failed",
-      "error": {
-        "message": "Selection activation failed; output:\napplying selection…                                                                              \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m CLI Bridge · codex · default → Local CLI Bridge                                                  \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m profile digest sha256:7343b091…008a3984 · connection cli-bridge                                  \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m runner: codex · model: default                                                                   \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m effort: provider default (not pinned) · workdir:                                                 \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m /tmp/braid-live-core-lKxV6j/target-codex-d9b7xQ/workspace                                        \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m verification: unverified: Discovery only: /health and /v1/models do not prove that the selected  \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m model can authenticate or run.                                                                   \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m unsupported: reasoning effort override (unsupported: not pinned), provider workdir placement     \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m (unsupported by cli-bridge)                                                                      \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m credentials not configured                                                                       \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m→ Applying…                       use this profile and connection for Braid                       \u001b[0m           \u001b[0m\u001b[?2026l\u001b[?25l\u001b[?2026h\u001b[14A\r\u001b[2K           \u001b[0m braid setup                                                                                      \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m review and start                                                                                 \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m CLI Bridge model validation at http://127.0.0.1:3346 failed for codex/default with HTTP 502      \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m (upstream: codex exited 1: WARNING: proceeding, even though we could not create PATH aliases:    \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m Read-only file system (os error 30) Reading additional input from stdin... Error: failed to      \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m initialize in-process app-server client: Read-only file system (os erro). Retry after the bridge \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m reports a runnable backend.                                                                      \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m CLI Bridge · codex · default → Local CLI Bridge                                                  \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m profile digest sha256:7343b091…008a3984 · connection cli-bridge                                  \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m runner: codex · model: default                                                                   \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m effort: provider default (not pinned) · workdir:                                                 \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m /tmp/braid-live-core-lKxV6j/target-codex-d9b7xQ/workspace                                        \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m verification: unverified: Discovery only: /health and /v1/models do not prove that the selected  \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m model can authenticate or run.                                                                   \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m unsupported: reasoning effort override (unsupported: not pinned), provider workdir placement     \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m (unsupported by cli-bridge)                                                                      \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m credentials not configured                                                                       \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m→ Apply and start                 use this profile and connection for Braid                       \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m  ← change connection             choose a different execution location                           \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m  ← change AgentProfile           choose a different agent definition                             \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m  Cancel                          leave the current selection unchanged                           \u001b[0m           \u001b[0m\r\r\n\u001b[2K           \u001b[0m enter choose · ↑↓ move · esc cancel                                                              \u001b[0m           \u001b[0m\u001b[?2026l\u001b[?25l"
-      },
-      "elapsedMs": 5390
+      "elapsedMs": 136492
     }
   ],
   "bridge": {
     "health": {
       "status": "ok",
       "cached_verdicts": false,
-      "oldest_probed_at": "2026-08-09T09:43:42.957Z",
+      "oldest_probed_at": "2026-08-09T11:23:13.972Z",
       "backends": [
-        {
-          "name": "codex",
-          "state": "ready",
-          "version": "codex-cli 0.147.0",
-          "probed_at": "2026-08-09T09:43:42.957Z",
-          "cached": false
-        },
         {
           "name": "pi",
           "state": "ready",
           "version": "0.83.0",
-          "probed_at": "2026-08-09T09:43:42.957Z",
+          "probed_at": "2026-08-09T11:23:13.972Z",
           "cached": false
         }
       ],
@@ -527,25 +527,9 @@
         "maxActive": 8,
         "maxQueue": 16
       },
-      "ts": "2026-08-09T09:43:42.957Z"
+      "ts": "2026-08-09T11:23:13.972Z"
     },
     "models": [
-      {
-        "id": "codex/default",
-        "backend": "codex"
-      },
-      {
-        "id": "codex/gpt-5-codex",
-        "backend": "codex"
-      },
-      {
-        "id": "codex/gpt-5.4",
-        "backend": "codex"
-      },
-      {
-        "id": "codex/gpt-5.5",
-        "backend": "codex"
-      },
       {
         "id": "pi/deepseek/deepseek-v4-flash",
         "backend": "pi"
@@ -743,8 +727,11 @@
     ]
   },
   "artifact": {
-    "tarball": "/tmp/braid-live-core-lKxV6j/package/tangle-network-braid-0.1.0.tgz",
-    "binary": "/tmp/braid-live-core-lKxV6j/install/node_modules/@tangle-network/braid/dist/bin/braid.js"
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb",
+    "binary": "@tangle-network/braid/dist/bin/braid.js",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f"
   },
-  "status": "failed"
+  "status": "passed",
+  "completedAt": "2026-08-09T11:26:03.078Z"
 }

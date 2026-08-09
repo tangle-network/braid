@@ -189,7 +189,7 @@ Backup and restore operations take an exclusive filesystem lock, enforce an appr
 
 Restore writes a durable manifest before moving the live database and replays that manifest during startup so every forced-kill point either keeps the old database or finishes with a verified candidate.
 
-The exact `better-sqlite3-multiple-ciphers@12.11.1` binding is required and must expose SQLCipher key and rekey operations; a plain SQLite binding is rejected.
+The exact `better-sqlite3-multiple-ciphers@13.0.3` binding is required and must expose SQLCipher key and rekey operations; a plain SQLite binding is rejected.
 
 Each conversation has a random content key stored only through `CredentialPort`, separate from the encrypted database key.
 

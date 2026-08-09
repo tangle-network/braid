@@ -83,6 +83,7 @@ export class TerminalInputController {
     if (this.#interactionOpen()) return undefined
     if (this.#tui.hasOverlay()) return undefined
     if (!this.#tui.hasOverlay() && this.#shell.handleTranscriptInput(data)) {
+      this.#tui.requestRender()
       return { consume: true }
     }
     if (!matchesKeyAction(data, this.#keymap, 'clearCancelQuit')) this.#disarmQuit()

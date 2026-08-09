@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { StorageError } from './sqlite-errors.js'
 
 export const SQLITE_DRIVER_PACKAGE = 'better-sqlite3-multiple-ciphers'
-export const SQLITE_DRIVER_VERSION = '12.11.1'
+export const SQLITE_DRIVER_VERSION = '13.0.3'
 
 export type SqliteValue = string | number | bigint | Buffer | null
 

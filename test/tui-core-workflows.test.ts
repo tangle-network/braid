@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { comparePairedArms } from '@tangle-network/agent-eval'
-import { TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-contracts.js'
 import { createBraidApplication } from '../src/app/composition.js'
@@ -34,12 +34,12 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
 }
 
 async function renderOverlay(
-  component: Parameters<TUI['showOverlay']>[0],
+  component: Parameters<TuiMainScreen['showOverlay']>[0],
   columns: number,
   rows: number,
 ): Promise<string[]> {
   const terminal = new VirtualTerminal(columns, rows)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   tui.showOverlay(component, {
     anchor: 'top-left',
     margin: 0,
@@ -575,7 +575,7 @@ test('completed export notices survive real terminal input at every supported wi
     [200, 60],
   ] as const) {
     const terminal = new VirtualTerminal(columns, rows)
-    const tui = new TUI(terminal)
+    const tui = new TuiMainScreen(terminal)
     const app = createBraidApplication({ fixture: 'deterministic' })
     app.initialize('/workspace')
     const controller = createApplicationUiController(app)

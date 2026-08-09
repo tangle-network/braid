@@ -10,20 +10,22 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were queried from npm and their installed declarations were inspected directly on 2026-08-04.
+The following published versions were queried from npm and their installed declarations were inspected directly on 2026-08-09.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.43.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.43.1` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.128.0` | Sole execution layer; public box, executor, chat, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `0.3.4` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.4.10` | Tangle environment adapter over the sandbox client |
-| `@tangle-network/sandbox` | `0.18.0` | Tangle cloud client used by the provider |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.4` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `0.3.5` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
+| `@tangle-network/agent-provider-tangle` | `0.4.11` | Tangle environment adapter over the sandbox client |
+| `@tangle-network/sandbox` | `0.19.2` | Tangle cloud client used by the provider |
 
 The installed runtime publishes `agent-eval >=0.143.0 <0.144.0`, `agent-interface >=0.43.0 <0.44.0`, and optional `sandbox >=0.17.2 <0.18.0` as peer ranges.
 
-Braid exercises runtime `0.128.0` with eval `0.144.1` and sandbox `0.18.0`, explicitly allows those tested combinations in pnpm, and tracks the stale runtime peer declarations in [agent-runtime issue 734](https://github.com/tangle-network/agent-runtime/issues/734) and [agent-runtime issue 737](https://github.com/tangle-network/agent-runtime/issues/737).
+Braid exercises runtime `0.128.0` with the internally consistent interface `0.43.1`, eval `0.144.4`, CLI Bridge adapter `0.3.5`, Tangle adapter `0.4.11`, and sandbox `0.19.2` release set.
+
+The exact eval and sandbox exceptions in `pnpm-workspace.yaml` acknowledge runtime `0.128.0`'s stale peer metadata; [agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) records both the metadata lag and why sandbox `0.19.3` plus interface `0.45.0` cannot yet replace this set.
 
 ### Installed package boundary
 
@@ -140,6 +142,8 @@ The module does not export its write-side steer and cancellation operations as a
 
 CLI Bridge accepts OpenAI-compatible `POST /v1/chat/completions` requests with model identifiers shaped as `<runner>/<model>`.
 
+Braid strips the leading runner from discovered catalog routes before creating an `AgentProfile`, then restores it only in the CLI Bridge adapter so the profile retains a portable provider/model identifier.
+
 Requests can include an inline `agent_profile`, reasoning effort, session identifier, caller run identifier, working directory, execution placement, metadata, and MCP configuration according to the backend path.
 
 The bridge owns exact runner-specific profile materialization and returns a receipt with digest, generated files, and unsupported dimensions.
@@ -151,6 +155,8 @@ A caller-supplied run identifier is idempotent and bound to the original request
 The server retains durable run state in memory, emits SSE identifiers, accepts `Last-Event-ID`, supports `GET /v1/runs/:id?wait_ms=…`, and supports explicit `POST /v1/runs/:id/cancel`.
 
 A network disconnect detaches the server run, while explicit cancellation changes it toward a terminal cancellation result.
+
+Braid does not impose a hidden wall-clock limit on an interactive turn; user cancellation and explicitly configured provider limits are the only normal duration controls.
 
 The current run registry is process-memory state, so a bridge restart may produce `404` for a formerly running identifier.
 
@@ -174,7 +180,7 @@ These behaviors may be suitable for isolated benchmark automation under an expli
 
 ## Existing CLI Bridge provider contract
 
-The published `@tangle-network/agent-provider-cli-bridge@0.3.4` resolves the bridge model from a turn override, provider default, or profile harness and model.
+The published `@tangle-network/agent-provider-cli-bridge@0.3.5` resolves the bridge model from a turn override, provider default, or profile harness and model.
 
 It sends stable `executionId` values as bridge run identifiers when they satisfy the bridge identifier rules.
 
@@ -194,7 +200,7 @@ It exposes no generalized interaction response.
 
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.4.10` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.4.11` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
 
 Its default capabilities report full canonical profile dimensions, live and replay streaming, detach, turn idempotency, session continuation, session list and messages, workspace read/write/exec/git/upload/download, checkpoint and fork, placement, usage, and confidentiality.
 

@@ -183,6 +183,8 @@ export type {
   BraidUiController,
   UiDispatchResult,
   UiEvent,
+  UiFrameTiming,
+  UiSubscriptionOptions,
 } from './views/shared/intents.js'
 export type {
   AnalysisView,

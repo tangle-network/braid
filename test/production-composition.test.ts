@@ -21,6 +21,7 @@ import {
 } from '@tangle-network/agent-interface'
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { resolveProductionBackend } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createBraidApplication,
@@ -32,6 +33,7 @@ import {
   type ProductionCompositionConfig,
   ProductionCompositionError,
 } from '../src/app/production-composition.js'
+import { ConnectionRegistry } from '../src/app/connections.js'
 import { createProfileRecord } from '../src/app/profiles.js'
 import { parseArgs } from '../src/bin/args.js'
 import {
@@ -339,6 +341,62 @@ test('bin startup loads a canonical profile and exact connection from a bounded 
   assert.equal(parseArgs(['--config', configPath], root).config, configPath)
 })
 
+test('schema-v1 CLI Bridge profiles load as portable models and dispatch one runner prefix', async () => {
+  const cases = [
+    {
+      runner: 'pi' as const,
+      routed: 'pi/tangle-router/glm-5.2',
+      portable: 'tangle-router/glm-5.2',
+    },
+    { runner: 'codex' as const, routed: 'codex/default', portable: 'default' },
+  ]
+  for (const candidate of cases) {
+    const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
+    const configPath = join(root, 'config.json')
+    const record = connection('cli-bridge', `v1-${candidate.runner}`, 'http://127.0.0.1:4010')
+    await writeFile(
+      configPath,
+      `${JSON.stringify({
+        format: 'braid-startup-config',
+        schemaVersion: 1,
+        profile: {
+          name: `prior ${candidate.runner} profile`,
+          harness: candidate.runner,
+          model: { default: candidate.routed },
+        },
+        connectionId: record.id,
+        connections: [record],
+      })}\n`,
+      { mode: 0o600 },
+    )
+
+    const startup = await loadProductionStartup({ workspace: root, configPath })
+    assert.equal(startup.profile.model?.default, candidate.portable)
+    const prepared = await resolveProductionBackend(
+      {
+        connections: new ConnectionRegistry([record]),
+        workspaceCwd: root,
+        select: () => ({ connection: { connectionId: record.id } }),
+      },
+      {
+        operationId: `operation-v1-${candidate.runner}`,
+        runId: `run-v1-${candidate.runner}`,
+        text: 'verify prior profile',
+        profile: startup.profile,
+        signal: new AbortController().signal,
+      },
+      { connection: { connectionId: record.id } },
+    )
+    assert.equal(prepared.kind, 'sandbox-plan')
+    if (prepared.kind === 'sandbox-plan') {
+      assert.notEqual(typeof prepared.createInput.profile, 'string')
+      if (typeof prepared.createInput.profile !== 'string')
+        assert.equal(prepared.createInput.profile.model?.default, candidate.portable)
+      assert.equal(prepared.turnOptions.model, candidate.routed)
+    }
+  }
+})
+
 test('startup resolves relative database keys beside external config and rejects workspace paths', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'braid-production-key-workspace-'))
   const configDirectory = await mkdtemp(join(tmpdir(), 'braid-production-key-config-'))
@@ -512,12 +570,13 @@ test('first-run setup exposes secret-free candidates and writes a recoverable co
     connectionDigest: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
   })
   const saved = await readFile(join(root, '.braid', 'config.json'), 'utf8')
+  assert.equal(JSON.parse(saved).schemaVersion, 2)
   assert.doesNotMatch(saved, /(?:secret|token|api[_-]?key)/iu)
   assert.match(saved, /braid-startup-config/u)
   assert.match(saved, /connection-local-cli-bridge/u)
   assert.equal(connection.endpoint, DEFAULT_CLI_BRIDGE_ENDPOINT)
   assert.equal(profile.profile.harness, 'pi')
-  assert.equal(profile.profile.model?.default, 'pi/openai-codex/gpt-5.6-luna')
+  assert.equal(profile.profile.model?.default, 'openai-codex/gpt-5.6-luna')
   assert.deepEqual([...new Set(discoveryPaths)].sort(), ['/health', '/v1/models'])
   assert.equal(setup.verification.status, 'unverified')
   const effective = describeProductionSelection(
@@ -531,7 +590,7 @@ test('first-run setup exposes secret-free candidates and writes a recoverable co
     setup.verification,
   )
   assert.equal(effective.runner, 'pi')
-  assert.equal(effective.model, 'pi/openai-codex/gpt-5.6-luna')
+  assert.equal(effective.model, 'openai-codex/gpt-5.6-luna')
   assert.equal(effective.effort, 'provider default (not pinned)')
   assert.equal(effective.workdir, root)
   assert.match(effective.verification, /^unverified:/u)
@@ -635,6 +694,7 @@ test('protected remote Bridge auth survives setup, restart, and a real turn with
   await chmod(join(root, '.braid'), 0o700)
   const endpoint = 'https://bridge.example.test'
   const model = 'opencode/zai-coding-plan/glm-5.2'
+  const profileModel = 'zai-coding-plan/glm-5.2'
   const auth = 'protected-bridge-secret'
   const requests: Array<{ readonly body: string; readonly authorization: string | null }> = []
   const fetcher: typeof fetch = async (input, init) => {
@@ -681,7 +741,7 @@ test('protected remote Bridge auth survives setup, restart, and a real turn with
   }
   const setup = await loadProductionSetup(startupOptions)
   const selectedProfile = setup.profiles.find(
-    (candidate) => candidate.profile.model?.default === model,
+    (candidate) => candidate.profile.model?.default === profileModel,
   )
   const selectedConnection = setup.connections[0]
   assert.ok(selectedProfile)
@@ -809,6 +869,7 @@ test('headless key-backed Bridge auth works without OS keyring and keeps credent
   await chmod(keyPath, 0o600)
   const endpoint = 'https://bridge.example.test'
   const model = 'opencode/zai-coding-plan/glm-5.2'
+  const profileModel = 'zai-coding-plan/glm-5.2'
   const auth = 'headless-bridge-secret'
   const requests: string[] = []
   const fetcher: typeof fetch = async (input, init) => {
@@ -871,7 +932,7 @@ test('headless key-backed Bridge auth works without OS keyring and keeps credent
   try {
     const setup = await loadProductionSetup(startupOptions)
     const selectedProfile = setup.profiles.find(
-      (candidate) => candidate.profile.model?.default === model,
+      (candidate) => candidate.profile.model?.default === profileModel,
     )
     const selectedConnection = setup.connections[0]
     assert.ok(selectedProfile)
@@ -1283,7 +1344,7 @@ test('first-run catalog preserves trusted profiles and adds each advertised mode
   const trustedGlm = defineAgentProfile({
     name: 'trusted GLM profile',
     harness: 'opencode',
-    model: { default: 'opencode/zai-coding-plan/glm-5.2' },
+    model: { default: 'zai-coding-plan/glm-5.2' },
   })
   await writeFile(
     join(root, '.braid', 'profile.json'),
@@ -1321,15 +1382,13 @@ test('first-run catalog preserves trusted profiles and adds each advertised mode
     true,
   )
   assert.equal(
-    setup.profiles.filter(
-      (record) => record.profile.model?.default === 'opencode/zai-coding-plan/glm-5.2',
-    ).length,
+    setup.profiles.filter((record) => record.profile.model?.default === 'zai-coding-plan/glm-5.2')
+      .length,
     1,
   )
   assert.equal(
-    setup.profiles.filter(
-      (record) => record.profile.model?.default === 'pi/openai-codex/gpt-5.6-luna',
-    ).length,
+    setup.profiles.filter((record) => record.profile.model?.default === 'openai-codex/gpt-5.6-luna')
+      .length,
     1,
   )
 
@@ -1342,10 +1401,10 @@ test('first-run catalog preserves trusted profiles and adds each advertised mode
   assert.equal(constrained.profiles.length, setup.profiles.length)
   const initial = constrained.profiles.find((record) => record.id === constrained.initialProfileId)
   assert.equal(initial?.profile.harness, 'opencode')
-  assert.equal(initial?.profile.model?.default, 'opencode/zai-coding-plan/glm-5.2')
+  assert.equal(initial?.profile.model?.default, 'zai-coding-plan/glm-5.2')
 })
 
-test('first-run catalog selects an exact Codex Bridge route without rewriting it', async () => {
+test('first-run catalog keeps the Codex route out of the portable profile', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-production-codex-route-'))
   const fetch: typeof globalThis.fetch = async (input) => {
     const path = new URL(String(input)).pathname
@@ -1373,11 +1432,9 @@ test('first-run catalog selects an exact Codex Bridge route without rewriting it
   })
   const initial = setup.profiles.find((record) => record.id === setup.initialProfileId)
   assert.equal(initial?.profile.harness, 'codex')
-  assert.equal(initial?.profile.model?.default, 'codex/default')
+  assert.equal(initial?.profile.model?.default, 'default')
   assert.equal(
-    setup.profiles.some(
-      (record) => record.profile.model?.default === 'pi/openai-codex/gpt-5.6-luna',
-    ),
+    setup.profiles.some((record) => record.profile.model?.default === 'openai-codex/gpt-5.6-luna'),
     false,
   )
   assert.doesNotMatch(setup.diagnostics.join('\n'), /requested model|requested runner/iu)

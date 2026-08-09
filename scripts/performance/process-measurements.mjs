@@ -422,6 +422,7 @@ export async function runProcessMeasurements(context, capture) {
         minimumEventsPerSecond: measured.minimumEventsPerSecond,
         minimumExpectedEvents: measured.minimumExpectedEvents,
         ratePassed: measured.ratePassed,
+        stageTimings: measured.stageTimings,
       },
       provenance: measured.provenance,
       environment: environment({

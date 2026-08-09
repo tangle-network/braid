@@ -12,8 +12,9 @@ import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionCatalog, ConnectionSelectionInput } from '../../app/connections.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import {
-  bridgeRouteRunner,
   bridgeRunnerSupportsModel,
+  materializeBridgeModelRoute,
+  qualifyBridgeProfileModel,
 } from '../connections/cli-bridge-model-route.js'
 import { readConnectionCredential } from '../connections/production-connection-credentials.js'
 import {
@@ -27,7 +28,6 @@ import type {
   SandboxLifecyclePolicy,
 } from './prepared-execution.js'
 
-const TURN_TIMEOUT_MS = 30_000
 export interface ProductionExecutionSelection {
   readonly connection: ConnectionSelectionInput
   readonly model?: string
@@ -93,18 +93,26 @@ async function resolveCliBridgeBackend(
   const { createCliBridgeProvider } = await import('@tangle-network/agent-provider-cli-bridge')
   const model = await requiredModel(input.profile, selection.model, connectionId)
   const runner = selection.runner ?? input.profile.harness
-  if (runner !== undefined && !bridgeRunnerSupportsModel(runner, model)) {
-    const suggestedRunner = bridgeRouteRunner(model) ?? snapHarnessToModel(runner, model)
+  if (runner === undefined) {
+    throw new ConnectionError(
+      'CONNECTION_MODEL_HARNESS_MISMATCH',
+      `CLI Bridge requires a runner for model=${model}; choose a profile with a runner or select one for this run.`,
+      { connectionId },
+    )
+  }
+  if (!bridgeRunnerSupportsModel(runner, model)) {
+    const suggestedRunner = snapHarnessToModel(runner, model)
     const runnerChoice =
       suggestedRunner === runner
         ? 'choose a runner compatible with this model'
         : `choose runner=${suggestedRunner} to keep model=${model}`
     throw new ConnectionError(
       'CONNECTION_MODEL_HARNESS_MISMATCH',
-      `Profile field harness=${runner} does not support model=${model}. The authored profile was not changed; ${runnerChoice}, or choose a model advertised for runner=${runner}.`,
+      `Profile runner=${runner} does not support model=${model}. The authored profile was not changed; ${runnerChoice}, or choose a model advertised for runner=${runner}.`,
       { connectionId },
     )
   }
+  const route = materializeBridgeModelRoute(runner, model)
   const credential = await readConnectionCredential(
     inputRecord(connectionId, options),
     options,
@@ -112,7 +120,7 @@ async function resolveCliBridgeBackend(
   )
   const provider = createCliBridgeProvider({
     baseUrl: normalizeCliBridgeProviderBaseUrl(endpoint, connectionId),
-    defaultModel: model,
+    defaultModel: route,
     ...(credential === undefined ? {} : { bearerToken: credential }),
     ...(options.fetch ? { fetch: options.fetch } : {}),
   })
@@ -120,8 +128,8 @@ async function resolveCliBridgeBackend(
     provider,
     input,
     connectionId,
-    model,
-    ...(runner === undefined ? {} : { runner }),
+    model: route,
+    runner,
     providerName: 'cli-bridge',
     recordName: inputRecord(connectionId, options).name,
     ...(options.workspaceCwd === undefined ? {} : { workspaceCwd: options.workspaceCwd }),
@@ -242,7 +250,6 @@ async function createSandboxPlan(input: {
     ...(input.model === undefined ? {} : { model: input.model }),
     executionId: input.input.runId,
     turnId: input.input.operationId,
-    timeoutMs: TURN_TIMEOUT_MS,
   } satisfies Omit<PromptOptions, 'signal'>)
   const materializationReceipt = freezeDeep({
     provider: input.providerName,
@@ -319,15 +326,15 @@ async function requiredModel(
   connectionId: Parameters<typeof connectionEndpoint>[0]['id'],
 ): Promise<string> {
   const { cleanModelId } = await import('@tangle-network/agent-runtime')
-  const model = cleanModelId(override ?? profile.model?.default)
-  if (!model) {
+  const authored = cleanModelId(override ?? profile.model?.default)
+  if (!authored) {
     throw new ConnectionError(
       override === undefined ? 'CONNECTION_MODEL_REQUIRED' : 'CONNECTION_MODEL_INVALID',
       'The selected connection requires a non-empty model id',
       { connectionId },
     )
   }
-  return model
+  return qualifyBridgeProfileModel(authored, profile.model?.provider)
 }
 
 function requiredWorkspaceCwd(

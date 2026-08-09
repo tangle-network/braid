@@ -20,8 +20,8 @@ if (missingScripts.length > 0) {
 if (composition.includes('new MemoryJournal')) {
   throw new Error('Production composition must depend on JournalPort, not MemoryJournal')
 }
-if (packageJson.dependencies?.['better-sqlite3-multiple-ciphers'] !== '12.11.1') {
-  throw new Error('Production storage must pin better-sqlite3-multiple-ciphers@12.11.1')
+if (packageJson.dependencies?.['better-sqlite3-multiple-ciphers'] !== '13.0.3') {
+  throw new Error('Production storage must pin better-sqlite3-multiple-ciphers@13.0.3')
 }
 
 const requiredFiles = [

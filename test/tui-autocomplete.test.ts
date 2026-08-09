@@ -6,7 +6,7 @@ import {
   CombinedAutocompleteProvider,
   Editor,
   StdinBuffer,
-  TUI,
+  TuiMainScreen,
 } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
@@ -52,7 +52,7 @@ function createEditor(delegate: AutocompleteProvider): {
   readonly stop: () => void
 } {
   const terminal = new VirtualTerminal(100, 30)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const provider = new GuardedAutocompleteProvider(delegate)
   const editor = new Editor(tui, createBraidTheme(false).editor, { paddingX: 1 })
   editor.onChange = () => provider.inputChanged()
@@ -226,7 +226,7 @@ test('Tab selects a completion only for the current editor state', async () => {
 
 test('the production terminal does not turn a fast profile command into unknown text', async () => {
   const terminal = new VirtualTerminal(120, 36)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)

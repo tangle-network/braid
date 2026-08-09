@@ -21,7 +21,7 @@ function requireNativeSqlite() {
     require.resolve('better-sqlite3-multiple-ciphers')
   } catch {
     throw new Error(
-      'PERF_PREREQUISITE: better-sqlite3-multiple-ciphers@12.11.1 is required for encrypted SQLite performance proof',
+      'PERF_PREREQUISITE: better-sqlite3-multiple-ciphers@13.0.3 is required for encrypted SQLite performance proof',
     )
   }
 }
@@ -565,7 +565,7 @@ export async function createProductionProcessFixture(eventCount, { packageRoot }
     }
     const config = {
       format: 'braid-startup-config',
-      schemaVersion: 1,
+      schemaVersion: 2,
       profile: PROFILE,
       connectionId: connection.id,
       connections: [connection],

@@ -27,8 +27,8 @@ const profile: AgentProfile = {
     instructions: ['Keep answers concise.'],
   },
   model: {
-    default: 'pi/openai-codex/gpt-5.6-luna',
-    small: 'pi/openai-codex/gpt-5.5',
+    default: 'gpt-5.6-luna',
+    small: 'gpt-5.5',
     provider: 'openai-codex',
     reasoningEffort: 'high',
     metadata: { contractModelHint: 'preserved' },
@@ -45,7 +45,7 @@ const profile: AgentProfile = {
     reviewer: {
       description: 'Reviews the response',
       prompt: 'Review only.',
-      model: 'pi/openai-codex/gpt-5.5',
+      model: 'openai-codex/gpt-5.5',
       tools: { read: true },
       permissions: { read: 'allow' },
       maxSteps: 2,
@@ -72,7 +72,7 @@ const profile: AgentProfile = {
   modes: {
     review: {
       description: 'Review mode',
-      model: 'pi/openai-codex/gpt-5.5',
+      model: 'openai-codex/gpt-5.5',
       prompt: 'Review.',
       tools: { read: true },
       permissions: { read: 'allow' },
@@ -200,7 +200,7 @@ test('production CLI Bridge sends the frozen profile and complete turn identity'
           : undefined,
         'pi',
       )
-      assert.equal(body.model, profile.model?.default)
+      assert.equal(body.model, 'pi/openai-codex/gpt-5.6-luna')
       assert.equal(body.run_id, turn.runId)
       assert.equal(body.session_id, sessionId)
       assert.equal(body.cwd, workspaceCwd)

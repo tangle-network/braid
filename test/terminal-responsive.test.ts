@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import type { BraidViewModel } from '../src/views/shared/models.js'
@@ -148,7 +148,7 @@ test('published Pi virtual terminals keep the composer and valid cells at all si
   const view = viewForChrome()
   for (const [columns, rows] of sizes) {
     const terminal = new VirtualTerminal(columns, rows)
-    const tui = new TUI(terminal)
+    const tui = new TuiMainScreen(terminal)
     const shell = new BraidShell(
       tui,
       theme,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { matchesKey, setKittyProtocolActive, TUI } from '@earendil-works/pi-tui'
+import { matchesKey, setKittyProtocolActive, TuiMainScreen } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { detectColorMode, resolveColorMode } from '../src/views/shared/appearance.js'
@@ -103,7 +103,7 @@ test('plain terminal output discards oversized split OSC data through BEL and ST
 
 test('global shortcuts do not steal question marks, Unicode, or Kitty printable input', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const view = new BraidTerminalApp({
@@ -126,7 +126,7 @@ test('global shortcuts do not steal question marks, Unicode, or Kitty printable 
 
 test('global command remaps and Kitty key release events execute once', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const remapped = resolveKeymap('commandPalette=ctrl+q')

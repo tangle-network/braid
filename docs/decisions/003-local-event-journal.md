@@ -52,7 +52,7 @@ Schema migrations and event upcasters become release responsibilities.
 
 The SQLite implementation must use write-ahead logging, foreign keys, bounded transactions, backups before destructive migrations, and integrity checks after abnormal termination.
 
-The W5 implementation uses the maintained `better-sqlite3-multiple-ciphers@12.11.1` binding behind `StoragePort` and verifies key activation, encrypted database artifacts, WAL, backups, and wrong-key rejection in the production-adapter test suite.
+The W5 implementation uses the maintained `better-sqlite3-multiple-ciphers@13.0.3` binding behind `StoragePort` and verifies key activation, encrypted database artifacts, WAL, backups, and wrong-key rejection in the production-adapter test suite.
 
 The deterministic `MemoryJournal` is test-only behavior behind the same application ports; non-fixture composition fails closed unless a durable encrypted adapter is available.
 

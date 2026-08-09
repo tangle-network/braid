@@ -1,5 +1,4 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { buildAppView } from '../../app/view-model.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { BraidState } from '../../domain/state.js'
 import { type ColorMode, resolveColorMode } from '../../views/shared/appearance.js'
@@ -31,10 +30,10 @@ export function buildBraidViewModel(
   storageFailure?: string,
   cleanupUncertain?: string,
 ): BraidViewModel {
-  const legacy = buildAppView(state)
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
   const profile = state.profile as Readonly<AgentProfile>
+  const fixture = profile.model?.default === 'fixture/deterministic'
   const profileDigest = canonicalDigest(profile)
   const selectedConversation = state.conversations.find(
     (conversation) => conversation.id === state.conversationId,
@@ -54,20 +53,20 @@ export function buildBraidViewModel(
               : status === 'cancelled'
                 ? 'cancelled'
                 : status
-  const model = profile.model?.default ?? legacy.model
+  const model = profile.model?.default ?? 'automatic'
   const color =
     appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
   return freezeView({
     revision: state.revision,
     workspace: state.workspace ? sanitizeTerminalText(state.workspace) : null,
-    profileName: sanitizeTerminalText(legacy.profileName),
+    profileName: sanitizeTerminalText(profile.name ?? 'Unnamed profile'),
     profileDigest,
-    runner: sanitizeTerminalText(legacy.runner),
+    runner: sanitizeTerminalText(profile.harness ?? 'automatic'),
     model: sanitizeTerminalText(model),
     ...(profile.model?.reasoningEffort
       ? { effort: sanitizeTerminalText(profile.model.reasoningEffort) }
       : {}),
-    connection: sanitizeTerminalText(legacy.connection),
+    connection: fixture ? 'deterministic fixture' : 'not connected',
     conversationId: state.conversationId,
     conversationTitle: sanitizeTerminalText(selectedConversation?.title ?? 'New conversation'),
     conversations: Object.freeze(
@@ -93,7 +92,7 @@ export function buildBraidViewModel(
     ...(cleanupUncertain === undefined
       ? {}
       : { cleanupUncertain: sanitizeTerminalText(cleanupUncertain) }),
-    messages: Object.freeze(messagesFor(state)),
+    messages: Object.freeze(messagesFor(state, { completeText: true })),
     hiddenMessageCount: Math.max(0, state.messages.length - MAX_VISIBLE_MESSAGES),
     runs: Object.freeze(runViews(state)),
     ...(state.activeRunId ? { activeRunId: state.activeRunId } : {}),

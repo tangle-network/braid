@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CombinedAutocompleteProvider, Editor, TUI, visibleWidth } from '@earendil-works/pi-tui'
+import {
+  CombinedAutocompleteProvider,
+  Editor,
+  TuiMainScreen,
+  visibleWidth,
+} from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
@@ -25,7 +30,7 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
 test('the real Braid root renders and sends at all four reference sizes', async () => {
   for (const [columns, rows] of SIZES) {
     const terminal = new VirtualTerminal(columns, rows)
-    const tui = new TUI(terminal)
+    const tui = new TuiMainScreen(terminal)
     const app = createBraidApplication({ fixture: 'deterministic' })
     app.initialize('/workspace')
     const controller = createApplicationUiController(app)
@@ -59,9 +64,49 @@ test('the real Braid root renders and sends at all four reference sizes', async 
   }
 })
 
+test('transcript navigation repaints the real terminal frame', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-history-frame-${++operation}`,
+  })
+  const done = view.start()
+  const prompts = Array.from(
+    { length: 8 },
+    (_, index) => `history-frame-${String(index + 1).padStart(2, '0')}`,
+  )
+
+  for (const [index, prompt] of prompts.entries()) {
+    terminal.sendInput(prompt)
+    terminal.sendInput('\r')
+    await waitUntil(() => app.state().runs.length === index + 1)
+    await app.waitForIdle()
+  }
+  await terminal.waitForRender()
+  assert.doesNotMatch(terminal.getViewport().join('\n'), /history-frame-01/u)
+
+  terminal.sendInput('\u001b[1;3H')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /history-frame-01/u)
+
+  terminal.sendInput('\u001b[1;3F')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /history-frame-08/u)
+
+  view.stop()
+  await done
+})
+
 test('the editor preserves Unicode, multiline paste, undo, completion, and cursor on resize', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const theme = createBraidTheme(false)
   const editor = new Editor(tui, theme.editor, { paddingX: 1 })
   editor.setAutocompleteProvider(
@@ -110,7 +155,7 @@ test('the editor preserves Unicode, multiline paste, undo, completion, and curso
 
 test('the searchable command overlay restores editor focus after close', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)
@@ -137,7 +182,7 @@ test('the searchable command overlay restores editor focus after close', async (
 
 test('global shortcuts cannot replace an open overlay or discard its query', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const view = new BraidTerminalApp({
@@ -166,7 +211,7 @@ test('global shortcuts cannot replace an open overlay or discard its query', asy
 
 test('conversation commands work through the real terminal input path', async () => {
   const terminal = new VirtualTerminal(100, 30)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)
@@ -234,7 +279,7 @@ test('conversation commands work through the real terminal input path', async ()
 
 test('the terminal saves and restores independent unsent conversation drafts', async () => {
   const terminal = new VirtualTerminal(100, 30)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const firstConversationId = app.state().conversationId
@@ -304,7 +349,7 @@ test('the terminal saves and restores independent unsent conversation drafts', a
 
 test('Ctrl+C clears, cancels, then requires a second idle press to quit', async () => {
   const terminal = new VirtualTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 100 })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)

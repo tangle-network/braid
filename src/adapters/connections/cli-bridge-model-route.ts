@@ -12,10 +12,20 @@ export function bridgeRouteRunner(model: string): HarnessType | undefined {
   return parsed.success ? parsed.data : undefined
 }
 
-/** Validates a model against either an explicit Bridge route or a canonical model id. */
+/** Validates a portable model id against a runner. */
 export function bridgeRunnerSupportsModel(runner: HarnessType, model: string): boolean {
-  const routedRunner = bridgeRouteRunner(model)
-  return routedRunner === undefined ? harnessSupportsModel(runner, model) : routedRunner === runner
+  return harnessSupportsModel(runner, portableBridgeModel(runner, model))
+}
+
+/** Combine split AgentProfile provider/model hints without adding a Bridge runner prefix. */
+export function qualifyBridgeProfileModel(model: string, provider?: string): string {
+  return provider === undefined || model.includes('/') ? model : `${provider}/${model}`
+}
+
+/** Accept a pre-portability Bridge route without preserving its transport-only runner prefix. */
+export function portableBridgeModel(runner: HarnessType, model: string, provider?: string): string {
+  const qualified = qualifyBridgeProfileModel(model, provider)
+  return bridgeRouteRunner(qualified) === runner ? qualified.slice(runner.length + 1) : qualified
 }
 
 /** Materialize the same `<runner>/<provider>/<model>` route used by the CLI Bridge provider. */
@@ -24,9 +34,25 @@ export function materializeBridgeModelRoute(
   model: string,
   provider?: string,
 ): string {
-  if (model === runner || model.startsWith(`${runner}/`)) return model
-  if (model.includes('/')) return `${runner}/${model}`
-  return provider === undefined ? `${runner}/${model}` : `${runner}/${provider}/${model}`
+  return `${runner}/${portableBridgeModel(runner, model, provider)}`
+}
+
+export interface BridgeCatalogTarget {
+  readonly route: string
+  readonly runner: HarnessType
+  readonly model: string
+}
+
+/** Split a Bridge catalog route into transport identity and portable profile fields. */
+export function bridgeCatalogTarget(
+  route: string,
+  backend: string | undefined,
+): BridgeCatalogTarget | undefined {
+  const runner = bridgeCatalogRunner(route, backend)
+  if (runner === undefined) return undefined
+  const model = route.slice(runner.length + 1)
+  if (model.length === 0) return undefined
+  return { route, runner, model }
 }
 
 /** Accepts a catalog entry only when its backend agrees with its encoded route. */

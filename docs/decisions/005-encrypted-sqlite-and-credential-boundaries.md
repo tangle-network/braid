@@ -16,7 +16,7 @@ Headless deployments cannot rely on an interactive credential prompt and must no
 
 ## Decision
 
-Braid pins `better-sqlite3-multiple-ciphers@12.11.1` and rejects bindings that do not expose SQLCipher-compatible key operations.
+Braid pins `better-sqlite3-multiple-ciphers@13.0.3` and rejects bindings that do not expose SQLCipher-compatible key operations.
 
 SQLite uses WAL, foreign keys, FULL synchronous commits, bounded serialized write transactions, schema versioning, encrypted pre-migration backups, integrity checks, and projection checksums.
 

@@ -21,6 +21,9 @@ await build({
   sourcesContent: false,
   legalComments: 'eof',
   treeShaking: true,
+  minifySyntax: true,
+  minifyWhitespace: true,
+  minifyIdentifiers: false,
   external: [
     '@napi-rs/keyring',
     '@tangle-network/agent-eval',

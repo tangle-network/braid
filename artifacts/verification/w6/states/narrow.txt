@@ -1,4 +1,4 @@
-braid  cwd  repo
+braid  cwd  braid-production
 
  Write a message, or press Ctrl+P for
  commands.

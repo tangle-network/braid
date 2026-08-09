@@ -138,6 +138,14 @@ Role and state are never communicated by color alone.
 
 Repeated streaming updates replace the affected message part by stable part identifier instead of appending a new row.
 
+The terminal combines only repeated text, reasoning, and part updates within one 16 millisecond display interval.
+
+Lifecycle, selection, interaction, storage, and explicit refresh transitions render immediately, while plain and RPC subscribers receive every committed event.
+
+While the transcript follows an active response, it formats at most the final 32 KiB of UTF-8 text, including the truncation marker, and starts only at a complete Unicode grapheme so long responses remain responsive and visually intact.
+
+Page Up or Alt+Home materializes the complete response history on demand while the composer is focused, and Alt+End resumes the bounded live tail without discarding stored content.
+
 Collapsed reasoning shows a one-line summary, elapsed time, and disclosure marker.
 
 Expanded reasoning is visually subordinate to the final answer and can be disabled by profile, provider policy, or user preference.

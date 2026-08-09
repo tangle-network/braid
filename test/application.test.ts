@@ -3,6 +3,7 @@ import test from 'node:test'
 import { type AgentProfile, defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { createUiSubscriberDelivery } from '../src/adapters/tui/ui-subscriber-delivery.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
@@ -646,6 +647,98 @@ test('subscriber failures cannot alter a completed run', async () => {
   assert.equal(state.runs[0]?.status, 'completed')
 })
 
+test('controller event delivery preserves every committed event', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const controller = createApplicationUiController(app)
+  const received: number[] = []
+  const unsubscribe = controller.subscribe((_view, event) => {
+    if (event !== undefined) received.push(event.sequence)
+  })
+
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-ui-events', text: 'deliver every event' }).completion
+
+  assert.deepEqual(
+    received,
+    app.events().map((event) => event.sequence),
+  )
+  unsubscribe()
+})
+
+test('controller frame delivery combines a burst and reaches the newest revision', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const controller = createApplicationUiController(app)
+  const revisions: number[] = []
+  const unsubscribe = controller.subscribe((view) => revisions.push(view.revision), {
+    delivery: 'frame',
+    frameIntervalMs: 5,
+  })
+
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-ui-frame', text: 'combine this burst' }).completion
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  assert.ok(revisions.length > 0)
+  assert.ok(revisions.length < app.events().length)
+  assert.equal(revisions.at(-1), app.state().revision)
+  unsubscribe()
+})
+
+test('unsubscribing cancels a pending frame delivery', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
+  let deliveries = 0
+  const delivery = createUiSubscriberDelivery({
+    subscriber: () => {
+      deliveries += 1
+    },
+    options: { delivery: 'frame' },
+    currentView: () => controller.view(),
+    project: () => controller.view(),
+  })
+
+  delivery.push(app.state(), {
+    sequence: 1,
+    revision: app.state().revision,
+    kind: 'run.text.delta',
+    payload: {},
+  })
+  delivery.dispose()
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  assert.equal(deliveries, 0)
+})
+
+test('application replacement presents the new profile to frame subscribers', async () => {
+  const oldApp = createBraidApplication({
+    fixture: 'deterministic',
+    profile: defineAgentProfile({ name: 'Old profile', harness: 'pi' }),
+  })
+  const nextApp = createBraidApplication({
+    fixture: 'deterministic',
+    profile: defineAgentProfile({ name: 'New profile', harness: 'pi' }),
+  })
+  const controller = createApplicationUiController(oldApp)
+  const profiles: string[] = []
+  const unsubscribe = controller.subscribe((view) => profiles.push(view.profileName), {
+    delivery: 'frame',
+  })
+
+  oldApp.initialize('/old-workspace')
+  await controller.replaceApplication(nextApp, '/new-workspace')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  assert.deepEqual(profiles, ['Old profile', 'New profile'])
+  unsubscribe()
+  const deliveriesAfterUnsubscribe = profiles.length
+  await nextApp.send({ operationId: 'op-after-replacement-unsubscribe', text: 'stay silent' })
+    .completion
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(profiles.length, deliveriesAfterUnsubscribe)
+  await Promise.all([oldApp.close(), nextApp.close()])
+})
+
 test('events after the first final result are ignored', async () => {
   const journal = new MemoryJournal(new FixedClock())
   const app = new BraidApplication({
@@ -1049,15 +1142,18 @@ test('restart reconciles an in-flight cancellation to honest unknown and replays
   assert.equal((await replayed.completion).runs[0]?.status, 'unknown')
 })
 
-test('assistant parts are bounded before the terminal renderer sees them', async () => {
-  const oversized = 'x'.repeat(MAX_RENDERED_TEXT_CHARS + 1_024)
+test('terminal projection preserves complete sanitized response history', async () => {
+  const oversized = `stored-history-marker\n${'line\n'.repeat(4_100)}${'x'.repeat(MAX_RENDERED_TEXT_CHARS + 1_024)}`
   const execution: ExecutionPort = {
     async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      for (let offset = 0; offset < oversized.length; offset += 16_000) {
+        yield { type: 'text_delta', text: oversized.slice(offset, offset + 16_000) }
+      }
       yield {
         type: 'final',
         status: 'completed',
         reason: 'provider returned the bounded fixture',
-        text: oversized,
+        text: '',
         metadata: { tokenUsage: { input: 1, output: 1 } },
         task: { id: 'task-large', intent: 'large output' },
         timestamp: '2026-08-01T00:00:00.000Z',
@@ -1077,8 +1173,9 @@ test('assistant parts are bounded before the terminal renderer sees them', async
   await app.send({ operationId: 'op-large', text: 'large output' }).completion
   const assistant = createApplicationUiController(app).view().messages.at(-1)
   assert.ok(assistant)
-  assert.ok(
-    (assistant?.parts[0]?.text.length ?? Number.POSITIVE_INFINITY) <= MAX_RENDERED_TEXT_CHARS,
-  )
+  assert.equal(assistant?.text.length, oversized.length)
+  assert.equal(assistant?.text, oversized)
+  assert.equal(assistant?.parts[0]?.text, oversized)
+  assert.match(assistant?.text ?? '', /^stored-history-marker/u)
   assert.equal(assistant?.parts[0]?.text.includes('\u001b'), false)
 })

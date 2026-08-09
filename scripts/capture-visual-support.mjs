@@ -40,6 +40,25 @@ export async function writeRaster(frameCastPath, pngPath, gifPath) {
   await rm(gifPath, { force: true })
 }
 
+export async function writeCastGif(castPath, gifPath) {
+  await run('agg', [
+    '--quiet',
+    '--theme',
+    'github-dark',
+    '--font-size',
+    '16',
+    '--idle-time-limit',
+    '1',
+    '--last-frame-duration',
+    '1',
+    '--no-loop',
+    '--font-family',
+    'DejaVu Sans Mono',
+    castPath,
+    gifPath,
+  ])
+}
+
 export function assertFlowFrameIntegrity(metric, label) {
   const match = /\(([0-9]+(?:\.[0-9]+)?)\)/u.exec(metric)
   const normalizedPeakError = match ? Number(match[1]) : Number.NaN

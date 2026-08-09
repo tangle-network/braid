@@ -1,4 +1,4 @@
-braid  cwd  repo  ·  session  New conversation
+braid  cwd  braid-production  ·  session  New conversation
 
  Write a message, or press Ctrl+P for commands.
 

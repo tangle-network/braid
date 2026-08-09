@@ -58,7 +58,7 @@ async function measureAppend(count: number): Promise<number> {
 test('native SQLite measures incremental append at 10k events', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const elapsed = await measureAppend(10_000)
@@ -70,7 +70,7 @@ test('native SQLite measures incremental append at 10k events', async (t) => {
 test('native SQLite measures incremental append at 100k events', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
   const elapsed = await measureAppend(100_000)

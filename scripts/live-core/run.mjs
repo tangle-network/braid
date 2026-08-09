@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { discover } from './discovery.mjs'
@@ -19,6 +20,62 @@ const outputPath =
   process.env.BRAID_LIVE_CORE_EVIDENCE ?? 'artifacts/verification/live-core/latest.json'
 const timeoutMs = Number(process.env.BRAID_LIVE_CORE_TIMEOUT_MS ?? 180_000)
 const runnerFilter = process.env.BRAID_LIVE_CORE_RUNNER
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+async function sourceIdentity() {
+  const sourcePaths = ['src', 'scripts', 'package.json', 'pnpm-lock.yaml']
+  const [
+    { stdout: commit },
+    { stdout: indexTree },
+    { stdout: stagedPatch },
+    { stdout: unstaged },
+    { stdout: untracked },
+  ] = await Promise.all([
+    exec('git', ['rev-parse', 'HEAD'], { cwd: repository }),
+    exec('git', ['write-tree'], { cwd: repository }),
+    exec('git', ['diff', '--cached', '--binary', '--no-ext-diff'], {
+      cwd: repository,
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+    exec('git', ['diff', '--name-only', '--', ...sourcePaths], { cwd: repository }),
+    exec('git', ['ls-files', '--others', '--exclude-standard', '--', ...sourcePaths], {
+      cwd: repository,
+    }),
+  ])
+  assert.equal(
+    unstaged.trim(),
+    '',
+    `Live core proof requires staged package sources; unstaged paths:\n${unstaged}`,
+  )
+  assert.equal(
+    untracked.trim(),
+    '',
+    `Live core proof requires tracked package sources; untracked paths:\n${untracked}`,
+  )
+  const packageDocument = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'))
+  return {
+    commit: commit.trim(),
+    indexTree: indexTree.trim(),
+    stagedPatchSha256: sha256(stagedPatch),
+    packageVersion: packageDocument.version,
+  }
+}
+
+async function fileSha256(path) {
+  return sha256(await readFile(path))
+}
+
+function portableModel(target) {
+  const prefix = `${target.runner}/`
+  assert.ok(
+    target.model.startsWith(prefix) && target.model.length > prefix.length,
+    `live target ${target.model} is not routed through ${target.runner}`,
+  )
+  return target.model.slice(prefix.length)
+}
 
 function turnEvidence(turn) {
   return {
@@ -59,6 +116,7 @@ async function packInstall(root) {
   return {
     tarball: tarballPath,
     binary: join(installRoot, 'node_modules/@tangle-network/braid/dist/bin/braid.js'),
+    tarballSha256: await fileSha256(tarballPath),
     installRoot,
   }
 }
@@ -71,10 +129,12 @@ async function runTarget(binary, root, target) {
   await mkdir(workspace, { recursive: true, mode: 0o700 })
   await writeFile(keyFile, `${'a'.repeat(64)}\n`, { mode: 0o600 })
   const startedAt = Date.now()
+  const profileModel = portableModel(target)
   const result = {
     runner: target.runner,
-    model: target.model,
-    profile: { harness: target.runner, model: target.model },
+    model: profileModel,
+    route: target.model,
+    profile: { harness: target.runner, model: profileModel },
     connection: { kind: 'cli-bridge', endpoint },
     commands: [],
     status: 'failed',
@@ -108,10 +168,12 @@ async function runTarget(binary, root, target) {
     )
     const profiles = await first.request('list_profiles', {})
     const profileList = profiles.response.result?.profiles ?? []
-    const selectedProfile = profileList.find((profile) => profile.model === target.model)
+    const selectedProfile = profileList.find(
+      (profile) => profile.runner === target.runner && profile.model === profileModel,
+    )
     assert.ok(
       selectedProfile?.id,
-      `configured AgentProfile ${target.model} was not returned by list_profiles`,
+      `configured AgentProfile ${target.runner}/${profileModel} was not returned by list_profiles`,
     )
     const selectedProfileRef = selectedProfile.id
     const selectProfile = await first.request(
@@ -348,18 +410,26 @@ async function runTarget(binary, root, target) {
 }
 
 const root = await mkdtemp(join(tmpdir(), 'braid-live-core-'))
+const source = await sourceIdentity()
 const evidence = {
+  schemaVersion: 1,
   claim: 'packed-public-configure-dispatch-restart',
   command: 'node scripts/live-core/run.mjs',
   endpoint,
   startedAt: new Date().toISOString(),
+  source,
   targets: [],
 }
 try {
   const live = await discover(endpoint)
   evidence.bridge = { health: live.health, models: live.models, inventory: live.inventory }
   const packed = await packInstall(root)
-  evidence.artifact = { tarball: packed.tarball, binary: packed.binary }
+  evidence.artifact = {
+    tarball: basename(packed.tarball),
+    tarballSha256: packed.tarballSha256,
+    binary: '@tangle-network/braid/dist/bin/braid.js',
+    binarySha256: await fileSha256(packed.binary),
+  }
   const targets = runnerFilter
     ? live.targets.filter((target) => target.runner === runnerFilter)
     : live.targets
@@ -368,6 +438,7 @@ try {
     evidence.targets.push(await runTarget(packed.binary, root, target, live))
   const passed = evidence.targets.filter((target) => target.status === 'passed').length
   evidence.status = passed === evidence.targets.length && passed > 0 ? 'passed' : 'failed'
+  evidence.completedAt = new Date().toISOString()
   await writeEvidence(outputPath, evidence)
   process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`)
   process.exitCode = evidence.status === 'passed' ? 0 : 1

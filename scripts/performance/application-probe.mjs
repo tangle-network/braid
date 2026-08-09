@@ -1,8 +1,9 @@
 import { performance } from 'node:perf_hooks'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { TUI } from '@earendil-works/pi-tui'
+import { TuiMainScreen } from '@earendil-works/pi-tui'
 import { HeadlessTerminal } from './headless-terminal.mjs'
 import { loadPackedRuntime } from './packed-runtime.mjs'
+import { summarizeStage } from './stage-timings.mjs'
 
 const FIXED_TIME = '2026-08-03T00:00:00.000Z'
 
@@ -50,6 +51,15 @@ function invalidCellCount(terminal) {
   return invalid
 }
 
+export function visibleRuntimeEventSequences(lines) {
+  const visible = new Set()
+  const text = lines.join('')
+  for (const match of text.matchAll(/perf-event-(\d{5})/gu)) {
+    visible.add(Number(match[1]))
+  }
+  return visible
+}
+
 async function waitFor(predicate, label, signal, timeoutMs = 5_000) {
   const deadline = Date.now() + timeoutMs
   while (!predicate()) {
@@ -77,7 +87,7 @@ export async function measureRuntimeEventsToFrames({
 } = {}) {
   const runtime = await loadPackedRuntime(packageRoot)
   const terminal = new HeadlessTerminal(80, 24)
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const app = runtime.index.createBraidApplication({
     execution: pendingExecution(),
     profile: { name: 'Braid performance profile', harness: 'pi' },
@@ -88,6 +98,7 @@ export async function measureRuntimeEventsToFrames({
     color: 'none',
     reducedMotion: true,
   })
+  const frameTimings = []
   const terminalApp = new runtime.terminal.BraidTerminalApp({
     controller,
     tui,
@@ -97,29 +108,42 @@ export async function measureRuntimeEventsToFrames({
       let next = 0
       return () => `op-perf-ui-${++next}`
     })(),
+    onFrameTiming: (timing) => frameTimings.push(timing),
   })
   app.initialize('/performance')
 
   const pending = []
   const samplesBySequence = new Map()
   const completedFrames = []
+  const ingestSamples = []
+  const piRenderSamples = []
+  const terminalFlushSamples = []
+  let latestDeliveredRevision = 0
   const originalDoRender = tui.doRender.bind(tui)
   tui.doRender = () => {
+    const renderStartedAt = performance.now()
     originalDoRender()
+    piRenderSamples.push(performance.now() - renderStartedAt)
+    const flushStartedAt = performance.now()
     void terminal.flush().then(() => {
-      const view = controller.view()
-      const renderedText = view.messages.map((message) => message.text).join('\n')
       const completedAt = performance.now()
+      terminalFlushSamples.push(completedAt - flushStartedAt)
+      const visibleSequences = visibleRuntimeEventSequences(terminal.getViewport())
+      const visibleSequence = Math.max(0, ...visibleSequences)
+      const timing = frameTimings.at(-1)
+      if (timing?.revision !== undefined) latestDeliveredRevision = timing.revision
       let resolved = 0
       for (let index = pending.length - 1; index >= 0; index -= 1) {
         const event = pending[index]
-        if (view.revision < event.revision || !renderedText.includes(event.marker)) continue
+        if (!visibleSequences.has(event.sequence)) continue
         samplesBySequence.set(event.sequence, completedAt - event.receivedAt)
         pending.splice(index, 1)
         resolved += 1
       }
       completedFrames.push({
-        revision: view.revision,
+        revision: latestDeliveredRevision,
+        visibleSequence,
+        visibleEvents: visibleSequences.size,
         completedAt,
         resolved,
         invalidCells: invalidCellCount(terminal),
@@ -155,15 +179,13 @@ export async function measureRuntimeEventsToFrames({
         const receivedAt = performance.now()
         startedAt ??= receivedAt
         const result = app.ingestRuntimeEvent(providerEnvelope(runId, sequence))
+        ingestSamples.push(performance.now() - receivedAt)
         if (result && typeof result.then === 'function')
           throw new Error('PERF-04 smoke path unexpectedly became asynchronous')
-        const view = controller.view()
         if (result.accepted !== true)
           throw new Error(`PERF-04 event ${sequence} was not accepted by the application`)
         pending.push({
           sequence,
-          marker: `perf-event-${String(sequence).padStart(5, '0')}`,
-          revision: view.revision,
           receivedAt,
         })
       } catch (error) {
@@ -179,7 +201,11 @@ export async function measureRuntimeEventsToFrames({
     }
     clearInterval(producer)
     producer = undefined
-    await waitFor(() => pending.length === 0, 'PERF-04 event-tagged Pi render completions', signal)
+    await waitFor(
+      () => samplesBySequence.has(count),
+      'PERF-04 final event-tagged Pi render completion',
+      signal,
+    )
     await terminal.flush()
     const elapsedMs = performance.now() - startedAt
     const rate = evaluateRuntimeEventRate({ count, elapsedMs })
@@ -191,10 +217,12 @@ export async function measureRuntimeEventsToFrames({
       (maximum, frame) => Math.max(maximum, frame.invalidCells),
       0,
     )
-    const samples = Array.from({ length: count }, (_, index) => samplesBySequence.get(index + 1))
+    const samples = Array.from({ length: count }, (_, index) =>
+      samplesBySequence.get(index + 1),
+    ).filter((sample) => sample !== undefined)
     const accepted = results.length
     const duplicateEvents = eventIds.length - uniqueEventIds.size
-    const missingEvents = samples.filter((sample) => sample === undefined).length
+    const missingEvents = count - samples.length
     const failureReasons = []
     if (accepted !== count) failureReasons.push(`accepted ${accepted}/${count} events`)
     if (duplicateEvents !== 0)
@@ -217,8 +245,9 @@ export async function measureRuntimeEventsToFrames({
       missingEvents,
       invalidCells,
       uniqueProviderEventIds: uniqueEventIds.size,
-      renderedEvents: samples.length - missingEvents,
+      renderedEvents: samples.length,
       frameCompletions: completedFrames.length,
+      frameWrites: completedFrames.length,
       maxRenderedRevision: Math.max(...completedFrames.map((frame) => frame.revision)),
       elapsedMs,
       achievedEventsPerSecond: rate.achievedEventsPerSecond,
@@ -226,9 +255,18 @@ export async function measureRuntimeEventsToFrames({
       finalFrameCompleted: true,
       qualityPassed: failureReasons.length === 0,
       failureReasons,
+      stageTimings: {
+        applicationCommitMs: summarizeStage(ingestSamples),
+        frameQueueMs: summarizeStage(frameTimings.map((timing) => timing.queueDelayMs)),
+        viewProjectionMs: summarizeStage(frameTimings.map((timing) => timing.projectionMs)),
+        terminalViewApplyMs: summarizeStage(frameTimings.map((timing) => timing.subscriberMs)),
+        piRenderMs: summarizeStage(piRenderSamples),
+        terminalFlushMs: summarizeStage(terminalFlushSamples),
+        combinedUpdatesPerFrame: summarizeStage(frameTimings.map((timing) => timing.queuedUpdates)),
+      },
       provenance: {
         packageRoot,
-        frameBinding: 'Pi TUI doRender completion + current view revision + unique event marker',
+        frameBinding: 'Pi TUI doRender completion + xterm flush + each exact visible event marker',
         unrelatedWritesExcluded: true,
         rateInterval: 'producer start through the final event matching Pi frame completion',
       },

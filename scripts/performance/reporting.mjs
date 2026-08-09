@@ -19,8 +19,8 @@ export const releaseReportPath = `${outputDirectory}/release-measurements.json`
 export const command = process.env.BRAID_PERFORMANCE_COMMAND ?? 'pnpm run test:performance'
 export const FULL_REPETITIONS = 20
 export const processTerminal =
-  'node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0'
-export const virtualTerminal = '@xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0'
+  'node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1'
+export const virtualTerminal = '@xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1'
 const packedProductionTuiChild = new URL('./packed-production-tui-child.mjs', import.meta.url)
 
 export function errorReason(error) {

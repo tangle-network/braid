@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path'
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
+import { portableBridgeModel } from '../adapters/connections/cli-bridge-model-route.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
 import { readNoFollow } from '../adapters/persistence/safe-file.js'
@@ -107,6 +108,7 @@ export function formatProductionStartupError(error: unknown): string {
 }
 
 export interface ProductionStartupDocument {
+  readonly schemaVersion: 1 | 2
   readonly profile?: unknown
   readonly connection?: string
   readonly connectionId?: string
@@ -157,7 +159,8 @@ function parseConfig(bytes: Buffer, path: string): ProductionStartupDocument {
       'Production configuration must be a JSON object',
     )
   }
-  if ('schemaVersion' in parsed && parsed.schemaVersion !== 1) {
+  const schemaVersion = parsed.schemaVersion ?? 1
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
     throw new ProductionStartupError(
       'PRODUCTION_CONFIGURATION_INVALID',
       'Production configuration schema version is unsupported',
@@ -181,6 +184,7 @@ function parseConfig(bytes: Buffer, path: string): ProductionStartupDocument {
     )
   }
   return {
+    schemaVersion,
     ...(parsed.profile === undefined ? {} : { profile: parsed.profile }),
     ...(parsed.connection === undefined
       ? {}
@@ -192,6 +196,32 @@ function parseConfig(bytes: Buffer, path: string): ProductionStartupDocument {
       ? {}
       : { databaseKeyFile: requiredStringValue(parsed.databaseKeyFile, 'databaseKeyFile') }),
     ...(connections === undefined ? {} : { connections }),
+  }
+}
+
+function migrateStartupProfile(
+  profile: Readonly<AgentProfile>,
+  schemaVersion: 1 | 2,
+  connection: ConnectionRecord | undefined,
+): Readonly<AgentProfile> {
+  const runner = profile.harness
+  const model = profile.model?.default
+  if (
+    schemaVersion !== 1 ||
+    connection?.kind !== 'cli-bridge' ||
+    runner === undefined ||
+    model === undefined
+  ) {
+    return profile
+  }
+  const portable = portableBridgeModel(runner, model, profile.model?.provider)
+  if (portable === model) return profile
+  return {
+    ...profile,
+    model: {
+      ...profile.model,
+      default: portable,
+    },
   }
 }
 
@@ -315,7 +345,7 @@ export async function loadProductionStartup(
   }
   const profileRoot =
     options.profileReference === undefined ? dirname(configPath) : options.workspace
-  const profile = profileFromValue(profileValue, profileRoot)
+  const loadedProfile = profileFromValue(profileValue, profileRoot)
   const connections = connectionRecords(document.connections)
   const selectedConnectionId =
     options.connectionId ??
@@ -328,6 +358,8 @@ export async function loadProductionStartup(
       'Select one configured connection with connectionId or --connection <id>',
     )
   }
+  const selectedConnection = connections.find((record) => record.id === selectedConnectionId)
+  const profile = migrateStartupProfile(loadedProfile, document.schemaVersion, selectedConnection)
   let runner: HarnessType | undefined
   if (options.runner !== undefined) {
     const runnerProfile = validateProfileShape({ ...profile, harness: options.runner })
@@ -339,7 +371,6 @@ export async function loadProductionStartup(
     }
     runner = runnerProfile.profile.harness
   }
-  const selectedConnection = connections.find((record) => record.id === selectedConnectionId)
   const credentialStore =
     selectedConnection?.credentialRef === undefined
       ? undefined

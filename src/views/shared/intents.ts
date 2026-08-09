@@ -101,12 +101,36 @@ export interface UiEvent {
 
 export type UiSubscriber = (view: import('./models.js').BraidViewModel, event?: UiEvent) => void
 
+export interface UiFrameTiming {
+  /** Number of accepted updates represented by this delivered view. */
+  readonly queuedUpdates: number
+  /** Milliseconds from the first queued update until projection begins. */
+  readonly queueDelayMs: number
+  /** Milliseconds spent producing the immutable view model. */
+  readonly projectionMs: number
+  /** Milliseconds spent applying the view to the subscriber. */
+  readonly subscriberMs: number
+  /** Milliseconds from the first queued update through subscriber completion. */
+  readonly totalMs: number
+  readonly revision?: number
+  readonly eventSequence?: number
+}
+
+export interface UiSubscriptionOptions {
+  /** Event delivery is lossless; frame delivery combines only repeated stream deltas. */
+  readonly delivery?: 'event' | 'frame'
+  /** Target interval for frame delivery; lifecycle and explicit refreshes remain immediate. */
+  readonly frameIntervalMs?: number
+  /** Optional millisecond observer that cannot alter delivery if it throws. */
+  readonly onFrameTiming?: (timing: UiFrameTiming) => void
+}
+
 export interface BraidUiController {
   view(): import('./models.js').BraidViewModel
   state(): import('./models.js').HeadlessState
   events(): readonly UiEvent[]
   initialize(workspace: string): Promise<UiDispatchResult>
-  subscribe(subscriber: UiSubscriber): () => void
+  subscribe(subscriber: UiSubscriber, options?: UiSubscriptionOptions): () => void
   dispatch(intent: BraidIntent): Promise<UiDispatchResult>
   waitForIdle(): Promise<import('./models.js').BraidViewModel>
 }

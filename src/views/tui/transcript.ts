@@ -11,6 +11,11 @@ const COLLAPSIBLE_KINDS = new Set<TranscriptPartView['kind']>([
   'artifact',
   'analysis',
 ])
+export const STREAMING_TAIL_BYTES = 32 * 1024
+const STREAMING_TAIL_PREFIX = '…\n'
+const STREAMING_TAIL_CONTENT_BYTES =
+  STREAMING_TAIL_BYTES - Buffer.byteLength(STREAMING_TAIL_PREFIX, 'utf8')
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
 export class TranscriptView extends Container {
   readonly #theme: BraidTheme
@@ -18,6 +23,7 @@ export class TranscriptView extends Container {
   #viewportRows = Number.MAX_SAFE_INTEGER
   #scrollTop = 0
   #followTail = true
+  #pendingHistoryPosition: 'start' | { readonly tailOffsetRows: number } | undefined
   #lastLines: readonly string[] = []
   readonly #expandedParts = new Set<string>()
   #detailCursorId: string | undefined
@@ -107,6 +113,10 @@ export class TranscriptView extends Container {
   handleInput(data: string): boolean {
     const page = Math.max(1, this.#viewportRows - 2)
     if (matchesKey(data, 'pageUp') || matchesKey(data, 'alt+pageUp')) {
+      if (this.#followTail) {
+        this.#openHistory({ tailOffsetRows: page })
+        return true
+      }
       this.#moveTo(this.#scrollTop - page)
       return true
     }
@@ -115,6 +125,10 @@ export class TranscriptView extends Container {
       return true
     }
     if (matchesKey(data, 'home') || matchesKey(data, 'alt+home')) {
+      if (this.#followTail) {
+        this.#openHistory('start')
+        return true
+      }
       this.#moveTo(0)
       return true
     }
@@ -129,7 +143,13 @@ export class TranscriptView extends Container {
     const allLines = super.render(Math.max(1, Math.floor(width)))
     this.#lastLines = allLines
     const max = Math.max(0, allLines.length - this.#viewportRows)
-    if (this.#followTail) this.#scrollTop = max
+    if (this.#pendingHistoryPosition === 'start') {
+      this.#scrollTop = 0
+      this.#pendingHistoryPosition = undefined
+    } else if (this.#pendingHistoryPosition !== undefined) {
+      this.#scrollTop = Math.max(0, max - this.#pendingHistoryPosition.tailOffsetRows)
+      this.#pendingHistoryPosition = undefined
+    } else if (this.#followTail) this.#scrollTop = max
     else this.#scrollTop = Math.max(0, Math.min(this.#scrollTop, max))
     return allLines.slice(this.#scrollTop, this.#scrollTop + this.#viewportRows)
   }
@@ -137,8 +157,20 @@ export class TranscriptView extends Container {
   #moveTo(requested: number): void {
     const max = this.#maxScroll()
     this.#scrollTop = Math.max(0, Math.min(Math.trunc(requested), max))
-    this.#followTail = this.#scrollTop >= max
+    const followTail = this.#scrollTop >= max
+    if (followTail && !this.#followTail) {
+      this.#followTail = true
+      if (this.#view !== undefined) this.setView(this.#view)
+    } else {
+      this.#followTail = followTail
+    }
     this.invalidate()
+  }
+
+  #openHistory(position: 'start' | { readonly tailOffsetRows: number }): void {
+    this.#followTail = false
+    this.#pendingHistoryPosition = position
+    if (this.#view !== undefined) this.setView(this.#view)
   }
 
   #maxScroll(): number {
@@ -173,9 +205,10 @@ export class TranscriptView extends Container {
     }
 
     container.addChild(new Spacer(1))
-    for (const part of message.parts) container.addChild(this.#part(part))
+    const streamingTail = message.status === 'streaming' && this.#followTail
+    for (const part of message.parts) container.addChild(this.#part(part, streamingTail))
     if (message.parts.length === 0 && message.text) {
-      container.addChild(this.#markdown(message.text))
+      container.addChild(this.#markdown(streamingTailText(message.text, streamingTail)))
     }
     if (message.status === 'failed' || message.status === 'blocked') {
       container.addChild(new Text(this.#theme.danger(message.status), 1, 0))
@@ -189,17 +222,18 @@ export class TranscriptView extends Container {
     return container
   }
 
-  #part(part: TranscriptPartView): Component {
+  #part(part: TranscriptPartView, streamingTail: boolean): Component {
+    const text = part.kind === 'text' ? streamingTailText(part.text, streamingTail) : part.text
     if (
       part.kind === 'text' &&
       part.input === undefined &&
       part.result === undefined &&
       part.error === undefined
     )
-      return this.#markdown(part.text)
+      return this.#markdown(text)
     if (COLLAPSIBLE_KINDS.has(part.kind)) return this.#card(part)
-    const text = part.kind === 'artifact' ? sanitizeDiff(part.text) : sanitizeMarkdown(part.text)
-    return this.#plainPart(part, text)
+    const safeText = part.kind === 'artifact' ? sanitizeDiff(text) : sanitizeMarkdown(text)
+    return this.#plainPart(part, safeText)
   }
 
   #plainPart(part: TranscriptPartView, text: string): Container {
@@ -285,6 +319,19 @@ export class TranscriptView extends Container {
         .filter((part) => COLLAPSIBLE_KINDS.has(part.kind) && hasPartDetail(part)) ?? []
     )
   }
+}
+
+export function streamingTailText(text: string, streamingTail: boolean): string {
+  if (!streamingTail) return text
+  const totalBytes = Buffer.byteLength(text, 'utf8')
+  if (totalBytes <= STREAMING_TAIL_BYTES) return text
+  let consumedBytes = 0
+  for (const entry of GRAPHEME_SEGMENTER.segment(text)) {
+    if (totalBytes - consumedBytes <= STREAMING_TAIL_CONTENT_BYTES)
+      return `${STREAMING_TAIL_PREFIX}${text.slice(entry.index)}`
+    consumedBytes += Buffer.byteLength(entry.segment, 'utf8')
+  }
+  return STREAMING_TAIL_PREFIX
 }
 
 function hasPartDetail(part: TranscriptPartView): boolean {

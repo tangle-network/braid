@@ -20,7 +20,7 @@ The deciding question was how much source can be reused while preserving `AgentP
 
 | Source | Commit or version | License | Measured relevant TypeScript | Role in decision |
 | --- | --- | --- | ---: | --- |
-| [Pi TUI](https://github.com/earendil-works/pi/tree/master/packages/tui) | `a6f7317dfca61e357aee65faafe012a1be6c3734`; npm `0.83.0` | MIT | 14,184 lines | Selected renderer dependency |
+| [Pi TUI](https://github.com/earendil-works/pi/tree/master/packages/tui) | `53fa77ccd8a279eb87e92294ef3687b03ff80112`; npm `0.84.1` | MIT | 16,202 lines | Selected renderer dependency |
 | [Pi coding-agent interactive mode](https://github.com/earendil-works/pi/tree/master/packages/coding-agent/src/modes/interactive) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT | 16,925 lines, including a 6,125-line coordinator | Selective behavior and component source |
 | [Kimi Code terminal app](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | `e22479a62eed9c3b78a67b313f4332c2c0ba9670` | MIT | 39,688 lines; 65 files directly import Kimi Code SDK | Selective interaction and controller source |
 | [Kimi private Pi TUI fork](https://github.com/MoonshotAI/kimi-code/tree/main/packages/pi-tui) | package version `0.80.8` at `e22479a` | MIT | Included in repository inspection | Patch and regression reference only |
@@ -38,7 +38,7 @@ The Kimi SDK coupling count selected terminal files that directly import `@moons
 
 Pi TUI provides main-screen and alternate-screen rendering, differential frame output, cell-width calculation, viewport and scrolling, containers, overlays, focus, editor input, autocomplete, history, undo, kill ring behavior, selection lists, settings lists, markdown, images, IME handling, keyboard decoding, and a public terminal interface.
 
-The Pi repository includes a useful `packages/tui/test/virtual-terminal.ts` helper, but `@earendil-works/pi-tui@0.83.0` does not publish or export it.
+The Pi repository includes a useful `packages/tui/test/virtual-terminal.ts` helper, but `@earendil-works/pi-tui@0.84.1` does not publish or export it.
 
 Braid will adapt that test-only helper with attribution unless Pi first publishes a supported testing export.
 

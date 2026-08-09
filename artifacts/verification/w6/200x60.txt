@@ -1,4 +1,4 @@
-braid  cwd  repo  ·  session  New conversation  ·  branch  branch-1
+braid  cwd  braid-production  ·  session  New conversation  ·  branch  branch-1
  W6 visual proof
 
  Fixture response through pi: W6 visual proof

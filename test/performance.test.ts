@@ -13,6 +13,8 @@ const lifecycleModule = await import('../scripts/performance/lifecycle.mjs')
 const resizeProbe = await import('../scripts/performance/resize-probe.mjs')
 // @ts-expect-error The performance reporting helpers are JavaScript release entry points.
 const reporting = await import('../scripts/performance/reporting.mjs')
+// @ts-expect-error The performance stage helper is a JavaScript release entry point.
+const stageTimings = await import('../scripts/performance/stage-timings.mjs')
 // @ts-expect-error The performance storage helpers are JavaScript release entry points.
 const storageProbes = await import('../scripts/performance/storage-probes.mjs')
 const {
@@ -22,10 +24,11 @@ const {
   releaseMeasurement,
   summarizeSamples,
 } = statistics
-const { evaluateRuntimeEventRate } = applicationProbe
+const { evaluateRuntimeEventRate, visibleRuntimeEventSequences } = applicationProbe
 const { createPerformanceLifecycle } = lifecycleModule
 const { evaluateResizeStreamRate } = resizeProbe
 const { assertSmokeMeasurements } = reporting
+const { summarizeStage } = stageTimings
 const { prepareHeadlessProductionProcessFixture } = storageProbes
 
 function distribution(samples: readonly number[]) {
@@ -128,6 +131,20 @@ test('performance statistics preserve the required percentile definition and rel
   ])
 })
 
+test('stage timing summaries retain every percentile, total, and mean', () => {
+  assert.deepEqual(summarizeStage([4, 1, 3, 2]), {
+    n: 4,
+    total: 10,
+    mean: 2.5,
+    minimum: 1,
+    median: 2,
+    p90: 4,
+    p95: 4,
+    p99: 4,
+    maximum: 4,
+  })
+})
+
 test('idle CPU proof rejects a short run before it can be reported as complete', () => {
   assert.doesNotThrow(() => assertFullDuration(60_000))
   assert.throws(() => assertFullDuration(59_999), /shorter than 60000ms/u)
@@ -140,6 +157,13 @@ test('runtime throughput calibration rejects a slow producer plus final render f
 
   const fast = evaluateRuntimeEventRate({ count: 100, elapsedMs: 999 })
   assert.equal(fast.passed, true)
+})
+
+test('runtime frame accounting never infers markers skipped by a combined frame', () => {
+  assert.deepEqual(
+    [...visibleRuntimeEventSequences(['perf-event-00001 x perf-event-00005'])],
+    [1, 5],
+  )
 })
 
 test('PERF-07 rejects an intentionally slow 90 events/s producer and render interval', () => {

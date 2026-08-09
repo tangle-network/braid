@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
@@ -18,7 +18,7 @@ async function settle(terminal: VirtualTerminal): Promise<string> {
 }
 
 function startTerminal(app: ReturnType<typeof createBraidApplication>, terminal: VirtualTerminal) {
-  const tui = new TUI(terminal)
+  const tui = new TuiMainScreen(terminal)
   const view = new BraidTerminalApp({
     controller: createApplicationUiController(app),
     tui,

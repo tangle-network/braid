@@ -40,7 +40,7 @@ const sqliteAvailable = (() => {
 function requireNativeStorage(): void {
   if (!sqliteAvailable) {
     throw new Error(
-      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@12.11.1 is not installed',
+      'W5_NATIVE_STORAGE_BLOCKED: better-sqlite3-multiple-ciphers@13.0.3 is not installed',
     )
   }
 }

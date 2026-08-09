@@ -207,7 +207,7 @@ W5 adds the complete domain graph, exhaustive reducer, atomic durable effect adm
 
 The coordinator records `pending` before a handler can dispatch, binds an operation to a canonical request digest, reconciles identical retries, records `acknowledged`, `failed`, `unknown`, `terminal`, and `conflict` outcomes, and fails closed when a pending external operation cannot be reconciled.
 
-Production composition opens `better-sqlite3-multiple-ciphers@12.11.1` through `StoragePort` and the operating-system credential port; the deterministic in-memory adapter remains available through the same ports for the fixture.
+Production composition opens `better-sqlite3-multiple-ciphers@13.0.3` through `StoragePort` and the operating-system credential port; the deterministic in-memory adapter remains available through the same ports for the fixture.
 
 Stable unit, contract, coordination, RPC, virtual-terminal, PTY, storage, crash, security, performance, live-prerequisite, install, capture, and release-check scripts are included.
 

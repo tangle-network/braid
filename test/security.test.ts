@@ -153,7 +153,18 @@ test('safe component paths preserve anchors and round-trip across supported plat
 
 const PARENT_SWAP_WORKER = `
   const { parentPort, workerData } = require('node:worker_threads')
-  const { renameSync, symlinkSync, unlinkSync } = require('node:fs')
+  const { renameSync, rmSync, symlinkSync } = require('node:fs')
+  const replaceCollisions = new Set(['EEXIST', 'EISDIR', 'ENOTDIR', 'ENOTEMPTY'])
+  const clearActive = () => {
+    for (;;) {
+      try {
+        rmSync(workerData.active, { recursive: true, force: true, maxRetries: 10 })
+        return
+      } catch (error) {
+        if (!replaceCollisions.has(error.code)) throw error
+      }
+    }
+  }
   let checksum = 0
   parentPort.postMessage('ready')
   parentPort.once('message', (message) => {
@@ -166,19 +177,20 @@ const PARENT_SWAP_WORKER = `
           break
         } catch (error) {
           if (error.code !== 'EEXIST') throw error
-          try {
-            renameSync(
-              workerData.active,
-              workerData.active + '.recreated.' + String(index),
-            )
-          } catch (moveError) {
-            if (moveError.code !== 'ENOENT') throw moveError
-          }
+          clearActive()
         }
       }
       for (let spin = 0; spin < 512; spin += 1) checksum = (checksum + spin) & 0xffff
-      unlinkSync(workerData.active)
-      renameSync(workerData.parked, workerData.active)
+      clearActive()
+      for (;;) {
+        try {
+          renameSync(workerData.parked, workerData.active)
+          break
+        } catch (error) {
+          if (!replaceCollisions.has(error.code)) throw error
+          clearActive()
+        }
+      }
     }
     if (checksum === -1) throw new Error('unreachable')
     parentPort.postMessage('done')
@@ -239,6 +251,18 @@ interface ParentSwapRacePaths {
   readonly evil: string
   readonly source: string
 }
+
+const EXPECTED_PARENT_SWAP_REJECTIONS = new Set([
+  'EEXIST',
+  'EISDIR',
+  'ELOOP',
+  'ENOENT',
+  'ENOTDIR',
+  'SAFE_FILE_NOT_DIRECTORY',
+  'SAFE_FILE_NOT_REGULAR',
+  'SAFE_FILE_PUBLISHED_INVALID',
+  'SAFE_FILE_SYMLINK',
+])
 
 async function runParentSwapRace(
   root: string,
@@ -371,12 +395,7 @@ test('parent directory swaps cannot make conversation import read the evil tree'
             operation()
           } catch (error) {
             const code = (error as NodeJS.ErrnoException).code
-            if (
-              code !== 'ENOENT' &&
-              code !== 'ELOOP' &&
-              code !== 'EEXIST' &&
-              code !== 'SAFE_FILE_SYMLINK'
-            ) {
+            if (code === undefined || !EXPECTED_PARENT_SWAP_REJECTIONS.has(code)) {
               throw error
             }
           }
