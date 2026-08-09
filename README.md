@@ -12,11 +12,18 @@ Provider packages own transport to CLI Bridge and Tangle.
 
 ## Status
 
-The W0 vertical slice is implemented: one `braid` binary, one reducer, one JSONL control interface, and one real Pi terminal transcript and composer all drive `agent-runtime`.
-The packed binary has deterministic keyboard and JSONL proof, but live CLI Bridge and Tangle connections are not implemented yet.
-The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-01.
+Braid's production CLI/TUI, encrypted local state, profile and connection setup, runtime dispatch, conversations, branches, graphs, interactions, and analysis commands are implemented.
+The terminal and headless surfaces share one command registry, one view model, and one durable operation ledger.
+The CLI Bridge path is implemented and was proven from a clean packed install on 2026-08-09 with Pi/GLM-5.2 and Codex through first-run setup, two-turn session continuity, normalized events, process restart, transcript recovery, and a post-restart turn.
+The Tangle inference and sandbox paths are implemented against the current provider packages but still require protected live-deployment proof before they are advertised as release-complete.
+`/ask`, `/analyze`, `/compare`, trace citations, and analysis promotion are implemented; the semantic evaluation command performs pilot, calibration, and release-case checks when a judge model is configured.
+Generalized interaction responses remain capability-disabled because the installed runtime and providers do not expose a run-bound response operation.
+The deterministic `MemoryJournal` remains fixture-only; production startup fails closed if the pinned encrypted SQLite binding or credential facility is unavailable.
+The storage binding is pinned to `better-sqlite3-multiple-ciphers@13.0.3`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
+Tangle, supervisor-control, full live-analysis, multi-platform installation, and signed release evidence remain required before the complete release contract is satisfied.
+The contract is based on current package and source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, and Pi through 2026-08-09, with the recorded Kimi Code, OpenCode, and Hermes Agent design references retained from the initial comparison.
 
-![Braid terminal at 80×24](artifacts/verification/w0/80x24.png)
+![Braid terminal at 80×24](artifacts/verification/w6/80x24.png)
 
 Run the deterministic slice locally:
 
@@ -26,7 +33,35 @@ pnpm run build
 node dist/bin/braid.js --fixture deterministic
 ```
 
-Run `pnpm check`, `pnpm run test:package`, and `pnpm run capture:w0` to reproduce the current checks and terminal captures.
+Run the checks with the stable command map below.
+Commands marked unavailable fail with exit code 2 and a plain explanation; they do not substitute a narrower test and do not create a release claim.
+
+| Check | Command | Behavior |
+| --- | --- | --- |
+| repository | `pnpm check` | Runs local format, lint, types, boundaries, dependency/license metadata, deterministic tests, and the release manifest check |
+| unit | `pnpm test:unit` | Runs the local unit suite |
+| contract | `pnpm test:contract` | Runs the local contract suite |
+| coordination | `pnpm test:coordination` | Runs durable effect admission and serialization checks |
+| rpc | `pnpm test:rpc` | Runs the JSONL protocol suite |
+| rpc (packed) | `pnpm test:rpc:packed` | Runs the packed JSONL protocol suite |
+| virtual-terminal | `pnpm test:virtual-terminal` | Runs virtual-terminal state, keyboard, and layout checks |
+| pty | `pnpm test:pty` | Runs packed real-terminal checks |
+| storage | `pnpm test:storage` | Runs encrypted SQLite journal, projection, and retention checks |
+| crash | `pnpm test:crash` | Runs forced-kill, restore-recovery, and two-process admission checks |
+| security | `pnpm test:security` | Runs redaction, credential-boundary, and dependency-boundary checks |
+| performance | `pnpm test:performance` | Runs the reducer, coordination, and storage performance checks |
+| live | `pnpm test:live` | Unavailable without protected live credentials and evidence |
+| live-bridge | `pnpm test:live:bridge` | Runs the opt-in packed CLI Bridge and runner flow with `BRAID_LIVE_BRIDGE=1` |
+| live-tangle | `pnpm test:live:tangle` | Unavailable without protected live credentials and evidence |
+| live-supervisor | `pnpm test:live:supervisor` | Unavailable without protected live credentials and evidence |
+| live-analysis | `pnpm test:live:analysis` | Unavailable without protected live credentials and evidence |
+| eval | `pnpm test:eval` | Runs pilot, judge calibration, and semantic release cases against `BRAID_EVAL_MODEL` |
+| install | `pnpm test:install` | Runs packed install, storage, and keyboard/RPC proof |
+| capture | `pnpm test:capture` | Captures the baseline terminal artifacts from the packed binary |
+| visual | `pnpm capture:visual` | Captures the required W6 state artifacts from the packed binary |
+| release | `pnpm check:release` | Checks the release manifest and evidence set |
+| verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with external signing key and complete evidence |
+
 The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 
 ## The central decision
@@ -68,6 +103,7 @@ That boundary gives Braid a polished interface quickly without creating a second
 | [Renderer decision](docs/decisions/001-pi-tui-renderer.md) | Why Braid depends on Pi TUI instead of cloning a whole app |
 | [Runtime boundary decision](docs/decisions/002-runtime-boundary.md) | Why execution and interaction control stay upstream |
 | [Persistence decision](docs/decisions/003-local-event-journal.md) | What Braid stores and which system remains authoritative |
+| [Encrypted storage decision](docs/decisions/005-encrypted-sqlite-and-credential-boundaries.md) | SQLite cipher, content keys, credential facilities, and headless key boundaries |
 
 The ranked source-reuse hypothesis is recorded in [`.agent/hypotheses/2026-08-01-terminal-ui-base.md`](.agent/hypotheses/2026-08-01-terminal-ui-base.md).
 

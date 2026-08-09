@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-export type IdKind = 'message' | 'run' | 'turn' | 'operation'
+export type IdKind = 'message' | 'run' | 'turn' | 'operation' | 'receipt' | 'shutdown'
 
 export interface IdSource {
   next(kind: IdKind): string

@@ -138,6 +138,14 @@ Role and state are never communicated by color alone.
 
 Repeated streaming updates replace the affected message part by stable part identifier instead of appending a new row.
 
+The terminal combines only repeated text, reasoning, and part updates within one 16 millisecond display interval.
+
+Lifecycle, selection, interaction, storage, and explicit refresh transitions render immediately, while plain and RPC subscribers receive every committed event.
+
+While the transcript follows an active response, it formats at most the final 32 KiB of UTF-8 text, including the truncation marker, and starts only at a complete Unicode grapheme so long responses remain responsive and visually intact.
+
+Page Up or Alt+Home materializes the complete response history on demand while the composer is focused, and Alt+End resumes the bounded live tail without discarding stored content.
+
 Collapsed reasoning shows a one-line summary, elapsed time, and disclosure marker.
 
 Expanded reasoning is visually subordinate to the final answer and can be disabled by profile, provider policy, or user preference.
@@ -222,6 +230,7 @@ An unknown slash command is not sent to the agent and opens a correction list.
 | `/cancel` | Request explicit cancellation and wait for a confirmed terminal or honest unknown state |
 | `/activity` | Open run events, tools, workers, usage, receipts, and logs |
 | `/export` | Export selected conversation, branch, trace, analysis, or redacted diagnostic bundle |
+| `/import <path>` | Restore a redacted Braid conversation as an offline local copy |
 | `/settings` | Open user, workspace, appearance, retention, keymap, and update settings |
 | `/help [query]` | Search commands, keys, concepts, and current capability explanations |
 | `/quit` | Persist drafts, leave durable runs detached unless explicitly cancelled, and exit |
@@ -442,6 +451,8 @@ IME composition is never interpreted as a command before commit.
 Mouse selection and wheel scrolling are optional enhancements and no operation requires them.
 
 `--plain` and headless state output provide a cursor-control-free route for assistive technology and log capture.
+
+Plain output emits no terminal control metadata, and accessibility-configured TUI output suppresses titles, hyperlinks, and other OSC metadata.
 
 Animation can be disabled, and reduced-motion mode replaces spinners with stable state text.
 

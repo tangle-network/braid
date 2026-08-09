@@ -1,0 +1,512 @@
+{
+  "schemaVersion": 2,
+  "state": "active-streaming",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb"
+  },
+  "dimensions": {
+    "columns": 80,
+    "rows": 24
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.1",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 4,
+  "frame": "braid  cwd  braid-production  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel                  fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture             Enter queues input\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 4,
+      "sequence": 4,
+      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "profile": {
+        "name": "Braid starter",
+        "description": "A portable starter profile for the Braid terminal",
+        "harness": "pi",
+        "model": {
+          "default": "fixture/deterministic",
+          "reasoningEffort": "none"
+        }
+      },
+      "draft": "",
+      "messages": [
+        {
+          "id": "message-000003",
+          "role": "user",
+          "text": "W6 active streaming",
+          "status": "complete",
+          "runId": "run-000001",
+          "parts": [
+            {
+              "id": "part-message-000003",
+              "kind": "text",
+              "text": "W6 active streaming"
+            }
+          ]
+        },
+        {
+          "id": "message-000004",
+          "role": "assistant",
+          "text": "",
+          "status": "streaming",
+          "runId": "run-000001",
+          "parts": []
+        }
+      ],
+      "runs": [
+        {
+          "id": "run-000001",
+          "turnId": "turn-000002",
+          "operationId": "op-terminal-000002",
+          "status": "streaming",
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "completeness": "incomplete"
+        }
+      ],
+      "interactions": [],
+      "queue": [],
+      "activeRunId": "run-000001",
+      "lastError": null
+    },
+    "view": {
+      "revision": 4,
+      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "profileName": "Braid starter",
+      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "connection": "deterministic fixture",
+      "conversationId": "conv-1",
+      "conversationTitle": "New conversation",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "active": true,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "branch": "branch-1",
+      "status": "running",
+      "statusText": "streaming",
+      "queueCount": 0,
+      "queue": [],
+      "messages": [
+        {
+          "id": "message-000003",
+          "role": "user",
+          "text": "W6 active streaming",
+          "status": "complete",
+          "runId": "run-000001",
+          "parts": [
+            {
+              "id": "part-message-000003",
+              "kind": "text",
+              "text": "W6 active streaming"
+            }
+          ]
+        },
+        {
+          "id": "message-000004",
+          "role": "assistant",
+          "text": "",
+          "status": "streaming",
+          "runId": "run-000001",
+          "parts": []
+        }
+      ],
+      "hiddenMessageCount": 0,
+      "runs": [
+        {
+          "id": "run-000001",
+          "turnId": "turn-000002",
+          "operationId": "op-terminal-000002",
+          "status": "running",
+          "completeness": "incomplete"
+        }
+      ],
+      "activeRunId": "run-000001",
+      "interactions": [],
+      "activity": [
+        {
+          "id": "run:run-000001",
+          "kind": "run",
+          "title": "run run-000001",
+          "status": "running"
+        },
+        {
+          "id": "activity:run-000001:admission:local:admitted",
+          "kind": "system",
+          "title": "admitted",
+          "status": "running",
+          "detail": "profile 02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660"
+        }
+      ],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "New conversation",
+          "status": "complete",
+          "depth": 0,
+          "edgeLabel": "attached"
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "Main",
+          "status": "complete",
+          "depth": 1,
+          "edgeLabel": "attached"
+        },
+        {
+          "id": "turn-000002",
+          "type": "turn",
+          "title": "Turn",
+          "status": "running",
+          "depth": 2,
+          "edgeLabel": "continued"
+        },
+        {
+          "id": "run-000001",
+          "type": "run",
+          "title": "Run",
+          "status": "running",
+          "depth": 3,
+          "edgeLabel": "attached"
+        }
+      ],
+      "details": {
+        "title": "run run-000001",
+        "fields": [
+          {
+            "label": "status",
+            "value": "streaming"
+          },
+          {
+            "label": "input tokens",
+            "value": "0"
+          },
+          {
+            "label": "output tokens",
+            "value": "0"
+          }
+        ]
+      },
+      "capabilities": {
+        "conversation.create": {
+          "available": false,
+          "source": "application",
+          "reason": "Finish or cancel the active run first"
+        },
+        "conversation.open": {
+          "available": false,
+          "source": "application",
+          "reason": "Finish or cancel the active run first"
+        },
+        "run.runner": {
+          "available": false,
+          "source": "application",
+          "reason": "Runner overrides require the current profile compatibility helpers"
+        },
+        "run.model": {
+          "available": false,
+          "source": "application",
+          "reason": "Model overrides require provider capabilities from the current connection"
+        },
+        "run.effort": {
+          "available": false,
+          "source": "application",
+          "reason": "Effort overrides require provider capabilities from the current connection"
+        },
+        "conversation.branch": {
+          "available": false,
+          "source": "application",
+          "reason": "Finish or cancel the active run first"
+        },
+        "conversation.clone": {
+          "available": false,
+          "source": "application",
+          "reason": "Finish or cancel the active run first"
+        },
+        "conversation.fork": {
+          "available": false,
+          "source": "application",
+          "reason": "Finish or cancel the active run first"
+        },
+        "analysis.ask": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.recipe": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.compare": {
+          "available": false,
+          "source": "application",
+          "reason": "Two completed or failed runs are required for comparison"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "export.create": {
+          "available": false,
+          "source": "application",
+          "reason": "Finish or cancel the active run first"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "profile.select": {
+          "available": true,
+          "source": "application"
+        },
+        "connection.select": {
+          "available": true,
+          "source": "application"
+        },
+        "settings.open": {
+          "available": true,
+          "source": "application"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "draft.write": {
+          "available": true,
+          "source": "application"
+        },
+        "run.send": {
+          "available": false,
+          "source": "application",
+          "reason": "A run is already active"
+        },
+        "run.cancel": {
+          "available": true,
+          "source": "runtime"
+        },
+        "run.queue": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "provider",
+          "reason": "The current runtime does not report steering support"
+        },
+        "run.detach": {
+          "available": false,
+          "source": "provider",
+          "reason": "The current runtime does not report detach support"
+        },
+        "run.reconnect": {
+          "available": false,
+          "source": "provider",
+          "reason": "The current runtime does not report replay support"
+        },
+        "run.reconcile": {
+          "available": false,
+          "source": "provider",
+          "reason": "The current runtime does not report status reconciliation"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "transcript",
+      "appearance": {
+        "color": "256",
+        "highContrast": false,
+        "reducedMotion": false
+      }
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "value": {
+            "kind": "workspace.opened",
+            "workspace": "/home/drew/code/.worktrees/braid-production"
+          }
+        }
+      },
+      {
+        "sequence": 2,
+        "revision": 2,
+        "kind": "draft.recorded",
+        "payload": {
+          "value": {
+            "kind": "draft.recorded",
+            "draft": {
+              "id": "draft-branch-1",
+              "branchId": "branch-1",
+              "text": "W6 active streaming",
+              "updatedAt": "2026-08-01T00:00:00.000Z"
+            },
+            "operation": {
+              "id": "op-terminal-000001",
+              "kind": "draft-update",
+              "requestDigest": "e369d7f9b610550ecb42a6bbf159ab66d5e84156f3d6cd0d693d40047e8e63b5",
+              "status": "acknowledged",
+              "target": {
+                "kind": "branch",
+                "id": "branch-1"
+              },
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z",
+              "acknowledgedAt": "2026-08-01T00:00:00.000Z"
+            }
+          }
+        }
+      },
+      {
+        "sequence": 3,
+        "revision": 3,
+        "kind": "run.requested",
+        "payload": {
+          "text": "W6 active streaming",
+          "admission": {
+            "version": 1,
+            "runId": "run-000001",
+            "turnId": "turn-000002",
+            "operationId": "op-terminal-000002",
+            "conversationId": "conv-1",
+            "branchId": "branch-1",
+            "admittedAt": "2026-08-01T00:00:00.000Z",
+            "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+            "requested": {
+              "text": "W6 active streaming",
+              "profile": {
+                "name": "Braid starter",
+                "description": "A portable starter profile for the Braid terminal",
+                "model": {
+                  "default": "fixture/deterministic",
+                  "reasoningEffort": "none"
+                },
+                "harness": "pi"
+              },
+              "model": "fixture/deterministic",
+              "runner": "pi"
+            },
+            "capabilities": {
+              "streaming": {
+                "live": true,
+                "replay": false,
+                "detach": false,
+                "turnIdempotency": true
+              },
+              "sessions": {
+                "continue": false,
+                "messages": false
+              },
+              "controls": {
+                "cancel": true,
+                "steer": false,
+                "queue": true,
+                "status": false,
+                "recreate": false
+              },
+              "events": {
+                "stableIdentity": false,
+                "sequence": true,
+                "cursor": false
+              },
+              "usage": true
+            },
+            "provider": "agent-runtime",
+            "materializationReceipt": {
+              "backendKind": "chat",
+              "provider": "agent-runtime"
+            },
+            "admissionStatus": "admitted",
+            "requestDigest": "91421c65fb375ff723cbdcb5cdeff90d383adf02834441636f45999e40ef310b",
+            "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
+            "materializationDigest": "d463202424c67663b3863a357a670e72b7339dce890e476b8594a5c076fff1a5",
+            "digest": "53dfe219dfd2496143a493151c3a40e59b6d78a9e17e41372f47f5a58fb367b1"
+          },
+          "status": "admitted"
+        }
+      },
+      {
+        "sequence": 4,
+        "revision": 4,
+        "kind": "effect.upserted",
+        "payload": {
+          "value": {
+            "kind": "effect.upserted",
+            "effect": {
+              "id": "effect-op-terminal-000002-747c78d8d8da8c3181c075a6",
+              "operationId": "op-terminal-000002",
+              "effectKind": "run.execute",
+              "requestDigest": "747c78d8d8da8c3181c075a64462d2319a6e4f3e604fbaf17ad53b5a948ff12f",
+              "kind": "send",
+              "status": "pending",
+              "attempt": 1,
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

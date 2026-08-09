@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 2,
+  "state": "fork-preview",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb"
+  },
+  "dimensions": {
+    "columns": 80,
+    "rows": 24
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.1",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 1,
+  "frame": "braid  cwd  braid-production  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n    fork preview · workspace\n    will create a new workspace from this source\n    source: workspace:/workspace\n    destination: workspace:/workspace-fork\n    boundary: conv-1 / branch-1 → conv-fork-1 / branch-1\n    profile snapshot: digest:fixture-source → digest:fixture-copy\n    workspace state: checkpoint:fixture-1 → checkpoint:fixture-1\n    enter/y create fork · esc cancel\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 1,
+      "sequence": 1,
+      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "profile": {
+        "name": "Braid starter",
+        "description": "A portable starter profile for the Braid terminal",
+        "harness": "pi",
+        "model": {
+          "default": "fixture/deterministic",
+          "reasoningEffort": "none"
+        }
+      },
+      "draft": "",
+      "messages": [],
+      "runs": [],
+      "interactions": [],
+      "queue": [],
+      "activeRunId": null,
+      "lastError": null
+    },
+    "view": {
+      "revision": 1,
+      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "profileName": "Braid starter",
+      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "connection": "deterministic fixture",
+      "conversationId": "conv-1",
+      "conversationTitle": "New conversation",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "active": true,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "branch": "branch-1",
+      "status": "empty",
+      "statusText": "ready for a message",
+      "queueCount": 0,
+      "queue": [],
+      "messages": [],
+      "hiddenMessageCount": 0,
+      "runs": [],
+      "interactions": [],
+      "activity": [],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "New conversation",
+          "status": "complete",
+          "depth": 0,
+          "edgeLabel": "attached"
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "Main",
+          "status": "complete",
+          "depth": 1,
+          "edgeLabel": "attached"
+        }
+      ],
+      "capabilities": {
+        "conversation.create": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.open": {
+          "available": true,
+          "source": "application"
+        },
+        "run.runner": {
+          "available": false,
+          "source": "application",
+          "reason": "Runner overrides require the current profile compatibility helpers"
+        },
+        "run.model": {
+          "available": false,
+          "source": "application",
+          "reason": "Model overrides require provider capabilities from the current connection"
+        },
+        "run.effort": {
+          "available": false,
+          "source": "application",
+          "reason": "Effort overrides require provider capabilities from the current connection"
+        },
+        "conversation.branch": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.clone": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.fork": {
+          "available": true,
+          "source": "provider"
+        },
+        "analysis.ask": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.recipe": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.compare": {
+          "available": false,
+          "source": "application",
+          "reason": "Two completed or failed runs are required for comparison"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "export.create": {
+          "available": true,
+          "source": "application"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "profile.select": {
+          "available": true,
+          "source": "application"
+        },
+        "connection.select": {
+          "available": true,
+          "source": "application"
+        },
+        "settings.open": {
+          "available": true,
+          "source": "application"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "draft.write": {
+          "available": true,
+          "source": "application"
+        },
+        "run.send": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no active run to cancel"
+        },
+        "run.queue": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.detach": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconnect": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconcile": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "fork",
+      "appearance": {
+        "color": "256",
+        "highContrast": false,
+        "reducedMotion": false
+      },
+      "forkPreview": {
+        "kind": "workspace",
+        "source": "workspace:/workspace",
+        "destination": "workspace:/workspace-fork",
+        "fields": [
+          {
+            "label": "conversation context",
+            "source": "conv-1 / branch-1",
+            "destination": "conv-fork-1 / branch-1"
+          },
+          {
+            "label": "profile snapshot",
+            "source": "digest:fixture-source",
+            "destination": "digest:fixture-copy"
+          },
+          {
+            "label": "workspace state",
+            "source": "checkpoint:fixture-1",
+            "destination": "checkpoint:fixture-1"
+          },
+          {
+            "label": "operation id",
+            "source": "operation-fixture-fork",
+            "destination": "operation-fixture-fork"
+          },
+          {
+            "label": "plan digest",
+            "source": "digest:fixture-fork-plan",
+            "destination": "digest:fixture-fork-plan"
+          }
+        ],
+        "allowed": true
+      }
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "value": {
+            "kind": "workspace.opened",
+            "workspace": "/home/drew/code/.worktrees/braid-production"
+          }
+        }
+      }
+    ]
+  }
+}

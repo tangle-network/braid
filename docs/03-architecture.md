@@ -95,7 +95,7 @@ src/
     tangle/             cloud provider construction and connection health
     eval/               agent-eval analysis adapter
     supervisor/         runtime supervisor adapter
-    sqlite/             journal, projections, migration, and integrity
+    storage/            encrypted journal, projections, migration, and integrity
     credentials/        operating-system credential references
   commands/             typed built-in command registry and parsers
   views/
@@ -163,6 +163,42 @@ If idempotency is unavailable, the controller reports unknown outcome and requir
 
 All long-running effects accept `AbortSignal` and report cancellation independently from provider-run cancellation.
 
+### W5 durable coordination and storage
+
+The application uses `JournalPort` from `src/ports/effect-storage.ts` for event envelopes and `EffectStoragePort` from the same file for operation records.
+
+`SerializedEffectCoordinator` computes a canonical SHA-256 digest from `effectKind` and request data, atomically reserves the operation in durable storage, and only then schedules the external handler.
+
+The coordinator serializes handlers across operations, so two dispatches cannot overlap through the same coordinator.
+
+An identical operation and digest returns the existing record without a second dispatch.
+
+A changed digest writes a separate `conflict` audit record and never dispatches.
+
+Dispatch handlers return only provider-neutral `acknowledged`, `failed`, `unknown`, or `terminal` outcomes.
+
+A dispatch exception becomes `unknown` because the external boundary may have accepted the request before the exception was observed.
+
+An old `pending` record is reconciled only through an explicit handler query; if no reconciliation result exists, Braid leaves it pending rather than guessing.
+
+`StorageJournal` rebuilds the application state from the encrypted SQLite journal on startup and queues application events through the asynchronous `StoragePort`.
+
+`SqliteStorage` enables WAL, foreign keys, full synchronous commits, bounded serialized writes, resumable first-time initialization, schema migrations, transactionally consistent encrypted backups, projection checksums, integrity checks, retention, redaction rewrite, and content-key destruction.
+
+Backup and restore operations take an exclusive filesystem lock, enforce an approved workspace root, open source files through no-follow descriptors, reject hard-linked inputs, sync files and directories, and publish backups without clobbering an existing destination.
+
+Restore writes a durable manifest before moving the live database and replays that manifest during startup so every forced-kill point either keeps the old database or finishes with a verified candidate.
+
+The exact `better-sqlite3-multiple-ciphers@13.0.3` binding is required and must expose SQLCipher key and rekey operations; a plain SQLite binding is rejected.
+
+Each conversation has a random content key stored only through `CredentialPort`, separate from the encrypted database key.
+
+The production credential implementation calls the operating-system stores through `@napi-rs/keyring@1.3.0`; it does not place secret bytes in a child process, command argument, or environment variable.
+
+`MemoryJournal` and `MemoryStorage` implement the same ports only for deterministic tests and are not selected by non-fixture composition.
+
+An unavailable content key is surfaced as an unreadable retained ciphertext state and prevents silent journal reconstruction.
+
 ## Application ports
 
 The following interfaces describe Braid boundaries, not new provider protocols.
@@ -210,6 +246,25 @@ interface CredentialPort {
   remove(ref: CredentialRef): Promise<void>
 }
 ```
+
+The W5 implementation uses the following narrow application ports.
+
+```ts
+interface JournalPort {
+  envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope
+  append(envelope: BraidEventEnvelope): void
+  all(): readonly BraidEventEnvelope[]
+}
+
+interface EffectStoragePort {
+  current(operationId: string): EffectRecord | undefined
+  latest(operationId: string, requestDigest: string): EffectRecord | undefined
+  appendEffect(record: EffectRecord): void
+  history(operationId: string): readonly EffectRecord[]
+}
+```
+
+The production SQLite implementation makes `appendEffect` durable before it returns and records the canonical request digest with every effect status.
 
 The execution adapter must be thin enough that contract tests can run directly against both CLI Bridge and Tangle providers.
 
@@ -329,6 +384,8 @@ The journal stores event identifier, schema version, event kind, Braid entity id
 
 A unique `(run_id, event_id)` constraint prevents duplicate runtime events, while the original provider event identifier remains separately available when one exists.
 
+The local event identifier is scoped to its run, while `providerEventId` records the provider's separate session-scoped identity and is never used as Braid's global event key.
+
 A unique operation identifier prevents duplicate user side effects.
 
 Events are logically immutable during normal operation.
@@ -349,6 +406,8 @@ Every projection can be discarded and rebuilt from the journal at the current sc
 
 Projection checksums are compared in tests after incremental reduction and full replay.
 
+SQLite stores compact projection metadata and advances event and run digests incrementally instead of rewriting all event identifiers for every append.
+
 ### SQLite operation
 
 SQLite uses write-ahead logging, foreign-key enforcement, a bounded busy timeout, one serialized writer, and concurrent read connections.
@@ -358,6 +417,9 @@ Each schema migration runs inside a transaction when SQLite permits it and creat
 Startup performs a quick integrity check and release verification exercises full integrity after forced termination.
 
 The database driver is isolated behind `StoragePort` and cannot leak driver objects into controllers.
+
+W5 provides that driver as `SqliteStorage`, and non-fixture composition opens it before the application can accept work.
+Deterministic tests use `MemoryJournal` behind the same interfaces; production composition never selects that adapter.
 
 ### Provider authority
 

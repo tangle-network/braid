@@ -1,8 +1,9 @@
-node_modules/
+node_modules
 dist/
 .test-dist/
 coverage/
 .tmp/
+.braid/
 *.log
 *.tgz
 .env
@@ -10,6 +11,7 @@ coverage/
 !.env.example
 artifacts/verification/**/raw/
 artifacts/verification/**/*.cast
+artifacts/verification/**/*.ansi
 artifacts/verification/**/*.gif
 !artifacts/verification/w0/*.gif
 artifacts/verification/**/*.mp4

@@ -1,0 +1,24 @@
+braid  cwd  braid-production  ·  session  New conversation
+
+ Write a message, or press Ctrl+P for commands.
+
+
+
+
+    /ask · frozen question
+    source: aaaaaaaaaaaaaaa…aaaaaaaa · frozen
+    analyst: profile-trace-analyst · completed
+    • [citation-repeat-read] The same file was read twice without an int...
+    ↳ [citation-repeat-read] read src/app/application.ts
+    • [citation-missing-proof] The answer claimed success before the ter...
+    ↳ [citation-missing-proof] test started; no terminal result was reco...
+    source complete: yes · findings: 2
+    analysis cost: $0.0048 · analysis time: 1240ms
+    esc close
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+ready for a message                        fixture/deterministic · thinking none
+Braid starter · runner pi · deterministic fixture                Ctrl+P commands

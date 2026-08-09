@@ -22,7 +22,9 @@ The journal is authoritative for Braid's product graph and user decisions.
 
 The provider remains authoritative for the live process, native session, cloud environment, and provider-specific replay cursor.
 
-Every ingested provider event uses a unique `(run_id, event_id)` key.
+Every ingested local event uses a unique `(run_id, event_id)` key.
+
+Provider event identity is stored separately because a provider's event identifier has provider-session scope and must not become Braid's global identity.
 
 Every user operation uses a stable operation identifier bound to a canonical request digest so retry after a crash cannot submit a turn, response, cancel, or fork twice and changed input cannot reuse the identity.
 
@@ -34,7 +36,9 @@ Conversation payloads are encrypted inside the encrypted database with a separat
 
 Deleting a conversation destroys its content key and leaves only non-sensitive tombstones.
 
-Redacting one event is an explicit maintenance operation that rewrites the remaining conversation payloads under a new content key, verifies full replay, atomically installs the result, and destroys the old key.
+Redacting one event is an explicit maintenance operation that rewrites the remaining conversation payloads under a new content key, records a verified rotation phase, verifies full replay, atomically installs the result, and destroys the old key only after verification.
+
+Restoring a backup is an explicit manifest-driven operation protected by an exclusive lock and directory synchronization, so startup can recover a forced death between any filesystem transition.
 
 Normal application operation never mutates a committed event; deletion and redaction maintenance are the only physical rewrites.
 
@@ -48,7 +52,9 @@ Schema migrations and event upcasters become release responsibilities.
 
 The SQLite implementation must use write-ahead logging, foreign keys, bounded transactions, backups before destructive migrations, and integrity checks after abnormal termination.
 
-The initial implementation will use a current maintained SQLite binding with proven SQLCipher-compatible encryption after install smoke tests on every release platform, behind a storage port so the driver is replaceable.
+The W5 implementation uses the maintained `better-sqlite3-multiple-ciphers@13.0.3` binding behind `StoragePort` and verifies key activation, encrypted database artifacts, WAL, backups, and wrong-key rejection in the production-adapter test suite.
+
+The deterministic `MemoryJournal` is test-only behavior behind the same application ports; non-fixture composition fails closed unless a durable encrypted adapter is available.
 
 ## Rejected alternatives
 

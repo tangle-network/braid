@@ -1,0 +1,91 @@
+import {
+  type Component,
+  type DefaultTextStyle,
+  Markdown,
+  type MarkdownOptions,
+  type MarkdownTheme,
+} from '@earendil-works/pi-tui'
+import { redactSensitiveUrls, sanitizeUrl } from '../shared/sanitize.js'
+
+// biome-ignore lint/complexity/useRegexLiterals: a literal OSC parser is rejected as containing controls
+const OSC_8 = new RegExp(
+  String.raw`\u001b\]8;[^;\u0007\u001b]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)`,
+  'gu',
+)
+
+export interface SafeMarkdownOptions {
+  readonly allowHyperlinks?: boolean
+}
+
+function safeTheme(theme: MarkdownTheme): MarkdownTheme {
+  return {
+    ...theme,
+    linkUrl: (text) => {
+      const match = /^\s*\((.*)\)\s*$/su.exec(text)
+      const safe = match?.[1] ? sanitizeUrl(match[1]) : undefined
+      return safe ? theme.linkUrl(` (${safe})`) : theme.linkUrl(' ([link removed])')
+    },
+  }
+}
+
+export function sanitizeRenderedMarkdown(input: string): string {
+  const links = input.replace(OSC_8, (sequence, href: string) => {
+    if (!href) return sequence
+    const safe = sanitizeUrl(href)
+    return safe ? `\u001b]8;;${safe}\u001b\\` : ''
+  })
+  return redactSensitiveUrls(links)
+}
+
+function stripHyperlinks(input: string): string {
+  let activeHref: string | undefined
+  return input.replace(OSC_8, (_sequence, href: string) => {
+    if (href) {
+      activeHref = sanitizeUrl(href)
+      return ''
+    }
+    const suffix = activeHref === undefined ? '' : ` (${activeHref})`
+    activeHref = undefined
+    return suffix
+  })
+}
+
+export class SafeMarkdown implements Component {
+  readonly #markdown: Markdown
+  readonly #allowHyperlinks: boolean
+
+  constructor(
+    text: string,
+    paddingX: number,
+    paddingY: number,
+    theme: MarkdownTheme,
+    defaultTextStyle?: DefaultTextStyle,
+    options?: MarkdownOptions,
+    safeOptions: SafeMarkdownOptions = {},
+  ) {
+    this.#allowHyperlinks = safeOptions.allowHyperlinks ?? true
+    this.#markdown = new Markdown(
+      text,
+      paddingX,
+      paddingY,
+      safeTheme(theme),
+      defaultTextStyle,
+      options,
+    )
+  }
+
+  setText(text: string): void {
+    this.#markdown.setText(text)
+  }
+
+  invalidate(): void {
+    this.#markdown.invalidate()
+  }
+
+  render(width: number): string[] {
+    return this.#markdown.render(width).map((line) => {
+      const sanitized = sanitizeRenderedMarkdown(line)
+      return this.#allowHyperlinks ? sanitized : stripHyperlinks(sanitized)
+    })
+  }
+}

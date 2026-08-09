@@ -1,0 +1,68 @@
+import {
+  type HarnessType,
+  harnessSupportsModel,
+  harnessTypeSchema,
+} from '@tangle-network/agent-interface'
+
+/** Returns the runner encoded by a CLI Bridge `<runner>/<model>` route. */
+export function bridgeRouteRunner(model: string): HarnessType | undefined {
+  const separator = model.indexOf('/')
+  if (separator <= 0) return undefined
+  const parsed = harnessTypeSchema.safeParse(model.slice(0, separator))
+  return parsed.success ? parsed.data : undefined
+}
+
+/** Validates a portable model id against a runner. */
+export function bridgeRunnerSupportsModel(runner: HarnessType, model: string): boolean {
+  return harnessSupportsModel(runner, portableBridgeModel(runner, model))
+}
+
+/** Combine split AgentProfile provider/model hints without adding a Bridge runner prefix. */
+export function qualifyBridgeProfileModel(model: string, provider?: string): string {
+  return provider === undefined || model.includes('/') ? model : `${provider}/${model}`
+}
+
+/** Accept a pre-portability Bridge route without preserving its transport-only runner prefix. */
+export function portableBridgeModel(runner: HarnessType, model: string, provider?: string): string {
+  const qualified = qualifyBridgeProfileModel(model, provider)
+  return bridgeRouteRunner(qualified) === runner ? qualified.slice(runner.length + 1) : qualified
+}
+
+/** Materialize the same `<runner>/<provider>/<model>` route used by the CLI Bridge provider. */
+export function materializeBridgeModelRoute(
+  runner: HarnessType,
+  model: string,
+  provider?: string,
+): string {
+  return `${runner}/${portableBridgeModel(runner, model, provider)}`
+}
+
+export interface BridgeCatalogTarget {
+  readonly route: string
+  readonly runner: HarnessType
+  readonly model: string
+}
+
+/** Split a Bridge catalog route into transport identity and portable profile fields. */
+export function bridgeCatalogTarget(
+  route: string,
+  backend: string | undefined,
+): BridgeCatalogTarget | undefined {
+  const runner = bridgeCatalogRunner(route, backend)
+  if (runner === undefined) return undefined
+  const model = route.slice(runner.length + 1)
+  if (model.length === 0) return undefined
+  return { route, runner, model }
+}
+
+/** Accepts a catalog entry only when its backend agrees with its encoded route. */
+export function bridgeCatalogRunner(
+  model: string,
+  backend: string | undefined,
+): HarnessType | undefined {
+  const routedRunner = bridgeRouteRunner(model)
+  if (backend === undefined) return routedRunner
+  const parsed = harnessTypeSchema.safeParse(backend)
+  if (!parsed.success || routedRunner !== parsed.data) return undefined
+  return parsed.data
+}

@@ -1,19 +1,45 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { MemoryJournal } from '../src/app/journal.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
+import { FixedClock } from '../src/ports/clock.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
+import { queryActivity } from '../src/views/shared/semantic-activity.js'
+import { queryDetails } from '../src/views/shared/semantic-details.js'
+import { queryGraph } from '../src/views/shared/semantic-graph.js'
+import { compareSemanticText } from '../src/views/shared/semantic-graph-filters.js'
+import { SemanticQueryError } from '../src/views/shared/semantic-query-scope.js'
+import type {
+  ActivityQueryResult,
+  DetailsQueryResult,
+  GraphQueryResult,
+} from '../src/views/shared/semantic-query-types.js'
 
 async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
   yield `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`
 }
 
+function controllerFor(app: ReturnType<typeof createBraidApplication>) {
+  return createApplicationUiController(app)
+}
+
+function resultFor<T>(responses: readonly BraidResponse[], requestId: string): T {
+  const response = responses.find(
+    (candidate) => candidate.type === 'ack' && candidate.requestId === requestId,
+  )
+  assert(response && response.type === 'ack', `missing acknowledgement for ${requestId}`)
+  assert.notEqual(response.result, undefined, `missing result for ${requestId}`)
+  return response.result as T
+}
+
 test('JSONL send acknowledges before events and returns final semantic state', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
-  const code = await runRpc(
-    app,
-    requestInput([
+  async function* input(): AsyncGenerator<string> {
+    yield `${[
       {
         version: 1,
         requestId: 'req-init',
@@ -31,15 +57,23 @@ test('JSONL send acknowledges before events and returns final semantic state', a
           text: 'hello Braid',
         },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
-    ]),
-    {
-      write: (chunk) => {
-        output += chunk
-        return true
-      },
+    ]
+      .map((request) => JSON.stringify(request))
+      .join('\n')}\n`
+    await app.waitForIdle()
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'req-stop',
+      operationId: 'op-stop-1',
+      command: 'shutdown',
+    })}\n`
+  }
+  const code = await runRpc(controllerFor(app), input(), {
+    write: (chunk) => {
+      output += chunk
+      return true
     },
-  )
+  })
   const responses = output
     .trim()
     .split('\n')
@@ -59,15 +93,370 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   assert.ok(firstRunEvent > sendAck)
   assert.equal(finalState?.type, 'state')
   if (finalState?.type !== 'state') assert.fail('missing final state')
+  assert.equal(finalState.projection, 'full')
+  if (finalState.projection !== 'full') assert.fail('expected full state')
   assert.equal(finalState.state.messages[1]?.text, 'Fixture response through pi: hello Braid')
   assert.equal(finalState.state.runs[0]?.status, 'completed')
+})
+
+test('JSONL drives the complete canonical conversation lifecycle', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const responses: BraidResponse[] = []
+  async function* input(): AsyncGenerator<string> {
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-init',
+      command: 'initialize',
+      params: { workspace: '/workspace' },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-create',
+      operationId: 'op-rpc-conversation-create',
+      command: 'new_conversation',
+      params: { title: 'RPC conversation' },
+    })}\n`
+    const created = resultFor<{ id: string; activeBranchId: string }>(
+      responses,
+      'conversation-create',
+    )
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-draft',
+      operationId: 'op-rpc-conversation-draft',
+      command: 'set_draft',
+      params: {
+        conversationId: created.id,
+        branchId: created.activeBranchId,
+        text: 'durable JSONL draft',
+      },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-draft-replay',
+      operationId: 'op-rpc-conversation-draft',
+      command: 'set_draft',
+      params: {
+        conversationId: created.id,
+        branchId: created.activeBranchId,
+        text: 'durable JSONL draft',
+      },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-rename',
+      operationId: 'op-rpc-conversation-rename',
+      command: 'rename_conversation',
+      params: { conversationId: created.id, title: 'Renamed over JSONL' },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-archive',
+      operationId: 'op-rpc-conversation-archive',
+      command: 'archive_conversation',
+      params: { conversationId: created.id, archived: true },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-list',
+      command: 'list_conversations',
+      params: { query: 'renamed', status: 'archived' },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-restore',
+      operationId: 'op-rpc-conversation-restore',
+      command: 'archive_conversation',
+      params: { conversationId: created.id, archived: false },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-send',
+      operationId: 'op-rpc-conversation-send',
+      command: 'send',
+      params: {
+        conversationId: created.id,
+        branchId: created.activeBranchId,
+        text: 'message boundary',
+      },
+    })}\n`
+    await app.waitForIdle()
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-state',
+      command: 'get_state',
+    })}\n`
+    const state = responses.find(
+      (response) => response.type === 'state' && response.requestId === 'conversation-state',
+    )
+    assert(state && state.type === 'state' && state.projection === 'full')
+    const messageId = state.state.messages[0]?.id
+    assert(messageId)
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-branch',
+      operationId: 'op-rpc-conversation-branch',
+      command: 'branch',
+      params: {
+        conversationId: created.id,
+        branchId: created.activeBranchId,
+        messageId,
+      },
+    })}\n`
+    const branch = resultFor<{ id: string }>(responses, 'conversation-branch')
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-clone',
+      operationId: 'op-rpc-conversation-clone',
+      command: 'clone',
+      params: { conversationId: created.id, branchId: branch.id, title: 'RPC clone' },
+    })}\n`
+    const clone = resultFor<{ id: string }>(responses, 'conversation-clone')
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-delete-clone',
+      operationId: 'op-rpc-conversation-delete-clone',
+      command: 'delete_conversation',
+      params: { conversationId: clone.id },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-open',
+      operationId: 'op-rpc-conversation-open',
+      command: 'open_conversation',
+      params: { conversationId: created.id, branchId: created.activeBranchId },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-plan',
+      operationId: 'op-rpc-conversation-fork',
+      command: 'plan_fork',
+      params: {
+        conversationId: created.id,
+        branchId: created.activeBranchId,
+        messageId,
+        workspace: false,
+      },
+    })}\n`
+    const plan = resultFor<{ digest: string; destinationBranchId: string }>(
+      responses,
+      'conversation-plan',
+    )
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-execute',
+      operationId: 'op-rpc-conversation-fork',
+      command: 'execute_fork',
+      params: {
+        planDigest: plan.digest,
+        conversationId: created.id,
+        branchId: created.activeBranchId,
+        messageId,
+        workspace: false,
+      },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-export',
+      operationId: 'op-rpc-conversation-export',
+      command: 'export',
+      params: { target: created.id, format: 'markdown' },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-export-json',
+      operationId: 'op-rpc-conversation-export-json',
+      command: 'export',
+      params: { target: created.id, format: 'json' },
+    })}\n`
+    const canonicalExport = resultFor<{ readonly content?: string }>(
+      responses,
+      'conversation-export-json',
+    )
+    assert(canonicalExport.content)
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-import',
+      operationId: 'op-rpc-conversation-import',
+      command: 'import_conversation',
+      params: { content: canonicalExport.content, title: 'Imported over JSONL' },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-delete',
+      operationId: 'op-rpc-conversation-delete',
+      command: 'delete_conversation',
+      params: { conversationId: created.id },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'conversation-stop',
+      operationId: 'op-rpc-conversation-stop',
+      command: 'shutdown',
+    })}\n`
+  }
+
+  const code = await runRpc(controllerFor(app), input(), {
+    write: (chunk) => {
+      responses.push(JSON.parse(chunk) as BraidResponse)
+      return true
+    },
+  })
+  const list = resultFor<readonly { readonly id: string }[]>(responses, 'conversation-list')
+  const created = resultFor<{ readonly id: string }>(responses, 'conversation-create')
+  const draft = resultFor<{ readonly text: string }>(responses, 'conversation-draft')
+  const replayedDraft = resultFor<{ readonly text: string }>(responses, 'conversation-draft-replay')
+  const plan = resultFor<{ readonly destinationBranchId: string }>(responses, 'conversation-plan')
+  const fork = resultFor<{ readonly id: string }>(responses, 'conversation-execute')
+  const exported = resultFor<{ readonly content?: string; readonly format: string }>(
+    responses,
+    'conversation-export',
+  )
+  const imported = resultFor<{ readonly conversationId: string; readonly replayed: boolean }>(
+    responses,
+    'conversation-import',
+  )
+  const deleted = resultFor<{ readonly deletedAt?: string }>(responses, 'conversation-delete')
+
+  assert.equal(code, 0)
+  assert.equal(list.length, 1)
+  assert.equal(draft.text, 'durable JSONL draft')
+  assert.deepEqual(replayedDraft, draft)
+  assert.equal(fork.id, plan.destinationBranchId)
+  assert.equal(exported.format, 'markdown')
+  assert.match(exported.content ?? '', /Renamed over JSONL/u)
+  assert.equal(imported.replayed, false)
+  assert.notEqual(imported.conversationId, created.id)
+  assert.equal(typeof deleted.deletedAt, 'string')
+  assert.equal(
+    responses.some((response) => response.type === 'error'),
+    false,
+  )
+})
+
+test('JSONL accepts a valid inline conversation import larger than one MiB', async () => {
+  const source = createBraidApplication({ fixture: 'deterministic' })
+  source.initialize('/workspace')
+  await source.whenDurable()
+  const exported = await source.conversations.exports.export({
+    operationId: 'op-rpc-large-import-export',
+    format: 'json',
+  })
+  assert(exported.content)
+  const document = JSON.parse(exported.content) as {
+    content: { conversation: { title: string }; [key: string]: unknown }
+    contentDigest: string
+    [key: string]: unknown
+  }
+  document.content.conversation.title = 'x'.repeat(1_100_000)
+  document.contentDigest = canonicalDigest(document.content)
+  const request = {
+    version: 1,
+    requestId: 'req-large-import',
+    operationId: 'op-rpc-large-import',
+    command: 'import_conversation',
+    params: { content: JSON.stringify(document) },
+  }
+  assert.ok(Buffer.byteLength(JSON.stringify(request), 'utf8') > 1024 * 1024)
+
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const responses: BraidResponse[] = []
+  const code = await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-large-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      request,
+      {
+        version: 1,
+        requestId: 'req-large-stop',
+        operationId: 'op-rpc-large-stop',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        responses.push(JSON.parse(chunk) as BraidResponse)
+        return true
+      },
+    },
+  )
+  const imported = resultFor<{ readonly conversationId: string }>(responses, 'req-large-import')
+
+  assert.equal(code, 0)
+  assert.equal(
+    app.state().conversations.some((conversation) => conversation.id === imported.conversationId),
+    true,
+  )
+})
+
+test('JSONL cancel interrupts an active send and reports the terminal state', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
+  let output = ''
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-init',
+        command: 'initialize',
+        params: { workspace: '/workspace', subscribe: true },
+      },
+      {
+        version: 1,
+        requestId: 'req-send',
+        operationId: 'op-cancel-send',
+        command: 'send',
+        params: { text: 'cancel this active turn' },
+      },
+      {
+        version: 1,
+        requestId: 'req-cancel',
+        operationId: 'op-cancel-active',
+        command: 'cancel_run',
+        params: { runId: 'run-000001', reason: 'test cancellation' },
+      },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-cancel',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const responses = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+  assert.ok(
+    responses.some(
+      (response) => response.type === 'event' && response.event.kind === 'run.cancel.requested',
+    ),
+  )
+  const cancelState = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'req-cancel',
+  )
+  assert.equal(cancelState?.type, 'state')
+  if (cancelState?.type !== 'state') assert.fail('missing cancellation state')
+  if (cancelState.projection !== 'full') assert.fail('expected full cancellation state')
+  assert.equal(cancelState.state.runs[0]?.status, 'aborted')
 })
 
 test('JSONL requires initialize and stable operation identity', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -94,7 +483,7 @@ test('JSONL replays identical request IDs and rejects changed bodies', async () 
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -104,8 +493,18 @@ test('JSONL replays identical request IDs and rejects changed bodies', async () 
       },
       { version: 1, requestId: 'req-state', command: 'get_state' },
       { version: 1, requestId: 'req-state', command: 'get_state' },
-      { version: 1, requestId: 'req-state', command: 'shutdown' },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-state',
+        operationId: 'op-state-shutdown',
+        command: 'shutdown',
+      },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-2',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -132,11 +531,77 @@ test('JSONL replays identical request IDs and rejects changed bodies', async () 
   assert.equal(conflict.code, 'REQUEST_ID_CONFLICT')
 })
 
+test('JSONL summary projection omits full transcript and profile data', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  let output = ''
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-summary',
+        command: 'get_state',
+        params: { projection: 'summary' },
+      },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-3',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const summary = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+    .find((response) => response.type === 'state' && response.requestId === 'req-summary')
+  assert.equal(summary?.type, 'state')
+  if (summary?.type !== 'state') assert.fail('missing summary state')
+  assert.equal(summary.projection, 'summary')
+  if (summary.projection !== 'summary') assert.fail('wrong state projection')
+  assert.equal(summary.state.messageCount, 0)
+  assert.equal('messages' in summary.state, false)
+  assert.equal('profile' in summary.state, false)
+  assert.equal('view' in summary, false)
+})
+
+test('headless state redacts generic secret keys, secret contexts, and credential URLs', () => {
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    profile: {
+      ...DETERMINISTIC_PROFILE,
+      metadata: {
+        secret: 'CANARY-SECRET',
+        secretAnswer: 'CANARY-ANSWER',
+        token: 'CANARY-TOKEN',
+        callback: 'https://user:CANARY@example.com/?token=CANARY',
+        challenge: { secret: true, answer: 'CANARY-CONTEXT' },
+      },
+    },
+  })
+  const serialized = JSON.stringify(controllerFor(app).state())
+  assert.equal(serialized.includes('CANARY'), false)
+  assert.match(serialized, /\[redacted\]/u)
+})
+
 test('JSONL rejects wrong optional types and unknown fields', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -163,7 +628,12 @@ test('JSONL rejects wrong optional types and unknown fields', async () => {
         command: 'get_state',
         params: { extra: true },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-4',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -189,7 +659,7 @@ test('JSONL operation replay returns current state after later sends', async () 
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -218,7 +688,12 @@ test('JSONL operation replay returns current state after later sends', async () 
         command: 'send',
         params: { text: 'first' },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-5',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -232,11 +707,22 @@ test('JSONL operation replay returns current state after later sends', async () 
     .split('\n')
     .map((line) => JSON.parse(line) as BraidResponse)
     .find((response) => response.type === 'state' && response.requestId === 'req-a-replay')
+  const stateAfterSecondSend = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+    .find((response) => response.type === 'state' && response.requestId === 'req-b')
 
   assert.equal(replayState?.type, 'state')
   if (replayState?.type !== 'state') assert.fail('missing replay state')
+  assert.equal(replayState.projection, 'full')
+  if (replayState.projection !== 'full') assert.fail('expected full replay state')
+  assert.equal(stateAfterSecondSend?.type, 'state')
+  if (stateAfterSecondSend?.type !== 'state') assert.fail('missing second send state')
   assert.equal(replayState.state.messages.length, 4)
-  assert.equal(replayState.state.revision, app.state().revision)
+  assert.equal(replayState.state.revision, stateAfterSecondSend.state.revision)
+  assert.equal(app.state().revision, replayState.state.revision + 1)
+  assert.equal(app.events().at(-1)?.event.kind, 'application.shutdown.requested')
 })
 
 test('JSONL bounds direct-response replay while operation replay stays safe', async () => {
@@ -248,7 +734,7 @@ test('JSONL bounds direct-response replay while operation replay stays safe', as
     command: 'get_state',
   }))
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -278,7 +764,12 @@ test('JSONL bounds direct-response replay while operation replay stays safe', as
         command: 'send',
         params: { text: 'execute once' },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-6',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -326,10 +817,10 @@ test('JSONL evicts oldest responses when the replay payload budget is full', asy
     await app.send({ operationId: 'op-after-cache', text: 'advance state' }).completion
     yield `${JSON.stringify({ version: 1, requestId: 'req-c', command: 'get_state' })}\n`
     yield `${JSON.stringify({ version: 1, requestId: 'req-a', command: 'get_state' })}\n`
-    yield `${JSON.stringify({ version: 1, requestId: 'req-stop', command: 'shutdown' })}\n`
+    yield `${JSON.stringify({ version: 1, requestId: 'req-stop', operationId: 'op-stop-7', command: 'shutdown' })}\n`
   }
 
-  await runRpc(app, input(), {
+  await runRpc(controllerFor(app), input(), {
     write: (chunk) => {
       const response = JSON.parse(chunk) as BraidResponse
       if (
@@ -364,7 +855,7 @@ test('JSONL rejects replay when one direct response exceeds the payload budget',
     readonly bytes: number
   }> = []
   await runRpc(
-    app,
+    controllerFor(app),
     requestInput([
       {
         version: 1,
@@ -384,7 +875,12 @@ test('JSONL rejects replay when one direct response exceeds the payload budget',
         command: 'initialize',
         params: { workspace: '/other' },
       },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-stop-8',
+        command: 'shutdown',
+      },
     ]),
     {
       write: (chunk) => {
@@ -408,4 +904,197 @@ test('JSONL rejects replay when one direct response exceeds the payload budget',
     errors.map((error) => error.code),
     ['REQUEST_REPLAY_UNAVAILABLE', 'REQUEST_ID_CONFLICT'],
   )
+})
+
+test('JSONL semantic queries return canonical graph, activity, and details results', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const sent = app.send({ operationId: 'op-semantic-query', text: 'query me' })
+  await sent.completion
+  const state = app.state()
+  const responses: BraidResponse[] = []
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'semantic-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'semantic-graph',
+        command: 'get_graph',
+        params: { conversationId: state.conversationId, branchId: state.branchId },
+      },
+      {
+        version: 1,
+        requestId: 'semantic-activity',
+        command: 'get_activity',
+        params: { runId: sent.runId },
+      },
+      {
+        version: 1,
+        requestId: 'semantic-details',
+        command: 'get_details',
+        params: { entityType: 'run', entityId: sent.runId },
+      },
+      {
+        version: 1,
+        requestId: 'semantic-unknown',
+        command: 'get_details',
+        params: { entityType: 'run', entityId: 'run-does-not-exist' },
+      },
+      {
+        version: 1,
+        requestId: 'semantic-stop',
+        operationId: 'op-semantic-stop',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        responses.push(JSON.parse(chunk) as BraidResponse)
+        return true
+      },
+    },
+  )
+
+  const graph = resultFor<GraphQueryResult>(responses, 'semantic-graph')
+  const activity = resultFor<ActivityQueryResult>(responses, 'semantic-activity')
+  const details = resultFor<DetailsQueryResult>(responses, 'semantic-details')
+  assert.equal(graph.conversationId, state.conversationId)
+  assert.equal(graph.branchId, state.branchId)
+  assert.ok(graph.nodes.some((node) => node.type === 'conversation'))
+  assert.ok(graph.nodes.some((node) => node.type === 'turn'))
+  assert.ok(graph.nodes.some((node) => node.type === 'run' && node.id === sent.runId))
+  assert.ok(graph.edges.some((edge) => edge.kind === 'continued'))
+  assert.ok(graph.edges.some((edge) => edge.kind === 'attached'))
+  assert.equal(activity.runId, sent.runId)
+  assert.equal(activity.activity[0]?.runId, sent.runId)
+  assert.equal(details.entityType, 'run')
+  assert.equal(details.entityId, sent.runId)
+  assert.ok(details.fields.some((field) => field.label === 'status'))
+  assert.equal(
+    responses.filter(
+      (response) =>
+        response.type === 'state' &&
+        ['semantic-graph', 'semantic-activity', 'semantic-details', 'semantic-unknown'].includes(
+          response.requestId,
+        ),
+    ).length,
+    0,
+  )
+  const unknown = responses.find(
+    (response) => response.type === 'error' && response.requestId === 'semantic-unknown',
+  )
+  assert.equal(unknown?.type, 'error')
+  if (unknown?.type === 'error') assert.equal(unknown.code, 'UNKNOWN_ENTITY')
+})
+
+test('semantic queries enforce scope, redact details, preserve ordering, and survive replay', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const firstConversation = app.state().conversations[0]
+  assert.ok(firstConversation)
+  const sent = app.send({
+    operationId: 'op-semantic-scoped-send',
+    conversationId: firstConversation.id,
+    branchId: firstConversation.activeBranchId,
+    text: 'scoped turn',
+  })
+  await sent.completion
+  const secondConversation = await app.conversations.lifecycle.create({
+    operationId: 'op-semantic-second-conversation',
+    title: 'Second conversation',
+  })
+  const state = app.state()
+  const scopedGraph = queryGraph(state, { branchId: firstConversation.activeBranchId })
+  assert.ok(scopedGraph.nodes.length > 0)
+  assert.equal(
+    scopedGraph.nodes.some((node) => node.id === secondConversation.id),
+    false,
+  )
+  assert.throws(
+    () => queryGraph(state, { conversationId: 'conversation-does-not-exist' }),
+    (error: unknown) =>
+      error instanceof SemanticQueryError && error.code === 'UNKNOWN_CONVERSATION',
+  )
+  assert.throws(
+    () =>
+      queryGraph(state, {
+        conversationId: firstConversation.id,
+        branchId: secondConversation.activeBranchId,
+      }),
+    (error: unknown) =>
+      error instanceof SemanticQueryError && error.code === 'BRANCH_SCOPE_CONFLICT',
+  )
+  assert.throws(
+    () => queryActivity(state, { runId: 'run-does-not-exist' }),
+    (error: unknown) => error instanceof SemanticQueryError && error.code === 'UNKNOWN_RUN',
+  )
+  assert.throws(
+    () => queryDetails(state, { entityType: 'not-a-node', entityId: 'entity-1' }),
+    (error: unknown) => error instanceof SemanticQueryError && error.code === 'UNKNOWN_ENTITY_TYPE',
+  )
+  assert.throws(
+    () => queryDetails(state, { entityType: 'run', entityId: 'run-does-not-exist' }),
+    (error: unknown) => error instanceof SemanticQueryError && error.code === 'UNKNOWN_ENTITY',
+  )
+
+  assert.deepEqual(scopedGraph, queryGraph(state, { branchId: firstConversation.activeBranchId }))
+  const runOnly = queryGraph(state, { query: 'type:run' })
+  for (const runNode of runOnly.nodes) {
+    const unfiltered = queryGraph(state).nodes.find(
+      (node) => node.type === runNode.type && node.id === runNode.id,
+    )
+    assert.equal(runNode.depth, unfiltered?.depth)
+  }
+  const reorderedState = {
+    ...state,
+    conversations: [...state.conversations].reverse(),
+    branches: [...state.branches].reverse(),
+    turns: [...state.turns].reverse(),
+    runs: [...state.runs].reverse(),
+    interactions: [...state.interactions].reverse(),
+    analyses: [...state.analyses].reverse(),
+    environments: [...state.environments].reverse(),
+    checkpoints: [...state.checkpoints].reverse(),
+    supervisors: [...state.supervisors].reverse(),
+    workers: [...state.workers].reverse(),
+    bindings: [...state.bindings].reverse(),
+    graphNodes: [...state.graphNodes].reverse(),
+    graphEdges: [...state.graphEdges].reverse(),
+  }
+  assert.deepEqual(queryGraph(state), queryGraph(reorderedState))
+  assert.deepEqual(queryActivity(state), queryActivity(reorderedState))
+  const secretState = {
+    ...state,
+    runs: state.runs.map((run) =>
+      run.id === sent.runId ? { ...run, error: 'api_key=super-secret-value' } : run,
+    ),
+  }
+  const details = queryDetails(secretState, { entityType: 'run', entityId: sent.runId })
+  assert.equal(JSON.stringify(details).includes('super-secret-value'), false)
+  assert.equal(JSON.stringify(details).includes('api_key'), false)
+
+  const journal = new MemoryJournal(new FixedClock())
+  const first = createBraidApplication({ fixture: 'deterministic', journal })
+  first.initialize('/workspace')
+  const restartRun = first.send({ operationId: 'op-semantic-restart', text: 'restart query' })
+  await restartRun.completion
+  const restarted = createBraidApplication({ fixture: 'deterministic', journal })
+  assert.deepEqual(queryGraph(first.state()), queryGraph(restarted.state()))
+  assert.deepEqual(queryActivity(first.state()), queryActivity(restarted.state()))
+  assert.deepEqual(
+    queryDetails(first.state(), { entityType: 'run', entityId: restartRun.runId }),
+    queryDetails(restarted.state(), { entityType: 'run', entityId: restartRun.runId }),
+  )
+})
+
+test('semantic and protocol ordering is independent of the host locale', () => {
+  assert.equal(compareSemanticText('z', 'ä') < 0, true)
+  assert.equal(compareSemanticText('ä', 'z') > 0, true)
+  assert.equal(compareSemanticText('same', 'same'), 0)
 })

@@ -1,0 +1,72 @@
+{
+  "tarball": "tangle-network-braid-0.1.0.tgz",
+  "sha256": "f29a27f5c2ca53dc1b5c7739ab2b683c10b32fbb93f324c60a02f13c9404f2f5",
+  "version": "0.1.0",
+  "gitCommit": "418cefbc04329e5e3c6f46ef15cdb8bd480331da",
+  "treeSha256": "662a54b4e0b7e8d33020fba8b5fe00f7a4ee3d77",
+  "sourceDigest": "b5b91a5bfc53343b73a701419968335bf6feb517bb81b62401631e2a63df4fb3",
+  "isolatedBuild": true,
+  "sourceCheckout": "isolated-copy-of-worktree",
+  "rpcRecords": 35,
+  "referenceSizes": [
+    {
+      "columns": 40,
+      "rows": 12,
+      "events": 34
+    },
+    {
+      "columns": 80,
+      "rows": 24,
+      "events": 34
+    },
+    {
+      "columns": 120,
+      "rows": 40,
+      "events": 34
+    },
+    {
+      "columns": 200,
+      "rows": 60,
+      "events": 34
+    }
+  ],
+  "alternateScreenRestored": true,
+  "sigintRestored": true,
+  "stateWriteSymlinkSafe": true,
+  "inlineStayedInMainScreen": true,
+  "keyboardMatchesRpc": true,
+  "eventLedgerMatchesRpc": true,
+  "flowParity": {
+    "rpc": [
+      "send",
+      "graph",
+      "unavailable",
+      "retry",
+      "cancel",
+      "shutdown"
+    ],
+    "terminal": [
+      "send",
+      "graph",
+      "unavailable",
+      "retry",
+      "cancel",
+      "shutdown"
+    ],
+    "plain": [
+      "send",
+      "graph",
+      "unavailable",
+      "retry",
+      "cancel",
+      "shutdown"
+    ],
+    "allFlowsMatch": true
+  },
+  "plainRecordState": true,
+  "accessibility": {
+    "highContrast": true,
+    "reducedMotion": true,
+    "terminalModesRestored": true
+  }
+}

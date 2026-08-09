@@ -15,6 +15,14 @@
     },
     {
       "license": "MIT",
+      "name": "@napi-rs/keyring-linux-x64-gnu"
+    },
+    {
+      "license": "MIT",
+      "name": "@napi-rs/keyring"
+    },
+    {
+      "license": "MIT",
       "name": "@noble/hashes"
     },
     {
@@ -39,7 +47,19 @@
     },
     {
       "license": "MIT",
+      "name": "@tangle-network/agent-provider-cli-bridge"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-provider-tangle"
+    },
+    {
+      "license": "MIT",
       "name": "@tangle-network/agent-runtime"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-trace-contract"
     },
     {
       "license": "MIT",
@@ -68,6 +88,10 @@
     {
       "license": "Apache-2.0",
       "name": "bare-url"
+    },
+    {
+      "license": "MIT",
+      "name": "better-sqlite3-multiple-ciphers"
     },
     {
       "license": "CC0-1.0",
@@ -143,6 +167,10 @@
     },
     {
       "license": "MIT",
+      "name": "node-addon-api"
+    },
+    {
+      "license": "MIT",
       "name": "openapi3-ts"
     },
     {
@@ -188,6 +216,10 @@
     {
       "license": "Apache-2.0",
       "name": "text-decoder"
+    },
+    {
+      "license": "MIT",
+      "name": "undici"
     },
     {
       "license": "ISC",

@@ -1,0 +1,594 @@
+{
+  "schemaVersion": 2,
+  "state": "failure-or-reconnect",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb"
+  },
+  "dimensions": {
+    "columns": 80,
+    "rows": 24
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.1",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 7,
+  "frame": "braid  cwd  braid-production  ·  session  New conversation\n W6 failure state\n\n error · unknown\n RUNTIME_BACKEND_ERROR\n failed\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\noutcome failed · operation op-terminal-000002              fixture/deterministic\nBraid starter · runner pi                       /export preserve · /new continue\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 7,
+      "sequence": 7,
+      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "profile": {
+        "name": "Braid starter",
+        "description": "A portable starter profile for the Braid terminal",
+        "harness": "pi",
+        "model": {
+          "default": "fixture/deterministic",
+          "reasoningEffort": "none"
+        }
+      },
+      "draft": "",
+      "messages": [
+        {
+          "id": "message-000003",
+          "role": "user",
+          "text": "W6 failure state",
+          "status": "complete",
+          "runId": "run-000001",
+          "parts": [
+            {
+              "id": "part-message-000003",
+              "kind": "text",
+              "text": "W6 failure state"
+            }
+          ]
+        },
+        {
+          "id": "message-000004",
+          "role": "assistant",
+          "text": "",
+          "status": "failed",
+          "runId": "run-000001",
+          "parts": [
+            {
+              "id": "run-000001:error:run-000001:runtime:1",
+              "kind": "error",
+              "text": "RUNTIME_BACKEND_ERROR",
+              "sourceEventId": "run-000001:runtime:1"
+            }
+          ]
+        }
+      ],
+      "runs": [
+        {
+          "id": "run-000001",
+          "turnId": "turn-000002",
+          "operationId": "op-terminal-000002",
+          "status": "failed",
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "error": "RUNTIME_FINAL_ERROR",
+          "completeness": "failed",
+          "contentBytes": 60
+        }
+      ],
+      "interactions": [],
+      "queue": [],
+      "activeRunId": null,
+      "lastError": "RUNTIME_FINAL_ERROR"
+    },
+    "view": {
+      "revision": 7,
+      "workspace": "/home/drew/code/.worktrees/braid-production",
+      "profileName": "Braid starter",
+      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "connection": "deterministic fixture",
+      "conversationId": "conv-1",
+      "conversationTitle": "New conversation",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "active": true,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "branch": "branch-1",
+      "status": "failed",
+      "statusText": "RUNTIME_FINAL_ERROR",
+      "queueCount": 0,
+      "queue": [],
+      "messages": [
+        {
+          "id": "message-000003",
+          "role": "user",
+          "text": "W6 failure state",
+          "status": "complete",
+          "runId": "run-000001",
+          "parts": [
+            {
+              "id": "part-message-000003",
+              "kind": "text",
+              "text": "W6 failure state"
+            }
+          ]
+        },
+        {
+          "id": "message-000004",
+          "role": "assistant",
+          "text": "",
+          "status": "failed",
+          "runId": "run-000001",
+          "parts": [
+            {
+              "id": "run-000001:error:run-000001:runtime:1",
+              "kind": "error",
+              "text": "RUNTIME_BACKEND_ERROR",
+              "sourceEventId": "run-000001:runtime:1"
+            }
+          ]
+        }
+      ],
+      "hiddenMessageCount": 0,
+      "runs": [
+        {
+          "id": "run-000001",
+          "turnId": "turn-000002",
+          "operationId": "op-terminal-000002",
+          "status": "failed",
+          "error": "RUNTIME_FINAL_ERROR",
+          "completeness": "failed",
+          "contentBytes": 60
+        }
+      ],
+      "interactions": [],
+      "activity": [
+        {
+          "id": "run:run-000001",
+          "kind": "run",
+          "title": "run run-000001",
+          "status": "failed",
+          "detail": "RUNTIME_FINAL_ERROR"
+        },
+        {
+          "id": "activity:run-000001:admission:local:admitted",
+          "kind": "system",
+          "title": "admitted",
+          "status": "failed",
+          "detail": "profile 02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660"
+        },
+        {
+          "id": "activity:run-000001:run.error:run-000001:runtime:1:error",
+          "kind": "system",
+          "title": "error",
+          "status": "failed",
+          "detail": "RUNTIME_BACKEND_ERROR"
+        }
+      ],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "New conversation",
+          "status": "complete",
+          "depth": 0,
+          "edgeLabel": "attached"
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "Main",
+          "status": "complete",
+          "depth": 1,
+          "edgeLabel": "attached"
+        },
+        {
+          "id": "turn-000002",
+          "type": "turn",
+          "title": "Turn",
+          "status": "failed",
+          "depth": 2,
+          "edgeLabel": "continued"
+        },
+        {
+          "id": "run-000001",
+          "type": "run",
+          "title": "Run",
+          "status": "failed",
+          "depth": 3,
+          "edgeLabel": "attached"
+        }
+      ],
+      "details": {
+        "title": "run run-000001",
+        "fields": [
+          {
+            "label": "status",
+            "value": "failed"
+          },
+          {
+            "label": "input tokens",
+            "value": "0"
+          },
+          {
+            "label": "output tokens",
+            "value": "0"
+          }
+        ]
+      },
+      "capabilities": {
+        "conversation.create": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.open": {
+          "available": true,
+          "source": "application"
+        },
+        "run.runner": {
+          "available": false,
+          "source": "application",
+          "reason": "Runner overrides require the current profile compatibility helpers"
+        },
+        "run.model": {
+          "available": false,
+          "source": "application",
+          "reason": "Model overrides require provider capabilities from the current connection"
+        },
+        "run.effort": {
+          "available": false,
+          "source": "application",
+          "reason": "Effort overrides require provider capabilities from the current connection"
+        },
+        "conversation.branch": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.clone": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.fork": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.ask": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.recipe": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.compare": {
+          "available": false,
+          "source": "application",
+          "reason": "Two completed or failed runs are required for comparison"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "export.create": {
+          "available": true,
+          "source": "application"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "profile.select": {
+          "available": true,
+          "source": "application"
+        },
+        "connection.select": {
+          "available": true,
+          "source": "application"
+        },
+        "settings.open": {
+          "available": true,
+          "source": "application"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "draft.write": {
+          "available": true,
+          "source": "application"
+        },
+        "run.send": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no active run to cancel"
+        },
+        "run.queue": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.detach": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconnect": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconcile": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "transcript",
+      "appearance": {
+        "color": "256",
+        "highContrast": false,
+        "reducedMotion": false
+      }
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "value": {
+            "kind": "workspace.opened",
+            "workspace": "/home/drew/code/.worktrees/braid-production"
+          }
+        }
+      },
+      {
+        "sequence": 2,
+        "revision": 2,
+        "kind": "draft.recorded",
+        "payload": {
+          "value": {
+            "kind": "draft.recorded",
+            "draft": {
+              "id": "draft-branch-1",
+              "branchId": "branch-1",
+              "text": "W6 failure state",
+              "updatedAt": "2026-08-01T00:00:00.000Z"
+            },
+            "operation": {
+              "id": "op-terminal-000001",
+              "kind": "draft-update",
+              "requestDigest": "65a924286ea2c8f6c5ff3e0223a576c834e806ca53e738685ecec2fb6ca9608a",
+              "status": "acknowledged",
+              "target": {
+                "kind": "branch",
+                "id": "branch-1"
+              },
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z",
+              "acknowledgedAt": "2026-08-01T00:00:00.000Z"
+            }
+          }
+        }
+      },
+      {
+        "sequence": 3,
+        "revision": 3,
+        "kind": "run.requested",
+        "payload": {
+          "text": "W6 failure state",
+          "admission": {
+            "version": 1,
+            "runId": "run-000001",
+            "turnId": "turn-000002",
+            "operationId": "op-terminal-000002",
+            "conversationId": "conv-1",
+            "branchId": "branch-1",
+            "admittedAt": "2026-08-01T00:00:00.000Z",
+            "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+            "requested": {
+              "text": "W6 failure state",
+              "profile": {
+                "name": "Braid starter",
+                "description": "A portable starter profile for the Braid terminal",
+                "model": {
+                  "default": "fixture/deterministic",
+                  "reasoningEffort": "none"
+                },
+                "harness": "pi"
+              },
+              "model": "fixture/deterministic",
+              "runner": "pi"
+            },
+            "capabilities": {
+              "streaming": {
+                "live": true,
+                "replay": false,
+                "detach": false,
+                "turnIdempotency": true
+              },
+              "sessions": {
+                "continue": false,
+                "messages": false
+              },
+              "controls": {
+                "cancel": true,
+                "steer": false,
+                "queue": true,
+                "status": false,
+                "recreate": false
+              },
+              "events": {
+                "stableIdentity": false,
+                "sequence": true,
+                "cursor": false
+              },
+              "usage": true
+            },
+            "provider": "agent-runtime",
+            "materializationReceipt": {
+              "backendKind": "chat",
+              "provider": "agent-runtime"
+            },
+            "admissionStatus": "admitted",
+            "requestDigest": "053e061d0a0b70a433bd2cf2deb4df1845c53bda37021413b058d44300b63037",
+            "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
+            "materializationDigest": "d463202424c67663b3863a357a670e72b7339dce890e476b8594a5c076fff1a5",
+            "digest": "3345dc168242a32cf8d96f886ba076c5bff7745e238377dfb5de9f5d598950cd"
+          },
+          "status": "admitted"
+        }
+      },
+      {
+        "sequence": 4,
+        "revision": 4,
+        "kind": "effect.upserted",
+        "payload": {
+          "value": {
+            "kind": "effect.upserted",
+            "effect": {
+              "id": "effect-op-terminal-000002-db94ab8ae7ae0aca3217987b",
+              "operationId": "op-terminal-000002",
+              "effectKind": "run.execute",
+              "requestDigest": "db94ab8ae7ae0aca3217987bb7fb4524c95cf25f6a3774326cb22c28eb775d30",
+              "kind": "send",
+              "status": "pending",
+              "attempt": 1,
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z"
+            }
+          }
+        }
+      },
+      {
+        "sequence": 5,
+        "revision": 5,
+        "kind": "run.error",
+        "payload": {
+          "source": {
+            "eventId": "run-000001:runtime:1",
+            "providerSequence": 1,
+            "occurredAt": "2026-08-09T11:07:41.142Z",
+            "receivedAt": "2026-08-01T00:00:00.000Z"
+          },
+          "error": {
+            "message": "RUNTIME_BACKEND_ERROR",
+            "recoverable": true
+          },
+          "text": "RUNTIME_BACKEND_ERROR"
+        }
+      },
+      {
+        "sequence": 6,
+        "revision": 6,
+        "kind": "run.finished",
+        "payload": {
+          "source": {
+            "eventId": "run-000001:runtime:2",
+            "providerSequence": 2,
+            "occurredAt": "2026-08-09T11:07:41.146Z",
+            "receivedAt": "2026-08-01T00:00:00.000Z"
+          },
+          "status": "failed",
+          "completeness": "complete",
+          "finalText": "",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "costUsd": 0
+          },
+          "reason": "RUNTIME_FINAL_REASON",
+          "error": "RUNTIME_FINAL_ERROR"
+        }
+      },
+      {
+        "sequence": 7,
+        "revision": 7,
+        "kind": "effect.upserted",
+        "payload": {
+          "value": {
+            "kind": "effect.upserted",
+            "effect": {
+              "id": "effect-op-terminal-000002-db94ab8ae7ae0aca3217987b",
+              "operationId": "op-terminal-000002",
+              "effectKind": "run.execute",
+              "requestDigest": "db94ab8ae7ae0aca3217987bb7fb4524c95cf25f6a3774326cb22c28eb775d30",
+              "kind": "send",
+              "status": "failed",
+              "attempt": 1,
+              "outcomeDigest": "2d2acf569882146ba42c49e3553984f716d39e5c29483aa9dd35daa8fb1f60bc",
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

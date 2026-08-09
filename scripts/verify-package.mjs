@@ -1,273 +1,150 @@
 import { createHash } from 'node:crypto'
-import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, join, resolve } from 'node:path'
-import * as pty from 'node-pty'
-import xterm from '@xterm/headless'
+import { delimiter, dirname, join, resolve, sep } from 'node:path'
+import { assertAccessibleTerminalOutput } from './accessibility-output.mjs'
+import { runPlain, runRpc, runSignalTerminal, runTerminal } from './package-proof-flows.mjs'
+import {
+  baselineEventEnd,
+  firstDifference,
+  firstTerminalTrace,
+  parityEvidence,
+} from './package-proof-parity.mjs'
+import {
+  cleanEnvironment,
+  gitValue,
+  installEnvironment,
+  repository,
+  run,
+  runPty,
+  sourceDigest,
+} from './package-proof-runtime.mjs'
+import { assertNoSecretArtifacts } from './scan-secret-artifacts.mjs'
 
-const repository = new URL('../', import.meta.url).pathname
-const XtermTerminal = xterm.Terminal
 const recordIndex = process.argv.indexOf('--record')
 const recordPath = recordIndex === -1 ? undefined : process.argv[recordIndex + 1]
 if (recordIndex !== -1 && !recordPath) throw new Error('--record requires a path')
-
-function cleanEnvironment(extra = {}) {
-  const environment = { ...process.env, ...extra }
-  delete environment.FORCE_COLOR
-  return environment
-}
-
-async function run(file, args, options = {}) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(file, args, {
-      cwd: options.cwd,
-      env: options.env ?? cleanEnvironment(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) resolve({ stdout, stderr })
-      else reject(new Error(`${file} ${args.join(' ')} exited ${code}\n${stdout}\n${stderr}`))
-    })
-  })
-}
-
-async function runRpc(binary, cwd) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(binary, ['rpc', '--fixture', 'deterministic'], {
-      cwd,
-      env: cleanEnvironment({ NO_COLOR: '1' }),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`packed braid rpc exited ${code}\n${stdout}\n${stderr}`))
-        return
-      }
-      try {
-        const responses = stdout
-          .trim()
-          .split('\n')
-          .map((line) => JSON.parse(line))
-        const state = responses.find(
-          (response) => response.type === 'state' && response.requestId === 'req-send',
-        )?.state
-        if (!state) throw new Error('packed RPC did not return send state')
-        resolve({ responses, state, stderr })
-      } catch (error) {
-        reject(error)
-      }
-    })
-    const requests = [
-      {
-        version: 1,
-        requestId: 'req-init',
-        command: 'initialize',
-        params: { workspace: cwd, subscribe: true },
-      },
-      {
-        version: 1,
-        requestId: 'req-send',
-        operationId: 'op-rpc-000001',
-        command: 'send',
-        params: {
-          conversationId: 'conv-1',
-          branchId: 'branch-1',
-          text: 'hello from package proof',
-        },
-      },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
-    ]
-    child.stdin.end(`${requests.map((request) => JSON.stringify(request)).join('\n')}\n`)
-  })
-}
-
-function sleep(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds))
-}
-
-async function waitFor(predicate, label, timeoutMs = 5_000) {
-  const deadline = Date.now() + timeoutMs
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
-    await sleep(20)
-  }
-}
-
-async function runTerminal(binary, cwd, options) {
-  const recordPath = join(
-    cwd,
-    `terminal-${options.columns}x${options.rows}-${options.inline ? 'inline' : 'alt'}.json`,
-  )
-  const args = [
-    '--fixture',
-    'deterministic',
-    '--no-color',
-    '--workspace',
-    cwd,
-    '--record-state',
-    recordPath,
-  ]
-  if (options.inline) args.push('--inline')
-  const session = pty.spawn(binary, args, {
-    name: 'xterm-256color',
-    cols: options.columns,
-    rows: options.rows,
-    cwd,
-    env: cleanEnvironment({ NO_COLOR: '1', TERM: 'xterm-256color' }),
-  })
-  const victimPath = `${recordPath}.victim`
-  const formerPredictableTemporary = `${recordPath}.${session.pid}.tmp`
-  await writeFile(victimPath, 'unchanged\n')
-  await symlink(victimPath, formerPredictableTemporary)
-  const emulator = new XtermTerminal({
-    cols: options.columns,
-    rows: options.rows,
-    disableStdin: true,
-    allowProposedApi: true,
-  })
-  let output = ''
-  let screen = ''
-  const exited = new Promise((resolve) => {
-    session.onExit(resolve)
-  })
-  session.onData((chunk) => {
-    output += chunk
-    emulator.write(chunk, () => {
-      const buffer = emulator.buffer.active
-      screen = Array.from(
-        { length: emulator.rows },
-        (_, index) => buffer.getLine(buffer.viewportY + index)?.translateToString(true) ?? '',
-      ).join('\n')
-    })
-  })
-  const normalizedScreen = () => screen.replace(/\s+/gu, ' ').trim()
-
-  await waitFor(() => screen.includes('braid'), 'terminal header')
-  if (!options.inline) {
-    session.write('\u0010')
-    await waitFor(
-      () => screen.includes('Commands') && screen.includes('/quit'),
-      'searchable command overlay',
-    )
-    session.write('q')
-    await waitFor(
-      () => screen.includes('/quit') && !screen.includes('/help'),
-      'filtered command overlay',
-    )
-    session.write('\u001b')
-    await waitFor(() => !screen.includes('Commands'), 'closed command overlay')
-  }
-  session.write('hello from package proof')
-  await sleep(30)
-  session.write('\r')
-  if (!options.inline) {
-    const resizedColumns = Math.max(40, options.columns - 10)
-    const resizedRows = Math.max(12, options.rows - 4)
-    emulator.resize(resizedColumns, resizedRows)
-    session.resize(resizedColumns, resizedRows)
-    await sleep(30)
-    emulator.resize(options.columns, options.rows)
-    session.resize(options.columns, options.rows)
-  }
-  await waitFor(
-    () =>
-      normalizedScreen().includes('Fixture response through pi: hello from package proof') &&
-      normalizedScreen().includes('ready'),
-    'completed fixture response',
-  )
-  const screenBeforeExit = screen
-  session.write('\u0003')
-  await waitFor(() => screen.includes('press ctrl+c again to quit'), 'armed terminal exit')
-  session.write('\u0003')
-  let timeout
-  const timedOut = new Promise((_, reject) => {
-    timeout = setTimeout(() => {
-      session.kill()
-      reject(new Error('Packed terminal did not exit after Ctrl+C'))
-    }, 5_000)
-  })
-  const exit = await Promise.race([exited, timedOut]).finally(() => clearTimeout(timeout))
-  if (exit.exitCode !== 0) throw new Error(`Packed terminal exited ${exit.exitCode}`)
-  const evidence = JSON.parse(await readFile(recordPath, 'utf8'))
-  assert(
-    (await readFile(victimPath, 'utf8')) === 'unchanged\n',
-    'state write followed a temp symlink',
-  )
-  await rm(formerPredictableTemporary, { force: true })
-  emulator.dispose()
-  return { output, screenBeforeExit, evidence }
-}
-
-async function runSignalTerminal(binary, cwd) {
-  const session = pty.spawn(binary, ['--fixture', 'deterministic', '--no-color'], {
-    name: 'xterm-256color',
-    cols: 80,
-    rows: 24,
-    cwd,
-    env: cleanEnvironment({ NO_COLOR: '1', TERM: 'xterm-256color' }),
-  })
-  let output = ''
-  const exited = new Promise((resolve) => session.onExit(resolve))
-  session.onData((chunk) => {
-    output += chunk
-  })
-  await waitFor(() => output.includes('braid'), 'signal terminal header')
-  process.kill(session.pid, 'SIGINT')
-  let timeout
-  const timedOut = new Promise((_, reject) => {
-    timeout = setTimeout(() => {
-      session.kill()
-      reject(new Error('Packed terminal did not exit after SIGINT'))
-    }, 5_000)
-  })
-  const exit = await Promise.race([exited, timedOut]).finally(() => clearTimeout(timeout))
-  return { output, exit }
-}
-
-function semanticState(state) {
-  return {
-    conversationId: state.conversationId,
-    branchId: state.branchId,
-    draft: state.draft,
-    messages: state.messages.map((message) => ({
-      role: message.role,
-      text: message.text,
-      status: message.status,
-    })),
-    runs: state.runs.map((run) => ({ status: run.status })),
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+assert(
+  JSON.stringify(
+    parityEvidence({ runs: [], profile: { metadata: { operationId: 'profile-a' } } }, []),
+  ) !==
+    JSON.stringify(
+      parityEvidence({ runs: [], profile: { metadata: { operationId: 'profile-b' } } }, []),
+    ),
+  'package parity must preserve non-caller operationId fields',
+)
+
+function parityFixture(operationId) {
+  const admission = {
+    version: 1,
+    runId: 'run-1',
+    turnId: 'turn-1',
+    operationId,
+    conversationId: 'conversation-1',
+    branchId: 'branch-1',
+    admittedAt: '2026-08-01T00:00:00.000Z',
+    profileDigest: 'profile-digest',
+    requested: { text: 'same prompt' },
+    capabilities: {},
+    admissionStatus: 'admitted',
+    requestDigest: `request-${operationId}`,
+    capabilitiesDigest: 'capabilities-digest',
+    digest: `admission-${operationId}`,
+  }
+  return [
+    { sequence: 1, revision: 1, kind: 'run.requested', payload: { admission } },
+    {
+      sequence: 2,
+      revision: 2,
+      kind: 'run.finished',
+      payload: { status: 'completed' },
+    },
+    {
+      sequence: 3,
+      revision: 3,
+      kind: 'effect.upserted',
+      payload: {
+        value: {
+          effect: {
+            id: `effect-${operationId}-same`,
+            operationId,
+            status: 'terminal',
+          },
+        },
+      },
+    },
+  ]
+}
+
+const rpcParityFixture = parityFixture('op-rpc-1')
+const terminalParityFixture = parityFixture('op-terminal-1')
+assert(baselineEventEnd(rpcParityFixture) === 3, 'package parity omitted a terminal effect')
+assert(
+  JSON.stringify(parityEvidence({ runs: [] }, rpcParityFixture)) ===
+    JSON.stringify(parityEvidence({ runs: [] }, terminalParityFixture)),
+  'package parity failed to normalize caller identity and dependent digests',
+)
+
+if (process.env.BRAID_PACKAGE_PROOF_ISOLATED !== '1') {
+  const isolatedRoot = await mkdtemp(join(tmpdir(), 'braid-package-source-'))
+  try {
+    await cp(repository, isolatedRoot, {
+      recursive: true,
+      filter: (source) =>
+        !['.git', 'node_modules', 'dist', '.test-dist', 'artifacts'].some(
+          (excluded) =>
+            source === join(repository, excluded) ||
+            source.startsWith(`${join(repository, excluded)}${sep}`),
+        ),
+    })
+    await symlink(join(repository, 'node_modules'), join(isolatedRoot, 'node_modules'))
+    await run(process.execPath, [join(isolatedRoot, 'scripts', 'clean.mjs')], {
+      cwd: isolatedRoot,
+    })
+    await run(
+      process.execPath,
+      [join(repository, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.build.json'],
+      { cwd: isolatedRoot },
+    )
+    const childArgs = [join(isolatedRoot, 'scripts', 'verify-package.mjs')]
+    if (recordPath) childArgs.push('--record', resolve(repository, recordPath))
+    const child = await run(process.execPath, childArgs, {
+      cwd: isolatedRoot,
+      env: {
+        ...cleanEnvironment({ NODE_NO_WARNINGS: '1' }),
+        BRAID_PACKAGE_PROOF_ISOLATED: '1',
+        BRAID_PACKAGE_PROOF_COMMIT: gitValue('rev-parse', 'HEAD'),
+        BRAID_PACKAGE_PROOF_TREE: gitValue('rev-parse', 'HEAD^{tree}'),
+        BRAID_PACKAGE_PROOF_SOURCE_DIGEST: await sourceDigest(repository),
+      },
+    })
+    process.stdout.write(child.stdout)
+    process.stderr.write(child.stderr)
+  } finally {
+    await rm(isolatedRoot, { force: true, recursive: true })
+  }
+  process.exit(0)
+}
+
 const packRoot = await mkdtemp(join(tmpdir(), 'braid-pack-'))
 const installRoot = await mkdtemp(join(tmpdir(), 'braid-install-'))
 try {
+  const sourcePackageJson = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'))
   await run('pnpm', ['pack', '--pack-destination', packRoot], { cwd: repository })
   const tarballName = (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
   if (!tarballName) throw new Error('pnpm pack did not produce a tarball')
@@ -276,9 +153,150 @@ try {
     join(installRoot, 'package.json'),
     `${JSON.stringify({ name: 'braid-clean-install-proof', private: true })}\n`,
   )
-  await run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball], {
+  await run('npm', ['install', '--no-audit', '--no-fund', tarball], {
     cwd: installRoot,
+    env: installEnvironment(),
   })
+  const installedPackageRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid')
+  const installedPackageJson = JSON.parse(
+    await readFile(join(installedPackageRoot, 'package.json'), 'utf8'),
+  )
+  assert(installedPackageJson.name === sourcePackageJson.name, 'installed package name mismatch')
+  assert(
+    installedPackageJson.version === sourcePackageJson.version,
+    'installed package version mismatch',
+  )
+  assert(
+    installedPackageJson.bin?.braid === './dist/bin/braid.js',
+    'installed package lost the braid binary declaration',
+  )
+  const packageOwnedEntries = new Set([
+    'package.json',
+    'dist',
+    'LICENSE',
+    'README.md',
+    'THIRD_PARTY_LICENSES.json',
+    'THIRD_PARTY_NOTICES.md',
+  ])
+  const declaredPackageFiles = new Set(installedPackageJson.files ?? [])
+  const expectedDeclaredFiles = new Set(
+    [...packageOwnedEntries].filter((entry) => entry !== 'package.json'),
+  )
+  assert(
+    declaredPackageFiles.size === expectedDeclaredFiles.size &&
+      [...expectedDeclaredFiles].every((entry) => declaredPackageFiles.has(entry)),
+    'packed package files allowlist does not match the audited package contents',
+  )
+  const installedEntries = await readdir(installedPackageRoot, { withFileTypes: true })
+  for (const entry of installedEntries) {
+    assert(
+      packageOwnedEntries.has(entry.name) || entry.name === 'node_modules',
+      `packed package contains unexpected ${entry.name}`,
+    )
+    if (entry.name !== 'node_modules')
+      assert(!entry.isSymbolicLink(), `packed package contains symlink ${entry.name}`)
+  }
+  for (const required of packageOwnedEntries) {
+    assert(
+      installedEntries.some((entry) => entry.name === required),
+      `packed package is missing ${required}`,
+    )
+  }
+  const binaryInfo = await lstat(join(installedPackageRoot, 'dist', 'bin', 'braid.js'))
+  assert(binaryInfo.isFile() && !binaryInfo.isSymbolicLink(), 'packed binary is not a regular file')
+  if (process.platform !== 'win32')
+    assert((binaryInfo.mode & 0o111) !== 0, 'packed binary is not executable')
+  const installedSourceNames = new Set(['src', 'test', 'docs', '.git', '.npmrc', '.env'])
+  assert(
+    installedEntries.every((entry) => !installedSourceNames.has(entry.name)),
+    'packed package contains source or credential configuration',
+  )
+  async function assertNoPackageLinks(path) {
+    const entries = await readdir(path, { withFileTypes: true })
+    for (const entry of entries) {
+      const entryPath = join(path, entry.name)
+      assert(!entry.isSymbolicLink(), `packed package contains symlink ${entryPath}`)
+      if (entry.isDirectory()) await assertNoPackageLinks(entryPath)
+    }
+  }
+  const secretCanaries = [
+    'W12_SECRET_ARTIFACT_CANARY',
+    'PACKED_W5_RAW_BYTE_CANARY',
+    'SECRET_TYPED_INTERACTION_CANARY',
+  ]
+  for (const entry of packageOwnedEntries) {
+    const ownedPath = join(installedPackageRoot, entry)
+    const info = await lstat(ownedPath)
+    assert(!info.isSymbolicLink(), `packed package contains symlink ${entry}`)
+    if (info.isDirectory()) await assertNoPackageLinks(ownedPath)
+    await assertNoSecretArtifacts(ownedPath, secretCanaries)
+  }
+  const storageSmoke = join(installRoot, 'storage-smoke.mjs')
+  await writeFile(
+    storageSmoke,
+    `
+import assert from 'node:assert/strict'
+import { readFile, mkdtemp, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  MemoryCredentialStore,
+  openSqliteStorage,
+  canonicalDigest,
+  createConversationId,
+  createEventId,
+  createOperationId,
+  createRunId,
+  createWorkspaceId,
+  credentialRef,
+} from '@tangle-network/braid'
+
+const root = await mkdtemp(join(tmpdir(), 'braid-packed-storage-'))
+const database = join(root, 'braid.sqlite')
+const backup = join(root, 'braid.backup')
+const credentials = new MemoryCredentialStore()
+const canary = 'PACKED_W5_RAW_BYTE_CANARY'
+const storage = await openSqliteStorage({
+  path: database,
+  workspaceRoot: root,
+  credentialStore: credentials,
+  databaseKeyRef: credentialRef('cred:v1:packed-database'),
+})
+try {
+  const event = {
+    workspaceId: createWorkspaceId('workspace-packed'),
+    conversationId: createConversationId('conversation-packed'),
+    runId: createRunId('run-packed'),
+    eventId: createEventId('event-packed'),
+    sequence: 1,
+    kind: 'run.finished',
+    payload: { text: canary },
+    occurredAt: '2026-08-02T00:00:00.000Z',
+    terminal: true,
+  }
+  await storage.append([event])
+  assert.equal((await storage.replay({ runId: event.runId })).events[0]?.payloadState, 'available')
+  assert.equal((await storage.integrity()).ok, true)
+  const backupRequest = { path: backup }
+  await storage.backup({
+    path: backup,
+    operation: {
+      operationId: createOperationId('op-packed-backup'),
+      kind: 'backup',
+      request: backupRequest,
+      requestDigest: canonicalDigest(backupRequest),
+    },
+  })
+  for (const path of [database, backup, database + '-wal', database + '-shm']) {
+    assert.equal((await readFile(path).catch(() => Buffer.alloc(0))).includes(Buffer.from(canary)), false, path)
+  }
+  assert.ok((await stat(backup)).size > 0)
+} finally {
+  await storage.close()
+}
+`,
+  )
+  await run(process.execPath, [storageSmoke], { cwd: installRoot })
   const binary = join(
     installRoot,
     'node_modules',
@@ -287,12 +305,19 @@ try {
   )
   const path = `${join(installRoot, 'node_modules', '.bin')}${delimiter}${process.env.PATH ?? ''}`
   const environment = cleanEnvironment({ PATH: path, NO_COLOR: '1' })
-  const version = await run(binary, ['--version'], { cwd: installRoot, env: environment })
-  const help = await run(binary, ['--help'], { cwd: installRoot, env: environment })
-  assert(version.stdout.trim() === '0.1.0', 'packed --version mismatch')
+  const version = await runPty(binary, ['--version'], {
+    cwd: installRoot,
+    env: { ...environment, NODE_NO_WARNINGS: '1' },
+  })
+  const help = await runPty(binary, ['--help'], {
+    cwd: installRoot,
+    env: { ...environment, NODE_NO_WARNINGS: '1' },
+  })
+  assert(version.stdout.trim() === sourcePackageJson.version, 'packed --version mismatch')
   assert(help.stdout.includes('braid rpc'), 'packed --help omitted RPC mode')
 
   const rpc = await runRpc(binary, installRoot)
+  const plain = await runPlain(binary, installRoot)
   const terminal80 = await runTerminal(binary, installRoot, {
     columns: 80,
     rows: 24,
@@ -313,23 +338,47 @@ try {
     rows: 60,
     inline: false,
   })
+  const accessibility = await runTerminal(binary, installRoot, {
+    columns: 80,
+    rows: 24,
+    inline: false,
+    highContrast: true,
+    reducedMotion: true,
+  })
   const inline = await runTerminal(binary, installRoot, {
     columns: 80,
     rows: 24,
     inline: true,
   })
   const signal = await runSignalTerminal(binary, installRoot)
+  const terminalBaseline = firstTerminalTrace(terminal80.evidence)
+  const rpcParity = parityEvidence(rpc.firstState, rpc.baselineEvents)
+  const terminalParity = parityEvidence(terminalBaseline.state, terminalBaseline.events)
+  const keyboardMatchesRpc = JSON.stringify(rpcParity) === JSON.stringify(terminalParity)
+  const expectedFlows = ['send', 'graph', 'unavailable', 'retry', 'cancel', 'shutdown']
+  const flowsMatch = (flows) => JSON.stringify(flows) === JSON.stringify(expectedFlows)
 
   assert(
-    JSON.stringify(semanticState(rpc.state)) ===
-      JSON.stringify(semanticState(terminal80.evidence.state)),
-    'keyboard and RPC semantic states differ',
+    keyboardMatchesRpc,
+    `keyboard and RPC normalized event ledgers or semantic states differ at ${JSON.stringify(firstDifference(rpcParity, terminalParity))}`,
   )
+  assert(flowsMatch(rpc.flows), 'RPC proof did not exercise the complete flow')
+  assert(flowsMatch(plain.flows), 'plain proof did not exercise the complete flow')
+  assert(flowsMatch(terminal80.flows), 'terminal proof did not exercise the complete flow')
   assert(terminal80.output.includes('\u001b[?1049h'), 'alternate screen was not entered')
   assert(terminal80.output.includes('\u001b[?1049l'), 'alternate screen was not restored')
   for (const terminal of [terminal40, terminal80, terminal120, terminal200]) {
     assert(terminal.output.includes('\u001b[?1049l'), 'reference terminal did not restore screen')
   }
+  assert(
+    accessibility.evidence.view?.appearance?.highContrast === true,
+    'packed high-contrast flag did not reach semantic state',
+  )
+  assert(
+    accessibility.evidence.view?.appearance?.reducedMotion === true,
+    'packed reduced-motion flag did not reach semantic state',
+  )
+  assertAccessibleTerminalOutput(accessibility.output)
   assert(!inline.output.includes('\u001b[?1049h'), 'inline mode entered alternate screen')
   assert(signal.output.includes('\u001b[?1049l'), 'SIGINT did not restore alternate screen')
   assert(signal.output.includes('\u001b[?2004l'), 'SIGINT did not disable bracketed paste')
@@ -348,12 +397,28 @@ try {
     `--no-color emitted unexpected SGR sequences: ${[...new Set(unexpectedSgr)].join(', ')}`,
   )
   assert(rpc.stderr === '', 'RPC wrote human logs to stderr during a successful run')
+  assert(plain.stderr === '', 'plain mode wrote stderr during a successful run')
+  assert(!plain.stdout.includes('\u001b'), 'plain mode emitted terminal controls')
+  assert(
+    plain.evidence.state.messages.some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.status === 'complete' &&
+        message.text === 'Fixture response through pi: plain package proof',
+    ),
+    'plain --record-state did not persist final semantic state',
+  )
 
   const tarballBytes = await readFile(tarball)
   const proof = {
     tarball: tarballName,
     sha256: createHash('sha256').update(tarballBytes).digest('hex'),
     version: version.stdout.trim(),
+    gitCommit: gitValue('rev-parse', 'HEAD'),
+    treeSha256: gitValue('rev-parse', 'HEAD^{tree}'),
+    sourceDigest: process.env.BRAID_PACKAGE_PROOF_SOURCE_DIGEST ?? (await sourceDigest(repository)),
+    isolatedBuild: true,
+    sourceCheckout: 'isolated-copy-of-worktree',
     rpcRecords: rpc.responses.length,
     referenceSizes: [
       { columns: 40, rows: 12, events: terminal40.evidence.events.length },
@@ -365,7 +430,21 @@ try {
     sigintRestored: true,
     stateWriteSymlinkSafe: true,
     inlineStayedInMainScreen: true,
-    keyboardMatchesRpc: true,
+    keyboardMatchesRpc,
+    eventLedgerMatchesRpc: keyboardMatchesRpc,
+    flowParity: {
+      rpc: rpc.flows,
+      terminal: terminal80.flows,
+      plain: plain.flows,
+      allFlowsMatch:
+        flowsMatch(rpc.flows) && flowsMatch(terminal80.flows) && flowsMatch(plain.flows),
+    },
+    plainRecordState: true,
+    accessibility: {
+      highContrast: accessibility.evidence.view?.appearance?.highContrast === true,
+      reducedMotion: accessibility.evidence.view?.appearance?.reducedMotion === true,
+      terminalModesRestored: accessibility.output.includes('\u001b[?1049l'),
+    },
   }
   const proofJson = `${JSON.stringify(proof, null, 2)}\n`
   if (recordPath) {

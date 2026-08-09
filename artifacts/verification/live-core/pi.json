@@ -1,0 +1,737 @@
+{
+  "schemaVersion": 1,
+  "claim": "packed-public-configure-dispatch-restart",
+  "command": "node scripts/live-core/run.mjs",
+  "endpoint": "http://127.0.0.1:3346",
+  "startedAt": "2026-08-09T11:23:13.948Z",
+  "source": {
+    "commit": "418cefbc04329e5e3c6f46ef15cdb8bd480331da",
+    "indexTree": "5c411d9553be1700ee43603e4cc83deb2585e4cf",
+    "stagedPatchSha256": "3803e8fdd821d043f428e228f703743c2c9d1fc9f0ad36578dfcfb337f06ab66",
+    "packageVersion": "0.1.0"
+  },
+  "targets": [
+    {
+      "runner": "pi",
+      "model": "tangle-router/glm-5.2",
+      "route": "pi/tangle-router/glm-5.2",
+      "profile": {
+        "harness": "pi",
+        "model": "tangle-router/glm-5.2"
+      },
+      "connection": {
+        "kind": "cli-bridge",
+        "endpoint": "http://127.0.0.1:3346"
+      },
+      "commands": [],
+      "status": "passed",
+      "configure": {
+        "status": "completed",
+        "profile": {
+          "description": "Advertised by the CLI Bridge model catalog at http://127.0.0.1:3346.",
+          "harness": "pi",
+          "model": {
+            "default": "tangle-router/glm-5.2"
+          },
+          "name": "CLI Bridge · pi · tangle-router/glm-5.2"
+        },
+        "connectionId": "connection-local-cli-bridge",
+        "configDigest": "abcc85d4c5c5af45deb80a51d42998f1da1d7a4f813be91bd8d9d0ca6196c245"
+      },
+      "select": {
+        "profileRef": "profile-99ae18aa7fe44bedcef4f561d2b42d3a1e98a1bd06746f83a9f40d4377b034ee",
+        "connectionId": "connection-local-cli-bridge",
+        "profileAck": {
+          "profile": {
+            "id": "profile-99ae18aa7fe44bedcef4f561d2b42d3a1e98a1bd06746f83a9f40d4377b034ee",
+            "name": "CLI Bridge · pi · tangle-router/glm-5.2",
+            "description": "Advertised by the CLI Bridge model catalog at http://127.0.0.1:3346.",
+            "tags": [],
+            "source": {
+              "kind": "inline",
+              "reference": "braid:active",
+              "label": "CLI Bridge · pi · tangle-router/glm-5.2",
+              "writable": false,
+              "trusted": true
+            },
+            "digest": "sha256:c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
+            "runner": "pi",
+            "model": "tangle-router/glm-5.2",
+            "tools": [],
+            "skills": [],
+            "connections": []
+          },
+          "reason": "command-line",
+          "revision": 5,
+          "replayed": false
+        },
+        "connectionAck": {
+          "connection": {
+            "id": "connection-local-cli-bridge",
+            "name": "Local CLI Bridge",
+            "kind": "cli-bridge",
+            "endpoint": "http://127.0.0.1:3346",
+            "credentialConfigured": false,
+            "health": {
+              "checkedAt": "2026-08-09T11:23:49.113Z",
+              "status": "healthy"
+            },
+            "capabilityHints": [
+              "stream",
+              "usage"
+            ],
+            "ready": false
+          },
+          "revision": 8,
+          "replayed": false
+        }
+      },
+      "dispatch": {
+        "conversationId": "conv-1",
+        "branchId": "branch-1",
+        "nonce": "BraidCoreNonce-PI-7Q4M",
+        "turns": [
+          {
+            "label": "turn 1",
+            "operationId": "op-live-core-send-1",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "prompt": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
+            "terminalState": {
+              "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "turnId": "turn-755845a2-ddda-4672-b74c-3e102e8a6b57",
+              "operationId": "op-live-core-send-1",
+              "status": "completed",
+              "inputTokens": 19812,
+              "outputTokens": 77,
+              "costUsd": 0,
+              "model": "pi/tangle-router/glm-5.2",
+              "completeness": "unavailable",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "contentBytes": 54
+            },
+            "output": "ACK_NONCE_STORED",
+            "transcript": [
+              {
+                "role": "user",
+                "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
+                "status": "complete"
+              },
+              {
+                "role": "assistant",
+                "text": "ACK_NONCE_STORED",
+                "status": "complete"
+              }
+            ],
+            "eventTypes": [
+              "draft.changed",
+              "run.requested",
+              "effect.upserted",
+              "run.tool.call",
+              "run.usage",
+              "run.text.delta",
+              "run.finished"
+            ],
+            "elapsedMs": 63908,
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "continuation": true,
+            "receipt": {
+              "profileDigest": "c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
+              "requestDigest": "28b0a58b85b324b8040aa4b97fd38e39fe038c66c4c98b8dfb5edc12d253b10c",
+              "capabilitiesDigest": "fecf56f909d35629e7107c28983f573b88df34e7c4afe0395fdaec172e7778b8",
+              "admittedAt": "2026-08-09T11:24:10.177Z",
+              "provider": "agent-runtime",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "environmentId": "env-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "admissionStatus": "admitted",
+              "digest": "6e46bcf7ef700f7bb6bd8fe3bd9db1a2d38f39550ed83dd61c0da037e08b2a2b",
+              "materializationDigest": "7b40a960912c71409d34037f443e3e8222d5f331618e986de966441e5604a7ad"
+            }
+          },
+          {
+            "label": "turn 2",
+            "operationId": "op-live-core-send-2",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "prompt": "What exact nonce did I ask you to remember? Reply with only the nonce.",
+            "terminalState": {
+              "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+              "turnId": "turn-91df42e4-7da5-40dc-b12f-eacefe8ecc2b",
+              "operationId": "op-live-core-send-2",
+              "status": "completed",
+              "inputTokens": 10402,
+              "outputTokens": 13,
+              "costUsd": 0,
+              "model": "pi/tangle-router/glm-5.2",
+              "completeness": "unavailable",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "contentBytes": 64
+            },
+            "output": "BraidCoreNonce-PI-7Q4M",
+            "transcript": [
+              {
+                "role": "user",
+                "text": "What exact nonce did I ask you to remember? Reply with only the nonce.",
+                "status": "complete"
+              },
+              {
+                "role": "assistant",
+                "text": "BraidCoreNonce-PI-7Q4M",
+                "status": "complete"
+              }
+            ],
+            "eventTypes": [
+              "draft.changed",
+              "run.requested",
+              "effect.upserted",
+              "run.text.delta",
+              "run.usage",
+              "run.finished"
+            ],
+            "elapsedMs": 24765,
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "continuation": true,
+            "receipt": {
+              "profileDigest": "c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
+              "requestDigest": "c618e977fcb16120914cbfe1ffc24d01b92ab2b1a8c9a05d96e4fc4f5d83d6df",
+              "capabilitiesDigest": "fecf56f909d35629e7107c28983f573b88df34e7c4afe0395fdaec172e7778b8",
+              "admittedAt": "2026-08-09T11:25:14.081Z",
+              "provider": "agent-runtime",
+              "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+              "environmentId": "env-braid-run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+              "admissionStatus": "admitted",
+              "digest": "953e2dc9bcae496cb8c8f953eef264427aad970a3fc94bce27c41cf97ad3683d",
+              "materializationDigest": "573ae6179a8e17e3f19d082d782fbe88da644ab056aa38673bb6a4e0e8713a46"
+            }
+          }
+        ],
+        "sameProviderSessionId": true
+      },
+      "restart": {
+        "preRestartTranscript": [
+          {
+            "id": "message-f38c2074-97a0-419d-881e-9c6ab20e7126",
+            "role": "user",
+            "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
+            "status": "complete",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "parts": [
+              {
+                "id": "part-message-f38c2074-97a0-419d-881e-9c6ab20e7126",
+                "kind": "text",
+                "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED."
+              }
+            ]
+          },
+          {
+            "id": "message-1c0c27ef-f455-4305-9706-f461ca42f53a",
+            "role": "assistant",
+            "text": "ACK_NONCE_STORED",
+            "status": "complete",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "parts": [
+              {
+                "id": "call_a5fc00c1936c44a9a302bb17",
+                "kind": "tool",
+                "text": "",
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:1",
+                "toolName": "memory_write",
+                "callId": "call_a5fc00c1936c44a9a302bb17",
+                "input": {}
+              },
+              {
+                "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:text",
+                "kind": "text",
+                "text": "ACK_NONCE_STORED",
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:7"
+              }
+            ]
+          },
+          {
+            "id": "message-b8b4e692-1fb5-470f-906e-05c803110b55",
+            "role": "user",
+            "text": "What exact nonce did I ask you to remember? Reply with only the nonce.",
+            "status": "complete",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "parts": [
+              {
+                "id": "part-message-b8b4e692-1fb5-470f-906e-05c803110b55",
+                "kind": "text",
+                "text": "What exact nonce did I ask you to remember? Reply with only the nonce."
+              }
+            ]
+          },
+          {
+            "id": "message-d8e7be40-9af8-4928-8708-79292ca7ed5c",
+            "role": "assistant",
+            "text": "BraidCoreNonce-PI-7Q4M",
+            "status": "complete",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "parts": [
+              {
+                "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:text",
+                "kind": "text",
+                "text": "BraidCoreNonce-PI-7Q4M",
+                "sourceEventId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:runtime:11"
+              }
+            ]
+          }
+        ],
+        "state": [
+          {
+            "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "turnId": "turn-755845a2-ddda-4672-b74c-3e102e8a6b57",
+            "operationId": "op-live-core-send-1",
+            "status": "completed",
+            "inputTokens": 19812,
+            "outputTokens": 77,
+            "costUsd": 0,
+            "model": "pi/tangle-router/glm-5.2",
+            "completeness": "unavailable",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "contentBytes": 54
+          },
+          {
+            "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "turnId": "turn-91df42e4-7da5-40dc-b12f-eacefe8ecc2b",
+            "operationId": "op-live-core-send-2",
+            "status": "completed",
+            "inputTokens": 10402,
+            "outputTokens": 13,
+            "costUsd": 0,
+            "model": "pi/tangle-router/glm-5.2",
+            "completeness": "unavailable",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "contentBytes": 64
+          }
+        ],
+        "transcript": [
+          {
+            "id": "message-f38c2074-97a0-419d-881e-9c6ab20e7126",
+            "role": "user",
+            "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED.",
+            "status": "complete",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "parts": [
+              {
+                "id": "part-message-f38c2074-97a0-419d-881e-9c6ab20e7126",
+                "kind": "text",
+                "text": "Remember this exact nonce for our next turn and do not print it until asked: BraidCoreNonce-PI-7Q4M. Reply only ACK_NONCE_STORED."
+              }
+            ]
+          },
+          {
+            "id": "message-1c0c27ef-f455-4305-9706-f461ca42f53a",
+            "role": "assistant",
+            "text": "ACK_NONCE_STORED",
+            "status": "complete",
+            "runId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "parts": [
+              {
+                "id": "call_a5fc00c1936c44a9a302bb17",
+                "kind": "tool",
+                "text": "",
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:1",
+                "toolName": "memory_write",
+                "callId": "call_a5fc00c1936c44a9a302bb17",
+                "input": {}
+              },
+              {
+                "id": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:text",
+                "kind": "text",
+                "text": "ACK_NONCE_STORED",
+                "sourceEventId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987:runtime:7"
+              }
+            ]
+          },
+          {
+            "id": "message-b8b4e692-1fb5-470f-906e-05c803110b55",
+            "role": "user",
+            "text": "What exact nonce did I ask you to remember? Reply with only the nonce.",
+            "status": "complete",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "parts": [
+              {
+                "id": "part-message-b8b4e692-1fb5-470f-906e-05c803110b55",
+                "kind": "text",
+                "text": "What exact nonce did I ask you to remember? Reply with only the nonce."
+              }
+            ]
+          },
+          {
+            "id": "message-d8e7be40-9af8-4928-8708-79292ca7ed5c",
+            "role": "assistant",
+            "text": "BraidCoreNonce-PI-7Q4M",
+            "status": "complete",
+            "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2",
+            "parts": [
+              {
+                "id": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:text",
+                "kind": "text",
+                "text": "BraidCoreNonce-PI-7Q4M",
+                "sourceEventId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2:runtime:11"
+              }
+            ]
+          }
+        ],
+        "reconnect": {
+          "version": 1,
+          "type": "error",
+          "requestId": "live-core-5",
+          "code": "CAPABILITY_UNAVAILABLE",
+          "message": "The selected execution path does not report replay with a stable cursor",
+          "retryable": false
+        },
+        "safeFollowUp": {
+          "status": "resumed",
+          "operationId": "op-live-core-send-after-restart",
+          "runId": "run-f7b0842c-016f-4a24-906b-16f7c9627995",
+          "output": "LIVE_CORE_FOLLOWUP_OK",
+          "terminalState": {
+            "id": "run-f7b0842c-016f-4a24-906b-16f7c9627995",
+            "turnId": "turn-60ad2b33-354b-45fb-8c90-5d9def053e6e",
+            "operationId": "op-live-core-send-after-restart",
+            "status": "completed",
+            "inputTokens": 10416,
+            "outputTokens": 8,
+            "costUsd": 0,
+            "model": "pi/tangle-router/glm-5.2",
+            "completeness": "unavailable",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "contentBytes": 62
+          },
+          "eventTypes": [
+            "draft.changed",
+            "run.requested",
+            "effect.upserted",
+            "run.text.delta",
+            "run.usage",
+            "run.finished"
+          ],
+          "elapsedMs": 22786,
+          "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+          "receipt": {
+            "profileDigest": "c8a486b68ddde59e3f904c1a29fbacb79ca9287287320119e5b2811c49807067",
+            "requestDigest": "23ec0ed5751d32b3e6f931e9e8b090012e2a8b19cb59c1fb12bbb3b51ac6cf62",
+            "capabilitiesDigest": "fecf56f909d35629e7107c28983f573b88df34e7c4afe0395fdaec172e7778b8",
+            "admittedAt": "2026-08-09T11:25:40.222Z",
+            "provider": "agent-runtime",
+            "providerSessionId": "session-braid-run-35797c97-4f86-4237-bfca-fbf5a0c31987",
+            "environmentId": "env-braid-run-f7b0842c-016f-4a24-906b-16f7c9627995",
+            "admissionStatus": "admitted",
+            "digest": "486b7f1bed0053d3266c2875bb15908c7c92fe70db5978e14eabe5f18908b05c",
+            "materializationDigest": "dd0c03296853ce8a4844e1a95f9732c79186909cd01612b878ce7cf8ee87a872"
+          }
+        },
+        "commands": [
+          {
+            "version": 1,
+            "requestId": "live-core-1",
+            "command": "initialize",
+            "params": {
+              "workspace": "/tmp/braid-live-core-zGOJBO/target-pi-dQAc3G/workspace",
+              "subscribe": true
+            }
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-2",
+            "command": "get_state",
+            "params": {
+              "projection": "full"
+            }
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-3",
+            "command": "get_details",
+            "params": {
+              "entityType": "run",
+              "entityId": "run-35797c97-4f86-4237-bfca-fbf5a0c31987"
+            }
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-4",
+            "command": "get_details",
+            "params": {
+              "entityType": "run",
+              "entityId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2"
+            }
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-5",
+            "command": "reconnect",
+            "params": {
+              "runId": "run-a80ae0de-1507-4cf2-b44c-dc5adad4b7d2"
+            },
+            "operationId": "op-live-core-reconnect-1"
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-6",
+            "command": "send",
+            "params": {
+              "conversationId": "conv-1",
+              "branchId": "branch-1",
+              "text": "Reply with exactly LIVE_CORE_FOLLOWUP_OK."
+            },
+            "operationId": "op-live-core-send-after-restart"
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-7",
+            "command": "get_details",
+            "params": {
+              "entityType": "run",
+              "entityId": "run-f7b0842c-016f-4a24-906b-16f7c9627995"
+            }
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-8",
+            "command": "get_state",
+            "params": {
+              "projection": "full"
+            }
+          },
+          {
+            "version": 1,
+            "requestId": "live-core-9",
+            "command": "shutdown",
+            "params": {},
+            "operationId": "op-live-core-shutdown-1786274763002"
+          }
+        ],
+        "postRestartSendCount": 1
+      },
+      "elapsedMs": 136492
+    }
+  ],
+  "bridge": {
+    "health": {
+      "status": "ok",
+      "cached_verdicts": false,
+      "oldest_probed_at": "2026-08-09T11:23:13.972Z",
+      "backends": [
+        {
+          "name": "pi",
+          "state": "ready",
+          "version": "0.83.0",
+          "probed_at": "2026-08-09T11:23:13.972Z",
+          "cached": false
+        }
+      ],
+      "admission": {
+        "active": 0,
+        "queued": 0,
+        "maxActive": 8,
+        "maxQueue": 16
+      },
+      "ts": "2026-08-09T11:23:13.972Z"
+    },
+    "models": [
+      {
+        "id": "pi/deepseek/deepseek-v4-flash",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/deepseek/deepseek-v4-pro",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/kimi-for-coding-oauth/kimi-for-coding",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/moonshot/kimi-k2-thinking",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/moonshot/kimi-k2.5",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.3-codex-spark",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.4",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.4-mini",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.5",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.6-luna",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.6-sol",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/openai-codex/gpt-5.6-terra",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/claude-haiku-4-5-20251001",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/claude-opus-4-6",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/claude-sonnet-4-6",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/deepseek-v4-flash",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/deepseek-v4-pro",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/deepseek/deepseek-chat",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/gemini-2.5-flash-lite",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/gemini-3-pro-preview",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/glm-5.2",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/gpt-4o-mini",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/gpt-5-mini",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/gpt-5.4",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/gpt-5.4-mini",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/groq/llama-3.1-8b-instant",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/moonshotai/kimi-k2.5",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/tangle-router/openrouter/auto",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-coding-paas/glm-5",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-coding-paas/glm-5-code",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-coding-paas/glm-5-turbo",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-coding-paas/glm-5.1",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.5",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.5-air",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.5-airx",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.5-flash",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.5-x",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.6",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.7",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.7-flash",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-4.7-flashx",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-5",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-5-code",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-5-turbo",
+        "backend": "pi"
+      },
+      {
+        "id": "pi/zai-glm/glm-5.1",
+        "backend": "pi"
+      }
+    ],
+    "inventory": [
+      {
+        "runner": "pi",
+        "model": "pi/openai-codex/gpt-5.6-luna",
+        "status": "unavailable",
+        "code": "MODEL_NOT_CONFIGURED",
+        "detail": "Prior live probe returned HTTP 501 in 4.51s because the local Pi OpenAI refresh token was reused; the model is retained as unavailable evidence",
+        "observation": {
+          "httpStatus": 501,
+          "elapsedMs": 4510,
+          "source": "prior-live-probe"
+        }
+      }
+    ]
+  },
+  "artifact": {
+    "tarball": "tangle-network-braid-0.1.0.tgz",
+    "tarballSha256": "4008b3e9d48c8cc78043c733c79189e547e0aa2a49fa29dbb9c54bc2bfcc89bb",
+    "binary": "@tangle-network/braid/dist/bin/braid.js",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f"
+  },
+  "status": "passed",
+  "completedAt": "2026-08-09T11:26:03.078Z"
+}

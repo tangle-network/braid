@@ -1,0 +1,189 @@
+import type { TUI } from '@earendil-works/pi-tui'
+import { commandAvailability } from '../shared/command-registry.js'
+import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
+import type { ModalCoordinator } from './modal-coordinator.js'
+import type { TerminalDraftController } from './terminal-drafts.js'
+import type { TerminalOverlayController } from './terminal-overlays.js'
+import type { BraidShell } from './terminal-shell.js'
+
+export interface TerminalInputControllerOptions {
+  readonly tui: TUI
+  readonly keymap: BraidKeymap
+  readonly controller: BraidUiController
+  readonly shell: BraidShell
+  readonly drafts: TerminalDraftController
+  readonly overlays: TerminalOverlayController
+  readonly modals: ModalCoordinator
+  readonly nextOperationId: () => string
+  readonly dispatch: (intent: BraidIntent) => Promise<UiDispatchResult>
+  readonly interactionOpen: () => boolean
+  readonly stop: () => void
+  readonly stateChanged: () => void
+}
+
+/** Routes non-text terminal keys and owns the short-lived quit/activity state. */
+export class TerminalInputController {
+  readonly #tui: TUI
+  readonly #keymap: BraidKeymap
+  readonly #controller: BraidUiController
+  readonly #shell: BraidShell
+  readonly #drafts: TerminalDraftController
+  readonly #overlays: TerminalOverlayController
+  readonly #modals: ModalCoordinator
+  readonly #nextOperationId: () => string
+  readonly #dispatch: TerminalInputControllerOptions['dispatch']
+  readonly #interactionOpen: () => boolean
+  readonly #stop: () => void
+  readonly #stateChanged: () => void
+  #quitTimer: ReturnType<typeof setTimeout> | undefined
+  #quitArmed = false
+  #activityVisible = false
+
+  constructor(options: TerminalInputControllerOptions) {
+    this.#tui = options.tui
+    this.#keymap = options.keymap
+    this.#controller = options.controller
+    this.#shell = options.shell
+    this.#drafts = options.drafts
+    this.#overlays = options.overlays
+    this.#modals = options.modals
+    this.#nextOperationId = options.nextOperationId
+    this.#dispatch = options.dispatch
+    this.#interactionOpen = options.interactionOpen
+    this.#stop = options.stop
+    this.#stateChanged = options.stateChanged
+  }
+
+  get quitArmed(): boolean {
+    return this.#quitArmed
+  }
+
+  get activityVisible(): boolean {
+    return this.#activityVisible
+  }
+
+  close(): void {
+    if (this.#quitTimer) clearTimeout(this.#quitTimer)
+    this.#quitTimer = undefined
+  }
+
+  showActivity(): void {
+    this.#activityVisible = true
+    this.#stateChanged()
+  }
+
+  handle(data: string): { consume?: boolean } | undefined {
+    if (isTextInputSequence(data)) return undefined
+    if (matchesKeyAction(data, this.#keymap, 'closeOverlay') && this.#tui.hasOverlay()) {
+      if (this.#interactionOpen()) return undefined
+      this.#modals.closeTop()
+      return { consume: true }
+    }
+    if (this.#interactionOpen()) return undefined
+    if (this.#tui.hasOverlay()) return undefined
+    if (!this.#tui.hasOverlay() && this.#shell.handleTranscriptInput(data)) {
+      this.#tui.requestRender()
+      return { consume: true }
+    }
+    if (!matchesKeyAction(data, this.#keymap, 'clearCancelQuit')) this.#disarmQuit()
+    if (matchesKeyAction(data, this.#keymap, 'commandPalette')) {
+      this.#overlays.openCommandPalette()
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'conversationSelector')) {
+      const availability = commandAvailability('open', this.#controller.view().capabilities)
+      if (availability.available) {
+        void this.#drafts.flush().then(() => this.#overlays.openSelector('conversation'))
+      } else {
+        this.#overlays.openUnavailable(
+          '/open',
+          availability.reason ?? 'Conversation search is unavailable',
+        )
+      }
+      return { consume: true }
+    }
+    if (!this.#tui.hasOverlay() && matchesKeyAction(data, this.#keymap, 'previousBranch')) {
+      void this.#drafts.flush().then(() => this.#overlays.openAdjacentBranch(-1))
+      return { consume: true }
+    }
+    if (!this.#tui.hasOverlay() && matchesKeyAction(data, this.#keymap, 'nextBranch')) {
+      void this.#drafts.flush().then(() => this.#overlays.openAdjacentBranch(1))
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'graph')) {
+      this.#overlays.openSurface('graph')
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'switcher')) {
+      this.#overlays.openSelector('profile')
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'activity')) {
+      this.#activityVisible = !this.#activityVisible
+      this.#stateChanged()
+      return { consume: true }
+    }
+    if (
+      !this.#tui.hasOverlay() &&
+      matchesKeyAction(data, this.#keymap, 'toggleDetails') &&
+      this.#shell.toggleDetails()
+    ) {
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'help') && !this.#shell.editor.focused) {
+      this.#overlays.openHelp('')
+      return { consume: true }
+    }
+    if (
+      matchesKeyAction(data, this.#keymap, 'exit') &&
+      !this.#tui.hasOverlay() &&
+      !this.#shell.editor.getText() &&
+      !this.#controller.view().activeRunId
+    ) {
+      this.#requestShutdown()
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'clearCancelQuit') && !this.#tui.hasOverlay()) {
+      if (this.#shell.editor.getText()) {
+        this.#shell.editor.setText('')
+        return { consume: true }
+      }
+      if (this.#controller.view().activeRunId) {
+        void this.#dispatch({ type: 'cancel-run', operationId: this.#nextOperationId() })
+        return { consume: true }
+      }
+      if (this.#quitArmed) this.#requestShutdown()
+      else this.#armQuit()
+      return { consume: true }
+    }
+    return undefined
+  }
+
+  #requestShutdown(): void {
+    void this.#drafts.flush().then(() =>
+      this.#dispatch({ type: 'shutdown', operationId: this.#nextOperationId() }).then((result) => {
+        if (result.kind === 'accepted') this.#stop()
+      }),
+    )
+  }
+
+  #armQuit(): void {
+    this.#quitArmed = true
+    if (this.#quitTimer) clearTimeout(this.#quitTimer)
+    this.#quitTimer = setTimeout(() => {
+      this.#quitTimer = undefined
+      this.#quitArmed = false
+      this.#stateChanged()
+    }, 2_000)
+    this.#stateChanged()
+  }
+
+  #disarmQuit(): void {
+    if (!this.#quitArmed) return
+    this.#quitArmed = false
+    if (this.#quitTimer) clearTimeout(this.#quitTimer)
+    this.#quitTimer = undefined
+    this.#stateChanged()
+  }
+}

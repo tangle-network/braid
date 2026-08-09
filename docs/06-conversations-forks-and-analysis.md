@@ -273,7 +273,14 @@ Export never includes credential values or secret interaction answers.
 
 Import validates schema, identifiers, graph acyclicity, checksums, redaction markers, and version migration before writing.
 
-Imported external provider references are historical by default and cannot be controlled until reauthenticated and reconciled.
+`/import <path>` and the `import_conversation` JSONL command accept only canonical Braid JSON up to 2 MiB.
+
+Import remaps every durable identifier into a deterministic local namespace, writes the complete conversation in one event, and leaves drafts and queues empty.
+
+Imported runs retain historical text, normalized part provenance, outcomes, usage, cost, citations, completeness, and the source export digest, while provider sessions, connections, bindings, environments, live run replay cursors, pending interactions, and write capabilities are removed.
+Event-only citation identifiers remain visible as historical provenance but are labeled unsupported because source journal events are not reintroduced as live events; message- and part-backed citations remain resolvable.
+
+Continuing an imported conversation creates a fresh run through the currently selected profile and connection; it never resumes or controls the source provider session.
 
 ## `/ask` contract
 

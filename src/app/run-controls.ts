@@ -1,0 +1,307 @@
+import { canonicalDigest } from '../domain/canonical.js'
+import type { ControlAcknowledgement } from '../ports/execution.js'
+import type { ControlEffectRequest, ControlPort, QueuePort } from './application-ports.js'
+import type { ControlReceipt, QueueReceipt } from './application-types.js'
+import { AppError } from './errors.js'
+
+export function queueRunInput(
+  context: QueuePort,
+  input: { readonly operationId: string; readonly text: string; readonly runId?: string },
+): QueueReceipt {
+  if (!input.operationId) throw new AppError('OPERATION_ID_REQUIRED', 'queue requires operationId')
+  if (!input.text.trim()) throw new AppError('EMPTY_MESSAGE', 'Queued input must not be empty')
+  const runId = input.runId ?? context.currentState().activeRunId
+  if (!runId) throw new AppError('NO_ACTIVE_RUN', 'Queue input requires an active run')
+  const run = context.findRun(runId)
+  const existing = context
+    .currentState()
+    .queuedInputs.find((queued) => queued.operationId === input.operationId)
+  if (existing) {
+    if (existing.text !== input.text || existing.runId !== runId)
+      throw new AppError('OPERATION_CONFLICT', `Operation ${input.operationId} has different input`)
+    return {
+      operationId: input.operationId,
+      runId,
+      position: existing.position,
+      revision: context.currentState().revision,
+    }
+  }
+  if (!run.capabilities.controls.queue)
+    throw new AppError('CAPABILITY_UNAVAILABLE', 'Queued input is not supported by this run')
+  if (context.currentState().queuedInputs.length >= 4096)
+    throw new AppError('QUEUE_FULL', 'The durable input queue is full')
+  const position = context.currentState().queuedInputs.length + 1
+  const durable = context.commitAndWait({
+    kind: 'run.queue.added',
+    runId,
+    operationId: input.operationId,
+    text: input.text,
+    position,
+  })
+  return {
+    operationId: input.operationId,
+    runId,
+    position,
+    revision: context.currentState().revision,
+    ...(durable === undefined ? {} : { completion: Promise.resolve(durable) }),
+  }
+}
+
+export async function steerRun(
+  context: ControlPort,
+  input: { readonly operationId: string; readonly runId?: string; readonly text: string },
+): Promise<ControlReceipt> {
+  const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  if (!run.capabilities.controls.steer || !context.execution.steerRun)
+    throw new AppError('CAPABILITY_UNAVAILABLE', 'Live steering is not supported by this run')
+  const request: ControlEffectRequest = {
+    operationId: input.operationId,
+    runId: run.id,
+    control: 'steer',
+    text: input.text,
+    ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+  }
+  return control(context, request, 'steer')
+}
+
+export async function cancelRun(
+  context: ControlPort,
+  input: {
+    readonly operationId: string
+    readonly runId?: string
+    readonly reason?: string
+    readonly terminalStatus?: 'cancelled' | 'aborted'
+    readonly legacy?: boolean
+  },
+): Promise<ControlReceipt> {
+  const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  if (!run.capabilities.controls.cancel && !input.legacy)
+    throw new AppError('CAPABILITY_UNAVAILABLE', 'This run does not advertise cancellation support')
+  const request: ControlEffectRequest = {
+    operationId: input.operationId,
+    runId: run.id,
+    control: 'cancel',
+    ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(input.reason === undefined ? {} : { reason: input.reason }),
+  }
+  const receipt = await control(context, request, 'cancel', input.terminalStatus ?? 'cancelled')
+  return receipt
+}
+
+export async function detachRun(
+  context: ControlPort,
+  input: { readonly operationId: string; readonly runId?: string },
+): Promise<ControlReceipt> {
+  const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  if (
+    !run.capabilities.streaming.detach ||
+    !run.capabilities.controls.recreate ||
+    !context.execution.detachRun
+  )
+    throw new AppError('CAPABILITY_UNAVAILABLE', 'This run cannot be detached')
+  const request: ControlEffectRequest = {
+    operationId: input.operationId,
+    runId: run.id,
+    control: 'detach',
+    ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(run.lastCursor === undefined ? {} : { cursor: run.lastCursor }),
+  }
+  return control(context, request, 'detach')
+}
+
+async function control(
+  context: ControlPort,
+  request: ControlEffectRequest,
+  controlKind: 'cancel' | 'steer' | 'detach',
+  cancelStatus?: 'cancelled' | 'aborted',
+): Promise<ControlReceipt> {
+  const run = context.findRun(request.runId)
+  const digest = canonicalDigest({
+    control: controlKind,
+    runId: request.runId,
+    providerSessionId: request.providerSessionId ?? null,
+    reason: request.reason ?? null,
+    text: request.text ?? null,
+    cursor: request.cursor ?? null,
+  })
+  const previous = context.ledger.getControl(request.operationId)
+  if (previous) {
+    if (previous.digest !== digest)
+      throw new AppError(
+        'OPERATION_CONFLICT',
+        `Operation ${request.operationId} has different input`,
+      )
+    const acknowledgement = await previous.acknowledgement
+    if (acknowledgement.outcome === 'unknown') {
+      if (!context.currentEffect(request.operationId))
+        return {
+          operationId: request.operationId,
+          runId: request.runId,
+          control: controlKind,
+          acknowledgement,
+          status: context.findRun(request.runId).status,
+          completion: previous.completion,
+        }
+      const reconciled = await context.executeControl(request)
+      const durable = context.commitAndWait({
+        kind: 'run.control.acknowledged',
+        runId: request.runId,
+        operationId: request.operationId,
+        control: controlKind,
+        outcome: reconciled.outcome,
+        ...(reconciled.detail === undefined ? {} : { detail: reconciled.detail }),
+      })
+      if (durable !== undefined) await durable
+      context.ledger.setControl(request.operationId, {
+        ...previous,
+        acknowledgement: Promise.resolve(reconciled),
+        completion: Promise.resolve(context.currentState()),
+      })
+      return {
+        operationId: request.operationId,
+        runId: request.runId,
+        control: controlKind,
+        acknowledgement: reconciled,
+        status: context.findRun(request.runId).status,
+        completion: Promise.resolve(context.currentState()),
+      }
+    }
+    return {
+      operationId: request.operationId,
+      runId: request.runId,
+      control: controlKind,
+      acknowledgement,
+      status: context.findRun(request.runId).status,
+      completion: previous.completion,
+    }
+  }
+
+  const requested = context.commitAndWait({
+    kind: 'run.control.requested',
+    runId: request.runId,
+    operationId: request.operationId,
+    control: controlKind,
+    digest,
+    ...(request.reason === undefined ? {} : { reason: request.reason }),
+    ...(request.text === undefined ? {} : { text: request.text }),
+  })
+  if (requested !== undefined) await requested
+  if (controlKind === 'cancel') {
+    const legacyRequested = context.commitAndWait({
+      kind: 'run.cancel.requested',
+      runId: request.runId,
+      operationId: request.operationId,
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
+    })
+    if (legacyRequested !== undefined) await legacyRequested
+  }
+  if (controlKind === 'cancel') {
+    context.ledger.markExplicitlyCancelled(request.runId)
+    context.ledger.setCancelStatus(request.runId, cancelStatus ?? 'cancelled')
+  }
+  if (controlKind === 'detach') context.ledger.markDetached(request.runId)
+
+  let resolveAcknowledgement!: (value: ControlAcknowledgement) => void
+  const acknowledgement = new Promise<ControlAcknowledgement>((resolve) => {
+    resolveAcknowledgement = resolve
+  })
+  let resolveCompletion!: (value: import('../domain/state.js').BraidState) => void
+  let rejectCompletion!: (error: unknown) => void
+  const completion = new Promise<import('../domain/state.js').BraidState>((resolve, reject) => {
+    resolveCompletion = resolve
+    rejectCompletion = reject
+  })
+  context.ledger.setControl(request.operationId, {
+    digest,
+    runId: request.runId,
+    control: controlKind,
+    acknowledgement,
+    completion,
+    ...(request.providerSessionId === undefined
+      ? {}
+      : { providerSessionId: request.providerSessionId }),
+    ...(request.reason === undefined ? {} : { reason: request.reason }),
+    ...(request.text === undefined ? {} : { text: request.text }),
+    ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+  })
+  if (controlKind === 'cancel' && !context.execution.cancelRun)
+    context.ledger.getAbort(request.runId)?.abort(new Error(request.reason ?? 'Cancelled'))
+  void (async () => {
+    let ack: ControlAcknowledgement
+    try {
+      ack = await context.executeControl(request)
+    } catch {
+      ack = { operationId: request.operationId, outcome: 'unknown', detail: 'CONTROL_UNKNOWN' }
+    }
+    resolveAcknowledgement(ack)
+    const acknowledged = context.commitAndWait({
+      kind: 'run.control.acknowledged',
+      runId: request.runId,
+      operationId: request.operationId,
+      control: controlKind,
+      outcome: ack.outcome,
+      ...(ack.detail === undefined ? {} : { detail: ack.detail }),
+    })
+    if (acknowledged !== undefined) await acknowledged
+    if (ack.outcome === 'accepted' || ack.outcome === 'already-applied') {
+      if (controlKind === 'cancel') {
+        context.ledger.getAbort(request.runId)?.abort(new Error(request.reason ?? 'Cancelled'))
+        if (!context.isTerminal(context.findRun(request.runId).status)) {
+          const finished = context.commitAndWait({
+            kind: 'run.finished',
+            runId: request.runId,
+            status: cancelStatus ?? 'cancelled',
+            finalText: '',
+            usage: { input: run.inputTokens, output: run.outputTokens },
+            error:
+              ack.detail === undefined || ack.detail === 'CONTROL_ACKNOWLEDGED'
+                ? 'Cancellation acknowledged by the provider'
+                : ack.detail,
+          })
+          if (finished !== undefined) await finished
+        }
+      } else if (controlKind === 'detach') {
+        context.ledger.getAbort(request.runId)?.abort(new Error('Detached by user'))
+        const detached = context.commitAndWait({
+          kind: 'run.detached',
+          runId: request.runId,
+          ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+          ...(ack.detail === undefined ? {} : { detail: ack.detail }),
+        })
+        if (detached !== undefined) await detached
+      }
+      resolveCompletion(structuredClone(context.currentState()))
+      return
+    }
+    context.ledger.clearExplicitlyCancelled(request.runId)
+    context.ledger.clearCancelStatus(request.runId)
+    context.ledger.clearDetached(request.runId)
+    if (ack.outcome === 'unknown' && !context.isTerminal(context.findRun(request.runId).status)) {
+      const unknown = context.commitAndWait({
+        kind: 'run.unknown',
+        runId: request.runId,
+        detail:
+          controlKind === 'cancel'
+            ? unknownCancellationDetail(ack.detail)
+            : (ack.detail ?? 'Control outcome is unknown'),
+      })
+      if (unknown !== undefined) await unknown
+    }
+    resolveCompletion(structuredClone(context.currentState()))
+  })().catch((error: unknown) => rejectCompletion(error))
+  const ack = await acknowledgement
+  return {
+    operationId: request.operationId,
+    runId: request.runId,
+    control: controlKind,
+    acknowledgement: ack,
+    status: context.findRun(request.runId).status,
+    completion,
+  }
+}
+
+function unknownCancellationDetail(detail: string | undefined): string {
+  return detail === undefined || detail.startsWith('CONTROL_')
+    ? 'Cancellation outcome could not be confirmed by the provider'
+    : detail
+}

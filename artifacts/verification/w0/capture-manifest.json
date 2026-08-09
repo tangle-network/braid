@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-01T23:28:12.161Z",
+  "generatedAt": "2026-08-03T09:56:22.823Z",
   "command": "pnpm run capture:w0",
   "fixture": "deterministic",
   "terminal": "node-pty/xterm-256color",
@@ -34,7 +34,7 @@
     },
     {
       "path": "120x40.png",
-      "sha256": "75207c5763f6f913b29f7f029fc175fea45fda10f50954f80817836e0eb29ad5",
+      "sha256": "a9b3b7251caffa84796a768fd9c302cc8abc1b44aafcc453f811779d04dbd28b",
       "columns": 120,
       "rows": 40,
       "mode": "truecolor"
@@ -47,7 +47,7 @@
     },
     {
       "path": "200x60.png",
-      "sha256": "b06cb0ba7d5f693d3677e8c0bc1513335bff299a8b383059c7cbf17f894f4a2d",
+      "sha256": "5a112ffaa697d2a9c5a291a7a86f3da63b3e86589b08864a8c54c8ccb16a83a9",
       "columns": 200,
       "rows": 60,
       "mode": "truecolor"
@@ -60,7 +60,7 @@
     },
     {
       "path": "80x24-flow.gif",
-      "sha256": "2d4b1041dcfcf28c586567b63b52d95f4912fabacc111e2585afa3b653fda94e",
+      "sha256": "2ea79d39e70af0adf7748e231402041bdc7db4d75b924ef3fe70d834f1483e1f",
       "columns": 80,
       "rows": 24
     }

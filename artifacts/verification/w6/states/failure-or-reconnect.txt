@@ -1,0 +1,24 @@
+braid  cwd  braid-production  ·  session  New conversation
+ W6 failure state
+
+ error · unknown
+ RUNTIME_BACKEND_ERROR
+ failed
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+outcome failed · operation op-terminal-000002              fixture/deterministic
+Braid starter · runner pi                       /export preserve · /new continue

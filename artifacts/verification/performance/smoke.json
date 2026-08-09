@@ -1,0 +1,1608 @@
+{
+  "schemaVersion": 1,
+  "kind": "braid-performance-proof",
+  "mode": "smoke",
+  "status": "passed",
+  "generatedAt": "2026-08-04T05:55:28.877Z",
+  "command": "pnpm run test:performance",
+  "thresholds": {
+    "PERF-01": {
+      "metric": "process-start-to-first-visible-frame",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 250
+    },
+    "PERF-02": {
+      "metric": "process-start-to-first-visible-frame",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 1000
+    },
+    "PERF-03": {
+      "metric": "idle-key-to-updated-frame",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 50
+    },
+    "PERF-04": {
+      "metric": "runtime-event-to-updated-frame",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 50
+    },
+    "PERF-05": {
+      "metric": "replay-reduce-10000-events",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 2000
+    },
+    "PERF-06": {
+      "metric": "open-100000-event-conversation",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 2000
+    },
+    "PERF-07": {
+      "metric": "resize-during-stream-frame",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 100
+    },
+    "PERF-08": {
+      "metric": "idle-cpu",
+      "percentile": "median",
+      "operator": "<=",
+      "value": 1
+    },
+    "PERF-09": {
+      "metric": "resident-memory-10000-event-conversation",
+      "percentile": "p95",
+      "operator": "<=",
+      "value": 150
+    },
+    "PERF-10": {
+      "metric": "database-growth-10000-events",
+      "percentile": "maximum",
+      "operator": "<=",
+      "value": 50
+    }
+  },
+  "releaseValidation": {
+    "passed": false,
+    "reason": "smoke report has no release validation"
+  },
+  "provenance": {
+    "repository": "/home/drew/code/.worktrees/braid-integration",
+    "revision": "0efdd4e2bf3621aa77096dec191b44cfd723bfdc",
+    "packages": {
+      "braid": "0.1.0",
+      "piTui": "0.83.0",
+      "nodePty": "1.1.0",
+      "xtermHeadless": "6.0.0",
+      "sqlite": "12.11.1"
+    },
+    "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+    "os": "linux 7.0.0-28-generic",
+    "node": "v24.13.0",
+    "arch": "x64",
+    "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+    "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2",
+    "compileCache": {
+      "status": "ENABLED",
+      "modules": [
+        "dist/startup/durable-runtime.js",
+        "dist/startup/terminal-runtime.js"
+      ],
+      "flushed": true
+    },
+    "referenceDimensions": "40x12,80x24,120x40,200x60",
+    "seed": "fixed 2026-08-03T00:00:00.000Z; receipt-backed complete run; batch size 1000",
+    "externalResources": "none; local packed candidate, Pi terminal, and encrypted SQLite only"
+  },
+  "limits": {
+    "repetitions": 1,
+    "noBillableResources": true,
+    "smoke": true
+  },
+  "failures": [],
+  "measurements": [
+    {
+      "kind": "distribution",
+      "name": "PERF-01",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 228.81477099999756,
+      "median": 228.81477099999756,
+      "p90": 228.81477099999756,
+      "p95": 228.81477099999756,
+      "p99": 228.81477099999756,
+      "maximum": 228.81477099999756,
+      "target": {
+        "metric": "process-start-to-first-visible-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 250
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1,
+      "rawSamples": [
+        228.81477099999756
+      ],
+      "command": "pnpm run test:performance [PERF-01; smoke]",
+      "passed": true,
+      "observations": {
+        "readyFrames": {
+          "value": 1,
+          "reason": "Every sample waited for the seeded useful ready frame"
+        },
+        "invalidCells": {
+          "value": 0,
+          "reason": "All parsed frames had valid terminal cells"
+        },
+        "startupErrors": {
+          "value": 0,
+          "reason": "No startup or encrypted-storage error appeared before readiness"
+        },
+        "compileCacheFrames": {
+          "value": 1,
+          "reason": "Every repeat launch used the primed Node compile cache"
+        },
+        "compileCacheStatuses": [
+          "ALREADY_ENABLED"
+        ],
+        "startupStages": [
+          {
+            "spawnMs": 14.832,
+            "scriptMs": 14.02,
+            "compileCacheMs": 0.012,
+            "applicationImportsMs": 52.345,
+            "applicationOpenMs": 122.839,
+            "terminalImportsMs": 24.856,
+            "parallelStageMs": 122.839,
+            "overlapSavedMs": 24.856,
+            "terminalMs": 4.631,
+            "initializeMs": 0.179,
+            "firstRenderMs": 19.957
+          }
+        ]
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "seed": "10000-event-encrypted-sqlite-headless-production",
+        "readyMarker": "Completed Braid performance conversation (10000 committed events)",
+        "frameReadiness": "unique seeded final-content marker plus braid shell and no startup error",
+        "compileCache": "primed exact packed startup modules; one shared cache across repeat launches",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-02",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 271.8521089999995,
+      "median": 271.8521089999995,
+      "p90": 271.8521089999995,
+      "p95": 271.8521089999995,
+      "p99": 271.8521089999995,
+      "maximum": 271.8521089999995,
+      "target": {
+        "metric": "process-start-to-first-visible-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 1000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "cold-100000-event-encrypted-sqlite",
+        "eventCount": 100000
+      },
+      "state": "cold",
+      "repetitions": 1,
+      "rawSamples": [
+        271.8521089999995
+      ],
+      "command": "pnpm run test:performance [PERF-02; smoke]",
+      "passed": true,
+      "observations": {
+        "readyFrames": {
+          "value": 1,
+          "reason": "Every sample waited for the seeded useful ready frame"
+        },
+        "invalidCells": {
+          "value": 0,
+          "reason": "All parsed frames had valid terminal cells"
+        },
+        "startupErrors": {
+          "value": 0,
+          "reason": "No startup or encrypted-storage error appeared before readiness"
+        },
+        "compileCacheFrames": {
+          "value": 1,
+          "reason": "Every first launch started with its own empty Node compile-cache directory"
+        },
+        "compileCacheStatuses": [
+          "ALREADY_ENABLED"
+        ],
+        "startupStages": [
+          {
+            "spawnMs": 14.237,
+            "scriptMs": 14.398,
+            "compileCacheMs": 0.014,
+            "applicationImportsMs": 82.229,
+            "applicationOpenMs": 137.687,
+            "terminalImportsMs": 31.171,
+            "parallelStageMs": 137.687,
+            "overlapSavedMs": 31.171,
+            "terminalMs": 4.793,
+            "initializeMs": 0.19,
+            "firstRenderMs": 18.304
+          }
+        ]
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "seed": "100000-event-encrypted-sqlite-headless-production",
+        "readyMarker": "Completed Braid performance conversation (100000 committed events)",
+        "frameReadiness": "unique seeded final-content marker plus braid shell and no startup error",
+        "compileCache": "fresh empty directory for every launch; no compiled startup modules reused",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-03",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 8.186878000000434,
+      "median": 8.186878000000434,
+      "p90": 8.186878000000434,
+      "p95": 8.186878000000434,
+      "p99": 8.186878000000434,
+      "maximum": 8.186878000000434,
+      "target": {
+        "metric": "idle-key-to-updated-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1,
+      "rawSamples": [
+        8.186878000000434
+      ],
+      "command": "pnpm run test:performance [PERF-03; smoke]",
+      "passed": true,
+      "observations": {
+        "keyCount": {
+          "value": 1,
+          "reason": "Every unique composer edit reached a matching frame"
+        },
+        "eraseFrames": {
+          "value": 1,
+          "reason": "Every edit awaited a later composer-empty frame before the next edit"
+        },
+        "invalidCells": {
+          "value": 0,
+          "reason": "The final parsed frame had valid terminal cells"
+        },
+        "editBindings": [
+          {
+            "index": 1,
+            "token": "perf-key-00001",
+            "keyFrameVersion": 6,
+            "eraseFrameVersion": 7,
+            "keyFrame": [
+              "braid  cwd  braid-performance-10000-SqNJhb  ·  session  New conversation",
+              " Performance seed conversation with normalized text events.                     ",
+              "                                                                                ",
+              " Completed Braid performance conversation (10000 committed events); recent      ",
+              " event 9997.                                                                    ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "────────────────────────────────────────────────────────────────────────────────",
+              " perf-key-00001                                                                 ",
+              "────────────────────────────────────────────────────────────────────────────────",
+              "completed                                                              automatic",
+              "Braid performance profile · runner pi · not connected            Ctrl+P commands"
+            ],
+            "eraseFrame": [
+              "braid  cwd  braid-performance-10000-SqNJhb  ·  session  New conversation",
+              " Performance seed conversation with normalized text events.                     ",
+              "                                                                                ",
+              " Completed Braid performance conversation (10000 committed events); recent      ",
+              " event 9997.                                                                    ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "                                                                                ",
+              "────────────────────────────────────────────────────────────────────────────────",
+              "                                                                                ",
+              "────────────────────────────────────────────────────────────────────────────────",
+              "completed                                                              automatic",
+              "Braid performance profile · runner pi · not connected            Ctrl+P commands"
+            ]
+          }
+        ]
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "seed": "10000-event-encrypted-sqlite-headless-production",
+        "inputBinding": "unique perf-key-N text accepted by the real PTY composer",
+        "eraseBinding": "Ctrl-U followed by a later frame with no perf-key-N token",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-04",
+      "unit": "ms",
+      "n": 100,
+      "minimum": 1.2899299999990035,
+      "median": 8.974247000005562,
+      "p90": 14.93423199999961,
+      "p95": 15.856877999998687,
+      "p99": 18.85931800000253,
+      "maximum": 20.472194000001764,
+      "target": {
+        "metric": "runtime-event-to-updated-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "@xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "memory-journal-runtime-frame-path",
+        "eventCount": 100
+      },
+      "state": "warm",
+      "repetitions": 100,
+      "rawSamples": [
+        8.005440000000817,
+        2.373792999998841,
+        10.295016999996733,
+        4.727546999994956,
+        15.565062999994552,
+        10.257914999994682,
+        5.124679000000469,
+        15.856877999998687,
+        10.7044240000032,
+        5.247211000001698,
+        16.786948000000848,
+        12.662078000001202,
+        7.171348000003491,
+        1.7929799999983516,
+        12.923000999995566,
+        8.492528999995557,
+        2.038792999999714,
+        11.759932000000845,
+        7.593700000004901,
+        1.8321980000037001,
+        12.16612200000236,
+        7.314149999998335,
+        1.7521799999958603,
+        10.60624000000098,
+        4.681526000000304,
+        14.375992000001133,
+        10.076266999996733,
+        5.002598999999464,
+        16.656622000002244,
+        11.449651000002632,
+        6.5746540000036475,
+        1.5920039999982691,
+        12.108007000002544,
+        6.6234889999977895,
+        1.5691290000031586,
+        12.543574999996054,
+        7.135226999998849,
+        1.2899299999990035,
+        12.21222200000193,
+        6.979240000000573,
+        1.495033000006515,
+        11.85771399999794,
+        6.535957000000053,
+        1.3904269999984535,
+        12.391514999995707,
+        7.269470999999612,
+        1.5763430000006338,
+        13.407586000001174,
+        8.49224900000263,
+        1.8420760000008158,
+        11.6105979999993,
+        6.578751999993983,
+        2.147908999999345,
+        9.948105000003125,
+        4.444931000005454,
+        15.173612999999023,
+        10.364755000002333,
+        4.748969000000216,
+        14.72425800000201,
+        9.405136000001221,
+        4.211231000001135,
+        14.325683000002755,
+        8.974247000005562,
+        4.439139000001887,
+        14.931755999998131,
+        9.757789999996021,
+        4.611858999996912,
+        14.93423199999961,
+        9.669135999996797,
+        4.32818099999713,
+        14.910434000004898,
+        9.794783000004827,
+        4.73665500000061,
+        14.39632200000051,
+        8.97634200000175,
+        3.5902990000031423,
+        14.604151999999885,
+        10.020497999998042,
+        4.876471000003221,
+        18.85931800000253,
+        13.623661000005086,
+        8.70162100000016,
+        3.0969570000015665,
+        10.46448099999543,
+        5.173364999995101,
+        16.051620999998704,
+        11.23703299999761,
+        5.765521000001172,
+        20.472194000001764,
+        15.445087000000058,
+        11.23235399999976,
+        3.3086939999993774,
+        11.58632999999827,
+        4.186541999995825,
+        15.407201999994868,
+        9.58168399999704,
+        3.5127159999974538,
+        12.493174999995972,
+        8.083934999995108,
+        2.4093729999949574
+      ],
+      "command": "pnpm run test:performance [PERF-04; smoke]",
+      "passed": true,
+      "observations": {
+        "missingEvents": {
+          "value": 0,
+          "reason": "No runtime events were missing"
+        },
+        "duplicateEvents": {
+          "value": 0,
+          "reason": "No duplicate runtime events were accepted"
+        },
+        "invalidCells": {
+          "value": 0,
+          "reason": "The Pi terminal contained no invalid cells"
+        },
+        "uniqueProviderEventIds": {
+          "value": 100,
+          "reason": "Every provider event identifier was unique"
+        },
+        "acceptedEvents": 100,
+        "producerElapsedMs": 525.9477180000031,
+        "achievedEventsPerSecond": {
+          "value": 190.13296679043566,
+          "reason": "The final event frame completed within the required 100 events/s interval"
+        },
+        "finalFrameCompleted": {
+          "value": 1,
+          "reason": "Elapsed time ends after the final event matched a completed Pi frame"
+        },
+        "eventFrameBindings": "Pi TUI doRender completion + current view revision + unique event marker"
+      },
+      "details": {
+        "achievedEventsPerSecond": 190.13296679043566,
+        "minimumEventsPerSecond": 100,
+        "elapsedMs": 525.9477180000031,
+        "finalFrameCompleted": true,
+        "accepted": 100,
+        "renderedEvents": 100,
+        "producerIntervalMs": 5
+      },
+      "failureReasons": [],
+      "provenance": {
+        "packageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "frameBinding": "Pi TUI doRender completion + current view revision + unique event marker",
+        "unrelatedWritesExcluded": true,
+        "rateInterval": "producer start through the final event matching Pi frame completion",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-05",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 1279.1244089999964,
+      "median": 1279.1244089999964,
+      "p90": 1279.1244089999964,
+      "p95": 1279.1244089999964,
+      "p99": 1279.1244089999964,
+      "maximum": 1279.1244089999964,
+      "target": {
+        "metric": "replay-reduce-10000-events",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 2000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "none; production StorageJournal + reducer",
+        "dimensions": "none",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1,
+      "rawSamples": [
+        1279.1244089999964
+      ],
+      "command": "pnpm run test:performance [PERF-05; smoke]",
+      "passed": true,
+      "observations": {
+        "replayedEvents": {
+          "value": 10000,
+          "reason": "Every committed event was replayed"
+        },
+        "projectionChecksum": "6c2de87e0f4426333f6d6d8db5bb9ec79569ed5af45429625528d5dcb8bbfd50"
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "seed": "packed encrypted SQLite production storage; complete receipt-backed run",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-06",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 93.51295600000594,
+      "median": 93.51295600000594,
+      "p90": 93.51295600000594,
+      "p95": 93.51295600000594,
+      "p99": 93.51295600000594,
+      "maximum": 93.51295600000594,
+      "target": {
+        "metric": "open-100000-event-conversation",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 2000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "cold-100000-event-encrypted-sqlite",
+        "eventCount": 100000
+      },
+      "state": "cold",
+      "repetitions": 1,
+      "rawSamples": [
+        93.51295600000594
+      ],
+      "command": "pnpm run test:performance [PERF-06; smoke]",
+      "passed": true,
+      "observations": {
+        "openedEvents": {
+          "value": 100000,
+          "reason": "Every committed event was opened from encrypted SQLite"
+        },
+        "loadedTailEvents": [
+          0
+        ],
+        "renderedRows": [
+          4
+        ],
+        "viewportBound": 200
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "seed": "packed encrypted SQLite production storage; recent useful content asserted",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-07",
+      "unit": "ms",
+      "n": 10,
+      "minimum": 10.629837000000407,
+      "median": 15.846467000003031,
+      "p90": 17.80722799999785,
+      "p95": 28.26690999999846,
+      "p99": 28.26690999999846,
+      "maximum": 28.26690999999846,
+      "target": {
+        "metric": "resize-during-stream-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 100
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "40x12,80x24,120x40,200x60",
+        "database": "packed headless 100-events-per-second stream",
+        "eventCount": 29
+      },
+      "state": "warm",
+      "repetitions": 10,
+      "rawSamples": [
+        {
+          "index": 1,
+          "requested": {
+            "columns": 40,
+            "rows": 12
+          },
+          "dimensions": {
+            "columns": 40,
+            "rows": 12
+          },
+          "elapsedMs": 10.629837000000407,
+          "frameCompletions": 2,
+          "frameCompletedAt": 36290.581429,
+          "acceptedEvents": 3,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 2,
+          "requested": {
+            "columns": 80,
+            "rows": 24
+          },
+          "dimensions": {
+            "columns": 80,
+            "rows": 24
+          },
+          "elapsedMs": 28.26690999999846,
+          "frameCompletions": 3,
+          "frameCompletedAt": 36320.315196,
+          "acceptedEvents": 5,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 3,
+          "requested": {
+            "columns": 120,
+            "rows": 40
+          },
+          "dimensions": {
+            "columns": 120,
+            "rows": 40
+          },
+          "elapsedMs": 13.368759999997565,
+          "frameCompletions": 4,
+          "frameCompletedAt": 36333.920611,
+          "acceptedEvents": 8,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 4,
+          "requested": {
+            "columns": 200,
+            "rows": 60
+          },
+          "dimensions": {
+            "columns": 200,
+            "rows": 60
+          },
+          "elapsedMs": 16.98407700000098,
+          "frameCompletions": 5,
+          "frameCompletedAt": 36351.730374,
+          "acceptedEvents": 11,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 5,
+          "requested": {
+            "columns": 40,
+            "rows": 12
+          },
+          "dimensions": {
+            "columns": 40,
+            "rows": 12
+          },
+          "elapsedMs": 15.846467000003031,
+          "frameCompletions": 6,
+          "frameCompletedAt": 36366.761826,
+          "acceptedEvents": 14,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 6,
+          "requested": {
+            "columns": 80,
+            "rows": 24
+          },
+          "dimensions": {
+            "columns": 80,
+            "rows": 24
+          },
+          "elapsedMs": 16.87568299999839,
+          "frameCompletions": 7,
+          "frameCompletedAt": 36382.782426,
+          "acceptedEvents": 17,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 7,
+          "requested": {
+            "columns": 120,
+            "rows": 40
+          },
+          "dimensions": {
+            "columns": 120,
+            "rows": 40
+          },
+          "elapsedMs": 13.48747299999377,
+          "frameCompletions": 8,
+          "frameCompletedAt": 36397.240701,
+          "acceptedEvents": 20,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 8,
+          "requested": {
+            "columns": 200,
+            "rows": 60
+          },
+          "dimensions": {
+            "columns": 200,
+            "rows": 60
+          },
+          "elapsedMs": 17.80722799999785,
+          "frameCompletions": 9,
+          "frameCompletedAt": 36415.01865,
+          "acceptedEvents": 23,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 9,
+          "requested": {
+            "columns": 40,
+            "rows": 12
+          },
+          "dimensions": {
+            "columns": 40,
+            "rows": 12
+          },
+          "elapsedMs": 13.820958999996947,
+          "frameCompletions": 10,
+          "frameCompletedAt": 36428.916742,
+          "acceptedEvents": 26,
+          "active": true,
+          "invalidCells": 0
+        },
+        {
+          "index": 10,
+          "requested": {
+            "columns": 80,
+            "rows": 24
+          },
+          "dimensions": {
+            "columns": 80,
+            "rows": 24
+          },
+          "elapsedMs": 17.19083399999363,
+          "frameCompletions": 11,
+          "frameCompletedAt": 36445.102507,
+          "acceptedEvents": 29,
+          "active": true,
+          "invalidCells": 0
+        }
+      ],
+      "command": "pnpm run test:performance [PERF-07; smoke]",
+      "passed": true,
+      "observations": {
+        "producedEvents": {
+          "value": 29,
+          "reason": "Generated events were counted inside the packed execution stream"
+        },
+        "acceptedEvents": {
+          "value": 29,
+          "reason": "Accepted events were counted from the packed application journal"
+        },
+        "renderedFrames": {
+          "value": 11,
+          "reason": "Pi render completions were counted after xterm flush"
+        },
+        "renderedResizes": {
+          "value": 10,
+          "reason": "Every resize received a completed Pi render"
+        },
+        "elapsedMs": {
+          "value": 176.8542360000065,
+          "reason": "The interval starts at the first generated event and ends after the final resize-bound frame"
+        },
+        "offeredEventsPerSecond": {
+          "value": 163.97684701201578,
+          "reason": "Offered rate uses generated events over the measured stream interval"
+        },
+        "acceptedEventsPerSecond": {
+          "value": 163.97684701201578,
+          "reason": "Accepted rate met the required 100 events/s"
+        },
+        "observedEventsPerSecond": {
+          "value": 163.97684701201578,
+          "reason": "The pass rate is the accepted stream rate through the final resize-bound frame"
+        },
+        "producerEventsPerSecond": {
+          "value": 165.1976861181604,
+          "reason": "Producer cadence uses the first through last generated event timestamps"
+        },
+        "minimumEventsPerSecond": {
+          "value": 100,
+          "reason": "The accepted stream must sustain at least this rate"
+        },
+        "minimumExpectedEvents": {
+          "value": 18,
+          "reason": "Exact event-count equivalent of the 100 events/s requirement over this interval"
+        },
+        "ratePassed": {
+          "value": 1,
+          "reason": "Accepted stream rate passed the exact lower bound"
+        },
+        "duplicateEvents": {
+          "value": 0,
+          "reason": "No duplicate stream sequence markers were committed"
+        },
+        "duplicateProviderEventIds": {
+          "value": 0,
+          "reason": "No duplicate provider event IDs were committed"
+        },
+        "missingEvents": {
+          "value": 0,
+          "reason": "No generated stream marker was absent from the accepted journal"
+        },
+        "unexpectedEvents": {
+          "value": 0,
+          "reason": "No accepted event had an unexpected stream marker"
+        },
+        "invalidCells": {
+          "value": 0,
+          "reason": "Every reference-size frame contained valid cells"
+        },
+        "activeDuringEveryResize": {
+          "value": 1,
+          "reason": "The run stayed active through every resize"
+        },
+        "staticTranscript": {
+          "value": 0,
+          "reason": "Accepted event counts changed while resizing"
+        },
+        "perResize": [
+          {
+            "index": 1,
+            "requested": {
+              "columns": 40,
+              "rows": 12
+            },
+            "dimensions": {
+              "columns": 40,
+              "rows": 12
+            },
+            "elapsedMs": 10.629837000000407,
+            "frameCompletions": 2,
+            "frameCompletedAt": 36290.581429,
+            "acceptedEvents": 3,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 2,
+            "requested": {
+              "columns": 80,
+              "rows": 24
+            },
+            "dimensions": {
+              "columns": 80,
+              "rows": 24
+            },
+            "elapsedMs": 28.26690999999846,
+            "frameCompletions": 3,
+            "frameCompletedAt": 36320.315196,
+            "acceptedEvents": 5,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 3,
+            "requested": {
+              "columns": 120,
+              "rows": 40
+            },
+            "dimensions": {
+              "columns": 120,
+              "rows": 40
+            },
+            "elapsedMs": 13.368759999997565,
+            "frameCompletions": 4,
+            "frameCompletedAt": 36333.920611,
+            "acceptedEvents": 8,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 4,
+            "requested": {
+              "columns": 200,
+              "rows": 60
+            },
+            "dimensions": {
+              "columns": 200,
+              "rows": 60
+            },
+            "elapsedMs": 16.98407700000098,
+            "frameCompletions": 5,
+            "frameCompletedAt": 36351.730374,
+            "acceptedEvents": 11,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 5,
+            "requested": {
+              "columns": 40,
+              "rows": 12
+            },
+            "dimensions": {
+              "columns": 40,
+              "rows": 12
+            },
+            "elapsedMs": 15.846467000003031,
+            "frameCompletions": 6,
+            "frameCompletedAt": 36366.761826,
+            "acceptedEvents": 14,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 6,
+            "requested": {
+              "columns": 80,
+              "rows": 24
+            },
+            "dimensions": {
+              "columns": 80,
+              "rows": 24
+            },
+            "elapsedMs": 16.87568299999839,
+            "frameCompletions": 7,
+            "frameCompletedAt": 36382.782426,
+            "acceptedEvents": 17,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 7,
+            "requested": {
+              "columns": 120,
+              "rows": 40
+            },
+            "dimensions": {
+              "columns": 120,
+              "rows": 40
+            },
+            "elapsedMs": 13.48747299999377,
+            "frameCompletions": 8,
+            "frameCompletedAt": 36397.240701,
+            "acceptedEvents": 20,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 8,
+            "requested": {
+              "columns": 200,
+              "rows": 60
+            },
+            "dimensions": {
+              "columns": 200,
+              "rows": 60
+            },
+            "elapsedMs": 17.80722799999785,
+            "frameCompletions": 9,
+            "frameCompletedAt": 36415.01865,
+            "acceptedEvents": 23,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 9,
+            "requested": {
+              "columns": 40,
+              "rows": 12
+            },
+            "dimensions": {
+              "columns": 40,
+              "rows": 12
+            },
+            "elapsedMs": 13.820958999996947,
+            "frameCompletions": 10,
+            "frameCompletedAt": 36428.916742,
+            "acceptedEvents": 26,
+            "active": true,
+            "invalidCells": 0
+          },
+          {
+            "index": 10,
+            "requested": {
+              "columns": 80,
+              "rows": 24
+            },
+            "dimensions": {
+              "columns": 80,
+              "rows": 24
+            },
+            "elapsedMs": 17.19083399999363,
+            "frameCompletions": 11,
+            "frameCompletedAt": 36445.102507,
+            "acceptedEvents": 29,
+            "active": true,
+            "invalidCells": 0
+          }
+        ]
+      },
+      "details": {
+        "streamElapsedMs": 176.8542360000065,
+        "firstGeneratedAt": 36268.248271,
+        "lastGeneratedAt": 36443.795524,
+        "finalResizeFrameCompletedAt": 36445.102507,
+        "intendedEventsPerSecond": 250,
+        "producerEventsPerSecond": 165.1976861181604,
+        "offeredEventsPerSecond": 163.97684701201578,
+        "acceptedEventsPerSecond": 163.97684701201578,
+        "observedEventsPerSecond": 163.97684701201578,
+        "minimumEventsPerSecond": 100,
+        "minimumExpectedEvents": 18,
+        "ratePassed": true
+      },
+      "failureReasons": [],
+      "provenance": {
+        "packageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "stream": "packed Braid application + packed Pi terminal headless path",
+        "eventReceipt": "application committed uniquely marked run.text.delta events",
+        "resizeReceipt": "Pi doRender completion followed by xterm flush at each reference size and resize epoch",
+        "rateInterval": "first generated stream event through the final resize-bound Pi frame",
+        "referenceDimensions": [
+          "40x12",
+          "80x24",
+          "120x40",
+          "200x60"
+        ],
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-08",
+      "unit": "% of one core",
+      "n": 1,
+      "minimum": 0,
+      "median": 0,
+      "p90": 0,
+      "p95": 0,
+      "p99": 0,
+      "maximum": 0,
+      "target": {
+        "metric": "idle-cpu",
+        "percentile": "median",
+        "operator": "<=",
+        "value": 1
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "deterministic-offline-fixture-idle",
+        "eventCount": 0
+      },
+      "state": "warm",
+      "repetitions": 1,
+      "rawSamples": [
+        0
+      ],
+      "command": "pnpm run test:performance [PERF-08; smoke]",
+      "passed": true,
+      "observations": {
+        "durationSeconds": [
+          2.0022956110000014
+        ],
+        "cpuSeconds": [
+          0
+        ],
+        "requiredDurationSeconds": 2
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "settlingSeconds": 0.25,
+        "measuredSeconds": 2,
+        "cpuMeter": "/proc/<pid>/stat",
+        "commandPath": "packed deterministic Braid process",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-09",
+      "unit": "MiB RSS",
+      "n": 1,
+      "minimum": 108.12890625,
+      "median": 108.12890625,
+      "p90": 108.12890625,
+      "p95": 108.12890625,
+      "p99": 108.12890625,
+      "maximum": 108.12890625,
+      "target": {
+        "metric": "resident-memory-10000-event-conversation",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 150
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "packed production view model; child process RSS",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1,
+      "rawSamples": [
+        108.12890625
+      ],
+      "command": "pnpm run test:performance [PERF-09; smoke]",
+      "passed": true,
+      "observations": {
+        "residentMemory": [
+          {
+            "baselineRssMiB": 102.6640625,
+            "openedRssMiB": 108.12890625,
+            "loadedTailEventCount": 0,
+            "renderedRows": 4
+          }
+        ],
+        "boundedViewport": {
+          "value": 200,
+          "reason": "The child process enforces a maximum of 200 rendered rows"
+        }
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "seed": "packed encrypted SQLite production storage; one fresh child per repetition",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-10",
+      "unit": "MiB",
+      "n": 1,
+      "minimum": 8.1328125,
+      "median": 8.1328125,
+      "p90": 8.1328125,
+      "p95": 8.1328125,
+      "p99": 8.1328125,
+      "maximum": 8.1328125,
+      "target": {
+        "metric": "database-growth-10000-events",
+        "percentile": "maximum",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "none; packed production encrypted SQLite artifacts",
+        "dimensions": "none",
+        "database": "cold-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "cold",
+      "repetitions": 1,
+      "rawSamples": [
+        8.1328125
+      ],
+      "command": "pnpm run test:performance [PERF-10; smoke]",
+      "passed": true,
+      "observations": {
+        "databaseFiles": [
+          {
+            "database": 8495104,
+            "wal": 0,
+            "sharedMemory": 32768,
+            "total": 8527872
+          }
+        ],
+        "providerArtifacts": {
+          "value": 0,
+          "reason": "The normalized local text seed writes no provider payload artifact files"
+        }
+      },
+      "details": {},
+      "failureReasons": [],
+      "provenance": {
+        "bytes": "database + WAL + shared-memory SQLite artifacts only",
+        "providerArtifacts": "reported separately and excluded from samples",
+        "packedPackageRoot": "/tmp/braid-install-giSGkm/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "392fc9277f267753fa86e3965d58e07f2728b4c8f55b1913fb1071fe51e8d2b2"
+      }
+    }
+  ],
+  "releaseMeasurements": [
+    {
+      "kind": "distribution",
+      "name": "PERF-01",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 228.81477099999756,
+      "median": 228.81477099999756,
+      "p90": 228.81477099999756,
+      "p95": 228.81477099999756,
+      "p99": 228.81477099999756,
+      "maximum": 228.81477099999756,
+      "target": {
+        "metric": "process-start-to-first-visible-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 250
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-02",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 271.8521089999995,
+      "median": 271.8521089999995,
+      "p90": 271.8521089999995,
+      "p95": 271.8521089999995,
+      "p99": 271.8521089999995,
+      "maximum": 271.8521089999995,
+      "target": {
+        "metric": "process-start-to-first-visible-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 1000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "cold-100000-event-encrypted-sqlite",
+        "eventCount": 100000
+      },
+      "state": "cold",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-03",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 8.186878000000434,
+      "median": 8.186878000000434,
+      "p90": 8.186878000000434,
+      "p95": 8.186878000000434,
+      "p99": 8.186878000000434,
+      "maximum": 8.186878000000434,
+      "target": {
+        "metric": "idle-key-to-updated-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-04",
+      "unit": "ms",
+      "n": 100,
+      "minimum": 1.2899299999990035,
+      "median": 8.974247000005562,
+      "p90": 14.93423199999961,
+      "p95": 15.856877999998687,
+      "p99": 18.85931800000253,
+      "maximum": 20.472194000001764,
+      "target": {
+        "metric": "runtime-event-to-updated-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "@xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "memory-journal-runtime-frame-path",
+        "eventCount": 100
+      },
+      "state": "warm",
+      "repetitions": 100
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-05",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 1279.1244089999964,
+      "median": 1279.1244089999964,
+      "p90": 1279.1244089999964,
+      "p95": 1279.1244089999964,
+      "p99": 1279.1244089999964,
+      "maximum": 1279.1244089999964,
+      "target": {
+        "metric": "replay-reduce-10000-events",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 2000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "none; production StorageJournal + reducer",
+        "dimensions": "none",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-06",
+      "unit": "ms",
+      "n": 1,
+      "minimum": 93.51295600000594,
+      "median": 93.51295600000594,
+      "p90": 93.51295600000594,
+      "p95": 93.51295600000594,
+      "p99": 93.51295600000594,
+      "maximum": 93.51295600000594,
+      "target": {
+        "metric": "open-100000-event-conversation",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 2000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "cold-100000-event-encrypted-sqlite",
+        "eventCount": 100000
+      },
+      "state": "cold",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-07",
+      "unit": "ms",
+      "n": 10,
+      "minimum": 10.629837000000407,
+      "median": 15.846467000003031,
+      "p90": 17.80722799999785,
+      "p95": 28.26690999999846,
+      "p99": 28.26690999999846,
+      "maximum": 28.26690999999846,
+      "target": {
+        "metric": "resize-during-stream-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 100
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "40x12,80x24,120x40,200x60",
+        "database": "packed headless 100-events-per-second stream",
+        "eventCount": 29
+      },
+      "state": "warm",
+      "repetitions": 10
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-08",
+      "unit": "% of one core",
+      "n": 1,
+      "minimum": 0,
+      "median": 0,
+      "p90": 0,
+      "p95": 0,
+      "p99": 0,
+      "maximum": 0,
+      "target": {
+        "metric": "idle-cpu",
+        "percentile": "median",
+        "operator": "<=",
+        "value": 1
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.83.0",
+        "dimensions": "80x24",
+        "database": "deterministic-offline-fixture-idle",
+        "eventCount": 0
+      },
+      "state": "warm",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-09",
+      "unit": "MiB RSS",
+      "n": 1,
+      "minimum": 108.12890625,
+      "median": 108.12890625,
+      "p90": 108.12890625,
+      "p95": 108.12890625,
+      "p99": 108.12890625,
+      "maximum": 108.12890625,
+      "target": {
+        "metric": "resident-memory-10000-event-conversation",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 150
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "packed production view model; child process RSS",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-10",
+      "unit": "MiB",
+      "n": 1,
+      "minimum": 8.1328125,
+      "median": 8.1328125,
+      "p90": 8.1328125,
+      "p95": 8.1328125,
+      "p99": 8.1328125,
+      "maximum": 8.1328125,
+      "target": {
+        "metric": "database-growth-10000-events",
+        "percentile": "maximum",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "none; packed production encrypted SQLite artifacts",
+        "dimensions": "none",
+        "database": "cold-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "cold",
+      "repetitions": 1
+    }
+  ]
+}
