@@ -179,7 +179,7 @@ const DEFINITIONS: readonly CommandDefinition[] = [
     'automate',
     [],
     'Inspect or change interaction rules',
-    '/automate',
+    '/automate [list|create|update|dry-run|disable|delete]',
     'interaction.automation',
     'explicit',
   ],

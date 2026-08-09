@@ -1,7 +1,11 @@
 import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
-import { createOperationId, type Digest } from '../domain/ids.js'
 import type { StoredAutomationRule } from './automation-matching.js'
+import {
+  automationOperationRecord,
+  commitAutomationEvent,
+  findAutomationOperation,
+  findAutomationRuleEvent,
+} from './automation-rule-store.js'
 import type {
   ApplyAutomationInput,
   AutomationRuleReceipt,
@@ -21,10 +25,10 @@ export async function createAutomationRule(
   input: CreateAutomationRuleInput,
 ): Promise<AutomationRuleReceipt> {
   const normalized = normalizeAutomationRule(input)
-  const prior = findRuleOperation(input.events(), normalized.operationId)
+  const prior = findAutomationOperation(input.events(), normalized.operationId)
   if (prior !== undefined) {
     assertOperationDigest(prior, normalized.digest, normalized.operationId)
-    const stored = findRuleEvent(input.events(), normalized.operationId)
+    const stored = findAutomationRuleEvent(input.events(), normalized.operationId)
     if (stored === undefined)
       throw new AppError('OPERATION_REQUIRES_RECONCILIATION', 'The rule write needs reconciliation')
     return {
@@ -35,10 +39,10 @@ export async function createAutomationRule(
       revision: input.state().revision,
     }
   }
-  await commit(input, {
+  await commitAutomationEvent(input, {
     kind: 'rule.upserted',
     rule: normalized.rule,
-    operation: operationRecord(normalized.operationId, normalized.digest, normalized.now),
+    operation: automationOperationRecord(normalized.operationId, normalized.digest, normalized.now),
   })
   return {
     operationId: normalized.operationId,
@@ -61,7 +65,7 @@ export async function deleteAutomationRule(
   const operationId = requiredOperationId(input.operationId)
   const ruleId = parseRuleId(input.ruleId)
   const digest = canonicalDigest({ kind: 'automation.rule.delete', ruleId })
-  const prior = findRuleOperation(input.events(), operationId)
+  const prior = findAutomationOperation(input.events(), operationId)
   if (prior !== undefined) {
     assertOperationDigest(prior, digest, operationId)
     return {
@@ -74,10 +78,10 @@ export async function deleteAutomationRule(
   if (!input.state().rules.some((rule) => rule.id === ruleId))
     throw new AppError('AUTOMATION_RULE_NOT_FOUND', 'The automation rule does not exist')
   const now = input.now?.() ?? new Date().toISOString()
-  await commit(input, {
+  await commitAutomationEvent(input, {
     kind: 'rule.deleted',
     ruleId,
-    operation: operationRecord(operationId, digest, now),
+    operation: automationOperationRecord(operationId, digest, now),
   })
   return {
     operationId,
@@ -100,23 +104,18 @@ export async function reserveRuleUse(
     ruleId: rule.id,
     uses: rule.uses + 1,
   })
-  const previous = findRuleOperation(input.events(), reservationId)
+  const previous = findAutomationOperation(input.events(), reservationId)
   if (previous !== undefined) {
     assertOperationDigest(previous, reservationDigest, operationId)
     return false
   }
   const nextRule: StoredAutomationRule = { ...rule, uses: rule.uses + 1 }
-  await commit(input, {
+  await commitAutomationEvent(input, {
     kind: 'rule.upserted',
     rule: nextRule,
-    operation: operationRecord(reservationId, reservationDigest, now),
+    operation: automationOperationRecord(reservationId, reservationDigest, now),
   })
   return true
-}
-
-export async function commit(input: AutomationStoreInput, event: BraidEvent): Promise<void> {
-  const result = input.commitAndWait(event)
-  if (result !== undefined) await result
 }
 
 async function mutateRule(
@@ -131,7 +130,7 @@ async function mutateRule(
   if (current === undefined)
     throw new AppError('AUTOMATION_RULE_NOT_FOUND', 'The automation rule does not exist')
   const digest = canonicalDigest({ kind: 'automation.rule.disable', ruleId, enabled })
-  const prior = findRuleOperation(input.events(), operationId)
+  const prior = findAutomationOperation(input.events(), operationId)
   if (prior !== undefined) {
     assertOperationDigest(prior, digest, operationId)
     return {
@@ -144,10 +143,10 @@ async function mutateRule(
   }
   const now = input.now?.() ?? new Date().toISOString()
   const rule: StoredAutomationRule = { ...current, enabled }
-  await commit(input, {
+  await commitAutomationEvent(input, {
     kind: 'rule.upserted',
     rule,
-    operation: operationRecord(operationId, digest, now),
+    operation: automationOperationRecord(operationId, digest, now),
   })
   return {
     operationId,
@@ -156,40 +155,4 @@ async function mutateRule(
     replayed: false,
     revision: input.state().revision,
   }
-}
-
-function operationRecord(operationId: string, requestDigest: Digest, now: string) {
-  return {
-    id: createOperationId(operationId),
-    kind: 'custom' as const,
-    requestDigest,
-    status: 'terminal' as const,
-    createdAt: now,
-    updatedAt: now,
-  }
-}
-
-function findRuleOperation(
-  events: readonly BraidEventEnvelope[],
-  operationId: string,
-): { readonly id: string; readonly requestDigest: Digest } | undefined {
-  for (const envelope of events) {
-    const event = envelope.event
-    if (event.kind === 'rule.upserted' && event.operation?.id === operationId)
-      return event.operation
-    if (event.kind === 'rule.deleted' && event.operation.id === operationId) return event.operation
-  }
-  return undefined
-}
-
-function findRuleEvent(
-  events: readonly BraidEventEnvelope[],
-  operationId: string,
-): StoredAutomationRule | undefined {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]?.event
-    if (event?.kind === 'rule.upserted' && event.operation?.id === operationId)
-      return event.rule as StoredAutomationRule
-  }
-  return undefined
 }

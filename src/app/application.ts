@@ -33,6 +33,7 @@ import type {
   SendReceipt,
   ShutdownReceipt,
 } from './application-types.js'
+import { type AutomationActions, createAutomationActions } from './automation-actions.js'
 import { executeControlEffect } from './control-effects.js'
 import { createConversationActions } from './conversation-composition.js'
 import { ConversationOperationCoordinator } from './conversation-operation-coordinator.js'
@@ -95,6 +96,7 @@ const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
+  readonly automation: AutomationActions
   readonly configuration: ConfigurationActionTransition
   readonly runtimeSelection: RuntimeSelection
   readonly #execution: ExecutionPort
@@ -210,6 +212,16 @@ export class BraidApplication {
     })
     this.#portViews = runtime.ports
     this.#transition = runtime.transition
+    this.automation = createAutomationActions({
+      state: () => this.#state,
+      events: () => this.#journal.all(),
+      commitAndWait: (event) => {
+        if (this.#asynchronousJournal) return this.#commitAndWait(event)
+        this.#commit(event)
+        return undefined
+      },
+      now: () => this.#clock.now(),
+    })
     this.configuration = createConfigurationActionTransition(this.#transition)
     this.intelligence = createIntelligenceActions(
       {

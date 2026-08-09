@@ -10,12 +10,13 @@ import {
 import type { BraidInteraction } from '../domain/runtime-projection.js'
 import type { BraidState } from '../domain/state.js'
 import {
-  evaluateAutomation,
   type AutomationEvaluation,
   type AutomationEvaluationContext,
+  evaluateAutomation,
   type StoredAutomationRule,
 } from './automation-matching.js'
-import { commit, reserveRuleUse } from './automation-rule-persistence.js'
+import { reserveRuleUse } from './automation-rule-persistence.js'
+import { commitAutomationEvent } from './automation-rule-store.js'
 import type {
   ApplyAutomationInput,
   ApplyAutomationReceipt,
@@ -28,8 +29,8 @@ import {
   interactionRequestDigest,
   requiredOperationId,
 } from './automation-rule-validation.js'
-import { checkInteractionResponse } from './interaction-response.js'
 import { AppError } from './errors.js'
+import { checkInteractionResponse } from './interaction-response.js'
 
 export async function dryRunAutomation(
   input: AutomationDryRunInput,
@@ -63,7 +64,7 @@ export async function dryRunAutomation(
     ...(evaluation.detail === undefined ? {} : { detail: evaluation.detail }),
     createdAt: context.now,
   })
-  await commit(input, { kind: 'interaction.automation.audited', audit })
+  await commitAutomationEvent(input, { kind: 'interaction.automation.audited', audit })
   return {
     operationId,
     replayed: false,
@@ -92,7 +93,7 @@ export async function applyAutomation(
   }
   const evaluation = evaluateAutomation(input.state().rules, input.interaction, context)
   if (evaluation.status !== 'eligible' || evaluation.rule === undefined) {
-    await commit(input, {
+    await commitAutomationEvent(input, {
       kind: 'interaction.automation.audited',
       audit: automationAudit({
         operationId,
@@ -126,7 +127,7 @@ export async function applyAutomation(
   const applied =
     response.acknowledgement.outcome === 'accepted' ||
     response.acknowledgement.outcome === 'already-applied'
-  await commit(input, {
+  await commitAutomationEvent(input, {
     kind: 'interaction.automation.audited',
     audit: automationAudit({
       operationId,

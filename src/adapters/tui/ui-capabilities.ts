@@ -69,6 +69,7 @@ export function capabilityMap(
   capabilities['activity.read'] = { available: true, source: 'local' }
   capabilities['graph.read'] = { available: true, source: 'local' }
   capabilities['details.read'] = { available: true, source: 'local' }
+  capabilities['interaction.automation'] = { available: true, source: 'application' }
   capabilities['draft.write'] =
     state.workspace === null
       ? {

@@ -123,7 +123,12 @@ test('every scoped package alias forwards its declared file set', () => {
       'effect-admission.test.js',
       'run-admission-architecture.test.js',
     ],
-    'test:rpc': ['profile-connection-actions.test.js', 'rpc.test.js', 'w6-contract.test.js'],
+    'test:rpc': [
+      'automation-interaction-commands.test.js',
+      'profile-connection-actions.test.js',
+      'rpc.test.js',
+      'w6-contract.test.js',
+    ],
     'test:virtual-terminal': [
       'configuration-product-flow.test.js',
       'keyboard.test.js',
@@ -172,6 +177,7 @@ test('every scoped package alias forwards its declared file set', () => {
   }
   const criticalRegressionFiles = [
     'analysis-durable.test.js',
+    'automation-interaction-commands.test.js',
     'cli-bridge-profile-contract.test.js',
     'cli-startup.test.js',
     'configuration-product-flow.test.js',

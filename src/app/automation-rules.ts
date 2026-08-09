@@ -1,3 +1,9 @@
+export type {
+  AutomationEvaluation,
+  AutomationEvaluationContext,
+  AutomationRuleMetadata,
+  StoredAutomationRule,
+} from './automation-matching.js'
 export {
   applyAutomation,
   automationAudits,
@@ -8,7 +14,6 @@ export {
   deleteAutomationRule,
   disableAutomationRule,
 } from './automation-rule-persistence.js'
-export { interactionRequestDigest } from './automation-rule-validation.js'
 export type {
   ApplyAutomationInput,
   ApplyAutomationReceipt,
@@ -19,10 +24,7 @@ export type {
   AutomationStoreInput,
   CreateAutomationRuleInput,
   RuleMutationReceipt,
+  UpdateAutomationRuleInput,
 } from './automation-rule-types.js'
-export type {
-  AutomationEvaluation,
-  AutomationEvaluationContext,
-  AutomationRuleMetadata,
-  StoredAutomationRule,
-} from './automation-matching.js'
+export { updateAutomationRule } from './automation-rule-update.js'
+export { interactionRequestDigest } from './automation-rule-validation.js'
