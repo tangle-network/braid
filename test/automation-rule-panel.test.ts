@@ -18,6 +18,7 @@ const interaction: InteractionView = {
   prompt: 'Which answer should be sent?',
   answerSpec: { kind: 'text', required: true, secret: false, maxLength: 64 },
   allowedOutcomes: ['accept', 'once', 'session', 'persistent', 'cancel'],
+  responseScopes: ['once', 'session', 'persistent'],
   queuePosition: 0,
   secret: false,
 }
