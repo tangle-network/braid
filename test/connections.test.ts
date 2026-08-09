@@ -8,6 +8,7 @@ import {
   createProductionConnectionAdapter,
   type SandboxClientFactoryInput,
 } from '../src/adapters/connections/production-connections.js'
+import { normalizeTangleInferenceRuntimeBaseUrl } from '../src/adapters/connections/production-connection-endpoints.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import {
   createProductionBackendResolver,
@@ -108,6 +109,17 @@ test('connection records stay secret-free and selection is exact', () => {
       ]),
     (error: unknown) =>
       error instanceof ConnectionError && error.code === 'SECRET_IN_CONNECTION_RECORD',
+  )
+})
+
+test('Tangle inference keeps its saved root while Runtime receives the v1 API root', () => {
+  assert.equal(
+    normalizeTangleInferenceRuntimeBaseUrl('https://router.tangle.tools'),
+    'https://router.tangle.tools/v1',
+  )
+  assert.equal(
+    normalizeTangleInferenceRuntimeBaseUrl('https://router.tangle.tools/v1/'),
+    'https://router.tangle.tools/v1',
   )
 })
 
@@ -299,7 +311,7 @@ test('production resolver routes chat connections through agent-runtime', async 
   const events = []
   for await (const event of streamAgentTurn(backend, 'hello')) events.push(event)
   assert.equal(events.at(-1)?.type, 'final')
-  assert.equal(calls[0]?.url, 'https://router.test/chat/completions')
+  assert.equal(calls[0]?.url, 'https://router.test/v1/chat/completions')
   assert.match(calls[0]?.body ?? '', /"model":"openai\/gpt-5"/u)
 })
 

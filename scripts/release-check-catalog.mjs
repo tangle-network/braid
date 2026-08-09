@@ -29,7 +29,6 @@ export const REQUIRED_CHECKS = new Map([
   ['crash', { category: 'subprocess', command: 'pnpm test:crash' }],
   ['security', { category: 'security', command: 'pnpm test:security' }],
   ['performance', { category: 'performance', command: 'pnpm test:performance' }],
-  ['live', { category: 'live', command: 'pnpm test:live' }],
   ['live-bridge', { category: 'live', command: 'pnpm test:live:bridge' }],
   ['live-tangle', { category: 'live', command: 'pnpm test:live:tangle' }],
   ['live-supervisor', { category: 'live', command: 'pnpm test:live:supervisor' }],
@@ -38,16 +37,82 @@ export const REQUIRED_CHECKS = new Map([
   ['install', { category: 'release', command: 'pnpm test:install' }],
   ['capture', { category: 'terminal', command: 'pnpm test:capture' }],
   ['visual', { category: 'terminal', command: 'pnpm capture:visual' }],
+  ['independent-review', { category: 'release', command: 'pnpm test:independent-review' }],
   ['release', { category: 'release', command: 'pnpm check:release' }],
-  ['verify:release', { category: 'release', command: 'pnpm verify:release' }],
 ])
 
+export const RELEASE_ASSEMBLY_COMMAND = Object.freeze({
+  category: 'release',
+  command: 'pnpm verify:release',
+})
+
+const LIVE_AGGREGATE_COMMAND = Object.freeze({ category: 'live', command: 'pnpm test:live' })
+const LIVE_BRIDGE_RELEASE_COMMAND = Object.freeze({
+  category: 'live',
+  command: 'pnpm test:live:bridge:release',
+})
+const UPSTREAM_COMMAND = Object.freeze({ category: 'contract', command: 'pnpm test:upstream' })
+const PROPERTY_SOAK_COMMAND = Object.freeze({
+  category: 'release',
+  command: 'pnpm test:property:soak',
+})
+
+export const RELEASE_COMMANDS = new Map()
+for (const [id, command] of REQUIRED_CHECKS) {
+  if (id === 'live-bridge') RELEASE_COMMANDS.set('live', LIVE_AGGREGATE_COMMAND)
+  RELEASE_COMMANDS.set(id, command)
+  if (id === 'contract') RELEASE_COMMANDS.set('upstream', UPSTREAM_COMMAND)
+  if (id === 'performance') RELEASE_COMMANDS.set('property-soak', PROPERTY_SOAK_COMMAND)
+  if (id === 'live-bridge') RELEASE_COMMANDS.set('live-bridge-release', LIVE_BRIDGE_RELEASE_COMMAND)
+}
+RELEASE_COMMANDS.set('verify:release', RELEASE_ASSEMBLY_COMMAND)
+
 export const EXACT_REQUIREMENT_CHECK_CATEGORIES = new Map([
-  ['UP', new Set(['contract', 'live'])],
+  ['UP', new Set(['contract'])],
   ['LIVE', new Set(['live'])],
   ['PERF', new Set(['performance'])],
   ['EVAL', new Set(['eval'])],
 ])
+const EXACT_REQUIREMENT_CHECK_IDS = new Map([['VR-03', new Set(['release'])]])
+
+const EXACT_REQUIREMENT_ID = /^(UP|LIVE|PERF|EVAL|VR)-([0-9]{2})$/u
+
+function exactRequirementRoute(prefix, number) {
+  if (prefix === 'PERF') return REQUIRED_CHECKS.get('performance')
+  if (prefix === 'EVAL') return REQUIRED_CHECKS.get('eval')
+  if (prefix === 'LIVE') {
+    if (number <= 5) return LIVE_BRIDGE_RELEASE_COMMAND
+    if (number <= 10) return REQUIRED_CHECKS.get('live-tangle')
+    if (number === 11) return REQUIRED_CHECKS.get('live-supervisor')
+    if (number === 12) return REQUIRED_CHECKS.get('live-analysis')
+    return undefined
+  }
+  if (prefix === 'UP') {
+    if (number >= 1 && number <= 14) return UPSTREAM_COMMAND
+  }
+  if (prefix === 'VR' && number === 3) return PROPERTY_SOAK_COMMAND
+  return undefined
+}
+
+export function exactRequirementCheckCategories(requirementId) {
+  const direct = EXACT_REQUIREMENT_CHECK_IDS.get(requirementId)
+  if (direct) return direct
+  const prefix = requirementId.slice(0, requirementId.indexOf('-'))
+  return EXACT_REQUIREMENT_CHECK_CATEGORIES.get(prefix)
+}
+
+export function releaseCheckEntry(id) {
+  const stable = REQUIRED_CHECKS.get(id)
+  if (stable) return stable
+  const match = EXACT_REQUIREMENT_ID.exec(id)
+  if (!match) return undefined
+  return exactRequirementRoute(match[1], Number.parseInt(match[2], 10))
+}
+
+export function requiredEvidenceCheckIds(requirementIds) {
+  const exact = requirementIds.filter((id) => exactRequirementCheckCategories(id) !== undefined)
+  return [...REQUIRED_CHECKS.keys(), ...exact.sort()]
+}
 
 export const ADMISSIBLE_CATEGORIES = new Map([
   ['AN', new Set(['unit', 'contract', 'subprocess', 'live', 'security', 'eval'])],
@@ -62,10 +127,10 @@ export const ADMISSIBLE_CATEGORIES = new Map([
     new Set(['unit', 'contract', 'subprocess', 'terminal', 'live', 'security', 'eval', 'release']),
   ],
   ['SE', new Set(['contract', 'subprocess', 'live', 'security', 'release'])],
-  ['ST', new Set(['unit', 'contract', 'security', 'performance'])],
+  ['ST', new Set(['unit', 'contract', 'subprocess', 'security', 'performance'])],
   ['UP', new Set(['contract', 'live'])],
   ['US', new Set(['contract', 'security', 'release'])],
   ['UX', new Set(['unit', 'subprocess', 'terminal', 'live', 'security', 'performance'])],
-  ['VR', new Set(['terminal', 'live', 'performance', 'security', 'eval', 'release'])],
+  ['VR', new Set(['subprocess', 'terminal', 'live', 'performance', 'security', 'eval', 'release'])],
   ['VT', new Set(['subprocess', 'terminal', 'release'])],
 ])

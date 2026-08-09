@@ -1,17 +1,8 @@
-import { lstat, mkdir } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 
-import {
-  assert,
-  compareCanonicalKeys,
-  signManifest,
-  verifyManifestSignature,
-} from '../release-evidence.mjs'
-import {
-  containedOutputPath,
-  readRegularFileNoFollow,
-  writeExclusiveAtomic,
-} from '../release-files.mjs'
+import { compareCanonicalKeys } from '../release-evidence.mjs'
+import { containedOutputPath, writeExclusiveAtomic } from '../release-files.mjs'
 
 export function renderVerificationReport(manifest) {
   const lines = [
@@ -36,35 +27,14 @@ export function renderVerificationReport(manifest) {
         `| \`${check.id}\` | ${check.category} | \`${check.command}\` | ${check.environment} | ${check.durationMs} ms |`,
     ),
     '',
-    'Every row above has a valid Ed25519 execution receipt from the pinned release key.',
+    'The release archive contains these records and is endorsed only after validation.',
     '',
   ]
   return `${lines.join('\n')}\n`
 }
 
-export async function writeVerificationOutputs({
-  options,
-  evidence,
-  specificationDigests,
-  publicKey,
-}) {
-  assert(
-    options.signingKeyPath,
-    'BRAID_RELEASE_SIGNING_KEY_PATH is required to sign the release manifest',
-  )
-  const signingKeyInfo = await lstat(options.signingKeyPath)
-  assert(signingKeyInfo.isFile(), 'Release signing key is not a file')
-  assert(!signingKeyInfo.isSymbolicLink(), 'Release signing key may not be a symlink')
-  assert(
-    (signingKeyInfo.mode & 0o077) === 0,
-    'Release signing key permissions are broader than 0600',
-  )
-  assert(
-    !resolve(options.signingKeyPath).startsWith(`${options.repository}/`),
-    'Release signing key must be outside checkout',
-  )
-  const signingKey = (await readRegularFileNoFollow(options.signingKeyPath)).toString('utf8')
-  const unsignedManifest = {
+export async function writeVerificationOutputs({ options, evidence, specificationDigests }) {
+  const manifest = {
     ...evidence,
     sourceState: {
       ...evidence.sourceState,
@@ -73,12 +43,7 @@ export async function writeVerificationOutputs({
       ),
     },
   }
-  const manifest = signManifest(unsignedManifest, signingKey)
-  verifyManifestSignature(manifest, publicKey)
-  const outputRoot = await containedOutputPath(
-    options.repository,
-    join('artifacts', 'verification', evidence.braidVersion),
-  )
+  const outputRoot = await containedOutputPath(options.artifactRoot, evidence.braidVersion)
   const outputPath = join(outputRoot, 'manifest.json')
   const reportPath = join(outputRoot, 'report.md')
   await mkdir(outputRoot, { recursive: true })

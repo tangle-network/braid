@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { execFileSync } from 'node:child_process'
-import { createHash, generateKeyPairSync } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,20 +9,22 @@ import { PassThrough } from 'node:stream'
 import { test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 
-import { verifyManifestSignature } from '../release-evidence.mjs'
 import { writeJsonAtomic } from './atomic-storage.mjs'
 import { bindingForCheck, readBuildIdentity, readRequirementIds } from './build-identity.mjs'
+import { releaseChildEnvironment } from './child-environment.mjs'
 import { structuredChildEvidence } from './collection-contract.mjs'
 import { collectReleaseEvidence } from './collector.mjs'
 import { executeArgv } from './command-runner.mjs'
 import { packageFileManifestFromTarball, sourceDigest } from './package-archive.mjs'
 import {
   BoundedCapture,
+  collectCredentialSecrets,
   collectRedactionSecrets,
   REDACTION_INPUT_CHUNK_CHARS,
   redactText,
   sanitizeEnvironment,
 } from './redaction.mjs'
+import { StructuredOutputCapture } from './structured-output.mjs'
 
 function octal(value, width) {
   return `${value.toString(8).padStart(width - 1, '0')}\0`
@@ -59,10 +61,16 @@ function git(root, ...args) {
 
 async function makeRepo() {
   const root = await mkdtemp(join(tmpdir(), 'braid-release-repo-'))
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-release-artifacts-'))
   await mkdir(join(root, 'docs'), { recursive: true })
   await writeFile(
     join(root, 'package.json'),
-    `${JSON.stringify({ name: '@example/braid', version: '1.0.0', dependencies: {} })}\n`,
+    `${JSON.stringify({
+      name: '@example/braid',
+      version: '1.0.0',
+      packageManager: 'pnpm@11.18.0',
+      dependencies: {},
+    })}\n`,
   )
   await writeFile(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
   await writeFile(
@@ -76,8 +84,10 @@ async function makeRepo() {
   git(root, 'add', 'package.json', 'pnpm-lock.yaml', 'docs/requirements.md')
   git(root, 'commit', '-qm', 'fixture')
   const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  const packageJsonBytes = Buffer.from(`${JSON.stringify(packageJson)}\n`)
-  const tarballPath = join(root, 'example-braid-1.0.0.tgz')
+  const packedPackageJson = { ...packageJson }
+  delete packedPackageJson.packageManager
+  const packageJsonBytes = Buffer.from(`${JSON.stringify(packedPackageJson)}\n`)
+  const tarballPath = join(artifactRoot, 'example-braid-1.0.0.tgz')
   const tarballBytes = tarArchive([
     { name: 'package/', type: 'directory' },
     { name: 'package/package.json', body: packageJsonBytes },
@@ -91,12 +101,12 @@ async function makeRepo() {
     version: '1.0.0',
     gitCommit: git(root, 'rev-parse', 'HEAD'),
     treeSha256: git(root, 'rev-parse', 'HEAD^{tree}'),
-    sourceDigest: await sourceDigest(root, new Set([tarballPath])),
+    sourceDigest: await sourceDigest(root),
     isolatedBuild: true,
     sourceCheckout: 'isolated-copy-of-worktree',
     packageFileManifest: manifest,
   }
-  return { root, tarballPath, tarballBytes, proof }
+  return { root, artifactRoot, tarballPath, tarballBytes, proof }
 }
 
 async function withRepo(action) {
@@ -104,7 +114,10 @@ async function withRepo(action) {
   try {
     return await action(fixture)
   } finally {
-    await rm(fixture.root, { recursive: true, force: true })
+    await Promise.all([
+      rm(fixture.root, { recursive: true, force: true }),
+      rm(fixture.artifactRoot, { recursive: true, force: true }),
+    ])
   }
 }
 
@@ -134,14 +147,15 @@ async function waitFor(predicate, timeoutMs = 2_000) {
   return true
 }
 
-test('redaction hashes complete raw output and preserves a valid UTF-8 bounded prefix', () => {
+test('redaction counts raw output without publishing a secret-derived digest', () => {
   const left = new BoundedCapture(32, ['secret-value'])
   const right = new BoundedCapture(32, ['secret-value'])
   left.push(Buffer.from(`${'same prefix '.repeat(20)}A`))
   right.push(Buffer.from(`${'same prefix '.repeat(20)}B`))
   const leftResult = left.finish()
   const rightResult = right.finish()
-  assert.notEqual(leftResult.rawSha256, rightResult.rawSha256)
+  assert.equal(Object.hasOwn(leftResult, 'rawSha256'), false)
+  assert.equal(Object.hasOwn(rightResult, 'rawSha256'), false)
   assert.equal(leftResult.rawByteLength, rightResult.rawByteLength)
   assert(!leftResult.bytes.toString('utf8').includes('\uFFFD'))
   assert(!rightResult.bytes.toString('utf8').includes('\uFFFD'))
@@ -257,6 +271,89 @@ test('environment sanitization unions explicit and innocent-name canaries withou
   for (const canary of ['password', 'query-canary', 'bearer-canary']) assert(!text.includes(canary))
 })
 
+test('low-entropy control values stay redacted without corrupting structured release markers', async () => {
+  const environment = {
+    BRAID_LIVE_BRIDGE: '1',
+    BRAID_RELEASE_ARTIFACT_ROOT: '/tmp/braid-release-artifacts',
+    BRAID_CLI_BRIDGE_BEARER: 'short',
+  }
+  const secrets = collectRedactionSecrets(environment)
+  assert(secrets.includes('1'))
+  assert(secrets.includes('short'))
+  const output =
+    'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
+    'BRAID_RELEASE_MEASUREMENTS_JSON={"measurements":[{"kind":"scalar","name":"LIVE-01","unit":"count","value":1000}]}\n'
+  const processResult = await executeArgv({
+    file: process.execPath,
+    args: ['-e', `process.stdout.write(${JSON.stringify(output)})`],
+    cwd: process.cwd(),
+    environment: { ...process.env, ...environment },
+  })
+  assert(processResult.stdout.bytes.toString('utf8').includes('[REDACTED]'))
+  const evidence = structuredChildEvidence(
+    'live',
+    processResult.structuredStdout.bytes,
+    1,
+    'LIVE-01',
+  )
+  assert.equal(evidence.result, 'passed')
+  assert.equal(evidence.measurements[0]?.name, 'LIVE-01')
+  assert.equal(evidence.measurements[0]?.value, 1000)
+})
+
+test('structured failure reasons redact credential values before they enter release evidence', () => {
+  const credential = 'TOPSECRET_MARKER_VALUE'
+  const secrets = collectCredentialSecrets({ BRAID_EVAL_BEARER: credential })
+  const output = Buffer.from(
+    `BRAID_RELEASE_RESULT_JSON=${JSON.stringify({
+      status: 'failed',
+      reason: `request failed: ${credential}`,
+    })}\n`,
+  )
+  const evidence = structuredChildEvidence('eval', output, 3, 'EVAL-01', undefined, secrets)
+  assert.equal(evidence.result, 'failed')
+  assert.doesNotMatch(JSON.stringify(evidence), /TOPSECRET_MARKER_VALUE/u)
+  assert.match(evidence.reason ?? '', /\[REDACTED\]/u)
+})
+
+test('release children receive only credentials for their exact provider command', () => {
+  const environment = {
+    PATH: '/bin',
+    BRAID_CLI_BRIDGE_BEARER: 'bridge-secret',
+    BRAID_CLI_BRIDGE_URL: 'http://127.0.0.1:4010',
+    BRAID_EVAL_BEARER: 'eval-secret',
+    BRAID_EVAL_BRIDGE_URL: 'http://127.0.0.1:4020',
+    BRAID_UPSTREAM_GITHUB_TOKEN: 'upstream-secret',
+    GH_TOKEN: 'ambient-secret',
+    NODE_OPTIONS: '--require=/tmp/inject.cjs',
+  }
+  const ordinary = releaseChildEnvironment(environment, 'pnpm check')
+  assert.deepEqual(ordinary, { PATH: '/bin' })
+  const bridge = releaseChildEnvironment(environment, 'pnpm test:live:bridge:release')
+  assert.equal(bridge.BRAID_CLI_BRIDGE_BEARER, 'bridge-secret')
+  assert.equal(bridge.BRAID_CLI_BRIDGE_URL, 'http://127.0.0.1:4010')
+  assert.equal(bridge.BRAID_EVAL_BEARER, undefined)
+  assert.equal(bridge.GH_TOKEN, undefined)
+  const evaluation = releaseChildEnvironment(environment, 'pnpm test:eval')
+  assert.equal(evaluation.BRAID_EVAL_BEARER, 'eval-secret')
+  assert.equal(evaluation.BRAID_CLI_BRIDGE_BEARER, undefined)
+})
+
+test('structured release capture handles split markers and rejects oversized marker lines', () => {
+  const split = new StructuredOutputCapture()
+  split.push('ordinary output\nBRAID_RELEASE_RES')
+  split.push('ULT_JSON={"status":"passed"}\n')
+  const retained = split.finish()
+  assert.equal(retained.error, null)
+  assert.equal(retained.bytes.toString(), 'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n')
+
+  const oversized = new StructuredOutputCapture()
+  oversized.push(
+    Buffer.concat([Buffer.from('BRAID_RELEASE_RESULT_JSON='), Buffer.alloc(1024 * 1024, 0x61)]),
+  )
+  assert.match(oversized.finish().error, /oversized/u)
+})
+
 test('structured child results require an unambiguous passed marker and one measurement', () => {
   const measurement = JSON.stringify([{ kind: 'scalar', name: 'count', unit: 'count', value: 1 }])
   const passed = structuredChildEvidence(
@@ -267,6 +364,25 @@ test('structured child results require an unambiguous passed marker and one meas
     3,
   )
   assert.equal(passed.result, 'passed')
+  const exactMeasurements = JSON.stringify([
+    { kind: 'scalar', name: 'LIVE-01', unit: 'count', value: 1 },
+    { kind: 'scalar', name: 'LIVE-02', unit: 'count', value: 1 },
+  ])
+  const exactOutput = Buffer.from(
+    `BRAID_RELEASE_RESULT_JSON={"status":"passed"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${exactMeasurements}\n`,
+  )
+  const exact = structuredChildEvidence('live', exactOutput, 3, 'LIVE-02')
+  assert.equal(exact.result, 'passed')
+  assert.deepEqual(
+    exact.measurements.map(({ name }) => name),
+    ['LIVE-02'],
+  )
+  assert.notEqual(structuredChildEvidence('live', exactOutput, 3, 'LIVE-03').result, 'passed')
+  assert.notEqual(structuredChildEvidence('live', exactOutput, 3, 'UP-08').result, 'passed')
+  assert.notEqual(
+    structuredChildEvidence('contract', Buffer.from('contract passed\n'), 3, 'UP-01').result,
+    'passed',
+  )
   for (const output of [
     `BRAID_RELEASE_MEASUREMENTS_JSON=${measurement}\n`,
     `BRAID_RELEASE_RESULT_JSON={"status":"failed","reason":"no"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${measurement}\n`,
@@ -283,6 +399,35 @@ test('structured child results require an unambiguous passed marker and one meas
       3,
     ).result,
     'failed',
+  )
+
+  const exactResult = 'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n'
+  const exactEvidence = (name, unit, value) =>
+    Buffer.from(
+      `${exactResult}BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify([
+        { kind: 'scalar', name, unit, value },
+      ])}\n`,
+    )
+  assert.equal(
+    structuredChildEvidence('release', exactEvidence('VR-03', 'seeds', 100_000), 3, 'VR-03').result,
+    'passed',
+  )
+  assert.notEqual(
+    structuredChildEvidence('release', exactEvidence('VR-03', 'seeds', 99_999), 3, 'VR-03').result,
+    'passed',
+  )
+  assert.equal(
+    structuredChildEvidence(
+      'contract',
+      exactEvidence('UP-01', 'upstream-attestations', 1),
+      3,
+      'UP-01',
+    ).result,
+    'passed',
+  )
+  assert.notEqual(
+    structuredChildEvidence('contract', exactEvidence('UP-01', 'count', 1), 3, 'UP-01').result,
+    'passed',
   )
 })
 
@@ -433,8 +578,13 @@ test('requirements and bindings reject duplicate definitions before canonicaliza
 })
 
 test('build identity binds clean HEAD, explicit Git-tree algorithm, tarball digest, and package manifest', async () => {
-  await withRepo(async ({ root, tarballPath, proof }) => {
-    const identity = await readBuildIdentity({ repository: root, tarballPath, packageProof: proof })
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    const identity = await readBuildIdentity({
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+    })
     assert.deepEqual(identity.gitTree, {
       algorithm: 'git-tree-object-sha1',
       value: identity.treeSha256,
@@ -445,14 +595,14 @@ test('build identity binds clean HEAD, explicit Git-tree algorithm, tarball dige
       '## Product acceptance\n\n| PR-01 | modified |\n',
     )
     await expectRejectAsync(
-      () => readBuildIdentity({ repository: root, tarballPath, packageProof: proof }),
+      () => readBuildIdentity({ repository: root, artifactRoot, tarballPath, packageProof: proof }),
       /Source tree is not clean/iu,
     )
   })
-  await withRepo(async ({ root, tarballPath, tarballBytes, proof }) => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, tarballBytes, proof }) => {
     await writeFile(tarballPath, Buffer.concat([tarballBytes, Buffer.from('changed')]))
     await expectRejectAsync(
-      () => readBuildIdentity({ repository: root, tarballPath, packageProof: proof }),
+      () => readBuildIdentity({ repository: root, artifactRoot, tarballPath, packageProof: proof }),
       /tarball digest differs/iu,
     )
   })
@@ -484,8 +634,8 @@ test('atomic interruption leaves no partial file and permits a clean retry', asy
   }
 })
 
-test('one local catalog check produces redacted artifacts and a signed collection manifest', async () => {
-  await withRepo(async ({ root, tarballPath, proof }) => {
+test('one local catalog check produces redacted artifacts and an immutable collection manifest', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
     const bin = await mkdtemp(join(tmpdir(), 'braid-fake-pnpm-'))
     const pnpmPath = join(bin, 'pnpm')
     await writeFile(
@@ -493,15 +643,13 @@ test('one local catalog check produces redacted artifacts and a signed collectio
       '#!/usr/bin/env node\nprocess.stdout.write(process.argv.slice(2).join(" "))\n',
     )
     await chmod(pnpmPath, 0o755)
-    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
     try {
       const collectionOptions = {
         repository: root,
+        artifactRoot,
         tarballPath,
         packageProof: proof,
         requirementBindings: { 'PR-01': { checks: ['repository'] } },
-        signingKey: privateKey,
-        publicKey,
         checkIds: ['repository'],
         environment: {
           PATH: `${bin}:${process.env.PATH ?? ''}`,
@@ -513,19 +661,25 @@ test('one local catalog check produces redacted artifacts and a signed collectio
       assert.equal(result.result, 'passed')
       assert.equal(result.envelope.checks.length, 1)
       assert.equal(result.envelope.checks[0].result, 'passed')
-      verifyManifestSignature(result.manifest, publicKey)
+      assert.deepEqual(result.manifest.signatures, [])
       const serialized = JSON.stringify(result)
       assert(!serialized.includes('secret-value'))
 
+      await rm(result.paths.manifest)
+      const resumed = await collectReleaseEvidence({
+        ...collectionOptions,
+        now: () => Date.now() + 60_000,
+      })
+      assert.equal(resumed.result, 'passed')
+      assert.equal(resumed.envelope.finishedAt, result.envelope.finishedAt)
+      assert.deepEqual(resumed.manifest, result.manifest)
+
       const partialPath = result.paths.partial
       const originalPartial = await readFile(partialPath, 'utf8')
-      const tamperedReceipt = JSON.parse(originalPartial)
-      tamperedReceipt.envelope.checks[0].receipt.signature = '0'.repeat(128)
-      await writeFile(partialPath, `${JSON.stringify(tamperedReceipt)}\n`)
-      await expectRejectAsync(
-        () => collectReleaseEvidence(collectionOptions),
-        /receipt|signature/iu,
-      )
+      const tamperedRecord = JSON.parse(originalPartial)
+      tamperedRecord.envelope.checks[0].binding.gitCommit = '0'.repeat(40)
+      await writeFile(partialPath, `${JSON.stringify(tamperedRecord)}\n`)
+      await expectRejectAsync(() => collectReleaseEvidence(collectionOptions), /binding|commit/iu)
 
       const wrongBuild = JSON.parse(originalPartial)
       wrongBuild.build.tarballSha256 = '0'.repeat(64)
@@ -540,7 +694,7 @@ test('one local catalog check produces redacted artifacts and a signed collectio
         artifact.id.endsWith('-stdout'),
       )
       assert(stdoutArtifact)
-      await writeFile(join(root, stdoutArtifact.path), 'tampered')
+      await writeFile(join(artifactRoot, stdoutArtifact.path), 'tampered')
       await expectRejectAsync(
         () => collectReleaseEvidence(collectionOptions),
         /Artifact .* changed/iu,
@@ -548,5 +702,127 @@ test('one local catalog check produces redacted artifacts and a signed collectio
     } finally {
       await rm(bin, { recursive: true, force: true })
     }
+  })
+})
+
+test('a restored failed check is retried with a new recorded attempt', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    let calls = 0
+    const runCheck = async ({ checkId }) => {
+      calls += 1
+      const processResult = await executeArgv({
+        file: process.execPath,
+        args: ['-e', calls === 1 ? 'process.exit(7)' : 'process.stdout.write("passed")'],
+        cwd: root,
+        environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      })
+      return {
+        checkId,
+        category: 'release',
+        command: 'pnpm check',
+        argv: ['pnpm', 'check'],
+        ...processResult,
+      }
+    }
+    const options = {
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['repository'] } },
+      checkIds: ['repository'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck,
+    }
+    const failed = await collectReleaseEvidence(options)
+    assert.equal(failed.result, 'failed')
+    assert.equal(failed.envelope.checks[0]?.attempt, 1)
+
+    const retried = await collectReleaseEvidence(options)
+    assert.equal(retried.result, 'passed')
+    assert.equal(retried.envelope.checks[0]?.attempt, 2)
+    assert.equal(calls, 2)
+    assert.deepEqual(retried.manifest.signatures, [])
+  })
+})
+
+test('a failed exact record retries every record and artifact from its shared command', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    let calls = 0
+    const runCheck = async ({ checkId, environment }) => {
+      calls += 1
+      const measurement = calls === 1 ? 'EVAL-02' : 'EVAL-01'
+      await mkdir(environment.BRAID_EVAL_OUTPUT_DIR, { recursive: true })
+      await writeFile(
+        join(environment.BRAID_EVAL_OUTPUT_DIR, 'evidence.json'),
+        `${JSON.stringify({ attempt: calls, measurement })}\n`,
+      )
+      const output =
+        'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
+        `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({
+          measurements: [{ kind: 'scalar', name: measurement, unit: 'fixtures-passed', value: 3 }],
+        })}\n`
+      const processResult = await executeArgv({
+        file: process.execPath,
+        args: ['-e', `process.stdout.write(${JSON.stringify(output)})`],
+        cwd: root,
+        environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      })
+      return {
+        checkId,
+        category: 'eval',
+        command: 'pnpm test:eval',
+        argv: ['pnpm', 'test:eval'],
+        ...processResult,
+      }
+    }
+    const options = {
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['eval', 'EVAL-01'] } },
+      checkIds: ['eval', 'EVAL-01'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck,
+    }
+    const failed = await collectReleaseEvidence(options)
+    assert.equal(failed.result, 'failed')
+    assert.deepEqual(
+      failed.envelope.checks.map(({ id, attempt, result }) => ({ id, attempt, result })),
+      [
+        { id: 'EVAL-01', attempt: 1, result: 'uncaptured' },
+        { id: 'eval', attempt: 1, result: 'passed' },
+      ],
+    )
+
+    let resumedClockCalls = 0
+    await assert.rejects(
+      collectReleaseEvidence({
+        ...options,
+        now: () => {
+          resumedClockCalls += 1
+          if (resumedClockCalls === 3) throw new Error('interrupted shared-command retry')
+          return Date.now() + 60_000 + resumedClockCalls
+        },
+      }),
+      /interrupted shared-command retry/u,
+    )
+    assert.equal(calls, 2)
+
+    const retried = await collectReleaseEvidence(options)
+    assert.equal(retried.result, 'passed')
+    assert.equal(calls, 3)
+    assert.deepEqual(
+      retried.envelope.checks.map(({ id, attempt, result }) => ({ id, attempt, result })),
+      [
+        { id: 'EVAL-01', attempt: 2, result: 'passed' },
+        { id: 'eval', attempt: 3, result: 'passed' },
+      ],
+    )
+    const evidenceArtifacts = retried.envelope.artifacts.filter(({ id }) =>
+      id.includes('-evidence-'),
+    )
+    assert(evidenceArtifacts.every(({ sha256 }) => sha256 === evidenceArtifacts[0]?.sha256))
   })
 })

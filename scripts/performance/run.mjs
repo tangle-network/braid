@@ -4,6 +4,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { installPackedBraid } from '../packed-binary.mjs'
+import { npmInvocation } from '../release/platform.mjs'
 import { createPerformanceLifecycle } from './lifecycle.mjs'
 import { installedPackageRoot } from './packed-runtime.mjs'
 import { runProcessMeasurements } from './process-measurements.mjs'
@@ -70,7 +71,8 @@ async function createContext(mode, lifecycle) {
       'node_modules',
       'better-sqlite3-multiple-ciphers',
     )
-    await execFile('npm', ['run', 'install', '--prefix', sqlitePackage], {
+    const npm = npmInvocation(['run', 'install', '--prefix', sqlitePackage])
+    await execFile(npm.file, npm.args, {
       cwd: context.packed.installRoot,
     })
     lifecycle.throwIfAborted()
@@ -251,6 +253,10 @@ async function run() {
       `Performance proof failed; see ${fullReport.path}`,
     )
     process.stdout.write(`Performance proof passed; raw report: ${fullReport.path}\n`)
+    process.stdout.write('BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n')
+    process.stdout.write(
+      `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({ measurements: fullReport.releaseMeasurements })}\n`,
+    )
   } finally {
     process.removeListener('SIGINT', onSignal)
     process.removeListener('SIGTERM', onSignal)

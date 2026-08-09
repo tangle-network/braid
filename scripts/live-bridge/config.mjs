@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -137,6 +137,8 @@ export async function writeTargetConfig(root, endpoint, modelId, credential) {
   }
   const connectionId = 'connection-live-cli-bridge'
   const now = new Date().toISOString()
+  const databaseKeyFile = join(root, `database-key-${key}`)
+  await writeFile(databaseKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
   const connection = {
     id: connectionId,
     kind: 'cli-bridge',
@@ -156,6 +158,7 @@ export async function writeTargetConfig(root, endpoint, modelId, credential) {
       {
         format: 'braid-startup-config',
         schemaVersion: 2,
+        databaseKeyFile,
         profile: `profiles/${profileFile}`,
         connectionId,
         connections: [connection],

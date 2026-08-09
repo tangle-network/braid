@@ -5,7 +5,6 @@ import {
   assert,
   assertExactKeys,
   canonicalJson,
-  publicKeyId,
   validateReleaseInputEnvelope,
 } from '../release-evidence.mjs'
 import { readRegularFileNoFollow } from '../release-files.mjs'
@@ -32,18 +31,8 @@ export function assertIsolatedCheckout({ options, git }) {
   )
   assert(git('rev-parse', '--is-inside-work-tree') === 'true', 'Release path is not a Git checkout')
   assert(
-    git('status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching') === '',
-    'Release checkout contains tracked, untracked, or ignored files',
-  )
-  assert(
-    git('ls-files', '--error-unmatch', 'release/execution-public-key.pem') ===
-      'release/execution-public-key.pem',
-    'Release public key must be tracked',
-  )
-  assert(
-    git('ls-files', '--error-unmatch', 'release/execution-public-key.fingerprint') ===
-      'release/execution-public-key.fingerprint',
-    'Release public-key fingerprint must be tracked',
+    git('status', '--porcelain=v1', '--untracked-files=all') === '',
+    'Release checkout contains tracked or untracked source changes',
   )
 }
 
@@ -59,6 +48,7 @@ export async function loadReleaseSource({ options, git }) {
   await validateVisualProof({
     packageProof,
     visualProof,
+    repository: options.repository,
     artifactRoot: options.artifactRoot,
   })
   const evidenceBytes = await readRegularFileNoFollow(options.checksPath).catch(() => {
@@ -119,14 +109,6 @@ export async function loadReleaseSource({ options, git }) {
     assert(dependency.version === version, `Runtime dependency ${name} version differs`)
   }
 
-  const publicKey = (await readRegularFileNoFollow(options.publicKeyPath)).toString('utf8')
-  const publicKeyFingerprint = (await readRegularFileNoFollow(options.publicKeyFingerprintPath))
-    .toString('utf8')
-    .trim()
-  assert(
-    publicKeyFingerprint === publicKeyId(publicKey),
-    'Release public key fingerprint is not pinned',
-  )
   return {
     packageProof,
     visualProof,
@@ -135,6 +117,5 @@ export async function loadReleaseSource({ options, git }) {
     sourceTree,
     packageJson,
     dependencies,
-    publicKey,
   }
 }

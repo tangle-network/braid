@@ -73,7 +73,7 @@ function markCleanupFailure(evidence, label, details, setStatus) {
   setStatus()
 }
 
-export async function main() {
+export async function main({ requireCompleteReleaseProof = false } = {}) {
   let policy = defaultTargetPolicy
   let policyError
   try {
@@ -231,6 +231,18 @@ export async function main() {
         exitCode = exitCodes.failed
       })
     }
+    if (requireCompleteReleaseProof && status === 'passed') {
+      status = 'unavailable'
+      exitCode = exitCodes.unavailable
+      evidence.error = errorEvidence(
+        new LiveBridgeError(
+          'LIVE_BRIDGE_RELEASE_PROOF_INCOMPLETE',
+          `The live bridge run excludes required release claims: ${evidence.scope.excludes.join(', ')}`,
+          exitCodes.unavailable,
+          { scope: evidence.scope },
+        ),
+      )
+    }
     evidence.status = status
     evidence.exitCode = exitCode
     evidence.finishedAt = new Date().toISOString()
@@ -261,5 +273,27 @@ export async function main() {
           },
   }
   process.stdout.write(`${JSON.stringify(evidenceValue(summary))}\n`)
+  process.stdout.write(
+    `BRAID_RELEASE_RESULT_JSON=${JSON.stringify({
+      status,
+      ...(status === 'passed'
+        ? {}
+        : { reason: evidence.error?.code ?? 'live bridge check did not pass' }),
+    })}\n`,
+  )
+  if (status === 'passed') {
+    process.stdout.write(
+      `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({
+        measurements: [
+          {
+            kind: 'scalar',
+            name: 'live-bridge-targets',
+            unit: 'count',
+            value: evidence.targets.length,
+          },
+        ],
+      })}\n`,
+    )
+  }
   process.exitCode = exitCode
 }

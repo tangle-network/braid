@@ -1,5 +1,6 @@
 import { validatePerformanceMatrix } from '../release-evidence.mjs'
 import { dependencyDigest } from './build-identity.mjs'
+import { applyPublicationProof } from './publication-proof.mjs'
 import { validateReleaseArtifacts } from './verification-artifacts.mjs'
 import { validateReleaseChecks } from './verification-checks.mjs'
 import { validateLiveResources, validateRequirementMappings } from './verification-mappings.mjs'
@@ -9,15 +10,33 @@ import { writeVerificationOutputs } from './verification-report.mjs'
 import { assertIsolatedCheckout, loadReleaseSource } from './verification-source.mjs'
 import { createGit } from './verification-support.mjs'
 
-export async function verifyRelease(options = readVerificationOptions()) {
+export async function verifyRelease(
+  options = readVerificationOptions(),
+  { publicationRequired = true, writeOutputs = true } = {},
+) {
   const documentation = await buildDocumentationPlan(options)
   const git = createGit(options.repository)
   assertIsolatedCheckout({ options, git })
-  const source = await loadReleaseSource({ options, git })
+  const loadedSource = await loadReleaseSource({ options, git })
+  const publication = publicationRequired
+    ? await applyPublicationProof({
+        evidence: loadedSource.evidence,
+        artifactRoot: options.artifactRoot,
+        packageProof: loadedSource.packageProof,
+      })
+    : undefined
+  const source = publication
+    ? {
+        ...loadedSource,
+        evidence: publication.evidence,
+        releaseWindow: publication.releaseWindow,
+        publicationProof: publication.publicationProof,
+      }
+    : loadedSource
   const plan = buildEvidencePlan(source.evidence, documentation.requirements)
   const artifactResult = await validateReleaseArtifacts({
     evidence: source.evidence,
-    repository: options.repository,
+    artifactRoot: options.artifactRoot,
     packageProof: source.packageProof,
     packageJson: source.packageJson,
   })
@@ -35,7 +54,6 @@ export async function verifyRelease(options = readVerificationOptions()) {
     evidence: source.evidence,
     sourceTree: source.sourceTree,
     releaseWindow: source.releaseWindow,
-    publicKey: source.publicKey,
     dependencyDigest: dependencyDigest(source.evidence.dependencies),
     packageFileManifestDigest: artifactResult.packageFileManifestDigest,
   })
@@ -51,14 +69,17 @@ export async function verifyRelease(options = readVerificationOptions()) {
     evidence: source.evidence,
     environments,
   })
-  const output = await writeVerificationOutputs({
-    options,
-    evidence: source.evidence,
-    specificationDigests: documentation.specificationDigests,
-    publicKey: source.publicKey,
-  })
+  const output = writeOutputs
+    ? await writeVerificationOutputs({
+        options,
+        evidence: source.evidence,
+        specificationDigests: documentation.specificationDigests,
+      })
+    : {}
   process.stdout.write(
-    `Validated ${documentation.requirements.size} requirements, ${plan.checks.size} signed checks, and ${artifactResult.artifacts.size} artifacts for @tangle-network/braid@${source.evidence.braidVersion}\n`,
+    publicationRequired
+      ? `Validated ${documentation.requirements.size} requirements, ${plan.checks.size} recorded checks, and ${artifactResult.artifacts.size} artifacts for @tangle-network/braid@${source.evidence.braidVersion}\n`
+      : `Validated the pre-publication candidate; VR-10 remains pending until three registry package smokes pass.\n`,
   )
   return { ...source, ...artifactResult, ...output }
 }

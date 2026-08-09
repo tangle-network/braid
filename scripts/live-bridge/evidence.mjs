@@ -41,7 +41,10 @@ export async function removeTemp(paths) {
 
 export async function writeEvidence(evidence) {
   const destination =
-    process.env.BRAID_LIVE_BRIDGE_EVIDENCE ?? join(tmpdir(), `braid-live-bridge-${Date.now()}.json`)
+    process.env.BRAID_LIVE_BRIDGE_EVIDENCE ??
+    (process.env.BRAID_RELEASE_ARTIFACT_ROOT
+      ? join(process.env.BRAID_RELEASE_ARTIFACT_ROOT, 'live', 'bridge', 'evidence.json')
+      : join(tmpdir(), `braid-live-bridge-${Date.now()}.json`))
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
   await writeFile(destination, `${JSON.stringify(evidenceValue(evidence), null, 2)}\n`, {
     mode: 0o600,

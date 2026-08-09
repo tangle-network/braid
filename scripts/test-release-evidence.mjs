@@ -1,12 +1,15 @@
-import { generateKeyPairSync } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { generateKeyPairSync } from 'node:crypto'
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
+  REQUIRED_PERFORMANCE_TARGETS,
   signCheck,
   strictIsoTimestamp,
   validateMeasurements,
   validatePerformanceMatrix,
   validatePerformanceMeasurements,
-  REQUIRED_PERFORMANCE_TARGETS,
   validateReleaseInputEnvelope,
   verifyCheckReceipt,
 } from './release-evidence.mjs'
@@ -16,9 +19,6 @@ import {
   readRegularFileNoFollow,
   writeExclusiveAtomic,
 } from './release-files.mjs'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
 function rejects(action, pattern) {
   try {
@@ -227,7 +227,8 @@ try {
     env: {
       ...process.env,
       BRAID_RELEASE_CHECKOUT: process.cwd(),
-      BRAID_RELEASE_ISOLATED_CHECKOUT: '1',
+      BRAID_RELEASE_ARTIFACT_ROOT: hostileRoot,
+      BRAID_RELEASE_ISOLATED_CHECKOUT: '0',
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

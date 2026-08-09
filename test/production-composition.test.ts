@@ -228,7 +228,7 @@ test('normal composition streams a configured Tangle inference turn through agen
     'production response',
     JSON.stringify({ state: result.state, url: result.url }),
   )
-  assert.equal(result.url, 'https://router.test/chat/completions')
+  assert.equal(result.url, 'https://router.test/v1/chat/completions')
 })
 
 test('durable composition uses the configured backend on the normal startup path', async () => {

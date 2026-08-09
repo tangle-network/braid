@@ -42,6 +42,7 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | repository | `pnpm check` | Runs local format, lint, types, boundaries, dependency/license metadata, deterministic tests, and the release manifest check |
 | unit | `pnpm test:unit` | Runs the local unit suite |
 | contract | `pnpm test:contract` | Runs the local contract suite |
+| upstream | `pnpm test:upstream` | Imports exact tagged-package `UP-01` through `UP-14` results and retained artifact digests from their owning repositories |
 | coordination | `pnpm test:coordination` | Runs durable effect admission and serialization checks |
 | rpc | `pnpm test:rpc` | Runs the JSONL protocol suite |
 | rpc (packed) | `pnpm test:rpc:packed` | Runs the packed JSONL protocol suite |
@@ -51,8 +52,10 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | crash | `pnpm test:crash` | Runs forced-kill, restore-recovery, and two-process admission checks |
 | security | `pnpm test:security` | Runs redaction, credential-boundary, and dependency-boundary checks |
 | performance | `pnpm test:performance` | Runs the reducer, coordination, and storage performance checks |
-| live | `pnpm test:live` | Unavailable without protected live credentials and evidence |
+| property soak | `pnpm test:property:soak` | Runs and records 100,000 deterministic randomized product cases for release |
+| live | `pnpm test:live` | Runs every protected live product flow in sequence |
 | live-bridge | `pnpm test:live:bridge` | Runs the opt-in packed CLI Bridge and runner flow with `BRAID_LIVE_BRIDGE=1` |
+| live-bridge release | `pnpm test:live:bridge:release` | Requires the complete `LIVE-01` through `LIVE-05` interactive flow and refuses the narrower smoke result |
 | live-tangle | `pnpm test:live:tangle` | Unavailable without protected live credentials and evidence |
 | live-supervisor | `pnpm test:live:supervisor` | Unavailable without protected live credentials and evidence |
 | live-analysis | `pnpm test:live:analysis` | Unavailable without protected live credentials and evidence |
@@ -60,8 +63,16 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | install | `pnpm test:install` | Runs packed install, storage, and keyboard/RPC proof |
 | capture | `pnpm test:capture` | Captures the baseline terminal artifacts from the packed binary |
 | visual | `pnpm capture:visual` | Captures the required W6 state artifacts from the packed binary |
+| independent review | `pnpm test:independent-review` | Verifies a separately signed review bound to the exact candidate |
 | release | `pnpm check:release` | Checks the release manifest and evidence set |
-| verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with external signing key and complete evidence |
+| verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with complete evidence before archive endorsement |
+
+The manual GitHub release workflow accepts one full commit SHA from `main`.
+It creates one tarball under an external `BRAID_RELEASE_ARTIFACT_ROOT`, runs every candidate check against those bytes, and uploads that same tarball for platform tests and npm publication.
+`pnpm verify:candidate` qualifies the pre-publication results before a separate code-free job endorses the complete candidate archive.
+After publication, Linux x64, macOS arm64, and Windows x64 each download the registry package, confirm its SHA-256 matches the candidate, exercise plain messaging and encrypted SQLite storage, and remove their temporary state.
+`pnpm release:record-publication` binds those six platform results into the evidence set, and only then may `pnpm verify:release` write the final manifest and report for isolated endorsement.
+Any failed or unavailable required check exits nonzero before publication, while any failed registry smoke prevents tagging and the GitHub release.
 
 The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 

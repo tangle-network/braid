@@ -1,17 +1,16 @@
 import { createHash } from 'node:crypto'
-import { REQUIRED_CHECKS, SHA256_PATTERN } from '../release-check-catalog.mjs'
+import { releaseCheckEntry, SHA256_PATTERN } from '../release-check-catalog.mjs'
 import {
   assert,
   assertExactKeys,
   canonicalJson,
-  publicKeyId,
   strictIsoTimestamp,
   validateReleaseInputEnvelope,
-  verifyCheckReceipt,
 } from '../release-evidence.mjs'
 import { readContainedFile } from '../release-files.mjs'
 import { normalizeRequirementBindings } from './bindings.mjs'
 import { identityDigest } from './build-identity.mjs'
+import { restoredCheckArtifacts } from './check-artifacts.mjs'
 import { verifyBinding } from './collection-contract.mjs'
 
 export const CHECKPOINT_SCHEMA = 'braid.release-checkpoint.v1'
@@ -50,7 +49,7 @@ export function checkpointBuild(identity) {
   }
 }
 
-export function checkpointPlan({ checkIds, requirementBindings, publicKey }) {
+export function checkpointPlan({ checkIds, requirementBindings }) {
   return {
     schemaVersion: 1,
     checkIds: [...checkIds],
@@ -59,7 +58,7 @@ export function checkpointPlan({ checkIds, requirementBindings, publicKey }) {
         left < right ? -1 : left > right ? 1 : 0,
       ),
     ),
-    publicKeyId: publicKeyId(publicKey),
+    receiptMode: 'archive-endorsement',
   }
 }
 
@@ -96,7 +95,6 @@ function validateLog(log, label) {
   assertExactKeys(
     log,
     [
-      'rawSha256',
       'rawByteLength',
       'redactedSha256',
       'redactedByteLength',
@@ -106,7 +104,6 @@ function validateLog(log, label) {
     [],
     label,
   )
-  assert(SHA256_PATTERN.test(log.rawSha256), `${label} has an invalid raw digest`)
   assert(SHA256_PATTERN.test(log.redactedSha256), `${label} has an invalid redacted digest`)
   assert(
     Number.isSafeInteger(log.rawByteLength) && log.rawByteLength >= 0,
@@ -120,7 +117,7 @@ function validateLog(log, label) {
   assert(typeof log.redactionFailClosed === 'boolean', `${label} has an invalid fail-closed flag`)
 }
 
-function validateCheckShape(check, { identity, requirementIds, expectedCategory, publicKey }) {
+function validateCheckShape(check, { identity, requirementIds, expectedCategory }) {
   assertExactKeys(
     check,
     [
@@ -146,7 +143,6 @@ function validateCheckShape(check, { identity, requirementIds, expectedCategory,
       'boundary',
       'binding',
       'logs',
-      'receipt',
     ],
     [],
     `Check ${check.id}`,
@@ -154,7 +150,7 @@ function validateCheckShape(check, { identity, requirementIds, expectedCategory,
   assert(check.category === expectedCategory, `Check ${check.id} has category ${check.category}`)
   assert(check.required === true, `Check ${check.id} is not required`)
   assert(
-    check.command === REQUIRED_CHECKS.get(check.id)?.command,
+    check.command === releaseCheckEntry(check.id)?.command,
     `Check ${check.id} command differs from catalog`,
   )
   assert(typeof check.cwd === 'string' && check.cwd.length > 0, `Check ${check.id} has no cwd`)
@@ -259,16 +255,15 @@ function validateCheckShape(check, { identity, requirementIds, expectedCategory,
     `Check ${check.id} stderr redacted digest differs`,
   )
   verifyBinding(check, identity, requirementIds)
-  verifyCheckReceipt(check, publicKey)
   return { startedAt, completedAt }
 }
 
-async function validateArtifacts(envelope, repository, identity) {
+async function validateArtifacts(envelope, artifactRoot, identity) {
   const artifacts = uniqueBy(envelope.artifacts, 'id', 'artifact')
   for (const artifact of artifacts.values()) {
     assertExactKeys(artifact, ['id', 'path', 'sha256', 'mediaType'], [], `Artifact ${artifact.id}`)
     assert(SHA256_PATTERN.test(artifact.sha256), `Artifact ${artifact.id} has an invalid digest`)
-    const bytes = await readContainedFile(repository, artifact.path)
+    const bytes = await readContainedFile(artifactRoot, artifact.path)
     assert(sha256(bytes) === artifact.sha256, `Artifact ${artifact.id} changed`)
   }
   const tarballArtifact = artifacts.get('package-tarball')
@@ -284,7 +279,7 @@ async function validateArtifacts(envelope, repository, identity) {
   return artifacts
 }
 
-export async function validateCheckpoint(checkpoint, { repository, identity, plan, publicKey }) {
+export async function validateCheckpoint(checkpoint, { artifactRoot, identity, plan }) {
   assertExactKeys(checkpoint, ['schema', 'build', 'plan', 'envelope'], [], 'Release checkpoint')
   assert(checkpoint.schema === CHECKPOINT_SCHEMA, 'Unsupported release checkpoint schema')
   assert(
@@ -296,7 +291,7 @@ export async function validateCheckpoint(checkpoint, { repository, identity, pla
     'Release checkpoint plan binding differs',
   )
   validateReleaseInputEnvelope(checkpoint.envelope)
-  const artifacts = await validateArtifacts(checkpoint.envelope, repository, identity)
+  const artifacts = await validateArtifacts(checkpoint.envelope, artifactRoot, identity)
   const checks = uniqueBy(checkpoint.envelope.checks, 'id', 'check')
   const environments = uniqueBy(checkpoint.envelope.environments, 'id', 'environment')
   for (const environment of environments.values()) {
@@ -310,16 +305,14 @@ export async function validateCheckpoint(checkpoint, { repository, identity, pla
   }
   for (const id of checks.keys())
     assert(plan.checkIds.includes(id), `Checkpoint has an unexpected check ${id}`)
-  for (const [id, expected] of REQUIRED_CHECKS) {
-    if (!plan.checkIds.includes(id)) continue
-    const check = checks.get(id)
-    if (!check) continue
+  for (const [id, check] of checks) {
+    const expected = releaseCheckEntry(id)
+    assert(expected, `Checkpoint has an unknown check ${id}`)
     const requirementIds = requirementIdsForPlan(plan, id)
     validateCheckShape(check, {
       identity,
       requirementIds,
       expectedCategory: expected.category,
-      publicKey,
     })
     assert(
       check.environment && typeof check.environment === 'string',
@@ -332,10 +325,12 @@ export async function validateCheckpoint(checkpoint, { repository, identity, pla
       assert(artifact.sha256 === check[field].sha256, `Check ${id} ${field} artifact differs`)
     }
   }
-  const expectedArtifactIds = new Set(['package-tarball'])
+  const expectedArtifactIds = new Set(['package-tarball', 'package-proof'])
   for (const check of checks.values()) {
     expectedArtifactIds.add(check.stdout.artifactId)
     expectedArtifactIds.add(check.stderr.artifactId)
+    for (const artifactId of restoredCheckArtifacts(check, checkpoint.envelope.artifacts))
+      expectedArtifactIds.add(artifactId)
   }
   for (const id of artifacts.keys())
     assert(expectedArtifactIds.has(id), `Checkpoint has an unexpected artifact ${id}`)
@@ -358,9 +353,16 @@ export async function validateCheckpoint(checkpoint, { repository, identity, pla
     )
     const expectedArtifacts = [
       'package-tarball',
+      'package-proof',
       ...binding.checks.flatMap((checkId) => {
         const check = checks.get(checkId)
-        return check ? [check.stdout.artifactId, check.stderr.artifactId] : []
+        return check
+          ? [
+              check.stdout.artifactId,
+              check.stderr.artifactId,
+              ...restoredCheckArtifacts(check, checkpoint.envelope.artifacts),
+            ]
+          : []
       }),
     ]
     assert(

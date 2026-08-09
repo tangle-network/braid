@@ -13,7 +13,7 @@ import { LiveBridgeError } from './errors.mjs'
 import { managedSpawn, sleep, terminateProcess } from './process.mjs'
 import { redactString } from './redaction.mjs'
 
-export async function launchBridgeIfRequested(endpoint, token, evidence, repository) {
+export async function launchBridgeIfRequested(endpoint, token, evidence, repository, definitions) {
   const initialHealth = await requestJson(endpoint, '/health', token)
   evidence.initialHealth = initialHealth
   if (healthIsStructurallyValid(initialHealth)) return { health: initialHealth }
@@ -47,6 +47,9 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
     )
   }
   const childEnv = { ...process.env }
+  if (childEnv.BRIDGE_BACKENDS === undefined) {
+    childEnv.BRIDGE_BACKENDS = [...new Set(definitions.map(({ backend }) => backend))].join(',')
+  }
   const parsedEndpoint = new URL(endpoint)
   if (parsedEndpoint.port && childEnv.BRIDGE_PORT === undefined)
     childEnv.BRIDGE_PORT = parsedEndpoint.port
@@ -69,7 +72,11 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
     })
     child.once('close', (code, signal) => resolveExit({ code, signal, error: spawnError }))
   })
-  const stopChild = async () => terminateProcess(child)
+  const stopChild = async () => ({
+    termination: await terminateProcess(child),
+    stdout: stdoutCapture.finish(),
+    stderr: stderrCapture.finish(),
+  })
   const deadline = Date.now() + Number(process.env.BRAID_CLI_BRIDGE_START_TIMEOUT_MS ?? 30_000)
   let health = initialHealth
   while (Date.now() < deadline) {
@@ -115,7 +122,7 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
 }
 
 export async function discoverBridge(endpoint, token, evidence, repository, definitions) {
-  const bridge = await launchBridgeIfRequested(endpoint, token, evidence, repository)
+  const bridge = await launchBridgeIfRequested(endpoint, token, evidence, repository, definitions)
   try {
     const modelsResponse = await requestJson(endpoint, '/v1/models', token)
     evidence.models = modelsResponse

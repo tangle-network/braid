@@ -19,9 +19,14 @@ import { installPackedBraid } from './packed-binary.mjs'
 
 const run = promisify(execFile)
 const repository = new URL('../', import.meta.url).pathname
-const packed = await installPackedBraid(repository)
+const verificationRoot = process.env.BRAID_RELEASE_ARTIFACT_ROOT
+  ? process.env.BRAID_RELEASE_ARTIFACT_ROOT
+  : join(repository, 'artifacts', 'verification')
+const packed = await installPackedBraid(repository, {
+  tarballPath: process.env.BRAID_RELEASE_TARBALL,
+})
 const binary = packed.binary
-const outputRoot = join(repository, 'artifacts', 'verification', 'w6')
+const outputRoot = join(verificationRoot, 'w6')
 const rawRoot = join(outputRoot, 'raw')
 const stateRoot = join(outputRoot, 'states')
 const XtermTerminal = xterm.Terminal

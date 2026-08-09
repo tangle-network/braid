@@ -37,6 +37,19 @@ export async function initializeTarget(session, result, classifyStartup) {
     (response) => response.type === 'state' && response.requestId === initialize.requestId,
     15_000,
   )
+  if (
+    typeof initialState.state?.conversationId !== 'string' ||
+    typeof initialState.state?.branchId !== 'string'
+  ) {
+    throw new LiveBridgeError(
+      'LIVE_INITIAL_STATE_INVALID',
+      'Packed Braid did not return an active conversation and branch',
+      exitCodes.failed,
+      { state: initialState },
+    )
+  }
+  result.conversationId = initialState.state.conversationId
+  result.branchId = initialState.state.branchId
   result.initialCapabilities = evidenceValue(targetCapabilities(initialState, initialState.state))
 }
 
@@ -46,8 +59,8 @@ export async function runNormalTurn(session, result, target, timeoutMs) {
   const send = {
     ...requestBase(`send-${target.key}`, 'send', `op-live-send-${target.key}`),
     params: {
-      conversationId: `conversation-${target.key}`,
-      branchId: `branch-${target.key}`,
+      conversationId: result.conversationId,
+      branchId: result.branchId,
       text: normalPrompt,
     },
   }
@@ -153,8 +166,8 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   const cancelSend = {
     ...requestBase(`cancel-send-${target.key}`, 'send', `op-live-cancel-send-${target.key}`),
     params: {
-      conversationId: `conversation-${target.key}`,
-      branchId: `branch-${target.key}`,
+      conversationId: result.conversationId,
+      branchId: result.branchId,
       text: cancelPrompt,
     },
   }

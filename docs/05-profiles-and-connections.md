@@ -246,6 +246,8 @@ Braid does not store a model-provider API key inside an `AgentProfile`.
 
 Model and route discovery come from the current runtime/provider API and are cached only as non-authoritative metadata.
 
+The saved connection keeps the user-facing Tangle router root, while the Runtime adapter derives the OpenAI-compatible `/v1` API root without rewriting connection identity.
+
 The run preview distinguishes inference routing from sandbox placement and does not claim a workspace exists.
 
 Usage and cost display only provider-reported values and label unavailable pricing.

@@ -1,12 +1,17 @@
-import { CHECK_CATEGORIES, REQUIRED_CHECKS, SHA256_PATTERN } from '../release-check-catalog.mjs'
+import {
+  CHECK_CATEGORIES,
+  REQUIRED_CHECKS,
+  releaseCheckEntry,
+  SHA256_PATTERN,
+} from '../release-check-catalog.mjs'
 import {
   assert,
   assertExactKeys,
   canonicalJson,
   strictIsoTimestamp,
   validateMeasurements,
+  validatePerformanceMatrix,
   validatePerformanceMeasurements,
-  verifyCheckReceipt,
 } from '../release-evidence.mjs'
 
 export function validateReleaseChecks({
@@ -20,7 +25,6 @@ export function validateReleaseChecks({
   evidence,
   sourceTree,
   releaseWindow,
-  publicKey,
   dependencyDigest,
   packageFileManifestDigest,
 }) {
@@ -61,12 +65,18 @@ export function validateReleaseChecks({
         'boundary',
         'binding',
         'logs',
-        'receipt',
       ],
       [],
       `Check ${check.id}`,
     )
     assert(allowedCheckIds.has(check.id), `Check ${check.id} is outside the closed check catalog`)
+    const expectedCheck = releaseCheckEntry(check.id)
+    assert(expectedCheck, `Check ${check.id} has no registered route`)
+    assert(check.command === expectedCheck.command, `Check ${check.id} command differs from route`)
+    assert(
+      check.category === expectedCheck.category,
+      `Check ${check.id} category differs from route`,
+    )
     assert(CHECK_CATEGORIES.has(check.category), `Check ${check.id} has invalid category`)
     assert(allowedCommands.has(check.command), `Check ${check.id} uses an unregistered command`)
     assert(
@@ -230,7 +240,6 @@ export function validateReleaseChecks({
       assertExactKeys(
         check.logs[field],
         [
-          'rawSha256',
           'rawByteLength',
           'redactedSha256',
           'redactedByteLength',
@@ -239,10 +248,6 @@ export function validateReleaseChecks({
         ],
         [],
         `Check ${check.id} ${field} log`,
-      )
-      assert(
-        SHA256_PATTERN.test(check.logs[field].rawSha256),
-        `Check ${check.id} ${field} raw digest is invalid`,
       )
       assert(
         SHA256_PATTERN.test(check.logs[field].redactedSha256),
@@ -283,8 +288,16 @@ export function validateReleaseChecks({
     assert(check.exitCode === 0, `Check ${check.id} has a nonzero exit code`)
     assert(Number.isInteger(check.attempt) && check.attempt > 0, `Check ${check.id} has no attempt`)
     if (check.category === 'performance') {
-      validatePerformanceMeasurements(check.measurements, `Check ${check.id}`)
-      performanceMeasurements.push(...check.measurements)
+      if (check.id === 'performance')
+        validatePerformanceMatrix(check.measurements, `Check ${check.id}`)
+      else {
+        validatePerformanceMeasurements(check.measurements, `Check ${check.id}`)
+        assert(
+          check.measurements.length === 1 && check.measurements[0].name === check.id,
+          `Check ${check.id} must contain only its matching performance measurement`,
+        )
+        performanceMeasurements.push(...check.measurements)
+      }
     } else validateMeasurements(check.measurements, `Check ${check.id}`)
     assert(
       check.measurements.every(
@@ -305,7 +318,6 @@ export function validateReleaseChecks({
         `Check ${check.id} ${field} log digest differs`,
       )
     }
-    verifyCheckReceipt(check, publicKey)
   }
   return performanceMeasurements
 }

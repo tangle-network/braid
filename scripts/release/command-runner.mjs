@@ -1,17 +1,20 @@
 import { spawn } from 'node:child_process'
 
-import { REQUIRED_CHECKS } from '../release-check-catalog.mjs'
+import { RELEASE_COMMANDS, releaseCheckEntry } from '../release-check-catalog.mjs'
 import { PROCESS_TREE_STRATEGY, reapChildTree, terminateChildTree } from './process-tree.mjs'
 import {
   BoundedCapture,
+  collectCredentialSecrets,
   collectRedactionSecrets,
   redactText,
   sanitizeArgv,
   sanitizeEnvironment,
 } from './redaction.mjs'
+import { StructuredOutputCapture } from './structured-output.mjs'
 
 export {
   BoundedCapture,
+  collectCredentialSecrets,
   collectRedactionSecrets,
   PROCESS_TREE_STRATEGY,
   redactText,
@@ -64,11 +67,12 @@ function settledSpawnError({ startedMilliseconds, maxLogBytes, secrets, error })
     cleanupConfirmed: true,
     stdout: emptyCapture(maxLogBytes, secrets),
     stderr: emptyCapture(maxLogBytes, secrets),
+    structuredStdout: new StructuredOutputCapture().finish(),
   }
 }
 
 export function catalogCommandArgv(command) {
-  const expected = [...REQUIRED_CHECKS.values()].some((entry) => entry.command === command)
+  const expected = [...RELEASE_COMMANDS.values()].some((entry) => entry.command === command)
   assert(expected, `Command is not in the release catalog: ${command}`)
   const parts = command.trim().split(/\s+/u)
   assert(parts[0] === 'pnpm' && parts.length > 1, `Catalog command is not a pnpm argv: ${command}`)
@@ -102,6 +106,7 @@ export async function executeArgv({
   const secrets = collectRedactionSecrets(environment, redactionSecrets)
   const stdout = new BoundedCapture(maxLogBytes, secrets)
   const stderr = new BoundedCapture(maxLogBytes, secrets)
+  const structuredStdout = new StructuredOutputCapture()
   let child
   try {
     child = spawnProcess(file, args, {
@@ -163,12 +168,16 @@ export async function executeArgv({
         cleanupConfirmed,
         stdout: stdout.finish(),
         stderr: stderr.finish(),
+        structuredStdout: structuredStdout.finish(),
       })
     }
     const settleAfterBound = () => {
       void finish(null, 'SIGKILL', true)
     }
-    child.stdout?.on('data', (chunk) => stdout.push(chunk))
+    child.stdout?.on('data', (chunk) => {
+      stdout.push(chunk)
+      structuredStdout.push(chunk)
+    })
     child.stderr?.on('data', (chunk) => stderr.push(chunk))
     child.once('error', (error) => {
       spawnError = error instanceof Error ? error : new Error(String(error))
@@ -201,7 +210,7 @@ export async function executeCatalogCheck({
   maxLogBytes,
   redactionSecrets = [],
 }) {
-  const entry = REQUIRED_CHECKS.get(checkId)
+  const entry = releaseCheckEntry(checkId)
   assert(entry, `Unknown release check: ${checkId}`)
   const command = catalogCommandArgv(entry.command)
   const processResult = await executeArgv({

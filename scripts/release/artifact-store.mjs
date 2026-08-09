@@ -32,29 +32,37 @@ async function preserveOrWrite(path, bytes) {
   }
 }
 
-export function createArtifactStore({
-  repository,
-  relativeRoot = 'artifacts/verification/release/logs',
-}) {
-  const root = resolve(repository, relativeRoot)
+export function createArtifactStore({ artifactRoot, relativeRoot = 'release/logs' }) {
+  const root = resolve(artifactRoot, relativeRoot)
+  const put = async ({
+    id,
+    bytes,
+    mediaType = 'text/plain; charset=utf-8',
+    extension = '.log',
+  }) => {
+    assert(Buffer.isBuffer(bytes), `Artifact ${id} must be bytes`)
+    const path = artifactPath(root, id, extension)
+    await preserveOrWrite(path, bytes)
+    return {
+      id,
+      path: relative(artifactRoot, path),
+      sha256: sha256(bytes),
+      mediaType,
+    }
+  }
   return {
     root,
-    async put({ id, bytes, mediaType = 'text/plain; charset=utf-8', extension = '.log' }) {
-      assert(Buffer.isBuffer(bytes), `Artifact ${id} must be bytes`)
-      const path = artifactPath(root, id, extension)
-      await preserveOrWrite(path, bytes)
-      return {
-        id,
-        path: relative(repository, path),
-        sha256: sha256(bytes),
-        mediaType,
-      }
-    },
+    put,
     async register({ id, path, mediaType = 'application/octet-stream' }) {
       assert(SAFE_ID.test(id), `Invalid release artifact identifier: ${id}`)
-      const absolute = await containedArtifactPath(repository, path)
+      const absolute = await containedArtifactPath(artifactRoot, path)
       const bytes = await readRegularFileNoFollow(absolute)
-      return { id, path: relative(repository, absolute), sha256: sha256(bytes), mediaType }
+      return { id, path: relative(artifactRoot, absolute), sha256: sha256(bytes), mediaType }
+    },
+    async snapshot({ idPrefix, path, mediaType = 'application/octet-stream', extension = '.bin' }) {
+      const absolute = await containedArtifactPath(artifactRoot, path)
+      const bytes = await readRegularFileNoFollow(absolute)
+      return put({ id: `${idPrefix}-${sha256(bytes)}`, bytes, mediaType, extension })
     },
   }
 }

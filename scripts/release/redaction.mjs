@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 
-const SENSITIVE_FLAG = /(?:auth|api[-_]?key|credential|password|private[-_]?key|secret|token)/iu
+const SENSITIVE_FLAG =
+  /(?:auth|api[-_]?key|bearer|credential|password|private[-_]?key|secret|token)/iu
 const SECRET_ASSIGNMENT =
   /((?:authorization|cookie|credential|api[-_]?key|password|private[-_]?key|secret|token)\s*[:=]\s*)(["']?)[^\s,;}"']+\2/giu
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/giu
@@ -148,6 +149,23 @@ function isProvablySafeEnvironmentValue(name, value) {
   return false
 }
 
+const CREDENTIAL_ENVIRONMENT_NAME =
+  /(?:^|_)(?:API_?KEY|AUTH(?:ORIZATION)?|BEARER|COOKIE|CREDENTIAL|PASS(?:WORD|WD)?|PRIVATE_?KEY|SECRET|SESSION|TOKEN)(?:_|$)/iu
+
+/** Returns only values whose names identify credentials, plus caller-supplied canaries. */
+export function collectCredentialSecrets(environment, explicitSecrets = []) {
+  const credentialValues = Object.entries(environment ?? {})
+    .filter(([name]) => CREDENTIAL_ENVIRONMENT_NAME.test(name))
+    .map(([, value]) => value)
+  return [
+    ...new Set(
+      [...explicitSecrets, ...credentialValues]
+        .map((value) => String(value))
+        .filter((value) => value.length > 0),
+    ),
+  ]
+}
+
 export function collectRedactionSecrets(environment, explicitSecrets = []) {
   const environmentValues = Object.entries(environment ?? {})
     .filter(([name, value]) => !isProvablySafeEnvironmentValue(name, value))
@@ -197,7 +215,6 @@ function validUtf8Prefix(bytes, maximum) {
 }
 
 export class BoundedCapture {
-  #rawHash = createHash('sha256')
   #rawByteLength = 0
   #redactedChunks = []
   #redactedBytes = 0
@@ -229,7 +246,6 @@ export class BoundedCapture {
   push(chunk) {
     assert(!this.#finished, 'Cannot append to a finished output capture')
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
-    this.#rawHash.update(bytes)
     this.#rawByteLength += bytes.length
     this.#redactor.push(bytes)
   }
@@ -242,7 +258,6 @@ export class BoundedCapture {
     this.#redactedChunks = []
     return Object.freeze({
       bytes: redacted,
-      rawSha256: this.#rawHash.digest('hex'),
       rawByteLength: this.#rawByteLength,
       redactedSha256: createHash('sha256').update(redacted).digest('hex'),
       redactedByteLength: redacted.length,

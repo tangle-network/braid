@@ -97,6 +97,7 @@ export function semanticEvalMeasurements(
   ]
   for (const evidence of record.cases) {
     measurements.push(
+      scalar(evidence.id, 'fixtures-passed', evidence.passedFixtures),
       scalar(`${evidence.id.toLowerCase()}-fixtures-passed`, 'count', evidence.passedFixtures),
     )
   }

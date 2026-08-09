@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { relative } from 'node:path'
 
-import { REQUIRED_CHECKS } from '../release-check-catalog.mjs'
+import { RELEASE_COMMANDS, REQUIRED_CHECKS } from '../release-check-catalog.mjs'
 import { assert } from '../release-evidence.mjs'
 import { readRegularFileNoFollow } from '../release-files.mjs'
 import { readRequirementIds } from './build-identity.mjs'
@@ -31,7 +31,7 @@ export function buildEvidencePlan(evidence, requirements) {
   const mappings = new Map(Object.entries(evidence.requirements))
   const allowedCheckIds = new Set([...REQUIRED_CHECKS.keys(), ...requirements])
   const allowedCommands = new Map(
-    [...REQUIRED_CHECKS.values()].map((check) => [check.command, check.category]),
+    [...RELEASE_COMMANDS.values()].map((check) => [check.command, check.category]),
   )
   return { checks, artifacts, mappings, allowedCheckIds, allowedCommands }
 }

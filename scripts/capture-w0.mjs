@@ -5,12 +5,17 @@ import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { installPackedBraid } from './packed-binary.mjs'
 
 const run = promisify(execFile)
 const repository = new URL('../', import.meta.url).pathname
-const outputRoot = join(repository, 'artifacts', 'verification', 'w0')
+const verificationRoot = process.env.BRAID_RELEASE_ARTIFACT_ROOT
+  ? process.env.BRAID_RELEASE_ARTIFACT_ROOT
+  : join(repository, 'artifacts', 'verification')
+const outputRoot = join(verificationRoot, 'w0')
 const rawRoot = join(outputRoot, 'raw')
-const binary = join(repository, 'dist', 'bin', 'braid.js')
+const packed = await installPackedBraid(repository)
+const binary = packed.binary
 const XtermTerminal = xterm.Terminal
 const sizes = [
   [40, 12],
@@ -122,75 +127,84 @@ async function sha256(path) {
     .digest('hex')
 }
 
-await mkdir(rawRoot, { recursive: true })
-const artifacts = []
-for (const [columns, rows] of sizes) {
-  const name = `${columns}x${rows}`
-  const result = await capture(columns, rows)
-  const castPath = join(rawRoot, `${name}.cast`)
-  const textPath = join(outputRoot, `${name}.txt`)
-  const temporaryGif = join(rawRoot, `${name}-final.gif`)
-  const pngPath = join(outputRoot, `${name}.png`)
-  await writeFile(castPath, result.cast)
-  await writeFile(textPath, result.finalScreen)
+try {
+  await mkdir(rawRoot, { recursive: true })
+  const artifacts = []
+  for (const [columns, rows] of sizes) {
+    const name = `${columns}x${rows}`
+    const result = await capture(columns, rows)
+    const castPath = join(rawRoot, `${name}.cast`)
+    const textPath = join(outputRoot, `${name}.txt`)
+    const temporaryGif = join(rawRoot, `${name}-final.gif`)
+    const pngPath = join(outputRoot, `${name}.png`)
+    await writeFile(castPath, result.cast)
+    await writeFile(textPath, result.finalScreen)
+    await run('agg', [
+      '--quiet',
+      '--theme',
+      'github-dark',
+      '--font-size',
+      '16',
+      '--select',
+      '100%',
+      '--no-loop',
+      castPath,
+      temporaryGif,
+    ])
+    await run('convert', [`${temporaryGif}[0]`, pngPath])
+    await rm(temporaryGif, { force: true })
+    artifacts.push({
+      path: `${name}.png`,
+      sha256: await sha256(pngPath),
+      columns,
+      rows,
+      mode: 'truecolor',
+    })
+    artifacts.push({ path: `${name}.txt`, sha256: await sha256(textPath), columns, rows })
+  }
+
+  const flowCast = join(rawRoot, '80x24.cast')
+  const flowGif = join(outputRoot, '80x24-flow.gif')
   await run('agg', [
     '--quiet',
     '--theme',
     'github-dark',
     '--font-size',
     '16',
-    '--select',
-    '100%',
-    '--no-loop',
-    castPath,
-    temporaryGif,
+    '--speed',
+    '2',
+    '--idle-time-limit',
+    '1',
+    '--last-frame-duration',
+    '2',
+    flowCast,
+    flowGif,
   ])
-  await run('convert', [`${temporaryGif}[0]`, pngPath])
-  await rm(temporaryGif, { force: true })
   artifacts.push({
-    path: `${name}.png`,
-    sha256: await sha256(pngPath),
-    columns,
-    rows,
-    mode: 'truecolor',
+    path: '80x24-flow.gif',
+    sha256: await sha256(flowGif),
+    columns: 80,
+    rows: 24,
   })
-  artifacts.push({ path: `${name}.txt`, sha256: await sha256(textPath), columns, rows })
+
+  const manifestPath = join(outputRoot, 'capture-manifest.json')
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        command: 'pnpm run capture:w0',
+        fixture: 'deterministic',
+        terminal: 'node-pty/xterm-256color',
+        node: process.version,
+        artifacts,
+      },
+      null,
+      2,
+    )}\n`,
+  )
+  process.stdout.write(`Wrote ${artifacts.length} capture artifacts to ${dirname(manifestPath)}\n`)
+} finally {
+  await packed.cleanup()
 }
-
-const flowCast = join(rawRoot, '80x24.cast')
-const flowGif = join(outputRoot, '80x24-flow.gif')
-await run('agg', [
-  '--quiet',
-  '--theme',
-  'github-dark',
-  '--font-size',
-  '16',
-  '--speed',
-  '2',
-  '--idle-time-limit',
-  '1',
-  '--last-frame-duration',
-  '2',
-  flowCast,
-  flowGif,
-])
-artifacts.push({ path: '80x24-flow.gif', sha256: await sha256(flowGif), columns: 80, rows: 24 })
-
-const manifestPath = join(outputRoot, 'capture-manifest.json')
-await writeFile(
-  manifestPath,
-  `${JSON.stringify(
-    {
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      command: 'pnpm run capture:w0',
-      fixture: 'deterministic',
-      terminal: 'node-pty/xterm-256color',
-      node: process.version,
-      artifacts,
-    },
-    null,
-    2,
-  )}\n`,
-)
-process.stdout.write(`Wrote ${artifacts.length} capture artifacts to ${dirname(manifestPath)}\n`)

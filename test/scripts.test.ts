@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
-const { CHECK_CATEGORIES, REQUIRED_CHECKS } = await import('../scripts/release-check-catalog.mjs')
+const releaseCatalog = await import('../scripts/release-check-catalog.mjs')
+const {
+  CHECK_CATEGORIES,
+  releaseCheckEntry,
+  RELEASE_COMMANDS,
+  REQUIRED_CHECKS,
+  requiredEvidenceCheckIds,
+} = releaseCatalog
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { canonicalJson } = await import('../scripts/release-evidence.mjs')
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
@@ -16,6 +26,18 @@ const { assertAccessibleTerminalOutput } = await import('../scripts/accessibilit
 const { nativeInstallEnvironment } = await import('../scripts/native-install-environment.mjs')
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { prepareEvalCandidate } = await import('../scripts/eval/candidate.mjs')
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const publicationProofSupport = await import('../scripts/release/publication-proof.mjs')
+const { applyPublicationProof, createPublicationProof, REQUIRED_RELEASE_TARGETS } =
+  publicationProofSupport
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const { validateIndependentReview } = await import('../scripts/release/independent-review.mjs')
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const platformSupport = await import('../scripts/release/platform.mjs')
+const { npmInvocation, pnpmInvocation, portableEvidencePath } = platformSupport
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
+const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -36,6 +58,7 @@ test('W5 exposes stable checks for every requested release surface', () => {
     'test:live',
     'test:install',
     'test:capture',
+    'test:independent-review',
     'check:release',
   ]
   for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
@@ -77,6 +100,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'domain-reducer.test.js',
       'domain-text.test.js',
       'eval.test.js',
+      'property.test.js',
       'reducer.test.js',
       'sanitize.test.js',
       'scripts.test.js',
@@ -198,14 +222,164 @@ test('the release catalog exactly covers every stable verification command', asy
       match[2],
     ]),
   )
-  const catalog = new Map([...REQUIRED_CHECKS].map(([id, value]) => [id, value.command]))
+  const catalog = new Map([...RELEASE_COMMANDS].map(([id, value]) => [id, value.command]))
   assert.deepEqual([...catalog], [...documented])
-  for (const [id, value] of REQUIRED_CHECKS) {
+  for (const [id, value] of RELEASE_COMMANDS) {
     assert(CHECK_CATEGORIES.has(value.category), `${id} has an unregistered category`)
     assert(value.command.startsWith('pnpm '), `${id} is not a pnpm command`)
     const script = value.command.slice('pnpm '.length)
     assert.equal(typeof packageJson.scripts[script], 'string', `${id} exposes no ${script}`)
   }
+  assert.equal(REQUIRED_CHECKS.has('verify:release'), false)
+  assert.equal(releaseCheckEntry('UP-01')?.command, 'pnpm test:upstream')
+  assert.equal(releaseCheckEntry('UP-08')?.command, 'pnpm test:upstream')
+  assert.equal(releaseCheckEntry('LIVE-06')?.command, 'pnpm test:live:tangle')
+  assert.equal(releaseCheckEntry('PERF-10')?.command, 'pnpm test:performance')
+  assert.equal(releaseCheckEntry('EVAL-06')?.command, 'pnpm test:eval')
+  assert.equal(releaseCheckEntry('VR-03')?.command, 'pnpm test:property:soak')
+  const evidenceIds = requiredEvidenceCheckIds([
+    'PR-01',
+    'UP-01',
+    'LIVE-06',
+    'PERF-10',
+    'EVAL-06',
+    'VR-03',
+  ])
+  assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 5)
+  assert.equal(evidenceIds.includes('verify:release'), false)
+})
+
+test('release subprocesses and recorded paths are portable to Windows', () => {
+  assert.deepEqual(npmInvocation(['install'], { platform: 'linux' }), {
+    file: 'npm',
+    args: ['install'],
+  })
+  assert.deepEqual(
+    npmInvocation(['install'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+    }),
+    {
+      file: 'C:\\node\\node.exe',
+      args: ['C:\\node\\node_modules\\npm\\bin\\npm-cli.js', 'install'],
+    },
+  )
+  assert.deepEqual(
+    pnpmInvocation(['pack'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      environment: { npm_execpath: 'C:\\pnpm\\pnpm.mjs' },
+    }),
+    {
+      file: 'C:\\node\\node.exe',
+      args: ['C:\\pnpm\\pnpm.mjs', 'pack'],
+    },
+  )
+  assert.throws(
+    () =>
+      pnpmInvocation(['pack'], {
+        platform: 'win32',
+        execPath: 'C:\\node\\node.exe',
+        environment: {},
+      }),
+    /pnpm JavaScript entry point/u,
+  )
+  assert.equal(
+    portableEvidencePath('<temporary>\\install\\node_modules\\@tangle-network'),
+    '<temporary>/install/node_modules/@tangle-network',
+  )
+})
+
+test('upstream requirements require successful owning-repository checks', () => {
+  type Owner = { readonly package: string; readonly check: string }
+  type Artifact = {
+    readonly name: string
+    readonly digest: string
+    readonly expired: boolean
+    readonly archiveDownloadUrl: string
+  }
+  type Check = {
+    readonly name: string
+    readonly headSha: string
+    readonly status: string
+    readonly conclusion: string
+    readonly app: string
+    readonly detailsUrl: string
+    readonly completedAt: string
+    readonly artifacts: readonly Artifact[]
+  }
+  type PackageRecord = {
+    readonly package: string
+    readonly version: string
+    readonly repository: string
+    readonly tag: string
+    readonly gitCommit: string
+    checks: Check[]
+  }
+  const owners = UPSTREAM_REQUIREMENT_OWNERS as Readonly<Record<string, readonly Owner[]>>
+  const repositories: Readonly<Record<string, string>> = {
+    '@tangle-network/agent-interface': 'tangle-network/agent-sdk',
+    '@tangle-network/agent-runtime': 'tangle-network/agent-runtime',
+    '@tangle-network/agent-provider-cli-bridge': 'tangle-network/agent-sdk',
+    '@tangle-network/agent-provider-tangle': 'tangle-network/agent-sdk',
+  }
+  const commit = 'a'.repeat(40)
+  const packages = Object.fromEntries(
+    [
+      ...new Set(
+        Object.values(owners)
+          .flat()
+          .map((owner) => owner.package),
+      ),
+    ].map((name) => {
+      const repository = repositories[name] ?? assert.fail(`Missing repository for ${name}`)
+      const requirementIds = Object.entries(owners)
+        .filter(([, requirementOwners]) =>
+          requirementOwners.some((owner) => owner.package === name),
+        )
+        .map(([requirementId]) => requirementId)
+      return [
+        name,
+        {
+          package: name,
+          version: '1.2.3',
+          repository,
+          tag: `${name}@1.2.3`,
+          gitCommit: commit,
+          checks: requirementIds.map((requirementId, index) => ({
+            name: requirementId,
+            headSha: commit,
+            status: 'completed',
+            conclusion: 'success',
+            app: 'github-actions',
+            detailsUrl: `https://github.com/${repository}/actions/runs/${index + 1}/job/1`,
+            completedAt: `2026-08-09T00:00:${String(index).padStart(2, '0')}.000Z`,
+            artifacts: [
+              {
+                name: `upstream-attestation-${requirementId}`,
+                digest: `sha256:${'b'.repeat(64)}`,
+                expired: false,
+                archiveDownloadUrl: `${'https://api.github.com/repos'}/${repository}/actions/artifacts/${index + 1}/zip`,
+              },
+            ],
+          })),
+        },
+      ]
+    }),
+  ) as Record<string, PackageRecord>
+  const complete = evaluateUpstreamRequirementChecks(packages)
+  assert.equal(complete.failures.length, 0)
+  assert.deepEqual(
+    complete.measurements.map(({ name }: { readonly name: string }) => name),
+    Object.keys(owners),
+  )
+
+  const tanglePackage = packages['@tangle-network/agent-provider-tangle']
+  assert(tanglePackage)
+  tanglePackage.checks = tanglePackage.checks.filter(({ name }: Check) => name !== 'UP-09')
+  const missing = evaluateUpstreamRequirementChecks(packages)
+  assert(missing.failures.some((failure: string) => /UP-09.*UP-09/u.test(failure)))
+  assert.equal(missing.measurements.length, 0)
 })
 
 test('release signatures use locale-independent canonical key ordering', () => {
@@ -324,5 +498,216 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
     }
     assert.match(output, /requires protected live-provider credentials/u)
     assert.doesNotMatch(output, /pass(?:ed)?|success/iu)
+  }
+})
+
+test('release keys stay isolated and provider credentials are step-scoped', async () => {
+  const workflow = await readFile('.github/workflows/release.yml', 'utf8')
+  const candidate = workflow.slice(
+    workflow.indexOf('  candidate:'),
+    workflow.indexOf('  endorse-candidate:'),
+  )
+  assert.doesNotMatch(candidate, /BRAID_RELEASE_SIGNING_KEY/u)
+  assert.doesNotMatch(
+    candidate.slice(0, candidate.indexOf('      - name: Run the complete release checks')),
+    /BRAID_(?:CLI_BRIDGE|EVAL)_/u,
+  )
+  for (const [start, end] of [
+    ['  endorse-candidate:', '  platform-smoke:'],
+    ['  endorse-final:', '  tag-and-report:'],
+  ] as const) {
+    const job = workflow.slice(workflow.indexOf(start), workflow.indexOf(end))
+    assert.match(job, /BRAID_RELEASE_SIGNING_KEY_BASE64/u)
+    assert.doesNotMatch(job, /actions\/checkout|\b(?:node|npm|pnpm)\b|scripts\//u)
+  }
+  assert.equal(workflow.match(/BRAID_RELEASE_SIGNING_KEY_BASE64/gu)?.length, 2)
+  assert.equal(workflow.match(/^\s+BRAID_CLI_BRIDGE_BEARER:/gmu)?.length, 1)
+  assert.equal(workflow.match(/^\s+BRAID_EVAL_BEARER:/gmu)?.length, 1)
+})
+
+test('independent review approval is signed and bound to the exact candidate', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const packageProof = {
+    gitCommit: 'a'.repeat(40),
+    sha256: 'b'.repeat(64),
+    packageFileManifest: { digest: 'c'.repeat(64) },
+  }
+  const unsigned = {
+    schema: 'braid.independent-review.v1',
+    reviewer: { id: 'reviewer-1', system: 'independent-review-system' },
+    candidate: {
+      gitCommit: packageProof.gitCommit,
+      tarballSha256: packageProof.sha256,
+      packageFileManifestDigest: packageProof.packageFileManifest.digest,
+    },
+    verdict: 'approved',
+    reviewedAt: '2026-08-09T01:00:00.000Z',
+    threatFixturesReproduced: true,
+    architectureOwnershipConfirmed: true,
+    findings: [],
+  }
+  const attestation = {
+    ...unsigned,
+    signature: {
+      algorithm: 'ed25519',
+      value: sign(null, Buffer.from(canonicalJson(unsigned)), privateKey).toString('base64'),
+    },
+  }
+  assert.deepEqual(validateIndependentReview(attestation, { packageProof, publicKey }), unsigned)
+  assert.throws(
+    () =>
+      validateIndependentReview(
+        { ...attestation, candidate: { ...attestation.candidate, tarballSha256: 'd'.repeat(64) } },
+        { packageProof, publicKey },
+      ),
+    /archive differs/u,
+  )
+})
+
+test('the final release proof requires matching candidate and registry smokes on every platform', async () => {
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-publication-proof-'))
+  const packageProof = {
+    version: '0.1.0',
+    gitCommit: 'a'.repeat(40),
+    tarball: 'tangle-network-braid-0.1.0.tgz',
+    sha256: 'b'.repeat(64),
+  }
+  const completedAt = '2026-08-09T01:00:00.000Z'
+  try {
+    const candidateDirectory = join(artifactRoot, 'candidate')
+    const candidateBytes = Buffer.from('candidate archive bytes')
+    await mkdir(candidateDirectory, { recursive: true })
+    await writeFile(join(candidateDirectory, packageProof.tarball), candidateBytes)
+    const provenancePayload = {
+      subject: [
+        {
+          name: 'pkg:npm/%40tangle-network/braid@0.1.0',
+          digest: { sha512: createHash('sha512').update(candidateBytes).digest('hex') },
+        },
+      ],
+      predicateType: 'https://slsa.dev/provenance/v1',
+      predicate: {
+        buildDefinition: {
+          externalParameters: {
+            workflow: {
+              ref: 'refs/heads/main',
+              repository: 'https://github.com/tangle-network/braid',
+              path: '.github/workflows/release.yml',
+            },
+          },
+          resolvedDependencies: [
+            {
+              uri: 'git+https://github.com/tangle-network/braid@refs/heads/main',
+              digest: { gitCommit: packageProof.gitCommit },
+            },
+          ],
+        },
+        runDetails: {
+          builder: { id: 'https://github.com/actions/runner/github-hosted' },
+          metadata: {
+            invocationId: 'https://github.com/tangle-network/braid/actions/runs/123/attempts/1',
+          },
+        },
+      },
+    }
+    await mkdir(join(artifactRoot, 'publication'), { recursive: true })
+    await writeFile(
+      join(artifactRoot, 'publication', 'npm-audit-signatures.json'),
+      `${JSON.stringify({
+        invalid: [],
+        missing: [],
+        verified: [
+          {
+            name: '@tangle-network/braid',
+            version: packageProof.version,
+            attestations: { provenance: { predicateType: provenancePayload.predicateType } },
+            attestationBundles: [
+              {
+                predicateType: provenancePayload.predicateType,
+                bundle: {
+                  dsseEnvelope: {
+                    payload: Buffer.from(JSON.stringify(provenancePayload)).toString('base64'),
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      })}\n`,
+    )
+    for (const phase of ['candidate', 'registry']) {
+      const directory = join(artifactRoot, 'publication', phase)
+      await mkdir(directory, { recursive: true })
+      for (const target of REQUIRED_RELEASE_TARGETS) {
+        const record = {
+          schema: 'braid.package-smoke.v1',
+          platform: target.platform,
+          architecture: target.architecture,
+          node: 'v22.19.0',
+          package: '@tangle-network/braid@0.1.0',
+          tarball: packageProof.tarball,
+          tarballSha256: packageProof.sha256,
+          source: phase,
+          installationRoot: '<temporary>/install/node_modules/@tangle-network',
+          plainFlow: true,
+          encryptedStorage: true,
+          temporaryStateRemoved: true,
+          completedAt: '2026-08-09T00:30:00.000Z',
+        }
+        await writeFile(join(directory, `${target.id}.json`), `${JSON.stringify(record)}\n`)
+      }
+    }
+    const proof = await createPublicationProof({ artifactRoot, packageProof, completedAt })
+    await writeFile(
+      join(artifactRoot, 'publication', 'proof.json'),
+      `${JSON.stringify(proof, null, 2)}\n`,
+    )
+    const evidence = {
+      schemaVersion: 1,
+      braidVersion: packageProof.version,
+      gitCommit: packageProof.gitCommit,
+      packageIntegrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
+      startedAt: '2026-08-09T00:00:00.000Z',
+      finishedAt: '2026-08-09T00:20:00.000Z',
+      sourceState: {
+        clean: true,
+        commit: packageProof.gitCommit,
+        treeSha256: 'c'.repeat(40),
+        tarballSha256: packageProof.sha256,
+        tarballArtifactId: 'package-tarball',
+      },
+      dependencies: [],
+      environments: [],
+      checks: [],
+      requirements: {
+        'VR-10': { checks: ['install'], artifacts: ['package-tarball'] },
+      },
+      artifacts: [
+        {
+          id: 'package-tarball',
+          path: `candidate/${packageProof.tarball}`,
+          sha256: packageProof.sha256,
+          mediaType: 'application/gzip',
+        },
+      ],
+      liveResources: [],
+      cleanup: [],
+      signatures: [],
+    }
+    const augmented = await applyPublicationProof({ evidence, artifactRoot, packageProof })
+    assert.equal(augmented.evidence.finishedAt, completedAt)
+    assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 9)
+    assert.equal(augmented.evidence.artifacts.length, 9)
+
+    const registryPath = join(artifactRoot, 'publication', 'registry', 'linux-x64.json')
+    const mismatched = JSON.parse(await readFile(registryPath, 'utf8'))
+    mismatched.tarballSha256 = 'd'.repeat(64)
+    await writeFile(registryPath, `${JSON.stringify(mismatched)}\n`)
+    await assert.rejects(
+      createPublicationProof({ artifactRoot, packageProof, completedAt }),
+      /archive digest differs/u,
+    )
+  } finally {
+    await rm(artifactRoot, { recursive: true, force: true })
   }
 })
