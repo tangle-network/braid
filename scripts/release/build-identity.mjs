@@ -5,7 +5,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { REQUIREMENT_PATTERN } from '../release-check-catalog.mjs'
 import { canonicalJson } from '../release-evidence.mjs'
-import { readRegularFileNoFollow } from '../release-files.mjs'
+import { containedArtifactPath, readRegularFileNoFollow } from '../release-files.mjs'
 import {
   assertPackageFileManifestMatches,
   packageFileBytesFromTarball,
@@ -29,19 +29,7 @@ function git(repository, ...args) {
   return execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim()
 }
 
-function isTracked(repository, path) {
-  try {
-    execFileSync('git', ['ls-files', '--error-unmatch', '--', path], {
-      cwd: repository,
-      stdio: 'ignore',
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-function sourceTreeChanges(repository, allowedGeneratedPath) {
+function sourceTreeChanges(repository) {
   const changed = new Set()
   for (const path of git(repository, 'diff', '--name-only', 'HEAD').split('\n')) {
     if (path) changed.add(path)
@@ -49,12 +37,7 @@ function sourceTreeChanges(repository, allowedGeneratedPath) {
   for (const path of git(repository, 'ls-files', '--others', '--exclude-standard').split('\n')) {
     if (path) changed.add(path)
   }
-  return [...changed]
-    .filter(
-      (path) =>
-        path !== allowedGeneratedPath && !path.startsWith('artifacts/verification/release/'),
-    )
-    .sort()
+  return [...changed].sort()
 }
 
 async function filesBelow(root) {
@@ -215,39 +198,43 @@ function packageManifestFromProof(proof) {
 
 export async function readBuildIdentity({
   repository,
+  artifactRoot,
   tarballPath,
   packageProofPath,
   packageProof,
   requirementIds,
 } = {}) {
   const root = resolve(repository)
+  const evidenceRoot = resolve(artifactRoot)
   assert(
     typeof tarballPath === 'string' && tarballPath.length > 0,
     'Packed tarball path is required',
   )
-  const tarball = resolve(tarballPath)
-  const tarballRelative = relative(root, tarball)
+  const requestedTarball = resolve(tarballPath)
+  const tarballRelative = relative(evidenceRoot, requestedTarball)
   assert(
     tarballRelative !== '' &&
       !isAbsolute(tarballRelative) &&
       tarballRelative !== '..' &&
       !tarballRelative.startsWith(`..${sep}`),
-    'Packed tarball must be inside the release checkout',
+    'Packed tarball must be inside BRAID_RELEASE_ARTIFACT_ROOT',
   )
-  assert(
-    !isTracked(root, tarballRelative),
-    'Packed tarball path must be an untracked generated file',
-  )
+  const tarball = await containedArtifactPath(evidenceRoot, tarballRelative)
   const tarballBytes = await readRegularFileNoFollow(tarball)
   const packageJson = JSON.parse(
     (await readRegularFileNoFollow(join(root, 'package.json'))).toString('utf8'),
   )
-  const proof = await readPackageProof({ repository: root, packageProofPath, packageProof })
+  const proof = await readPackageProof({
+    repository: root,
+    packageProofRoot: evidenceRoot,
+    packageProofPath,
+    packageProof,
+  })
   const dependencies = await readDependencyRecords({ repository: root, packageJson })
   const ids = requirementIds ?? (await readRequirementIds(root))
   assert(Array.isArray(ids), 'Requirement identifiers are not an array')
   assert(new Set(ids).size === ids.length, 'Requirement identifiers are duplicated')
-  const sourceChanges = sourceTreeChanges(root, tarballRelative)
+  const sourceChanges = sourceTreeChanges(root)
   assert(
     sourceChanges.length === 0,
     `Source tree is not clean; cannot bind tarball to HEAD: ${sourceChanges.join(', ')}`,
@@ -259,7 +246,7 @@ export async function readBuildIdentity({
   const gitTree = { algorithm: GIT_TREE_ALGORITHM, value: treeSha256 }
   const tarballSha256 = sha256(tarballBytes)
   const packageIntegrity = `sha512-${createHash('sha512').update(tarballBytes).digest('base64')}`
-  const cleanSourceDigest = await sourceDigest(root, new Set([tarball]))
+  const cleanSourceDigest = await sourceDigest(root)
   assert(
     proof && typeof proof === 'object' && !Array.isArray(proof),
     'Package proof is not an object',

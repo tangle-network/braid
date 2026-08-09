@@ -1,11 +1,11 @@
 import { readFile } from 'node:fs/promises'
-import { REQUIRED_CHECKS } from './release-check-catalog.mjs'
+import { RELEASE_COMMANDS } from './release-check-catalog.mjs'
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 const composition = await readFile(new URL('../src/app/composition.ts', import.meta.url), 'utf8')
 const requiredScripts = [
   ...new Set(
-    [...REQUIRED_CHECKS.values()].map(({ command }) => {
+    [...RELEASE_COMMANDS.values()].map(({ command }) => {
       if (!command.startsWith('pnpm ')) throw new Error(`Invalid release command: ${command}`)
       return command.slice('pnpm '.length)
     }),

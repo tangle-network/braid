@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 
-import { REQUIRED_CHECKS } from '../release-check-catalog.mjs'
+import { REQUIRED_CHECKS, releaseCheckEntry } from '../release-check-catalog.mjs'
 import { PROCESS_TREE_STRATEGY, reapChildTree, terminateChildTree } from './process-tree.mjs'
 import {
   BoundedCapture,
@@ -201,7 +201,7 @@ export async function executeCatalogCheck({
   maxLogBytes,
   redactionSecrets = [],
 }) {
-  const entry = REQUIRED_CHECKS.get(checkId)
+  const entry = releaseCheckEntry(checkId)
   assert(entry, `Unknown release check: ${checkId}`)
   const command = catalogCommandArgv(entry.command)
   const processResult = await executeArgv({

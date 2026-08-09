@@ -1,0 +1,368 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full commit SHA from main to release
+        required: true
+        type: string
+      publish:
+        description: Publish and tag after every check passes
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-${{ inputs.commit }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      archive: ${{ steps.metadata.outputs.archive }}
+    env:
+      BRAID_LIVE_BRIDGE: '1'
+      BRAID_CLI_BRIDGE_BEARER: ${{ secrets.BRAID_CLI_BRIDGE_BEARER }}
+      BRAID_CLI_BRIDGE_URL: ${{ vars.BRAID_CLI_BRIDGE_URL }}
+      BRAID_EVAL_BEARER: ${{ secrets.BRAID_EVAL_BEARER }}
+      BRAID_EVAL_BRIDGE_URL: ${{ vars.BRAID_EVAL_BRIDGE_URL }}
+      BRAID_EVAL_MODEL: ${{ vars.BRAID_EVAL_MODEL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit }}
+
+      - name: Confirm an exact main commit
+        env:
+          REQUESTED_COMMIT: ${{ inputs.commit }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED_COMMIT"
+          test "$(printf '%s' "$REQUESTED_COMMIT" | wc -c)" = 40
+          git fetch origin main
+          git merge-base --is-ancestor "$REQUESTED_COMMIT" origin/main
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Configure external release storage
+        run: echo "BRAID_RELEASE_ARTIFACT_ROOT=$RUNNER_TEMP/braid-release" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned visual tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fonts-dejavu-core imagemagick
+          cargo install --locked --version 1.9.0 agg
+          test "$(agg --version | head -1)" = "agg 1.9.0"
+
+      - name: Restore the release signing key
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.BRAID_RELEASE_SIGNING_KEY_BASE64 }}
+        run: |
+          test -n "$SIGNING_KEY_BASE64"
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/braid-release-key.pem"
+          chmod 600 "$RUNNER_TEMP/braid-release-key.pem"
+
+      - name: Build and exercise one immutable candidate
+        run: pnpm release:prepare
+
+      - name: Read candidate metadata
+        id: metadata
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          ARCHIVE="tangle-network-braid-${VERSION}.tgz"
+          test -f "$BRAID_RELEASE_ARTIFACT_ROOT/candidate/$ARCHIVE"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+
+      - name: Run and sign the complete release checks
+        env:
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/braid-release-key.pem
+        run: >-
+          pnpm release:collect --
+          --artifact-root "$BRAID_RELEASE_ARTIFACT_ROOT"
+          --tarball "candidate/${{ steps.metadata.outputs.archive }}"
+          --signing-key "$BRAID_RELEASE_SIGNING_KEY_PATH"
+
+      - name: Qualify the pre-publication candidate
+        env:
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_ISOLATED_CHECKOUT: '1'
+          BRAID_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/braid-release-key.pem
+        run: pnpm verify:candidate
+
+      - name: Upload the immutable candidate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+          if-no-files-found: error
+          retention-days: 90
+
+  platform-smoke:
+    needs: candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            os: ubuntu-latest
+            platform: linux
+            architecture: x64
+          - id: macos-arm64
+            os: macos-15
+            platform: darwin
+            architecture: arm64
+          - id: windows-x64
+            os: windows-latest
+            platform: win32
+            architecture: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Install and exercise the exact candidate
+        env:
+          BRAID_EXPECT_ARCHITECTURE: ${{ matrix.architecture }}
+          BRAID_EXPECT_PLATFORM: ${{ matrix.platform }}
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
+          BRAID_SMOKE_OUTPUT: ${{ runner.temp }}/smoke/${{ matrix.id }}.json
+        run: node scripts/release/smoke-package.mjs
+
+      - name: Upload the candidate smoke result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-candidate-smoke-${{ inputs.commit }}-${{ matrix.id }}
+          path: ${{ runner.temp }}/smoke/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: [candidate, platform-smoke]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Publish the approved tarball
+        env:
+          ARCHIVE: ${{ needs.candidate.outputs.archive }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = 11.18.0
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$RUNNER_TEMP/braid-npmrc"
+            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/braid-npmrc"
+          fi
+          if npm view "@tangle-network/braid@$VERSION" version >/dev/null 2>&1; then
+            echo "@tangle-network/braid@$VERSION already exists; checking it instead of republishing"
+          else
+            npm publish "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" --provenance --access public
+          fi
+
+  post-publish-smoke:
+    needs: [candidate, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            os: ubuntu-latest
+            platform: linux
+            architecture: x64
+          - id: macos-arm64
+            os: macos-15
+            platform: darwin
+            architecture: arm64
+          - id: windows-x64
+            os: windows-latest
+            platform: win32
+            architecture: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Download and exercise the registry package
+        env:
+          BRAID_EXPECT_ARCHITECTURE: ${{ matrix.architecture }}
+          BRAID_EXPECT_PLATFORM: ${{ matrix.platform }}
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
+          BRAID_RELEASE_REGISTRY_SPEC: '@tangle-network/braid@${{ needs.candidate.outputs.version }}'
+          BRAID_SMOKE_OUTPUT: ${{ runner.temp }}/smoke/${{ matrix.id }}.json
+        run: node scripts/release/smoke-package.mjs
+
+      - name: Upload the registry smoke result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-registry-smoke-${{ inputs.commit }}-${{ matrix.id }}
+          path: ${{ runner.temp }}/smoke/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  finalize:
+    needs: [candidate, platform-smoke, post-publish-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: braid-candidate-smoke-${{ inputs.commit }}-*
+          path: ${{ runner.temp }}/braid-release/publication/candidate
+          merge-multiple: true
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: braid-registry-smoke-${{ inputs.commit }}-*
+          path: ${{ runner.temp }}/braid-release/publication/registry
+          merge-multiple: true
+
+      - name: Restore the release signing key
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.BRAID_RELEASE_SIGNING_KEY_BASE64 }}
+        run: |
+          test -n "$SIGNING_KEY_BASE64"
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/braid-release-key.pem"
+          chmod 600 "$RUNNER_TEMP/braid-release-key.pem"
+
+      - name: Assemble the final signed report
+        env:
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_ISOLATED_CHECKOUT: '1'
+          BRAID_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/braid-release-key.pem
+        run: |
+          pnpm release:record-publication
+          pnpm verify:release
+
+      - name: Upload the final signed release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-release-final-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+          if-no-files-found: error
+          retention-days: 90
+
+  tag-and-report:
+    needs: [candidate, finalize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-final-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Tag the proven commit and attach its report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "$TAG")" = "${{ inputs.commit }}"
+          else
+            git tag "$TAG" "${{ inputs.commit }}"
+            git push origin "$TAG"
+          fi
+          REPORT="$RUNNER_TEMP/braid-release/$VERSION/report.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$REPORT"
+          else
+            gh release create "$TAG" --verify-tag --title "Braid $VERSION" --notes-file "$REPORT"
+          fi
+          EVIDENCE_ARCHIVE="$RUNNER_TEMP/braid-evidence-$VERSION.tar.gz"
+          tar --directory "$RUNNER_TEMP/braid-release" --create --gzip --file "$EVIDENCE_ARCHIVE" .
+          gh release upload "$TAG" "$EVIDENCE_ARCHIVE" --clobber
+          find "$RUNNER_TEMP/braid-release" -type f \( -name '*.tgz' -o -name 'manifest.json' -o -name '*.png' -o -name '*.gif' \) -print0 |
+            while IFS= read -r -d '' file; do gh release upload "$TAG" "$file" --clobber; done

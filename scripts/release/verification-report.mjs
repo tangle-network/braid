@@ -75,10 +75,7 @@ export async function writeVerificationOutputs({
   }
   const manifest = signManifest(unsignedManifest, signingKey)
   verifyManifestSignature(manifest, publicKey)
-  const outputRoot = await containedOutputPath(
-    options.repository,
-    join('artifacts', 'verification', evidence.braidVersion),
-  )
+  const outputRoot = await containedOutputPath(options.artifactRoot, evidence.braidVersion)
   const outputPath = join(outputRoot, 'manifest.json')
   const reportPath = join(outputRoot, 'report.md')
   await mkdir(outputRoot, { recursive: true })

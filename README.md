@@ -63,6 +63,13 @@ Commands marked unavailable fail with exit code 2 and a plain explanation; they 
 | release | `pnpm check:release` | Checks the release manifest and evidence set |
 | verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with external signing key and complete evidence |
 
+The manual GitHub release workflow accepts one full commit SHA from `main`.
+It creates one tarball under an external `BRAID_RELEASE_ARTIFACT_ROOT`, runs every candidate check against those bytes, and uploads that same tarball for platform tests and npm publication.
+`pnpm verify:candidate` qualifies the pre-publication results without creating a final signed report.
+After publication, Linux x64, macOS arm64, and Windows x64 each download the registry package, confirm its SHA-256 matches the candidate, exercise plain messaging and encrypted SQLite storage, and remove their temporary state.
+`pnpm release:record-publication` binds those six platform results into the evidence set, and only then may `pnpm verify:release` write the final signed manifest and report.
+Any failed or unavailable required check exits nonzero before publication, while any failed registry smoke prevents tagging and the GitHub release.
+
 The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
 
 ## The central decision

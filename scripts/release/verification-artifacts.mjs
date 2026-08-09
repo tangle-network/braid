@@ -19,7 +19,7 @@ function sha512Integrity(bytes) {
 
 export async function validateReleaseArtifacts({
   evidence,
-  repository,
+  artifactRoot,
   packageProof,
   packageJson,
 }) {
@@ -31,14 +31,16 @@ export async function validateReleaseArtifacts({
       typeof artifact.mediaType === 'string' && artifact.mediaType.length > 0,
       `Artifact ${artifact.id} has no media type`,
     )
-    const bytes = await readContainedFile(repository, artifact.path)
+    const bytes = await readContainedFile(artifactRoot, artifact.path)
     assert(sha256(bytes) === artifact.sha256, `Artifact ${artifact.id} digest changed`)
   }
 
   const tarballArtifact = artifacts.get(evidence.sourceState.tarballArtifactId)
   assert(tarballArtifact, 'Source state names an unknown tarball artifact')
   assert(tarballArtifact.sha256 === packageProof.sha256, 'Tarball artifact digest differs')
-  const tarballBytes = await readRegularFileNoFollow(artifactPath(repository, tarballArtifact.path))
+  const tarballBytes = await readRegularFileNoFollow(
+    artifactPath(artifactRoot, tarballArtifact.path),
+  )
   assert(
     sha512Integrity(tarballBytes) === evidence.packageIntegrity,
     'Tarball artifact integrity differs',

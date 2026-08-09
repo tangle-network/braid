@@ -70,7 +70,7 @@ function resultMarkerValue(category, values) {
   return value
 }
 
-export function structuredChildEvidence(category, stdoutBytes, durationMs) {
+export function structuredChildEvidence(category, stdoutBytes, durationMs, checkId) {
   const text = Buffer.from(stdoutBytes).toString('utf8')
   let resultMarker
   let measurementMarkers
@@ -160,8 +160,14 @@ export function structuredChildEvidence(category, stdoutBytes, durationMs) {
   } catch (error) {
     return unavailableEvidence(category, error.message)
   }
+  let selectedMeasurements = measurements
+  if (/^(LIVE|PERF|EVAL)-[0-9]{2}$/u.test(checkId)) {
+    selectedMeasurements = measurements.filter((measurement) => measurement.name === checkId)
+    if (selectedMeasurements.length !== 1)
+      return unavailableEvidence(category, `${checkId} emitted no unique matching measurement`)
+  }
   if (
-    measurements.some(
+    selectedMeasurements.some(
       (measurement) => measurement.kind === 'unavailable' || measurement.kind === 'uncaptured',
     )
   ) {
@@ -170,7 +176,7 @@ export function structuredChildEvidence(category, stdoutBytes, durationMs) {
       `${category} evidence contains an unavailable or uncaptured measurement`,
     )
   }
-  return { result: 'passed', measurements, reason: null }
+  return { result: 'passed', measurements: selectedMeasurements, reason: null }
 }
 
 export function environmentRecord({ cwd, argv, environment, boundary }) {
@@ -213,6 +219,7 @@ export function buildCheckRecord({
     category,
     processResult.stdout.bytes,
     processResult.durationMs,
+    checkId,
   )
   const outputRedactionComplete =
     processResult.stdout.redactionFailClosed === false &&

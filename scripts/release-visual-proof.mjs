@@ -11,11 +11,9 @@ async function sha256(path) {
     .digest('hex')
 }
 
-export async function validateVisualProof({ packageProof, visualProof, artifactRoot }) {
+export async function validateVisualProof({ packageProof, visualProof, artifactRoot, repository }) {
   const packageJson = JSON.parse(
-    (await readRegularFileNoFollow(join(artifactRoot, '..', '..', 'package.json'))).toString(
-      'utf8',
-    ),
+    (await readRegularFileNoFollow(join(repository, 'package.json'))).toString('utf8'),
   )
   const expectedRenderer = {
     package: `@earendil-works/pi-tui@${packageJson.dependencies?.['@earendil-works/pi-tui'] ?? ''}`,

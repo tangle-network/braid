@@ -59,6 +59,7 @@ function git(root, ...args) {
 
 async function makeRepo() {
   const root = await mkdtemp(join(tmpdir(), 'braid-release-repo-'))
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-release-artifacts-'))
   await mkdir(join(root, 'docs'), { recursive: true })
   await writeFile(
     join(root, 'package.json'),
@@ -77,7 +78,7 @@ async function makeRepo() {
   git(root, 'commit', '-qm', 'fixture')
   const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const packageJsonBytes = Buffer.from(`${JSON.stringify(packageJson)}\n`)
-  const tarballPath = join(root, 'example-braid-1.0.0.tgz')
+  const tarballPath = join(artifactRoot, 'example-braid-1.0.0.tgz')
   const tarballBytes = tarArchive([
     { name: 'package/', type: 'directory' },
     { name: 'package/package.json', body: packageJsonBytes },
@@ -91,12 +92,12 @@ async function makeRepo() {
     version: '1.0.0',
     gitCommit: git(root, 'rev-parse', 'HEAD'),
     treeSha256: git(root, 'rev-parse', 'HEAD^{tree}'),
-    sourceDigest: await sourceDigest(root, new Set([tarballPath])),
+    sourceDigest: await sourceDigest(root),
     isolatedBuild: true,
     sourceCheckout: 'isolated-copy-of-worktree',
     packageFileManifest: manifest,
   }
-  return { root, tarballPath, tarballBytes, proof }
+  return { root, artifactRoot, tarballPath, tarballBytes, proof }
 }
 
 async function withRepo(action) {
@@ -104,7 +105,10 @@ async function withRepo(action) {
   try {
     return await action(fixture)
   } finally {
-    await rm(fixture.root, { recursive: true, force: true })
+    await Promise.all([
+      rm(fixture.root, { recursive: true, force: true }),
+      rm(fixture.artifactRoot, { recursive: true, force: true }),
+    ])
   }
 }
 
@@ -267,6 +271,20 @@ test('structured child results require an unambiguous passed marker and one meas
     3,
   )
   assert.equal(passed.result, 'passed')
+  const exactMeasurements = JSON.stringify([
+    { kind: 'scalar', name: 'LIVE-01', unit: 'count', value: 1 },
+    { kind: 'scalar', name: 'LIVE-02', unit: 'count', value: 1 },
+  ])
+  const exactOutput = Buffer.from(
+    `BRAID_RELEASE_RESULT_JSON={"status":"passed"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${exactMeasurements}\n`,
+  )
+  const exact = structuredChildEvidence('live', exactOutput, 3, 'LIVE-02')
+  assert.equal(exact.result, 'passed')
+  assert.deepEqual(
+    exact.measurements.map(({ name }) => name),
+    ['LIVE-02'],
+  )
+  assert.notEqual(structuredChildEvidence('live', exactOutput, 3, 'LIVE-03').result, 'passed')
   for (const output of [
     `BRAID_RELEASE_MEASUREMENTS_JSON=${measurement}\n`,
     `BRAID_RELEASE_RESULT_JSON={"status":"failed","reason":"no"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${measurement}\n`,
@@ -433,8 +451,13 @@ test('requirements and bindings reject duplicate definitions before canonicaliza
 })
 
 test('build identity binds clean HEAD, explicit Git-tree algorithm, tarball digest, and package manifest', async () => {
-  await withRepo(async ({ root, tarballPath, proof }) => {
-    const identity = await readBuildIdentity({ repository: root, tarballPath, packageProof: proof })
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    const identity = await readBuildIdentity({
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+    })
     assert.deepEqual(identity.gitTree, {
       algorithm: 'git-tree-object-sha1',
       value: identity.treeSha256,
@@ -445,14 +468,14 @@ test('build identity binds clean HEAD, explicit Git-tree algorithm, tarball dige
       '## Product acceptance\n\n| PR-01 | modified |\n',
     )
     await expectRejectAsync(
-      () => readBuildIdentity({ repository: root, tarballPath, packageProof: proof }),
+      () => readBuildIdentity({ repository: root, artifactRoot, tarballPath, packageProof: proof }),
       /Source tree is not clean/iu,
     )
   })
-  await withRepo(async ({ root, tarballPath, tarballBytes, proof }) => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, tarballBytes, proof }) => {
     await writeFile(tarballPath, Buffer.concat([tarballBytes, Buffer.from('changed')]))
     await expectRejectAsync(
-      () => readBuildIdentity({ repository: root, tarballPath, packageProof: proof }),
+      () => readBuildIdentity({ repository: root, artifactRoot, tarballPath, packageProof: proof }),
       /tarball digest differs/iu,
     )
   })
@@ -485,7 +508,7 @@ test('atomic interruption leaves no partial file and permits a clean retry', asy
 })
 
 test('one local catalog check produces redacted artifacts and a signed collection manifest', async () => {
-  await withRepo(async ({ root, tarballPath, proof }) => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
     const bin = await mkdtemp(join(tmpdir(), 'braid-fake-pnpm-'))
     const pnpmPath = join(bin, 'pnpm')
     await writeFile(
@@ -497,6 +520,7 @@ test('one local catalog check produces redacted artifacts and a signed collectio
     try {
       const collectionOptions = {
         repository: root,
+        artifactRoot,
         tarballPath,
         packageProof: proof,
         requirementBindings: { 'PR-01': { checks: ['repository'] } },
@@ -540,7 +564,7 @@ test('one local catalog check produces redacted artifacts and a signed collectio
         artifact.id.endsWith('-stdout'),
       )
       assert(stdoutArtifact)
-      await writeFile(join(root, stdoutArtifact.path), 'tampered')
+      await writeFile(join(artifactRoot, stdoutArtifact.path), 'tampered')
       await expectRejectAsync(
         () => collectReleaseEvidence(collectionOptions),
         /Artifact .* changed/iu,

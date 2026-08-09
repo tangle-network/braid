@@ -1,45 +1,59 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
-
+import { basename, join, relative, resolve } from 'node:path'
+import { nativeInstallEnvironment } from '../native-install-environment.mjs'
 import { runCommand } from './command.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
-import { nativeInstallEnvironment } from '../native-install-environment.mjs'
 
 export async function buildPackedBinary(evidence, repository, registerTemp) {
-  const packRoot = await mkdtemp(join(tmpdir(), 'braid-live-pack-'))
-  registerTemp(packRoot)
+  const suppliedTarball = process.env.BRAID_RELEASE_TARBALL
+  const packRoot = suppliedTarball ? undefined : await mkdtemp(join(tmpdir(), 'braid-live-pack-'))
+  if (packRoot) registerTemp(packRoot)
   const installRoot = await mkdtemp(join(tmpdir(), 'braid-live-install-'))
   registerTemp(installRoot)
-  evidence.temp = { packRoot, installRoot }
-  const build = await runCommand('pnpm', ['run', 'build'], { cwd: repository })
-  evidence.build = build
-  if (build.code !== 0 || build.cleanupOk !== true) {
-    throw new LiveBridgeError(
-      'PACK_BUILD_FAILED',
-      'Braid build failed before the live packed run',
-      exitCodes.failed,
-      { build },
-    )
+  evidence.temp = { packRoot: packRoot ?? null, installRoot }
+  if (packRoot) {
+    const build = await runCommand('pnpm', ['run', 'build'], { cwd: repository })
+    evidence.build = build
+    if (build.code !== 0 || build.cleanupOk !== true) {
+      throw new LiveBridgeError(
+        'PACK_BUILD_FAILED',
+        'Braid build failed before the live packed run',
+        exitCodes.failed,
+        { build },
+      )
+    }
+    const pack = await runCommand('pnpm', ['pack', '--pack-destination', packRoot], {
+      cwd: repository,
+    })
+    evidence.packCommand = pack
+    if (pack.code !== 0 || pack.cleanupOk !== true) {
+      throw new LiveBridgeError(
+        'PACK_FAILED',
+        'Braid packaging failed before the live packed run',
+        exitCodes.failed,
+        { pack },
+      )
+    }
+  } else {
+    evidence.build = { mode: 'prebuilt-release-candidate' }
+    evidence.packCommand = { mode: 'prebuilt-release-candidate' }
   }
-  const pack = await runCommand('pnpm', ['pack', '--pack-destination', packRoot], {
-    cwd: repository,
-  })
-  evidence.packCommand = pack
-  if (pack.code !== 0 || pack.cleanupOk !== true) {
-    throw new LiveBridgeError(
-      'PACK_FAILED',
-      'Braid packaging failed before the live packed run',
-      exitCodes.failed,
-      { pack },
-    )
-  }
-  const tarballName = (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
+  const tarballName = packRoot
+    ? (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
+    : basename(suppliedTarball)
   if (!tarballName)
     throw new LiveBridgeError('PACK_MISSING', 'pnpm pack produced no tarball', exitCodes.failed)
-  const tarball = join(packRoot, tarballName)
+  const tarball = packRoot ? join(packRoot, tarballName) : resolve(suppliedTarball)
+  const tarballInfo = await lstat(tarball)
+  if (!tarballInfo.isFile() || tarballInfo.isSymbolicLink())
+    throw new LiveBridgeError(
+      'PACK_INVALID',
+      'The release tarball is not a regular file',
+      exitCodes.failed,
+    )
   await writeFile(
     join(installRoot, 'package.json'),
     '{"name":"braid-live-install","private":true}\n',

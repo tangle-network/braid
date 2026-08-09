@@ -396,11 +396,13 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 - Verify every upstream package from packed release candidates and publish in dependency order.
 - Install the resulting registry packages into Braid and commit the exact lockfile.
 - Run static, unit, property soak, contract, headless, virtual-terminal, PTY, storage, security, performance, live, semantic, install, and visual checks against one Braid release candidate.
-- Assemble and validate the complete evidence manifest with every required identifier and artifact hash.
+- Collect and validate candidate evidence with every required identifier and artifact hash without writing the final signed report before publication.
 - Confirm all live test resources are cleaned up and every external state change is recorded.
 - Obtain independent architecture, security, and product-flow review against the exact release candidate digest.
 - Publish `@tangle-network/braid` with npm provenance.
 - Download the registry package in clean supported environments and repeat the post-publication smoke.
+- Require matching candidate and registry package digests plus successful plain messaging, encrypted storage, and temporary-state cleanup on Linux x64, macOS arm64, and Windows x64.
+- Add the six platform result artifacts to `VR-10`, then assemble the final signed manifest and readable report.
 - Tag the source commit and attach the readable verification report, checksums, licenses, screenshots, and flow recording.
 
 ### Done when

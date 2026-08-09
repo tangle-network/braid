@@ -74,6 +74,11 @@
     "pack:check": "pnpm pack --pack-destination .tmp",
     "check:release": "node scripts/check-release.mjs",
     "release:check": "pnpm run check:release",
+    "release:prepare": "node scripts/release/prepare-candidate.mjs",
+    "release:collect": "node scripts/release/collect-release-evidence.mjs",
+    "release:record-publication": "node scripts/release/record-publication.mjs",
+    "release:smoke": "node scripts/release/smoke-package.mjs",
+    "verify:candidate": "node scripts/verify-candidate.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "proof:w0": "pnpm run build && node scripts/verify-package.mjs --record artifacts/verification/w0/package-proof.json && node scripts/capture-w0.mjs",
     "proof:w6": "pnpm run build && node scripts/verify-package.mjs --record artifacts/verification/w6/package-proof.json && node scripts/capture-visual.mjs"

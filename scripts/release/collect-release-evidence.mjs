@@ -12,17 +12,19 @@ function option(name) {
 const repository = resolve(
   option('--repository') ??
     process.env.BRAID_RELEASE_CHECKOUT ??
-    new URL('../', import.meta.url).pathname,
+    new URL('../../', import.meta.url).pathname,
 )
+const artifactRootValue = option('--artifact-root') ?? process.env.BRAID_RELEASE_ARTIFACT_ROOT
 const tarballPath = option('--tarball')
-const packageProofPath = option('--package-proof') ?? 'artifacts/verification/w6/package-proof.json'
-const requirementBindingsPath = option('--requirements')
+const packageProofPath = option('--package-proof') ?? 'w6/package-proof.json'
+const requirementBindingsPath = option('--requirements') ?? 'release/requirement-bindings.json'
 const privateKeyPath = option('--signing-key') ?? process.env.BRAID_RELEASE_SIGNING_KEY_PATH
 const publicKeyPath =
   option('--public-key') ?? resolve(repository, 'release/execution-public-key.pem')
-if (!tarballPath || !requirementBindingsPath || !privateKeyPath) {
-  throw new Error('--tarball, --requirements, and --signing-key are required')
+if (!artifactRootValue || !tarballPath || !privateKeyPath) {
+  throw new Error('--artifact-root, --tarball, and --signing-key are required')
 }
+const artifactRoot = resolve(artifactRootValue)
 const privateInfo = await lstat(privateKeyPath)
 if (!privateInfo.isFile() || privateInfo.isSymbolicLink() || (privateInfo.mode & 0o077) !== 0)
   throw new Error('Release signing key must be a non-symlink owner-only file')
@@ -33,7 +35,8 @@ const requirementBindings = JSON.parse(
 )
 const result = await collectReleaseEvidence({
   repository,
-  tarballPath: resolve(repository, tarballPath),
+  artifactRoot,
+  tarballPath: resolve(artifactRoot, tarballPath),
   packageProofPath,
   requirementBindings,
   signingKey,
@@ -42,3 +45,4 @@ const result = await collectReleaseEvidence({
 process.stdout.write(
   `Collected ${result.envelope.checks.length} release checks with result ${result.result}.\n`,
 )
+if (result.result !== 'passed') process.exitCode = 1

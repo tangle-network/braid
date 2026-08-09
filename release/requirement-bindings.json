@@ -1,0 +1,464 @@
+{
+  "AN-01": {
+    "checks": ["unit"]
+  },
+  "AN-02": {
+    "checks": ["unit"]
+  },
+  "AN-03": {
+    "checks": ["unit"]
+  },
+  "AN-04": {
+    "checks": ["contract"]
+  },
+  "AN-05": {
+    "checks": ["contract"]
+  },
+  "AN-06": {
+    "checks": ["eval"]
+  },
+  "AN-07": {
+    "checks": ["contract"]
+  },
+  "AN-08": {
+    "checks": ["security"]
+  },
+  "AN-09": {
+    "checks": ["security"]
+  },
+  "AN-10": {
+    "checks": ["contract"]
+  },
+  "AR-01": {
+    "checks": ["security"]
+  },
+  "AR-02": {
+    "checks": ["rpc"]
+  },
+  "AR-03": {
+    "checks": ["unit"]
+  },
+  "AR-04": {
+    "checks": ["contract"]
+  },
+  "AR-05": {
+    "checks": ["coordination"]
+  },
+  "AR-06": {
+    "checks": ["unit"]
+  },
+  "AR-07": {
+    "checks": ["crash"]
+  },
+  "AR-08": {
+    "checks": ["install"]
+  },
+  "AR-09": {
+    "checks": ["repository"]
+  },
+  "AR-10": {
+    "checks": ["contract"]
+  },
+  "CF-01": {
+    "checks": ["unit"]
+  },
+  "CF-02": {
+    "checks": ["contract"]
+  },
+  "CF-03": {
+    "checks": ["contract"]
+  },
+  "CF-04": {
+    "checks": ["contract"]
+  },
+  "CF-05": {
+    "checks": ["unit"]
+  },
+  "CF-06": {
+    "checks": ["live-tangle"]
+  },
+  "CF-07": {
+    "checks": ["security"]
+  },
+  "CF-08": {
+    "checks": ["crash"]
+  },
+  "CF-09": {
+    "checks": ["security"]
+  },
+  "CF-10": {
+    "checks": ["contract"]
+  },
+  "EVAL-01": {
+    "checks": ["EVAL-01"]
+  },
+  "EVAL-02": {
+    "checks": ["EVAL-02"]
+  },
+  "EVAL-03": {
+    "checks": ["EVAL-03"]
+  },
+  "EVAL-04": {
+    "checks": ["EVAL-04"]
+  },
+  "EVAL-05": {
+    "checks": ["EVAL-05"]
+  },
+  "EVAL-06": {
+    "checks": ["EVAL-06"]
+  },
+  "LIVE-01": {
+    "checks": ["LIVE-01"]
+  },
+  "LIVE-02": {
+    "checks": ["LIVE-02"]
+  },
+  "LIVE-03": {
+    "checks": ["LIVE-03"]
+  },
+  "LIVE-04": {
+    "checks": ["LIVE-04"]
+  },
+  "LIVE-05": {
+    "checks": ["LIVE-05"]
+  },
+  "LIVE-06": {
+    "checks": ["LIVE-06"]
+  },
+  "LIVE-07": {
+    "checks": ["LIVE-07"]
+  },
+  "LIVE-08": {
+    "checks": ["LIVE-08"]
+  },
+  "LIVE-09": {
+    "checks": ["LIVE-09"]
+  },
+  "LIVE-10": {
+    "checks": ["LIVE-10"]
+  },
+  "LIVE-11": {
+    "checks": ["LIVE-11"]
+  },
+  "LIVE-12": {
+    "checks": ["LIVE-12"]
+  },
+  "PC-01": {
+    "checks": ["contract"]
+  },
+  "PC-02": {
+    "checks": ["contract"]
+  },
+  "PC-03": {
+    "checks": ["unit"]
+  },
+  "PC-04": {
+    "checks": ["security"]
+  },
+  "PC-05": {
+    "checks": ["contract"]
+  },
+  "PC-06": {
+    "checks": ["live-bridge"]
+  },
+  "PC-07": {
+    "checks": ["live-tangle"]
+  },
+  "PC-08": {
+    "checks": ["security"]
+  },
+  "PC-09": {
+    "checks": ["security"]
+  },
+  "PC-10": {
+    "checks": ["security"]
+  },
+  "PC-11": {
+    "checks": ["contract"]
+  },
+  "PC-12": {
+    "checks": ["coordination"]
+  },
+  "PERF-01": {
+    "checks": ["PERF-01"]
+  },
+  "PERF-02": {
+    "checks": ["PERF-02"]
+  },
+  "PERF-03": {
+    "checks": ["PERF-03"]
+  },
+  "PERF-04": {
+    "checks": ["PERF-04"]
+  },
+  "PERF-05": {
+    "checks": ["PERF-05"]
+  },
+  "PERF-06": {
+    "checks": ["PERF-06"]
+  },
+  "PERF-07": {
+    "checks": ["PERF-07"]
+  },
+  "PERF-08": {
+    "checks": ["PERF-08"]
+  },
+  "PERF-09": {
+    "checks": ["PERF-09"]
+  },
+  "PERF-10": {
+    "checks": ["PERF-10"]
+  },
+  "PR-01": {
+    "checks": ["live-bridge"]
+  },
+  "PR-02": {
+    "checks": ["live-tangle"]
+  },
+  "PR-03": {
+    "checks": ["contract"]
+  },
+  "PR-04": {
+    "checks": ["live-bridge"]
+  },
+  "PR-05": {
+    "checks": ["live-bridge"]
+  },
+  "PR-06": {
+    "checks": ["live-tangle"]
+  },
+  "PR-07": {
+    "checks": ["live-analysis"]
+  },
+  "PR-08": {
+    "checks": ["live-supervisor"]
+  },
+  "PR-09": {
+    "checks": ["storage"]
+  },
+  "PR-10": {
+    "checks": ["pty"]
+  },
+  "PR-11": {
+    "checks": ["rpc-packed"]
+  },
+  "PR-12": {
+    "checks": ["release"]
+  },
+  "SE-01": {
+    "checks": ["security"]
+  },
+  "SE-02": {
+    "checks": ["security"]
+  },
+  "SE-03": {
+    "checks": ["live-bridge"]
+  },
+  "SE-04": {
+    "checks": ["security"]
+  },
+  "SE-05": {
+    "checks": ["security"]
+  },
+  "SE-06": {
+    "checks": ["security"]
+  },
+  "SE-07": {
+    "checks": ["security"]
+  },
+  "SE-08": {
+    "checks": ["security"]
+  },
+  "SE-09": {
+    "checks": ["live-tangle"]
+  },
+  "SE-10": {
+    "checks": ["security"]
+  },
+  "SE-11": {
+    "checks": ["security"]
+  },
+  "SE-12": {
+    "checks": ["release"]
+  },
+  "ST-01": {
+    "checks": ["storage"]
+  },
+  "ST-02": {
+    "checks": ["storage"]
+  },
+  "ST-03": {
+    "checks": ["storage"]
+  },
+  "ST-04": {
+    "checks": ["crash"]
+  },
+  "ST-05": {
+    "checks": ["crash"]
+  },
+  "ST-06": {
+    "checks": ["storage"]
+  },
+  "ST-07": {
+    "checks": ["storage"]
+  },
+  "ST-08": {
+    "checks": ["security"]
+  },
+  "ST-09": {
+    "checks": ["performance"]
+  },
+  "ST-10": {
+    "checks": ["coordination"]
+  },
+  "UP-01": {
+    "checks": ["UP-01"]
+  },
+  "UP-02": {
+    "checks": ["UP-02"]
+  },
+  "UP-03": {
+    "checks": ["UP-03"]
+  },
+  "UP-04": {
+    "checks": ["UP-04"]
+  },
+  "UP-05": {
+    "checks": ["UP-05"]
+  },
+  "UP-06": {
+    "checks": ["UP-06"]
+  },
+  "UP-07": {
+    "checks": ["UP-07"]
+  },
+  "UP-08": {
+    "checks": ["UP-08"]
+  },
+  "UP-09": {
+    "checks": ["UP-09"]
+  },
+  "UP-10": {
+    "checks": ["UP-10"]
+  },
+  "UP-11": {
+    "checks": ["UP-11"]
+  },
+  "UP-12": {
+    "checks": ["UP-12"]
+  },
+  "UP-13": {
+    "checks": ["UP-13"]
+  },
+  "UP-14": {
+    "checks": ["UP-14"]
+  },
+  "US-01": {
+    "checks": ["repository"]
+  },
+  "US-02": {
+    "checks": ["release"]
+  },
+  "US-03": {
+    "checks": ["security"]
+  },
+  "US-04": {
+    "checks": ["security"]
+  },
+  "US-05": {
+    "checks": ["security"]
+  },
+  "US-06": {
+    "checks": ["contract"]
+  },
+  "US-07": {
+    "checks": ["release"]
+  },
+  "US-08": {
+    "checks": ["release"]
+  },
+  "US-09": {
+    "checks": ["security"]
+  },
+  "US-10": {
+    "checks": ["release"]
+  },
+  "UX-01": {
+    "checks": ["virtual-terminal", "visual"]
+  },
+  "UX-02": {
+    "checks": ["pty", "capture"]
+  },
+  "UX-03": {
+    "checks": ["rpc-packed"]
+  },
+  "UX-04": {
+    "checks": ["unit"]
+  },
+  "UX-05": {
+    "checks": ["virtual-terminal"]
+  },
+  "UX-06": {
+    "checks": ["unit"]
+  },
+  "UX-07": {
+    "checks": ["live-bridge"]
+  },
+  "UX-08": {
+    "checks": ["unit"]
+  },
+  "UX-09": {
+    "checks": ["visual"]
+  },
+  "UX-10": {
+    "checks": ["pty"]
+  },
+  "VR-01": {
+    "checks": ["release"]
+  },
+  "VR-02": {
+    "checks": ["pty"]
+  },
+  "VR-03": {
+    "checks": ["repository"]
+  },
+  "VR-04": {
+    "checks": ["live"]
+  },
+  "VR-05": {
+    "checks": ["live-bridge"]
+  },
+  "VR-06": {
+    "checks": ["visual", "capture"]
+  },
+  "VR-07": {
+    "checks": ["performance"]
+  },
+  "VR-08": {
+    "checks": ["crash"]
+  },
+  "VR-09": {
+    "checks": ["eval"]
+  },
+  "VR-10": {
+    "checks": ["install"]
+  },
+  "VT-01": {
+    "checks": ["pty"]
+  },
+  "VT-02": {
+    "checks": ["virtual-terminal"]
+  },
+  "VT-03": {
+    "checks": ["rpc-packed"]
+  },
+  "VT-04": {
+    "checks": ["virtual-terminal"]
+  },
+  "VT-05": {
+    "checks": ["pty"]
+  },
+  "VT-06": {
+    "checks": ["repository"]
+  }
+}

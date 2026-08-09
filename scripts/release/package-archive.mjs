@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 import { lstat, readdir, realpath } from 'node:fs/promises'
-import { join, relative, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
 import { canonicalJson } from '../release-evidence.mjs'
-import { readRegularFileNoFollow } from '../release-files.mjs'
+import { containedArtifactPath, readRegularFileNoFollow } from '../release-files.mjs'
 
 const SOURCE_EXCLUSIONS = new Set(['.git', 'node_modules', 'dist', '.test-dist', 'artifacts'])
 const HEX_SHA256 = /^[a-f0-9]{64}$/u
@@ -256,13 +256,20 @@ export function assertPackageFileManifestMatches(expected, actual) {
   return normalized
 }
 
-export async function readPackageProof({ repository, packageProofPath, packageProof }) {
+export async function readPackageProof({
+  repository,
+  packageProofRoot = repository,
+  packageProofPath,
+  packageProof,
+}) {
   if (packageProof) return packageProof
   assert(
     typeof packageProofPath === 'string' && packageProofPath.length > 0,
     'Package proof is required',
   )
-  return JSON.parse(
-    (await readRegularFileNoFollow(join(repository, packageProofPath))).toString('utf8'),
-  )
+  const relativePath = isAbsolute(packageProofPath)
+    ? relative(resolve(packageProofRoot), resolve(packageProofPath))
+    : packageProofPath
+  const path = await containedArtifactPath(packageProofRoot, relativePath)
+  return JSON.parse((await readRegularFileNoFollow(path)).toString('utf8'))
 }

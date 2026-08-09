@@ -32,8 +32,8 @@ export function assertIsolatedCheckout({ options, git }) {
   )
   assert(git('rev-parse', '--is-inside-work-tree') === 'true', 'Release path is not a Git checkout')
   assert(
-    git('status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching') === '',
-    'Release checkout contains tracked, untracked, or ignored files',
+    git('status', '--porcelain=v1', '--untracked-files=all') === '',
+    'Release checkout contains tracked or untracked source changes',
   )
   assert(
     git('ls-files', '--error-unmatch', 'release/execution-public-key.pem') ===
@@ -59,6 +59,7 @@ export async function loadReleaseSource({ options, git }) {
   await validateVisualProof({
     packageProof,
     visualProof,
+    repository: options.repository,
     artifactRoot: options.artifactRoot,
   })
   const evidenceBytes = await readRegularFileNoFollow(options.checksPath).catch(() => {

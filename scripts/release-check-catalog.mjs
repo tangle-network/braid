@@ -39,7 +39,16 @@ export const REQUIRED_CHECKS = new Map([
   ['capture', { category: 'terminal', command: 'pnpm test:capture' }],
   ['visual', { category: 'terminal', command: 'pnpm capture:visual' }],
   ['release', { category: 'release', command: 'pnpm check:release' }],
-  ['verify:release', { category: 'release', command: 'pnpm verify:release' }],
+])
+
+export const RELEASE_ASSEMBLY_COMMAND = Object.freeze({
+  category: 'release',
+  command: 'pnpm verify:release',
+})
+
+export const RELEASE_COMMANDS = new Map([
+  ...REQUIRED_CHECKS,
+  ['verify:release', RELEASE_ASSEMBLY_COMMAND],
 ])
 
 export const EXACT_REQUIREMENT_CHECK_CATEGORIES = new Map([
@@ -48,6 +57,42 @@ export const EXACT_REQUIREMENT_CHECK_CATEGORIES = new Map([
   ['PERF', new Set(['performance'])],
   ['EVAL', new Set(['eval'])],
 ])
+
+const EXACT_REQUIREMENT_ID = /^(UP|LIVE|PERF|EVAL)-([0-9]{2})$/u
+
+function exactRequirementRoute(prefix, number) {
+  if (prefix === 'PERF') return REQUIRED_CHECKS.get('performance')
+  if (prefix === 'EVAL') return REQUIRED_CHECKS.get('eval')
+  if (prefix === 'LIVE') {
+    if (number <= 5) return REQUIRED_CHECKS.get('live-bridge')
+    if (number <= 10) return REQUIRED_CHECKS.get('live-tangle')
+    if (number === 11) return REQUIRED_CHECKS.get('live-supervisor')
+    if (number === 12) return REQUIRED_CHECKS.get('live-analysis')
+    return undefined
+  }
+  if (prefix === 'UP') {
+    if (number === 8) return REQUIRED_CHECKS.get('live-bridge')
+    if (number === 9 || number === 14) return REQUIRED_CHECKS.get('live-tangle')
+    if (number >= 1 && number <= 14) return REQUIRED_CHECKS.get('contract')
+  }
+  return undefined
+}
+
+export function releaseCheckEntry(id) {
+  const stable = REQUIRED_CHECKS.get(id)
+  if (stable) return stable
+  const match = EXACT_REQUIREMENT_ID.exec(id)
+  if (!match) return undefined
+  return exactRequirementRoute(match[1], Number.parseInt(match[2], 10))
+}
+
+export function requiredEvidenceCheckIds(requirementIds) {
+  const exact = requirementIds.filter((id) => {
+    const prefix = id.slice(0, id.indexOf('-'))
+    return EXACT_REQUIREMENT_CHECK_CATEGORIES.has(prefix)
+  })
+  return [...REQUIRED_CHECKS.keys(), ...exact.sort()]
+}
 
 export const ADMISSIBLE_CATEGORIES = new Map([
   ['AN', new Set(['unit', 'contract', 'subprocess', 'live', 'security', 'eval'])],
@@ -62,10 +107,10 @@ export const ADMISSIBLE_CATEGORIES = new Map([
     new Set(['unit', 'contract', 'subprocess', 'terminal', 'live', 'security', 'eval', 'release']),
   ],
   ['SE', new Set(['contract', 'subprocess', 'live', 'security', 'release'])],
-  ['ST', new Set(['unit', 'contract', 'security', 'performance'])],
+  ['ST', new Set(['unit', 'contract', 'subprocess', 'security', 'performance'])],
   ['UP', new Set(['contract', 'live'])],
   ['US', new Set(['contract', 'security', 'release'])],
   ['UX', new Set(['unit', 'subprocess', 'terminal', 'live', 'security', 'performance'])],
-  ['VR', new Set(['terminal', 'live', 'performance', 'security', 'eval', 'release'])],
+  ['VR', new Set(['subprocess', 'terminal', 'live', 'performance', 'security', 'eval', 'release'])],
   ['VT', new Set(['subprocess', 'terminal', 'release'])],
 ])

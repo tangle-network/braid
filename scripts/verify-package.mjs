@@ -11,16 +11,16 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, join, resolve, sep } from 'node:path'
+import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
 import { assertAccessibleTerminalOutput } from './accessibility-output.mjs'
 import { runRpc, runSignalTerminal, runTerminal } from './package-proof-flows.mjs'
-import { runPlain } from './package-proof-plain.mjs'
 import {
   baselineEventEnd,
   firstDifference,
   firstTerminalTrace,
   parityEvidence,
 } from './package-proof-parity.mjs'
+import { runPlain } from './package-proof-plain.mjs'
 import {
   cleanEnvironment,
   gitValue,
@@ -30,11 +30,23 @@ import {
   runPty,
   sourceDigest,
 } from './package-proof-runtime.mjs'
+import { packageFileManifestFromTarball } from './release/package-archive.mjs'
+import { writeExclusiveAtomic } from './release-files.mjs'
 import { assertNoSecretArtifacts } from './scan-secret-artifacts.mjs'
 
-const recordIndex = process.argv.indexOf('--record')
-const recordPath = recordIndex === -1 ? undefined : process.argv[recordIndex + 1]
-if (recordIndex !== -1 && !recordPath) throw new Error('--record requires a path')
+function option(name) {
+  const index = process.argv.indexOf(name)
+  if (index === -1) return undefined
+  const value = process.argv[index + 1]
+  if (!value || value.startsWith('--')) throw new Error(`${name} requires a path`)
+  return value
+}
+
+const recordPath = option('--record')
+const tarballOutputPath = option('--tarball-output')
+const suppliedTarballPath = process.env.BRAID_RELEASE_TARBALL
+if (suppliedTarballPath && tarballOutputPath)
+  throw new Error('--tarball-output cannot be combined with BRAID_RELEASE_TARBALL')
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -124,6 +136,8 @@ if (process.env.BRAID_PACKAGE_PROOF_ISOLATED !== '1') {
     )
     const childArgs = [join(isolatedRoot, 'scripts', 'verify-package.mjs')]
     if (recordPath) childArgs.push('--record', resolve(repository, recordPath))
+    if (tarballOutputPath)
+      childArgs.push('--tarball-output', resolve(repository, tarballOutputPath))
     const child = await run(process.execPath, childArgs, {
       cwd: isolatedRoot,
       env: {
@@ -142,14 +156,21 @@ if (process.env.BRAID_PACKAGE_PROOF_ISOLATED !== '1') {
   process.exit(0)
 }
 
-const packRoot = await mkdtemp(join(tmpdir(), 'braid-pack-'))
+const packRoot = suppliedTarballPath ? undefined : await mkdtemp(join(tmpdir(), 'braid-pack-'))
 const installRoot = await mkdtemp(join(tmpdir(), 'braid-install-'))
 try {
   const sourcePackageJson = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'))
-  await run('pnpm', ['pack', '--pack-destination', packRoot], { cwd: repository })
-  const tarballName = (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
+  if (packRoot) await run('pnpm', ['pack', '--pack-destination', packRoot], { cwd: repository })
+  const tarballName = packRoot
+    ? (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
+    : basename(suppliedTarballPath)
   if (!tarballName) throw new Error('pnpm pack did not produce a tarball')
-  const tarball = join(packRoot, tarballName)
+  const tarball = packRoot ? join(packRoot, tarballName) : resolve(suppliedTarballPath)
+  const tarballInfo = await lstat(tarball)
+  assert(
+    tarballInfo.isFile() && !tarballInfo.isSymbolicLink(),
+    'release tarball must be a regular non-symlink file',
+  )
   await writeFile(
     join(installRoot, 'package.json'),
     `${JSON.stringify({ name: 'braid-clean-install-proof', private: true })}\n`,
@@ -411,8 +432,10 @@ try {
   )
 
   const tarballBytes = await readFile(tarball)
+  const persistedTarball = tarballOutputPath ? resolve(repository, tarballOutputPath) : tarball
+  if (tarballOutputPath) await writeExclusiveAtomic(persistedTarball, tarballBytes)
   const proof = {
-    tarball: tarballName,
+    tarball: basename(persistedTarball),
     sha256: createHash('sha256').update(tarballBytes).digest('hex'),
     version: version.stdout.trim(),
     gitCommit: gitValue('rev-parse', 'HEAD'),
@@ -420,6 +443,7 @@ try {
     sourceDigest: process.env.BRAID_PACKAGE_PROOF_SOURCE_DIGEST ?? (await sourceDigest(repository)),
     isolatedBuild: true,
     sourceCheckout: 'isolated-copy-of-worktree',
+    packageFileManifest: packageFileManifestFromTarball(tarballBytes),
     rpcRecords: rpc.responses.length,
     referenceSizes: [
       { columns: 40, rows: 12, events: terminal40.evidence.events.length },
@@ -455,6 +479,6 @@ try {
   }
   process.stdout.write(proofJson)
 } finally {
-  await rm(packRoot, { force: true, recursive: true })
+  if (packRoot) await rm(packRoot, { force: true, recursive: true })
   await rm(installRoot, { force: true, recursive: true })
 }

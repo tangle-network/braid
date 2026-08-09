@@ -441,7 +441,19 @@ Each case runs on at least three representative source fixtures and includes a s
 
 ## Release evidence manifest
 
-The release process validates staged results from `artifacts/verification/release/checks.json`, then writes `artifacts/verification/<version>/manifest.json` and `artifacts/verification/<version>/report.md`.
+The release process requires `BRAID_RELEASE_ARTIFACT_ROOT` to name a real directory outside the clean source checkout.
+
+Candidate creation writes one npm tarball, its complete package-file manifest, check streams, terminal captures, resumable collection state, and `release/checks.json` below that external directory.
+
+The collector executes 22 prerequisite commands and materializes 42 exact `UP-*`, `LIVE-*`, `PERF-*`, and `EVAL-*` records from their matching command outputs, for 64 signed check records covering all 154 requirement identifiers.
+
+`verify:release` is the final assembler and never appears as one of its own prerequisite checks.
+
+Pre-publication validation checks the candidate without writing a final signed report.
+
+After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64, macOS arm64, and Windows x64.
+
+The final process validates those six records, adds their immutable JSON artifacts to `VR-10`, then writes `<version>/manifest.json` and `<version>/report.md` below the external artifact directory.
 
 Large recordings, raw traces, and live logs may live in immutable CI or release storage, while the manifest stores content hashes and authenticated links.
 
@@ -545,13 +557,17 @@ Implementation must provide the following stable scripts.
 | `capture` | `pnpm test:capture` | Deterministic baseline real-binary captures |
 | `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
 | `release` | `pnpm check:release` | Release manifest and evidence-set check |
-| `verify:release` | `pnpm verify:release` | Validate and assemble every required result into one signed evidence manifest from an isolated clean tracked checkout |
+| `verify:release` | `pnpm verify:release` | Validate publication proof and assemble every required result into one signed evidence manifest from an isolated clean tracked checkout |
 
 The deterministic local commands are implemented in this repository.
 
 The opt-in CLI Bridge flow and semantic evaluation implementation are present and execute when their configured runners are available.
 
 Tangle, supervisor, and live-analysis commands return a typed unavailable result until protected credentials, deployments, and evidence stores are supplied.
+
+The release workflow uses `pnpm release:prepare`, `pnpm release:collect`, and `pnpm verify:candidate` before publication.
+
+After publication it uses `pnpm release:record-publication` and `pnpm verify:release`; these workflow commands are not additional check records.
 
 ## Verification acceptance
 
