@@ -4,13 +4,12 @@ import { StreamingRedactor } from './capture.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import {
-  prepareProcessTreeTracking,
   processTreeStatus,
-  registerProcessTree,
   releaseProcessTree,
   sendTreeSignal,
   waitForTreeGone,
 } from './process-tree.mjs'
+import { spawnWindowsJob } from './windows-job-host.mjs'
 
 const defaultNaturalExitTimeoutMs = 2_000
 const defaultTermTimeoutMs = 2_000
@@ -23,18 +22,8 @@ export function sleep(ms) {
 }
 
 export async function managedSpawn(command, args, options) {
-  const tracker = await prepareProcessTreeTracking()
-  try {
-    const child = spawn(command, args, {
-      ...options,
-      detached: process.platform !== 'win32',
-    })
-    registerProcessTree(child, tracker)
-    return child
-  } catch (error) {
-    tracker?.release()
-    throw error
-  }
+  if (process.platform === 'win32') return await spawnWindowsJob(command, args, options)
+  return spawn(command, args, { ...options, detached: true })
 }
 
 function hasExited(child) {
@@ -119,13 +108,20 @@ export async function terminateProcess(
   let killSent = false
   let exited = initialExited
   let tree = initialTree
-  if (!tree.supported || !tree.gone) {
+  const usesWindowsJob = tree.mechanism === 'windows-job-object'
+  if (usesWindowsJob && !tree.gone) {
+    killSignal = await sendTreeSignal(child, 'SIGKILL')
+    killSent = killSignal.sent
+    exited = exited || (await waitForExit(child, killTimeoutMs))
+    tree = await waitForTreeGone(child, killTimeoutMs)
+  }
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
     termSignal = await sendTreeSignal(child, 'SIGTERM')
     termSent = termSignal.sent
     exited = exited || (await waitForExit(child, termTimeoutMs))
     tree = await waitForTreeGone(child, termTimeoutMs)
   }
-  if (!tree.supported || !tree.gone) {
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
     killSignal = await sendTreeSignal(child, 'SIGKILL')
     killSent = killSignal.sent
     exited = exited || (await waitForExit(child, killTimeoutMs))

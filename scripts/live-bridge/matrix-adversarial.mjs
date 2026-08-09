@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,7 +8,30 @@ import { StreamingRedactor } from './capture.mjs'
 import { runCommand } from './command.mjs'
 import { appendBounded, RpcSession, sleep } from './process.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
-import { WindowsProcessTracker } from './windows-process-tracker.mjs'
+
+async function waitForPidGone(pid, attempts = 30) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return true
+    }
+    await sleep(50)
+  }
+  return false
+}
+
+async function waitForPidFile(path, child, stderr, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const value = Number(await readFile(path, 'utf8').catch(() => '0'))
+    if (Number.isInteger(value) && value > 0) return value
+    if (child.exitCode !== null || child.signalCode !== null)
+      throw new Error(`Parent-crash fixture exited before writing ${path}: ${stderr()}`)
+    await sleep(25)
+  }
+  throw new Error(`Parent-crash fixture did not write ${path} within ${timeoutMs}ms: ${stderr()}`)
+}
 
 async function runRedactionMatrix() {
   const value = evidenceValue({
@@ -34,22 +58,6 @@ async function runRedactionMatrix() {
   assert.equal(finished.includes('bridge ready'), true)
   assert.equal(finished.includes('request complete'), true)
   assert.equal(finished.includes('bridge stopped'), true)
-
-  const monitor = { supported: true, unsubscribe() {} }
-  const tracker = new WindowsProcessTracker(monitor)
-  tracker.attach(100)
-  tracker.record({ type: 'start', processId: 100, parentProcessId: 1, createdAt: '1' })
-  tracker.record({ type: 'start', processId: 101, parentProcessId: 100, createdAt: '2' })
-  tracker.record({ type: 'start', processId: 102, parentProcessId: 101, createdAt: '3' })
-  tracker.record({ type: 'stop', processId: 101, createdAt: '4' })
-  const windowsTree = tracker.status(false)
-  assert.deepEqual(windowsTree.pids, [100, 102])
-  assert.equal(windowsTree.gone, false)
-  assert.deepEqual(windowsTree.roots, [100, 102])
-  tracker.record({ type: 'stop', processId: 100, createdAt: '5' })
-  assert.deepEqual(tracker.status(true).pids, [102])
-  tracker.record({ type: 'stop', processId: 102, createdAt: '6' })
-  assert.equal(tracker.status(true).gone, true)
 }
 
 async function runProcessMatrix() {
@@ -64,6 +72,10 @@ async function runProcessMatrix() {
     'setInterval(() => {}, 1000)',
   ].join(';')
   let descendantPid
+  let crashParent
+  let crashHostPid
+  let crashTargetPid
+  let crashDescendantPid
   try {
     const result = await runCommand(process.execPath, ['-e', script], {
       cwd: root,
@@ -76,22 +88,12 @@ async function runProcessMatrix() {
     assert.equal(result.termination.forcedKill, true)
     assert.equal(
       result.termination.strategy,
-      process.platform === 'win32' ? 'windows-taskkill-tree' : 'process-group',
+      process.platform === 'win32' ? 'windows-job-object' : 'process-group',
     )
     assert.equal(result.cleanupOk, true, JSON.stringify(result.termination))
     assert.equal(result.termination.descendantsExited, true)
     assert.equal(result.termination.descendantsVerified, true)
-    let alive = true
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      try {
-        process.kill(descendantPid, 0)
-      } catch {
-        alive = false
-        break
-      }
-      await sleep(50)
-    }
-    assert.equal(alive, false)
+    assert.equal(await waitForPidGone(descendantPid), true)
 
     const naturalPidPath = join(root, 'natural-descendant.pid')
     const orphanSource = [
@@ -114,18 +116,9 @@ async function runProcessMatrix() {
     const naturalDescendantPid = Number(await readFile(naturalPidPath, 'utf8'))
     assert.equal(natural.code, 0)
     assert.equal(natural.cleanupOk, true, JSON.stringify(natural.termination))
-    assert.equal(natural.termination.termSent || natural.termination.killSent, true)
-    alive = true
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      try {
-        process.kill(naturalDescendantPid, 0)
-      } catch {
-        alive = false
-        break
-      }
-      await sleep(50)
-    }
-    assert.equal(alive, false)
+    if (process.platform === 'win32') assert.equal(natural.termination.tree.kernelContained, true)
+    else assert.equal(natural.termination.termSent || natural.termination.killSent, true)
+    assert.equal(await waitForPidGone(naturalDescendantPid), true)
 
     const rpcScript = join(root, 'rpc-natural.mjs')
     const rpcPidPath = join(root, 'rpc-descendant.pid')
@@ -146,15 +139,94 @@ async function runProcessMatrix() {
       1_000,
     )
     const rpcResult = await rpc.close()
-    assert.equal(rpcResult.termination.exited, true)
+    const rpcDescendantPid = Number(await readFile(rpcPidPath, 'utf8').catch(() => '0'))
     assert.equal(
-      ['term', 'kill'].includes(rpcResult.termination.cleanupStatus),
+      Number.isInteger(rpcDescendantPid) && rpcDescendantPid > 0,
       true,
-      JSON.stringify(rpcResult.termination),
+      JSON.stringify(rpcResult),
     )
-    assert.equal(rpcResult.termination.termSent || rpcResult.termination.killSent, true)
+    assert.equal(rpcResult.termination.exited, true)
+    assert.equal(rpcResult.exit.code, 0, JSON.stringify(rpcResult))
+    if (process.platform === 'win32') {
+      assert.equal(rpcResult.termination.cleanupStatus, 'natural-exit')
+      assert.equal(rpcResult.termination.tree.kernelContained, true)
+    } else {
+      assert.equal(
+        ['term', 'kill'].includes(rpcResult.termination.cleanupStatus),
+        true,
+        JSON.stringify(rpcResult.termination),
+      )
+      assert.equal(rpcResult.termination.termSent || rpcResult.termination.killSent, true)
+    }
     assert.equal(rpcResult.termination.descendantsExited, true)
     assert.equal(rpcResult.termination.descendantsVerified, true)
+    assert.equal(await waitForPidGone(rpcDescendantPid), true)
+
+    if (process.platform === 'win32') {
+      const crashTargetPath = join(root, 'crash-target.mjs')
+      const crashParentPath = join(root, 'crash-parent.mjs')
+      const crashHostPidPath = join(root, 'crash-host.pid')
+      const crashTargetPidPath = join(root, 'crash-target.pid')
+      const crashDescendantPidPath = join(root, 'crash-descendant.pid')
+      const crashTargetSource = [
+        "import { spawn } from 'node:child_process'",
+        "import { writeFileSync } from 'node:fs'",
+        'writeFileSync(process.env.TARGET_PID_PATH, String(process.pid))',
+        "const child = spawn(process.execPath, ['-e', \"setInterval(() => {}, 1000)\"], { detached: true, stdio: 'ignore' })",
+        'child.unref()',
+        'writeFileSync(process.env.DESCENDANT_PID_PATH, String(child.pid))',
+        'setInterval(() => {}, 1000)',
+      ].join('\n')
+      const processModuleUrl = new URL('./process.mjs', import.meta.url).href
+      const crashParentSource = [
+        "import { writeFileSync } from 'node:fs'",
+        `import { managedSpawn } from ${JSON.stringify(processModuleUrl)}`,
+        'const child = await managedSpawn(process.execPath, [process.env.TARGET_PATH], {',
+        '  cwd: process.env.TEST_ROOT,',
+        '  env: process.env,',
+        "  stdio: ['ignore', 'ignore', 'ignore'],",
+        '})',
+        'writeFileSync(process.env.HOST_PID_PATH, String(child.pid))',
+        'setInterval(() => {}, 1000)',
+      ].join('\n')
+      await writeFile(crashTargetPath, crashTargetSource)
+      await writeFile(crashParentPath, crashParentSource)
+      let crashStderr = ''
+      crashParent = spawn(process.execPath, [crashParentPath], {
+        cwd: root,
+        env: {
+          ...process.env,
+          DESCENDANT_PID_PATH: crashDescendantPidPath,
+          HOST_PID_PATH: crashHostPidPath,
+          TARGET_PATH: crashTargetPath,
+          TARGET_PID_PATH: crashTargetPidPath,
+          TEMP: root,
+          TEST_ROOT: root,
+          TMP: root,
+        },
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      })
+      crashParent.stderr.setEncoding('utf8')
+      crashParent.stderr.on('data', (chunk) => {
+        crashStderr = appendBounded(crashStderr, chunk, 16_384)
+      })
+      const crashParentExit = new Promise((resolve) => {
+        crashParent.once('close', (code, signal) => resolve({ code, signal }))
+      })
+      const stderr = () => crashStderr
+      ;[crashHostPid, crashTargetPid, crashDescendantPid] = await Promise.all([
+        waitForPidFile(crashHostPidPath, crashParent, stderr),
+        waitForPidFile(crashTargetPidPath, crashParent, stderr),
+        waitForPidFile(crashDescendantPidPath, crashParent, stderr),
+      ])
+      assert.equal(crashParent.kill('SIGKILL'), true)
+      const crashExit = await crashParentExit
+      assert.equal(crashExit.code === null || crashExit.code !== 0, true, JSON.stringify(crashExit))
+      assert.equal(await waitForPidGone(crashHostPid, 100), true)
+      assert.equal(await waitForPidGone(crashTargetPid, 100), true)
+      assert.equal(await waitForPidGone(crashDescendantPid, 100), true)
+    }
 
     const canary = 'chunked-boundary-canary-3e6a'
     const chunks = [
@@ -200,6 +272,10 @@ async function runProcessMatrix() {
     if (process.platform === 'win32')
       for (const pid of [
         descendantPid,
+        crashParent?.pid,
+        crashHostPid,
+        crashTargetPid,
+        crashDescendantPid,
         Number(await readFile(join(root, 'natural-descendant.pid'), 'utf8').catch(() => '0')),
         Number(await readFile(join(root, 'rpc-descendant.pid'), 'utf8').catch(() => '0')),
       ]) {

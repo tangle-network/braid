@@ -1,15 +1,6 @@
-import { spawn } from 'node:child_process'
-
-import {
-  prepareWindowsProcessTracking,
-  registerWindowsProcess,
-  releaseWindowsProcess,
-  windowsProcessStatus,
-} from './windows-process-tracker.mjs'
+import { releaseWindowsJob, terminateWindowsJob, windowsJobStatus } from './windows-job-host.mjs'
 
 const pollMs = 25
-const windowsEventQuietMs = 250
-const taskkillTimeoutMs = 2_000
 
 function childHasExited(child) {
   return child.exitCode !== null || child.signalCode !== null
@@ -27,21 +18,12 @@ function processGroupPresent(pid) {
   }
 }
 
-export async function prepareProcessTreeTracking() {
-  if (process.platform !== 'win32') return undefined
-  return await prepareWindowsProcessTracking()
-}
-
-export function registerProcessTree(child, tracker) {
-  if (process.platform === 'win32') registerWindowsProcess(child, tracker)
-}
-
 export function releaseProcessTree(child) {
-  if (process.platform === 'win32') releaseWindowsProcess(child)
+  if (process.platform === 'win32') releaseWindowsJob(child)
 }
 
 export function processTreeStatus(child) {
-  if (process.platform === 'win32') return windowsProcessStatus(child, childHasExited(child))
+  if (process.platform === 'win32') return windowsJobStatus(child, childHasExited(child))
   const present = processGroupPresent(child.pid)
   if (present === undefined)
     return {
@@ -54,93 +36,17 @@ export function processTreeStatus(child) {
 
 export async function waitForTreeGone(child, timeoutMs) {
   const deadline = Date.now() + timeoutMs
-  let quietSince
-  let quietVersion
   while (true) {
     const status = processTreeStatus(child)
     if (!status.supported) return status
-    if (Date.now() >= deadline) {
-      if (process.platform !== 'win32' || !status.gone) return status
-      return {
-        ...status,
-        gone: false,
-        reason: 'Windows process events did not remain quiet before the cleanup timeout',
-      }
-    }
-    if (!status.gone) {
-      quietSince = undefined
-      quietVersion = undefined
-    } else if (process.platform !== 'win32') {
-      return status
-    } else if (quietVersion !== status.version) {
-      quietSince = Date.now()
-      quietVersion = status.version
-    } else if (Date.now() - quietSince >= windowsEventQuietMs) {
-      return status
-    }
+    if (status.gone) return status
+    if (Date.now() >= deadline) return status
     await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())))
   }
 }
 
-function waitForTaskkill(child, timeoutMs) {
-  return new Promise((resolve) => {
-    let settled = false
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      try {
-        child.kill('SIGKILL')
-      } catch {}
-      resolve({ sent: false, timedOut: true })
-    }, timeoutMs)
-    child.once('error', (error) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve({ sent: false, error: error instanceof Error ? error.message : String(error) })
-    })
-    child.once('close', (code) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve({ sent: code === 0, code })
-    })
-  })
-}
-
-async function sendWindowsTreeSignal(child, force) {
-  const tree = processTreeStatus(child)
-  const targets = tree.supported
-    ? tree.roots
-    : !childHasExited(child) && Number.isInteger(child.pid) && child.pid > 0
-      ? [child.pid]
-      : []
-  if (targets.length === 0)
-    return {
-      method: 'windows-taskkill-unavailable',
-      sent: false,
-      reason: tree.reason ?? 'No live process roots were available',
-    }
-  const attempts = await Promise.all(
-    targets.map(async (target) => {
-      const killer = spawn('taskkill', ['/PID', String(target), '/T', ...(force ? ['/F'] : [])], {
-        stdio: 'ignore',
-        windowsHide: true,
-      })
-      return { pid: target, ...(await waitForTaskkill(killer, taskkillTimeoutMs)) }
-    }),
-  )
-  return {
-    method: tree.supported ? 'windows-taskkill-tree' : 'windows-taskkill-root-fallback',
-    sent: attempts.some((attempt) => attempt.sent),
-    timedOut: attempts.some((attempt) => attempt.timedOut),
-    timeoutMs: taskkillTimeoutMs,
-    attempts,
-  }
-}
-
 export async function sendTreeSignal(child, signal) {
-  if (process.platform === 'win32') return sendWindowsTreeSignal(child, signal === 'SIGKILL')
+  if (process.platform === 'win32') return await terminateWindowsJob(child)
   if (!Number.isInteger(child.pid) || child.pid <= 0) return { method: 'unavailable', sent: false }
   try {
     process.kill(-child.pid, signal)
