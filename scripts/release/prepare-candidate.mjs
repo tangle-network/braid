@@ -74,6 +74,7 @@ const existingProof = await stat(packageProofPath).catch(() => undefined)
 assert(Boolean(existingTarball) === Boolean(existingProof), 'Restored candidate is incomplete')
 
 if (!existingTarball) {
+  await run('pnpm', ['run', 'build'], { cwd: repository })
   await run(
     process.execPath,
     [
