@@ -3,6 +3,7 @@ import { lstat, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 import { nativeInstallEnvironment } from '../native-install-environment.mjs'
+import { npmInvocation, pnpmInvocation } from '../release/platform.mjs'
 import { runCommand } from './command.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
@@ -15,7 +16,8 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
   registerTemp(installRoot)
   evidence.temp = { packRoot: packRoot ?? null, installRoot }
   if (packRoot) {
-    const build = await runCommand('pnpm', ['run', 'build'], { cwd: repository })
+    const buildCommand = pnpmInvocation(['run', 'build'])
+    const build = await runCommand(buildCommand.file, buildCommand.args, { cwd: repository })
     evidence.build = build
     if (build.code !== 0 || build.cleanupOk !== true) {
       throw new LiveBridgeError(
@@ -25,7 +27,8 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
         { build },
       )
     }
-    const pack = await runCommand('pnpm', ['pack', '--pack-destination', packRoot], {
+    const packCommand = pnpmInvocation(['pack', '--pack-destination', packRoot])
+    const pack = await runCommand(packCommand.file, packCommand.args, {
       cwd: repository,
     })
     evidence.packCommand = pack
@@ -66,7 +69,8 @@ export async function buildPackedBinary(evidence, repository, registerTemp) {
     '--no-fund',
     tarball,
   ]
-  const install = await runCommand('npm', installArgs, {
+  const installCommand = npmInvocation(installArgs)
+  const install = await runCommand(installCommand.file, installCommand.args, {
     cwd: installRoot,
     env: nativeInstallEnvironment(),
   })

@@ -132,7 +132,7 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
     evidence.analysis = await probePackedAnalysisReadiness(
       packed.installRoot,
       endpoint,
-      selected[0].modelId,
+      selected[0],
     )
     credential = await installBridgeCredential(evidence, repository)
     const targetRoot = await mkdtemp(join(tmpdir(), 'braid-live-targets-'))

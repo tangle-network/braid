@@ -1,6 +1,6 @@
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-
+import { pnpmInvocation } from '../release/platform.mjs'
 import { StreamingRedactor } from './capture.mjs'
 import { exitCodes } from './constants.mjs'
 import {
@@ -12,6 +12,33 @@ import {
 import { LiveBridgeError } from './errors.mjs'
 import { managedSpawn, sleep, terminateProcess } from './process.mjs'
 import { redactString } from './redaction.mjs'
+
+export function bridgeSourceDirectory(repository, configuredDirectory) {
+  return resolve(configuredDirectory ?? join(repository, '..', 'cli-bridge'))
+}
+
+export function bridgeLaunchEnvironment(
+  definitions,
+  endpoint,
+  { environment = process.env, platform = process.platform } = {},
+) {
+  const childEnv = { ...environment }
+  if (childEnv.BRIDGE_BACKENDS === undefined) {
+    childEnv.BRIDGE_BACKENDS = [...new Set(definitions.map(({ backend }) => backend))].join(',')
+  }
+  if (
+    platform === 'linux' &&
+    definitions.some(({ backend }) => backend === 'pi') &&
+    childEnv.BRIDGE_JAIL_MODE === undefined &&
+    childEnv.WORKER_FS_JAIL === undefined
+  ) {
+    childEnv.BRIDGE_JAIL_MODE = 'fs-jail'
+  }
+  const parsedEndpoint = new URL(endpoint)
+  if (parsedEndpoint.port && childEnv.BRIDGE_PORT === undefined)
+    childEnv.BRIDGE_PORT = parsedEndpoint.port
+  return childEnv
+}
 
 export async function launchBridgeIfRequested(endpoint, token, evidence, repository, definitions) {
   const initialHealth = await requestJson(endpoint, '/health', token)
@@ -33,9 +60,7 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
       { health: initialHealth },
     )
   }
-  const bridgeDirectory = resolve(
-    process.env.BRAID_CLI_BRIDGE_DIR ?? join(repository, '..', '..', 'cli-bridge'),
-  )
+  const bridgeDirectory = bridgeSourceDirectory(repository, process.env.BRAID_CLI_BRIDGE_DIR)
   try {
     await access(join(bridgeDirectory, 'package.json'))
   } catch (error) {
@@ -46,14 +71,9 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
       { cause: error instanceof Error ? error.message : String(error) },
     )
   }
-  const childEnv = { ...process.env }
-  if (childEnv.BRIDGE_BACKENDS === undefined) {
-    childEnv.BRIDGE_BACKENDS = [...new Set(definitions.map(({ backend }) => backend))].join(',')
-  }
-  const parsedEndpoint = new URL(endpoint)
-  if (parsedEndpoint.port && childEnv.BRIDGE_PORT === undefined)
-    childEnv.BRIDGE_PORT = parsedEndpoint.port
-  const child = managedSpawn('pnpm', ['start'], {
+  const childEnv = bridgeLaunchEnvironment(definitions, endpoint)
+  const pnpm = pnpmInvocation(['start'], { environment: childEnv })
+  const child = managedSpawn(pnpm.file, pnpm.args, {
     cwd: bridgeDirectory,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],

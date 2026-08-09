@@ -5,6 +5,7 @@ import {
   assertSemanticOutcome,
   cancelSemanticStatus,
   capabilityAdvertised,
+  capabilityAvailability,
   exactMarker,
   requestBase,
   responseForRequest,
@@ -146,22 +147,50 @@ export async function verifyReconnect(session, result, runId, finalRun, provider
     responseForRequest(reconnect.requestId),
     30_000,
   )
-  const advertisedByProvider =
-    capabilityAdvertised(providerCapabilities.streaming?.replay) ||
-    capabilityAdvertised(providerCapabilities.sessions?.continue)
   const advertisedByRun = Boolean(
     finalRun?.capabilities?.streaming?.replay && finalRun?.capabilities?.events?.cursor,
   )
-  result.reconnect = {
-    advertisedByProvider,
+  const availability = capabilityAvailability(
+    providerCapabilities.streaming?.replay,
     advertisedByRun,
-    advertised: advertisedByProvider || advertisedByRun,
+  )
+  result.reconnect = {
+    advertisedByProvider: availability.advertisedByProvider,
+    advertisedByRun,
+    advertised: availability.advertised,
     response: evidenceValue(reconnectResponse),
-    status: semanticCommandStatus(reconnectResponse, advertisedByProvider || advertisedByRun),
+    status: semanticCommandStatus(reconnectResponse, availability.advertised),
   }
 }
 
 export async function verifyCancel(session, result, target, finalRun, providerCapabilities) {
+  const advertisedByRun = finalRun?.capabilities?.controls?.cancel === true
+  const availability = capabilityAvailability(
+    providerCapabilities.controls?.cancel,
+    advertisedByRun,
+  )
+  if (!availability.advertised) {
+    const cancel = {
+      ...requestBase(`cancel-${target.key}`, 'cancel_run', `op-live-cancel-${target.key}`),
+      params: { runId: finalRun.id, reason: 'live packed smoke cancellation' },
+    }
+    result.requests.push(evidenceValue(cancel))
+    session.send(cancel)
+    const cancelResponse = await session.waitFor(
+      'unavailable cancel result',
+      responseForRequest(cancel.requestId),
+      30_000,
+    )
+    result.cancel = {
+      attemptedRun: false,
+      response: evidenceValue(cancelResponse),
+      advertisedByProvider: availability.advertisedByProvider,
+      advertisedByRun,
+      advertised: false,
+      status: cancelSemanticStatus(cancelResponse, finalRun, false),
+    }
+    return
+  }
   const cancelPrompt = livePrompts.cancel(target.key)
   const cancelSend = {
     ...requestBase(`cancel-send-${target.key}`, 'send', `op-live-cancel-send-${target.key}`),
@@ -204,31 +233,25 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
     )
     .catch(() => undefined)
   const cancelledRun = runFromState(cancelStateResponse?.state, cancelSendResponse.runId)
-  const advertisedByProvider = capabilityAdvertised(providerCapabilities.controls?.cancel)
-  const advertisedByRun = finalRun?.capabilities?.controls?.cancel === true
   result.cancel.run = evidenceValue(cancelledRun)
-  result.cancel.advertisedByProvider = advertisedByProvider
+  result.cancel.attemptedRun = true
+  result.cancel.advertisedByProvider = availability.advertisedByProvider
   result.cancel.advertisedByRun = advertisedByRun
-  result.cancel.advertised = advertisedByProvider || advertisedByRun
-  result.cancel.status = cancelSemanticStatus(
-    cancelResponse,
-    cancelledRun,
-    advertisedByProvider || advertisedByRun,
-  )
+  result.cancel.advertised = availability.advertised
+  result.cancel.status = cancelSemanticStatus(cancelResponse, cancelledRun, availability.advertised)
 }
 
 export async function verifyInteraction(session, result, providerCapabilities, terminal) {
   const interaction = terminal.view?.interactions?.[0]
   const interactionCapability = terminal.view?.capabilities?.['interaction.respond']
-  const advertisedByProvider = capabilityAdvertised(providerCapabilities.interactions)
   const advertisedByBraid = capabilityAdvertised(interactionCapability)
-  const advertised = advertisedByProvider || advertisedByBraid
+  const availability = capabilityAvailability(providerCapabilities.interactions, advertisedByBraid)
   if (interaction === undefined) {
     result.interaction = {
-      status: advertised ? 'advertised-but-not-emitted' : 'reported-unavailable',
-      advertisedByProvider,
+      status: availability.advertised ? 'advertised-but-not-emitted' : 'reported-unavailable',
+      advertisedByProvider: availability.advertisedByProvider,
       advertisedByBraid,
-      advertised,
+      advertised: availability.advertised,
       provider: evidenceValue(providerCapabilities.interactions),
       braid: evidenceValue(interactionCapability),
       attempted: false,
@@ -255,10 +278,10 @@ export async function verifyInteraction(session, result, providerCapabilities, t
     30_000,
   )
   result.interaction = {
-    status: semanticCommandStatus(interactionResponse, advertised),
-    advertisedByProvider,
+    status: semanticCommandStatus(interactionResponse, availability.advertised),
+    advertisedByProvider: availability.advertisedByProvider,
     advertisedByBraid,
-    advertised,
+    advertised: availability.advertised,
     provider: evidenceValue(providerCapabilities.interactions),
     braid: evidenceValue(interactionCapability),
     attempted: true,

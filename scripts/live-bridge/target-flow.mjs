@@ -26,7 +26,7 @@ export async function executeTarget(
   credential,
   timeoutMs,
 ) {
-  const config = await writeTargetConfig(root, endpoint, target.modelId, credential)
+  const config = await writeTargetConfig(root, endpoint, target, credential)
   const statePath = join(config.workspace, 'braid.sqlite')
   const env = {
     ...process.env,
@@ -46,6 +46,7 @@ export async function executeTarget(
       path: relative(config.workspace, config.profilePath),
       harness: config.profile.harness,
       model: config.profile.model.default,
+      provider: config.profile.model.provider,
     },
     connection: {
       id: config.connection.id,
