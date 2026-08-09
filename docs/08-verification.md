@@ -568,6 +568,10 @@ The opt-in CLI Bridge flow and semantic evaluation implementation are present an
 
 The live driver writes portable profiles with separate runner, provider, and model fields, resolves a sibling CLI Bridge checkout by default, and supplies Pi's Linux `fs-jail` floor only when no operator policy is already present.
 
+Managed Windows commands subscribe to process start and stop events before launch, retain ancestry after intermediate parents exit, and terminate every remaining subtree concurrently within one bounded cleanup interval.
+
+Pull-request checks reproduce the orphaned-grandchild case on Windows and run the same cleanup matrix on macOS and Linux.
+
 Capability checks use the effective per-run values returned by `agent-runtime`; broader provider-environment support remains recorded as evidence but cannot enable an action that the composed run disabled.
 
 When cancellation is unavailable, the live driver checks the rejected control against the completed run instead of starting another generation that cannot be cancelled.

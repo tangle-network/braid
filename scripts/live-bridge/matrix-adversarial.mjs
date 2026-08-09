@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { StreamingRedactor } from './capture.mjs'
 import { runCommand } from './command.mjs'
 import { appendBounded, RpcSession, sleep } from './process.mjs'
-import { windowsTreeFromRows } from './process-tree.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
+import { WindowsProcessTracker } from './windows-process-tracker.mjs'
 
 async function runRedactionMatrix() {
   const value = evidenceValue({
@@ -35,14 +35,21 @@ async function runRedactionMatrix() {
   assert.equal(finished.includes('request complete'), true)
   assert.equal(finished.includes('bridge stopped'), true)
 
-  const windowsTree = windowsTreeFromRows(100, [
-    { processId: 101, parentProcessId: 100 },
-    { processId: 102, parentProcessId: 101 },
-    { processId: 200, parentProcessId: 1 },
-  ])
-  assert.deepEqual(windowsTree.pids, [101, 102])
+  const monitor = { supported: true, unsubscribe() {} }
+  const tracker = new WindowsProcessTracker(monitor)
+  tracker.attach(100)
+  tracker.record({ type: 'start', processId: 100, parentProcessId: 1, createdAt: '1' })
+  tracker.record({ type: 'start', processId: 101, parentProcessId: 100, createdAt: '2' })
+  tracker.record({ type: 'start', processId: 102, parentProcessId: 101, createdAt: '3' })
+  tracker.record({ type: 'stop', processId: 101, createdAt: '4' })
+  const windowsTree = tracker.status(false)
+  assert.deepEqual(windowsTree.pids, [100, 102])
   assert.equal(windowsTree.gone, false)
-  assert.equal(windowsTreeFromRows(100, []).gone, true)
+  assert.deepEqual(windowsTree.roots, [100, 102])
+  tracker.record({ type: 'stop', processId: 100, createdAt: '5' })
+  assert.deepEqual(tracker.status(true).pids, [102])
+  tracker.record({ type: 'stop', processId: 102, createdAt: '6' })
+  assert.equal(tracker.status(true).gone, true)
 }
 
 async function runProcessMatrix() {
@@ -86,12 +93,17 @@ async function runProcessMatrix() {
     assert.equal(alive, false)
 
     const naturalPidPath = join(root, 'natural-descendant.pid')
-    const naturalScript = [
+    const orphanSource = [
       "import { spawn } from 'node:child_process'",
       "import { writeFileSync } from 'node:fs'",
-      "const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' })",
+      "const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { detached: process.platform === 'win32', stdio: 'ignore' })",
+      'child.unref()',
       'writeFileSync(process.env.PID_PATH, String(child.pid))',
-      'setTimeout(() => process.exit(0), 20)',
+    ].join(';')
+    const naturalScript = [
+      "import { spawn } from 'node:child_process'",
+      `const child = spawn(process.execPath, ['-e', ${JSON.stringify(orphanSource)}], { env: process.env, stdio: 'ignore' })`,
+      "child.once('close', () => setTimeout(() => process.exit(0), 20))",
     ].join(';')
     const natural = await runCommand(process.execPath, ['-e', naturalScript], {
       cwd: root,
@@ -123,7 +135,7 @@ async function runProcessMatrix() {
       "process.stdin.on('end', () => { const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' }); writeFileSync(process.env.PID_PATH, String(child.pid)); setTimeout(() => process.exit(0), 20) })",
     ].join('\n')
     await writeFile(rpcScript, rpcSource)
-    const rpc = new RpcSession(
+    const rpc = await RpcSession.create(
       rpcScript,
       root,
       {

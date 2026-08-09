@@ -73,7 +73,7 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
   }
   const childEnv = bridgeLaunchEnvironment(definitions, endpoint)
   const pnpm = pnpmInvocation(['start'], { environment: childEnv })
-  const child = managedSpawn(pnpm.file, pnpm.args, {
+  const child = await managedSpawn(pnpm.file, pnpm.args, {
     cwd: bridgeDirectory,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],

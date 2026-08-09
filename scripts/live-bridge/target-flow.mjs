@@ -36,7 +36,7 @@ export async function executeTarget(
     XDG_DATA_HOME: join(config.workspace, '.xdg-data'),
     XDG_CONFIG_HOME: join(config.workspace, '.xdg-config'),
   }
-  const session = new RpcSession(binary, config.workspace, env, timeoutMs)
+  const session = await RpcSession.create(binary, config.workspace, env, timeoutMs)
   const result = {
     targetKey: target.key,
     workspace: config.workspace,
