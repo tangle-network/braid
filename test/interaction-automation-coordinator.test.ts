@@ -5,6 +5,7 @@ import type {
   InteractionRequestMaterial,
 } from '@tangle-network/agent-interface'
 import {
+  automationPolicyDigest,
   InteractionAutomationCoordinator,
   type InteractionAutomationTarget,
   interactionAutomationOperationId,
@@ -14,6 +15,7 @@ import {
   interactionResponseBinding,
 } from '../src/app/interaction-request.js'
 import type { BraidState } from '../src/domain/state.js'
+import type { BraidEventEnvelope } from '../src/domain/events.js'
 
 const NOW = '2026-08-09T00:00:00.000Z'
 
@@ -41,7 +43,6 @@ function target(
   id: string,
   runId = 'run-test',
   status: InteractionAutomationTarget['status'] = 'pending',
-  response?: InteractionAutomationTarget['response'],
 ): InteractionAutomationTarget {
   const interactionRequest = request(id, runId)
   return {
@@ -50,7 +51,25 @@ function target(
     runId,
     source: { occurredAt: NOW },
     status,
-    ...(response === undefined ? {} : { response }),
+  }
+}
+
+function requestedResponse(
+  item: InteractionAutomationTarget,
+  operationId: string,
+): BraidEventEnvelope {
+  return {
+    sequence: 1,
+    revision: 1,
+    occurredAt: NOW,
+    event: {
+      kind: 'run.interaction.response.requested',
+      runId: item.runId,
+      interactionId: item.request.id,
+      operationId,
+      outcome: 'accepted',
+      containsSecret: false,
+    },
   }
 }
 
@@ -86,6 +105,30 @@ test('derives one stable operation ID from the run and request digest', () => {
     interactionAutomationOperationId('run-one', first),
     /^operation-automation-interaction-/u,
   )
+  assert.equal(automationPolicyDigest([]), automationPolicyDigest([]))
+})
+
+test('policy changes create a new attempt while use reservations keep the same attempt', () => {
+  const interactionRequest = request('interaction-policy', 'run-policy')
+  const rule = {
+    id: 'rule-policy',
+    enabled: true,
+    matcher: { interactionKind: 'question' },
+    answer: { continue: true },
+    responseScope: 'once',
+    createdAt: NOW,
+    maximumUses: 1,
+    uses: 0,
+  } as BraidState['rules'][number]
+
+  const withoutRule = interactionAutomationOperationId('run-policy', interactionRequest, [])
+  const withRule = interactionAutomationOperationId('run-policy', interactionRequest, [rule])
+  const reserved = interactionAutomationOperationId('run-policy', interactionRequest, [
+    { ...rule, uses: 1 },
+  ])
+
+  assert.notEqual(withoutRule, withRule)
+  assert.equal(withRule, reserved)
 })
 
 test('duplicate scheduling shares one in-flight application', async () => {
@@ -94,6 +137,7 @@ test('duplicate scheduling shares one in-flight application', async () => {
   const calls: string[] = []
   const coordinator = new InteractionAutomationCoordinator({
     state: () => stateFor(item),
+    events: () => [],
     apply: async ({ interactionId }) => {
       calls.push(interactionId)
       await new Promise<void>((resolve) => {
@@ -119,6 +163,7 @@ test('a failed application reports the error and does not poison later work', as
   const errors: InteractionAutomationTarget[] = []
   const coordinator = new InteractionAutomationCoordinator({
     state: () => stateFor(failed, succeeds),
+    events: () => [],
     apply: async ({ interactionId }) => {
       calls.push(interactionId)
       if (interactionId === failed.request.id) throw new Error('provider unavailable')
@@ -151,6 +196,7 @@ test('reconcile schedules every pending interaction after restart', async () => 
         target('interaction-declined', 'run-test', 'declined'),
         target('interaction-unknown', 'run-test', 'unknown'),
       ),
+    events: () => [],
     apply: async ({ interactionId }) => {
       calls.push(interactionId)
     },
@@ -163,12 +209,11 @@ test('reconcile schedules every pending interaction after restart', async () => 
 test('reconcile resumes a response requested by this coordinator', async () => {
   const item = target('interaction-own-response')
   const operationId = interactionAutomationOperationId(item.runId, item.request)
-  const responding = target(item.request.id, item.runId, 'responding', {
-    requested: { operationId },
-  })
+  const responding = target(item.request.id, item.runId, 'responding')
   const calls: string[] = []
   const coordinator = new InteractionAutomationCoordinator({
     state: () => stateFor(responding),
+    events: () => [requestedResponse(responding, operationId)],
     apply: async (input) => {
       calls.push(input.operationId)
       assert.equal(input.runId, responding.runId)
@@ -182,12 +227,11 @@ test('reconcile resumes a response requested by this coordinator', async () => {
 
 test('reconcile skips a responding interaction owned by a manual response', async () => {
   const item = target('interaction-manual-response')
-  const responding = target(item.request.id, item.runId, 'responding', {
-    requested: { operationId: 'operation-manual-response' },
-  })
+  const responding = target(item.request.id, item.runId, 'responding')
   let calls = 0
   const coordinator = new InteractionAutomationCoordinator({
     state: () => stateFor(responding),
+    events: () => [requestedResponse(responding, 'operation-manual-response')],
     apply: async () => {
       calls += 1
     },

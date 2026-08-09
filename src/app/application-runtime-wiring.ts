@@ -39,6 +39,7 @@ export interface ApplicationRuntimeWiringInput {
   readonly admitPersistedSend: (operationId: string, digest: string) => SendReceipt | undefined
   readonly fingerprint: import('./application-ports.js').AdmissionReplayAccess['fingerprint']
   readonly send: (input: SendInput) => SendReceipt
+  readonly afterRuntimeEvent?: import('./application-port-builder.js').PortBuilderInput['afterRuntimeEvent']
 }
 
 export interface ApplicationRuntimeWiring {
@@ -67,6 +68,9 @@ export function wireApplicationRuntime(
     admitPersistedSend: input.admitPersistedSend,
     fingerprint: input.fingerprint,
     send: input.send,
+    ...(input.afterRuntimeEvent === undefined
+      ? {}
+      : { afterRuntimeEvent: input.afterRuntimeEvent }),
   })
   const transition = createTransitionHost({
     state: input.currentState,

@@ -1,4 +1,5 @@
 import { canonicalDigest } from '../domain/canonical.js'
+import type { BraidEventEnvelope } from '../domain/events.js'
 import type { StoredAutomationRule } from './automation-matching.js'
 import {
   automationOperationRecord,
@@ -97,7 +98,7 @@ export async function reserveRuleUse(
   operationId: string,
   now: string,
 ): Promise<boolean> {
-  const reservationId = `operation-${canonicalDigest({ kind: 'automation.rule.use', operationId, ruleId: rule.id }).slice(0, 48)}`
+  const reservationId = ruleUseReservationId(operationId, rule.id)
   const reservationDigest = canonicalDigest({
     kind: 'automation.rule.use',
     operationId,
@@ -116,6 +117,31 @@ export async function reserveRuleUse(
     operation: automationOperationRecord(reservationId, reservationDigest, now),
   })
   return true
+}
+
+export function findRuleUseReservation(
+  events: readonly BraidEventEnvelope[],
+  operationId: string,
+): StoredAutomationRule | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]?.event
+    if (event?.kind !== 'rule.upserted' || event.operation === undefined) continue
+    const rule = event.rule as StoredAutomationRule
+    if (event.operation.id !== ruleUseReservationId(operationId, rule.id)) continue
+    const expectedDigest = canonicalDigest({
+      kind: 'automation.rule.use',
+      operationId,
+      ruleId: rule.id,
+      uses: rule.uses,
+    })
+    assertOperationDigest(event.operation, expectedDigest, operationId)
+    return rule
+  }
+  return undefined
+}
+
+export function ruleUseReservationId(operationId: string, ruleId: string): string {
+  return `operation-${canonicalDigest({ kind: 'automation.rule.use', operationId, ruleId }).slice(0, 48)}`
 }
 
 async function mutateRule(

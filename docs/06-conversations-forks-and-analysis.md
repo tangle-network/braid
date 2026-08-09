@@ -390,6 +390,10 @@ Persistent allow rules require explicit confirmation and are disabled when profi
 
 The queue evaluates rules in deterministic priority order and records matched, skipped, conflicted, expired, and applied outcomes.
 
+Braid evaluates a newly persisted interaction after durable ingestion, reevaluates pending interactions after rule creation or update, and resumes interrupted automatic responses after restart.
+
+Each automatic response uses an identifier derived from the interaction and the current rule definitions, while use counters are excluded so a reserved response can resume without consuming the rule twice.
+
 Conflicting rules fail closed and require user response.
 
 `/automate list` returns complete sanitized rule records, so a separate inspect path cannot drift from the list view.

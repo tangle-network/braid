@@ -9,6 +9,7 @@ import type { BraidInteraction } from '../domain/runtime-projection.js'
 import type { BraidState } from '../domain/state.js'
 import type { AutomationRuleMetadata } from './automation-matching.js'
 import type {
+  ApplyAutomationReceipt,
   AutomationContext,
   AutomationDryRunReceipt,
   AutomationRuleReceipt,
@@ -18,6 +19,7 @@ import type {
 } from './automation-rule-types.js'
 import { interactionRequestDigest } from './automation-rule-validation.js'
 import {
+  applyAutomation,
   createAutomationRule,
   deleteAutomationRule,
   disableAutomationRule,
@@ -65,10 +67,17 @@ export interface AutomationDryRunCommand {
   readonly context?: AutomationContext
 }
 
+export interface AutomationApplyCommand {
+  readonly operationId: string
+  readonly runId: string
+  readonly interactionId: string
+}
+
 export interface AutomationActions {
   readonly create: (input: AutomationRuleCreateCommand) => Promise<AutomationRuleReceipt>
   readonly update: (input: AutomationRuleUpdateCommand) => Promise<AutomationRuleReceipt>
   readonly dryRun: (input: AutomationDryRunCommand) => Promise<AutomationDryRunReceipt>
+  readonly apply: (input: AutomationApplyCommand) => Promise<ApplyAutomationReceipt>
   readonly disable: (input: {
     readonly operationId: string
     readonly ruleId: string
@@ -85,6 +94,13 @@ export function createAutomationActions(options: {
   readonly events: () => readonly BraidEventEnvelope[]
   readonly commitAndWait: AutomationStoreInput['commitAndWait']
   readonly now: () => string
+  readonly respond: (input: {
+    readonly operationId: string
+    readonly runId: string
+    readonly interactionId: string
+    readonly response: import('@tangle-network/agent-interface').InteractionResponse
+  }) => Promise<import('./application-types.js').InteractionReceipt>
+  readonly reconcilePending?: () => Promise<void>
 }): AutomationActions {
   const store = (): AutomationStoreInput => ({
     state: options.state,
@@ -97,22 +113,26 @@ export function createAutomationActions(options: {
     create: async (input) => {
       const target = targetFor(options.state(), input.runId, input.interactionId)
       const request = requestFor(target, input.request)
-      return createAutomationRule({
+      const receipt = await createAutomationRule({
         ...store(),
         ...input,
         request,
         context: contextFor(options.state(), target, input.context),
       })
+      await options.reconcilePending?.()
+      return receipt
     },
     update: async (input) => {
       const target = targetFor(options.state(), input.runId, input.interactionId)
       const request = input.request ?? target?.request
-      return updateAutomationRule({
+      const receipt = await updateAutomationRule({
         ...store(),
         ...input,
         ...(request === undefined ? {} : { request }),
         context: contextFor(options.state(), target, input.context),
       })
+      await options.reconcilePending?.()
+      return receipt
     },
     dryRun: async (input) => {
       const state = options.state()
@@ -124,6 +144,25 @@ export function createAutomationActions(options: {
         operationId: input.operationId,
         interaction: target,
         context: contextFor(state, target, input.context),
+      })
+    },
+    apply: async (input) => {
+      const state = options.state()
+      const target = targetFor(state, input.runId, input.interactionId)
+      if (target === undefined)
+        throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+      return applyAutomation({
+        ...store(),
+        operationId: input.operationId,
+        interaction: target,
+        context: contextFor(state, target, undefined),
+        respond: (response) =>
+          options.respond({
+            operationId: input.operationId,
+            runId: input.runId,
+            interactionId: input.interactionId,
+            response,
+          }),
       })
     },
     disable: (input) => disableAutomationRule({ ...store(), ...input }),

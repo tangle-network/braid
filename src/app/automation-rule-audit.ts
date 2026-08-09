@@ -15,7 +15,7 @@ import {
   evaluateAutomation,
   type StoredAutomationRule,
 } from './automation-matching.js'
-import { reserveRuleUse } from './automation-rule-persistence.js'
+import { findRuleUseReservation, reserveRuleUse } from './automation-rule-persistence.js'
 import { commitAutomationEvent } from './automation-rule-store.js'
 import type {
   ApplyAutomationInput,
@@ -80,6 +80,7 @@ export async function applyAutomation(
   assertAutomationSafe(input.interaction.request)
   const context = evaluationContext(input.context, input.now?.() ?? new Date().toISOString())
   const requestDigest = interactionRequestDigest(input.interaction.request)
+  const priorReservation = findRuleUseReservation(input.events(), operationId)
   const prior = findAuditOperation(input.events(), operationId)
   if (prior !== undefined) {
     if (prior.requestDigest !== requestDigest)
@@ -87,11 +88,17 @@ export async function applyAutomation(
     return {
       operationId,
       replayed: true,
-      evaluation: evaluateAutomation(input.state().rules, input.interaction, context),
+      evaluation:
+        priorReservation === undefined
+          ? evaluationFromAudit(input.state(), input.interaction, context, prior)
+          : evaluationFromReservation(priorReservation),
       revision: input.state().revision,
     }
   }
-  const evaluation = evaluateAutomation(input.state().rules, input.interaction, context)
+  let evaluation =
+    priorReservation === undefined
+      ? evaluateAutomation(input.state().rules, input.interaction, context)
+      : evaluationFromReservation(priorReservation)
   if (evaluation.status !== 'eligible' || evaluation.rule === undefined) {
     await commitAutomationEvent(input, {
       kind: 'interaction.automation.audited',
@@ -108,20 +115,29 @@ export async function applyAutomation(
     return { operationId, replayed: false, evaluation, revision: input.state().revision }
   }
 
+  let rule = evaluation.rule
   const checked = checkInteractionResponse(input.interaction.request, {
     id: input.interaction.request.id,
     outcome: 'accepted',
-    data: evaluation.rule.answer,
+    data: rule.answer,
   })
   if (checked.containsSecret || checked.publicData === undefined)
     throw new AppError(
       'AUTOMATION_SECRET_FORBIDDEN',
       'Automation is unavailable for interactions containing secret answers',
     )
-  const reserved = await reserveRuleUse(input, evaluation.rule, operationId, context.now)
-  if (!reserved) {
-    const refreshed = evaluateAutomation(input.state().rules, input.interaction, context)
-    return { operationId, replayed: true, evaluation: refreshed, revision: input.state().revision }
+  if (priorReservation === undefined) {
+    const reserved = await reserveRuleUse(input, rule, operationId, context.now)
+    if (!reserved) {
+      const concurrentReservation = findRuleUseReservation(input.events(), operationId)
+      if (concurrentReservation === undefined)
+        throw new AppError(
+          'OPERATION_REQUIRES_RECONCILIATION',
+          'The automation response reservation needs reconciliation',
+        )
+      evaluation = evaluationFromReservation(concurrentReservation)
+      rule = concurrentReservation
+    }
   }
   const response = await input.respond(checked.response, { automated: true })
   const applied =
@@ -134,9 +150,9 @@ export async function applyAutomation(
       interaction: input.interaction,
       requestDigest,
       outcome: applied ? 'applied' : 'matched',
-      ruleId: evaluation.rule.id,
+      ruleId: rule.id,
       ...(checked.dataDigest === undefined ? {} : { responseDigest: checked.dataDigest }),
-      responseScope: evaluation.rule.responseScope,
+      responseScope: rule.responseScope,
       ...(response.acknowledgement.detail === undefined
         ? {}
         : { detail: response.acknowledgement.detail }),
@@ -149,6 +165,15 @@ export async function applyAutomation(
     evaluation,
     response,
     revision: input.state().revision,
+  }
+}
+
+function evaluationFromReservation(rule: StoredAutomationRule): AutomationEvaluation {
+  return {
+    status: 'eligible',
+    rule,
+    matchingRules: [rule],
+    skippedRules: [],
   }
 }
 

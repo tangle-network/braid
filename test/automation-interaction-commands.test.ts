@@ -42,8 +42,10 @@ function request(id: string, runId = 'run-request'): InteractionRequest {
 function interactionExecution(source: InteractionRequest): {
   readonly execution: ExecutionPort
   readonly release: () => void
+  readonly responses: () => number
 } {
   let release: (() => void) | undefined
+  let responses = 0
   const execution: ExecutionPort = {
     capabilities: () => DEFAULT_RUN_CAPABILITIES,
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
@@ -62,11 +64,12 @@ function interactionExecution(source: InteractionRequest): {
       })
     },
     respondInteraction: async (input) => {
+      responses += 1
       release?.()
       return { operationId: input.command.operationId, outcome: 'accepted' as const }
     },
   }
-  return { execution, release: () => release?.() }
+  return { execution, release: () => release?.(), responses: () => responses }
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -88,7 +91,7 @@ function ack(
   return response
 }
 
-test('JSONL persists the full automation command lifecycle and binds cancellation exactly', async () => {
+test('JSONL persists the full automation lifecycle and applies a matching rule', async () => {
   const source = request('interaction-jsonl')
   const provider = interactionExecution(source)
   const app = createBraidApplication({ fixture: 'deterministic', execution: provider.execution })
@@ -165,13 +168,6 @@ test('JSONL persists the full automation command lifecycle and binds cancellatio
       command: 'automation_list',
       params: {},
     },
-    {
-      version: 1,
-      requestId: 'jsonl-cancel',
-      operationId: 'operation-cancel-interaction',
-      command: 'cancel_interaction',
-      params: { runId: run.id, interactionId: interaction.request.id },
-    },
   ]
   async function* input(): AsyncGenerator<string> {
     yield `${commands.map((command) => JSON.stringify(command)).join('\n')}\n`
@@ -207,9 +203,9 @@ test('JSONL persists the full automation command lifecycle and binds cancellatio
   )
   const empty = ack(responses, 'jsonl-list-empty')
   assert.deepEqual(empty.type === 'ack' ? empty.result : undefined, [])
-  const cancelled = ack(responses, 'jsonl-cancel')
-  assert.equal(cancelled.type === 'ack' ? cancelled.control : undefined, 'respond_interaction')
-  assert.equal(cancelled.type === 'ack' ? cancelled.outcome : undefined, 'accepted')
+  assert.equal(provider.responses(), 1)
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(app.state().feedbackDecisions.at(-1)?.automated, true)
   provider.release()
 })
 

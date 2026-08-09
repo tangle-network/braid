@@ -681,6 +681,93 @@ test('automation rules persist scopes, audit outcomes, limits, and mutations thr
   assert.equal(automationAudits(store.allEvents()).at(-1)?.outcome, 'expired')
 })
 
+test('automation resumes a reserved one-use answer after a crash', async () => {
+  const store = automationStore()
+  const request = questionRequest('interaction-automation-resume', {
+    responseScopes: ['interaction'],
+    subject: { type: 'tool', toolName: 'write_file' },
+  })
+  await createAutomationRule({
+    ...store,
+    operationId: 'operation-create-resumable-rule',
+    ruleId: 'rule-resumable',
+    request,
+    answer: { continue: true },
+    responseScope: 'once',
+    maximumUses: 1,
+  })
+
+  await assert.rejects(
+    applyAutomation({
+      ...store,
+      operationId: 'operation-apply-resumable-rule',
+      interaction: interaction(request),
+      context: {},
+      respond: async () => {
+        throw new Error('simulated crash after durable reservation')
+      },
+    }),
+    /simulated crash/u,
+  )
+  assert.equal(store.current().rules[0]?.uses, 1)
+  assert.equal(automationAudits(store.allEvents()).length, 0)
+
+  let responses = 0
+  const resumed = await applyAutomation({
+    ...store,
+    operationId: 'operation-apply-resumable-rule',
+    interaction: interaction(request),
+    context: {},
+    respond: async (response) => {
+      responses += 1
+      assert.deepEqual(response.data, { continue: true })
+      return {
+        operationId: 'operation-apply-resumable-rule',
+        runId: 'run-interaction',
+        interactionId: request.id,
+        replayed: true,
+        acknowledgement: {
+          operationId: 'operation-apply-resumable-rule',
+          outcome: 'already-applied',
+        },
+        completion: Promise.resolve(store.current()),
+      }
+    },
+  })
+
+  assert.equal(responses, 1)
+  assert.equal(resumed.evaluation.status, 'eligible')
+  assert.equal(store.current().rules[0]?.uses, 1)
+  assert.equal(automationAudits(store.allEvents()).at(-1)?.outcome, 'applied')
+})
+
+test('a matching saved rule answers an incoming interaction automatically', async () => {
+  const request = questionRequest('interaction-automatic', {
+    responseScopes: ['interaction'],
+    subject: { type: 'tool', toolName: 'write_file' },
+  })
+  const provider = interactionExecution(request)
+  const app = applicationFor(provider.execution)
+  await app.automation.create({
+    operationId: 'operation-create-automatic-rule',
+    ruleId: 'rule-automatic',
+    request,
+    answer: { continue: true },
+    responseScope: 'once',
+    maximumUses: 1,
+  })
+
+  const send = app.send({ operationId: 'operation-send-automatic', text: 'write the file' })
+  await waitFor(() => provider.responses() === 1)
+  await send.completion
+
+  assert.deepEqual(provider.lastResponse()?.data, { continue: true })
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(app.state().rules[0]?.uses, 1)
+  assert.equal(automationAudits(app.events()).at(-1)?.outcome, 'applied')
+  assert.equal(app.state().feedbackDecisions.at(-1)?.automated, true)
+})
+
 test('session and persistent automation require offered scope and exact context', async () => {
   const sessionStore = automationStore()
   const sessionRequest = questionRequest('interaction-session', { responseScopes: ['session'] })
