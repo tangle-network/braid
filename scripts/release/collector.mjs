@@ -16,6 +16,11 @@ import { registerCheckArtifacts } from './check-artifacts.mjs'
 import { releaseChildEnvironment } from './child-environment.mjs'
 import { boundaryForCheck, buildCheckRecord, environmentRecord } from './collection-contract.mjs'
 import {
+  previousAttemptsFrom,
+  restorePassedChecks,
+  retryCommandsForEnvelope,
+} from './collector-resume.mjs'
+import {
   CHECKPOINT_SCHEMA,
   COLLECTION_MANIFEST_SCHEMA,
   checkpointBuild,
@@ -23,11 +28,6 @@ import {
   requirementIdsForPlan,
   validateCheckpoint,
 } from './collector-validation.mjs'
-import {
-  previousAttemptsFrom,
-  restorePassedChecks,
-  retryCommandsForEnvelope,
-} from './collector-resume.mjs'
 import {
   collectCredentialSecrets,
   collectRedactionSecrets,
