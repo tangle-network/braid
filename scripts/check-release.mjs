@@ -25,6 +25,7 @@ if (packageJson.dependencies?.['better-sqlite3-multiple-ciphers'] !== '13.0.3') 
 }
 
 const requiredFiles = [
+  '.github/workflows/ci.yml',
   'src/app/effect-coordinator.ts',
   'src/ports/effect-storage.ts',
   'src/domain/entities.ts',
@@ -40,5 +41,5 @@ for (const path of requiredFiles) {
 }
 
 process.stdout.write(
-  `W5 release contract: ${requiredScripts.length} stable scripts, ${requiredFiles.length} durable-core artifacts, live checks explicitly external\n`,
+  `Release contract: ${requiredScripts.length} stable scripts, ${requiredFiles.length} required source artifacts, live checks explicitly external\n`,
 )

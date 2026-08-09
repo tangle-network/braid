@@ -94,7 +94,7 @@
     "@biomejs/biome": "2.5.7",
     "@types/node": "26.2.0",
     "@xterm/headless": "6.0.0",
-    "esbuild": "0.28.1",
+    "esbuild": "0.28.2",
     "node-pty": "1.1.0",
     "typescript": "7.0.2"
   }

@@ -182,6 +182,8 @@ The repository-owned module-cycle check walks every `src` TypeScript module, inc
 
 The package test installs the packed tarball in a clean directory and runs `braid --version`, `braid --help`, one headless deterministic turn, and one virtual-terminal deterministic turn.
 
+Its plain-mode workflow waits for observable startup, completion, unsupported-control, retry, and cancellation output before sending the next command; fixed sleeps cannot satisfy packed-package proof.
+
 ### W5 application-core, storage, and release checks
 
 W5 has stable package entry points for `test:unit`, `test:contract`, `test:coordination`, `test:rpc`, `test:virtual-terminal`, `test:pty`, `test:storage`, `test:crash`, `test:security`, `test:performance`, `test:live`, `test:install`, `test:capture`, and `check:release`.

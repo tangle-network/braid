@@ -13,7 +13,8 @@ import {
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve, sep } from 'node:path'
 import { assertAccessibleTerminalOutput } from './accessibility-output.mjs'
-import { runPlain, runRpc, runSignalTerminal, runTerminal } from './package-proof-flows.mjs'
+import { runRpc, runSignalTerminal, runTerminal } from './package-proof-flows.mjs'
+import { runPlain } from './package-proof-plain.mjs'
 import {
   baselineEventEnd,
   firstDifference,
