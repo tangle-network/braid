@@ -77,7 +77,7 @@ async function runProcessMatrix() {
       result.termination.strategy,
       process.platform === 'win32' ? 'windows-taskkill-tree' : 'process-group',
     )
-    assert.equal(result.cleanupOk, true)
+    assert.equal(result.cleanupOk, true, JSON.stringify(result.termination))
     assert.equal(result.termination.descendantsExited, true)
     assert.equal(result.termination.descendantsVerified, true)
     let alive = true
@@ -112,7 +112,7 @@ async function runProcessMatrix() {
     })
     const naturalDescendantPid = Number(await readFile(naturalPidPath, 'utf8'))
     assert.equal(natural.code, 0)
-    assert.equal(natural.cleanupOk, true)
+    assert.equal(natural.cleanupOk, true, JSON.stringify(natural.termination))
     assert.equal(natural.termination.termSent || natural.termination.killSent, true)
     alive = true
     for (let attempt = 0; attempt < 30; attempt += 1) {
