@@ -132,7 +132,7 @@ async function runProcessMatrix() {
       "import { spawn } from 'node:child_process'",
       "import { writeFileSync } from 'node:fs'",
       'process.stdin.resume()',
-      "process.stdin.on('end', () => { const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' }); writeFileSync(process.env.PID_PATH, String(child.pid)); setTimeout(() => process.exit(0), 20) })",
+      "process.stdin.on('end', () => { const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { detached: process.platform === 'win32', stdio: 'ignore' }); child.unref(); writeFileSync(process.env.PID_PATH, String(child.pid)); setTimeout(() => process.exit(0), 20) })",
     ].join('\n')
     await writeFile(rpcScript, rpcSource)
     const rpc = await RpcSession.create(
@@ -146,7 +146,11 @@ async function runProcessMatrix() {
     )
     const rpcResult = await rpc.close()
     assert.equal(rpcResult.termination.exited, true)
-    assert.equal(['term', 'kill'].includes(rpcResult.termination.cleanupStatus), true)
+    assert.equal(
+      ['term', 'kill'].includes(rpcResult.termination.cleanupStatus),
+      true,
+      JSON.stringify(rpcResult.termination),
+    )
     assert.equal(rpcResult.termination.termSent || rpcResult.termination.killSent, true)
     assert.equal(rpcResult.termination.descendantsExited, true)
     assert.equal(rpcResult.termination.descendantsVerified, true)
