@@ -6,7 +6,7 @@ import type {
   ProductionConnectionOptions,
 } from '../../adapters/connections/production-connections.js'
 import type { BraidApplication } from '../../app/application.js'
-import { ConnectionActionService } from '../../app/connection-actions.js'
+import { type ConnectionActions, ConnectionActionService } from '../../app/connection-actions.js'
 import type { ConnectionProbeFactory } from '../../app/connection-probe.js'
 import { AppError } from '../../app/errors.js'
 import { type ProfileActionOptions, ProfileActionService } from '../../app/profile-actions.js'
@@ -25,6 +25,8 @@ export interface ProfileConnectionDispatchOptions {
   readonly securityPolicy?: AgentProfileSecurityPolicy
   readonly acceptedProviderWarningCodes?: readonly string[]
   readonly connections?: readonly ConnectionRecord[]
+  readonly connectionCatalog?: () => readonly ConnectionRecord[]
+  readonly connectionActionsFor?: (app: BraidApplication) => ConnectionActions
   readonly adapters?: ReadonlyMap<string, ProductionConnectionAdapter>
   readonly adapterFor?: (record: ConnectionRecord) => ProductionConnectionAdapter | undefined
   readonly probeFor?: ConnectionProbeFactory
@@ -36,7 +38,7 @@ export interface ProfileConnectionDispatchOptions {
 
 export interface ProfileConnectionDispatchServices {
   readonly profiles: ProfileActionService
-  readonly connections: ConnectionActionService
+  readonly connections: ConnectionActions
   readonly revision: () => number
 }
 
@@ -73,12 +75,15 @@ export function createProfileConnectionDispatchServices(
         ? {}
         : { onSavePhase: options.onProfileSavePhase }),
     }),
-    connections: new ConnectionActionService({
-      host,
-      ...(options.connections === undefined ? {} : { connections: options.connections }),
-      ...(probeFor === undefined ? {} : { probeFor }),
-      ...(options.now === undefined ? {} : { now: options.now }),
-    }),
+    connections:
+      options.connectionActionsFor?.(app) ??
+      new ConnectionActionService({
+        host,
+        ...(options.connections === undefined ? {} : { connections: options.connections }),
+        ...(options.connectionCatalog === undefined ? {} : { catalog: options.connectionCatalog }),
+        ...(probeFor === undefined ? {} : { probeFor }),
+        ...(options.now === undefined ? {} : { now: options.now }),
+      }),
     revision: () => app.state().revision,
   }
 }
@@ -160,6 +165,16 @@ export async function dispatchProfileConnectionIntent(
         await services.connections.list(stringParam(intent.command, intent.params, 'query')),
         services.revision(),
       )
+    case 'upsert_connection':
+      return accepted(
+        await services.connections.upsert({
+          operationId: requiredOperationId(intent),
+          record: requiredConnectionRecord(intent.command, intent.params),
+          ...revisionParam(intent.command, intent.params),
+        }),
+        services.revision(),
+        intent.operationId,
+      )
     case 'test_connection':
       return accepted(
         await services.connections.test({
@@ -172,6 +187,16 @@ export async function dispatchProfileConnectionIntent(
     case 'select_connection':
       return accepted(
         await services.connections.select({
+          operationId: requiredOperationId(intent),
+          connectionId: requiredString(intent.command, intent.params, 'connectionId'),
+          ...revisionParam(intent.command, intent.params),
+        }),
+        services.revision(),
+        intent.operationId,
+      )
+    case 'remove_connection':
+      return accepted(
+        await services.connections.remove({
           operationId: requiredOperationId(intent),
           connectionId: requiredString(intent.command, intent.params, 'connectionId'),
           ...revisionParam(intent.command, intent.params),
@@ -217,7 +242,7 @@ async function dispatchProfileCommand(
 
 async function dispatchConnectionCommand(
   intent: Extract<BraidIntent, { readonly type: 'run-command' }>,
-  service: ConnectionActionService,
+  service: ConnectionActions,
   revision: () => number,
 ): Promise<UiDispatchResult> {
   const [verb, ref] = intent.args
@@ -229,6 +254,26 @@ async function dispatchConnectionCommand(
       throw new AppError('OPERATION_ID_REQUIRED', '/connection test requires operationId')
     return accepted(
       await service.test({ operationId: intent.operationId, connectionId: ref }),
+      revision(),
+      intent.operationId,
+    )
+  }
+  if (verb === 'remove') {
+    if (ref === undefined) throw new AppError('INVALID_PARAMS', '/connection remove requires an id')
+    if (intent.operationId === undefined)
+      throw new AppError('OPERATION_ID_REQUIRED', '/connection remove requires operationId')
+    return accepted(
+      await service.remove({ operationId: intent.operationId, connectionId: ref }),
+      revision(),
+      intent.operationId,
+    )
+  }
+  if (verb === 'select') {
+    if (ref === undefined) throw new AppError('INVALID_PARAMS', '/connection select requires an id')
+    if (intent.operationId === undefined)
+      throw new AppError('OPERATION_ID_REQUIRED', '/connection select requires operationId')
+    return accepted(
+      await service.select({ operationId: intent.operationId, connectionId: ref }),
       revision(),
       intent.operationId,
     )
@@ -289,6 +334,17 @@ function stringParam(
   if (typeof value !== 'string')
     throw new AppError('INVALID_PARAMS', `${command}.params.${name} must be a string`)
   return value
+}
+
+function requiredConnectionRecord(
+  command: string,
+  params: Readonly<Record<string, unknown>>,
+): ConnectionRecord {
+  const value = params.record
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AppError('INVALID_PARAMS', `${command}.params.record must be a connection record`)
+  }
+  return value as ConnectionRecord
 }
 
 function revisionParam(

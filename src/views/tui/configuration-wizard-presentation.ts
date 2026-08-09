@@ -36,7 +36,7 @@ export function configurationTitle(
 
 export function configurationExplanation(state: ConfigurationSessionState): string {
   if (state.step === 'profile') return 'Choose the AgentProfile for this run.'
-  if (state.step === 'connection') return 'Choose a connection; no secrets are entered here.'
+  if (state.step === 'connection') return 'Choose where this profile should run.'
   return 'No changes were made.'
 }
 
@@ -118,6 +118,7 @@ export function reviewSummary(
   session: ConfigurationSession,
   state: ConfigurationSessionState,
   confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues,
+  credentialPrepared = false,
 ): readonly string[] {
   try {
     const selection = session.previewSelection()
@@ -135,7 +136,7 @@ export function reviewSummary(
           ? effective.unsupported.map(sanitizeTerminalText).join(', ')
           : 'none'
       }`,
-      `credentials ${selection.connection.credentialRef === undefined ? 'not configured' : 'configured outside Braid · value hidden'}`,
+      `credentials ${credentialStatus(selection, credentialPrepared)}`,
     ]
   } catch {
     return ['Effective values are unavailable until both choices are selected.']
@@ -146,6 +147,7 @@ export function compactReviewSummary(
   session: ConfigurationSession,
   state: ConfigurationSessionState,
   confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues,
+  credentialPrepared = false,
 ): readonly string[] {
   try {
     const selection = session.previewSelection()
@@ -155,7 +157,7 @@ export function compactReviewSummary(
     const unsupported = effective.unsupported.length > 0 ? effective.unsupported.join(', ') : 'none'
     return [
       `profile ${profile?.label ?? selection.profile.displayName} → ${connection?.label ?? selection.connection.name}`,
-      `cred ${selection.connection.credentialRef === undefined ? 'not set' : 'hidden'} · conn ${selection.connection.kind} · digest ${compactDigest(selection.profileDigest)}`,
+      `cred ${compactCredentialStatus(selection, credentialPrepared)} · conn ${selection.connection.kind} · digest ${compactDigest(selection.profileDigest)}`,
       `runner: ${shortValue(effective.runner, 14)} · model: ${shortValue(effective.model, 16)}`,
       `effort: ${shortValue(effective.effort, 12)} · cwd: ${shortValue(effective.workdir, 18)}`,
       `verify: ${shortValue(effective.verification, 18)} · unsupported: ${shortValue(unsupported, 12)}`,
@@ -163,6 +165,30 @@ export function compactReviewSummary(
   } catch {
     return ['Effective values are unavailable until both choices are selected.']
   }
+}
+
+export function configurationReviewSummaries(
+  session: ConfigurationSession,
+  state: ConfigurationSessionState,
+  confirmation: ((selection: ConfigurationSelection) => ConfigurationEffectiveValues) | undefined,
+  credentialPrepared: boolean,
+): { readonly summary: readonly string[]; readonly compact: readonly string[] } {
+  return {
+    summary: reviewSummary(session, state, confirmation, credentialPrepared),
+    compact: compactReviewSummary(session, state, confirmation, credentialPrepared),
+  }
+}
+
+function credentialStatus(selection: ConfigurationSelection, prepared: boolean): string {
+  if (selection.connection.credentialRef !== undefined) {
+    return 'configured outside Braid · value hidden'
+  }
+  return prepared ? 'ready for secure storage · value hidden' : 'not configured'
+}
+
+function compactCredentialStatus(selection: ConfigurationSelection, prepared: boolean): string {
+  if (selection.connection.credentialRef !== undefined) return 'hidden'
+  return prepared ? 'ready · hidden' : 'not set'
 }
 
 function effectiveValues(

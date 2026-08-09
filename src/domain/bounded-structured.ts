@@ -1,4 +1,5 @@
 import { redactSensitiveText } from './secret-sanitizer.js'
+import { isCredentialRefId } from './ids.js'
 
 export const STRUCTURED_REDACTION_MARKER = '[redacted]'
 const MAX_DEPTH = 8
@@ -92,7 +93,7 @@ function sanitize(
 ): unknown {
   if (key && isSensitiveFieldName(key)) {
     if (typeof value === 'boolean' || value === null) return value
-    if (typeof value === 'string' && OPAQUE_REFERENCE.test(value)) return value
+    if (typeof value === 'string' && isSafeOpaqueReference(key, value)) return value
     return STRUCTURED_REDACTION_MARKER
   }
   if (typeof value === 'string') return boundedString(value, context)
@@ -136,6 +137,13 @@ function sanitize(
   } finally {
     context.seen.delete(value)
   }
+}
+
+function isSafeOpaqueReference(key: string, value: string): boolean {
+  if (OPAQUE_REFERENCE.test(value)) return true
+  return (
+    key.replace(/[^a-z0-9]/giu, '').toLowerCase() === 'credentialref' && isCredentialRefId(value)
+  )
 }
 
 export function redactStructuredValue(

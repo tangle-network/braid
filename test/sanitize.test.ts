@@ -63,6 +63,21 @@ test('numeric token telemetry survives redaction while string tokens never do', 
   assert.equal(redacted.credentialConfigured, true)
 })
 
+test('durable credential reference identifiers survive redaction without admitting values', () => {
+  const valid = redactBraidEvent({
+    kind: 'connection.upserted',
+    connection: {
+      credentialRef: 'credential-durable-reference',
+      credential: 'secret-canary',
+    },
+  })
+  assert.equal(valid.connection.credentialRef, 'credential-durable-reference')
+  assert.equal(valid.connection.credential, '[redacted]')
+
+  const invalid = redactBraidEvent({ credentialRef: 'secret-canary' })
+  assert.equal(invalid.credentialRef, '[redacted]')
+})
+
 test('conversation import events retain bounded histories beyond 256 records', () => {
   const messages = Array.from({ length: 300 }, (_, index) => ({
     id: `message-${index}`,

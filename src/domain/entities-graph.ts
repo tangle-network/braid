@@ -3,6 +3,7 @@ import type {
   AnalysisId,
   BranchId,
   CheckpointId,
+  ConnectionId,
   ConversationId,
   Digest,
   EffectId,
@@ -113,6 +114,7 @@ export type OperationStatus =
   | 'terminal'
 
 export type OperationTarget =
+  | { readonly kind: 'connection'; readonly id: ConnectionId }
   | { readonly kind: 'run'; readonly id: RunId }
   | { readonly kind: 'interaction'; readonly id: InteractionId }
   | { readonly kind: 'worker'; readonly id: WorkerId }

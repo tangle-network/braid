@@ -1,4 +1,5 @@
 import type { BraidApplication } from '../app/application.js'
+import type { ConnectionRegistry } from '../app/connections.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
 import { prepareProductionSelection } from './production-setup-credentials.js'
 import {
@@ -14,6 +15,7 @@ import type { ProductionStartupLoadOptions } from './production-startup.js'
 
 export interface ProductionApplicationHandle {
   readonly app: BraidApplication
+  readonly connections?: ConnectionRegistry
   readonly close: () => Promise<void>
 }
 
@@ -34,6 +36,8 @@ export interface ProductionSetupTransitionOptions {
   readonly startupOptions: ProductionStartupLoadOptions
   readonly selection: ConfigurationSelection
   readonly workspace: string
+  /** Session-only credential captured by the terminal; the caller retains ownership. */
+  readonly credential?: Uint8Array
   readonly controller: ProductionSetupController
   readonly active: ProductionApplicationSlot
   /** Opens and durably initializes from the in-memory selection. */
@@ -41,11 +45,19 @@ export interface ProductionSetupTransitionOptions {
     selection: ConfigurationSelection,
     options: ProductionStartupLoadOptions,
   ) => Promise<ProductionApplicationHandle>
+  readonly activate?: (
+    next: ProductionApplicationHandle,
+    selection: ConfigurationSelection,
+    startupOptions: ProductionStartupLoadOptions,
+  ) => Promise<void>
   readonly validate?: typeof validateProductionSelection
   readonly persist?: (
     configPath: string,
     selection: ConfigurationSelection,
-    options?: { readonly databaseKeyFile?: string },
+    options?: {
+      readonly databaseKeyFile?: string
+      readonly connections?: readonly import('../domain/entities.js').ConnectionRecord[]
+    },
   ) => Promise<ProductionStartupPersistence>
 }
 
@@ -59,7 +71,7 @@ async function closeAfterFailure(
     await rollbackCredential()
   } catch (rollbackError) {
     throw new Error(
-      'The secure CLI Bridge credential could not be rolled back after setup failed',
+      'The secure connection credential could not be rolled back after setup failed',
       {
         cause: rollbackError,
       },
@@ -76,7 +88,7 @@ async function failBeforeOpen(
     await rollbackCredential()
   } catch (rollbackError) {
     throw new Error(
-      'The secure CLI Bridge credential could not be rolled back after setup failed',
+      'The secure connection credential could not be rolled back after setup failed',
       {
         cause: rollbackError,
       },
@@ -93,6 +105,7 @@ export async function transitionProductionSelection(
     options.startupOptions,
     options.selection,
     options.setup.configPath,
+    options.credential,
   )
   let verification: ProductionSetupVerification
   let next: ProductionApplicationHandle
@@ -110,9 +123,30 @@ export async function transitionProductionSelection(
     persistence = await (options.persist ?? persistProductionStartupSelection)(
       options.setup.configPath,
       prepared.selection,
-      prepared.startupOptions,
+      {
+        ...(prepared.startupOptions.databaseKeyFile === undefined
+          ? {}
+          : { databaseKeyFile: prepared.startupOptions.databaseKeyFile }),
+        connections: options.setup.connections,
+      },
     )
   } catch (error) {
+    return closeAfterFailure(next, error, prepared.rollback)
+  }
+  try {
+    await options.activate?.(next, prepared.selection, prepared.startupOptions)
+  } catch (error) {
+    try {
+      await persistence.rollback()
+    } catch (rollbackError) {
+      return closeAfterFailure(
+        next,
+        new Error('The production configuration could not be rolled back after activation failed', {
+          cause: rollbackError,
+        }),
+        prepared.rollback,
+      )
+    }
     return closeAfterFailure(next, error, prepared.rollback)
   }
   try {

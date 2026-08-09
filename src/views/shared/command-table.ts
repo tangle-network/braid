@@ -20,8 +20,19 @@ export const SHARED_COMMAND_TABLE = [
   {
     name: 'connection',
     requiresOperationId: true,
-    headlessCommands: ['list_connections', 'test_connection', 'select_connection'],
-    mutatingHeadlessCommands: ['test_connection', 'select_connection'],
+    headlessCommands: [
+      'list_connections',
+      'upsert_connection',
+      'test_connection',
+      'select_connection',
+      'remove_connection',
+    ],
+    mutatingHeadlessCommands: [
+      'upsert_connection',
+      'test_connection',
+      'select_connection',
+      'remove_connection',
+    ],
   },
   {
     name: 'runner',

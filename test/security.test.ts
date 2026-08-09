@@ -31,14 +31,14 @@ import {
   type NativeKeyringEntryFactory,
 } from '../src/adapters/credentials/os.js'
 import {
-  acquireJournalLock,
+  acquirePrivateFileLock,
   assertNoSymlinkPath,
   assertSafeDirectory,
   ensurePrivateDirectory,
   ensurePrivateFile,
   fsyncDirectory,
   readNoFollow,
-  releaseJournalLock,
+  releasePrivateFileLock,
   replacePrivateFile,
   SafeFileError,
   writePrivateFile,
@@ -386,8 +386,8 @@ test('parent directory swaps cannot make conversation import read the evil tree'
           () =>
             replacePrivateFile(join(nested, 'replace.txt'), 'safe replace', { overwrite: true }),
           () => {
-            const handle = acquireJournalLock(join(nested, 'journal.lock'))
-            releaseJournalLock(join(nested, 'journal.lock'), handle)
+            const handle = acquirePrivateFileLock(join(nested, 'journal.lock'))
+            releasePrivateFileLock(join(nested, 'journal.lock'), handle)
           },
         ]
         for (const operation of operations) {
@@ -466,7 +466,7 @@ test('every safe-file operation rejects a swapped parent and unsupported platfor
         'replacePrivateFile',
         () => replacePrivateFile(join(active, 'replace.txt'), 'blocked', { overwrite: true }),
       ],
-      ['acquireJournalLock', () => acquireJournalLock(join(active, 'journal.lock'))],
+      ['acquirePrivateFileLock', () => acquirePrivateFileLock(join(active, 'journal.lock'))],
     ]
     for (const [name, operation] of checks) {
       assert.throws(
@@ -643,6 +643,31 @@ test('native credential adapters keep secrets out of child processes and erase t
   )
   assert.doesNotMatch(implementation, /child_process|powershell|secret-tool|add-generic-password/u)
   input.fill(0)
+})
+
+test('native credential removal rejects a false deletion result while the secret remains', async () => {
+  let stored = Uint8Array.from(Buffer.alloc(32, 23))
+  const credentials = new LinuxSecretServiceCredentialStore(() => ({
+    async setSecret(secret) {
+      stored = Uint8Array.from(secret)
+    },
+    async getSecret() {
+      return stored.length === 0 ? undefined : Uint8Array.from(stored)
+    },
+    async deleteCredential() {
+      return false
+    },
+  }))
+  const ref = credentialRef('cred:v1:false-native-delete')
+  await assert.rejects(
+    credentials.remove(ref),
+    (error: unknown) =>
+      error instanceof Error && 'code' in error && error.code === 'CREDENTIAL_REMOVE_FAILED',
+  )
+  assert.equal(stored.length, 32)
+  stored.fill(0)
+  stored = new Uint8Array()
+  await credentials.remove(ref)
 })
 
 test('native credential availability fails closed when the operating-system facility errors', async () => {

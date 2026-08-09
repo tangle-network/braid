@@ -86,6 +86,10 @@ export interface DomainBraidEventMap {
   readonly 'credential.reference.created': { readonly credential: CredentialReference }
   readonly 'connection.upserted': { readonly connection: ConnectionRecord }
   readonly 'connection.selected': { readonly connectionId: ConnectionId }
+  readonly 'connection.removed': {
+    readonly connectionId: ConnectionId
+    readonly operation: OperationRecord
+  }
   readonly 'conversation.created': {
     readonly conversation: ConversationRecord
     readonly branch?: BranchRecord
@@ -290,6 +294,7 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'credential.reference.created':
     case 'connection.upserted':
     case 'connection.selected':
+    case 'connection.removed':
     case 'conversation.created':
     case 'conversation.imported':
     case 'conversation.updated':

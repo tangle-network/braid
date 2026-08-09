@@ -1,4 +1,9 @@
-import { stripCliBridgeVersion } from '../adapters/connections/production-connection-endpoints.js'
+import {
+  DEFAULT_TANGLE_INFERENCE_ENDPOINT,
+  isLoopbackEndpoint,
+  stripCliBridgeVersion,
+} from '../adapters/connections/production-connection-endpoints.js'
+import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from '../adapters/connections/production-connection-types.js'
 import { discoverProfiles } from '../app/profiles.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { createConnectionId } from '../domain/ids.js'
@@ -7,6 +12,7 @@ import {
   ProductionBridgeRequestError,
 } from './production-bridge-client.js'
 import { discoverBridge } from './production-bridge-discovery.js'
+import { recoverPendingConnectionCredentialRemoval } from './production-connection-credential-cleanup.js'
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
 import { projectSetupProfiles, trustedProfileSources } from './production-profile-projection.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
@@ -22,7 +28,15 @@ function cliBridgeEndpoint(options: ProductionStartupLoadOptions): string {
 function canonicalBridgeEndpoint(options: ProductionStartupLoadOptions): string {
   const configured = cliBridgeEndpoint(options)
   try {
-    return stripCliBridgeVersion(normalizeBridgeEndpoint(configured))
+    const endpoint = stripCliBridgeVersion(normalizeBridgeEndpoint(configured))
+    if (new URL(endpoint).protocol === 'http:' && !isLoopbackEndpoint(endpoint)) {
+      throw new ProductionBridgeRequestError(
+        'BRIDGE_ENDPOINT_INVALID',
+        endpoint,
+        'CLI Bridge discovery rejects remote HTTP; use HTTPS or a loopback endpoint',
+      )
+    }
+    return endpoint
   } catch (error) {
     throw new ProductionStartupError(
       'PRODUCTION_CONFIGURATION_INVALID',
@@ -34,7 +48,7 @@ function canonicalBridgeEndpoint(options: ProductionStartupLoadOptions): string 
   }
 }
 
-function setupConnection(
+function cliBridgeConnection(
   endpoint: string,
   health: ConnectionRecord['lastHealth'],
 ): ConnectionRecord {
@@ -51,6 +65,26 @@ function setupConnection(
     createdAt: now,
     updatedAt: now,
     lastHealth: health,
+  }
+}
+
+function tangleConnection(
+  kind: Extract<ConnectionRecord['kind'], 'tangle-inference' | 'tangle-sandbox'>,
+  now: string,
+): ConnectionRecord {
+  const inference = kind === 'tangle-inference'
+  return {
+    id: createConnectionId(inference ? 'connection-tangle-inference' : 'connection-tangle-sandbox'),
+    kind,
+    name: inference ? 'Tangle Inference' : 'Tangle Sandbox',
+    endpoint: inference ? DEFAULT_TANGLE_INFERENCE_ENDPOINT : DEFAULT_TANGLE_SANDBOX_ENDPOINT,
+    providerOptions: {
+      transport: 'https',
+      capabilityHints: inference ? ['stream', 'usage'] : ['stream', 'placement', 'usage'],
+    },
+    createdAt: now,
+    updatedAt: now,
+    lastHealth: { status: 'unknown' },
   }
 }
 
@@ -74,6 +108,15 @@ export async function loadProductionSetup(
       ? {}
       : { credentialContext: options.credentialContext }),
   })
+  await recoverPendingConnectionCredentialRemoval(configPath, {
+    ...(options.credentialStore === undefined ? {} : { credentialStore: options.credentialStore }),
+    ...(options.credentialContext === undefined
+      ? {}
+      : { credentialContext: options.credentialContext }),
+    ...(options.credentialRefResolver === undefined
+      ? {}
+      : { credentialRefResolver: options.credentialRefResolver }),
+  })
   const endpoint = canonicalBridgeEndpoint(options)
   const [bridge, discovered] = await Promise.all([
     discoverBridge(options, endpoint),
@@ -83,10 +126,15 @@ export async function loadProductionSetup(
     }),
   ])
   const profiles = projectSetupProfiles(options, endpoint, bridge.models, discovered)
+  const now = new Date().toISOString()
   return {
     configPath,
     profiles: profiles.profiles,
-    connections: [setupConnection(endpoint, bridge.health)],
+    connections: [
+      cliBridgeConnection(endpoint, bridge.health),
+      tangleConnection('tangle-inference', now),
+      tangleConnection('tangle-sandbox', now),
+    ],
     diagnostics: [...bridge.diagnostics, ...profiles.diagnostics],
     ...(profiles.initialProfileId === undefined
       ? {}

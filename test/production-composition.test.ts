@@ -30,6 +30,7 @@ import {
 } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
+  createProductionComposition,
   type ProductionCompositionConfig,
   ProductionCompositionError,
 } from '../src/app/production-composition.js'
@@ -303,6 +304,23 @@ test('strict production composition rejects unsupported connection kinds', () =>
       error.code === 'PRODUCTION_CONNECTION_UNSUPPORTED' &&
       /unsupported provider kind/iu.test(error.message),
   )
+})
+
+test('production rejects remote cleartext endpoints unless an explicit policy accepts them', () => {
+  const remote = connection('cli-bridge', 'remote-cleartext', 'http://bridge.example.test')
+  assert.throws(
+    () => createProductionComposition(composition(remote)),
+    (error: unknown) =>
+      error instanceof ProductionCompositionError && error.code === 'PRODUCTION_CONNECTION_INVALID',
+  )
+
+  const accepted = createProductionComposition(
+    composition(remote, {
+      trustedTransportPolicy: ({ record, endpoint }) =>
+        record.id === remote.id && endpoint === remote.endpoint,
+    }),
+  )
+  assert.equal(accepted.connection.id, remote.id)
 })
 
 test('bin startup loads a canonical profile and exact connection from a bounded config file', async () => {

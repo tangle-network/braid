@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { canonicalCandidateJson } from '@tangle-network/agent-interface'
+import { isLoopbackEndpoint } from '../adapters/connections/production-connection-endpoints.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
 import {
   assertNoSymlinkPath,
@@ -11,17 +12,19 @@ import {
   writePrivateFile,
 } from '../adapters/persistence/safe-file.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
+import type { ConnectionRecord } from '../domain/entities.js'
 import { createCredentialRefId } from '../domain/ids.js'
 import type { CredentialPort, CredentialRef } from '../ports/credentials.js'
 import { credentialRef } from '../ports/credentials.js'
 import type { ProductionCredentialContext } from './production-credential-context.js'
+import { defaultProductionCredentialRefResolver } from './production-credential-reference.js'
 import { resolveProductionDatabaseKeyFile } from './production-key-path.js'
 import type { ProductionStartupLoadOptions } from './production-setup-types.js'
 
 const MAX_PENDING_CREDENTIAL_BYTES = 16 * 1024
 
 interface PendingCredentialMarker {
-  readonly format: 'braid-pending-cli-bridge-credential'
+  readonly format: 'braid-pending-connection-credential'
   readonly schemaVersion: 1
   readonly connectionId: string
   readonly credentialId: string
@@ -42,6 +45,20 @@ export interface PreparedProductionSelection {
   readonly commit: () => Promise<void>
 }
 
+export function productionConnectionNeedsCredential(
+  options: ProductionStartupLoadOptions,
+  connection: ConnectionRecord,
+): boolean {
+  if (connection.credentialRef !== undefined) return false
+  if (connection.kind === 'cli-bridge') {
+    return (
+      !isLoopbackEndpoint(connection.endpoint ?? connection.providerOptions.endpoint ?? '') &&
+      (options.bridgeAuth === undefined || options.bridgeAuth.trim().length === 0)
+    )
+  }
+  return options.tangleAuth === undefined || options.tangleAuth.trim().length === 0
+}
+
 function credentialStoreError(message: string, cause?: unknown): Error {
   return new Error(message, cause === undefined ? undefined : { cause })
 }
@@ -55,7 +72,7 @@ function noCredentialCommit(): () => Promise<void> {
 }
 
 function pendingCredentialPath(configPath: string): string {
-  return `${resolve(configPath)}.pending-cli-bridge`
+  return `${resolve(configPath)}.pending-credential`
 }
 
 function parsePendingCredentialMarker(bytes: Buffer, path: string): PendingCredentialMarker {
@@ -63,7 +80,7 @@ function parsePendingCredentialMarker(bytes: Buffer, path: string): PendingCrede
   try {
     parsed = JSON.parse(bytes.toString('utf8'))
   } catch (error) {
-    throw new Error(`The pending CLI Bridge credential marker is not valid JSON: ${path}`, {
+    throw new Error(`The pending connection credential marker is not valid JSON: ${path}`, {
       cause: error,
     })
   }
@@ -71,10 +88,10 @@ function parsePendingCredentialMarker(bytes: Buffer, path: string): PendingCrede
     parsed === null ||
     typeof parsed !== 'object' ||
     Array.isArray(parsed) ||
-    (parsed as { readonly format?: unknown }).format !== 'braid-pending-cli-bridge-credential' ||
+    (parsed as { readonly format?: unknown }).format !== 'braid-pending-connection-credential' ||
     (parsed as { readonly schemaVersion?: unknown }).schemaVersion !== 1
   ) {
-    throw new Error(`The pending CLI Bridge credential marker has an unsupported format: ${path}`)
+    throw new Error(`The pending connection credential marker has an unsupported format: ${path}`)
   }
   const candidate = parsed as Record<string, unknown>
   if (
@@ -82,7 +99,7 @@ function parsePendingCredentialMarker(bytes: Buffer, path: string): PendingCrede
     typeof candidate.credentialId !== 'string' ||
     typeof candidate.portRef !== 'string'
   ) {
-    throw new Error(`The pending CLI Bridge credential marker is incomplete: ${path}`)
+    throw new Error(`The pending connection credential marker is incomplete: ${path}`)
   }
   let credentialId: ReturnType<typeof createCredentialRefId>
   let portRef: CredentialRef
@@ -91,14 +108,14 @@ function parsePendingCredentialMarker(bytes: Buffer, path: string): PendingCrede
     portRef = credentialRef(candidate.portRef)
   } catch (error) {
     throw new Error(
-      `The pending CLI Bridge credential marker contains invalid references: ${path}`,
+      `The pending connection credential marker contains invalid references: ${path}`,
       {
         cause: error,
       },
     )
   }
   return {
-    format: 'braid-pending-cli-bridge-credential',
+    format: 'braid-pending-connection-credential',
     schemaVersion: 1,
     connectionId: candidate.connectionId,
     credentialId,
@@ -177,7 +194,7 @@ export async function recoverPendingProductionCredential(
       createOperatingSystemCredentialStore()
   } catch (error) {
     throw credentialStoreError(
-      'An unfinished CLI Bridge credential write needs recovery, but no secure operating-system credential store is available; unlock or configure it before continuing',
+      'An unfinished connection credential write needs recovery, but no secure operating-system credential store is available; unlock or configure it before continuing',
       error,
     )
   }
@@ -185,7 +202,7 @@ export async function recoverPendingProductionCredential(
     await store.remove(marker.portRef)
   } catch (error) {
     throw credentialStoreError(
-      'An unfinished CLI Bridge credential write could not be removed from the secure operating-system credential store; unlock it and retry',
+      'An unfinished connection credential write could not be removed from the secure operating-system credential store; unlock it and retry',
       error,
     )
   }
@@ -193,7 +210,7 @@ export async function recoverPendingProductionCredential(
 }
 
 /**
- * Moves an explicit Bridge token into secure storage before validation.
+ * Moves one explicit connection token into secure storage before validation.
  * The returned startup options deliberately omit the token and resolve the
  * selected connection through its durable Braid credential id.
  */
@@ -201,6 +218,8 @@ export async function prepareProductionSelection(
   options: ProductionStartupLoadOptions,
   selection: ConfigurationSelection,
   configPath: string,
+  suppliedCredential?: Uint8Array,
+  suppliedCredentialId?: ReturnType<typeof createCredentialRefId>,
 ): Promise<PreparedProductionSelection> {
   await recoverPendingProductionCredential(configPath, {
     ...(options.credentialStore === undefined ? {} : { credentialStore: options.credentialStore }),
@@ -219,8 +238,20 @@ export async function prepareProductionSelection(
             options.workspace,
           ),
         }
-  const rawAuth = preparedOptions.bridgeAuth
-  if (rawAuth === undefined || rawAuth.trim().length === 0) {
+  const configuredAuth =
+    selection.connection.kind === 'cli-bridge'
+      ? preparedOptions.bridgeAuth
+      : preparedOptions.tangleAuth
+  const hasSuppliedCredential = suppliedCredential !== undefined && suppliedCredential.length > 0
+  const hasConfiguredAuth = configuredAuth !== undefined && configuredAuth.trim().length > 0
+  if (!hasSuppliedCredential && !hasConfiguredAuth) {
+    if (productionConnectionNeedsCredential(preparedOptions, selection.connection)) {
+      throw new Error(
+        `${selection.connection.name} requires a credential; enter it in setup or set ${
+          selection.connection.kind === 'cli-bridge' ? 'BRAID_CLI_BRIDGE_AUTH' : 'BRAID_TANGLE_AUTH'
+        }`,
+      )
+    }
     return {
       selection,
       startupOptions: preparedOptions,
@@ -228,12 +259,6 @@ export async function prepareProductionSelection(
       commit: noCredentialCommit(),
     }
   }
-  if (selection.connection.kind !== 'cli-bridge') {
-    throw new Error(
-      'BRAID_CLI_BRIDGE_AUTH is set, but the selected connection is not a CLI Bridge connection; choose the Bridge connection or remove that setting',
-    )
-  }
-
   let store: CredentialPort
   try {
     store =
@@ -242,7 +267,7 @@ export async function prepareProductionSelection(
       createOperatingSystemCredentialStore()
   } catch (error) {
     throw credentialStoreError(
-      'CLI Bridge authentication was supplied, but no secure operating-system credential store is available; unlock or configure the credential store before setup',
+      'Connection authentication was supplied, but no secure operating-system credential store is available; unlock or configure the credential store before setup',
       error,
     )
   }
@@ -251,32 +276,36 @@ export async function prepareProductionSelection(
     available = await store.available()
   } catch (error) {
     throw credentialStoreError(
-      'CLI Bridge authentication was supplied, but the secure operating-system credential store could not be checked; unlock or configure it before setup',
+      'Connection authentication was supplied, but the secure operating-system credential store could not be checked; unlock or configure it before setup',
       error,
     )
   }
   if (!available) {
     throw new Error(
-      'CLI Bridge authentication was supplied, but the secure operating-system credential store is unavailable; unlock or configure it before setup',
+      'Connection authentication was supplied, but the secure operating-system credential store is unavailable; unlock or configure it before setup',
     )
   }
 
-  const credentialId = createCredentialRefId(`credential-cli-bridge-${randomUUID()}`)
+  const credentialId =
+    suppliedCredentialId ??
+    createCredentialRefId(`credential-${selection.connection.kind}-${randomUUID()}`)
   const portRef = credentialRef(`cred:v1:${credentialId}`)
   const pending = await writePendingCredentialMarker(configPath, {
-    format: 'braid-pending-cli-bridge-credential',
+    format: 'braid-pending-connection-credential',
     schemaVersion: 1,
     connectionId: selection.connection.id,
     credentialId,
     portRef,
   })
-  const secret = Buffer.from(rawAuth, 'utf8')
+  const secret = hasSuppliedCredential
+    ? Buffer.from(suppliedCredential)
+    : Buffer.from(configuredAuth ?? '', 'utf8')
   try {
     try {
       const storedRef = await store.store({
         ref: portRef,
         value: secret,
-        label: 'Braid CLI Bridge authentication',
+        label: `Braid ${selection.connection.name} authentication`,
       })
       if (storedRef !== portRef) {
         await store.remove(storedRef).catch(() => undefined)
@@ -287,7 +316,7 @@ export async function prepareProductionSelection(
       await store.remove(portRef).catch(() => undefined)
       await pending.rollback().catch(() => undefined)
       throw credentialStoreError(
-        'CLI Bridge authentication could not be saved in the secure operating-system credential store; setup was not applied',
+        'Connection authentication could not be saved in the secure operating-system credential store; setup was not applied',
         error,
       )
     }
@@ -295,8 +324,13 @@ export async function prepareProductionSelection(
     secret.fill(0)
   }
 
-  const { bridgeAuth: ignoredAuth, ...optionsWithoutAuth } = preparedOptions
-  void ignoredAuth
+  const {
+    bridgeAuth: ignoredBridgeAuth,
+    tangleAuth: ignoredTangleAuth,
+    ...optionsWithoutAuth
+  } = preparedOptions
+  void ignoredBridgeAuth
+  void ignoredTangleAuth
   const suppliedResolver = preparedOptions.credentialRefResolver
   const startupOptions: ProductionStartupLoadOptions = {
     ...optionsWithoutAuth,
@@ -304,7 +338,7 @@ export async function prepareProductionSelection(
     credentialRefResolver: async (ref) => {
       if (ref === credentialId) return portRef
       if (suppliedResolver !== undefined) return suppliedResolver(ref)
-      return credentialRef(`cred:v1:${ref}`)
+      return defaultProductionCredentialRefResolver(ref)
     },
   }
   const preparedSelection: ConfigurationSelection = {

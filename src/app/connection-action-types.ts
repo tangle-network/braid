@@ -5,6 +5,18 @@ import type {
   ConnectionRecord,
 } from '../domain/entities.js'
 
+export interface ConnectionUpsertInput {
+  readonly operationId: string
+  readonly record: ConnectionRecord
+  readonly expectedRevision?: number
+}
+
+export interface ConnectionRemovalInput {
+  readonly operationId: string
+  readonly connectionId: string
+  readonly expectedRevision?: number
+}
+
 export interface ConnectionSummary {
   readonly id: string
   readonly name: string
@@ -39,6 +51,19 @@ export interface ConnectionTestResult extends ConnectionTestResultData {
 
 export interface ConnectionSelectionResult {
   readonly connection: ConnectionSummary
+  readonly revision: number
+  readonly replayed: boolean
+}
+
+export interface ConnectionUpsertResult {
+  readonly connection: ConnectionSummary
+  readonly revision: number
+  readonly replayed: boolean
+}
+
+export interface ConnectionRemovalResult {
+  readonly connection: ConnectionSummary
+  readonly removed: true
   readonly revision: number
   readonly replayed: boolean
 }

@@ -168,6 +168,7 @@ export class SearchableSelector extends Container implements Focusable {
 }
 
 function actionKey(data: string): string | undefined {
+  if (matchesKey(data, 'ctrl+n')) return 'new'
   if (matchesKey(data, 'ctrl+v')) return 'validate'
   if (matchesKey(data, 'ctrl+s')) return 'save'
   if (matchesKey(data, 'ctrl+t')) return 'test'

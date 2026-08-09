@@ -23,6 +23,7 @@ import {
   type ProductionCompositionConfig,
   ProductionCompositionError,
 } from './production-composition.js'
+import type { ConnectionRegistry } from './connections.js'
 import { StorageJournal } from './storage-journal.js'
 import { UnavailableAnalyst } from './unavailable-analyst.js'
 
@@ -70,6 +71,8 @@ export interface DurableCompositionOptions
   readonly backupDirectory?: string
   readonly execution?: ExecutionPort
   readonly backendResolver?: AgentTurnBackendResolver
+  /** Mutable catalog shared with the product connection service. */
+  readonly connectionRegistry?: ConnectionRegistry
 }
 
 export interface DurableBraidApplication {
@@ -196,6 +199,7 @@ export async function createDurableBraidApplication(
             },
             credentialStore,
           ),
+          options.connectionRegistry,
         )
   const storage = await openSqliteStorage({
     path: options.path,

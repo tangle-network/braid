@@ -11,6 +11,7 @@ import type {
 export { readConnectionCredential } from './production-connection-credentials.js'
 export {
   connectionEndpoint,
+  DEFAULT_TANGLE_INFERENCE_ENDPOINT,
   normalizeCliBridgeRuntimeBaseUrl,
 } from './production-connection-endpoints.js'
 export { createTangleSandboxClient } from './production-connection-providers.js'

@@ -1,3 +1,4 @@
+import { connectionRemovalBlockers } from '../domain/connection-removal.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { redactSensitiveText } from '../domain/redaction.js'
 import type { ActionHost } from './action-host.js'
@@ -15,28 +16,58 @@ import {
 } from './connection-action-support.js'
 import type {
   ConnectionListResult,
+  ConnectionRemovalInput,
+  ConnectionRemovalResult,
   ConnectionSelectionResult,
   ConnectionTestResult,
   ConnectionTestResultData,
+  ConnectionUpsertInput,
+  ConnectionUpsertResult,
 } from './connection-action-types.js'
+import { ConnectionRemovalError } from './connection-errors.js'
 import type { ConnectionProbeFactory } from './connection-probe.js'
-import { ConnectionRegistry } from './connections.js'
+import { ConnectionRegistry, mergeConnectionTelemetry } from './connections.js'
 import { operationReplay, parseOperation, requestDigest } from './conversation-support.js'
 import { AppError } from './errors.js'
 
 export type {
   ConnectionListResult,
+  ConnectionRemovalInput,
+  ConnectionRemovalResult,
   ConnectionSelectionResult,
   ConnectionSummary,
   ConnectionTestResult,
   ConnectionTestResultData,
+  ConnectionUpsertInput,
+  ConnectionUpsertResult,
 } from './connection-action-types.js'
 
 export interface ConnectionActionOptions {
   readonly host: ActionHost
   readonly connections?: readonly ConnectionRecord[]
+  /**
+   * Authoritative product catalog. Durable state may retain historical
+   * connection records after removal, so only records still present here are
+   * exposed for future execution.
+   */
+  readonly catalog?: () => readonly ConnectionRecord[]
   readonly probeFor?: ConnectionProbeFactory
   readonly now?: () => string
+}
+
+export interface ConnectionActions {
+  list(query?: string): Promise<ConnectionListResult>
+  upsert(input: ConnectionUpsertInput): Promise<ConnectionUpsertResult>
+  remove(input: ConnectionRemovalInput): Promise<ConnectionRemovalResult>
+  select(input: {
+    readonly operationId: string
+    readonly connectionId: string
+    readonly expectedRevision?: number
+  }): Promise<ConnectionSelectionResult>
+  test(input: {
+    readonly operationId: string
+    readonly connectionId: string
+  }): Promise<ConnectionTestResult>
 }
 
 export class ConnectionActionService {
@@ -66,6 +97,93 @@ export class ConnectionActionService {
       })
       .map((record) => connectionSummary(record, model, cachedCapabilities(state, record.id)))
     return { connections }
+  }
+
+  async upsert(input: ConnectionUpsertInput): Promise<ConnectionUpsertResult> {
+    const operationId = parseOperation(input.operationId, 'upsert_connection')
+    const record = new ConnectionRegistry().upsert(input.record)
+    const digest = requestDigest('upsert_connection', {
+      record,
+      expectedRevision: input.expectedRevision ?? null,
+    })
+    const state = this.#options.host.state()
+    const replay = operationReplay(state, operationId, 'connection-change', digest)
+    if (replay !== undefined) {
+      if (replay.status !== 'acknowledged') throw reconciliationRequired(operationId)
+      const current = state.connections.find((candidate) => candidate.id === record.id)
+      const summary = operationSelectionSummary(replay, current?.credentialRef !== undefined)
+      if (summary === undefined || summary.id !== record.id)
+        throw reconciliationRequired(operationId)
+      return {
+        connection: summary,
+        revision: state.revision,
+        replayed: true,
+      }
+    }
+
+    const summary = connectionSummary(
+      record,
+      selectedModel(state.profile),
+      cachedCapabilities(state, record.id),
+    )
+    const next = await this.#options.host.configuration.upsertConnection({
+      connection: record,
+      operation: acknowledgedConnectionOperation({
+        id: operationId,
+        digest,
+        at: this.#now(),
+        target: { kind: 'connection', id: record.id },
+        result: connectionSelectionOperationResult(record.id, summary),
+      }),
+      ...(input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision }),
+    })
+    return { connection: summary, revision: next.revision, replayed: false }
+  }
+
+  async remove(input: ConnectionRemovalInput): Promise<ConnectionRemovalResult> {
+    const operationId = parseOperation(input.operationId, 'remove_connection')
+    const digest = requestDigest('remove_connection', {
+      connectionId: input.connectionId,
+      expectedRevision: input.expectedRevision ?? null,
+    })
+    const state = this.#options.host.state()
+    const replay = operationReplay(state, operationId, 'connection-change', digest)
+    if (replay !== undefined) {
+      if (replay.status !== 'acknowledged') throw reconciliationRequired(operationId)
+      const current = state.connections.find((candidate) => candidate.id === input.connectionId)
+      const summary = operationSelectionSummary(replay, current?.credentialRef !== undefined)
+      if (summary === undefined || summary.id !== input.connectionId)
+        throw reconciliationRequired(operationId)
+      return {
+        connection: summary,
+        removed: true,
+        revision: state.revision,
+        replayed: true,
+      }
+    }
+
+    const selected = new ConnectionRegistry(this.#records()).select({
+      connectionId: input.connectionId,
+    })
+    const blockers = connectionRemovalBlockers(state, selected.record.id)
+    if (blockers.length > 0) throw new ConnectionRemovalError(selected.record.id, blockers)
+    const summary = connectionSummary(
+      selected.record,
+      selectedModel(state.profile),
+      cachedCapabilities(state, selected.record.id),
+    )
+    const next = await this.#options.host.configuration.removeConnection({
+      connection: selected.record,
+      operation: acknowledgedConnectionOperation({
+        id: operationId,
+        digest,
+        at: this.#now(),
+        target: { kind: 'connection', id: selected.record.id },
+        result: connectionSelectionOperationResult(selected.record.id, summary),
+      }),
+      ...(input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision }),
+    })
+    return { connection: summary, removed: true, revision: next.revision, replayed: false }
   }
 
   async select(input: {
@@ -192,6 +310,15 @@ export class ConnectionActionService {
   }
 
   #records(): readonly ConnectionRecord[] {
+    const authoritative = this.#options.catalog?.()
+    if (authoritative !== undefined) {
+      const records = new Map(authoritative.map((record) => [record.id, record] as const))
+      for (const record of this.#options.host.state().connections) {
+        const saved = records.get(record.id)
+        if (saved !== undefined) records.set(record.id, mergeConnectionTelemetry(saved, record))
+      }
+      return new ConnectionRegistry([...records.values()]).list()
+    }
     const records = new Map<string, ConnectionRecord>()
     for (const record of this.#options.host.state().connections) records.set(record.id, record)
     for (const record of this.#options.connections ?? []) {

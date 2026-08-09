@@ -1,21 +1,17 @@
-import type { Component, Editor, SelectItem } from '@earendil-works/pi-tui'
-import type { AnalysisRecord } from '../../domain/entities.js'
+import type { Editor, SelectItem } from '@earendil-works/pi-tui'
+import type { ConnectionSummary } from '../../app/connection-action-types.js'
+import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { type CommandName, commandItems } from '../shared/command-registry.js'
 import type { BraidUiController } from '../shared/intents.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { ActivityView } from './activity.js'
-import { AnalysisViewPanel } from './analysis.js'
-import { ComparisonViewPanel, isAnalysisComparisonResult } from './comparison.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
 import { ConnectionSetupViewPanel } from './connection-setup.js'
+import { ConnectionOverlayWorkflow } from './connection-overlay-workflow.js'
 import { ConversationOverlayController } from './conversation-overlays.js'
-import { DetailsViewPanel } from './details.js'
-import { GraphView } from './graph.js'
-import { type HelpViewOptions, HelpViewPanel } from './help.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import { ProfileEditorViewPanel } from './profile-editor.js'
 import { SearchableSelector } from './selector.js'
-import { UnavailablePanel } from './terminal-shell.js'
+import { TerminalSurfaceOverlays } from './terminal-surface-overlays.js'
 import type { BraidTheme } from './theme.js'
 
 export interface TerminalOverlayOptions {
@@ -27,11 +23,8 @@ export interface TerminalOverlayOptions {
   readonly keyboardDiagnostic?: () => string
   readonly keymapDiagnostic?: () => string | undefined
   readonly configuration?: TerminalConfigurationOptions
+  readonly connectionLifecycle?: UiConnectionLifecycle
   readonly dispatchCommand: (command: CommandName, args: readonly string[]) => void
-  readonly openSurface: (
-    surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings',
-  ) => void
-  readonly openHelp: (query: string) => void
   readonly requestRender: () => void
 }
 
@@ -42,13 +35,11 @@ export class TerminalOverlayController {
   readonly #editor: Editor
   readonly #nextOperationId: () => string
   readonly #dispatchCommand: TerminalOverlayOptions['dispatchCommand']
-  readonly #openSurfaceCallback: TerminalOverlayOptions['openSurface']
-  readonly #openHelpCallback: TerminalOverlayOptions['openHelp']
   readonly #configuration: TerminalOverlayOptions['configuration']
-  readonly #keyboardDiagnostic: TerminalOverlayOptions['keyboardDiagnostic']
-  readonly #keymapDiagnostic: TerminalOverlayOptions['keymapDiagnostic']
   readonly #requestRender: TerminalOverlayOptions['requestRender']
   readonly #conversations: ConversationOverlayController
+  readonly #connectionWorkflow: ConnectionOverlayWorkflow | undefined
+  readonly #surfaces: TerminalSurfaceOverlays
 
   constructor(options: TerminalOverlayOptions) {
     this.#theme = options.theme
@@ -63,12 +54,34 @@ export class TerminalOverlayController {
       nextOperationId: options.nextOperationId,
     })
     this.#dispatchCommand = options.dispatchCommand
-    this.#openSurfaceCallback = options.openSurface
-    this.#openHelpCallback = options.openHelp
     this.#configuration = options.configuration
-    this.#keyboardDiagnostic = options.keyboardDiagnostic
-    this.#keymapDiagnostic = options.keymapDiagnostic
     this.#requestRender = options.requestRender
+    this.#connectionWorkflow =
+      options.connectionLifecycle === undefined
+        ? undefined
+        : new ConnectionOverlayWorkflow({
+            theme: this.#theme,
+            modals: this.#modals,
+            lifecycle: options.connectionLifecycle,
+            nextOperationId: this.#nextOperationId,
+            revision: () => this.#controller.view().revision,
+            openPicker: () => this.openConnection(),
+            showBlocked: (title, reason) => this.openUnavailable(title, reason),
+            requestRender: this.#requestRender,
+          })
+    this.#surfaces = new TerminalSurfaceOverlays({
+      theme: this.#theme,
+      controller: this.#controller,
+      modals: this.#modals,
+      ...(options.keyboardDiagnostic === undefined
+        ? {}
+        : { keyboardDiagnostic: options.keyboardDiagnostic }),
+      ...(options.keymapDiagnostic === undefined
+        ? {}
+        : { keymapDiagnostic: options.keymapDiagnostic }),
+      openProfile: () => this.openProfile(),
+      openConnection: () => this.openConnection(),
+    })
   }
 
   hasConfiguration(): boolean {
@@ -85,11 +98,29 @@ export class TerminalOverlayController {
     this.#modals.open(panel, { anchor: 'center', width: '88%', minWidth: 44, maxHeight: '90%' })
   }
 
+  openConnectionEditor(): void {
+    if (this.#connectionWorkflow === undefined) {
+      this.openUnavailable(
+        'connection creation unavailable',
+        'Production connection storage is not configured',
+      )
+      return
+    }
+    this.#connectionWorkflow.openEditor()
+  }
+
   openConnection(query = ''): void {
     const panel = new ConnectionSetupViewPanel(this.#theme, {
       controller: this.#controller,
       nextOperationId: this.#nextOperationId,
       query,
+      ...(this.#connectionWorkflow === undefined
+        ? {}
+        : {
+            onCreate: () => this.#connectionWorkflow?.openEditor(),
+            onRemove: (connection: ConnectionSummary) =>
+              this.#connectionWorkflow?.openRemoval(connection),
+          }),
       onCancel: () => this.#modals.closeTop(),
     })
     this.#modals.open(panel, { anchor: 'center', width: '88%', minWidth: 44, maxHeight: '90%' })
@@ -114,10 +145,11 @@ export class TerminalOverlayController {
       return
     }
     const { ConfigurationWizard } = await import('./configuration-wizard.js')
-    const { confirmation, ...configurationWithoutConfirmation } = configuration
+    const { confirmation, requiresCredential, ...configurationWithoutConfirmation } = configuration
     const wizard = new ConfigurationWizard({
       ...configurationWithoutConfirmation,
       ...(confirmation === undefined ? {} : { confirmation }),
+      ...(requiresCredential === undefined ? {} : { requiresCredential }),
       theme: this.#theme,
       requestRender: this.#requestRender,
       onComplete: () => {},
@@ -211,8 +243,8 @@ export class TerminalOverlayController {
       theme: this.#theme,
       onSelect: (item) => {
         this.#modals.closeTop()
-        if (kind === 'graph') this.#openSurfaceCallback('graph')
-        else if (kind === 'help') this.#openHelpCallback(item.value)
+        if (kind === 'graph') this.openSurface('graph')
+        else if (kind === 'help') this.openHelp(item.value)
         else if (kind === 'runner' || kind === 'model' || kind === 'effort')
           this.#dispatchCommand(kind, [item.value])
       },
@@ -230,115 +262,22 @@ export class TerminalOverlayController {
   }
 
   openHelp(query: string): void {
-    const help = new HelpViewPanel(this.#theme, this.#helpOptions())
-    help.setQuery(query)
-    this.#modals.open(help, { anchor: 'center', width: '86%', maxHeight: '90%' })
+    this.#surfaces.openHelp(query)
   }
 
   openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {
-    if (command === 'compare') {
-      if (!isAnalysisComparisonResult(data)) {
-        this.openUnavailable('/compare', 'The saved comparison result could not be rendered')
-        return
-      }
-      const panel = new ComparisonViewPanel(this.#theme)
-      panel.setResult(data)
-      this.#modals.open(panel, { anchor: 'center', width: '92%', minWidth: 36, maxHeight: '90%' })
-      return
-    }
-
-    const analysis = analysisRecordFromDispatchData(data)
-    if (analysis === undefined) {
-      this.openUnavailable(`/${command}`, 'The saved analysis result could not be rendered')
-      return
-    }
-    const panel = new AnalysisViewPanel(this.#theme)
-    panel.setRecord(analysis)
-    this.#modals.open(panel, { anchor: 'center', width: '92%', minWidth: 36, maxHeight: '90%' })
+    this.#surfaces.openIntelligenceResult(command, data)
   }
 
   openSurface(surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'): void {
-    const view = this.#controller.view()
-    let panel: Component
-    if (surface === 'activity') {
-      const activity = new ActivityView(this.#theme)
-      activity.setView(view)
-      panel = activity
-    } else if (surface === 'graph') {
-      const graph = new GraphView(this.#theme)
-      graph.setView(view)
-      panel = graph
-    } else if (surface === 'details') {
-      const details = new DetailsViewPanel(this.#theme)
-      details.setView(view)
-      panel = details
-    } else if (surface === 'settings') {
-      panel = new SearchableSelector({
-        title: 'settings',
-        items: [
-          { value: 'profile', label: 'Profiles', description: 'list, validate, select, and save' },
-          { value: 'connection', label: 'Connections', description: 'list, test, and select' },
-        ],
-        theme: this.#theme,
-        footer: 'enter open · esc close',
-        onSelect: (item) => {
-          this.#modals.closeTop()
-          if (item.value === 'profile') this.openProfile()
-          if (item.value === 'connection') this.openConnection()
-        },
-        onCancel: () => this.#modals.closeTop(),
-      })
-    } else if (surface === 'fork') {
+    if (surface === 'fork') {
       this.#conversations.openForkPreview()
       return
-    } else if (surface === 'help') {
-      const help = new HelpViewPanel(this.#theme, this.#helpOptions())
-      help.setQuery('')
-      panel = help
-    } else {
-      panel = new UnavailablePanel(
-        this.#theme,
-        'surface unavailable',
-        'This surface is not available',
-      )
     }
-    this.#modals.open(panel, { anchor: 'center', width: '90%', maxHeight: '90%' })
+    this.#surfaces.openSurface(surface)
   }
 
   openUnavailable(title: string, reason: string): void {
-    this.#modals.open(new UnavailablePanel(this.#theme, title, reason), {
-      anchor: 'center',
-      width: '80%',
-      maxHeight: 8,
-    })
+    this.#surfaces.openUnavailable(title, reason)
   }
-
-  #helpOptions(): HelpViewOptions {
-    const keyboardDiagnostic = this.#keyboardDiagnostic?.()
-    const keymapDiagnostic = this.#keymapDiagnostic?.()
-    return {
-      ...(keyboardDiagnostic === undefined ? {} : { keyboardDiagnostic }),
-      ...(keymapDiagnostic === undefined ? {} : { keymapDiagnostic }),
-    }
-  }
-}
-
-function analysisRecordFromDispatchData(data: unknown): AnalysisRecord | undefined {
-  if (!isRecord(data) || !isRecord(data.analysis)) return undefined
-  const analysis = data.analysis
-  if (
-    typeof analysis.id !== 'string' ||
-    typeof analysis.status !== 'string' ||
-    !Array.isArray(analysis.findings) ||
-    !isRecord(analysis.source) ||
-    typeof analysis.source.digest !== 'string' ||
-    typeof analysis.source.complete !== 'boolean'
-  ) {
-    return undefined
-  }
-  return analysis as unknown as AnalysisRecord
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

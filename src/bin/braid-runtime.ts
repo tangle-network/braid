@@ -3,17 +3,21 @@ import { createUnavailableTraceAnalysisAnalyst } from '../adapters/analysis/trac
 import type { ProfileConnectionDispatchOptions } from '../adapters/tui/profile-connection-dispatch.js'
 import type { BraidApplication } from '../app/application.js'
 import { createBraidApplication } from '../app/composition.js'
+import type { ConnectionRegistry } from '../app/connections.js'
 import { createMemoryJournal } from '../app/journal.js'
 import { SystemClock } from '../ports/clock.js'
 import type { CliOptions } from './args.js'
-import { openProductionApplication } from './production-application.js'
-import { createProductionCredentialContext } from './production-credential-context.js'
+import {
+  activateProductionConnection,
+  openProductionApplication,
+} from './production-application.js'
 import { loadProductionSetup, type ProductionStartupSetup } from './production-setup.js'
 import {
   loadProductionStartup,
   ProductionStartupError,
   type ProductionStartupLoadOptions,
 } from './production-startup.js'
+import { createRuntimeStartupOptions } from './runtime-startup-options.js'
 import { defaultStatePath } from './state-path.js'
 
 export async function runBraid(options: CliOptions): Promise<number> {
@@ -22,7 +26,13 @@ export async function runBraid(options: CliOptions): Promise<number> {
     openApplication(options, workspace),
     import('./interface-runner.js'),
   ])
-  const active = { current: { app: opened.app, close: opened.close } }
+  const active = {
+    current: {
+      app: opened.app,
+      close: opened.close,
+      ...(opened.connections === undefined ? {} : { connections: opened.connections }),
+    },
+  }
   try {
     return await runInterface({
       options,
@@ -51,6 +61,7 @@ async function openApplication(
 ): Promise<{
   readonly app: BraidApplication
   readonly close: () => Promise<void>
+  readonly connections?: ConnectionRegistry
   readonly setup?: ProductionStartupSetup
   readonly startupOptions?: ProductionStartupLoadOptions
   readonly profileConnectionOptions?: ProfileConnectionDispatchOptions
@@ -63,49 +74,26 @@ async function openApplication(
     })
     return { app, close: () => app.close() }
   }
-  const discoveryTimeoutMs = optionalMilliseconds('BRAID_DISCOVERY_TIMEOUT_MS')
-  const modelValidationTimeoutMs = optionalMilliseconds('BRAID_MODEL_VALIDATION_TIMEOUT_MS')
-  const baseStartupOptions: ProductionStartupLoadOptions = {
-    workspace,
-    ...(options.config === undefined ? {} : { configPath: options.config }),
-    ...(options.profile === undefined ? {} : { profileReference: options.profile }),
-    ...(options.connection === undefined ? {} : { connectionId: options.connection }),
-    ...(options.model === undefined ? {} : { model: options.model }),
-    ...(options.runner === undefined ? {} : { runner: options.runner }),
-    ...(options.databaseKeyFile === undefined ? {} : { databaseKeyFile: options.databaseKeyFile }),
-    ...(options.effort === undefined ? {} : { effort: options.effort }),
-    ...(process.env.BRAID_CLI_BRIDGE_ENDPOINT === undefined
-      ? {}
-      : { cliBridgeEndpoint: process.env.BRAID_CLI_BRIDGE_ENDPOINT }),
-    ...(process.env.BRAID_CLI_BRIDGE_AUTH === undefined
-      ? {}
-      : { bridgeAuth: process.env.BRAID_CLI_BRIDGE_AUTH }),
-    ...(discoveryTimeoutMs === undefined ? {} : { discoveryTimeoutMs }),
-    ...(modelValidationTimeoutMs === undefined ? {} : { modelValidationTimeoutMs }),
-  }
-  const credentialContext = createProductionCredentialContext({
-    workspace,
-    ...(baseStartupOptions.configPath === undefined
-      ? {}
-      : { configPath: baseStartupOptions.configPath }),
-    ...(baseStartupOptions.databaseKeyFile === undefined
-      ? {}
-      : { databaseKeyFile: baseStartupOptions.databaseKeyFile }),
-  })
-  const startupOptions: ProductionStartupLoadOptions =
-    credentialContext === undefined
-      ? baseStartupOptions
-      : {
-          ...baseStartupOptions,
-          databaseKeyFile: credentialContext.databaseKeyFile,
-          credentialStore: credentialContext.store,
-          credentialContext,
-        }
+  const { startupOptions, credentialContext } = createRuntimeStartupOptions(options, workspace)
   try {
     const production = await loadProductionStartup(startupOptions)
     const configured = await openConfiguredApplication(startupOptions, production)
+    const restoredConnectionId = configured.app.state().selectedConnectionId ?? undefined
+    const restoredConnectionAvailable =
+      restoredConnectionId !== undefined &&
+      production.connections.some((connection) => connection.id === restoredConnectionId)
+    const connectionId =
+      startupOptions.connectionId ??
+      (restoredConnectionAvailable ? restoredConnectionId : production.connectionId)
+    try {
+      await activateProductionConnection(configured.app, connectionId, production.connections)
+    } catch (activationError) {
+      await configured.close().catch(() => undefined)
+      throw activationError
+    }
     return {
       ...configured,
+      startupOptions,
       profileConnectionOptions: {
         connections: production.connections,
         ...(production.connectionOptions === undefined
@@ -165,7 +153,11 @@ async function openApplication(
 async function openConfiguredApplication(
   startupOptions: ProductionStartupLoadOptions,
   production?: import('../app/production-composition.js').ProductionCompositionConfig,
-): Promise<{ readonly app: BraidApplication; readonly close: () => Promise<void> }> {
+): Promise<{
+  readonly app: BraidApplication
+  readonly connections: ConnectionRegistry
+  readonly close: () => Promise<void>
+}> {
   const configured = production ?? (await loadProductionStartup(startupOptions))
   const effectiveStartupOptions =
     startupOptions.databaseKeyFile === undefined && configured.databaseKeyFile !== undefined
@@ -180,11 +172,4 @@ async function openConfiguredApplication(
     startupOptions: effectiveStartupOptions,
     production: configured,
   })
-}
-
-function optionalMilliseconds(name: string): number | undefined {
-  const raw = process.env[name]
-  if (raw === undefined || raw.trim().length === 0) return undefined
-  const value = Number(raw)
-  return Number.isSafeInteger(value) && value > 0 ? value : undefined
 }

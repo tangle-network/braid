@@ -14,11 +14,24 @@ import {
   writePrivateFile,
 } from '../adapters/persistence/safe-file.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
+import { ConnectionRegistry } from '../app/connections.js'
+import type { ConnectionRecord } from '../domain/entities.js'
+import {
+  assertProductionConfigMutationLock,
+  type ProductionConfigMutationLock,
+  withProductionConfigMutationLock,
+} from './production-config-mutation-lock.js'
 
 const MAX_STARTUP_CONFIG_BYTES = 2 * 1024 * 1024
 
 export interface ProductionStartupPersistence {
   readonly rollback: () => Promise<void>
+}
+
+export interface ProductionStartupPersistenceOptions {
+  readonly databaseKeyFile?: string
+  readonly connections?: readonly ConnectionRecord[]
+  readonly mutationLock?: ProductionConfigMutationLock
 }
 
 const INLINE_SECRET_VALUE =
@@ -180,13 +193,26 @@ export function persistableProductionProfile(profile: Readonly<AgentProfile>): A
   return snapshot
 }
 
-function serializedSelection(selection: ConfigurationSelection, databaseKeyFile?: string): string {
+export function productionConnectionsForSelection(
+  selection: ConfigurationSelection,
+  candidates: readonly ConnectionRecord[] = [],
+): readonly ConnectionRecord[] {
+  const records = new Map(candidates.map((record) => [record.id, record] as const))
+  records.set(selection.connection.id, selection.connection)
+  return new ConnectionRegistry([...records.values()]).list()
+}
+
+function serializedSelection(
+  selection: ConfigurationSelection,
+  databaseKeyFile?: string,
+  connections?: readonly ConnectionRecord[],
+): string {
   return `${canonicalCandidateJson({
     format: 'braid-startup-config',
     schemaVersion: 2,
     profile: persistableProductionProfile(selection.profile.profile),
     connectionId: selection.connection.id,
-    connections: [selection.connection],
+    connections: productionConnectionsForSelection(selection, connections),
     ...(databaseKeyFile === undefined ? {} : { databaseKeyFile }),
   })}\n`
 }
@@ -228,7 +254,7 @@ function restore(target: string, bytes: Buffer, previous: Buffer | undefined): v
 export async function persistProductionStartupSelection(
   configPath: string,
   selection: ConfigurationSelection,
-  options: { readonly databaseKeyFile?: string } = {},
+  options: ProductionStartupPersistenceOptions = {},
 ): Promise<ProductionStartupPersistence> {
   const target = resolve(configPath)
   const directory = dirname(target)
@@ -236,32 +262,49 @@ export async function persistProductionStartupSelection(
   await mkdir(directory, { recursive: true, mode: 0o700 })
   assertNoSymlinkPath(directory)
   assertSafeDirectory(directory)
-  const previous = readNoFollow(target, MAX_STARTUP_CONFIG_BYTES)
-  const bytes = Buffer.from(serializedSelection(selection, options.databaseKeyFile), 'utf8')
-  try {
-    publish(target, bytes, previous)
-  } catch (error) {
+  const publishSelection = async (
+    lock: ProductionConfigMutationLock,
+  ): Promise<ProductionStartupPersistence> => {
+    assertProductionConfigMutationLock(lock, target)
+    const previous = readNoFollow(target, MAX_STARTUP_CONFIG_BYTES)
+    const bytes = Buffer.from(
+      serializedSelection(selection, options.databaseKeyFile, options.connections),
+      'utf8',
+    )
     try {
-      restore(target, bytes, previous)
-    } catch (rollbackError) {
-      throw new Error('The production configuration could not be safely rolled back', {
-        cause: rollbackError,
-      })
+      publish(target, bytes, previous)
+    } catch (error) {
+      try {
+        restore(target, bytes, previous)
+      } catch (rollbackError) {
+        throw new Error('The production configuration could not be safely rolled back', {
+          cause: rollbackError,
+        })
+      }
+      throw error
     }
-    throw error
+    return {
+      rollback: async () => {
+        const rollback = async (activeLock: ProductionConfigMutationLock): Promise<void> => {
+          assertProductionConfigMutationLock(activeLock, target)
+          restore(target, bytes, previous)
+        }
+        if (options.mutationLock !== undefined) return rollback(options.mutationLock)
+        return withProductionConfigMutationLock(target, rollback)
+      },
+    }
   }
-  return {
-    rollback: async () => {
-      restore(target, bytes, previous)
-    },
+  if (options.mutationLock !== undefined) {
+    return publishSelection(options.mutationLock)
   }
+  return withProductionConfigMutationLock(target, publishSelection)
 }
 
 /** Persists selected metadata only; credentials remain in the operating-system store. */
 export async function saveProductionStartupSelection(
   configPath: string,
   selection: ConfigurationSelection,
-  options: { readonly databaseKeyFile?: string } = {},
+  options: ProductionStartupPersistenceOptions = {},
 ): Promise<void> {
   await persistProductionStartupSelection(configPath, selection, options)
 }

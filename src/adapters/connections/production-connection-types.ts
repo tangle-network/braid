@@ -78,6 +78,11 @@ export interface ProductionConnectionOptions {
   readonly fetch?: typeof fetch
   readonly defaultInferenceEndpoint?: string
   readonly defaultSandboxEndpoint?: string
+  /** Explicit product policy for a non-loopback cleartext endpoint. */
+  readonly trustedTransportPolicy?: (input: {
+    readonly record: ConnectionRecord
+    readonly endpoint: string
+  }) => boolean
   readonly sandboxClient?: SandboxClientLike
   readonly sandboxClientFactory?: SandboxClientFactory
   readonly now?: () => IsoDateTime

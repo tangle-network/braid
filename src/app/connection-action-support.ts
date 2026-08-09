@@ -159,6 +159,7 @@ export function acknowledgedConnectionOperation(input: {
   readonly id: ReturnType<typeof parseOperation>
   readonly digest: Digest
   readonly at: string
+  readonly target?: OperationRecord['target']
   readonly result?: OperationRecord['result']
 }): OperationRecord & { readonly kind: 'connection-change' } {
   return acknowledgedOperation({ ...input, kind: 'connection-change' }) as OperationRecord & {

@@ -87,7 +87,7 @@ Errors use stable machine codes plus concise human text and never include secret
 | `get_state` | Return canonical semantic application state at one revision |
 | `subscribe` / `unsubscribe` | Control application event delivery |
 | `list_profiles` / `select_profile` / `validate_profile` / `save_profile` | Drive canonical profile workflows |
-| `list_connections` / `test_connection` / `select_connection` | Drive connection workflows without exposing secret values |
+| `list_connections` / `upsert_connection` / `test_connection` / `select_connection` / `remove_connection` | Drive secret-free connection metadata workflows; credential bytes never enter JSONL |
 | `set_run_override` | Set runner, model, effort, or mode for the next run |
 | `new_conversation` / `list_conversations` / `open_conversation` / `rename_conversation` / `archive_conversation` / `delete_conversation` | Drive conversation navigation and lifecycle |
 | `set_draft` / `send` / `queue` / `remove_queued` / `steer` | Drive input and active-run behavior |
@@ -213,6 +213,7 @@ The production adapter, not `MemoryStorage`, is the proof source for encryption,
 | `AR-03`–`AR-07`, `AR-10` | `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, `scripts/check-boundaries.mjs`, `scripts/check-dependencies.mjs`, `test/scripts.test.ts` |
 | `PR-09` | Restarted SQLite projection checksum and `StorageJournal.fromStorage` replay in `test/storage.test.ts` |
 | `PC-08`–`PC-10` | `test/security.test.ts`, headless key validation, credential-port availability failure, and package metadata checks |
+| `PC-11`, `PC-12` | `test/connections.test.ts`, `test/connection-lifecycle.test.ts`, `test/production-connection-actions.test.ts`, `test/production-connection-setup.test.ts`, and `test/security.test.ts` cover health classes, secure creation, typed blockers, shared credentials, authoritative removal identity, serialized cleanup, resolver loss, keyring false-return, crash recovery, replay, and preserved history |
 | `CF-01`, `CF-08` | Branded graph identifiers, operation/effect records, duplicate-event and conflict tests in `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, and `test/coordination.test.ts` |
 | `SE-01`, `SE-02`, `SE-06`, `SE-07` | Secret rejection, raw-byte canaries, wrong-key rejection, protected key-source tests, and dependency/license checks |
 | `ST-01`–`ST-10` | Production SQLite encryption, atomic commit, duplicate/gap/replay, forced-kill, migration, integrity, retention/redaction, provider-state non-guessing, and concurrent-writer tests |

@@ -8,13 +8,13 @@ import {
 
 // Keep this narrow helper independent of agent-runtime so composition can cold-load
 // connection configuration without materializing the runtime kernel.
-const DEFAULT_ROUTER_BASE_URL = 'https://router.tangle.tools'
+export const DEFAULT_TANGLE_INFERENCE_ENDPOINT = 'https://router.tangle.tools'
 
 export function connectionEndpoint(
   record: ConnectionRecord,
   options: Pick<
     ProductionConnectionOptions,
-    'defaultInferenceEndpoint' | 'defaultSandboxEndpoint'
+    'defaultInferenceEndpoint' | 'defaultSandboxEndpoint' | 'trustedTransportPolicy'
   > = {},
 ): string {
   const recordEndpoint = record.endpoint
@@ -34,7 +34,7 @@ export function connectionEndpoint(
     recordEndpoint ??
     optionEndpoint ??
     (record.kind === 'tangle-inference'
-      ? (options.defaultInferenceEndpoint ?? DEFAULT_ROUTER_BASE_URL)
+      ? (options.defaultInferenceEndpoint ?? DEFAULT_TANGLE_INFERENCE_ENDPOINT)
       : record.kind === 'tangle-sandbox'
         ? (options.defaultSandboxEndpoint ?? DEFAULT_TANGLE_SANDBOX_ENDPOINT)
         : undefined)
@@ -46,6 +46,7 @@ export function connectionEndpoint(
     )
   }
   validateHttpEndpoint(endpoint, record.id)
+  assertTrustedTransport(record, endpoint, options.trustedTransportPolicy)
   return endpoint.replace(/\/$/u, '')
 }
 
@@ -85,16 +86,43 @@ export function stripCliBridgeVersion(endpoint: string): string {
 
 export function isLoopbackEndpoint(endpoint: string): boolean {
   try {
-    const hostname = new URL(endpoint).hostname.toLowerCase()
-    return (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '[::1]' ||
-      hostname === '::1'
-    )
+    return isLoopbackHostname(new URL(endpoint).hostname)
   } catch {
     return false
   }
+}
+
+function assertTrustedTransport(
+  record: ConnectionRecord,
+  endpoint: string,
+  policy: ProductionConnectionOptions['trustedTransportPolicy'],
+): void {
+  const url = new URL(endpoint)
+  if (url.protocol !== 'http:' || isLoopbackHostname(url.hostname)) return
+  let trusted = false
+  try {
+    trusted = policy?.({ record, endpoint: url.toString().replace(/\/$/u, '') }) === true
+  } catch {
+    trusted = false
+  }
+  if (!trusted) {
+    throw new ConnectionError(
+      'CONNECTION_ENDPOINT_INSECURE',
+      'Remote HTTP requires an explicit trusted transport policy',
+      { connectionId: record.id },
+    )
+  }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/gu, '')
+  if (normalized === 'localhost' || normalized === '::1') return true
+  const octets = normalized.split('.')
+  return (
+    octets.length === 4 &&
+    octets[0] === '127' &&
+    octets.slice(1).every((octet) => /^\d+$/u.test(octet) && Number(octet) <= 255)
+  )
 }
 
 function validateHttpEndpoint(endpoint: string, connectionId: ConnectionId): void {

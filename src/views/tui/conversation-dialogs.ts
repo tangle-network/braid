@@ -24,7 +24,7 @@ export class ConversationConfirmation extends Container implements Focusable {
   readonly #theme: BraidTheme
   readonly #title: TruncatedText
   readonly #target: TruncatedText
-  readonly #detail: TruncatedText
+  readonly #detail: Text
   readonly #error: Text
   readonly #onConfirm: () => void
   readonly #onCancel: () => void
@@ -36,7 +36,7 @@ export class ConversationConfirmation extends Container implements Focusable {
     this.#theme = options.theme
     this.#title = new TruncatedText(this.#theme.brand(sanitizeTerminalText(options.title)), 1, 0)
     this.#target = new TruncatedText(`target: ${sanitizeTerminalText(options.target)}`, 1, 0)
-    this.#detail = new TruncatedText(
+    this.#detail = new Text(
       this.#theme.muted(
         `will ${sanitizeTerminalText(options.confirmLabel ?? 'confirm')}: ${sanitizeTerminalText(options.detail)}`,
       ),

@@ -1,6 +1,7 @@
 import type { BraidEvent, DomainBraidEventMap } from './events.js'
 import { DomainInvariantError } from './invariants.js'
 import { applyConversationEvent } from './reducer-conversation-events.js'
+import { connectionRemovalBlockers } from './connection-removal.js'
 
 import { find, updateRun, upsert, upsertBy } from './reducer-helpers.js'
 import type { BraidState } from './state.js'
@@ -33,6 +34,31 @@ export function applyDomainEvent(
     case 'connection.selected':
       find(state.connections, event.connectionId, 'Connection')
       return { ...state, selectedConnectionId: event.connectionId }
+    case 'connection.removed': {
+      const connection = find(state.connections, event.connectionId, 'Connection')
+      if (
+        event.operation.status !== 'acknowledged' ||
+        event.operation.target?.kind !== 'connection' ||
+        event.operation.target.id !== connection.id
+      ) {
+        throw new DomainInvariantError(
+          `Connection removal operation ${event.operation.id} does not acknowledge ${connection.id}`,
+        )
+      }
+      const blockers = connectionRemovalBlockers(state, connection.id)
+      if (blockers.length > 0) {
+        throw new DomainInvariantError(
+          `Connection ${connection.id} cannot be removed while ${blockers
+            .map((blocker) => `${blocker.kind} ${blocker.id}`)
+            .join(', ')} remains`,
+        )
+      }
+      return {
+        ...state,
+        connections: state.connections.filter((candidate) => candidate.id !== connection.id),
+        operations: upsert(state.operations, event.operation),
+      }
+    }
     case 'conversation.created':
     case 'conversation.imported':
     case 'conversation.updated':

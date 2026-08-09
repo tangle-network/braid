@@ -7,6 +7,7 @@ import type {
   UiFrameTiming,
 } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
+import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
@@ -29,6 +30,7 @@ export interface BraidTerminalOptions {
   readonly nextOperationId: () => string
   readonly keymap?: BraidKeymap
   readonly configuration?: TerminalConfigurationOptions
+  readonly connectionLifecycle?: UiConnectionLifecycle
   readonly startupMessages?: readonly { readonly title: string; readonly reason: string }[]
   readonly onFrameTiming?: (timing: UiFrameTiming) => void
 }
@@ -113,9 +115,10 @@ export class BraidTerminalApp {
       keyboardDiagnostic: () => keyboardCompatibility(options.tui.terminal).message,
       keymapDiagnostic: () => keymapDiagnostic,
       ...(options.configuration === undefined ? {} : { configuration: options.configuration }),
+      ...(options.connectionLifecycle === undefined
+        ? {}
+        : { connectionLifecycle: options.connectionLifecycle }),
       dispatchCommand: (command, args) => this.#commands.dispatchCommand(command, args),
-      openSurface: (surface) => this.#overlays.openSurface(surface),
-      openHelp: (query) => this.#overlays.openHelp(query),
       requestRender: () => this.#tui.requestRender(),
     })
     this.#interactions = new TerminalInteractionController({

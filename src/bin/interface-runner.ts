@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
-import { assertNoSymlinkPath, writePrivateFile } from '../adapters/persistence/safe-file.js'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import type { ProfileConnectionDispatchOptions } from '../adapters/tui/profile-connection-dispatch.js'
-import type { BraidApplication } from '../app/application.js'
+import { ConnectionRegistry } from '../app/connections.js'
 import type { ProductionCompositionConfig } from '../app/production-composition.js'
 import {
   BraidTerminalApp,
@@ -19,15 +16,23 @@ import {
   commandIntent,
   isMutatingCommand,
 } from '../views/shared/command-registry.js'
-import type { BraidIntent, BraidUiController } from '../views/shared/intents.js'
+import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
+import { recordInterfaceState } from './interface-state-recorder.js'
 import { runPlain } from './plain.js'
-import { productionConfigForSelection } from './production-application.js'
+import {
+  activateProductionConnection,
+  productionConfigForSelection,
+} from './production-application.js'
+import { ProductionConnectionActions } from './production-connection-actions.js'
+import { productionConfigPath } from './production-key-path.js'
 import {
   describeProductionSelection,
   type ProductionStartupSetup,
+  productionConnectionNeedsCredential,
   transitionProductionSelection,
 } from './production-setup.js'
+import { productionConnectionsForSelection } from './production-setup-persistence.js'
 import type { ProductionApplicationSlot } from './production-setup-transition.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
 
@@ -41,29 +46,43 @@ interface InterfaceRunnerInput {
   readonly openConfiguredApplication: (
     options: ProductionStartupLoadOptions,
     production: ProductionCompositionConfig,
-  ) => Promise<{ readonly app: BraidApplication; readonly close: () => Promise<void> }>
+  ) => Promise<import('./production-setup-transition.js').ProductionApplicationHandle>
 }
 
 type TerminalConfiguration = NonNullable<
   ConstructorParameters<typeof BraidTerminalApp>[0]['configuration']
 >
 
-async function recordState(
-  path: string,
-  controller: BraidUiController,
-  capturePhase: 'final' | 'atomic-signal-frame' = 'final',
-): Promise<void> {
-  const target = resolve(path)
-  const directory = dirname(target)
-  const payload = `${JSON.stringify({ schemaVersion: 2, capturePhase, state: controller.state(), view: controller.view(), events: controller.events() }, null, 2)}\n`
-  assertNoSymlinkPath(directory)
-  await mkdir(directory, { recursive: true, mode: 0o700 })
-  assertNoSymlinkPath(directory)
-  writePrivateFile(target, payload)
-}
-
 export async function runInterface(input: InterfaceRunnerInput): Promise<number> {
   const { options, workspace, active, setup, startupOptions } = input
+  const fallbackCatalog = new ConnectionRegistry(
+    setup?.connections ?? input.profileConnectionOptions?.connections ?? [],
+  )
+  const currentCatalog = (): ConnectionRegistry => active.current.connections ?? fallbackCatalog
+  const productionConnections =
+    startupOptions === undefined
+      ? undefined
+      : new ProductionConnectionActions({
+          currentApp: () => active.current.app,
+          currentCatalog,
+          configPath:
+            setup?.configPath ?? productionConfigPath(workspace, startupOptions.configPath),
+          startupOptions,
+          ...(input.profileConnectionOptions?.productionConnection === undefined
+            ? {}
+            : {
+                productionConnection: input.profileConnectionOptions.productionConnection,
+              }),
+        })
+  const profileConnectionOptions: ProfileConnectionDispatchOptions = {
+    ...(input.profileConnectionOptions ?? {}),
+    ...(productionConnections === undefined
+      ? {}
+      : {
+          connectionCatalog: () => currentCatalog().list(),
+          connectionActionsFor: () => productionConnections,
+        }),
+  }
   const controller = createApplicationUiController(
     active.current.app,
     {
@@ -75,7 +94,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
       reducedMotion: options.reducedMotion,
     },
     options.uiFixture,
-    input.profileConnectionOptions,
+    profileConnectionOptions,
   )
 
   let verification = setup?.verification
@@ -90,20 +109,29 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
             : { initialProfileId: setup.initialProfileId }),
           diagnostics: setup.diagnostics,
           openOnStart: true,
+          requiresCredential: (connection) =>
+            productionConnectionNeedsCredential(startupOptions, connection),
           confirmation: (selection) =>
             describeProductionSelection(selection, workspace, verification),
-          onCommit: async (selection) => {
+          onCommit: async (selection, credential) => {
             verification = await transitionProductionSelection({
               setup,
               startupOptions,
               selection,
               workspace,
+              ...(credential === undefined ? {} : { credential }),
               controller,
               active,
+              activate: (next, preparedSelection) =>
+                activateProductionConnection(
+                  next.app,
+                  preparedSelection.connection.id,
+                  productionConnectionsForSelection(preparedSelection, setup.connections),
+                ),
               openApplication: (selection, selectedOptions) =>
                 input.openConfiguredApplication(
                   selectedOptions,
-                  productionConfigForSelection(selection, selectedOptions),
+                  productionConfigForSelection(selection, selectedOptions, setup.connections),
                 ),
             })
           },
@@ -136,7 +164,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
 
   if (options.mode === 'rpc') {
     const exitCode = await runRpc(controller, process.stdin, process.stdout)
-    if (options.recordState) await recordState(options.recordState, controller)
+    if (options.recordState) await recordInterfaceState(options.recordState, controller)
     return exitCode
   }
 
@@ -144,7 +172,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     const exitCode = await runPlain(controller, workspace, process.stdin, process.stdout, {
       initialIntents: startupIntents(),
     })
-    if (options.recordState) await recordState(options.recordState, controller)
+    if (options.recordState) await recordInterfaceState(options.recordState, controller)
     return exitCode
   }
 
@@ -184,6 +212,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     workspace,
     nextOperationId,
     ...(configuration === undefined ? {} : { configuration }),
+    ...(productionConnections === undefined ? {} : { connectionLifecycle: productionConnections }),
     startupMessages,
   })
   let signalExitCode: number | undefined
@@ -199,7 +228,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
   const stopFromSignal = (exitCode: number) => {
     signalExitCode ??= exitCode
     if (process.env.BRAID_CAPTURE_STATE_BEFORE_CANCEL === '1' && options.recordState) {
-      signalSnapshot ??= recordState(`${options.recordState}.signal`, controller)
+      signalSnapshot ??= recordInterfaceState(`${options.recordState}.signal`, controller)
     }
     signalCleanup ??= (async () => {
       const cleanup = controller
@@ -226,7 +255,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
   }
   const onFrameSnapshot = () => {
     if (options.recordState)
-      frameSnapshot ??= recordState(
+      frameSnapshot ??= recordInterfaceState(
         `${options.recordState}.frame`,
         controller,
         'atomic-signal-frame',
@@ -252,6 +281,6 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     process.off('SIGUSR2', onFrameSnapshot)
     view.stop()
   }
-  if (options.recordState) await recordState(options.recordState, controller)
+  if (options.recordState) await recordInterfaceState(options.recordState, controller)
   return signalExitCode ?? 0
 }

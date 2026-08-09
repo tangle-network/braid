@@ -15,7 +15,7 @@ import {
   resolveProductionBackend,
 } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
-import { ConnectionRegistry } from '../src/app/connections.js'
+import { ConnectionRegistry, mergeConnectionTelemetry } from '../src/app/connections.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { credentialRef } from '../src/ports/credentials.js'
@@ -109,6 +109,23 @@ test('connection records stay secret-free and selection is exact', () => {
     (error: unknown) =>
       error instanceof ConnectionError && error.code === 'SECRET_IN_CONNECTION_RECORD',
   )
+})
+
+test('journal health can refresh only an unchanged saved connection target', () => {
+  const saved = connection('cli-bridge', 'telemetry', 'http://127.0.0.1:4010')
+  const observed: ConnectionRecord = {
+    ...saved,
+    name: 'Stale journal label',
+    updatedAt: '2026-08-03T13:00:00.000Z',
+    lastHealth: { status: 'healthy', checkedAt: '2026-08-03T13:00:00.000Z' },
+  }
+  const merged = mergeConnectionTelemetry(saved, observed)
+  assert.equal(merged.name, saved.name)
+  assert.deepEqual(merged.lastHealth, observed.lastHealth)
+  assert.equal(merged.updatedAt, saved.updatedAt)
+
+  const changedTarget = { ...observed, endpoint: 'http://127.0.0.1:4020' }
+  assert.equal(mergeConnectionTelemetry(saved, changedTarget), saved)
 })
 
 test('health checks are read-only and classify HTTP responses without storing secrets', async () => {
