@@ -1,4 +1,5 @@
 import type { InteractionResponse } from '@tangle-network/agent-interface'
+import { checkInteractionResponse } from '../../app/interaction-response.js'
 import type {
   BraidIntent,
   InteractionResponseValue,
@@ -102,6 +103,8 @@ export async function dispatchCoreIntent(
     }
     case 'respond-interaction':
       return dispatchInteractionResponse(intent, context)
+    case 'create-interaction-automation':
+      return dispatchInteractionAutomation(intent, context)
     case 'queue': {
       const receipt = context.app.queueInput({
         operationId: intent.operationId,
@@ -142,6 +145,65 @@ export async function dispatchCoreIntent(
   }
 }
 
+async function dispatchInteractionAutomation(
+  intent: Extract<BraidIntent, { readonly type: 'create-interaction-automation' }>,
+  context: UiDispatchContext,
+): Promise<UiDispatchResult> {
+  if (!context.app.canRespondToInteractions()) {
+    return {
+      kind: 'unavailable',
+      code: 'CAPABILITY_UNAVAILABLE',
+      reason: 'The current runtime cannot acknowledge interaction responses',
+    }
+  }
+  const run = context.app.state().runs.find((candidate) => candidate.id === intent.runId)
+  const interaction = run?.interactions.find(
+    (candidate) => candidate.request.id === intent.interactionId,
+  )
+  if (interaction === undefined) {
+    return {
+      kind: 'error',
+      code: 'UNKNOWN_INTERACTION',
+      message: 'The interaction is no longer available',
+      retryable: false,
+    }
+  }
+  const response = responseForIntent(interaction.request, intent.interactionId, intent.response)
+  if (response?.outcome !== 'accepted') {
+    return {
+      kind: 'unavailable',
+      code: 'CAPABILITY_UNAVAILABLE',
+      reason: 'Only accepted non-secret responses can become automation rules',
+    }
+  }
+  const checked = checkInteractionResponse(interaction.request, response)
+  if (checked.containsSecret || checked.publicData === undefined) {
+    return {
+      kind: 'unavailable',
+      code: 'CAPABILITY_UNAVAILABLE',
+      reason: 'Secret responses remain manual and are never stored in automation rules',
+    }
+  }
+  const receipt = await context.app.automation.create({
+    operationId: intent.operationId,
+    ruleId: intent.ruleId,
+    runId: intent.runId,
+    interactionId: intent.interactionId,
+    answer: checked.publicData,
+    responseScope: intent.responseScope,
+    confirmPersistent: intent.confirmPersistent,
+    creationSource: 'manual',
+  })
+  return {
+    kind: 'accepted',
+    operationId: receipt.operationId,
+    revision: receipt.revision,
+    replayed: receipt.replayed,
+    data: receipt.rule,
+    notice: `Automation rule ${receipt.ruleId} ${receipt.replayed ? 'replayed' : 'created'}`,
+  }
+}
+
 async function dispatchInteractionResponse(
   intent: Extract<BraidIntent, { readonly type: 'respond-interaction' }>,
   context: UiDispatchContext,
@@ -159,6 +221,14 @@ async function dispatchInteractionResponse(
       operationId: intent.operationId,
       revision: context.app.state().revision,
       completion: Promise.resolve(),
+    }
+  }
+
+  if (!context.app.canRespondToInteractions()) {
+    return {
+      kind: 'unavailable',
+      code: 'CAPABILITY_UNAVAILABLE',
+      reason: 'The current runtime cannot acknowledge interaction responses',
     }
   }
 

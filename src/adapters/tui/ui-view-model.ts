@@ -29,6 +29,7 @@ export function buildBraidViewModel(
   canCancel = true,
   storageFailure?: string,
   cleanupUncertain?: string,
+  canRespond = false,
 ): BraidViewModel {
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
@@ -119,7 +120,7 @@ export function buildBraidViewModel(
           }),
         }
       : {}),
-    capabilities: capabilityMap(state, canCancel),
+    capabilities: capabilityMap(state, canCancel, undefined, canRespond),
     draft: sanitizeTerminalText(state.draft),
     selectedSurface,
     appearance: Object.freeze({

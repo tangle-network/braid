@@ -1,5 +1,14 @@
 import type { InteractionRequest } from '@tangle-network/agent-interface'
-import type { IsoDateTime, JsonValue, MissingHistoryRange } from './entities-base.js'
+import type {
+  IsoDateTime,
+  JsonValue,
+  MissingHistoryRange,
+  NonSecretInteractionData,
+} from './entities-base.js'
+export type {
+  NonSecretInteractionData,
+  NonSecretInteractionValue,
+} from './entities-base.js'
 import type { TurnUsage } from './entities-core.js'
 import type {
   AnalysisId,
@@ -53,9 +62,6 @@ export type InteractionStatus =
   | 'expired'
   | 'unknown'
   | 'conflict'
-
-export type NonSecretInteractionValue = string | number | boolean | readonly string[]
-export type NonSecretInteractionData = Readonly<Record<string, NonSecretInteractionValue>>
 
 export interface InteractionResolutionRecord {
   readonly outcome: 'accepted' | 'declined' | 'cancelled'

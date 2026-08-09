@@ -65,7 +65,12 @@ const scopeFiles = {
     'effect-admission.test.js',
     'run-admission-architecture.test.js',
   ],
-  rpc: ['profile-connection-actions.test.js', 'rpc.test.js', 'w6-contract.test.js'],
+  rpc: [
+    'automation-interaction-commands.test.js',
+    'profile-connection-actions.test.js',
+    'rpc.test.js',
+    'w6-contract.test.js',
+  ],
   'virtual-terminal': [
     'configuration-product-flow.test.js',
     'keyboard.test.js',

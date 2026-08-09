@@ -27,6 +27,7 @@ export interface BraidApplicationOptions {
   readonly conversationId?: import('../domain/ids.js').ConversationId
   readonly branchId?: import('../domain/ids.js').BranchId
   readonly cancelTimeoutMs?: number
+  readonly interactionResponseTimeoutMs?: number
   readonly conversationStorage?: Pick<StoragePort, 'destroyConversation'>
   readonly intelligence?: IntelligenceActionsOptions
 }

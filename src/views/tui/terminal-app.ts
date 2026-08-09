@@ -128,6 +128,7 @@ export class BraidTerminalApp {
       dispatch: (intent) => this.#dispatch(intent),
       currentView: () => this.#controller.view(),
       isStopped: () => this.#stopped,
+      openAutomation: (input) => this.#overlays.openAutomation(input),
     })
     this.#input = new TerminalInputController({
       tui: this.#tui,

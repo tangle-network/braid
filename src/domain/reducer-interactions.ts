@@ -1,6 +1,7 @@
 import type { BraidEvent } from './events.js'
 import { reserveText } from './content-budget.js'
 import type { BraidInteraction, BraidState } from './state.js'
+import { createOperationId } from './ids.js'
 import {
   activity,
   addActivity,
@@ -76,7 +77,9 @@ export function reduceInteractionEvent(
         runs: updateRun(state, event.runId, (run) => ({
           ...withProviderProgress(run, event.provider),
           interactions: run.interactions.map((item) =>
-            item.request.id === event.interactionId ? { ...item, status: 'cancelled' } : item,
+            item.request.id === event.interactionId
+              ? withoutResponseOperation(item, 'cancelled')
+              : item,
           ),
         })),
       }
@@ -88,7 +91,19 @@ export function reduceInteractionEvent(
           ...run,
           interactions: run.interactions.map((item) =>
             item.request.id === event.interactionId
-              ? { ...item, status: 'responding' as const }
+              ? {
+                  ...item,
+                  status: 'responding' as const,
+                  responseOperation: {
+                    operationId: createOperationId(event.operationId),
+                    outcome: event.outcome,
+                    ...(event.dataDigest === undefined ? {} : { dataDigest: event.dataDigest }),
+                    containsSecret: event.containsSecret,
+                    ...(event.automationRule === undefined
+                      ? {}
+                      : { automationRule: event.automationRule }),
+                  },
+                }
               : item,
           ),
         })),
@@ -105,15 +120,14 @@ export function reduceInteractionEvent(
           ...run,
           interactions: run.interactions.map((item) =>
             item.request.id === event.interactionId
-              ? {
-                  ...item,
-                  status:
-                    event.outcome === 'accepted'
-                      ? ('resolved' as const)
-                      : event.outcome === 'unknown'
-                        ? ('unknown' as const)
-                        : event.outcome,
-                }
+              ? withoutResponseOperation(
+                  item,
+                  event.outcome === 'accepted'
+                    ? 'resolved'
+                    : event.outcome === 'unknown'
+                      ? 'unknown'
+                      : event.outcome,
+                )
               : item,
           ),
         })),
@@ -171,6 +185,14 @@ export function reduceInteractionEvent(
       return exhaustive
     }
   }
+}
+
+function withoutResponseOperation(
+  interaction: BraidInteraction,
+  status: BraidInteraction['status'],
+): BraidInteraction {
+  const { responseOperation: _responseOperation, ...rest } = interaction
+  return { ...rest, status }
 }
 
 function reduceFinishedEvent(

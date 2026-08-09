@@ -91,7 +91,8 @@ Errors use stable machine codes plus concise human text and never include secret
 | `set_run_override` | Set runner, model, effort, or mode for the next run |
 | `new_conversation` / `list_conversations` / `open_conversation` / `rename_conversation` / `archive_conversation` / `delete_conversation` | Drive conversation navigation and lifecycle |
 | `set_draft` / `send` / `queue` / `remove_queued` / `steer` | Drive input and active-run behavior |
-| `respond_interaction` | Submit a typed canonical response with stable operation identity |
+| `respond_interaction` / `cancel_interaction` | Submit or cancel a typed interaction response with stable operation identity |
+| `automation_list` / `automation_create` / `automation_update` / `automation_dry_run` / `automation_disable` / `automation_delete` | Inspect and manage scoped, audited interaction response rules |
 | `cancel_run` | Request and await explicit cancellation state events |
 | `branch` / `clone` / `plan_fork` / `execute_fork` | Drive conversation and workspace fork workflows |
 | `ask` / `analyze` / `compare` / `promote_analysis` | Drive `agent-eval` workflows |
@@ -102,7 +103,7 @@ Errors use stable machine codes plus concise human text and never include secret
 
 The published protocol schema marks every mutating command as operation-bearing and rejects it when `operationId` is absent.
 
-This includes profile and connection changes, conversation and branch changes, conversation import, send and queue changes, interaction response, cancellation, fork execution, analysis and promotion, worker control, export creation, and deletion.
+This includes profile and connection changes, conversation and branch changes, conversation import, send and queue changes, interaction response, interaction automation, cancellation, fork execution, analysis and promotion, worker control, export creation, and deletion.
 
 ### Protocol behavior
 

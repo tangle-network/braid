@@ -224,7 +224,7 @@ An unknown slash command is not sent to the agent and opens a correction list.
 | `/compare <left> <right>` | Create a paired comparison of two frozen run or branch sources |
 | `/approve [scope]` | Accept the focused pending interaction using an allowed scope |
 | `/reject [feedback]` | Decline the focused pending interaction with optional feedback when accepted by its schema |
-| `/automate` | Inspect, create, disable, or remove scoped interaction response rules |
+| `/automate <list|create|update|dry-run|disable|delete>` | Inspect and manage scoped interaction response rules |
 | `/queue <text>` | Add input to the active branch's admission queue |
 | `/steer <text>` | Deliver runtime steering to the active run when supported |
 | `/cancel` | Request explicit cancellation and wait for a confirmed terminal or honest unknown state |
@@ -322,6 +322,8 @@ Permission views show only response scopes allowed by the request, such as once,
 
 Persistent approval requires a second confirmation that names the exact subject pattern and storage scope.
 
+`Alt+A` turns the current non-secret answer into a scoped rule through a keyboard editor, while `/automate` opens the searchable rule manager without requiring JSON.
+
 Plan review offers accept, request revision with feedback, and reject only when those outcomes can be encoded by the shared interaction contract.
 
 Secret responses are masked, excluded from history and persistence, and passed directly to the provider response call.
@@ -331,6 +333,10 @@ An interaction with any secret answer field cannot create or match an automation
 Concurrent interactions enter a stable FIFO queue per arrival sequence and display the total waiting count.
 
 Session-scoped automation may resolve matching non-secret queued requests only after its exact rule is persisted and shown in the interaction audit.
+
+Automatic responses persist their operation and exact non-secret rule with the waiting interaction before provider dispatch, so restart does not depend on retained journal history.
+
+Provider response calls have a configurable acknowledgement deadline; expiry aborts the call, records an unknown outcome, and releases interaction, rule, and shutdown work.
 
 Timeout displays whether the provider applied a default, declined, cancelled, or remains unknown.
 

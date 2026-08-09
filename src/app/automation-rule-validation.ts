@@ -3,16 +3,16 @@ import { canonicalDigest } from '../domain/canonical.js'
 import type { AutomationRuleScope } from '../domain/entities-interactions.js'
 import type { AutomationRuleMatcher } from '../domain/entities-runtime.js'
 import { createOperationId, createRuleId, type Digest, type RuleId } from '../domain/ids.js'
-import { AppError } from './errors.js'
 import {
   automationRuleAnswerDigest,
   automationRuleScopeIsOffered,
   automationSubjectValue,
   type StoredAutomationRule,
 } from './automation-matching.js'
-import { checkInteractionResponse, interactionHasSecretField } from './interaction-response.js'
-import { parseInteractionRequest } from './interaction-request.js'
 import type { AutomationContext, CreateAutomationRuleInput } from './automation-rule-types.js'
+import { AppError } from './errors.js'
+import { parseInteractionRequest } from './interaction-request.js'
+import { checkInteractionResponse, interactionHasSecretField } from './interaction-response.js'
 
 export interface NormalizedAutomationRule {
   readonly operationId: string
@@ -185,14 +185,14 @@ function assertScopeContext(
     )
 }
 
-function assertExpiry(expiresAt: string | undefined, now: string): void {
+export function assertExpiry(expiresAt: string | undefined, now: string): void {
   if (expiresAt === undefined) return
   const expires = Date.parse(expiresAt)
   if (!Number.isFinite(expires) || expires <= Date.parse(now))
     throw new AppError('AUTOMATION_EXPIRY_INVALID', 'Automation expiry must be in the future')
 }
 
-function assertMaximumUses(maximumUses: number | undefined): void {
+export function assertMaximumUses(maximumUses: number | undefined): void {
   if (
     maximumUses !== undefined &&
     (!Number.isInteger(maximumUses) || maximumUses < 1 || maximumUses > 1_000_000)

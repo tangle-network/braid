@@ -32,6 +32,7 @@ export interface ApplicationPortRuntimeInput {
   readonly flush: () => Promise<void>
   readonly storageFailure: () => unknown
   readonly send: (input: SendInput) => SendReceipt
+  readonly afterRuntimeEvent?: import('./application-port-builder.js').PortBuilderInput['afterRuntimeEvent']
 }
 
 export function buildApplicationPortRuntime(input: ApplicationPortRuntimeInput): PortViews {
@@ -81,5 +82,8 @@ export function buildApplicationPortRuntime(input: ApplicationPortRuntimeInput):
         requestDigest,
       }),
     send: input.send,
+    ...(input.afterRuntimeEvent === undefined
+      ? {}
+      : { afterRuntimeEvent: input.afterRuntimeEvent }),
   })
 }

@@ -4,6 +4,10 @@ import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { type CommandName, commandItems } from '../shared/command-registry.js'
 import type { BraidUiController } from '../shared/intents.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import {
+  AutomationOverlayWorkflow,
+  type AutomationOverlayOpenOptions,
+} from './automation-overlay-workflow.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
 import { ConnectionSetupViewPanel } from './connection-setup.js'
 import { ConnectionOverlayWorkflow } from './connection-overlay-workflow.js'
@@ -40,6 +44,7 @@ export class TerminalOverlayController {
   readonly #conversations: ConversationOverlayController
   readonly #connectionWorkflow: ConnectionOverlayWorkflow | undefined
   readonly #surfaces: TerminalSurfaceOverlays
+  readonly #automation: AutomationOverlayWorkflow
 
   constructor(options: TerminalOverlayOptions) {
     this.#theme = options.theme
@@ -81,6 +86,14 @@ export class TerminalOverlayController {
         : { keymapDiagnostic: options.keymapDiagnostic }),
       openProfile: () => this.openProfile(),
       openConnection: () => this.openConnection(),
+    })
+    this.#automation = new AutomationOverlayWorkflow({
+      theme: this.#theme,
+      controller: this.#controller,
+      modals: this.#modals,
+      nextOperationId: this.#nextOperationId,
+      requestRender: this.#requestRender,
+      showError: (title, reason) => this.openUnavailable(title, reason),
     })
   }
 
@@ -171,6 +184,10 @@ export class TerminalOverlayController {
       onCancel: () => this.#modals.closeTop(),
     })
     this.#modals.open(palette, { anchor: 'center', width: '70%', minWidth: 32, maxHeight: 14 })
+  }
+
+  openAutomation(options: AutomationOverlayOpenOptions = {}): void {
+    this.#automation.open(options)
   }
 
   openCorrection(name: string, suggestions: readonly CommandName[]): void {

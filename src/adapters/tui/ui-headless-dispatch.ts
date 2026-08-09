@@ -8,6 +8,7 @@ import { queryActivity } from '../../views/shared/semantic-activity.js'
 import { queryDetails } from '../../views/shared/semantic-details.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
 import { SemanticQueryError } from '../../views/shared/semantic-query-scope.js'
+import { dispatchAutomationHeadlessCommand } from './ui-automation-dispatch.js'
 import { dispatchConversationHeadlessCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
@@ -70,6 +71,9 @@ export async function dispatchHeadlessCommand(
       data: queryDetails(state, { entityType, entityId }),
     }
   }
+
+  const automationResult = await dispatchAutomationHeadlessCommand(intent, context)
+  if (automationResult !== undefined) return automationResult
 
   const conversationResult = await dispatchConversationHeadlessCommand(intent, context)
   if (conversationResult !== undefined) return conversationResult
@@ -159,7 +163,7 @@ export async function dispatchHeadlessCommand(
           })
     return { kind: 'accepted', revision: state.revision }
   }
-  if (intent.command === 'respond_interaction') {
+  if (intent.command === 'respond_interaction' || intent.command === 'cancel_interaction') {
     const runId = intent.params.runId
     const interactionId = intent.params.interactionId
     if (typeof runId !== 'string' || typeof interactionId !== 'string') {
@@ -174,7 +178,10 @@ export async function dispatchHeadlessCommand(
       operationId: intent.operationId ?? '',
       runId,
       interactionId,
-      response: intent.params.response as InteractionResponse,
+      response:
+        intent.command === 'cancel_interaction'
+          ? { id: interactionId, outcome: 'cancelled' }
+          : (intent.params.response as InteractionResponse),
     })
     return projectInteractionReceipt(receipt, () => context.app.state().revision)
   }

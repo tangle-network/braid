@@ -486,6 +486,7 @@ const interaction: InteractionView = {
   subject: { type: 'file', title: 'secret.txt', preview: ['read-only preview'] },
   answerSpec: { kind: 'secret', required: true },
   allowedOutcomes: ['once', 'reject', 'cancel'],
+  responseScopes: ['once'],
   queuePosition: 0,
   secret: true,
 }

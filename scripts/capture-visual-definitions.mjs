@@ -54,6 +54,23 @@ export function createStateDefinitions(normalized) {
       },
     },
     {
+      name: 'automation',
+      columns: 80,
+      rows: 24,
+      run: async (terminal) => {
+        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
+        terminal.input('/automate')
+        terminal.input('\r')
+        await terminal.waitFor(
+          () => normalized(terminal.screen()).includes('automation rules'),
+          'automation rule manager',
+        )
+        const { point, record } = await terminal.captureState()
+        await terminal.closeNormally()
+        return { point, record }
+      },
+    },
+    {
       name: 'fork-preview',
       columns: 80,
       rows: 24,

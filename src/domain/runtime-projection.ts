@@ -1,4 +1,6 @@
 import type { InteractionBinding, InteractionRequest } from '@tangle-network/agent-interface'
+import type { AutomationRuleRecord } from './entities-runtime.js'
+import type { Digest, OperationId } from './ids.js'
 import type { RunAdmissionReceipt, RunCapabilities } from './run-contracts.js'
 import type { RuntimeEventSummary } from './runtime-events.js'
 
@@ -51,6 +53,13 @@ export interface BraidInteraction {
   readonly runId: string
   readonly source: MessagePartSource
   readonly status: 'pending' | 'responding' | 'declined' | 'cancelled' | 'resolved' | 'unknown'
+  readonly responseOperation?: {
+    readonly operationId: OperationId
+    readonly outcome: 'accepted' | 'declined' | 'cancelled'
+    readonly dataDigest?: Digest
+    readonly containsSecret: boolean
+    readonly automationRule?: AutomationRuleRecord
+  }
 }
 
 export interface BraidActivity {

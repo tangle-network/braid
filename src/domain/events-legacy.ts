@@ -2,6 +2,7 @@ import type { InteractionBinding, InteractionRequest } from '@tangle-network/age
 import type { AgentTaskStatus } from '@tangle-network/agent-runtime'
 import type { BraidMessagePart } from './state.js'
 import type { Digest } from './ids.js'
+import type { AutomationRuleRecord } from './entities-runtime.js'
 import type { RunAdmissionReceipt } from './receipts.js'
 import type { RuntimeEventEnvelope } from './runtime-events.js'
 import type { TurnUsage } from './entities.js'
@@ -144,6 +145,7 @@ export type LegacyBraidEvent =
       readonly outcome: 'accepted' | 'declined' | 'cancelled'
       readonly dataDigest?: Digest
       readonly containsSecret: boolean
+      readonly automationRule?: AutomationRuleRecord
     }
   | {
       readonly kind: 'run.interaction.responded'

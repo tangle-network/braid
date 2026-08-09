@@ -380,6 +380,8 @@ An interaction whose answer specification contains any `secret` field is ineligi
 
 `/automate` rejects that request with a stable error, and no rule, journal event, audit row, or export stores the secret answer value.
 
+The terminal's primary `/automate` path is a searchable rule manager with typed response and scope editors; JSON subcommands remain available for scripts and advanced use.
+
 A future design may automate a credential reference, but it must never persist or replay the resolved secret value.
 
 Matchers are structured fields rather than regular expressions over rendered text whenever the interaction subject exposes structure.
@@ -390,9 +392,23 @@ Persistent allow rules require explicit confirmation and are disabled when profi
 
 The queue evaluates rules in deterministic priority order and records matched, skipped, conflicted, expired, and applied outcomes.
 
+Braid evaluates a newly persisted interaction after durable ingestion, reevaluates pending interactions after rule creation or update, and resumes interrupted automatic responses after restart.
+
+Each automatic response uses an identifier derived from the interaction and the current rule definitions, while use counters are excluded so a reserved response can resume without consuming the rule twice.
+
+The response operation and exact reserved non-secret rule are part of materialized interaction state, so snapshot compaction cannot discard automatic-response ownership or change the answer on restart.
+
+Every provider response attempt has a bounded acknowledgement deadline and abort signal; a provider that does not settle becomes an explicit unknown result without blocking rule changes or application shutdown.
+
 Conflicting rules fail closed and require user response.
 
-`/automate` always supports list, inspect, disable, delete, and dry-run against pending interactions.
+`/automate list` returns complete sanitized rule records, so a separate inspect path cannot drift from the list view.
+
+`/automate create` and `/automate update` accept the same typed parameter object as the headless `automation_create` and `automation_update` commands.
+
+`/automate dry-run <run-id> <interaction-id>` evaluates a pending interaction without sending a response.
+
+`/automate disable <rule-id>` and `/automate delete <rule-id>` preserve their audited lifecycle through the same application actions used by headless clients.
 
 ## Graph and analysis acceptance
 

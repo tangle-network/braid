@@ -16,6 +16,7 @@ import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
+import { ApplicationInteractionActions } from './application-interaction-actions.js'
 import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 import type { PortViews } from './application-port-builder.js'
 import type {
@@ -33,6 +34,7 @@ import type {
   SendReceipt,
   ShutdownReceipt,
 } from './application-types.js'
+import type { AutomationActions } from './automation-actions.js'
 import { executeControlEffect } from './control-effects.js'
 import { createConversationActions } from './conversation-composition.js'
 import { ConversationOperationCoordinator } from './conversation-operation-coordinator.js'
@@ -43,7 +45,6 @@ import { projectEffectRecord } from './effect-projection.js'
 import { AppError } from './errors.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
 import { createIntelligenceActions, type IntelligenceActions } from './intelligence-actions.js'
-import { respondInteraction as respondInteractionController } from './interaction-controller.js'
 import { MemoryJournal } from './journal.js'
 import { legacyCancel } from './legacy-cancel.js'
 import {
@@ -57,7 +58,6 @@ import {
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { snapshotRunExecution } from './run-execution-snapshot.js'
-import { ingestRuntimeEvent } from './run-ingestion.js'
 import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
@@ -95,6 +95,7 @@ const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
+  readonly automation: AutomationActions
   readonly configuration: ConfigurationActionTransition
   readonly runtimeSelection: RuntimeSelection
   readonly #execution: ExecutionPort
@@ -105,6 +106,7 @@ export class BraidApplication {
   readonly #effects: SerializedEffectCoordinator
   readonly #ledger = createRunLedger()
   readonly #conversationOperations = new ConversationOperationCoordinator()
+  readonly #interactions: ApplicationInteractionActions
   readonly #subscribers = new Set<AppSubscriber>()
   readonly #controlOwner = `braid-control-${randomUUID()}`
   readonly #cancelTimeoutMs: number
@@ -116,6 +118,7 @@ export class BraidApplication {
   #storageFailure: unknown
   #cleanupUncertain: string | undefined
   #restartReconciliation: Promise<void> = Promise.resolve()
+  #automationReconciliation: Promise<void> = Promise.resolve()
   #state: BraidState
 
   constructor(options: BraidApplicationOptions) {
@@ -162,6 +165,26 @@ export class BraidApplication {
     this.#state = replayEvents(baseState, persisted)
     assertBraidState(this.#state)
     this.runtimeSelection.syncFromState(this.#state)
+    this.#interactions = new ApplicationInteractionActions({
+      state: () => this.#state,
+      events: () => this.#journal.all(),
+      commitAndWait: (event) => {
+        if (this.#asynchronousJournal) return this.#commitAndWait(event)
+        this.#commit(event)
+        return undefined
+      },
+      now: () => this.#clock.now(),
+      execution: this.#execution,
+      ledger: this.#ledger,
+      effects: this.#effects,
+      owner: this.#controlOwner,
+      ports: () => this.#portViews,
+      whenDurable: () => this.whenDurable(),
+      ...(options.interactionResponseTimeoutMs === undefined
+        ? {}
+        : { responseTimeoutMs: options.interactionResponseTimeoutMs }),
+    })
+    this.automation = this.#interactions.automation
     const runtime = wireApplicationRuntime({
       currentState: () => this.#state,
       setState: (state) => {
@@ -207,6 +230,8 @@ export class BraidApplication {
         }),
       fingerprint,
       send: (input) => this.send(input),
+      afterRuntimeEvent: (envelope, result) =>
+        this.#interactions.acceptRuntimeEvent(envelope, result),
     })
     this.#portViews = runtime.ports
     this.#transition = runtime.transition
@@ -249,6 +274,9 @@ export class BraidApplication {
         this.#storageFailure ??= error
         throw error
       })
+    this.#automationReconciliation = this.#restartReconciliation.then(() =>
+      this.#interactions.reconcile(),
+    )
     this.#durableSender = createDurableSender({
       currentState: () => this.#state,
       ids: this.#ids,
@@ -393,6 +421,10 @@ export class BraidApplication {
     return Boolean(run && !isTerminal(run.status) && run.capabilities.controls.cancel && abort)
   }
 
+  canRespondToInteractions(): boolean {
+    return this.#interactions.canRespond()
+  }
+
   async detachRun(input: {
     readonly operationId: string
     readonly runId?: string
@@ -406,21 +438,7 @@ export class BraidApplication {
     readonly interactionId: string
     readonly response: InteractionResponse
   }): Promise<InteractionReceipt> {
-    const opId = operationId(input.operationId, 'respond-interaction')
-    return respondInteractionController({
-      operationId: opId,
-      runId: input.runId,
-      interactionId: input.interactionId,
-      response: input.response,
-      state: this.#portViews.state,
-      events: () => this.events(),
-      commitAndWait: this.#portViews.journal.commitAndWait,
-      ledger: this.#ledger,
-      effects: this.#effects,
-      execution: this.#execution,
-      owner: this.#controlOwner,
-      whenDurable: () => this.whenDurable(),
-    })
+    return this.#interactions.respond(input)
   }
 
   async #executeControl(
@@ -477,6 +495,9 @@ export class BraidApplication {
     let failure: unknown
     try {
       await this.whenDurable()
+      await this.#automationReconciliation
+      await this.#interactions.whenIdle()
+      await this.whenDurable()
     } catch (error) {
       failure = error
     } finally {
@@ -486,7 +507,7 @@ export class BraidApplication {
   }
 
   ingestRuntimeEvent(envelope: RuntimeEventEnvelope): RuntimeEventIngestionResult {
-    return ingestRuntimeEvent(this.#portViews.ingestion, envelope) as RuntimeEventIngestionResult
+    return this.#portViews.ingestion.ingestRuntimeEvent(envelope) as RuntimeEventIngestionResult
   }
 
   admit(

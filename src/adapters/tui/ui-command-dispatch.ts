@@ -1,6 +1,7 @@
 import { commandAvailability, isMutatingCommand } from '../../views/shared/command-registry.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../../views/shared/models.js'
+import { dispatchAutomationCommand } from './ui-automation-command.js'
 import { dispatchConversationRunCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
@@ -22,6 +23,7 @@ export async function dispatchCommandIntent(
   if (intent.command === 'approve' || intent.command === 'reject') {
     return dispatchInteractionCommand(intent, context)
   }
+  if (intent.command === 'automate') return dispatchAutomationCommand(intent, context)
   if (intent.command === 'help') return { kind: 'accepted', revision: context.app.state().revision }
   if (intent.command === 'quit') {
     return dispatchCoreIntent({ type: 'shutdown', operationId: intent.operationId ?? '' }, context)

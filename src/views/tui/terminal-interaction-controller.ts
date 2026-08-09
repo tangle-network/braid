@@ -1,4 +1,4 @@
-import type { BraidIntent, UiDispatchResult } from '../shared/intents.js'
+import type { BraidIntent, InteractionResponseValue, UiDispatchResult } from '../shared/intents.js'
 import type { BraidViewModel, InteractionView } from '../shared/models.js'
 import { InteractionShell } from './interaction.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
@@ -11,6 +11,11 @@ export interface TerminalInteractionControllerOptions {
   readonly dispatch: (intent: BraidIntent) => Promise<UiDispatchResult>
   readonly currentView: () => BraidViewModel
   readonly isStopped: () => boolean
+  readonly openAutomation: (input: {
+    readonly interaction: InteractionView
+    readonly proposedResponse: InteractionResponseValue
+    readonly onClose: () => void
+  }) => void
 }
 
 /** Owns pending-interaction presentation and replay after a failed response. */
@@ -21,6 +26,7 @@ export class TerminalInteractionController {
   readonly #dispatch: TerminalInteractionControllerOptions['dispatch']
   readonly #currentView: () => BraidViewModel
   readonly #isStopped: () => boolean
+  readonly #openAutomation: TerminalInteractionControllerOptions['openAutomation']
   #open = false
   #interactionKey: string | undefined
   #pendingInteractionKey: string | undefined
@@ -32,6 +38,7 @@ export class TerminalInteractionController {
     this.#dispatch = options.dispatch
     this.#currentView = options.currentView
     this.#isStopped = options.isStopped
+    this.#openAutomation = options.openAutomation
   }
 
   get isOpen(): boolean {
@@ -61,28 +68,48 @@ export class TerminalInteractionController {
   #openInteraction(interaction: InteractionView): void {
     this.#open = true
     this.#interactionKey = keyFor(interaction)
-    const shell = new InteractionShell(interaction, this.#theme, (response) => {
-      this.#open = false
-      this.#pendingInteractionKey = this.#interactionKey
-      this.#interactionKey = undefined
-      this.#modals.closeTop()
-      const pendingKey = this.#pendingInteractionKey
-      void this.#dispatch({
-        type: 'respond-interaction',
-        operationId: this.#nextOperationId(),
-        runId: interaction.runId,
-        interactionId: interaction.interactionId,
-        response,
-      }).then((result) => {
-        if (this.#isStopped()) return
-        const current = this.#currentView().interactions[0]
-        if (result.kind !== 'accepted' && current && keyFor(current) === pendingKey) {
-          this.#pendingInteractionKey = undefined
-          this.#openInteraction(current)
-        }
-      })
-    })
+    const shell = new InteractionShell(
+      interaction,
+      this.#theme,
+      (response) => {
+        this.#open = false
+        this.#pendingInteractionKey = this.#interactionKey
+        this.#interactionKey = undefined
+        this.#modals.closeTop()
+        const pendingKey = this.#pendingInteractionKey
+        void this.#dispatch({
+          type: 'respond-interaction',
+          operationId: this.#nextOperationId(),
+          runId: interaction.runId,
+          interactionId: interaction.interactionId,
+          response,
+        }).then((result) => {
+          if (this.#isStopped()) return
+          const current = this.#currentView().interactions[0]
+          if (result.kind !== 'accepted' && current && keyFor(current) === pendingKey) {
+            this.#pendingInteractionKey = undefined
+            this.#openInteraction(current)
+          }
+        })
+      },
+      (proposedResponse) =>
+        this.#openAutomation({
+          interaction,
+          proposedResponse,
+          onClose: () => this.#resumeInteraction(interaction),
+        }),
+    )
     this.#modals.open(shell, { anchor: 'center', width: '90%', maxHeight: '90%' })
+  }
+
+  #resumeInteraction(previous: InteractionView): void {
+    if (this.#isStopped()) return
+    this.#open = false
+    this.#interactionKey = undefined
+    this.#pendingInteractionKey = undefined
+    const current = this.#currentView().interactions[0]
+    if (current !== undefined && keyFor(current) === keyFor(previous))
+      this.#openInteraction(current)
   }
 }
 

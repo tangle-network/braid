@@ -1,7 +1,8 @@
 import type { InteractionResponse } from '@tangle-network/agent-interface'
-import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import type { BraidEventEnvelope } from '../domain/events.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { FeedbackDecisionRecord } from '../domain/entities-graph.js'
+import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import { createFeedbackDecisionId } from '../domain/ids.js'
 import { effectRequestDigest } from './effect-coordinator.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
@@ -10,6 +11,13 @@ import {
   checkInteractionResponse,
   createInteractionResponseCommand,
 } from './interaction-response.js'
+import {
+  assertDurableResponseMatches,
+  assertRecordedInteractionMatchesInput,
+  assertRecordedResponseMatches,
+  recordedInteractionOperation,
+  recordedInteractionOwner,
+} from './interaction-response-replay.js'
 import type { InteractionReceipt } from './application-types.js'
 import type { JournalWriter, StateReader } from './application-ports.js'
 import type { RunLedger } from './run-ledger.js'
@@ -29,10 +37,11 @@ export interface InteractionControllerInput {
   readonly effects: SerializedEffectCoordinator
   readonly execution: ExecutionPort
   readonly owner: string
+  readonly responseTimeoutMs: number
   readonly whenDurable: () => Promise<void>
   readonly now?: () => string
   readonly providerSessionId?: string
-  readonly automated?: boolean
+  readonly automationRule?: AutomationRuleRecord
 }
 
 export async function respondInteraction(
@@ -104,10 +113,27 @@ export async function respondInteraction(
       completion,
     }
   }
-  const alreadyRequested = recorded.requested !== undefined
-  if (alreadyRequested)
+  if (input.execution.respondInteraction === undefined)
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'The current runtime cannot acknowledge interaction responses',
+    )
+  const durableRequest = interaction.responseOperation
+  if (durableRequest !== undefined && durableRequest.operationId === input.operationId)
+    assertDurableResponseMatches(durableRequest, checked, input.operationId)
+  const alreadyRequested =
+    recorded.requested !== undefined || durableRequest?.operationId === input.operationId
+  if (recorded.requested !== undefined)
     assertRecordedResponseMatches(recorded.requested, checked, input.operationId)
   assertInteractionIsOpen(input, run, interaction.status)
+  const owner =
+    durableRequest?.operationId ??
+    recordedInteractionOwner(input.events(), input.runId, input.interactionId)
+  if (owner !== undefined && owner !== input.operationId)
+    throw new AppError(
+      'INTERACTION_RESPONSE_IN_PROGRESS',
+      `Interaction ${input.interactionId} already has a response operation`,
+    )
   if (!alreadyRequested) {
     await input.commitAndWait({
       kind: 'run.interaction.response.requested',
@@ -117,6 +143,7 @@ export async function respondInteraction(
       outcome: checked.response.outcome,
       ...(checked.dataDigest === undefined ? {} : { dataDigest: checked.dataDigest }),
       containsSecret: checked.containsSecret,
+      ...(input.automationRule === undefined ? {} : { automationRule: input.automationRule }),
     })
   }
   const effectCompletion = executeInteractionEffect({
@@ -124,6 +151,7 @@ export async function respondInteraction(
     execution: input.execution,
     request,
     owner: input.owner,
+    timeoutMs: input.responseTimeoutMs,
     whenDurable: input.whenDurable,
   })
   const completion = effectCompletion.then(async (result) => {
@@ -210,78 +238,6 @@ export function isInteractionExpired(
   return Number.isFinite(start) && Number.isFinite(current) && current >= start + timeoutMs
 }
 
-function recordedInteractionOperation(
-  events: readonly BraidEventEnvelope[],
-  operationId: string,
-): {
-  readonly requested?: Extract<BraidEvent, { kind: 'run.interaction.response.requested' }>
-  readonly responded?: Extract<BraidEvent, { kind: 'run.interaction.responded' }>
-  readonly conflict?: string
-} {
-  let requested: Extract<BraidEvent, { kind: 'run.interaction.response.requested' }> | undefined
-  let responded: Extract<BraidEvent, { kind: 'run.interaction.responded' }> | undefined
-  for (const envelope of events) {
-    const event = envelope.event
-    if (
-      (event.kind !== 'run.interaction.response.requested' &&
-        event.kind !== 'run.interaction.responded') ||
-      event.operationId !== operationId
-    )
-      continue
-    if (event.kind === 'run.interaction.response.requested') {
-      if (
-        requested !== undefined &&
-        (requested.runId !== event.runId || requested.interactionId !== event.interactionId)
-      )
-        return { conflict: `Operation ${operationId} was used for two interactions` }
-      requested = event
-    } else {
-      if (
-        responded !== undefined &&
-        (responded.runId !== event.runId || responded.interactionId !== event.interactionId)
-      )
-        return { conflict: `Operation ${operationId} was used for two interactions` }
-      responded = event
-    }
-  }
-  return {
-    ...(requested === undefined ? {} : { requested }),
-    ...(responded === undefined ? {} : { responded }),
-  }
-}
-
-function assertRecordedResponseMatches(
-  event: Extract<
-    BraidEvent,
-    { kind: 'run.interaction.response.requested' | 'run.interaction.responded' }
-  >,
-  checked: ReturnType<typeof checkInteractionResponse>,
-  operationId: string,
-): void {
-  if (
-    event.outcome !== checked.response.outcome ||
-    (event.dataDigest ?? undefined) !== (checked.dataDigest ?? undefined)
-  ) {
-    throw new AppError('OPERATION_CONFLICT', `Operation ${operationId} has different input`)
-  }
-}
-
-function assertRecordedInteractionMatchesInput(
-  event: Extract<
-    BraidEvent,
-    { kind: 'run.interaction.response.requested' | 'run.interaction.responded' }
-  >,
-  runId: string,
-  interactionId: string,
-  operationId: string,
-): void {
-  if (event.runId !== runId || event.interactionId !== interactionId)
-    throw new AppError(
-      'OPERATION_CONFLICT',
-      `Operation ${operationId} was used for another interaction`,
-    )
-}
-
 function currentInteractionExpired(
   input: InteractionControllerInput,
   run: ReturnType<typeof findRun>,
@@ -304,7 +260,7 @@ function feedbackDecision(
     category: response.outcome === 'accepted' ? 'approval' : 'rejection',
     chosenOption: chosenOption(response),
     ...(dataDigest === undefined ? {} : { feedback: `answer-digest:${dataDigest}` }),
-    automated: input.automated === true,
+    automated: input.automationRule !== undefined,
     createdAt: input.now?.() ?? new Date().toISOString(),
   }
 }

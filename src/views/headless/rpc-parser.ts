@@ -16,7 +16,13 @@ import {
   MAX_PROTOCOL_LIST_ITEMS,
   MAX_RPC_LINE_BYTES,
 } from './protocol-limits.js'
+import {
+  AUTOMATION_PARAMETER_KEYS,
+  AUTOMATION_PARAMETER_TYPES,
+  AUTOMATION_REQUIRED_PARAMETERS,
+} from './rpc-automation-commands.js'
 import { RpcParseError } from './rpc-errors.js'
+import { validateInteractionParameters } from './rpc-interaction-commands.js'
 import type { RpcInput } from './rpc-types.js'
 
 export { RpcParseError } from './rpc-errors.js'
@@ -53,6 +59,8 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
   reconnect: ['runId'],
   reconcile: ['runId'],
   respond_interaction: ['runId', 'interactionId', 'response'],
+  cancel_interaction: ['runId', 'interactionId'],
+  ...AUTOMATION_PARAMETER_KEYS,
   cancel_run: ['runId', 'reason'],
   branch: ['conversationId', 'branchId', 'messageId', 'text'],
   clone: ['conversationId', 'branchId', 'title'],
@@ -122,6 +130,8 @@ const PARAMETER_TYPES: Readonly<
   reconnect: { runId: 'string' },
   reconcile: { runId: 'string' },
   respond_interaction: { runId: 'string', interactionId: 'string', response: 'record' },
+  cancel_interaction: { runId: 'string', interactionId: 'string' },
+  ...AUTOMATION_PARAMETER_TYPES,
   cancel_run: { runId: 'string', reason: 'string' },
   branch: { conversationId: 'string', branchId: 'string', messageId: 'string', text: 'string' },
   clone: { conversationId: 'string', branchId: 'string', title: 'string' },
@@ -188,6 +198,8 @@ const REQUIRED_PARAMETERS: Readonly<Partial<Record<HeadlessCommandName, readonly
   reconnect: ['runId'],
   reconcile: ['runId'],
   respond_interaction: ['runId', 'interactionId', 'response'],
+  cancel_interaction: ['runId', 'interactionId'],
+  ...AUTOMATION_REQUIRED_PARAMETERS,
   branch: ['conversationId', 'branchId', 'messageId'],
   clone: ['conversationId', 'branchId'],
   plan_fork: ['conversationId', 'branchId'],
@@ -438,6 +450,8 @@ export function parseRequest(line: string): BraidRequest {
         params: typeof params.mode === 'string' ? { mode: params.mode } : {},
       }
     default:
+      if (command === 'respond_interaction' || command === 'cancel_interaction')
+        validateInteractionParameters(command, params)
       return genericRequest(parsed, command, params)
   }
 }

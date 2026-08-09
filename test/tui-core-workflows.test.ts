@@ -186,6 +186,7 @@ const permission: InteractionView = {
   },
   answerSpec: { kind: 'boolean', required: true },
   allowedOutcomes: ['accept', 'reject', 'cancel'],
+  responseScopes: ['once', 'session'],
   queuePosition: 0,
   secret: false,
 }

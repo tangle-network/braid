@@ -47,6 +47,20 @@ export interface CreateAutomationRuleInput extends AutomationStoreInput {
   readonly creationSource?: AutomationRuleMetadata['creationSource']
 }
 
+export interface UpdateAutomationRuleInput extends AutomationStoreInput {
+  readonly operationId: string
+  readonly ruleId: string
+  readonly request?: InteractionRequest
+  readonly answer?: NonSecretInteractionData
+  readonly responseScope?: AutomationRuleScope
+  readonly matcher?: AutomationRuleMatcher
+  readonly context?: AutomationContext
+  readonly expiresAt?: string
+  readonly maximumUses?: number
+  readonly confirmPersistent?: boolean
+  readonly creationSource?: AutomationRuleMetadata['creationSource']
+}
+
 export interface AutomationRuleReceipt {
   readonly operationId: string
   readonly ruleId: RuleId
@@ -82,7 +96,7 @@ export interface ApplyAutomationInput extends AutomationStoreInput {
   readonly context: AutomationContext
   readonly respond: (
     response: InteractionResponse,
-    options: { readonly automated: true },
+    options: { readonly automated: true; readonly rule: StoredAutomationRule },
   ) => Promise<InteractionReceipt>
 }
 
@@ -94,10 +108,12 @@ export interface ApplyAutomationReceipt {
   readonly revision: number
 }
 
-export type { AutomationAuditRecord, AutomationRuleScope, NonSecretInteractionData }
 export type {
+  AutomationAuditRecord,
   AutomationEvaluation,
   AutomationEvaluationContext,
   AutomationRuleMetadata,
+  AutomationRuleScope,
+  NonSecretInteractionData,
   StoredAutomationRule,
 }

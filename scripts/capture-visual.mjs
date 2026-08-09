@@ -431,6 +431,11 @@ try {
         if (result.record.view?.interactions?.length !== 1)
           throw new Error('interaction capture did not contain an interaction fixture')
       }
+      if (
+        definition.name === 'automation' &&
+        !normalized(result.point.screen).includes('automation rules')
+      )
+        throw new Error('automation capture did not contain the rule manager')
       if (definition.name === 'fork-preview' && result.record.view?.forkPreview?.allowed !== true)
         throw new Error('fork capture did not contain an allowed fork preview')
       if (
@@ -527,6 +532,10 @@ try {
   const flowGif = join(outputRoot, '80x24-flow.gif')
   await writeFlowGif(join(stateRoot, 'empty.png'), join(outputRoot, '80x24.png'), flowGif)
   artifacts.push(await artifactFor(flowGif, 'flow', 80, 24))
+
+  const automationGif = join(outputRoot, '80x24-automation.gif')
+  await writeCastGif(join(rawRoot, 'automation-frame.cast'), automationGif)
+  artifacts.push(await artifactFor(automationGif, 'automation-flow', 80, 24, 'automation'))
 
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')

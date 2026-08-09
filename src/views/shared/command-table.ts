@@ -109,8 +109,21 @@ export const SHARED_COMMAND_TABLE = [
   {
     name: 'automate',
     requiresOperationId: true,
-    headlessCommands: [],
-    mutatingHeadlessCommands: [],
+    headlessCommands: [
+      'automation_list',
+      'automation_create',
+      'automation_update',
+      'automation_dry_run',
+      'automation_disable',
+      'automation_delete',
+    ],
+    mutatingHeadlessCommands: [
+      'automation_create',
+      'automation_update',
+      'automation_dry_run',
+      'automation_disable',
+      'automation_delete',
+    ],
   },
   {
     name: 'queue',

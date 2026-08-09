@@ -8,12 +8,15 @@ import {
 } from '@earendil-works/pi-tui'
 import type { InteractionResponseValue } from '../shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../shared/models.js'
-import { sanitizeDiff, sanitizeTerminalText } from '../shared/sanitize.js'
+import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { automationResponseFor } from './interaction-automation-response.js'
+import { interactionInputResponse } from './interaction-input-response.js'
 import {
   answerHelp,
   answerOutcome,
   consequence,
   interactionHeading,
+  interactionSubjectComponents,
   isPositiveOutcome,
   isSecretInteraction,
   MutableTruncatedLine,
@@ -30,6 +33,7 @@ export class InteractionShell extends Container implements Focusable {
   readonly #theme: BraidTheme
   readonly #interaction: InteractionView
   readonly #onRespond: (response: InteractionResponseValue) => void
+  readonly #onAutomate: ((response: InteractionResponseValue) => void) | undefined
   readonly #input: Input
   readonly #selector?: SearchableSelector
   readonly #validation = new Text('', 1, 0)
@@ -42,11 +46,13 @@ export class InteractionShell extends Container implements Focusable {
     interaction: InteractionView,
     theme: BraidTheme,
     onRespond: (response: InteractionResponseValue) => void,
+    onAutomate?: (response: InteractionResponseValue) => void,
   ) {
     super()
     this.#interaction = interaction
     this.#theme = theme
     this.#onRespond = onRespond
+    this.#onAutomate = onAutomate
     this.#input = isSecretInteraction(interaction) ? new SecretInput() : new Input()
     this.#selectedOutcome = answerOutcome(interaction)
     this.#input.onSubmit = (value) => this.#submitValue(value)
@@ -64,7 +70,8 @@ export class InteractionShell extends Container implements Focusable {
     )
     this.#consequence.setValue(this.#theme.muted(consequence(interaction, this.#selectedOutcome)))
     this.addChild(this.#consequence)
-    if (interaction.subject) this.#addSubject(interaction.subject, compactSelector)
+    for (const child of interactionSubjectComponents(interaction, theme, compactSelector))
+      this.addChild(child)
 
     if (interaction.answerSpec.kind === 'select') {
       const selector = new SearchableSelector({
@@ -95,6 +102,8 @@ export class InteractionShell extends Container implements Focusable {
         this.addChild(new OutcomeKeys(interaction.allowedOutcomes, theme))
       this.addChild(this.#line(this.#theme.muted('enter submit · esc cancel')))
     }
+    if (this.#onAutomate !== undefined && !isSecretInteraction(interaction))
+      this.addChild(this.#line(this.#theme.muted('alt+a automate this response')))
   }
 
   get focused(): boolean {
@@ -108,6 +117,19 @@ export class InteractionShell extends Container implements Focusable {
   }
 
   handleInput(data: string): void {
+    if (matchesKey(data, 'alt+a') && this.#onAutomate !== undefined) {
+      if (isSecretInteraction(this.#interaction)) {
+        this.#setValidation('Secret responses remain manual.')
+        return
+      }
+      const response = this.#automationResponse()
+      if (response === undefined) {
+        this.#setValidation('Choose an accepted response before automating it.')
+        return
+      }
+      this.#onAutomate(response)
+      return
+    }
     if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c')) {
       this.#respond({ outcome: 'cancel' })
       return
@@ -154,67 +176,14 @@ export class InteractionShell extends Container implements Focusable {
     this.#input.handleInput(data)
   }
 
-  #addSubject(subject: NonNullable<InteractionView['subject']>, compact: boolean): void {
-    if (isSecretInteraction(this.#interaction)) {
-      this.addChild(this.#line(this.#theme.muted('request: secret input · details hidden')))
-      return
-    }
-    const title = sanitizeTerminalText(subject.title)
-    const target = subject.target ? ` · ${sanitizeTerminalText(subject.target)}` : ''
-    this.addChild(this.#line(this.#theme.muted(`request: ${title}${target}`)))
-    if (compact) return
-    if (subject.detail) this.addChild(this.#line(`detail: ${sanitizeTerminalText(subject.detail)}`))
-    const preview = subject.preview ?? []
-    if (preview.length > 0) this.addChild(this.#line(sanitizeDiff(preview[0] ?? '')))
-  }
-
   #submitValue(value: string): void {
-    const spec = this.#interaction.answerSpec
-    const outcome = this.#selectedOutcome ?? answerOutcome(this.#interaction)
-    if (!outcome) {
-      this.#respond({ outcome: 'cancel' })
-      return
-    }
-    if (spec.kind === 'number') {
-      const number = Number(value)
-      if (
-        !Number.isFinite(number) ||
-        (spec.minimum !== undefined && number < spec.minimum) ||
-        (spec.maximum !== undefined && number > spec.maximum)
-      ) {
-        this.#setValidation('Enter a number in the allowed range.')
-        return
-      }
-      this.#respond({ outcome, value: number })
-      return
-    }
-    if (spec.kind === 'unknown') {
-      this.#respond({ outcome: 'cancel' })
-      return
-    }
-    if (spec.kind === 'form') {
-      try {
-        const parsed: unknown = JSON.parse(value)
-        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))
-          throw new Error()
-        this.#respond({
-          outcome,
-          data: parsed as Record<string, string | number | boolean | readonly string[]>,
-        })
-      } catch {
-        this.#setValidation('Enter a JSON object with the requested fields')
-      }
-      return
-    }
-    if (spec.required && value.length === 0) {
-      this.#setValidation('A response is required.')
-      return
-    }
-    if (spec.kind === 'boolean' && value !== 'true' && value !== 'false') {
-      this.#setValidation('Enter true or false, or use y/n.')
-      return
-    }
-    this.#respond({ outcome, value: spec.kind === 'boolean' ? value === 'true' : value })
+    const result = interactionInputResponse(
+      this.#interaction,
+      this.#selectedOutcome ?? answerOutcome(this.#interaction),
+      value,
+    )
+    if ('error' in result) this.#setValidation(result.error)
+    else this.#respond(result.response)
   }
 
   #setValidation(message: string): void {
@@ -232,6 +201,16 @@ export class InteractionShell extends Container implements Focusable {
     if (this.#responded) return
     this.#responded = true
     this.#onRespond(response)
+  }
+
+  #automationResponse(): InteractionResponseValue | undefined {
+    const selectedValue = this.#selector?.selectedItem()?.value
+    return automationResponseFor({
+      interaction: this.#interaction,
+      outcome: this.#selectedOutcome ?? answerOutcome(this.#interaction),
+      inputValue: this.#input.getValue(),
+      ...(selectedValue === undefined ? {} : { selectedValue }),
+    })
   }
 
   #line(value: string): TruncatedText {

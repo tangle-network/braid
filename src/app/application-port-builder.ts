@@ -13,8 +13,11 @@ import type {
   QueuePort,
   ReplayPort,
   RestartPort,
+  RuntimeIngestionAccess,
   StateReader,
   StatusPort,
+  RuntimeEventIngestionResult,
+  RuntimeEventEnvelopeLike,
 } from './application-ports.js'
 import type { SendInput, SendReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
@@ -29,7 +32,7 @@ export interface PortViews {
   readonly restart: RestartPort
   readonly queue: QueuePort
   readonly control: ControlPort
-  readonly ingestion: IngestionPort
+  readonly ingestion: IngestionPort & RuntimeIngestionAccess
   readonly replay: ReplayPort
   readonly status: StatusPort
   readonly executionRun: ExecutionRunPort
@@ -61,6 +64,10 @@ export interface PortBuilderInput {
     requestDigest: string,
   ) => Promise<unknown>
   readonly send: (input: SendInput) => SendReceipt
+  readonly afterRuntimeEvent?: (
+    envelope: RuntimeEventEnvelopeLike,
+    result: RuntimeEventIngestionResult,
+  ) => void
 }
 
 export function buildPortViews(input: PortBuilderInput): PortViews {
@@ -78,13 +85,33 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     executeControl: input.executeControl,
     currentEffect: (operationId) => input.effects.current(operationId),
   }
-  const ingestion: IngestionPort = { ...input.state, ...input.journal, ledger: input.ledger }
+  const ingestionContext: IngestionPort = {
+    ...input.state,
+    ...input.journal,
+    ledger: input.ledger,
+  }
+  const ingest = (
+    envelope: RuntimeEventEnvelopeLike,
+  ): RuntimeEventIngestionResult | Promise<RuntimeEventIngestionResult> => {
+    const result = ingestRuntimeEvent(ingestionContext, envelope)
+    if (isPromiseLike(result))
+      return result.then((settled) => {
+        input.afterRuntimeEvent?.(envelope, settled)
+        return settled
+      })
+    input.afterRuntimeEvent?.(envelope, result)
+    return result
+  }
+  const ingestion: IngestionPort & RuntimeIngestionAccess = {
+    ...ingestionContext,
+    ingestRuntimeEvent: ingest,
+  }
   const replay: ReplayPort = {
     ...input.state,
     ...input.journal,
     execution: input.execution,
     ledger: input.ledger,
-    ingestRuntimeEvent: (envelope) => ingestRuntimeEvent(ingestion, envelope),
+    ingestRuntimeEvent: ingestion.ingestRuntimeEvent,
   }
   const status: StatusPort = { ...input.state, ledger: input.ledger }
   const executionRun: ExecutionRunPort = {
@@ -95,7 +122,7 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     clock: input.clock,
     execution: input.execution,
     ledger: input.ledger,
-    ingestRuntimeEvent: (envelope) => ingestRuntimeEvent(ingestion, envelope),
+    ingestRuntimeEvent: ingestion.ingestRuntimeEvent,
     reconnectRun: (request) => reconnectRun(replay, request),
     send: input.send,
   }
@@ -125,4 +152,10 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     asyncAdmission: { ...admission, flush: input.flush },
     nativeContinuation: { ...input.state, execution: input.execution, send: input.send },
   }
+}
+
+function isPromiseLike(
+  value: RuntimeEventIngestionResult | Promise<RuntimeEventIngestionResult>,
+): value is Promise<RuntimeEventIngestionResult> {
+  return 'then' in value
 }
