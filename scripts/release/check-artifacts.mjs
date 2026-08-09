@@ -7,8 +7,9 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
-function artifactPrefix(checkId) {
-  return `check-${checkId.replaceAll(/[^A-Za-z0-9._-]/gu, '_')}-evidence-`
+function artifactPrefix(checkId, attempt) {
+  assert(Number.isInteger(attempt) && attempt > 0, 'Artifact attempt must be positive')
+  return `check-${checkId.replaceAll(/[^A-Za-z0-9._-]/gu, '_')}-attempt-${attempt}-evidence-`
 }
 
 function mediaType(path) {
@@ -67,12 +68,12 @@ async function filesUnder(artifactRoot, directory) {
   return files.sort()
 }
 
-export function restoredCheckArtifacts(checkId, artifacts) {
-  const prefix = artifactPrefix(checkId)
+export function restoredCheckArtifacts(check, artifacts) {
+  const prefix = artifactPrefix(check.id, check.attempt)
   return artifacts.filter(({ id }) => id.startsWith(prefix)).map(({ id }) => id)
 }
 
-export async function registerCheckArtifacts({ checkId, artifactRoot, store }) {
+export async function registerCheckArtifacts({ checkId, attempt, artifactRoot, store }) {
   const manifestPath =
     checkId === 'capture'
       ? 'w0/capture-manifest.json'
@@ -85,10 +86,11 @@ export async function registerCheckArtifacts({ checkId, artifactRoot, store }) {
     const registered = []
     for (const [index, path] of (await filesUnder(artifactRoot, directory)).entries())
       registered.push(
-        await store.register({
-          id: `${artifactPrefix(checkId)}${String(index + 1).padStart(5, '0')}`,
+        await store.snapshot({
+          idPrefix: `${artifactPrefix(checkId, attempt)}${String(index + 1).padStart(5, '0')}`,
           path,
           mediaType: mediaType(path),
+          extension: extname(path) || '.bin',
         }),
       )
     assert(registered.length > 0, `${checkId} produced no retained evidence files`)
@@ -115,10 +117,11 @@ export async function registerCheckArtifacts({ checkId, artifactRoot, store }) {
   for (const [index, entry] of entries.entries()) {
     assert(!seenPaths.has(entry.path), `${checkId} manifest repeats ${entry.path}`)
     seenPaths.add(entry.path)
-    const artifact = await store.register({
-      id: `${artifactPrefix(checkId)}${String(index + 1).padStart(3, '0')}`,
+    const artifact = await store.snapshot({
+      idPrefix: `${artifactPrefix(checkId, attempt)}${String(index + 1).padStart(3, '0')}`,
       path: entry.path,
       mediaType: entry.mediaType,
+      extension: extname(entry.path) || '.bin',
     })
     if (entry.sha256)
       assert(artifact.sha256 === entry.sha256, `${checkId} artifact changed: ${entry.path}`)

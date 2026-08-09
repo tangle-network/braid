@@ -796,14 +796,28 @@ test('a failed exact record retries every record and artifact from its shared co
       ],
     )
 
+    let resumedClockCalls = 0
+    await assert.rejects(
+      collectReleaseEvidence({
+        ...options,
+        now: () => {
+          resumedClockCalls += 1
+          if (resumedClockCalls === 3) throw new Error('interrupted shared-command retry')
+          return Date.now() + 60_000 + resumedClockCalls
+        },
+      }),
+      /interrupted shared-command retry/u,
+    )
+    assert.equal(calls, 2)
+
     const retried = await collectReleaseEvidence(options)
     assert.equal(retried.result, 'passed')
-    assert.equal(calls, 2)
+    assert.equal(calls, 3)
     assert.deepEqual(
       retried.envelope.checks.map(({ id, attempt, result }) => ({ id, attempt, result })),
       [
         { id: 'EVAL-01', attempt: 2, result: 'passed' },
-        { id: 'eval', attempt: 2, result: 'passed' },
+        { id: 'eval', attempt: 3, result: 'passed' },
       ],
     )
     const evidenceArtifacts = retried.envelope.artifacts.filter(({ id }) =>

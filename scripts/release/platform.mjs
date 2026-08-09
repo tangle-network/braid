@@ -27,7 +27,7 @@ export function pnpmInvocation(
   assertArguments(args)
   if (platform !== 'win32') return { file: 'pnpm', args: [...args] }
   const entry = environment.npm_execpath
-  if (typeof entry !== 'string' || !/(?:^|[\\/])pnpm(?:\.c?js)?$/iu.test(entry))
+  if (typeof entry !== 'string' || !/(?:^|[\\/])pnpm(?:\.[cm]?js)?$/iu.test(entry))
     throw new Error('Windows pnpm invocation requires the active pnpm JavaScript entry point')
   return { file: execPath, args: [entry, ...args] }
 }

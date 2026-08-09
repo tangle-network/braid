@@ -329,7 +329,7 @@ export async function validateCheckpoint(checkpoint, { artifactRoot, identity, p
   for (const check of checks.values()) {
     expectedArtifactIds.add(check.stdout.artifactId)
     expectedArtifactIds.add(check.stderr.artifactId)
-    for (const artifactId of restoredCheckArtifacts(check.id, checkpoint.envelope.artifacts))
+    for (const artifactId of restoredCheckArtifacts(check, checkpoint.envelope.artifacts))
       expectedArtifactIds.add(artifactId)
   }
   for (const id of artifacts.keys())
@@ -360,7 +360,7 @@ export async function validateCheckpoint(checkpoint, { artifactRoot, identity, p
           ? [
               check.stdout.artifactId,
               check.stderr.artifactId,
-              ...restoredCheckArtifacts(checkId, checkpoint.envelope.artifacts),
+              ...restoredCheckArtifacts(check, checkpoint.envelope.artifacts),
             ]
           : []
       }),

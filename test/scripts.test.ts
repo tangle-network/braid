@@ -268,11 +268,11 @@ test('release subprocesses and recorded paths are portable to Windows', () => {
     pnpmInvocation(['pack'], {
       platform: 'win32',
       execPath: 'C:\\node\\node.exe',
-      environment: { npm_execpath: 'C:\\pnpm\\pnpm.cjs' },
+      environment: { npm_execpath: 'C:\\pnpm\\pnpm.mjs' },
     }),
     {
       file: 'C:\\node\\node.exe',
-      args: ['C:\\pnpm\\pnpm.cjs', 'pack'],
+      args: ['C:\\pnpm\\pnpm.mjs', 'pack'],
     },
   )
   assert.throws(

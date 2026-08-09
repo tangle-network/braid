@@ -12,7 +12,7 @@ import {
   requirementsObject,
 } from './bindings.mjs'
 import { readBuildIdentity, readRequirementIds } from './build-identity.mjs'
-import { registerCheckArtifacts, restoredCheckArtifacts } from './check-artifacts.mjs'
+import { registerCheckArtifacts } from './check-artifacts.mjs'
 import { releaseChildEnvironment } from './child-environment.mjs'
 import { boundaryForCheck, buildCheckRecord, environmentRecord } from './collection-contract.mjs'
 import {
@@ -23,6 +23,11 @@ import {
   requirementIdsForPlan,
   validateCheckpoint,
 } from './collector-validation.mjs'
+import {
+  previousAttemptsFrom,
+  restorePassedChecks,
+  retryCommandsForEnvelope,
+} from './collector-resume.mjs'
 import {
   collectCredentialSecrets,
   collectRedactionSecrets,
@@ -60,8 +65,8 @@ function selectedChecks(checkIds, requirementIds) {
   return ids
 }
 
-function artifactId(checkId, attempt, stream) {
-  return `check-${checkId.replaceAll('/', '_')}-attempt-${attempt}-${stream}`
+function artifactId(checkId, attempt, stream, bytes) {
+  return `check-${checkId.replaceAll('/', '_')}-attempt-${attempt}-${sha256(bytes)}-${stream}`
 }
 
 function artifactMap(artifacts) {
@@ -140,47 +145,6 @@ async function preserveCollectionManifest(path, manifest) {
   }
   await writeJsonAtomic(path, manifest)
   return manifest
-}
-
-function restorePassedChecks({
-  envelope,
-  checks,
-  checkArtifacts,
-  artifacts,
-  environments,
-  previousAttempts,
-}) {
-  const sourceArtifacts = artifactMap(envelope.artifacts)
-  const sourceEnvironments = new Map(
-    envelope.environments.map((environment) => [environment.id, environment]),
-  )
-  const commandsToRetry = new Set(
-    envelope.checks.filter((check) => check.result !== 'passed').map((check) => check.command),
-  )
-  for (const check of envelope.checks) {
-    previousAttempts.set(check.id, Math.max(previousAttempts.get(check.id) ?? 0, check.attempt))
-    if (check.result !== 'passed' || commandsToRetry.has(check.command)) continue
-    const existing = checks.get(check.id)
-    if (existing) {
-      assert(
-        canonicalJson(existing) === canonicalJson(check),
-        `Restored passed check ${check.id} differs`,
-      )
-      continue
-    }
-    const generated = restoredCheckArtifacts(check.id, envelope.artifacts)
-    const artifactIds = [check.stdout.artifactId, check.stderr.artifactId, ...generated]
-    for (const id of artifactIds) {
-      const artifact = sourceArtifacts.get(id)
-      assert(artifact, `Restored passed check ${check.id} is missing artifact ${id}`)
-      artifacts.set(id, artifact)
-    }
-    const environment = sourceEnvironments.get(check.environment)
-    assert(environment, `Restored passed check ${check.id} is missing its environment`)
-    environments.set(environment.id, environment)
-    checks.set(check.id, check)
-    checkArtifacts.set(check.id, generated)
-  }
 }
 
 export async function collectReleaseEvidence({
@@ -269,7 +233,6 @@ export async function collectReleaseEvidence({
   const checks = new Map()
   const checkArtifacts = new Map()
   const environments = new Map()
-  const previousAttempts = new Map()
   const partial = await optionalJson(paths.partial)
   const finalInput = await optionalJson(paths.checks)
   let startedAt = timestamp(now())
@@ -279,16 +242,6 @@ export async function collectReleaseEvidence({
       artifactRoot: evidenceRoot,
       identity,
       plan,
-    })
-    startedAt = partial.envelope.startedAt
-    checkpointFinishedAt = partial.envelope.finishedAt
-    restorePassedChecks({
-      envelope: partial.envelope,
-      checks,
-      checkArtifacts,
-      artifacts,
-      environments,
-      previousAttempts,
     })
   }
   if (finalInput) {
@@ -303,14 +256,22 @@ export async function collectReleaseEvidence({
         partial.envelope.startedAt === finalInput.startedAt,
         'Partial and final release evidence start times differ',
       )
-    startedAt = finalInput.startedAt
+  }
+  const savedEnvelopes = [partial?.envelope, finalInput].filter(
+    (envelope) => envelope !== undefined,
+  )
+  const previousAttempts = previousAttemptsFrom(savedEnvelopes)
+  const resumeEnvelope = partial?.envelope ?? finalInput
+  if (resumeEnvelope) {
+    startedAt = resumeEnvelope.startedAt
+    checkpointFinishedAt = resumeEnvelope.finishedAt
     restorePassedChecks({
-      envelope: finalInput,
+      envelope: resumeEnvelope,
+      commandsToRetry: retryCommandsForEnvelope(resumeEnvelope, selected),
       checks,
       checkArtifacts,
       artifacts,
       environments,
-      previousAttempts,
     })
   }
   let executedCheck = false
@@ -384,12 +345,12 @@ export async function collectReleaseEvidence({
     })
     const outputBytes = record.__outputBytes
     const stdoutArtifact = await store.put({
-      id: artifactId(checkId, attempt, 'stdout'),
+      id: artifactId(checkId, attempt, 'stdout', outputBytes.stdout),
       bytes: outputBytes.stdout,
       mediaType: 'text/plain; charset=utf-8',
     })
     const stderrArtifact = await store.put({
-      id: artifactId(checkId, attempt, 'stderr'),
+      id: artifactId(checkId, attempt, 'stderr', outputBytes.stderr),
       bytes: outputBytes.stderr,
       mediaType: 'text/plain; charset=utf-8',
     })
@@ -401,6 +362,7 @@ export async function collectReleaseEvidence({
     checks.set(checkId, record)
     const generatedArtifacts = await registerCheckArtifacts({
       checkId,
+      attempt,
       artifactRoot: evidenceRoot,
       store,
     })
@@ -432,8 +394,8 @@ export async function collectReleaseEvidence({
     identity,
     startedAt,
     finishedAt:
-      !executedCheck && finalInput?.finishedAt
-        ? finalInput.finishedAt
+      !executedCheck && resumeEnvelope?.finishedAt
+        ? resumeEnvelope.finishedAt
         : (checkpointFinishedAt ?? timestamp(now())),
     checks,
     environments,
