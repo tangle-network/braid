@@ -67,10 +67,11 @@ async function runProcessMatrix() {
   try {
     const result = await runCommand(process.execPath, ['-e', script], {
       cwd: root,
-      timeoutMs: 250,
+      timeoutMs: 5_000,
       env: { PID_PATH: pidPath },
     })
-    descendantPid = Number(await readFile(pidPath, 'utf8'))
+    descendantPid = Number(await readFile(pidPath, 'utf8').catch(() => '0'))
+    assert.equal(Number.isInteger(descendantPid) && descendantPid > 0, true, JSON.stringify(result))
     assert.equal(result.timedOut, true)
     assert.equal(result.termination.forcedKill, true)
     assert.equal(
@@ -200,6 +201,7 @@ async function runProcessMatrix() {
       for (const pid of [
         descendantPid,
         Number(await readFile(join(root, 'natural-descendant.pid'), 'utf8').catch(() => '0')),
+        Number(await readFile(join(root, 'rpc-descendant.pid'), 'utf8').catch(() => '0')),
       ]) {
         if (!Number.isInteger(pid) || pid <= 0) continue
         await runCommand('taskkill', ['/PID', String(pid), '/T', '/F'], {
