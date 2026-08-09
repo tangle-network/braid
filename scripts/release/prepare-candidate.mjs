@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { pnpmInvocation } from './platform.mjs'
+
 function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
@@ -74,6 +76,8 @@ const existingProof = await stat(packageProofPath).catch(() => undefined)
 assert(Boolean(existingTarball) === Boolean(existingProof), 'Restored candidate is incomplete')
 
 if (!existingTarball) {
+  const build = pnpmInvocation(['run', 'build'])
+  await run(build.file, build.args, { cwd: repository })
   await run(
     process.execPath,
     [

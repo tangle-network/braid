@@ -34,4 +34,6 @@ jobs:
         run: pnpm check
 
       - name: Verify the installable package
-        run: pnpm test:package
+        env:
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-ci-release
+        run: pnpm release:prepare
