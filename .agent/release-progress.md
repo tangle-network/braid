@@ -17,7 +17,7 @@
 - Current registry state: `@tangle-network/braid` is unpublished.
 - Local npm state: `npm whoami` returned HTTP 401, so publication must use protected GitHub credentials or trusted publishing.
 - Checks planned: focused collector tests, full repository check, packed install, isolated release dry run, GitHub CI, registry download, and post-publication smoke.
-- Release implementation: one external candidate tarball, 64 signed check records for 154 requirements, pre-publication qualification without a final report, and final signing only after six platform smoke records are validated.
+- Release implementation: one external candidate tarball, 65 check records for 154 requirements, pre-publication qualification, and isolated candidate and final archive endorsements after validation.
 
 ## Remote State
 

@@ -2,8 +2,9 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { npmExecutable, portableEvidencePath } from './platform.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -78,7 +79,9 @@ try {
   if (registrySpec) {
     const packRoot = join(smokeRoot, 'registry')
     await mkdir(packRoot)
-    await run('npm', ['pack', registrySpec, '--pack-destination', packRoot], { cwd: smokeRoot })
+    await run(npmExecutable(), ['pack', registrySpec, '--pack-destination', packRoot], {
+      cwd: smokeRoot,
+    })
     const archives = (await readdir(packRoot)).filter((name) => name.endsWith('.tgz'))
     assert(archives.length === 1, 'Registry download did not produce exactly one tarball')
     tarballPath = join(packRoot, archives[0])
@@ -94,7 +97,7 @@ try {
     `${JSON.stringify({ name: 'braid-platform-smoke', private: true })}\n`,
   )
   await run(
-    'npm',
+    npmExecutable(),
     [
       'install',
       '--prefix',
@@ -161,7 +164,7 @@ try {
     tarball: basename(tarballPath),
     tarballSha256: proof.sha256,
     source: registrySpec ? 'registry' : 'candidate',
-    installationRoot: dirname(packageRoot).replace(smokeRoot, '<temporary>'),
+    installationRoot: `<temporary>/${portableEvidencePath(relative(smokeRoot, dirname(packageRoot)))}`,
     plainFlow: true,
     encryptedStorage: true,
   }

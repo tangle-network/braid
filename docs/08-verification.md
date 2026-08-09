@@ -445,15 +445,19 @@ The release process requires `BRAID_RELEASE_ARTIFACT_ROOT` to name a real direct
 
 Candidate creation writes one npm tarball, its complete package-file manifest, check streams, terminal captures, resumable collection state, and `release/checks.json` below that external directory.
 
-The collector executes 22 prerequisite commands and materializes 42 exact `UP-*`, `LIVE-*`, `PERF-*`, and `EVAL-*` records from their matching command outputs, for 64 signed check records covering all 154 requirement identifiers.
+The collector executes 25 distinct prerequisite commands and materializes 43 exact `UP-*`, `LIVE-*`, `PERF-*`, `EVAL-*`, and `VR-03` records from their matching command outputs, for 65 check records covering all 154 requirement identifiers.
 
 `verify:release` is the final assembler and never appears as one of its own prerequisite checks.
 
-Pre-publication validation checks the candidate without writing a final signed report.
+Pre-publication validation checks the candidate before the release key exists in any job that executes package code.
 
 After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64, macOS arm64, and Windows x64.
 
 The final process validates those six records, adds their immutable JSON artifacts to `VR-10`, then writes `<version>/manifest.json` and `<version>/report.md` below the external artifact directory.
+
+A separate job that checks out no source and executes no package code computes a complete file index and signs a fixed-format candidate or final endorsement with Ed25519.
+
+The endorsement binds phase, repository, exact commit, version, and the SHA-256 of the complete file index.
 
 Large recordings, raw traces, and live logs may live in immutable CI or release storage, while the manifest stores content hashes and authenticated links.
 
@@ -488,22 +492,17 @@ The manifest contains the following top-level data.
   "artifacts": [],
   "liveResources": [],
   "cleanup": [],
-  "signatures": [
-    {
-      "algorithm": "ed25519",
-      "keyId": "sha256:…",
-      "payloadSha256": "<sha256>",
-      "signature": "<base64>"
-    }
-  ]
+  "signatures": []
 }
 ```
 
 Each check records identifier, category, required status, command, working directory, environment identifier, start and end, exit code, attempt count, measured fields, result, stdout and stderr artifact hashes, and failure details.
 
-Each check also carries an Ed25519 receipt over every check field, including the exact command, build digest, exit code, and stdout and stderr digests.
+The complete archive, including every check field and output digest, is covered by the endorsement file index.
 
-The verifier accepts only the public key pinned in `release/execution-public-key.pem`; the private key is supplied through `BRAID_RELEASE_SIGNING_KEY_PATH`, must have owner-only permissions, and is never stored in the repository or evidence.
+The publication and tag jobs accept only the public key pinned in `release/endorsement-public-key.pem` and recompute the complete index before accepting its signature.
+
+The private key exists only inside isolated endorsement jobs, which download fixed evidence, execute OpenSSL, delete the key, and run no repository or package code.
 
 The verifier rejects check identifiers outside the fixed command list and the requirement identifiers extracted from these specification documents.
 
@@ -538,6 +537,7 @@ Implementation must provide the following stable scripts.
 | `repository` | `pnpm check` | Format, lint, strict types, boundaries, dependency/license metadata, deterministic checks, and the release manifest check |
 | `unit` | `pnpm test:unit` | Unit and normal property tests |
 | `contract` | `pnpm test:contract` | Shared port and capability conformance |
+| `upstream` | `pnpm test:upstream` | Tagged owning-repository `UP-01` through `UP-14` checks and retained artifact digests |
 | `coordination` | `pnpm test:coordination` | Durable effect admission, digest conflict, and dispatch serialization |
 | `rpc` | `pnpm test:rpc` | JSONL protocol tests |
 | `rpc-packed` | `pnpm test:rpc:packed` | Packed-binary JSONL protocol tests |
@@ -547,8 +547,10 @@ Implementation must provide the following stable scripts.
 | `crash` | `pnpm test:crash` | Production SQLite forced-kill recovery at every durable commit boundary |
 | `security` | `pnpm test:security` | Secret canaries, terminal attacks, paths, fuzzing, and static analysis |
 | `performance` | `pnpm test:performance` | Reducer, coordination, and storage overhead measurements; the full PERF-01..10 matrix lands in W12 |
+| `property-soak` | `pnpm test:property:soak` | Release-only 100,000-seed randomized product check with retained seed range and digest |
 | `live` | `pnpm test:live` | Aggregate protected live product flows |
 | `live-bridge` | `pnpm test:live:bridge` | Required CLI Bridge and runner matrix |
+| `live-bridge-release` | `pnpm test:live:bridge:release` | Strict `LIVE-01` through `LIVE-05` flow; narrower bridge smoke cannot satisfy it |
 | `live-tangle` | `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
 | `live-supervisor` | `pnpm test:live:supervisor` | Runtime worker observation and control |
 | `live-analysis` | `pnpm test:live:analysis` | Real frozen trace and analyst path |
@@ -558,7 +560,7 @@ Implementation must provide the following stable scripts.
 | `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
 | `independent-review` | `pnpm test:independent-review` | Verify a separately signed threat and ownership review for the exact candidate |
 | `release` | `pnpm check:release` | Release manifest and evidence-set check |
-| `verify:release` | `pnpm verify:release` | Validate publication proof and assemble every required result into one signed evidence manifest from an isolated clean tracked checkout |
+| `verify:release` | `pnpm verify:release` | Validate publication proof and assemble every required result before isolated archive endorsement |
 
 The deterministic local commands are implemented in this repository.
 

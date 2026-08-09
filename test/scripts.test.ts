@@ -32,6 +32,11 @@ const { applyPublicationProof, createPublicationProof, REQUIRED_RELEASE_TARGETS 
   publicationProofSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { validateIndependentReview } = await import('../scripts/release/independent-review.mjs')
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const { npmExecutable, portableEvidencePath } = await import('../scripts/release/platform.mjs')
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
+const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -94,6 +99,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'domain-reducer.test.js',
       'domain-text.test.js',
       'eval.test.js',
+      'property.test.js',
       'reducer.test.js',
       'sanitize.test.js',
       'scripts.test.js',
@@ -224,14 +230,123 @@ test('the release catalog exactly covers every stable verification command', asy
     assert.equal(typeof packageJson.scripts[script], 'string', `${id} exposes no ${script}`)
   }
   assert.equal(REQUIRED_CHECKS.has('verify:release'), false)
-  assert.equal(releaseCheckEntry('UP-01')?.command, 'pnpm test:contract')
-  assert.equal(releaseCheckEntry('UP-08')?.command, 'pnpm test:live:bridge')
+  assert.equal(releaseCheckEntry('UP-01')?.command, 'pnpm test:upstream')
+  assert.equal(releaseCheckEntry('UP-08')?.command, 'pnpm test:upstream')
   assert.equal(releaseCheckEntry('LIVE-06')?.command, 'pnpm test:live:tangle')
   assert.equal(releaseCheckEntry('PERF-10')?.command, 'pnpm test:performance')
   assert.equal(releaseCheckEntry('EVAL-06')?.command, 'pnpm test:eval')
-  const evidenceIds = requiredEvidenceCheckIds(['PR-01', 'UP-01', 'LIVE-06', 'PERF-10', 'EVAL-06'])
-  assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 3)
+  assert.equal(releaseCheckEntry('VR-03')?.command, 'pnpm test:property:soak')
+  const evidenceIds = requiredEvidenceCheckIds([
+    'PR-01',
+    'UP-01',
+    'LIVE-06',
+    'PERF-10',
+    'EVAL-06',
+    'VR-03',
+  ])
+  assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 5)
   assert.equal(evidenceIds.includes('verify:release'), false)
+})
+
+test('release subprocesses and recorded paths are portable to Windows', () => {
+  assert.equal(npmExecutable('linux'), 'npm')
+  assert.equal(npmExecutable('win32'), 'npm.cmd')
+  assert.equal(
+    portableEvidencePath('<temporary>\\install\\node_modules\\@tangle-network'),
+    '<temporary>/install/node_modules/@tangle-network',
+  )
+})
+
+test('upstream requirements require successful owning-repository checks', () => {
+  type Owner = { readonly package: string; readonly check: string }
+  type Artifact = {
+    readonly name: string
+    readonly digest: string
+    readonly expired: boolean
+    readonly archiveDownloadUrl: string
+  }
+  type Check = {
+    readonly name: string
+    readonly headSha: string
+    readonly status: string
+    readonly conclusion: string
+    readonly app: string
+    readonly detailsUrl: string
+    readonly completedAt: string
+    readonly artifacts: readonly Artifact[]
+  }
+  type PackageRecord = {
+    readonly package: string
+    readonly version: string
+    readonly repository: string
+    readonly tag: string
+    readonly gitCommit: string
+    checks: Check[]
+  }
+  const owners = UPSTREAM_REQUIREMENT_OWNERS as Readonly<Record<string, readonly Owner[]>>
+  const repositories: Readonly<Record<string, string>> = {
+    '@tangle-network/agent-interface': 'tangle-network/agent-sdk',
+    '@tangle-network/agent-runtime': 'tangle-network/agent-runtime',
+    '@tangle-network/agent-provider-cli-bridge': 'tangle-network/agent-sdk',
+    '@tangle-network/agent-provider-tangle': 'tangle-network/agent-sdk',
+  }
+  const commit = 'a'.repeat(40)
+  const packages = Object.fromEntries(
+    [
+      ...new Set(
+        Object.values(owners)
+          .flat()
+          .map((owner) => owner.package),
+      ),
+    ].map((name) => {
+      const repository = repositories[name] ?? assert.fail(`Missing repository for ${name}`)
+      const requirementIds = Object.entries(owners)
+        .filter(([, requirementOwners]) =>
+          requirementOwners.some((owner) => owner.package === name),
+        )
+        .map(([requirementId]) => requirementId)
+      return [
+        name,
+        {
+          package: name,
+          version: '1.2.3',
+          repository,
+          tag: `${name}@1.2.3`,
+          gitCommit: commit,
+          checks: requirementIds.map((requirementId, index) => ({
+            name: requirementId,
+            headSha: commit,
+            status: 'completed',
+            conclusion: 'success',
+            app: 'github-actions',
+            detailsUrl: `https://github.com/${repository}/actions/runs/${index + 1}/job/1`,
+            completedAt: `2026-08-09T00:00:${String(index).padStart(2, '0')}.000Z`,
+            artifacts: [
+              {
+                name: `upstream-attestation-${requirementId}`,
+                digest: `sha256:${'b'.repeat(64)}`,
+                expired: false,
+                archiveDownloadUrl: `${'https://api.github.com/repos'}/${repository}/actions/artifacts/${index + 1}/zip`,
+              },
+            ],
+          })),
+        },
+      ]
+    }),
+  ) as Record<string, PackageRecord>
+  const complete = evaluateUpstreamRequirementChecks(packages)
+  assert.equal(complete.failures.length, 0)
+  assert.deepEqual(
+    complete.measurements.map(({ name }: { readonly name: string }) => name),
+    Object.keys(owners),
+  )
+
+  const tanglePackage = packages['@tangle-network/agent-provider-tangle']
+  assert(tanglePackage)
+  tanglePackage.checks = tanglePackage.checks.filter(({ name }: Check) => name !== 'UP-09')
+  const missing = evaluateUpstreamRequirementChecks(packages)
+  assert(missing.failures.some((failure: string) => /UP-09.*UP-09/u.test(failure)))
+  assert.equal(missing.measurements.length, 0)
 })
 
 test('release signatures use locale-independent canonical key ordering', () => {
@@ -351,6 +466,30 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
     assert.match(output, /requires protected live-provider credentials/u)
     assert.doesNotMatch(output, /pass(?:ed)?|success/iu)
   }
+})
+
+test('release keys stay isolated and provider credentials are step-scoped', async () => {
+  const workflow = await readFile('.github/workflows/release.yml', 'utf8')
+  const candidate = workflow.slice(
+    workflow.indexOf('  candidate:'),
+    workflow.indexOf('  endorse-candidate:'),
+  )
+  assert.doesNotMatch(candidate, /BRAID_RELEASE_SIGNING_KEY/u)
+  assert.doesNotMatch(
+    candidate.slice(0, candidate.indexOf('      - name: Run the complete release checks')),
+    /BRAID_(?:CLI_BRIDGE|EVAL)_/u,
+  )
+  for (const [start, end] of [
+    ['  endorse-candidate:', '  platform-smoke:'],
+    ['  endorse-final:', '  tag-and-report:'],
+  ] as const) {
+    const job = workflow.slice(workflow.indexOf(start), workflow.indexOf(end))
+    assert.match(job, /BRAID_RELEASE_SIGNING_KEY_BASE64/u)
+    assert.doesNotMatch(job, /actions\/checkout|\b(?:node|npm|pnpm)\b|scripts\//u)
+  }
+  assert.equal(workflow.match(/BRAID_RELEASE_SIGNING_KEY_BASE64/gu)?.length, 2)
+  assert.equal(workflow.match(/^\s+BRAID_CLI_BRIDGE_BEARER:/gmu)?.length, 1)
+  assert.equal(workflow.match(/^\s+BRAID_EVAL_BEARER:/gmu)?.length, 1)
 })
 
 test('independent review approval is signed and bound to the exact candidate', () => {

@@ -11,6 +11,7 @@ import { analysisEvidence, SEMANTIC_RELEASE_FIXTURES } from '../src/eval/fixture
 import { baseCalibration, basePilot, packageProvenance } from '../src/eval/record-builder.js'
 import { cellCostEvidence, cellEvidence, type SemanticEvalRecord } from '../src/eval/records.js'
 import { semanticReleaseDecision } from '../src/eval/release-decision.js'
+import { semanticEvalMeasurements } from '../src/eval/release-markers.js'
 import type {
   RecordedJudgeCall,
   SemanticCaseEvidence,
@@ -287,6 +288,26 @@ test('semantic release requires every case, fixture, product path, and raw judge
     semanticReleaseDecision({ ...input, cases: unavailableProduct }).reasons.join('\n'),
     /did not use an available product presenter/u,
   )
+})
+
+test('semantic release measurements expose one exact row for every case', () => {
+  const cases = passingCases()
+  const record = {
+    status: 'passed',
+    releaseAdmissible: true,
+    cases,
+    rawJudgeCalls: successfulCalls(cases),
+    calibration: passingCalibration(),
+    pilot: passingPilot(),
+    receipts: [],
+    durationMs: 12,
+  } as unknown as SemanticEvalRecord
+  const measurements = semanticEvalMeasurements(record)
+  for (const caseId of SEMANTIC_EVAL_CASE_IDS) {
+    const exact = measurements.filter(({ name }) => name === caseId)
+    assert.equal(exact.length, 1, caseId)
+    assert.equal(exact[0]?.value, 3, caseId)
+  }
 })
 
 test('package provenance hashes arbitrary tarball bytes without text transcoding', async () => {

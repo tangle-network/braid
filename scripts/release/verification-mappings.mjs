@@ -1,6 +1,6 @@
 import {
   ADMISSIBLE_CATEGORIES,
-  EXACT_REQUIREMENT_CHECK_CATEGORIES,
+  exactRequirementCheckCategories,
 } from '../release-check-catalog.mjs'
 import { assert, assertExactKeys, strictIsoTimestamp } from '../release-evidence.mjs'
 
@@ -39,7 +39,7 @@ export function validateRequirementMappings({
       mapping.checks.some((id) => admissibleCategories.has(checks.get(id).category)),
       `${requirement} is linked only to inadmissible check categories`,
     )
-    const exactCategories = EXACT_REQUIREMENT_CHECK_CATEGORIES.get(prefix)
+    const exactCategories = exactRequirementCheckCategories(requirement)
     if (exactCategories) {
       const exactCheck = checks.get(requirement)
       assert(exactCheck, `Requirement ${requirement} requires its own check record`)

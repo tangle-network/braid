@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { RELEASE_COMMANDS } from './release-check-catalog.mjs'
+import { publicKeyId } from './release-evidence.mjs'
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 const composition = await readFile(new URL('../src/app/composition.ts', import.meta.url), 'utf8')
@@ -36,10 +37,21 @@ const requiredFiles = [
   'docs/decisions/004-application-effect-coordination.md',
   'docs/decisions/005-encrypted-sqlite-and-credential-boundaries.md',
   'release/review-execution-public-key.pem',
+  'release/endorsement-public-key.pem',
+  'release/endorsement-public-key.fingerprint',
 ]
 for (const path of requiredFiles) {
   await readFile(new URL(`../${path}`, import.meta.url))
 }
+const endorsementKey = await readFile(
+  new URL('../release/endorsement-public-key.pem', import.meta.url),
+  'utf8',
+)
+const endorsementFingerprint = (
+  await readFile(new URL('../release/endorsement-public-key.fingerprint', import.meta.url), 'utf8')
+).trim()
+if (publicKeyId(endorsementKey) !== endorsementFingerprint)
+  throw new Error('Release endorsement public-key fingerprint differs')
 
 process.stdout.write(
   `Release contract: ${requiredScripts.length} stable scripts, ${requiredFiles.length} required source artifacts, live checks explicitly external\n`,

@@ -14,14 +14,14 @@ const [attestation, packageProof, reviewKey, releaseKey] = await Promise.all([
   readFile(join(repository, 'release', 'review-execution-public-key.pem'), 'utf8').then(
     createPublicKey,
   ),
-  readFile(join(repository, 'release', 'execution-public-key.pem'), 'utf8').then(createPublicKey),
+  readFile(join(repository, 'release', 'endorsement-public-key.pem'), 'utf8').then(createPublicKey),
 ])
 if (
   reviewKey
     .export({ type: 'spki', format: 'der' })
     .equals(releaseKey.export({ type: 'spki', format: 'der' }))
 )
-  throw new Error('Independent review key must differ from the release execution key')
+  throw new Error('Independent review key must differ from the release endorsement key')
 validateIndependentReview(attestation, { packageProof, publicKey: reviewKey })
 process.stdout.write(
   `Independent review approved ${packageProof.gitCommit} / ${packageProof.sha256}.\n`,

@@ -312,46 +312,46 @@
     "checks": ["coordination"]
   },
   "UP-01": {
-    "checks": ["contract"]
+    "checks": ["UP-01"]
   },
   "UP-02": {
-    "checks": ["contract"]
+    "checks": ["UP-02"]
   },
   "UP-03": {
-    "checks": ["contract"]
+    "checks": ["UP-03"]
   },
   "UP-04": {
-    "checks": ["contract"]
+    "checks": ["UP-04"]
   },
   "UP-05": {
-    "checks": ["contract"]
+    "checks": ["UP-05"]
   },
   "UP-06": {
-    "checks": ["contract"]
+    "checks": ["UP-06"]
   },
   "UP-07": {
-    "checks": ["contract"]
+    "checks": ["UP-07"]
   },
   "UP-08": {
-    "checks": ["live-bridge"]
+    "checks": ["UP-08"]
   },
   "UP-09": {
-    "checks": ["live-tangle"]
+    "checks": ["UP-09"]
   },
   "UP-10": {
-    "checks": ["contract"]
+    "checks": ["UP-10"]
   },
   "UP-11": {
-    "checks": ["contract"]
+    "checks": ["UP-11"]
   },
   "UP-12": {
-    "checks": ["contract"]
+    "checks": ["UP-12"]
   },
   "UP-13": {
-    "checks": ["contract"]
+    "checks": ["UP-13"]
   },
   "UP-14": {
-    "checks": ["live-tangle"]
+    "checks": ["UP-14"]
   },
   "US-01": {
     "checks": ["repository"]
@@ -420,7 +420,7 @@
     "checks": ["pty"]
   },
   "VR-03": {
-    "checks": ["repository"]
+    "checks": ["VR-03"]
   },
   "VR-04": {
     "checks": [

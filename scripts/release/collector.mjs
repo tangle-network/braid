@@ -1,13 +1,8 @@
-import { createHash, createPrivateKey, createPublicKey } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { join, relative, resolve } from 'node:path'
 
 import { releaseCheckEntry, requiredEvidenceCheckIds } from '../release-check-catalog.mjs'
-import {
-  canonicalJson,
-  signCheck,
-  signManifest,
-  verifyManifestSignature,
-} from '../release-evidence.mjs'
+import { canonicalJson } from '../release-evidence.mjs'
 import { readRegularFileNoFollow } from '../release-files.mjs'
 import { createArtifactStore } from './artifact-store.mjs'
 import { cleanTemporaryFiles, readJson, writeJsonAtomic } from './atomic-storage.mjs'
@@ -18,6 +13,7 @@ import {
 } from './bindings.mjs'
 import { readBuildIdentity, readRequirementIds } from './build-identity.mjs'
 import { registerCheckArtifacts, restoredCheckArtifacts } from './check-artifacts.mjs'
+import { releaseChildEnvironment } from './child-environment.mjs'
 import { boundaryForCheck, buildCheckRecord, environmentRecord } from './collection-contract.mjs'
 import {
   CHECKPOINT_SCHEMA,
@@ -28,6 +24,7 @@ import {
   validateCheckpoint,
 } from './collector-validation.mjs'
 import {
+  collectCredentialSecrets,
   collectRedactionSecrets,
   executeCatalogCheck,
   sanitizeArgv,
@@ -44,23 +41,6 @@ function timestamp(milliseconds) {
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
-}
-
-function keyPair(signingKey, publicKey) {
-  const privateObject = signingKey?.type === 'private' ? signingKey : createPrivateKey(signingKey)
-  assert(privateObject.asymmetricKeyType === 'ed25519', 'Release signing key must be Ed25519')
-  const publicObject = publicKey
-    ? publicKey?.type === 'public'
-      ? publicKey
-      : createPublicKey(publicKey)
-    : createPublicKey(privateObject)
-  assert(publicObject.asymmetricKeyType === 'ed25519', 'Release public key must be Ed25519')
-  assert(
-    canonicalJson(publicObject.export({ format: 'jwk' })) ===
-      canonicalJson(createPublicKey(privateObject).export({ format: 'jwk' })),
-    'Release public key does not match signing key',
-  )
-  return { privateObject, publicObject }
 }
 
 async function optionalJson(path) {
@@ -147,18 +127,57 @@ async function writeCheckpoint(path, value, options = {}) {
   await writeJsonAtomic(path, value, options)
 }
 
-async function preserveSignedManifest(path, manifest, publicKey) {
+async function preserveCollectionManifest(path, manifest) {
   const existing = await optionalJson(path)
   if (existing) {
-    verifyManifestSignature(existing, publicKey)
-    assert(
-      canonicalJson(existing) === canonicalJson(manifest),
-      'Existing collection manifest differs',
-    )
-    return existing
+    if (existing.result === 'passed') {
+      assert(
+        canonicalJson(existing) === canonicalJson(manifest),
+        'Existing passed collection manifest differs',
+      )
+      return existing
+    }
   }
   await writeJsonAtomic(path, manifest)
   return manifest
+}
+
+function restorePassedChecks({
+  envelope,
+  checks,
+  checkArtifacts,
+  artifacts,
+  environments,
+  previousAttempts,
+}) {
+  const sourceArtifacts = artifactMap(envelope.artifacts)
+  const sourceEnvironments = new Map(
+    envelope.environments.map((environment) => [environment.id, environment]),
+  )
+  for (const check of envelope.checks) {
+    previousAttempts.set(check.id, Math.max(previousAttempts.get(check.id) ?? 0, check.attempt))
+    if (check.result !== 'passed') continue
+    const existing = checks.get(check.id)
+    if (existing) {
+      assert(
+        canonicalJson(existing) === canonicalJson(check),
+        `Restored passed check ${check.id} differs`,
+      )
+      continue
+    }
+    const generated = restoredCheckArtifacts(check.id, envelope.artifacts)
+    const artifactIds = [check.stdout.artifactId, check.stderr.artifactId, ...generated]
+    for (const id of artifactIds) {
+      const artifact = sourceArtifacts.get(id)
+      assert(artifact, `Restored passed check ${check.id} is missing artifact ${id}`)
+      artifacts.set(id, artifact)
+    }
+    const environment = sourceEnvironments.get(check.environment)
+    assert(environment, `Restored passed check ${check.id} is missing its environment`)
+    environments.set(environment.id, environment)
+    checks.set(check.id, check)
+    checkArtifacts.set(check.id, generated)
+  }
 }
 
 export async function collectReleaseEvidence({
@@ -168,8 +187,6 @@ export async function collectReleaseEvidence({
   packageProofPath,
   packageProof,
   requirementBindings,
-  signingKey,
-  publicKey,
   checkIds,
   environment = process.env,
   redactionSecrets = [],
@@ -193,7 +210,6 @@ export async function collectReleaseEvidence({
     'Packed tarball path is required',
   )
   assert(requirementBindings, 'Requirement check bindings are required')
-  const keys = keyPair(signingKey, publicKey)
   const identity = await readBuildIdentity({
     repository: root,
     artifactRoot: evidenceRoot,
@@ -220,7 +236,6 @@ export async function collectReleaseEvidence({
   const plan = checkpointPlan({
     checkIds: selected,
     requirementBindings: checkBindings,
-    publicKey: keys.publicObject,
   })
   const outputRoot = join(evidenceRoot, 'release')
   const paths = {
@@ -251,6 +266,7 @@ export async function collectReleaseEvidence({
   const checks = new Map()
   const checkArtifacts = new Map()
   const environments = new Map()
+  const previousAttempts = new Map()
   const partial = await optionalJson(paths.partial)
   const finalInput = await optionalJson(paths.checks)
   let startedAt = timestamp(now())
@@ -260,16 +276,17 @@ export async function collectReleaseEvidence({
       artifactRoot: evidenceRoot,
       identity,
       plan,
-      publicKey: keys.publicObject,
     })
     startedAt = partial.envelope.startedAt
     checkpointFinishedAt = partial.envelope.finishedAt
-    for (const artifact of partial.envelope.artifacts) artifacts.set(artifact.id, artifact)
-    for (const check of partial.envelope.checks) checks.set(check.id, check)
-    for (const check of partial.envelope.checks)
-      checkArtifacts.set(check.id, restoredCheckArtifacts(check.id, partial.envelope.artifacts))
-    for (const environmentRecordValue of partial.envelope.environments)
-      environments.set(environmentRecordValue.id, environmentRecordValue)
+    restorePassedChecks({
+      envelope: partial.envelope,
+      checks,
+      checkArtifacts,
+      artifacts,
+      environments,
+      previousAttempts,
+    })
   }
   if (finalInput) {
     const finalCheckpoint = checkpoint({ identity, plan, envelope: finalInput })
@@ -277,18 +294,23 @@ export async function collectReleaseEvidence({
       artifactRoot: evidenceRoot,
       identity,
       plan,
-      publicKey: keys.publicObject,
     })
-    if (partial && canonicalJson(partial.envelope) !== canonicalJson(finalInput))
-      throw new Error('Partial and final release evidence differ')
+    if (partial)
+      assert(
+        partial.envelope.startedAt === finalInput.startedAt,
+        'Partial and final release evidence start times differ',
+      )
     startedAt = finalInput.startedAt
-    for (const artifact of finalInput.artifacts) artifacts.set(artifact.id, artifact)
-    for (const check of finalInput.checks) checks.set(check.id, check)
-    for (const check of finalInput.checks)
-      checkArtifacts.set(check.id, restoredCheckArtifacts(check.id, finalInput.artifacts))
-    for (const environmentRecordValue of finalInput.environments)
-      environments.set(environmentRecordValue.id, environmentRecordValue)
+    restorePassedChecks({
+      envelope: finalInput,
+      checks,
+      checkArtifacts,
+      artifacts,
+      environments,
+      previousAttempts,
+    })
   }
+  let executedCheck = false
   const executions = new Map()
   const checkEnvironment = {
     ...environment,
@@ -305,12 +327,14 @@ export async function collectReleaseEvidence({
     if (checks.has(checkId)) continue
     const entry = releaseCheckEntry(checkId)
     const requirementIds = requirementIdsForPlan(plan, checkId)
+    const commandEnvironment = releaseChildEnvironment(checkEnvironment, entry.command)
     let result = executions.get(entry.command)
     if (!result) {
+      executedCheck = true
       result = await runCheck({
         checkId,
         cwd: root,
-        environment: checkEnvironment,
+        environment: commandEnvironment,
         timeoutMs,
         maxLogBytes,
         redactionSecrets,
@@ -322,10 +346,10 @@ export async function collectReleaseEvidence({
       result.command === entry.command && result.category === entry.category,
       `Runner drifted from catalog for ${checkId}`,
     )
-    const secrets = collectRedactionSecrets(checkEnvironment, redactionSecrets)
+    const secrets = collectRedactionSecrets(commandEnvironment, redactionSecrets)
     const sanitizedArgv = result.sanitizedArgv ?? sanitizeArgv(result.argv, secrets)
     const sanitizedEnvironment =
-      result.sanitizedEnvironment ?? sanitizeEnvironment(checkEnvironment)
+      result.sanitizedEnvironment ?? sanitizeEnvironment(commandEnvironment)
     const boundary = boundaryForCheck({
       cwd: root,
       processResult: result,
@@ -339,7 +363,8 @@ export async function collectReleaseEvidence({
       boundary,
     })
     environments.set(environmentValue.id, environmentValue)
-    const attempt = 1
+    const attempt = (previousAttempts.get(checkId) ?? 0) + 1
+    previousAttempts.set(checkId, attempt)
     const record = buildCheckRecord({
       checkId,
       category: result.category,
@@ -352,6 +377,7 @@ export async function collectReleaseEvidence({
       sanitizedArgv,
       sanitizedEnvironment,
       environmentId: environmentValue.id,
+      structuredRedactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
     })
     const outputBytes = record.__outputBytes
     const stdoutArtifact = await store.put({
@@ -369,7 +395,7 @@ export async function collectReleaseEvidence({
     record.stdout = { artifactId: stdoutArtifact.id, sha256: stdoutArtifact.sha256 }
     record.stderr = { artifactId: stderrArtifact.id, sha256: stderrArtifact.sha256 }
     delete record.__outputBytes
-    checks.set(checkId, signCheck(record, keys.privateObject))
+    checks.set(checkId, record)
     const generatedArtifacts = await registerCheckArtifacts({
       checkId,
       artifactRoot: evidenceRoot,
@@ -395,7 +421,6 @@ export async function collectReleaseEvidence({
       artifactRoot: evidenceRoot,
       identity,
       plan,
-      publicKey: keys.publicObject,
     })
     await writeCheckpoint(paths.partial, value, writeOptions)
     checkpointFinishedAt = envelope.finishedAt
@@ -403,7 +428,10 @@ export async function collectReleaseEvidence({
   const envelope = stateEnvelope({
     identity,
     startedAt,
-    finishedAt: finalInput?.finishedAt ?? checkpointFinishedAt ?? timestamp(now()),
+    finishedAt:
+      !executedCheck && finalInput?.finishedAt
+        ? finalInput.finishedAt
+        : (checkpointFinishedAt ?? timestamp(now())),
     checks,
     environments,
     artifacts,
@@ -413,37 +441,35 @@ export async function collectReleaseEvidence({
   const complete = selected.every((id) => checks.has(id))
   const passed = complete && selected.every((id) => checks.get(id).result === 'passed')
   const final = await optionalJson(paths.checks)
-  if (final)
+  if (final?.checks.every((check) => check.result === 'passed'))
     assert(
       canonicalJson(final) === canonicalJson(envelope),
-      'Existing final release evidence differs',
+      'Existing passed final release evidence differs',
     )
   else await writeJsonAtomic(paths.checks, envelope, writeOptions)
   const checksBytes = Buffer.from(`${JSON.stringify(envelope, null, 2)}\n`)
-  const collectionManifest = signManifest(
-    {
-      schema: COLLECTION_MANIFEST_SCHEMA,
-      schemaVersion: 1,
-      braidVersion: identity.braidVersion,
-      gitCommit: identity.gitCommit,
-      gitTree: identity.gitTree,
-      treeSha256: identity.treeSha256,
-      tarballSha256: identity.tarballSha256,
-      packageIntegrity: identity.packageIntegrity,
-      packageFileManifestDigest: identity.packageFileManifestDigest,
-      dependencyDigest: identity.dependencyDigest,
-      requirementIds: identity.requirementIds,
-      checkIds: selected,
-      checkCount: checks.size,
-      result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
-      startedAt,
-      finishedAt: envelope.finishedAt,
-      checksPath: relative(evidenceRoot, paths.checks),
-      checksSha256: await sha256(checksBytes),
-    },
-    keys.privateObject,
-  )
-  await preserveSignedManifest(paths.manifest, collectionManifest, keys.publicObject)
+  const collectionManifest = {
+    schema: COLLECTION_MANIFEST_SCHEMA,
+    schemaVersion: 1,
+    braidVersion: identity.braidVersion,
+    gitCommit: identity.gitCommit,
+    gitTree: identity.gitTree,
+    treeSha256: identity.treeSha256,
+    tarballSha256: identity.tarballSha256,
+    packageIntegrity: identity.packageIntegrity,
+    packageFileManifestDigest: identity.packageFileManifestDigest,
+    dependencyDigest: identity.dependencyDigest,
+    requirementIds: identity.requirementIds,
+    checkIds: selected,
+    checkCount: checks.size,
+    result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
+    startedAt,
+    finishedAt: envelope.finishedAt,
+    checksPath: relative(evidenceRoot, paths.checks),
+    checksSha256: await sha256(checksBytes),
+    signatures: [],
+  }
+  await preserveCollectionManifest(paths.manifest, collectionManifest)
   return {
     identity,
     result: passed ? 'passed' : complete ? 'failed' : 'incomplete',

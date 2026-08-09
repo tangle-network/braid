@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { nativeInstallEnvironment } from './native-install-environment.mjs'
+import { npmExecutable, pnpmExecutable } from './release/platform.mjs'
 
 const run = promisify(execFile)
 
@@ -19,7 +20,8 @@ export async function installPackedBraid(repository, options = {}) {
     ])
   }
   try {
-    if (packRoot) await run('pnpm', ['pack', '--pack-destination', packRoot], { cwd: repository })
+    if (packRoot)
+      await run(pnpmExecutable(), ['pack', '--pack-destination', packRoot], { cwd: repository })
     const tarballName = packRoot
       ? (await readdir(packRoot)).find((name) => name.endsWith('.tgz'))
       : basename(suppliedTarball)
@@ -32,10 +34,14 @@ export async function installPackedBraid(repository, options = {}) {
       join(installRoot, 'package.json'),
       `${JSON.stringify({ name: 'braid-packed-binary-proof', private: true })}\n`,
     )
-    await run('npm', ['install', '--no-audit', '--no-fund', '--package-lock=false', tarball], {
-      cwd: installRoot,
-      env: nativeInstallEnvironment(),
-    })
+    await run(
+      npmExecutable(),
+      ['install', '--no-audit', '--no-fund', '--package-lock=false', tarball],
+      {
+        cwd: installRoot,
+        env: nativeInstallEnvironment(),
+      },
+    )
     const binary = join(
       installRoot,
       'node_modules',

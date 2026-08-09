@@ -12,7 +12,6 @@ import {
   validateMeasurements,
   validatePerformanceMatrix,
   validatePerformanceMeasurements,
-  verifyCheckReceipt,
 } from '../release-evidence.mjs'
 
 export function validateReleaseChecks({
@@ -26,7 +25,6 @@ export function validateReleaseChecks({
   evidence,
   sourceTree,
   releaseWindow,
-  publicKey,
   dependencyDigest,
   packageFileManifestDigest,
 }) {
@@ -67,7 +65,6 @@ export function validateReleaseChecks({
         'boundary',
         'binding',
         'logs',
-        'receipt',
       ],
       [],
       `Check ${check.id}`,
@@ -243,7 +240,6 @@ export function validateReleaseChecks({
       assertExactKeys(
         check.logs[field],
         [
-          'rawSha256',
           'rawByteLength',
           'redactedSha256',
           'redactedByteLength',
@@ -252,10 +248,6 @@ export function validateReleaseChecks({
         ],
         [],
         `Check ${check.id} ${field} log`,
-      )
-      assert(
-        SHA256_PATTERN.test(check.logs[field].rawSha256),
-        `Check ${check.id} ${field} raw digest is invalid`,
       )
       assert(
         SHA256_PATTERN.test(check.logs[field].redactedSha256),
@@ -326,7 +318,6 @@ export function validateReleaseChecks({
         `Check ${check.id} ${field} log digest differs`,
       )
     }
-    verifyCheckReceipt(check, publicKey)
   }
   return performanceMeasurements
 }

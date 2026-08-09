@@ -26,9 +26,6 @@ export function readVerificationOptions(
     checksPath: join(releaseInputRoot, 'checks.json'),
     packageProofPath: join(artifactRoot, 'w6', 'package-proof.json'),
     visualProofPath: join(artifactRoot, 'w6', 'capture-manifest.json'),
-    publicKeyPath: join(repository, 'release', 'execution-public-key.pem'),
-    publicKeyFingerprintPath: join(repository, 'release', 'execution-public-key.fingerprint'),
     isolatedCheckout: environment.BRAID_RELEASE_ISOLATED_CHECKOUT,
-    signingKeyPath: environment.BRAID_RELEASE_SIGNING_KEY_PATH,
   }
 }

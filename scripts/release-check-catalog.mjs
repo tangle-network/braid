@@ -47,38 +47,58 @@ export const RELEASE_ASSEMBLY_COMMAND = Object.freeze({
 })
 
 const LIVE_AGGREGATE_COMMAND = Object.freeze({ category: 'live', command: 'pnpm test:live' })
+const LIVE_BRIDGE_RELEASE_COMMAND = Object.freeze({
+  category: 'live',
+  command: 'pnpm test:live:bridge:release',
+})
+const UPSTREAM_COMMAND = Object.freeze({ category: 'contract', command: 'pnpm test:upstream' })
+const PROPERTY_SOAK_COMMAND = Object.freeze({
+  category: 'release',
+  command: 'pnpm test:property:soak',
+})
 
 export const RELEASE_COMMANDS = new Map()
 for (const [id, command] of REQUIRED_CHECKS) {
   if (id === 'live-bridge') RELEASE_COMMANDS.set('live', LIVE_AGGREGATE_COMMAND)
   RELEASE_COMMANDS.set(id, command)
+  if (id === 'contract') RELEASE_COMMANDS.set('upstream', UPSTREAM_COMMAND)
+  if (id === 'performance') RELEASE_COMMANDS.set('property-soak', PROPERTY_SOAK_COMMAND)
+  if (id === 'live-bridge') RELEASE_COMMANDS.set('live-bridge-release', LIVE_BRIDGE_RELEASE_COMMAND)
 }
 RELEASE_COMMANDS.set('verify:release', RELEASE_ASSEMBLY_COMMAND)
 
 export const EXACT_REQUIREMENT_CHECK_CATEGORIES = new Map([
+  ['UP', new Set(['contract'])],
   ['LIVE', new Set(['live'])],
   ['PERF', new Set(['performance'])],
   ['EVAL', new Set(['eval'])],
 ])
+const EXACT_REQUIREMENT_CHECK_IDS = new Map([['VR-03', new Set(['release'])]])
 
-const EXACT_REQUIREMENT_ID = /^(UP|LIVE|PERF|EVAL)-([0-9]{2})$/u
+const EXACT_REQUIREMENT_ID = /^(UP|LIVE|PERF|EVAL|VR)-([0-9]{2})$/u
 
 function exactRequirementRoute(prefix, number) {
   if (prefix === 'PERF') return REQUIRED_CHECKS.get('performance')
   if (prefix === 'EVAL') return REQUIRED_CHECKS.get('eval')
   if (prefix === 'LIVE') {
-    if (number <= 5) return REQUIRED_CHECKS.get('live-bridge')
+    if (number <= 5) return LIVE_BRIDGE_RELEASE_COMMAND
     if (number <= 10) return REQUIRED_CHECKS.get('live-tangle')
     if (number === 11) return REQUIRED_CHECKS.get('live-supervisor')
     if (number === 12) return REQUIRED_CHECKS.get('live-analysis')
     return undefined
   }
   if (prefix === 'UP') {
-    if (number === 8) return REQUIRED_CHECKS.get('live-bridge')
-    if (number === 9 || number === 14) return REQUIRED_CHECKS.get('live-tangle')
-    if (number >= 1 && number <= 14) return REQUIRED_CHECKS.get('contract')
+    if (number >= 1 && number <= 14) return UPSTREAM_COMMAND
   }
+  if (prefix === 'VR' && number === 3) return PROPERTY_SOAK_COMMAND
   return undefined
+}
+
+export function exactRequirementCheckCategories(requirementId) {
+  const direct = EXACT_REQUIREMENT_CHECK_IDS.get(requirementId)
+  if (direct) return direct
+  const prefix = requirementId.slice(0, requirementId.indexOf('-'))
+  return EXACT_REQUIREMENT_CHECK_CATEGORIES.get(prefix)
 }
 
 export function releaseCheckEntry(id) {
@@ -90,10 +110,7 @@ export function releaseCheckEntry(id) {
 }
 
 export function requiredEvidenceCheckIds(requirementIds) {
-  const exact = requirementIds.filter((id) => {
-    const prefix = id.slice(0, id.indexOf('-'))
-    return EXACT_REQUIREMENT_CHECK_CATEGORIES.has(prefix)
-  })
+  const exact = requirementIds.filter((id) => exactRequirementCheckCategories(id) !== undefined)
   return [...REQUIRED_CHECKS.keys(), ...exact.sort()]
 }
 

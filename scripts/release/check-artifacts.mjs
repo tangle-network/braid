@@ -30,6 +30,8 @@ function mediaType(path) {
 }
 
 function evidenceDirectory(checkId) {
+  if (checkId === 'upstream' || /^UP-[0-9]{2}$/u.test(checkId)) return 'upstream'
+  if (checkId === 'property-soak' || checkId === 'VR-03') return 'property'
   if (checkId === 'performance' || /^PERF-[0-9]{2}$/u.test(checkId)) return 'performance'
   if (checkId === 'eval' || /^EVAL-[0-9]{2}$/u.test(checkId)) return 'eval'
   if (checkId === 'live-bridge' || /^LIVE-0[1-5]$/u.test(checkId)) return 'live/bridge'

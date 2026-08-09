@@ -42,6 +42,7 @@ const scopeFiles = {
     'domain-reducer.test.js',
     'domain-text.test.js',
     'eval.test.js',
+    'property.test.js',
     'reducer.test.js',
     'sanitize.test.js',
     'scripts.test.js',
@@ -110,6 +111,7 @@ const scopeFiles = {
     'reducer.test.js',
     'storage-performance.test.js',
   ],
+  property: ['property.test.js'],
 }
 const selectedTests =
   scope === undefined

@@ -27,13 +27,6 @@ jobs:
     outputs:
       version: ${{ steps.metadata.outputs.version }}
       archive: ${{ steps.metadata.outputs.archive }}
-    env:
-      BRAID_LIVE_BRIDGE: '1'
-      BRAID_CLI_BRIDGE_BEARER: ${{ secrets.BRAID_CLI_BRIDGE_BEARER }}
-      BRAID_CLI_BRIDGE_URL: ${{ vars.BRAID_CLI_BRIDGE_URL }}
-      BRAID_EVAL_BEARER: ${{ secrets.BRAID_EVAL_BEARER }}
-      BRAID_EVAL_BRIDGE_URL: ${{ vars.BRAID_EVAL_BRIDGE_URL }}
-      BRAID_EVAL_MODEL: ${{ vars.BRAID_EVAL_MODEL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,14 +73,6 @@ jobs:
           cargo install --locked --version 1.9.0 agg
           test "$(agg --version | head -1)" = "agg 1.9.0"
 
-      - name: Restore the release signing key
-        env:
-          SIGNING_KEY_BASE64: ${{ secrets.BRAID_RELEASE_SIGNING_KEY_BASE64 }}
-        run: |
-          test -n "$SIGNING_KEY_BASE64"
-          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/braid-release-key.pem"
-          chmod 600 "$RUNNER_TEMP/braid-release-key.pem"
-
       - name: Build and exercise one immutable candidate
         run: pnpm release:prepare
 
@@ -109,15 +94,19 @@ jobs:
           printf '%s' "$REVIEW_ATTESTATION_BASE64" | base64 --decode > "$BRAID_RELEASE_ARTIFACT_ROOT/review/attestation.json"
           chmod 600 "$BRAID_RELEASE_ARTIFACT_ROOT/review/attestation.json"
 
-      - name: Run and sign the complete release checks
+      - name: Run the complete release checks
         env:
+          BRAID_LIVE_BRIDGE: '1'
+          BRAID_CLI_BRIDGE_BEARER: ${{ secrets.BRAID_CLI_BRIDGE_BEARER }}
+          BRAID_CLI_BRIDGE_URL: ${{ vars.BRAID_CLI_BRIDGE_URL }}
+          BRAID_EVAL_BEARER: ${{ secrets.BRAID_EVAL_BEARER }}
+          BRAID_EVAL_BRIDGE_URL: ${{ vars.BRAID_EVAL_BRIDGE_URL }}
+          BRAID_EVAL_MODEL: ${{ vars.BRAID_EVAL_MODEL }}
           BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
-          BRAID_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/braid-release-key.pem
         run: >-
           pnpm release:collect --
           --artifact-root "$BRAID_RELEASE_ARTIFACT_ROOT"
           --tarball "candidate/${{ steps.metadata.outputs.archive }}"
-          --signing-key "$BRAID_RELEASE_SIGNING_KEY_PATH"
 
       - name: Preserve resumable release state
         if: always()
@@ -139,20 +128,74 @@ jobs:
         env:
           BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
           BRAID_RELEASE_ISOLATED_CHECKOUT: '1'
-          BRAID_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/braid-release-key.pem
         run: pnpm verify:candidate
 
-      - name: Upload the immutable candidate evidence
+      - name: Upload the qualified candidate evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: braid-release-${{ inputs.commit }}
+          name: braid-release-qualified-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
           if-no-files-found: error
           overwrite: true
           retention-days: 90
 
-  platform-smoke:
+  endorse-candidate:
     needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-qualified-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Endorse the fixed candidate archive
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.BRAID_RELEASE_SIGNING_KEY_BASE64 }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY_BASE64"
+          ROOT="$RUNNER_TEMP/braid-release"
+          ENDORSEMENT="$ROOT/endorsement/candidate"
+          KEY="$RUNNER_TEMP/braid-release-key.pem"
+          mkdir -p "$ENDORSEMENT"
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEY"
+          chmod 600 "$KEY"
+          find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
+            LC_ALL=C sort -z |
+            while IFS= read -r -d '' file; do
+              relative="${file#"$ROOT"/}"
+              printf '%s  %s\n' "$(sha256sum -- "$file" | cut -d ' ' -f 1)" "$relative"
+            done > "$ENDORSEMENT/files.sha256"
+          INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
+          printf '%s\n' \
+            'schema=braid.release-endorsement.v1' \
+            'phase=candidate' \
+            'repository=tangle-network/braid' \
+            'commit=${{ inputs.commit }}' \
+            "version=$VERSION" \
+            "index_sha256=$INDEX_SHA256" > "$ENDORSEMENT/statement.txt"
+          openssl pkey -in "$KEY" -pubout -out "$ENDORSEMENT/public-key.pem"
+          openssl pkeyutl -sign -rawin -inkey "$KEY" \
+            -in "$ENDORSEMENT/statement.txt" -out "$ENDORSEMENT/signature.bin"
+          openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
+            -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"
+
+      - name: Upload the endorsed candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+          if-no-files-found: error
+          retention-days: 90
+
+  platform-smoke:
+    needs: [candidate, endorse-candidate]
     strategy:
       fail-fast: false
       matrix:
@@ -204,7 +247,7 @@ jobs:
           retention-days: 90
 
   publish:
-    needs: [candidate, platform-smoke]
+    needs: [candidate, endorse-candidate, platform-smoke]
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -225,6 +268,31 @@ jobs:
         with:
           name: braid-release-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
+
+      - name: Verify the candidate endorsement without package code
+        env:
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/braid-release"
+          ENDORSEMENT="$ROOT/endorsement/candidate"
+          cmp release/endorsement-public-key.pem "$ENDORSEMENT/public-key.pem"
+          openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
+            -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"
+          grep -Fx 'schema=braid.release-endorsement.v1' "$ENDORSEMENT/statement.txt"
+          grep -Fx 'phase=candidate' "$ENDORSEMENT/statement.txt"
+          grep -Fx 'repository=tangle-network/braid' "$ENDORSEMENT/statement.txt"
+          grep -Fx 'commit=${{ inputs.commit }}' "$ENDORSEMENT/statement.txt"
+          grep -Fx "version=$VERSION" "$ENDORSEMENT/statement.txt"
+          find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
+            LC_ALL=C sort -z |
+            while IFS= read -r -d '' file; do
+              relative="${file#"$ROOT"/}"
+              printf '%s  %s\n' "$(sha256sum -- "$file" | cut -d ' ' -f 1)" "$relative"
+            done > "$RUNNER_TEMP/candidate-files.sha256"
+          cmp "$RUNNER_TEMP/candidate-files.sha256" "$ENDORSEMENT/files.sha256"
+          INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
+          grep -Fx "index_sha256=$INDEX_SHA256" "$ENDORSEMENT/statement.txt"
 
       - name: Publish the approved tarball
         env:
@@ -360,25 +428,71 @@ jobs:
           name: braid-npm-provenance-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release/publication
 
-      - name: Restore the release signing key
-        env:
-          SIGNING_KEY_BASE64: ${{ secrets.BRAID_RELEASE_SIGNING_KEY_BASE64 }}
-        run: |
-          test -n "$SIGNING_KEY_BASE64"
-          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/braid-release-key.pem"
-          chmod 600 "$RUNNER_TEMP/braid-release-key.pem"
-
-      - name: Assemble the final signed report
+      - name: Assemble the final report
         env:
           BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
           BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
           BRAID_RELEASE_ISOLATED_CHECKOUT: '1'
-          BRAID_RELEASE_SIGNING_KEY_PATH: ${{ runner.temp }}/braid-release-key.pem
         run: |
           pnpm release:record-publication
           pnpm verify:release
 
-      - name: Upload the final signed release evidence
+      - name: Upload the validated final release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-release-final-qualified-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+          if-no-files-found: error
+          retention-days: 90
+
+  endorse-final:
+    needs: [candidate, finalize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-final-qualified-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Endorse the fixed final archive
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.BRAID_RELEASE_SIGNING_KEY_BASE64 }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY_BASE64"
+          ROOT="$RUNNER_TEMP/braid-release"
+          ENDORSEMENT="$ROOT/endorsement/final"
+          KEY="$RUNNER_TEMP/braid-release-key.pem"
+          mkdir -p "$ENDORSEMENT"
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEY"
+          chmod 600 "$KEY"
+          find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
+            LC_ALL=C sort -z |
+            while IFS= read -r -d '' file; do
+              relative="${file#"$ROOT"/}"
+              printf '%s  %s\n' "$(sha256sum -- "$file" | cut -d ' ' -f 1)" "$relative"
+            done > "$ENDORSEMENT/files.sha256"
+          INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
+          printf '%s\n' \
+            'schema=braid.release-endorsement.v1' \
+            'phase=final' \
+            'repository=tangle-network/braid' \
+            'commit=${{ inputs.commit }}' \
+            "version=$VERSION" \
+            "index_sha256=$INDEX_SHA256" > "$ENDORSEMENT/statement.txt"
+          openssl pkey -in "$KEY" -pubout -out "$ENDORSEMENT/public-key.pem"
+          openssl pkeyutl -sign -rawin -inkey "$KEY" \
+            -in "$ENDORSEMENT/statement.txt" -out "$ENDORSEMENT/signature.bin"
+          openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
+            -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"
+
+      - name: Upload the endorsed final release
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: braid-release-final-${{ inputs.commit }}
@@ -387,7 +501,7 @@ jobs:
           retention-days: 90
 
   tag-and-report:
-    needs: [candidate, finalize]
+    needs: [candidate, endorse-final]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -402,6 +516,31 @@ jobs:
         with:
           name: braid-release-final-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
+
+      - name: Verify the final endorsement without package code
+        env:
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/braid-release"
+          ENDORSEMENT="$ROOT/endorsement/final"
+          cmp release/endorsement-public-key.pem "$ENDORSEMENT/public-key.pem"
+          openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
+            -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"
+          grep -Fx 'schema=braid.release-endorsement.v1' "$ENDORSEMENT/statement.txt"
+          grep -Fx 'phase=final' "$ENDORSEMENT/statement.txt"
+          grep -Fx 'repository=tangle-network/braid' "$ENDORSEMENT/statement.txt"
+          grep -Fx 'commit=${{ inputs.commit }}' "$ENDORSEMENT/statement.txt"
+          grep -Fx "version=$VERSION" "$ENDORSEMENT/statement.txt"
+          find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
+            LC_ALL=C sort -z |
+            while IFS= read -r -d '' file; do
+              relative="${file#"$ROOT"/}"
+              printf '%s  %s\n' "$(sha256sum -- "$file" | cut -d ' ' -f 1)" "$relative"
+            done > "$RUNNER_TEMP/final-files.sha256"
+          cmp "$RUNNER_TEMP/final-files.sha256" "$ENDORSEMENT/files.sha256"
+          INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
+          grep -Fx "index_sha256=$INDEX_SHA256" "$ENDORSEMENT/statement.txt"
 
       - name: Tag the proven commit and attach its report
         env:

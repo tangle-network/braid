@@ -4,10 +4,8 @@ import {
   assert,
   assertExactKeys,
   canonicalJson,
-  publicKeyId,
   strictIsoTimestamp,
   validateReleaseInputEnvelope,
-  verifyCheckReceipt,
 } from '../release-evidence.mjs'
 import { readContainedFile } from '../release-files.mjs'
 import { normalizeRequirementBindings } from './bindings.mjs'
@@ -51,7 +49,7 @@ export function checkpointBuild(identity) {
   }
 }
 
-export function checkpointPlan({ checkIds, requirementBindings, publicKey }) {
+export function checkpointPlan({ checkIds, requirementBindings }) {
   return {
     schemaVersion: 1,
     checkIds: [...checkIds],
@@ -60,7 +58,7 @@ export function checkpointPlan({ checkIds, requirementBindings, publicKey }) {
         left < right ? -1 : left > right ? 1 : 0,
       ),
     ),
-    publicKeyId: publicKeyId(publicKey),
+    receiptMode: 'archive-endorsement',
   }
 }
 
@@ -97,7 +95,6 @@ function validateLog(log, label) {
   assertExactKeys(
     log,
     [
-      'rawSha256',
       'rawByteLength',
       'redactedSha256',
       'redactedByteLength',
@@ -107,7 +104,6 @@ function validateLog(log, label) {
     [],
     label,
   )
-  assert(SHA256_PATTERN.test(log.rawSha256), `${label} has an invalid raw digest`)
   assert(SHA256_PATTERN.test(log.redactedSha256), `${label} has an invalid redacted digest`)
   assert(
     Number.isSafeInteger(log.rawByteLength) && log.rawByteLength >= 0,
@@ -121,7 +117,7 @@ function validateLog(log, label) {
   assert(typeof log.redactionFailClosed === 'boolean', `${label} has an invalid fail-closed flag`)
 }
 
-function validateCheckShape(check, { identity, requirementIds, expectedCategory, publicKey }) {
+function validateCheckShape(check, { identity, requirementIds, expectedCategory }) {
   assertExactKeys(
     check,
     [
@@ -147,7 +143,6 @@ function validateCheckShape(check, { identity, requirementIds, expectedCategory,
       'boundary',
       'binding',
       'logs',
-      'receipt',
     ],
     [],
     `Check ${check.id}`,
@@ -260,7 +255,6 @@ function validateCheckShape(check, { identity, requirementIds, expectedCategory,
     `Check ${check.id} stderr redacted digest differs`,
   )
   verifyBinding(check, identity, requirementIds)
-  verifyCheckReceipt(check, publicKey)
   return { startedAt, completedAt }
 }
 
@@ -285,7 +279,7 @@ async function validateArtifacts(envelope, artifactRoot, identity) {
   return artifacts
 }
 
-export async function validateCheckpoint(checkpoint, { artifactRoot, identity, plan, publicKey }) {
+export async function validateCheckpoint(checkpoint, { artifactRoot, identity, plan }) {
   assertExactKeys(checkpoint, ['schema', 'build', 'plan', 'envelope'], [], 'Release checkpoint')
   assert(checkpoint.schema === CHECKPOINT_SCHEMA, 'Unsupported release checkpoint schema')
   assert(
@@ -319,7 +313,6 @@ export async function validateCheckpoint(checkpoint, { artifactRoot, identity, p
       identity,
       requirementIds,
       expectedCategory: expected.category,
-      publicKey,
     })
     assert(
       check.environment && typeof check.environment === 'string',

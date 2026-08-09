@@ -73,7 +73,7 @@ function markCleanupFailure(evidence, label, details, setStatus) {
   setStatus()
 }
 
-export async function main() {
+export async function main({ requireCompleteReleaseProof = false } = {}) {
   let policy = defaultTargetPolicy
   let policyError
   try {
@@ -230,6 +230,18 @@ export async function main() {
         status = 'failed'
         exitCode = exitCodes.failed
       })
+    }
+    if (requireCompleteReleaseProof && status === 'passed') {
+      status = 'unavailable'
+      exitCode = exitCodes.unavailable
+      evidence.error = errorEvidence(
+        new LiveBridgeError(
+          'LIVE_BRIDGE_RELEASE_PROOF_INCOMPLETE',
+          `The live bridge run excludes required release claims: ${evidence.scope.excludes.join(', ')}`,
+          exitCodes.unavailable,
+          { scope: evidence.scope },
+        ),
+      )
     }
     evidence.status = status
     evidence.exitCode = exitCode

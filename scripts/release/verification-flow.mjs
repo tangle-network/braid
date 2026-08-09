@@ -54,7 +54,6 @@ export async function verifyRelease(
     evidence: source.evidence,
     sourceTree: source.sourceTree,
     releaseWindow: source.releaseWindow,
-    publicKey: source.publicKey,
     dependencyDigest: dependencyDigest(source.evidence.dependencies),
     packageFileManifestDigest: artifactResult.packageFileManifestDigest,
   })
@@ -75,12 +74,11 @@ export async function verifyRelease(
         options,
         evidence: source.evidence,
         specificationDigests: documentation.specificationDigests,
-        publicKey: source.publicKey,
       })
     : {}
   process.stdout.write(
     publicationRequired
-      ? `Validated ${documentation.requirements.size} requirements, ${plan.checks.size} signed checks, and ${artifactResult.artifacts.size} artifacts for @tangle-network/braid@${source.evidence.braidVersion}\n`
+      ? `Validated ${documentation.requirements.size} requirements, ${plan.checks.size} recorded checks, and ${artifactResult.artifacts.size} artifacts for @tangle-network/braid@${source.evidence.braidVersion}\n`
       : `Validated the pre-publication candidate; VR-10 remains pending until three registry package smokes pass.\n`,
   )
   return { ...source, ...artifactResult, ...output }
