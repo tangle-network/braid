@@ -568,11 +568,13 @@ The opt-in CLI Bridge flow and semantic evaluation implementation are present an
 
 The live driver writes portable profiles with separate runner, provider, and model fields, resolves a sibling CLI Bridge checkout by default, and supplies Pi's Linux `fs-jail` floor only when no operator policy is already present.
 
-Managed Windows commands start suspended, enter a non-breakaway kill-on-close Job Object, and only then begin execution with their original arguments, environment, working directory, and standard streams.
+Managed Windows commands enter a non-breakaway kill-on-close Job Object atomically during creation through `PROC_THREAD_ATTRIBUTE_JOB_LIST`, then begin execution with their original arguments, environment, working directory, and standard streams.
 
-The Job Object host terminates residual members, waits for its active process count to reach zero, and fails the command when cleanup cannot be confirmed.
+The named Job Object host terminates residual members, waits for its active process count to reach zero, and writes a drain receipt only after cleanup is confirmed.
 
-Pull-request checks reproduce the orphaned-grandchild case, independently probe every fixture PID after cleanup, and run the same cleanup matrix on Windows, macOS, and Linux.
+Forced cleanup uses a separate controller that opens the named Job Object, terminates it, and acknowledges success only after its active process count reaches zero.
+
+Pull-request checks reproduce forced, natural-exit, RPC, detached-grandchild, and controlling-parent-crash cases, independently probe every fixture PID after cleanup, and run the portable cleanup matrix on Windows, macOS, and Linux.
 
 Capability checks use the effective per-run values returned by `agent-runtime`; broader provider-environment support remains recorded as evidence but cannot enable an action that the composed run disabled.
 

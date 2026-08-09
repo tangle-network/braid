@@ -108,13 +108,20 @@ export async function terminateProcess(
   let killSent = false
   let exited = initialExited
   let tree = initialTree
-  if (!tree.supported || !tree.gone) {
+  const usesWindowsJob = tree.mechanism === 'windows-job-object'
+  if (usesWindowsJob && !tree.gone) {
+    killSignal = await sendTreeSignal(child, 'SIGKILL')
+    killSent = killSignal.sent
+    exited = exited || (await waitForExit(child, killTimeoutMs))
+    tree = await waitForTreeGone(child, killTimeoutMs)
+  }
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
     termSignal = await sendTreeSignal(child, 'SIGTERM')
     termSent = termSignal.sent
     exited = exited || (await waitForExit(child, termTimeoutMs))
     tree = await waitForTreeGone(child, termTimeoutMs)
   }
-  if (!tree.supported || !tree.gone) {
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
     killSignal = await sendTreeSignal(child, 'SIGKILL')
     killSent = killSignal.sent
     exited = exited || (await waitForExit(child, killTimeoutMs))

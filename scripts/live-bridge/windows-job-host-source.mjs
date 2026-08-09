@@ -1,6 +1,11 @@
+// @derived-from https://github.com/dotnet/aspire
+// @source-commit be77aa36daf995fae0e72091141410c7082fcba3
+// @source-path src/Aspire.Cli/Processes/WindowsConsoleProcessJob.cs and WindowsProcessInterop.cs
+// @source-license MIT, Copyright (c) .NET Foundation and contributors
 export const WINDOWS_JOB_HOST_SOURCE = String.raw`
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -9,14 +14,18 @@ public static class BraidWindowsJobHost
 {
     private const uint CREATE_SUSPENDED = 0x00000004;
     private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+    private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     private const uint STARTF_USESTDHANDLES = 0x00000100;
     private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+    private const uint JOB_OBJECT_QUERY = 0x0004;
+    private const uint JOB_OBJECT_TERMINATE = 0x0008;
     private const int JobObjectBasicAccountingInformation = 1;
     private const int JobObjectExtendedLimitInformation = 9;
     private const uint INFINITE = 0xffffffff;
     private const uint WAIT_OBJECT_0 = 0;
     private const int CleanupFailureExitCode = 125;
     private const int CleanupTimeoutMilliseconds = 5000;
+    private static readonly IntPtr ProcThreadAttributeJobList = new IntPtr(0x0002000D);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct STARTUPINFO
@@ -39,6 +48,13 @@ public static class BraidWindowsJobHost
         public IntPtr hStdInput;
         public IntPtr hStdOutput;
         public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STARTUPINFOEX
+    {
+        public STARTUPINFO StartupInfo;
+        public IntPtr lpAttributeList;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -102,6 +118,9 @@ public static class BraidWindowsJobHost
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenJobObject(uint desiredAccess, bool inheritHandle, string name);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetInformationJobObject(
         IntPtr job,
@@ -127,11 +146,28 @@ public static class BraidWindowsJobHost
         uint creationFlags,
         IntPtr environment,
         string currentDirectory,
-        ref STARTUPINFO startupInfo,
+        ref STARTUPINFOEX startupInfo,
         out PROCESS_INFORMATION processInformation);
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    private static extern bool InitializeProcThreadAttributeList(
+        IntPtr attributeList,
+        int attributeCount,
+        int flags,
+        ref IntPtr size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool UpdateProcThreadAttribute(
+        IntPtr attributeList,
+        uint flags,
+        IntPtr attribute,
+        IntPtr value,
+        IntPtr size,
+        IntPtr previousValue,
+        IntPtr returnSize);
+
+    [DllImport("kernel32.dll")]
+    private static extern void DeleteProcThreadAttributeList(IntPtr attributeList);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint ResumeThread(IntPtr thread);
@@ -141,9 +177,6 @@ public static class BraidWindowsJobHost
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool TerminateProcess(IntPtr process, uint exitCode);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool TerminateJobObject(IntPtr job, uint exitCode);
@@ -156,17 +189,27 @@ public static class BraidWindowsJobHost
 
     public static int Main(string[] arguments)
     {
-        if (arguments.Length == 0)
+        if (arguments.Length >= 4 && arguments[0] == "--run")
         {
-            Console.Error.WriteLine("BRAID_JOB_HOST_ERROR missing executable");
-            return CleanupFailureExitCode;
+            string[] targetArguments = new string[arguments.Length - 3];
+            Array.Copy(arguments, 3, targetArguments, 0, targetArguments.Length);
+            return Run(arguments[1], arguments[2], targetArguments);
         }
+        if (arguments.Length == 2 && arguments[0] == "--terminate")
+            return Terminate(arguments[1]);
+        Console.Error.WriteLine("BRAID_JOB_HOST_ERROR invalid invocation");
+        return CleanupFailureExitCode;
+    }
 
+    private static int Run(string jobName, string markerPath, string[] arguments)
+    {
         IntPtr job = IntPtr.Zero;
+        IntPtr attributeList = IntPtr.Zero;
+        IntPtr jobList = IntPtr.Zero;
         PROCESS_INFORMATION process = new PROCESS_INFORMATION();
         try
         {
-            job = CreateJobObject(IntPtr.Zero, null);
+            job = CreateJobObject(IntPtr.Zero, jobName);
             if (job == IntPtr.Zero)
                 return Fail("CreateJobObject");
 
@@ -180,12 +223,16 @@ public static class BraidWindowsJobHost
                     (uint)Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION))))
                 return Fail("SetInformationJobObject");
 
-            STARTUPINFO startup = new STARTUPINFO();
-            startup.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFO));
-            startup.dwFlags = STARTF_USESTDHANDLES;
-            startup.hStdInput = GetStdHandle(-10);
-            startup.hStdOutput = GetStdHandle(-11);
-            startup.hStdError = GetStdHandle(-12);
+            if (!PrepareJobAttribute(job, out attributeList, out jobList))
+                return CleanupFailureExitCode;
+
+            STARTUPINFOEX startup = new STARTUPINFOEX();
+            startup.StartupInfo.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX));
+            startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+            startup.StartupInfo.hStdInput = GetStdHandle(-10);
+            startup.StartupInfo.hStdOutput = GetStdHandle(-11);
+            startup.StartupInfo.hStdError = GetStdHandle(-12);
+            startup.lpAttributeList = attributeList;
             StringBuilder commandLine = BuildCommandLine(arguments);
             if (!CreateProcess(
                     arguments[0],
@@ -193,19 +240,13 @@ public static class BraidWindowsJobHost
                     IntPtr.Zero,
                     IntPtr.Zero,
                     true,
-                    CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+                    CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
                     IntPtr.Zero,
                     Environment.CurrentDirectory,
                     ref startup,
                     out process))
                 return Fail("CreateProcess");
 
-            if (!AssignProcessToJobObject(job, process.hProcess))
-            {
-                Fail("AssignProcessToJobObject");
-                TerminateProcess(process.hProcess, CleanupFailureExitCode);
-                return CleanupFailureExitCode;
-            }
             if (ResumeThread(process.hThread) == 0xffffffff)
             {
                 Fail("ResumeThread");
@@ -220,16 +261,111 @@ public static class BraidWindowsJobHost
                 return Fail("GetExitCodeProcess");
             if (!DrainJob(job))
                 return CleanupFailureExitCode;
+            try
+            {
+                File.WriteAllText(markerPath, "drained");
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine("BRAID_JOB_HOST_ERROR drain receipt: " + error.Message);
+                return CleanupFailureExitCode;
+            }
             return unchecked((int)targetExitCode);
         }
         finally
         {
+            if (attributeList != IntPtr.Zero)
+            {
+                DeleteProcThreadAttributeList(attributeList);
+                Marshal.FreeHGlobal(attributeList);
+            }
+            if (jobList != IntPtr.Zero)
+                Marshal.FreeHGlobal(jobList);
             if (process.hThread != IntPtr.Zero)
                 CloseHandle(process.hThread);
             if (process.hProcess != IntPtr.Zero)
                 CloseHandle(process.hProcess);
             if (job != IntPtr.Zero)
                 CloseHandle(job);
+        }
+    }
+
+    private static int Terminate(string jobName)
+    {
+        IntPtr job = OpenJobObject(JOB_OBJECT_QUERY | JOB_OBJECT_TERMINATE, false, jobName);
+        if (job == IntPtr.Zero)
+            return Fail("OpenJobObject");
+        try
+        {
+            return DrainJob(job) ? 0 : CleanupFailureExitCode;
+        }
+        finally
+        {
+            CloseHandle(job);
+        }
+    }
+
+    private static bool PrepareJobAttribute(
+        IntPtr job,
+        out IntPtr attributeList,
+        out IntPtr jobList)
+    {
+        attributeList = IntPtr.Zero;
+        jobList = IntPtr.Zero;
+        IntPtr attributeListSize = IntPtr.Zero;
+        InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeListSize);
+        if (attributeListSize == IntPtr.Zero)
+        {
+            Fail("InitializeProcThreadAttributeList(size)");
+            return false;
+        }
+        IntPtr candidateAttributeList = IntPtr.Zero;
+        IntPtr candidateJobList = IntPtr.Zero;
+        bool initialized = false;
+        bool accepted = false;
+        try
+        {
+            candidateAttributeList = Marshal.AllocHGlobal(attributeListSize);
+            if (!InitializeProcThreadAttributeList(
+                    candidateAttributeList,
+                    1,
+                    0,
+                    ref attributeListSize))
+            {
+                Fail("InitializeProcThreadAttributeList");
+                return false;
+            }
+            initialized = true;
+            candidateJobList = Marshal.AllocHGlobal(IntPtr.Size);
+            Marshal.WriteIntPtr(candidateJobList, job);
+            if (!UpdateProcThreadAttribute(
+                    candidateAttributeList,
+                    0,
+                    ProcThreadAttributeJobList,
+                    candidateJobList,
+                    new IntPtr(IntPtr.Size),
+                    IntPtr.Zero,
+                    IntPtr.Zero))
+            {
+                Fail("UpdateProcThreadAttribute(job)");
+                return false;
+            }
+            attributeList = candidateAttributeList;
+            jobList = candidateJobList;
+            accepted = true;
+            return true;
+        }
+        finally
+        {
+            if (!accepted)
+            {
+                if (initialized)
+                    DeleteProcThreadAttributeList(candidateAttributeList);
+                if (candidateAttributeList != IntPtr.Zero)
+                    Marshal.FreeHGlobal(candidateAttributeList);
+                if (candidateJobList != IntPtr.Zero)
+                    Marshal.FreeHGlobal(candidateJobList);
+            }
         }
     }
 
