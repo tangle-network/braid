@@ -22,8 +22,8 @@ export function baselineEventEnd(events) {
   return end
 }
 
-function sortParityValue(value) {
-  if (Array.isArray(value)) return value.map((item) => sortParityValue(item))
+function sortParityValue(value, parentKey) {
+  if (Array.isArray(value)) return value.map((item) => sortParityValue(item, parentKey))
   if (!value || typeof value !== 'object') return value
 
   return Object.fromEntries(
@@ -31,7 +31,11 @@ function sortParityValue(value) {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, child]) => [
         key,
-        key === 'occurredAt' || key === 'receivedAt' ? '<runtime-time>' : sortParityValue(child),
+        key === 'occurredAt' || key === 'receivedAt'
+          ? '<runtime-time>'
+          : parentKey === 'spend' && key === 'ms'
+            ? '<runtime-duration-ms>'
+            : sortParityValue(child, key),
       ]),
   )
 }

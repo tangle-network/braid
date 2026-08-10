@@ -10,6 +10,7 @@ import type {
 } from '../../views/shared/intents.js'
 import type { BraidViewModel, HeadlessState } from '../../views/shared/models.js'
 import { freezeView } from '../../views/shared/models.js'
+import { sessionUsageFor, usageForRun } from '../../views/shared/usage-projection.js'
 import type {
   ProfileConnectionDispatchOptions,
   ProfileConnectionDispatchServices,
@@ -17,6 +18,7 @@ import type {
 import { capabilityMap } from './ui-capabilities.js'
 import { errorResult } from './ui-dispatch-error.js'
 import { FIXTURE_FORK, FIXTURE_INTERACTION, type UiFixture } from './ui-fixtures.js'
+import { withIntelligenceResult } from './ui-intelligence-result-view.js'
 import { toEvent, toHeadlessState } from './ui-projection.js'
 import { createUiSubscriberDelivery, type UiSubscriberDelivery } from './ui-subscriber-delivery.js'
 import { buildBraidViewModel, type UiAppearanceOptions } from './ui-view-model.js'
@@ -33,6 +35,12 @@ interface ActiveUiSubscription {
 interface UiSubscriberRegistration {
   readonly options: UiSubscriptionOptions
   active: ActiveUiSubscription
+}
+
+interface CachedViewState {
+  readonly app: BraidApplication
+  readonly revision: number
+  readonly state: BraidState
 }
 
 export class ApplicationUiController implements BraidUiController {
@@ -53,6 +61,8 @@ export class ApplicationUiController implements BraidUiController {
   #interactionResolved = false
   #notice: string | undefined
   #forkPreview: BraidViewModel['forkPreview'] | undefined
+  #selectedIntelligenceData: unknown
+  #viewStateCache: CachedViewState | undefined
 
   constructor(
     app: BraidApplication,
@@ -67,7 +77,16 @@ export class ApplicationUiController implements BraidUiController {
   }
 
   view(): BraidViewModel {
-    return this.#project(this.#app.state(), this.#app)
+    const app = this.#app
+    const revision = app.revision()
+    if (
+      this.#viewStateCache === undefined ||
+      this.#viewStateCache.app !== app ||
+      this.#viewStateCache.revision !== revision
+    ) {
+      this.#viewStateCache = { app, revision, state: app.state() }
+    }
+    return this.#project(this.#viewStateCache.state, app)
   }
 
   #project(state: BraidState, app: BraidApplication): BraidViewModel {
@@ -100,19 +119,29 @@ export class ApplicationUiController implements BraidUiController {
               app.canRespondToInteractions(),
             ),
           })
+    const intelligenceDecorated =
+      this.#selectedIntelligenceData === undefined
+        ? fixtureDecorated
+        : withIntelligenceResult(fixtureDecorated, this.#selectedIntelligenceData, {
+            durableAnalyses: state.analyses,
+            allowUnpersisted:
+              this.#fixture === 'analysis' ||
+              this.#fixture === 'comparison' ||
+              this.#fixture === 'product-demo',
+          })
     if (this.#fixture === 'interaction' && !this.#interactionResolved) {
       return freezeView({
-        ...fixtureDecorated,
+        ...intelligenceDecorated,
         interactions: Object.freeze([FIXTURE_INTERACTION]),
       })
     }
     if (this.#fixture === 'fork') {
       return freezeView({
-        ...fixtureDecorated,
+        ...intelligenceDecorated,
         forkPreview: FIXTURE_FORK,
       })
     }
-    return fixtureDecorated
+    return intelligenceDecorated
   }
 
   state(): HeadlessState {
@@ -163,6 +192,8 @@ export class ApplicationUiController implements BraidUiController {
     for (const registration of this.#subscriptions.values()) registration.active.unsubscribe()
     this.#app = next
     this.#profileConnections = undefined
+    this.#viewStateCache = undefined
+    this.#selectedIntelligenceData = undefined
     for (const [subscriber, subscription] of nextSubscriptions) {
       const registration = this.#subscriptions.get(subscriber)
       if (registration !== undefined) registration.active = subscription
@@ -182,6 +213,13 @@ export class ApplicationUiController implements BraidUiController {
 
   async dispatch(intent: BraidIntent): Promise<UiDispatchResult> {
     const app = this.#app
+    if (
+      intent.type === 'run-command' &&
+      (intent.command === 'ask' || intent.command === 'analyze' || intent.command === 'compare')
+    ) {
+      this.#selectedIntelligenceData = undefined
+      this.#notify()
+    }
     try {
       const [dispatchIntent, profileConnections] = await Promise.all([
         this.#dispatcher(),
@@ -209,8 +247,21 @@ export class ApplicationUiController implements BraidUiController {
           this.#forkPreview = preview
         },
       })
-      if (result.kind === 'accepted' && result.notice !== undefined) this.#notice = result.notice
-      if (result.kind === 'accepted' && result.notice !== undefined) this.#notify()
+      let notify = false
+      if (result.kind === 'accepted' && result.notice !== undefined) {
+        this.#notice = result.notice
+        notify = true
+      }
+      if (
+        result.kind === 'accepted' &&
+        result.data !== undefined &&
+        intent.type === 'run-command' &&
+        (intent.command === 'ask' || intent.command === 'analyze' || intent.command === 'compare')
+      ) {
+        this.#selectedIntelligenceData = result.data
+        notify = true
+      }
+      if (notify) this.#notify()
       return result
     } catch (error) {
       return errorResult(error)
@@ -235,6 +286,10 @@ export class ApplicationUiController implements BraidUiController {
   async waitForIdle(): Promise<BraidViewModel> {
     await this.#app.waitForIdle()
     return this.view()
+  }
+
+  close(): Promise<void> {
+    return this.#app.close()
   }
 
   #notify(): void {
@@ -277,18 +332,16 @@ function withRunUsage(view: BraidViewModel, state: BraidState): BraidViewModel {
   const runs = view.runs.map((run) => {
     const source = sourceById.get(run.id)
     if (source === undefined) return run
-    const usage = {
-      ...(run.usage?.model === undefined ? {} : { model: run.usage.model }),
-      ...(source.inputTokens > 0 ? { input: source.inputTokens } : {}),
-      ...(source.outputTokens > 0 ? { output: source.outputTokens } : {}),
-      ...(source.costUsd === undefined || source.costUsd <= 0 ? {} : { costUsd: source.costUsd }),
+    return {
+      ...run,
+      usage: Object.freeze(usageForRun(source, run.usage?.elapsedMs)),
     }
-    if (Object.keys(usage).length > 0) return { ...run, usage: Object.freeze(usage) }
-    const runWithoutUsage = { ...run }
-    delete runWithoutUsage.usage
-    return runWithoutUsage
   })
-  return freezeView({ ...view, runs: Object.freeze(runs) })
+  return freezeView({
+    ...view,
+    runs: Object.freeze(runs),
+    sessionUsage: sessionUsageFor(state),
+  })
 }
 
 export function createApplicationUiController(

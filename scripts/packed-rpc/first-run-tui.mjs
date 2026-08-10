@@ -17,7 +17,7 @@ async function waitFor(predicate, label, timeoutMs = 15_000) {
   }
 }
 
-const LIVE_BRIDGE_ENDPOINT = 'http://127.0.0.1:3344'
+const LIVE_BRIDGE_ENDPOINT = process.env.BRAID_LIVE_BRIDGE_ENDPOINT ?? 'http://127.0.0.1:3344'
 const LIVE_GLM_MODEL = 'opencode/zai-coding-plan/glm-5.2'
 const LIVE_GLM_PORTABLE_MODEL = 'zai-coding-plan/glm-5.2'
 

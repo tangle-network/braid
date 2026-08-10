@@ -17,6 +17,7 @@ const forbiddenViewImports = [
   '/adapters/',
   '/ports/',
 ]
+const forbiddenTuiAdapterImports = ['@tangle-network/agent-eval', '/app/analysis-comparison-facts']
 
 async function filesUnder(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -53,6 +54,17 @@ for (const file of await filesUnder(sourceRoot.pathname)) {
       /import\s*\{[^}]*\bMarkdown\b[^}]*\}\s*from\s*['"]@earendil-works\/pi-tui['"]/su.test(source)
     ) {
       violations.push(`${path}: bypasses the safe Markdown wrapper`)
+    }
+  }
+
+  if (path.startsWith('src/adapters/tui/')) {
+    const imports = [...source.matchAll(/(?:from|import\s*\()\s*['"]([^'"]+)['"]/gu)].map(
+      (match) => match[1],
+    )
+    for (const forbidden of forbiddenTuiAdapterImports) {
+      if (imports.some((specifier) => specifier?.includes(forbidden))) {
+        violations.push(`${path}: terminal adapter eagerly imports ${forbidden}`)
+      }
     }
   }
 }

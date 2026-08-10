@@ -1,4 +1,5 @@
 import type { ExactAnalystRunResult } from '@tangle-network/agent-eval'
+import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalysisRecord } from '../domain/entities.js'
 import type { AnalysisId } from '../domain/ids.js'
 import { type AnalysisAnalyst, AnalysisExecutionSession } from './analysis-execution-session.js'
@@ -14,6 +15,7 @@ import type {
   FrozenAnalysisEvidence,
 } from './analysis-types.js'
 import { AnalysisPersistenceError } from './analysis-types.js'
+import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import { UnavailableAnalyst } from './unavailable-analyst.js'
 
 export interface AnalysisExecutionResult {
@@ -78,6 +80,7 @@ export class AnalysisService {
     this.#active.add(String(record.id))
     let current = record
     let resultCommitted = false
+    let modelExecutions: readonly ExternalOptimizerModelExecutionObservation[] = []
     try {
       const operation = await this.#lifecycle.reserve(prepared.identity)
       if (!operation.created) {
@@ -112,6 +115,7 @@ export class AnalysisService {
           event: item.event,
         }
       }
+      modelExecutions = this.#execution.modelExecutions(String(prepared.identity.analysisRunId))
       if (exactResult === undefined)
         throw new Error('agent-eval exact stream ended without a result')
       if (exactResult.completion.status === 'failed') {
@@ -125,6 +129,7 @@ export class AnalysisService {
         identity: prepared.identity,
         analystIds,
         descriptors: this.#execution.listAnalysts(),
+        modelExecutions,
         result: exactResult,
         at: this.#host.now(),
       })
@@ -144,6 +149,8 @@ export class AnalysisService {
       if (error instanceof AnalysisPersistenceError || error instanceof AnalysisOperationError) {
         throw error
       }
+      modelExecutions = this.#execution.modelExecutions(String(prepared.identity.analysisRunId))
+      current = { ...current, modelCalls: analysisModelCallRecords(modelExecutions) }
       const cancelled = this.#execution.wasCancelled(String(current.id))
       const failed = await this.#lifecycle.failed(current, error, cancelled)
       if (cancelled) {

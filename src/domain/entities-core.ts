@@ -28,8 +28,16 @@ import type { RuntimeMessageFields } from './runtime-projection.js'
 export interface TurnUsage {
   readonly input: number
   readonly output: number
+  /** False means the numeric token values are only an observed floor. */
+  readonly tokensKnown?: false
   readonly reasoning?: number
   readonly costUsd?: number
+  /** False means costUsd is absent or only an observed floor. */
+  readonly usdKnown?: false
+  /** A separately labelled estimate. This is never billed spend. */
+  readonly estimatedCostUsd?: number
+  readonly promptCache?: Readonly<Record<string, number>>
+  readonly latencyMs?: number
   readonly model?: string
 }
 

@@ -131,6 +131,29 @@ test('resolves the selected connection credential in memory and never exposes it
   assert.doesNotMatch(JSON.stringify(result.engine.executionConfig), new RegExp(secret, 'u'))
 })
 
+test('trace analysis forwards the injected router transport', async () => {
+  const selected = connection('tangle-inference', 'router-transport', 'https://router.test', true)
+  const credentials = new MemoryCredentialStore()
+  const portRef = credentialRef('cred:v1:router-transport')
+  await credentials.store({ ref: portRef, value: Buffer.from('router-secret') })
+  const options = baseOptions(selected, {
+    credentials,
+    credentialRefResolver: () => portRef,
+  })
+  let accessed = false
+  Object.defineProperty(options, 'routerComplete', {
+    configurable: true,
+    get: () => {
+      accessed = true
+      return async () => ({})
+    },
+  })
+
+  const result = await createTraceAnalysisAdapter(options)
+  assert.equal(result.status, 'engine-configured')
+  assert.equal(accessed, true)
+})
+
 test('reports a missing model before probing Python', async () => {
   let probes = 0
   const selected = connection('cli-bridge', 'model-required', 'http://127.0.0.1:4010')
@@ -299,48 +322,46 @@ function optimizerRequest(
 }
 
 function runtimeOwner(
-  fetchImpl: typeof fetch,
+  complete: NonNullable<Parameters<typeof createRuntimeTraceModelOwner>[0]['complete']>,
   recordExecution?: (observation: ExternalOptimizerModelExecutionObservation) => void,
+  model = 'pi/tangle-router/glm-5.2',
 ) {
   const selected = connection('cli-bridge', 'runtime-owner', 'http://127.0.0.1:3344')
   return createRuntimeTraceModelOwner({
     profile: {
       harness: 'pi',
-      model: { default: 'pi/tangle-router/glm-5.2', reasoningEffort: 'high' },
+      model: {
+        default: model,
+        provider: 'tangle-router',
+        reasoningEffort: 'high',
+      },
     },
     connection: selected,
     baseUrl: 'http://127.0.0.1:3344/v1',
     credential: 'credential-never-recorded',
-    model: 'pi/tangle-router/glm-5.2',
+    model,
     pricing: PRICING,
-    fetch: fetchImpl,
+    complete,
     ...(recordExecution === undefined ? {} : { recordExecution }),
   })
 }
 
 test('runtime-owned trace model call preserves canonical messages, limits, usage, and safe evidence', async () => {
-  let receivedUrl = ''
   let receivedAuthorization = ''
   let receivedBody: Record<string, unknown> | undefined
-  const owner = runtimeOwner(async (input, init) => {
-    receivedUrl = String(input)
-    receivedAuthorization = new Headers(init?.headers).get('authorization') ?? ''
-    receivedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
-    const stream = [
-      `data: ${JSON.stringify({ model: 'pi/tangle-router/glm-5.2', choices: [{ delta: { content: '{"answer":' } }] })}`,
-      '',
-      `data: ${JSON.stringify({ model: 'pi/tangle-router/glm-5.2', choices: [{ delta: { content: '"ok"}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 } })}`,
-      '',
-      'data: [DONE]',
-      '',
-    ].join('\n')
-    return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  const owner = runtimeOwner(async (body, request) => {
+    receivedAuthorization = request?.headers.authorization ?? ''
+    receivedBody = body
+    return {
+      model: 'pi/tangle-router/glm-5.2',
+      choices: [{ message: { content: '{"answer":"ok"}' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+    }
   })
 
   const result = await owner.call(optimizerRequest())
   assert.equal(result.succeeded, true)
   if (!result.succeeded) return
-  assert.equal(receivedUrl, 'http://127.0.0.1:3344/v1/chat/completions')
   assert.equal(receivedAuthorization, 'Bearer credential-never-recorded')
   assert.deepEqual(receivedBody?.messages, [
     { role: 'system', content: 'private analyst instruction' },
@@ -371,15 +392,50 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
   assert.doesNotMatch(execution, /credential-never-recorded/u)
   assert.doesNotMatch(execution, /private analyst instruction/u)
   assert.doesNotMatch(execution, /private trace question/u)
-  assert.match(execution, /runAgentTaskStream/u)
+  assert.match(execution, /streamAgentTurn/u)
   assert.match(execution, /"maxAttempts":1/u)
+})
+
+test('runtime-owned trace model preserves observed cost when token usage is unknown', async () => {
+  const owner = runtimeOwner(async () => ({
+    model: 'pi/tangle-router/glm-5.2',
+    choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+    usage: { cost_usd: 0.123 },
+  }))
+
+  const result = await owner.call(optimizerRequest())
+  assert.equal(result.succeeded, true)
+  if (!result.succeeded) return
+  assert.equal(result.response.usage.captured, false)
+  assert.equal(result.response.costUsd, 0.123)
+  assert.equal(result.receipt.usageUnknown, true)
+  assert.equal(result.receipt.actualCostUsd, 0.123)
+  assert.equal(result.receipt.costUnknown, undefined)
+})
+
+test('runtime model route errors never expose invalid model material', async () => {
+  const secretModel = 'Bearer raw-secret-never-output'
+  let calls = 0
+  const owner = runtimeOwner(
+    async () => {
+      calls += 1
+      throw new Error('must not dispatch')
+    },
+    undefined,
+    secretModel,
+  )
+
+  const result = await owner.call(optimizerRequest())
+  assert.equal(result.succeeded, false)
+  assert.equal(calls, 0)
+  assert.doesNotMatch(JSON.stringify(result), /raw-secret-never-output/u)
 })
 
 test('runtime-owned trace model failures resolve with explicit execution and accounting state', async () => {
   let calls = 0
   const owner = runtimeOwner(async () => {
     calls += 1
-    return new Response('{"error":"private upstream body"}', { status: 503 })
+    throw new Error('HTTP 503: private upstream body')
   })
   const result = await owner.call(optimizerRequest())
   assert.equal(result.succeeded, false)
@@ -421,7 +477,9 @@ test('runtime-owned trace model rejects unsupported request shapes before spendi
 test('runtime model execution observations are bounded, cloned, and externally recordable', () => {
   const forwarded: ExternalOptimizerModelExecutionObservation[] = []
   const owner = runtimeOwner(
-    async () => new Response(null, { status: 500 }),
+    async () => {
+      throw new Error('unused completion')
+    },
     (observation) => forwarded.push(observation),
   )
   const observation: ExternalOptimizerModelExecutionObservation = {

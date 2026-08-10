@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import {
+  ApplicationUiController,
+  buildBraidViewModel,
+} from '../src/adapters/tui/application-ui-controller.js'
+import type { BraidApplication } from '../src/app/application.js'
+import type { SupervisorRecord, WorkerRecord } from '../src/domain/entities.js'
+import { createSupervisorId, createWorkerId } from '../src/domain/ids-values.js'
+import { type BraidState, initialState } from '../src/domain/state.js'
 import { sanitizeTerminalText } from '../src/views/shared/sanitize.js'
+import { queryActivity } from '../src/views/shared/semantic-activity.js'
 import { layoutFor } from '../src/views/tui/layout.js'
 
 // @ts-expect-error The performance report helpers are JavaScript release entry points.
@@ -26,7 +36,7 @@ const {
 } = statistics
 const { evaluateRuntimeEventRate, visibleRuntimeEventSequences } = applicationProbe
 const { createPerformanceLifecycle } = lifecycleModule
-const { evaluateResizeStreamRate } = resizeProbe
+const { evaluateResizeStreamRate, scheduledProducerDelay } = resizeProbe
 const { assertSmokeMeasurements } = reporting
 const { summarizeStage } = stageTimings
 const { prepareHeadlessProductionProcessFixture } = storageProbes
@@ -76,6 +86,147 @@ test('view transform performance records a complete distribution for 20 real rep
     }),
   )
 })
+
+test('runtime activity projection stays bounded at 10k and 100k saved workers', (t) => {
+  for (const count of [10_000, 100_000]) {
+    const state = runtimeWorkerState(count)
+    buildBraidViewModel({ ...state, revision: -1 })
+    const changedRevision: number[] = []
+    for (let repetition = 0; repetition < 10; repetition += 1) {
+      const started = performance.now()
+      const view = buildBraidViewModel({ ...state, revision: repetition })
+      changedRevision.push(performance.now() - started)
+      assert.equal(view.activity.length, 500)
+      assert.equal(view.graph.length, 2_049)
+      assert.equal(view.hiddenGraphNodeCount, count - 2_048)
+    }
+
+    const stableState = { ...state, revision: 11 }
+    buildBraidViewModel(stableState)
+    const unchangedRevision: number[] = []
+    for (let repetition = 0; repetition < 20; repetition += 1) {
+      const started = performance.now()
+      buildBraidViewModel(stableState)
+      unchangedRevision.push(performance.now() - started)
+    }
+
+    const changed = distribution(changedRevision)
+    const unchanged = distribution(unchangedRevision)
+    assert.ok(
+      changed.p90 < (count === 10_000 ? 250 : 450),
+      `${count} worker changed-revision p90=${changed.p90.toFixed(1)}ms`,
+    )
+    assert.ok(
+      unchanged.p90 < 5,
+      `${count} worker stable-revision p90=${unchanged.p90.toFixed(1)}ms`,
+    )
+    t.diagnostic(
+      JSON.stringify({
+        name: 'runtime-activity-projection',
+        unit: 'ms',
+        environment: { node: process.version, savedWorkers: count },
+        changedRevision: changed,
+        unchangedRevision: unchanged,
+      }),
+    )
+  }
+})
+
+test('controller renders reuse one state clone and semantic projection per revision', () => {
+  const source = runtimeWorkerState(10_000)
+  let revision = source.revision
+  let stateCalls = 0
+  const app = {
+    revision: () => revision,
+    state: () => {
+      stateCalls += 1
+      return structuredClone({ ...source, revision })
+    },
+    canCancel: () => false,
+    storageFailure: () => undefined,
+    cleanupUncertain: () => undefined,
+    canRespondToInteractions: () => false,
+  } as unknown as BraidApplication
+  const controller = new ApplicationUiController(app)
+  controller.view()
+  const samples: number[] = []
+  for (let repetition = 0; repetition < 20; repetition += 1) {
+    const started = performance.now()
+    controller.view()
+    samples.push(performance.now() - started)
+  }
+  assert.equal(stateCalls, 1)
+  assert.ok(distribution(samples).p90 < 10)
+
+  revision += 1
+  assert.equal(controller.view().revision, revision)
+  assert.equal(stateCalls, 2)
+})
+
+test('activity caps keep the newest unsorted worker while headless history stays complete', () => {
+  const source = runtimeWorkerState(2_049)
+  const newest = source.workers[0]
+  assert(newest)
+  const state = {
+    ...source,
+    workers: source.workers.map((worker, index) => ({
+      ...worker,
+      updatedAt: index === 0 ? '2026-08-09T00:00:01.000Z' : worker.updatedAt,
+    })),
+  }
+  const view = buildBraidViewModel(state)
+  assert.equal(view.hiddenGraphNodeCount, 1)
+  assert.equal(
+    view.graph.some((node) => node.id === newest.id),
+    true,
+  )
+  assert.equal(queryActivity(state).activity.length, 2_050)
+})
+
+test('bounded activity matches the exact tail of a scrambled worker history', () => {
+  const source = runtimeWorkerState(3_000)
+  const state = {
+    ...source,
+    workers: source.workers.map((worker, index) => ({
+      ...worker,
+      updatedAt: new Date(Date.UTC(2026, 7, 9, 0, 0, (index * 7_919) % 1_000)).toISOString(),
+    })),
+  }
+  const expected = queryActivity(state)
+    .activity.slice(-500)
+    .map(({ id }) => id)
+  const actual = queryActivity(state, { limit: 500 }).activity.map(({ id }) => id)
+  assert.deepEqual(actual, expected)
+})
+
+function runtimeWorkerState(count: number): BraidState {
+  const at = '2026-08-09T00:00:00.000Z'
+  const supervisorId = createSupervisorId('supervisor-performance')
+  const supervisor: SupervisorRecord = {
+    id: supervisorId,
+    runtimeId: 'runtime-supervisor-performance',
+    runtimeRoot: '/workspace',
+    status: 'completed',
+    title: 'performance supervisor',
+    createdAt: at,
+    updatedAt: at,
+  }
+  const workers: WorkerRecord[] = Array.from({ length: count }, (_, index) => ({
+    id: createWorkerId(`worker-performance-${index}`),
+    runtimeId: `runtime-worker-performance-${index}`,
+    supervisorId,
+    status: 'completed',
+    title: `worker ${index}`,
+    createdAt: at,
+    updatedAt: at,
+  }))
+  return {
+    ...initialState({ name: 'performance' } as Readonly<AgentProfile>),
+    workspace: '/workspace',
+    supervisors: [supervisor],
+    workers,
+  }
+}
 
 test('performance statistics preserve the required percentile definition and release shape', () => {
   const distribution = summarizeSamples(
@@ -176,6 +327,27 @@ test('PERF-07 rejects an intentionally slow 90 events/s producer and render inte
   assert.equal(slow.acceptedEventsPerSecond, 90)
   assert.equal(slow.observedEventsPerSecond, 90)
   assert.equal(slow.passed, false)
+})
+
+test('PERF-07 producer cadence corrects processing drift without hiding backpressure', () => {
+  assert.equal(
+    scheduledProducerDelay({
+      cadenceStartedAt: 100,
+      sequence: 2,
+      intervalMs: 8,
+      now: 103,
+    }),
+    5,
+  )
+  assert.equal(
+    scheduledProducerDelay({
+      cadenceStartedAt: 100,
+      sequence: 2,
+      intervalMs: 8,
+      now: 110,
+    }),
+    0,
+  )
 })
 
 test('smoke validation rejects failed rows without concrete reasons', () => {

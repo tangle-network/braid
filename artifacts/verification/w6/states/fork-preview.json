@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "7d25b83d58d2a4f26d63009e147ab739559aeef242622c332110d573c2d8ba7d"
+    "tarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n    fork preview · workspace\n    will create a new workspace from this source\n    source: workspace:/workspace\n    destination: workspace:/workspace-fork\n    boundary: conv-1 / branch-1 → conv-fork-1 / branch-1\n    profile snapshot: digest:fixture-source → digest:fixture-copy\n    workspace state: checkpoint:fixture-1 → checkpoint:fixture-1\n    enter/y create fork · esc cancel\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
+  "frame": "braid  cwd  braid-unified-activity-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n    fork preview · workspace\n    will create a new workspace from this source\n    source: workspace:/workspace\n    destination: workspace:/workspace-fork\n    boundary: conv-1 / branch-1 → conv-fork-1 / branch-1\n    profile snapshot: digest:fixture-source → digest:fixture-copy\n    workspace state: checkpoint:fixture-1 → checkpoint:fixture-1\n    enter/y create fork · esc cancel\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-automation-main-wt",
+      "workspace": "/home/drew/code/braid-unified-activity-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -56,12 +56,56 @@
         "harness": "pi",
         "model": {
           "default": "fixture/deterministic",
+          "provider": "fixture",
           "reasoningEffort": "none"
         }
       },
       "draft": "",
       "messages": [],
       "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
       "interactions": [],
       "queue": [],
       "activeRunId": null,
@@ -69,9 +113,9 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-automation-main-wt",
+      "workspace": "/home/drew/code/braid-unified-activity-wt",
       "profileName": "Braid starter",
-      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
       "model": "fixture/deterministic",
       "effort": "none",
@@ -96,6 +140,49 @@
       "messages": [],
       "hiddenMessageCount": 0,
       "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
       "interactions": [],
       "activity": [],
       "graph": [
@@ -105,7 +192,8 @@
           "title": "New conversation",
           "status": "complete",
           "depth": 0,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
           "id": "branch-1",
@@ -113,9 +201,11 @@
           "title": "Main",
           "status": "complete",
           "depth": 1,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
+      "entityDetails": [],
       "capabilities": {
         "conversation.create": {
           "available": true,
@@ -301,7 +391,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-automation-main-wt"
+            "workspace": "/home/drew/code/braid-unified-activity-wt"
           }
         }
       }

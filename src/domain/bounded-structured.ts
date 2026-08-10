@@ -10,17 +10,52 @@ const SAFE_NUMERIC_FIELDS = new Set([
   'inputtokens',
   'outputtokens',
   'reasoningtokens',
+  'prompttokens',
+  'completiontokens',
+  'totaltokens',
+  'cachedtokens',
+  'cachedprompttokens',
+  'cachewritetokens',
   'tokensinput',
   'tokensoutput',
   'maxtokens',
+  'maxcompletiontokens',
   'mintokens',
   'tokencount',
   'tokenestimate',
 ])
+const SAFE_BOOLEAN_FIELDS = new Set(['tokensknown'])
 
 export function isSafeNumericTelemetryField(key: string, value: unknown): value is number {
   const normalized = key.replace(/[^a-z0-9]/giu, '').toLowerCase()
   return SAFE_NUMERIC_FIELDS.has(normalized) && typeof value === 'number' && Number.isFinite(value)
+}
+
+export function isSafeBooleanTelemetryField(key: string, value: unknown): value is boolean {
+  const normalized = key.replace(/[^a-z0-9]/giu, '').toLowerCase()
+  return SAFE_BOOLEAN_FIELDS.has(normalized) && typeof value === 'boolean'
+}
+
+/** Accept Runtime's exact aggregate token counter without accepting arbitrary token-shaped data. */
+export function isSafeTokenUsageRecord(
+  key: string,
+  value: unknown,
+): value is Readonly<Record<'input' | 'output', number>> {
+  const normalized = key.replace(/[^a-z0-9]/giu, '').toLowerCase()
+  if ((normalized !== 'tokens' && normalized !== 'tokenusage') || !isRecord(value)) {
+    return false
+  }
+  const entries = Object.entries(value)
+  return (
+    entries.length === 2 &&
+    entries.every(
+      ([field, count]) =>
+        (field === 'input' || field === 'output') &&
+        typeof count === 'number' &&
+        Number.isFinite(count) &&
+        count >= 0,
+    )
+  )
 }
 
 const sensitiveNamePattern =
@@ -91,7 +126,7 @@ function sanitize(
   depth: number,
   context: RedactionContext,
 ): unknown {
-  if (key && isSensitiveFieldName(key)) {
+  if (key && isSensitiveFieldName(key) && !isSafeTokenUsageRecord(key, value)) {
     if (typeof value === 'boolean' || value === null) return value
     if (typeof value === 'string' && isSafeOpaqueReference(key, value)) return value
     return STRUCTURED_REDACTION_MARKER

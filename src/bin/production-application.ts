@@ -6,15 +6,15 @@ import {
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import type { HeadlessKeySource } from '../adapters/credentials/headless-key.js'
 import type { BraidApplication } from '../app/application.js'
+import type { ConfigurationSelection } from '../app/configuration-session.js'
 import { ConnectionActionService } from '../app/connection-actions.js'
 import { ConnectionRegistry } from '../app/connections.js'
-import type { ConfigurationSelection } from '../app/configuration-session.js'
 import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../app/production-composition.js'
-import type { CredentialPort } from '../ports/credentials.js'
 import { canonicalDigest } from '../domain/canonical.js'
+import type { CredentialPort } from '../ports/credentials.js'
 import { createDurableBraidApplication } from '../startup/durable-runtime.js'
 import {
   createProductionCredentialContext,
@@ -101,8 +101,6 @@ async function productionIntelligence(production: ProductionCompositionConfig): 
   const analysis = await createTraceAnalysisAdapter({
     profile: selected.profile,
     connection: selected.connection,
-    ...(production.model === undefined ? {} : { model: production.model }),
-    ...(production.runner === undefined ? {} : { runner: production.runner }),
     ...(production.connectionOptions ?? {}),
   })
   return { analyst: createTraceAnalysisAnalyst(analysis) }

@@ -2,10 +2,8 @@ import {
   type ComparePairedArmsOptions,
   comparePairedArms,
   type PairedArmRow,
-  type PairedArmsComparison,
 } from '@tangle-network/agent-eval'
 import { canonicalDigest } from '../domain/canonical.js'
-import type { AnalysisRecord } from '../domain/entities.js'
 import type {
   AnalysisComparisonRequest,
   AnalysisComparisonResult,
@@ -113,22 +111,4 @@ export function comparisonIdentity(result: AnalysisComparisonResult): string {
     rows: result.rows,
     paired: result.paired,
   })
-}
-
-export function resultFromComparisonRecord(record: AnalysisRecord): AnalysisComparisonResult {
-  if (record.comparison === undefined) {
-    throw new Error(`Comparison ${String(record.id)} is incomplete`)
-  }
-  const comparison = record.comparison
-  return {
-    baselineSourceDigest: String(comparison.baseline.digest),
-    candidateSourceDigest: String(comparison.candidate.digest),
-    baselineRunId: String(comparison.baseline.runId),
-    candidateRunId: String(comparison.candidate.runId),
-    fields: comparison.fields,
-    rows: comparison.rows as unknown as readonly PairedArmRow[],
-    paired: comparison.paired as unknown as PairedArmsComparison,
-    semantic: comparison.semantic,
-    replayed: true,
-  }
 }

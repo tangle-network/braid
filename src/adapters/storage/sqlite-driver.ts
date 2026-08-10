@@ -1,10 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { readFileSync } from 'node:fs'
 import { StorageError } from './sqlite-errors.js'
 
 export const SQLITE_DRIVER_PACKAGE = 'better-sqlite3-multiple-ciphers'
 export const SQLITE_DRIVER_VERSION = '13.0.3'
+const RAW_KEY_PREFIX = Buffer.from('raw:', 'ascii')
 
 export type SqliteValue = string | number | bigint | Buffer | null
 
@@ -119,7 +120,9 @@ export function configureCipherDatabase(
   try {
     database.pragma("cipher = 'sqlcipher'")
     database.pragma('legacy = 4')
-    const material = Buffer.from(key)
+    const material = Buffer.allocUnsafe(RAW_KEY_PREFIX.length + key.length)
+    RAW_KEY_PREFIX.copy(material)
+    key.copy(material, RAW_KEY_PREFIX.length)
     try {
       if (options.newDatabase) database.rekey(material)
       else database.key(material)

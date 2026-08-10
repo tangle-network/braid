@@ -10,6 +10,7 @@ import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import {
   configureCipherDatabase,
   loadCipherDatabaseFactory,
+  type SqliteDatabase,
 } from '../src/adapters/storage/sqlite-driver.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
@@ -23,8 +24,9 @@ import {
   createWorkspaceId,
 } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
+import type { CredentialPort } from '../src/ports/credentials.js'
 import { credentialRef } from '../src/ports/credentials.js'
-import type { JsonValue } from '../src/ports/storage.js'
+import type { JournalEvent, JsonValue, StoragePort } from '../src/ports/storage.js'
 import { FileCredentialStore } from './support/file-credentials.js'
 
 const require = createRequire(import.meta.url)
@@ -44,6 +46,80 @@ function requireNativeStorage(): void {
     )
   }
 }
+
+test('SQLite receives random database keys as zeroized raw key material', () => {
+  const key = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1))
+  for (const newDatabase of [false, true]) {
+    let passed: Buffer | undefined
+    let retained: Buffer | undefined
+    const accept = (material: Buffer) => {
+      passed = Buffer.from(material)
+      retained = material
+      return 0
+    }
+    const database = {
+      open: true,
+      prepare: () => ({
+        run: () => ({ changes: 0 }),
+        get: () => ({ count: 0 }),
+        all: () => [],
+      }),
+      exec: () => undefined,
+      pragma: (sql: string, options?: { readonly simple?: boolean }) =>
+        sql === 'cipher' && options?.simple === true ? 'sqlcipher' : undefined,
+      key: newDatabase ? () => assert.fail('existing-database key path was not expected') : accept,
+      rekey: newDatabase ? accept : () => assert.fail('new-database rekey path was not expected'),
+      close: () => undefined,
+    } as unknown as SqliteDatabase
+
+    configureCipherDatabase(database, key, { newDatabase })
+
+    assert.equal(passed?.subarray(0, 4).toString('ascii'), 'raw:')
+    assert.deepEqual(passed?.subarray(4), key)
+    assert.equal(
+      retained?.every((byte) => byte === 0),
+      true,
+    )
+  }
+  assert.deepEqual(key, Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1)))
+})
+
+test('production SQLite rejects pre-v1 password-derived databases without a fallback', async () => {
+  requireNativeStorage()
+  const root = await mkdtemp(join(tmpdir(), 'braid-storage-derived-key-'))
+  const databasePath = join(root, 'braid.sqlite')
+  const keyRef = credentialRef('cred:v1:database-derived-key-test')
+  const key = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1))
+  const credentials = new MemoryCredentialStore()
+  await credentials.store({ ref: keyRef, value: key, label: 'Pre-v1 derived database key' })
+  const database = loadCipherDatabaseFactory()(databasePath, { timeout: 5_000 })
+  try {
+    database.pragma("cipher = 'sqlcipher'")
+    database.pragma('legacy = 4')
+    if (!database.rekey) assert.fail('encrypted SQLite rekey operation is unavailable')
+    database.rekey(key)
+    database.exec('CREATE TABLE pre_v1_probe (value TEXT NOT NULL)')
+  } finally {
+    database.close()
+  }
+  const bytesBefore = await readFile(databasePath)
+
+  try {
+    await assert.rejects(
+      () =>
+        openSqliteStorage({
+          path: databasePath,
+          workspaceRoot: root,
+          credentialStore: credentials,
+          databaseKeyRef: keyRef,
+        }),
+      (error: unknown) => error instanceof StorageError && error.code === 'SQLITE_KEY_REJECTED',
+    )
+    assert.deepEqual(await readFile(databasePath), bytesBefore)
+  } finally {
+    key.fill(0)
+  }
+})
 
 const conversationId = createConversationId('conv-storage')
 let mutationSequence = 0
@@ -86,6 +162,59 @@ function journalEvent(
   } as const
 }
 
+const POST_TERMINAL_SIDEBAND_KINDS = [
+  'interaction.automation.audited',
+  'replay.cursor.advanced',
+  'run.cancel.requested',
+  'run.control.acknowledged',
+  'run.control.requested',
+  'run.interaction.responded',
+  'run.interaction.response.requested',
+  'run.queue.removed',
+  'run.reconciled',
+] as const
+
+async function assertPostTerminalJournalPolicy(storage: Pick<StoragePort, 'append' | 'events'>) {
+  const runId = createRunId('run-post-terminal-audit')
+  await storage.append([
+    {
+      ...journalEvent(runId, 1, 'event-post-terminal-final', { finalText: 'done' }, true),
+      runId,
+    },
+  ])
+  for (const [index, kind] of POST_TERMINAL_SIDEBAND_KINDS.entries()) {
+    const event: JournalEvent = {
+      ...journalEvent(runId, index + 2, `event-post-terminal-audit-${index + 1}`, { audit: kind }),
+      runId,
+      kind,
+    }
+    await storage.append([event])
+  }
+  assert.deepEqual(
+    (await storage.events({ runId })).map((event) => event.kind),
+    ['run.finished', ...POST_TERMINAL_SIDEBAND_KINDS],
+  )
+  for (const [index, kind] of ['run.text.delta', 'run.usage', 'run.finished'].entries()) {
+    await assert.rejects(
+      () =>
+        storage.append([
+          {
+            ...journalEvent(
+              runId,
+              POST_TERMINAL_SIDEBAND_KINDS.length + index + 2,
+              `event-post-terminal-mutation-${index + 1}`,
+              { mutation: kind },
+            ),
+            runId,
+            kind,
+            terminal: kind === 'run.finished',
+          },
+        ]),
+      (error: unknown) => error instanceof StorageError && error.code === 'TERMINAL_RUN_MUTATION',
+    )
+  }
+}
+
 async function openFileStorage(root: string, databaseName = 'braid.sqlite') {
   return openSqliteStorage({
     path: join(root, databaseName),
@@ -104,6 +233,30 @@ async function withDatabaseKey(root: string, action: (key: Buffer) => void): Pro
     action(key)
   } finally {
     key.fill(0)
+  }
+}
+
+function countedCredentialStore(): {
+  readonly credentials: CredentialPort
+  readonly reset: () => void
+  readonly resolveCount: () => number
+} {
+  const backing = new MemoryCredentialStore()
+  let resolves = 0
+  return {
+    credentials: {
+      store: (input) => backing.store(input),
+      resolve: (ref) => {
+        resolves += 1
+        return backing.resolve(ref)
+      },
+      remove: (ref) => backing.remove(ref),
+      available: () => backing.available(),
+    },
+    reset: () => {
+      resolves = 0
+    },
+    resolveCount: () => resolves,
   }
 }
 
@@ -167,6 +320,47 @@ test('MemoryStorage remains behind StoragePort for deterministic duplicate and g
       }),
     (error: unknown) => error instanceof StorageError && error.code === 'OPERATION_FAILED_REPLAY',
   )
+})
+
+test('MemoryStorage records post-terminal audit events but rejects output mutation', async () => {
+  const storage = new MemoryStorage()
+  await assertPostTerminalJournalPolicy(storage)
+  await storage.close()
+})
+
+test('production SQLite records post-terminal audit events but rejects output mutation', async () => {
+  requireNativeStorage()
+  const root = await mkdtemp(join(tmpdir(), 'braid-storage-terminal-policy-'))
+  const storage = await openFileStorage(root)
+  await assertPostTerminalJournalPolicy(storage)
+  await storage.close()
+})
+
+test('production SQLite bulk reads resolve one content key per conversation', async () => {
+  requireNativeStorage()
+  const root = await mkdtemp(join(tmpdir(), 'braid-storage-bulk-key-'))
+  const counted = countedCredentialStore()
+  const storage = await openSqliteStorage({
+    path: join(root, 'braid.sqlite'),
+    workspaceRoot: root,
+    credentialStore: counted.credentials,
+    databaseKeyRef: credentialRef('cred:v1:database-bulk-key-test'),
+  })
+  const runId = 'run-bulk-key'
+  await storage.append([
+    journalEvent(runId, 1, 'event-bulk-key-1', { text: 'one' }),
+    journalEvent(runId, 2, 'event-bulk-key-2', { text: 'two' }),
+    journalEvent(runId, 3, 'event-bulk-key-3', { text: 'three' }),
+  ])
+
+  counted.reset()
+  assert.equal((await storage.events()).length, 3)
+  assert.equal(counted.resolveCount(), 1)
+
+  counted.reset()
+  assert.equal((await storage.replay({ runId: createRunId(runId) })).events.length, 3)
+  assert.equal(counted.resolveCount(), 1)
+  await storage.close()
 })
 
 test('production SQLite adapter encrypts, replays, backs up, and destroys content keys', async () => {

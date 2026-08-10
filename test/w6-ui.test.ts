@@ -49,6 +49,38 @@ function viewFor(status: ViewStatus): BraidViewModel {
     status,
     statusText: status,
     queueCount: status === 'waiting' ? 1 : 0,
+    sessionUsage: {
+      turns: {
+        sourceCount: 1,
+        input: 6,
+        output: 12,
+        tokenStatus: 'complete',
+        costUsd: 0.001,
+        costStatus: 'reported',
+        unknownTokenSources: 0,
+        unknownCostSources: 0,
+      },
+      analyses: {
+        sourceCount: 0,
+        input: 0,
+        output: 0,
+        tokenStatus: 'unknown',
+        costStatus: 'unknown',
+        unknownTokenSources: 0,
+        unknownCostSources: 0,
+      },
+      delegated: {
+        sourceCount: 0,
+        input: 0,
+        output: 0,
+        tokenStatus: 'unknown',
+        costStatus: 'unknown',
+        unknownTokenSources: 0,
+        unknownCostSources: 0,
+      },
+      attribution: 'complete',
+    } satisfies BraidViewModel['sessionUsage'],
+    environments: [],
     messages: Object.freeze([
       {
         id: 'user-1',
@@ -295,16 +327,53 @@ test('terminal chrome aggregates known conversation metrics without filling gaps
       { ...baseRun, id: 'run-2', usage: { output: 5 } },
       { ...baseRun, id: 'run-3', usage: { input: 3, output: 1, costUsd: 0.02 } },
     ],
+    sessionUsage: {
+      ...view.sessionUsage,
+      turns: {
+        ...view.sessionUsage.turns,
+        sourceCount: 3,
+        input: 5,
+        output: 6,
+        costUsd: 0.03,
+      },
+    },
   }
   assert.deepEqual(metricsFor(mixed), ['in 5', 'out 6', '$0.0300'])
   assert.deepEqual(
     metricsFor({
       ...view,
       runs: [{ ...baseRun, id: 'run-missing', usage: { output: 0 } }],
+      sessionUsage: {
+        ...view.sessionUsage,
+        turns: {
+          sourceCount: 1,
+          output: 0,
+          tokenStatus: 'complete',
+          costStatus: 'unknown',
+          unknownTokenSources: 0,
+          unknownCostSources: 1,
+        },
+      },
     }),
-    ['out 0'],
+    ['out 0', 'cost unknown'],
   )
-  assert.deepEqual(metricsFor({ ...view, runs: [{ ...baseRun, id: 'run-none' }] }), [])
+  assert.deepEqual(
+    metricsFor({
+      ...view,
+      runs: [{ ...baseRun, id: 'run-none' }],
+      sessionUsage: {
+        ...view.sessionUsage,
+        turns: {
+          sourceCount: 1,
+          tokenStatus: 'unknown',
+          costStatus: 'unknown',
+          unknownTokenSources: 1,
+          unknownCostSources: 1,
+        },
+      },
+    }),
+    ['usage unknown'],
+  )
 })
 
 test('transcript history stays anchored while reading and follows new output at the tail', () => {
@@ -555,6 +624,7 @@ test('application view projects canonical graph edges without inventing complete
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)
   const receipt = app.send({ operationId: 'op-graph', text: 'graph proof' })
+  await receipt.admissionReady
   assert.equal(controller.view().runs[0]?.completeness, 'incomplete')
   await receipt.completion
   const view = controller.view()
@@ -622,6 +692,16 @@ test('visual fixtures expose interaction, fork, analysis, and comparison results
     (analysis.data as { analysis?: { findings?: unknown[] } }).analysis?.findings?.length,
     2,
   )
+  assert.equal(
+    analysisController.view().activity.some((item) => item.id === 'analysis:analysis-fixture-1'),
+    true,
+  )
+  const replacementAnalysisApp = createBraidApplication({ fixture: 'deterministic' })
+  await analysisController.replaceApplication(replacementAnalysisApp, '/replacement-workspace')
+  assert.equal(
+    analysisController.view().activity.some((item) => item.id === 'analysis:analysis-fixture-1'),
+    false,
+  )
 
   const comparisonApp = createBraidApplication({ fixture: 'deterministic' })
   comparisonApp.initialize('/workspace')
@@ -630,11 +710,17 @@ test('visual fixtures expose interaction, fork, analysis, and comparison results
   const comparison = await comparisonController.dispatch({
     type: 'run-command',
     command: 'compare',
-    args: ['run-fixture-baseline', 'run-fixture-candidate'],
+    args: ['run-route-serial', 'run-route-parallel'],
     operationId: 'op-comparison-fixture',
   })
   assert.equal(comparison.kind, 'accepted')
   assert.equal((comparison.data as { paired?: { nPairs?: number } }).paired?.nPairs, 1)
+  assert.equal(
+    comparisonController
+      .view()
+      .activity.some((item) => item.id === 'analysis:analysis-fixture-comparison'),
+    true,
+  )
 })
 
 test('approve and reject commands resolve the focused pending interaction', async () => {
@@ -682,7 +768,10 @@ test('unconfigured runs preserve drafts while active runs queue input', async ()
         : { journal: new MemoryJournal(new FixedClock()) },
     )
     app.initialize('/workspace')
-    if (fixture) app.send({ operationId: 'op-active', text: 'first turn' })
+    if (fixture) {
+      const active = app.send({ operationId: 'op-active', text: 'first turn' })
+      await active.admissionReady
+    }
     const controller = createApplicationUiController(app)
     const view = new BraidTerminalApp({
       controller,

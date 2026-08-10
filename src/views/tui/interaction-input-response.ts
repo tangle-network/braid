@@ -10,7 +10,7 @@ export function interactionInputResponse(
   outcome: InteractionOutcome | undefined,
   value: string,
 ): InteractionInputResult {
-  if (outcome === undefined) return { response: { outcome: 'cancel' } }
+  if (outcome === undefined) return { error: 'No allowed response is available.' }
   const spec = interaction.answerSpec
   if (spec.kind === 'number') {
     const number = Number(value)

@@ -1,4 +1,5 @@
-import { snapshotAgentProfile, type AgentProfile } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { RunAdmissionReceipt, RunCapabilities } from '../domain/receipts.js'
 import { redactProfile } from '../domain/redaction.js'

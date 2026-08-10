@@ -3,6 +3,7 @@ import type { ConnectionSummary } from '../../app/connection-action-types.js'
 import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { type CommandName, commandItems } from '../shared/command-registry.js'
 import type { BraidUiController } from '../shared/intents.js'
+import type { ActivityItemView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import {
   AutomationOverlayWorkflow,
@@ -187,6 +188,24 @@ export class TerminalOverlayController {
       onCancel: () => this.#modals.closeTop(),
     })
     this.#modals.open(palette, { anchor: 'center', width: '70%', minWidth: 32, maxHeight: 14 })
+  }
+
+  openAnalysisSource(question: readonly string[], sources: readonly ActivityItemView[]): void {
+    const selector = new SearchableSelector({
+      title: 'Ask about a run',
+      items: [...sources].reverse().map((source) => ({
+        value: source.entityId ?? source.runId ?? source.id,
+        label: source.title,
+        description: `${source.status} · ${source.occurredAt}`,
+      })),
+      theme: this.#theme,
+      onSelect: (item) => {
+        this.#modals.closeTop()
+        this.#dispatchCommand('ask', [`run:${item.value}`, ...question])
+      },
+      onCancel: () => this.#modals.closeTop(),
+    })
+    this.#modals.open(selector, { anchor: 'center', width: '78%', minWidth: 36, maxHeight: '80%' })
   }
 
   openAutomation(options: AutomationOverlayOpenOptions = {}): void {

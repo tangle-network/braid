@@ -14,6 +14,7 @@ import { interactionInputResponse } from './interaction-input-response.js'
 import {
   answerHelp,
   answerOutcome,
+  cancellationOutcome,
   consequence,
   interactionHeading,
   interactionSubjectComponents,
@@ -56,7 +57,7 @@ export class InteractionShell extends Container implements Focusable {
     this.#input = isSecretInteraction(interaction) ? new SecretInput() : new Input()
     this.#selectedOutcome = answerOutcome(interaction)
     this.#input.onSubmit = (value) => this.#submitValue(value)
-    this.#input.onEscape = () => this.#respond({ outcome: 'cancel' })
+    this.#input.onEscape = () => this.#cancel()
 
     const compactSelector = interaction.answerSpec.kind === 'select'
     this.addChild(this.#line(this.#theme.brand(interactionHeading(interaction))))
@@ -74,6 +75,11 @@ export class InteractionShell extends Container implements Focusable {
       this.addChild(child)
 
     if (interaction.answerSpec.kind === 'select') {
+      const selectFooter = [
+        '↑↓ move',
+        'enter choose',
+        ...(cancellationOutcome(interaction) === undefined ? [] : ['esc cancel']),
+      ].join(' · ')
       const selector = new SearchableSelector({
         title: 'response',
         items: interaction.answerSpec.options.map((option) => ({
@@ -82,13 +88,13 @@ export class InteractionShell extends Container implements Focusable {
         })),
         theme,
         maxVisible: 1,
-        footer: '↑↓ move · enter choose · esc cancel',
+        footer: selectFooter,
         onSelect: (item) => {
           const outcome = this.#selectedOutcome ?? answerOutcome(this.#interaction)
           if (outcome) this.#respond({ outcome, value: item.value })
-          else this.#respond({ outcome: 'cancel' })
+          else this.#cancel()
         },
-        onCancel: () => this.#respond({ outcome: 'cancel' }),
+        onCancel: () => this.#cancel(),
       })
       this.#selector = selector
       if (interaction.allowedOutcomes.length > 0)
@@ -100,7 +106,15 @@ export class InteractionShell extends Container implements Focusable {
       this.addChild(this.#validation)
       if (interaction.allowedOutcomes.length > 0)
         this.addChild(new OutcomeKeys(interaction.allowedOutcomes, theme))
-      this.addChild(this.#line(this.#theme.muted('enter submit · esc cancel')))
+      this.addChild(
+        this.#line(
+          this.#theme.muted(
+            cancellationOutcome(interaction) === undefined
+              ? 'enter submit'
+              : 'enter submit · esc cancel',
+          ),
+        ),
+      )
     }
     if (this.#onAutomate !== undefined && !isSecretInteraction(interaction))
       this.addChild(this.#line(this.#theme.muted('alt+a automate this response')))
@@ -131,7 +145,7 @@ export class InteractionShell extends Container implements Focusable {
       return
     }
     if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c')) {
-      this.#respond({ outcome: 'cancel' })
+      this.#cancel()
       return
     }
     if (this.#selector) {
@@ -199,8 +213,20 @@ export class InteractionShell extends Container implements Focusable {
 
   #respond(response: InteractionResponseValue): void {
     if (this.#responded) return
+    if (!this.#interaction.allowedOutcomes.some((outcome) => outcome === response.outcome)) {
+      this.#setValidation('That response is not allowed for this request.')
+      return
+    }
     this.#responded = true
     this.#onRespond(response)
+  }
+  #cancel(): void {
+    const outcome = cancellationOutcome(this.#interaction)
+    if (outcome === undefined) {
+      this.#setValidation('Cancellation is not allowed for this request.')
+      return
+    }
+    this.#respond({ outcome })
   }
 
   #automationResponse(): InteractionResponseValue | undefined {

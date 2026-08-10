@@ -20,6 +20,7 @@ import type { ProductionStartupLoadOptions } from './production-startup.js'
 interface CompatibleBridgeModel {
   readonly route: string
   readonly runner: HarnessType
+  readonly provider: string
   readonly model: string
 }
 
@@ -64,7 +65,7 @@ function compatibleModel(model: BridgeModel): CompatibleBridgeModel | undefined 
   const profile = validateProfileShape({
     name: 'Braid model candidate',
     harness: candidate.runner,
-    model: { default: candidate.model },
+    model: { default: candidate.model, provider: candidate.provider },
   })
   if (!profile.ok || profile.profile?.harness === undefined) return undefined
   return bridgeRunnerSupportsModel(profile.profile.harness, candidate.model) ? candidate : undefined
@@ -87,6 +88,8 @@ function hasRunnableTarget(profile: Readonly<AgentProfile>): boolean {
   const model = profile.model?.default?.trim()
   return (
     profile.harness !== undefined &&
+    profile.model?.provider !== undefined &&
+    profile.model.provider.trim().length > 0 &&
     model !== undefined &&
     model.length > 0 &&
     bridgeRunnerSupportsModel(
@@ -99,7 +102,16 @@ function hasRunnableTarget(profile: Readonly<AgentProfile>): boolean {
 function targetKey(profile: Readonly<AgentProfile>): string | undefined {
   const runner = profile.harness
   const model = profile.model?.default?.trim()
-  if (runner === undefined || model === undefined || model.length === 0) return undefined
+  const provider = profile.model?.provider?.trim()
+  if (
+    runner === undefined ||
+    provider === undefined ||
+    provider.length === 0 ||
+    model === undefined ||
+    model.length === 0
+  ) {
+    return undefined
+  }
   return materializeBridgeModelRoute(runner, model, profile.model?.provider)
 }
 
@@ -114,6 +126,7 @@ function generatedProfile(
     harness: candidate.runner,
     model: {
       default: candidate.model,
+      provider: candidate.provider,
       ...(options.effort === undefined ? {} : { reasoningEffort: options.effort }),
     },
   }

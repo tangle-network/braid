@@ -50,14 +50,26 @@ test('numeric token telemetry survives redaction while string tokens never do', 
   const redacted = redactStructuredValueWithNumericTelemetry({
     inputTokens: 12,
     output_tokens: 8,
+    promptTokens: 21,
+    completionTokens: 13,
+    totalTokens: 34,
+    cachedPromptTokens: 5,
+    cacheWriteTokens: 3,
     model: { maxTokens: 4096 },
+    tokenUsage: { input: 21, output: 13 },
     accessToken: 'secret-canary',
     poisoned: { inputTokens: 'secret-canary' },
     credentialConfigured: true,
   }) as Record<string, unknown>
   assert.equal(redacted.inputTokens, 12)
   assert.equal(redacted.output_tokens, 8)
+  assert.equal(redacted.promptTokens, 21)
+  assert.equal(redacted.completionTokens, 13)
+  assert.equal(redacted.totalTokens, 34)
+  assert.equal(redacted.cachedPromptTokens, 5)
+  assert.equal(redacted.cacheWriteTokens, 3)
   assert.deepEqual(redacted.model, { maxTokens: 4096 })
+  assert.deepEqual(redacted.tokenUsage, { input: 21, output: 13 })
   assert.equal(redacted.accessToken, '[redacted]')
   assert.deepEqual(redacted.poisoned, { inputTokens: '[redacted]' })
   assert.equal(redacted.credentialConfigured, true)

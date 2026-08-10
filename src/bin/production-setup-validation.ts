@@ -1,4 +1,7 @@
-import { harnessHonorsEffort, harnessHonorsModel } from '@tangle-network/agent-interface'
+import {
+  harnessHonorsEffort,
+  harnessHonorsModel,
+} from '../adapters/agent-interface/harness-runtime.js'
 import { materializeBridgeModelRoute } from '../adapters/connections/cli-bridge-model-route.js'
 import { readConnectionCredential } from '../adapters/connections/production-connections.js'
 import type {

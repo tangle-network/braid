@@ -1,4 +1,5 @@
-import { type AgentProfile, snapshotAgentProfile } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type {
   AnalysisCitation,
@@ -11,6 +12,7 @@ import type { ConversationId, OperationId } from '../domain/ids.js'
 import { parseDigestValue } from '../domain/ids.js'
 import { createAdmissionReceipt } from '../domain/receipts.js'
 import { UNKNOWN_RUN_CAPABILITIES } from '../ports/execution.js'
+import { importAnalysisModelCalls } from './conversation-import-analyses.js'
 import type { ConversationImportIds } from './conversation-import-values.js'
 import {
   booleanValue,
@@ -140,11 +142,26 @@ function importRun(
     status,
     inputTokens: finiteNumber(record.inputTokens, `${label}.inputTokens`),
     outputTokens: finiteNumber(record.outputTokens, `${label}.outputTokens`),
+    ...optionalField('tokensKnown', optionalFalse(record.tokensKnown, `${label}.tokensKnown`)),
     ...optionalField(
       'reasoningTokens',
       optionalFiniteNumber(record.reasoningTokens, `${label}.reasoningTokens`),
     ),
     ...optionalField('costUsd', optionalFiniteNumber(record.costUsd, `${label}.costUsd`)),
+    ...optionalField('usdKnown', optionalFalse(record.usdKnown, `${label}.usdKnown`)),
+    ...optionalField(
+      'estimatedCostUsd',
+      optionalFiniteNumber(record.estimatedCostUsd, `${label}.estimatedCostUsd`),
+    ),
+    ...optionalField(
+      'promptCache',
+      optionalNumberRecord(record.promptCache, `${label}.promptCache`),
+    ),
+    ...optionalField('llmCalls', optionalFiniteNumber(record.llmCalls, `${label}.llmCalls`)),
+    ...optionalField(
+      'llmLatencyMs',
+      optionalFiniteNumber(record.llmLatencyMs, `${label}.llmLatencyMs`),
+    ),
     ...optionalField('model', optionalString(record.model, `${label}.model`)),
     ...optionalField('error', optionalString(record.error, `${label}.error`)),
     receipt,
@@ -180,6 +197,25 @@ function importRun(
     updatedAt: requiredString(record.updatedAt, `${label}.updatedAt`),
     ...optionalField('terminalAt', terminalAt),
   }
+}
+
+function optionalFalse(value: unknown, label: string): false | undefined {
+  if (value === undefined) return undefined
+  if (value !== false) throw new AppError('IMPORT_INVALID', `${label} must be false when present`)
+  return false
+}
+
+function optionalNumberRecord(
+  value: unknown,
+  label: string,
+): Readonly<Record<string, number>> | undefined {
+  if (value === undefined) return undefined
+  const record = importRecord(value, label)
+  const output: Record<string, number> = {}
+  for (const [key, entry] of Object.entries(record)) {
+    output[key] = finiteNumber(entry, `${label}.${key}`)
+  }
+  return Object.freeze(output)
 }
 
 function importReceipt(
@@ -277,6 +313,10 @@ function importAnalysis(
     ...optionalField('recipe', optionalString(record.recipe, `${label}.recipe`)),
     status: TERMINAL_ANALYSIS_STATUSES.has(sourceStatus) ? sourceStatus : 'unknown',
     findings,
+    ...optionalField(
+      'modelCalls',
+      importAnalysisModelCalls(record.modelCalls, `${label}.modelCalls`),
+    ),
     ...optionalField('usage', optionalUsage(record.usage, `${label}.usage`)),
     ...optionalField('costUsd', optionalFiniteNumber(record.costUsd, `${label}.costUsd`)),
     ...optionalField('wallTimeMs', optionalFiniteNumber(record.wallTimeMs, `${label}.wallTimeMs`)),

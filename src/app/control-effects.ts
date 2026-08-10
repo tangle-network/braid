@@ -1,12 +1,12 @@
+import type { EffectStatus } from '../ports/effect-storage.js'
 import type {
-  ControlAcknowledgement,
   CancelRunResult,
+  ControlAcknowledgement,
   ExecutionPort,
   ProviderRunSnapshot,
 } from '../ports/execution.js'
-import type { EffectStatus } from '../ports/effect-storage.js'
+import type { ControlDispatchOptions, ControlEffectRequest } from './application-ports.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
-import type { ControlEffectRequest } from './application-ports.js'
 import { safeDiagnostic } from './provider-values.js'
 
 export async function executeControlEffect(input: {
@@ -16,8 +16,12 @@ export async function executeControlEffect(input: {
   readonly owner: string
   readonly timeoutMs: number
   readonly whenDurable: () => Promise<void>
+  readonly canSettleLate?: () => boolean
+  readonly onLateSettlement?: ControlDispatchOptions['onLateSettlement']
 }): Promise<ControlAcknowledgement> {
   const { request } = input
+  let providerResult: Promise<ControlAcknowledgement> | undefined
+  let foregroundTimedOut = false
   const effect = input.effects.start(
     {
       operationId: request.operationId,
@@ -40,18 +44,32 @@ export async function executeControlEffect(input: {
     {
       dispatch: async () => {
         const controller = new AbortController()
-        const result = await controlDeadline(
-          dispatchControl(input.execution, request, controller.signal),
-          controller,
-          input.timeoutMs,
-        )
-        return effectResult(result)
+        providerResult = dispatchControl(input.execution, request, controller.signal)
+        const result = await controlDeadline(providerResult, controller, input.timeoutMs)
+        foregroundTimedOut = result.timedOut
+        return effectResult(result.acknowledgement)
       },
       reconcile: async () => reconcileControl(input.execution, request),
     },
   )
   const record = await effect.completion
   await input.whenDurable()
+  if (foregroundTimedOut && providerResult !== undefined && input.onLateSettlement !== undefined) {
+    const lateResult = providerResult
+    void lateResult
+      .then(async (acknowledgement) => {
+        if (input.canSettleLate?.() === false) return
+        const settled = input.effects.settle(
+          effect.operationId,
+          effect.requestDigest,
+          effectResult(acknowledgement),
+        )
+        if (settled !== undefined) await input.whenDurable()
+        if (input.canSettleLate?.() === false) return
+        await input.onLateSettlement?.(acknowledgement)
+      })
+      .catch(() => undefined)
+  }
   return acknowledgementFromEffect(request.operationId, record.status, record.detail)
 }
 
@@ -112,6 +130,8 @@ async function reconcileControl(
     (request.providerSessionId !== undefined && snapshot.sessionId !== request.providerSessionId)
   )
     return undefined
+  if (request.control === 'cancel' && !['aborted', 'cancelled'].includes(snapshot.status))
+    return undefined
   if (request.control === 'detach' && snapshot.status !== 'detached') return undefined
   if (!providerTerminal(snapshot.status)) return undefined
   return { status: 'terminal', detail: 'CONTROL_RECONCILED_TERMINAL' }
@@ -171,10 +191,12 @@ async function controlDeadline(
   action: Promise<ControlAcknowledgement>,
   controller: AbortController,
   timeoutMs: number,
-): Promise<ControlAcknowledgement> {
+): Promise<{ readonly acknowledgement: ControlAcknowledgement; readonly timedOut: boolean }> {
   let timer: ReturnType<typeof setTimeout> | undefined
+  let timedOut = false
   const timeout = new Promise<ControlAcknowledgement>((resolve) => {
     timer = setTimeout(() => {
+      timedOut = true
       controller.abort(new Error('Control acknowledgement deadline elapsed'))
       resolve({
         operationId: 'unknown',
@@ -183,9 +205,9 @@ async function controlDeadline(
       })
     }, timeoutMs)
   })
-  const result = await Promise.race([action, timeout])
+  const acknowledgement = await Promise.race([action, timeout])
   if (timer !== undefined) clearTimeout(timer)
-  return result
+  return { acknowledgement, timedOut }
 }
 
 function providerTerminal(status: ProviderRunSnapshot['status']): boolean {

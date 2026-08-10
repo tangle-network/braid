@@ -43,6 +43,35 @@ export function terminalMessage(state, runId) {
   )
 }
 
+export function interactionFromResponse(response, runId) {
+  if (response?.type === 'state') {
+    const interaction = response.view?.interactions?.find((candidate) => candidate.runId === runId)
+    if (interaction !== undefined) return interaction
+    const run = response.state?.runs?.find((candidate) => candidate.id === runId)
+    const runInteraction = run?.interactions?.find(
+      (candidate) => candidate.status === 'pending' || candidate.status === 'responding',
+    )
+    if (runInteraction?.request !== undefined) {
+      return {
+        runId,
+        interactionId: runInteraction.request.id,
+        request: runInteraction.request,
+      }
+    }
+  }
+  if (response?.type === 'event' && response.event?.kind === 'run.interaction') {
+    if (response.event.runId !== runId) return undefined
+    const interactionId = response.event.interactionId ?? response.event.request?.id
+    if (typeof interactionId !== 'string' || interactionId.length === 0) return undefined
+    return {
+      runId,
+      interactionId,
+      request: response.event.request ?? response.event,
+    }
+  }
+  return undefined
+}
+
 export function targetCapabilities(stateResponse, terminalState) {
   const view = stateResponse?.view ?? {}
   const run = terminalState?.runs?.at(-1)

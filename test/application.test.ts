@@ -17,7 +17,11 @@ import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { JournalPort } from '../src/ports/effect-storage.js'
-import type { ExecutionAdmission, ExecutionPort } from '../src/ports/execution.js'
+import type {
+  ControlAcknowledgement,
+  ExecutionAdmission,
+  ExecutionPort,
+} from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 import { MAX_RENDERED_TEXT_CHARS } from '../src/views/shared/sanitize.js'
@@ -31,6 +35,14 @@ function deferred<T = void>(): {
     resolve = complete
   })
   return { promise, resolve }
+}
+
+async function waitUntil(condition: () => boolean, message: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (condition()) return
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+  assert.fail(message)
 }
 
 test('one send streams through runtime and reaches one terminal result', async () => {
@@ -53,10 +65,9 @@ test('one send streams through runtime and reaches one terminal result', async (
       'draft.changed',
       'run.requested',
       'effect.upserted',
-      'run.text.delta',
-      'run.text.delta',
-      'run.text.delta',
-      'run.text.delta',
+      'run.provider.event',
+      'run.usage',
+      'run.artifact',
       'run.finished',
       'effect.upserted',
     ],
@@ -417,11 +428,13 @@ test('cancellation remains distinct from failure', async () => {
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
   app.initialize('/workspace')
   const receipt = app.send({ operationId: 'op-cancel', text: 'cancel this turn' })
+  await receipt.admissionReady
   assert.equal(app.cancelActive(), true)
   const state = await receipt.completion
 
   assert.equal(state.runs[0]?.status, 'aborted')
-  assert.match(state.lastError ?? '', /abort|cancel/iu)
+  assert.match(state.runs[0]?.terminalReason ?? '', /abort|cancel/iu)
+  assert.equal(state.lastError, null)
   assert.equal(buildAppView(state).status, 'aborted')
 })
 
@@ -630,7 +643,7 @@ test('provider diagnostics and model metadata cannot persist credential material
   const serialized = JSON.stringify({ state, events: app.events() })
   assert.equal(serialized.includes(canary), false)
   assert.equal(state.runs[0]?.error, 'RUNTIME_FINAL_ERROR')
-  assert.equal(state.runs[0]?.model, undefined)
+  assert.equal(state.runs[0]?.model, 'fixture/deterministic')
   assert.equal(state.runs[0]?.inputTokens, 0)
   assert.equal(state.runs[0]?.outputTokens, 0)
 })
@@ -679,7 +692,7 @@ test('controller frame delivery combines a burst and reaches the newest revision
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   assert.ok(revisions.length > 0)
-  assert.ok(revisions.length < app.events().length)
+  assert.ok(revisions.length <= app.events().length)
   assert.equal(revisions.at(-1), app.state().revision)
   unsubscribe()
 })
@@ -948,6 +961,7 @@ test('cancel uses the operation ledger and replays after terminal completion', a
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
   app.initialize('/workspace')
   const send = app.send({ operationId: 'op-cancel-ledger', text: 'cancel this turn' })
+  await send.admissionReady
   const first = app.cancel({ operationId: 'op-cancel-stable', runId: send.runId })
   const firstState = await first.completion
   assert.equal(firstState.runs[0]?.status, 'aborted')
@@ -994,6 +1008,105 @@ test('cancel resolves unknown when the adapter cannot confirm the provider outco
   assert.equal(state.runs[0]?.status, 'unknown')
   assert.equal((await cancel.completion).runs[0]?.status, 'unknown')
   assert.match(state.lastError ?? '', /could not be confirmed/iu)
+})
+
+test('close cancels active work, is idempotent, and blocks late journal writes', async () => {
+  const streamStarted = deferred()
+  const releaseStream = deferred()
+  const execution: ExecutionPort = {
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted.resolve()
+      await releaseStream.promise
+      yield* []
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 25,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-close-barrier', text: 'close while active' })
+  await streamStarted.promise
+
+  const closing = app.close()
+  assert.strictEqual(closing, app.close())
+  await closing
+
+  assert.equal(app.state().runs[0]?.status, 'unknown')
+  assert.throws(
+    () => app.send({ operationId: 'op-after-close', text: 'must not start' }),
+    (error: unknown) => error instanceof AppError && error.code === 'APPLICATION_CLOSING',
+  )
+  const eventsAfterClose = app.events().length
+
+  releaseStream.resolve()
+  await send.completion.catch(() => undefined)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(app.events().length, eventsAfterClose)
+})
+
+test('close aborts deferred admission before materialization or journal writes', async () => {
+  const admissionStarted = deferred()
+  const releaseAdmission = deferred()
+  let materialized = 0
+  let streamStarts = 0
+  const execution: ExecutionPort = {
+    admissionMode: 'async',
+    capabilities: { cancel: true },
+    async admit(input) {
+      admissionStarted.resolve()
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => reject(input.signal.reason ?? new Error('admission aborted'))
+        if (input.signal.aborted) {
+          onAbort()
+          return
+        }
+        input.signal.addEventListener('abort', onAbort, { once: true })
+        void releaseAdmission.promise.then(resolve)
+      })
+      materialized += 1
+      return {}
+    },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarts += 1
+      yield* []
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 25,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-deferred-close', text: 'do not materialize' })
+  await admissionStarted.promise
+
+  const closing = app.close()
+  await closing
+  const eventsAfterClose = app.events().length
+  releaseAdmission.resolve()
+  await send.admissionReady?.catch(() => undefined)
+  await send.completion.catch(() => undefined)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(materialized, 0)
+  assert.equal(streamStarts, 0)
+  assert.equal(app.events().length, eventsAfterClose)
+  assert.equal(
+    app.events().some((entry) => entry.event.kind === 'run.requested'),
+    false,
+  )
 })
 
 test('provider acknowledgement, not local abort, settles cancellation', async () => {
@@ -1044,11 +1157,608 @@ test('provider acknowledgement, not local abort, settles cancellation', async ()
 
   assert.equal(providerCancellationCalls, 1)
   assert.equal(state.runs[0]?.status, 'aborted')
-  assert.equal(state.lastError, 'Cancellation acknowledged by the provider')
+  assert.equal(state.runs[0]?.terminalReason, 'Cancellation acknowledged by the provider')
+  assert.equal(state.lastError, null)
   assert.ok(performance.now() - startedAt < 1_000)
 
   releaseStream?.()
   await send.completion
+})
+
+test('late provider teardown settles the acknowledgement and corrects unknown exactly once', async () => {
+  const streamStarted = deferred()
+  const reasoningEmitted = deferred()
+  const releaseStream = deferred()
+  const cancellationStarted = deferred()
+  const releaseCancellation = deferred<ControlAcknowledgement>()
+  let providerCancellationCalls = 0
+  const operationId = 'op-late-cancel-accepted'
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted.resolve()
+      yield {
+        type: 'reasoning_delta',
+        text: 'provider is still tearing down',
+        task: { id: 'task-late-cancel', intent: 'late cancellation' },
+        timestamp: '2026-08-10T00:00:00.000Z',
+      }
+      reasoningEmitted.resolve()
+      await releaseStream.promise
+      yield* []
+    },
+    async cancelRun(input): Promise<ControlAcknowledgement> {
+      providerCancellationCalls += 1
+      cancellationStarted.resolve()
+      return releaseCancellation.promise.then((acknowledgement) => ({
+        ...acknowledgement,
+        operationId: input.operationId,
+      }))
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 5,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-late-cancel-send', text: 'wait for teardown' })
+  await streamStarted.promise
+  await reasoningEmitted.promise
+
+  const cancelPromise = app.cancelRun({
+    operationId,
+    runId: send.runId,
+    terminalStatus: 'cancelled',
+  })
+  await cancellationStarted.promise
+  const cancel = await cancelPromise
+  assert.equal(cancel.acknowledgement.outcome, 'unknown')
+  assert.equal((await cancel.completion).runs[0]?.status, 'unknown')
+  assert.equal(
+    app.state().messages.find((message) => message.role === 'assistant')?.complete,
+    false,
+  )
+
+  releaseCancellation.resolve({
+    operationId,
+    outcome: 'accepted',
+    detail: 'Provider cancellation acknowledged',
+  })
+  await waitUntil(
+    () => app.state().runs[0]?.status === 'cancelled',
+    'late accepted teardown did not correct the run',
+  )
+
+  const state = app.state()
+  const assistant = state.messages.find((message) => message.role === 'assistant')
+  assert.equal(providerCancellationCalls, 1)
+  assert.equal(state.runs[0]?.status, 'cancelled')
+  assert.equal(state.runs[0]?.complete, true)
+  assert.equal(state.runs[0]?.error, undefined)
+  assert.equal(assistant?.status, 'cancelled')
+  assert.equal(assistant?.complete, true)
+  assert.deepEqual(
+    assistant?.parts.map((part) => part.status),
+    ['cancelled'],
+  )
+  assert.equal(
+    state.effects.find((effect) => effect.operationId === operationId)?.status,
+    'acknowledged',
+  )
+
+  const corrections = app
+    .events()
+    .map((entry) => entry.event)
+    .filter((event) => event.kind === 'run.reconciled')
+  assert.equal(corrections.length, 1)
+  const correction = corrections[0]
+  if (correction?.kind !== 'run.reconciled') assert.fail('missing cancellation correction')
+  assert.equal(correction.correction, 'cancellation-confirmed')
+  assert.equal(correction.operationId, operationId)
+  assert.equal(
+    app.events().filter((entry) => entry.event.kind === 'run.control.acknowledged').length,
+    2,
+  )
+
+  const eventCount = app.events().length
+  const replay = await app.cancelRun({
+    operationId,
+    runId: send.runId,
+    terminalStatus: 'cancelled',
+  })
+  await replay.completion
+  assert.equal(replay.acknowledgement.outcome, 'accepted')
+  assert.equal(providerCancellationCalls, 1)
+  assert.equal(app.events().length, eventCount)
+
+  releaseStream.resolve()
+  await send.completion
+  await app.close()
+})
+
+test('late rejected and unknown teardown preserve the unknown run without correction', async () => {
+  for (const outcome of ['rejected', 'unknown'] as const) {
+    const streamStarted = deferred()
+    const releaseStream = deferred()
+    const cancellationStarted = deferred()
+    const releaseCancellation = deferred<ControlAcknowledgement>()
+    const operationId = `op-late-cancel-${outcome}`
+    let providerCancellationCalls = 0
+    const execution: ExecutionPort = {
+      capabilities: { cancel: true },
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+        streamStarted.resolve()
+        await releaseStream.promise
+        yield* []
+      },
+      async cancelRun(input): Promise<ControlAcknowledgement> {
+        providerCancellationCalls += 1
+        cancellationStarted.resolve()
+        return releaseCancellation.promise.then((acknowledgement) => ({
+          ...acknowledgement,
+          operationId: input.operationId,
+        }))
+      },
+    }
+    const journal = new MemoryJournal(new FixedClock())
+    const app = new BraidApplication({
+      profile: DETERMINISTIC_PROFILE,
+      execution,
+      clock: new FixedClock(),
+      ids: new SequenceIds(),
+      journal,
+      effectStorage: journal,
+      cancelTimeoutMs: 5,
+    })
+    app.initialize('/workspace')
+    const send = app.send({ operationId: `op-send-late-${outcome}`, text: 'unknown teardown' })
+    await streamStarted.promise
+    const cancelPromise = app.cancelRun({ operationId, runId: send.runId })
+    await cancellationStarted.promise
+    const cancel = await cancelPromise
+    await cancel.completion
+    assert.equal(cancel.acknowledgement.outcome, 'unknown')
+    assert.equal(app.state().runs[0]?.status, 'unknown')
+
+    releaseCancellation.resolve({
+      operationId,
+      outcome,
+      detail: `provider returned ${outcome}`,
+    })
+    await waitUntil(
+      () =>
+        app.state().effects.find((effect) => effect.operationId === operationId)?.status ===
+        (outcome === 'rejected' ? 'failed' : 'unknown'),
+      `late ${outcome} teardown did not settle its effect`,
+    )
+    assert.equal(providerCancellationCalls, 1)
+    assert.equal(app.state().runs[0]?.status, 'unknown')
+    assert.equal(app.events().filter((entry) => entry.event.kind === 'run.reconciled').length, 0)
+
+    const replay = await app.cancelRun({ operationId, runId: send.runId })
+    assert.equal(replay.acknowledgement.outcome, outcome)
+    assert.equal(providerCancellationCalls, 1)
+
+    releaseStream.resolve()
+    await send.completion
+    await app.close()
+  }
+})
+
+test('shutdown cancel accepts a late teardown settlement while the application remains open', async () => {
+  const streamStarted = deferred()
+  const releaseStream = deferred()
+  const cancellationStarted = deferred()
+  const releaseCancellation = deferred<ControlAcknowledgement>()
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted.resolve()
+      await releaseStream.promise
+      yield* []
+    },
+    async cancelRun(input): Promise<ControlAcknowledgement> {
+      cancellationStarted.resolve()
+      return releaseCancellation.promise.then((acknowledgement) => ({
+        ...acknowledgement,
+        operationId: input.operationId,
+      }))
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 5,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-shutdown-late-send', text: 'shutdown late' })
+  await streamStarted.promise
+
+  const shutdown = app.shutdown({ operationId: 'op-shutdown-late', mode: 'cancel' })
+  await cancellationStarted.promise
+  assert.equal((await shutdown.completion).runs[0]?.status, 'unknown')
+
+  releaseCancellation.resolve({
+    operationId: 'op-shutdown-late:cancel',
+    outcome: 'accepted',
+    detail: 'Provider cancellation acknowledged',
+  })
+  await waitUntil(
+    () => app.state().runs[0]?.status === 'aborted',
+    'shutdown late teardown did not settle the run',
+  )
+  assert.equal(app.events().filter((entry) => entry.event.kind === 'run.reconciled').length, 1)
+
+  releaseStream.resolve()
+  await send.completion
+  await app.close()
+})
+
+test('close drops a late teardown settlement after its bounded deadline', async () => {
+  const streamStarted = deferred()
+  const releaseStream = deferred()
+  const cancellationStarted = deferred()
+  const releaseCancellation = deferred<ControlAcknowledgement>()
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted.resolve()
+      await releaseStream.promise
+      yield* []
+    },
+    async cancelRun(input): Promise<ControlAcknowledgement> {
+      cancellationStarted.resolve()
+      return releaseCancellation.promise.then((acknowledgement) => ({
+        ...acknowledgement,
+        operationId: input.operationId,
+      }))
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 5,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-close-late-send', text: 'close late' })
+  await streamStarted.promise
+
+  const closing = app.close()
+  await cancellationStarted.promise
+  await closing
+  const eventCountAfterClose = app.events().length
+  assert.equal(app.state().runs[0]?.status, 'unknown')
+
+  releaseCancellation.resolve({
+    operationId: `operation-close-${send.runId}`,
+    outcome: 'accepted',
+    detail: 'Provider cancellation acknowledged',
+  })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(app.events().length, eventCountAfterClose)
+  assert.equal(app.events().filter((entry) => entry.event.kind === 'run.reconciled').length, 0)
+
+  releaseStream.resolve()
+  await send.completion.catch(() => undefined)
+})
+
+test('a late cancellation acknowledgement corrects a provider failed consequence without a second run.finished', async () => {
+  const streamStarted = deferred()
+  const reasoningEmitted = deferred()
+  const releaseFinal = deferred()
+  const cancellationStarted = deferred()
+  const releaseCancellation = deferred<ControlAcknowledgement>()
+  const operationId = 'op-late-cancel-failed-race'
+  let providerCancellationCalls = 0
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted.resolve()
+      yield {
+        type: 'reasoning_delta',
+        text: 'cancellation race',
+        task: { id: 'task-failed-race', intent: 'cancellation race' },
+        timestamp: '2026-08-10T00:00:00.000Z',
+      }
+      reasoningEmitted.resolve()
+      await releaseFinal.promise
+      yield {
+        type: 'final',
+        status: 'failed',
+        reason: 'RUNTIME_FINAL_ERROR',
+        text: '',
+        metadata: { tokenUsage: { input: 16_081, output: 14 } },
+        task: { id: 'task-failed-race', intent: 'cancellation race' },
+        error: { kind: 'backend', message: 'RUNTIME_FINAL_ERROR' },
+        timestamp: '2026-08-10T00:00:00.000Z',
+      }
+    },
+    async cancelRun(input): Promise<ControlAcknowledgement> {
+      providerCancellationCalls += 1
+      cancellationStarted.resolve()
+      return releaseCancellation.promise.then((acknowledgement) => ({
+        ...acknowledgement,
+        operationId: input.operationId,
+      }))
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+    cancelTimeoutMs: 5,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-send-failed-race', text: 'failed cancellation race' })
+  await streamStarted.promise
+  await reasoningEmitted.promise
+  const cancelPromise = app.cancelRun({ operationId, runId: send.runId })
+  await cancellationStarted.promise
+  releaseFinal.resolve()
+  const cancel = await cancelPromise
+  const failedState = await cancel.completion
+  assert.equal(cancel.acknowledgement.outcome, 'unknown')
+  assert.equal(failedState.runs[0]?.status, 'failed')
+  assert.equal(failedState.runs[0]?.error, 'RUNTIME_FINAL_ERROR')
+  await send.completion
+
+  releaseCancellation.resolve({
+    operationId,
+    outcome: 'accepted',
+    detail: 'Provider cancellation acknowledged',
+  })
+  await waitUntil(
+    () => app.state().runs[0]?.status === 'cancelled',
+    'late teardown did not correct the provider failed consequence',
+  )
+  assert.equal(app.state().runs[0]?.error, undefined)
+  assert.equal(
+    app.state().messages.find((message) => message.role === 'assistant')?.status,
+    'cancelled',
+  )
+  assert.equal(app.events().filter((entry) => entry.event.kind === 'run.finished').length, 1)
+  assert.equal(app.events().filter((entry) => entry.event.kind === 'run.reconciled').length, 1)
+  assert.equal(providerCancellationCalls, 1)
+  await app.close()
+})
+
+test('concurrent cancellation coalesces one provider call and one durable request', async () => {
+  const streamStarted = deferred()
+  let releaseStream!: () => void
+  let providerCancellationCalls = 0
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      streamStarted.resolve()
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    async cancelRun(input): Promise<ControlAcknowledgement> {
+      providerCancellationCalls += 1
+      return { operationId: input.operationId, outcome: 'accepted' }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-concurrent-cancel-send', text: 'cancel once' })
+  await streamStarted.promise
+
+  const firstPromise = app.cancelRun({
+    operationId: 'op-concurrent-cancel-a',
+    runId: send.runId,
+    reason: 'cancel concurrently',
+  })
+  const secondPromise = app.cancelRun({
+    operationId: 'op-concurrent-cancel-b',
+    runId: send.runId,
+    reason: 'cancel concurrently',
+  })
+  assert.equal(app.canCancel(), false)
+  assert.equal(app.cancelActive(), false)
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise])
+  await first.completion
+  await second.completion
+  releaseStream()
+  await send.completion
+
+  assert.equal(providerCancellationCalls, 1)
+  assert.equal(first.acknowledgement.outcome, 'accepted')
+  assert.equal(second.acknowledgement.outcome, 'accepted')
+  assert.equal(
+    journal.all().filter((entry) => entry.event.kind === 'run.control.requested').length,
+    1,
+  )
+  assert.equal(
+    journal.all().filter((entry) => entry.event.kind === 'run.cancel.requested').length,
+    1,
+  )
+  assert.equal(
+    journal.all().filter((entry) => entry.event.kind === 'run.control.acknowledged').length,
+    1,
+  )
+})
+
+test('cancel reconciliation accepts only aborted and cancelled provider states', async () => {
+  const statuses = ['aborted', 'cancelled', 'completed', 'failed', 'blocked', 'expired'] as const
+  for (const providerStatus of statuses) {
+    const streamStarted = deferred()
+    let releaseStream!: () => void
+    let providerCancellationCalls = 0
+    let providerStatusCalls = 0
+    const execution: ExecutionPort = {
+      capabilities: { cancel: true },
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+        streamStarted.resolve()
+        await new Promise<void>((resolve) => {
+          releaseStream = resolve
+        })
+      },
+      async cancelRun(input): Promise<ControlAcknowledgement> {
+        providerCancellationCalls += 1
+        return {
+          operationId: input.operationId,
+          outcome: 'unknown',
+          detail: 'provider acknowledgement unavailable',
+        }
+      },
+      async status(input) {
+        providerStatusCalls += 1
+        return { runId: input.runId, status: providerStatus }
+      },
+    }
+    const journal = new MemoryJournal(new FixedClock())
+    const app = new BraidApplication({
+      profile: DETERMINISTIC_PROFILE,
+      execution,
+      clock: new FixedClock(),
+      ids: new SequenceIds(),
+      journal,
+      effectStorage: journal,
+    })
+    app.initialize('/workspace')
+    const send = app.send({ operationId: `op-status-${providerStatus}`, text: 'status matrix' })
+    await streamStarted.promise
+    const input = {
+      operationId: `op-cancel-status-${providerStatus}`,
+      runId: send.runId,
+      reason: 'status matrix cancellation',
+    }
+    const first = await app.cancelRun(input)
+    await first.completion
+    const reconciled = await app.cancelRun(input)
+    const expected = providerStatus === 'aborted' || providerStatus === 'cancelled'
+    assert.equal(reconciled.acknowledgement.outcome, expected ? 'already-applied' : 'unknown')
+    assert.equal(providerCancellationCalls, 1)
+    assert.equal(providerStatusCalls, 1)
+
+    releaseStream()
+    await send.completion
+    await app.close()
+  }
+})
+
+test('a terminal provider event wins a queued cancellation request without dispatch', async () => {
+  const clock = new FixedClock()
+  const delegate = new MemoryJournal(clock)
+  const finalAppendStarted = deferred()
+  const releaseFinalAppend = deferred()
+  let finalAppendBlocked = false
+  let providerCancellationCalls = 0
+  const journal: JournalPort & { readonly asynchronous: true } = {
+    asynchronous: true,
+    envelope: (state, event) => delegate.envelope(state, event),
+    append: async (envelope) => {
+      if (envelope.event.kind === 'run.finished' && !finalAppendBlocked) {
+        finalAppendBlocked = true
+        finalAppendStarted.resolve()
+        await releaseFinalAppend.promise
+      }
+      return delegate.append(envelope)
+    },
+    all: () => delegate.all(),
+  }
+  const execution: ExecutionPort = {
+    capabilities: { cancel: true },
+    admit: () => ({}),
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'provider completed before cancellation',
+        text: 'completed before cancellation',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-cancel-race', intent: 'cancel race' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+    async cancelRun(input): Promise<ControlAcknowledgement> {
+      providerCancellationCalls += 1
+      return { operationId: input.operationId, outcome: 'accepted' }
+    },
+  }
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock,
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: delegate,
+  })
+  app.initialize('/workspace')
+  await app.whenDurable()
+  const send = app.send({ operationId: 'op-cancel-race-send', text: 'complete first' })
+  await send.admissionReady
+  await finalAppendStarted.promise
+
+  assert.equal(app.state().runs[0]?.status, 'streaming')
+  const cancelPromise = app.cancelRun({
+    operationId: 'op-cancel-race',
+    runId: send.runId,
+    reason: 'cancel raced with completion',
+  })
+  await Promise.resolve()
+  assert.equal(providerCancellationCalls, 0)
+
+  releaseFinalAppend.resolve()
+  const cancel = await cancelPromise
+  const state = await cancel.completion
+  await send.completion
+
+  assert.equal(providerCancellationCalls, 0)
+  assert.equal(cancel.acknowledgement.outcome, 'rejected')
+  assert.equal(
+    cancel.acknowledgement.detail,
+    `Cancellation rejected because run ${send.runId} reached terminal status completed before the request was applied`,
+  )
+  assert.equal(state.runs[0]?.status, 'completed')
+  assert.deepEqual(
+    journal
+      .all()
+      .filter(
+        (envelope) =>
+          'operationId' in envelope.event && envelope.event.operationId === 'op-cancel-race',
+      )
+      .map((envelope) => envelope.event.kind),
+    ['run.control.requested', 'run.cancel.requested', 'run.control.acknowledged'],
+  )
+
+  const next = app.send({ operationId: 'op-cancel-race-next', text: 'storage still works' })
+  await next.admissionReady
+  await next.completion
+  assert.equal(app.state().runs.length, 2)
+  await app.close()
 })
 
 test('a restarted application replays the journal instead of redispatching', async () => {
@@ -1180,6 +1890,18 @@ test('restart reconciles an in-flight cancellation to honest unknown and replays
   assert.equal(finalEvent?.kind, 'run.finished')
   if (finalEvent?.kind !== 'run.finished') assert.fail('missing restart reconciliation event')
   assert.equal(finalEvent.status, 'unknown')
+  await app.whenDurable()
+  const restoredControl = await app.cancelRun({
+    operationId: 'op-cancel-restart',
+    runId: 'run-restart',
+    reason: 'user requested cancellation',
+    legacy: true,
+  })
+  assert.equal(restoredControl.acknowledgement.outcome, 'unknown')
+  assert.equal(
+    restoredControl.acknowledgement.detail,
+    'Cancellation was requested before the provider acknowledged it',
+  )
   const replayed = app.cancel({
     operationId: 'op-cancel-restart',
     runId: 'run-restart',

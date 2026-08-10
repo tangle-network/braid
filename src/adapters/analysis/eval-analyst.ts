@@ -10,6 +10,7 @@ import type { AnalysisRecipe } from '../../app/analysis-types.js'
 import { AnalysisCapabilityError, type AnalysisCapabilityIssue } from '../../app/analysis-types.js'
 import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 import type { AnalysisTraceBundle } from './trace-store.js'
+import type { ModelExecutionScope } from './model-execution-scope.js'
 
 export { AGENT_EVAL_VERSION }
 
@@ -78,10 +79,20 @@ function assertTimeout(value: number | undefined): void {
 export class AgentEvalAnalystAdapter {
   readonly #registry: AnalystRegistryPort
   readonly #unavailableIssue: AnalysisCapabilityIssue | undefined
+  readonly #modelExecutionScope: ModelExecutionScope | undefined
 
-  constructor(registry?: AnalystRegistryPort, unavailableIssue?: AnalysisCapabilityIssue) {
+  constructor(
+    registry?: AnalystRegistryPort,
+    unavailableIssue?: AnalysisCapabilityIssue,
+    modelExecutionScope?: ModelExecutionScope,
+  ) {
     this.#registry = registry ?? buildDefaultAnalystRegistry()
     this.#unavailableIssue = unavailableIssue
+    this.#modelExecutionScope = modelExecutionScope
+  }
+
+  modelExecutions(runId: string) {
+    return this.#modelExecutionScope?.modelExecutions(runId) ?? []
   }
 
   list(): ReadonlyArray<AnalystDescriptor> {
@@ -151,7 +162,12 @@ export class AgentEvalAnalystAdapter {
       useRegistryChat: false,
     }
 
-    for await (const event of this.#registry.runExactStream(request.runId, inputs, options)) {
+    const source = this.#registry.runExactStream(request.runId, inputs, options)
+    const events =
+      this.#modelExecutionScope === undefined
+        ? source
+        : this.#modelExecutionScope.stream(request.runId, source)
+    for await (const event of events) {
       if (event.type === 'run-completed') {
         yield { event, result: event.result }
       } else {

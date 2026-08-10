@@ -2,7 +2,7 @@ import {
   canonicalCandidateDigest,
   canonicalAgentProfileDigest,
   snapshotAgentProfile,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/profile-runtime.js'
 import { redactStructuredValue } from '../domain/bounded-structured.js'
 import { exportProfileDocument } from './profile-persistence.js'
 import {

@@ -1,6 +1,6 @@
-import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
-import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import { connectionEndpoint } from '../adapters/connections/production-connection-endpoints.js'
+import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
@@ -41,9 +41,6 @@ export interface ProductionCompositionConfig {
   readonly connections: readonly ConnectionRecord[]
   /** Exact connection identity; names and provider kinds are never guessed. */
   readonly connectionId: string
-  /** Optional one-run values selected by the command line or startup config. */
-  readonly model?: string
-  readonly runner?: HarnessType
   /** Canonical workspace root used by provider environment creation. */
   readonly workspaceRoot?: string
   /** Protected headless SQLite key-file path, absolute or relative to the config directory. */
@@ -175,8 +172,8 @@ export function createProductionComposition(
         expectedKind: connection.kind,
         expectedUpdatedAt: connection.updatedAt,
       },
-      ...(config.model === undefined ? {} : { model: config.model }),
-      ...(config.runner === undefined ? {} : { runner: config.runner }),
+      ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
+      ...(profile.harness === undefined ? {} : { runner: profile.harness }),
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)

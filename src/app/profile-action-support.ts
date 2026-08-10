@@ -1,4 +1,4 @@
-import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
+import { canonicalAgentProfileDigest } from '../adapters/agent-interface/profile-runtime.js'
 import type {
   ProfileRecord as DomainProfileRecord,
   ProfileSourceKind as DomainProfileSourceKind,

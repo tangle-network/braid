@@ -19,7 +19,6 @@ export interface TerminalCommandControllerOptions {
   readonly dispatch: (intent: BraidIntent, restoreText?: string) => Promise<UiDispatchResult>
   readonly isStopped: () => boolean
   readonly stop: () => void
-  readonly showActivity: () => void
 }
 
 /** Owns prompt parsing and command routing; it never owns terminal layout. */
@@ -32,7 +31,6 @@ export class TerminalCommandController {
   readonly #dispatch: TerminalCommandControllerOptions['dispatch']
   readonly #isStopped: () => boolean
   readonly #stop: () => void
-  readonly #showActivity: () => void
 
   constructor(options: TerminalCommandControllerOptions) {
     this.#controller = options.controller
@@ -43,7 +41,6 @@ export class TerminalCommandController {
     this.#dispatch = options.dispatch
     this.#isStopped = options.isStopped
     this.#stop = options.stop
-    this.#showActivity = options.showActivity
   }
 
   submit(rawText: string): void {
@@ -130,10 +127,21 @@ export class TerminalCommandController {
       this.#overlays.openConversationSelector(args.join(' ').trim())
       return
     }
+    if (command === 'ask' && args.length > 0 && !isExplicitAnalysisSource(args[0])) {
+      const sources = this.#controller
+        .view()
+        .activity.filter(
+          (item) =>
+            item.kind === 'run' && (item.status === 'completed' || item.status === 'failed'),
+        )
+      if (sources.length > 1) {
+        this.#overlays.openAnalysisSource(args, sources)
+        return
+      }
+    }
     const operationId = isMutatingCommand(command) ? this.#nextOperationId() : undefined
     const intent = commandIntent(command, args, operationId)
     if (intent.type === 'open-surface') {
-      if (intent.surface === 'activity') this.#showActivity()
       void this.#dispatch(intent).then((result) => {
         if (result.kind !== 'accepted' || this.#isStopped()) return
         if (intent.surface === 'help') this.#overlays.openHelp(intent.query ?? '')
@@ -155,4 +163,8 @@ export class TerminalCommandController {
       }
     })
   }
+}
+
+function isExplicitAnalysisSource(value: string | undefined): boolean {
+  return value?.startsWith('run:') === true || value?.startsWith('branch:') === true
 }

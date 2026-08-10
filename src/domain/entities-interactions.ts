@@ -10,6 +10,7 @@ export type {
   NonSecretInteractionValue,
 } from './entities-base.js'
 import type { TurnUsage } from './entities-core.js'
+import type { AnalysisModelCallRecord } from './analysis-model-call.js'
 import type {
   AnalysisId,
   AnalysisRunId,
@@ -230,6 +231,7 @@ export interface AnalysisRecord {
   readonly checks?: readonly AnalysisCheck[]
   readonly comparison?: AnalysisComparisonSnapshot
   readonly usage?: TurnUsage
+  readonly modelCalls?: readonly AnalysisModelCallRecord[]
   readonly costUsd?: number
   readonly wallTimeMs?: number
   readonly error?: string

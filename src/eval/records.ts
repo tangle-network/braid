@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 import type { CostLedger, CostReceipt } from '@tangle-network/agent-eval'
 import type { CampaignResult } from '@tangle-network/agent-eval/contract'
+import {
+  isSafeNumericTelemetryField,
+  isSafeTokenUsageRecord,
+} from '../domain/bounded-structured.js'
 import { canonicalJson } from '../domain/canonical.js'
 import type {
   CalibrationSummary,
@@ -125,10 +129,17 @@ export function redactEvalValue(value: unknown, _key?: string): unknown {
   if (Array.isArray(value)) return value.map((entry) => redactEvalValue(entry))
   if (value === null || typeof value !== 'object') return value
   return Object.fromEntries(
-    Object.entries(value).map(([entryKey, entryValue]) => [
-      entryKey,
-      SECRET_KEY.test(entryKey) ? '[REDACTED]' : redactEvalValue(entryValue, entryKey),
-    ]),
+    Object.entries(value).map(([entryKey, entryValue]) => {
+      const safeTelemetry =
+        isSafeNumericTelemetryField(entryKey, entryValue) ||
+        isSafeTokenUsageRecord(entryKey, entryValue)
+      return [
+        entryKey,
+        SECRET_KEY.test(entryKey) && !safeTelemetry
+          ? '[REDACTED]'
+          : redactEvalValue(entryValue, entryKey),
+      ]
+    }),
   )
 }
 

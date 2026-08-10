@@ -794,6 +794,31 @@ test('secret-designated interaction values are rejected before journal persisten
   assert.doesNotThrow(() =>
     assertPersistablePayload({ inputTokens: 12, outputTokens: 7, reasoningTokens: 3 }),
   )
+  assert.doesNotThrow(() => assertPersistablePayload({ tokensKnown: false }))
+  assert.throws(
+    () => assertPersistablePayload({ tokensKnown: 'false' }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.throws(
+    () => assertPersistablePayload({ token: true }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({ spend: { tokens: { input: 12, output: 7 } } }),
+  )
+  assert.throws(
+    () => assertPersistablePayload({ tokens: { input: 12, output: 7, credential: 'canary' } }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
   assert.throws(
     () => assertPersistablePayload({ inputTokens: 'never persist this' }),
     (error: unknown) =>

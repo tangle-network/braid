@@ -1,4 +1,5 @@
 import type { BraidEvent, BraidEventEnvelope } from './events.js'
+import { applyExecutionObservation } from './reducer-execution-observation.js'
 import { reduceContentEvent } from './reducer-content.js'
 import { reduceInteractionEvent } from './reducer-interactions.js'
 import { reduceLifecycleEvent } from './reducer-lifecycle.js'
@@ -22,6 +23,7 @@ type RuntimeEventKind =
   | 'run.interaction.response.requested'
   | 'run.interaction.responded'
   | 'run.provider.event'
+  | 'run.environment.observed'
   | 'run.finished'
   | 'run.status.changed'
   | 'run.control.requested'
@@ -69,6 +71,8 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
       case 'run.provider.event':
       case 'run.finished':
         return reduceInteractionEvent(state, event, base)
+      case 'run.environment.observed':
+        return applyExecutionObservation(state, event, envelope.occurredAt)
       case 'run.status.changed':
         return reduceInteractionEvent(state, event, base)
       case 'run.reconciled':
@@ -164,6 +168,7 @@ export function isRuntimeEvent(event: BraidEvent): event is RuntimeEvent {
     case 'run.interaction.response.requested':
     case 'run.interaction.responded':
     case 'run.provider.event':
+    case 'run.environment.observed':
     case 'run.control.requested':
     case 'run.control.acknowledged':
     case 'run.queue.added':

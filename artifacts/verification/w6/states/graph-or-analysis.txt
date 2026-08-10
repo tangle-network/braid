@@ -1,24 +1,24 @@
-braid  cwd  braid-automation-main-wt  ·  session  New conversation
-
- Write a message, or press Ctrl+P for commands.
-
-
-
-
+ conversation graph · 2               Braid starter · pi · fixture/deterministic
+────────────────────────────────────────────────────────────────────────────────
+ ! runtime activity unavailable; showing last saved state: The runtime returned…
+   ✓ New conversation · conversation · complete · ─attached→
+ ›   └ ✓ Main · branch · complete · current · ─attached→
 
 
-     conversation graph · current branch
-     branch: branch-1
-     complete · ─attached→ conversation New conversation
-     complete ·   └ › current ─attached→ branch Main
-     esc close
+
+
+
+
+
+
+
+
+
+
 
 
 
 
 
 ────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────
-ready for a message                  model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands
+ ↑↓ move · enter/→ open · ←/esc close

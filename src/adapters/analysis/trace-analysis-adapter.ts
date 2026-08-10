@@ -20,11 +20,13 @@ import {
   type ProductionConnectionOptions,
   readConnectionCredential,
 } from '../connections/production-connections.js'
+import { normalizeTangleInferenceRuntimeBaseUrl } from '../connections/production-connection-endpoints.js'
 import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 import {
   AgentEvalAnalystAdapter,
   createUnavailableAgentEvalAnalystAdapter,
 } from './eval-analyst.js'
+import { ModelExecutionScope } from './model-execution-scope.js'
 import {
   type PythonCommandProbe,
   type PythonRunnerIdentity,
@@ -92,6 +94,7 @@ export interface TraceAnalysisAdapterReady {
   readonly runner?: HarnessType
   readonly python: PythonRunnerIdentity
   readonly modelExecutions: () => readonly ExternalOptimizerModelExecutionObservation[]
+  readonly modelExecutionScope: ModelExecutionScope
   /** The credential value itself is deliberately absent from this result. */
   readonly credentialState: 'provided' | 'not-required'
 }
@@ -114,7 +117,11 @@ export function createTraceAnalysisAnalyst(
   configuration: TraceAnalysisConfiguration,
 ): AgentEvalAnalystAdapter {
   if (configuration.status === 'engine-configured') {
-    return new AgentEvalAnalystAdapter(configuration.registry)
+    return new AgentEvalAnalystAdapter(
+      configuration.registry,
+      undefined,
+      configuration.modelExecutionScope,
+    )
   }
   const diagnostic = configuration.diagnostics[0]
   return createUnavailableAgentEvalAnalystAdapter(
@@ -290,8 +297,9 @@ export async function createTraceAnalysisAdapter(
   const baseUrl =
     connection.kind === 'cli-bridge'
       ? normalizeCliBridgeRuntimeBaseUrl(endpoint, connection.id)
-      : endpoint
+      : normalizeTangleInferenceRuntimeBaseUrl(endpoint, connection.id)
   try {
+    const modelExecutionScope = new ModelExecutionScope()
     const owner = createRuntimeTraceModelOwner({
       profile,
       connection,
@@ -299,10 +307,11 @@ export async function createTraceAnalysisAdapter(
       ...(credential === undefined ? {} : { credential }),
       model,
       ...(options.pricing === undefined ? {} : { pricing: { ...options.pricing } }),
-      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-      ...(options.recordExecution === undefined
-        ? {}
-        : { recordExecution: options.recordExecution }),
+      ...(options.routerComplete === undefined ? {} : { complete: options.routerComplete }),
+      recordExecution: (observation) => {
+        modelExecutionScope.record(observation)
+        options.recordExecution?.(observation)
+      },
     })
     const engine = createDspyRlmTraceEngine({
       call: owner.call,
@@ -339,6 +348,7 @@ export async function createTraceAnalysisAdapter(
       credentialState: credential === undefined ? 'not-required' : 'provided',
       ...(runner === undefined ? {} : { runner }),
       modelExecutions: owner.executions,
+      modelExecutionScope,
     }
   } catch (error) {
     return unavailable('unavailable', {

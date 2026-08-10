@@ -128,6 +128,32 @@ export class SerializedEffectCoordinator {
     return record === undefined ? undefined : structuredClone(record)
   }
 
+  /**
+   * Applies a provider result that arrived after the foreground deadline.
+   *
+   * Only pending or unknown records may be corrected. A later call observes
+   * the already settled record, so the operation remains idempotent.
+   */
+  settle(
+    operationId: string,
+    requestDigest: string,
+    outcome: EffectDispatchResult,
+  ): EffectRecord | undefined {
+    const current = this.#storage.current(operationId)
+    if (current === undefined || current.requestDigest !== requestDigest) return undefined
+    if (current.status !== 'pending' && current.status !== 'unknown')
+      return structuredClone(current)
+    const detail = safeDetail(outcome.detail, `EFFECT_${outcome.status.toUpperCase()}`)
+    const externalReference = safeExternalReference(outcome.externalReference)
+    if (
+      current.status === outcome.status &&
+      current.detail === detail &&
+      current.externalReference === externalReference
+    )
+      return structuredClone(current)
+    return this.#persistOutcome(current, outcome)
+  }
+
   start<TRequest>(intent: EffectIntent<TRequest>, handler: EffectHandler<TRequest>): EffectHandle {
     const requestDigest = this.#validateIntent(intent)
     const metadata = intent.metadata ?? {}

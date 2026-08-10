@@ -1,15 +1,17 @@
-Braid ready — /home/drew/code/braid-automation-main-wt
+Braid ready — /home/drew/code/braid-unified-activity-wt
 status: ready for a message
 conversation: New conversation; branch: branch-1
 profile: Braid starter; runner: pi; connection: deterministic fixture
 appearance: none; high contrast off; reduced motion off
 event 2: draft.changed; status: ready for a message
-event 3: run.requested: W6 plain proof; status: streaming
+event 3: run.requested; status: admitted: W6 plain proof
 event 4: effect.upserted; status: streaming
-event 5: application.shutdown.requested; status: streaming
-event 6: run.text.delta: Fixture resp; status: streaming
-event 7: run.text.delta: onse through; status: streaming
-event 8: run.text.delta: pi: W6 plai; status: streaming
-event 9: run.text.delta: n proof; status: streaming
-event 10: run.finished: Fixture response through pi: W6 plain proof; status: completed
-event 11: effect.upserted; status: completed
+event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-5bbfe423-f756-4076-9541-5029bb61424f","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:f75eb08b6c6a3120e5297421baed1e5e2553899395ec5981e0fda4c9ce725300"}}},"session":{"id":"ebaa6ad7-3c37-466e-9155-204da9bbdf01","backend":"executor","status":"active","createdAt":"2026-08-10T11:58:16.028Z","updatedAt":"2026-08-10T11:58:16.028Z","metadata":"[unavailable]"},"
+event 6: application.shutdown.requested; status: streaming
+event 7: run.control.requested; status: cancelling: requested
+event 8: run.cancel.requested; status: cancelling: requested
+event 9: effect.upserted; status: cancelling
+event 10: effect.upserted; status: cancelling
+event 11: run.control.acknowledged; status: cancelling: CONTROL_ACKNOWLEDGED
+event 12: run.finished; status: aborted
+event 13: effect.upserted; status: cancelled

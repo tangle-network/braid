@@ -1,18 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
+import type {
+  AgentProfile,
+  AgentProfileCapabilities,
+  AgentProfileSecurityPolicy,
+  AgentProfileValidationResult,
+} from '@tangle-network/agent-interface'
 import {
-  AgentEnvironmentCapabilitiesSchema,
-  type AgentProfile,
-  type AgentProfileCapabilities,
-  type AgentProfileSecurityPolicy,
-  type AgentProfileValidationResult,
   agentProfileSchema,
   canonicalAgentProfileDigest,
   DEFAULT_CLOUD_AGENT_PROFILE_SECURITY_POLICY,
+  loadAgentEnvironmentCapabilitiesSchema,
   snapshotAgentProfile,
   validateAgentProfileSecurity,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/profile-runtime.js'
 import { redactSensitiveText } from '../domain/secret-sanitizer.js'
 import type {
   ProfileIssue,
@@ -213,6 +215,7 @@ async function providerCapabilities(
   if (provider.capabilities === undefined) return { issues: [] }
   try {
     const candidate = await provider.capabilities()
+    const AgentEnvironmentCapabilitiesSchema = await loadAgentEnvironmentCapabilitiesSchema()
     const parsed = AgentEnvironmentCapabilitiesSchema.safeParse(candidate)
     if (!parsed.success) {
       return {

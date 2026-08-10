@@ -5,6 +5,7 @@ import type {
 } from '@tangle-network/agent-interface'
 import type { RunCapabilities } from '../domain/receipts.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
+import type { TurnUsage } from '../domain/entities.js'
 import type { RunStatus } from '../domain/state.js'
 
 export type { RunCapabilities } from '../domain/receipts.js'
@@ -41,13 +42,7 @@ export interface ProviderRunSnapshot {
   readonly sessionId?: string
   readonly cursor?: string
   readonly finalText?: string
-  readonly usage?: {
-    readonly input: number
-    readonly output: number
-    readonly reasoning?: number
-    readonly costUsd?: number
-    readonly model?: string
-  }
+  readonly usage?: TurnUsage
   readonly error?: string
   readonly detail?: string
 }
@@ -139,6 +134,7 @@ export const UNKNOWN_RUN_CAPABILITIES: RunCapabilities = Object.freeze({
 
 export function capabilitiesFromEnvironment(
   capabilities: AgentEnvironmentCapabilities,
+  cancellationSupported: boolean,
 ): RunCapabilities {
   return {
     // The provider may support replay or control methods that this port does
@@ -154,7 +150,7 @@ export function capabilitiesFromEnvironment(
       messages: false,
     },
     controls: {
-      cancel: false,
+      cancel: cancellationSupported,
       steer: false,
       queue: false,
       status: false,

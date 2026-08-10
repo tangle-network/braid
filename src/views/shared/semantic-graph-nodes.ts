@@ -236,11 +236,19 @@ export function descriptorsFor(state: BraidState): NodeDescriptor[] {
   }
   for (const supervisor of state.supervisors) {
     add('supervisor', supervisor.id, {
-      title: `supervisor ${supervisor.id}`,
+      title: supervisor.title ?? `supervisor ${supervisor.id}`,
       status: supervisor.status,
       createdAt: supervisor.createdAt,
       updatedAt: supervisor.updatedAt,
-      searchText: supervisor.rootRunId,
+      ...(supervisor.driverModel === undefined ? {} : { runner: supervisor.driverModel }),
+      searchText: joined([
+        supervisor.runtimeId,
+        supervisor.runtimeRoot,
+        supervisor.rootRunId,
+        supervisor.title,
+        supervisor.driverModel,
+        supervisor.workerModel,
+      ]),
     })
   }
   for (const worker of state.workers) {
@@ -251,11 +259,15 @@ export function descriptorsFor(state: BraidState): NodeDescriptor[] {
       updatedAt: worker.updatedAt,
       elapsedMs: elapsedMs(worker.createdAt, worker.updatedAt),
       costUsd: worker.spendUsd,
+      ...(worker.runner === undefined ? {} : { runner: worker.runner }),
       searchText: joined([
+        worker.runtimeId,
         worker.supervisorId,
+        worker.parentRuntimeRef,
         worker.parentWorkerId,
         worker.runId,
         worker.title,
+        worker.runner,
         worker.logTail,
       ]),
     })

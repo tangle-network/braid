@@ -1,4 +1,5 @@
-import { type AgentProfile, snapshotAgentProfile } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from './canonical.js'
 import { redactProfile, redactSensitiveText, redactStructuredValue } from './redaction.js'
 import type {
@@ -169,6 +170,7 @@ export function createAdmissionReceipt(input: {
   const materializationDigest =
     materializationReceipt === undefined ? undefined : canonicalDigest(materializationReceipt)
   const provider = safeProviderIdentifier(input.provider)
+  const requestedSessionId = safeProviderIdentifier(input.sessionId)
   const environmentId = safeProviderIdentifier(input.environmentId)
   const providerSessionId = safeProviderIdentifier(input.providerSessionId)
   const base = {
@@ -183,6 +185,7 @@ export function createAdmissionReceipt(input: {
     requested,
     capabilities: structuredClone(capabilities),
     ...(provider === undefined ? {} : { provider }),
+    ...(requestedSessionId === undefined ? {} : { requestedSessionId }),
     ...(environmentId === undefined ? {} : { environmentId }),
     ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(materializationReceipt === undefined

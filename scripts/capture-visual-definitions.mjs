@@ -130,7 +130,7 @@ export function createStateDefinitions(normalized) {
       uiFixture: 'comparison',
       run: async (terminal) => {
         await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
-        terminal.input('/compare run-fixture-baseline run-fixture-candidate')
+        terminal.input('/compare run-route-serial run-route-parallel')
         terminal.input('\r')
         await terminal.waitFor(
           () => normalized(terminal.screen()).includes('/compare · frozen runs'),

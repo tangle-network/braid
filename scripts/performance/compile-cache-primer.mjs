@@ -22,6 +22,7 @@ if (
 
 await Promise.all([
   import(pathToFileURL(join(packageRoot, 'dist/startup/durable-runtime.js')).href),
+  import(pathToFileURL(join(packageRoot, 'dist/startup/preview-runtime.js')).href),
   import(pathToFileURL(join(packageRoot, 'dist/startup/terminal-runtime.js')).href),
 ])
 flushCompileCache()
@@ -29,7 +30,11 @@ flushCompileCache()
 process.stdout.write(
   `${JSON.stringify({
     status: statusName,
-    modules: ['dist/startup/durable-runtime.js', 'dist/startup/terminal-runtime.js'],
+    modules: [
+      'dist/startup/durable-runtime.js',
+      'dist/startup/preview-runtime.js',
+      'dist/startup/terminal-runtime.js',
+    ],
     flushed: true,
   })}\n`,
 )

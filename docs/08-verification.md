@@ -203,6 +203,10 @@ W5 has stable package entry points for `test:unit`, `test:contract`, `test:coord
 
 `test:performance` records native SQLite append measurements at 10,000 and 100,000 events and verifies the resulting event count and integrity report.
 
+It also measures terminal projection with 10,000 and 100,000 saved runtime workers.
+
+The result reports changed-state and repeated-render distributions separately.
+
 The native storage test commands fail with an explicit prerequisite when the exact encrypted SQLite package is absent; they never convert missing production coverage into a passing or silently skipped result.
 
 The reducer property test generates 1,000 histories and compares incremental reduction with full replay by canonical projection checksum.
@@ -265,13 +269,29 @@ Unicode fixtures cover ASCII, CJK, Hangul, Arabic and bidirectional markers, com
 
 Resize fixtures change dimensions during IME composition, paste, streaming, modal interaction, and graph navigation.
 
+Activity, graph, and analysis fixtures use one list-and-details keyboard contract at every reference size.
+
+They prove that `Up` and `Down` preserve stable selection, `Enter` and `Right` open details, and `Left` equals `Esc` for back and close.
+
+They also prove that long details wrap before pagination and retain their final evidence token at 40 columns.
+
+A mounted terminal fixture opens `/activity`, observes a runtime child worker, rejects duplicate state from unchanged snapshots, and proves refresh stops after close.
+
+The fixture also proves that a late refresh cannot render after close or application stop.
+
+Runtime projection tests keep two runtime supervisors bound to two distinct Braid runs, even when snapshot order changes.
+
+Worker control tests use the public identifiers returned by Braid and assert the exact runtime references delivered to `agent-runtime`.
+
+When an active worker disappears, the fixture proves that its saved status changes to `unknown` without deleting its history.
+
 ### Layer 6: real terminal process checks
 
 PTY checks launch the packed `braid` executable in a real pseudoterminal and send encoded keyboard input.
 
 They assert process state, screen cells, cursor, terminal-mode cleanup, journal state, and headless-equivalent semantic state.
 
-The required flow types a prompt, edits multiline input, selects profile and runner, streams content, expands a tool, answers an interaction, queues input, cancels a run, creates a branch, executes a fork preview, runs `/ask`, navigates the graph, resizes, closes, and reopens.
+The required flow types a prompt, edits multiline input, selects profile and runner, streams content, expands a tool, answers an interaction, queues input, cancels a run, creates a branch, executes a fork preview, runs `/ask`, moves between saved analyses, navigates runtime workers and the graph, resizes, closes, and reopens.
 
 Tests cover alternate-screen and inline modes, legacy and Kitty keyboard modes, `NO_COLOR`, 16-color, high-contrast, reduced-motion, and plain output.
 
@@ -295,9 +315,25 @@ The judge is calibrated on seeded good, bad, and trivial-baseline examples befor
 
 Calibration contains at least 12 paired examples across cited analysis usefulness, fork explanation clarity, permission explanation clarity, and comparison honesty.
 
-The judge must prefer the intended better example on at least 11 of 12 pairs and reject the trivial baseline on every category before its release scores are admissible.
+The judge must prefer the intended better example on at least 11 of 12 pairs.
+
+Every seeded good answer must meet its release threshold.
+
+The judge must reject the trivial baseline on every category before its release scores are admissible.
 
 The complete rubric, examples, model, effort, prompt, package version, raw outputs, scores, costs, and disagreements enter the evidence artifact.
+
+The judge executes through Runtime with one exact `AgentProfile` and a direct Tangle Router connection.
+
+`BRAID_EVAL_API_KEY` supplies the protected credential.
+
+`BRAID_EVAL_BASE_URL` defaults to `https://router.tangle.tools/v1`, and `BRAID_EVAL_MODEL` defaults to `glm-5.2`.
+
+The profile sets a 2,048-token total completion limit through `max_completion_tokens`.
+
+For GLM routes, it also sends `thinking.type: disabled` because GLM enables hidden reasoning by default and does not honor `reasoning_effort: none`.
+
+A conflicting request limit fails before provider spend.
 
 A failing or uncalibrated judge blocks semantic claims but cannot override passing deterministic facts.
 
@@ -385,6 +421,8 @@ Reference measurements run from the packed production build on a named dedicated
 
 Every report includes hardware, operating system, Node version, terminal, dimensions, database size, event count, warm or cold state, repetitions, minimum, median, p90, p95, p99, and maximum.
 
+Startup reports split production composition, encrypted storage open, journal restore, application creation, terminal import, and first render.
+
 Streaming and resize reports also include millisecond distributions for application commit, display queue, view projection, terminal view application, Pi render, terminal flush, and updates represented by each frame.
 
 A streaming update counts as visible only after Pi completes its render, the headless terminal flushes the output, and the expected unique event marker appears in the terminal cells.
@@ -407,6 +445,32 @@ The packed startup entries use syntax and whitespace minification while retainin
 A target change requires measured evidence, a decision record, and user-visible impact analysis before release.
 
 Provider time to first token, total run wall time, model tokens, cost, and network latency are reported in live results but cannot be counted as Braid overhead.
+
+## Usage and execution observation proof
+
+Deterministic proof sends multiple `llm_call` events and one terminal cumulative usage event.
+
+It proves that model-call count and latency accumulate while terminal token totals replace live estimates.
+
+It proves that reported, estimated, observed-minimum, and unknown values survive storage and restart.
+
+One conversation fixture includes direct turns, trace analyses, and an explicitly bound Runtime worker tree.
+
+The fixture proves that all three groups remain separate and no call is counted twice.
+
+One fake sandbox returns identity, account usage, subscription data, requested resources, verified placement, a cgroup sample, and a credential-bearing runtime URL.
+
+The projected record must contain the safe hostname and reported facts.
+
+It must not contain the URL path, query, bearer token, API key, SSH data, or secret value.
+
+Terminal keyboard proof opens `/activity`, selects the execution row, and reads every reported and unavailable field.
+
+Headless proof reads the same execution identifier, lifecycle, resource, account, and unknown-state fields.
+
+The live Tangle sandbox check records sandbox account totals separately from per-run model cost.
+
+It marks physical machine IP, effective allocation, and per-sandbox CPU, RAM, and storage cost unavailable unless the live provider reports them.
 
 ## Reliability and recovery matrix
 
@@ -600,4 +664,4 @@ After publication it uses `pnpm release:record-publication` and `pnpm verify:rel
 | VR-07 | All ten performance targets pass with complete distributions and no hidden warm/cold or environment asymmetry. |
 | VR-08 | Every forced-kill boundary reconstructs a correct state with no duplicated external operation or displayed event. |
 | VR-09 | Judge calibration passes before semantic cases and the evidence manifest retains every raw input, output, score, cost, disagreement, package version, and artifact hash. |
-| VR-10 | The registry-published package matches the approved tarball integrity and repeats its clean-install smoke on every supported platform. |
+| VR-10 | Usage and execution proof preserves all known and unknown states, reports no missing value as zero, matches terminal and headless output, and contains no credential-bearing field. The registry package matches the approved tarball and repeats its clean-install smoke on every supported platform. |

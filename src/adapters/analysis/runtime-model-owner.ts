@@ -9,21 +9,27 @@ import type {
   ExternalOptimizerModelCallRequest,
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
-import { type AgentProfile, snapshotAgentProfile } from '@tangle-network/agent-interface'
-import {
-  type BackendRetryPolicy,
-  createOpenAICompatibleBackend,
-  type OpenAIChatResponseFormat,
-  type RuntimeStreamEvent,
-  runAgentTaskStream,
-} from '@tangle-network/agent-runtime'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
+import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
+import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
+import { safePublicIdentifier } from '../../domain/provider-values.js'
 import { redactProfile, redactProviderError } from '../../domain/redaction.js'
 import { AGENT_RUNTIME_VERSION } from '../runtime/agent-runtime-version.js'
 
-const LOCAL_BRIDGE_API_KEY_MARKER = 'braid-local-cli-bridge'
 const MAX_RETAINED_EXECUTIONS = 256
+const LOCAL_ROUTER_BEARER = 'braid-local-analysis'
+
+export interface RuntimeRouterRetryPolicy {
+  readonly maxAttempts?: number
+  readonly initialBackoffMs?: number
+  readonly maxBackoffMs?: number
+  readonly jitter?: number
+  readonly retryStatuses?: ReadonlyArray<number>
+  readonly requestTimeoutMs?: number
+}
 
 type ModelExecutionRecorder = (observation: ExternalOptimizerModelExecutionObservation) => void
 
@@ -34,8 +40,8 @@ export interface RuntimeTraceModelOwnerOptions {
   readonly credential?: string
   readonly model: string
   readonly pricing?: CustomTokenPricing
-  readonly fetch?: typeof fetch
-  readonly retry?: BackendRetryPolicy
+  readonly complete?: RouterTransportConfig['complete']
+  readonly retry?: RuntimeRouterRetryPolicy
   readonly recordExecution?: ModelExecutionRecorder
 }
 
@@ -53,8 +59,14 @@ interface RuntimeCallSummary {
   readonly reason: string
   readonly content: string
   readonly durationMs: number
+  readonly endedAt: number
   readonly inputTokens: number
   readonly outputTokens: number
+  readonly cachedTokens?: number
+  readonly cacheWriteTokens?: number
+  readonly promptCache?: Readonly<Record<string, number | string>>
+  readonly observedCostUsd?: number
+  readonly estimatedCostUsd?: number
   readonly usageCaptured: boolean
   readonly reportedModel?: string
   readonly finishReason?: string
@@ -73,7 +85,7 @@ function catalogPricing(model: string): CustomTokenPricing | undefined {
 
 function responseFormat(
   request: ExternalOptimizerModelCallRequest['request'],
-): OpenAIChatResponseFormat | undefined {
+): Readonly<Record<string, unknown>> | undefined {
   if (request.jsonSchema !== undefined) {
     return {
       type: 'json_schema',
@@ -103,7 +115,7 @@ function textMessages(
 function assertRequestSupported(request: ExternalOptimizerModelCallRequest['request']): void {
   if (request.thinking !== undefined) {
     throw new TypeError(
-      'agent-runtime 0.128.0 does not expose a provider-neutral thinking field for chat requests; configure reasoning on the AgentProfile instead',
+      'agent-runtime requires reasoning on AgentProfile.model.reasoningEffort instead of a per-call thinking field',
     )
   }
 }
@@ -140,6 +152,13 @@ function summarizeRuntimeEvents(
         (event.tokensOut ?? -1) >= 0,
     )
   const lastCall = calls.at(-1)
+  const errorStatus = final.error?.status ?? httpStatusFromReason(final.reason)
+  const endedAt = Date.now()
+  const promptCache = promptCacheFacts(calls)
+  const cachedTokens = sumPromptCache(promptCache, ['cachedTokens', 'cacheReadTokens'])
+  const cacheWriteTokens = sumPromptCache(promptCache, ['cacheWriteTokens'])
+  const observedCostUsd = completeCallAmount(calls, 'costUsd', (event) => event.usdKnown !== false)
+  const estimatedCostUsd = completeCallAmount(calls, 'estimatedCostUsd')
   return {
     events,
     status: final.status,
@@ -153,40 +172,116 @@ function summarizeRuntimeEvents(
         )
         .map((event) => event.text)
         .join(''),
-    durationMs: Math.max(0, Date.now() - startedAt),
+    durationMs: Math.max(0, endedAt - startedAt),
+    endedAt,
     inputTokens: usageCaptured
       ? calls.reduce((total, event) => total + (event.tokensIn ?? 0), 0)
       : 0,
     outputTokens: usageCaptured
       ? calls.reduce((total, event) => total + (event.tokensOut ?? 0), 0)
       : 0,
+    ...(cachedTokens === undefined ? {} : { cachedTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    ...(Object.keys(promptCache).length === 0 ? {} : { promptCache }),
+    ...(observedCostUsd === undefined ? {} : { observedCostUsd }),
+    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
     usageCaptured,
     ...(lastCall?.model === undefined ? {} : { reportedModel: lastCall.model }),
     ...(lastCall?.finishReason === undefined ? {} : { finishReason: lastCall.finishReason }),
     ...(final.error?.kind === undefined ? {} : { errorKind: final.error.kind }),
-    ...(final.error?.status === undefined ? {} : { errorStatus: final.error.status }),
+    ...(errorStatus === undefined ? {} : { errorStatus }),
   }
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function completeCallAmount(
+  calls: readonly Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }>[],
+  field: 'costUsd' | 'estimatedCostUsd',
+  accepts: (event: Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }>) => boolean = () =>
+    true,
+): number | undefined {
+  if (
+    calls.length === 0 ||
+    !calls.every((event) => accepts(event) && finiteNumber(event[field]) !== undefined)
+  ) {
+    return undefined
+  }
+  return calls.reduce((total, event) => total + (finiteNumber(event[field]) ?? 0), 0)
+}
+
+function promptCacheFacts(
+  calls: readonly Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }>[],
+): Readonly<Record<string, number | string>> {
+  const values = new Map<string, number | string>()
+  for (const call of calls) {
+    for (const [key, value] of Object.entries(call.promptCache ?? {})) {
+      if (typeof value !== 'number' && typeof value !== 'string') continue
+      if (typeof value === 'number' && !Number.isFinite(value)) continue
+      values.set(key, value)
+    }
+  }
+  return Object.freeze(Object.fromEntries(values))
+}
+
+function sumPromptCache(
+  facts: Readonly<Record<string, number | string>>,
+  keys: readonly string[],
+): number | undefined {
+  const values = keys
+    .map((key) => finiteNumber(facts[key]))
+    .filter((value): value is number => value !== undefined)
+  return values.length === 0 ? undefined : values.reduce((total, value) => total + value, 0)
+}
+
+function httpStatusFromReason(reason: string): number | undefined {
+  const match = /(?:^|\b)HTTP\s+([1-5][0-9]{2})(?:\b|$)/iu.exec(reason)
+  if (match?.[1] === undefined) return undefined
+  const status = Number(match[1])
+  return Number.isSafeInteger(status) ? status : undefined
+}
+
+function safeModelRoute(value: unknown): string {
+  return safePublicIdentifier(value) ?? 'unknown-model'
 }
 
 function receiptFor(
   model: string,
   pricing: CustomTokenPricing | undefined,
-  usage: Pick<RuntimeCallSummary, 'inputTokens' | 'outputTokens' | 'usageCaptured'>,
+  usage: Pick<
+    RuntimeCallSummary,
+    | 'inputTokens'
+    | 'outputTokens'
+    | 'usageCaptured'
+    | 'observedCostUsd'
+    | 'cachedTokens'
+    | 'cacheWriteTokens'
+  >,
   knownNoExecution = false,
 ): import('@tangle-network/agent-eval').CostReceiptInput {
+  const safeModel = safeModelRoute(model)
   if (!usage.usageCaptured && !knownNoExecution) {
     return {
-      model,
+      model: safeModel,
       inputTokens: 0,
       outputTokens: 0,
       usageUnknown: true,
-      costUnknown: true,
+      ...(usage.observedCostUsd === undefined
+        ? { costUnknown: true }
+        : { actualCostUsd: usage.observedCostUsd }),
     }
   }
   const receipt = {
-    model,
+    model: safeModel,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
+    ...(usage.cachedTokens === undefined ? {} : { cachedTokens: usage.cachedTokens }),
+    ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
+  }
+  if (usage.observedCostUsd !== undefined) {
+    return { ...receipt, actualCostUsd: usage.observedCostUsd }
   }
   if (pricing !== undefined) return { ...receipt, customTokenPricing: pricing }
   if (usage.inputTokens === 0 && usage.outputTokens === 0) {
@@ -200,9 +295,11 @@ function responseFor(
   summary: RuntimeCallSummary,
   pricing: CustomTokenPricing | undefined,
 ): ChatResponse {
-  const receipt = receiptFor(request.request.model, pricing, summary)
+  const model = safeModelRoute(request.request.model)
+  const receipt = receiptFor(model, pricing, summary)
   const costUsd =
-    summary.usageCaptured && pricing !== undefined ? costForTokenPricing(pricing, receipt) : null
+    summary.observedCostUsd ??
+    (summary.usageCaptured && pricing !== undefined ? costForTokenPricing(pricing, receipt) : null)
   const raw = {
     source: '@tangle-network/agent-runtime',
     version: AGENT_RUNTIME_VERSION,
@@ -223,7 +320,7 @@ function responseFor(
       captured: summary.usageCaptured,
     },
     costUsd,
-    model: request.request.model,
+    model,
     durationMs: summary.durationMs,
     ...(summary.finishReason === undefined ? {} : { finishReason: summary.finishReason }),
     contentEmpty: summary.content.trim().length === 0,
@@ -236,7 +333,10 @@ function executionEvidence(input: {
   readonly callRef: string
   readonly profileDigest: string
   readonly connection: RuntimeTraceModelOwnerOptions['connection']
-  readonly retry: BackendRetryPolicy
+  readonly retry: RuntimeRouterRetryPolicy
+  readonly provider?: string
+  readonly pricing?: CustomTokenPricing
+  readonly receipt?: import('@tangle-network/agent-eval').CostReceiptInput
   readonly summary?: RuntimeCallSummary
   readonly dispatched: boolean
   readonly partialEvents?: readonly RuntimeStreamEvent[]
@@ -244,13 +344,16 @@ function executionEvidence(input: {
   readonly failure?: string
 }): Readonly<Record<string, unknown>> {
   const summary = input.summary
+  const endedAt = summary?.endedAt ?? Date.now()
+  const cost = costFacts(input.receipt, input.pricing, summary, input.dispatched)
   return Object.freeze({
     schema: 'braid.runtime-model-execution.v1',
     runtime: {
       package: '@tangle-network/agent-runtime',
       version: AGENT_RUNTIME_VERSION,
-      operation: 'runAgentTaskStream',
+      operation: 'streamAgentTurn',
     },
+    ...(input.provider === undefined ? {} : { provider: input.provider }),
     callId: input.request.callId,
     callRef: input.callRef,
     profileDigest: input.profileDigest,
@@ -266,9 +369,13 @@ function executionEvidence(input: {
         : { requestTimeoutMs: input.retry.requestTimeoutMs }),
     },
     endpointFormat: input.request.endpointFormat ?? 'chat-completions',
-    model: input.request.request.model,
+    route: `${input.connection.kind}/${input.request.endpointFormat ?? 'chat-completions'}`,
+    model: safeModelRoute(input.request.request.model),
     requestDigest: String(canonicalDigest(input.request.request)),
-    durationMs: summary?.durationMs ?? Math.max(0, Date.now() - input.startedAt),
+    startedAt: new Date(input.startedAt).toISOString(),
+    endedAt: new Date(endedAt).toISOString(),
+    durationMs: summary?.durationMs ?? Math.max(0, endedAt - input.startedAt),
+    billing: cost,
     dispatched: input.dispatched,
     ...(summary === undefined
       ? {}
@@ -283,9 +390,14 @@ function executionEvidence(input: {
             captured: summary.usageCaptured,
             inputTokens: summary.inputTokens,
             outputTokens: summary.outputTokens,
+            ...(summary.cachedTokens === undefined ? {} : { cachedTokens: summary.cachedTokens }),
+            ...(summary.cacheWriteTokens === undefined
+              ? {}
+              : { cacheWriteTokens: summary.cacheWriteTokens }),
+            ...(summary.promptCache === undefined ? {} : { promptCache: summary.promptCache }),
             ...(summary.reportedModel === undefined
               ? {}
-              : { reportedModel: summary.reportedModel }),
+              : { reportedModel: safeModelRoute(summary.reportedModel) }),
           },
           events: eventFacts(summary.events),
           outputDigest: String(canonicalDigest(summary.content)),
@@ -297,18 +409,79 @@ function executionEvidence(input: {
   })
 }
 
+function costFacts(
+  receipt: import('@tangle-network/agent-eval').CostReceiptInput | undefined,
+  pricing: CustomTokenPricing | undefined,
+  summary: RuntimeCallSummary | undefined,
+  dispatched: boolean,
+): Readonly<Record<string, number | string>> {
+  if (!dispatched || receipt === undefined) return { status: 'unknown' }
+  if (receipt.actualCostUsd !== undefined && finiteNumber(receipt.actualCostUsd) !== undefined) {
+    return { status: 'observed', usd: receipt.actualCostUsd }
+  }
+  if (
+    receipt.estimatedCostUsd !== undefined &&
+    finiteNumber(receipt.estimatedCostUsd) !== undefined
+  ) {
+    return { status: 'estimated', usd: receipt.estimatedCostUsd }
+  }
+  if (summary?.observedCostUsd !== undefined) {
+    return { status: 'observed', usd: summary.observedCostUsd }
+  }
+  if (summary?.estimatedCostUsd !== undefined) {
+    return { status: 'estimated', usd: summary.estimatedCostUsd }
+  }
+  if (summary?.usageCaptured === true && pricing !== undefined) {
+    const estimated = costForTokenPricing(pricing, receipt)
+    return { status: 'estimated', usd: estimated }
+  }
+  return { status: 'unknown' }
+}
+
 function summaryFailure(summary: RuntimeCallSummary): string {
   if (summary.status === 'completed') return 'Agent Runtime model execution completed'
   if (summary.errorStatus !== undefined) {
     return `Agent Runtime model execution failed with HTTP ${summary.errorStatus}`
   }
   if (summary.status === 'aborted') return 'Agent Runtime model execution was cancelled'
-  return `Agent Runtime model execution failed (${summary.errorKind ?? summary.status})`
+  return `Agent Runtime model execution failed (${safePublicIdentifier(summary.errorKind) ?? 'provider-error'})`
 }
 
-function publicError(value: unknown, dispatched: boolean): string {
-  if (!dispatched && value instanceof Error) return value.message
+function publicError(value: unknown): string {
   return redactProviderError(value instanceof Error ? value.message : String(value))
+}
+
+function analystCallProfile(
+  options: RuntimeTraceModelOwnerOptions,
+  request: ExternalOptimizerModelCallRequest['request'],
+  retry: RuntimeRouterRetryPolicy,
+): AgentProfile {
+  const source = snapshotAgentProfile(options.profile)
+  const provider = source.model?.provider?.trim()
+  if (!provider) {
+    throw new TypeError(
+      'Trace analysis requires AgentProfile.model.provider before model execution',
+    )
+  }
+  const format = responseFormat(request)
+  return snapshotAgentProfile({
+    name: `${source.name ?? 'Braid'} trace analyst`,
+    description: 'One bounded trace-analysis model call',
+    harness: 'cli-base',
+    model: {
+      default: safeModelRoute(options.model),
+      provider,
+      ...(source.model?.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: source.model.reasoningEffort }),
+      metadata: {
+        retry,
+        ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
+        ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+        ...(format === undefined ? {} : { extraBody: { response_format: format } }),
+      },
+    },
+  })
 }
 
 /**
@@ -321,14 +494,14 @@ export function createRuntimeTraceModelOwner(
   // Analyst calls settle one receipt per invocation. Keep retries explicit so a
   // single recorded invocation cannot conceal multiple paid provider requests.
   const retry = Object.freeze({ maxAttempts: 1, ...options.retry })
-  const profileDigest = String(
+  const sourceProfileDigest = String(
     canonicalDigest(redactProfile(snapshotAgentProfile(options.profile))),
   )
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({
       version: 1,
       runtimeVersion: AGENT_RUNTIME_VERSION,
-      profileDigest,
+      profileDigest: sourceProfileDigest,
       connection: {
         id: String(options.connection.id),
         kind: options.connection.kind,
@@ -353,49 +526,58 @@ export function createRuntimeTraceModelOwner(
     const events: RuntimeStreamEvent[] = []
     let dispatched = false
     let summary: RuntimeCallSummary | undefined
+    let executionProfileDigest = sourceProfileDigest
     try {
+      const configuredModel = safePublicIdentifier(options.model)
+      if (configuredModel === undefined) {
+        throw new TypeError('Runtime model route is invalid')
+      }
       if (request.request.model !== options.model) {
         throw new TypeError(
-          `Runtime model route expected '${options.model}', received '${request.request.model}'`,
+          `Runtime model route expected '${configuredModel}', received '${safeModelRoute(request.request.model)}'`,
         )
       }
       assertRequestSupported(request.request)
       const messages = textMessages(request.request)
-      const format = responseFormat(request.request)
-      const backend = createOpenAICompatibleBackend({
-        apiKey: options.credential ?? LOCAL_BRIDGE_API_KEY_MARKER,
-        baseUrl: options.baseUrl,
-        model: options.model,
-        kind: `braid-analysis:${options.connection.kind}`,
-        ...(request.request.maxTokens === undefined
-          ? {}
-          : { maxTokens: request.request.maxTokens }),
-        ...(request.request.temperature === undefined
-          ? {}
-          : { temperature: request.request.temperature }),
-        ...(format === undefined ? {} : { responseFormat: format }),
-        ...(options.fetch === undefined ? {} : { fetchImpl: options.fetch }),
-        retry,
+      const profile = analystCallProfile(options, request.request, retry)
+      executionProfileDigest = String(canonicalDigest(redactProfile(profile)))
+      const { createExecutor, streamAgentTurn } = await import(
+        '@tangle-network/agent-runtime/kernel'
+      )
+      const backend = Object.freeze({
+        kind: 'executor' as const,
+        factory: createExecutor({
+          backend: 'router',
+          routerBaseUrl: options.baseUrl,
+          routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
+          ...(options.complete === undefined ? {} : { complete: options.complete }),
+        }),
+        profile,
+        agentRunName: configuredModel,
       })
       dispatched = true
-      for await (const event of runAgentTaskStream({
-        task: {
-          id: `braid-analysis-${request.callId}`,
-          intent: 'Execute one bounded trace-analysis model call',
-        },
+      for await (const event of streamAgentTurn(
         backend,
-        input: { messages },
-        signal: request.signal,
-      })) {
+        { messages },
+        {
+          signal: request.signal,
+          callId: request.callId,
+          correlationId: `braid-analysis-${request.callId}`,
+        },
+      )) {
         events.push(event)
       }
       summary = summarizeRuntimeEvents(events, startedAt)
+      const receipt = receiptFor(options.model, pricing, summary)
       const evidence = executionEvidence({
         request,
         callRef,
-        profileDigest,
+        profileDigest: executionProfileDigest,
         connection: options.connection,
         retry,
+        ...(profile.model?.provider === undefined ? {} : { provider: profile.model.provider }),
+        ...(pricing === undefined ? {} : { pricing }),
+        receipt,
         summary,
         dispatched,
         startedAt,
@@ -404,33 +586,39 @@ export function createRuntimeTraceModelOwner(
         return {
           succeeded: false,
           error: summaryFailure(summary),
-          receipt: receiptFor(options.model, pricing, summary),
+          receipt,
           execution: evidence,
         }
       }
       return {
         succeeded: true,
         response: responseFor(request, summary, pricing),
-        receipt: receiptFor(options.model, pricing, summary),
+        receipt,
         execution: evidence,
       }
     } catch (error) {
-      const message = publicError(error, dispatched)
+      const message = publicError(error)
+      const receipt = receiptFor(
+        options.model,
+        pricing,
+        summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
+        !dispatched,
+      )
       return {
         succeeded: false,
         error: message,
-        receipt: receiptFor(
-          options.model,
-          pricing,
-          summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
-          !dispatched,
-        ),
+        receipt,
         execution: executionEvidence({
           request,
           callRef,
-          profileDigest,
+          profileDigest: executionProfileDigest,
           connection: options.connection,
           retry,
+          ...(options.profile.model?.provider === undefined
+            ? {}
+            : { provider: options.profile.model.provider }),
+          ...(pricing === undefined ? {} : { pricing }),
+          receipt,
           ...(summary === undefined ? {} : { summary }),
           dispatched,
           ...(events.length === 0 ? {} : { partialEvents: events }),

@@ -1,10 +1,10 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import {
-  type AgentProfile,
   canonicalCandidateJson,
   snapshotAgentProfile,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/profile-runtime.js'
 import {
   assertNoSymlinkPath,
   assertSafeDirectory,

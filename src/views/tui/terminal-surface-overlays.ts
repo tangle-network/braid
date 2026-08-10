@@ -58,8 +58,12 @@ export class TerminalSurfaceOverlays {
         this.openUnavailable('/compare', 'The saved comparison result could not be rendered')
         return
       }
-      const selectedId = comparisonActivityId(data) ?? this.#latestComparisonId()
+      const selectedId = comparisonActivityId(data)
       if (selectedId === undefined) {
+        this.openUnavailable('/compare', 'The saved comparison has no stable analysis id')
+        return
+      }
+      if (!this.#hasActivity(selectedId)) {
         this.openUnavailable('/compare', 'The saved comparison is missing from activity')
         return
       }
@@ -71,7 +75,12 @@ export class TerminalSurfaceOverlays {
       this.openUnavailable(`/${command}`, 'The saved analysis result could not be rendered')
       return
     }
-    this.#openActivity('analyses', `analysis:${String(analysis.id)}`, true)
+    const selectedId = `analysis:${String(analysis.id)}`
+    if (!this.#hasActivity(selectedId)) {
+      this.openUnavailable(`/${command}`, 'The saved analysis is missing from activity')
+      return
+    }
+    this.#openActivity('analyses', selectedId, true)
   }
 
   openSurface(surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'): void {
@@ -134,12 +143,8 @@ export class TerminalSurfaceOverlays {
     })
   }
 
-  #latestComparisonId(): string | undefined {
-    const detail = this.#options.controller
-      .view()
-      .entityDetails?.filter((item) => item.entityType === 'analysis')
-      .findLast((item) => item.title.startsWith('/compare'))
-    return detail === undefined ? undefined : `analysis:${detail.entityId}`
+  #hasActivity(id: string): boolean {
+    return this.#options.controller.view().activity.some((item) => item.id === id)
   }
 
   #openBrowser(panel: Component, refreshSupervision = false): void {

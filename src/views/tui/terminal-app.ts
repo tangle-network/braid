@@ -34,6 +34,8 @@ export interface BraidTerminalOptions {
   readonly connectionLifecycle?: UiConnectionLifecycle
   readonly startupMessages?: readonly { readonly title: string; readonly reason: string }[]
   readonly onFrameTiming?: (timing: UiFrameTiming) => void
+  readonly tuiStarted?: boolean
+  readonly preinstalledOutputPolicyCleanup?: () => void
 }
 
 export class BraidTerminalApp {
@@ -52,10 +54,12 @@ export class BraidTerminalApp {
   readonly #done: Promise<void>
   readonly #resolveDone: () => void
   readonly #unsubscribe: () => void
-  readonly #removeInputListener: () => void
+  #removeInputListener: (() => void) | undefined
   #stopped = false
+  #started = false
   #openConfigurationOnStart = false
   readonly #restoreTerminalOutputPolicy: () => void
+  readonly #tuiStarted: boolean
 
   constructor(options: BraidTerminalOptions) {
     this.#controller = options.controller
@@ -63,10 +67,18 @@ export class BraidTerminalApp {
     this.#theme = options.theme
     this.#workspace = options.workspace
     this.#nextOperationId = options.nextOperationId
-    this.#restoreTerminalOutputPolicy = installTerminalOutputPolicy(
-      options.tui.terminal,
-      !options.theme.terminalMetadata,
-    )
+    this.#tuiStarted = options.tuiStarted ?? false
+    if (options.preinstalledOutputPolicyCleanup !== undefined) {
+      if (options.theme.terminalMetadata) options.preinstalledOutputPolicyCleanup()
+      this.#restoreTerminalOutputPolicy = options.theme.terminalMetadata
+        ? () => {}
+        : options.preinstalledOutputPolicyCleanup
+    } else {
+      this.#restoreTerminalOutputPolicy = installTerminalOutputPolicy(
+        options.tui.terminal,
+        !options.theme.terminalMetadata,
+      )
+    }
     const keymapResolution = options.keymap
       ? { keymap: options.keymap, valid: true, diagnostics: Object.freeze([]) }
       : resolveKeymap()
@@ -162,7 +174,6 @@ export class BraidTerminalApp {
       delivery: 'frame',
       ...(options.onFrameTiming === undefined ? {} : { onFrameTiming: options.onFrameTiming }),
     })
-    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
     this.#render(this.#controller.view())
     if (keymapDiagnostic) {
       this.#overlays.openUnavailable('key mappings unavailable', keymapDiagnostic)
@@ -175,16 +186,20 @@ export class BraidTerminalApp {
     return this.#shell.editor
   }
 
-  start(): Promise<void> {
+  start(startupInput: readonly string[] = []): Promise<void> {
+    if (this.#started) return this.#done
+    this.#started = true
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
     if (this.#theme.terminalMetadata)
       this.#tui.terminal.setTitle(sanitizeTitle(`Braid — ${this.#workspace}`))
-    this.#tui.start()
+    if (!this.#tuiStarted) this.#tui.start()
     if (this.#modals.hasOpen()) this.#modals.focusTop()
     else this.#tui.setFocus(this.#shell.editor)
     if (this.#openConfigurationOnStart) {
       this.#openConfigurationOnStart = false
       this.#overlays.openConfiguration()
     }
+    for (const data of startupInput) this.#replayInput(data)
     return this.#done
   }
 
@@ -195,7 +210,8 @@ export class BraidTerminalApp {
     this.#input.close()
     this.#drafts.close()
     this.#modals.closeAll()
-    this.#removeInputListener()
+    this.#removeInputListener?.()
+    this.#removeInputListener = undefined
     this.#unsubscribe()
     this.#tui.stop()
     this.#restoreTerminalOutputPolicy()
@@ -212,6 +228,12 @@ export class BraidTerminalApp {
 
   #submit(rawText: string): void {
     this.#commands.submit(rawText)
+  }
+
+  #replayInput(data: string): void {
+    if (this.#input.handle(data)?.consume) return
+    if (!this.#modals.handleInput(data)) this.#shell.editor.handleInput(data)
+    this.#tui.requestRender()
   }
 
   #dispatch(intent: BraidIntent, restoreText?: string): Promise<UiDispatchResult> {

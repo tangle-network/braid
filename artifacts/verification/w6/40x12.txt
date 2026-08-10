@@ -1,10 +1,10 @@
-braid  cwd  braid-automation-main-wt
+braid  cwd  braid-unified-activity-wt
  W6 visual proof
 
+ · agent-turn-result · unknown ·
+ collapsed · ctrl+e next
  Fixture response through pi: W6 visual
  proof
-
-
 ────────────────────────────────────────
 
 ────────────────────────────────────────

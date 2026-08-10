@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { runPlain } from '../src/bin/plain.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import { FixedClock } from '../src/ports/clock.js'
+import {
+  DEFAULT_RUN_CAPABILITIES,
+  type ExecutionPort,
+  UNKNOWN_RUN_CAPABILITIES,
+} from '../src/ports/execution.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
+import { MAX_RPC_LINE_BYTES } from '../src/views/headless/protocol-limits.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
 import { queryActivity } from '../src/views/shared/semantic-activity.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
@@ -22,8 +30,26 @@ async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
   yield `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`
 }
 
+function deferred<T = void>(): {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T | PromiseLike<T>) => void
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
 function controllerFor(app: ReturnType<typeof createBraidApplication>) {
   return createApplicationUiController(app)
+}
+
+function responseWriter(responses: BraidResponse[]): (chunk: string) => boolean {
+  return (chunk) => {
+    responses.push(JSON.parse(chunk) as BraidResponse)
+    return true
+  }
 }
 
 function resultFor<T>(responses: readonly BraidResponse[], requestId: string): T {
@@ -395,7 +421,25 @@ test('JSONL accepts a valid inline conversation import larger than one MiB', asy
 })
 
 test('JSONL cancel interrupts an active send and reports the terminal state', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
+  const requestedReason = 'operator requested cancellation'
+  let providerReason: string | undefined
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      yield { type: 'text_delta', text: 'waiting for cancellation' }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    cancelRun: async (input) => {
+      providerReason = input.reason
+      releaseStream?.()
+      return { operationId: input.operationId, outcome: 'accepted' }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
   let output = ''
   await runRpc(
     controllerFor(app),
@@ -418,7 +462,7 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
         requestId: 'req-cancel',
         operationId: 'op-cancel-active',
         command: 'cancel_run',
-        params: { runId: 'run-000001', reason: 'test cancellation' },
+        params: { runId: 'run-000001', reason: requestedReason },
       },
       {
         version: 1,
@@ -443,6 +487,21 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
       (response) => response.type === 'event' && response.event.kind === 'run.cancel.requested',
     ),
   )
+  const controlEvents = app
+    .events()
+    .filter(
+      (entry) =>
+        entry.event.kind === 'run.control.requested' || entry.event.kind === 'run.cancel.requested',
+    )
+  assert.deepEqual(
+    controlEvents.map((entry) =>
+      entry.event.kind === 'run.control.requested' || entry.event.kind === 'run.cancel.requested'
+        ? entry.event.reason
+        : undefined,
+    ),
+    [requestedReason, requestedReason],
+  )
+  assert.equal(providerReason, requestedReason)
   const cancelState = responses.find(
     (response) => response.type === 'state' && response.requestId === 'req-cancel',
   )
@@ -450,6 +509,388 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
   if (cancelState?.type !== 'state') assert.fail('missing cancellation state')
   if (cancelState.projection !== 'full') assert.fail('expected full cancellation state')
   assert.equal(cancelState.state.runs[0]?.status, 'aborted')
+})
+
+test('RPC and plain shutdown exit at the drain deadline for a never-ending iterator', async () => {
+  for (const mode of ['rpc', 'plain'] as const) {
+    const streamStarted = deferred()
+    let providerCancellationCalls = 0
+    const execution: ExecutionPort = {
+      capabilities: () => DEFAULT_RUN_CAPABILITIES,
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+        streamStarted.resolve()
+        await new Promise<void>(() => {})
+      },
+      async cancelRun(input) {
+        providerCancellationCalls += 1
+        return { operationId: input.operationId, outcome: 'accepted' as const }
+      },
+    }
+    const app = createBraidApplication({
+      fixture: 'deterministic',
+      execution,
+      cancelTimeoutMs: 25,
+    })
+    const writes: string[] = []
+    const output = {
+      write: (chunk: string): boolean => {
+        writes.push(chunk)
+        return true
+      },
+    }
+    const startedAt = Date.now()
+    let code: number
+    if (mode === 'rpc') {
+      async function* input(): AsyncGenerator<string> {
+        yield `${[
+          {
+            version: 1,
+            requestId: 'req-never-init',
+            command: 'initialize',
+            params: { workspace: '/workspace' },
+          },
+          {
+            version: 1,
+            requestId: 'req-never-send',
+            operationId: 'op-never-send',
+            command: 'send',
+            params: { text: 'never ending provider iterator' },
+          },
+        ]
+          .map((request) => JSON.stringify(request))
+          .join('\n')}\n`
+        await streamStarted.promise
+        yield `${JSON.stringify({
+          version: 1,
+          requestId: 'req-never-shutdown',
+          operationId: 'op-never-shutdown',
+          command: 'shutdown',
+          params: { mode: 'cancel' },
+        })}\n`
+      }
+      code = await runRpc(controllerFor(app), input(), output)
+    } else {
+      async function* input(): AsyncGenerator<string> {
+        yield 'never ending provider iterator\n'
+        await streamStarted.promise
+        yield '/quit\n'
+      }
+      code = await runPlain(controllerFor(app), '/workspace', input(), output)
+    }
+    const writesAtExit = writes.length
+    const elapsedMs = Date.now() - startedAt
+    await new Promise<void>((resolve) => setTimeout(resolve, 60))
+
+    assert.equal(code, 0)
+    assert.equal(providerCancellationCalls, 1)
+    assert.ok(elapsedMs < 1_000, `${mode} shutdown exceeded bounded drain: ${elapsedMs}ms`)
+    assert.equal(writes.length, writesAtExit)
+    assert.equal(app.state().runs[0]?.status, 'aborted')
+    await app.close()
+  }
+})
+
+test('JSONL cancellation preserves a provider rejection without marking the run cancelled', async () => {
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn() {
+      yield { type: 'text_delta', text: 'provider rejection test' }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+      })
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'provider continued after rejecting cancellation',
+        text: 'provider continued',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-rejected-cancel', intent: 'provider rejection test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      } satisfies RuntimeStreamEvent
+    },
+    cancelRun: async (input) => {
+      releaseStream?.()
+      return {
+        operationId: input.operationId,
+        outcome: 'rejected',
+        detail: 'Provider refused cancellation',
+      }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  const responses: BraidResponse[] = []
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-rejected-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-rejected-send',
+        operationId: 'op-rejected-send',
+        command: 'send',
+        params: { text: 'reject cancellation' },
+      },
+      {
+        version: 1,
+        requestId: 'req-rejected-cancel',
+        operationId: 'op-rejected-cancel',
+        command: 'cancel_run',
+        params: { runId: 'run-000001' },
+      },
+      {
+        version: 1,
+        requestId: 'req-rejected-stop',
+        operationId: 'op-rejected-stop',
+        command: 'shutdown',
+      },
+    ]),
+    { write: responseWriter(responses) },
+  )
+  const acknowledgement = responses.find(
+    (response) => response.type === 'ack' && response.requestId === 'req-rejected-cancel',
+  )
+  assert.equal(acknowledgement?.type, 'ack')
+  if (acknowledgement?.type !== 'ack') assert.fail('missing rejection acknowledgement')
+  assert.equal(acknowledgement.outcome, 'rejected')
+  const state = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'req-rejected-cancel',
+  )
+  assert.equal(state?.type, 'state')
+  if (state?.type !== 'state' || state.projection !== 'full') assert.fail('missing rejection state')
+  assert.equal(state.state.runs[0]?.status, 'completed')
+})
+
+test('JSONL cancellation reports the deadline then applies a late provider acknowledgement', async () => {
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn() {
+      yield { type: 'text_delta', text: 'provider timeout test' }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+      })
+    },
+    cancelRun: async (input) => {
+      await new Promise<void>((resolve) => {
+        const onAbort = () => {
+          input.signal?.removeEventListener('abort', onAbort)
+          releaseStream?.()
+          resolve()
+        }
+        if (input.signal?.aborted) onAbort()
+        else input.signal?.addEventListener('abort', onAbort, { once: true })
+      })
+      return { operationId: input.operationId, outcome: 'accepted' }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    cancelTimeoutMs: 10,
+  })
+  const responses: BraidResponse[] = []
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-timeout-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-timeout-send',
+        operationId: 'op-timeout-send',
+        command: 'send',
+        params: { text: 'timeout cancellation' },
+      },
+      {
+        version: 1,
+        requestId: 'req-timeout-cancel',
+        operationId: 'op-timeout-cancel',
+        command: 'cancel_run',
+        params: { runId: 'run-000001' },
+      },
+      {
+        version: 1,
+        requestId: 'req-timeout-stop',
+        operationId: 'op-timeout-stop',
+        command: 'shutdown',
+      },
+    ]),
+    { write: responseWriter(responses) },
+  )
+  const acknowledgement = responses.find(
+    (response) => response.type === 'ack' && response.requestId === 'req-timeout-cancel',
+  )
+  assert.equal(acknowledgement?.type, 'ack')
+  if (acknowledgement?.type !== 'ack') assert.fail('missing timeout acknowledgement')
+  assert.equal(acknowledgement.outcome, 'unknown')
+  const state = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'req-timeout-cancel',
+  )
+  assert.equal(state?.type, 'state')
+  if (state?.type !== 'state' || state.projection !== 'full') assert.fail('missing timeout state')
+  assert.equal(state.state.runs[0]?.status, 'aborted')
+})
+
+test('JSONL cancellation stays unavailable when the runtime does not advertise provider support', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => UNKNOWN_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      yield { type: 'text_delta', text: 'unsupported cancellation test' }
+      await new Promise<void>((resolve) => {
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  const responses: BraidResponse[] = []
+  await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-unsupported-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-unsupported-send',
+        operationId: 'op-unsupported-send',
+        command: 'send',
+        params: { text: 'unsupported cancellation' },
+      },
+      {
+        version: 1,
+        requestId: 'req-unsupported-cancel',
+        operationId: 'op-unsupported-cancel',
+        command: 'cancel_run',
+        params: { runId: 'run-000001' },
+      },
+      {
+        version: 1,
+        requestId: 'req-unsupported-stop',
+        operationId: 'op-unsupported-stop',
+        command: 'shutdown',
+        params: { mode: 'cancel' },
+      },
+    ]),
+    { write: responseWriter(responses) },
+  )
+  const response = responses.find(
+    (candidate) => candidate.type === 'error' && candidate.requestId === 'req-unsupported-cancel',
+  )
+  assert.equal(response?.type, 'error')
+  if (response?.type !== 'error') assert.fail('missing unsupported cancellation response')
+  assert.equal(response.code, 'CAPABILITY_UNAVAILABLE')
+  assert.equal(app.state().runs[0]?.status, 'unknown')
+})
+
+test('JSONL malformed UTF-8 cancels a delayed run before the outer close', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  async function* input(): AsyncGenerator<string | Uint8Array> {
+    yield `${[
+      {
+        version: 1,
+        requestId: 'req-init-malformed',
+        command: 'initialize',
+        params: { workspace: '/workspace', subscribe: true },
+      },
+      {
+        version: 1,
+        requestId: 'req-send-malformed',
+        operationId: 'op-send-malformed',
+        command: 'send',
+        params: { text: 'delayed run before malformed input' },
+      },
+    ]
+      .map((request) => JSON.stringify(request))
+      .join('\n')}\n`
+    yield new Uint8Array([0xc3, 0x28])
+  }
+
+  await assert.rejects(
+    runRpc(controllerFor(app), input(), { write: () => true }),
+    /malformed UTF-8/iu,
+  )
+  assert.equal(
+    app.events().filter((entry) => entry.event.kind === 'application.shutdown.requested').length,
+    1,
+  )
+  await app.close()
+  const eventsAfterClose = app.events().length
+  assert.equal(app.state().runs[0]?.status, 'aborted')
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 300))
+  assert.equal(app.events().length, eventsAfterClose)
+})
+
+test('plain oversized input cancels a delayed run before the outer close', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  async function* input(): AsyncGenerator<string> {
+    yield 'delayed plain run\n'
+    yield 'x'.repeat(MAX_RPC_LINE_BYTES + 1)
+  }
+
+  await assert.rejects(
+    runPlain(controllerFor(app), '/workspace', input(), { write: () => true }),
+    /LINE_TOO_LARGE/iu,
+  )
+  assert.equal(
+    app.events().filter((entry) => entry.event.kind === 'application.shutdown.requested').length,
+    1,
+  )
+  await app.close()
+  const eventsAfterClose = app.events().length
+  assert.equal(app.state().runs[0]?.status, 'aborted')
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 300))
+  assert.equal(app.events().length, eventsAfterClose)
+})
+
+test('plain output failure cancels the delayed run before the outer close', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  const outputFailed = deferred()
+  let writes = 0
+  const output = {
+    write: (_chunk: string): boolean => {
+      writes += 1
+      if (writes === 3) {
+        outputFailed.resolve()
+        throw new Error('OUTPUT_FAILURE')
+      }
+      return true
+    },
+  }
+  async function* input(): AsyncGenerator<string> {
+    yield 'delayed output run\n'
+    await outputFailed.promise
+    yield '\n'
+  }
+
+  await assert.rejects(
+    runPlain(controllerFor(app), '/workspace', input(), output),
+    (error: unknown) => error instanceof Error && error.message === 'OUTPUT_FAILURE',
+  )
+  assert.equal(
+    app.events().filter((entry) => entry.event.kind === 'application.shutdown.requested').length,
+    1,
+  )
+  await app.close()
+  const eventsAfterClose = app.events().length
+  assert.equal(app.state().runs[0]?.status, 'aborted')
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 300))
+  assert.equal(app.events().length, eventsAfterClose)
 })
 
 test('JSONL requires initialize and stable operation identity', async () => {

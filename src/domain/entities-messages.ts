@@ -145,7 +145,15 @@ export interface RunRecord extends RuntimeRunFields {
   readonly status: RunStatus
   readonly inputTokens: number
   readonly outputTokens: number
+  /** False means inputTokens and outputTokens are only an observed floor. */
+  readonly tokensKnown?: false
   readonly costUsd?: number
+  /** False means costUsd is absent or only an observed floor. */
+  readonly usdKnown?: false
+  readonly estimatedCostUsd?: number
+  readonly promptCache?: Readonly<Record<string, number>>
+  readonly llmCalls?: number
+  readonly llmLatencyMs?: number
   readonly model?: string
   readonly error?: string
   readonly profileSnapshotId?: ProfileSnapshotId

@@ -6,6 +6,7 @@ import { createBraidApplication } from '../app/composition.js'
 import type { ConnectionRegistry } from '../app/connections.js'
 import { createMemoryJournal } from '../app/journal.js'
 import { SystemClock } from '../ports/clock.js'
+import type { StartupPreview } from '../startup/preview-runtime.js'
 import { PRODUCT_DEMO_CONNECTION, PRODUCT_DEMO_PROFILE } from '../testing/product-demo-fixture.js'
 import type { CliOptions } from './args.js'
 import {
@@ -23,10 +24,10 @@ import { defaultStatePath } from './state-path.js'
 
 export async function runBraid(options: CliOptions): Promise<number> {
   const workspace = resolve(options.workspace)
-  const [opened, { runInterface }] = await Promise.all([
-    openApplication(options, workspace),
-    import('./interface-runner.js'),
-  ])
+  const previewRuntime = usesInteractiveTerminal(options)
+    ? import('../startup/preview-runtime.js')
+    : undefined
+  const opened = await openApplication(options, workspace)
   const active = {
     current: {
       app: opened.app,
@@ -34,7 +35,19 @@ export async function runBraid(options: CliOptions): Promise<number> {
       ...(opened.connections === undefined ? {} : { connections: opened.connections }),
     },
   }
+  let startupPreview: StartupPreview | undefined
   try {
+    if (previewRuntime !== undefined) {
+      const { createStartupPreview } = await previewRuntime
+      startupPreview = createStartupPreview({
+        state: opened.app.state(),
+        workspace,
+        inline: options.inline,
+        suppressMetadata:
+          options.noColor || options.reducedMotion || process.env.NO_COLOR !== undefined,
+      })
+    }
+    const { runInterface } = await import('./interface-runner.js')
     return await runInterface({
       options,
       workspace,
@@ -44,18 +57,20 @@ export async function runBraid(options: CliOptions): Promise<number> {
       ...(opened.profileConnectionOptions === undefined
         ? {}
         : { profileConnectionOptions: opened.profileConnectionOptions }),
+      ...(startupPreview === undefined ? {} : { startupPreview }),
       openConfiguredApplication,
     })
   } finally {
+    startupPreview?.close()
     await active.current.close()
   }
 }
 
-/**
- * The fixture surface runs entirely in memory so a capture is reproducible.
- * Every other run opens the encrypted SQLite journal, which owns durability,
- * so the process must release it before exiting.
- */
+function usesInteractiveTerminal(options: CliOptions): boolean {
+  return options.mode === 'tui' && !options.plain && process.stdin.isTTY && process.stdout.isTTY
+}
+
+/** Fixtures use memory; every other run owns encrypted SQLite and must close it. */
 async function openApplication(
   options: CliOptions,
   workspace: string,

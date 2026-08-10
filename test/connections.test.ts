@@ -47,7 +47,10 @@ function profile(
   model = 'openai/gpt-5',
   harness: AgentProfile['harness'] = 'opencode',
 ): AgentProfile {
-  return { model: { default: model }, harness }
+  const segments = model.split('/')
+  const provider =
+    (segments[0] === harness ? (segments[1] ?? segments[0]) : segments[0]) ?? 'fixture'
+  return { model: { default: model, provider }, harness }
 }
 
 function turnInput(profileValue: AgentProfile): ExecuteTurnInput {
@@ -58,21 +61,6 @@ function turnInput(profileValue: AgentProfile): ExecuteTurnInput {
     profile: profileValue,
     signal: new AbortController().signal,
   }
-}
-
-function responseStream(text = 'hello'): Response {
-  const body = [
-    `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] })}`,
-    '',
-    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } })}`,
-    '',
-    'data: [DONE]',
-    '',
-  ].join('\n')
-  return new Response(body, {
-    status: 200,
-    headers: { 'content-type': 'text/event-stream' },
-  })
 }
 
 test('connection records stay secret-free and selection is exact', () => {
@@ -293,26 +281,29 @@ test('production resolver routes chat connections through agent-runtime', async 
   await credentials.store({ ref: portRef, value: Buffer.from('resolver-secret') })
   const inference = connection('tangle-inference', 'resolver', 'https://router.test', true)
   const registry = new ConnectionRegistry([inference])
-  const calls: Array<{ readonly url: string; readonly body: string }> = []
-  const fetcher: typeof fetch = async (input, init) => {
-    calls.push({ url: String(input), body: String(init?.body) })
-    return responseStream()
-  }
+  const calls: Array<Record<string, unknown>> = []
   const options: ProductionBackendResolverOptions = {
     connections: registry,
     credentials,
     credentialRefResolver: () => portRef,
-    fetch: fetcher,
+    routerComplete: async (body) => {
+      calls.push(body)
+      return {
+        model: 'openai/gpt-5',
+        choices: [{ message: { content: 'hello' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }
+    },
     select: () => ({ connection: { connectionId: inference.id } }),
   }
-  const backend = await createProductionBackendResolver(options)(turnInput(profile()))
-  assert.equal(backend.kind, 'chat')
-  if (backend.kind !== 'chat') return
+  const backend = await createProductionBackendResolver(options)(
+    turnInput(profile('openai/gpt-5', 'cli-base')),
+  )
+  assert.equal(backend.kind, 'prepared-execution')
   const events = []
-  for await (const event of streamAgentTurn(backend, 'hello')) events.push(event)
+  for await (const event of streamAgentTurn(backend.backend, 'hello')) events.push(event)
   assert.equal(events.at(-1)?.type, 'final')
-  assert.equal(calls[0]?.url, 'https://router.test/v1/chat/completions')
-  assert.match(calls[0]?.body ?? '', /"model":"openai\/gpt-5"/u)
+  assert.equal(calls[0]?.model, 'openai/gpt-5')
 })
 
 test('CLI Bridge and sandbox resolvers expose only supported runtime backend shapes', async () => {
@@ -339,22 +330,18 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       connection: { connectionId: bridge.id },
     },
   )
-  assert.equal(cliBackend.kind, 'sandbox-plan')
-  if (cliBackend.kind === 'sandbox-plan') {
-    assert.equal(cliBackend.createInput.backend, 'pi')
-    assert.deepEqual(cliBackend.createInput.profile, profile('openai/gpt-5', 'pi'))
-    assert.equal(cliBackend.turnOptions.model, 'pi/openai/gpt-5')
-    assert.equal('timeoutMs' in cliBackend.turnOptions, false)
-  }
+  assert.equal(cliBackend.kind, 'prepared-execution')
+  assert.equal(cliBackend.materializationReceipt.runner, 'pi')
+  assert.equal(cliBackend.materializationReceipt.model, 'openai/gpt-5')
+  assert.deepEqual(cliBackend.backend.profile, profile('openai/gpt-5', 'pi'))
 
   const sandboxBackend = await resolveProductionBackend(options, turnInput(profile()), {
     connection: { connectionId: sandbox.id },
   })
-  assert.equal(sandboxBackend.kind, 'sandbox-plan')
-  if (sandboxBackend.kind === 'sandbox-plan') {
-    assert.equal(sandboxBackend.createInput.backend, 'opencode')
-    assert.equal(sandboxBackend.turnOptions.model, 'openai/gpt-5')
-  }
+  assert.equal(sandboxBackend.kind, 'prepared-execution')
+  assert.equal(sandboxBackend.materializationReceipt.runner, 'opencode')
+  assert.equal(sandboxBackend.materializationReceipt.model, 'openai/gpt-5')
+  assert.deepEqual(sandboxBackend.backend.profile, profile())
 
   await assert.rejects(
     () =>
@@ -380,41 +367,32 @@ test('CLI Bridge materializes portable models into routes and rejects incompatib
     runner: 'codex',
     model: 'default',
   })
-  assert.equal(prepared.kind, 'sandbox-plan')
-  if (prepared.kind === 'sandbox-plan') {
-    assert.equal(prepared.createInput.backend, 'codex')
-    assert.equal(prepared.turnOptions.model, 'codex/default')
-  }
+  assert.equal(prepared.kind, 'prepared-execution')
+  assert.equal(prepared.materializationReceipt.runner, 'codex')
+  assert.equal(prepared.materializationReceipt.model, 'default')
   const priorPiProfile = profile('pi/tangle-router/glm-5.2', 'pi')
   const priorPi = await resolveProductionBackend(options, turnInput(priorPiProfile), {
     connection: { connectionId: bridge.id },
   })
-  assert.equal(priorPi.kind, 'sandbox-plan')
-  if (priorPi.kind === 'sandbox-plan') {
-    assert.deepEqual(priorPi.createInput.profile, priorPiProfile)
-    assert.equal(priorPi.turnOptions.model, 'pi/tangle-router/glm-5.2')
-  }
+  assert.equal(priorPi.kind, 'prepared-execution')
+  assert.deepEqual(priorPi.backend.profile, priorPiProfile)
+  assert.equal(priorPi.materializationReceipt.model, 'pi/tangle-router/glm-5.2')
   const priorCodexProfile = profile('codex/default', 'codex')
   const priorCodex = await resolveProductionBackend(options, turnInput(priorCodexProfile), {
     connection: { connectionId: bridge.id },
   })
-  assert.equal(priorCodex.kind, 'sandbox-plan')
-  if (priorCodex.kind === 'sandbox-plan') {
-    assert.deepEqual(priorCodex.createInput.profile, priorCodexProfile)
-    assert.equal(priorCodex.turnOptions.model, 'codex/default')
-  }
-  const priorOverride = await resolveProductionBackend(
-    options,
-    turnInput(profile('default', 'codex')),
-    {
-      connection: { connectionId: bridge.id },
-      runner: 'codex',
-      model: 'codex/default',
-    },
+  assert.equal(priorCodex.kind, 'prepared-execution')
+  assert.deepEqual(priorCodex.backend.profile, priorCodexProfile)
+  assert.equal(priorCodex.materializationReceipt.model, 'codex/default')
+  await assert.rejects(
+    () =>
+      resolveProductionBackend(options, turnInput(profile('default', 'codex')), {
+        connection: { connectionId: bridge.id },
+        runner: 'codex',
+        model: 'codex/default',
+      }),
+    /conflicts with AgentProfile\.model\.default/u,
   )
-  assert.equal(priorOverride.kind, 'sandbox-plan')
-  if (priorOverride.kind === 'sandbox-plan')
-    assert.equal(priorOverride.turnOptions.model, 'codex/default')
   await assert.rejects(
     () =>
       resolveProductionBackend(options, turnInput(profile('zai-coding-plan/glm-5.2', 'codex')), {

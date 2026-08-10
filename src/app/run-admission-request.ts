@@ -1,4 +1,4 @@
-import { snapshotAgentProfile } from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { PortableContextPlan } from '../domain/receipts.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'

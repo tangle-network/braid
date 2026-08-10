@@ -232,15 +232,18 @@ export function buildCheckRecord({
   sanitizedEnvironment,
   environmentId,
   structuredRedactionSecrets = [],
+  structuredEvidenceOverride,
 }) {
-  const evidence = structuredChildEvidence(
-    category,
-    processResult.structuredStdout?.bytes ?? processResult.stdout.bytes,
-    processResult.durationMs,
-    checkId,
-    processResult.structuredStdout?.error,
-    structuredRedactionSecrets,
-  )
+  const evidence =
+    structuredEvidenceOverride ??
+    structuredChildEvidence(
+      category,
+      processResult.structuredStdout?.bytes ?? processResult.stdout.bytes,
+      processResult.durationMs,
+      checkId,
+      processResult.structuredStdout?.error,
+      structuredRedactionSecrets,
+    )
   const outputRedactionComplete =
     processResult.stdout.redactionFailClosed === false &&
     processResult.stderr.redactionFailClosed === false

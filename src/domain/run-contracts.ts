@@ -130,6 +130,7 @@ export interface RunAdmissionReceipt {
   }
   readonly capabilities: RunCapabilities
   readonly provider?: string
+  readonly requestedSessionId?: string
   readonly environmentId?: string
   readonly providerSessionId?: string
   readonly materializationReceipt?: Readonly<Record<string, unknown>>

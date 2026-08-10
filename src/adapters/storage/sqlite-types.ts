@@ -14,6 +14,24 @@ export interface MigrationHooks {
 
 export type DurableBoundaryHook = (boundary: string) => void
 
+export interface SqliteStartupStage {
+  readonly name:
+    | 'path-lock'
+    | 'path-validation'
+    | 'lock-acquire'
+    | 'recovery-check'
+    | 'initialization-marker'
+    | 'credential'
+    | 'cipher-open'
+    | 'schema'
+    | 'content-keys'
+    | 'snapshot-maintenance'
+    | 'projection'
+    | 'configuration'
+    | 'artifact-permissions'
+  readonly durationMs: number
+}
+
 export interface SqliteStorageOptions {
   readonly path: string
   readonly workspaceRoot?: string
@@ -27,6 +45,7 @@ export interface SqliteStorageOptions {
   readonly backupDirectory?: string
   readonly migrationHooks?: MigrationHooks
   readonly durableBoundaryHook?: DurableBoundaryHook
+  readonly startupObserver?: (stage: SqliteStartupStage) => void
   /** Test/packaging seam. It must still expose key/rekey and is never a plaintext fallback. */
   readonly databaseFactory?: SqliteDatabaseFactory
 }
@@ -45,6 +64,7 @@ export interface SqliteStorageInput {
   readonly backupDirectory: string
   readonly migrationHooks?: MigrationHooks
   readonly durableBoundaryHook?: DurableBoundaryHook
+  readonly startupObserver?: (stage: SqliteStartupStage) => void
   readonly database: SqliteDatabase
   readonly databaseFileDescriptor?: number
   readonly exclusiveLock?: { readonly release: () => Promise<void> }

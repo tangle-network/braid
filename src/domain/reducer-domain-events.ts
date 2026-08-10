@@ -1,9 +1,11 @@
+import { connectionRemovalBlockers } from './connection-removal.js'
 import type { BraidEvent, DomainBraidEventMap } from './events.js'
 import { DomainInvariantError } from './invariants.js'
 import { applyConversationEvent } from './reducer-conversation-events.js'
-import { connectionRemovalBlockers } from './connection-removal.js'
+import { applyExecutionObservation } from './reducer-execution-observation.js'
 
 import { find, updateRun, upsert, upsertBy } from './reducer-helpers.js'
+import { isCancellationConfirmedReconciliation } from './reducer-support.js'
 import type { BraidState } from './state.js'
 
 export function applyDomainEvent(
@@ -107,10 +109,17 @@ export function applyDomainEvent(
     }
     case 'run.reconciled': {
       const run = find(state.runs, event.runId, 'Run')
-      if (run.status !== 'unknown')
+      const correction = isCancellationConfirmedReconciliation(event, state, run.status)
+      if (event.correction !== undefined && !correction)
+        throw new DomainInvariantError(
+          `Run ${run.id} has invalid cancellation reconciliation evidence`,
+        )
+      if (run.status !== 'unknown' && !correction)
         throw new DomainInvariantError(`Run ${run.id} is not awaiting reconciliation`)
-      return updateRun(state, { ...run, status: event.status }, at)
+      return updateRun(state, { ...run, status: event.to ?? event.status }, at)
     }
+    case 'run.environment.observed':
+      return applyExecutionObservation(state, event, at)
     case 'history.missing': {
       const run = find(state.runs, event.range.runId, 'Run')
       const messages = state.messages.map((message) =>

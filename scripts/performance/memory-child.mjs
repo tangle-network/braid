@@ -9,15 +9,15 @@ if (!databasePath || !workspaceRoot || !keyPath || !credentialRoot || !packageRo
   )
 
 const indexUrl = (relativePath) => pathToFileURL(join(packageRoot, relativePath)).href
-const [tui, index] = await Promise.all([
+const [tui, composition] = await Promise.all([
   import(indexUrl('dist/adapters/tui/application-ui-controller.js')),
-  import(indexUrl('dist/index.js')),
+  import(indexUrl('dist/app/composition.js')),
 ])
 const profile = { name: 'Braid performance profile', harness: 'pi' }
 const credentials = new FileCredentialStore(credentialRoot)
 if (typeof globalThis.gc === 'function') globalThis.gc()
 const baselineRssMiB = process.memoryUsage().rss / (1024 * 1024)
-const durable = await index.createDurableBraidApplication({
+const durable = await composition.createDurableBraidApplication({
   path: databasePath,
   workspaceRoot,
   credentialStore: credentials,

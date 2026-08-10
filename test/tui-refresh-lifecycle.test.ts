@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TuiMainScreen, type Component, type OverlayHandle } from '@earendil-works/pi-tui'
+import type { AnalysisRecord } from '../src/domain/entities.js'
+import {
+  createAnalysisId,
+  createBranchId,
+  createConversationId,
+  createDigest,
+  createRunId,
+} from '../src/domain/ids.js'
 import type { BraidUiController, UiDispatchResult } from '../src/views/shared/intents.js'
 import type { BraidViewModel, HeadlessState } from '../src/views/shared/models.js'
 import { TerminalSurfaceOverlays } from '../src/views/tui/terminal-surface-overlays.js'
@@ -9,6 +17,7 @@ import type { ModalCoordinator, ModalOptions } from '../src/views/tui/modal-coor
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { withIntelligenceResult } from '../src/adapters/tui/ui-intelligence-result-view.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 interface Deferred<T> {
@@ -73,6 +82,13 @@ function viewModel(): BraidViewModel {
     status: 'ready',
     statusText: 'ready',
     queueCount: 0,
+    sessionUsage: {
+      turns: emptyUsageTotals(),
+      analyses: emptyUsageTotals(),
+      delegated: emptyUsageTotals(),
+      attribution: 'complete',
+    },
+    environments: [],
     messages: [],
     hiddenMessageCount: 0,
     runs: [],
@@ -111,6 +127,18 @@ function viewModel(): BraidViewModel {
     draft: '',
     selectedSurface: 'transcript',
     appearance: { color: 'none', highContrast: false, reducedMotion: false },
+  }
+}
+
+function emptyUsageTotals(): BraidViewModel['sessionUsage']['turns'] {
+  return {
+    sourceCount: 0,
+    input: 0,
+    output: 0,
+    tokenStatus: 'unknown',
+    costStatus: 'unknown',
+    unknownTokenSources: 0,
+    unknownCostSources: 0,
   }
 }
 
@@ -233,6 +261,15 @@ test('analysis surfaces stay frozen and TerminalApp.stop disposes live refreshes
     semantic: { status: 'unavailable', reason: 'not evaluated' },
   })
   assert.deepEqual(requests, [])
+  surfaces.openIntelligenceResult('ask', {
+    analysis: {
+      id: 'missing-analysis',
+      status: 'completed',
+      findings: [],
+      source: { digest: 'missing', complete: true },
+    },
+  })
+  assert.match(spy.current()?.render(80).join('\n') ?? '', /missing from activity/u)
   surfaces.dispose()
 
   const application = createBraidApplication({ fixture: 'deterministic' })
@@ -289,4 +326,140 @@ test('analysis surfaces stay frozen and TerminalApp.stop disposes live refreshes
     await done
     await application.close()
   }
+})
+
+test('selected saved intelligence results pin one old row without expanding the activity tail', () => {
+  const durable: AnalysisRecord = {
+    id: createAnalysisId('analysis-saved-old'),
+    question: 'authoritative saved question',
+    recipe: 'ask',
+    status: 'completed',
+    source: {
+      conversationId: createConversationId('conversation-saved'),
+      branchId: createBranchId('branch-saved'),
+      digest: createDigest('a'.repeat(64)),
+      complete: true,
+    },
+    findings: [],
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:01.000Z',
+  }
+  const visibleTail = Array.from({ length: 500 }, (_, index) => ({
+    id: `run:${index}`,
+    kind: 'run' as const,
+    title: `run ${index}`,
+    status: 'completed' as const,
+    occurredAt: new Date(Date.UTC(2026, 7, 2, 0, 0, index)).toISOString(),
+  }))
+  const view = {
+    ...viewModel(),
+    activity: visibleTail,
+    entityDetails: [],
+  }
+  const accepted = {
+    status: 'completed',
+    analysis: {
+      ...durable,
+      question: 'stale transport copy',
+    },
+  }
+
+  const pinned = withIntelligenceResult(view, accepted, {
+    durableAnalyses: [durable],
+  })
+
+  assert.equal(pinned.activity.length, 500)
+  assert.equal(
+    pinned.activity.some((item) => item.id === 'analysis:analysis-saved-old'),
+    true,
+  )
+  assert.equal(
+    pinned.activity.some((item) => item.id === 'run:0'),
+    false,
+  )
+  assert.equal(
+    pinned.entityDetails?.find((item) => item.entityId === 'analysis-saved-old')?.lines[1],
+    'analyst: configured analyst · completed',
+  )
+  assert.equal(
+    pinned.activity.find((item) => item.id === 'analysis:analysis-saved-old')?.detail,
+    'authoritative saved question',
+  )
+  assert.notEqual(
+    pinned.activity.find((item) => item.id === 'analysis:analysis-saved-old')?.detail,
+    'stale transport copy',
+  )
+
+  const comparisonId = createAnalysisId('analysis-saved-comparison')
+  const savedComparison: AnalysisRecord = {
+    ...durable,
+    id: comparisonId,
+    kind: 'comparison',
+    recipe: 'compare',
+    comparison: {
+      baseline: {
+        conversationId: createConversationId('conversation-saved-baseline'),
+        branchId: createBranchId('branch-saved-baseline'),
+        runId: createRunId('run-saved-baseline'),
+        digest: createDigest('b'.repeat(64)),
+        complete: true,
+      },
+      candidate: {
+        conversationId: createConversationId('conversation-saved-candidate'),
+        branchId: createBranchId('branch-saved-candidate'),
+        runId: createRunId('run-saved-candidate'),
+        digest: createDigest('c'.repeat(64)),
+        complete: true,
+      },
+      fields: [],
+      rows: [],
+      paired: { nPairs: 0, nUnpairedBaseline: 0, nUnpairedTreatment: 0 },
+      semantic: { status: 'unavailable', reason: 'saved comparison snapshot' },
+    },
+  }
+  const comparisonPinned = withIntelligenceResult(
+    view,
+    {
+      analysisId: comparisonId,
+      baselineSourceDigest: 'baseline',
+      candidateSourceDigest: 'candidate',
+      baselineRunId: 'run-baseline',
+      candidateRunId: 'run-candidate',
+      fields: [],
+      rows: [],
+      paired: { nPairs: 0, nUnpairedBaseline: 0, nUnpairedTreatment: 0 },
+      semantic: { status: 'unavailable', reason: 'not evaluated' },
+    },
+    {
+      durableAnalyses: [durable, savedComparison],
+    },
+  )
+  assert.equal(comparisonPinned.activity.length, 500)
+  assert.equal(
+    comparisonPinned.activity.some((item) => item.id === `analysis:${comparisonId}`),
+    true,
+  )
+  const comparisonDetail =
+    comparisonPinned.entityDetails
+      ?.find((item) => item.entityId === comparisonId)
+      ?.lines.join('\n') ?? ''
+  assert.match(comparisonDetail, /baseline run: run-saved-baseline/u)
+  assert.doesNotMatch(comparisonDetail, /run-baseline/u)
+
+  const malformed = withIntelligenceResult(
+    view,
+    { analysis: { id: 'analysis-saved-old', status: 'completed' } },
+    { durableAnalyses: [durable] },
+  )
+  assert.strictEqual(malformed, view)
+
+  const nonexistent = withIntelligenceResult(
+    view,
+    {
+      ...accepted,
+      analysis: { ...accepted.analysis, id: createAnalysisId('analysis-not-saved') },
+    },
+    { durableAnalyses: [durable] },
+  )
+  assert.strictEqual(nonexistent, view)
 })

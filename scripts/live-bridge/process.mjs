@@ -9,6 +9,7 @@ import {
   sendTreeSignal,
   waitForTreeGone,
 } from './process-tree.mjs'
+import { secretValues } from './redaction.mjs'
 import { spawnWindowsJob } from './windows-job-host.mjs'
 
 const defaultNaturalExitTimeoutMs = 2_000
@@ -169,8 +170,9 @@ export class RpcSession {
     this.responses = []
     this.stdout = ''
     this.stderr = ''
-    this.stdoutCapture = new StreamingRedactor()
-    this.stderrCapture = new StreamingRedactor()
+    const secrets = secretValues(env)
+    this.stdoutCapture = new StreamingRedactor(256_000, undefined, secrets)
+    this.stderrCapture = new StreamingRedactor(256_000, undefined, secrets)
     this.buffer = ''
     this.waiters = new Set()
   }
@@ -266,6 +268,32 @@ export class RpcSession {
         defaultKillTimeoutMs,
       )
       return { termination, natural, exit }
+    })()
+    return this.closePromise
+  }
+
+  async forceStop() {
+    if (this.closePromise !== undefined) return this.closePromise
+    this.closePromise = (async () => {
+      const termination = await terminateProcess(this.child)
+      this.stdout = this.stdoutCapture.finish()
+      this.stderr = this.stderrCapture.finish()
+      const exit = await boundedExit(
+        this.exit.catch((error) => ({
+          error: error instanceof Error ? error.message : String(error),
+        })),
+        defaultKillTimeoutMs,
+      )
+      return {
+        termination,
+        natural: {
+          cleanupStatus: 'forced-exit',
+          exited: termination.exited,
+          descendantsExited: termination.descendantsExited,
+          descendantsVerified: termination.descendantsVerified,
+        },
+        exit,
+      }
     })()
     return this.closePromise
   }

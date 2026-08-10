@@ -1,14 +1,17 @@
+import type {
+  InteractionBinding,
+  InteractionDataValue,
+  InteractionRequest,
+  InteractionResponse,
+  InteractionResponseCommand,
+} from '@tangle-network/agent-interface'
 import {
   InteractionResponseCommandSchema,
   InteractionResponseSchema,
   interactionResponseCommandDigest,
-  type InteractionBinding,
   validateInteractionResponse,
-  type InteractionDataValue,
-  type InteractionRequest,
-  type InteractionResponse,
-  type InteractionResponseCommand,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/interaction-runtime.js'
+import { isSensitiveFieldName } from '../domain/bounded-structured.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type {
   NonSecretInteractionData,
@@ -28,9 +31,14 @@ export interface CheckedInteractionResponse {
   readonly containsSecret: boolean
 }
 
+export function parseInteractionResponse(value: unknown): InteractionResponse | undefined {
+  const parsed = InteractionResponseSchema.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
 export function interactionHasSecretField(request: InteractionRequest): boolean {
   return request.answerSpec.fields.some(
-    (field) => field.type === 'secret' || isSecretName(field.name),
+    (field) => field.type === 'secret' || isSensitiveFieldName(field.name),
   )
 }
 
@@ -50,7 +58,7 @@ export function checkInteractionResponse(
     )
   const secretNames = new Set(
     request.answerSpec.fields
-      .filter((field) => field.type === 'secret' || isSecretName(field.name))
+      .filter((field) => field.type === 'secret' || isSensitiveFieldName(field.name))
       .map((field) => field.name),
   )
   const containsSecret =
@@ -167,10 +175,4 @@ function isSecretReference(
   value: InteractionDataValue,
 ): value is Extract<InteractionDataValue, { readonly kind: 'secret_handle' }> {
   return typeof value === 'object' && !Array.isArray(value)
-}
-
-function isSecretName(name: string): boolean {
-  return /(?:password|passphrase|token|secret|credential|authorization|cookie|private|api[_-]?key)/iu.test(
-    name,
-  )
 }

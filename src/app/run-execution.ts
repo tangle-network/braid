@@ -1,3 +1,4 @@
+import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
 import { isRuntimeEventEnvelope } from '../domain/runtime-events.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
@@ -41,13 +42,6 @@ export async function executeRun(
         }
         continue
       }
-      if (
-        runtimeEvent.type === 'session_created' ||
-        runtimeEvent.type === 'session_resumed' ||
-        runtimeEvent.type === 'backend_start' ||
-        runtimeEvent.type === 'backend_end'
-      )
-        continue
       eventSequence += 1
       const receivedAt = context.clock.now()
       const eventId = eventIdFor(admission.runId, runtimeEvent, eventSequence)
@@ -78,7 +72,6 @@ export async function executeRun(
   } finally {
     context.ledger.deleteAbort(admission.runId)
     context.ledger.clearExplicitlyCancelled(admission.runId)
-    context.ledger.clearCancelStatus(admission.runId)
     const finalRun = context.findRun(admission.runId)
     if (
       context.isTerminal(finalRun.status) &&
@@ -133,7 +126,7 @@ async function finishWithoutTerminal(
           ? 'aborted'
           : status,
       finalText: '',
-      usage: { input: 0, output: 0 },
+      usage: UNKNOWN_TURN_USAGE,
       error:
         abort.signal.reason instanceof Error ? abort.signal.reason.message : 'Cancelled by user',
     })
@@ -190,7 +183,7 @@ async function finishAfterError(
           ? 'aborted'
           : status,
       finalText: '',
-      usage: { input: 0, output: 0 },
+      usage: UNKNOWN_TURN_USAGE,
       error: message,
     })
   } else {
@@ -199,7 +192,7 @@ async function finishAfterError(
       runId: admission.runId,
       status: 'failed',
       finalText: '',
-      usage: { input: 0, output: 0 },
+      usage: UNKNOWN_TURN_USAGE,
       error: message,
     })
   }

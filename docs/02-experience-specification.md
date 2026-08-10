@@ -93,6 +93,32 @@ The status line identifies branch, run state, usage, elapsed time, queue count, 
 
 The status line omits unavailable values instead of displaying empty placeholders.
 
+### Usage and execution inspector
+
+The status line shows direct conversation tokens and cost when at least one turn exists.
+
+It labels each total as reported, estimated, an observed minimum, or unknown.
+
+It never displays missing spend as zero.
+
+Analysis calls and Runtime worker trees have separate totals.
+
+This separation prevents double counting until Runtime reports one stable model-call identity across the complete worker tree.
+
+`/activity` includes one execution row for each local CLI Bridge, direct inference, or sandbox run.
+
+The execution row shows the provider, connection, endpoint location, lifecycle, cleanup, continuity, and provider environment identifier.
+
+Sandbox details also show requested resources, verified placement, CPU and RAM samples, GPU billing, and account usage when reported.
+
+Requested resources and verified resources are never presented as the same fact.
+
+Account sandbox spend and per-run model spend are never presented as the same fact.
+
+The physical machine IP, effective resource allocation, and per-sandbox CPU, RAM, and storage cost remain unavailable when the provider does not report them.
+
+Headless state contains the same usage groups and secret-free execution records as the terminal.
+
 ### Wide layout at 120 columns and above
 
 ```text
@@ -402,7 +428,15 @@ Edges name their meaning: continued, branched at, cloned, handed off, analyzed, 
 
 Node rows show type, concise title, status, runner, elapsed time, and cost when known.
 
-Selecting a node updates the details pane and `Enter` navigates to its transcript or activity.
+`/graph` opens a focused full-viewport browser, so the transcript never remains visually layered beneath it.
+
+`Up` and `Down` select a node, while `Enter` or `Right` opens its details.
+
+Within details, `Up` and `Down` move to the previous or next node without returning to the list.
+
+`Left` and `Esc` perform the same back action: details return to the list, and the list closes.
+
+The selected stable node identifier survives runtime refreshes and list reordering.
 
 The graph supports collapse, search, status filtering, runner filtering, and jump to waiting interaction.
 
@@ -411,6 +445,14 @@ It never fabricates causality from timestamps when an explicit identifier link i
 ## Analysis experience
 
 `/ask` defaults to the active completed or failed run and prompts for a source when the branch contains multiple eligible runs.
+
+`/ask`, `/analyze`, and `/compare` save results as analysis activity and open the exact saved result in the shared browser.
+
+The analysis header identifies the action, frozen source, selected profile, runner, and model when those values are known.
+
+Analysis navigation uses the same list, details, arrow, `Left`, and `Esc` behavior as graph and runtime activity.
+
+Detail text wraps before pagination, so citations and measured fields never disappear through horizontal clipping.
 
 The pending analysis row shows source, analyst profile, analysis recipe, budget, and cancel action.
 
@@ -430,11 +472,29 @@ The analysis footer shows source digest, analyst profile digest, model, tokens, 
 
 The activity view consumes runtime-owned snapshots and controls rather than reading supervisor files.
 
-It lists root run, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
+`/activity` opens the same focused full-viewport browser used by analysis and graph entities.
+
+It lists an explicit root run binding, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
+
+An unbound supervisor appears as workspace activity and never inherits the active or latest run.
 
 Worker hierarchy uses indentation and connecting lines, with status text in addition to color.
 
-Steering names the exact worker and records the delivered text or signal as a control event.
+Braid refreshes runtime snapshots only while activity or graph is open and stops scheduling refreshes when the browser closes.
+
+Closing the browser or application invalidates an in-flight refresh before it can change a notice or request another render.
+
+Unchanged snapshots preserve original creation times and do not append duplicate journal events.
+
+If an active supervisor or worker disappears from a complete snapshot, Braid changes its observed status to `unknown` and preserves its history.
+
+Provider-native child agents appear only when the shared runtime reports a normalized stable identity and parent relation.
+
+Braid does not infer child-agent identity from tool names, text output, or timestamps.
+
+Steering accepts the public Braid supervisor and worker identifiers.
+
+The adapter resolves both identifiers to the exact runtime references before it sends the control request.
 
 Cancellation names the exact run or worker, requires confirmation when descendants are affected, and waits for runtime confirmation.
 
@@ -486,7 +546,7 @@ Background errors enter the activity view and status line without stealing compo
 | --- | --- |
 | UX-01 | Main, wide, and narrow layouts pass virtual-terminal snapshots and real terminal captures at all four reference sizes. |
 | UX-02 | A keyboard-only recording completes first-run setup, one turn, one interaction, one fork, one analysis, and conversation reopen at 80×24. |
-| UX-03 | The same controller trace produces equivalent terminal state and headless state for every primary command. |
+| UX-03 | Terminal and headless views expose equivalent state for every primary command. They keep direct, analysis, and worker usage separate. They show secret-free execution records for local, inference, and sandbox runs. |
 | UX-04 | Streaming replacement by part identifier produces no duplicated text under 1,000 randomized update sequences. |
 | UX-05 | CJK, combining-mark, emoji, bidirectional, IME, paste, and resize fixtures retain valid cell layout and input content. |
 | UX-06 | Every unavailable feature explains the missing reported capability in both the command palette and direct invocation. |

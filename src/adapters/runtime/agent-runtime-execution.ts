@@ -1,9 +1,8 @@
-import { snapshotAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
-import type { AgentTurnBackend } from '@tangle-network/agent-runtime/kernel'
-import type { SandboxInstance } from '@tangle-network/sandbox'
+import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { redactProfile } from '../../domain/redaction.js'
+import type { BraidRuntimeEvent } from '../../domain/runtime-events.js'
 import type {
   CancelRunInput,
   CancelRunResult,
@@ -13,19 +12,25 @@ import type {
   ExecutionPort,
 } from '../../ports/execution.js'
 import {
-  DEFAULT_RUN_CAPABILITIES,
   capabilitiesFromEnvironment,
+  DEFAULT_RUN_CAPABILITIES,
   type RunCapabilities,
   UNKNOWN_RUN_CAPABILITIES,
 } from '../../ports/execution.js'
-import { isPreparedSandboxExecution, type PreparedExecution } from './prepared-execution.js'
+import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
+import {
+  type ExecutionResolution,
+  isPreparedExecution,
+  type PreparedExecution,
+  type RuntimeCancellationCapability,
+} from './prepared-execution.js'
 
 export type AgentTurnBackendResolver = (
   input: ExecuteTurnInput,
-) => PreparedExecution | Promise<PreparedExecution>
+) => ExecutionResolution | Promise<ExecutionResolution>
 
 export type AgentTurnCancelResolver = (
-  input: CancelRunInput,
+  input: CancelRunInput & { readonly signal?: AbortSignal },
 ) => CancelRunResult | Promise<CancelRunResult>
 
 export interface AgentRuntimeExecutionOptions {
@@ -36,10 +41,10 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   readonly admissionMode: 'sync' | 'async'
   readonly #resolveBackend: AgentTurnBackendResolver
   readonly #cancel: AgentTurnCancelResolver | undefined
-  readonly #active = new Map<string, AbortController>()
+  readonly #active = new Map<string, ActiveExecution>()
   readonly #prepared = new Map<
     string,
-    { readonly key: string; readonly execution: PreparedExecution }
+    { readonly key: string; readonly execution: ExecutionResolution }
   >()
   readonly #preparedOrder: string[] = []
   readonly #capabilitySnapshot: RunCapabilities
@@ -78,24 +83,37 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
     return this.#prepareAdmission(input, backend)
   }
 
-  #prepareAdmission(input: ExecuteTurnInput, execution: PreparedExecution): ExecutionAdmission {
+  #prepareAdmission(input: ExecuteTurnInput, execution: ExecutionResolution): ExecutionAdmission {
     const profileDigest = canonicalDigest(redactProfile(snapshotAgentProfile(input.profile)))
-    const prepared = isPreparedSandboxExecution(execution)
+    const prepared = isPreparedExecution(execution)
     const providerSessionId = prepared ? execution.providerSessionId : undefined
-    const capabilities = prepared
-      ? capabilitiesFromEnvironment(execution.capabilities)
-      : this.#capabilitySnapshot
+    const capabilities =
+      prepared && execution.capabilities !== undefined
+        ? capabilitiesFromEnvironment(execution.capabilities, execution.cancellation !== undefined)
+        : this.#capabilitySnapshot
     const materializationReceipt = prepared
       ? execution.materializationReceipt
       : { backendKind: execution.kind, provider: 'agent-runtime' }
+    const provider =
+      typeof materializationReceipt.provider === 'string'
+        ? materializationReceipt.provider
+        : 'agent-runtime'
+    if (prepared && execution.cancellation !== undefined && !this.#active.has(input.runId)) {
+      this.#active.set(input.runId, {
+        localAbort: new AbortController(),
+        cancellation: execution.cancellation,
+      })
+    }
     this.#rememberPrepared(input.runId, {
       key: admissionKey(input, profileDigest),
       execution,
     })
     return {
       capabilities,
-      provider: 'agent-runtime',
-      ...(prepared ? { environmentId: execution.environmentId } : {}),
+      provider,
+      ...(prepared && execution.environmentId !== undefined
+        ? { environmentId: execution.environmentId }
+        : {}),
       ...(providerSessionId === undefined ? {} : { providerSessionId }),
       materializationReceipt,
       profileDigest,
@@ -104,43 +122,61 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
     }
   }
 
-  async cancelRun(input: {
-    readonly runId: string
-    readonly operationId: string
-    readonly reason?: string
-  }): Promise<ControlAcknowledgement> {
+  async cancelRun(
+    input: CancelRunInput & { readonly signal?: AbortSignal },
+  ): Promise<ControlAcknowledgement> {
     if (this.#cancel) {
       const result = await this.#cancel({
         runId: input.runId,
         operationId: input.operationId,
         reason: input.reason ?? 'Cancelled by user',
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       })
       return result.status === 'cancelled'
         ? { operationId: input.operationId, outcome: 'accepted' }
         : { operationId: input.operationId, outcome: 'unknown', detail: result.reason }
     }
-    const controller = this.#active.get(input.runId)
-    if (!controller)
+    const active = this.#active.get(input.runId)
+    if (!active)
       return {
         operationId: input.operationId,
         outcome: 'unknown',
         detail: 'The provider did not acknowledge cancellation',
       }
-    controller.abort(new Error('Cancelled by user'))
-    return {
-      operationId: input.operationId,
-      outcome: 'unknown',
-      detail: 'Local abort occurred without provider acknowledgement',
+    if (active.cancellation?.kind !== 'runtime-executor-teardown') {
+      active.localAbort.abort(new Error(input.reason ?? 'Cancelled by user'))
+      return {
+        operationId: input.operationId,
+        outcome: 'unknown',
+        detail: 'Provider cancellation is unsupported; only the local iterator was stopped',
+      }
     }
+    if (active.executor === undefined) {
+      active.localAbort.abort(new Error(input.reason ?? 'Cancelled by user'))
+      return {
+        operationId: input.operationId,
+        outcome: 'unknown',
+        detail: 'Runtime did not create an executor before cancellation was requested',
+      }
+    }
+
+    const acknowledgement = await cancelRuntimeExecutor(active.executor, input.operationId)
+    if (acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'already-applied') {
+      active.localAbort.abort(new Error(input.reason ?? 'Cancelled by user'))
+    } else if (acknowledgement.outcome === 'unknown') {
+      active.localAbort.abort(new Error(input.reason ?? 'Cancellation outcome is unknown'))
+    }
+    return acknowledgement
   }
 
-  async *streamTurn(input: ExecuteTurnInput): AsyncGenerator<RuntimeStreamEvent> {
-    const localAbort = new AbortController()
+  async *streamTurn(input: ExecuteTurnInput): AsyncGenerator<BraidRuntimeEvent> {
+    const existing = this.#active.get(input.runId)
+    const localAbort = existing?.localAbort ?? new AbortController()
     const stop = () => localAbort.abort(input.signal.reason)
     if (input.signal.aborted) stop()
     else input.signal.addEventListener('abort', stop, { once: true })
-    this.#active.set(input.runId, localAbort)
-    let ownedBox: SandboxInstance | undefined
+    const active = existing ?? { localAbort }
+    if (existing === undefined) this.#active.set(input.runId, active)
     try {
       localAbort.signal.throwIfAborted()
       const profileDigest = canonicalDigest(redactProfile(snapshotAgentProfile(input.profile)))
@@ -150,50 +186,37 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
           ? prepared.execution
           : await this.#resolveBackend(input)
       this.#forgetPrepared(input.runId)
-      const materialized = await materializeExecution(execution)
-      ownedBox = materialized.ownedBox
+      const preparedExecution = isPreparedExecution(execution) ? execution : undefined
+      active.cancellation = preparedExecution?.cancellation
+      const backend = isPreparedExecution(execution) ? execution.backend : execution
+      const observation = isPreparedExecution(execution) ? execution.observation : undefined
+      const runtimeBackend =
+        active.cancellation === undefined
+          ? backend
+          : captureExecutor(backend, (executor) => {
+              active.executor = executor
+            })
       const { streamAgentTurn } = await import('@tangle-network/agent-runtime/kernel')
-      let terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> | undefined
-      for await (const event of streamAgentTurn(materialized.backend, input.text, {
-        signal: localAbort.signal,
-        preserveToolParts: true,
-      })) {
-        if (event.type === 'final') terminal = event
-        else yield event
-      }
-      const cleanupError = ownedBox === undefined ? undefined : await deleteBox(ownedBox)
-      ownedBox = undefined
-      if (cleanupError !== undefined) {
-        if (terminal === undefined) throw cleanupError
-        const failedTerminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> = {
-          ...terminal,
-          status: 'failed',
-          reason: 'Sandbox deletion was not acknowledged after retry; resource state is unknown',
-          error: { kind: 'backend', message: cleanupError.message },
+      try {
+        let terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> | undefined
+        for await (const event of streamAgentTurn(runtimeBackend, input.text, {
+          signal: localAbort.signal,
+          preserveToolParts: true,
+        })) {
+          if (event.type === 'final') terminal = event
+          else yield event
         }
-        yield failedTerminal
-      } else if (terminal !== undefined) {
-        yield terminal
-      }
-    } catch (error) {
-      if (ownedBox !== undefined) {
-        const cleanupError = await deleteBox(ownedBox)
-        ownedBox = undefined
-        if (cleanupError !== undefined) {
-          throw new AggregateError(
-            [error, cleanupError],
-            'Agent execution failed and sandbox deletion was not acknowledged',
-          )
+        const observed = observation === undefined ? undefined : await observationEvent(observation)
+        if (observed !== undefined) yield observed
+        if (terminal !== undefined) yield terminalAfterCleanup(terminal, observed)
+      } catch (error) {
+        if (observation !== undefined) {
+          const observed = await observationEvent(observation)
+          if (observed !== undefined) yield observed
         }
+        throw error
       }
-      throw error
     } finally {
-      if (ownedBox !== undefined) {
-        // Consumer-driven stream closure has no remaining event channel.
-        // Cleanup is still attempted, but it must not replace the caller's return.
-        await deleteBox(ownedBox)
-        ownedBox = undefined
-      }
       input.signal.removeEventListener('abort', stop)
       this.#active.delete(input.runId)
     }
@@ -201,7 +224,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
 
   #rememberPrepared(
     runId: string,
-    binding: { readonly key: string; readonly execution: PreparedExecution },
+    binding: { readonly key: string; readonly execution: ExecutionResolution },
   ): void {
     if (!this.#prepared.has(runId)) this.#preparedOrder.push(runId)
     this.#prepared.set(runId, binding)
@@ -218,37 +241,84 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   }
 }
 
-async function materializeExecution(execution: PreparedExecution): Promise<{
-  readonly backend: AgentTurnBackend
-  readonly ownedBox?: SandboxInstance
-}> {
-  if (!isPreparedSandboxExecution(execution)) return { backend: execution }
-  const box = await execution.client.create()
+function terminalAfterCleanup(
+  terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
+  observed: Extract<BraidRuntimeEvent, { readonly type: 'braid.execution.observed' }> | undefined,
+): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+  if (
+    terminal.status !== 'completed' ||
+    observed?.observation.cleanup !== 'delete-after-turn' ||
+    observed.observation.lifecycle === 'destroyed'
+  )
+    return terminal
   return {
-    backend: {
-      kind: 'box',
-      box,
-      options: execution.turnOptions,
-      agentRunName: execution.agentRunName,
+    ...terminal,
+    status: 'failed',
+    reason: 'Sandbox deletion was not acknowledged; resource state is unknown',
+    error: {
+      kind: 'backend',
+      message: 'Sandbox deletion was not acknowledged; resource state is unknown',
     },
-    ...(execution.lifecycle.cleanup === 'delete-after-turn' ? { ownedBox: box } : {}),
   }
 }
 
-async function deleteBox(box: SandboxInstance): Promise<Error | undefined> {
-  let failure: unknown
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      await box.delete()
-      return undefined
-    } catch (error) {
-      failure = error
-    }
+interface ActiveExecution {
+  readonly localAbort: AbortController
+  cancellation?: RuntimeCancellationCapability | undefined
+  executor?: Executor<unknown>
+}
+
+function captureExecutor(
+  backend: AgentTurnBackend,
+  onExecutor: (executor: Executor<unknown>) => void,
+): AgentTurnBackend {
+  return {
+    ...backend,
+    factory: (spec, context) => {
+      const executor = backend.factory(spec, context)
+      onExecutor(executor)
+      return executor
+    },
   }
-  return new Error(
-    'Sandbox deletion was not acknowledged after retry; resource state is unknown',
-    failure === undefined ? undefined : { cause: failure },
-  )
+}
+
+async function cancelRuntimeExecutor(
+  executor: Executor<unknown>,
+  operationId: string,
+): Promise<ControlAcknowledgement> {
+  return Promise.resolve()
+    .then(() => executor.teardown('infinity'))
+    .then(({ destroyed }) =>
+      destroyed
+        ? {
+            operationId,
+            outcome: 'accepted' as const,
+            detail: 'Provider cancellation acknowledged',
+          }
+        : {
+            operationId,
+            outcome: 'unknown' as const,
+            detail: 'Runtime did not confirm executor teardown; provider state is unknown',
+          },
+    )
+    .catch(() => ({
+      operationId,
+      outcome: 'unknown' as const,
+      detail: 'Provider cancellation failed before acknowledgement',
+    }))
+}
+
+async function observationEvent(
+  source: NonNullable<PreparedExecution['observation']>,
+): Promise<Extract<BraidRuntimeEvent, { readonly type: 'braid.execution.observed' }> | undefined> {
+  try {
+    const observation = await source.snapshot()
+    return observation === undefined
+      ? undefined
+      : { type: 'braid.execution.observed', observation, timestamp: observation.observedAt }
+  } catch {
+    return undefined
+  }
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {

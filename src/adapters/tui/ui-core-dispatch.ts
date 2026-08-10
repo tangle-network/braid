@@ -9,7 +9,10 @@ import type { UiDispatchContext } from './ui-dispatch-context.js'
 import { FIXTURE_INTERACTION } from './ui-fixtures.js'
 import { projectInteractionReceipt } from './ui-interaction-receipt.js'
 
-export type CoreIntent = Exclude<BraidIntent, { readonly type: 'run-command' | 'headless-command' }>
+export type CoreIntent = Exclude<
+  BraidIntent,
+  { readonly type: 'run-command' | 'headless-command' } | { readonly type: 'refresh-supervision' }
+>
 
 /** Routes operations that are not command names or headless catalog entries. */
 export async function dispatchCoreIntent(
@@ -46,6 +49,7 @@ export async function dispatchCoreIntent(
       const receipt = await context.app.cancelRun({
         operationId: intent.operationId,
         ...(intent.runId ? { runId: intent.runId } : {}),
+        ...(intent.reason === undefined ? {} : { reason: intent.reason }),
         terminalStatus: 'aborted',
         legacy: true,
       })

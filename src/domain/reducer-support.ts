@@ -207,4 +207,26 @@ export function assertTerminalTransition(current: RunStatus, next: RunStatus): v
   }
 }
 
+export function isCancellationConfirmedReconciliation(
+  event: Extract<BraidEvent, { readonly kind: 'run.reconciled' }>,
+  state: BraidState,
+  current: RunStatus,
+): boolean {
+  const operation =
+    event.operationId === undefined
+      ? undefined
+      : state.operations.find((candidate) => candidate.id === event.operationId)
+  return (
+    event.correction === 'cancellation-confirmed' &&
+    operation?.kind === 'cancel-run' &&
+    operation.target?.kind === 'run' &&
+    operation.target.id === event.runId &&
+    event.from === current &&
+    event.to !== undefined &&
+    event.to === event.status &&
+    (current === 'failed' || current === 'unknown') &&
+    (event.to === 'cancelled' || event.to === 'aborted')
+  )
+}
+
 export type ReducerBase = Pick<BraidState, 'revision' | 'sequence'>

@@ -142,6 +142,9 @@ export interface CalibrationCategoryOutcome {
   readonly caseId: SemanticEvalCaseId
   readonly category: string
   readonly pairCount: number
+  readonly goodExamples: number
+  readonly goodAccepted: number
+  readonly goodAcceptancePassed: boolean
   readonly goodPreferred: number
   readonly ties: number
   readonly reversals: number
@@ -156,6 +159,9 @@ export interface CalibrationSummary {
   readonly passed: boolean
   readonly pairedExamples: number
   readonly minimumPairedExamples: number
+  readonly goodExamples: number
+  readonly goodAccepted: number
+  readonly minimumGoodAccepted: number
   readonly goodPreferred: number
   readonly minimumGoodPreferred: number
   readonly ties: number

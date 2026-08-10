@@ -30,6 +30,10 @@ First-time database creation writes a protected initialization marker before the
 
 The database key and one random 32-byte content key per conversation are held through `CredentialPort` and never stored in SQLite.
 
+Braid passes the database key to SQLCipher as a raw 256-bit key, not as a password.
+
+This avoids password derivation because the input is already a cryptographically random key.
+
 Redaction rewrites the conversation ciphertext under a new content key, records prepared and rewritten phases, verifies every rewritten row, installs the new reference transactionally, and destroys the old key only after verified recovery state is durable.
 
 Conversation destruction writes a non-sensitive tombstone in the same transaction as the destroyed-key marker and destroys its content key; Braid never treats unreadable content as an empty conversation and restart can rebuild the journal through the tombstone.
@@ -42,7 +46,19 @@ Credential bytes never enter shell commands, process arguments, or environment v
 
 Headless key material is accepted only from an inherited protected file descriptor or an external mode-0600 file with a non-symlink path, one filesystem link, and matching ownership where the platform exposes ownership.
 
+A headless key source contains a cryptographically random 32-byte key or its 64-character hexadecimal encoding.
+
+It does not contain a human password or another low-entropy secret.
+
 File-backed headless keys are opened once without following the final symlink, validated through that descriptor, read with a fixed byte bound, and never reopened by path.
+
+The first public storage format uses raw database keys.
+
+No Braid package was published with the earlier password-derived pre-release format.
+
+Braid rejects that pre-release format without trying a second key mode.
+
+An operator with pre-release data must export it with the matching development build before creating a v1 database.
 
 ## Consequences
 
@@ -58,7 +74,7 @@ The deterministic memory adapter remains useful for reducer and coordinator test
 
 ## Verification
 
-`test/storage` covers encrypted artifacts, duplicate and gap handling, replay cursors, projections, backups, restore, approved roots, descriptor identity, no-clobber publication, retention, redaction, migration interruption, integrity failure, wrong-key byte preservation, and commit failure.
+`test/storage` covers encrypted artifacts, raw-key handling, pre-release format rejection, duplicate and gap handling, replay cursors, projections, backups, restore, approved roots, descriptor identity, no-clobber publication, retention, redaction, migration interruption, integrity failure, wrong-key byte preservation, and commit failure.
 
 `test/crash` kills a child process before and after each SQLite durable commit and filesystem transition boundary and reopens the same encrypted database.
 

@@ -36,7 +36,10 @@ const sqliteAvailable = (() => {
   }
 })()
 
-const childPath = join(process.cwd(), '.test-dist/test/storage-crash-child.js')
+const childPath = join(
+  process.env.BRAID_TEST_DIST ?? join(process.cwd(), '.test-dist'),
+  'test/storage-crash-child.js',
+)
 const workspaceId = createWorkspaceId('workspace-crash')
 const conversationId = createConversationId('conversation-crash')
 const runId = createRunId('run-crash')

@@ -312,6 +312,12 @@ Unknown future event types are journaled and displayed as redacted diagnostics w
 
 Application state contains workspace navigation, conversations and branches, active run projections, pending interactions, profile and connection selections, drafts and queues, analyses, supervisor projections, overlay stack, focus, appearance, and health.
 
+The terminal builds one immutable semantic projection for each state object and reuses it for repeated renders.
+
+The terminal graph includes the newest 2,048 workers and up to 4,096 workers after parent inclusion.
+
+It reports the omitted count, while headless semantic queries retain complete history.
+
 Ephemeral terminal details such as current viewport row and cursor blink are interface-local.
 
 Durable drafts, selected branch, scroll anchor by stable message part, and overlay-safe workflow progress are journal-backed.
@@ -352,8 +358,8 @@ Every identifier is a branded type in TypeScript and a separate column in storag
 | `ProviderSessionId` | Native continuity within one provider or runner | Provider |
 | `EnvironmentId` | Local or cloud execution environment | Provider |
 | `CheckpointId` | Immutable provider workspace checkpoint | Provider |
-| `SupervisorId` | Runtime worker-tree identity | Runtime |
-| `WorkerId` | One runtime-supervised worker | Runtime |
+| `SupervisorId` | Braid identity for one runtime supervisor in one workspace | Braid from the opaque runtime reference |
+| `WorkerId` | Braid identity for one runtime worker under one supervisor | Braid from the opaque runtime reference |
 | `InteractionId` | One answerable request, unique within its bound run or session | Provider through shared contract |
 | `AnalysisId` | One Braid analysis graph node | Braid |
 | `AnalysisRunId` | One `agent-eval` execution | `agent-eval` or caller according to contract |
@@ -361,6 +367,14 @@ Every identifier is a branded type in TypeScript and a separate column in storag
 | `EventId` | One stable event in a run | Runtime/provider contract |
 
 Serialization never uses a bare `id` field without an enclosing object type or explicit name.
+
+Braid stores each runtime supervisor and worker reference separately from its public identifier.
+
+Runtime control resolves the public identifier to that opaque reference at the adapter boundary.
+
+A runtime snapshot does not imply a Braid run binding.
+
+Braid adds a run edge only when an explicit binding names both the runtime supervisor and Braid run.
 
 An interaction is addressed and constrained uniquely by `(RunId, InteractionId)` and its provider-session binding; an interaction identifier alone is never a global lookup key.
 

@@ -75,6 +75,199 @@ test('incremental reduction and full replay produce the same complete projection
   assert.equal(incremental.health.status, 'healthy')
 })
 
+test('a cancellation request that loses the terminal race preserves the proven result', () => {
+  const completed = replayEvents(initialState(STARTER_PROFILE), verticalSliceEvents())
+  const operationId = 'op-cancel-after-terminal'
+  const requested = reduceEvent(
+    completed,
+    envelope(
+      {
+        kind: 'run.control.requested',
+        runId: 'run-domain',
+        operationId,
+        control: 'cancel',
+        digest: 'a'.repeat(64),
+        reason: 'cancel raced with completion',
+      },
+      6,
+    ),
+  )
+  const legacyRequested = reduceEvent(
+    requested,
+    envelope(
+      {
+        kind: 'run.cancel.requested',
+        runId: 'run-domain',
+        operationId,
+        reason: 'cancel raced with completion',
+      },
+      7,
+    ),
+  )
+
+  assert.equal(requested.runs[0]?.status, 'completed')
+  assert.equal(requested.runs[0]?.complete, true)
+  assert.equal(legacyRequested.runs[0]?.status, 'completed')
+  assert.equal(legacyRequested.runs[0]?.complete, true)
+})
+
+test('a terminal unknown run does not re-enter cancelling when cancellation is requested', () => {
+  const unknown = replayEvents(initialState(STARTER_PROFILE), [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-unknown-run',
+        runId: 'run-unknown-run',
+        turnId: 'turn-unknown-run',
+        userMessageId: 'message-user-unknown-run',
+        assistantMessageId: 'message-assistant-unknown-run',
+        text: 'unknown run',
+      },
+      2,
+    ),
+    envelope(
+      { kind: 'run.unknown', runId: 'run-unknown-run', detail: 'provider stopped responding' },
+      3,
+    ),
+  ])
+
+  const requested = reduceEvent(
+    unknown,
+    envelope(
+      {
+        kind: 'run.control.requested',
+        runId: 'run-unknown-run',
+        operationId: 'op-unknown-cancel',
+        control: 'cancel',
+        digest: 'a'.repeat(64),
+      },
+      4,
+    ),
+  )
+
+  assert.equal(requested.runs[0]?.status, 'unknown')
+  assert.equal(requested.runs[0]?.complete, false)
+})
+
+test('cancellation correction requires its durable cancel operation and updates active output', () => {
+  const withoutCancelOperation = replayEvents(initialState(STARTER_PROFILE), [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-failed-without-cancel',
+        runId: 'run-failed-without-cancel',
+        turnId: 'turn-failed-without-cancel',
+        userMessageId: 'message-user-failed-without-cancel',
+        assistantMessageId: 'message-assistant-failed-without-cancel',
+        text: 'independent failure',
+      },
+      2,
+    ),
+    envelope(
+      {
+        kind: 'run.status.changed',
+        runId: 'run-failed-without-cancel',
+        status: 'failed',
+        detail: 'RUNTIME_FINAL_ERROR',
+      },
+      3,
+    ),
+  ])
+  assert.throws(
+    () =>
+      reduceEvent(
+        withoutCancelOperation,
+        envelope(
+          {
+            kind: 'run.reconciled',
+            runId: 'run-failed-without-cancel',
+            operationId: 'op-not-a-cancel',
+            status: 'cancelled',
+            from: 'failed',
+            to: 'cancelled',
+            correction: 'cancellation-confirmed',
+            evidence: 'b'.repeat(64),
+          },
+          4,
+        ),
+      ),
+    /invalid cancellation reconciliation evidence/u,
+  )
+
+  const pendingCancellation = replayEvents(initialState(STARTER_PROFILE), [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-failed-with-cancel',
+        runId: 'run-failed-with-cancel',
+        turnId: 'turn-failed-with-cancel',
+        userMessageId: 'message-user-failed-with-cancel',
+        assistantMessageId: 'message-assistant-failed-with-cancel',
+        text: 'cancellation race',
+      },
+      2,
+    ),
+    envelope(
+      {
+        kind: 'run.cancel.requested',
+        operationId: 'op-cancel-confirmed',
+        runId: 'run-failed-with-cancel',
+        reason: 'cancel the race',
+      },
+      3,
+    ),
+    envelope(
+      {
+        kind: 'run.reasoning.delta',
+        runId: 'run-failed-with-cancel',
+        partId: 'part-failed-with-cancel',
+        text: 'tearing down',
+        provider: {
+          eventId: 'provider-failed-with-cancel',
+          providerSequence: 1,
+          occurredAt: '2026-08-02T00:00:00.000Z',
+        },
+      },
+      4,
+    ),
+    envelope(
+      {
+        kind: 'run.status.changed',
+        runId: 'run-failed-with-cancel',
+        status: 'failed',
+        detail: 'RUNTIME_FINAL_ERROR',
+      },
+      5,
+    ),
+  ])
+
+  const corrected = reduceEvent(
+    pendingCancellation,
+    envelope(
+      {
+        kind: 'run.reconciled',
+        runId: 'run-failed-with-cancel',
+        operationId: 'op-cancel-confirmed',
+        status: 'cancelled',
+        from: 'failed',
+        to: 'cancelled',
+        correction: 'cancellation-confirmed',
+        evidence: 'c'.repeat(64),
+      },
+      6,
+    ),
+  )
+  const assistant = corrected.messages.find((message) => message.role === 'assistant')
+  assert.equal(corrected.runs[0]?.status, 'cancelled')
+  assert.equal(corrected.runs[0]?.complete, true)
+  assert.equal(assistant?.status, 'cancelled')
+  assert.equal(assistant?.complete, true)
+  assert.equal(assistant?.parts.find((part) => part.kind === 'reasoning')?.status, 'cancelled')
+})
+
 test('terminal outcomes close every running reasoning and tool part precisely', () => {
   const cases = [
     ['completed', 'complete'],

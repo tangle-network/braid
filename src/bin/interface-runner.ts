@@ -3,6 +3,7 @@ import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-termin
 import type { ProfileConnectionDispatchOptions } from '../adapters/tui/profile-connection-dispatch.js'
 import { ConnectionRegistry } from '../app/connections.js'
 import type { ProductionCompositionConfig } from '../app/production-composition.js'
+import type { StartupPreview } from '../startup/preview-runtime.js'
 import {
   BraidTerminalApp,
   createApplicationUiController,
@@ -18,6 +19,7 @@ import {
 } from '../views/shared/command-registry.js'
 import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
+import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 import { runPlain } from './plain.js'
 import {
@@ -43,6 +45,7 @@ interface InterfaceRunnerInput {
   readonly setup?: ProductionStartupSetup
   readonly startupOptions?: ProductionStartupLoadOptions
   readonly profileConnectionOptions?: ProfileConnectionDispatchOptions
+  readonly startupPreview?: StartupPreview
   readonly openConfiguredApplication: (
     options: ProductionStartupLoadOptions,
     production: ProductionCompositionConfig,
@@ -188,8 +191,9 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     return 2
   }
 
-  const terminal = options.inline ? new ProcessTerminal() : new AlternateScreenTerminal()
-  const tui = new TuiMainScreen(terminal)
+  const tui =
+    input.startupPreview?.tui ??
+    new TuiMainScreen(options.inline ? new ProcessTerminal() : new AlternateScreenTerminal())
   const colors = !options.noColor && process.env.NO_COLOR === undefined
   const startupMessages: Array<{ readonly title: string; readonly reason: string }> = []
   for (const intent of startupIntents()) {
@@ -214,73 +218,30 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     ...(configuration === undefined ? {} : { configuration }),
     ...(productionConnections === undefined ? {} : { connectionLifecycle: productionConnections }),
     startupMessages,
+    tuiStarted: input.startupPreview !== undefined,
+    ...(input.startupPreview?.outputPolicyCleanup === undefined
+      ? {}
+      : { preinstalledOutputPolicyCleanup: input.startupPreview.outputPolicyCleanup }),
   })
-  let signalExitCode: number | undefined
-  let signalSnapshot: Promise<void> | undefined
-  let frameSnapshot: Promise<void> | undefined
-  let signalCleanup: Promise<void> | undefined
-  const shutdownMode =
-    process.env.BRAID_SHUTDOWN_MODE === 'detach' ? ('detach' as const) : ('cancel' as const)
-  const configuredDeadline = Number(process.env.BRAID_SHUTDOWN_DEADLINE_MS ?? 5_000)
-  const shutdownDeadlineMs = Number.isInteger(configuredDeadline)
-    ? Math.min(30_000, Math.max(250, configuredDeadline))
-    : 5_000
-  const stopFromSignal = (exitCode: number) => {
-    signalExitCode ??= exitCode
-    if (process.env.BRAID_CAPTURE_STATE_BEFORE_CANCEL === '1' && options.recordState) {
-      signalSnapshot ??= recordInterfaceState(`${options.recordState}.signal`, controller)
-    }
-    signalCleanup ??= (async () => {
-      const cleanup = controller
-        .dispatch({ type: 'shutdown', operationId: nextOperationId(), mode: shutdownMode })
-        .then(async (result) => {
-          if (result.kind === 'accepted' && result.completion) await result.completion
-        })
-      let timer: NodeJS.Timeout | undefined
-      try {
-        await Promise.race([
-          cleanup,
-          new Promise<void>((resolve) => {
-            timer = setTimeout(() => {
-              active.current.app.markCleanupUncertain(`Shutdown exceeded ${shutdownDeadlineMs} ms`)
-              resolve()
-            }, shutdownDeadlineMs)
-          }),
-        ])
-      } finally {
-        if (timer) clearTimeout(timer)
-        view.stop()
-      }
-    })()
-  }
-  const onFrameSnapshot = () => {
-    if (options.recordState)
-      frameSnapshot ??= recordInterfaceState(
-        `${options.recordState}.frame`,
-        controller,
-        'atomic-signal-frame',
-      )
-  }
-  const onInterrupt = () => stopFromSignal(130)
-  const onTerminate = () => stopFromSignal(143)
-  const onHangup = () => stopFromSignal(129)
-  process.once('SIGINT', onInterrupt)
-  process.once('SIGTERM', onTerminate)
-  process.once('SIGHUP', onHangup)
-  process.once('SIGUSR2', onFrameSnapshot)
+  const signals = createInterfaceSignalLifecycle({
+    controller,
+    view,
+    application: active.current.app,
+    nextOperationId,
+    ...(options.recordState === undefined ? {} : { recordState: options.recordState }),
+    ...(input.startupPreview === undefined ? {} : { startupPreview: input.startupPreview }),
+  })
   try {
-    await view.start()
-    await active.current.app.waitForIdle()
+    if (!signals.interrupted()) {
+      const startupInput = input.startupPreview?.adopt().input ?? []
+      await view.start(startupInput)
+      await active.current.app.waitForIdle()
+    }
   } finally {
-    await signalCleanup
-    await signalSnapshot
-    await frameSnapshot
-    process.off('SIGINT', onInterrupt)
-    process.off('SIGTERM', onTerminate)
-    process.off('SIGHUP', onHangup)
-    process.off('SIGUSR2', onFrameSnapshot)
+    await signals.settle()
+    signals.dispose()
     view.stop()
   }
   if (options.recordState) await recordInterfaceState(options.recordState, controller)
-  return signalExitCode ?? 0
+  return signals.exitCode()
 }

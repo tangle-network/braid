@@ -8,9 +8,12 @@ const TYPED_PROVIDER_DIAGNOSTIC = /^[A-Z][A-Z0-9]*(?:[._][A-Z0-9]+)*$/u
 const SAFE_PUBLIC_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u
 
 export function finiteNonNegativeNumber(value: unknown): number
-export function finiteNonNegativeNumber(value: unknown, fallback: undefined): number | undefined
-export function finiteNonNegativeNumber(value: unknown, fallback = 0): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback
+export function finiteNonNegativeNumber(value: unknown): number {
+  return optionalFiniteNonNegativeNumber(value) ?? 0
+}
+
+export function optionalFiniteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
 export function safePublicIdentifier(value: unknown): string | undefined {

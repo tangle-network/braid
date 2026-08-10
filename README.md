@@ -82,7 +82,8 @@ AgentProfile + message
       └── Tangle sandbox
 ```
 
-Every provider is projected into the same event stream, so reasoning, tool calls, artifacts, usage, questions, approvals, failures, and final output remain understandable in one terminal.
+Every supported provider output is projected into one event stream.
+The terminal renders reasoning, tools, artifacts, usage, interactions, failures, and final output when the selected route reports them.
 
 ## What you can do
 
@@ -115,6 +116,16 @@ CLI Bridge lets Braid use existing local subscriptions through runners such as P
 Tangle connections route the same profile through inference or an isolated cloud sandbox.
 The terminal keeps one interaction model across those routes.
 
+### Know where work ran and what it cost
+
+`/activity` shows direct turns, trace analyses, supervisors, and workers without combining them into one misleading total.
+Each model call can report input, output, cache use, cost, and latency.
+Braid labels missing provider values as unknown instead of zero.
+
+Sandbox runs link to their execution environment.
+The environment view shows lifecycle, cleanup, continuity, region, machine identity, requested resources, sampled CPU and memory, GPU lease and billing, and account limits when the provider reports them.
+It also lists every field that the provider did not expose.
+
 ## Headless operation
 
 The terminal and automation surfaces share the same command registry, state projection, and operation records.
@@ -138,7 +149,9 @@ See the [runtime contracts](docs/04-runtime-contracts.md) for the protocol and e
 ## Current status
 
 Braid is source-installable and is not yet published to npm.
-The packed CLI Bridge path has been exercised with Pi/GLM-5.2 and Codex through first-run setup, two-turn continuity, restart, transcript recovery, and a post-restart turn.
+Retained packed-product evidence from 2026-08-09 covers Pi/GLM-5.2 and Codex through first-run setup, two-turn continuity, restart, transcript recovery, and a post-restart turn.
+The current Runtime 0.131.5 candidate has deterministic coverage of the strict Bridge protocol.
+Protected runner and Tangle checks must run again against the exact release candidate.
 Tangle inference and sandbox adapters are implemented against the current provider packages; protected live-deployment checks remain before the first registry release.
 General interaction responses remain disabled when the selected runtime cannot acknowledge the response operation.
 

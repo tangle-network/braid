@@ -71,10 +71,22 @@ export function relationEdges(
   }
 
   const output: SemanticGraphEdge[] = []
+  const workersById = new Map(state.workers.map((worker) => [String(worker.id), worker] as const))
   for (const edge of state.graphEdges) {
     const source = nodeByGraphId.get(edge.source)
     const destination = nodeByGraphId.get(edge.destination)
     if (source === undefined || destination === undefined) continue
+    if (edge.kind === 'spawned' && destination.type === 'worker') {
+      const worker = workersById.get(destination.id)
+      if (worker !== undefined) {
+        if (worker.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined) continue
+        const expected =
+          worker.parentWorkerId === undefined
+            ? { type: 'supervisor', id: String(worker.supervisorId) }
+            : { type: 'worker', id: String(worker.parentWorkerId) }
+        if (source.type !== expected.type || source.id !== expected.id) continue
+      }
+    }
     output.push({
       id: edge.id,
       kind: edge.kind,
@@ -209,28 +221,25 @@ export function relationEdges(
     }
   }
   for (const supervisor of state.supervisors) {
-    add(
-      'supervised_by',
-      { type: 'run', id: supervisor.rootRunId },
-      { type: 'supervisor', id: supervisor.id },
-      supervisor.createdAt,
-    )
+    if (supervisor.rootRunId !== undefined) {
+      add(
+        'supervised_by',
+        { type: 'run', id: supervisor.rootRunId },
+        { type: 'supervisor', id: supervisor.id },
+        supervisor.createdAt,
+      )
+    }
   }
   for (const worker of state.workers) {
+    if (worker.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined) continue
     add(
       'spawned',
-      { type: 'supervisor', id: worker.supervisorId },
+      worker.parentWorkerId === undefined
+        ? { type: 'supervisor', id: worker.supervisorId }
+        : { type: 'worker', id: worker.parentWorkerId },
       { type: 'worker', id: worker.id },
       worker.createdAt,
     )
-    if (worker.parentWorkerId !== undefined) {
-      add(
-        'spawned',
-        { type: 'worker', id: worker.parentWorkerId },
-        { type: 'worker', id: worker.id },
-        worker.createdAt,
-      )
-    }
     if (worker.runId !== undefined) {
       add(
         'attached',

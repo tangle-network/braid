@@ -4,28 +4,52 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { bridgeLaunchEnvironment, bridgeSourceDirectory, discoverBridge } from './bridge.mjs'
-import { profileForBridgeTarget, writeTargetConfig } from './config.mjs'
+import {
+  bridgeLaunchEnvironment,
+  bridgeSourceDirectory,
+  discoverBridge,
+  releaseTargetDefinitions,
+  selectBridgeTargets,
+} from './bridge.mjs'
+import { createLiveCredentialId, profileForBridgeTarget, writeTargetConfig } from './config.mjs'
 import { runAdversarialMatrix } from './matrix-adversarial.mjs'
 import {
   assertSemanticOutcome,
   cancelSemanticStatus,
   capabilityAvailability,
   exactMarker,
+  interactionFromResponse,
   semanticCommandStatus,
 } from './protocol.mjs'
 import { verifyCancel } from './target-actions.mjs'
+import { executeReleaseProofs } from './release-proofs.mjs'
 import { defaultTargetPolicy, readTargetPolicy, targetPolicyEvidence } from './target-policy.mjs'
 
-async function withFakeBridge(models, backends, callback) {
+async function withFakeBridge(
+  models,
+  backends,
+  callback,
+  {
+    modelsStatus = 200,
+    capabilities = {
+      profileMaterialization: 'cli-bridge.profile-materialization.v2',
+      usageCostProvenance: 'cli-bridge.usage-cost.v1',
+    },
+  } = {},
+) {
   const server = createServer((request, response) => {
+    if (request.method === 'GET' && request.url === '/') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ name: 'cli-bridge', capabilities }))
+      return
+    }
     if (request.method === 'GET' && request.url === '/health') {
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(JSON.stringify({ status: 'ok', backends }))
       return
     }
     if (request.method === 'GET' && request.url === '/v1/models') {
-      response.writeHead(200, { 'content-type': 'application/json' })
+      response.writeHead(modelsStatus, { 'content-type': 'application/json' })
       response.end(JSON.stringify({ object: 'list', data: models.map((id) => ({ id })) }))
       return
     }
@@ -73,6 +97,30 @@ async function runTargetPolicyMatrix() {
       [exactLuna],
     )
   })
+  await withFakeBridge(
+    [exactGlm],
+    readyBackends,
+    async (endpoint) => {
+      const evidence = {}
+      await assert.rejects(
+        discoverBridge(endpoint, undefined, evidence, process.cwd(), both),
+        (error) => error.code === 'BRIDGE_MODEL_DISCOVERY_FAILED' && error.exitCode === 1,
+      )
+    },
+    { modelsStatus: 503 },
+  )
+  await withFakeBridge(
+    [exactGlm, exactLuna],
+    readyBackends,
+    async (endpoint) => {
+      const evidence = {}
+      await assert.rejects(
+        discoverBridge(endpoint, undefined, evidence, process.cwd(), both),
+        (error) => error.code === 'BRIDGE_RUNTIME_CONTRACT_UNAVAILABLE' && error.exitCode === 2,
+      )
+    },
+    { capabilities: {} },
+  )
   await withFakeBridge([exactLuna], readyBackends, async (endpoint) => {
     const evidence = {}
     await assert.rejects(
@@ -113,6 +161,46 @@ async function runTargetPolicyMatrix() {
       [exactGlm],
     )
   })
+
+  const releaseHealth = {
+    ok: true,
+    status: 200,
+    body: {
+      status: 'ok',
+      backends: [
+        { name: 'opencode', state: 'ready' },
+        { name: 'pi', state: 'ready' },
+        { name: 'codex', state: 'ready' },
+      ],
+    },
+  }
+  const releaseModels = {
+    ok: true,
+    body: {
+      data: [{ id: exactGlm }, { id: exactLuna }, { id: 'codex/default' }],
+    },
+  }
+  const releaseDefinitions = releaseTargetDefinitions(both, releaseModels, releaseHealth)
+  assert.deepEqual(
+    releaseDefinitions.map(({ modelId }) => modelId),
+    [exactGlm, exactLuna, 'codex/codex/default'],
+  )
+  assert.equal(releaseDefinitions[2].bridgeModelId, 'codex/default')
+  const releaseEvidence = {}
+  const releaseTargets = selectBridgeTargets(
+    releaseDefinitions,
+    releaseModels,
+    releaseHealth,
+    releaseEvidence,
+  )
+  assert.deepEqual(
+    releaseTargets.map(({ modelId, bridgeModelId }) => ({ modelId, bridgeModelId })),
+    [
+      { modelId: exactGlm, bridgeModelId: exactGlm },
+      { modelId: exactLuna, bridgeModelId: exactLuna },
+      { modelId: 'codex/codex/default', bridgeModelId: 'codex/default' },
+    ],
+  )
 }
 
 async function runConfigurationMatrix() {
@@ -135,6 +223,7 @@ async function runConfigurationMatrix() {
     () => profileForBridgeTarget({ ...luna, backend: 'codex' }),
     (error) => error.code === 'TARGET_MODEL_ROUTE_INVALID' && error.exitCode === 2,
   )
+  assert.match(createLiveCredentialId('00000000-0000-0000-0000-000000000000'), /^credential-/u)
 
   const endpoint = 'http://127.0.0.1:4567'
   const linuxEnvironment = bridgeLaunchEnvironment([luna], endpoint, {
@@ -173,6 +262,11 @@ async function runConfigurationMatrix() {
     assert.deepEqual(JSON.parse(await readFile(written.profilePath, 'utf8')), written.profile)
     assert.equal(written.profile.model.default, 'gpt-5.6-luna')
     assert.equal(written.profile.model.provider, 'openai-codex')
+    const credential = await writeTargetConfig(root, endpoint, glm, {
+      recordRef: createLiveCredentialId('11111111-1111-1111-1111-111111111111'),
+    })
+    const document = JSON.parse(await readFile(credential.configPath, 'utf8'))
+    assert.match(document.connections[0].credentialRef, /^credential-/u)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -223,6 +317,29 @@ async function runSemanticMatrix() {
   )
   assert.equal(exactMarker(' LIVE_BRAID_GLM_5_2_OK\n', 'LIVE_BRAID_GLM_5_2_OK'), true)
   assert.equal(exactMarker('LIVE_BRAID_GLM_5_2_OK extra', 'LIVE_BRAID_GLM_5_2_OK'), false)
+  const interactionRequest = { id: 'interaction-live', kind: 'permission' }
+  assert.deepEqual(
+    interactionFromResponse(
+      {
+        type: 'event',
+        event: { kind: 'run.interaction', runId: 'run-live', request: interactionRequest },
+      },
+      'run-live',
+    ),
+    { runId: 'run-live', interactionId: 'interaction-live', request: interactionRequest },
+  )
+  assert.equal(
+    interactionFromResponse(
+      { type: 'event', event: { kind: 'run.interaction', runId: 'other-run' } },
+      'run-live',
+    ),
+    undefined,
+  )
+
+  const emptyRelease = await executeReleaseProofs({ targets: [], targetRecords: [] })
+  assert.equal(emptyRelease.passed, false)
+  assert.deepEqual(emptyRelease.releaseProofs, [])
+  assert.equal(emptyRelease.failures.length, 5)
 
   const requests = []
   const unavailableSession = {
@@ -253,6 +370,52 @@ async function runSemanticMatrix() {
   assert.equal(requests[0].params.runId, 'run-complete')
   assert.equal(unavailableResult.cancel.attemptedRun, false)
   assert.equal(unavailableResult.cancel.status, 'reported-unavailable')
+
+  const admittedRequests = []
+  const admittedResponses = [
+    {
+      version: 1,
+      type: 'ack',
+      requestId: 'cancel-send-glm-5.2',
+      runId: 'run-cancel-live',
+      admission: { capabilities: { controls: { cancel: true } } },
+    },
+    {
+      version: 1,
+      type: 'ack',
+      requestId: 'cancel-glm-5.2',
+    },
+    {
+      version: 1,
+      type: 'state',
+      requestId: 'cancel-glm-5.2',
+      state: { runs: [{ id: 'run-cancel-live', status: 'aborted' }] },
+    },
+  ]
+  const admittedSession = {
+    send: (request) => admittedRequests.push(request),
+    waitFor: async () => admittedResponses.shift(),
+  }
+  const admittedResult = {
+    targetKey: 'glm-5.2',
+    requests: [],
+    send: { admission: { capabilities: { controls: { cancel: true } } } },
+    conversationId: 'conv-live',
+    branchId: 'branch-live',
+  }
+  await verifyCancel(
+    admittedSession,
+    admittedResult,
+    defaultTargetPolicy.definitions[0],
+    { id: 'run-complete', status: 'completed' },
+    { controls: { cancel: false } },
+  )
+  assert.equal(admittedRequests.length, 2)
+  assert.equal(admittedRequests[0].command, 'send')
+  assert.equal(admittedRequests[1].command, 'cancel_run')
+  assert.equal(admittedResult.cancel.advertisedByNormalAdmission, true)
+  assert.equal(admittedResult.cancel.attemptedRun, true)
+  assert.equal(admittedResult.cancel.status, 'verified')
 }
 
 await runTargetPolicyMatrix()

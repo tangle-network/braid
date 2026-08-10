@@ -7,6 +7,7 @@ import {
   llmJudge,
   runCampaign,
 } from '@tangle-network/agent-eval/contract'
+import { EVAL_TOTAL_COMPLETION_TOKENS } from './execution.js'
 import { artifactForScenario, scenariosForCalibration } from './cases.js'
 import type {
   CalibrationCategoryOutcome,
@@ -23,6 +24,13 @@ export const CALIBRATION_MIN_GOOD_RATE = 11 / 12
 export const CALIBRATION_TIE_TOLERANCE = 0.02
 export const CALIBRATION_MIN_MARGIN = 0.2
 export const CALIBRATION_MAX_TRIVIAL_RATIO = 0.8
+
+export const SEMANTIC_JUDGE_EVIDENCE_CONTRACT = `The candidate is candidate.userFacingAnswer.
+Treat referenceOnly.semanticOutput as hidden ground truth. Use it only to verify the candidate.
+Score each dimension only from facts and choices that the candidate explicitly communicates.
+A fact that appears only in hidden ground truth earns zero for every dimension that requires it.
+Do not infer omitted candidate details from hidden ground truth or productPath.
+A generic status sentence earns zero on every dimension whose required information it omits.`
 
 export interface CalibrationCampaign {
   readonly label: 'good' | 'bad' | 'trivial'
@@ -43,21 +51,25 @@ export function semanticJudge(
   const model = chat.defaultModel
   return llmJudge<SemanticEvalArtifact, SemanticEvalScenario>(
     `braid-${definition.id}-semantic-quality`,
-    definition.prompt,
+    `${SEMANTIC_JUDGE_EVIDENCE_CONTRACT}\n\n${definition.prompt}`,
     {
       chat,
       ...(model === undefined ? {} : { model }),
-      judgeVersion: `braid-semantic-quality-v2-${definition.id}`,
+      judgeVersion: `braid-semantic-quality-v3-${definition.id}`,
       dimensions: [...definition.dimensions],
       temperature: 0,
-      maxTokens: 320,
+      maxTokens: EVAL_TOTAL_COMPLETION_TOKENS,
       renderUser: ({ artifact }) =>
         JSON.stringify(
           {
-            semanticOutput: artifact.semanticOutput,
-            userFacingAnswer: artifact.candidateOutput,
-            candidateLabel: artifact.productPath === undefined ? null : 'release-product-output',
-            productPath: artifact.productPath ?? null,
+            candidate: {
+              userFacingAnswer: artifact.candidateOutput,
+              candidateLabel: artifact.productPath === undefined ? null : 'release-product-output',
+              productPath: artifact.productPath ?? null,
+            },
+            referenceOnly: {
+              semanticOutput: artifact.semanticOutput,
+            },
           },
           null,
           2,
@@ -166,6 +178,11 @@ function categoryOutcomes(
       caseId: definition.id,
       category: definition.category,
       pairCount: pairs.length,
+      goodExamples: goodValues.length,
+      goodAccepted: goodValues.filter((value) => value >= definition.criteria.passThreshold).length,
+      goodAcceptancePassed:
+        goodValues.length === definition.calibrationFixtures.length &&
+        goodValues.every((value) => value >= definition.criteria.passThreshold),
       goodPreferred: pairs.filter((pair) => pair.preference === 'good').length,
       ties: pairs.filter((pair) => pair.preference === 'tie').length,
       reversals: pairs.filter((pair) => pair.preference === 'bad').length,
@@ -197,6 +214,8 @@ export function summarizeCalibration(
   const strongWeakMargin = strongMean - weakMean
   const trivialStrongRatio = strongMean <= 0 ? 1 : trivialMean / strongMean
   const goodPreferred = pairs.filter((pair) => pair.preference === 'good').length
+  const goodExamples = categories.reduce((sum, category) => sum + category.goodExamples, 0)
+  const goodAccepted = categories.reduce((sum, category) => sum + category.goodAccepted, 0)
   const ties = pairs.filter((pair) => pair.preference === 'tie').length
   const reversals = pairs.filter((pair) => pair.preference === 'bad').length
   const minimumGoodPreferred = Math.ceil(pairs.length * CALIBRATION_MIN_GOOD_RATE)
@@ -225,6 +244,11 @@ export function summarizeCalibration(
     )
   }
   for (const category of categories) {
+    if (!category.goodAcceptancePassed) {
+      failures.push(
+        `${category.caseId} accepted ${category.goodAccepted}/${category.goodExamples} good baselines`,
+      )
+    }
     if (!category.trivialRejected)
       failures.push(`${category.caseId} trivial baseline was not rejected`)
   }
@@ -232,6 +256,9 @@ export function summarizeCalibration(
     passed: failures.length === 0,
     pairedExamples: pairs.length,
     minimumPairedExamples: CALIBRATION_MIN_PAIRS,
+    goodExamples,
+    goodAccepted,
+    minimumGoodAccepted: goodExamples,
     goodPreferred,
     minimumGoodPreferred,
     ties,

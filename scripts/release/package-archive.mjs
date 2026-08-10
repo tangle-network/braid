@@ -21,7 +21,7 @@ export async function sourceDigest(root, excludedPaths = new Set()) {
   const files = []
   async function walk(directory) {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (SOURCE_EXCLUSIONS.has(entry.name)) continue
+      if (SOURCE_EXCLUSIONS.has(entry.name) || entry.name.startsWith('.test-dist-')) continue
       const path = join(directory, entry.name)
       if (excludedPaths.has(path)) continue
       if (entry.isDirectory()) await walk(path)

@@ -1,4 +1,5 @@
 import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
+import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalystDescriptor, EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
 import type { AnalysisIdentity } from './analysis-operation.js'
 import type { AnalysisRequest, FrozenAnalysisEvidence } from './analysis-types.js'
@@ -12,6 +13,7 @@ export interface AnalysisAnalyst {
   list(): ReadonlyArray<AnalystDescriptor>
   resolveAnalystIds(request: AnalysisRequest): readonly string[]
   stream(request: EvalAnalystRequest): AsyncGenerator<AnalysisExecutionEvent, void, void>
+  modelExecutions?(runId: string): readonly ExternalOptimizerModelExecutionObservation[]
 }
 
 export class AnalysisExecutionSession {
@@ -29,6 +31,10 @@ export class AnalysisExecutionSession {
 
   resolveAnalystIds(request: AnalysisRequest): readonly string[] {
     return this.#analyst.resolveAnalystIds(request)
+  }
+
+  modelExecutions(runId: string): readonly ExternalOptimizerModelExecutionObservation[] {
+    return this.#analyst.modelExecutions?.(runId) ?? []
   }
 
   cancel(analysisId: string, reason = 'cancelled by user'): boolean {

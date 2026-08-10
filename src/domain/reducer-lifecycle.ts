@@ -1,12 +1,23 @@
-import type { BraidEvent } from './events.js'
 import type { RunRecord, TurnRecord } from './entities.js'
-import { createAdmissionReceipt } from './receipts.js'
-import type { BraidState } from './state.js'
+import type { BraidEvent } from './events.js'
 import { parseMessageId, parseRunId, parseTurnId } from './ids.js'
-import { activity, addActivity, findRun, updateRun, type ReducerBase } from './reducer-support.js'
+import { createAdmissionReceipt } from './receipts.js'
 import { legacyMessage, legacyTextPart, upsert } from './reducer-helpers.js'
-import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
 import { attachRequestedRunToConversation } from './reducer-run-graph.js'
+import {
+  activity,
+  addActivity,
+  findRun,
+  isCancellationConfirmedReconciliation,
+  type ReducerBase,
+  TERMINAL_RUN_STATES,
+  terminalMessageStatus,
+  terminalPartStatus,
+  updateMessage,
+  updateRun,
+} from './reducer-support.js'
+import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
+import type { BraidState } from './state.js'
 
 type LifecycleEvent = Extract<
   BraidEvent,
@@ -40,7 +51,13 @@ export function reduceLifecycleEvent(
         ...base,
         runs: updateRun(state, event.runId, (candidate) =>
           addActivity(
-            { ...candidate, status: event.control === 'cancel' ? 'cancelling' : candidate.status },
+            {
+              ...candidate,
+              status:
+                event.control === 'cancel' && !TERMINAL_RUN_STATES.includes(candidate.status)
+                  ? 'cancelling'
+                  : candidate.status,
+            },
             activity(event, 'control', event.control, event.text ?? event.reason),
           ),
         ),
@@ -113,14 +130,48 @@ export function reduceLifecycleEvent(
         throw new Error(`Run ${event.runId} reconciliation evidence is stale`)
       if (!event.evidence)
         throw new Error(`Run ${event.runId} reconciliation requires provider evidence`)
+      const correction = isCancellationConfirmedReconciliation(event, state, current.status)
+      if (event.correction !== undefined && !correction)
+        throw new Error(`Run ${event.runId} has invalid cancellation reconciliation evidence`)
       if (
         ['completed', 'failed', 'aborted', 'cancelled', 'blocked', 'expired'].includes(
           current.status,
-        )
+        ) &&
+        !correction
       )
         throw new Error(`Run ${event.runId} cannot be reconciled after a proven terminal state`)
       const from = event.from ?? current.status
       const to = event.to ?? event.status
+      if (correction && (to === 'cancelled' || to === 'aborted')) {
+        const hasMissingHistory = state.missingHistory.some((range) => range.runId === event.runId)
+        const messageStatus = hasMissingHistory ? 'incomplete' : terminalMessageStatus(to)
+        return {
+          ...state,
+          ...base,
+          activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
+          lastError: null,
+          messages: updateMessage(state, event.runId, (message) => ({
+            ...message,
+            status: messageStatus,
+            complete: !hasMissingHistory,
+            parts: message.parts.map((part) =>
+              part.status === 'running' ? { ...part, status: terminalPartStatus(to) } : part,
+            ),
+          })),
+          runs: updateRun(state, event.runId, (run) => {
+            const { error: _error, terminalReason: _terminalReason, ...withoutFailure } = run
+            return addActivity(
+              {
+                ...withoutFailure,
+                status: to,
+                ...(event.detail === undefined ? {} : { terminalReason: event.detail }),
+                complete: !hasMissingHistory,
+              },
+              activity(event, 'reconciliation', `${from} → ${to}`, event.detail),
+            )
+          }),
+        }
+      }
       return {
         ...state,
         ...base,
@@ -220,6 +271,12 @@ function reduceRequestedRun(
     createdAt: occurredAt,
     updatedAt: occurredAt,
   }
+  const connectionId = state.connections.find(
+    (connection) => connection.id === receipt.requested.connectionId,
+  )?.id
+  const environmentId = state.environments.find(
+    (environment) => environment.id === receipt.environmentId,
+  )?.id
   const run: RunRecord = {
     id: runId,
     conversationId: state.conversationId,
@@ -229,11 +286,17 @@ function reduceRequestedRun(
     status: 'streaming' as const,
     receipt,
     capabilities: receipt.capabilities,
+    ...(connectionId === undefined ? {} : { connectionId }),
+    ...(environmentId === undefined ? {} : { environmentId }),
+    ...(receipt.requested.model === undefined ? {} : { model: receipt.requested.model }),
     ...(receipt.providerSessionId === undefined
       ? {}
       : { providerSessionId: receipt.providerSessionId }),
     inputTokens: 0,
     outputTokens: 0,
+    tokensKnown: false,
+    usdKnown: false,
+    llmCalls: 0,
     complete: false,
     startedAt: occurredAt,
     updatedAt: occurredAt,

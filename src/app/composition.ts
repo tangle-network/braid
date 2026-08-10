@@ -1,4 +1,6 @@
-import { type AgentProfile, defineAgentProfile } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import { performance } from 'node:perf_hooks'
+import { defineAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import type { HeadlessKeySource } from '../adapters/credentials/headless-key.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
 import {
@@ -6,7 +8,11 @@ import {
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
 import { UnavailableExecutionPort } from '../adapters/runtime/unavailable-execution.js'
-import { openSqliteStorage, type SqliteStorage } from '../adapters/storage/sqlite.js'
+import {
+  openSqliteStorage,
+  type SqliteStartupStage,
+  type SqliteStorage,
+} from '../adapters/storage/sqlite.js'
 import { type Clock, FixedClock, SystemClock } from '../ports/clock.js'
 import { type CredentialPort, credentialRef } from '../ports/credentials.js'
 import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
@@ -38,6 +44,7 @@ export const DETERMINISTIC_PROFILE: Readonly<AgentProfile> = defineAgentProfile(
   harness: 'pi',
   model: {
     default: 'fixture/deterministic',
+    provider: 'fixture',
     reasoningEffort: 'none',
   },
 })
@@ -74,6 +81,17 @@ export interface DurableCompositionOptions
   readonly backendResolver?: AgentTurnBackendResolver
   /** Mutable catalog shared with the product connection service. */
   readonly connectionRegistry?: ConnectionRegistry
+  readonly startupObserver?: (stage: DurableStartupStage) => void
+}
+
+export interface DurableStartupStage {
+  readonly name:
+    | 'production-composition'
+    | 'storage-open'
+    | `storage.${SqliteStartupStage['name']}`
+    | 'journal-restore'
+    | 'application-create'
+  readonly durationMs: number
 }
 
 export interface DurableBraidApplication {
@@ -138,7 +156,7 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
               ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
             }),
           async () => ({ status: 'cancelled' as const }),
-          { admissionMode: 'sync' },
+          { admissionMode: 'async' },
         )
       : (production?.execution ??
         (options.backendResolver
@@ -190,6 +208,7 @@ export async function createDurableBraidApplication(
 ): Promise<DurableBraidApplication> {
   const clock = options.clock ?? new SystemClock()
   const credentialStore = options.credentialStore ?? createOperatingSystemCredentialStore()
+  let stageStarted = performance.now()
   const production =
     options.production === undefined
       ? undefined
@@ -205,6 +224,8 @@ export async function createDurableBraidApplication(
           ),
           options.connectionRegistry,
         )
+  reportStartupStage(options.startupObserver, 'production-composition', stageStarted)
+  stageStarted = performance.now()
   const storage = await openSqliteStorage({
     path: options.path,
     credentialStore,
@@ -216,9 +237,19 @@ export async function createDurableBraidApplication(
       ? {}
       : { databaseKeySource: options.databaseKeySource }),
     ...(options.backupDirectory === undefined ? {} : { backupDirectory: options.backupDirectory }),
+    startupObserver: (stage) =>
+      reportObservedStartupStage(
+        options.startupObserver,
+        `storage.${stage.name}`,
+        stage.durationMs,
+      ),
   })
+  reportStartupStage(options.startupObserver, 'storage-open', stageStarted)
   try {
+    stageStarted = performance.now()
     const scopedJournal = await StorageJournal.fromStorage(storage, clock)
+    reportStartupStage(options.startupObserver, 'journal-restore', stageStarted)
+    stageStarted = performance.now()
     const app = new BraidApplication({
       profile: options.profile ?? production?.profile ?? STARTER_PROFILE,
       execution:
@@ -245,9 +276,34 @@ export async function createDurableBraidApplication(
         ? {}
         : { interactionResponseTimeoutMs: options.interactionResponseTimeoutMs }),
     })
+    reportStartupStage(options.startupObserver, 'application-create', stageStarted)
     return { app, storage }
   } catch (error) {
     await storage.close().catch(() => undefined)
     throw error
+  }
+}
+
+function reportObservedStartupStage(
+  observer: DurableCompositionOptions['startupObserver'],
+  name: DurableStartupStage['name'],
+  durationMs: number,
+): void {
+  try {
+    observer?.({ name, durationMs })
+  } catch {
+    // Diagnostics cannot change application startup.
+  }
+}
+
+function reportStartupStage(
+  observer: DurableCompositionOptions['startupObserver'],
+  name: DurableStartupStage['name'],
+  startedAt: number,
+): void {
+  try {
+    observer?.({ name, durationMs: performance.now() - startedAt })
+  } catch {
+    // Diagnostics cannot change application startup.
   }
 }

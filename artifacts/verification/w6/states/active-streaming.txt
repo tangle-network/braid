@@ -1,4 +1,4 @@
-braid  cwd  braid-automation-main-wt  ·  session  New conversation
+braid  cwd  braid-unified-activity-wt  ·  session  New conversation
  W6 active streaming
 
  working…

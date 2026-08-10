@@ -1,5 +1,6 @@
-import type { AnalysisFinding } from '../../domain/entities.js'
+import type { AnalysisFinding, AnalysisModelCallRecord } from '../../domain/entities.js'
 import type { BraidState } from '../../domain/state.js'
+import { environmentView } from './environment-presentation.js'
 import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
 import { ensureEntityExists, graphEdgesForEntity, queryGraph } from './semantic-graph.js'
 import { assertNodeType, SemanticQueryError } from './semantic-query-scope.js'
@@ -21,7 +22,10 @@ function textValue(value: unknown): string {
   if (typeof value === 'string') return safe(value)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (value === undefined || value === null) return ''
-  if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(', ')
+  if (Array.isArray(value)) {
+    const values = value.map(textValue).filter(Boolean)
+    return value.every((entry) => typeof entry === 'string') ? values.join('\n') : values.join(', ')
+  }
   return '[structured value]'
 }
 
@@ -48,6 +52,50 @@ function safeFinding(finding: AnalysisFinding): Readonly<Record<string, unknown>
       ...(citation.quote === undefined ? {} : { quote: safe(citation.quote) }),
     })),
   }
+}
+
+function compactNumber(value: number | undefined): string {
+  return value === undefined ? '?' : String(value)
+}
+
+function compactUsd(value: number | undefined): string {
+  if (value === undefined) return 'unknown'
+  return `$${value.toFixed(6).replace(/0+$/u, '').replace(/\.$/u, '')}`
+}
+
+function modelCallTokens(call: AnalysisModelCallRecord): string {
+  const input = compactNumber(call.inputTokens)
+  const output = compactNumber(call.outputTokens)
+  if (call.tokensKnown) return `tokens ${input} in / ${output} out`
+  if (call.inputTokens !== undefined || call.outputTokens !== undefined) {
+    return `tokens ${input} in / ${output} out (observed floor)`
+  }
+  return 'tokens unknown'
+}
+
+function modelCallCost(call: AnalysisModelCallRecord): string {
+  if (call.cost.status === 'observed' && call.cost.usd !== undefined) {
+    return `cost ${compactUsd(call.cost.usd)}`
+  }
+  if (call.cost.status === 'estimated' && call.cost.usd !== undefined) {
+    return `cost ~${compactUsd(call.cost.usd)}`
+  }
+  return 'cost unknown'
+}
+
+function modelCallLine(call: AnalysisModelCallRecord): string {
+  const provider = call.provider === undefined ? 'provider unknown' : safe(call.provider)
+  const model = safe(call.model) || 'model unknown'
+  const latency = call.latencyMs === undefined ? 'latency unknown' : `latency ${call.latencyMs}ms`
+  return `#${call.sequence} ${provider}/${model} · ${modelCallTokens(call)} · ${modelCallCost(call)} · ${latency}`
+}
+
+function modelCallLines(
+  modelCalls: readonly AnalysisModelCallRecord[] | undefined,
+): readonly string[] {
+  if (modelCalls === undefined) return ['model calls unknown']
+  if (modelCalls.length === 0) return ['no model calls recorded']
+  return modelCalls.map(modelCallLine)
 }
 
 function dataFor(
@@ -130,9 +178,27 @@ function dataFor(
         status: run.status,
         inputTokens: run.inputTokens,
         outputTokens: run.outputTokens,
+        tokenStatus:
+          run.tokensKnown === false
+            ? run.inputTokens > 0 || run.outputTokens > 0
+              ? 'observed-floor'
+              : 'unknown'
+            : 'complete',
         capabilities: run.capabilities,
         ...(run.reasoningTokens === undefined ? {} : { reasoningTokens: run.reasoningTokens }),
         ...(run.costUsd === undefined ? {} : { costUsd: run.costUsd }),
+        ...(run.estimatedCostUsd === undefined ? {} : { estimatedCostUsd: run.estimatedCostUsd }),
+        costStatus:
+          run.usdKnown !== false && run.costUsd !== undefined
+            ? 'reported'
+            : run.costUsd !== undefined
+              ? 'observed-floor'
+              : run.estimatedCostUsd !== undefined
+                ? 'estimated'
+                : 'unknown',
+        ...(run.promptCache === undefined ? {} : { promptCache: run.promptCache }),
+        ...(run.llmCalls === undefined ? {} : { llmCalls: run.llmCalls }),
+        ...(run.llmLatencyMs === undefined ? {} : { llmLatencyMs: run.llmLatencyMs }),
         ...(run.model === undefined ? {} : { model: safe(run.model) }),
         ...(run.error === undefined ? {} : { error: safe(run.error) }),
         ...(run.profileSnapshotId === undefined
@@ -232,6 +298,7 @@ function dataFor(
           : { analystProfileDigest: analysis.analystProfileDigest }),
         status: analysis.status,
         findings: analysis.findings.map(safeFinding),
+        modelCalls: modelCallLines(analysis.modelCalls),
         ...(analysis.usage === undefined
           ? {}
           : {
@@ -259,21 +326,8 @@ function dataFor(
       const environment = state.environments.find((candidate) => candidate.id === id)
       if (environment === undefined) return undefined
       return {
-        id: environment.id,
+        ...environmentView(environment),
         workspaceId: environment.workspaceId,
-        connectionId: environment.connectionId,
-        lifecycle: environment.lifecycle,
-        placement: {
-          provider: safe(environment.placement.provider),
-          ...(environment.placement.region === undefined
-            ? {}
-            : { region: safe(environment.placement.region) }),
-          ...(environment.placement.account === undefined
-            ? {}
-            : { account: safe(environment.placement.account) }),
-          confidentialRequested: environment.placement.confidentialRequested,
-          confidentialVerified: environment.placement.confidentialVerified,
-        },
         ...(environment.repository === undefined
           ? {}
           : { repository: safe(environment.repository) }),
@@ -283,8 +337,6 @@ function dataFor(
           : { workingDirectory: safe(environment.workingDirectory) }),
         ...(environment.image === undefined ? {} : { image: safe(environment.image) }),
         secretNames: environment.secretNames.map(safe),
-        createdAt: environment.createdAt,
-        updatedAt: environment.updatedAt,
       }
     }
     case 'checkpoint': {
@@ -310,8 +362,20 @@ function dataFor(
       if (supervisor === undefined) return undefined
       return {
         id: supervisor.id,
-        rootRunId: supervisor.rootRunId,
+        runtimeId: supervisor.runtimeId,
+        runtimeRoot: supervisor.runtimeRoot,
+        ...(supervisor.rootRunId === undefined ? {} : { rootRunId: supervisor.rootRunId }),
         status: supervisor.status,
+        ...(supervisor.title === undefined ? {} : { title: safe(supervisor.title) }),
+        ...(supervisor.driverModel === undefined
+          ? {}
+          : { driverModel: safe(supervisor.driverModel) }),
+        ...(supervisor.workerModel === undefined
+          ? {}
+          : { workerModel: safe(supervisor.workerModel) }),
+        ...(supervisor.driverUsage === undefined ? {} : { driverUsage: supervisor.driverUsage }),
+        ...(supervisor.totalUsage === undefined ? {} : { totalUsage: supervisor.totalUsage }),
+        ...(supervisor.workerCount === undefined ? {} : { workerCount: supervisor.workerCount }),
         createdAt: supervisor.createdAt,
         updatedAt: supervisor.updatedAt,
       }
@@ -321,15 +385,23 @@ function dataFor(
       if (worker === undefined) return undefined
       return {
         id: worker.id,
+        runtimeId: worker.runtimeId,
         supervisorId: worker.supervisorId,
+        ...(worker.parentRuntimeRef === undefined
+          ? {}
+          : { parentRuntimeRef: safe(worker.parentRuntimeRef) }),
         ...(worker.parentWorkerId === undefined ? {} : { parentWorkerId: worker.parentWorkerId }),
         ...(worker.runId === undefined ? {} : { runId: worker.runId }),
         status: worker.status,
         ...(worker.title === undefined ? {} : { title: safe(worker.title) }),
+        ...(worker.runner === undefined ? {} : { runner: safe(worker.runner) }),
         ...(worker.spendUsd === undefined ? {} : { spendUsd: worker.spendUsd }),
         ...(worker.inputTokens === undefined ? {} : { inputTokens: worker.inputTokens }),
         ...(worker.outputTokens === undefined ? {} : { outputTokens: worker.outputTokens }),
         ...(worker.latencyMs === undefined ? {} : { latencyMs: worker.latencyMs }),
+        ...(worker.usageCompleteness === undefined
+          ? {}
+          : { usageCompleteness: worker.usageCompleteness }),
         ...(worker.logTail === undefined ? {} : { logTail: safe(worker.logTail) }),
         createdAt: worker.createdAt,
         updatedAt: worker.updatedAt,

@@ -25,6 +25,8 @@ export interface StateReader {
 export interface JournalWriter {
   readonly commit: (event: BraidEvent) => void
   readonly commitAndWait: (event: BraidEvent) => void | Promise<void>
+  /** Commits related events without allowing another transition between them. */
+  readonly commitBatchAndWait?: (events: readonly BraidEvent[]) => Promise<void>
   /** Retry one recovery event after a durable write has already failed. */
   readonly commitAndWaitRecovery?: (event: BraidEvent) => void | Promise<void>
 }
@@ -86,7 +88,15 @@ export interface WaitAccess {
 }
 
 export interface ControlDispatchAccess {
-  readonly executeControl: (input: ControlEffectRequest) => Promise<ControlAcknowledgement>
+  readonly executeControl: (
+    input: ControlEffectRequest,
+    options?: ControlDispatchOptions,
+  ) => Promise<ControlAcknowledgement>
+}
+
+export interface ControlDispatchOptions {
+  /** Receives one provider result that settled after the foreground deadline. */
+  readonly onLateSettlement?: (acknowledgement: ControlAcknowledgement) => void | Promise<void>
 }
 
 export interface CancelTimingAccess {

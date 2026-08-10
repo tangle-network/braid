@@ -99,8 +99,8 @@ jobs:
           BRAID_LIVE_BRIDGE: '1'
           BRAID_CLI_BRIDGE_BEARER: ${{ secrets.BRAID_CLI_BRIDGE_BEARER }}
           BRAID_CLI_BRIDGE_URL: ${{ vars.BRAID_CLI_BRIDGE_URL }}
-          BRAID_EVAL_BEARER: ${{ secrets.BRAID_EVAL_BEARER }}
-          BRAID_EVAL_BRIDGE_URL: ${{ vars.BRAID_EVAL_BRIDGE_URL }}
+          BRAID_EVAL_API_KEY: ${{ secrets.BRAID_EVAL_API_KEY }}
+          BRAID_EVAL_BASE_URL: ${{ vars.BRAID_EVAL_BASE_URL }}
           BRAID_EVAL_MODEL: ${{ vars.BRAID_EVAL_MODEL }}
           BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
         run: >-

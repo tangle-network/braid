@@ -35,6 +35,7 @@ import {
   sanitizeArgv,
   sanitizeEnvironment,
 } from './command-runner.mjs'
+import { readLiveBridgeProof } from './live-bridge-proof.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -329,6 +330,11 @@ export async function collectReleaseEvidence({
     environments.set(environmentValue.id, environmentValue)
     const attempt = (previousAttempts.get(checkId) ?? 0) + 1
     previousAttempts.set(checkId, attempt)
+    const structuredEvidenceOverride = await readLiveBridgeProof({
+      artifactRoot: evidenceRoot,
+      checkId,
+      processResult: result,
+    })
     const record = buildCheckRecord({
       checkId,
       category: result.category,
@@ -342,6 +348,7 @@ export async function collectReleaseEvidence({
       sanitizedEnvironment,
       environmentId: environmentValue.id,
       structuredRedactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
+      structuredEvidenceOverride,
     })
     const outputBytes = record.__outputBytes
     const stdoutArtifact = await store.put({

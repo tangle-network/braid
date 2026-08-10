@@ -43,6 +43,19 @@ function viewForChrome(): BraidViewModel {
         usage: { input: 1_234, output: 567, costUsd: 0.0312 },
       },
     ],
+    sessionUsage: {
+      ...base.sessionUsage,
+      turns: {
+        sourceCount: 1,
+        input: 1_234,
+        output: 567,
+        tokenStatus: 'complete',
+        costUsd: 0.0312,
+        costStatus: 'reported',
+        unknownTokenSources: 0,
+        unknownCostSources: 0,
+      },
+    },
   }
 }
 

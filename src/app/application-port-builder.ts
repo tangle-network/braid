@@ -13,11 +13,11 @@ import type {
   QueuePort,
   ReplayPort,
   RestartPort,
+  RuntimeEventEnvelopeLike,
+  RuntimeEventIngestionResult,
   RuntimeIngestionAccess,
   StateReader,
   StatusPort,
-  RuntimeEventIngestionResult,
-  RuntimeEventEnvelopeLike,
 } from './application-ports.js'
 import type { SendInput, SendReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
@@ -53,6 +53,7 @@ export interface PortBuilderInput {
   readonly storageFailure: () => unknown
   readonly executeControl: (
     input: import('./application-ports.js').ControlEffectRequest,
+    options?: import('./application-ports.js').ControlDispatchOptions,
   ) => Promise<import('../ports/execution.js').ControlAcknowledgement>
   readonly admitPersistedSend: (operationId: string, digest: string) => SendReceipt | undefined
   readonly fingerprint: AdmissionPort['fingerprint']

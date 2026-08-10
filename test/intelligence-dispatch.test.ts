@@ -7,6 +7,11 @@ import {
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
 import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
+import { RuntimeSupervisorController } from '../src/adapters/runtime/supervisor-control.js'
+import {
+  RuntimeSupervisorWatcher,
+  type TopSnapshot,
+} from '../src/adapters/runtime/supervisor-watch.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { freezeAnalysisSource } from '../src/app/analysis-source.js'
 import { BraidApplication } from '../src/app/application.js'
@@ -17,6 +22,8 @@ import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
+import { analysisLines } from '../src/views/shared/analysis-presentation.js'
+import { queryGraph } from '../src/views/shared/semantic-graph.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -89,6 +96,61 @@ function createTestApplication(): BraidApplication {
   })
 }
 
+function supervisionSnapshot(
+  workers: readonly {
+    readonly id: string
+    readonly label: string
+    readonly parent?: string
+    readonly status?: 'running' | 'done'
+  }[],
+  generatedAt = Date.parse(NOW),
+  supervisorId = 'runtime-supervisor-live',
+): TopSnapshot {
+  const spend = { iterations: 1, tokensInput: 2, tokensOutput: 3, usd: 0.01, ms: 4 }
+  return {
+    root: '/workspace',
+    generatedAt,
+    supervisors: [
+      {
+        id: supervisorId,
+        status: workers.every((worker) => worker.status === 'done') ? 'completed' : 'running',
+        task: 'build Braid',
+        workspaceDir: '/workspace',
+        budget: 1,
+        stateDir: '/workspace/.agent',
+        workers: workers.map((worker) => ({
+          id: worker.id,
+          label: worker.label,
+          status: worker.status ?? 'running',
+          ...(worker.parent === undefined ? {} : { parent: worker.parent }),
+          latencyMs: 4,
+          spend,
+          metered: spend,
+          liveTail: [`${worker.label} progress`],
+        })),
+        progressTail: [],
+        journalTail: [],
+        driverSpend: spend,
+        totals: {
+          workers: workers.length,
+          running: workers.filter((worker) => worker.status !== 'done').length,
+          done: workers.filter((worker) => worker.status === 'done').length,
+          down: 0,
+          cancelled: 0,
+          inFlight: workers.filter((worker) => worker.status !== 'done').length,
+          settled: workers.filter((worker) => worker.status === 'done').length,
+          tokensInput: workers.length * 2,
+          tokensOutput: workers.length * 3,
+          tokensTotal: workers.length * 5,
+          usd: workers.length * 0.01,
+          latencyMs: workers.length * 4,
+          workerLatency: { n: workers.length, min: 4, median: 4, p90: 4, max: 4 },
+        },
+      },
+    ],
+  } as unknown as TopSnapshot
+}
+
 async function createCompletedRun(app: BraidApplication, text: string): Promise<string> {
   app.initialize('/workspace')
   const receipt = app.send({
@@ -130,10 +192,14 @@ test('Braid exposes analysis actions through the TUI controller without creating
   if (result.kind === 'accepted') {
     const data = result.data as {
       readonly status: string
-      readonly analysis: { readonly question?: string }
+      readonly analysis: { readonly id: string; readonly question?: string }
     }
     assert.equal(data.status, 'completed')
     assert.equal(data.analysis.question, 'why did this finish')
+    assert.equal(
+      controller.view().activity.some((item) => item.id === `analysis:${data.analysis.id}`),
+      true,
+    )
   }
   assert.deepEqual(
     app
@@ -142,6 +208,163 @@ test('Braid exposes analysis actions through the TUI controller without creating
       .filter((kind) => kind.startsWith('analysis.')),
     ['analysis.created', 'analysis.updated', 'analysis.completed'],
   )
+  await app.close()
+})
+
+test('runtime supervisors stay unbound until each runtime id is explicitly assigned to a run', async () => {
+  const firstSnapshot = supervisionSnapshot(
+    [{ id: 'runtime-worker-one', label: 'worker-one' }],
+    Date.parse(NOW),
+    'runtime-supervisor-one',
+  )
+  const secondSnapshot = supervisionSnapshot(
+    [{ id: 'runtime-worker-two', label: 'worker-two' }],
+    Date.parse(NOW),
+    'runtime-supervisor-two',
+  )
+  const firstSupervisor = firstSnapshot.supervisors[0]
+  const secondSupervisor = secondSnapshot.supervisors[0]
+  assert(firstSupervisor && secondSupervisor)
+  let raw: TopSnapshot = {
+    ...firstSnapshot,
+    supervisors: [firstSupervisor, secondSupervisor],
+  }
+  const watcher = new RuntimeSupervisorWatcher(() => raw)
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: { supervisorWatcher: watcher },
+  })
+  const firstRunId = await createCompletedRun(app, 'first supervised run')
+  const secondRunId = await createCompletedRun(app, 'second supervised run')
+
+  const unbound = await app.intelligence.supervisor.snapshot({ rootDir: '/workspace' })
+  assert.equal(unbound.supervisors.length, 2)
+  assert.equal(
+    unbound.supervisors.every((record) => record.rootRunId === undefined),
+    true,
+  )
+
+  const bound = await app.intelligence.supervisor.snapshot({
+    rootDir: '/workspace',
+    bindings: [
+      { runtimeSupervisorId: 'runtime-supervisor-one', rootRunId: firstRunId },
+      { runtimeSupervisorId: 'runtime-supervisor-two', rootRunId: secondRunId },
+    ],
+  })
+  assert.deepEqual(
+    new Map(bound.supervisors.map((record) => [record.runtimeId, record.rootRunId])),
+    new Map([
+      ['runtime-supervisor-one', firstRunId],
+      ['runtime-supervisor-two', secondRunId],
+    ]),
+  )
+
+  raw = { ...raw, supervisors: [...raw.supervisors].reverse() }
+  const refreshed = await app.intelligence.supervisor.snapshot({ rootDir: '/workspace' })
+  assert.deepEqual(
+    new Map(refreshed.supervisors.map((record) => [record.runtimeId, record.rootRunId])),
+    new Map([
+      ['runtime-supervisor-two', secondRunId],
+      ['runtime-supervisor-one', firstRunId],
+    ]),
+  )
+  assert.equal(
+    app.state().supervisors.filter((record) => record.rootRunId === firstRunId).length,
+    1,
+  )
+  assert.equal(
+    app.state().supervisors.filter((record) => record.rootRunId === secondRunId).length,
+    1,
+  )
+  await app.close()
+})
+
+test('worker steering resolves the public Braid ids back to exact runtime ids', async () => {
+  const raw = supervisionSnapshot([{ id: 'runtime-worker-control', label: 'worker-control' }])
+  const watcher = new RuntimeSupervisorWatcher(() => raw)
+  let writeInput:
+    | {
+        readonly rootDir: string
+        readonly supervisorId: string
+        readonly worker: string
+        readonly message: string
+      }
+    | undefined
+  const runtimeController = new RuntimeSupervisorController({
+    watcher,
+    write: (rootDir, supervisorId, worker, message, source) => {
+      writeInput = { rootDir, supervisorId, worker, message }
+      return {
+        worker,
+        file: '/workspace/.agent/inbox/request.json',
+        request: {
+          id: 'request-public-ids',
+          at: NOW,
+          supervisorId,
+          worker,
+          message,
+          source: source ?? 'braid',
+        },
+      }
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: {
+      supervisorWatcher: watcher,
+      supervisorController: runtimeController,
+    },
+  })
+  await createCompletedRun(app, 'worker control run')
+  const controller = createApplicationUiController(app)
+  const snapshot = await controller.dispatch({ type: 'refresh-supervision' })
+  assert.equal(snapshot.kind, 'accepted')
+  assert.equal(snapshot.kind === 'accepted' && snapshot.data !== undefined, true)
+  const data = snapshot.kind === 'accepted' ? snapshot.data : undefined
+  const projection = data as {
+    readonly supervisors: readonly { readonly id: string; readonly runtimeId: string }[]
+    readonly workers: readonly { readonly id: string; readonly runtimeId: string }[]
+  }
+  const supervisor = projection.supervisors[0]
+  const worker = projection.workers[0]
+  assert(supervisor && worker)
+  assert.notEqual(supervisor.id, supervisor.runtimeId)
+  assert.notEqual(worker.id, worker.runtimeId)
+
+  const steered = await controller.dispatch({
+    type: 'headless-command',
+    command: 'steer_worker',
+    operationId: 'op-steer-public-worker',
+    params: {
+      supervisorId: supervisor.id,
+      workerId: worker.id,
+      text: 'inspect the failing test',
+    },
+  })
+  assert.equal(steered.kind, 'accepted')
+  assert.deepEqual(writeInput, {
+    rootDir: '/workspace',
+    supervisorId: 'runtime-supervisor-live',
+    worker: 'worker-control',
+    message: 'inspect the failing test',
+  })
+  if (steered.kind === 'accepted') {
+    assert.equal((steered.data as { readonly worker: string }).worker, worker.id)
+  }
+
+  writeInput = undefined
+  const rejected = await controller.dispatch({
+    type: 'headless-command',
+    command: 'steer_worker',
+    operationId: 'op-steer-forged-worker',
+    params: {
+      supervisorId: supervisor.id,
+      workerId: 'worker-not-present',
+      text: 'must not dispatch',
+    },
+  })
+  assert.equal(rejected.kind, 'unavailable')
+  assert.equal(writeInput, undefined)
   await app.close()
 })
 
@@ -164,14 +387,27 @@ test('the terminal opens saved ask and comparison results instead of reducing th
 
   terminal.sendInput('/ask why did this finish')
   terminal.sendInput('\r')
+  await terminal.waitForRender()
+  const sourceScreen = terminal.getViewport().join('\n')
+  assert.match(sourceScreen, /Ask about a run/u)
+  assert.match(sourceScreen, new RegExp(candidateRunId, 'u'))
+  assert.match(sourceScreen, new RegExp(baselineRunId, 'u'))
+  terminal.sendInput('\r')
   await waitUntil(() => app.state().analyses.length === 1)
   await terminal.waitForRender()
   const askScreen = terminal.getViewport().join('\n')
   assert.match(askScreen, /\/ask · frozen question/u)
   assert.match(askScreen, /source:[^\n]+frozen/u)
   assert.match(askScreen, /No findings were returned/u)
+  assert.match(askScreen, /next: ask a narrower question/u)
+  assert.match(askScreen, /^─{100}$/mu)
+  assert.doesNotMatch(askScreen, /AgentProfile Braid starter/u)
 
   terminal.sendInput('\u001b')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /analyses · 1/u)
+  terminal.sendInput('\u001b')
+  await terminal.waitForRender()
   terminal.sendInput(`/compare ${baselineRunId} ${candidateRunId}`)
   terminal.sendInput('\r')
   await waitUntil(() => app.state().analyses.length === 2)
@@ -181,6 +417,190 @@ test('the terminal opens saved ask and comparison results instead of reducing th
   assert.match(comparisonScreen, new RegExp(`baseline run: ${baselineRunId}`, 'u'))
   assert.match(comparisonScreen, new RegExp(`candidate run: ${candidateRunId}`, 'u'))
   assert.match(comparisonScreen, /sample: 1 paired/u)
+
+  terminal.sendInput('\u001b[B')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /\/ask · frozen question/u)
+  terminal.sendInput('\u001b[D')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /analyses · 2/u)
+  terminal.sendInput('\u001b[C')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /\/ask · frozen question/u)
+  terminal.sendInput('\u001b')
+  terminal.sendInput('\u001b')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /AgentProfile Braid starter/u)
+
+  view.stop()
+  await done
+  await app.close()
+})
+
+test('saved analysis results present status-aware next actions', () => {
+  const base = {
+    source: 'sha256:analysis-source',
+    analyst: 'configured analyst',
+    recipe: 'ask',
+    findings: [],
+    citations: [],
+    footer: [],
+  } as const
+
+  const failed = analysisLines({
+    ...base,
+    status: 'failed',
+    error: 'analysis source or analyst execution failed',
+  }).join('\n')
+  assert.match(failed, /next: retry \/ask with a narrower question/u)
+  assert.match(failed, /open \/activity to inspect the failed analyst call/u)
+
+  const running = analysisLines({ ...base, status: 'running' }).join('\n')
+  assert.doesNotMatch(running, /next:/u)
+
+  const completedComparison = analysisLines({
+    ...base,
+    recipe: 'compare',
+    status: 'completed',
+  }).join('\n')
+  assert.match(completedComparison, /next: inspect either frozen run with \/ask <question>/u)
+})
+
+test('activity follows runtime workers while open and stops cleanly when closed', async () => {
+  let raw = supervisionSnapshot([{ id: 'runtime-worker-1', label: 'worker-one' }])
+  let snapshotCalls = 0
+  const watcher = new RuntimeSupervisorWatcher(() => {
+    snapshotCalls += 1
+    return {
+      ...raw,
+      supervisors: raw.supervisors.map((supervisor) => ({
+        ...supervisor,
+        workers: supervisor.workers.map((worker) => ({
+          ...worker,
+          latencyMs: worker.status === 'running' ? snapshotCalls * 25 : worker.latencyMs,
+        })),
+      })),
+    }
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: { supervisorWatcher: watcher },
+  })
+  await createCompletedRun(app, 'runtime root')
+  const controller = createApplicationUiController(app)
+  const eventsBeforeRefresh = app.events().length
+  const concurrentRefresh = await Promise.all([
+    controller.dispatch({ type: 'refresh-supervision' }),
+    controller.dispatch({ type: 'refresh-supervision' }),
+  ])
+  assert.deepEqual(
+    concurrentRefresh.map((result) => result.kind),
+    ['accepted', 'accepted'],
+  )
+  const refreshKinds = app
+    .events()
+    .slice(eventsBeforeRefresh)
+    .map((event) => event.event.kind)
+  assert.deepEqual(refreshKinds, [
+    'supervisor.upserted',
+    'worker.upserted',
+    'graph.node.upserted',
+    'graph.node.upserted',
+    'graph.edge.upserted',
+  ])
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TuiMainScreen(terminal)
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'op-live-workers',
+  })
+  const done = view.start()
+
+  terminal.sendInput('/activity')
+  terminal.sendInput('\r')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /worker-one/u)
+  const unchangedRevision = app.state().revision
+  await new Promise((resolve) => setTimeout(resolve, 650))
+  assert.ok(snapshotCalls >= 3)
+  assert.equal(app.state().revision, unchangedRevision)
+
+  raw = supervisionSnapshot(
+    [
+      { id: 'runtime-worker-1', label: 'worker-one' },
+      { id: 'runtime-worker-2', label: 'worker-two', parent: 'worker-one' },
+    ],
+    Date.parse(NOW) + 1_000,
+  )
+  await waitUntil(() => app.state().workers.length === 2)
+  await terminal.waitForRender()
+  const workerScreen = terminal.getViewport().join('\n')
+  assert.match(workerScreen, /worker-two/u)
+  const parent = app.state().workers.find((worker) => worker.title === 'worker-one')
+  const child = app.state().workers.find((worker) => worker.title === 'worker-two')
+  assert(parent && child)
+  assert.equal(child.parentWorkerId, parent.id)
+  const parentActivity = controller
+    .view()
+    .activity.find((item) => item.id === `worker:${parent.id}`)
+  const childActivity = controller.view().activity.find((item) => item.id === `worker:${child.id}`)
+  assert.equal(childActivity?.parentId, parent.id)
+  assert.equal(childActivity?.depth, (parentActivity?.depth ?? 0) + 1)
+
+  raw = supervisionSnapshot(
+    [
+      { id: 'runtime-worker-1', label: 'worker-one' },
+      { id: 'runtime-worker-2', label: 'worker-two', parent: 'worker-one' },
+      { id: 'runtime-worker-3', label: 'worker-orphan', parent: 'missing-parent' },
+    ],
+    Date.parse(NOW) + 2_000,
+  )
+  await waitUntil(() => app.state().workers.length === 3)
+  const orphan = app.state().workers.find((worker) => worker.title === 'worker-orphan')
+  assert(orphan)
+  assert.equal(orphan.parentRuntimeRef, 'missing-parent')
+  assert.equal(orphan.parentWorkerId, undefined)
+  assert.equal(
+    controller.view().activity.find((item) => item.id === `worker:${orphan.id}`)?.parentId,
+    undefined,
+  )
+  assert.equal(
+    queryGraph(app.state()).edges.some(
+      (edge) => edge.destinationType === 'worker' && edge.destination === orphan.id,
+    ),
+    false,
+  )
+  assert.equal(
+    controller
+      .view()
+      .entityDetails?.find((detail) => detail.entityId === orphan.id)
+      ?.lines.some((line) => line.includes('(unresolved)')),
+    true,
+  )
+
+  terminal.sendInput('\u001b')
+  await terminal.waitForRender()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  const callsAfterClose = snapshotCalls
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  assert.equal(snapshotCalls, callsAfterClose)
+
+  raw = { ...supervisionSnapshot([]), supervisors: [] }
+  terminal.sendInput('/activity')
+  terminal.sendInput('\r')
+  await waitUntil(() => snapshotCalls > callsAfterClose)
+  await waitUntil(() => terminal.getViewport().join('\n').includes('runtime activity unavailable'))
+  assert.match(terminal.getViewport().join('\n'), /showing last saved state/u)
+  assert.equal(app.state().supervisors[0]?.status, 'unknown')
+  assert.equal(
+    app.state().workers.every((worker) => worker.status === 'unknown'),
+    true,
+  )
+  terminal.sendInput('\u001b')
+  await terminal.waitForRender()
 
   view.stop()
   await done

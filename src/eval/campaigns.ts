@@ -125,7 +125,7 @@ export async function runReleaseCampaign(input: {
       `braid-semantic-release-v2-${input.definition.id}`,
       `semantic-release-${input.definition.id}`,
       { braidEvalCase: input.definition.id, phase: 'release' },
-      true,
+      false,
     ),
   )
   return { scenarios, productFailures: failures, campaign, ledger: input.ledger }

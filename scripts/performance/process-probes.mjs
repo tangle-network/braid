@@ -300,6 +300,14 @@ export async function measureFirstVisibleFrame(options) {
   const session = await openPackedTui(options)
   try {
     const firstVisibleFrameMs = await session.waitForInitialFrame()
+    if (options.shutdownReadyFramePredicate !== undefined) {
+      await waitFor(
+        () => options.shutdownReadyFramePredicate(session.snapshot().lines, session.output),
+        'packed TUI interactive frame before shutdown',
+        10_000,
+        options.signal,
+      )
+    }
     const startup =
       options.startupTimingPath === undefined
         ? undefined

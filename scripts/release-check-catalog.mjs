@@ -51,6 +51,29 @@ const LIVE_BRIDGE_RELEASE_COMMAND = Object.freeze({
   category: 'live',
   command: 'pnpm test:live:bridge:release',
 })
+
+function liveBridgeProof(target, operation) {
+  return Object.freeze({ target: Object.freeze(target), operation })
+}
+
+/**
+ * Maps each strict CLI Bridge requirement to its own measured operation and target scope.
+ * The live evidence producer must record a matching proof receipt before the requirement can pass.
+ */
+export const LIVE_BRIDGE_RELEASE_PROOFS = Object.freeze({
+  'LIVE-01': liveBridgeProof({ mode: 'harness', value: 'pi' }, 'cli-bridge.pi.conformance'),
+  'LIVE-02': liveBridgeProof(
+    { mode: 'harness', value: 'codex' },
+    'cli-bridge.codex.cross-runner-handoff',
+  ),
+  'LIVE-03': liveBridgeProof({ mode: 'one-advertised-runner' }, 'cli-bridge.interactive-protocol'),
+  'LIVE-04': liveBridgeProof(
+    { mode: 'one-advertised-runner' },
+    'cli-bridge.restart-reconciliation',
+  ),
+  'LIVE-05': liveBridgeProof({ mode: 'all-advertised-runners' }, 'cli-bridge.runner-conformance'),
+})
+
 const UPSTREAM_COMMAND = Object.freeze({ category: 'contract', command: 'pnpm test:upstream' })
 const PROPERTY_SOAK_COMMAND = Object.freeze({
   category: 'release',

@@ -68,16 +68,11 @@ export class TerminalInputController {
     this.#quitTimer = undefined
   }
 
-  showActivity(): void {
-    this.#activityVisible = true
-    this.#stateChanged()
-  }
-
   handle(data: string): { consume?: boolean } | undefined {
     if (isTextInputSequence(data)) return undefined
     if (matchesKeyAction(data, this.#keymap, 'closeOverlay') && this.#tui.hasOverlay()) {
       if (this.#interactionOpen()) return undefined
-      this.#modals.closeTop()
+      this.#modals.backOrClose()
       return { consume: true }
     }
     if (this.#interactionOpen()) return undefined

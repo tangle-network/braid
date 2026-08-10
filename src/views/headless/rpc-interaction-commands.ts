@@ -1,4 +1,4 @@
-import { InteractionResponseSchema } from '@tangle-network/agent-interface'
+import { parseInteractionResponse } from '../../app/interaction-response.js'
 import { RpcParseError } from './rpc-errors.js'
 
 export type InteractionCommand = 'respond_interaction' | 'cancel_interaction'
@@ -15,10 +15,10 @@ export function validateInteractionParameters(
       `${command}.params.interactionId must be a non-empty string`,
     )
   if (command === 'cancel_interaction') return
-  const response = InteractionResponseSchema.safeParse(params.response)
-  if (!response.success)
+  const response = parseInteractionResponse(params.response)
+  if (response === undefined)
     throw new RpcParseError('INVALID_PARAMS', 'respond_interaction.params.response is invalid')
-  if (response.data.id !== params.interactionId)
+  if (response.id !== params.interactionId)
     throw new RpcParseError(
       'INVALID_PARAMS',
       'respond_interaction.params.response.id must match interactionId',

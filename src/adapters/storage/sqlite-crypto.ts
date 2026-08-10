@@ -1,5 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
-import { isSafeNumericTelemetryField } from '../../domain/bounded-structured.js'
+import {
+  isSafeBooleanTelemetryField,
+  isSafeNumericTelemetryField,
+  isSafeTokenUsageRecord,
+} from '../../domain/bounded-structured.js'
 import { canonicalJson } from '../../domain/canonical.js'
 import type { JsonValue } from '../../ports/storage.js'
 import { isJsonValue } from '../../ports/storage.js'
@@ -177,12 +181,16 @@ export function assertPersistablePayload(value: JsonValue): void {
     for (const [key, child] of Object.entries(node)) {
       const isSecretMarker =
         key === 'containsSecret' || key === 'secretDesignated' || key === 'isSecret'
-      const isNumericTelemetry = !containsSecret && isSafeNumericTelemetryField(key, child)
+      const isSafeTelemetry =
+        !containsSecret &&
+        (isSafeNumericTelemetryField(key, child) ||
+          isSafeBooleanTelemetryField(key, child) ||
+          isSafeTokenUsageRecord(key, child))
       if (
         SECRET_KEY.test(key) &&
         !SAFE_REFERENCE_SUFFIX.test(key) &&
         !isSecretMarker &&
-        !isNumericTelemetry
+        !isSafeTelemetry
       ) {
         throw new StorageError(
           'SECRET_PAYLOAD_REJECTED',
