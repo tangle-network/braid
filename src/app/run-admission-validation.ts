@@ -1,8 +1,10 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
+import {
+  canonicalAgentProfileDigestHex,
+  snapshotAgentProfile,
+} from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { RunAdmissionReceipt, RunCapabilities } from '../domain/receipts.js'
-import { redactProfile } from '../domain/redaction.js'
 import type {
   ExecuteTurnInput,
   ExecutionAdmission,
@@ -110,7 +112,7 @@ export function validateProfile(profile: Readonly<AgentProfile>): void {
 }
 
 export function admissionProfileDigest(profile: Readonly<AgentProfile>): string {
-  return canonicalDigest(redactProfile(snapshotAgentProfile(profile)))
+  return canonicalAgentProfileDigestHex(profile)
 }
 
 export function validateAdmissionDigests(

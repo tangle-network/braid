@@ -31,6 +31,7 @@ import { baseCalibration, basePilot, packageProvenance } from '../src/eval/recor
 import {
   cellCostEvidence,
   cellEvidence,
+  redactEvalArtifactValue,
   redactEvalValue,
   type SemanticEvalRecord,
 } from '../src/eval/records.js'
@@ -775,6 +776,10 @@ test('evaluation redaction preserves numeric usage but masks token-shaped string
     prompt_tokens: 90,
     cachedPromptTokens: 40,
     tokenUsage: { input: 100, output: 25 },
+    input_tokens: -1,
+    output_tokens: Number.NaN,
+    total_tokens: Number.POSITIVE_INFINITY,
+    tokens: { input: -1, output: 25 },
     accessToken: 'secret-canary',
     poisoned: { inputTokens: 'secret-canary' },
   }) as Record<string, unknown>
@@ -782,8 +787,93 @@ test('evaluation redaction preserves numeric usage but masks token-shaped string
   assert.equal(redacted.prompt_tokens, 90)
   assert.equal(redacted.cachedPromptTokens, 40)
   assert.deepEqual(redacted.tokenUsage, { input: 100, output: 25 })
+  assert.equal(redacted.input_tokens, '[REDACTED]')
+  assert.equal(redacted.output_tokens, '[REDACTED]')
+  assert.equal(redacted.total_tokens, '[REDACTED]')
+  assert.equal(redacted.tokens, '[REDACTED]')
   assert.equal(redacted.accessToken, '[REDACTED]')
   assert.deepEqual(redacted.poisoned, { inputTokens: '[REDACTED]' })
+})
+
+test('evaluation redaction sanitizes nested response text and bounds hostile values', () => {
+  const credential = 'sk-proj-12345678901234567890' // gitleaks:allow synthetic redaction input
+  const cycle: Record<string, unknown> = { text: `Bearer ${credential}` }
+  cycle.self = cycle
+  const hostileFields = {
+    [credential]: 'credential in key',
+    BRAID_EVAL_SECRET_CANARY: 'canary in key',
+    ['__proto__']: { polluted: true },
+  }
+
+  const deep: Record<string, unknown> = {}
+  let cursor = deep
+  for (let index = 0; index < 20; index += 1) {
+    const next: Record<string, unknown> = {}
+    cursor.next = next
+    cursor = next
+  }
+  cursor.leak = credential
+
+  const redacted = redactEvalValue({
+    result: {
+      text: `Bearer ${credential}`,
+      url: `https://api.example.test/v1?access_token=${credential}`,
+      standalone: credential,
+      canary: 'BRAID_EVAL_SECRET_CANARY',
+    },
+    cycle,
+    deep,
+    hostileFields,
+    huge: 'x'.repeat(200_000),
+    values: Array.from({ length: 400 }, () => 'entry'),
+  }) as Record<string, unknown>
+  const serialized = JSON.stringify(redacted)
+
+  assert.equal(serialized.includes(credential), false)
+  assert.equal(serialized.includes('BRAID_EVAL_SECRET_CANARY'), false)
+  assert.match(serialized, /\[redacted bearer\]/u)
+  assert.match(serialized, /\[redacted link\]/u)
+  assert.match(serialized, /\[redacted credential\]/u)
+  assert.match(serialized, /\[REDACTED_SECRET\]/u)
+  assert.match(serialized, /\[unavailable: cycle\]/u)
+  assert.match(serialized, /\[unavailable: depth limit\]/u)
+  assert.equal(Buffer.byteLength(redacted.huge as string, 'utf8') <= 64 * 1024, true)
+  assert.equal(Object.getPrototypeOf(redacted.hostileFields), Object.prototype)
+  assert.equal(Object.hasOwn(redacted.hostileFields as object, '__proto__'), true)
+
+  const boundedCollection = redactEvalValue({
+    values: Array.from({ length: 400 }, () => 'entry'),
+  })
+  assert.match(JSON.stringify(boundedCollection), /\[unavailable: item limit\]/u)
+})
+
+test('evaluation artifact redaction preserves complete multi-case evidence', () => {
+  const cases = SEMANTIC_EVAL_CASE_IDS.map((id) => ({
+    id,
+    evidence: Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => [
+        `field-${String(index)}`,
+        index === 99 ? 'BRAID_EVAL_SECRET_CANARY' : `value-${String(index)}`,
+      ]),
+    ),
+  }))
+
+  const redacted = redactEvalArtifactValue({ cases }) as {
+    readonly cases: readonly { readonly id: string; readonly evidence: object }[]
+  }
+  const serialized = JSON.stringify(redacted)
+
+  assert.deepEqual(
+    redacted.cases.map(({ id }) => id),
+    SEMANTIC_EVAL_CASE_IDS,
+  )
+  assert.equal(
+    redacted.cases.every(({ evidence }) => Object.keys(evidence).length === 100),
+    true,
+  )
+  assert.equal(serialized.includes('[unavailable: item limit]'), false)
+  assert.equal(serialized.includes('BRAID_EVAL_SECRET_CANARY'), false)
+  assert.match(serialized, /\[REDACTED_SECRET\]/u)
 })
 
 test('package provenance hashes arbitrary tarball bytes without text transcoding', async () => {

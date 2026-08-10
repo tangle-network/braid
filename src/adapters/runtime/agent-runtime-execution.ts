@@ -1,7 +1,6 @@
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
-import { redactProfile } from '../../domain/redaction.js'
 import type { BraidRuntimeEvent } from '../../domain/runtime-events.js'
 import type {
   CancelRunInput,
@@ -17,7 +16,7 @@ import {
   type RunCapabilities,
   UNKNOWN_RUN_CAPABILITIES,
 } from '../../ports/execution.js'
-import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
 import {
   type ExecutionResolution,
   isPreparedExecution,
@@ -84,7 +83,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   }
 
   #prepareAdmission(input: ExecuteTurnInput, execution: ExecutionResolution): ExecutionAdmission {
-    const profileDigest = canonicalDigest(redactProfile(snapshotAgentProfile(input.profile)))
+    const profileDigest = canonicalAgentProfileDigestHex(input.profile)
     const prepared = isPreparedExecution(execution)
     const providerSessionId = prepared ? execution.providerSessionId : undefined
     const capabilities =
@@ -179,7 +178,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
     if (existing === undefined) this.#active.set(input.runId, active)
     try {
       localAbort.signal.throwIfAborted()
-      const profileDigest = canonicalDigest(redactProfile(snapshotAgentProfile(input.profile)))
+      const profileDigest = canonicalAgentProfileDigestHex(input.profile)
       const prepared = this.#prepared.get(input.runId)
       const execution =
         prepared?.key === admissionKey(input, profileDigest)

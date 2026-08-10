@@ -3,7 +3,7 @@
   "kind": "braid-performance-proof",
   "mode": "smoke",
   "status": "passed",
-  "generatedAt": "2026-08-10T12:04:22.828Z",
+  "generatedAt": "2026-08-10T19:07:26.279Z",
   "command": "pnpm run test:performance",
   "thresholds": {
     "PERF-01": {
@@ -73,7 +73,7 @@
   },
   "provenance": {
     "repository": "/home/drew/code/braid-unified-activity-wt",
-    "revision": "078c6131ffd7f060c6d618f20eb8d2070a59240e",
+    "revision": "fa375f9ef14ecead34d287f294465d46f54bc8f4",
     "packages": {
       "braid": "0.1.0",
       "piTui": "0.84.1",
@@ -85,8 +85,8 @@
     "os": "linux 7.0.0-28-generic",
     "node": "v24.13.0",
     "arch": "x64",
-    "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-    "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4",
+    "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+    "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a",
     "packedCandidate": {
       "status": "ready"
     },
@@ -115,12 +115,12 @@
       "name": "PERF-01",
       "unit": "ms",
       "n": 1,
-      "minimum": 137.99090000000433,
-      "median": 137.99090000000433,
-      "p90": 137.99090000000433,
-      "p95": 137.99090000000433,
-      "p99": 137.99090000000433,
-      "maximum": 137.99090000000433,
+      "minimum": 128.22121699999843,
+      "median": 128.22121699999843,
+      "p90": 128.22121699999843,
+      "p95": 128.22121699999843,
+      "p99": 128.22121699999843,
+      "maximum": 128.22121699999843,
       "target": {
         "metric": "process-start-to-first-visible-frame",
         "percentile": "p95",
@@ -139,7 +139,7 @@
       "state": "warm",
       "repetitions": 1,
       "rawSamples": [
-        137.99090000000433
+        128.22121699999843
       ],
       "command": "pnpm run test:performance [PERF-01; smoke]",
       "passed": true,
@@ -165,88 +165,88 @@
         ],
         "startupStages": [
           {
-            "spawnMs": 18.351,
-            "scriptMs": 17.207,
-            "compileCacheMs": 0.024,
-            "applicationImportsMs": 62.146,
-            "previewImportsMs": 40.906,
-            "startupImportsMs": 62.146,
-            "applicationOpenMs": 27.232,
+            "spawnMs": 18.168,
+            "scriptMs": 15.133,
+            "compileCacheMs": 0.015,
+            "applicationImportsMs": 56.456,
+            "previewImportsMs": 36.588,
+            "startupImportsMs": 56.456,
+            "applicationOpenMs": 26.951,
             "applicationStages": [
               {
                 "name": "production-composition",
-                "durationMs": 4.174573999999993
+                "durationMs": 4.4343780000000095
               },
               {
                 "name": "storage.path-validation",
-                "durationMs": 0.9927680000000123
+                "durationMs": 1.5914159999999953
               },
               {
                 "name": "storage.lock-acquire",
-                "durationMs": 0.6813840000000084
+                "durationMs": 0.7996259999999893
               },
               {
                 "name": "storage.recovery-check",
-                "durationMs": 0.19574599999999975
+                "durationMs": 0.2423780000000022
               },
               {
                 "name": "storage.initialization-marker",
-                "durationMs": 0.11663000000000068
+                "durationMs": 0.11408500000000288
               },
               {
                 "name": "storage.path-lock",
-                "durationMs": 2.0099440000000044
+                "durationMs": 2.773715999999993
               },
               {
                 "name": "storage.credential",
-                "durationMs": 3.6121049999999997
+                "durationMs": 3.790790000000001
               },
               {
                 "name": "storage.cipher-open",
-                "durationMs": 4.8942539999999894
+                "durationMs": 4.671616999999998
               },
               {
                 "name": "storage.schema",
-                "durationMs": 0.14403399999999067
+                "durationMs": 0.03271399999999858
               },
               {
                 "name": "storage.content-keys",
-                "durationMs": 0.2063670000000002
+                "durationMs": 0.12290299999999377
               },
               {
                 "name": "storage.snapshot-maintenance",
-                "durationMs": 0.5293239999999884
+                "durationMs": 0.34834699999998975
               },
               {
                 "name": "storage.projection",
-                "durationMs": 1.3987889999999936
+                "durationMs": 1.2222879999999918
               },
               {
                 "name": "storage.configuration",
-                "durationMs": 0.11864399999998909
+                "durationMs": 0.09647999999999968
               },
               {
                 "name": "storage.artifact-permissions",
-                "durationMs": 2.493167999999997
+                "durationMs": 2.1415700000000015
               },
               {
                 "name": "storage-open",
-                "durationMs": 16.214174
+                "durationMs": 15.76612
               },
               {
                 "name": "journal-restore",
-                "durationMs": 4.980304000000004
+                "durationMs": 4.933380999999997
               },
               {
                 "name": "application-create",
-                "durationMs": 1.6297950000000014
+                "durationMs": 1.6147920000000084
               }
             ],
-            "previewRenderMs": 13.031,
-            "terminalImportsMs": 10.054,
-            "terminalMs": 0.04,
-            "initializeMs": 0.239,
-            "interactivePreparationMs": 10.333
+            "previewRenderMs": 11.499,
+            "terminalImportsMs": 10.046,
+            "terminalMs": 0.049,
+            "initializeMs": 0.248,
+            "interactivePreparationMs": 10.343
           }
         ]
       },
@@ -257,8 +257,8 @@
         "readyMarker": "Completed Braid performance conversation (10000 committed events)",
         "frameReadiness": "unique seeded final-content marker plus braid shell and no startup error",
         "compileCache": "primed exact packed startup modules; one shared cache across repeat launches",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -266,12 +266,12 @@
       "name": "PERF-02",
       "unit": "ms",
       "n": 1,
-      "minimum": 160.85240700000577,
-      "median": 160.85240700000577,
-      "p90": 160.85240700000577,
-      "p95": 160.85240700000577,
-      "p99": 160.85240700000577,
-      "maximum": 160.85240700000577,
+      "minimum": 162.42808499999956,
+      "median": 162.42808499999956,
+      "p90": 162.42808499999956,
+      "p95": 162.42808499999956,
+      "p99": 162.42808499999956,
+      "maximum": 162.42808499999956,
       "target": {
         "metric": "process-start-to-first-visible-frame",
         "percentile": "p95",
@@ -290,7 +290,7 @@
       "state": "cold",
       "repetitions": 1,
       "rawSamples": [
-        160.85240700000577
+        162.42808499999956
       ],
       "command": "pnpm run test:performance [PERF-02; smoke]",
       "passed": true,
@@ -316,88 +316,88 @@
         ],
         "startupStages": [
           {
-            "spawnMs": 15.255,
-            "scriptMs": 14.728,
-            "compileCacheMs": 0.011,
-            "applicationImportsMs": 81.445,
-            "previewImportsMs": 59.918,
-            "startupImportsMs": 81.445,
-            "applicationOpenMs": 37.434,
+            "spawnMs": 17.876,
+            "scriptMs": 18.002,
+            "compileCacheMs": 0.025,
+            "applicationImportsMs": 80.07,
+            "previewImportsMs": 58.123,
+            "startupImportsMs": 80.07,
+            "applicationOpenMs": 35.462,
             "applicationStages": [
               {
                 "name": "production-composition",
-                "durationMs": 4.559674999999999
+                "durationMs": 4.047676999999993
               },
               {
                 "name": "storage.path-validation",
-                "durationMs": 0.9513469999999984
+                "durationMs": 1.0723430000000036
               },
               {
                 "name": "storage.lock-acquire",
-                "durationMs": 0.5755549999999943
+                "durationMs": 0.7193079999999981
               },
               {
                 "name": "storage.recovery-check",
-                "durationMs": 0.1784719999999993
+                "durationMs": 0.19650699999999688
               },
               {
                 "name": "storage.initialization-marker",
-                "durationMs": 0.10299399999999537
+                "durationMs": 0.11744099999999946
               },
               {
                 "name": "storage.path-lock",
-                "durationMs": 1.8289880000000096
+                "durationMs": 2.127182000000005
               },
               {
                 "name": "storage.credential",
-                "durationMs": 3.3072540000000004
+                "durationMs": 3.4794669999999996
               },
               {
                 "name": "storage.cipher-open",
-                "durationMs": 4.675663
+                "durationMs": 4.884205000000009
               },
               {
                 "name": "storage.schema",
-                "durationMs": 0.030270000000001573
+                "durationMs": 0.030679999999989604
               },
               {
                 "name": "storage.content-keys",
-                "durationMs": 0.12636000000000536
+                "durationMs": 0.1828000000000003
               },
               {
                 "name": "storage.snapshot-maintenance",
-                "durationMs": 0.41309499999999844
+                "durationMs": 0.32879799999999193
               },
               {
                 "name": "storage.projection",
-                "durationMs": 10.726017999999996
+                "durationMs": 9.082188000000002
               },
               {
                 "name": "storage.configuration",
-                "durationMs": 0.16575699999999927
+                "durationMs": 0.1778200000000112
               },
               {
                 "name": "storage.artifact-permissions",
-                "durationMs": 2.6961880000000065
+                "durationMs": 3.071222000000006
               },
               {
                 "name": "storage-open",
-                "durationMs": 24.467073999999997
+                "durationMs": 23.914146000000002
               },
               {
                 "name": "journal-restore",
-                "durationMs": 6.2742660000000114
+                "durationMs": 5.671656999999996
               },
               {
                 "name": "application-create",
-                "durationMs": 1.9380129999999838
+                "durationMs": 1.627646999999996
               }
             ],
-            "previewRenderMs": 11.979,
-            "terminalImportsMs": 18.658,
-            "terminalMs": 0.045,
-            "initializeMs": 0.256,
-            "interactivePreparationMs": 18.959
+            "previewRenderMs": 10.993,
+            "terminalImportsMs": 16.151,
+            "terminalMs": 0.042,
+            "initializeMs": 0.25,
+            "interactivePreparationMs": 16.443
           }
         ]
       },
@@ -408,8 +408,8 @@
         "readyMarker": "Completed Braid performance conversation (100000 committed events)",
         "frameReadiness": "unique seeded final-content marker plus braid shell and no startup error",
         "compileCache": "fresh empty directory for every launch; no compiled startup modules reused",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -417,12 +417,12 @@
       "name": "PERF-03",
       "unit": "ms",
       "n": 1,
-      "minimum": 6.774091999999655,
-      "median": 6.774091999999655,
-      "p90": 6.774091999999655,
-      "p95": 6.774091999999655,
-      "p99": 6.774091999999655,
-      "maximum": 6.774091999999655,
+      "minimum": 7.092285999999149,
+      "median": 7.092285999999149,
+      "p90": 7.092285999999149,
+      "p95": 7.092285999999149,
+      "p99": 7.092285999999149,
+      "maximum": 7.092285999999149,
       "target": {
         "metric": "idle-key-to-updated-frame",
         "percentile": "p95",
@@ -441,7 +441,7 @@
       "state": "warm",
       "repetitions": 1,
       "rawSamples": [
-        6.774091999999655
+        7.092285999999149
       ],
       "command": "pnpm run test:performance [PERF-03; smoke]",
       "passed": true,
@@ -462,10 +462,10 @@
           {
             "index": 1,
             "token": "perf-key-00001",
-            "keyFrameVersion": 7,
-            "eraseFrameVersion": 8,
+            "keyFrameVersion": 6,
+            "eraseFrameVersion": 7,
             "keyFrame": [
-              "braid  cwd  braid-performance-10000-LVTqoD  ·  session  New conversation",
+              "braid  cwd  braid-performance-10000-0KnuXR  ·  session  New conversation",
               " Performance seed conversation with normalized text events.                     ",
               "                                                                                ",
               " Completed Braid performance conversation (10000 committed events); recent      ",
@@ -491,7 +491,7 @@
               "AgentProfile Braid performance profile · runner pi               Ctrl+P commands"
             ],
             "eraseFrame": [
-              "braid  cwd  braid-performance-10000-LVTqoD  ·  session  New conversation",
+              "braid  cwd  braid-performance-10000-0KnuXR  ·  session  New conversation",
               " Performance seed conversation with normalized text events.                     ",
               "                                                                                ",
               " Completed Braid performance conversation (10000 committed events); recent      ",
@@ -525,8 +525,8 @@
         "seed": "10000-event-encrypted-sqlite-headless-production",
         "inputBinding": "unique perf-key-N text accepted by the real PTY composer",
         "eraseBinding": "Ctrl-U followed by a later frame with no perf-key-N token",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -534,12 +534,12 @@
       "name": "PERF-04",
       "unit": "ms",
       "n": 100,
-      "minimum": 4.368927999996231,
-      "median": 13.261589999994612,
-      "p90": 19.803754999993544,
-      "p95": 20.628290999993624,
-      "p99": 24.742816999998468,
-      "maximum": 29.74001500000304,
+      "minimum": 3.0803200000009383,
+      "median": 11.934157999996387,
+      "p90": 18.613400000002002,
+      "p95": 19.67704600000434,
+      "p99": 20.905907000000298,
+      "maximum": 21.15657099999953,
       "target": {
         "metric": "runtime-event-to-updated-frame",
         "percentile": "p95",
@@ -558,106 +558,106 @@
       "state": "warm",
       "repetitions": 100,
       "rawSamples": [
-        7.451528999998118,
-        15.727413000000524,
-        10.518218000004708,
-        5.672600000005332,
-        16.513224000002083,
-        11.552417999999307,
-        6.887687000002188,
-        17.414370999998937,
-        12.575516000004427,
-        7.688195000002452,
-        20.36493099999643,
-        15.804013999993913,
-        10.166363999996975,
-        18.139540999996825,
-        13.060763000001316,
-        7.813963000000513,
-        20.179315000001225,
-        15.784155000001192,
-        10.138087999999698,
-        5.5312100000010105,
-        16.91291199999978,
-        12.096461000001,
-        6.459131000003254,
-        17.53334499999619,
-        12.382143999995606,
-        7.687894999995478,
-        19.50716900000407,
-        14.125774000000092,
-        8.180346000001009,
-        18.762880999995105,
-        13.818618999997852,
-        8.636626999999862,
-        19.61736699999892,
-        15.129623999993782,
-        9.410281999997096,
-        4.368927999996231,
-        15.976064000002225,
-        11.343555999999808,
-        5.692389000003459,
-        16.793486999995366,
-        11.95681599999807,
-        7.229650999994192,
-        17.074289999996836,
-        11.540634999997565,
-        6.525401999999303,
-        18.667522999996436,
-        13.261589999994612,
-        8.57990499999869,
-        20.37122399999498,
-        14.892957999996725,
-        9.148886999995739,
-        21.378450999996858,
-        15.518060999995214,
-        9.654774999995425,
-        20.43309600000066,
-        15.36798500000441,
-        10.453571000005468,
-        5.375504000003275,
-        24.742816999998468,
-        19.78690099999949,
-        14.112617999999202,
-        29.74001500000304,
-        21.614957999998296,
-        17.203997000004165,
-        7.020960000001651,
-        18.187896999996156,
-        12.635894999999437,
-        7.837309999995341,
-        18.751468999995268,
-        13.237733000001754,
-        8.587971000000834,
-        18.87683599999582,
-        13.397927999998501,
-        8.751241999998456,
-        19.803754999993544,
-        15.232887999998638,
-        9.65474499999982,
-        20.628290999993624,
-        15.752051999996183,
-        10.94948899999872,
-        5.888665999998921,
-        16.32724700000108,
-        10.8712549999982,
-        5.885830999999598,
-        17.062365999998292,
-        12.161528999997245,
-        7.497699999999895,
-        19.216346000001067,
-        14.73613800000021,
-        9.00628599999618,
-        20.741534000000684,
-        14.972885000002861,
-        9.441062999998394,
-        19.428995000002033,
-        14.472408000001451,
-        8.755651999999827,
-        4.493072999997821,
-        15.792191000000457,
-        10.584698999999091,
-        19.550113999997848
+        6.454660000003059,
+        16.549813000005088,
+        11.832728000001225,
+        6.287530000001425,
+        17.19137700000283,
+        12.261462000002211,
+        6.659191999999166,
+        16.772663000003377,
+        10.966470999999729,
+        6.3028400000039255,
+        15.875083999999333,
+        10.125082999998995,
+        5.524816999997711,
+        15.829192999997758,
+        10.960760000001756,
+        5.312809999995807,
+        14.543369999999413,
+        9.800713999997242,
+        3.0804510000016307,
+        16.69696400000248,
+        5.2541740000015125,
+        16.59304799999518,
+        10.781004999997094,
+        6.176330999995116,
+        15.819092999998247,
+        10.003914000000805,
+        5.099849999998696,
+        16.62251600000309,
+        10.881473000001279,
+        5.254765000005136,
+        15.378344999997353,
+        9.710244999994757,
+        19.67704600000434,
+        14.139913999999408,
+        9.448339000002306,
+        4.904033999999228,
+        15.678255999999237,
+        10.02050700000109,
+        5.128415999999561,
+        15.907628000000841,
+        10.177125000001979,
+        5.60923300000286,
+        16.50764099999651,
+        11.815233999994234,
+        6.278302999999141,
+        16.965582999997423,
+        12.13177700000233,
+        6.979343999999401,
+        18.364589000004344,
+        13.234759999999369,
+        7.690124000000651,
+        18.613400000002002,
+        13.381079000006139,
+        8.517145000005257,
+        21.15657099999953,
+        15.730579000002763,
+        10.980647999997018,
+        19.275854999999865,
+        13.94953899999382,
+        8.83517999999458,
+        18.005521999999473,
+        13.319147000001976,
+        8.624595000001136,
+        3.0803200000009383,
+        15.28435900000477,
+        10.3037850000037,
+        5.550478000004659,
+        17.499504999999772,
+        12.561674999997194,
+        7.191371999993862,
+        19.66910999999527,
+        14.947826999996323,
+        9.856283000000985,
+        20.23484499999904,
+        14.942515999995521,
+        9.677429999996093,
+        20.905907000000298,
+        16.102811999997357,
+        11.037119999993593,
+        6.2722499999945285,
+        17.300171999995655,
+        11.555131000000983,
+        7.0652029999982915,
+        17.013928000000305,
+        11.934157999996387,
+        7.01134699999966,
+        18.50094900000113,
+        12.844281999998202,
+        7.960767999997188,
+        18.64710599999671,
+        12.871894999996584,
+        8.15243499999633,
+        19.420530000003055,
+        14.509561999999278,
+        9.828237000001536,
+        20.713067999997293,
+        15.39007799999672,
+        10.315066999995906,
+        20.479667999999947,
+        14.52245799999946
       ],
       "command": "pnpm run test:performance [PERF-04; smoke]",
       "passed": true,
@@ -680,9 +680,9 @@
         },
         "acceptedEvents": 100,
         "frameWrites": 35,
-        "producerElapsedMs": 552.2316070000015,
+        "producerElapsedMs": 539.2695650000023,
         "achievedEventsPerSecond": {
-          "value": 181.08344167993218,
+          "value": 185.4360165866204,
           "reason": "The final event frame completed within the required 100 events/s interval"
         },
         "finalFrameCompleted": {
@@ -692,9 +692,9 @@
         "eventFrameBindings": "Pi TUI doRender completion + xterm flush + each exact visible event marker"
       },
       "details": {
-        "achievedEventsPerSecond": 181.08344167993218,
+        "achievedEventsPerSecond": 185.4360165866204,
         "minimumEventsPerSecond": 100,
-        "elapsedMs": 552.2316070000015,
+        "elapsedMs": 539.2695650000023,
         "finalFrameCompleted": true,
         "accepted": 100,
         "renderedEvents": 100,
@@ -702,69 +702,69 @@
         "stageTimings": {
           "applicationCommitMs": {
             "n": 100,
-            "total": 73.83305899998231,
-            "mean": 0.7383305899998232,
-            "minimum": 0.47027800000068964,
-            "median": 0.6631080000006477,
-            "p90": 1.0783280000032391,
-            "p95": 1.1856990000014775,
-            "p99": 1.415422000005492,
-            "maximum": 1.6606160000010277
+            "total": 73.15521199999057,
+            "mean": 0.7315521199999057,
+            "minimum": 0.40847499999654246,
+            "median": 0.6313340000051539,
+            "p90": 1.2071090000026743,
+            "p95": 1.3283769999979995,
+            "p99": 1.4515099999989616,
+            "maximum": 1.6061859999972512
           },
           "frameQueueMs": {
             "n": 45,
-            "total": 440.5839660000129,
-            "mean": 9.790754800000286,
-            "minimum": 0.0007019999975454994,
-            "median": 12.795820999999705,
-            "p90": 15.439916000002995,
-            "p95": 15.616856000000553,
-            "p99": 15.921175999996194,
-            "maximum": 15.921175999996194
+            "total": 427.40602700002637,
+            "mean": 9.497911711111698,
+            "minimum": 0.0006310000026132911,
+            "median": 12.221364000004542,
+            "p90": 14.952425000003132,
+            "p95": 15.081951000000117,
+            "p99": 15.605131999996956,
+            "maximum": 15.605131999996956
           },
           "viewProjectionMs": {
             "n": 45,
-            "total": 18.372854000008374,
-            "mean": 0.40828564444463056,
-            "minimum": 0.18007500000385335,
-            "median": 0.41889599999558413,
-            "p90": 0.5436320000007981,
-            "p95": 0.5744330000015907,
-            "p99": 0.6787789999943925,
-            "maximum": 0.6787789999943925
+            "total": 16.870583000003535,
+            "mean": 0.374901844444523,
+            "minimum": 0.1546950000047218,
+            "median": 0.3461719999977504,
+            "p90": 0.5355649999983143,
+            "p95": 0.5768570000000182,
+            "p99": 0.759888000000501,
+            "maximum": 0.759888000000501
           },
           "terminalViewApplyMs": {
             "n": 45,
-            "total": 5.5897209999893676,
-            "mean": 0.12421602222198594,
-            "minimum": 0.05094000000099186,
-            "median": 0.12883400000282563,
-            "p90": 0.1620100000000093,
-            "p95": 0.16432399999757763,
-            "p99": 0.29189600000245264,
-            "maximum": 0.29189600000245264
+            "total": 4.973408999991079,
+            "mean": 0.11052019999980177,
+            "minimum": 0.017595000004803296,
+            "median": 0.10347399999591289,
+            "p90": 0.16720899999927497,
+            "p95": 0.175134999997681,
+            "p99": 0.21890200000052573,
+            "maximum": 0.21890200000052573
           },
           "piRenderMs": {
             "n": 35,
-            "total": 24.26177200001257,
-            "mean": 0.6931934857146449,
-            "minimum": 0.49078800000279443,
-            "median": 0.6231900000057067,
-            "p90": 0.9043539999984205,
-            "p95": 1.1064020000048913,
-            "p99": 1.4551809999975376,
-            "maximum": 1.4551809999975376
+            "total": 21.488010000015493,
+            "mean": 0.6139431428575856,
+            "minimum": 0.42848500000400236,
+            "median": 0.5992110000006505,
+            "p90": 0.7961290000021108,
+            "p95": 0.8950239999976475,
+            "p99": 1.018776999997499,
+            "maximum": 1.018776999997499
           },
           "terminalFlushMs": {
             "n": 35,
-            "total": 66.81757699998707,
-            "mean": 1.909073628571059,
-            "minimum": 0.08938599999964936,
-            "median": 1.1919619999971474,
-            "p90": 2.3612779999966733,
-            "p95": 7.817711000003328,
-            "p99": 13.52088100000401,
-            "maximum": 13.52088100000401
+            "total": 50.134050999971805,
+            "mean": 1.4324014571420516,
+            "minimum": 0.6333480000030249,
+            "median": 1.2352539999992587,
+            "p90": 1.7943659999946249,
+            "p95": 2.018607999998494,
+            "p99": 2.507229999995616,
+            "maximum": 2.507229999995616
           },
           "combinedUpdatesPerFrame": {
             "n": 45,
@@ -772,7 +772,7 @@
             "mean": 2.466666666666667,
             "minimum": 1,
             "median": 3,
-            "p90": 4,
+            "p90": 3,
             "p95": 4,
             "p99": 4,
             "maximum": 4
@@ -781,12 +781,12 @@
       },
       "failureReasons": [],
       "provenance": {
-        "packageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
+        "packageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
         "frameBinding": "Pi TUI doRender completion + xterm flush + each exact visible event marker",
         "unrelatedWritesExcluded": true,
         "rateInterval": "producer start through the final event matching Pi frame completion",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -794,12 +794,12 @@
       "name": "PERF-05",
       "unit": "ms",
       "n": 1,
-      "minimum": 848.8354780000009,
-      "median": 848.8354780000009,
-      "p90": 848.8354780000009,
-      "p95": 848.8354780000009,
-      "p99": 848.8354780000009,
-      "maximum": 848.8354780000009,
+      "minimum": 898.5598299999983,
+      "median": 898.5598299999983,
+      "p90": 898.5598299999983,
+      "p95": 898.5598299999983,
+      "p99": 898.5598299999983,
+      "maximum": 898.5598299999983,
       "target": {
         "metric": "replay-reduce-10000-events",
         "percentile": "p95",
@@ -818,7 +818,7 @@
       "state": "warm",
       "repetitions": 1,
       "rawSamples": [
-        848.8354780000009
+        898.5598299999983
       ],
       "command": "pnpm run test:performance [PERF-05; smoke]",
       "passed": true,
@@ -827,64 +827,64 @@
           "value": 10000,
           "reason": "Every committed event was replayed"
         },
-        "projectionChecksum": "944006463cd816b3191e8553311f12698ad4b7e0a7dc2b9519a46b8827090a32"
+        "projectionChecksum": "1a0f209cfc5665cba4bf7a96cf734ae8c871eb3ac1e5708c20931d8d9c56cddb"
       },
       "details": {
         "stageTimings": {
           "storageOpenMs": {
             "n": 1,
-            "total": 4.0071440000028815,
-            "mean": 4.0071440000028815,
-            "minimum": 4.0071440000028815,
-            "median": 4.0071440000028815,
-            "p90": 4.0071440000028815,
-            "p95": 4.0071440000028815,
-            "p99": 4.0071440000028815,
-            "maximum": 4.0071440000028815,
+            "total": 4.877962999998999,
+            "mean": 4.877962999998999,
+            "minimum": 4.877962999998999,
+            "median": 4.877962999998999,
+            "p90": 4.877962999998999,
+            "p95": 4.877962999998999,
+            "p99": 4.877962999998999,
+            "maximum": 4.877962999998999,
             "rawSamples": [
-              4.0071440000028815
+              4.877962999998999
             ]
           },
           "storageReadDecryptMs": {
             "n": 1,
-            "total": 147.0247539999982,
-            "mean": 147.0247539999982,
-            "minimum": 147.0247539999982,
-            "median": 147.0247539999982,
-            "p90": 147.0247539999982,
-            "p95": 147.0247539999982,
-            "p99": 147.0247539999982,
-            "maximum": 147.0247539999982,
+            "total": 155.03340000000026,
+            "mean": 155.03340000000026,
+            "minimum": 155.03340000000026,
+            "median": 155.03340000000026,
+            "p90": 155.03340000000026,
+            "p95": 155.03340000000026,
+            "p99": 155.03340000000026,
+            "maximum": 155.03340000000026,
             "rawSamples": [
-              147.0247539999982
+              155.03340000000026
             ]
           },
           "envelopeDecodeMs": {
             "n": 1,
-            "total": 1.5696260000040638,
-            "mean": 1.5696260000040638,
-            "minimum": 1.5696260000040638,
-            "median": 1.5696260000040638,
-            "p90": 1.5696260000040638,
-            "p95": 1.5696260000040638,
-            "p99": 1.5696260000040638,
-            "maximum": 1.5696260000040638,
+            "total": 2.1512089999960153,
+            "mean": 2.1512089999960153,
+            "minimum": 2.1512089999960153,
+            "median": 2.1512089999960153,
+            "p90": 2.1512089999960153,
+            "p95": 2.1512089999960153,
+            "p99": 2.1512089999960153,
+            "maximum": 2.1512089999960153,
             "rawSamples": [
-              1.5696260000040638
+              2.1512089999960153
             ]
           },
           "reducerMs": {
             "n": 1,
-            "total": 696.2339539999957,
-            "mean": 696.2339539999957,
-            "minimum": 696.2339539999957,
-            "median": 696.2339539999957,
-            "p90": 696.2339539999957,
-            "p95": 696.2339539999957,
-            "p99": 696.2339539999957,
-            "maximum": 696.2339539999957,
+            "total": 736.4972580000031,
+            "mean": 736.4972580000031,
+            "minimum": 736.4972580000031,
+            "median": 736.4972580000031,
+            "p90": 736.4972580000031,
+            "p95": 736.4972580000031,
+            "p99": 736.4972580000031,
+            "maximum": 736.4972580000031,
             "rawSamples": [
-              696.2339539999957
+              736.4972580000031
             ]
           }
         }
@@ -892,8 +892,8 @@
       "failureReasons": [],
       "provenance": {
         "seed": "packed encrypted SQLite production storage; complete receipt-backed run",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -901,12 +901,12 @@
       "name": "PERF-06",
       "unit": "ms",
       "n": 1,
-      "minimum": 20.78613699998823,
-      "median": 20.78613699998823,
-      "p90": 20.78613699998823,
-      "p95": 20.78613699998823,
-      "p99": 20.78613699998823,
-      "maximum": 20.78613699998823,
+      "minimum": 28.890989999999874,
+      "median": 28.890989999999874,
+      "p90": 28.890989999999874,
+      "p95": 28.890989999999874,
+      "p99": 28.890989999999874,
+      "maximum": 28.890989999999874,
       "target": {
         "metric": "open-100000-event-conversation",
         "percentile": "p95",
@@ -925,7 +925,7 @@
       "state": "cold",
       "repetitions": 1,
       "rawSamples": [
-        20.78613699998823
+        28.890989999999874
       ],
       "command": "pnpm run test:performance [PERF-06; smoke]",
       "passed": true,
@@ -946,8 +946,8 @@
       "failureReasons": [],
       "provenance": {
         "seed": "packed encrypted SQLite production storage; recent useful content asserted",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -955,12 +955,12 @@
       "name": "PERF-07",
       "unit": "ms",
       "n": 10,
-      "minimum": 13.068018000005395,
-      "median": 15.593330000003334,
-      "p90": 16.198372999999265,
-      "p95": 18.16238699999667,
-      "p99": 18.16238699999667,
-      "maximum": 18.16238699999667,
+      "minimum": 12.3392359999998,
+      "median": 15.613979000001564,
+      "p90": 16.98489100000006,
+      "p95": 18.307356999997864,
+      "p99": 18.307356999997864,
+      "maximum": 18.307356999997864,
       "target": {
         "metric": "resize-during-stream-frame",
         "percentile": "p95",
@@ -989,10 +989,10 @@
             "columns": 40,
             "rows": 12
           },
-          "elapsedMs": 13.395164000001387,
-          "resizeCallMs": 0.5362779999995837,
+          "elapsedMs": 12.969578000003821,
+          "resizeCallMs": 0.5130110000027344,
           "frameCompletions": 2,
-          "frameCompletedAt": 44973.518146,
+          "frameCompletedAt": 42179.929756,
           "acceptedEvents": 7,
           "active": true,
           "invalidCells": 0
@@ -1007,11 +1007,11 @@
             "columns": 80,
             "rows": 24
           },
-          "elapsedMs": 14.726388999995834,
-          "resizeCallMs": 0.2656539999952656,
+          "elapsedMs": 18.307356999997864,
+          "resizeCallMs": 0.2516459999969811,
           "frameCompletions": 3,
-          "frameCompletedAt": 44986.317204,
-          "acceptedEvents": 11,
+          "frameCompletedAt": 42199.342741,
+          "acceptedEvents": 12,
           "active": true,
           "invalidCells": 0
         },
@@ -1025,11 +1025,11 @@
             "columns": 120,
             "rows": 40
           },
-          "elapsedMs": 14.33938499999931,
-          "resizeCallMs": 0.23724800000491086,
+          "elapsedMs": 16.285311999999976,
+          "resizeCallMs": 0.18229900000005728,
           "frameCompletions": 4,
-          "frameCompletedAt": 45002.164284,
-          "acceptedEvents": 14,
+          "frameCompletedAt": 42215.492757,
+          "acceptedEvents": 16,
           "active": true,
           "invalidCells": 0
         },
@@ -1043,11 +1043,11 @@
             "columns": 200,
             "rows": 60
           },
-          "elapsedMs": 15.611134999999194,
-          "resizeCallMs": 0.2624080000023241,
+          "elapsedMs": 15.401460000000952,
+          "resizeCallMs": 0.22603499999968335,
           "frameCompletions": 5,
-          "frameCompletedAt": 45018.661696,
-          "acceptedEvents": 18,
+          "frameCompletedAt": 42230.178016,
+          "acceptedEvents": 19,
           "active": true,
           "invalidCells": 0
         },
@@ -1061,11 +1061,11 @@
             "columns": 40,
             "rows": 12
           },
-          "elapsedMs": 16.198372999999265,
-          "resizeCallMs": 1.1934739999996964,
+          "elapsedMs": 15.858570999997028,
+          "resizeCallMs": 0.9493809999985388,
           "frameCompletions": 6,
-          "frameCompletedAt": 45034.28789,
-          "acceptedEvents": 22,
+          "frameCompletedAt": 42246.119581,
+          "acceptedEvents": 24,
           "active": true,
           "invalidCells": 0
         },
@@ -1079,11 +1079,11 @@
             "columns": 80,
             "rows": 24
           },
-          "elapsedMs": 16.003278000003775,
-          "resizeCallMs": 0.08677200000238372,
+          "elapsedMs": 14.364588000004005,
+          "resizeCallMs": 0.0730939999994007,
           "frameCompletions": 7,
-          "frameCompletedAt": 45050.266249,
-          "acceptedEvents": 26,
+          "frameCompletedAt": 42260.956399,
+          "acceptedEvents": 27,
           "active": true,
           "invalidCells": 0
         },
@@ -1097,11 +1097,11 @@
             "columns": 120,
             "rows": 40
           },
-          "elapsedMs": 15.935504000000947,
-          "resizeCallMs": 0.16000599999824772,
+          "elapsedMs": 16.981434000001173,
+          "resizeCallMs": 0.09575799999583978,
           "frameCompletions": 8,
-          "frameCompletedAt": 45066.175752,
-          "acceptedEvents": 30,
+          "frameCompletedAt": 42276.841242,
+          "acceptedEvents": 31,
           "active": true,
           "invalidCells": 0
         },
@@ -1115,11 +1115,11 @@
             "columns": 200,
             "rows": 60
           },
-          "elapsedMs": 18.16238699999667,
-          "resizeCallMs": 0.2002749999955995,
+          "elapsedMs": 15.613979000001564,
+          "resizeCallMs": 0.34791600000608014,
           "frameCompletions": 9,
-          "frameCompletedAt": 45081.622372,
-          "acceptedEvents": 34,
+          "frameCompletedAt": 42293.381717,
+          "acceptedEvents": 35,
           "active": true,
           "invalidCells": 0
         },
@@ -1133,11 +1133,11 @@
             "columns": 40,
             "rows": 12
           },
-          "elapsedMs": 13.068018000005395,
-          "resizeCallMs": 0.8382940000010421,
+          "elapsedMs": 16.98489100000006,
+          "resizeCallMs": 0.6030590000009397,
           "frameCompletions": 10,
-          "frameCompletedAt": 45097.469021,
-          "acceptedEvents": 38,
+          "frameCompletedAt": 42309.334594,
+          "acceptedEvents": 39,
           "active": true,
           "invalidCells": 0
         },
@@ -1151,10 +1151,10 @@
             "columns": 80,
             "rows": 24
           },
-          "elapsedMs": 15.593330000003334,
-          "resizeCallMs": 0.1176430000050459,
+          "elapsedMs": 12.3392359999998,
+          "resizeCallMs": 0.19236900000396417,
           "frameCompletions": 11,
-          "frameCompletedAt": 45111.915628,
+          "frameCompletedAt": 42322.905688,
           "acceptedEvents": 42,
           "active": true,
           "invalidCells": 0
@@ -1180,23 +1180,23 @@
           "reason": "Every resize received a completed Pi render"
         },
         "elapsedMs": {
-          "value": 163.61312200000248,
+          "value": 166.2990839999984,
           "reason": "The interval starts at the first generated event and ends after the final resize-bound frame"
         },
         "offeredEventsPerSecond": {
-          "value": 256.7031267822111,
+          "value": 252.55701348301113,
           "reason": "Offered rate uses generated events over the measured stream interval"
         },
         "acceptedEventsPerSecond": {
-          "value": 256.7031267822111,
+          "value": 252.55701348301113,
           "reason": "Accepted rate met the required 100 events/s"
         },
         "observedEventsPerSecond": {
-          "value": 256.7031267822111,
+          "value": 252.55701348301113,
           "reason": "The pass rate is the accepted stream rate through the final resize-bound frame"
         },
         "producerEventsPerSecond": {
-          "value": 255.69945096274304,
+          "value": 256.18339022180874,
           "reason": "Producer cadence uses the first through last generated event timestamps"
         },
         "minimumEventsPerSecond": {
@@ -1250,10 +1250,10 @@
               "columns": 40,
               "rows": 12
             },
-            "elapsedMs": 13.395164000001387,
-            "resizeCallMs": 0.5362779999995837,
+            "elapsedMs": 12.969578000003821,
+            "resizeCallMs": 0.5130110000027344,
             "frameCompletions": 2,
-            "frameCompletedAt": 44973.518146,
+            "frameCompletedAt": 42179.929756,
             "acceptedEvents": 7,
             "active": true,
             "invalidCells": 0
@@ -1268,11 +1268,11 @@
               "columns": 80,
               "rows": 24
             },
-            "elapsedMs": 14.726388999995834,
-            "resizeCallMs": 0.2656539999952656,
+            "elapsedMs": 18.307356999997864,
+            "resizeCallMs": 0.2516459999969811,
             "frameCompletions": 3,
-            "frameCompletedAt": 44986.317204,
-            "acceptedEvents": 11,
+            "frameCompletedAt": 42199.342741,
+            "acceptedEvents": 12,
             "active": true,
             "invalidCells": 0
           },
@@ -1286,11 +1286,11 @@
               "columns": 120,
               "rows": 40
             },
-            "elapsedMs": 14.33938499999931,
-            "resizeCallMs": 0.23724800000491086,
+            "elapsedMs": 16.285311999999976,
+            "resizeCallMs": 0.18229900000005728,
             "frameCompletions": 4,
-            "frameCompletedAt": 45002.164284,
-            "acceptedEvents": 14,
+            "frameCompletedAt": 42215.492757,
+            "acceptedEvents": 16,
             "active": true,
             "invalidCells": 0
           },
@@ -1304,11 +1304,11 @@
               "columns": 200,
               "rows": 60
             },
-            "elapsedMs": 15.611134999999194,
-            "resizeCallMs": 0.2624080000023241,
+            "elapsedMs": 15.401460000000952,
+            "resizeCallMs": 0.22603499999968335,
             "frameCompletions": 5,
-            "frameCompletedAt": 45018.661696,
-            "acceptedEvents": 18,
+            "frameCompletedAt": 42230.178016,
+            "acceptedEvents": 19,
             "active": true,
             "invalidCells": 0
           },
@@ -1322,11 +1322,11 @@
               "columns": 40,
               "rows": 12
             },
-            "elapsedMs": 16.198372999999265,
-            "resizeCallMs": 1.1934739999996964,
+            "elapsedMs": 15.858570999997028,
+            "resizeCallMs": 0.9493809999985388,
             "frameCompletions": 6,
-            "frameCompletedAt": 45034.28789,
-            "acceptedEvents": 22,
+            "frameCompletedAt": 42246.119581,
+            "acceptedEvents": 24,
             "active": true,
             "invalidCells": 0
           },
@@ -1340,11 +1340,11 @@
               "columns": 80,
               "rows": 24
             },
-            "elapsedMs": 16.003278000003775,
-            "resizeCallMs": 0.08677200000238372,
+            "elapsedMs": 14.364588000004005,
+            "resizeCallMs": 0.0730939999994007,
             "frameCompletions": 7,
-            "frameCompletedAt": 45050.266249,
-            "acceptedEvents": 26,
+            "frameCompletedAt": 42260.956399,
+            "acceptedEvents": 27,
             "active": true,
             "invalidCells": 0
           },
@@ -1358,11 +1358,11 @@
               "columns": 120,
               "rows": 40
             },
-            "elapsedMs": 15.935504000000947,
-            "resizeCallMs": 0.16000599999824772,
+            "elapsedMs": 16.981434000001173,
+            "resizeCallMs": 0.09575799999583978,
             "frameCompletions": 8,
-            "frameCompletedAt": 45066.175752,
-            "acceptedEvents": 30,
+            "frameCompletedAt": 42276.841242,
+            "acceptedEvents": 31,
             "active": true,
             "invalidCells": 0
           },
@@ -1376,11 +1376,11 @@
               "columns": 200,
               "rows": 60
             },
-            "elapsedMs": 18.16238699999667,
-            "resizeCallMs": 0.2002749999955995,
+            "elapsedMs": 15.613979000001564,
+            "resizeCallMs": 0.34791600000608014,
             "frameCompletions": 9,
-            "frameCompletedAt": 45081.622372,
-            "acceptedEvents": 34,
+            "frameCompletedAt": 42293.381717,
+            "acceptedEvents": 35,
             "active": true,
             "invalidCells": 0
           },
@@ -1394,11 +1394,11 @@
               "columns": 40,
               "rows": 12
             },
-            "elapsedMs": 13.068018000005395,
-            "resizeCallMs": 0.8382940000010421,
+            "elapsedMs": 16.98489100000006,
+            "resizeCallMs": 0.6030590000009397,
             "frameCompletions": 10,
-            "frameCompletedAt": 45097.469021,
-            "acceptedEvents": 38,
+            "frameCompletedAt": 42309.334594,
+            "acceptedEvents": 39,
             "active": true,
             "invalidCells": 0
           },
@@ -1412,10 +1412,10 @@
               "columns": 80,
               "rows": 24
             },
-            "elapsedMs": 15.593330000003334,
-            "resizeCallMs": 0.1176430000050459,
+            "elapsedMs": 12.3392359999998,
+            "resizeCallMs": 0.19236900000396417,
             "frameCompletions": 11,
-            "frameCompletedAt": 45111.915628,
+            "frameCompletedAt": 42322.905688,
             "acceptedEvents": 42,
             "active": true,
             "invalidCells": 0
@@ -1423,95 +1423,95 @@
         ]
       },
       "details": {
-        "streamElapsedMs": 163.61312200000248,
-        "firstGeneratedAt": 44948.302506,
-        "lastGeneratedAt": 45112.557845,
-        "finalResizeFrameCompletedAt": 45111.915628,
+        "streamElapsedMs": 166.2990839999984,
+        "firstGeneratedAt": 42156.606604,
+        "lastGeneratedAt": 42320.551659,
+        "finalResizeFrameCompletedAt": 42322.905688,
         "intendedEventsPerSecond": 250,
-        "producerEventsPerSecond": 255.69945096274304,
-        "offeredEventsPerSecond": 256.7031267822111,
-        "acceptedEventsPerSecond": 256.7031267822111,
-        "observedEventsPerSecond": 256.7031267822111,
+        "producerEventsPerSecond": 256.18339022180874,
+        "offeredEventsPerSecond": 252.55701348301113,
+        "acceptedEventsPerSecond": 252.55701348301113,
+        "observedEventsPerSecond": 252.55701348301113,
         "minimumEventsPerSecond": 100,
         "minimumExpectedEvents": 17,
         "ratePassed": true,
         "stageTimings": {
           "resizeCallMs": {
             "n": 10,
-            "total": 3.8980520000040997,
-            "mean": 0.38980520000040997,
-            "minimum": 0.08677200000238372,
-            "median": 0.23724800000491086,
-            "p90": 0.8382940000010421,
-            "p95": 1.1934739999996964,
-            "p99": 1.1934739999996964,
-            "maximum": 1.1934739999996964
+            "total": 3.4345680000042194,
+            "mean": 0.34345680000042195,
+            "minimum": 0.0730939999994007,
+            "median": 0.22603499999968335,
+            "p90": 0.6030590000009397,
+            "p95": 0.9493809999985388,
+            "p99": 0.9493809999985388,
+            "maximum": 0.9493809999985388
           },
           "frameQueueMs": {
             "n": 14,
-            "total": 138.49902100000327,
-            "mean": 9.892787214285947,
-            "minimum": 0.0016829999949550256,
-            "median": 12.937198999999964,
-            "p90": 14.938919000000169,
-            "p95": 15.205594999999448,
-            "p99": 15.205594999999448,
-            "maximum": 15.205594999999448
+            "total": 138.4991999999911,
+            "mean": 9.892799999999365,
+            "minimum": 0.001242999998794403,
+            "median": 14.23957099999825,
+            "p90": 14.907837999999174,
+            "p95": 15.14892300000065,
+            "p99": 15.14892300000065,
+            "maximum": 15.14892300000065
           },
           "viewProjectionMs": {
             "n": 14,
-            "total": 9.317398999963189,
-            "mean": 0.6655284999973706,
-            "minimum": 0.398695999996562,
-            "median": 0.5660359999965294,
-            "p90": 0.921236999995017,
-            "p95": 1.6123909999951138,
-            "p99": 1.6123909999951138,
-            "maximum": 1.6123909999951138
+            "total": 8.934876000028453,
+            "mean": 0.638205428573461,
+            "minimum": 0.31203500000265194,
+            "median": 0.49801100000331644,
+            "p90": 1.1277620000037132,
+            "p95": 1.855956999999762,
+            "p99": 1.855956999999762,
+            "maximum": 1.855956999999762
           },
           "terminalViewApplyMs": {
             "n": 14,
-            "total": 2.5063760000339244,
-            "mean": 0.1790268571452803,
-            "minimum": 0.06079000000318047,
-            "median": 0.11819300000206567,
-            "p90": 0.2515369999964605,
-            "p95": 0.6460740000038641,
-            "p99": 0.6460740000038641,
-            "maximum": 0.6460740000038641
+            "total": 2.4669229999781237,
+            "mean": 0.1762087857127231,
+            "minimum": 0.04196199999569217,
+            "median": 0.11891499999910593,
+            "p90": 0.26189599999634083,
+            "p95": 0.8661670000001322,
+            "p99": 0.8661670000001322,
+            "maximum": 0.8661670000001322
           },
           "piRenderMs": {
             "n": 11,
-            "total": 22.336411999996926,
-            "mean": 2.0305829090906298,
-            "minimum": 0.677505999999994,
-            "median": 0.8948049999962677,
-            "p90": 3.650621000000683,
-            "p95": 10.788320999999996,
-            "p99": 10.788320999999996,
-            "maximum": 10.788320999999996
+            "total": 21.360153000016,
+            "mean": 1.9418320909105453,
+            "minimum": 0.48844200000166893,
+            "median": 0.9067960000029416,
+            "p90": 3.4039080000002286,
+            "p95": 10.477738000001409,
+            "p99": 10.477738000001409,
+            "maximum": 10.477738000001409
           },
           "terminalFlushMs": {
             "n": 11,
-            "total": 25.799992000007478,
-            "mean": 2.345453818182498,
-            "minimum": 1.2680210000035004,
-            "median": 2.2505999999993946,
-            "p90": 3.0915580000000773,
-            "p95": 3.710689999999886,
-            "p99": 3.710689999999886,
-            "maximum": 3.710689999999886
+            "total": 20.286355999996886,
+            "mean": 1.8442141818178988,
+            "minimum": 1.0552089999982854,
+            "median": 1.7018039999966277,
+            "p90": 2.3222359999999753,
+            "p95": 3.691705000004731,
+            "p99": 3.691705000004731,
+            "maximum": 3.691705000004731
           },
           "resizeToVisibleMs": {
             "n": 10,
-            "total": 153.0329630000051,
-            "mean": 15.303296300000511,
-            "minimum": 13.068018000005395,
-            "median": 15.593330000003334,
-            "p90": 16.198372999999265,
-            "p95": 18.16238699999667,
-            "p99": 18.16238699999667,
-            "maximum": 18.16238699999667
+            "total": 155.10640600000625,
+            "mean": 15.510640600000624,
+            "minimum": 12.3392359999998,
+            "median": 15.613979000001564,
+            "p90": 16.98489100000006,
+            "p95": 18.307356999997864,
+            "p99": 18.307356999997864,
+            "maximum": 18.307356999997864
           },
           "combinedUpdatesPerFrame": {
             "n": 14,
@@ -1528,7 +1528,7 @@
       },
       "failureReasons": [],
       "provenance": {
-        "packageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
+        "packageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
         "stream": "packed Braid application + packed Pi terminal headless path",
         "eventReceipt": "application committed uniquely marked run.text.delta events",
         "resizeReceipt": "Pi doRender completion followed by xterm flush at each reference size and resize epoch",
@@ -1539,8 +1539,8 @@
           "120x40",
           "200x60"
         ],
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -1578,7 +1578,7 @@
       "passed": true,
       "observations": {
         "durationSeconds": [
-          2.003526508000003
+          2.0026646649999966
         ],
         "cpuSeconds": [
           0
@@ -1592,8 +1592,8 @@
         "measuredSeconds": 2,
         "cpuMeter": "/proc/<pid>/stat",
         "commandPath": "packed deterministic Braid process",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -1601,12 +1601,12 @@
       "name": "PERF-09",
       "unit": "MiB RSS",
       "n": 1,
-      "minimum": 85.1484375,
-      "median": 85.1484375,
-      "p90": 85.1484375,
-      "p95": 85.1484375,
-      "p99": 85.1484375,
-      "maximum": 85.1484375,
+      "minimum": 86.765625,
+      "median": 86.765625,
+      "p90": 86.765625,
+      "p95": 86.765625,
+      "p99": 86.765625,
+      "maximum": 86.765625,
       "target": {
         "metric": "resident-memory-10000-event-conversation",
         "percentile": "p95",
@@ -1625,15 +1625,15 @@
       "state": "warm",
       "repetitions": 1,
       "rawSamples": [
-        85.1484375
+        86.765625
       ],
       "command": "pnpm run test:performance [PERF-09; smoke]",
       "passed": true,
       "observations": {
         "residentMemory": [
           {
-            "baselineRssMiB": 79.51171875,
-            "openedRssMiB": 85.1484375,
+            "baselineRssMiB": 80.546875,
+            "openedRssMiB": 86.765625,
             "loadedTailEventCount": 0,
             "renderedRows": 4
           }
@@ -1647,8 +1647,8 @@
       "failureReasons": [],
       "provenance": {
         "seed": "packed encrypted SQLite production storage; one fresh child per repetition",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     },
     {
@@ -1703,8 +1703,8 @@
       "provenance": {
         "bytes": "database + WAL + shared-memory SQLite artifacts only",
         "providerArtifacts": "reported separately and excluded from samples",
-        "packedPackageRoot": "/tmp/braid-install-FLnJoo/node_modules/@tangle-network/braid",
-        "packedTarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+        "packedPackageRoot": "/tmp/braid-install-VYfGzP/node_modules/@tangle-network/braid",
+        "packedTarballSha256": "644bc390f1ea9ef69429f6ab8a6a583d5798157c7dd4601501ab797d886e151a"
       }
     }
   ],
@@ -1714,12 +1714,12 @@
       "name": "PERF-01",
       "unit": "ms",
       "n": 1,
-      "minimum": 137.99090000000433,
-      "median": 137.99090000000433,
-      "p90": 137.99090000000433,
-      "p95": 137.99090000000433,
-      "p99": 137.99090000000433,
-      "maximum": 137.99090000000433,
+      "minimum": 128.22121699999843,
+      "median": 128.22121699999843,
+      "p90": 128.22121699999843,
+      "p95": 128.22121699999843,
+      "p99": 128.22121699999843,
+      "maximum": 128.22121699999843,
       "target": {
         "metric": "process-start-to-first-visible-frame",
         "percentile": "p95",
@@ -1743,12 +1743,12 @@
       "name": "PERF-02",
       "unit": "ms",
       "n": 1,
-      "minimum": 160.85240700000577,
-      "median": 160.85240700000577,
-      "p90": 160.85240700000577,
-      "p95": 160.85240700000577,
-      "p99": 160.85240700000577,
-      "maximum": 160.85240700000577,
+      "minimum": 162.42808499999956,
+      "median": 162.42808499999956,
+      "p90": 162.42808499999956,
+      "p95": 162.42808499999956,
+      "p99": 162.42808499999956,
+      "maximum": 162.42808499999956,
       "target": {
         "metric": "process-start-to-first-visible-frame",
         "percentile": "p95",
@@ -1772,12 +1772,12 @@
       "name": "PERF-03",
       "unit": "ms",
       "n": 1,
-      "minimum": 6.774091999999655,
-      "median": 6.774091999999655,
-      "p90": 6.774091999999655,
-      "p95": 6.774091999999655,
-      "p99": 6.774091999999655,
-      "maximum": 6.774091999999655,
+      "minimum": 7.092285999999149,
+      "median": 7.092285999999149,
+      "p90": 7.092285999999149,
+      "p95": 7.092285999999149,
+      "p99": 7.092285999999149,
+      "maximum": 7.092285999999149,
       "target": {
         "metric": "idle-key-to-updated-frame",
         "percentile": "p95",
@@ -1801,12 +1801,12 @@
       "name": "PERF-04",
       "unit": "ms",
       "n": 100,
-      "minimum": 4.368927999996231,
-      "median": 13.261589999994612,
-      "p90": 19.803754999993544,
-      "p95": 20.628290999993624,
-      "p99": 24.742816999998468,
-      "maximum": 29.74001500000304,
+      "minimum": 3.0803200000009383,
+      "median": 11.934157999996387,
+      "p90": 18.613400000002002,
+      "p95": 19.67704600000434,
+      "p99": 20.905907000000298,
+      "maximum": 21.15657099999953,
       "target": {
         "metric": "runtime-event-to-updated-frame",
         "percentile": "p95",
@@ -1830,12 +1830,12 @@
       "name": "PERF-05",
       "unit": "ms",
       "n": 1,
-      "minimum": 848.8354780000009,
-      "median": 848.8354780000009,
-      "p90": 848.8354780000009,
-      "p95": 848.8354780000009,
-      "p99": 848.8354780000009,
-      "maximum": 848.8354780000009,
+      "minimum": 898.5598299999983,
+      "median": 898.5598299999983,
+      "p90": 898.5598299999983,
+      "p95": 898.5598299999983,
+      "p99": 898.5598299999983,
+      "maximum": 898.5598299999983,
       "target": {
         "metric": "replay-reduce-10000-events",
         "percentile": "p95",
@@ -1859,12 +1859,12 @@
       "name": "PERF-06",
       "unit": "ms",
       "n": 1,
-      "minimum": 20.78613699998823,
-      "median": 20.78613699998823,
-      "p90": 20.78613699998823,
-      "p95": 20.78613699998823,
-      "p99": 20.78613699998823,
-      "maximum": 20.78613699998823,
+      "minimum": 28.890989999999874,
+      "median": 28.890989999999874,
+      "p90": 28.890989999999874,
+      "p95": 28.890989999999874,
+      "p99": 28.890989999999874,
+      "maximum": 28.890989999999874,
       "target": {
         "metric": "open-100000-event-conversation",
         "percentile": "p95",
@@ -1888,12 +1888,12 @@
       "name": "PERF-07",
       "unit": "ms",
       "n": 10,
-      "minimum": 13.068018000005395,
-      "median": 15.593330000003334,
-      "p90": 16.198372999999265,
-      "p95": 18.16238699999667,
-      "p99": 18.16238699999667,
-      "maximum": 18.16238699999667,
+      "minimum": 12.3392359999998,
+      "median": 15.613979000001564,
+      "p90": 16.98489100000006,
+      "p95": 18.307356999997864,
+      "p99": 18.307356999997864,
+      "maximum": 18.307356999997864,
       "target": {
         "metric": "resize-during-stream-frame",
         "percentile": "p95",
@@ -1946,12 +1946,12 @@
       "name": "PERF-09",
       "unit": "MiB RSS",
       "n": 1,
-      "minimum": 85.1484375,
-      "median": 85.1484375,
-      "p90": 85.1484375,
-      "p95": 85.1484375,
-      "p99": 85.1484375,
-      "maximum": 85.1484375,
+      "minimum": 86.765625,
+      "median": 86.765625,
+      "p90": 86.765625,
+      "p95": 86.765625,
+      "p99": 86.765625,
+      "maximum": 86.765625,
       "target": {
         "metric": "resident-memory-10000-event-conversation",
         "percentile": "p95",

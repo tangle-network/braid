@@ -1,5 +1,8 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
+import {
+  canonicalAgentProfileDigestHex,
+  snapshotAgentProfile,
+} from '../adapters/agent-interface/profile-runtime.js'
 import type { BraidState } from '../domain/state.js'
 
 export class RuntimeSelection {
@@ -30,7 +33,12 @@ export class RuntimeSelection {
   syncFromState(state: BraidState): void {
     if (state.selectedProfileId !== null) {
       const selected = state.profiles.find((candidate) => candidate.id === state.selectedProfileId)
-      if (selected !== undefined) this.setProfile(selected.profile)
+      if (
+        selected !== undefined &&
+        selected.executionDigest !== canonicalAgentProfileDigestHex(this.#profile)
+      ) {
+        this.setProfile(selected.profile)
+      }
     }
     this.#connectionId = state.selectedConnectionId ?? undefined
   }

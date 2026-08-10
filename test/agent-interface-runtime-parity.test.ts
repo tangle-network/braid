@@ -26,6 +26,7 @@ import { agentInterfaceModuleUrl } from '../src/adapters/agent-interface/module-
 import {
   agentProfileSchema,
   canonicalAgentProfileDigest,
+  canonicalAgentProfileDigestHex,
   canonicalCandidateDigest,
   canonicalCandidateJson,
   DEFAULT_CLOUD_AGENT_PROFILE_SECURITY_POLICY,
@@ -83,7 +84,24 @@ test('narrow Agent Interface modules retain exact root-export behavior', async (
   })
   assert.deepEqual(snapshotAgentProfile(profile), root.snapshotAgentProfile(profile))
   assert.equal(canonicalAgentProfileDigest(profile), root.canonicalAgentProfileDigest(profile))
+  assert.equal(
+    canonicalAgentProfileDigestHex(profile),
+    root.canonicalAgentProfileDigest(profile).slice('sha256:'.length),
+  )
   assert.equal(harnessSupportsModel('pi', 'openai-codex/gpt-5.6-luna'), true)
+})
+
+test('Braid profile identity includes runtime-affecting metadata without storing it', () => {
+  const primary = defineAgentProfile({
+    name: 'metadata identity',
+    model: { default: 'openai/gpt-5.6-luna', metadata: { route: 'primary' } },
+  })
+  const fallback = defineAgentProfile({
+    name: 'metadata identity',
+    model: { default: 'openai/gpt-5.6-luna', metadata: { route: 'fallback' } },
+  })
+
+  assert.notEqual(canonicalAgentProfileDigestHex(primary), canonicalAgentProfileDigestHex(fallback))
 })
 
 test('internal module URL adapter rejects path escape', () => {

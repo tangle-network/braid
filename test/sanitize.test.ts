@@ -3,6 +3,7 @@ import test from 'node:test'
 import { getCapabilities, setCapabilities } from '@earendil-works/pi-tui'
 import {
   redactBraidEvent,
+  redactStructuredValue,
   redactStructuredValueWithNumericTelemetry,
 } from '../src/domain/redaction.js'
 import {
@@ -73,6 +74,74 @@ test('numeric token telemetry survives redaction while string tokens never do', 
   assert.equal(redacted.accessToken, '[redacted]')
   assert.deepEqual(redacted.poisoned, { inputTokens: '[redacted]' })
   assert.equal(redacted.credentialConfigured, true)
+})
+
+test('plain structured redaction preserves only the exact aggregate token counter', () => {
+  assert.deepEqual(redactStructuredValue({ spend: { tokens: { input: 12, output: 7 } } }), {
+    spend: { tokens: { input: 12, output: 7 } },
+  })
+  assert.deepEqual(
+    redactStructuredValue({
+      spend: { tokens: { input: 12, output: 7, tokensKnown: false } },
+    }),
+    { spend: { tokens: { input: 12, output: 7, tokensKnown: false } } },
+  )
+  assert.deepEqual(redactStructuredValue({ tokens: { input: -1, output: 7 } }), {
+    tokens: '[redacted]',
+  })
+  assert.deepEqual(redactStructuredValue({ tokens: { input: 12, output: 7, tokensKnown: true } }), {
+    tokens: '[redacted]',
+  })
+  assert.deepEqual(
+    redactStructuredValue({ tokens: { input: 12, output: 7, credential: 'canary' } }),
+    { tokens: '[redacted]' },
+  )
+})
+
+test('structured redaction bounds nested secrets, cycles, depth, and size', () => {
+  const credential = 'sk-proj-12345678901234567890' // gitleaks:allow synthetic redaction input
+  const cycle: Record<string, unknown> = { response: `Bearer ${credential}` }
+  cycle.self = cycle
+
+  const deep: Record<string, unknown> = {}
+  let cursor = deep
+  for (let index = 0; index < 20; index += 1) {
+    const next: Record<string, unknown> = {}
+    cursor.next = next
+    cursor = next
+  }
+  cursor.secretText = credential
+
+  const redacted = redactStructuredValueWithNumericTelemetry(
+    {
+      payload: {
+        response: `Bearer ${credential}`,
+        url: `https://api.example.test/v1?access_token=${credential}`,
+        message: credential,
+      },
+      cycle,
+      deep,
+      huge: 'x'.repeat(100_000),
+    },
+    undefined,
+    { maxDepth: 6, maxItems: 128, maxBytes: 512 },
+  ) as Record<string, unknown>
+  const serialized = JSON.stringify(redacted)
+
+  assert.equal(serialized.includes(credential), false)
+  assert.match(serialized, /\[redacted bearer\]/u)
+  assert.match(serialized, /\[redacted link\]/u)
+  assert.match(serialized, /\[redacted credential\]/u)
+  assert.match(serialized, /\[unavailable: cycle\]/u)
+  assert.match(serialized, /\[unavailable: depth limit\]/u)
+  assert.equal(Buffer.byteLength(redacted.huge as string, 'utf8') <= 512, true)
+
+  const boundedCollection = redactStructuredValueWithNumericTelemetry(
+    { many: Array.from({ length: 400 }, (_, index) => index) },
+    undefined,
+    { maxItems: 4 },
+  )
+  assert.match(JSON.stringify(boundedCollection), /\[unavailable: item limit\]/u)
 })
 
 test('durable credential reference identifiers survive redaction without admitting values', () => {

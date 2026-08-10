@@ -323,6 +323,10 @@ The judge must reject the trivial baseline on every category before its release 
 
 The complete rubric, examples, model, effort, prompt, package version, raw outputs, scores, costs, and disagreements enter the evidence artifact.
 
+Individual untrusted request and response values use the small structured-redaction limits.
+
+Complete evaluation artifacts use separate 4 MiB value and 100,000-item limits, so all six cases remain present and hash-sensitive.
+
 The judge executes through Runtime with one exact `AgentProfile` and a direct Tangle Router connection.
 
 `BRAID_EVAL_API_KEY` supplies the protected credential.

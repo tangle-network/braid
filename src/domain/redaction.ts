@@ -51,7 +51,7 @@ export function redactBraidEvent<T>(event: T): T {
     event,
     undefined,
     importEvent
-      ? { maxDepth: 32, maxItems: 20_000, maxBytes: MAX_CONVERSATION_IMPORT_EVENT_BYTES }
-      : {},
+      ? { maxDepth: 32, maxItems: 500_000, maxBytes: MAX_CONVERSATION_IMPORT_EVENT_BYTES }
+      : { maxItems: 20_000 },
   ) as T
 }

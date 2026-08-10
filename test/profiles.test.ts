@@ -4,20 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
-  canonicalCandidateJson,
-  canonicalAgentProfileDigest,
-  defineAgentProfilePublicConfig,
-  defineAgentProfileSecretRef,
   type AgentProfile,
   type AgentProfileCapabilities,
+  canonicalAgentProfileDigest,
+  canonicalCandidateJson,
+  defineAgentProfilePublicConfig,
+  defineAgentProfileSecretRef,
 } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import {
   AGENT_INTERFACE_PACKAGE_VERSION,
-  ProfileCatalog,
-  ProfileDraft,
-  ProfilePersistenceError,
-  ProfileValidationError,
   createProfileRecord,
   createProfileSnapshot,
   discoverProfiles,
@@ -26,6 +22,10 @@ import {
   exportProfileJson,
   importProfileJson,
   importProfileSource,
+  ProfileCatalog,
+  ProfileDraft,
+  ProfilePersistenceError,
+  ProfileValidationError,
   readProfileFile,
   resolveEffectiveProfile,
   resolveProfileSource,
@@ -450,9 +450,20 @@ test('profile snapshots are immutable, redacted, and carry provider-safe receipt
   assert.equal(Object.isFrozen(receipt), true)
   assert.equal(Object.isFrozen(receipt.effectiveProfile), true)
   assert.equal(receipt.effectiveProfile.confidential?.attestationNonce, '[redacted challenge]')
+  assert.deepEqual(receipt.effectiveProfile.metadata, { redacted: '[redacted]' })
+  assert.deepEqual(receipt.effectiveProfile.model?.metadata, { redacted: '[redacted]' })
+  assert.deepEqual(receipt.effectiveProfile.mcp?.local?.metadata, { redacted: '[redacted]' })
+  assert.deepEqual(receipt.effectiveProfile.subagents?.tester?.metadata, {
+    redacted: '[redacted]',
+  })
+  assert.deepEqual(receipt.effectiveProfile.modes?.fast?.metadata, { redacted: '[redacted]' })
   assert.deepEqual(receipt.validation.acceptedProviderWarningCodes, ['model-snapped'])
   assert.equal(JSON.stringify(receipt).includes('do-not-persist'), false)
   assert.equal(
+    receipt.effectiveProfileDigest,
+    canonicalAgentProfileDigest(effective.effectiveProfile),
+  )
+  assert.notEqual(
     receipt.effectiveProfileDigest,
     canonicalAgentProfileDigest(receipt.effectiveProfile),
   )
@@ -482,6 +493,9 @@ test('profile files save atomically, verify bytes, reject races and symlinks, an
     assert.throws(() => importProfileJson(exportText), ProfilePersistenceError)
     const acknowledged = importProfileJson(exportText, { allowRedacted: true })
     assert.equal(acknowledged.digest, exported.document.profileDigest)
+    assert.deepEqual(acknowledged.profile.metadata, { redacted: '[redacted]' })
+    assert.deepEqual(acknowledged.profile.model?.metadata, { redacted: '[redacted]' })
+    assert.deepEqual(acknowledged.profile.mcp?.local?.metadata, { redacted: '[redacted]' })
     assert.throws(
       () => exportProfileFile(exportPath, fullProfile),
       (error: unknown) =>

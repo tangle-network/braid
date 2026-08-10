@@ -69,6 +69,8 @@ export interface ProfileRecord {
   readonly source: ProfileSource
   readonly profile: Readonly<AgentProfile>
   readonly digest: Digest
+  /** Canonical identity before metadata is removed from the durable profile. */
+  readonly executionDigest?: Digest
   readonly validation: ProfileValidation
   readonly createdAt: IsoDateTime
   readonly updatedAt: IsoDateTime

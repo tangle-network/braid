@@ -157,10 +157,12 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
       await sleep(75)
     }
     input('\u0003')
-    await waitFor(() => normalized(screen).includes('ctrl+c again to quit'), `${name} safe exit`)
+    await sleep(75)
     input('\u0003')
     const event = await waitForExit('normally')
     if (event.exitCode !== 0) throw new Error(`${name} exited ${event.exitCode}`)
+    if (!output.toLowerCase().includes('ctrl+c again to quit'))
+      throw new Error(`${name} did not render the safe exit prompt`)
   }
   const closeWithSignal = async () => {
     if (exited) return

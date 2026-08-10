@@ -8,6 +8,7 @@ import { isCanonicalIsoDateTime } from '../domain/text.js'
 import {
   type ConversationExportDocument,
   MAX_CONVERSATION_DOCUMENT_BYTES,
+  MAX_CONVERSATION_DOCUMENT_ITEMS,
 } from './conversation-exports.js'
 import { AppError } from './errors.js'
 
@@ -15,7 +16,6 @@ const MAX_IMPORT_DEPTH = 24
 // The 2 MiB byte limit remains the primary memory bound. A long, valid run history
 // contains many small nested receipt and event fields, so its aggregate node count
 // is intentionally higher than any single collection limit used during redaction.
-const MAX_IMPORT_ITEMS = 100_000
 const DOCUMENT_KEYS = new Set([
   'schemaVersion',
   'format',
@@ -84,7 +84,7 @@ export function prepareConversationImport(
   try {
     redacted = redactStructuredValueWithNumericTelemetry(document.content, undefined, {
       maxDepth: MAX_IMPORT_DEPTH,
-      maxItems: MAX_IMPORT_ITEMS,
+      maxItems: MAX_CONVERSATION_DOCUMENT_ITEMS,
       maxBytes: MAX_CONVERSATION_DOCUMENT_BYTES,
     })
   } catch {
@@ -188,7 +188,7 @@ function assertBoundedImport(root: unknown): void {
       ? current.value.map((value, index) => [String(index), value] as const)
       : Object.entries(current.value)
     items += entries.length
-    if (items > MAX_IMPORT_ITEMS) {
+    if (items > MAX_CONVERSATION_DOCUMENT_ITEMS) {
       throw new AppError('IMPORT_TOO_COMPLEX', 'Conversation import contains too many items')
     }
     for (const [key, child] of entries) {

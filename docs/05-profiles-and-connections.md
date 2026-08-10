@@ -180,6 +180,8 @@ Export redacts credential values, secret environment values, confidential challe
 
 Export includes a machine-readable profile digest and schema package version.
 
+Run admission hashes the exact validated profile but persists only its redacted snapshot and digest.
+
 ## Connection model
 
 A connection is a Braid record containing non-secret metadata and an opaque credential reference.

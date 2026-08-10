@@ -71,6 +71,9 @@ export function toDomainProfile(
   now: string,
   previous?: DomainProfileRecord,
 ): DomainProfileRecord {
+  const executionDigest = canonicalAgentProfileDigest(record.profile).slice(
+    'sha256:'.length,
+  ) as Digest
   const profile = redactProfile(record.profile)
   const digest = canonicalAgentProfileDigest(profile).slice('sha256:'.length) as Digest
   const sourceKind = toDomainSourceKind(record.source.kind)
@@ -83,6 +86,7 @@ export function toDomainProfile(
     },
     profile,
     digest,
+    executionDigest,
     validation: { ok: true, issues: [] },
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,

@@ -149,10 +149,12 @@ function analysisCostUsage(
   const modelCallCost = modelCallCostUsage(modelCalls)
   if (usage.usdKnown === false) {
     const observedCostUsd = maxOptional([authoritativeCost.costUsd, modelCallCost.costUsd])
+    const estimatedCostUsd = authoritativeCost.estimatedCostUsd
     return {
       ...(observedCostUsd === undefined ? {} : { costUsd: observedCostUsd }),
-      status: observedCostUsd === undefined ? 'unknown' : 'observed-floor',
-      hasKnownCost: observedCostUsd !== undefined,
+      ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+      status: costStatus(usage.usdKnown, observedCostUsd, estimatedCostUsd),
+      hasKnownCost: observedCostUsd !== undefined || estimatedCostUsd !== undefined,
     }
   }
   if (modelCalls !== undefined && modelCallCost.hasKnownCost) return modelCallCost

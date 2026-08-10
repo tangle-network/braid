@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { type AgentProfile, defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createUiSubscriberDelivery } from '../src/adapters/tui/ui-subscriber-delivery.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
@@ -11,7 +12,6 @@ import { MemoryJournal } from '../src/app/journal.js'
 import { createProfileRecord } from '../src/app/profiles.js'
 import { runEffectRequest } from '../src/app/run-admission.js'
 import { buildAppView } from '../src/app/view-model.js'
-import { canonicalDigest } from '../src/domain/canonical.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId } from '../src/domain/ids.js'
@@ -199,8 +199,8 @@ test('admission snapshots profile and connection before a blocked dispatch', asy
   assert.equal(dispatches[0]?.input.connectionId, first.admission.requested.connectionId)
   assert.deepEqual(dispatches[1]?.input.profile, second.admission.requested.profile)
   assert.equal(dispatches[1]?.input.connectionId, second.admission.requested.connectionId)
-  assert.equal(first.admission.profileDigest, canonicalDigest(first.admission.requested.profile))
-  assert.equal(second.admission.profileDigest, canonicalDigest(second.admission.requested.profile))
+  assert.equal(first.admission.profileDigest, canonicalAgentProfileDigestHex(profileA))
+  assert.equal(second.admission.profileDigest, canonicalAgentProfileDigestHex(profileB))
 
   for (const receipt of [first, second]) {
     const requested = app
@@ -300,6 +300,139 @@ test('post-startup profile and connection selection reaches the next real resolv
   assert.deepEqual(resolved[0]?.profile, profileB)
   assert.equal(resolved[0]?.connectionId, connectionB.id)
   assert.match(app.state().messages.at(-1)?.text ?? '', /resolver selection/u)
+})
+
+test('restart keeps exact loaded metadata for the matching durable profile', async () => {
+  const exactProfile = defineAgentProfile({
+    name: 'restart metadata profile',
+    harness: 'pi',
+    model: {
+      default: 'openai/gpt-5.6-luna',
+      metadata: { route: 'private-runtime-choice' },
+    },
+  })
+  const source = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'restart:metadata',
+      label: 'restart metadata profile',
+      writable: false,
+      trusted: true,
+    },
+    exactProfile,
+  )
+  const journal = new MemoryJournal(new FixedClock())
+  const ids = new SequenceIds()
+  const executionProfiles: Readonly<AgentProfile>[] = []
+  const execution: ExecutionPort = {
+    async *streamTurn(input) {
+      executionProfiles.push(input.profile)
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'restart profile test completed',
+        text: 'done',
+        task: { id: 'restart-profile', intent: 'restart profile identity' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+  }
+  const first = new BraidApplication({
+    profile: exactProfile,
+    execution,
+    clock: new FixedClock(),
+    ids,
+    journal,
+    effectStorage: journal,
+  })
+  first.initialize('/workspace')
+  const controller = createApplicationUiController(first, {}, undefined, { profiles: [source] })
+  await controller.dispatch({
+    type: 'headless-command',
+    command: 'select_profile',
+    operationId: 'op-select-restart-metadata',
+    params: { ref: source.id },
+  })
+  assert.equal(JSON.stringify(first.state()).includes('private-runtime-choice'), false)
+  const durableProfileSelection = JSON.stringify(journal.all())
+  assert.equal(durableProfileSelection.includes('private-runtime-choice'), false)
+  assert.equal(durableProfileSelection.includes(canonicalAgentProfileDigestHex(exactProfile)), true)
+
+  const restarted = new BraidApplication({
+    profile: exactProfile,
+    execution,
+    clock: new FixedClock(),
+    ids,
+    journal,
+    effectStorage: journal,
+  })
+  await restarted.send({ operationId: 'op-after-profile-restart', text: 'continue' }).completion
+
+  assert.deepEqual(executionProfiles[0]?.model?.metadata, {
+    route: 'private-runtime-choice',
+  })
+
+  const mismatchedProfile = defineAgentProfile({
+    name: exactProfile.name,
+    harness: exactProfile.harness,
+    model: {
+      default: exactProfile.model?.default ?? 'openai/gpt-5.6-luna',
+      metadata: { route: 'different-private-runtime-choice' },
+    },
+  })
+  const mismatchedRestart = new BraidApplication({
+    profile: mismatchedProfile,
+    execution,
+    clock: new FixedClock(),
+    ids,
+    journal,
+    effectStorage: journal,
+  })
+  await mismatchedRestart.send({
+    operationId: 'op-after-mismatched-profile-restart',
+    text: 'continue safely',
+  }).completion
+
+  assert.equal(
+    JSON.stringify(executionProfiles[1]).includes('different-private-runtime-choice'),
+    false,
+  )
+  assert.deepEqual(executionProfiles[1]?.model?.metadata, { redacted: '[redacted]' })
+  assert.equal(
+    mismatchedRestart.state().profiles[0]?.executionDigest,
+    canonicalAgentProfileDigestHex(exactProfile),
+  )
+
+  const legacyState = {
+    ...first.state(),
+    profiles: first
+      .state()
+      .profiles.map(({ executionDigest: _executionDigest, ...profile }) =>
+        structuredClone(profile),
+      ),
+  }
+  const legacyBacking = new MemoryJournal(new FixedClock())
+  const legacyJournal = {
+    initialState: () => structuredClone(legacyState),
+    all: () => legacyBacking.all(),
+    envelope: (...args: Parameters<MemoryJournal['envelope']>) => legacyBacking.envelope(...args),
+    append: (...args: Parameters<MemoryJournal['append']>) => legacyBacking.append(...args),
+  }
+  const legacyRestart = new BraidApplication({
+    profile: exactProfile,
+    execution,
+    clock: new FixedClock(),
+    ids,
+    journal: legacyJournal,
+    effectStorage: legacyBacking,
+  })
+  await legacyRestart.send({
+    operationId: 'op-after-legacy-profile-snapshot',
+    text: 'continue from legacy snapshot safely',
+  }).completion
+
+  assert.equal(JSON.stringify(executionProfiles[2]).includes('private-runtime-choice'), false)
+  assert.deepEqual(executionProfiles[2]?.model?.metadata, { redacted: '[redacted]' })
 })
 
 test('an identical operation is replayed and conflicting input is rejected', async () => {

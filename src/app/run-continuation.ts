@@ -1,7 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
-import { canonicalDigest } from '../domain/canonical.js'
-import { redactProfile } from '../domain/redaction.js'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import type { BraidState } from '../domain/state.js'
 
 /**
@@ -48,7 +46,7 @@ export function continuationSessionFor(input: {
     previous.connectionId ?? previous.receipt.requested.connectionId ?? undefined
   if (previousConnection !== input.connectionId) return undefined
 
-  const currentProfileDigest = canonicalDigest(redactProfile(snapshotAgentProfile(input.profile)))
+  const currentProfileDigest = canonicalAgentProfileDigestHex(input.profile)
   if (previous.receipt.profileDigest !== currentProfileDigest) return undefined
   return previous.providerSessionId
 }

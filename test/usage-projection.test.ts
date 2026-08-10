@@ -157,6 +157,71 @@ test('complete analysis usage remains authoritative over conflicting model calls
   assert.equal(usage.costStatus, 'reported')
 })
 
+test('partial analysis cost preserves the observed floor and separate estimate', () => {
+  const usage = sessionUsageFor(
+    stateFor({
+      analyses: [
+        analysisFor({
+          usage: {
+            input: 5,
+            output: 6,
+            costUsd: 0.12,
+            usdKnown: false,
+            estimatedCostUsd: 0.15,
+          },
+        }),
+      ],
+    }),
+  ).analyses
+
+  assert.equal(usage.costUsd, 0.12)
+  assert.equal(usage.estimatedCostUsd, 0.15)
+  assert.equal(usage.costStatus, 'observed-floor')
+  assert.notEqual(usage.costStatus, 'reported')
+})
+
+test('fully known analysis cost remains reported alongside its estimate', () => {
+  const usage = sessionUsageFor(
+    stateFor({
+      analyses: [
+        analysisFor({
+          usage: {
+            input: 5,
+            output: 6,
+            costUsd: 0.12,
+            estimatedCostUsd: 0.15,
+          },
+        }),
+      ],
+    }),
+  ).analyses
+
+  assert.equal(usage.costUsd, 0.12)
+  assert.equal(usage.estimatedCostUsd, 0.15)
+  assert.equal(usage.costStatus, 'reported')
+})
+
+test('estimate-only analysis cost remains estimated when reported cost is unknown', () => {
+  const usage = sessionUsageFor(
+    stateFor({
+      analyses: [
+        analysisFor({
+          usage: {
+            input: 5,
+            output: 6,
+            usdKnown: false,
+            estimatedCostUsd: 0.15,
+          },
+        }),
+      ],
+    }),
+  ).analyses
+
+  assert.equal(usage.costUsd, undefined)
+  assert.equal(usage.estimatedCostUsd, 0.15)
+  assert.equal(usage.costStatus, 'estimated')
+})
+
 test('incomplete usage and complete calls merge lower bounds without upgrading completeness', () => {
   const usage = sessionUsageFor(
     stateFor({

@@ -126,6 +126,16 @@ Braid creates Runtime's Bridge, Router, or sandbox executor only after durable r
 
 Runtime validates the exact profile, materialization evidence, execution binding, usage, and terminal result.
 
+The durable receipt stores a redacted profile snapshot and the canonical digest of the exact private profile.
+
+A metadata-only profile change invalidates admission reuse and provider-session continuation.
+
+After restart, Braid keeps the reloaded exact profile only when its exact digest matches durable selection state.
+
+Braid preserves Runtime's aggregate `{ input, output, tokensKnown?: false }` token record.
+
+Braid rejects all other fields under token-bearing record names.
+
 Runtime `0.131.5` currently buffers executor output until the executor settles.
 
 Braid therefore receives terminal text, tool calls, usage, and result evidence but cannot render provider text deltas live through this path.
@@ -342,6 +352,8 @@ Braid preserves each Runtime `llm_call` and the terminal cumulative usage.
 It records input, output, reasoning, prompt-cache values, reported cost, estimated cost, model, model-call count, and model-call latency when present.
 
 Each token and cost total retains complete, observed-minimum, estimated, or unknown status.
+
+An incomplete cost record keeps its observed minimum and its separate estimate when both exist.
 
 Conversation usage has three independent groups: direct turns, trace analyses, and explicitly bound Runtime worker trees.
 

@@ -10,13 +10,16 @@ import type {
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
-import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { safePublicIdentifier } from '../../domain/provider-values.js'
-import { redactProfile, redactProviderError } from '../../domain/redaction.js'
+import { redactProviderError } from '../../domain/redaction.js'
+import {
+  canonicalAgentProfileDigestHex,
+  snapshotAgentProfile,
+} from '../agent-interface/profile-runtime.js'
 import { AGENT_RUNTIME_VERSION } from '../runtime/agent-runtime-version.js'
 
 const MAX_RETAINED_EXECUTIONS = 256
@@ -494,9 +497,7 @@ export function createRuntimeTraceModelOwner(
   // Analyst calls settle one receipt per invocation. Keep retries explicit so a
   // single recorded invocation cannot conceal multiple paid provider requests.
   const retry = Object.freeze({ maxAttempts: 1, ...options.retry })
-  const sourceProfileDigest = String(
-    canonicalDigest(redactProfile(snapshotAgentProfile(options.profile))),
-  )
+  const sourceProfileDigest = canonicalAgentProfileDigestHex(options.profile)
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({
       version: 1,
@@ -540,7 +541,7 @@ export function createRuntimeTraceModelOwner(
       assertRequestSupported(request.request)
       const messages = textMessages(request.request)
       const profile = analystCallProfile(options, request.request, retry)
-      executionProfileDigest = String(canonicalDigest(redactProfile(profile)))
+      executionProfileDigest = canonicalAgentProfileDigestHex(profile)
       const { createExecutor, streamAgentTurn } = await import(
         '@tangle-network/agent-runtime/kernel'
       )

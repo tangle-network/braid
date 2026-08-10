@@ -69,7 +69,8 @@ function digestMatches(value: unknown): value is `sha256:${string}` {
 
 function redactExportValue(value: unknown, key?: string): unknown {
   if (key === 'attestationNonce') return '[redacted challenge]'
-  if (key === 'metadata' || key === 'extensions') {
+  if (key === 'metadata') return { redacted: '[redacted]' }
+  if (key === 'extensions') {
     return redactStructuredValue(value, undefined, { maxBytes: MAX_PROFILE_FILE_BYTES })
   }
   if (typeof value === 'string') return redactSensitiveText(value, MAX_PROFILE_FILE_BYTES)
