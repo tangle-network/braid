@@ -11,6 +11,11 @@ import {
   AgentEvalAnalystAdapter,
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
+import {
+  BRAID_QUESTION_ANALYST_DEFINITION,
+  BRAID_QUESTION_ANALYST_ID,
+} from '../src/adapters/analysis/question-analyst.js'
+import { safeAnalysisText } from '../src/adapters/analysis/trace-event-projection.js'
 import { buildAnalysisTraceStore } from '../src/adapters/analysis/trace-store.js'
 import { RuntimeSupervisorController } from '../src/adapters/runtime/supervisor-control.js'
 import {
@@ -41,6 +46,7 @@ import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
 import { createAnalysisId, createEventId } from '../src/domain/ids-values.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
+import { analysisEvidence } from '../src/eval/fixtures.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const TEST_PROFILE = {} as Readonly<AgentProfile>
@@ -171,6 +177,7 @@ function findingFor(evidence: FrozenAnalysisEvidence): AnalystFinding {
 function fakeRegistry(
   options: {
     readonly findings?: readonly AnalystFinding[]
+    readonly failure?: string
     readonly waitForAbort?: boolean
     readonly received?: { options?: unknown; inputs?: unknown }
   } = {},
@@ -203,6 +210,21 @@ function fakeRegistry(
       return
     }
     const findings = [...(options.findings ?? [])]
+    const summary = {
+      analyst_id: runOptions.analystIds[0] ?? 'efficiency-behavioral',
+      status: options.failure === undefined ? 'ok' : 'failed',
+      findings_count: findings.length,
+      latency_ms: 1,
+      usage: {
+        calls: 0,
+        tokens: null,
+        cost: { kind: 'known', usd: 0 },
+        knownCostUsd: 0,
+      },
+      ...(options.failure === undefined
+        ? {}
+        : { error: { class: 'Error', message: options.failure } }),
+    } as const
     yield {
       type: 'analyst-started',
       analyst_id: runOptions.analystIds[0] ?? 'efficiency-behavioral',
@@ -212,7 +234,7 @@ function fakeRegistry(
       type: 'analyst-completed',
       analyst_id: runOptions.analystIds[0] ?? 'efficiency-behavioral',
       findings,
-      summary: {},
+      summary,
     } as unknown as ExactAnalystRunEvent
     const result: ExactAnalystRunResult = {
       run_id: runId,
@@ -220,7 +242,7 @@ function fakeRegistry(
       started_at: NOW,
       ended_at: NOW,
       findings,
-      per_analyst: [],
+      per_analyst: [summary],
       total_cost_usd: 0,
       execution_plan: {},
       completion: { status: 'complete' },
@@ -233,6 +255,12 @@ function fakeRegistry(
         id: 'efficiency-behavioral',
         description: 'test analyst',
         version: '2.0.0',
+        cost: { kind: 'deterministic' },
+      },
+      {
+        id: BRAID_QUESTION_ANALYST_ID,
+        description: 'test question analyst',
+        version: '1.0.0',
         cost: { kind: 'deterministic' },
       },
     ],
@@ -282,6 +310,65 @@ test('frozen source verification rejects tampered evidence', () => {
   assert.throws(() => verifyFrozenAnalysisSource(tampered), AnalysisSourceError)
 })
 
+test('trace analysis keeps run identity, outcome, usage, and merged tools in one bounded view', async () => {
+  const evidence = analysisEvidence('trace-projection').evidence
+  const trace = buildAnalysisTraceStore(evidence)
+  const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext(trace.store)
+  assert.match(prepared, /Exact trace id: "run-analysis-trace-projection"/u)
+  assert.match(prepared, /SUBMIT\(answer, json\.dumps\(findings\)\)/u)
+  assert.match(prepared, /Omit subject from every finding/u)
+  const view = await trace.store.viewTrace({ trace_id: trace.traceId })
+  assert.equal('spans' in view, true)
+  if (!('spans' in view)) return
+
+  assert.equal(view.spans.length, 4)
+  const requested = view.spans.find((span) => span.name === 'braid.run.requested')
+  const finished = view.spans.find((span) => span.name === 'braid.run.finished')
+  const tool = view.spans.find((span) => span.tool_name === 'shell')
+  assert.ok(requested)
+  assert.ok(finished)
+  assert.ok(tool)
+  assert.equal(requested.agent_name, 'Braid starter')
+  assert.equal(requested.model_name, 'fixture/deterministic')
+  assert.equal(requested.attributes['braid.runner'], 'pi')
+  assert.equal(requested.attributes['braid.provider'], 'fixture-analysis-provider')
+  assert.equal(requested.attributes['input.value'], 'Analyze trace-projection.')
+  assert.equal(finished.attributes['output.value'], 'Observed safe output for trace-projection.')
+  assert.equal(finished.attributes['llm.token_count.prompt'], 100)
+  assert.equal(finished.attributes['llm.token_count.completion'], 50)
+  assert.equal(tool.attributes['output.value'], 'safe trace-projection')
+
+  const toolReference = trace.spans.find((span) => span.toolName === 'shell')
+  assert.ok(toolReference)
+  const finding: AnalystFinding = {
+    schema_version: '1.0.0',
+    finding_id: 'finding-tool-result-source',
+    analyst_id: 'efficiency-behavioral',
+    produced_at: NOW,
+    severity: 'info',
+    area: 'tool-use',
+    claim: 'The tool result is present.',
+    confidence: 1,
+    evidence_refs: [
+      {
+        kind: 'span',
+        uri: `trace://${trace.traceId}/span/${toolReference.spanId}`,
+        excerpt: 'safe trace-projection',
+      },
+    ],
+  }
+  const mapped = mapAnalystFinding(evidence, trace, finding)
+  const resultEvent = evidence.events.find((event) => event.event.kind === 'run.tool.result')
+  assert.equal(mapped.citations[0]?.eventId, resultEvent?.id)
+})
+
+test('trace text projection redacts credentials and enforces its byte limit', () => {
+  const credential = `sk-${'a'.repeat(32)}`
+  const projected = safeAnalysisText(`${credential}\n${'x'.repeat(32 * 1024)}`)
+  assert.equal(projected.includes(credential), false)
+  assert.equal(Buffer.byteLength(projected, 'utf8') <= 16 * 1024, true)
+})
+
 test('eval adapter routes exact streaming and reports missing named analysts', async () => {
   const first = history()
   const evidence = freezeAnalysisSource({
@@ -308,6 +395,35 @@ test('eval adapter routes exact streaming and reports missing named analysts', a
     () => new AgentEvalAnalystAdapter().resolveAnalystIds({ recipe: 'failure' }),
     (error: unknown) => error instanceof Error && 'issue' in error,
   )
+})
+
+test('/ask routes one question analyst and forwards the exact operator question', async () => {
+  const first = history()
+  const evidence = freezeAnalysisSource({
+    state: first.state,
+    events: first.events,
+    runId: 'run-analysis',
+  })
+  const received: { options?: unknown; inputs?: unknown } = {}
+  const adapter = new AgentEvalAnalystAdapter(fakeRegistry({ received }))
+  const question = 'What changed, what was verified, and what should I review?'
+
+  for await (const _item of adapter.stream({
+    runId: 'analysis-run-question',
+    sourceDigest: String(evidence.source.digest),
+    trace: buildAnalysisTraceStore(evidence),
+    recipe: 'ask',
+    question,
+  })) {
+    // Drain the exact stream so the captured options are final.
+  }
+
+  const options = received.options as {
+    analystIds: readonly string[]
+    tags: Readonly<Record<string, string>>
+  }
+  assert.deepEqual(options.analystIds, [BRAID_QUESTION_ANALYST_ID])
+  assert.equal(options.tags.focus, question)
 })
 
 test('analysis usage preserves uncaptured cost as an unknown lower bound', async () => {
@@ -407,6 +523,26 @@ test('analysis service persists only analysis events, emits progress, and preser
   }
   assert.equal(
     applicationHost.committed.some((event) => event.kind === 'run.text.delta'),
+    false,
+  )
+})
+
+test('analysis service fails when one exact analyst reports a failed summary', async () => {
+  const first = history()
+  const applicationHost = host(first.state, first.events)
+  const service = new AnalysisService(
+    applicationHost,
+    new AgentEvalAnalystAdapter(
+      fakeRegistry({ failure: 'question analyst returned no cited answer' }),
+    ),
+  )
+
+  const result = await service.run({ runId: 'run-analysis', recipe: 'cost' })
+
+  assert.equal(result.status, 'failed')
+  assert.match(result.error?.message ?? '', /question analyst returned no cited answer/u)
+  assert.equal(
+    applicationHost.committed.some((event) => event.kind === 'analysis.completed'),
     false,
   )
 })

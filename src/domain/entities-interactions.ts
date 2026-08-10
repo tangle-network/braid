@@ -5,12 +5,14 @@ import type {
   MissingHistoryRange,
   NonSecretInteractionData,
 } from './entities-base.js'
+
 export type {
   NonSecretInteractionData,
   NonSecretInteractionValue,
 } from './entities-base.js'
-import type { TurnUsage } from './entities-core.js'
+
 import type { AnalysisModelCallRecord } from './analysis-model-call.js'
+import type { TurnUsage } from './entities-core.js'
 import type {
   AnalysisId,
   AnalysisRunId,
@@ -178,6 +180,7 @@ export interface AnalysisProvenance {
   readonly model?: string
   readonly runner?: string
   readonly connectionId?: import('./ids.js').ConnectionId
+  readonly connectionDigest?: Digest
   readonly tools: readonly string[]
   readonly completeness: 'complete' | 'incomplete' | 'unknown'
   readonly checks: readonly AnalysisCheck[]

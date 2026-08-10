@@ -67,6 +67,7 @@ export function profileDetailLines(profile: ProfileSummary | undefined): string[
   return [
     `source ${safe(profile.source.label)} · ${profile.source.trusted ? 'trusted' : 'untrusted'} · ${profile.source.writable ? 'writable' : 'read-only'}`,
     `runner ${safe(profile.runner ?? 'provider default')} · model ${safe(profile.model ?? 'provider default')}`,
+    profileModelControls(profile),
     `digest ${shortDigest(profile.digest)}`,
   ]
 }
@@ -76,6 +77,7 @@ export function profileCompactDetail(profile: ProfileSummary | undefined): strin
   return [
     `runner ${safe(profile.runner ?? 'provider default')}`,
     `model ${safe(profile.model ?? 'provider default')}`,
+    profileModelControls(profile),
     profile.source.trusted ? 'trusted' : 'untrusted source',
     profile.source.writable ? 'writable' : 'read-only',
     `digest ${shortDigest(profile.digest)}`,
@@ -198,7 +200,12 @@ function isProfileSummary(value: unknown): value is ProfileSummary {
     !Array.isArray(value.connections) ||
     (value.description !== undefined && typeof value.description !== 'string') ||
     (value.runner !== undefined && typeof value.runner !== 'string') ||
-    (value.model !== undefined && typeof value.model !== 'string')
+    (value.model !== undefined && typeof value.model !== 'string') ||
+    (value.reasoningEffort !== undefined && typeof value.reasoningEffort !== 'string') ||
+    (value.maxOutputTokens !== undefined &&
+      (typeof value.maxOutputTokens !== 'number' ||
+        !Number.isSafeInteger(value.maxOutputTokens) ||
+        value.maxOutputTokens <= 0))
   )
     return false
   const source = value.source
@@ -208,6 +215,15 @@ function isProfileSummary(value: unknown): value is ProfileSummary {
     typeof source.writable === 'boolean' &&
     typeof source.trusted === 'boolean'
   )
+}
+
+function profileModelControls(profile: ProfileSummary): string {
+  const effort = safe(profile.reasoningEffort ?? 'provider default')
+  const output =
+    profile.maxOutputTokens === undefined
+      ? 'provider default'
+      : `${profile.maxOutputTokens.toLocaleString('en-US')} tokens`
+  return `thinking ${effort} · max output ${output}`
 }
 
 function isConnectionSummary(value: unknown): value is ConnectionSummary {

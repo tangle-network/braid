@@ -306,9 +306,9 @@ test('stable chrome keeps identity and status outside transcript history', () =>
   })
   const lines = chrome.render(40)
   const firstLine = lines[0] ?? ''
-  assert.match(firstLine, /braid\s+cwd\s+\/workspace/u)
-  assert.match(lines[1] ?? '', /completed/u)
-  assert.match(lines[2] ?? '', /reviewer/u)
+  assert.match(firstLine, /braid\s+AgentProfile reviewer/u)
+  assert.match(lines[1] ?? '', /completed.*runner pi/u)
+  assert.match(lines[2] ?? '', /deterministic fixture/u)
   assert.doesNotMatch(firstLine, /fixture|deterministic/u)
   assert.ok(visibleWidth(firstLine) <= 40)
 

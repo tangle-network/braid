@@ -3,6 +3,7 @@ import type {
   InteractionOutcome as ProtocolInteractionOutcome,
 } from '@tangle-network/agent-interface'
 import { messagesVisibleOnBranch } from '../../app/conversation-visibility.js'
+import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import type { BraidState } from '../../domain/state.js'
@@ -145,12 +146,29 @@ export function runViews(state: BraidState): RunView[] {
       run.terminalAt === undefined
         ? undefined
         : Date.parse(run.terminalAt) - Date.parse(run.startedAt)
+    const profile = run.receipt.requested.profile
+    const modelSettings = profileModelSettings(profile)
     const runner = run.receipt.requested.runner ?? run.receipt.provider
+    const model = run.model ?? run.receipt.requested.model
+    const connectionId = run.connectionId === undefined ? undefined : String(run.connectionId)
+    const connection =
+      connectionId === undefined
+        ? undefined
+        : state.connections.find((candidate) => String(candidate.id) === connectionId)
     return Object.freeze({
       id: run.id,
       turnId: run.turnId,
       operationId: run.operationId,
       status: statusForRun(state, run),
+      ...(profile.name === undefined ? {} : { profileName: sanitizeTerminalText(profile.name) }),
+      profileDigest: sanitizeTerminalText(run.receipt.profileDigest),
+      ...(model === undefined ? {} : { model: sanitizeTerminalText(model) }),
+      ...(modelSettings.reasoningEffort === undefined
+        ? {}
+        : { effort: sanitizeTerminalText(modelSettings.reasoningEffort) }),
+      ...(modelSettings.maxOutputTokens === undefined
+        ? {}
+        : { maxOutputTokens: modelSettings.maxOutputTokens }),
       ...(run.error ? { error: sanitizeTerminalText(run.error) } : {}),
       ...(run.lastCursor ? { cursor: sanitizeTerminalText(run.lastCursor) } : {}),
       ...(run.providerSessionId
@@ -167,7 +185,12 @@ export function runViews(state: BraidState): RunView[] {
       ...(run.receipt.provider === undefined
         ? {}
         : { provider: sanitizeTerminalText(run.receipt.provider) }),
-      ...(run.connectionId === undefined ? {} : { connection: String(run.connectionId) }),
+      ...(connectionId === undefined ? {} : { connectionId }),
+      ...(connectionId === undefined
+        ? {}
+        : {
+            connection: sanitizeTerminalText(connection?.name ?? connectionId),
+          }),
       ...(run.environmentId === undefined ? {} : { environmentId: String(run.environmentId) }),
       completeness: completenessFor(state, run),
       ...(run.contentBytes === undefined ? {} : { contentBytes: run.contentBytes }),

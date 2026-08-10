@@ -24,6 +24,10 @@ export interface TerminalSurfaceOverlayOptions {
   readonly openConnection: () => void
 }
 
+export interface IntelligenceProgressHandle {
+  complete(data: unknown): void
+}
+
 export class TerminalSurfaceOverlays {
   readonly #options: TerminalSurfaceOverlayOptions
   #supervisionRefresh: ReturnType<typeof setInterval> | undefined
@@ -52,7 +56,11 @@ export class TerminalSurfaceOverlays {
     })
   }
 
-  openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {
+  openIntelligenceResult(
+    command: 'ask' | 'analyze' | 'compare',
+    data: unknown,
+    sourceContext?: string,
+  ): void {
     if (command === 'compare') {
       if (!isAnalysisComparisonResult(data)) {
         this.openUnavailable('/compare', 'The saved comparison result could not be rendered')
@@ -67,7 +75,7 @@ export class TerminalSurfaceOverlays {
         this.openUnavailable('/compare', 'The saved comparison is missing from activity')
         return
       }
-      this.#openActivity('analyses', selectedId, true)
+      this.#openActivity('analyses', selectedId, true, sourceContext)
       return
     }
     const analysis = analysisRecordFromDispatchData(data)
@@ -80,7 +88,30 @@ export class TerminalSurfaceOverlays {
       this.openUnavailable(`/${command}`, 'The saved analysis is missing from activity')
       return
     }
-    this.#openActivity('analyses', selectedId, true)
+    this.#openActivity('analyses', selectedId, true, sourceContext)
+  }
+
+  openIntelligenceProgress(
+    command: 'ask' | 'analyze' | 'compare',
+    sourceContext?: string,
+  ): IntelligenceProgressHandle {
+    let active = true
+    const panel = this.#activityPanel(
+      'analyses',
+      undefined,
+      false,
+      `Starting /${command}\u2026`,
+      sourceContext,
+    )
+    this.#openBrowser(panel, false, () => {
+      active = false
+    })
+    return {
+      complete: (data) => {
+        if (!active) return
+        this.openIntelligenceResult(command, data, sourceContext)
+      },
+    }
   }
 
   openSurface(surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'): void {
@@ -122,8 +153,13 @@ export class TerminalSurfaceOverlays {
     this.#options.modals.open(panel, { anchor: 'center', width: '90%', maxHeight: '90%' })
   }
 
-  #openActivity(scope: ActivityBrowserScope, selectedId?: string, openSelected = false): void {
-    const panel = this.#activityPanel(scope, selectedId, openSelected)
+  #openActivity(
+    scope: ActivityBrowserScope,
+    selectedId?: string,
+    openSelected = false,
+    pinned?: string,
+  ): void {
+    const panel = this.#activityPanel(scope, selectedId, openSelected, undefined, pinned)
     this.#openBrowser(panel)
   }
 
@@ -131,6 +167,8 @@ export class TerminalSurfaceOverlays {
     scope: ActivityBrowserScope,
     selectedId?: string,
     openSelected = false,
+    emptyMessage?: string,
+    pinned?: string,
   ): ActivityBrowserPanel {
     return new ActivityBrowserPanel(this.#options.theme, {
       view: () => this.#options.controller.view(),
@@ -139,6 +177,8 @@ export class TerminalSurfaceOverlays {
       scope,
       ...(scope === 'analyses' ? {} : { notice: () => this.#supervisionStatus }),
       ...(selectedId === undefined ? {} : { selectedId }),
+      ...(emptyMessage === undefined ? {} : { emptyMessage }),
+      ...(pinned === undefined ? {} : { pinned }),
       openSelected,
     })
   }
@@ -147,14 +187,21 @@ export class TerminalSurfaceOverlays {
     return this.#options.controller.view().activity.some((item) => item.id === id)
   }
 
-  #openBrowser(panel: Component, refreshSupervision = false): void {
+  #openBrowser(panel: Component, refreshSupervision = false, onClose?: () => void): void {
+    const close =
+      refreshSupervision || onClose !== undefined
+        ? () => {
+            if (refreshSupervision) this.#stopSupervisionRefresh()
+            onClose?.()
+          }
+        : undefined
     this.#options.modals.open(panel, {
       anchor: 'top-left',
       width: '100%',
       maxHeight: '100%',
       margin: 0,
       fullScreenBelow: Number.MAX_SAFE_INTEGER,
-      ...(refreshSupervision ? { onClose: () => this.#stopSupervisionRefresh() } : {}),
+      ...(close === undefined ? {} : { onClose: close }),
     })
     if (refreshSupervision) this.#startSupervisionRefresh()
   }

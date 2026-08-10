@@ -1,6 +1,7 @@
 import { type Component, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
 import type { BraidViewModel, UsageMeasurementStatus, UsageTotalsView } from '../shared/models.js'
 import { sanitizeNotification, sanitizeTerminalText } from '../shared/sanitize.js'
+import { executionTargetFor, type ExecutionTargetView } from './execution-target.js'
 import { type LayoutMode, modeForColumns } from './layout.js'
 import type { BraidTheme } from './theme.js'
 
@@ -31,26 +32,40 @@ export class TerminalChrome implements Component {
     if (!state) return []
     const safeWidth = Math.max(1, Math.floor(width))
     const { view } = state
+    const target = executionTargetFor(view)
     const mode = modeForColumns(safeWidth)
-    const header = this.#header(view, safeWidth, mode)
+    const header = this.#header(view, target, safeWidth, mode)
     const status = fitAtomic(
       statusText(this.#theme, view, conciseStatus(view, state.quitArmed)),
       safeWidth,
     )
-    const profile = valuePart(this.#theme, `AgentProfile ${view.profileName}`)
-    const runner = valuePart(this.#theme, `runner ${view.runner}`)
-    const model = valuePart(this.#theme, `model ${view.model}`)
-    const effort = view.effort ? valuePart(this.#theme, `thinking ${view.effort}`) : ''
-    const connection = valuePart(this.#theme, view.connection)
-    const execution = valuePart(this.#theme, executionLabel(view))
+    const profile = valuePart(this.#theme, `AgentProfile ${target.profileName}`)
+    const runner = valuePart(this.#theme, `runner ${target.runner}`)
+    const model = valuePart(this.#theme, `model ${target.model}`)
+    const effort = target.effort ? valuePart(this.#theme, `thinking ${target.effort}`) : ''
+    const outputLimit =
+      target.maxOutputTokens === undefined
+        ? ''
+        : valuePart(this.#theme, `output ≤${compactNumber(target.maxOutputTokens)}`)
+    const connection = valuePart(this.#theme, target.connection)
+    const execution = valuePart(this.#theme, executionLabel(target))
     const metrics = metricsFor(view).map((metric) => valuePart(this.#theme, metric))
     const hint = valuePart(this.#theme, navigationHint(view, state.navigationHint))
 
     if (mode === 'narrow') {
-      return [header, status, joinPrefix([profile], safeWidth)]
+      const route = joinPrefix(
+        [runner, valuePart(this.#theme, `model ${compactModelName(target.model)}`)],
+        safeWidth,
+      )
+      return [
+        header,
+        fitAtomic([status, route].filter((part) => part.length > 0).join(' · '), safeWidth),
+        fitAtomic(joinPrefix([connection, effort, outputLimit], safeWidth), safeWidth),
+      ]
     }
 
-    const statusMetadata = mode === 'wide' ? [model, effort, ...metrics] : [model, effort]
+    const statusMetadata =
+      mode === 'wide' ? [model, effort, outputLimit, ...metrics] : [model, effort, outputLimit]
     return [
       header,
       fitColumns([status], statusMetadata, safeWidth),
@@ -58,7 +73,18 @@ export class TerminalChrome implements Component {
     ]
   }
 
-  #header(view: BraidViewModel, width: number, mode: LayoutMode): string {
+  #header(
+    view: BraidViewModel,
+    target: ExecutionTargetView,
+    width: number,
+    mode: LayoutMode,
+  ): string {
+    if (mode === 'narrow') {
+      return fitAtomic(
+        `${this.#theme.brand('braid')}  ${valuePart(this.#theme, `AgentProfile ${target.profileName}`)}`,
+        width,
+      )
+    }
     const workspace = fieldPart(this.#theme, 'cwd', workspaceBasename(view.workspace))
     const session = fieldPart(
       this.#theme,
@@ -66,28 +92,29 @@ export class TerminalChrome implements Component {
       cleanField(view.conversationTitle) || 'new conversation',
     )
     const branch = fieldPart(this.#theme, 'branch', view.branch)
-    const parts = [this.#theme.brand('braid'), workspace]
-    if (mode !== 'narrow') parts.push(session)
+    const parts = [this.#theme.brand('braid'), workspace, session]
     if (mode === 'wide' && branch) parts.push(branch)
     return joinHeader(parts, width)
   }
 }
 
-function executionLabel(view: BraidViewModel): string {
-  const environmentId = view.runs.at(-1)?.environmentId
-  const environment =
-    environmentId === undefined
-      ? view.environments.at(-1)
-      : view.environments.find((candidate) => candidate.id === environmentId)
+function compactModelName(value: string): string {
+  const safe = cleanField(value)
+  const segments = safe.split('/').filter((segment) => segment.length > 0)
+  return segments.at(-1) ?? safe
+}
+
+function executionLabel(target: ExecutionTargetView): string {
+  const environment = target.environment
   if (environment === undefined) return ''
   const location = environment.location === 'local' ? 'local' : environment.location
-  const target =
+  const executionKind =
     environment.kind === 'sandbox'
       ? 'sandbox'
       : environment.provider === 'cli-bridge'
         ? 'CLI'
         : environment.provider
-  return `exec ${location ?? 'unknown'} ${target} · ${environment.lifecycle}`
+  return `exec ${location ?? 'unknown'} ${executionKind} · ${environment.lifecycle}`
 }
 
 function statusText(theme: BraidTheme, view: BraidViewModel, value: string): string {

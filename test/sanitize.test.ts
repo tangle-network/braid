@@ -3,6 +3,7 @@ import test from 'node:test'
 import { getCapabilities, setCapabilities } from '@earendil-works/pi-tui'
 import {
   redactBraidEvent,
+  redactProfile,
   redactStructuredValue,
   redactStructuredValueWithNumericTelemetry,
 } from '../src/domain/redaction.js'
@@ -95,6 +96,33 @@ test('plain structured redaction preserves only the exact aggregate token counte
   assert.deepEqual(
     redactStructuredValue({ tokens: { input: 12, output: 7, credential: 'canary' } }),
     { tokens: '[redacted]' },
+  )
+})
+
+test('profile redaction exposes only the public output-token limit from model metadata', () => {
+  const redacted = redactProfile({
+    name: 'Public model settings',
+    model: {
+      default: 'tangle-router/glm-5.2',
+      metadata: {
+        maxTokens: 8192,
+        route: 'private-route-canary',
+        apiKey: 'private-key-canary',
+      },
+    },
+    metadata: { maxTokens: 65_536, owner: 'private-owner-canary' },
+    modes: {
+      fast: { metadata: { maxTokens: 4096, note: 'private-mode-canary' } },
+    },
+  })
+
+  assert.deepEqual(redacted.model?.metadata, { maxTokens: 8192, redacted: '[redacted]' })
+  assert.deepEqual(redacted.metadata, { redacted: '[redacted]' })
+  assert.deepEqual(redacted.modes?.fast?.metadata, { redacted: '[redacted]' })
+  assert.doesNotMatch(JSON.stringify(redacted), /private-(?:route|key|owner|mode)-canary/u)
+  assert.deepEqual(
+    redactProfile({ model: { metadata: { maxTokens: 'private-token-canary' } } }).model?.metadata,
+    { redacted: '[redacted]' },
   )
 })
 

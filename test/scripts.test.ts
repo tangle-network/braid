@@ -152,6 +152,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'w6-contract.test.js',
     ],
     'test:virtual-terminal': [
+      'activity-document.test.js',
       'configuration-product-flow.test.js',
       'intelligence-dispatch.test.js',
       'keyboard.test.js',

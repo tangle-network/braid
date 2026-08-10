@@ -86,6 +86,7 @@ const scopeFiles = {
     'w6-contract.test.js',
   ],
   'virtual-terminal': [
+    'activity-document.test.js',
     'configuration-product-flow.test.js',
     'intelligence-dispatch.test.js',
     'keyboard.test.js',

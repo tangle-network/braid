@@ -2,7 +2,11 @@ import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-networ
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalystDescriptor, EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
 import type { AnalysisIdentity } from './analysis-operation.js'
-import type { AnalysisRequest, FrozenAnalysisEvidence } from './analysis-types.js'
+import type {
+  AnalysisExecutionTarget,
+  AnalysisRequest,
+  FrozenAnalysisEvidence,
+} from './analysis-types.js'
 
 export interface AnalysisExecutionEvent {
   readonly event: ExactAnalystRunEvent
@@ -55,6 +59,7 @@ export class AnalysisExecutionSession {
     readonly evidence: FrozenAnalysisEvidence
     readonly request: AnalysisRequest
     readonly analystIds: readonly string[]
+    readonly executionTarget: AnalysisExecutionTarget
   }): AsyncGenerator<AnalysisExecutionEvent, void, void> {
     const controller = new AbortController()
     this.#active.set(String(input.identity.analysisId), controller)
@@ -65,6 +70,7 @@ export class AnalysisExecutionSession {
       sourceDigest: String(input.evidence.source.digest),
       trace,
       analystIds: input.analystIds,
+      executionTarget: input.executionTarget,
       ...(input.request.question === undefined ? {} : { question: input.request.question }),
       ...(input.request.recipe === undefined ? {} : { recipe: input.request.recipe }),
       ...(input.request.budgetUsd === undefined ? {} : { budgetUsd: input.request.budgetUsd }),

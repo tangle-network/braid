@@ -194,6 +194,11 @@ export interface RunView {
   readonly turnId?: string
   readonly status: ViewStatus
   readonly operationId?: string
+  readonly profileName?: string
+  readonly profileDigest?: string
+  readonly model?: string
+  readonly effort?: string
+  readonly maxOutputTokens?: number
   readonly usage?: UsageView
   readonly error?: string
   readonly cursor?: string
@@ -203,6 +208,7 @@ export interface RunView {
   readonly runner?: string
   readonly provider?: string
   readonly connection?: string
+  readonly connectionId?: string
   readonly completeness:
     | 'complete'
     | 'incomplete'
@@ -497,6 +503,7 @@ export interface BraidViewModel {
   readonly runner: string
   readonly model: string
   readonly effort?: string
+  readonly maxOutputTokens?: number
   readonly connection: string
   readonly conversationId: string
   readonly conversationTitle: string

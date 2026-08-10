@@ -1,4 +1,5 @@
 import { dirname, resolve } from 'node:path'
+import { ProductionAnalysisAnalyst } from '../adapters/analysis/production-analysis-analyst.js'
 import {
   createTraceAnalysisAdapter,
   createTraceAnalysisAnalyst,
@@ -13,6 +14,7 @@ import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../app/production-composition.js'
+import { profileModelSettings } from '../app/profile-model-settings.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { CredentialPort } from '../ports/credentials.js'
 import { createDurableBraidApplication } from '../startup/durable-runtime.js'
@@ -95,15 +97,26 @@ function databaseKeySource(
 }
 
 async function productionIntelligence(production: ProductionCompositionConfig): Promise<{
-  readonly analyst: ReturnType<typeof createTraceAnalysisAnalyst>
+  readonly analyst: ProductionAnalysisAnalyst
 }> {
   const selected = createProductionComposition(production)
+  const modelSettings = profileModelSettings(selected.profile)
   const analysis = await createTraceAnalysisAdapter({
     profile: selected.profile,
     connection: selected.connection,
+    ...(modelSettings.maxOutputTokens === undefined
+      ? {}
+      : { maxOutputTokens: modelSettings.maxOutputTokens }),
     ...(production.connectionOptions ?? {}),
   })
-  return { analyst: createTraceAnalysisAnalyst(analysis) }
+  return {
+    analyst: new ProductionAnalysisAnalyst({
+      bootstrap: createTraceAnalysisAnalyst(analysis),
+      ...(production.connectionOptions === undefined
+        ? {}
+        : { connectionOptions: production.connectionOptions }),
+    }),
+  }
 }
 
 function withHeadlessCredentials(

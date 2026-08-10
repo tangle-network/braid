@@ -1784,6 +1784,69 @@ test('first-run model validation rejects a non-marker completion body', async ()
   )
 })
 
+test('first-run model validation authorizes its token limit in a separate AgentProfile field', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-validation-profile-'))
+  const setup = await loadProductionSetup({
+    workspace: root,
+    effort: 'high',
+    fetch: async (input) => {
+      const url = String(input)
+      if (url.endsWith('/health')) {
+        return new Response(
+          JSON.stringify({ status: 'ok', backends: [{ name: 'pi', state: 'ready' }] }),
+          { status: 200 },
+        )
+      }
+      return new Response(
+        JSON.stringify({ data: [{ id: 'pi/tangle-router/glm-5.2', backend: 'pi' }] }),
+        { status: 200 },
+      )
+    },
+  })
+  const selectedProfile = setup.profiles[0]
+  const selectedConnection = setup.connections[0]
+  assert.ok(selectedProfile)
+  assert.ok(selectedConnection)
+  if (!selectedProfile || !selectedConnection) return
+  let body: Record<string, unknown> | undefined
+  const result = await validateProductionSelection(
+    {
+      workspace: root,
+      fetch: async (_input, init) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), {
+          status: 200,
+        })
+      },
+    },
+    {
+      profile: selectedProfile,
+      connection: selectedConnection,
+      profileDigest: selectedProfile.digest,
+      connectionDigest: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+    },
+  )
+
+  assert.equal(result.status, 'verified')
+  assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
+  assert.equal(body?.max_tokens, 1)
+  const validationProfile = body?.agent_profile as {
+    readonly harness?: unknown
+    readonly model?: {
+      readonly default?: unknown
+      readonly provider?: unknown
+      readonly reasoningEffort?: unknown
+      readonly metadata?: Record<string, unknown>
+    }
+  }
+  assert.equal(validationProfile.harness, 'pi')
+  assert.equal(validationProfile.model?.default, 'tangle-router/glm-5.2')
+  assert.equal(validationProfile.model?.provider, 'tangle-router')
+  assert.equal(validationProfile.model?.reasoningEffort, 'high')
+  assert.equal(validationProfile.model?.metadata?.maxTokens, 1)
+  assert.equal('effort' in (body ?? {}), false)
+})
+
 test('production selection transition keeps its lifecycle order across injected failures', async () => {
   const phases = ['validate', 'open', 'persist', 'swap', 'old-close'] as const
   for (const phase of phases) {

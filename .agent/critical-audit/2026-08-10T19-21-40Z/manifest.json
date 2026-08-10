@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "scope": "Exact AgentProfile binding, durable redaction, usage evidence, and release proof",
+  "files": 34,
+  "base": "fa375f9ef14ecead34d287f294465d46f54bc8f4",
+  "head": "69b8fd9e8ad81770febe5dc472afdafe1745631d",
+  "projectType": "TypeScript ESM package",
+  "reviewers": [
+    "A: operator correctness, security, and release review",
+    "B: Luna Max review of 18 production files and 8 focused tests",
+    "C: Luna Max adversarial review of the final staged production diff",
+    "D: packed terminal, native SQLite, performance, and semantic release checks"
+  ],
+  "mode": "parallel review with final adversarial pass",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 6,
+    "medium": 5,
+    "low": 0,
+    "resolved": 11,
+    "unresolved": 0,
+    "dropped": 0
+  }
+}

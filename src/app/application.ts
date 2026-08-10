@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentProfile, InteractionResponse } from '@tangle-network/agent-interface'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { providerEventKey } from '../domain/events.js'
 import { assertBraidState } from '../domain/invariants.js'
@@ -15,6 +16,7 @@ import { type BraidState, initialState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
+import { snapshotAnalysisExecutionTarget } from './analysis-execution-target.js'
 import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
 import { ApplicationInteractionActions } from './application-interaction-actions.js'
 import { ApplicationLifecycle } from './application-lifecycle.js'
@@ -249,6 +251,27 @@ export class BraidApplication {
           return undefined
         },
         now: () => this.#clock.now(),
+        analysisExecutionTarget: (state) => {
+          const profile = this.runtimeSelection.profile()
+          const profileDigest = canonicalAgentProfileDigestHex(profile)
+          const selectedProfile =
+            state.selectedProfileId === null
+              ? undefined
+              : state.profiles.find(
+                  (candidate) =>
+                    candidate.id === state.selectedProfileId &&
+                    String(candidate.executionDigest ?? candidate.digest) === profileDigest,
+                )
+          const connectionId = this.runtimeSelection.connectionId()
+          const connection = state.connections.find(
+            (candidate) => String(candidate.id) === connectionId,
+          )
+          return snapshotAnalysisExecutionTarget({
+            profile,
+            ...(selectedProfile === undefined ? {} : { profileId: selectedProfile.id }),
+            ...(connection === undefined ? {} : { connection }),
+          })
+        },
       },
       options.intelligence,
     )

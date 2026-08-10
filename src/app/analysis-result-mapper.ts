@@ -11,11 +11,13 @@ import type {
   AnalysisSourceRange,
   TurnUsage,
 } from '../domain/entities.js'
-import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import type { JsonValue } from '../domain/entities-base.js'
+import { analysisExecutionTargetFromState } from './analysis-execution-target.js'
+import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import type { AnalysisIdentity } from './analysis-operation.js'
 import type {
   AnalysisApplicationHost,
+  AnalysisExecutionTarget,
   AnalysisRequest,
   FrozenAnalysisEvidence,
 } from './analysis-types.js'
@@ -91,24 +93,25 @@ function provenance(
   analystIds: readonly string[],
   analystVersions: readonly { readonly id: string; readonly version: string }[],
   checks: readonly AnalysisCheck[],
+  executionTarget?: AnalysisExecutionTarget,
 ): AnalysisProvenance {
-  const state = host.currentState()
-  const selectedConnectionId = state.selectedConnectionId
-  const model = state.profile.model?.default
-  const runner = state.profile.harness
+  const target = executionTarget ?? analysisExecutionTargetFromState(host.currentState())
   return {
     operationId: identity.operationId,
     requestDigest: identity.requestDigest,
     analystIds,
     analystVersions,
     agentEvalVersion: AGENT_EVAL_VERSION,
-    ...(request.analystProfileId === undefined ? {} : { profileId: request.analystProfileId }),
-    ...(request.analystProfileDigest === undefined
-      ? {}
-      : { profileDigest: request.analystProfileDigest }),
-    ...(model === undefined ? {} : { model }),
-    ...(runner === undefined ? {} : { runner }),
-    ...(selectedConnectionId === null ? {} : { connectionId: selectedConnectionId }),
+    ...(target.profileId === undefined
+      ? request.analystProfileId === undefined
+        ? {}
+        : { profileId: request.analystProfileId }
+      : { profileId: target.profileId }),
+    profileDigest: target.profileDigest,
+    ...(target.model === undefined ? {} : { model: target.model }),
+    ...(target.runner === undefined ? {} : { runner: target.runner }),
+    ...(target.connectionId === undefined ? {} : { connectionId: target.connectionId }),
+    ...(target.connectionDigest === undefined ? {} : { connectionDigest: target.connectionDigest }),
     tools: toolNames(evidence),
     completeness: evidence.source.complete ? 'complete' : 'incomplete',
     checks,
@@ -121,6 +124,7 @@ export function initialAnalysisRecord(input: {
   readonly request: AnalysisRequest
   readonly identity: AnalysisIdentity
   readonly at: string
+  readonly executionTarget?: AnalysisExecutionTarget
 }): AnalysisRecord {
   const checks = initialAnalysisChecks(input.evidence)
   return {
@@ -152,6 +156,7 @@ export function initialAnalysisRecord(input: {
       input.request.analystIds ?? [],
       [],
       checks,
+      input.executionTarget,
     ),
     createdAt: input.at,
     updatedAt: input.at,
@@ -244,6 +249,7 @@ export async function completedAnalysisRecord(input: {
   readonly modelExecutions: readonly ExternalOptimizerModelExecutionObservation[]
   readonly result: ExactAnalystRunResult
   readonly at: string
+  readonly executionTarget?: AnalysisExecutionTarget
 }): Promise<AnalysisRecord> {
   const mapped = await mapFindings(input.evidence, input.result.findings)
   const checks: readonly AnalysisCheck[] = [
@@ -280,6 +286,7 @@ export async function completedAnalysisRecord(input: {
       input.analystIds,
       analystVersions,
       checks,
+      input.executionTarget,
     ),
     ...(usage === undefined ? {} : { usage }),
     ...(input.result.total_cost_provenance?.kind === 'uncaptured'

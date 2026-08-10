@@ -6,6 +6,7 @@ import type {
   IsoDateTime,
 } from '../../domain/entities.js'
 import { parseCliBridgeHealth } from './cli-bridge-health.js'
+import { cliBridgeModelValidationRequest } from './cli-bridge-model-validation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import {
   appendHealthPath,
@@ -78,6 +79,14 @@ export async function verifyModelForConnection(
       message: 'Sandbox model verification requires an admitted environment',
     }
   }
+  if (record.kind === 'cli-bridge' && verificationOptions.profile === undefined) {
+    return {
+      model: normalizedModel,
+      status: 'unverified',
+      checkedAt,
+      message: 'CLI Bridge model verification requires the selected AgentProfile',
+    }
+  }
   try {
     const endpoint = connectionEndpoint(record, options)
     const credential = await readConnectionCredential(record, options, endpoint)
@@ -94,6 +103,15 @@ export async function verifyModelForConnection(
       record.kind === 'cli-bridge'
         ? `${normalizeCliBridgeRuntimeBaseUrl(endpoint)}/chat/completions`
         : `${endpoint.replace(/\/+$/u, '')}/chat/completions`
+    const requestBody =
+      record.kind === 'cli-bridge'
+        ? cliBridgeModelValidationRequest(verificationOptions.profile ?? {})
+        : {
+            model: normalizedModel,
+            messages: [{ role: 'user', content: 'Braid connection verification. Reply with OK.' }],
+            stream: false,
+            max_tokens: 1,
+          }
     const response = await request(chatUrl, {
       method: 'POST',
       headers: {
@@ -101,16 +119,11 @@ export async function verifyModelForConnection(
         'Content-Type': 'application/json',
         ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
       },
-      body: JSON.stringify({
-        model: normalizedModel,
-        messages: [{ role: 'user', content: 'Braid connection verification. Reply with OK.' }],
-        stream: false,
-        max_tokens: 1,
-      }),
+      body: JSON.stringify(requestBody),
       ...(verificationOptions.signal ? { signal: verificationOptions.signal } : {}),
     })
-    const body = await response.text().catch(() => '')
-    return modelVerificationFromResponse(normalizedModel, response.status, body, checkedAt)
+    const responseBody = await response.text().catch(() => '')
+    return modelVerificationFromResponse(normalizedModel, response.status, responseBody, checkedAt)
   } catch (error) {
     return modelVerificationFromError(normalizedModel, checkedAt, error)
   }

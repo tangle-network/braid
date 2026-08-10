@@ -1,5 +1,6 @@
 import type { Editor, TUI } from '@earendil-works/pi-tui'
 import { commandItems } from '../shared/command-registry.js'
+import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import type {
   BraidIntent,
   BraidUiController,
@@ -7,11 +8,10 @@ import type {
   UiFrameTiming,
 } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
-import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
-import { DynamicAutocompleteProvider } from './dynamic-autocomplete.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
+import { DynamicAutocompleteProvider } from './dynamic-autocomplete.js'
 import { type BraidKeymap, resolveKeymap } from './keyboard.js'
 import { ModalCoordinator } from './modal-coordinator.js'
 import { TerminalCommandController } from './terminal-command-controller.js'
@@ -86,7 +86,6 @@ export class BraidTerminalApp {
       ? undefined
       : keymapResolution.diagnostics.join('; ')
     this.#openConfigurationOnStart = options.configuration?.openOnStart === true
-    this.#modals = new ModalCoordinator(options.tui)
     let resolveDone: () => void = () => {}
     this.#done = new Promise<void>((resolve) => {
       resolveDone = resolve
@@ -112,6 +111,9 @@ export class BraidTerminalApp {
         autocomplete.inputChanged()
         this.#drafts.changed(text)
       },
+    )
+    this.#modals = new ModalCoordinator(options.tui, (visible) =>
+      this.#shell.setModalVisible(visible),
     )
     this.#drafts = new TerminalDraftController({
       editor: this.#shell.editor,

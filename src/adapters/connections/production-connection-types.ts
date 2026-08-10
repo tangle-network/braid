@@ -1,3 +1,4 @@
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
@@ -99,6 +100,8 @@ export interface ConnectionHealthOptions {
 export interface ConnectionModelVerificationOptions {
   readonly signal?: AbortSignal
   readonly now?: () => IsoDateTime
+  /** Exact selected profile required for a bounded CLI Bridge model request. */
+  readonly profile?: Readonly<AgentProfile>
 }
 
 export interface ProductionConnectionAdapter {

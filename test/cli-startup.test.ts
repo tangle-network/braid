@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
-import { access, readFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
+import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
 import { createStartupPreview } from '../src/startup/preview-runtime.js'
+import type { BraidUiController } from '../src/views/shared/intents.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -18,6 +22,20 @@ async function repositoryRoot(): Promise<URL> {
     } catch {}
   }
   throw new Error('Could not locate the Braid repository root')
+}
+
+async function waitForRecordedRevision(path: string, revision: number): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    try {
+      const value = JSON.parse(await readFile(path, 'utf8')) as {
+        readonly state?: { readonly revision?: number }
+      }
+      if (value.state?.revision === revision) return
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.fail(`Timed out waiting for recorded revision ${revision}`)
 }
 
 test('expected command-line mistakes remain actionable without echoing arbitrary values', () => {
@@ -93,6 +111,41 @@ test('startup responsibilities stay split into bounded modules', async () => {
   assert.match(startupBuild, /minifySyntax: true/u)
   assert.match(startupBuild, /minifyWhitespace: true/u)
   assert.match(startupBuild, /minifyIdentifiers: true/u)
+})
+
+test('verification signals capture more than one atomic semantic frame', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-signal-frames-'))
+  const recordPath = join(root, 'state.json')
+  let revision = 1
+  const controller = {
+    state: () => ({ revision }),
+    view: () => ({ revision }),
+    events: () => [],
+  } as unknown as BraidUiController
+  const existingSignalListeners = new Set(process.listeners('SIGUSR2'))
+  const lifecycle = createInterfaceSignalLifecycle({
+    controller,
+    view: { stop: () => {} },
+    application: { markCleanupUncertain: () => {} },
+    nextOperationId: () => 'operation-signal-frame',
+    recordState: recordPath,
+  })
+  const frameSignal = process
+    .listeners('SIGUSR2')
+    .find((listener) => !existingSignalListeners.has(listener))
+  assert.ok(frameSignal)
+  try {
+    frameSignal('SIGUSR2')
+    await waitForRecordedRevision(`${recordPath}.frame`, 1)
+    await rm(`${recordPath}.frame`)
+    revision = 2
+    frameSignal('SIGUSR2')
+    await waitForRecordedRevision(`${recordPath}.frame`, 2)
+    await lifecycle.settle()
+  } finally {
+    lifecycle.dispose()
+    await rm(root, { force: true, recursive: true })
+  }
 })
 
 test('startup preview renders real route context and replays early input once', async () => {

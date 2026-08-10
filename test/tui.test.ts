@@ -34,6 +34,78 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
   }
 }
 
+async function startSteeringTerminal(): Promise<{
+  readonly app: ReturnType<typeof createBraidApplication>
+  readonly terminal: VirtualTerminal
+  readonly view: BraidTerminalApp
+  readonly done: Promise<void>
+  readonly calls: {
+    send: number
+    queue: number
+    steer: number
+    readonly steerTexts: string[]
+  }
+}> {
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => ({
+      ...DEFAULT_RUN_CAPABILITIES,
+      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, queue: false, steer: true },
+    }),
+    async *streamTurn(input): AsyncIterable<never> {
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        if (input.signal.aborted) resolve()
+        else input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield* []
+    },
+    cancelRun: async (input) => {
+      releaseStream?.()
+      return { operationId: input.operationId, outcome: 'accepted' as const }
+    },
+    steerRun: async (input) => ({
+      operationId: input.operationId,
+      outcome: 'accepted' as const,
+    }),
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  app.initialize('/workspace')
+  const active = app.send({ operationId: 'op-steering-setup', text: 'keep this run active' })
+  await active.admissionReady
+  await waitUntil(() => app.state().activeRunId !== null)
+
+  const calls = { send: 0, queue: 0, steer: 0, steerTexts: [] as string[] }
+  const send = app.send.bind(app)
+  app.send = (input) => {
+    calls.send += 1
+    return send(input)
+  }
+  const queueInput = app.queueInput.bind(app)
+  app.queueInput = (input) => {
+    calls.queue += 1
+    return queueInput(input)
+  }
+  const steer = app.steer.bind(app)
+  app.steer = async (input) => {
+    calls.steer += 1
+    calls.steerTexts.push(input.text)
+    return steer(input)
+  }
+
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-steering-terminal-${++operation}`,
+  })
+  return { app, terminal, view, done: view.start(), calls }
+}
+
 function automationInteractionExecution(): {
   readonly execution: ExecutionPort
   readonly responses: () => number
@@ -174,7 +246,7 @@ test('the real Braid root renders and sends at all four reference sizes', async 
 
     const screen = terminal.getScrollBuffer().join('\n')
     assert.match(screen, /braid/u)
-    assert.match(screen, /hello Braid/u)
+    assert.match(screen, /hello\s+Braid/u)
     assert.match(screen, /Fixture response through pi/u)
     assert.equal(
       app.state().drafts.find((draft) => draft.branchId === app.state().branchId)?.text,
@@ -184,6 +256,44 @@ test('the real Braid root renders and sends at all four reference sizes', async 
 
     view.stop()
     await done
+  }
+})
+
+test('composer fallback steers exactly once without queueing or sending', async () => {
+  const harness = await startSteeringTerminal()
+  try {
+    await harness.terminal.waitForRender()
+    assert.match(harness.terminal.getViewport().join('\n'), /steer \/steer/u)
+    harness.terminal.sendInput('correct course')
+    harness.terminal.sendInput('\r')
+    await waitUntil(() => harness.calls.steer === 1)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.deepEqual(harness.calls.steerTexts, ['correct course'])
+    assert.equal(harness.calls.send, 0)
+    assert.equal(harness.calls.queue, 0)
+  } finally {
+    harness.view.stop()
+    await harness.done
+    await harness.app.close()
+  }
+})
+
+test('/steer text uses the typed steer path exactly once without queueing or sending', async () => {
+  const harness = await startSteeringTerminal()
+  try {
+    harness.terminal.sendInput('/steer focus on tests')
+    harness.terminal.sendInput('\r')
+    await waitUntil(() => harness.calls.steer === 1)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.deepEqual(harness.calls.steerTexts, ['focus on tests'])
+    assert.equal(harness.calls.send, 0)
+    assert.equal(harness.calls.queue, 0)
+  } finally {
+    harness.view.stop()
+    await harness.done
+    await harness.app.close()
   }
 })
 
@@ -294,8 +404,12 @@ test('the searchable command overlay restores editor focus after close', async (
   terminal.sendInput('\u0010')
   terminal.sendInput('q')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /\/quit/u)
+  const overlay = terminal.getViewport().join('\n')
+  assert.match(overlay, /\/quit/u)
+  assert.doesNotMatch(overlay, /alt\+enter newline/u)
   terminal.sendInput('\u001b')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /alt\+enter newline/u)
   terminal.sendInput('focus restored')
   assert.equal(view.editor.getText(), 'focus restored')
 

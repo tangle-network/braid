@@ -1,6 +1,5 @@
 import { effectiveElapsedMs, formatDuration } from '../shared/duration.js'
 import type {
-  ActivityItemView,
   BraidViewModel,
   EntityDetailView,
   RunView,
@@ -8,6 +7,8 @@ import type {
   UsageTotalsView,
 } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { projectActivityDocument, type ActivityDocumentItem } from './activity-document.js'
+import { executionTargetFor } from './execution-target.js'
 import {
   EntityBrowser,
   type EntityBrowserDocument,
@@ -25,13 +26,22 @@ export interface ActivityBrowserOptions {
   readonly selectedId?: string
   readonly openSelected?: boolean
   readonly notice?: () => string | undefined
+  readonly emptyMessage?: string
+  readonly pinned?: string
 }
 
 export class ActivityBrowserPanel extends EntityBrowser {
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scope = options.scope ?? 'all'
     super(theme, {
-      document: () => activityDocument(options.view(), scope, options.notice?.()),
+      document: () =>
+        activityDocument(
+          options.view(),
+          scope,
+          options.notice?.(),
+          options.emptyMessage,
+          options.pinned,
+        ),
       rows: options.rows,
       onClose: options.onClose,
       ...(options.selectedId === undefined ? {} : { selectedId: options.selectedId }),
@@ -44,42 +54,50 @@ export function activityDocument(
   view: BraidViewModel,
   scope: ActivityBrowserScope = 'all',
   notice?: string,
+  emptyMessage?: string,
+  pinned?: string,
 ): EntityBrowserDocument {
   const details = new Map(
     (view.entityDetails ?? []).map((detail) => [detailKey(detail), detail] as const),
   )
   const runs = new Map(view.runs.map((run) => [run.id, run] as const))
-  const items = view.activity
-    .filter((item) => included(item, scope))
+  const items = projectActivityDocument(view)
+    .items.filter((item) => included(item, scope))
     .slice()
     .reverse()
+  const target = executionTargetFor(view)
   return {
     title: scope === 'all' ? 'activity' : scope,
-    context: `${view.profileName} · ${view.runner} · ${view.model} · ${sessionUsageLabel(view)}`,
+    context: `${target.profileName} · ${target.runner} · ${target.model} · ${sessionUsageLabel(view)}`,
+    ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
-      scope === 'analyses'
+      emptyMessage ??
+      (scope === 'analyses'
         ? 'No trace analyses have been recorded.'
         : scope === 'workers'
           ? 'No runtime workers have been reported.'
-          : 'No activity has been recorded.',
-    rows: items.map((item) => rowFor(item, details, runs)),
+          : 'No activity has been recorded.'),
+    rows: items.map((item) => rowFor(item, details, runs, view)),
   }
 }
 
 function rowFor(
-  item: ActivityItemView,
+  item: ActivityDocumentItem,
   details: ReadonlyMap<string, EntityDetailView>,
   runs: ReadonlyMap<string, RunView>,
+  view: BraidViewModel,
 ): EntityBrowserRow {
+  const entityType = item.source?.entityType
+  const entityId = item.source?.entityId
   const entity =
-    item.entityType === undefined || item.entityId === undefined
+    entityType === undefined || entityId === undefined
       ? undefined
-      : details.get(`${item.entityType}:${item.entityId}`)
-  const elapsed = effectiveElapsedMs(item.status, item.startedAt, item.elapsedMs)
+      : details.get(`${entityType}:${entityId}`)
+  const elapsed = effectiveElapsedMs(item.status, item.startedAt, item.durationMs)
   const lines = activityContext(item, elapsed)
   if (entity !== undefined) lines.push(...entity.lines)
-  if (item.kind === 'run') lines.push(...runContext(item, runs))
+  if (item.kind === 'run') lines.push(...runContext(item, runs, view))
   const meta = listMeta(item, elapsed)
   return {
     id: item.id,
@@ -87,18 +105,21 @@ function rowFor(
     title: entity?.title ?? item.title,
     status: item.status,
     ...(meta === undefined ? {} : { meta }),
-    ...(item.kind === 'worker' || item.kind === 'supervisor'
-      ? { depth: Math.max(0, item.depth ?? 0) }
-      : {}),
+    ...(item.depth === undefined ? {} : { depth: Math.max(0, item.depth) }),
     detailLines: lines,
   }
 }
 
-function runContext(item: ActivityItemView, runs: ReadonlyMap<string, RunView>): readonly string[] {
+function runContext(
+  item: ActivityDocumentItem,
+  runs: ReadonlyMap<string, RunView>,
+  view: BraidViewModel,
+): readonly string[] {
   if (item.runId === undefined) return []
   const run = runs.get(item.runId)
   if (run === undefined) return []
-  const usage = run.usage
+  const target = executionTargetFor(view, run.id)
+  const usage = item.usage
   const tokenPrefix = usage?.tokenStatus === 'complete' ? '' : '≥'
   const noObservedTokens = (usage?.input ?? 0) === 0 && (usage?.output ?? 0) === 0
   const tokenUsageUnknown = usage?.tokenStatus !== 'complete' && noObservedTokens
@@ -117,17 +138,26 @@ function runContext(item: ActivityItemView, runs: ReadonlyMap<string, RunView>):
   ]
   return [
     ...(run.provider === undefined ? [] : [`provider: ${sanitizeTerminalText(run.provider)}`]),
-    ...(run.runner === undefined ? [] : [`runner: ${sanitizeTerminalText(run.runner)}`]),
-    ...(run.connection === undefined
+    `AgentProfile: ${sanitizeTerminalText(target.profileName)}`,
+    ...(target.profileDigest === undefined
       ? []
-      : [`connection: ${sanitizeTerminalText(run.connection)}`]),
+      : [`profile digest: ${sanitizeTerminalText(target.profileDigest)}`]),
+    `runner: ${sanitizeTerminalText(target.runner)}`,
+    `connection: ${sanitizeTerminalText(target.connection)}`,
+    ...(target.connectionId === undefined || target.connectionId === target.connection
+      ? []
+      : [`connection id: ${sanitizeTerminalText(target.connectionId)}`]),
     ...(run.environmentId === undefined
       ? []
       : [`execution environment: ${sanitizeTerminalText(run.environmentId)}`]),
     ...(run.providerSessionId === undefined
       ? []
       : [`provider session: ${sanitizeTerminalText(run.providerSessionId)}`]),
-    ...(usage?.model === undefined ? [] : [`model: ${sanitizeTerminalText(usage.model)}`]),
+    `model: ${sanitizeTerminalText(target.model)}`,
+    ...(target.effort === undefined ? [] : [`thinking: ${sanitizeTerminalText(target.effort)}`]),
+    ...(target.maxOutputTokens === undefined
+      ? []
+      : [`max output tokens: ${target.maxOutputTokens}`]),
     ...(metrics.length === 0 ? [] : [`usage: ${metrics.join(' · ')}`]),
     ...(usage === undefined
       ? []
@@ -269,14 +299,14 @@ function compactNumber(value: number): string {
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}m`
 }
 
-function activityContext(item: ActivityItemView, elapsed: number | undefined): string[] {
+function activityContext(item: ActivityDocumentItem, elapsed: number | undefined): string[] {
   const lines: string[] = []
   if (item.occurredAt !== undefined) lines.push(`time: ${sanitizeTerminalText(item.occurredAt)}`)
   if (elapsed !== undefined) lines.push(`elapsed: ${formatDuration(elapsed)}`)
   if (item.runId !== undefined) lines.push(`run: ${sanitizeTerminalText(item.runId)}`)
   if (item.parentId !== undefined) lines.push(`parent: ${sanitizeTerminalText(item.parentId)}`)
-  if (item.sourceEventId !== undefined) {
-    lines.push(`source event: ${sanitizeTerminalText(item.sourceEventId)}`)
+  if (item.source?.eventId !== undefined) {
+    lines.push(`source event: ${sanitizeTerminalText(item.source.eventId)}`)
   }
   if (item.detail !== undefined && item.detail.trim().length > 0) {
     lines.push(...item.detail.split('\n').map((line) => sanitizeTerminalText(line)))
@@ -284,14 +314,12 @@ function activityContext(item: ActivityItemView, elapsed: number | undefined): s
   return lines
 }
 
-function listMeta(item: ActivityItemView, elapsed: number | undefined): string | undefined {
+function listMeta(item: ActivityDocumentItem, elapsed: number | undefined): string | undefined {
   if (elapsed !== undefined) return formatDuration(elapsed)
-  if (item.detail === undefined) return undefined
-  const line = item.detail.split('\n')[0]?.trim()
-  return line ? sanitizeTerminalText(line) : undefined
+  return item.summary === item.title ? undefined : sanitizeTerminalText(item.summary)
 }
 
-function included(item: ActivityItemView, scope: ActivityBrowserScope): boolean {
+function included(item: ActivityDocumentItem, scope: ActivityBrowserScope): boolean {
   if (scope === 'all') return true
   if (scope === 'analyses') return item.kind === 'analysis'
   return item.kind === 'supervisor' || item.kind === 'worker'

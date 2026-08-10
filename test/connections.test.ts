@@ -4,11 +4,11 @@ import type { AgentProfile } from '@tangle-network/agent-interface'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import { createTangleProvider } from '@tangle-network/agent-provider-tangle'
 import { streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
+import { normalizeTangleInferenceRuntimeBaseUrl } from '../src/adapters/connections/production-connection-endpoints.js'
 import {
   createProductionConnectionAdapter,
   type SandboxClientFactoryInput,
 } from '../src/adapters/connections/production-connections.js'
-import { normalizeTangleInferenceRuntimeBaseUrl } from '../src/adapters/connections/production-connection-endpoints.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import {
   createProductionBackendResolver,
@@ -205,7 +205,14 @@ test('health classification and model verification keep bridge readiness separat
     },
   )
   assert.equal((await adapter.health()).status, 'healthy')
-  const verification = await adapter.verifyModel?.('openai/gpt-5', { now: () => at })
+  const verification = await adapter.verifyModel?.('openai/gpt-5', {
+    now: () => at,
+    profile: {
+      name: 'Connection test',
+      harness: 'pi',
+      model: { provider: 'openai', default: 'openai/gpt-5' },
+    },
+  })
   assert.deepEqual(verification, {
     model: 'openai/gpt-5',
     status: 'not-configured',

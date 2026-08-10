@@ -6,7 +6,6 @@ import type {
   RunRecord,
 } from './entities.js'
 import { isReplayCursor } from './ids.js'
-import { safePublicIdentifier } from './provider-values.js'
 import {
   assertDate,
   assertDigest,
@@ -19,6 +18,7 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
+import { safePublicIdentifier } from './provider-values.js'
 
 export function assertRunRecord(record: RunRecord): void {
   assertEntityId('run', record.id, 'run.id')
@@ -165,6 +165,8 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
       assertEntityId('profile', record.provenance.profileId, 'analysis.provenance.profileId')
     if (record.provenance.profileDigest !== undefined)
       assertDigest(record.provenance.profileDigest, 'analysis.provenance.profileDigest')
+    if (record.provenance.connectionDigest !== undefined)
+      assertDigest(record.provenance.connectionDigest, 'analysis.provenance.connectionDigest')
     for (const check of record.provenance.checks) nonEmpty(check.id, 'analysis.check.id')
   }
   for (const check of record.checks ?? []) nonEmpty(check.id, 'analysis.check.id')

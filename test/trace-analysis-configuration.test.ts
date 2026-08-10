@@ -12,6 +12,10 @@ import {
   resolvePythonRunner,
   TRACE_ANALYSIS_PYTHON_PACKAGE_PROBE,
 } from '../src/adapters/analysis/python-runner.js'
+import {
+  BRAID_QUESTION_ANALYST_DEFINITION,
+  BRAID_QUESTION_ANALYST_ID,
+} from '../src/adapters/analysis/question-analyst.js'
 import { createRuntimeTraceModelOwner } from '../src/adapters/analysis/runtime-model-owner.js'
 import {
   createTraceAnalysisAdapter,
@@ -23,6 +27,7 @@ import { AnalysisCapabilityError } from '../src/app/analysis-types.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { credentialRef } from '../src/ports/credentials.js'
+import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 }
@@ -49,7 +54,9 @@ function connection(
 }
 
 function profile(model?: string): Readonly<AgentProfile> {
-  return model === undefined ? {} : { model: { default: model } }
+  return model === undefined
+    ? {}
+    : { harness: 'pi', model: { default: model, provider: 'tangle-router' } }
 }
 
 function successfulProbe(
@@ -84,10 +91,10 @@ test('configures the published DSPy RLM engine and model-backed analyst registry
 
   assert.equal(result.status, 'engine-configured')
   if (result.status !== 'engine-configured') return
-  assert.equal(result.model, 'glm-5.2')
+  assert.equal(result.model, 'pi/tangle-router/glm-5.2')
   assert.equal(result.connection.endpoint, 'http://127.0.0.1:4010')
   assert.match(String(result.engine.executionConfig.call_ref), /^braid-agent-runtime:/u)
-  assert.equal(result.engine.executionConfig.model, 'glm-5.2')
+  assert.equal(result.engine.executionConfig.model, 'pi/tangle-router/glm-5.2')
   assert.deepEqual(result.engine.executionConfig.pricing, PRICING)
   assert.equal('base_url' in result.engine.executionConfig, false)
   assert.equal('api_key_provided' in result.engine.executionConfig, false)
@@ -105,9 +112,25 @@ test('configures the published DSPy RLM engine and model-backed analyst registry
   assert.ok(analystIds.includes('efficiency-behavioral'))
   assert.ok(analystIds.includes('failure-mode'))
   assert.ok(analystIds.includes('improvement'))
+  assert.ok(analystIds.includes(BRAID_QUESTION_ANALYST_ID))
   const askIds = new AgentEvalAnalystAdapter(result.registry).resolveAnalystIds({ recipe: 'ask' })
-  assert.ok(askIds.includes('failure-mode'))
-  assert.ok(askIds.includes('knowledge-gap'))
+  assert.deepEqual(askIds, [BRAID_QUESTION_ANALYST_ID])
+})
+
+test('defines a bounded cited-answer analyst for /ask', () => {
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
+  assert.equal(typeof BRAID_QUESTION_ANALYST_DEFINITION.prepareContext, 'function')
+  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /direct answer/u)
+  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Do not invent/u)
+  assert.match(
+    BRAID_QUESTION_ANALYST_DEFINITION.instructions,
+    /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u,
+  )
+  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /exact string value/u)
+  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Every citation must copy/u)
 })
 
 test('resolves the selected connection credential in memory and never exposes it in configuration', async () => {
@@ -326,10 +349,10 @@ function runtimeOwner(
   recordExecution?: (observation: ExternalOptimizerModelExecutionObservation) => void,
   model = 'pi/tangle-router/glm-5.2',
 ) {
-  const selected = connection('cli-bridge', 'runtime-owner', 'http://127.0.0.1:3344')
+  const selected = connection('tangle-inference', 'runtime-owner', 'https://router.test', true)
   return createRuntimeTraceModelOwner({
     profile: {
-      harness: 'pi',
+      harness: 'cli-base',
       model: {
         default: model,
         provider: 'tangle-router',
@@ -394,6 +417,73 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
   assert.doesNotMatch(execution, /private trace question/u)
   assert.match(execution, /streamAgentTurn/u)
   assert.match(execution, /"maxAttempts":1/u)
+})
+
+test('runtime-owned CLI Bridge analysis uses the harness executor with portable profile authority', async () => {
+  const bridge = await startRuntimeBridgeServer({
+    expectedBearer: 'credential-never-recorded',
+    responseText: '{"answer":"bridge ok"}',
+  })
+  try {
+    const selected = connection('cli-bridge', 'runtime-bridge-owner', bridge.endpoint)
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        name: 'Product engineer',
+        harness: 'pi',
+        model: {
+          default: 'tangle-router/glm-5.2',
+          provider: 'tangle-router',
+          reasoningEffort: 'high',
+        },
+      },
+      connection: selected,
+      baseUrl: bridge.endpoint,
+      credential: 'credential-never-recorded',
+      model: 'pi/tangle-router/glm-5.2',
+      pricing: PRICING,
+    })
+
+    const result = await owner.call(optimizerRequest({ thinking: 'disabled' }))
+    assert.equal(result.succeeded, true)
+    if (!result.succeeded) return
+    assert.equal(result.response.content, '{"answer":"bridge ok"}')
+    assert.equal(bridge.requests.length, 1)
+    const body = bridge.requests[0]?.body
+    assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
+    assert.equal(body?.max_tokens, 64)
+    const executionProfile = body?.agent_profile as AgentProfile
+    assert.equal(executionProfile.harness, 'pi')
+    assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
+    assert.equal(executionProfile.model?.provider, 'tangle-router')
+    assert.equal(executionProfile.model?.reasoningEffort, 'none')
+    assert.equal(executionProfile.model?.metadata?.maxTokens, 64)
+    assert.equal(executionProfile.model?.metadata?.retry, undefined)
+    assert.match(executionProfile.prompt?.systemPrompt ?? '', /text-generation endpoint/u)
+    assert.match(executionProfile.prompt?.systemPrompt ?? '', /Do not inspect files/u)
+    assert.deepEqual(executionProfile.tools, {
+      edit: false,
+      read: false,
+      shell: false,
+      write: false,
+    })
+    assert.deepEqual(executionProfile.permissions, {
+      edit: 'deny',
+      read: 'deny',
+      shell: 'deny',
+      write: 'deny',
+    })
+    assert.deepEqual(executionProfile.extensions, { pi: { load: [] } })
+    const messages = body?.messages as Array<{ readonly role?: string; readonly content?: string }>
+    assert.equal(messages.length, 1)
+    assert.equal(messages[0]?.role, 'user')
+    assert.deepEqual(JSON.parse(messages[0]?.content ?? '{}'), {
+      messages: optimizerRequest().request.messages,
+    })
+    assert.doesNotMatch(JSON.stringify(result.execution), /private analyst instruction/u)
+    assert.doesNotMatch(JSON.stringify(result.execution), /private trace question/u)
+  } finally {
+    await bridge.close()
+  }
 })
 
 test('runtime-owned trace model preserves observed cost when token usage is unknown', async () => {

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
 import { TuiMainScreen } from '@earendil-works/pi-tui'
+import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
 import {
   AgentEvalAnalystAdapter,
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
+import { BRAID_QUESTION_ANALYST_ID } from '../src/adapters/analysis/question-analyst.js'
 import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
 import { RuntimeSupervisorController } from '../src/adapters/runtime/supervisor-control.js'
 import {
@@ -70,6 +71,12 @@ function registry(): AnalystRegistryPort {
       {
         id: 'efficiency-behavioral',
         description: 'deterministic Braid test analyst',
+        version: 'test',
+        cost: { kind: 'deterministic' },
+      },
+      {
+        id: BRAID_QUESTION_ANALYST_ID,
+        description: 'Braid question test analyst',
         version: 'test',
         cost: { kind: 'deterministic' },
       },
@@ -416,6 +423,10 @@ test('the terminal opens saved ask and comparison results instead of reducing th
   assert.match(comparisonScreen, /\/compare · frozen runs/u)
   assert.match(comparisonScreen, new RegExp(`baseline run: ${baselineRunId}`, 'u'))
   assert.match(comparisonScreen, new RegExp(`candidate run: ${candidateRunId}`, 'u'))
+  assert.match(
+    comparisonScreen,
+    new RegExp(`sources run:${baselineRunId} ↔ run:${candidateRunId}`, 'u'),
+  )
   assert.match(comparisonScreen, /sample: 1 paired/u)
 
   terminal.sendInput('\u001b[B')
@@ -431,6 +442,69 @@ test('the terminal opens saved ask and comparison results instead of reducing th
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
   assert.match(terminal.getViewport().join('\n'), /AgentProfile Braid starter/u)
+
+  view.stop()
+  await done
+  await app.close()
+})
+
+test('the terminal keeps an explicit branch pin through ask progress and result', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app, {}, 'analysis')
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TuiMainScreen(terminal)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-branch-ask-${++operation}`,
+  })
+  const done = view.start()
+
+  terminal.sendInput('/ask branch:branch-ask why did this branch finish')
+  terminal.sendInput('\r')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /source branch:branch-ask/u)
+  await waitUntil(() =>
+    controller.view().activity.some((item) => item.id === 'analysis:analysis-fixture-1'),
+  )
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /source branch:branch-ask/u)
+
+  view.stop()
+  await done
+  await app.close()
+})
+
+test('the terminal keeps both explicit branch pins through comparison progress and result', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app, {}, 'comparison')
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TuiMainScreen(terminal)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-branch-compare-${++operation}`,
+  })
+  const done = view.start()
+
+  terminal.sendInput('/compare branch:branch-a branch:branch-b')
+  terminal.sendInput('\r')
+  await terminal.waitForRender()
+  const progressScreen = terminal.getViewport().join('\n')
+  assert.match(progressScreen, /sources branch:branch-a ↔ branch:branch-b/u)
+  await waitUntil(() =>
+    controller.view().activity.some((item) => item.id === 'analysis:analysis-fixture-comparison'),
+  )
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /sources branch:branch-a ↔ branch:branch-b/u)
 
   view.stop()
   await done

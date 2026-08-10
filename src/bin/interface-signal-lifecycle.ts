@@ -25,7 +25,7 @@ export function createInterfaceSignalLifecycle(
 ): InterfaceSignalLifecycle {
   let signalExitCode: number | undefined
   let signalSnapshot: Promise<void> | undefined
-  let frameSnapshot: Promise<void> | undefined
+  let frameSnapshot = Promise.resolve()
   let signalCleanup: Promise<void> | undefined
   let disposed = false
   const shutdownMode =
@@ -68,10 +68,8 @@ export function createInterfaceSignalLifecycle(
   }
   const onFrameSnapshot = () => {
     if (input.recordState)
-      frameSnapshot ??= recordInterfaceState(
-        `${input.recordState}.frame`,
-        input.controller,
-        'atomic-signal-frame',
+      frameSnapshot = frameSnapshot.then(() =>
+        recordInterfaceState(`${input.recordState}.frame`, input.controller, 'atomic-signal-frame'),
       )
   }
   const onInterrupt = () => stopFromSignal(130)
@@ -83,7 +81,7 @@ export function createInterfaceSignalLifecycle(
     process.once('SIGTERM', onTerminate)
     process.once('SIGHUP', onHangup)
   }
-  process.once('SIGUSR2', onFrameSnapshot)
+  process.on('SIGUSR2', onFrameSnapshot)
 
   return Object.freeze({
     interrupted: () => signalExitCode !== undefined,

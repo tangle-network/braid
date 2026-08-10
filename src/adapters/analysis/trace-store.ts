@@ -1,20 +1,26 @@
 import {
+  applyToolSpanOtlpAttributes,
   createBoundedTraceAnalysisStore,
+  OPENINFERENCE_SPAN_KIND,
   otlpTextToTraceAnalysisStore,
   type ToolSpan,
   type TraceAnalysisStore,
-  toolSpansToTraceAnalysisStore,
 } from '@tangle-network/agent-eval'
 import { verifyFrozenAnalysisSource } from '../../app/analysis-source.js'
 import type { FrozenAnalysisEvent, FrozenAnalysisEvidence } from '../../app/analysis-types.js'
 import { AnalysisSourceError } from '../../app/analysis-types.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { BraidEvent } from '../../domain/events.js'
-import { redactSensitiveText, redactStructuredValue } from '../../domain/redaction.js'
+import {
+  analysisEventAttributes,
+  analysisEventError,
+  safeAnalysisText,
+  safeAnalysisValue,
+} from './trace-event-projection.js'
 
 export interface AnalysisTraceSpanReference {
   readonly spanId: string
-  readonly eventId: string
+  readonly eventIds: readonly string[]
   readonly partId?: string
   readonly toolName?: string
 }
@@ -35,23 +41,6 @@ interface ToolSpanEntry {
 function eventTime(event: FrozenAnalysisEvent): number {
   const parsed = Date.parse(event.occurredAt)
   return Number.isFinite(parsed) ? parsed : event.sequence
-}
-
-function safeValue(value: unknown): unknown {
-  try {
-    return redactStructuredValue(value)
-  } catch {
-    return '[redacted value]'
-  }
-}
-
-function safeText(value: unknown): string {
-  if (typeof value === 'string') return redactSensitiveText(value)
-  try {
-    return redactSensitiveText(JSON.stringify(safeValue(value)) ?? String(value))
-  } catch {
-    return '[redacted value]'
-  }
 }
 
 function toolKey(
@@ -76,7 +65,7 @@ function createToolSpan(
     kind: 'tool',
     name: source.toolName,
     toolName: source.toolName,
-    args: safeValue(source.input ?? null),
+    args: safeAnalysisValue(source.input ?? null),
     ...(source.input === undefined ? {} : { argsCaptured: true }),
     startedAt,
     attributes: {
@@ -85,12 +74,6 @@ function createToolSpan(
       'braid.source_digest': evidence.source.digest,
     },
   }
-}
-
-function sourceEventError(event: BraidEvent): string | undefined {
-  if (event.kind === 'run.error') return event.message
-  if (event.kind === 'run.tool.result' && event.error !== undefined) return event.error
-  return undefined
 }
 
 function buildToolSpans(evidence: FrozenAnalysisEvidence): {
@@ -107,7 +90,7 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
       entries.set(key, { key, event, span })
       references.set(span.spanId, {
         spanId: span.spanId,
-        eventId: String(event.id),
+        eventIds: [String(event.id)],
         partId: event.event.partId,
         toolName: event.event.toolName,
       })
@@ -130,8 +113,10 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
         endedAt: startedAt,
         ...(event.event.error === undefined
           ? { status: 'ok' as const }
-          : { status: 'error' as const, error: safeText(event.event.error) }),
-        ...(event.event.result === undefined ? {} : { result: safeValue(event.event.result) }),
+          : { status: 'error' as const, error: safeAnalysisText(event.event.error) }),
+        ...(event.event.result === undefined
+          ? {}
+          : { result: safeAnalysisValue(event.event.result) }),
         attributes: {
           'braid.event_id': String(event.id),
           'braid.part_id': event.event.partId,
@@ -141,7 +126,7 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
       entries.set(key, { key, event, span })
       references.set(span.spanId, {
         spanId: span.spanId,
-        eventId: String(event.id),
+        eventIds: [String(event.id)],
         partId: event.event.partId,
         toolName: event.event.toolName,
       })
@@ -156,14 +141,22 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
       latencyMs,
       ...(event.event.error === undefined
         ? { status: 'ok' as const }
-        : { status: 'error' as const, error: safeText(event.event.error) }),
-      ...(event.event.result === undefined ? {} : { result: safeValue(event.event.result) }),
+        : { status: 'error' as const, error: safeAnalysisText(event.event.error) }),
+      ...(event.event.result === undefined
+        ? {}
+        : { result: safeAnalysisValue(event.event.result) }),
       attributes: {
         ...existing.span.attributes,
         'braid.result_event_id': String(event.id),
       },
     }
     entries.set(key, { key, event: existing.event, span })
+    references.set(span.spanId, {
+      spanId: span.spanId,
+      eventIds: [String(existing.event.id), String(event.id)],
+      partId: event.event.partId,
+      toolName: event.event.toolName,
+    })
   }
 
   return {
@@ -172,32 +165,17 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
   }
 }
 
-function eventAttributes(
-  event: FrozenAnalysisEvent,
-  sourceDigest: string,
-): Record<string, unknown> {
-  const attributes: Record<string, unknown> = {
-    'braid.event_id': String(event.id),
-    'braid.kind': event.event.kind,
-    'braid.source_digest': sourceDigest,
-    'openinference.span.kind': event.event.kind === 'run.text.delta' ? 'LLM' : 'AGENT',
-  }
-  if (event.event.kind === 'run.text.delta' || event.event.kind === 'run.reasoning.delta') {
-    attributes['output.value'] = safeText(event.event.text)
-  }
-  const error = sourceEventError(event.event)
-  if (error !== undefined) attributes['error.message'] = safeText(error)
-  return attributes
-}
-
 function genericTraceText(evidence: FrozenAnalysisEvidence): {
   readonly text: string
   readonly references: readonly AnalysisTraceSpanReference[]
 } {
-  const lines = evidence.events.map((event) => {
+  const events = evidence.events.filter(
+    (event) => event.event.kind !== 'run.tool.call' && event.event.kind !== 'run.tool.result',
+  )
+  const lines = events.map((event) => {
     const time = new Date(eventTime(event)).toISOString()
     const spanId = spanIdFor(event)
-    const error = sourceEventError(event.event)
+    const error = analysisEventError(event.event)
     return JSON.stringify({
       trace_id: String(evidence.source.runId),
       span_id: spanId,
@@ -209,19 +187,51 @@ function genericTraceText(evidence: FrozenAnalysisEvidence): {
       status:
         error === undefined
           ? { code: 'STATUS_CODE_UNSET' }
-          : { code: 'STATUS_CODE_ERROR', message: safeText(error) },
-      resource: { attributes: { 'braid.source_digest': evidence.source.digest } },
-      attributes: eventAttributes(event, evidence.source.digest),
+          : { code: 'STATUS_CODE_ERROR', message: safeAnalysisText(error) },
+      resource: {
+        attributes: {
+          'service.name': 'braid',
+          'braid.source_digest': evidence.source.digest,
+        },
+      },
+      attributes: analysisEventAttributes(event, evidence.source.digest),
     })
   })
   return {
     text: `${lines.join('\n')}\n`,
-    references: evidence.events.map((event) => ({
+    references: events.map((event) => ({
       spanId: spanIdFor(event),
-      eventId: String(event.id),
+      eventIds: [String(event.id)],
       ...(event.event.kind === 'run.part.updated' ? { partId: event.event.part.id } : {}),
     })),
   }
+}
+
+function toolTraceText(spans: readonly ToolSpan[]): string {
+  const lines = spans.map((span) => {
+    const attributes = { ...(span.attributes ?? {}) }
+    applyToolSpanOtlpAttributes(attributes, span)
+    attributes[OPENINFERENCE_SPAN_KIND] = 'TOOL'
+    const endedAt = span.endedAt ?? span.startedAt + (span.latencyMs ?? 0)
+    return JSON.stringify({
+      trace_id: span.runId,
+      span_id: span.spanId,
+      parent_span_id: span.parentSpanId ?? null,
+      name: span.name,
+      kind: 'SPAN_KIND_INTERNAL',
+      start_time: new Date(span.startedAt).toISOString(),
+      end_time: new Date(endedAt).toISOString(),
+      status:
+        span.status === 'error' || span.error !== undefined
+          ? { code: 'STATUS_CODE_ERROR', message: span.error }
+          : span.status === 'ok'
+            ? { code: 'STATUS_CODE_OK' }
+            : { code: 'STATUS_CODE_UNSET' },
+      resource: { attributes: { 'service.name': 'braid' } },
+      attributes,
+    })
+  })
+  return lines.length === 0 ? '' : `${lines.join('\n')}\n`
 }
 
 export function buildAnalysisTraceStore(evidence: FrozenAnalysisEvidence): AnalysisTraceBundle {
@@ -234,16 +244,11 @@ export function buildAnalysisTraceStore(evidence: FrozenAnalysisEvidence): Analy
   }
 
   const toolEvidence = buildToolSpans(evidence)
-  let store: TraceAnalysisStore
-  let references: readonly AnalysisTraceSpanReference[]
-  if (toolEvidence.spans.length > 0) {
-    store = toolSpansToTraceAnalysisStore(toolEvidence.spans)
-    references = toolEvidence.references
-  } else {
-    const generic = genericTraceText(evidence)
-    store = otlpTextToTraceAnalysisStore(generic.text)
-    references = generic.references
-  }
+  const generic = genericTraceText(evidence)
+  const store: TraceAnalysisStore = otlpTextToTraceAnalysisStore(
+    `${toolTraceText(toolEvidence.spans)}${generic.text}`,
+  )
+  const references = [...toolEvidence.references, ...generic.references]
 
   return {
     traceId: String(evidence.source.runId),

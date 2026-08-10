@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TuiMainScreen, type Component, type OverlayHandle } from '@earendil-works/pi-tui'
+import { type Component, type OverlayHandle, TuiMainScreen } from '@earendil-works/pi-tui'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { withIntelligenceResult } from '../src/adapters/tui/ui-intelligence-result-view.js'
+import { createBraidApplication } from '../src/app/composition.js'
 import type { AnalysisRecord } from '../src/domain/entities.js'
 import {
   createAnalysisId,
@@ -11,13 +14,10 @@ import {
 } from '../src/domain/ids.js'
 import type { BraidUiController, UiDispatchResult } from '../src/views/shared/intents.js'
 import type { BraidViewModel, HeadlessState } from '../src/views/shared/models.js'
-import { TerminalSurfaceOverlays } from '../src/views/tui/terminal-surface-overlays.js'
-import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import type { ModalCoordinator, ModalOptions } from '../src/views/tui/modal-coordinator.js'
+import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
+import { TerminalSurfaceOverlays } from '../src/views/tui/terminal-surface-overlays.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { createBraidApplication } from '../src/app/composition.js'
-import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
-import { withIntelligenceResult } from '../src/adapters/tui/ui-intelligence-result-view.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 interface Deferred<T> {
@@ -50,7 +50,12 @@ function deferred<T>(): Deferred<T> {
 function modalSpy(): ModalSpy {
   let entry: OpenEntry | undefined
   const modals = {
-    open(component: Component, options: ModalOptions = {}): OverlayHandle {
+    open(component: Component, options: ModalOptions = {}, preempt = true): OverlayHandle {
+      if (preempt) {
+        const closing = entry
+        entry = undefined
+        closing?.onClose?.()
+      }
       entry = { component, ...(options.onClose === undefined ? {} : { onClose: options.onClose }) }
       return {} as OverlayHandle
     },
@@ -326,6 +331,82 @@ test('analysis surfaces stay frozen and TerminalApp.stop disposes live refreshes
     await done
     await application.close()
   }
+})
+
+test('analysis progress opens immediately, follows live state, and respects dismissal', () => {
+  let current: BraidViewModel = {
+    ...viewModel(),
+    activity: [],
+    entityDetails: [],
+  }
+  const controller: BraidUiController = {
+    ...controllerFor(current, async () => ({ kind: 'accepted', revision: current.revision })),
+    view: () => current,
+  }
+  const spy = modalSpy()
+  const surfaces = new TerminalSurfaceOverlays(surfaceOptions(controller, spy.modals, () => {}))
+
+  const progress = surfaces.openIntelligenceProgress(
+    'ask',
+    'source run:run-live · Review profile · pi · tangle-router/glm-5.2 · Local CLI Bridge',
+  )
+  const empty = spy.current()?.render(80).join('\n') ?? ''
+  assert.match(empty, /analyses · 0/u)
+  assert.match(empty, /Starting \/ask/u)
+  assert.match(empty, /source run:run-live/u)
+  assert.match(empty, /Review profile · pi · tangle-router\/glm-5\.2/u)
+
+  current = {
+    ...current,
+    activity: [
+      {
+        id: 'analysis:live-ask',
+        kind: 'analysis',
+        title: '/ask',
+        status: 'running',
+        entityType: 'analysis',
+        entityId: 'live-ask',
+        detail: 'Reading the frozen trace',
+      },
+    ],
+    entityDetails: [
+      {
+        entityType: 'analysis',
+        entityId: 'live-ask',
+        title: '/ask · frozen question',
+        status: 'running',
+        lines: ['source: frozen', 'Reading the frozen trace'],
+      },
+    ],
+  }
+  const running = spy.current()?.render(80).join('\n') ?? ''
+  assert.match(running, /analyses · 1/u)
+  assert.match(running, /\/ask · frozen question/u)
+  assert.match(running, /running/u)
+
+  progress.complete({
+    analysis: {
+      id: 'live-ask',
+      status: 'completed',
+      findings: [],
+      source: { digest: 'live-ask', complete: true },
+    },
+  })
+  assert.match(spy.current()?.render(80).join('\n') ?? '', /analyses › \/ask · frozen question/u)
+
+  spy.closeTop()
+  const dismissed = surfaces.openIntelligenceProgress('analyze')
+  spy.closeTop()
+  dismissed.complete({
+    analysis: {
+      id: 'live-ask',
+      status: 'completed',
+      findings: [],
+      source: { digest: 'live-ask', complete: true },
+    },
+  })
+  assert.equal(spy.current(), undefined)
+  surfaces.dispose()
 })
 
 test('selected saved intelligence results pin one old row without expanding the activity tail', () => {

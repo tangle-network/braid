@@ -1,5 +1,7 @@
+import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import type {
   AnalysisRecord,
+  ConnectionRecord,
   FrozenAnalysisSource,
   MessagePartRecord,
   MessageRecord,
@@ -10,6 +12,7 @@ import type {
   AnalysisId,
   AnalysisRunId,
   BranchId,
+  ConnectionId,
   ConversationId,
   Digest,
   EventId,
@@ -55,12 +58,25 @@ export interface FrozenAnalysisEvidence {
   readonly messageParts: readonly MessagePartRecord[]
 }
 
+/** Exact, secret-free route captured before one analysis leaves the process. */
+export interface AnalysisExecutionTarget {
+  readonly profile: Readonly<AgentProfile>
+  readonly profileId?: ProfileId
+  readonly profileDigest: Digest
+  readonly connection?: ConnectionRecord
+  readonly connectionId?: ConnectionId
+  readonly connectionDigest?: Digest
+  readonly model?: string
+  readonly runner?: HarnessType
+}
+
 export interface AnalysisApplicationHost {
   readonly currentState: () => BraidState
   readonly eventHistory: () => readonly BraidEventEnvelope[]
   readonly commit: (event: BraidEvent) => void | Promise<void>
   readonly commitAndWait?: (event: BraidEvent) => void | Promise<void>
   readonly now: () => string
+  readonly analysisExecutionTarget?: (state: BraidState) => AnalysisExecutionTarget
 }
 
 export interface AnalysisProgressStarted {

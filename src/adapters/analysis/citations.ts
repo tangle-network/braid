@@ -94,6 +94,27 @@ function spanReference(bundle: AnalysisTraceBundle, spanId: string): AnalysisTra
   return reference
 }
 
+function sourceEventForSpan(
+  evidence: FrozenAnalysisEvidence,
+  span: AnalysisTraceSpanReference,
+  excerpt: string | undefined,
+): FrozenAnalysisEvent {
+  const candidates = span.eventIds.map((id) => sourceEvent(evidence, id))
+  if (excerpt === undefined) {
+    const source = candidates[0]
+    if (source === undefined)
+      throw new AnalysisCitationError(`Citation span ${span.spanId} has no frozen event`)
+    return source
+  }
+  const source = candidates.find((candidate) => eventText(candidate).includes(excerpt))
+  if (source === undefined) {
+    throw new AnalysisCitationError(
+      `Citation excerpt does not occur in frozen events for span ${span.spanId}`,
+    )
+  }
+  return source
+}
+
 function traceMatches(evidence: FrozenAnalysisEvidence, traceId: string): boolean {
   return (
     traceId === String(evidence.source.runId) ||
@@ -136,7 +157,8 @@ export function resolveEvidenceRef(
       )
     }
     const span = spanReference(bundle, spanId)
-    return citationForEvent(evidence, ref, span.eventId, span.partId)
+    const source = sourceEventForSpan(evidence, span, ref.excerpt)
+    return citationForEvent(evidence, ref, String(source.id), span.partId)
   }
 
   if (ref.kind === 'event') {

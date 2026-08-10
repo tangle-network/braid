@@ -37,6 +37,7 @@
     "capture:w0": "pnpm run build && node scripts/capture-w0.mjs",
     "capture:visual": "pnpm run build && node scripts/capture-visual.mjs",
     "capture:connections": "pnpm run build && node scripts/capture-connections.mjs",
+    "capture:demo:live": "pnpm run build && node scripts/live-demo.mjs",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run boundaries && pnpm run dependencies:check && pnpm run attribution && pnpm run licenses:check && pnpm run test && pnpm run test:live:required:self && pnpm run test:live:bridge:matrix && pnpm run check:release",
     "clean": "node scripts/clean.mjs",
     "format": "biome format --write .",

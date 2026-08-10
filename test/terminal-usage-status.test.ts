@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import type { BraidViewModel } from '../src/views/shared/models.js'
 import { activityDocument } from '../src/views/tui/activity-browser.js'
+import { executionTargetFor } from '../src/views/tui/execution-target.js'
 import { metricsFor, TerminalChrome } from '../src/views/tui/terminal-chrome.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 
@@ -37,7 +39,105 @@ test('terminal chrome keeps telemetry out of narrow layouts', () => {
   const narrow = chrome.render(40)
   assert.equal(narrow.length, 3)
   assert.doesNotMatch(narrow.join('\n'), /calls|analysis|workers|missing/u)
-  for (const line of narrow) assert.ok(line.length <= 40)
+  for (const line of narrow) assert.ok(visibleWidth(line) <= 40)
+})
+
+test('execution identity comes from one active run receipt instead of current profile fields', () => {
+  const base = usageView()
+  const view: BraidViewModel = {
+    ...base,
+    profileName: 'Next profile',
+    profileDigest: 'digest-next',
+    runner: 'codex',
+    model: 'openai/gpt-next',
+    effort: 'medium',
+    maxOutputTokens: 4096,
+    connection: 'Next connection',
+    status: 'running',
+    statusText: 'streaming',
+    activeRunId: 'run-exact',
+    runs: [
+      {
+        id: 'run-exact',
+        status: 'running',
+        profileName: 'Exact run profile',
+        profileDigest: 'digest-run',
+        runner: 'pi',
+        model: 'tangle-router/glm-5.2',
+        effort: 'high',
+        maxOutputTokens: 16_384,
+        connection: 'Local CLI Bridge',
+        connectionId: 'connection-run',
+        environmentId: 'environment-run',
+        usage: { model: 'tangle-router/glm-5.2' },
+        completeness: 'streaming',
+      },
+    ],
+    environments: [
+      {
+        id: 'environment-run',
+        connectionId: 'connection-run',
+        kind: 'local-process',
+        provider: 'cli-bridge',
+        lifecycle: 'active',
+        location: 'local',
+        unavailableTelemetry: [],
+        createdAt: '2026-08-10T00:00:00.000Z',
+        updatedAt: '2026-08-10T00:00:01.000Z',
+      },
+    ],
+    activity: [
+      {
+        id: 'activity-run-exact',
+        kind: 'run',
+        title: 'exact run',
+        status: 'running',
+        runId: 'run-exact',
+      },
+    ],
+  }
+
+  assert.deepEqual(executionTargetFor(view), {
+    source: 'run',
+    runId: 'run-exact',
+    profileName: 'Exact run profile',
+    profileDigest: 'digest-run',
+    runner: 'pi',
+    model: 'tangle-router/glm-5.2',
+    effort: 'high',
+    maxOutputTokens: 16_384,
+    connection: 'Local CLI Bridge',
+    connectionId: 'connection-run',
+    environment: view.environments[0],
+  })
+
+  const chrome = new TerminalChrome(theme)
+  chrome.setState({
+    view,
+    quitArmed: false,
+    activityVisible: true,
+    navigationHint: 'Ctrl+P commands',
+  })
+  const rendered = chrome.render(120).join('\n')
+  assert.match(rendered, /AgentProfile Exact run profile/u)
+  assert.match(rendered, /runner pi/u)
+  assert.match(rendered, /tangle-router\/glm-5\.2/u)
+  assert.match(rendered, /Local CLI Bridge/u)
+  assert.match(rendered, /exec local CLI · active/u)
+  assert.doesNotMatch(rendered, /Next profile|openai\/gpt-next|Next connection/u)
+
+  const activity = activityDocument(view)
+  assert.match(activity.context ?? '', /Exact run profile · pi · tangle-router\/glm-5\.2/u)
+  const detail = activity.rows[0]?.detailLines.join('\n') ?? ''
+  assert.match(detail, /profile digest: digest-run/u)
+  assert.match(detail, /max output tokens: 16384/u)
+
+  const { activeRunId: _activeRunId, ...idleView } = view
+  const idleTarget = executionTargetFor({ ...idleView, status: 'completed' })
+  assert.equal(idleTarget.source, 'profile')
+  assert.equal(idleTarget.profileName, 'Next profile')
+  assert.equal(idleTarget.model, 'openai/gpt-next')
+  assert.equal(idleTarget.environment, undefined)
 })
 
 function usageView(): BraidViewModel {

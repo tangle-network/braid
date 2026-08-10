@@ -33,6 +33,91 @@ export interface FreezeAnalysisSourceInput extends AnalysisSourceRequest {
   readonly events: readonly BraidEventEnvelope[]
 }
 
+export type AnalysisSourceKind = 'run' | 'branch'
+
+export interface AnalysisSourceReference {
+  readonly kind: AnalysisSourceKind
+  readonly id: string
+}
+
+export interface AnalysisSourceProjection {
+  readonly reference: AnalysisSourceReference
+  readonly request: AnalysisSourceRequest
+}
+
+/** Parses the stable command token without resolving it against current state. */
+export function parseAnalysisSourceReference(value: string): AnalysisSourceReference | undefined {
+  const normalized = value.trim()
+  for (const kind of ['run', 'branch'] as const) {
+    const prefix = `${kind}:`
+    if (!normalized.startsWith(prefix)) continue
+    const id = normalized.slice(prefix.length).trim()
+    return id.length === 0 ? undefined : { kind, id }
+  }
+  return undefined
+}
+
+export function formatAnalysisSourceReference(reference: AnalysisSourceReference): string {
+  return `${reference.kind}:${reference.id}`
+}
+
+export function analysisSourceReference(source: {
+  readonly branchId: string
+  readonly runId?: string
+}): AnalysisSourceReference {
+  return source.runId === undefined
+    ? { kind: 'branch', id: source.branchId }
+    : { kind: 'run', id: source.runId }
+}
+
+/** Resolves one command source and retains whether the user named a run or branch. */
+export function projectAnalysisSource(
+  state: BraidState,
+  value: string,
+): AnalysisSourceProjection | undefined {
+  const normalized = value.trim()
+  if (normalized === 'active' || normalized === 'last') {
+    const run = [...state.runs]
+      .reverse()
+      .find(
+        (candidate) =>
+          candidate.branchId === state.branchId &&
+          candidate.complete &&
+          (candidate.status === 'completed' || candidate.status === 'failed'),
+      )
+    return run === undefined ? undefined : projectionForRun(run)
+  }
+
+  const parsed = parseAnalysisSourceReference(normalized)
+  if (parsed?.kind === 'run') {
+    const run = state.runs.find((candidate) => String(candidate.id) === parsed.id)
+    return run === undefined ? undefined : projectionForRun(run)
+  }
+  if (parsed?.kind === 'branch') {
+    const branch = state.branches.find((candidate) => String(candidate.id) === parsed.id)
+    return branch === undefined ? undefined : projectionForBranch(branch)
+  }
+
+  const run = state.runs.find((candidate) => String(candidate.id) === normalized)
+  if (run !== undefined) return projectionForRun(run)
+  const branch = state.branches.find((candidate) => String(candidate.id) === normalized)
+  return branch === undefined ? undefined : projectionForBranch(branch)
+}
+
+function projectionForRun(run: RunRecord): AnalysisSourceProjection {
+  return {
+    reference: analysisSourceReference({ branchId: String(run.branchId), runId: String(run.id) }),
+    request: { conversationId: run.conversationId, branchId: run.branchId, runId: run.id },
+  }
+}
+
+function projectionForBranch(branch: BraidState['branches'][number]): AnalysisSourceProjection {
+  return {
+    reference: analysisSourceReference({ branchId: String(branch.id) }),
+    request: { conversationId: branch.conversationId, branchId: branch.id },
+  }
+}
+
 function cloneAndFreeze<T>(value: T): T {
   let cloned: T
   try {

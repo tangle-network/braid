@@ -15,12 +15,14 @@ import {
   materializeBridgeModelRoute,
 } from '../connections/cli-bridge-model-route.js'
 import {
+  normalizeCliBridgeProviderBaseUrl,
+  normalizeTangleInferenceRuntimeBaseUrl,
+} from '../connections/production-connection-endpoints.js'
+import {
   connectionEndpoint,
-  normalizeCliBridgeRuntimeBaseUrl,
   type ProductionConnectionOptions,
   readConnectionCredential,
 } from '../connections/production-connections.js'
-import { normalizeTangleInferenceRuntimeBaseUrl } from '../connections/production-connection-endpoints.js'
 import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 import {
   AgentEvalAnalystAdapter,
@@ -33,6 +35,7 @@ import {
   type PythonRunnerSpec,
   resolvePythonRunner,
 } from './python-runner.js'
+import { registerBraidQuestionAnalyst } from './question-analyst.js'
 import { createRuntimeTraceModelOwner } from './runtime-model-owner.js'
 
 export type TraceAnalysisDiagnosticKind =
@@ -235,6 +238,14 @@ export async function createTraceAnalysisAdapter(
     })
   }
   const runner = options.runner ?? profile.harness
+  if (connection.kind === 'cli-bridge' && runner === undefined) {
+    return unavailable('unavailable', {
+      kind: 'connection-configuration-failed',
+      code: 'TRACE_ANALYSIS_RUNNER_REQUIRED',
+      message: 'CLI Bridge trace analysis requires AgentProfile.harness.',
+      connectionId: id,
+    })
+  }
   if (
     connection.kind === 'cli-bridge' &&
     runner !== undefined &&
@@ -296,7 +307,7 @@ export async function createTraceAnalysisAdapter(
 
   const baseUrl =
     connection.kind === 'cli-bridge'
-      ? normalizeCliBridgeRuntimeBaseUrl(endpoint, connection.id)
+      ? normalizeCliBridgeProviderBaseUrl(endpoint, connection.id)
       : normalizeTangleInferenceRuntimeBaseUrl(endpoint, connection.id)
   try {
     const modelExecutionScope = new ModelExecutionScope()
@@ -307,7 +318,9 @@ export async function createTraceAnalysisAdapter(
       ...(credential === undefined ? {} : { credential }),
       model,
       ...(options.pricing === undefined ? {} : { pricing: { ...options.pricing } }),
-      ...(options.routerComplete === undefined ? {} : { complete: options.routerComplete }),
+      ...(connection.kind !== 'tangle-inference' || options.routerComplete === undefined
+        ? {}
+        : { complete: options.routerComplete }),
       recordExecution: (observation) => {
         modelExecutionScope.record(observation)
         options.recordExecution?.(observation)
@@ -333,6 +346,7 @@ export async function createTraceAnalysisAdapter(
       },
     })
     const registry = buildDefaultAnalystRegistry({ engine })
+    registerBraidQuestionAnalyst(registry, engine)
     return {
       status: 'engine-configured',
       diagnostics: [],

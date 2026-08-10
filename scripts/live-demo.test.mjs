@@ -1,0 +1,176 @@
+import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test from 'node:test'
+
+import { jsonRequest } from './live-demo/http.mjs'
+import { assertPublicCapture } from './live-demo/public-safety.mjs'
+import { createCapturedTerminal } from './live-demo/terminal.mjs'
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false
+    throw error
+  }
+}
+
+async function waitForGone(pid, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) return true
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  return !isAlive(pid)
+}
+
+async function waitForPid(path, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const pid = Number.parseInt(await readFile(path, 'utf8'), 10)
+      if (Number.isInteger(pid) && pid > 0) return pid
+    } catch {
+      // The child has not published its pid yet.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error(`Timed out waiting for child pid at ${path}`)
+}
+
+async function closeServer(server) {
+  await new Promise((resolve, reject) => {
+    server.close((error) => (error === undefined ? resolve() : reject(error)))
+    server.closeAllConnections?.()
+  })
+}
+
+test('jsonRequest aborts a response that never finishes', async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.write('{"status":')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address === 'object')
+  try {
+    const startedAt = performance.now()
+    await assert.rejects(
+      Promise.race([
+        jsonRequest(`http://127.0.0.1:${address.port}`, 100),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('jsonRequest exceeded its test bound')), 1_500),
+        ),
+      ]),
+      /aborted|timeout|fetch failed|test bound/iu,
+    )
+    assert.ok(performance.now() - startedAt < 1_500)
+  } finally {
+    await closeServer(server)
+  }
+})
+
+test('public capture rejects the credential patterns mirrored from the sanitizer', async (t) => {
+  const filler = 'A'.repeat(32)
+  const cases = [
+    ['API key assignment', `api${'_key'}=${filler}`],
+    ['Bearer value', `Bearer ${'B'.repeat(24)}`],
+    ['OpenAI-style key', `${'s' + 'k-'}${filler}`],
+    ['GitHub classic token', `gh${'p_'}${filler.slice(0, 20)}`],
+    ['GitHub fine-grained token', `github${'_pat_'}${filler.slice(0, 20)}`],
+    ['AWS access key', `${'AK' + 'IA'}${filler.slice(0, 16)}`],
+    ['Google AI key', `${'A' + 'Iza'}${filler}`],
+  ]
+  for (const [label, value] of cases) {
+    await t.test(label, () => {
+      assert.throws(() => assertPublicCapture(value), /Public capture contains/iu)
+    })
+  }
+  for (const variant of ['b', 'a', 'p', 'r', 's']) {
+    await t.test(`Slack xox${variant} token`, () => {
+      const value = `xox${variant}-${filler.slice(0, 20)}`
+      assert.throws(() => assertPublicCapture(value), /Public capture contains/iu)
+    })
+  }
+  assert.doesNotThrow(() => assertPublicCapture('public demo output with no credentials'))
+})
+
+test('PTY disposal escalates after SIGTERM and waits for the child exit event', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-live-demo-test-'))
+  const childPath = join(root, 'ignore-termination.mjs')
+  const descendantPath = join(root, 'ignore-termination-descendant.mjs')
+  const pidPath = join(root, 'child.pid')
+  const descendantPidPath = join(root, 'descendant.pid')
+  const termPath = join(root, 'sigterm.seen')
+  let terminal
+  let childPid
+  let descendantPid
+  let disposed = false
+  await writeFile(
+    descendantPath,
+    [
+      "import { writeFileSync } from 'node:fs'",
+      "process.on('SIGTERM', () => {})",
+      "process.on('SIGHUP', () => {})",
+      "process.on('SIGINT', () => {})",
+      'writeFileSync(process.env.DESCENDANT_PID_PATH, String(process.pid))',
+      'setInterval(() => {}, 1000)',
+      '',
+    ].join('\n'),
+  )
+  await writeFile(
+    childPath,
+    [
+      "import { writeFileSync } from 'node:fs'",
+      "import { spawn } from 'node:child_process'",
+      "process.on('SIGTERM', () => writeFileSync(process.env.TERM_PATH, 'seen'))",
+      "process.on('SIGHUP', () => {})",
+      "process.on('SIGINT', () => {})",
+      'writeFileSync(process.env.PID_PATH, String(process.pid))',
+      "spawn(process.execPath, [process.env.DESCENDANT_PATH], { env: process.env, stdio: 'ignore' })",
+      "process.stdout.write('ready\\n')",
+      'setInterval(() => {}, 1000)',
+      '',
+    ].join('\n'),
+  )
+  try {
+    terminal = await createCapturedTerminal({
+      binary: childPath,
+      args: [],
+      cwd: root,
+      columns: 80,
+      rows: 24,
+      recordPath: join(root, 'frame.json'),
+      environment: {
+        PID_PATH: pidPath,
+        TERM_PATH: termPath,
+        DESCENDANT_PATH: descendantPath,
+        DESCENDANT_PID_PATH: descendantPidPath,
+      },
+    })
+    await terminal.waitForScreen((screen) => screen.includes('ready'), 'termination test child')
+    childPid = Number.parseInt(await readFile(pidPath, 'utf8'), 10)
+    descendantPid = await waitForPid(descendantPidPath, 1_500)
+    assert.ok(Number.isInteger(childPid) && childPid > 0)
+    assert.ok(Number.isInteger(descendantPid) && descendantPid > 0)
+
+    await terminal.dispose()
+    disposed = true
+
+    assert.equal(await readFile(termPath, 'utf8'), 'seen')
+    assert.equal(await waitForGone(childPid, 500), true)
+    assert.equal(await waitForGone(descendantPid, 500), true)
+  } finally {
+    if (childPid !== undefined && isAlive(childPid)) process.kill(childPid, 'SIGKILL')
+    if (descendantPid !== undefined && isAlive(descendantPid))
+      process.kill(descendantPid, 'SIGKILL')
+    if (!disposed) await terminal?.dispose().catch(() => {})
+    await rm(root, { force: true, recursive: true })
+  }
+})

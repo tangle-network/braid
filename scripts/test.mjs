@@ -28,6 +28,9 @@ try {
   run(process.execPath, ['scripts/clean-tests.mjs'])
   run('pnpm', ['exec', 'tsc', '-p', 'tsconfig.test.json', '--outDir', testDist])
   run(process.execPath, ['scripts/run-tests.mjs', ...args])
+  if (!args.includes('--scope') && !args.includes('--list')) {
+    run(process.execPath, ['--test', 'scripts/live-demo.test.mjs'])
+  }
   if (!args.includes('--list')) run(process.execPath, ['scripts/test-release-evidence.mjs'])
 } catch (error) {
   failure = error

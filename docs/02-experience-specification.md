@@ -10,6 +10,10 @@ Configuration, event detail, graphs, and supervision appear only when requested 
 
 No screen uses decorative cards, repeated labels, or explanatory copy that restates visible controls.
 
+When a run is active or selected, its immutable execution receipt is the source for displayed runner, model, reasoning, output limit, connection, and environment values.
+
+The pending profile is shown only when no run receipt exists for the focused context.
+
 ## Launch behavior
 
 `braid` opens the current directory in full-screen alternate-screen mode.
@@ -29,6 +33,10 @@ No screen uses decorative cards, repeated labels, or explanatory copy that resta
 Command-line profile, connection, runner, model, and effort values are run defaults and never silently rewrite a profile source.
 
 An invalid argument exits nonzero with a one-line error and one actionable correction.
+
+Interactive mode restores Braid's local journal and opens the selected conversation, while JSONL mode exposes the same state and control path to another process.
+
+Opening a conversation is an attach to Braid's durable record, not a claim that Braid has taken over an arbitrary native runner process.
 
 ## Startup states
 
@@ -67,7 +75,8 @@ If a connection is unavailable, the conversation opens offline and retains full 
 ### Standard layout from 80 to 119 columns
 
 ```text
- Braid  profile:reviewer  local:cli-bridge  pi/claude-sonnet  high
+ Braid  Release engineer  runner:pi  model:tangle-router/glm-5.2  thinking:high  out:≤16k
+        Local CLI Bridge  exec:local workspace
 ───────────────────────────────────────────────────────────────────────────────
  user   Explain the failing integration test.
 
@@ -83,7 +92,9 @@ If a connection is unavailable, the conversation opens offline and retains full 
  main • running  12.4k in / 1.8k out  $0.08  00:37  queue:0  ctrl+p commands
 ```
 
-The top line identifies the product, profile, connection, runner, model, and effort in one scan.
+The header area identifies the product, profile, connection, runner, model, and effort in one scan.
+
+The execution line keeps the maximum output limit and local or remote execution location visible without folding them into the model name.
 
 The transcript consumes all remaining vertical space above the composer.
 
@@ -92,6 +103,10 @@ The composer grows from one line to at most 40% of terminal height, then scrolls
 The status line identifies branch, run state, usage, elapsed time, queue count, and one contextual shortcut.
 
 The status line omits unavailable values instead of displaying empty placeholders.
+
+The activity view keeps direct turn totals, analysis totals, and worker-tree totals separate.
+
+Each total identifies whether its tokens, cost, latency, and completion state were reported, estimated, observed as a floor, or unavailable.
 
 ### Usage and execution inspector
 
@@ -392,6 +407,14 @@ Closing Braid leaves detachable runs active by default and lists them on next la
 
 Non-detachable foreground runs require an explicit choice to cancel or keep Braid open before exit.
 
+The JSONL `detach` command leaves a provider-owned durable run active when the connection supports detachment.
+
+The JSONL `reconnect` command resumes event delivery from the last committed cursor only after the provider proves that the run and cursor are available.
+
+If that proof is unavailable, the run remains detached, incomplete, expired, unauthorized, or unknown rather than being displayed as resumed.
+
+A runner change is a new provider session with an explicit portable-context handoff, not native process-memory continuation.
+
 ## Conversation selector
 
 The selector searches title, workspace, branch, profile, runner, model, connection, status, and date.
@@ -448,6 +471,14 @@ It never fabricates causality from timestamps when an explicit identifier link i
 
 `/ask`, `/analyze`, and `/compare` save results as analysis activity and open the exact saved result in the shared browser.
 
+`/ask <question>` is a free-form question about one frozen source and never becomes a user message on that source branch.
+
+`/analyze <recipe>` selects a named `agent-eval` recipe such as failure, cost, tools, or improvement.
+
+`/compare <left> <right>` freezes two sources, exposes their measured asymmetries, and stores a paired result with explicit left and right edges.
+
+All three commands use separate analysis execution identity, budget, usage, and cancellation from the source run.
+
 The analysis header identifies the action, frozen source, selected profile, runner, and model when those values are known.
 
 Analysis navigation uses the same list, details, arrow, `Left`, and `Esc` behavior as graph and runtime activity.
@@ -475,6 +506,10 @@ The activity view consumes runtime-owned snapshots and controls rather than read
 `/activity` opens the same focused full-viewport browser used by analysis and graph entities.
 
 It lists an explicit root run binding, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
+
+Each activity row retains its source kind, profile digest, runner, model, reasoning effort, output limit, connection, provider session, and environment when the record reports them.
+
+Direct turns, analyses, and workers keep their own usage totals and are never merged into a single spend number.
 
 An unbound supervisor appears as workspace activity and never inherits the active or latest run.
 

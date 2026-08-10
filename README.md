@@ -1,26 +1,58 @@
 <div align="center">
   <h1>Braid</h1>
-  <p><strong>One AgentProfile. Any coding runner.</strong></p>
-  <p>Keep one conversation and agent identity while <code>agent-runtime</code> routes each turn through local subscriptions, Tangle inference, or cloud sandboxes.</p>
+  <p><strong>One AgentProfile. Any supported coding runner.</strong></p>
   <p>
     <a href="https://github.com/tangle-network/braid/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tangle-network/braid/actions/workflows/ci.yml/badge.svg"></a>
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-7aa2f7"></a>
   </p>
 </div>
 
-![Braid showing an AgentProfile, Pi runner, Luna model, Local CLI Bridge, tool activity, and trace analysis](artifacts/verification/w6/braid.gif)
+Braid is a terminal client over [`agent-runtime`](https://github.com/tangle-network/agent-runtime).
 
-<p align="center"><sub>Recorded from a clean install of Braid's packed tarball at 120×18.
-Repeatable demo data keeps provider credentials out of the repository; the terminal, keyboard flow, profile routing, normalized events, and analysis screen are the real product.</sub></p>
+It lets one portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) drive different coding runners through local CLI Bridge connections, Tangle inference, or Tangle sandboxes.
 
-Braid is the terminal experience over [`agent-runtime`](https://github.com/tangle-network/agent-runtime).
-It does not replace Pi, Codex, Kimi Code, or OpenCode.
-It lets one portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) drive any supported runner while Braid owns conversations, branches, approvals, activity, graphs, and trace analysis.
+Braid owns the conversation, transcript, branches, approvals, activity, graph, and trace-analysis experience.
 
-## Start
+The selected runner owns its native process and session, while `agent-runtime` owns admission, lifecycle, normalized events, and runtime control.
 
-Braid requires Node.js 22.19 or newer and pnpm 11.18.
-Until the first registry release, run it from source:
+![Braid routing a Product engineer AgentProfile through agent-runtime to Pi and GLM-5.2 over Local CLI Bridge, then answering a cited trace-analysis question](artifacts/demo/braid-live-pi.gif)
+
+This recording uses the packed Braid source, Pi 0.84.1, GLM-5.2, and a local CLI Bridge.
+
+Pi changes a real workspace and passes its tests before `/ask` analyzes the frozen run and returns cited findings.
+
+The [capture manifest](artifacts/demo/braid-live-pi.json) records the exact route, profile, limits, usage, cost, latency, workspace checks, and artifact hashes.
+
+## Product path
+
+The core path is deliberately small.
+
+```text
+AgentProfile + user turn
+        │
+        ▼
+      Braid
+        │  profile snapshot · connection · run limits
+        ▼
+  agent-runtime
+        │
+        ├── CLI Bridge ── Pi · Codex · Claude Code · Kimi Code · OpenCode · other runners
+        ├── Tangle inference
+        └── Tangle sandbox ── remote workspace and environment lifecycle
+        │
+        ▼
+normalized events, receipts, activity, and final output
+```
+
+Braid does not implement another agent loop, spawn runner processes directly, parse private runner output, or invent a second profile format.
+
+A concrete local route is `AgentProfile` with `harness: 'pi'` → Braid admission → `agent-runtime` → a CLI Bridge connection → Pi → normalized events back to Braid.
+
+## Install from source
+
+Braid is currently source-installable and is not presented as a published registry package.
+
+It requires Node.js 22.19 or newer and pnpm 11.18.
 
 ```bash
 git clone https://github.com/tangle-network/braid.git
@@ -31,18 +63,27 @@ pnpm build
 node dist/bin/braid.js
 ```
 
-The first launch guides you through choosing an AgentProfile and a connection.
-To explore the terminal without credentials or network access:
+The first-run flow selects an `AgentProfile` and a connection without requiring a hand-written runner configuration file.
+
+For an offline deterministic terminal walkthrough, use the explicit fixture mode.
 
 ```bash
 node dist/bin/braid.js --fixture deterministic
 ```
 
-## The core idea
+The fixture proves Braid rendering and state transitions only.
 
-An AgentProfile defines the agent: its instructions, model preferences, tools, skills, permissions, and runner preference.
-A connection defines how this run reaches compute.
-Changing the connection or runner does not silently create a different agent.
+It does not prove a live runner, model, CLI Bridge, inference, or sandbox integration.
+
+## AgentProfile is the configuration unit
+
+`AgentProfile` is the canonical portable definition of one agent.
+
+It can contain the profile name, instructions, model hints, preferred runner, tools, permissions, resources, skills, MCP connections, modes, hooks, and subagent definitions.
+
+The `harness` field in the SDK is a runner preference.
+
+Braid displays that preference as `runner` so the profile remains the agent identity while the execution route remains replaceable.
 
 ```ts
 import type { AgentProfile } from '@tangle-network/agent-interface'
@@ -51,8 +92,8 @@ const profile: AgentProfile = {
   name: 'Release engineer',
   harness: 'pi',
   model: {
-    provider: 'openai-codex',
-    default: 'openai-codex/gpt-5.6-luna',
+    provider: 'tangle-router',
+    default: 'tangle-router/glm-5.2',
     reasoningEffort: 'high',
   },
   prompt: {
@@ -66,98 +107,151 @@ const profile: AgentProfile = {
 }
 ```
 
-The SDK field is named `harness`; Braid renders it as **runner** because it is a routing preference, not the agent's identity.
-The exact profile snapshot and selected connection are bound to every admitted run.
+A connection supplies transport and credential references.
 
-```text
-AgentProfile + message
-          │
-          ▼
-        Braid ─── conversation · branches · approvals · graphs · analysis
-          │
-          ▼
-    agent-runtime
-      ├── CLI Bridge ─── Pi · Codex · Kimi Code · OpenCode
-      ├── Tangle inference
-      └── Tangle sandbox
+The run binds the exact profile snapshot, selected connection, effective runner, model, reasoning effort, output limit, and execution environment before dispatch.
+
+Reasoning effort and maximum output are separate dimensions.
+
+Reasoning effort controls the requested thinking tier when the selected route supports it, while maximum output limits emitted tokens independently.
+
+### Example effective run receipt
+
+The main shell and activity details keep these values together without confusing configuration with provider evidence.
+
+The following values illustrate the shape of one receipt and are not a live run result.
+
+| Field | Example value |
+| --- | --- |
+| Profile | `Release engineer` |
+| Runner | `pi` |
+| Model | `tangle-router/glm-5.2` |
+| Reasoning | `high` |
+| Max output | `16,384 tokens` |
+| Connection | `Local CLI Bridge` |
+| Execution location | `local workspace through CLI Bridge` |
+| Environment | `local process; sandbox fields not applicable` |
+
+When the route is a Tangle sandbox, Braid shows the environment lifecycle and the resources, placement, and machine details that the provider actually reports.
+
+It labels requested, verified, sampled, estimated, and unavailable values separately.
+
+It never fills an unreported IP address, CPU allocation, RAM value, GPU lease, storage value, or cost with a guess.
+
+## One activity view, three kinds of work
+
+Braid keeps direct turns, trace analyses, and runtime workers distinct.
+
+| Activity | What it means | Usage and control |
+| --- | --- | --- |
+| Turn | A user message admitted to the selected runner | Direct model, tool, latency, and cost values for that run |
+| Analysis | A separate `agent-eval` execution over a frozen run or branch | Its own analyst profile, model, tokens, latency, cost, citations, and cancellation |
+| Worker | A runtime-owned child under a supervisor | Its own status and usage when reported, with parent binding and control capability |
+
+The activity browser can show all three in one timeline while preserving their separate totals.
+
+An unbound supervisor remains workspace activity and is not silently attributed to the current turn.
+
+Missing provider values remain unknown instead of becoming zero.
+
+## Trace analysis commands
+
+These commands inspect or compare recorded work rather than sending another ordinary prompt to the active coding runner.
+
+| Command | Meaning |
+| --- | --- |
+| `/ask <question>` | Ask one free-form question about a selected frozen run or branch and return cited findings. |
+| `/analyze <recipe>` | Run a named recipe such as `failure`, `cost`, `tools`, or `improvement` through `agent-eval`. |
+| `/compare <left> <right>` | Freeze two run or branch sources, show their measured asymmetries, and create a paired comparison. |
+
+`/ask` does not append a message to the analyzed branch.
+
+Each analysis has its own run identity, source digest, analyst profile, model, budget, usage, latency, cost, completeness, and citations.
+
+Findings remain separate until the user explicitly sends selected findings to a branch or forks from the analysis.
+
+## Interactive and headless modes
+
+Interactive mode is the full-screen terminal experience with a multiline composer, streaming transcript, activity pane, selectors, and focused overlays.
+
+Use inline mode when preserving normal terminal scrollback matters.
+
+```bash
+node dist/bin/braid.js
+node dist/bin/braid.js --inline
 ```
 
-Every supported provider output is projected into one event stream.
-The terminal renders reasoning, tools, artifacts, usage, interactions, failures, and final output when the selected route reports them.
-
-## What you can do
-
-| Need | Surface |
-| --- | --- |
-| Choose the agent and route | `/profile`, `/connection`, `/runner`, `/model`, `/effort` |
-| Work with conversations | `/new`, `/open`, `/branch`, `/clone`, `/fork`, `/graph` |
-| Inspect execution | `F2`, `/activity`, `Ctrl+E`, `/export` |
-| Answer or automate requests | `/approve`, `/reject`, `/automate` |
-| Improve a run | `/ask <question>`, `/analyze <recipe>`, `/compare <left> <right>` |
-| Control active work | `/queue`, `/steer`, `/cancel` |
-
-Commands are enabled from the selected provider's reported capabilities.
-Unsupported operations stay visible with a concrete reason instead of pretending to succeed.
-
-### Forks that explain themselves
-
-`/fork` previews exactly what will be copied: conversation context, provider state, profile snapshot, checkpoint, and cloud workspace when available.
-The graph view keeps the resulting conversations, branches, runs, workers, and analyses connected.
-
-### Analysis inside the conversation
-
-`/ask` freezes a completed run, sends its trace through `agent-eval`, and returns cited findings without rewriting the original conversation.
-`/analyze` runs named failure, cost, tool, or improvement recipes.
-`/compare` keeps the full baseline/candidate asymmetry visible before presenting a result.
-
-### Local subscriptions and cloud execution
-
-CLI Bridge lets Braid use existing local subscriptions through runners such as Pi or Codex.
-Tangle connections route the same profile through inference or an isolated cloud sandbox.
-The terminal keeps one interaction model across those routes.
-
-### Know where work ran and what it cost
-
-`/activity` shows direct turns, trace analyses, supervisors, and workers without combining them into one misleading total.
-Each model call can report input, output, cache use, cost, and latency.
-Braid labels missing provider values as unknown instead of zero.
-
-Sandbox runs link to their execution environment.
-The environment view shows lifecycle, cleanup, continuity, region, machine identity, requested resources, sampled CPU and memory, GPU lease and billing, and account limits when the provider reports them.
-It also lists every field that the provider did not expose.
-
-## Headless operation
-
-The terminal and automation surfaces share the same command registry, state projection, and operation records.
-Use JSON Lines RPC when another program drives Braid:
+Headless mode is the same application core behind JSON Lines commands and state records.
 
 ```bash
 node dist/bin/braid.js rpc
 ```
 
-Use `--plain` for a readable non-interactive event stream.
-RPC mutating commands require operation IDs, making retries explicit and safe.
-See the [runtime contracts](docs/04-runtime-contracts.md) for the protocol and event boundaries.
+Use plain mode for a readable non-interactive event stream without terminal control sequences.
 
-<details>
-<summary>Static terminal frame</summary>
+```bash
+node dist/bin/braid.js --plain
+```
 
-![Static Braid terminal frame with AgentProfile, model, runner, connection, usage, and activity](artifacts/verification/w6/braid.png)
+The terminal and JSONL interfaces share command parsing, capability checks, operation identifiers, reducers, persistence, execution ports, and view projections.
 
-</details>
+Headless clients can send, queue, steer, cancel, detach, reconnect, reconcile, inspect state, inspect activity, run analysis, compare sources, and export records through the versioned protocol.
 
-## Current status
+Mutating headless requests carry stable operation identifiers so a retry can be recognized instead of dispatched twice.
 
-Braid is source-installable and is not yet published to npm.
-Retained packed-product evidence from 2026-08-09 covers Pi/GLM-5.2 and Codex through first-run setup, two-turn continuity, restart, transcript recovery, and a post-restart turn.
-The current Runtime 0.131.5 candidate has deterministic coverage of the strict Bridge protocol.
-Protected runner and Tangle checks must run again against the exact release candidate.
-Tangle inference and sandbox adapters are implemented against the current provider packages; protected live-deployment checks remain before the first registry release.
-General interaction responses remain disabled when the selected runtime cannot acknowledge the response operation.
+## Attach, resume, and sandboxes
 
-The exact release criteria and retained evidence live in the [verification plan](docs/08-verification.md) and [delivery plan](docs/09-delivery-plan.md).
+Opening Braid with `--conversation <id>` attaches the interface to a durable Braid conversation and its recorded run bindings.
 
-## Develop
+That operation restores Braid's journal and view state; it does not claim to take over an arbitrary native runner process.
+
+Braid reconnects a non-terminal run from the last committed event cursor only when the selected provider can prove replay or status.
+
+If the provider cannot prove the live state, Braid displays detached, incomplete, expired, unauthorized, or unknown rather than calling the run completed.
+
+Continuing a compatible native provider session requires provider evidence that its context boundary matches Braid's recorded message boundary.
+
+Changing runners creates a new provider session with an explicit portable-context handoff.
+
+It does not claim to transfer hidden process memory, runner-specific todos, opaque tool state, or native session internals.
+
+A Tangle sandbox connection can provide an isolated remote workspace, environment lifecycle, checkpoint, fork, replay, and resource metadata when its capabilities report those operations.
+
+Braid shows those capabilities and their receipts through the same activity and graph surfaces.
+
+The user can inspect the requested and verified execution location, but provider-private machine details remain unavailable when they are not reported.
+
+## Commands users reach for first
+
+| Need | Command or key |
+| --- | --- |
+| Select the agent and route | `/profile`, `/connection`, `/runner`, `/model`, `/effort` |
+| Inspect execution | `/activity`, `F2`, `/export` |
+| Navigate the work graph | `/graph`, `/fork`, `/branch`, `/clone` |
+| Answer or automate a request | `/approve`, `/reject`, `/automate` |
+| Control active work | `/queue`, `/steer`, `/cancel` |
+| Drive Braid from another process | `braid rpc` |
+
+Commands remain searchable when a provider does not support them.
+
+An unavailable command explains the missing capability instead of pretending that the operation succeeded.
+
+## What Braid owns
+
+| Boundary | Owner |
+| --- | --- |
+| Portable agent definition and compatibility facts | `agent-interface` |
+| Run admission, lifecycle, normalized events, and runtime control | `agent-runtime` |
+| Local runner process and native profile materialization | CLI Bridge |
+| Tangle inference and remote workspace lifecycle | Tangle provider and sandbox packages |
+| Trace analysis and paired comparison | `agent-eval` |
+| Conversation journal, branches, graph, approvals, projections, and terminal/headless interfaces | Braid |
+
+Braid adapts these contracts through narrow ports.
+
+It does not duplicate execution, authentication, provider parsing, sandbox scheduling, trace judging, or billing logic.
+
+## Development and proof
 
 ```bash
 pnpm install --frozen-lockfile
@@ -165,24 +259,27 @@ pnpm check
 pnpm capture:visual
 ```
 
-`pnpm check` runs formatting, linting, types, dependency boundaries, license checks, deterministic tests, packed CLI Bridge compatibility, and the release manifest check.
-`pnpm capture:visual` installs the generated package tarball and drives the real binary through a pseudo-terminal to regenerate the screenshots and GIF.
+`pnpm check` covers formatting, linting, types, dependency boundaries, attribution, licenses, deterministic tests, live checks, and release checks configured by the repository.
 
-The design and implementation contracts are split by responsibility:
+`pnpm capture:visual` drives the built CLI through a pseudo-terminal and records the deterministic terminal evidence required by the verification plan.
 
-- [Product contract](docs/01-product-contract.md) and [experience specification](docs/02-experience-specification.md)
-- [Architecture](docs/03-architecture.md) and [runtime contracts](docs/04-runtime-contracts.md)
-- [Profiles and connections](docs/05-profiles-and-connections.md)
-- [Conversations, forks, and analysis](docs/06-conversations-forks-and-analysis.md)
-- [Security and privacy](docs/07-security-and-privacy.md)
-- [Verification](docs/08-verification.md) and [delivery](docs/09-delivery-plan.md)
+The checked-in W6 captures prove deterministic rendering and keyboard paths.
+
+They are not evidence of a live Pi, CLI Bridge, Tangle inference, or Tangle sandbox run.
+
+The [verification plan](docs/08-verification.md) defines the required live, headless, terminal, security, installation, and release evidence.
+
+The [delivery plan](docs/09-delivery-plan.md) records dependency order and completion criteria.
+
+The [product contract](docs/01-product-contract.md), [experience specification](docs/02-experience-specification.md), and [architecture](docs/03-architecture.md) define the user-visible and ownership boundaries.
 
 ## Open-source foundation
 
-Braid uses the MIT-licensed [`@earendil-works/pi-tui`](https://www.npmjs.com/package/@earendil-works/pi-tui) renderer and adapts proven interaction patterns from [Pi](https://github.com/earendil-works/pi), [Kimi Code](https://github.com/MoonshotAI/kimi-code), [OpenCode](https://github.com/anomalyco/opencode), and [Codex](https://github.com/openai/codex).
-It deliberately does not copy their execution loops, provider sessions, authentication systems, or model registries; those responsibilities stay behind `agent-runtime` and provider packages.
+Braid uses the MIT-licensed [`@earendil-works/pi-tui`](https://www.npmjs.com/package/@earendil-works/pi-tui) package for terminal rendering and input primitives.
 
-See [the renderer decision](docs/decisions/001-pi-tui-renderer.md), [upstream strategy](docs/10-upstream-strategy.md), and [third-party notices](THIRD_PARTY_NOTICES.md) for the exact boundary and attribution.
+Its interaction design takes narrow, application-level patterns from [Pi](https://github.com/earendil-works/pi), [OpenCode](https://github.com/anomalyco/opencode), and [Codex](https://github.com/openai/codex) without copying their agent loops, session stores, authentication systems, provider adapters, or model registries.
+
+See the [renderer decision](docs/decisions/001-pi-tui-renderer.md), [runtime boundary](docs/decisions/002-runtime-boundary.md), [upstream strategy](docs/10-upstream-strategy.md), and [third-party notices](THIRD_PARTY_NOTICES.md) for the exact reuse boundary.
 
 ## License
 

@@ -1,5 +1,6 @@
-import type { AnalysisExecutionResult } from '../../app/analysis-service.js'
 import type { AnalysisComparisonResult } from '../../app/analysis-comparison-contracts.js'
+import type { AnalysisExecutionResult } from '../../app/analysis-service.js'
+import { parseAnalysisSourceReference, projectAnalysisSource } from '../../app/analysis-source.js'
 import type { AnalysisRequest, AnalysisSourceRequest } from '../../app/analysis-types.js'
 import { AnalysisCapabilityError } from '../../app/analysis-types.js'
 import type { BraidApplication } from '../../app/application.js'
@@ -87,39 +88,16 @@ function invalid(code: string, message: string): never {
   throw new AppError(code, message)
 }
 
-function latestAnalysisSource(state: BraidState): AnalysisSourceRequest {
-  const run = [...state.runs]
-    .reverse()
-    .find(
-      (candidate) =>
-        candidate.branchId === state.branchId &&
-        candidate.complete &&
-        (candidate.status === 'completed' || candidate.status === 'failed'),
-    )
-  if (run === undefined) {
+function sourceRequest(state: BraidState, reference: string): AnalysisSourceRequest {
+  const value = reference.trim()
+  if (!value) invalid('ANALYSIS_SOURCE_INVALID', 'Analysis source must not be empty')
+  const projection = projectAnalysisSource(state, value)
+  if (projection !== undefined) return projection.request
+  if (value === 'active' || value === 'last') {
     invalid(
       'ANALYSIS_SOURCE_MISSING',
       'No completed or failed run is available on the selected branch',
     )
-  }
-  return { conversationId: run.conversationId, branchId: run.branchId, runId: run.id }
-}
-
-function sourceRequest(state: BraidState, reference: string): AnalysisSourceRequest {
-  const value = reference.trim()
-  if (!value) invalid('ANALYSIS_SOURCE_INVALID', 'Analysis source must not be empty')
-  if (value === 'active' || value === 'last') return latestAnalysisSource(state)
-
-  const runReference = value.startsWith('run:') ? value.slice('run:'.length) : value
-  const run = state.runs.find((candidate) => candidate.id === runReference)
-  if (run !== undefined) {
-    return { conversationId: run.conversationId, branchId: run.branchId, runId: run.id }
-  }
-
-  const branchReference = value.startsWith('branch:') ? value.slice('branch:'.length) : value
-  const branch = state.branches.find((candidate) => candidate.id === branchReference)
-  if (branch !== undefined) {
-    return { conversationId: branch.conversationId, branchId: branch.id }
   }
 
   invalid('ANALYSIS_SOURCE_UNKNOWN', `Analysis source '${value}' is not present in Braid state`)
@@ -210,10 +188,10 @@ function analysisRequestForCommand(
 ): { readonly request: AnalysisRequest } {
   if (command === 'ask') {
     const explicitSource =
-      args[0]?.startsWith('run:') === true || args[0]?.startsWith('branch:') === true
+      args[0] !== undefined && parseAnalysisSourceReference(args[0]) !== undefined
     const source = explicitSource
       ? sourceRequest(state, args[0] ?? '')
-      : latestAnalysisSource(state)
+      : sourceRequest(state, 'last')
     const question = (explicitSource ? args.slice(1) : args).join(' ').trim()
     if (!question) invalid('INVALID_PARAMS', '/ask requires a question')
     return { request: { ...source, question, recipe: 'ask' } }
@@ -224,7 +202,7 @@ function analysisRequestForCommand(
     }
     const recipe = args[0]
     if (recipe === undefined) invalid('INVALID_PARAMS', '/analyze requires a named recipe')
-    return { request: { ...latestAnalysisSource(state), recipe } }
+    return { request: { ...sourceRequest(state, 'last'), recipe } }
   }
   invalid('INVALID_PARAMS', '/compare requires two source references')
 }

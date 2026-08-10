@@ -9,6 +9,7 @@ import { SystemClock } from '../ports/clock.js'
 import type { StartupPreview } from '../startup/preview-runtime.js'
 import { PRODUCT_DEMO_CONNECTION, PRODUCT_DEMO_PROFILE } from '../testing/product-demo-fixture.js'
 import type { CliOptions } from './args.js'
+import { productionActiveProfile } from './production-active-profile.js'
 import {
   activateProductionConnection,
   openProductionApplication,
@@ -21,7 +22,6 @@ import {
 } from './production-startup.js'
 import { createRuntimeStartupOptions } from './runtime-startup-options.js'
 import { defaultStatePath } from './state-path.js'
-
 export async function runBraid(options: CliOptions): Promise<number> {
   const workspace = resolve(options.workspace)
   const previewRuntime = usesInteractiveTerminal(options)
@@ -65,7 +65,6 @@ export async function runBraid(options: CliOptions): Promise<number> {
     await active.current.close()
   }
 }
-
 function usesInteractiveTerminal(options: CliOptions): boolean {
   return options.mode === 'tui' && !options.plain && process.stdin.isTTY && process.stdout.isTTY
 }
@@ -119,6 +118,7 @@ async function openApplication(
       ...configured,
       startupOptions,
       profileConnectionOptions: {
+        profiles: [productionActiveProfile(production.profile)],
         connections: production.connections,
         ...(production.connectionOptions === undefined
           ? {}

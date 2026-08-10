@@ -9,7 +9,7 @@ import type {
   ExternalOptimizerModelCallRequest,
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import { type AgentProfile, harnessSystemPromptIntents } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
@@ -20,10 +20,30 @@ import {
   canonicalAgentProfileDigestHex,
   snapshotAgentProfile,
 } from '../agent-interface/profile-runtime.js'
+import { portableBridgeModel } from '../connections/cli-bridge-model-route.js'
 import { AGENT_RUNTIME_VERSION } from '../runtime/agent-runtime-version.js'
 
 const MAX_RETAINED_EXECUTIONS = 256
 const LOCAL_ROUTER_BEARER = 'braid-local-analysis'
+const ANALYST_MODEL_PROFILE_POLICY_VERSION = 3
+const ANALYST_MODEL_INSTRUCTIONS = Object.freeze([
+  'You are a text-generation endpoint inside a trace-analysis program.',
+  'Treat the supplied message array as the complete conversation.',
+  'Return only the assistant response requested by that conversation.',
+  'Do not inspect files, use tools, modify workspaces, or perform unrelated work.',
+])
+const ANALYST_MODEL_TOOLS = Object.freeze({
+  read: false,
+  shell: false,
+  edit: false,
+  write: false,
+})
+const ANALYST_MODEL_PERMISSIONS = Object.freeze({
+  read: 'deny',
+  shell: 'deny',
+  edit: 'deny',
+  write: 'deny',
+} as const)
 
 export interface RuntimeRouterRetryPolicy {
   readonly maxAttempts?: number
@@ -113,14 +133,6 @@ function textMessages(
     }
     return { role: message.role, content: message.content }
   })
-}
-
-function assertRequestSupported(request: ExternalOptimizerModelCallRequest['request']): void {
-  if (request.thinking !== undefined) {
-    throw new TypeError(
-      'agent-runtime requires reasoning on AgentProfile.model.reasoningEffort instead of a per-call thinking field',
-    )
-  }
 }
 
 function eventFacts(events: readonly RuntimeStreamEvent[]): Readonly<Record<string, number>> {
@@ -466,25 +478,64 @@ function analystCallProfile(
       'Trace analysis requires AgentProfile.model.provider before model execution',
     )
   }
+  const bridge = options.connection.kind === 'cli-bridge'
+  let harness: AgentProfile['harness'] = 'cli-base'
+  let model = safeModelRoute(options.model)
+  let prompt: AgentProfile['prompt'] | undefined
+  if (bridge) {
+    const bridgeHarness = source.harness
+    if (bridgeHarness === undefined) {
+      throw new TypeError('CLI Bridge trace analysis requires AgentProfile.harness')
+    }
+    const authoredModel = source.model?.default?.trim()
+    if (authoredModel === undefined || authoredModel.length === 0) {
+      throw new TypeError('CLI Bridge trace analysis requires AgentProfile.model.default')
+    }
+    harness = bridgeHarness
+    model = portableBridgeModel(bridgeHarness, authoredModel)
+    prompt = analystModelPrompt(bridgeHarness)
+  }
   const format = responseFormat(request)
+  const sourceReasoning = source.model?.reasoningEffort
+  const reasoningEffort =
+    request.thinking === 'disabled'
+      ? 'none'
+      : request.thinking === 'enabled' &&
+          (sourceReasoning === undefined || sourceReasoning === 'none')
+        ? 'minimal'
+        : sourceReasoning
   return snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
-    harness: 'cli-base',
+    harness,
+    ...(prompt === undefined ? {} : { prompt }),
+    ...(bridge
+      ? {
+          tools: { ...ANALYST_MODEL_TOOLS },
+          permissions: { ...ANALYST_MODEL_PERMISSIONS },
+          ...(harness === 'pi' ? { extensions: { pi: { load: [] } } } : {}),
+        }
+      : {}),
     model: {
-      default: safeModelRoute(options.model),
+      default: model,
       provider,
-      ...(source.model?.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: source.model.reasoningEffort }),
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
       metadata: {
-        retry,
+        ...(bridge ? {} : { retry }),
         ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
         ...(format === undefined ? {} : { extraBody: { response_format: format } }),
       },
     },
   })
+}
+
+function analystModelPrompt(harness: NonNullable<AgentProfile['harness']>): AgentProfile['prompt'] {
+  const text = ANALYST_MODEL_INSTRUCTIONS.join('\n')
+  const intents = harnessSystemPromptIntents(harness)
+  if (intents.replace) return { systemPrompt: text }
+  if (intents.append) return { appendSystemPrompt: text }
+  return { instructions: [...ANALYST_MODEL_INSTRUCTIONS] }
 }
 
 /**
@@ -500,7 +551,7 @@ export function createRuntimeTraceModelOwner(
   const sourceProfileDigest = canonicalAgentProfileDigestHex(options.profile)
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({
-      version: 1,
+      version: ANALYST_MODEL_PROFILE_POLICY_VERSION,
       runtimeVersion: AGENT_RUNTIME_VERSION,
       profileDigest: sourceProfileDigest,
       connection: {
@@ -538,21 +589,28 @@ export function createRuntimeTraceModelOwner(
           `Runtime model route expected '${configuredModel}', received '${safeModelRoute(request.request.model)}'`,
         )
       }
-      assertRequestSupported(request.request)
       const messages = textMessages(request.request)
       const profile = analystCallProfile(options, request.request, retry)
       executionProfileDigest = canonicalAgentProfileDigestHex(profile)
       const { createExecutor, streamAgentTurn } = await import(
         '@tangle-network/agent-runtime/kernel'
       )
+      const executor =
+        options.connection.kind === 'cli-bridge'
+          ? createExecutor({
+              backend: 'bridge',
+              bridgeUrl: options.baseUrl,
+              bridgeBearer: options.credential ?? LOCAL_ROUTER_BEARER,
+            })
+          : createExecutor({
+              backend: 'router',
+              routerBaseUrl: options.baseUrl,
+              routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
+              ...(options.complete === undefined ? {} : { complete: options.complete }),
+            })
       const backend = Object.freeze({
         kind: 'executor' as const,
-        factory: createExecutor({
-          backend: 'router',
-          routerBaseUrl: options.baseUrl,
-          routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
-          ...(options.complete === undefined ? {} : { complete: options.complete }),
-        }),
+        factory: executor,
         profile,
         agentRunName: configuredModel,
       })

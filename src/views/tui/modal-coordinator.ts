@@ -19,10 +19,13 @@ interface ModalEntry {
 
 export class ModalCoordinator {
   readonly #tui: TUI
+  readonly #onVisibilityChange: ((visible: boolean) => void) | undefined
   readonly #entries: ModalEntry[] = []
+  #visible = false
 
-  constructor(tui: TUI) {
+  constructor(tui: TUI, onVisibilityChange?: (visible: boolean) => void) {
     this.#tui = tui
+    this.#onVisibilityChange = onVisibilityChange
   }
 
   open(component: Component, options: ModalOptions = {}, preempt = true): OverlayHandle {
@@ -36,6 +39,7 @@ export class ModalCoordinator {
         : {}),
     })
     this.#entries.push({ component, handle, ...(onClose === undefined ? {} : { onClose }) })
+    this.#notifyVisibility()
     return handle
   }
 
@@ -44,6 +48,7 @@ export class ModalCoordinator {
     if (entry === undefined) return
     entry.handle.hide()
     entry.onClose?.()
+    this.#notifyVisibility()
   }
 
   backOrClose(): void {
@@ -82,6 +87,14 @@ export class ModalCoordinator {
 
   #removeHiddenTop(): void {
     while (this.#entries.at(-1)?.handle.isHidden()) this.#entries.pop()?.onClose?.()
+    this.#notifyVisibility()
+  }
+
+  #notifyVisibility(): void {
+    const visible = this.#entries.length > 0
+    if (visible === this.#visible) return
+    this.#visible = visible
+    this.#onVisibilityChange?.(visible)
   }
 }
 

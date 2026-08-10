@@ -308,7 +308,7 @@ test('restart keeps exact loaded metadata for the matching durable profile', asy
     harness: 'pi',
     model: {
       default: 'openai/gpt-5.6-luna',
-      metadata: { route: 'private-runtime-choice' },
+      metadata: { maxTokens: 8192, route: 'private-runtime-choice' },
     },
   })
   const source = createProfileRecord(
@@ -354,6 +354,10 @@ test('restart keeps exact loaded metadata for the matching durable profile', asy
     params: { ref: source.id },
   })
   assert.equal(JSON.stringify(first.state()).includes('private-runtime-choice'), false)
+  assert.deepEqual(first.state().profile.model?.metadata, {
+    maxTokens: 8192,
+    redacted: '[redacted]',
+  })
   const durableProfileSelection = JSON.stringify(journal.all())
   assert.equal(durableProfileSelection.includes('private-runtime-choice'), false)
   assert.equal(durableProfileSelection.includes(canonicalAgentProfileDigestHex(exactProfile)), true)
@@ -369,6 +373,7 @@ test('restart keeps exact loaded metadata for the matching durable profile', asy
   await restarted.send({ operationId: 'op-after-profile-restart', text: 'continue' }).completion
 
   assert.deepEqual(executionProfiles[0]?.model?.metadata, {
+    maxTokens: 8192,
     route: 'private-runtime-choice',
   })
 
@@ -377,7 +382,7 @@ test('restart keeps exact loaded metadata for the matching durable profile', asy
     harness: exactProfile.harness,
     model: {
       default: exactProfile.model?.default ?? 'openai/gpt-5.6-luna',
-      metadata: { route: 'different-private-runtime-choice' },
+      metadata: { maxTokens: 4096, route: 'different-private-runtime-choice' },
     },
   })
   const mismatchedRestart = new BraidApplication({
@@ -397,7 +402,10 @@ test('restart keeps exact loaded metadata for the matching durable profile', asy
     JSON.stringify(executionProfiles[1]).includes('different-private-runtime-choice'),
     false,
   )
-  assert.deepEqual(executionProfiles[1]?.model?.metadata, { redacted: '[redacted]' })
+  assert.deepEqual(executionProfiles[1]?.model?.metadata, {
+    maxTokens: 8192,
+    redacted: '[redacted]',
+  })
   assert.equal(
     mismatchedRestart.state().profiles[0]?.executionDigest,
     canonicalAgentProfileDigestHex(exactProfile),
@@ -432,7 +440,10 @@ test('restart keeps exact loaded metadata for the matching durable profile', asy
   }).completion
 
   assert.equal(JSON.stringify(executionProfiles[2]).includes('private-runtime-choice'), false)
-  assert.deepEqual(executionProfiles[2]?.model?.metadata, { redacted: '[redacted]' })
+  assert.deepEqual(executionProfiles[2]?.model?.metadata, {
+    maxTokens: 8192,
+    redacted: '[redacted]',
+  })
 })
 
 test('an identical operation is replayed and conflicting input is rejected', async () => {

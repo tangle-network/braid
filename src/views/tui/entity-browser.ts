@@ -24,6 +24,7 @@ export interface EntityBrowserRow {
 export interface EntityBrowserDocument {
   readonly title: string
   readonly context?: string
+  readonly pinned?: string
   readonly notice?: string
   readonly emptyMessage: string
   readonly rows: readonly EntityBrowserRow[]
@@ -140,14 +141,15 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
       document.notice === undefined
         ? []
         : [this.#line(this.#theme.warning(`! ${document.notice}`), safeWidth)]
-    const contentRows = Math.max(0, bodyRows - notice.length)
+    const pinned = this.#pinnedRows(document, safeWidth)
+    const contentRows = Math.max(0, bodyRows - notice.length - pinned.length)
     const content =
       contentRows === 0
         ? []
         : this.#mode === 'detail'
           ? this.#renderDetail(document, safeWidth, contentRows)
           : this.#renderList(document, safeWidth, contentRows)
-    const renderedBody = [...notice, ...content]
+    const renderedBody = [...notice, ...pinned, ...content]
     const body = [
       ...renderedBody,
       ...Array.from({ length: bodyRows - renderedBody.length }, () => ''),
@@ -292,7 +294,18 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     const selected = document.rows[this.#selectedIndex]
     const lines = selected === undefined ? 0 : this.#detailVisualLines(selected, width).length
     const noticeRows = document.notice === undefined ? 0 : 1
-    return pageCount(lines, Math.max(1, this.#bodyRows() - noticeRows))
+    const pinnedRows = this.#pinnedRows(document, width).length
+    return pageCount(lines, Math.max(1, this.#bodyRows() - noticeRows - pinnedRows))
+  }
+
+  #pinnedRows(document: EntityBrowserDocument, width: number): string[] {
+    if (document.pinned === undefined) return []
+    return wrapTextWithAnsi(
+      this.#theme.muted(sanitizeTerminalText(document.pinned)),
+      Math.max(1, width - 1),
+    )
+      .slice(0, 2)
+      .map((line) => this.#line(line, width))
   }
 
   #detailVisualLines(selected: EntityBrowserRow, width: number): string[] {

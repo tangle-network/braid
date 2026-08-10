@@ -5,6 +5,7 @@ import type { AnalysisId } from '../domain/ids.js'
 import { type AnalysisAnalyst, AnalysisExecutionSession } from './analysis-execution-session.js'
 import { AnalysisGraphProjector } from './analysis-graph-projector.js'
 import { AnalysisLifecycle } from './analysis-lifecycle.js'
+import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import { AnalysisOperationError } from './analysis-operation.js'
 import { prepareAnalysisRequest } from './analysis-request.js'
 import { completedAnalysisRecord, initialAnalysisRecord } from './analysis-result-mapper.js'
@@ -15,7 +16,6 @@ import type {
   FrozenAnalysisEvidence,
 } from './analysis-types.js'
 import { AnalysisPersistenceError } from './analysis-types.js'
-import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import { UnavailableAnalyst } from './unavailable-analyst.js'
 
 export interface AnalysisExecutionResult {
@@ -25,6 +25,14 @@ export interface AnalysisExecutionResult {
   readonly result?: ExactAnalystRunResult
   readonly error?: Error
   readonly replayed?: boolean
+}
+
+function assertSuccessfulAnalysts(result: ExactAnalystRunResult): void {
+  if (result.completion.status === 'failed') throw new Error(result.completion.error.message)
+  const failed = result.per_analyst.find((summary) => summary.status === 'failed')
+  if (failed === undefined) return
+  const reason = failed.error?.message ?? 'The analyst failed without an error message.'
+  throw new Error(`Trace analyst '${failed.analyst_id}' failed: ${reason}`)
 }
 
 export class AnalysisService {
@@ -75,6 +83,7 @@ export class AnalysisService {
       evidence: prepared.evidence,
       request,
       identity: prepared.identity,
+      executionTarget: prepared.executionTarget,
       at: this.#host.now(),
     })
     this.#active.add(String(record.id))
@@ -106,6 +115,7 @@ export class AnalysisService {
         evidence: prepared.evidence,
         request,
         analystIds,
+        executionTarget: prepared.executionTarget,
       })) {
         if (item.result !== undefined) exactResult = item.result
         yield {
@@ -115,18 +125,17 @@ export class AnalysisService {
           event: item.event,
         }
       }
-      modelExecutions = this.#execution.modelExecutions(String(prepared.identity.analysisRunId))
       if (exactResult === undefined)
         throw new Error('agent-eval exact stream ended without a result')
-      if (exactResult.completion.status === 'failed') {
-        throw new Error(exactResult.completion.error.message)
-      }
+      assertSuccessfulAnalysts(exactResult)
+      modelExecutions = this.#execution.modelExecutions(String(prepared.identity.analysisRunId))
       current = await completedAnalysisRecord({
         host: this.#host,
         base: current,
         evidence: prepared.evidence,
         request,
         identity: prepared.identity,
+        executionTarget: prepared.executionTarget,
         analystIds,
         descriptors: this.#execution.listAnalysts(),
         modelExecutions,

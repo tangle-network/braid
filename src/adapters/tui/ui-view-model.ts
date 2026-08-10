@@ -1,15 +1,15 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { BraidState } from '../../domain/state.js'
 import { type ColorMode, resolveColorMode } from '../../views/shared/appearance.js'
+import { environmentView } from '../../views/shared/environment-presentation.js'
 import { type BraidViewModel, freezeView } from '../../views/shared/models.js'
 import { sanitizeTerminalText } from '../../views/shared/sanitize.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
 import { sessionUsageFor, usageForRun } from '../../views/shared/usage-projection.js'
-import { environmentView } from '../../views/shared/environment-presentation.js'
 import { capabilityMap } from './ui-capabilities.js'
 import { entityDetailsFor } from './ui-entity-details.js'
-import { uiSemanticState } from './ui-semantic-state.js'
 import {
   activityFor,
   graphFor,
@@ -20,6 +20,7 @@ import {
   runViews,
   statusFor,
 } from './ui-projection.js'
+import { uiSemanticState } from './ui-semantic-state.js'
 
 export interface UiAppearanceOptions {
   readonly color?: ColorMode
@@ -64,6 +65,7 @@ export function buildBraidViewModel(
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
   const profile = state.profile as Readonly<AgentProfile>
+  const modelSettings = profileModelSettings(profile)
   const fixture = profile.model?.default === 'fixture/deterministic'
   const profileDigest = canonicalDigest(profile)
   const selectedConnection = state.connections.find(
@@ -101,6 +103,9 @@ export function buildBraidViewModel(
     ...(profile.model?.reasoningEffort
       ? { effort: sanitizeTerminalText(profile.model.reasoningEffort) }
       : {}),
+    ...(modelSettings.maxOutputTokens === undefined
+      ? {}
+      : { maxOutputTokens: modelSettings.maxOutputTokens }),
     connection: fixture
       ? 'deterministic fixture'
       : sanitizeTerminalText(selectedConnection?.name ?? 'not connected'),
