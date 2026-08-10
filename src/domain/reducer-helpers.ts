@@ -24,7 +24,7 @@ import {
   type RunId,
 } from './ids.js'
 import { DomainInvariantError } from './invariants.js'
-import type { BraidState } from './state.js'
+import type { BraidMessagePart, BraidState } from './state.js'
 import { createAdmissionReceipt } from './receipts.js'
 import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
 import { graphEdge, graphNode } from './graph-records.js'
@@ -417,6 +417,7 @@ export function updateMessageFinal(
   runId: RunId,
   text: string,
   status: BraidMessage['status'],
+  partStatus: NonNullable<BraidMessagePart['status']>,
   at: string,
 ): BraidState {
   const message = state.messages.find(
@@ -428,6 +429,9 @@ export function updateMessageFinal(
     text: text || message.text,
     status,
     complete: status === 'complete',
+    parts: message.parts.map((part) =>
+      part.status === 'running' ? { ...part, status: partStatus } : part,
+    ),
     updatedAt: at,
   }
   const part = state.messageParts.find((entry) => entry.id === message.partIds[0])

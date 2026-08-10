@@ -75,6 +75,82 @@ test('incremental reduction and full replay produce the same complete projection
   assert.equal(incremental.health.status, 'healthy')
 })
 
+test('terminal outcomes close every running reasoning and tool part precisely', () => {
+  const cases = [
+    ['completed', 'complete'],
+    ['failed', 'failed'],
+    ['aborted', 'cancelled'],
+    ['cancelled', 'cancelled'],
+    ['blocked', 'unknown'],
+    ['expired', 'unknown'],
+    ['unknown', 'unknown'],
+  ] as const
+
+  for (const [terminalStatus, partStatus] of cases) {
+    const runId = `run-terminal-${terminalStatus}`
+    const provider = (providerSequence: number) => ({
+      eventId: `provider-${terminalStatus}-${providerSequence}`,
+      providerSequence,
+      occurredAt: '2026-08-02T00:00:00.000Z',
+    })
+    const state = replayEvents(initialState(STARTER_PROFILE), [
+      envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+      envelope(
+        {
+          kind: 'run.requested',
+          operationId: `op-${terminalStatus}`,
+          runId,
+          turnId: `turn-${terminalStatus}`,
+          userMessageId: `message-user-${terminalStatus}`,
+          assistantMessageId: `message-assistant-${terminalStatus}`,
+          text: 'inspect',
+        },
+        2,
+      ),
+      envelope(
+        {
+          kind: 'run.reasoning.delta',
+          runId,
+          partId: `part-reasoning-${terminalStatus}`,
+          text: 'checking',
+          provider: provider(1),
+        },
+        3,
+      ),
+      envelope(
+        {
+          kind: 'run.tool.call',
+          runId,
+          partId: `part-tool-${terminalStatus}`,
+          toolName: 'read_file',
+          input: { path: 'README.md' },
+          provider: provider(2),
+        },
+        4,
+      ),
+      envelope(
+        {
+          kind: 'run.finished',
+          runId,
+          status: terminalStatus,
+          finalText: '',
+          usage: { input: 0, output: 0 },
+        },
+        5,
+      ),
+    ])
+    const assistant = state.messages.find((message) => message.role === 'assistant')
+    assert.ok(assistant)
+    assert.deepEqual(
+      assistant.parts
+        .filter((part) => part.kind === 'reasoning' || part.kind === 'tool-call')
+        .map((part) => part.status),
+      [partStatus, partStatus],
+      terminalStatus,
+    )
+  }
+})
+
 test('incremental and full replay checksums agree for 1,000 generated histories', () => {
   for (let index = 0; index < 1_000; index += 1) {
     const suffix = String(index).padStart(4, '0')

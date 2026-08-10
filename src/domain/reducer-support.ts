@@ -92,6 +92,28 @@ export function terminalMessageStatus(status: RunTerminalStatus): MessageStatus 
   }
 }
 
+export function terminalPartStatus(
+  status: RunTerminalStatus,
+): NonNullable<BraidMessagePart['status']> {
+  switch (status) {
+    case 'completed':
+      return 'complete'
+    case 'failed':
+      return 'failed'
+    case 'aborted':
+    case 'cancelled':
+      return 'cancelled'
+    case 'blocked':
+    case 'expired':
+    case 'unknown':
+      return 'unknown'
+    default: {
+      const exhaustive: never = status
+      return exhaustive
+    }
+  }
+}
+
 export function findRun(state: BraidState, runId: string): BraidRun {
   const run = state.runs.find((candidate) => candidate.id === runId)
   if (!run) throw new Error(`Run ${runId} is unknown`)

@@ -22,6 +22,7 @@ import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { metricsFor, TerminalChrome } from '../src/views/tui/terminal-chrome.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
+import { DynamicAutocompleteProvider } from '../src/views/tui/dynamic-autocomplete.js'
 import {
   STREAMING_TAIL_BYTES,
   streamingTailText,
@@ -476,6 +477,21 @@ test('one searchable selector preserves query and supports keyboard selection', 
   assert.equal(selected, 'quit')
   selector.handleInput('\u001b')
   assert.equal(cancelled, true)
+})
+
+test('slash command autocomplete refreshes descriptions after capabilities change', async () => {
+  let description = 'unavailable — complete a run first'
+  const provider = new DynamicAutocompleteProvider({
+    commands: () => [{ name: 'ask', description }],
+    basePath: '/workspace',
+  })
+  const options = { signal: new AbortController().signal }
+  const before = await provider.getSuggestions(['/ask'], 0, 4, options)
+  assert.equal(before?.items[0]?.description, description)
+
+  description = 'Analyze a frozen run with citations'
+  const after = await provider.getSuggestions(['/ask'], 0, 4, options)
+  assert.equal(after?.items[0]?.description, description)
 })
 
 const interaction: InteractionView = {

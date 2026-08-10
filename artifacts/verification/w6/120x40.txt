@@ -36,5 +36,5 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation  ·  branch 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-completed                                                                          fixture/deterministic · thinking none
-Braid starter · runner pi · deterministic fixture                                                        Ctrl+P commands
+completed                                                                    model fixture/deterministic · thinking none
+AgentProfile Braid starter · runner pi · deterministic fixture                                           Ctrl+P commands

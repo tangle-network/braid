@@ -1,4 +1,4 @@
-import { CombinedAutocompleteProvider, type Editor, type TUI } from '@earendil-works/pi-tui'
+import type { Editor, TUI } from '@earendil-works/pi-tui'
 import { commandItems } from '../shared/command-registry.js'
 import type {
   BraidIntent,
@@ -10,6 +10,7 @@ import type { BraidViewModel } from '../shared/models.js'
 import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
+import { DynamicAutocompleteProvider } from './dynamic-autocomplete.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
 import { type BraidKeymap, resolveKeymap } from './keyboard.js'
 import { ModalCoordinator } from './modal-coordinator.js'
@@ -81,14 +82,14 @@ export class BraidTerminalApp {
     this.#resolveDone = resolveDone
 
     const autocomplete = new GuardedAutocompleteProvider(
-      new CombinedAutocompleteProvider(
-        commandItems(this.#controller.view().capabilities).map((item) => ({
-          name: item.value,
-          description: item.description ?? '',
-        })),
-        options.workspace,
-        null,
-      ),
+      new DynamicAutocompleteProvider({
+        commands: () =>
+          commandItems(this.#controller.view().capabilities).map((item) => ({
+            name: item.value,
+            description: item.description ?? '',
+          })),
+        basePath: options.workspace,
+      }),
     )
     this.#shell = new BraidShell(
       options.tui,

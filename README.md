@@ -1,135 +1,176 @@
-# Braid
+<div align="center">
+  <h1>Braid</h1>
+  <p><strong>One AgentProfile. Any coding runner.</strong></p>
+  <p>Keep one conversation and agent identity while <code>agent-runtime</code> routes each turn through local subscriptions, Tangle inference, or cloud sandboxes.</p>
+  <p>
+    <a href="https://github.com/tangle-network/braid/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tangle-network/braid/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-7aa2f7"></a>
+  </p>
+</div>
 
-Braid is a universal terminal interface for portable agent profiles.
+![Braid showing an AgentProfile, Pi runner, Luna model, Local CLI Bridge, tool activity, and trace analysis](artifacts/verification/w6/braid.gif)
 
-A user chooses an `AgentProfile`, chooses where it should run, and talks to the same agent through local subscriptions, Tangle inference, Tangle sandboxes, or any supported coding runner.
+<p align="center"><sub>Recorded from a clean install of Braid's packed tarball at 120×18.
+Repeatable demo data keeps provider credentials out of the repository; the terminal, keyboard flow, profile routing, normalized events, and analysis screen are the real product.</sub></p>
 
-Braid owns the human experience.
-`agent-runtime` owns execution.
-`agent-interface` owns the profile, event, capability, and interaction contracts.
-Provider packages own transport to CLI Bridge and Tangle.
-`agent-eval` owns trace analysis and semantic evaluation.
+Braid is the terminal experience over [`agent-runtime`](https://github.com/tangle-network/agent-runtime).
+It does not replace Pi, Codex, Kimi Code, or OpenCode.
+It lets one portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) drive any supported runner while Braid owns conversations, branches, approvals, activity, graphs, and trace analysis.
 
-## Status
+## Start
 
-Braid's production CLI/TUI, encrypted local state, profile and connection setup, runtime dispatch, conversations, branches, graphs, interactions, and analysis commands are implemented.
-The terminal and headless surfaces share one command registry, one view model, and one durable operation ledger.
-The CLI Bridge path is implemented and was proven from a clean packed install on 2026-08-09 with Pi/GLM-5.2 and Codex through first-run setup, two-turn session continuity, normalized events, process restart, transcript recovery, and a post-restart turn.
-The Tangle inference and sandbox paths are implemented against the current provider packages but still require protected live-deployment proof before they are advertised as release-complete.
-`/ask`, `/analyze`, `/compare`, trace citations, and analysis promotion are implemented; the semantic evaluation command performs pilot, calibration, and release-case checks when a judge model is configured.
-Generalized interaction responses remain capability-disabled because the installed runtime and providers do not expose a run-bound response operation.
-The deterministic `MemoryJournal` remains fixture-only; production startup fails closed if the pinned encrypted SQLite binding or credential facility is unavailable.
-The storage binding is pinned to `better-sqlite3-multiple-ciphers@13.0.3`, operating-system credentials use `@napi-rs/keyring@1.3.0`, and raw database, WAL, shared-memory, backup, wrong-key, restore-recovery, two-process admission, and forced-kill checks run against the native implementations.
-Tangle, supervisor-control, full live-analysis, multi-platform installation, and signed release evidence remain required before the complete release contract is satisfied.
-Every push to `main` and every pull request targeting `main` runs the complete repository check and installs the packed package on Node 22.19.0.
-The contract is based on current package and source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, and Pi through 2026-08-09, with the recorded Kimi Code, OpenCode, and Hermes Agent design references retained from the initial comparison.
-
-![Braid terminal at 80×24](artifacts/verification/w6/80x24.png)
-
-Run the deterministic slice locally:
+Braid requires Node.js 22.19 or newer and pnpm 11.18.
+Until the first registry release, run it from source:
 
 ```bash
-pnpm install
-pnpm run build
+git clone https://github.com/tangle-network/braid.git
+cd braid
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+node dist/bin/braid.js
+```
+
+The first launch guides you through choosing an AgentProfile and a connection.
+To explore the terminal without credentials or network access:
+
+```bash
 node dist/bin/braid.js --fixture deterministic
 ```
 
-Run the checks with the stable command map below.
-Commands marked unavailable fail with exit code 2 and a plain explanation; they do not substitute a narrower test and do not create a release claim.
+## The core idea
 
-| Check | Command | Behavior |
-| --- | --- | --- |
-| repository | `pnpm check` | Runs local format, lint, types, boundaries, dependency/license metadata, deterministic tests, and the release manifest check |
-| unit | `pnpm test:unit` | Runs the local unit suite |
-| contract | `pnpm test:contract` | Runs the local contract suite |
-| upstream | `pnpm test:upstream` | Imports exact tagged-package `UP-01` through `UP-14` results and retained artifact digests from their owning repositories |
-| coordination | `pnpm test:coordination` | Runs durable effect admission and serialization checks |
-| rpc | `pnpm test:rpc` | Runs the JSONL protocol suite |
-| rpc (packed) | `pnpm test:rpc:packed` | Runs the packed JSONL protocol suite |
-| virtual-terminal | `pnpm test:virtual-terminal` | Runs virtual-terminal state, keyboard, and layout checks |
-| pty | `pnpm test:pty` | Runs packed real-terminal checks |
-| storage | `pnpm test:storage` | Runs encrypted SQLite journal, projection, and retention checks |
-| crash | `pnpm test:crash` | Runs forced-kill, restore-recovery, and two-process admission checks |
-| security | `pnpm test:security` | Runs redaction, credential-boundary, and dependency-boundary checks |
-| performance | `pnpm test:performance` | Runs the reducer, coordination, and storage performance checks |
-| property soak | `pnpm test:property:soak` | Runs and records 100,000 deterministic randomized product cases for release |
-| live | `pnpm test:live` | Runs every protected live product flow in sequence |
-| live-bridge | `pnpm test:live:bridge` | Runs the opt-in packed CLI Bridge and runner flow with `BRAID_LIVE_BRIDGE=1` |
-| live-bridge release | `pnpm test:live:bridge:release` | Requires the complete `LIVE-01` through `LIVE-05` interactive flow and refuses the narrower smoke result |
-| live-tangle | `pnpm test:live:tangle` | Unavailable without protected live credentials and evidence |
-| live-supervisor | `pnpm test:live:supervisor` | Unavailable without protected live credentials and evidence |
-| live-analysis | `pnpm test:live:analysis` | Unavailable without protected live credentials and evidence |
-| eval | `pnpm test:eval` | Runs pilot, judge calibration, and semantic release cases against `BRAID_EVAL_MODEL` |
-| install | `pnpm test:install` | Runs packed install, storage, and keyboard/RPC proof |
-| capture | `pnpm test:capture` | Captures the baseline terminal artifacts from the packed binary |
-| visual | `pnpm capture:visual` | Captures the required W6 state artifacts from the packed binary |
-| independent review | `pnpm test:independent-review` | Verifies a separately signed review bound to the exact candidate |
-| release | `pnpm check:release` | Checks the release manifest and evidence set |
-| verify:release | `pnpm verify:release` | Runs only in an isolated clean tracked checkout with complete evidence before archive endorsement |
+An AgentProfile defines the agent: its instructions, model preferences, tools, skills, permissions, and runner preference.
+A connection defines how this run reaches compute.
+Changing the connection or runner does not silently create a different agent.
 
-When `BRAID_CLI_BRIDGE_START=1`, the live command finds a sibling `cli-bridge` checkout by default; `BRAID_CLI_BRIDGE_DIR` can select another checkout.
-On Linux, selecting Pi also starts the local bridge with its required `fs-jail` policy unless the operator explicitly supplied a bridge isolation policy.
-The generated `AgentProfile` stores runner, provider, and model separately and adds the runner prefix only to the CLI Bridge request route.
+```ts
+import type { AgentProfile } from '@tangle-network/agent-interface'
 
-The manual GitHub release workflow accepts one full commit SHA from `main`.
-It creates one tarball under an external `BRAID_RELEASE_ARTIFACT_ROOT`, runs every candidate check against those bytes, and uploads that same tarball for platform tests and npm publication.
-`pnpm verify:candidate` qualifies the pre-publication results before a separate code-free job endorses the complete candidate archive.
-After publication, Linux x64, macOS arm64, and Windows x64 each download the registry package, confirm its SHA-256 matches the candidate, exercise plain messaging and encrypted SQLite storage, and remove their temporary state.
-`pnpm release:record-publication` binds those six platform results into the evidence set, and only then may `pnpm verify:release` write the final manifest and report for isolated endorsement.
-Any failed or unavailable required check exits nonzero before publication, while any failed registry smoke prevents tagging and the GitHub release.
+const profile: AgentProfile = {
+  name: 'Release engineer',
+  harness: 'pi',
+  model: {
+    provider: 'openai-codex',
+    default: 'openai-codex/gpt-5.6-luna',
+    reasoningEffort: 'high',
+  },
+  prompt: {
+    instructions: [
+      'Inspect the repository before changing it.',
+      'Run focused checks and report exact evidence.',
+    ],
+  },
+  tools: { read: true, write: true, shell: true },
+  permissions: { read: 'allow', write: 'ask', shell: 'ask' },
+}
+```
 
-The complete implementation goal remains every required check in [the delivery plan](docs/09-delivery-plan.md) and [the verification plan](docs/08-verification.md), including real local and cloud runs.
+The SDK field is named `harness`; Braid renders it as **runner** because it is a routing preference, not the agent's identity.
+The exact profile snapshot and selected connection are bound to every admitted run.
 
-## The central decision
+```text
+AgentProfile + message
+          │
+          ▼
+        Braid ─── conversation · branches · approvals · graphs · analysis
+          │
+          ▼
+    agent-runtime
+      ├── CLI Bridge ─── Pi · Codex · Kimi Code · OpenCode
+      ├── Tangle inference
+      └── Tangle sandbox
+```
 
-Braid will use the published MIT-licensed [`@earendil-works/pi-tui`](https://www.npmjs.com/package/@earendil-works/pi-tui) package for terminal rendering, layout, editing, overlays, and terminal compatibility.
+Every provider is projected into the same event stream, so reasoning, tool calls, artifacts, usage, questions, approvals, failures, and final output remain understandable in one terminal.
 
-Braid will selectively adapt proven application-level interaction patterns from [Pi](https://github.com/earendil-works/pi) and [Kimi Code](https://github.com/MoonshotAI/kimi-code), with file-level attribution for copied code.
+## What you can do
 
-Braid will not copy an agent loop, provider session model, model registry, authentication system, or profile materializer from another terminal application.
-
-That boundary gives Braid a polished interface quickly without creating a second execution system beside `agent-runtime`.
-
-## Product promises
-
-- The selected profile is the agent, not the selected runner.
-- A runner is a per-run preference and may be changed without redefining the agent.
-- Every feature is enabled from reported capabilities, never from a hard-coded runner table.
-- A reconnect resumes one logical run without duplicating output.
-- A fork states exactly whether it copied conversation context, provider state, or a cloud workspace.
-- An approval or question is delivered back to the waiting run through a shared interaction contract.
-- `/ask` analyzes a frozen run through `agent-eval` and creates a cited child analysis without silently changing the active conversation.
-- Credential values and secret-designated interaction answers never enter the transcript, local database, screenshots, or trace artifacts.
-- A visual feature is not complete until it has keyboard-flow proof and a captured terminal artifact.
-
-## Documentation map
-
-| Document | Decision it owns |
+| Need | Surface |
 | --- | --- |
-| [Product contract](docs/01-product-contract.md) | Users, outcomes, scope, language, and release promise |
-| [Experience specification](docs/02-experience-specification.md) | Screens, workflows, commands, keyboard behavior, and terminal states |
-| [Architecture](docs/03-architecture.md) | Module boundaries, state, storage, events, and dependency direction |
-| [Runtime contracts](docs/04-runtime-contracts.md) | Existing package capabilities, missing shared APIs, identifiers, and compatibility |
-| [Profiles and connections](docs/05-profiles-and-connections.md) | Agent configuration, runner selection, validation, and setup |
-| [Conversations and analysis](docs/06-conversations-forks-and-analysis.md) | Sessions, forks, graphs, trace analysis, and automation |
-| [Security and privacy](docs/07-security-and-privacy.md) | Trust boundaries, permissions, secrets, terminal safety, and retention |
-| [Verification](docs/08-verification.md) | Headless, terminal, live-provider, visual, semantic, security, and performance proof |
-| [Delivery plan](docs/09-delivery-plan.md) | Dependency-ordered work, completion criteria, releases, and final sign-off |
-| [Upstream strategy](docs/10-upstream-strategy.md) | Pi/Kimi/OpenCode/Hermes comparison, reuse policy, licenses, and update policy |
-| [Renderer decision](docs/decisions/001-pi-tui-renderer.md) | Why Braid depends on Pi TUI instead of cloning a whole app |
-| [Runtime boundary decision](docs/decisions/002-runtime-boundary.md) | Why execution and interaction control stay upstream |
-| [Persistence decision](docs/decisions/003-local-event-journal.md) | What Braid stores and which system remains authoritative |
-| [Encrypted storage decision](docs/decisions/005-encrypted-sqlite-and-credential-boundaries.md) | SQLite cipher, content keys, credential facilities, and headless key boundaries |
+| Choose the agent and route | `/profile`, `/connection`, `/runner`, `/model`, `/effort` |
+| Work with conversations | `/new`, `/open`, `/branch`, `/clone`, `/fork`, `/graph` |
+| Inspect execution | `F2`, `/activity`, `Ctrl+E`, `/export` |
+| Answer or automate requests | `/approve`, `/reject`, `/automate` |
+| Improve a run | `/ask <question>`, `/analyze <recipe>`, `/compare <left> <right>` |
+| Control active work | `/queue`, `/steer`, `/cancel` |
 
-The ranked source-reuse hypothesis is recorded in [`.agent/hypotheses/2026-08-01-terminal-ui-base.md`](.agent/hypotheses/2026-08-01-terminal-ui-base.md).
+Commands are enabled from the selected provider's reported capabilities.
+Unsupported operations stay visible with a concrete reason instead of pretending to succeed.
 
-## Completion
+### Forks that explain themselves
 
-Braid is complete only when all required checks are linked from one release evidence manifest and that manifest proves the same build in four ways.
+`/fork` previews exactly what will be copied: conversation context, provider state, profile snapshot, checkpoint, and cloud workspace when available.
+The graph view keeps the resulting conversations, branches, runs, workers, and analyses connected.
 
-1. Deterministic tests prove state, replay, storage, and protocol behavior.
-2. A real terminal session proves keyboard workflows and rendering at supported sizes.
-3. Real CLI Bridge and Tangle runs prove local subscriptions, cloud execution, reconnect, cancel, interactions, and workspace forks.
-4. Calibrated `agent-eval` cases prove that trace analysis and fork behavior are useful and correctly explained to users.
+### Analysis inside the conversation
 
-Passing a build, rendering a mock screen, or completing only one provider path does not satisfy the contract.
+`/ask` freezes a completed run, sends its trace through `agent-eval`, and returns cited findings without rewriting the original conversation.
+`/analyze` runs named failure, cost, tool, or improvement recipes.
+`/compare` keeps the full baseline/candidate asymmetry visible before presenting a result.
+
+### Local subscriptions and cloud execution
+
+CLI Bridge lets Braid use existing local subscriptions through runners such as Pi or Codex.
+Tangle connections route the same profile through inference or an isolated cloud sandbox.
+The terminal keeps one interaction model across those routes.
+
+## Headless operation
+
+The terminal and automation surfaces share the same command registry, state projection, and operation records.
+Use JSON Lines RPC when another program drives Braid:
+
+```bash
+node dist/bin/braid.js rpc
+```
+
+Use `--plain` for a readable non-interactive event stream.
+RPC mutating commands require operation IDs, making retries explicit and safe.
+See the [runtime contracts](docs/04-runtime-contracts.md) for the protocol and event boundaries.
+
+<details>
+<summary>Static terminal frame</summary>
+
+![Static Braid terminal frame with AgentProfile, model, runner, connection, usage, and activity](artifacts/verification/w6/braid.png)
+
+</details>
+
+## Current status
+
+Braid is source-installable and is not yet published to npm.
+The packed CLI Bridge path has been exercised with Pi/GLM-5.2 and Codex through first-run setup, two-turn continuity, restart, transcript recovery, and a post-restart turn.
+Tangle inference and sandbox adapters are implemented against the current provider packages; protected live-deployment checks remain before the first registry release.
+General interaction responses remain disabled when the selected runtime cannot acknowledge the response operation.
+
+The exact release criteria and retained evidence live in the [verification plan](docs/08-verification.md) and [delivery plan](docs/09-delivery-plan.md).
+
+## Develop
+
+```bash
+pnpm install --frozen-lockfile
+pnpm check
+pnpm capture:visual
+```
+
+`pnpm check` runs formatting, linting, types, dependency boundaries, license checks, deterministic tests, packed CLI Bridge compatibility, and the release manifest check.
+`pnpm capture:visual` installs the generated package tarball and drives the real binary through a pseudo-terminal to regenerate the screenshots and GIF.
+
+The design and implementation contracts are split by responsibility:
+
+- [Product contract](docs/01-product-contract.md) and [experience specification](docs/02-experience-specification.md)
+- [Architecture](docs/03-architecture.md) and [runtime contracts](docs/04-runtime-contracts.md)
+- [Profiles and connections](docs/05-profiles-and-connections.md)
+- [Conversations, forks, and analysis](docs/06-conversations-forks-and-analysis.md)
+- [Security and privacy](docs/07-security-and-privacy.md)
+- [Verification](docs/08-verification.md) and [delivery](docs/09-delivery-plan.md)
+
+## Open-source foundation
+
+Braid uses the MIT-licensed [`@earendil-works/pi-tui`](https://www.npmjs.com/package/@earendil-works/pi-tui) renderer and adapts proven interaction patterns from [Pi](https://github.com/earendil-works/pi), [Kimi Code](https://github.com/MoonshotAI/kimi-code), [OpenCode](https://github.com/anomalyco/opencode), and [Codex](https://github.com/openai/codex).
+It deliberately does not copy their execution loops, provider sessions, authentication systems, or model registries; those responsibilities stay behind `agent-runtime` and provider packages.
+
+See [the renderer decision](docs/decisions/001-pi-tui-renderer.md), [upstream strategy](docs/10-upstream-strategy.md), and [third-party notices](THIRD_PARTY_NOTICES.md) for the exact boundary and attribution.
+
+## License
+
+[MIT](LICENSE)

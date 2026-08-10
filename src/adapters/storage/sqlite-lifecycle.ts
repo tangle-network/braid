@@ -16,6 +16,7 @@ import {
   openProtectedInput,
   rejectSymlink,
   secureArtifact,
+  secureLiveSqliteArtifact,
   syncDirectory,
   syncFile,
   validatePath,
@@ -276,16 +277,9 @@ export abstract class SqliteLifecycleStorage extends SqliteProjectionStorage {
   }
 
   async secureArtifacts(): Promise<void> {
-    await secureArtifact(this.path)
-    for (const path of [this.artifacts().wal, this.artifacts().sharedMemory]) {
-      await rejectSymlink(path, false)
-      try {
-        await stat(path)
-        await secureArtifact(path)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      }
-    }
+    await secureLiveSqliteArtifact(this.path)
+    await secureLiveSqliteArtifact(this.artifacts().wal)
+    await secureLiveSqliteArtifact(this.artifacts().sharedMemory)
   }
 
   async assertReadableBackup(path: string): Promise<void> {

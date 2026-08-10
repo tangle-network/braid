@@ -20,6 +20,7 @@ import {
   upsert,
 } from './reducer-helpers.js'
 import { attachRequestedRunToConversation } from './reducer-run-graph.js'
+import { terminalPartStatus } from './reducer-support.js'
 
 function legacyOperation(
   state: BraidState,
@@ -179,26 +180,9 @@ export function reduceLegacyEvent(
     case 'run.finished': {
       const runId = parseRunId(event.runId)
       const run = find(state.runs, runId, 'Run')
-      const status =
-        event.status === 'completed'
-          ? 'completed'
-          : event.status === 'failed'
-            ? 'failed'
-            : event.status === 'aborted'
-              ? 'aborted'
-              : event.status === 'unknown'
-                ? 'unknown'
-                : 'blocked'
+      const status = event.status
       const messageStatus =
-        status === 'completed'
-          ? 'complete'
-          : status === 'failed'
-            ? 'failed'
-            : status === 'aborted'
-              ? 'aborted'
-              : status === 'unknown'
-                ? 'incomplete'
-                : 'blocked'
+        status === 'completed' ? 'complete' : status === 'unknown' ? 'incomplete' : status
       let next = updateRun(
         state,
         {
@@ -213,7 +197,14 @@ export function reduceLegacyEvent(
         },
         at,
       )
-      next = updateMessageFinal(next, runId, event.finalText, messageStatus, at)
+      next = updateMessageFinal(
+        next,
+        runId,
+        event.finalText,
+        messageStatus,
+        terminalPartStatus(event.status),
+        at,
+      )
       const turn = next.turns.find((entry) => entry.id === run.turnId)
       if (turn)
         next = {
@@ -223,7 +214,7 @@ export function reduceLegacyEvent(
             status:
               status === 'completed'
                 ? 'completed'
-                : status === 'aborted'
+                : status === 'aborted' || status === 'cancelled'
                   ? 'cancelled'
                   : status === 'failed'
                     ? 'failed'
@@ -241,7 +232,11 @@ export function reduceLegacyEvent(
             status:
               status === 'completed' ? 'terminal' : status === 'unknown' ? 'unknown' : 'failed',
             terminalOutcome:
-              status === 'aborted' ? 'cancelled' : status === 'blocked' ? 'failed' : status,
+              status === 'aborted' || status === 'cancelled'
+                ? 'cancelled'
+                : status === 'blocked'
+                  ? 'failed'
+                  : status,
             updatedAt: at,
           }),
         }

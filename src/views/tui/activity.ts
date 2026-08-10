@@ -1,4 +1,4 @@
-import { Container, Spacer, Text } from '@earendil-works/pi-tui'
+import { Container, Spacer, Text, TruncatedText } from '@earendil-works/pi-tui'
 import type { ActivityItemView, BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import type { BraidTheme } from './theme.js'
@@ -24,7 +24,7 @@ export class ActivityView extends Container {
     this.invalidate()
   }
 
-  #item(item: ActivityItemView): Text {
+  #item(item: ActivityItemView): TruncatedText {
     const status = sanitizeTerminalText(item.status)
     const detail = item.detail ? ` · ${sanitizeTerminalText(item.detail)}` : ''
     const title = sanitizeTerminalText(item.title)
@@ -45,6 +45,6 @@ export class ActivityView extends Container {
             ? 'ok'
             : '·'
     const elapsed = item.elapsedMs === undefined ? '' : ` ${Math.round(item.elapsedMs)}ms`
-    return new Text(`${color(`${symbol} ${status}`)} ${title}${elapsed}${detail}`, 1, 0)
+    return new TruncatedText(`${color(`${symbol} ${status}`)} ${title}${elapsed}${detail}`, 1, 0)
   }
 }

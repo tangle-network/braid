@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { captureProductDemo } from './capture-product-demo.mjs'
 import { createStateDefinitions } from './capture-visual-definitions.mjs'
 import {
   captureProvenance,
@@ -73,7 +74,7 @@ function normalized(screen) {
 
 const STATE_DEFINITIONS = createStateDefinitions(normalized)
 
-async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixture) {
+async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixture, cliArgs = []) {
   const emulator = new XtermTerminal({
     cols: columns,
     rows,
@@ -86,6 +87,7 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
   const recordPath = join(rawRoot, `${name}-${randomUUID()}.json`)
   const args = [binary, '--fixture', 'deterministic', '--record-state', recordPath]
   if (uiFixture) args.push('--ui-fixture', uiFixture)
+  args.push(...cliArgs)
   const session = pty.spawn(process.execPath, args, {
     name: 'xterm-256color',
     cols: columns,
@@ -537,6 +539,26 @@ try {
   await writeCastGif(join(rawRoot, 'automation-frame.cast'), automationGif)
   artifacts.push(await artifactFor(automationGif, 'automation-flow', 80, 24, 'automation'))
 
+  const productDemo = await captureProductDemo({ spawnTerminal, normalized, castFor })
+  const productDemoCast = join(rawRoot, 'braid-demo.cast')
+  const productFrameCast = join(rawRoot, 'braid-demo-frame.cast')
+  const productText = join(outputRoot, 'braid.txt')
+  const productPng = join(outputRoot, 'braid.png')
+  const productGif = join(outputRoot, 'braid.gif')
+  const productRasterGif = join(rawRoot, 'braid-demo-frame.gif')
+  await writeFile(productDemoCast, productDemo.demoCast)
+  await writeFile(productFrameCast, productDemo.frameCast)
+  await writeFile(productText, productDemo.finalScreen)
+  await writeRaster(productFrameCast, productPng, productRasterGif)
+  await writeCastGif(productDemoCast, productGif, { loop: true })
+  const productArtifacts = [
+    await artifactFor(productDemoCast, 'product-asciicast', productDemo.columns, productDemo.rows),
+    await artifactFor(productText, 'product-frame', productDemo.columns, productDemo.rows),
+    await artifactFor(productPng, 'product-png', productDemo.columns, productDemo.rows),
+    await artifactFor(productGif, 'product-flow', productDemo.columns, productDemo.rows),
+  ]
+  artifacts.push(...productArtifacts)
+
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
   const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
@@ -568,6 +590,10 @@ try {
         keyboardFlow: {
           steps: keyboardFlow.steps,
           artifacts: keyboardArtifacts.map((artifact) => artifact.path),
+        },
+        productDemo: {
+          steps: productDemo.steps,
+          artifacts: productArtifacts.map((artifact) => artifact.path),
         },
         states: stateManifests,
         artifacts,

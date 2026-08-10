@@ -9,6 +9,7 @@ import {
   findRun,
   sourceFromProvider,
   terminalMessageStatus,
+  terminalPartStatus,
   updateMessage,
   updateRun,
   upsertPart,
@@ -233,6 +234,14 @@ function reduceFinishedEvent(
         text: finalReservation.value || withFinalPart.text,
         status: messageStatus,
         complete: event.status !== 'unknown' && !hasMissingHistory,
+        parts: withFinalPart.parts.map((part) =>
+          part.status === 'running'
+            ? {
+                ...part,
+                status: terminalPartStatus(event.status),
+              }
+            : part,
+        ),
       }
     }),
     runs: updateRun(state, event.runId, (candidate) => {

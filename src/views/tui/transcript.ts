@@ -347,6 +347,9 @@ function detailText(part: TranscriptPartView): string {
   )
     return part.text
   if (part.text) return part.text
+  if (part.input !== undefined && part.result !== undefined) {
+    return `input: ${formatValue(part.input)}\nresult: ${formatValue(part.result)}`
+  }
   if (part.input !== undefined) return `input: ${formatValue(part.input)}`
   if (part.result !== undefined) return `result: ${formatValue(part.result)}`
   return ''

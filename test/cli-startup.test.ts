@@ -39,6 +39,17 @@ test('expected command-line mistakes remain actionable without echoing arbitrary
     (error: unknown) =>
       error instanceof CliUsageError && error.message === 'Unknown option: --not-a-real-option',
   )
+  assert.throws(
+    () => parseArgs(['--ui-fixture', 'product-demo'], '/workspace'),
+    (error: unknown) =>
+      error instanceof CliUsageError &&
+      error.message === '--ui-fixture requires --fixture deterministic',
+  )
+  assert.equal(
+    parseArgs(['--fixture', 'deterministic', '--ui-fixture', 'product-demo'], '/workspace')
+      .uiFixture,
+    'product-demo',
+  )
 })
 
 test('startup responsibilities stay split into bounded modules', async () => {

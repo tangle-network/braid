@@ -9,4 +9,4 @@ braid  cwd  braid-automation-main-wt
 
 ────────────────────────────────────────
 ready for a message
-Braid starter
+AgentProfile Braid starter
