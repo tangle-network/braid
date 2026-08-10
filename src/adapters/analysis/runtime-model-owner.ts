@@ -443,12 +443,13 @@ function costFacts(
   if (summary?.observedCostUsd !== undefined) {
     return { status: 'observed', usd: summary.observedCostUsd }
   }
-  if (summary?.estimatedCostUsd !== undefined) {
-    return { status: 'estimated', usd: summary.estimatedCostUsd }
-  }
+  // Use the receipt pricing before a runner estimate. This keeps call details equal to the aggregate.
   if (summary?.usageCaptured === true && pricing !== undefined) {
     const estimated = costForTokenPricing(pricing, receipt)
     return { status: 'estimated', usd: estimated }
+  }
+  if (summary?.estimatedCostUsd !== undefined) {
+    return { status: 'estimated', usd: summary.estimatedCostUsd }
   }
   return { status: 'unknown' }
 }

@@ -423,6 +423,7 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
   const bridge = await startRuntimeBridgeServer({
     expectedBearer: 'credential-never-recorded',
     responseText: '{"answer":"bridge ok"}',
+    estimatedCostUsd: 0,
   })
   try {
     const selected = connection('cli-bridge', 'runtime-bridge-owner', bridge.endpoint)
@@ -447,6 +448,11 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(result.succeeded, true)
     if (!result.succeeded) return
     assert.equal(result.response.content, '{"answer":"bridge ok"}')
+    assert.deepEqual(result.receipt.customTokenPricing, PRICING)
+    assert.deepEqual(
+      (result.execution as { readonly billing?: unknown }).billing,
+      { status: 'estimated', usd: 0.000008 },
+    )
     assert.equal(bridge.requests.length, 1)
     const body = bridge.requests[0]?.body
     assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
@@ -501,6 +507,10 @@ test('runtime-owned trace model preserves observed cost when token usage is unkn
   assert.equal(result.receipt.usageUnknown, true)
   assert.equal(result.receipt.actualCostUsd, 0.123)
   assert.equal(result.receipt.costUnknown, undefined)
+  assert.deepEqual(
+    (result.execution as { readonly billing?: unknown }).billing,
+    { status: 'observed', usd: 0.123 },
+  )
 })
 
 test('runtime model route errors never expose invalid model material', async () => {

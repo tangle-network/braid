@@ -22,6 +22,7 @@ export interface RuntimeBridgeServerOptions {
   }>
   readonly expectedBearer?: string
   readonly responseText?: string | ((body: Readonly<Record<string, unknown>>) => string)
+  readonly estimatedCostUsd?: number
   readonly holdStreams?: boolean
   readonly cancellation?: {
     readonly mode?: 'acknowledged' | 'rejected'
@@ -116,6 +117,7 @@ function profileMaterialization(body: Readonly<Record<string, unknown>>) {
 function runtimeResponseStream(
   body: Readonly<Record<string, unknown>>,
   responseText: string,
+  estimatedCostUsd?: number,
 ): string {
   const terminal = {
     choices: [{ delta: {}, finish_reason: 'stop' }],
@@ -123,6 +125,9 @@ function runtimeResponseStream(
       prompt_tokens: 2,
       completion_tokens: 3,
       cost_known: false,
+      ...(estimatedCostUsd === undefined
+        ? {}
+        : { estimated_cost: estimatedCostUsd, cost_provenance: 'catalog-estimate' }),
     },
     profile_materialization: profileMaterialization(body),
   }
@@ -269,7 +274,15 @@ export async function startRuntimeBridgeServer(
       response.write(
         `id: 1\ndata: ${JSON.stringify({ choices: [{ delta: { content: responseText(options.responseText, body) }, finish_reason: null }] })}\n\n`,
       )
-    } else response.end(runtimeResponseStream(body, responseText(options.responseText, body)))
+    } else {
+      response.end(
+        runtimeResponseStream(
+          body,
+          responseText(options.responseText, body),
+          options.estimatedCostUsd,
+        ),
+      )
+    }
   })
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
