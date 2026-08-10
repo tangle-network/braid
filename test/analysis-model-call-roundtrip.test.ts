@@ -3,6 +3,7 @@ import test from 'node:test'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { importAnalysisModelCalls } from '../src/app/conversation-import-analyses.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { AnalysisRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
@@ -146,6 +147,7 @@ test('analysis model calls survive event replay and appear as concise detail lin
     status: 'completed',
     findings: [],
     modelCalls: calls,
+    wallTimeMs: 88,
     createdAt: startedAt,
     updatedAt: endedAt,
   }
@@ -171,6 +173,28 @@ test('analysis model calls survive event replay and appear as concise detail lin
       '#2 provider unknown/glm-5.2 · tokens unknown · cost unknown · latency unknown',
   )
   assert.equal(JSON.stringify(details).includes('secret-value'), false)
+
+  const terminalView = buildBraidViewModel(restarted)
+  const terminalDetail = terminalView.entityDetails?.find(
+    (detail) => detail.entityType === 'analysis' && detail.entityId === analysis.id,
+  )
+  assert.deepEqual(terminalDetail?.analysisExecution, {
+    observedModels: ['glm-5.2', 'gpt-5.6-luna'],
+    modelCalls: calls.map((call) => ({
+      sequence: call.sequence,
+      ...(call.provider === undefined ? {} : { provider: call.provider }),
+      model: call.model,
+      ...(call.inputTokens === undefined ? {} : { inputTokens: call.inputTokens }),
+      ...(call.outputTokens === undefined ? {} : { outputTokens: call.outputTokens }),
+      tokensKnown: call.tokensKnown,
+      ...(call.cost.usd === undefined ? {} : { costUsd: call.cost.usd }),
+      costStatus: call.cost.status,
+      ...(call.latencyMs === undefined ? {} : { latencyMs: call.latencyMs }),
+      outcome: call.outcome,
+    })),
+    wallTimeMs: 88,
+  })
+  assert.match(terminalDetail?.lines.join('\n') ?? '', /model call #1 openai\/gpt-5\.6-luna/u)
 })
 
 test('conversation export, import, re-export, and restart retain model calls', async () => {

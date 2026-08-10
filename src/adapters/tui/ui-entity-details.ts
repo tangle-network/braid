@@ -68,16 +68,18 @@ function environmentDetail(
 
 function analysisDetail(record: AnalysisRecord | undefined): EntityDetailView | undefined {
   if (record === undefined) return undefined
+  const analysis = analysisViewForRecord(record)
   const rendered =
     record.kind === 'comparison' && record.comparison !== undefined
       ? comparisonLines(comparisonViewForResult(resultFromComparisonRecord(record)))
-      : analysisLines(analysisViewForRecord(record))
+      : analysisLines(analysis)
   return {
     entityType: 'analysis',
     entityId: String(record.id),
     title: rendered[0] ?? `analysis ${record.id}`,
     status: record.status,
     lines: bounded(rendered.slice(1)),
+    ...(analysis.execution === undefined ? {} : { analysisExecution: analysis.execution }),
   }
 }
 

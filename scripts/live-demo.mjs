@@ -9,6 +9,7 @@ import { promisify } from 'node:util'
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
 import { configureWithPublicTui } from './live-core/setup-tui.mjs'
 import { jsonRequest } from './live-demo/http.mjs'
+import { safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import { castFor, createCapturedTerminal, pause, typeText } from './live-demo/terminal.mjs'
 import {
@@ -164,49 +165,6 @@ async function verifyWorkspace(workspace) {
     samples: sample.stdout.trim().split('\n'),
     sourceSha256: sha256(await readFile(join(workspace, 'src', 'slugify.js'))),
     testSha256: sha256(await readFile(join(workspace, 'test', 'slugify.test.js'))),
-  }
-}
-
-function safeManifestAnalysis(record) {
-  const analysis = record.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
-  assert.equal(analysis?.status, 'complete', 'The real /ask activity did not complete')
-  const detail = record.view?.entityDetails?.find(
-    (item) => item.entityType === 'analysis' && item.entityId === analysis.entityId,
-  )
-  assert.ok(detail, 'The real /ask analysis retained no public detail')
-  assert.equal(detail.status, 'completed', 'The saved /ask analysis did not complete')
-  const findings = detail.lines.filter((line) => line.startsWith('• ')).length
-  assert.ok(findings > 0, 'The real /ask analysis returned no findings')
-  const usage = record.view?.sessionUsage?.analyses
-  assert.equal(usage?.sourceCount, 1, 'The live demo expected exactly one analysis usage source')
-  const stored = record.state?.analyses?.find((candidate) => candidate.id === analysis.entityId)
-  assert.equal(stored?.status, 'completed', 'The persisted /ask analysis did not complete')
-  const modelCalls = stored.modelCalls
-  const observedModels = [
-    ...new Set(
-      (modelCalls ?? [])
-        .map((call) => call.model)
-        .filter((model) => model !== undefined && model !== 'unknown-model'),
-    ),
-  ].sort()
-  const modelLatencyMs =
-    modelCalls !== undefined &&
-    modelCalls.length > 0 &&
-    modelCalls.every((call) => Number.isFinite(call.latencyMs))
-      ? modelCalls.reduce((total, call) => total + call.latencyMs, 0)
-      : null
-  return {
-    id: analysis.entityId,
-    status: detail.status,
-    findings,
-    configuredModel: stored.provenance?.model ?? null,
-    observedModels,
-    modelCalls: modelCalls?.length ?? null,
-    inputTokens: usage.input ?? null,
-    outputTokens: usage.output ?? null,
-    costUsd: usage.costUsd ?? null,
-    modelLatencyMs,
-    wallTimeMs: stored.wallTimeMs ?? null,
   }
 }
 

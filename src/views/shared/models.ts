@@ -390,6 +390,7 @@ export interface EntityDetailView {
   readonly title: string
   readonly status: string
   readonly lines: readonly string[]
+  readonly analysisExecution?: AnalysisExecutionView
 }
 
 export interface ProfileEditorView {
@@ -432,6 +433,27 @@ export interface AnalysisFindingView {
   readonly citationIds: readonly string[]
 }
 
+export interface AnalysisModelCallView {
+  readonly sequence: number
+  readonly provider?: string
+  readonly model: string
+  readonly inputTokens?: number
+  readonly outputTokens?: number
+  readonly tokensKnown: boolean
+  readonly costUsd?: number
+  readonly costStatus: 'observed' | 'estimated' | 'unknown'
+  readonly latencyMs?: number
+  readonly outcome: 'succeeded' | 'failed'
+}
+
+export interface AnalysisExecutionView {
+  readonly configuredModel?: string
+  readonly runner?: string
+  readonly observedModels: readonly string[]
+  readonly modelCalls?: readonly AnalysisModelCallView[]
+  readonly wallTimeMs?: number
+}
+
 export interface AnalysisView {
   readonly source: string
   readonly analyst: string
@@ -443,6 +465,7 @@ export interface AnalysisView {
     readonly eventId: string
     readonly text: string
   }[]
+  readonly execution?: AnalysisExecutionView
   readonly footer: readonly { readonly label: string; readonly value: string }[]
   readonly error?: string
 }

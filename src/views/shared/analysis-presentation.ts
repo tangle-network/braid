@@ -1,4 +1,5 @@
 import type { AnalysisRecord } from '../../domain/entities.js'
+import { analysisExecutionView, analysisModelCallLine } from './analysis-model-call-presentation.js'
 import type { AnalysisView } from './models.js'
 import { sanitizeTerminalText } from './sanitize.js'
 
@@ -35,6 +36,7 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
       citationIds: finding.citations.map((citation) => String(citation.id)),
     })),
     citations,
+    execution: analysisExecutionView(record),
     footer: [
       { label: 'source complete', value: record.source.complete ? 'yes' : 'no' },
       { label: 'findings', value: String(record.findings.length) },
@@ -116,6 +118,15 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
       `evidence [${sanitizeTerminalText(citation.id)}]: ${sanitizeTerminalText(citation.text)}`,
     )
   }
+  const execution = analysis.execution
+  if (execution?.modelCalls === undefined) {
+    details.push('model calls: unavailable')
+  } else if (execution.modelCalls.length === 0) {
+    details.push('model calls: 0')
+  } else {
+    for (const call of execution.modelCalls)
+      details.push(`model call ${analysisModelCallLine(call)}`)
+  }
   if (analysis.footer.length > 0) {
     const footer = analysis.footer.map(
       (field) => `${sanitizeTerminalText(field.label)}: ${sanitizeTerminalText(field.value)}`,
@@ -133,6 +144,11 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
     context: [
       `source: ${shortDigest(analysis.source)} · frozen`,
       `analyst: ${sanitizeTerminalText(analysis.analyst)} · ${sanitizeTerminalText(analysis.status)}`,
+      ...(execution === undefined
+        ? []
+        : [
+            `route: runner ${execution.runner ?? 'unknown'} · configured model ${execution.configuredModel ?? 'unknown'}`,
+          ]),
     ],
     details,
   }

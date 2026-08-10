@@ -1,5 +1,6 @@
 import type { AnalysisFinding, AnalysisModelCallRecord } from '../../domain/entities.js'
 import type { BraidState } from '../../domain/state.js'
+import { analysisModelCallLine, analysisModelCallView } from './analysis-model-call-presentation.js'
 import { environmentView } from './environment-presentation.js'
 import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
 import { ensureEntityExists, graphEdgesForEntity, queryGraph } from './semantic-graph.js'
@@ -54,48 +55,12 @@ function safeFinding(finding: AnalysisFinding): Readonly<Record<string, unknown>
   }
 }
 
-function compactNumber(value: number | undefined): string {
-  return value === undefined ? '?' : String(value)
-}
-
-function compactUsd(value: number | undefined): string {
-  if (value === undefined) return 'unknown'
-  return `$${value.toFixed(6).replace(/0+$/u, '').replace(/\.$/u, '')}`
-}
-
-function modelCallTokens(call: AnalysisModelCallRecord): string {
-  const input = compactNumber(call.inputTokens)
-  const output = compactNumber(call.outputTokens)
-  if (call.tokensKnown) return `tokens ${input} in / ${output} out`
-  if (call.inputTokens !== undefined || call.outputTokens !== undefined) {
-    return `tokens ${input} in / ${output} out (observed floor)`
-  }
-  return 'tokens unknown'
-}
-
-function modelCallCost(call: AnalysisModelCallRecord): string {
-  if (call.cost.status === 'observed' && call.cost.usd !== undefined) {
-    return `cost ${compactUsd(call.cost.usd)}`
-  }
-  if (call.cost.status === 'estimated' && call.cost.usd !== undefined) {
-    return `cost ~${compactUsd(call.cost.usd)}`
-  }
-  return 'cost unknown'
-}
-
-function modelCallLine(call: AnalysisModelCallRecord): string {
-  const provider = call.provider === undefined ? 'provider unknown' : safe(call.provider)
-  const model = safe(call.model) || 'model unknown'
-  const latency = call.latencyMs === undefined ? 'latency unknown' : `latency ${call.latencyMs}ms`
-  return `#${call.sequence} ${provider}/${model} · ${modelCallTokens(call)} · ${modelCallCost(call)} · ${latency}`
-}
-
 function modelCallLines(
   modelCalls: readonly AnalysisModelCallRecord[] | undefined,
 ): readonly string[] {
   if (modelCalls === undefined) return ['model calls unknown']
   if (modelCalls.length === 0) return ['no model calls recorded']
-  return modelCalls.map(modelCallLine)
+  return modelCalls.map((call) => analysisModelCallLine(analysisModelCallView(call)))
 }
 
 function dataFor(

@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { jsonRequest } from './live-demo/http.mjs'
+import { safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import { createCapturedTerminal } from './live-demo/terminal.mjs'
 
@@ -74,6 +75,54 @@ test('jsonRequest aborts a response that never finishes', async () => {
   } finally {
     await closeServer(server)
   }
+})
+
+test('live manifest uses the typed public analysis execution view', () => {
+  const record = {
+    state: { analyses: [] },
+    view: {
+      activity: [{ kind: 'analysis', status: 'complete', entityId: 'analysis-live' }],
+      entityDetails: [
+        {
+          entityType: 'analysis',
+          entityId: 'analysis-live',
+          status: 'completed',
+          lines: ['• [citation-1] Complete finding'],
+          analysisExecution: {
+            configuredModel: 'tangle-router/glm-5.2',
+            observedModels: ['glm-5.2'],
+            modelCalls: [
+              {
+                sequence: 1,
+                model: 'glm-5.2',
+                tokensKnown: true,
+                costStatus: 'observed',
+                latencyMs: 321,
+                outcome: 'succeeded',
+              },
+            ],
+            wallTimeMs: 654,
+          },
+        },
+      ],
+      sessionUsage: {
+        analyses: { sourceCount: 1, input: 12, output: 7, costUsd: 0.002 },
+      },
+    },
+  }
+  assert.deepEqual(safeManifestAnalysis(record), {
+    id: 'analysis-live',
+    status: 'completed',
+    findings: 1,
+    configuredModel: 'tangle-router/glm-5.2',
+    observedModels: ['glm-5.2'],
+    modelCalls: 1,
+    inputTokens: 12,
+    outputTokens: 7,
+    costUsd: 0.002,
+    modelLatencyMs: 321,
+    wallTimeMs: 654,
+  })
 })
 
 test('public capture rejects the credential patterns mirrored from the sanitizer', async (t) => {

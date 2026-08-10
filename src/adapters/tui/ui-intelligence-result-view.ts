@@ -29,7 +29,8 @@ export function withIntelligenceResult(
 ): BraidViewModel {
   const analysis = selectedAnalysis(data, options)
   if (analysis !== undefined) {
-    const rendered = analysisLines(analysisViewForRecord(analysis))
+    const analysisView = analysisViewForRecord(analysis)
+    const rendered = analysisLines(analysisView)
     return attach(
       view,
       {
@@ -51,6 +52,9 @@ export function withIntelligenceResult(
         title: rendered[0] ?? `analysis ${analysis.id}`,
         status: analysis.status,
         lines: rendered.slice(1),
+        ...(analysisView.execution === undefined
+          ? {}
+          : { analysisExecution: analysisView.execution }),
       },
     )
   }
