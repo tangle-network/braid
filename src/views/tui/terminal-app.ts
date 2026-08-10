@@ -121,6 +121,7 @@ export class BraidTerminalApp {
         : { connectionLifecycle: options.connectionLifecycle }),
       dispatchCommand: (command, args) => this.#commands.dispatchCommand(command, args),
       requestRender: () => this.#tui.requestRender(),
+      rows: () => this.#tui.terminal.rows,
     })
     this.#interactions = new TerminalInteractionController({
       theme: this.#theme,
@@ -154,7 +155,6 @@ export class BraidTerminalApp {
       dispatch: (intent, restoreText) => this.#dispatch(intent, restoreText),
       isStopped: () => this.#stopped,
       stop: () => this.stop(),
-      showActivity: () => this.#input.showActivity(),
     })
     this.#shell.editor.setAutocompleteProvider(autocomplete)
     options.tui.addChild(this.#shell)
@@ -191,6 +191,7 @@ export class BraidTerminalApp {
   stop(): void {
     if (this.#stopped) return
     this.#stopped = true
+    this.#overlays.dispose()
     this.#input.close()
     this.#drafts.close()
     this.#modals.closeAll()

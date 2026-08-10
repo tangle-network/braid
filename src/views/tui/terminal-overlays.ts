@@ -30,6 +30,7 @@ export interface TerminalOverlayOptions {
   readonly connectionLifecycle?: UiConnectionLifecycle
   readonly dispatchCommand: (command: CommandName, args: readonly string[]) => void
   readonly requestRender: () => void
+  readonly rows: () => number
 }
 
 export class TerminalOverlayController {
@@ -78,6 +79,8 @@ export class TerminalOverlayController {
       theme: this.#theme,
       controller: this.#controller,
       modals: this.#modals,
+      rows: options.rows,
+      requestRender: options.requestRender,
       ...(options.keyboardDiagnostic === undefined
         ? {}
         : { keyboardDiagnostic: options.keyboardDiagnostic }),
@@ -280,6 +283,10 @@ export class TerminalOverlayController {
 
   openHelp(query: string): void {
     this.#surfaces.openHelp(query)
+  }
+
+  dispose(): void {
+    this.#surfaces.dispose()
   }
 
   openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {

@@ -73,11 +73,13 @@ const scopeFiles = {
   ],
   'virtual-terminal': [
     'configuration-product-flow.test.js',
+    'intelligence-dispatch.test.js',
     'keyboard.test.js',
     'terminal-responsive.test.js',
     'tui-autocomplete.test.js',
     'tui-conversations.test.js',
     'tui-core-workflows.test.js',
+    'tui-refresh-lifecycle.test.js',
     'tui.test.js',
     'w6-ui.test.js',
   ],
