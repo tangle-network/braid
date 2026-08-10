@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid product presentation and runtime fixes",
+  "files": 78,
+  "base": "a34c7ff16ec9a26be3e4a5e97ec152bccc3db53c",
+  "head": "0945f5f9cccbd3b129b7230e6a23b80a69ba5bd2",
+  "projectType": "TypeScript ESM package",
+  "reviewers": [
+    "A: operator correctness and security review",
+    "B: operator architecture and quality review",
+    "C: operator standards and real-system review",
+    "D: Luna Max independent product and media review, process-restricted after the ignored-media finding"
+  ],
+  "mode": "serial",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 1,
+    "medium": 5,
+    "low": 0,
+    "resolved": 6,
+    "unresolved": 0,
+    "dropped": 0
+  }
+}
