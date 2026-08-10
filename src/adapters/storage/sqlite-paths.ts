@@ -163,6 +163,66 @@ export async function secureArtifact(path: string): Promise<void> {
   }
 }
 
+/**
+ * Restricts an artifact owned by a live SQLite connection without opening a
+ * second descriptor. On Unix, closing any descriptor for the same inode can
+ * cancel SQLite's process-wide advisory locks.
+ */
+export async function secureLiveSqliteArtifact(path: string): Promise<boolean> {
+  let before: Awaited<ReturnType<typeof lstat>>
+  try {
+    before = await lstat(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw new StorageError(
+      'STORAGE_PERMISSIONS',
+      `Could not inspect live SQLite artifact ${path}`,
+      { cause: error },
+    )
+  }
+
+  try {
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) {
+      throw new StorageError(
+        'STORAGE_INPUT_IDENTITY',
+        `Live SQLite artifact is not a regular single-linked file: ${path}`,
+      )
+    }
+    if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+      throw new StorageError(
+        'STORAGE_OWNERSHIP',
+        `Live SQLite artifact is not owned by this process: ${path}`,
+      )
+    }
+
+    await chmod(path, 0o600)
+
+    const after = await lstat(path)
+    if (
+      !after.isFile() ||
+      after.isSymbolicLink() ||
+      after.nlink !== 1 ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      (typeof process.getuid === 'function' && after.uid !== process.getuid()) ||
+      (after.mode & 0o777) !== 0o600
+    ) {
+      throw new StorageError(
+        'STORAGE_INPUT_IDENTITY',
+        `Live SQLite artifact changed while permissions were restricted: ${path}`,
+      )
+    }
+    return true
+  } catch (error) {
+    if (error instanceof StorageError) throw error
+    throw new StorageError(
+      'STORAGE_PERMISSIONS',
+      `Could not restrict live SQLite artifact ${path}`,
+      { cause: error },
+    )
+  }
+}
+
 export async function syncFile(path: string): Promise<void> {
   const handle = await openFile(path, 'r')
   try {

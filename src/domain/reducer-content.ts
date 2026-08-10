@@ -89,6 +89,7 @@ export function reduceContentEvent(
               id: event.partId,
               kind: 'reasoning',
               text: reservation.value,
+              status: 'running',
               ...(source === undefined ? {} : { source }),
             },
             reservation.value,
@@ -111,6 +112,7 @@ export function reduceContentEvent(
           upsertPart(message, {
             id: event.partId,
             kind: 'tool-call',
+            status: 'running',
             toolName: event.toolName,
             ...(event.callId === undefined ? {} : { callId: event.callId }),
             ...(event.input === undefined ? {} : { input: inputReservation.value }),
@@ -140,6 +142,7 @@ export function reduceContentEvent(
             ...message.parts.find((part) => part.id === event.partId),
             id: event.partId,
             kind: 'tool-result',
+            status: errorReservation === undefined ? 'complete' : 'failed',
             toolName: event.toolName,
             ...(event.callId === undefined ? {} : { callId: event.callId }),
             ...(event.result === undefined ? {} : { result: resultReservation.value }),

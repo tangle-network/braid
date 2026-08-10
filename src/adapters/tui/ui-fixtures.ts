@@ -12,7 +12,7 @@ import {
 } from '../../domain/ids.js'
 import type { ForkPreviewView, InteractionView } from '../../views/shared/models.js'
 
-export type UiFixture = 'interaction' | 'fork' | 'analysis' | 'comparison'
+export type UiFixture = 'interaction' | 'fork' | 'analysis' | 'comparison' | 'product-demo'
 
 export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   runId: 'fixture-run-1',
@@ -131,6 +131,64 @@ export const FIXTURE_ANALYSIS_DATA = Object.freeze({
     eventCount: 14,
     messageCount: 4,
     messagePartCount: 9,
+  }),
+})
+
+const PRODUCT_DEMO_ANALYSIS_RECORD: AnalysisRecord = Object.freeze({
+  ...FIXTURE_ANALYSIS_RECORD,
+  id: createAnalysisId('analysis-product-route'),
+  question: 'What should this agent improve next?',
+  source: Object.freeze({
+    conversationId: createConversationId('conv-1'),
+    branchId: createBranchId('branch-1'),
+    runId: createRunId('run-000001'),
+    digest: createDigest('a9ed803bccc91483b9f55e20ad2123fb1a2a73ad088b2847e5b600e726b84d74'),
+    complete: true,
+  }),
+  findings: Object.freeze([
+    Object.freeze({
+      id: 'finding-route-receipt',
+      text: 'The route was explicit, but the final answer did not cite its materialization receipt.',
+      severity: 'medium' as const,
+      confidence: 0.93,
+      supported: true,
+      citations: Object.freeze([
+        Object.freeze({
+          id: createCitationId('citation-route-receipt'),
+          eventId: createEventId('event-runtime-route'),
+          quote: 'runtime.route completed: Local CLI Bridge → Pi',
+        }),
+      ]),
+    }),
+    Object.freeze({
+      id: 'finding-serial-route',
+      text: 'Profile inspection and route resolution ran serially even though their inputs were independent.',
+      severity: 'low' as const,
+      confidence: 0.86,
+      supported: true,
+      citations: Object.freeze([
+        Object.freeze({
+          id: createCitationId('citation-serial-route'),
+          eventId: createEventId('event-profile-before-route'),
+          quote: 'profile.inspect completed before runtime.route started',
+        }),
+      ]),
+    }),
+  ]),
+})
+
+export const PRODUCT_DEMO_ANALYSIS_DATA = Object.freeze({
+  status: 'completed' as const,
+  analysis: PRODUCT_DEMO_ANALYSIS_RECORD,
+  source: Object.freeze({
+    digest: PRODUCT_DEMO_ANALYSIS_RECORD.source.digest,
+    conversationId: PRODUCT_DEMO_ANALYSIS_RECORD.source.conversationId,
+    branchId: PRODUCT_DEMO_ANALYSIS_RECORD.source.branchId,
+    runId: PRODUCT_DEMO_ANALYSIS_RECORD.source.runId,
+    complete: true,
+    eventCount: 14,
+    messageCount: 2,
+    messagePartCount: 4,
   }),
 })
 

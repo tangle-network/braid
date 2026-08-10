@@ -20,5 +20,5 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation
 ────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────
-ready for a message                        fixture/deterministic · thinking none
-Braid starter · runner pi · deterministic fixture                Ctrl+P commands
+ready for a message                  model fixture/deterministic · thinking none
+AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands

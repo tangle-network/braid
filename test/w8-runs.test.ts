@@ -108,6 +108,8 @@ test('contract fixtures preserve parts, tools, reasoning, artifacts, proposals, 
     ['text', 'reasoning', 'tool-result', 'artifact', 'proposal', 'warning'],
   )
   assert.deepEqual(assistant.parts[2]?.input, { path: 'README.md' })
+  assert.equal(assistant.parts[1]?.status, 'complete')
+  assert.equal(assistant.parts[2]?.status, 'complete')
   assert.equal(run.inputTokens, 3)
   assert.equal(run.outputTokens, 4)
   assert.equal(run.costUsd, 0.01)

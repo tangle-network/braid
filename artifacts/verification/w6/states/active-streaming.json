@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "02d4b6c9ff1651fa04d73b5777decfb05546f87a39d61453424f6c41e5f7c9d1"
+    "tarballSha256": "7d25b83d58d2a4f26d63009e147ab739559aeef242622c332110d573c2d8ba7d"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 4,
-  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel                  fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture             Enter queues input\n",
+  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nstreaming · Ctrl+C cancel            model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi                        Enter queues input\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -494,10 +494,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-c92cacd0996329a33a907350",
+              "id": "effect-op-terminal-000002-3f652d1ca6d907192129d245",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "c92cacd0996329a33a907350d240376c3c9845ff870b06db3ede4dcb2f3a7f37",
+              "requestDigest": "3f652d1ca6d907192129d245a7117a6ff0c5c038e8497f99ecdd1f6f0848de4a",
               "kind": "send",
               "status": "pending",
               "attempt": 1,

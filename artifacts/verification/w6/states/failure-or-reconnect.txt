@@ -20,5 +20,5 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation
 ────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────
-outcome failed · operation op-terminal-000002              fixture/deterministic
-Braid starter · runner pi                       /export preserve · /new continue
+outcome failed · operation op-terminal-000002        model fixture/deterministic
+AgentProfile Braid starter · runner pi          /export preserve · /new continue

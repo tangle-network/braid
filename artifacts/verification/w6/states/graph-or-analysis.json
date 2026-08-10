@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "02d4b6c9ff1651fa04d73b5777decfb05546f87a39d61453424f6c41e5f7c9d1"
+    "tarballSha256": "7d25b83d58d2a4f26d63009e147ab739559aeef242622c332110d573c2d8ba7d"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n\n     conversation graph · current branch\n     branch: branch-1\n     complete · ─attached→ conversation New conversation\n     complete ·   └ › current ─attached→ branch Main\n     esc close\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                        fixture/deterministic · thinking none\nBraid starter · runner pi · deterministic fixture                Ctrl+P commands\n",
+  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n\n     conversation graph · current branch\n     branch: branch-1\n     complete · ─attached→ conversation New conversation\n     complete ·   └ › current ─attached→ branch Main\n     esc close\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",

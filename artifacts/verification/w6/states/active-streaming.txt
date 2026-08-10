@@ -20,5 +20,5 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation
 ────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────
-streaming · Ctrl+C cancel                  fixture/deterministic · thinking none
-Braid starter · runner pi · deterministic fixture             Enter queues input
+streaming · Ctrl+C cancel            model fixture/deterministic · thinking none
+AgentProfile Braid starter · runner pi                        Enter queues input

@@ -61,7 +61,11 @@ test('chrome uses complete responsive groups at every reference width', () => {
   })
 
   const narrow = plainLines(chrome, 40)
-  assert.deepEqual(narrow, ['braid  cwd  braid-integration', 'completed', 'Braid starter'])
+  assert.deepEqual(narrow, [
+    'braid  cwd  braid-integration',
+    'completed',
+    'AgentProfile Braid starter',
+  ])
   assert.doesNotMatch(narrow.join('\n'), /\/home\/drew|\.worktrees|fixture|deterministic|…/u)
 
   const standard = plainLines(chrome, 80).join('\n')

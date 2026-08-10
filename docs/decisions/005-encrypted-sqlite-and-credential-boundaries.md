@@ -20,6 +20,8 @@ Braid pins `better-sqlite3-multiple-ciphers@13.0.3` and rejects bindings that do
 
 SQLite uses WAL, foreign keys, FULL synchronous commits, bounded serialized write transactions, schema versioning, encrypted pre-migration backups, integrity checks, and projection checksums.
 
+Live database, WAL, and shared-memory permissions are restricted without opening a second file descriptor, because closing any duplicate descriptor on Unix can cancel the SQLite locks held by that process.
+
 Backups use SQLite `VACUUM INTO` to produce a transactionally consistent encrypted snapshot, then Braid reopens that snapshot with the database key, runs quick and full integrity checks, synchronizes it, and publishes it through a no-clobber hard link followed by directory synchronization.
 
 Backup and restore paths must remain under the approved workspace root, source files are opened through `O_NOFOLLOW` descriptors with one-link identity checks, and restore uses an exclusive lock plus a durable manifest for every move, install, cleanup, and manifest-removal transition.

@@ -40,8 +40,8 @@ export async function writeRaster(frameCastPath, pngPath, gifPath) {
   await rm(gifPath, { force: true })
 }
 
-export async function writeCastGif(castPath, gifPath) {
-  await run('agg', [
+export async function writeCastGif(castPath, gifPath, options = {}) {
+  const args = [
     '--quiet',
     '--theme',
     'github-dark',
@@ -51,12 +51,13 @@ export async function writeCastGif(castPath, gifPath) {
     '1',
     '--last-frame-duration',
     '1',
-    '--no-loop',
     '--font-family',
     'DejaVu Sans Mono',
     castPath,
     gifPath,
-  ])
+  ]
+  if (options.loop !== true) args.splice(-4, 0, '--no-loop')
+  await run('agg', args)
 }
 
 export function assertFlowFrameIntegrity(metric, label) {

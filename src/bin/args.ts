@@ -2,7 +2,7 @@ export interface CliOptions {
   readonly mode: 'tui' | 'rpc'
   readonly plain: boolean
   readonly fixture?: 'deterministic'
-  readonly uiFixture?: 'interaction' | 'fork' | 'analysis' | 'comparison'
+  readonly uiFixture?: 'interaction' | 'fork' | 'analysis' | 'comparison' | 'product-demo'
   readonly inline: boolean
   readonly noColor: boolean
   readonly highContrast: boolean
@@ -110,10 +110,11 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
         value !== 'interaction' &&
         value !== 'fork' &&
         value !== 'analysis' &&
-        value !== 'comparison'
+        value !== 'comparison' &&
+        value !== 'product-demo'
       )
         throw new CliUsageError(
-          '--ui-fixture supports "interaction", "fork", "analysis", or "comparison"',
+          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", or "product-demo"',
         )
       uiFixture = value
       index += 1
@@ -145,6 +146,10 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
         /^--?[a-z][a-z0-9-]*$/iu.test(argument) ? `Unknown option: ${argument}` : 'Unknown option',
       )
     else throw new CliUsageError('Unknown command; expected "rpc" or an option')
+  }
+
+  if (uiFixture !== undefined && fixture !== 'deterministic') {
+    throw new CliUsageError('--ui-fixture requires --fixture deterministic')
   }
 
   return {

@@ -37,9 +37,9 @@ export class TerminalChrome implements Component {
       statusText(this.#theme, view, conciseStatus(view, state.quitArmed)),
       safeWidth,
     )
-    const profile = valuePart(this.#theme, view.profileName)
+    const profile = valuePart(this.#theme, `AgentProfile ${view.profileName}`)
     const runner = valuePart(this.#theme, `runner ${view.runner}`)
-    const model = valuePart(this.#theme, view.model)
+    const model = valuePart(this.#theme, `model ${view.model}`)
     const effort = view.effort ? valuePart(this.#theme, `thinking ${view.effort}`) : ''
     const connection = valuePart(this.#theme, view.connection)
     const metrics = valuePart(this.#theme, metricsFor(view).join(' · '))

@@ -1,5 +1,10 @@
 import type { BraidIntent } from '../../views/shared/intents.js'
-import { FIXTURE_ANALYSIS_DATA, FIXTURE_COMPARISON_RESULT, type UiFixture } from './ui-fixtures.js'
+import {
+  FIXTURE_ANALYSIS_DATA,
+  FIXTURE_COMPARISON_RESULT,
+  PRODUCT_DEMO_ANALYSIS_DATA,
+  type UiFixture,
+} from './ui-fixtures.js'
 
 interface IntelligenceFixtureResult {
   readonly data: unknown
@@ -12,9 +17,15 @@ export function resolveIntelligenceFixture(
   fixture: UiFixture | undefined,
 ): IntelligenceFixtureResult | undefined {
   if (intent.type !== 'run-command') return undefined
-  if (fixture === 'analysis' && intent.command === 'ask' && intent.args.join(' ').trim()) {
+  if (
+    (fixture === 'analysis' || fixture === 'product-demo') &&
+    intent.command === 'ask' &&
+    intent.args.join(' ').trim()
+  ) {
     return {
-      data: structuredClone(FIXTURE_ANALYSIS_DATA),
+      data: structuredClone(
+        fixture === 'product-demo' ? PRODUCT_DEMO_ANALYSIS_DATA : FIXTURE_ANALYSIS_DATA,
+      ),
       notice: 'Analysis complete: 2 cited findings',
     }
   }
