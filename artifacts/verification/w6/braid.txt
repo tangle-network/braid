@@ -9,10 +9,10 @@ braid  cwd  agent-sdk  ·  session  New conversation  ·  branch  branch-1
 
 
 
+──────────────────────────────────────────────────────── › send ────────────────────────────────────────────────────────
+›
 
 
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-completed   model openai-codex/gpt-5.6-luna · thinking high · turns in 1.3k · out 96 · ~$0.0026 · calls 1 · model 1193ms
+────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────
+completed   model openai-codex/gpt-5.6-luna · thinking high · turns in 1.3k · out 96 · ~$0.0026 · calls 1 · model 1192ms
 AgentProfile Release engineer · runner pi · Local CLI Bridge                                               Ctrl+E detail

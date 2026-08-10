@@ -17,8 +17,8 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
 
 
 
-────────────────────────────────────────────────────────────────────────────────
 
-────────────────────────────────────────────────────────────────────────────────
+
+
 No automation rules                  model fixture/deterministic · thinking none
 AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands

@@ -31,10 +31,10 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation  ·  branch
 
 
 
+──────────────────────────────────────────────────────── › send ────────────────────────────────────────────────────────
+›
 
 
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-completed        model fixture/deterministic · thinking none · turns in 8 · out 12 · cost unknown · calls 1 · model 51ms
+────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────
+completed        model fixture/deterministic · thinking none · turns in 8 · out 12 · cost unknown · calls 1 · model 49ms
 AgentProfile Braid starter · runner pi · deterministic fixture                                             Ctrl+E detail

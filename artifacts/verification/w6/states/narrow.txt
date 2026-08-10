@@ -1,12 +1,12 @@
-braid  cwd  braid-unified-activity-wt
+braid  AgentProfile Braid starter
 
  Write a message, or press Ctrl+P for
  commands.
 
+──────────────── › send ────────────────
+›
 
 
-────────────────────────────────────────
-
-────────────────────────────────────────
-ready for a message
-AgentProfile Braid starter
+────── alt+enter newline · paste ───────
+ready for a message · runner pi · model…
+deterministic fixture · thinking none

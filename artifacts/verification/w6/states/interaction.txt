@@ -17,8 +17,8 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
      enter submit · esc cancel
      alt+a automate this response
 
-────────────────────────────────────────────────────────────────────────────────
 
-────────────────────────────────────────────────────────────────────────────────
+
+
 ready for a message                  model fixture/deterministic · thinking none
 AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands

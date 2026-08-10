@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "2fb04cde504b5a0cd67664579cf941f8ce2015ee32a4eb995958d501395c2dc4"
+    "tarballSha256": "533f2a99931051ea72b43672f21f0dc0e27c63d33ec4c2ea67dcf65e0bedc7e8"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-unified-activity-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n    fork preview · workspace\n    will create a new workspace from this source\n    source: workspace:/workspace\n    destination: workspace:/workspace-fork\n    boundary: conv-1 / branch-1 → conv-fork-1 / branch-1\n    profile snapshot: digest:fixture-source → digest:fixture-copy\n    workspace state: checkpoint:fixture-1 → checkpoint:fixture-1\n    enter/y create fork · esc cancel\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
+  "frame": "braid  cwd  braid-unified-activity-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n    fork preview · workspace\n    will create a new workspace from this source\n    source: workspace:/workspace\n    destination: workspace:/workspace-fork\n    boundary: conv-1 / branch-1 → conv-fork-1 / branch-1\n    profile snapshot: digest:fixture-source → digest:fixture-copy\n    workspace state: checkpoint:fixture-1 → checkpoint:fixture-1\n    enter/y create fork · esc cancel\n\n\n\n\n\n\nready for a message                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",

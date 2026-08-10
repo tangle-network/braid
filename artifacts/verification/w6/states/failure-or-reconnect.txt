@@ -15,10 +15,10 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
 
 
 
+──────────────────────────────────── › send ────────────────────────────────────
+›
 
 
-────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────
+────────────────────────── alt+enter newline · paste ───────────────────────────
 outcome failed · operation op-terminal-000002        model fixture/deterministic
 AgentProfile Braid starter · runner pi          /export preserve · /new continue

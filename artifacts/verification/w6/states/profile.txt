@@ -7,6 +7,7 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
       Active profile · Braid starter
       source Braid starter · trusted · read-only
       runner pi · model fixture/deterministic
+      thinking none · max output provider default
       digest sha256:44ed91c9…8cfa0a14
       profiles
 
@@ -17,8 +18,7 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
       enter · ^V valid · ^S save · esc
 
 
-────────────────────────────────────────────────────────────────────────────────
 
-────────────────────────────────────────────────────────────────────────────────
+
 ready for a message                  model fixture/deterministic · thinking none
 AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands

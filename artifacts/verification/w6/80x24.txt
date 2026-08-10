@@ -15,10 +15,10 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
 
 
 
+──────────────────────────────────── › send ────────────────────────────────────
+›
 
 
-────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────
+────────────────────────── alt+enter newline · paste ───────────────────────────
 completed                            model fixture/deterministic · thinking none
 AgentProfile Braid starter · runner pi · deterministic fixture     Ctrl+E detail

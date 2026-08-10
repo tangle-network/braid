@@ -1,12 +1,12 @@
-braid  cwd  braid-unified-activity-wt
- W6 visual proof
-
+braid  AgentProfile Braid starter
  · agent-turn-result · unknown ·
  collapsed · ctrl+e next
  Fixture response through pi: W6 visual
  proof
-────────────────────────────────────────
+──────────────── › send ────────────────
+›
 
-────────────────────────────────────────
-completed
-AgentProfile Braid starter
+
+────── alt+enter newline · paste ───────
+completed · runner pi · model determini…
+deterministic fixture · thinking none
