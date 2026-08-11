@@ -89,15 +89,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
 
-      - name: Restore the independent review attestation
-        env:
-          REVIEW_ATTESTATION_BASE64: ${{ secrets.BRAID_REVIEW_ATTESTATION_BASE64 }}
-        run: |
-          test -n "$REVIEW_ATTESTATION_BASE64"
-          mkdir -p "$BRAID_RELEASE_ARTIFACT_ROOT/review"
-          printf '%s' "$REVIEW_ATTESTATION_BASE64" | base64 --decode > "$BRAID_RELEASE_ARTIFACT_ROOT/review/attestation.json"
-          chmod 600 "$BRAID_RELEASE_ARTIFACT_ROOT/review/attestation.json"
-
       - name: Run the complete release checks
         env:
           BRAID_LIVE_BRIDGE: '1'

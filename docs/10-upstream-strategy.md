@@ -287,4 +287,4 @@ Visual parity with a reference is insufficient when the Braid profile, capabilit
 | US-07 | Dependency upgrades include exact before and after visual, Unicode, input, security, performance, license, and package evidence. |
 | US-08 | The OpenTUI reversal comparison runs before renderer replacement when either documented threshold is met. |
 | US-09 | A source inventory script reproduces every measured local copied-source path and finds no unattributed substantial match. |
-| US-10 | An independent review confirms the application state and execution ownership remain Braid and Tangle contracts rather than an upstream terminal application's domain. |
+| US-10 | Boundary tests and the installed-candidate live flow confirm that Braid and Tangle contracts retain application state and execution ownership. |

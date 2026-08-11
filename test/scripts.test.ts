@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { createHash, generateKeyPairSync, sign } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,8 +32,6 @@ const publicationProofSupport = await import('../scripts/release/publication-pro
 const { applyPublicationProof, createPublicationProof, REQUIRED_RELEASE_TARGETS } =
   publicationProofSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
-const { validateIndependentReview } = await import('../scripts/release/independent-review.mjs')
-// @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const platformSupport = await import('../scripts/release/platform.mjs')
 const { npmInvocation, pnpmInvocation, portableEvidencePath } = platformSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
@@ -64,7 +62,6 @@ test('W5 exposes stable checks for every requested release surface', () => {
     'test:live',
     'test:install',
     'test:capture',
-    'test:independent-review',
     'check:release',
   ]
   for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
@@ -689,43 +686,16 @@ test('release keys stay isolated and provider credentials are step-scoped', asyn
   }
 })
 
-test('independent review approval is signed and bound to the exact candidate', () => {
-  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
-  const packageProof = {
-    gitCommit: 'a'.repeat(40),
-    sha256: 'b'.repeat(64),
-    packageFileManifest: { digest: 'c'.repeat(64) },
+test('release acceptance uses candidate product checks without a manual attestation', async () => {
+  const workflow = await readFile('.github/workflows/release.yml', 'utf8')
+  assert.doesNotMatch(workflow, /BRAID_REVIEW_ATTESTATION|independent review attestation/iu)
+  for (const requirement of ['SE-12', 'US-10']) {
+    assert.deepEqual(requirementBindings[requirement].checks, [
+      'security',
+      'install',
+      'live-analysis',
+    ])
   }
-  const unsigned = {
-    schema: 'braid.independent-review.v1',
-    reviewer: { id: 'reviewer-1', system: 'independent-review-system' },
-    candidate: {
-      gitCommit: packageProof.gitCommit,
-      tarballSha256: packageProof.sha256,
-      packageFileManifestDigest: packageProof.packageFileManifest.digest,
-    },
-    verdict: 'approved',
-    reviewedAt: '2026-08-09T01:00:00.000Z',
-    threatFixturesReproduced: true,
-    architectureOwnershipConfirmed: true,
-    findings: [],
-  }
-  const attestation = {
-    ...unsigned,
-    signature: {
-      algorithm: 'ed25519',
-      value: sign(null, Buffer.from(canonicalJson(unsigned)), privateKey).toString('base64'),
-    },
-  }
-  assert.deepEqual(validateIndependentReview(attestation, { packageProof, publicKey }), unsigned)
-  assert.throws(
-    () =>
-      validateIndependentReview(
-        { ...attestation, candidate: { ...attestation.candidate, tarballSha256: 'd'.repeat(64) } },
-        { packageProof, publicKey },
-      ),
-    /archive differs/u,
-  )
 })
 
 test('the final release proof requires matching candidate and registry smokes on every platform', async () => {

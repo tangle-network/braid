@@ -39,7 +39,6 @@ function evidenceDirectory(checkId) {
   if (checkId === 'live-tangle' || /^LIVE-(?:0[6-9]|10)$/u.test(checkId)) return 'live/tangle'
   if (checkId === 'live-supervisor' || checkId === 'LIVE-11') return 'live/supervisor'
   if (checkId === 'live-analysis' || checkId === 'LIVE-12') return 'live/analysis'
-  if (checkId === 'independent-review') return 'review'
   return undefined
 }
 
