@@ -252,7 +252,9 @@ jobs:
           mkdir -p "$AUDIT_ROOT"
           cd "$AUDIT_ROOT"
           npm init --yes >/dev/null
-          npm install --no-audit --no-fund --ignore-scripts "@tangle-network/braid@$VERSION"
+          bash "$GITHUB_WORKSPACE/scripts/release/retry-registry-command.sh" \
+            npm install --prefer-online --no-audit --no-fund --ignore-scripts \
+            "@tangle-network/braid@$VERSION"
           npm audit signatures --json --include-attestations > "$RUNNER_TEMP/npm-audit-signatures.json"
 
       - name: Upload npm provenance

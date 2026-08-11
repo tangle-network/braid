@@ -134,6 +134,7 @@ async function sha256(path) {
 const artifactRootValue = option('--artifact-root') ?? process.env.BRAID_RELEASE_ARTIFACT_ROOT
 const registrySpec = option('--registry') ?? process.env.BRAID_RELEASE_REGISTRY_SPEC
 const outputPathValue = option('--output') ?? process.env.BRAID_SMOKE_OUTPUT
+const retryRegistryCommand = fileURLToPath(new URL('./retry-registry-command.sh', import.meta.url))
 const expectedPlatform = option('--expect-platform') ?? process.env.BRAID_EXPECT_PLATFORM
 const expectedArchitecture =
   option('--expect-architecture') ?? process.env.BRAID_EXPECT_ARCHITECTURE
@@ -149,7 +150,11 @@ try {
     const packRoot = join(smokeRoot, 'registry')
     await mkdir(packRoot)
     const npm = npmInvocation(['pack', registrySpec, '--pack-destination', packRoot])
-    await run(npm.file, npm.args, { cwd: smokeRoot })
+    await run('bash', [retryRegistryCommand, npm.file, ...npm.args], {
+      cwd: smokeRoot,
+      label: 'Registry package download',
+      timeoutMs: 5 * 60_000,
+    })
     const archives = (await readdir(packRoot)).filter((name) => name.endsWith('.tgz'))
     assert(archives.length === 1, 'Registry download did not produce exactly one tarball')
     tarballPath = join(packRoot, archives[0])

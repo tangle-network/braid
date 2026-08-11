@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -83,6 +83,44 @@ test('compiled tests receive the JavaScript helpers imported from scripts', asyn
   assert.match(source, /configuredTestDist/u)
   assert.match(source, /join\(testDist, 'scripts'\)/u)
   assert.match(source, /entry\.name\.endsWith\('\.mjs'\)/u)
+})
+
+test('registry commands retry transient failures and stop at the configured limit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-registry-retry-'))
+  const counter = join(root, 'attempts')
+  const retry = join(process.cwd(), 'scripts', 'release', 'retry-registry-command.sh')
+  const countAttempt = [
+    "const fs = require('node:fs')",
+    'const path = process.argv[1]',
+    "const count = Number(fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '0') + 1",
+    'fs.writeFileSync(path, String(count))',
+    "process.exit(count < Number(process.env.SUCCEED_ON ?? '999') ? 42 : 0)",
+  ].join(';')
+  const environment = {
+    ...process.env,
+    BRAID_REGISTRY_ATTEMPTS: '3',
+    BRAID_REGISTRY_DELAY_SECONDS: '0',
+  }
+
+  try {
+    const recovered = spawnSync('bash', [retry, process.execPath, '-e', countAttempt, counter], {
+      encoding: 'utf8',
+      env: { ...environment, SUCCEED_ON: '3' },
+    })
+    assert.equal(recovered.status, 0, recovered.stderr)
+    assert.equal(await readFile(counter, 'utf8'), '3')
+
+    await writeFile(counter, '0')
+    const exhausted = spawnSync('bash', [retry, process.execPath, '-e', countAttempt, counter], {
+      encoding: 'utf8',
+      env: environment,
+    })
+    assert.equal(exhausted.status, 1)
+    assert.match(exhausted.stderr, /Registry command failed after 3 attempts/u)
+    assert.equal(await readFile(counter, 'utf8'), '3')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('clean package installs cannot inherit disabled native dependency builds', () => {
