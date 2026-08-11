@@ -1,4 +1,5 @@
-import type { IdForKind, IdKind, Digest, ReplayCursor } from './ids-types.js'
+import type { Digest, IdForKind, IdKind, ReplayCursor } from './ids-types.js'
+import { redactSensitiveText } from './secret-sanitizer.js'
 
 export const prefixes: Readonly<Record<IdKind, readonly string[]>> = {
   workspace: ['workspace-'],
@@ -44,7 +45,8 @@ export function parsePrefixedId<K extends IdKind>(kind: K, value: unknown): IdFo
   if (
     typeof value !== 'string' ||
     !idPattern.test(value) ||
-    !prefixes[kind].some((prefix) => value.startsWith(prefix))
+    !prefixes[kind].some((prefix) => value.startsWith(prefix)) ||
+    redactSensitiveText(value) !== value
   ) {
     throw new TypeError(`Invalid ${kind} identifier`)
   }
@@ -55,7 +57,8 @@ export function isPrefixedId<K extends IdKind>(kind: K, value: unknown): value i
   return (
     typeof value === 'string' &&
     idPattern.test(value) &&
-    prefixes[kind].some((prefix) => value.startsWith(prefix))
+    prefixes[kind].some((prefix) => value.startsWith(prefix)) &&
+    redactSensitiveText(value) === value
   )
 }
 

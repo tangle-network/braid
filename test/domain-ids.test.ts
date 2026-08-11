@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { ConversationId } from '../src/domain/ids.js'
 import {
   createAnalysisId,
   createAnalysisRunId,
@@ -43,7 +44,6 @@ import {
   parseConversationId,
   parseRunId,
 } from '../src/domain/ids.js'
-import type { ConversationId } from '../src/domain/ids.js'
 
 test('every domain identifier has a constructor and a nominal runtime prefix', () => {
   const constructors: readonly [(value: string) => string, string][] = [
@@ -103,6 +103,13 @@ test('identifier validators reject values from another domain', () => {
   assert.equal(isConversationId(run), false)
   assert.throws(() => parseRunId('branch-1'), /Invalid run identifier/u)
   assert.throws(() => parseConversationId('run-1'), /Invalid conversation identifier/u)
+})
+
+test('identifier validators reject values that secret redaction would change', () => {
+  assert.throws(
+    () => createOperationId(`op-plain-sk-${'a'.repeat(24)}`),
+    /Invalid operation identifier/u,
+  )
 })
 
 test('brands prevent accidental compile-time substitution', () => {

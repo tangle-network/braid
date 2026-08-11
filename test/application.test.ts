@@ -544,13 +544,34 @@ test('async admission reserves one run before the provider becomes visible', asy
   assert.equal(app.storageFailure(), undefined)
 })
 
-test('send rejects malformed operation identities and oversized input before journaling', () => {
+test('public mutations reject unsafe operation identities before work or journaling', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const eventCount = app.events().length
+  const unsafeOperationId = `op-plain-sk-${'a'.repeat(24)}`
 
   assert.throws(
     () => app.send({ operationId: 'token=do-not-store', text: 'hello' }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_OPERATION_ID',
+  )
+  assert.throws(
+    () => app.queueInput({ operationId: unsafeOperationId, text: 'queue this' }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_OPERATION_ID',
+  )
+  await assert.rejects(
+    app.steer({ operationId: unsafeOperationId, text: 'steer this' }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_OPERATION_ID',
+  )
+  await assert.rejects(
+    app.cancelRun({ operationId: unsafeOperationId }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_OPERATION_ID',
+  )
+  await assert.rejects(
+    app.detachRun({ operationId: unsafeOperationId }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_OPERATION_ID',
+  )
+  await assert.rejects(
+    app.continueNative({ operationId: unsafeOperationId, text: 'continue this' }),
     (error: unknown) => error instanceof AppError && error.code === 'INVALID_OPERATION_ID',
   )
   assert.throws(

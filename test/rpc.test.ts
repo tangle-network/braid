@@ -6,6 +6,7 @@ import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/compos
 import { MemoryJournal } from '../src/app/journal.js'
 import { runPlain } from '../src/bin/plain.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
+import { redactSensitiveText } from '../src/domain/secret-sanitizer.js'
 import { FixedClock } from '../src/ports/clock.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
@@ -891,6 +892,23 @@ test('plain output failure cancels the delayed run before the outer close', asyn
 
   await new Promise<void>((resolve) => setTimeout(resolve, 300))
   assert.equal(app.events().length, eventsAfterClose)
+})
+
+test('plain mode generates redaction-stable operation identifiers', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  async function* input(): AsyncGenerator<string> {
+    yield 'verify generated operation identity\n'
+  }
+
+  await runPlain(controllerFor(app), '/workspace', input(), { write: () => true })
+
+  const operationId = app.state().runs[0]?.operationId
+  assert(operationId)
+  assert.match(
+    operationId,
+    /^op-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  )
+  assert.equal(redactSensitiveText(operationId), operationId)
 })
 
 test('JSONL requires initialize and stable operation identity', async () => {
