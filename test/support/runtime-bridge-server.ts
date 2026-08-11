@@ -35,10 +35,17 @@ export interface RuntimeBridgeCancellationRequest {
   readonly waitMs: number
 }
 
+export interface RuntimeBridgeReplayRequest {
+  readonly runId: string
+  readonly afterSequence: number
+}
+
 export interface RuntimeBridgeServer {
   readonly endpoint: string
   readonly requests: RuntimeBridgeRequest[]
   readonly cancellations: RuntimeBridgeCancellationRequest[]
+  readonly replays: RuntimeBridgeReplayRequest[]
+  complete(runId?: string): void
   close(): Promise<void>
 }
 
@@ -114,14 +121,20 @@ function profileMaterialization(body: Readonly<Record<string, unknown>>) {
   }
 }
 
-function runtimeResponseStream(
+interface RuntimeResponseFrame {
+  readonly id: number
+  readonly wire: string
+}
+
+function runtimeResponseFrames(
   body: Readonly<Record<string, unknown>>,
   responseText: string,
   estimatedCostUsd?: number,
-): string {
+): readonly RuntimeResponseFrame[] {
   const terminal = {
     choices: [{ delta: {}, finish_reason: 'stop' }],
     usage: {
+      model_requests: 1,
       prompt_tokens: 2,
       completion_tokens: 3,
       cost_known: false,
@@ -132,17 +145,34 @@ function runtimeResponseStream(
     profile_materialization: profileMaterialization(body),
   }
   return [
-    'id: 1',
-    `data: ${JSON.stringify({
-      choices: [{ delta: { content: responseText }, finish_reason: null }],
-    })}`,
-    '',
-    'id: 2',
-    `data: ${JSON.stringify(terminal)}`,
-    '',
-    'data: [DONE]',
-    '',
-  ].join('\n')
+    {
+      id: 1,
+      wire: `id: 1\ndata: ${JSON.stringify({ choices: [{ delta: { content: responseText }, finish_reason: null }] })}\n\n`,
+    },
+    { id: 2, wire: `id: 2\ndata: ${JSON.stringify(terminal)}\n\n` },
+  ]
+}
+
+function runtimeResponseStream(frames: readonly RuntimeResponseFrame[]): string {
+  return `${frames.map((frame) => frame.wire).join('')}data: [DONE]\n\n`
+}
+
+function runtimeResponseResult(
+  body: Readonly<Record<string, unknown>>,
+  text: string,
+  estimatedCostUsd?: number,
+): Readonly<Record<string, unknown>> {
+  return {
+    choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+    usage: {
+      model_requests: 1,
+      prompt_tokens: 2,
+      completion_tokens: 3,
+      total_tokens: 5,
+      ...(estimatedCostUsd === undefined ? {} : { cost: estimatedCostUsd }),
+    },
+    profile_materialization: profileMaterialization(body),
+  }
 }
 
 function responseText(
@@ -164,10 +194,60 @@ export async function startRuntimeBridgeServer(
 ): Promise<RuntimeBridgeServer> {
   const requests: RuntimeBridgeRequest[] = []
   const cancellations: RuntimeBridgeCancellationRequest[] = []
-  const activeStreams = new Map<
-    string,
-    { readonly response: ServerResponse; readonly digest: string }
-  >()
+  const replays: RuntimeBridgeReplayRequest[] = []
+  interface RetainedFixtureRun {
+    readonly id: string
+    readonly digest: string
+    readonly body: Readonly<Record<string, unknown>>
+    readonly frames: RuntimeResponseFrame[]
+    readonly pendingFrames: RuntimeResponseFrame[]
+    readonly readers: Set<ServerResponse>
+    status: 'running' | 'done' | 'cancelled'
+    terminal: boolean
+  }
+  const runs = new Map<string, RetainedFixtureRun>()
+
+  const runHeaders = (run: RetainedFixtureRun) => ({
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache',
+    'x-run-id': run.id,
+    'x-run-request-digest': run.digest,
+  })
+
+  const attachReader = (
+    run: RetainedFixtureRun,
+    response: ServerResponse,
+    afterSequence = 0,
+  ): void => {
+    response.writeHead(200, runHeaders(run))
+    for (const frame of run.frames) {
+      if (frame.id > afterSequence) response.write(frame.wire)
+    }
+    if (run.terminal) {
+      response.end('data: [DONE]\n\n')
+      return
+    }
+    run.readers.add(response)
+    response.once('close', () => run.readers.delete(response))
+  }
+
+  const finishReaders = (run: RetainedFixtureRun): void => {
+    for (const reader of run.readers) reader.end('data: [DONE]\n\n')
+    run.readers.clear()
+  }
+
+  const completeRun = (run: RetainedFixtureRun): void => {
+    if (run.terminal) return
+    const terminalFrames = run.pendingFrames.splice(0)
+    run.frames.push(...terminalFrames)
+    run.status = 'done'
+    run.terminal = true
+    for (const reader of run.readers) {
+      for (const frame of terminalFrames) reader.write(frame.wire)
+    }
+    finishReaders(run)
+  }
+
   const server = createServer(async (request, response) => {
     const authorization = request.headers.authorization
     if (
@@ -206,6 +286,46 @@ export async function startRuntimeBridgeServer(
       response.end(JSON.stringify({ data: options.advertisedModels ?? [] }))
       return
     }
+    const eventsMatch = /^\/v1\/runs\/([^/]+)\/events$/u.exec(path)
+    if (request.method === 'GET' && eventsMatch !== null) {
+      const runId = decodeURIComponent(eventsMatch[1] ?? '')
+      const run = runs.get(runId)
+      if (run === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'run_not_found' } }))
+        return
+      }
+      const cursor = request.headers['last-event-id']
+      const afterSequence = cursor === undefined ? 0 : Number(cursor)
+      if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+        response.writeHead(400, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'invalid_event_cursor' } }))
+        return
+      }
+      replays.push({ runId, afterSequence })
+      attachReader(run, response, afterSequence)
+      return
+    }
+    const statusMatch = /^\/v1\/runs\/([^/]+)$/u.exec(path)
+    if (request.method === 'GET' && statusMatch !== null) {
+      const runId = decodeURIComponent(statusMatch[1] ?? '')
+      const run = runs.get(runId)
+      if (run === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'run_not_found' } }))
+        return
+      }
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(
+        JSON.stringify({
+          id: run.id,
+          requestDigest: run.digest,
+          status: run.status,
+          terminal: run.terminal,
+        }),
+      )
+      return
+    }
     const cancelMatch = /^\/v1\/runs\/([^/]+)\/cancel$/u.exec(path)
     if (request.method === 'POST' && cancelMatch !== null) {
       const runId = decodeURIComponent(cancelMatch[1] ?? '')
@@ -214,30 +334,73 @@ export async function startRuntimeBridgeServer(
           '0',
       )
       cancellations.push({ runId, waitMs: Number.isFinite(waitMs) ? waitMs : 0 })
+      const rawCancellation = await readBody(request)
+      const exactCancellation = rawCancellation.length === 0 ? {} : JSON.parse(rawCancellation)
       const configuredDelay = options.cancellation?.delayMs ?? 0
       if (configuredDelay > 0) await new Promise((resolve) => setTimeout(resolve, configuredDelay))
-      const active = activeStreams.get(runId)
-      const matchingRequest = requests.find((candidate) => candidate.runId === runId)
-      const requestDigest =
-        active?.digest ??
-        (matchingRequest === undefined ? sha256('missing-run') : sha256(matchingRequest.rawBody))
+      const run = runs.get(runId)
+      const requestDigest = run?.digest ?? sha256('missing-run')
       if (options.cancellation?.mode === 'rejected') {
         response.writeHead(409, { 'content-type': 'application/json' })
-        response.end(JSON.stringify({ error: { type: 'cancel_rejected' } }))
+        if (
+          exactCancellation !== null &&
+          typeof exactCancellation === 'object' &&
+          'operationId' in exactCancellation &&
+          'requestDigest' in exactCancellation &&
+          'run' in exactCancellation
+        ) {
+          response.end(
+            JSON.stringify({
+              operationId: exactCancellation.operationId,
+              requestDigest: exactCancellation.requestDigest,
+              run: exactCancellation.run,
+              status: 'unknown',
+              effect: 'unknown',
+              message: 'fixture cancellation rejected',
+              retryable: false,
+            }),
+          )
+        } else {
+          response.end(JSON.stringify({ error: { type: 'cancel_rejected' } }))
+        }
         return
+      }
+      if (run !== undefined) {
+        run.status = 'cancelled'
+        run.terminal = true
+        finishReaders(run)
       }
       response.writeHead(200, {
         'content-type': 'application/json',
         'x-run-id': runId,
         'x-run-request-digest': requestDigest,
       })
-      response.end(
-        JSON.stringify({
-          terminal: true,
-          run: { id: runId, requestDigest, terminal: true },
-        }),
-      )
-      active?.response.end()
+      if (
+        exactCancellation !== null &&
+        typeof exactCancellation === 'object' &&
+        'operationId' in exactCancellation &&
+        'requestDigest' in exactCancellation &&
+        'run' in exactCancellation
+      ) {
+        response.end(
+          JSON.stringify({
+            operationId: exactCancellation.operationId,
+            requestDigest: exactCancellation.requestDigest,
+            run: exactCancellation.run,
+            status: 'accepted',
+            effect: run === undefined ? 'not_live' : 'cancelled',
+          }),
+        )
+      } else {
+        response.end(
+          JSON.stringify({
+            cancelled: run !== undefined,
+            cancel_requested: true,
+            terminal: true,
+            run: { id: runId, requestDigest, status: 'cancelled', terminal: true },
+          }),
+        )
+      }
       return
     }
     if (request.method !== 'POST' || path !== '/v1/chat/completions') {
@@ -247,12 +410,15 @@ export async function startRuntimeBridgeServer(
 
     const rawBody = await readBody(request)
     const body = JSON.parse(rawBody) as Record<string, unknown>
-    const runId = request.headers['x-run-id']
-    if (typeof runId !== 'string' || runId.length === 0) {
+    const requestedRunId = body.run_id ?? request.headers['x-run-id']
+    if (typeof requestedRunId !== 'string' || requestedRunId.length === 0) {
       response.writeHead(400, { 'content-type': 'application/json' })
       response.end(JSON.stringify({ error: { type: 'missing_run_id' } }))
       return
     }
+    const runId = requestedRunId
+    const existing = runs.get(runId)
+    const digest = existing?.digest ?? sha256(rawBody)
     requests.push({
       ...(authorization === undefined ? {} : { authorization }),
       body,
@@ -262,26 +428,34 @@ export async function startRuntimeBridgeServer(
         ? { sessionId: request.headers['x-session-id'] }
         : {}),
     })
-    const digest = sha256(rawBody)
-    response.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'x-run-id': runId,
-      'x-run-request-digest': digest,
-    })
-    if (options.holdStreams) {
-      activeStreams.set(runId, { response, digest })
-      response.once('close', () => activeStreams.delete(runId))
-      response.write(
-        `id: 1\ndata: ${JSON.stringify({ choices: [{ delta: { content: responseText(options.responseText, body) }, finish_reason: null }] })}\n\n`,
-      )
-    } else {
-      response.end(
-        runtimeResponseStream(
-          body,
-          responseText(options.responseText, body),
-          options.estimatedCostUsd,
-        ),
-      )
+    const text = responseText(options.responseText, body)
+    if (body.stream === false) {
+      response.writeHead(200, {
+        'content-type': 'application/json',
+        'x-run-id': runId,
+        'x-run-request-digest': digest,
+      })
+      response.end(JSON.stringify(runtimeResponseResult(body, text, options.estimatedCostUsd)))
+      return
+    }
+    const frames = runtimeResponseFrames(body, text, options.estimatedCostUsd)
+    const run =
+      existing ??
+      ({
+        id: runId,
+        digest,
+        body,
+        frames: options.holdStreams ? frames.slice(0, 1) : [...frames],
+        pendingFrames: options.holdStreams ? frames.slice(1) : [],
+        readers: new Set<ServerResponse>(),
+        status: options.holdStreams ? 'running' : 'done',
+        terminal: !options.holdStreams,
+      } satisfies RetainedFixtureRun)
+    runs.set(runId, run)
+    if (options.holdStreams) attachReader(run, response)
+    else {
+      response.writeHead(200, runHeaders(run))
+      response.end(runtimeResponseStream(run.frames))
     }
   })
   server.listen(0, '127.0.0.1')
@@ -291,8 +465,17 @@ export async function startRuntimeBridgeServer(
     endpoint: `http://127.0.0.1:${address.port}`,
     requests,
     cancellations,
+    replays,
+    complete: (runId) => {
+      if (runId !== undefined) {
+        const run = runs.get(runId)
+        if (run !== undefined) completeRun(run)
+        return
+      }
+      for (const run of runs.values()) completeRun(run)
+    },
     close: async () => {
-      for (const { response } of activeStreams.values()) response.end()
+      for (const run of runs.values()) finishReaders(run)
       await closeServer(server)
     },
   }

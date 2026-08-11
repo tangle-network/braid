@@ -131,6 +131,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'analysis-model-call-roundtrip.test.js',
       'application.test.js',
       'cli-bridge-profile-contract.test.js',
+      'cli-bridge-retained-restart.test.js',
       'conversations.test.js',
       'coordination.test.js',
       'domain-invariants.test.js',
@@ -143,6 +144,7 @@ test('every scoped package alias forwards its declared file set', () => {
     ],
     'test:coordination': [
       'analysis-durable.test.js',
+      'cli-bridge-retained-restart.test.js',
       'coordination.test.js',
       'effect-admission.test.js',
       'run-admission-architecture.test.js',
@@ -178,6 +180,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'storage.test.js',
     ],
     'test:crash': [
+      'cli-bridge-retained-restart.test.js',
       'conversation-storage.test.js',
       'profile-save-recovery.test.js',
       'storage-crash.test.js',
@@ -216,6 +219,7 @@ test('every scoped package alias forwards its declared file set', () => {
     'analysis-model-call-roundtrip.test.js',
     'automation-interaction-commands.test.js',
     'cli-bridge-profile-contract.test.js',
+    'cli-bridge-retained-restart.test.js',
     'cli-startup.test.js',
     'configuration-product-flow.test.js',
     'observability.test.js',

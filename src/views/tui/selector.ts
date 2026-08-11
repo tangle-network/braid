@@ -97,7 +97,7 @@ export class SearchableSelector extends Container implements Focusable {
       this.addChild(new SelectorRule(this.#theme))
       this.addChild(this.#footer)
     }
-    this.#applyFilter()
+    this.#applyFilter(true)
   }
 
   get focused(): boolean {
@@ -111,12 +111,12 @@ export class SearchableSelector extends Container implements Focusable {
 
   setItems(items: readonly SelectItem[]): void {
     this.#items = items.map(safeItem)
-    this.#applyFilter()
+    this.#applyFilter(true)
   }
 
   setQuery(query: string): void {
     this.#input.setValue(query)
-    this.#applyFilter()
+    this.#applyFilter(false)
     this.invalidate()
   }
 
@@ -156,11 +156,13 @@ export class SearchableSelector extends Container implements Focusable {
     }
     if (this.#inputHidden) return
     this.#input.handleInput(data)
-    this.#applyFilter()
+    this.#applyFilter(false)
   }
 
-  #applyFilter(): void {
-    const previous = this.#list.getSelectedItem()?.value ?? this.#selectedValue
+  #applyFilter(preserveSelection: boolean): void {
+    const previous = preserveSelection
+      ? (this.#list.getSelectedItem()?.value ?? this.#selectedValue)
+      : undefined
     const query = this.#input.getValue().trim().toLocaleLowerCase()
     const items = fuzzyFilter([...this.#items], query, (item) =>
       [item.label, item.value, item.description]

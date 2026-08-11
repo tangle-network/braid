@@ -100,7 +100,7 @@ function usageGroup(label: string, usage: UsageTotalsView): string | undefined {
     (value) => String(Math.round(value)),
   )
   const latency = measurementMetric(
-    'model',
+    'latency',
     usage.llmLatencyMs,
     usage.latencyStatus,
     usage.unknownLatencySources,

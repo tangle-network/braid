@@ -61,6 +61,7 @@ function maxCache(
 export function addRunUsage(run: RunRecord, usage: TurnUsage): RunRecord {
   const { tokensKnown: _tokensKnown, usdKnown: _usdKnown, ...base } = run
   const priorCalls = run.llmCalls ?? 0
+  const observedCalls = usage.calls ?? 1
   const firstCall = priorCalls === 0
   const tokensKnown = usage.tokensKnown !== false && (firstCall || run.tokensKnown !== false)
   const usdKnown = usage.usdKnown !== false && (firstCall || run.usdKnown !== false)
@@ -81,7 +82,7 @@ export function addRunUsage(run: RunRecord, usage: TurnUsage): RunRecord {
       ? {}
       : { estimatedCostUsd }),
     ...(promptCache === undefined ? {} : { promptCache }),
-    llmCalls: priorCalls + 1,
+    llmCalls: priorCalls + observedCalls,
     ...(usage.latencyMs === undefined
       ? {}
       : { llmLatencyMs: (run.llmLatencyMs ?? 0) + usage.latencyMs }),
@@ -114,6 +115,7 @@ export function finalizeRunUsage(run: RunRecord, usage: TurnUsage): RunRecord {
     ...(usdKnown ? {} : { usdKnown: false as const }),
     ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
     ...(promptCache === undefined ? {} : { promptCache }),
+    ...(usage.calls === undefined ? {} : { llmCalls: usage.calls }),
     ...(usage.model === undefined
       ? run.model === undefined
         ? {}
@@ -126,6 +128,7 @@ export function usageSnapshotForRun(run: RunRecord): TurnUsage {
   return {
     input: run.inputTokens,
     output: run.outputTokens,
+    ...(run.llmCalls === undefined ? {} : { calls: run.llmCalls }),
     ...(run.tokensKnown === false ? { tokensKnown: false } : {}),
     ...(run.reasoningTokens === undefined ? {} : { reasoning: run.reasoningTokens }),
     ...(run.costUsd === undefined ? {} : { costUsd: run.costUsd }),

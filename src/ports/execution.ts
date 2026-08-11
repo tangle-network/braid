@@ -1,4 +1,5 @@
 import type {
+  AgentExactRunControlRef,
   AgentEnvironmentCapabilities,
   AgentProfile,
   InteractionResponseCommand,
@@ -20,6 +21,7 @@ export interface ExecuteTurnInput {
   readonly signal: AbortSignal
   readonly sessionId?: string
   readonly after?: string
+  readonly afterSequence?: number
   readonly contextBoundary?: string
 }
 
@@ -56,6 +58,8 @@ export interface ControlAcknowledgement {
 export interface CancelRunInput {
   readonly operationId: string
   readonly runId: string
+  readonly providerSessionId?: string
+  readonly controlRef?: AgentExactRunControlRef
   readonly reason?: string
 }
 
@@ -82,6 +86,8 @@ export interface ExecutionPort {
   detachRun?(input: {
     readonly runId: string
     readonly operationId: string
+    readonly providerSessionId?: string
+    readonly controlRef?: AgentExactRunControlRef
     readonly cursor?: string
     readonly signal?: AbortSignal
   }): Promise<ControlAcknowledgement>
@@ -93,6 +99,8 @@ export interface ExecutionPort {
   }): Promise<ControlAcknowledgement>
   status?(input: {
     readonly runId: string
+    readonly providerSessionId?: string
+    readonly controlRef?: AgentExactRunControlRef
     readonly signal?: AbortSignal
   }): Promise<ProviderRunSnapshot | null>
   respondInteraction?(input: {
@@ -102,6 +110,9 @@ export interface ExecutionPort {
   reconnect?(input: {
     readonly runId: string
     readonly after?: string
+    readonly afterSequence?: number
+    readonly providerSessionId?: string
+    readonly controlRef?: AgentExactRunControlRef
     readonly signal: AbortSignal
   }): AsyncIterable<RuntimeEventEnvelope>
   nativeBoundary?(input: {

@@ -230,7 +230,12 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
   if (!status) return
   let snapshot: Awaited<ReturnType<NonNullable<typeof context.execution.status>>>
   try {
-    snapshot = await status({ runId })
+    const run = context.findRun(runId)
+    snapshot = await status({
+      runId,
+      ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+      ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+    })
   } catch {
     await commitRequired(context, {
       kind: 'run.reconnecting',

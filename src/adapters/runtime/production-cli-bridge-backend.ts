@@ -1,3 +1,8 @@
+import type {
+  AgentEnvironmentCapabilities,
+  AgentProfile,
+  HarnessType,
+} from '@tangle-network/agent-interface'
 import { snapHarnessToModel } from '../agent-interface/harness-runtime.js'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
@@ -24,6 +29,21 @@ import {
 
 const LOCAL_BRIDGE_BEARER = 'braid-local-cli-bridge'
 
+export interface PreparedCliBridgeConnection {
+  readonly profile: Readonly<AgentProfile>
+  readonly model: string
+  readonly runner: HarnessType
+  readonly route: string
+  readonly workspace: string
+  readonly bridgeUrl: string
+  readonly bearerToken: string
+  readonly fetch?: typeof fetch
+  readonly providerSessionId: string
+  readonly capabilities: AgentEnvironmentCapabilities
+  readonly observation: NonNullable<PreparedExecution['observation']>
+  readonly materializationReceipt: Readonly<Record<string, unknown>>
+}
+
 export async function resolveCliBridgeBackend(
   options: ProductionBackendResolverOptions,
   input: ExecuteTurnInput,
@@ -31,6 +51,44 @@ export async function resolveCliBridgeBackend(
   connectionId: ConnectionId,
   endpoint: string,
 ): Promise<PreparedExecution> {
+  const prepared = await prepareCliBridgeConnection(
+    options,
+    input,
+    selection,
+    connectionId,
+    endpoint,
+  )
+  const { createExecutor } = await import('@tangle-network/agent-runtime/kernel')
+  const backend = Object.freeze({
+    kind: 'executor' as const,
+    factory: createExecutor({
+      backend: 'bridge',
+      bridgeUrl: prepared.bridgeUrl,
+      bridgeBearer: prepared.bearerToken,
+      cwd: prepared.workspace,
+      sessionId: prepared.providerSessionId,
+    }),
+    profile: prepared.profile,
+    agentRunName: prepared.route,
+  })
+  return freezeExecution({
+    kind: 'prepared-execution' as const,
+    backend,
+    capabilities: prepared.capabilities,
+    providerSessionId: prepared.providerSessionId,
+    cancellation: { kind: 'runtime-executor-teardown' },
+    observation: prepared.observation,
+    materializationReceipt: prepared.materializationReceipt,
+  })
+}
+
+export async function prepareCliBridgeConnection(
+  options: ProductionBackendResolverOptions,
+  input: ExecuteTurnInput,
+  selection: ProductionExecutionSelection,
+  connectionId: ConnectionId,
+  endpoint: string,
+): Promise<PreparedCliBridgeConnection> {
   const profile = await exactExecutionProfile(input.profile, selection, connectionId)
   const model = requiredProfileModel(profile, connectionId)
   const runner = requiredProfileRunner(profile, connectionId)
@@ -55,28 +113,18 @@ export async function resolveCliBridgeBackend(
   const bridgeUrl = normalizeCliBridgeProviderBaseUrl(endpoint, connectionId)
   const bridgeLocation = endpointLocation(bridgeUrl)
   const createdAt = new Date().toISOString()
-  const [{ createExecutor }, { defaultCliBridgeCapabilities }] = await Promise.all([
-    import('@tangle-network/agent-runtime/kernel'),
-    import('@tangle-network/agent-provider-cli-bridge'),
-  ])
-  const backend = Object.freeze({
-    kind: 'executor' as const,
-    factory: createExecutor({
-      backend: 'bridge',
-      bridgeUrl,
-      bridgeBearer: credential ?? LOCAL_BRIDGE_BEARER,
-      cwd: workspace,
-      sessionId: providerSessionId,
-    }),
-    profile,
-    agentRunName: route,
-  })
+  const { defaultCliBridgeCapabilities } = await import('@tangle-network/agent-provider-cli-bridge')
   return freezeExecution({
-    kind: 'prepared-execution' as const,
-    backend,
+    profile,
+    model,
+    runner,
+    route,
+    workspace,
+    bridgeUrl,
+    bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     capabilities: defaultCliBridgeCapabilities(runner),
     providerSessionId,
-    cancellation: { kind: 'runtime-executor-teardown' },
     observation: staticExecutionObservation({
       kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',
       provider: 'cli-bridge',

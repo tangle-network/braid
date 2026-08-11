@@ -1,0 +1,30 @@
+ activity › run run-9e71a496-d938-48a6-8700-0034e66626b8 · completed · 3/5
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ✓ admitted · system · profile a967ec…│ time: 2026-08-11T12:27:37.926Z
+   ✓ cli-bridge execution · environment…│ run: run-9e71a496-d938-48a6-8700-0034e66626b8
+ › ✓ run run-9e71a496-d938-48a6-8700-00…│ provider: cli-bridge
+   ✓ admitted · system · profile a967ec…│ AgentProfile: Braid live GLM reviewer
+   ✓ run run-36cc53ae-ca4a-4d3e-ba73-52…│ profile digest:
+                                        │ a967ec3a52cea5e3e4a0546afcde6744079ae81d6dc811edc8beccec21562425
+                                        │ runner: pi
+                                        │ connection: Local CLI Bridge
+                                        │ connection id: connection-live-cli-bridge
+                                        │ execution environment: environment-e912d5cd58e01b85fd0fb68d48fc6d3c
+                                        │ provider session: session-braid-run-36cc53ae-ca4a-4d3e-ba73-52f0ca64e70d
+                                        │ model: pi/tangle-router/glm-5.2
+                                        │ thinking: low
+                                        │ usage: 28949 in · 1943 out · cost unknown
+                                        │ model calls: 5
+                                        │ model latency: unknown
+                                        │ token measurement: complete
+                                        │ cost measurement: unknown
+                                        │ history: complete
+                                        │
+                                        │
+                                        │
+                                        │
+                                        │
+                                        │
+                                        │
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close · tab filter: all

@@ -85,7 +85,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
   steer_worker: ['supervisorId', 'workerId', 'text'],
   cancel_worker: ['supervisorId', 'workerId', 'reason'],
   export: ['target', 'format', 'includeRaw', 'destination'],
-  shutdown: [],
+  shutdown: ['mode'],
 }
 
 type ParameterType = 'string' | 'boolean' | 'string-or-boolean' | 'number' | 'record' | 'string[]'

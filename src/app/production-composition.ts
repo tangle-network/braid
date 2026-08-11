@@ -5,8 +5,10 @@ import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
+import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import {
   createProductionBackendResolver,
+  resolveProductionCliBridgeConnection,
   type ProductionBackendResolverOptions,
 } from '../adapters/runtime/production-backend-resolver.js'
 import type { ConnectionRecord } from '../domain/entities.js'
@@ -177,7 +179,25 @@ export function createProductionComposition(
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
-  const execution = new AgentRuntimeExecutionPort(backendResolver)
+  const execution =
+    connection.kind === 'cli-bridge'
+      ? new CliBridgeRetainedExecutionPort({
+          resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
+          recover: ({ runId, providerSessionId }) =>
+            resolveProductionCliBridgeConnection(resolverOptions, {
+              operationId: `recover-${runId}`,
+              runId,
+              text: '',
+              profile,
+              connectionId: connection.id,
+              ...(providerSessionId === undefined ? {} : { sessionId: providerSessionId }),
+              ...(config.workspaceRoot === undefined
+                ? {}
+                : { workspaceRoot: config.workspaceRoot }),
+              signal: new AbortController().signal,
+            }),
+        })
+      : new AgentRuntimeExecutionPort(backendResolver)
 
   return Object.freeze({
     profile,

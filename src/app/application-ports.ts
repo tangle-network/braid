@@ -1,4 +1,4 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
 import type { BraidEvent } from '../domain/events.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import type { BraidRun, BraidState, RunStatus } from '../domain/state.js'
@@ -153,6 +153,7 @@ export interface ControlEffectRequest {
   readonly runId: string
   readonly control: 'cancel' | 'steer' | 'detach'
   readonly providerSessionId?: string
+  readonly controlRef?: AgentExactRunControlRef
   readonly reason?: string
   readonly text?: string
   readonly cursor?: string

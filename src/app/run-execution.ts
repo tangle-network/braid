@@ -27,6 +27,7 @@ export async function executeRun(
       signal: abort.signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(currentRun?.lastCursor === undefined ? {} : { after: currentRun.lastCursor }),
+      ...(currentRun === undefined ? {} : { afterSequence: currentRun.lastProviderSequence }),
       ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
     }
     if (context.ledger.isDetached(admission.runId)) return

@@ -4,6 +4,7 @@ import type { InteractionOutcome, InteractionView } from '../../views/shared/mod
 import { dispatchAutomationCommand } from './ui-automation-command.js'
 import { dispatchConversationRunCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
+import { dispatchHeadlessCommand } from './ui-headless-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
 
 type RunCommandIntent = Extract<BraidIntent, { readonly type: 'run-command' }>
@@ -31,6 +32,44 @@ export async function dispatchCommandIntent(
   if (intent.command === 'cancel') {
     return dispatchCoreIntent(
       { type: 'cancel-run', operationId: intent.operationId ?? '' },
+      context,
+    )
+  }
+  if (
+    intent.command === 'detach' ||
+    intent.command === 'reconnect' ||
+    intent.command === 'reconcile'
+  ) {
+    const state = context.app.state()
+    const runId =
+      intent.args[0] ??
+      (intent.command === 'detach'
+        ? (state.activeRunId ?? undefined)
+        : [...state.runs]
+            .reverse()
+            .find(
+              (run) =>
+                (run.status === 'detached' || run.status === 'unknown') &&
+                run.controlRef !== undefined,
+            )?.id)
+    if (runId === undefined) {
+      return {
+        kind: 'error',
+        code: 'UNKNOWN_RUN',
+        message:
+          intent.command === 'detach'
+            ? 'There is no active run to detach'
+            : `There is no detached run to ${intent.command}`,
+        retryable: false,
+      }
+    }
+    return dispatchHeadlessCommand(
+      {
+        type: 'headless-command',
+        command: intent.command,
+        operationId: intent.operationId ?? '',
+        params: { runId },
+      },
       context,
     )
   }

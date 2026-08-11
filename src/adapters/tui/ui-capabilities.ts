@@ -137,6 +137,14 @@ export function capabilityMap(
   const activeRun = state.activeRunId
     ? state.runs.find((run) => run.id === state.activeRunId)
     : undefined
+  const recoverableRun = activeRun
+    ? undefined
+    : [...state.runs]
+        .reverse()
+        .find(
+          (run) =>
+            (run.status === 'detached' || run.status === 'unknown') && run.controlRef !== undefined,
+        )
   capabilities['run.queue'] = activeRun?.capabilities.controls.queue
     ? { available: true, source: 'provider' }
     : {
@@ -164,23 +172,28 @@ export function capabilityMap(
           ? 'The current runtime does not report detach support'
           : 'There is no active run',
       }
-  capabilities['run.reconnect'] = activeRun?.capabilities.streaming.replay
+  capabilities['run.reconnect'] =
+    recoverableRun?.capabilities.streaming.replay && recoverableRun.capabilities.controls.recreate
+      ? { available: true, source: 'provider' }
+      : {
+          available: false,
+          source: 'provider',
+          reason: active
+            ? 'Detach the active run before reconnecting it'
+            : recoverableRun
+              ? 'The detached run cannot be recreated by this provider'
+              : 'There is no detached run to reconnect',
+        }
+  capabilities['run.reconcile'] = recoverableRun?.capabilities.controls.status
     ? { available: true, source: 'provider' }
     : {
         available: false,
         source: 'provider',
         reason: active
-          ? 'The current runtime does not report replay support'
-          : 'There is no active run',
-      }
-  capabilities['run.reconcile'] = activeRun?.capabilities.controls.status
-    ? { available: true, source: 'provider' }
-    : {
-        available: false,
-        source: 'provider',
-        reason: active
-          ? 'The current runtime does not report status reconciliation'
-          : 'There is no active run',
+          ? 'Detach the active run before reconciling it'
+          : recoverableRun
+            ? 'The detached run does not expose provider status'
+            : 'There is no detached run to reconcile',
       }
   if (fixture === 'interaction') {
     capabilities['interaction.respond'] = { available: true, source: 'provider' }

@@ -413,6 +413,45 @@ test('detach stops the iterator and reconnect resumes the same run', async () =>
   assert.equal(reconnected.messages[1]?.text, 'reconnected')
 })
 
+test('reconnect leaves a proven terminal run immutable', async () => {
+  let reconnectCalls = 0
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      yield finalEvent('completed')
+    },
+    reconnect: () => {
+      reconnectCalls += 1
+      return {
+        async *[Symbol.asyncIterator](): AsyncIterator<RuntimeEventEnvelope> {
+          yield {
+            runId: 'run-unused',
+            eventId: 'event-unused',
+            sequence: 1,
+            receivedAt: '2026-08-01T00:00:00.000Z',
+            event: finalEvent('unexpected'),
+          }
+        },
+      }
+    },
+  }
+  const app = appFor(execution)
+  const send = app.send({ operationId: 'op-terminal', text: 'finish' })
+  const terminal = await send.completion
+  const before = terminal.runs.find((run) => run.id === send.runId)
+
+  const reconnected = await app.reconnectRun({
+    operationId: 'op-terminal-reconnect',
+    runId: send.runId,
+  })
+
+  assert.deepEqual(
+    reconnected.runs.find((run) => run.id === send.runId),
+    before,
+  )
+  assert.equal(reconnectCalls, 0)
+})
+
 for (const count of [10_000, 100_000]) {
   test(`${count.toLocaleString()} message transcript stays bounded at the view boundary`, () => {
     const messages = Array.from({ length: count }, (_, index) => ({

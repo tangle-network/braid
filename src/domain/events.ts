@@ -1,3 +1,4 @@
+import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
 import type {
   AnalysisAttachmentRecord,
   AnalysisRecord,
@@ -190,6 +191,7 @@ export interface DomainBraidEventMap {
   readonly 'run.environment.observed': {
     readonly runId: RunId
     readonly observation: ExecutionEnvironmentObservation
+    readonly controlRef?: AgentExactRunControlRef
     readonly provider: ProviderEventMeta
   }
   readonly 'history.missing': { readonly range: MissingHistoryRange }

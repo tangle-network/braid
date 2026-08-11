@@ -17,12 +17,13 @@ import { sessionUsageFor } from '../src/views/shared/usage-projection.js'
 
 const at = '2026-08-09T12:00:00.000Z'
 
-test('missing provider cost and latency remain unknown', () => {
-  const usage = usageFromMetadata({ tokenUsage: { input: 2, output: 3 } })
+test('provider metadata preserves exact model requests while missing cost remains unknown', () => {
+  const usage = usageFromMetadata({ tokenUsage: { input: 2, output: 3 }, llmCalls: 2 })
 
   assert.deepEqual(usage, {
     input: 2,
     output: 3,
+    calls: 2,
     usdKnown: false,
   })
 })
@@ -41,6 +42,10 @@ test('malformed token metadata remains unknown instead of exact zero', () => {
   assert.equal(
     usageFromMetadata({ tokenUsage: { input: Number.NaN, output: -1 } }).tokensKnown,
     false,
+  )
+  assert.equal(
+    usageFromMetadata({ tokenUsage: { input: 1, output: 1 }, llmCalls: 1.5 }).calls,
+    undefined,
   )
 })
 

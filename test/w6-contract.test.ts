@@ -147,6 +147,12 @@ test('the command registry owns typed intents for local and headless command pat
     operationId: 'op-profile',
   })
   assert.deepEqual(commandIntent('quit', []), { type: 'shutdown', operationId: '' })
+  assert.deepEqual(commandIntent('reconnect', [], 'op-reconnect'), {
+    type: 'run-command',
+    command: 'reconnect',
+    args: [],
+    operationId: 'op-reconnect',
+  })
 })
 
 test('keyboard and headless mutation metadata comes from one exact table', () => {

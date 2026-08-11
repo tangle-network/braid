@@ -144,6 +144,24 @@ export const SHARED_COMMAND_TABLE = [
     mutatingHeadlessCommands: ['cancel_run'],
   },
   {
+    name: 'detach',
+    requiresOperationId: true,
+    headlessCommands: ['detach'],
+    mutatingHeadlessCommands: ['detach'],
+  },
+  {
+    name: 'reconnect',
+    requiresOperationId: true,
+    headlessCommands: ['reconnect'],
+    mutatingHeadlessCommands: ['reconnect'],
+  },
+  {
+    name: 'reconcile',
+    requiresOperationId: true,
+    headlessCommands: ['reconcile'],
+    mutatingHeadlessCommands: ['reconcile'],
+  },
+  {
     name: 'activity',
     requiresOperationId: false,
     headlessCommands: ['get_activity'],

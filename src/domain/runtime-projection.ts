@@ -1,4 +1,8 @@
-import type { InteractionBinding, InteractionRequest } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  InteractionBinding,
+  InteractionRequest,
+} from '@tangle-network/agent-interface'
 import type { AutomationRuleRecord } from './entities-runtime.js'
 import type { Digest, OperationId } from './ids.js'
 import type { RunAdmissionReceipt, RunCapabilities } from './run-contracts.js'
@@ -81,6 +85,7 @@ export interface QueuedInput {
 export interface RuntimeRunFields {
   readonly receipt: RunAdmissionReceipt
   readonly capabilities: RunCapabilities
+  readonly controlRef?: AgentExactRunControlRef
   readonly reasoningTokens?: number
   readonly terminalReason?: string
   readonly lastCursor?: string

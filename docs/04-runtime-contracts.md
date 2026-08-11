@@ -311,21 +311,21 @@ These behaviors may be suitable for isolated benchmark automation under an expli
 
 ## Existing CLI Bridge provider contract
 
-The published `@tangle-network/agent-provider-cli-bridge@0.5.0` resolves the bridge model from a turn override, provider default, or profile harness and model.
+The published `@tangle-network/agent-provider-cli-bridge@0.6.0` resolves the bridge model from a turn override, provider default, or profile harness and model.
 
 It sends stable `executionId` values as bridge run identifiers when they satisfy the bridge identifier rules.
 
 It sends a prior event cursor as `Last-Event-ID` and maps SSE frames to canonical environment events.
 
-It reports live streaming, replay, turn idempotency, and session continuation.
+It reports live streaming, replay, detach, turn idempotency, session continuation, and exact retained-run control.
 
-It reports no detach, session listing, session messages, workspace operations, checkpoint, fork, or confidentiality.
+It reports no session listing, session messages, workspace operations, checkpoint, fork, or confidentiality.
 
-It explicitly rejects detached turns.
+Its retained environment path dispatches detached turns and reconstructs control from the exact run reference.
 
-Stopping its stream consumer before drain cancels the active bridge run, and destroying its environment cancels tracked runs and waits for terminal cancellation.
+Stopping a retained stream reader detaches the reader without cancelling the bridge run.
 
-This differs from the bridge server's disconnect-detach behavior and means Braid cannot obtain safe detach merely by using the current provider adapter.
+Explicit exact cancellation remains separate from reader detach and binds to the server-issued request digest.
 
 It exposes no generalized interaction response.
 

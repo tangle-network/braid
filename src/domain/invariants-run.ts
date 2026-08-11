@@ -1,3 +1,4 @@
+import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import type {
   AnalysisAttachmentRecord,
   AnalysisModelCallRecord,
@@ -49,6 +50,17 @@ export function assertRunRecord(record: RunRecord): void {
     assertEntityId('providerSession', record.providerSessionId, 'run.providerSessionId')
   if (record.environmentId !== undefined)
     assertEntityId('environment', record.environmentId, 'run.environmentId')
+  if (record.controlRef !== undefined) {
+    const parsed = AgentExactRunControlRefSchema.safeParse(record.controlRef)
+    if (!parsed.success) fail('run.controlRef is invalid')
+    if (record.controlRef.runId !== record.id) fail('run.controlRef.runId must match run.id')
+    if (
+      record.providerSessionId !== undefined &&
+      record.controlRef.sessionId !== record.providerSessionId
+    ) {
+      fail('run.controlRef.sessionId must match run.providerSessionId')
+    }
+  }
   if (record.bindingId !== undefined) assertEntityId('binding', record.bindingId, 'run.bindingId')
   if (record.receiptId !== undefined) assertEntityId('receipt', record.receiptId, 'run.receiptId')
   if (record.replayCursor !== undefined && !isReplayCursor(record.replayCursor))

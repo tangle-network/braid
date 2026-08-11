@@ -28,6 +28,8 @@ import type { RuntimeMessageFields } from './runtime-projection.js'
 export interface TurnUsage {
   readonly input: number
   readonly output: number
+  /** Exact provider inference requests represented by this usage record. */
+  readonly calls?: number
   /** False means the numeric token values are only an observed floor. */
   readonly tokensKnown?: false
   readonly reasoning?: number
