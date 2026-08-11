@@ -33,7 +33,7 @@ The deciding question was how much source can be reused while preserving `AgentP
 | [OpenCode terminal packages](https://github.com/anomalyco/opencode/tree/dev/packages/tui) | `3a90639cb57619a21e59f544b3e8d23ffed56f48`; npm `1.18.16` | MIT | 50,341 lines across the TUI and run command | OpenTUI alternative and workflow reference |
 | [Codex terminal application](https://github.com/openai/codex/tree/main/codex-rs/tui) | repository `070a26a`; TUI `9742cc8ed5def37a4575263733f70a01ca22047b`; CLI `0.147.0` | Apache-2.0 | 244,714 Rust lines | Composer, worker navigation, status, and snapshot-test reference |
 | [Hermes Agent terminal app](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | `f88ed6c71768cdc7ea3bfa8cf62d16654792fd2a` | MIT | No size claim used | Client/runtime and workflow reference |
-| [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | `e9f17ff8172aabae4c34a78ce77658503771be1a`; npm `0.131.5` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
+| [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | `9c18cb48`; npm `0.131.6` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
 
 The count commands selected the named TypeScript or Rust files from sparse clones and used `wc -l`.
 
@@ -149,7 +149,7 @@ Braid uses Hermes as a workflow comparison and does not port its runtime protoco
 
 ## Runtime monitor
 
-`agent-runtime` package version `0.131.5` exports a diagnostic terminal module and `agent-runtime-top` binary.
+`agent-runtime` package version `0.131.6` exports a diagnostic terminal module and `agent-runtime-top` binary.
 
 The module understands runtime-owned supervisor files and shows worker state, spend, tokens, latency, logs, steering, shell action, and cancellation controls.
 

@@ -15,15 +15,15 @@ The following published versions were queried from npm and their installed decla
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
 | [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.46.1` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.131.5` | Sole execution layer; exact executor, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.6` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.131.6` | Sole execution layer; exact executor, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.10` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `0.4.3` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
 | `@tangle-network/agent-provider-tangle` | `0.6.1` | Tangle environment adapter over the sandbox client |
 | `@tangle-network/sandbox` | `0.19.4` | Tangle cloud client used by the provider |
 
-The installed runtime publishes `agent-eval >=0.144.6 <0.145.0`, `agent-interface >=0.46.1 <0.47.0`, and optional `sandbox >=0.19.4 <0.20.0` as peer ranges.
+The installed runtime publishes `agent-eval >=0.144.8 <0.145.0`, `agent-interface >=0.46.1 <0.47.0`, and optional `sandbox >=0.19.4 <0.20.0` as peer ranges.
 
-Braid exercises runtime `0.131.5` with interface `0.46.1`, eval `0.144.6`, CLI Bridge adapter `0.4.3`, Tangle adapter `0.6.1`, and sandbox `0.19.4`.
+Braid exercises runtime `0.131.6` with interface `0.46.1`, eval `0.144.10`, CLI Bridge adapter `0.4.3`, Tangle adapter `0.6.1`, and sandbox `0.19.4`.
 
 The lockfile pins the registry integrity for every installed package.
 
@@ -31,7 +31,7 @@ The published peer ranges accept the complete installed package set without a wo
 
 The workspace override resolves every transitive `agent-interface` dependency to `0.46.1`; the package tests prove that this version retains every public symbol Braid uses from the older dependency graph.
 
-[Agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) is closed by the peer ranges retained in `0.131.5`.
+[Agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) is closed by the peer ranges retained in `0.131.6`.
 
 Braid imports only the canonical root `agent-interface` entry point behind two local modules.
 
@@ -136,7 +136,7 @@ Braid preserves Runtime's aggregate `{ input, output, tokensKnown?: false }` tok
 
 Braid rejects all other fields under token-bearing record names.
 
-Runtime `0.131.5` currently buffers executor output until the executor settles.
+Runtime `0.131.6` currently buffers executor output until the executor settles.
 
 Braid therefore receives terminal text, tool calls, usage, and result evidence but cannot render provider text deltas live through this path.
 
@@ -162,7 +162,7 @@ The capability is a typed Runtime-executor tag, not a provider-specific callback
 
 When the tag is present, `/cancel` calls the public Runtime `Executor.teardown('infinity')` operation and waits for its result before committing control state.
 
-The installed Runtime `0.131.5` bridge executor implements that operation by posting `POST /v1/runs/:id/cancel` and waiting for a terminal bridge snapshot.
+The installed Runtime `0.131.6` bridge executor implements that operation by posting `POST /v1/runs/:id/cancel` and waiting for a terminal bridge snapshot.
 
 `destroyed: true` becomes an accepted cancellation, while `destroyed: false`, a thrown error, or a control deadline becomes unknown.
 
@@ -184,7 +184,7 @@ The upstream Runtime change required to expand this support is recorded below wi
 
 Title: `Expose typed, signal-aware provider cancellation acknowledgement from Executor`
 
-Runtime `0.131.5` exposes `Executor.teardown(grace): Promise<{ destroyed: boolean }>` in its published declaration bundle.
+Runtime `0.131.6` exposes `Executor.teardown(grace): Promise<{ destroyed: boolean }>` in its published declaration bundle.
 
 The bridge executor's `teardown('infinity')` posts `POST /v1/runs/:id/cancel` and waits for a terminal bridge snapshot in `dist/supervisor-BI6Z-8Yi.js:6973-6977,7529-7570`.
 
@@ -398,7 +398,7 @@ Braid binds that function to the selected profile, connection, effective model, 
 
 `agent-runtime` executes each canonical text-message request through `streamAgentTurn`; Braid returns normalized output, measured token usage, priced cost, terminal status, and finite redacted execution evidence to `agent-eval`.
 
-The callback rejects multimodal and request-level thinking controls because runtime `0.131.5` does not expose those fields on this exact turn input.
+The callback rejects multimodal and request-level thinking controls because runtime `0.131.6` does not expose those fields on this exact turn input.
 
 Reasoning remains an `AgentProfile` setting, and unsupported callback shapes fail before a provider call rather than being silently dropped.
 
