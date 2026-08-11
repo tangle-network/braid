@@ -57,4 +57,4 @@ AgentProfile Braid starter · runner pi · model fixture/deterministic          
 
 
 ────────────────────────────────────────────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────────────────────────────────────────────
-completed                                                                                                                      Ctrl+E detail · turns in 8 · out 12 · cost unknown · calls 1 · model 51ms
+completed                                                                                                                      Ctrl+E detail · turns in 8 · out 12 · cost unknown · calls 1 · model 50ms

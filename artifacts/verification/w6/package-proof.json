@@ -1,10 +1,10 @@
 {
   "tarball": "tangle-network-braid-0.1.0.tgz",
-  "sha256": "b1a62c0d6b76fd5b8ab326c4d732ccb87c11da5d18a465c66c63e49f359c7fe7",
+  "sha256": "32f19ba707aa659f776a604fe241111fe2bfb68928ac6f005014d81bd924182c",
   "version": "0.1.0",
-  "gitCommit": "58db8b069a5c7773cef4228eddcaea62501c8be2",
-  "treeSha256": "9ac13809366bed5c03ef39a72f9605eef5fdadc1",
-  "sourceDigest": "92169aace159ddc6913ac149c531a23ce1667531bf8a7a596e323698cd5b9c22",
+  "gitCommit": "4121be21db2d42bb19065019dfe76bc2294a648a",
+  "treeSha256": "c7a7a3a756da84b2d42f2a6c06753a13f16d92da",
+  "sourceDigest": "c470ee08b93fe3544a9475bfe424d004ab00943ec16ede1b7090737ba6315636",
   "isolatedBuild": true,
   "sourceCheckout": "isolated-copy-of-worktree",
   "packageFileManifest": {
@@ -18,7 +18,7 @@
       {
         "path": "package/README.md",
         "size": 12960,
-        "sha256": "1bf09f944b02fe19514943c176b6c69b608befdd074fc9ffc58076c5bf57088b"
+        "sha256": "9d19be58c39d3fcd748e363ba5c0c08ac108953f56024f9708fe10c3a227603b"
       },
       {
         "path": "package/THIRD_PARTY_LICENSES.json",
@@ -8498,17 +8498,17 @@
       {
         "path": "package/dist/views/tui/entity-browser.d.ts.map",
         "size": 1668,
-        "sha256": "4b0247d620dee49904ca1ada1401a5552565f60b94824c82123a4f3586b3d39d"
+        "sha256": "080e2836a79c908858a375ff710868dd2956113a032d1ac9108b8bdff3393e5d"
       },
       {
         "path": "package/dist/views/tui/entity-browser.js",
-        "size": 15057,
-        "sha256": "e24e0781b95f5b2553b145febd8eeda2da6b9f9387273b50ae6e094a75c0c523"
+        "size": 15873,
+        "sha256": "92e1d49f9e07dcda1dba3745a68f0407487f3dd5afbcd615b6c45a863b66fc9f"
       },
       {
         "path": "package/dist/views/tui/entity-browser.js.map",
-        "size": 16833,
-        "sha256": "c1a00063bc7ecb0161e16ffc5a73194f386fbce9cdf7b7a8eb135e81c3307704"
+        "size": 17577,
+        "sha256": "d2b75730b1f54509071b3d6d3fc3ab159919dffc7628296b9405906d6858856e"
       },
       {
         "path": "package/dist/views/tui/execution-target.d.ts",
@@ -9196,7 +9196,7 @@
         "sha256": "e5c4c9bdfcd3a24fedc17db7b33786715fdce60f0f659727cb2bb47ceb9db907"
       }
     ],
-    "digest": "b93369978c92fa0681a720d983ed74b83ec74ae6f2721dac0551fcdda44e6915"
+    "digest": "67c137e3644e07fc1fc469d47251b011ac9613a36ab30386771e12855963ee4b"
   },
   "rpcRecords": 34,
   "referenceSizes": [
