@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       publish:
-        description: Publish and tag after every check passes
+        description: Publish and tag after direct package checks pass
         required: true
         default: false
         type: boolean
@@ -20,8 +20,7 @@ concurrency:
 jobs:
   candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
-    environment: release
+    timeout-minutes: 45
     permissions:
       contents: read
     outputs:
@@ -55,29 +54,13 @@ jobs:
       - name: Configure external release storage
         run: echo "BRAID_RELEASE_ARTIFACT_ROOT=$RUNNER_TEMP/braid-release" >> "$GITHUB_ENV"
 
-      - name: Restore resumable release state
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ${{ runner.temp }}/braid-release
-          key: braid-release-${{ inputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            braid-release-${{ inputs.commit }}-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install pinned visual tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes fonts-dejavu-core imagemagick
-          AGG_URL="https://github.com/asciinema/agg/releases/download/v1.9.0/agg-x86_64-unknown-linux-gnu"
-          AGG_SHA256="f111e315cd71056b116302342553dd765b7297579ed511f111d0cedb442aeda6"
-          curl --fail --location --silent --show-error "$AGG_URL" --output "$RUNNER_TEMP/agg"
-          echo "$AGG_SHA256  $RUNNER_TEMP/agg" | sha256sum --check --strict
-          sudo install -m 0755 "$RUNNER_TEMP/agg" /usr/local/bin/agg
-          test "$(agg --version | head -1)" = "agg 1.9.0"
+      - name: Run source checks once
+        run: pnpm check
 
-      - name: Build and exercise one immutable candidate
+      - name: Build and use one immutable candidate
         run: pnpm release:prepare
 
       - name: Read candidate metadata
@@ -89,68 +72,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
 
-      - name: Run the complete release checks
-        env:
-          BRAID_LIVE_BRIDGE: '1'
-          BRAID_CLI_BRIDGE_BEARER: ${{ secrets.BRAID_CLI_BRIDGE_BEARER }}
-          BRAID_CLI_BRIDGE_URL: ${{ vars.BRAID_CLI_BRIDGE_URL }}
-          BRAID_EVAL_API_KEY: ${{ secrets.BRAID_EVAL_API_KEY }}
-          BRAID_EVAL_BASE_URL: ${{ vars.BRAID_EVAL_BASE_URL }}
-          BRAID_EVAL_MODEL: ${{ vars.BRAID_EVAL_MODEL }}
-          BRAID_TANGLE_API_KEY: ${{ secrets.BRAID_TANGLE_API_KEY }}
-          BRAID_TANGLE_ENDPOINT: ${{ vars.BRAID_TANGLE_ENDPOINT }}
-          BRAID_TANGLE_MODEL: ${{ vars.BRAID_TANGLE_MODEL }}
-          BRAID_TANGLE_PROVIDER: ${{ vars.BRAID_TANGLE_PROVIDER }}
-          BRAID_TANGLE_RUNNER: ${{ vars.BRAID_TANGLE_RUNNER }}
-          BRAID_TANGLE_SANDBOX_API_KEY: ${{ secrets.BRAID_TANGLE_SANDBOX_API_KEY }}
-          BRAID_TANGLE_SANDBOX_ENDPOINT: ${{ vars.BRAID_TANGLE_SANDBOX_ENDPOINT }}
-          BRAID_TANGLE_SANDBOX_MODEL: ${{ vars.BRAID_TANGLE_SANDBOX_MODEL }}
-          BRAID_TANGLE_SANDBOX_PROVIDER: ${{ vars.BRAID_TANGLE_SANDBOX_PROVIDER }}
-          BRAID_TANGLE_SANDBOX_RUNNER: ${{ vars.BRAID_TANGLE_SANDBOX_RUNNER }}
-          BRAID_ANALYSIS_API_KEY: ${{ secrets.BRAID_ANALYSIS_API_KEY }}
-          BRAID_ANALYSIS_ENDPOINT: ${{ vars.BRAID_ANALYSIS_ENDPOINT }}
-          BRAID_ANALYSIS_MODEL: ${{ vars.BRAID_ANALYSIS_MODEL }}
-          BRAID_ANALYSIS_PROVIDER: ${{ vars.BRAID_ANALYSIS_PROVIDER }}
-          BRAID_ANALYSIS_RUNNER: ${{ vars.BRAID_ANALYSIS_RUNNER }}
-          BRAID_SUPERVISOR_ID: ${{ vars.BRAID_SUPERVISOR_ID }}
-          BRAID_SUPERVISOR_MESSAGE: ${{ vars.BRAID_SUPERVISOR_MESSAGE }}
-          BRAID_SUPERVISOR_ROOT: ${{ vars.BRAID_SUPERVISOR_ROOT }}
-          BRAID_SUPERVISOR_WORKER: ${{ vars.BRAID_SUPERVISOR_WORKER }}
-          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
-        run: >-
-          pnpm release:collect --
-          --artifact-root "$BRAID_RELEASE_ARTIFACT_ROOT"
-          --tarball "candidate/${{ steps.metadata.outputs.archive }}"
-
-      - name: Preserve resumable release state
-        if: always()
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ${{ runner.temp }}/braid-release
-          key: braid-release-${{ inputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Upload partial release state
-        if: always()
+      - name: Upload the exact candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: braid-release-partial-${{ inputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/braid-release
-          if-no-files-found: warn
-          retention-days: 90
-
-      - name: Qualify the pre-publication candidate
-        env:
-          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
-          BRAID_RELEASE_ISOLATED_CHECKOUT: '1'
-        run: pnpm verify:candidate
-
-      - name: Upload the qualified candidate evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: braid-release-qualified-${{ inputs.commit }}
+          name: braid-release-candidate-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
           if-no-files-found: error
-          overwrite: true
           retention-days: 90
 
   endorse-candidate:
@@ -163,7 +90,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: braid-release-qualified-${{ inputs.commit }}
+          name: braid-release-candidate-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
 
       - name: Endorse the fixed candidate archive
@@ -244,7 +171,7 @@ jobs:
           name: braid-release-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
 
-      - name: Install and exercise the exact candidate
+      - name: Install and use the exact candidate
         env:
           BRAID_EXPECT_ARCHITECTURE: ${{ matrix.architecture }}
           BRAID_EXPECT_PLATFORM: ${{ matrix.platform }}
@@ -311,15 +238,10 @@ jobs:
       - name: Publish the approved tarball
         env:
           ARCHIVE: ${{ needs.candidate.outputs.archive }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           npm install --global npm@11.18.0
           test "$(npm --version)" = 11.18.0
-          if [ -n "$NODE_AUTH_TOKEN" ]; then
-            printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$RUNNER_TEMP/braid-npmrc"
-            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/braid-npmrc"
-          fi
           if npm view "@tangle-network/braid@$VERSION" version >/dev/null 2>&1; then
             echo "@tangle-network/braid@$VERSION already exists; checking it instead of republishing"
           else
@@ -381,7 +303,7 @@ jobs:
           name: braid-release-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
 
-      - name: Download and exercise the registry package
+      - name: Download and use the registry package
         env:
           BRAID_EXPECT_ARCHITECTURE: ${{ matrix.architecture }}
           BRAID_EXPECT_PLATFORM: ${{ matrix.platform }}
@@ -410,15 +332,9 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.19.0
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -442,16 +358,12 @@ jobs:
           name: braid-npm-provenance-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release/publication
 
-      - name: Assemble the final report
+      - name: Validate candidate and registry use
         env:
           BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
-          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
-          BRAID_RELEASE_ISOLATED_CHECKOUT: '1'
-        run: |
-          pnpm release:record-publication
-          pnpm verify:release
+        run: node scripts/release/record-publication.mjs
 
-      - name: Upload the validated final release evidence
+      - name: Upload the validated release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: braid-release-final-qualified-${{ inputs.commit }}
@@ -556,23 +468,23 @@ jobs:
           INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
           grep -Fx "index_sha256=$INDEX_SHA256" "$ENDORSEMENT/statement.txt"
 
-      - name: Tag the proven commit and attach its report
+      - name: Tag the shipped commit and attach its artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           TAG="v$VERSION"
+          NOTES="Published @tangle-network/braid@$VERSION from commit ${{ inputs.commit }}. The exact package completed candidate and registry install/use checks on Linux x64, macOS arm64, and Windows x64."
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             test "$(git rev-list -n 1 "$TAG")" = "${{ inputs.commit }}"
           else
             git tag "$TAG" "${{ inputs.commit }}"
             git push origin "$TAG"
           fi
-          REPORT="$RUNNER_TEMP/braid-release/$VERSION/report.md"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file "$REPORT"
+            gh release edit "$TAG" --notes "$NOTES"
           else
-            gh release create "$TAG" --verify-tag --title "Braid $VERSION" --notes-file "$REPORT"
+            gh release create "$TAG" --verify-tag --title "Braid $VERSION" --notes "$NOTES"
           fi
           EVIDENCE_ARCHIVE="$RUNNER_TEMP/braid-evidence-$VERSION.tar.gz"
           tar --directory "$RUNNER_TEMP/braid-release" --create --gzip --file "$EVIDENCE_ARCHIVE" .

@@ -56,6 +56,68 @@ async function run(file, args, options = {}) {
   })
 }
 
+async function runPlainFlow(binary, cwd) {
+  const expected = 'Fixture response through pi: platform package smoke'
+  return await new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [binary, '--fixture', 'deterministic', '--plain'], {
+      cwd,
+      env: process.env,
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    let quitSent = false
+    let outputExceeded = false
+    let inputError
+    const timer = setTimeout(() => child.kill('SIGKILL'), 30_000)
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+      if (stdout.length > 2 * 1024 * 1024) {
+        outputExceeded = true
+        child.kill('SIGKILL')
+        return
+      }
+      if (!quitSent && stdout.includes(expected)) {
+        quitSent = true
+        child.stdin.end('/quit\n')
+      }
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+      if (stderr.length > 2 * 1024 * 1024) {
+        outputExceeded = true
+        child.kill('SIGKILL')
+      }
+    })
+    child.stdin.on('error', (error) => {
+      inputError = error
+    })
+    child.once('error', reject)
+    child.once('close', (code, signal) => {
+      clearTimeout(timer)
+      if (
+        code === 0 &&
+        signal === null &&
+        quitSent &&
+        !outputExceeded &&
+        inputError === undefined
+      ) {
+        resolvePromise({ stdout, stderr })
+        return
+      }
+      reject(
+        new Error(
+          `Installed plain flow exited with code ${String(code)} and signal ${String(signal)}${inputError === undefined ? '' : ` after input error ${String(inputError)}`}\n${stdout}\n${stderr}`,
+        ),
+      )
+    })
+    child.stdin.write('platform package smoke\n')
+  })
+}
+
 async function sha256(path) {
   return createHash('sha256')
     .update(await readFile(path))
@@ -112,11 +174,7 @@ try {
   const version = await run(process.execPath, [binary, '--version'], { cwd: smokeRoot })
   assert(version.stdout.trim() === proof.version, 'Installed binary version differs')
 
-  const plain = await run(process.execPath, [binary, '--fixture', 'deterministic', '--plain'], {
-    cwd: smokeRoot,
-    stdin: 'platform package smoke\n/quit\n',
-    timeoutMs: 30_000,
-  })
+  const plain = await runPlainFlow(binary, smokeRoot)
   assert(
     plain.stdout.includes('Fixture response through pi: platform package smoke'),
     'Installed plain flow did not complete',

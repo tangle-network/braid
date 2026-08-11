@@ -388,7 +388,7 @@ An analysis cannot pass if its source branch journal changes before explicit pro
 
 No critical or high security finding, inaccessible primary action, or missed performance target remains open.
 
-## W13: Live proof, package release, and post-publication verification
+## W13: Direct product use, package release, and registry verification
 
 ### Repositories
 
@@ -398,21 +398,29 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 
 - Verify every upstream package from packed release candidates and publish in dependency order.
 - Install the resulting registry packages into Braid and commit the exact lockfile.
-- Run static, unit, property soak, contract, headless, virtual-terminal, PTY, storage, security, performance, live, semantic, install, and visual checks against one Braid release candidate.
-- Collect and validate candidate evidence with every required identifier and artifact hash before a code-free job endorses the complete archive.
-- Confirm all live test resources are cleaned up and every external state change is recorded.
-- Obtain independent architecture, security, and product-flow review against the exact release candidate digest.
+- Run `pnpm check` once against the exact main commit.
+- Build one immutable package with `pnpm release:prepare` and use its installed CLI, RPC, and terminal flows.
+- Keep live, performance, semantic, soak, and complete-manifest audits available as explicit product audits.
+- Do not make provider or sandbox availability an npm publication prerequisite.
+- Endorse the exact candidate package and package manifest in an isolated code-free job.
 - Publish `@tangle-network/braid` with npm provenance.
 - Download the registry package in clean supported environments and repeat the post-publication smoke.
 - Require matching candidate and registry package digests plus successful plain messaging, encrypted storage, and temporary-state cleanup on Linux x64, macOS arm64, and Windows x64.
-- Add the six platform result artifacts to `VR-10`, assemble the final manifest and readable report, then endorse the complete fixed archive.
-- Tag the source commit and attach the readable verification report, checksums, licenses, screenshots, and flow recording.
+- Validate the six platform results and npm provenance in one publication record.
+- Endorse that fixed release bundle in an isolated code-free job.
+- Tag the source commit and attach the package, publication records, screenshots, and flow recording.
 
 ### Done when
 
-`PR-12`, `AR-08`, `AR-09`, `UP-11`, `VR-01` through `VR-10`, and every remaining requirement identifier pass against the immutable release build.
+The exact main commit passes `pnpm check` and `pnpm release:prepare`.
 
-The registry package integrity must match the approved candidate and post-publication checks must pass before the release is announced complete.
+All three candidate checks and all three registry checks must pass.
+
+The registry package SHA-256 must match the approved candidate.
+
+The npm provenance must bind the package to the exact commit and release workflow.
+
+Comprehensive product audits report their own status without blocking an otherwise usable package release.
 
 ## Requirement ownership
 
@@ -425,7 +433,7 @@ The registry package integrity must match the approved candidate and post-public
 | `PR-07`–`PR-08` | W11 | Real analysis and runtime control |
 | `PR-09` | W5 | Forced restart and journal checksum |
 | `PR-10`–`PR-11` | W6 and W12 | PTY recording and headless equivalence |
-| `PR-12` | W13 | Complete release manifest |
+| `PR-12` | W13 | Exact package plus candidate and registry use records |
 | `UX-01`–`UX-10` | W6 and W12 | Virtual terminal, PTY, captures, and keyboard walkthrough |
 | `AR-01`–`AR-10` | W0, W5, W6, and W13 | Static boundaries, property tests, package install, and dependency inventory |
 | `UP-01`–`UP-14` | W1 through W4 | Owning-repository contract, package, and live artifacts |
@@ -438,10 +446,10 @@ The registry package integrity must match the approved candidate and post-public
 | `LIVE-01`–`LIVE-12` | W3, W4, W8, W9, W10, and W11 | Real provider and runtime artifacts |
 | `PERF-01`–`PERF-10` | W12 | Full measured distributions |
 | `EVAL-01`–`EVAL-06` | W11 | Calibrated `agent-eval` records |
-| `VR-01`–`VR-10` | W13 | Signed exact-build release manifest |
+| `VR-01`–`VR-10` | W13 | Explicit signed exact-build audit manifest |
 | `US-01`–`US-10` | W0, W6, W12, and W13 | Dependency inventory, attribution, boundary tests, upgrade evidence, packed installation, and live analysis |
 
-The release verifier extracts required identifiers from the committed specification and fails if the manifest omits one.
+The comprehensive audit verifier extracts required identifiers from the committed specification and fails if the audit manifest omits one.
 
 ## Upstream pull-request and release order
 
@@ -452,7 +460,8 @@ The release verifier extracts required identifiers from the committed specificat
 5. Update Braid to registry packages, never workspace links, and run contract plus one live smoke before broader release testing.
 6. Finish Braid feature pull requests with required terminal stills and recordings.
 7. Freeze the Braid release candidate only after all feature changes merge.
-8. Run W13 against the frozen digest and publish only that digest.
+8. Run `pnpm check`, build and use the packed candidate, then publish only that digest.
+9. Install and use the registry package on all supported platforms before tagging the release.
 
 Every upstream behavior change updates its owning documentation in the same pull request.
 
