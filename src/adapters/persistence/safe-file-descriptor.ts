@@ -306,7 +306,12 @@ export function ensurePrivateDirectory(path: string, mode = 0o700): void {
           }
         }
       }
-      requireDirectory(nextFd, nextPath)
+      try {
+        requireDirectory(nextFd, nextPath)
+      } catch (error) {
+        closeSync(nextFd)
+        throw error
+      }
       const previousFd = currentFd
       currentFd = nextFd
       currentPath = nextPath

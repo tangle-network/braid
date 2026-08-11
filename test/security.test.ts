@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict'
-import { closeSync, constants, lstatSync, mkdtempSync, openSync, readFileSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+} from 'node:fs'
 import {
   chmod,
   link,
@@ -16,6 +27,7 @@ import { tmpdir } from 'node:os'
 import { join, parse, resolve, sep } from 'node:path'
 import test from 'node:test'
 import { Worker } from 'node:worker_threads'
+import koffi from 'koffi'
 // @ts-expect-error The scanner is a JavaScript release helper without a product declaration.
 import { assertNoSecretArtifacts, scanSecretArtifacts } from '../scripts/scan-secret-artifacts.mjs'
 import {
@@ -30,6 +42,7 @@ import {
   type NativeKeyringEntry,
   type NativeKeyringEntryFactory,
 } from '../src/adapters/credentials/os.js'
+import { openAt } from '../src/adapters/persistence/posix-at.js'
 import {
   acquirePrivateFileLock,
   assertNoSymlinkPath,
@@ -45,7 +58,12 @@ import {
 } from '../src/adapters/persistence/safe-file.js'
 import { componentPath, safePath } from '../src/adapters/persistence/safe-file-descriptor.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
+import {
+  closeBoundSqliteDatabase,
+  openBoundSqliteDatabase,
+} from '../src/adapters/storage/sqlite-bound-open.js'
 import { assertPersistablePayload } from '../src/adapters/storage/sqlite-crypto.js'
+import type { SqliteDatabase } from '../src/adapters/storage/sqlite-driver.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { prepareConversationImport } from '../src/app/conversation-import-document.js'
 import { providerEventFor } from '../src/app/run-event-mapper.js'
@@ -53,6 +71,21 @@ import { canonicalDigest } from '../src/domain/canonical.js'
 import { TerminalControlSanitizer } from '../src/domain/terminal-sanitizer.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { JsonValue } from '../src/ports/storage.js'
+
+function liveDescriptorCount(): number {
+  const directory = process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd'
+  let count = 0
+  for (const name of readdirSync(directory)) {
+    if (!/^\d+$/u.test(name)) continue
+    try {
+      fstatSync(Number(name))
+      count += 1
+    } catch {
+      // readdir can expose its own descriptor after it closes.
+    }
+  }
+  return count
+}
 
 test('terminal control sanitization remains safe when hostile sequences split across chunks', () => {
   const sanitizer = new TerminalControlSanitizer()
@@ -129,6 +162,83 @@ test('private artifact writes are mode-600, no-clobber, and symlink-safe', async
     ensurePrivateFile(permissionsTarget)
     assert.equal((await stat(permissionsTarget)).mode & 0o777, 0o600)
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('POSIX file descriptors close on exec and failed directory checks do not leak', async () => {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') return
+  const root = await mkdtemp(join(tmpdir(), 'braid-posix-descriptors-'))
+  const regularFile = join(root, 'regular-file')
+  await writeFile(regularFile, 'not a directory')
+  let parentDescriptor: number | undefined
+  let fileDescriptor: number | undefined
+  try {
+    parentDescriptor = openSync(root, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0))
+    fileDescriptor = openAt(parentDescriptor, 'regular-file', constants.O_RDONLY)
+    const fcntl = koffi.load(null).func('int fcntl(int fileDescriptor, int command, ...)') as (
+      descriptor: number,
+      command: number,
+    ) => number
+    assert.equal(fcntl(fileDescriptor, 1) & 1, 1)
+    closeSync(fileDescriptor)
+    fileDescriptor = undefined
+    closeSync(parentDescriptor)
+    parentDescriptor = undefined
+
+    const before = liveDescriptorCount()
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      assert.throws(
+        () => ensurePrivateDirectory(join(regularFile, 'child')),
+        (error: unknown) =>
+          error instanceof SafeFileError && error.code === 'SAFE_FILE_NOT_DIRECTORY',
+      )
+    }
+    assert.equal(liveDescriptorCount(), before)
+  } finally {
+    if (fileDescriptor !== undefined) closeSync(fileDescriptor)
+    if (parentDescriptor !== undefined) closeSync(parentDescriptor)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('macOS SQLite rejects a canonical path swapped after descriptor validation', async () => {
+  if (process.platform !== 'darwin') return
+  const root = await mkdtemp(join(tmpdir(), 'braid-darwin-sqlite-swap-'))
+  const active = join(root, 'active')
+  const parked = join(root, 'parked')
+  const evil = join(root, 'evil')
+  await mkdir(active, { mode: 0o700 })
+  await mkdir(evil, { mode: 0o700 })
+  await writeFile(join(active, 'braid.sqlite'), 'safe', { mode: 0o600 })
+  await writeFile(join(evil, 'braid.sqlite'), 'evil', { mode: 0o600 })
+  let opened: ReturnType<typeof openBoundSqliteDatabase> | undefined
+  try {
+    assert.throws(
+      () => {
+        opened = openBoundSqliteDatabase(
+          join(active, 'braid.sqlite'),
+          (filename) => {
+            renameSync(active, parked)
+            symlinkSync(evil, active, 'dir')
+            const descriptor = openSync(filename, constants.O_RDWR)
+            let closed = false
+            return {
+              open: true,
+              close: () => {
+                if (closed) return
+                closed = true
+                closeSync(descriptor)
+              },
+            } as unknown as SqliteDatabase
+          },
+          5_000,
+        )
+      },
+      (error: unknown) => error instanceof StorageError && error.code === 'STORAGE_PATH_RACE',
+    )
+  } finally {
+    if (opened !== undefined) closeBoundSqliteDatabase(opened)
     await rm(root, { recursive: true, force: true })
   }
 })

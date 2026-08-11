@@ -1,4 +1,4 @@
-import { closeSync, constants, fchmodSync, fstatSync, openSync } from 'node:fs'
+import { closeSync, constants, fchmodSync, fstatSync, openSync, readdirSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { descriptorPath, openAt, unlinkAt } from '../persistence/posix-at.js'
 import type { SqliteDatabase, SqliteDatabaseFactory } from './sqlite-driver.js'
@@ -22,6 +22,41 @@ function sameInode(
   right: ReturnType<typeof fstatSync>,
 ): boolean {
   return left.dev === right.dev && left.ino === right.ino
+}
+
+function liveFileDescriptors(): ReadonlySet<number> {
+  const directory = process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd'
+  const descriptors = new Set<number>()
+  for (const name of readdirSync(directory)) {
+    if (!/^\d+$/u.test(name)) continue
+    const descriptor = Number(name)
+    try {
+      fstatSync(descriptor)
+      descriptors.add(descriptor)
+    } catch {
+      // readdir can expose its own descriptor after it closes.
+    }
+  }
+  return descriptors
+}
+
+function assertDatabaseDescriptorIdentity(
+  before: ReadonlySet<number>,
+  expected: ReturnType<typeof fstatSync>,
+  path: string,
+): void {
+  for (const descriptor of liveFileDescriptors()) {
+    if (before.has(descriptor)) continue
+    try {
+      if (sameInode(expected, fstatSync(descriptor))) return
+    } catch {
+      // A concurrent close cannot establish the required identity.
+    }
+  }
+  throw new StorageError(
+    'STORAGE_PATH_RACE',
+    `SQLite did not open the validated database file: ${path}`,
+  )
 }
 
 function assertOwnedDirectory(metadata: ReturnType<typeof fstatSync>, path: string): void {
@@ -128,7 +163,9 @@ export function openBoundSqliteDatabase(
       )
     }
     fchmodSync(fileDescriptor, 0o600)
+    const descriptorsBefore = liveFileDescriptors()
     database = factory(descriptorPath(fileDescriptor), { timeout })
+    assertDatabaseDescriptorIdentity(descriptorsBefore, metadata, normalizedPath)
     return { database, fileDescriptor, newDatabase: opened.newDatabase }
   } catch (error) {
     try {

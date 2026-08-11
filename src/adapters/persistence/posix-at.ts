@@ -68,6 +68,7 @@ function bindings(): PosixAtBindings {
 
 const DARWIN_F_GETPATH = 50
 const DARWIN_MAX_PATH_LENGTH = 1024
+const CLOSE_ON_EXEC = process.platform === 'darwin' ? 0x01000000 : 0o2000000
 
 export function descriptorPath(fileDescriptor: number): string {
   if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
@@ -113,7 +114,7 @@ function syscallError(syscall: string, path: string): NodeJS.ErrnoException {
 }
 
 export function openAt(directory: number, path: string, flags: number, mode = 0): number {
-  const result = bindings().openAt(directory, path, flags, 'unsigned int', mode)
+  const result = bindings().openAt(directory, path, flags | CLOSE_ON_EXEC, 'unsigned int', mode)
   if (result < 0) throw syscallError('openat', path)
   return result
 }

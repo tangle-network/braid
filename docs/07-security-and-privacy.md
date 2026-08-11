@@ -175,7 +175,12 @@ Linux and macOS path operations call the operating system's descriptor-relative 
 
 Each path component opens below its parent descriptor with no-follow flags.
 
-Current npm releases support Linux and macOS, where Braid binds SQLite to an already opened file descriptor.
+Current npm releases support Linux and macOS.
+Linux reopens the validated SQLite descriptor through procfs.
+macOS resolves the validated descriptor because stock SQLite needs normal journal and WAL paths.
+Braid then rejects startup unless SQLite's live database descriptor matches the validated inode.
+The agent filesystem jail cannot reach Braid's external state directory.
+A hostile process running as the same operating-system user is outside this boundary.
 
 The package rejects Windows until Braid has an equivalent native path-opening primitive.
 
