@@ -412,7 +412,10 @@ export class BraidApplication {
     readonly text: string
     readonly runId?: string
   }): QueueReceipt {
-    return queueRunInput(this.#portViews.queue, input)
+    return queueRunInput(this.#portViews.queue, {
+      ...input,
+      operationId: operationId(input.operationId, 'queue'),
+    })
   }
 
   async steer(input: {
@@ -420,7 +423,10 @@ export class BraidApplication {
     readonly runId?: string
     readonly text: string
   }): Promise<ControlReceipt> {
-    return steerRun(this.#portViews.control, input)
+    return steerRun(this.#portViews.control, {
+      ...input,
+      operationId: operationId(input.operationId, 'steer'),
+    })
   }
 
   async cancelRun(input: {
@@ -430,7 +436,10 @@ export class BraidApplication {
     readonly terminalStatus?: 'cancelled' | 'aborted'
     readonly legacy?: boolean
   }): Promise<ControlReceipt> {
-    return cancelRun(this.#portViews.control, input)
+    return cancelRun(this.#portViews.control, {
+      ...input,
+      operationId: operationId(input.operationId, 'cancel'),
+    })
   }
 
   cancel(input: CancelInput): CancelReceipt {
@@ -479,7 +488,10 @@ export class BraidApplication {
     readonly operationId: string
     readonly runId?: string
   }): Promise<ControlReceipt> {
-    return detachRun(this.#portViews.control, input)
+    return detachRun(this.#portViews.control, {
+      ...input,
+      operationId: operationId(input.operationId, 'detach'),
+    })
   }
 
   async respondInteraction(input: {
@@ -488,7 +500,10 @@ export class BraidApplication {
     readonly interactionId: string
     readonly response: InteractionResponse
   }): Promise<InteractionReceipt> {
-    return this.#interactions.respond(input)
+    return this.#interactions.respond({
+      ...input,
+      operationId: operationId(input.operationId, 'respond-interaction'),
+    })
   }
 
   async #executeControl(
@@ -520,7 +535,10 @@ export class BraidApplication {
     readonly text: string
     readonly runId?: string
   }): Promise<SendReceipt> {
-    return continueNative(this.#portViews.nativeContinuation, input)
+    return continueNative(this.#portViews.nativeContinuation, {
+      ...input,
+      operationId: operationId(input.operationId, 'continue'),
+    })
   }
 
   shutdown(input: {
@@ -584,7 +602,7 @@ export class BraidApplication {
     this.#assertAdmissionOpen()
     return admitRun(
       this.#portViews.admission,
-      input,
+      { ...input, operationId: operationId(input.operationId, 'admit') },
       conversationId,
       branchId,
       contextTransfer,

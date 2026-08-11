@@ -19,7 +19,7 @@ export interface PlainOptions {
 }
 
 function nextOperationId(): string {
-  return `op-plain-${Date.now().toString(36)}-${randomUUID()}`
+  return `op-${randomUUID()}`
 }
 
 export async function runPlain(
