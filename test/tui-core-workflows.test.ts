@@ -442,7 +442,10 @@ test('wide activity keeps the list and details together and tabs through bounded
         entityId: 'second',
         title: '/ask · second',
         status: 'completed',
-        lines: ['second detail remains visible'],
+        lines: [
+          'second detail remains visible',
+          ...Array.from({ length: 24 }, (_, index) => `detail line ${index + 2}`),
+        ],
       },
     ],
   }
@@ -460,6 +463,12 @@ test('wide activity keeps the list and details together and tabs through bounded
   assert.match(initial, /\/ask · second/u)
   assert.match(initial, /second detail remains visible/u)
   assert.match(initial, /│/u)
+  browser.handleInput('\u001b[6~')
+  const secondPage = browser.render(120).join('\n')
+  assert.match(secondPage, /page 2\/2/u)
+  assert.match(secondPage, /detail line 21/u)
+  browser.handleInput('\u001b[5~')
+  assert.match(browser.render(120).join('\n'), /second detail remains visible/u)
   browser.handleInput('\u001b[B')
   assert.match(browser.render(120).join('\n'), /first detail remains visible/u)
   browser.handleInput('\t')
