@@ -101,6 +101,7 @@ test('live manifest uses the typed public analysis execution view', () => {
           entityId: 'analysis-live',
           status: 'completed',
           lines: ['• [citation-1] Complete finding'],
+          analysisFindingCount: 1,
           analysisExecution: {
             configuredModel: 'tangle-router/glm-5.2',
             observedModels: ['glm-5.2'],

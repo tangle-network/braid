@@ -20,7 +20,8 @@ export function safeManifestAnalysis(record) {
   )
   assert.ok(detail, 'The real /ask analysis retained no public detail')
   assert.equal(detail.status, 'completed', 'The saved /ask analysis did not complete')
-  const findings = detail.lines.filter((line) => line.startsWith('• ')).length
+  const findings = detail.analysisFindingCount
+  assert.ok(Number.isInteger(findings), 'The real /ask analysis omitted its typed finding count')
   assert.ok(findings > 0, 'The real /ask analysis returned no findings')
   const usage = record.view?.sessionUsage?.analyses
   assert.equal(usage?.sourceCount, 1, 'The live demo expected exactly one analysis usage source')

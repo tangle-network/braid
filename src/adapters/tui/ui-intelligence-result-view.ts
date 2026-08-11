@@ -52,6 +52,7 @@ export function withIntelligenceResult(
         title: rendered[0] ?? `analysis ${analysis.id}`,
         status: analysis.status,
         lines: rendered.slice(1),
+        analysisFindingCount: analysisView.findings.length,
         ...(analysisView.execution === undefined
           ? {}
           : { analysisExecution: analysisView.execution }),

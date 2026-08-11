@@ -390,6 +390,7 @@ export interface EntityDetailView {
   readonly title: string
   readonly status: string
   readonly lines: readonly string[]
+  readonly analysisFindingCount?: number
   readonly analysisExecution?: AnalysisExecutionView
 }
 

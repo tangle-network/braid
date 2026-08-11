@@ -79,6 +79,7 @@ function analysisDetail(record: AnalysisRecord | undefined): EntityDetailView | 
     title: rendered[0] ?? `analysis ${record.id}`,
     status: record.status,
     lines: bounded(rendered.slice(1)),
+    analysisFindingCount: analysis.findings.length,
     ...(analysis.execution === undefined ? {} : { analysisExecution: analysis.execution }),
   }
 }
