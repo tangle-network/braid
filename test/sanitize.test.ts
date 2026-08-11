@@ -83,9 +83,56 @@ test('plain structured redaction preserves only the exact aggregate token counte
   })
   assert.deepEqual(
     redactStructuredValue({
-      spend: { tokens: { input: 12, output: 7, tokensKnown: false } },
+      spend: {
+        tokens: {
+          input: 12,
+          output: 7,
+          tokensKnown: false,
+          cacheBreakdownKnown: false,
+        },
+      },
     }),
-    { spend: { tokens: { input: 12, output: 7, tokensKnown: false } } },
+    {
+      spend: {
+        tokens: {
+          input: 12,
+          output: 7,
+          tokensKnown: false,
+          cacheBreakdownKnown: false,
+        },
+      },
+    },
+  )
+  assert.deepEqual(
+    redactStructuredValue({
+      tokens: { input: 12, output: 7, freshInput: 5, cacheRead: 4, cacheWrite: 3 },
+    }),
+    { tokens: { input: 12, output: 7, freshInput: 5, cacheRead: 4, cacheWrite: 3 } },
+  )
+  assert.deepEqual(redactStructuredValue({ tokens: { input: 0, output: 1, cacheRead: 0 } }), {
+    tokens: { input: 0, output: 1, cacheRead: 0 },
+  })
+  assert.deepEqual(
+    redactStructuredValue({
+      tokens: {
+        input: 12,
+        output: 7,
+        freshInput: 6,
+        cacheRead: 4,
+        cacheWrite: 3,
+        cacheBreakdownKnown: false,
+      },
+    }),
+    {
+      tokens: {
+        input: 12,
+        output: 7,
+        freshInput: 6,
+        cacheRead: 4,
+        cacheWrite: 3,
+        cacheBreakdownKnown: false,
+      },
+    },
   )
   assert.deepEqual(redactStructuredValue({ tokens: { input: -1, output: 7 } }), {
     tokens: '[redacted]',
@@ -93,6 +140,19 @@ test('plain structured redaction preserves only the exact aggregate token counte
   assert.deepEqual(redactStructuredValue({ tokens: { input: 12, output: 7, tokensKnown: true } }), {
     tokens: '[redacted]',
   })
+  assert.deepEqual(
+    redactStructuredValue({ tokens: { input: 12, output: 7, cacheBreakdownKnown: true } }),
+    { tokens: '[redacted]' },
+  )
+  assert.deepEqual(redactStructuredValue({ tokens: { input: 12, output: 7, freshInput: 11 } }), {
+    tokens: '[redacted]',
+  })
+  assert.deepEqual(
+    redactStructuredValue({
+      tokens: { input: 12, output: 7, freshInput: 6, cacheRead: 4, cacheWrite: 3 },
+    }),
+    { tokens: '[redacted]' },
+  )
   assert.deepEqual(
     redactStructuredValue({ tokens: { input: 12, output: 7, credential: 'canary' } }),
     { tokens: '[redacted]' },
