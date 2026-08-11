@@ -4,6 +4,7 @@ import {
   snapshotAgentProfile,
 } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from './canonical.js'
+import { publicMaterializationReceipt } from './materialization-receipt.js'
 import { redactProfile, redactSensitiveText, redactStructuredValue } from './redaction.js'
 import type {
   ContextTransferReceipt,
@@ -145,11 +146,7 @@ export function createAdmissionReceipt(input: {
   const materializationReceipt =
     input.materializationReceipt === undefined
       ? undefined
-      : (redactStructuredValue(input.materializationReceipt, undefined, {
-          maxDepth: 6,
-          maxItems: 128,
-          maxBytes: 32 * 1024,
-        }) as Readonly<Record<string, unknown>>)
+      : publicMaterializationReceipt(input.materializationReceipt)
   const warnings = boundedWarnings(input.warnings)
   const contextPlanDigest = input.contextPlanDigest ?? input.contextTransfer?.planDigest
   const requested = {

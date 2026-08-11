@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -21,6 +21,7 @@ import {
 } from './live-required/contracts.mjs'
 import {
   closeSession,
+  initializedSession,
   prepareProductionWorkspace,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
@@ -49,6 +50,9 @@ function protectedEnvironment() {
     'BRAID_TANGLE_SANDBOX_MODEL',
     'BRAID_TANGLE_SANDBOX_RUNNER',
     'BRAID_TANGLE_SANDBOX_CREDENTIAL_REF',
+    'BRAID_TANGLE_SANDBOX_AUTH',
+    'BRAID_TANGLE_SANDBOX_API_KEY',
+    'BRAID_TANGLE_SANDBOX_BEARER',
     'BRAID_TANGLE_LIVE_ADAPTER',
     'BRAID_SUPERVISOR_ROOT',
     'BRAID_SUPERVISOR_ID',
@@ -409,6 +413,116 @@ test('configured headless checks execute the real Braid RPC process and validate
     await config.cleanup()
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('production live workspaces remove every raw authentication alias from child processes', async () => {
+  const secret = 'live-required-child-secret-canary-991f'
+  const authenticationNames = [
+    'BRAID_ANALYSIS_AUTH',
+    'BRAID_ANALYSIS_API_KEY',
+    'BRAID_ANALYSIS_BEARER',
+    'BRAID_CLI_BRIDGE_AUTH',
+    'BRAID_CLI_BRIDGE_BEARER',
+    'BRAID_TANGLE_AUTH',
+    'BRAID_TANGLE_API_KEY',
+    'BRAID_TANGLE_BEARER',
+    'BRAID_TANGLE_SANDBOX_AUTH',
+    'BRAID_TANGLE_SANDBOX_API_KEY',
+    'BRAID_TANGLE_SANDBOX_BEARER',
+  ]
+  const environment = Object.fromEntries(authenticationNames.map((name) => [name, secret]))
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment,
+    kind: 'credential-scrub-test',
+    endpoint: 'https://router.tangle.tools',
+    model: 'openai/gpt-5',
+    runner: 'pi',
+    provider: 'tangle',
+    credentialRef: 'credential-ref-live-required-test',
+  })
+  try {
+    for (const name of authenticationNames) assert.equal(config.environment[name], undefined, name)
+    assert.equal(Object.values(config.environment).includes(secret), false)
+  } finally {
+    await config.cleanup()
+  }
+})
+
+test('generated live credentials use the same protected store as production Braid', async () => {
+  const secret = 'live-required-protected-store-canary-6c2f'
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment: protectedEnvironment(),
+    kind: 'tangle-inference',
+    endpoint: 'https://router.tangle.tools',
+    model: 'glm-5.2',
+    runner: 'cli-base',
+    provider: 'tangle',
+    credentialValue: secret,
+  })
+  let session
+  try {
+    assert.equal(Object.values(config.environment).includes(secret), false)
+    assert.match(config.connection.credentialRef, /^credential-live-tangle-inference-/u)
+    const initialized = await initializedSession(
+      join(repository, 'dist', 'bin', 'braid.js'),
+      config,
+    )
+    session = initialized.session
+    assert.equal(initialized.state.view.connection, config.connection.name)
+    assert.equal(initialized.state.view.runner, 'cli-base')
+    assert.equal(initialized.state.view.model, 'glm-5.2')
+  } finally {
+    if (session !== undefined) await closeSession(session)
+    await config.cleanup()
+  }
+})
+
+test('generated credential cleanup reports failure and succeeds when retried', async () => {
+  let removeAttempts = 0
+  let disposeCalls = 0
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment: protectedEnvironment(),
+    kind: 'cleanup-retry',
+    endpoint: 'https://router.tangle.tools',
+    model: 'glm-5.2',
+    runner: 'cli-base',
+    provider: 'tangle',
+    credentialValue: 'live-required-cleanup-retry-canary-822f',
+    credentialContextFactory: () => ({
+      store: {
+        async store(input) {
+          return input.ref
+        },
+        async remove() {
+          removeAttempts += 1
+          if (removeAttempts === 1) throw new Error('transient removal failure')
+        },
+      },
+      dispose() {
+        disposeCalls += 1
+      },
+    }),
+  })
+
+  await assert.rejects(
+    () => config.cleanup(),
+    (error) => error?.code === 'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
+  )
+  await access(config.root)
+  assert.equal(removeAttempts, 1)
+  assert.equal(disposeCalls, 0)
+
+  await config.cleanup()
+  await assert.rejects(() => access(config.root), /ENOENT/u)
+  assert.equal(removeAttempts, 2)
+  assert.equal(disposeCalls, 1)
+
+  await config.cleanup()
+  assert.equal(removeAttempts, 2)
+  assert.equal(disposeCalls, 1)
 })
 
 test('configured real-path assertion failures emit failed release evidence', async () => {

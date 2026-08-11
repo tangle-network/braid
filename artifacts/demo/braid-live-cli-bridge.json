@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "status": "passed",
+  "capturedAt": "2026-08-11T07:48:21.314Z",
+  "source": {
+    "packageVersion": "0.1.0",
+    "execution": "working-tree-braid-terminal",
+    "scope": "capture-summary-not-source-attestation"
+  },
+  "route": {
+    "connection": "Local CLI Bridge",
+    "endpoint": "http://127.0.0.1:3347",
+    "runtime": "agent-runtime",
+    "runtimeVersion": "0.131.7",
+    "runner": "opencode",
+    "runnerVersion": "1.17.18",
+    "provider": "zai-coding-plan",
+    "model": "glm-5.2",
+    "materializedModel": "opencode/zai-coding-plan/glm-5.2"
+  },
+  "profile": {
+    "name": "Product engineer",
+    "reasoningEffort": "high",
+    "maxOutputTokens": 4096
+  },
+  "task": {
+    "prompt": "Fix src/greeting.js so npm test passes. Run the test. When it is green, reply with these words joined into one sentence: Tests | pass | through | Braid | via | CLI | Bridge.",
+    "answer": "Tests pass through Braid via CLI Bridge.",
+    "runId": "run-a52d5488-bf6d-41ae-a2f5-380cec7f4949",
+    "turnId": "turn-2cb3f327-6a3f-4aa0-95c9-b0e6956f5ccf",
+    "operationId": "op-e71fed48-b595-429d-9a5e-202b4e1fae83",
+    "providerSessionId": "session-braid-run-a52d5488-bf6d-41ae-a2f5-380cec7f4949",
+    "environmentId": "environment-404036676011767ee530826620a6465e",
+    "status": "completed",
+    "inputTokens": 82613,
+    "outputTokens": 203,
+    "tokenStatus": "complete",
+    "promptCache": {
+      "freshInput": 16885,
+      "readInput": 65728,
+      "writeInput": 0
+    },
+    "llmCalls": 1,
+    "llmLatencyMs": 27710,
+    "materializationDigest": "6b5f951cce52eb9633a6999650f4d85ddebe3f9176d7226500912af140a53a8f",
+    "workspaceProof": {
+      "source": "export function greeting(name) {\n  return `Hello, ${name}!`\n}\n",
+      "sourceSha256": "b2eeed0e781bd1ba796830399433b8000e687c06cc217a051d79f24ffb8318e7",
+      "testOutput": "> test\n> node --test\n\n✔ greets a user (0.460837ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 40.369586",
+      "testOutputSha256": "5c98a415cb3f623534438a03b219f998a53ee793fdf74f7c63f04ea78d7ae5dd"
+    }
+  },
+  "terminal": {
+    "command": "braid --profile \"Product engineer\"",
+    "columns": 120,
+    "rows": 34,
+    "durationMs": 32346
+  },
+  "artifacts": {
+    "braid-live-cli-bridge.gif": "caabc8062b3947feecc351def8506f91eef9243b58a42df40c25d7568628ae3b",
+    "braid-live-cli-bridge.png": "19bbd5ab529d385f7e3c4d3f0bc6a2c7260383b59d49f685252755459e2dd603"
+  }
+}

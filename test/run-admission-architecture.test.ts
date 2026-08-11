@@ -3,6 +3,12 @@ import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { type AgentProfile, defineAgentProfile } from '@tangle-network/agent-interface'
+import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
+import type {
+  AdmissionPort,
+  AsyncAdmissionPort,
+  NativeContinuationPort,
+} from '../src/app/application-ports.js'
 import {
   admitRun,
   admitRunAsync,
@@ -13,11 +19,6 @@ import {
   sendRunAsync,
   validateNativeProof,
 } from '../src/app/run-admission.js'
-import type {
-  AdmissionPort,
-  AsyncAdmissionPort,
-  NativeContinuationPort,
-} from '../src/app/application-ports.js'
 import type { RunExecutionSnapshot } from '../src/app/run-execution-snapshot.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
@@ -27,6 +28,7 @@ import {
   UNKNOWN_RUN_CAPABILITIES,
 } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
+import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 
 const PROFILE = defineAgentProfile({
   name: 'Architecture test profile',
@@ -201,6 +203,30 @@ test('sync and async admission preserve capability and pending receipt semantics
   const pending = pendingAdmissionReceipt(snapshotInput(), 'run-pending', 'turn-pending')
   assert.equal(pending.admissionStatus, 'pending')
   assert.deepEqual(pending.capabilities, UNKNOWN_RUN_CAPABILITIES)
+})
+
+test('runtime admission hashes the same secret-safe materialization receipt that Braid stores', async () => {
+  const execution = new AgentRuntimeExecutionPort(async (input) => ({
+    kind: 'prepared-execution' as const,
+    backend: await deterministicBackend(input),
+    materializationReceipt: {
+      provider: 'tangle-sandbox',
+      backend: 'executor',
+      idempotencyKey: 'env-braid-run-admission',
+    },
+  }))
+
+  const receipt = await admitRunAsync(
+    admissionContext(execution) as AsyncAdmissionPort,
+    executionInput({ runId: 'run-sandbox-admission' }),
+    'conv-1',
+    'branch-1',
+    undefined,
+    'turn-sandbox-admission',
+  )
+
+  assert.equal(receipt.materializationReceipt?.idempotencyKey, '[redacted]')
+  assert.match(receipt.materializationDigest ?? '', /^[0-9a-f]{64}$/u)
 })
 
 test('native session reuse remains fail-closed at the validation and continuation boundaries', async () => {

@@ -1,5 +1,5 @@
+import { randomBytes, randomUUID } from 'node:crypto'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -23,6 +23,9 @@ const AUTH_ENVIRONMENT_NAMES = Object.freeze([
   'BRAID_TANGLE_AUTH',
   'BRAID_TANGLE_API_KEY',
   'BRAID_TANGLE_BEARER',
+  'BRAID_TANGLE_SANDBOX_AUTH',
+  'BRAID_TANGLE_SANDBOX_API_KEY',
+  'BRAID_TANGLE_SANDBOX_BEARER',
 ])
 
 function timestamp() {
@@ -53,38 +56,86 @@ function profileFor({ kind, model, runner, provider }) {
   }
 }
 
-async function installGeneratedCredential(repository, value, kind) {
-  const credentialId = `credential-live-${kind}-${randomUUID().replaceAll('-', '')}`
+function liveDataDirectory(root, platform = process.platform) {
+  if (platform === 'win32') return join(root, 'AppData', 'Roaming', 'braid')
+  if (platform === 'darwin') return join(root, 'Library', 'Application Support', 'braid')
+  return join(root, '.xdg-data', 'braid')
+}
+
+async function installGeneratedCredential({
+  repository,
+  workspace,
+  configPath,
+  databaseKeyFile,
+  dataDirectory,
+  credentialId,
+  value,
+  kind,
+  createCredentialContext,
+}) {
+  let context
+  const portRef = `cred:v1:${credentialId}`
+  const secret = Buffer.from(value)
   try {
-    const module = await import(
-      pathToFileURL(join(resolve(repository, 'dist'), 'adapters', 'credentials', 'os.js')).href
-    )
-    const store = module.createOperatingSystemCredentialStore()
-    const portRef = `cred:v1:${credentialId}`
-    await store.store({
+    const contextFactory =
+      createCredentialContext ??
+      (
+        await import(
+          pathToFileURL(
+            join(resolve(repository, 'dist'), 'bin', 'production-credential-context.js'),
+          ).href
+        )
+      ).createProductionCredentialContext
+    context = contextFactory({
+      workspace,
+      configPath,
+      databaseKeyFile,
+      dataDirectory,
+    })
+    if (context === undefined) throw new Error('The protected credential context was not created')
+    await context.store.store({
       ref: portRef,
-      value: Buffer.from(value),
+      value: secret,
       label: `Braid live ${kind} release check`,
     })
+    let removed = false
     return {
       credentialId,
-      remove: async () => store.remove(portRef),
+      remove: async () => {
+        if (removed) return
+        try {
+          await context.store.remove(portRef)
+          context.dispose()
+          removed = true
+        } catch (error) {
+          throw protectedUnavailable(
+            'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
+            `The temporary ${kind} credential could not be removed`,
+            error,
+          )
+        }
+      },
     }
   } catch (error) {
+    context?.dispose()
     throw protectedUnavailable(
       'PROTECTED_CREDENTIAL_STORE_UNAVAILABLE',
-      `The supplied ${kind} credential could not be installed in the operating-system credential store`,
+      `The supplied ${kind} credential could not be installed in Braid's protected workspace credential store`,
       error,
     )
+  } finally {
+    secret.fill(0)
   }
 }
 
 function childEnvironment(environment, root, statePath) {
   const child = {
     ...environment,
+    HOME: root,
     NO_COLOR: '1',
     NODE_NO_WARNINGS: '1',
     BRAID_STATE_PATH: statePath,
+    APPDATA: join(root, 'AppData', 'Roaming'),
     XDG_DATA_HOME: join(root, '.xdg-data'),
     XDG_CONFIG_HOME: join(root, '.xdg-config'),
   }
@@ -118,19 +169,20 @@ export async function prepareProductionWorkspace({
   provider,
   credentialRef,
   credentialValue,
+  credentialContextFactory,
 }) {
   const root = await mkdtemp(join(tmpdir(), 'braid-live-required-'))
   const workspace = join(root, 'workspace')
   const configDirectory = join(workspace, '.braid')
   const profileDirectory = join(configDirectory, 'profiles')
-  await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
   const databaseKeyFile = join(root, 'database.key')
-  await writeFile(databaseKeyFile, `${randomUUID()}-${randomUUID()}\n`, { mode: 0o600 })
-  const generatedCredential =
+  const configPath = join(configDirectory, 'config.json')
+  const dataDirectory = liveDataDirectory(root)
+  const generatedCredentialId =
     credentialValue === undefined
       ? undefined
-      : await installGeneratedCredential(repository, credentialValue, kind)
-  const selectedCredentialId = generatedCredential?.credentialId ?? credentialRef
+      : `credential-live-${kind}-${randomUUID().replaceAll('-', '')}`
+  const selectedCredentialId = generatedCredentialId ?? credentialRef
   if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
   const profile = profileFor({ kind, model, runner, provider })
   const profileFile = `profile-${kind}.json`
@@ -147,35 +199,71 @@ export async function prepareProductionWorkspace({
     updatedAt: now,
     lastHealth: { status: 'unknown' },
   }
-  await writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 })
-  await writeFile(
-    join(configDirectory, 'config.json'),
-    `${JSON.stringify(
-      {
-        format: 'braid-startup-config',
-        schemaVersion: 2,
-        databaseKeyFile,
-        profile: `profiles/${profileFile}`,
-        connectionId: connection.id,
-        connections: [connection],
+  let generatedCredential
+  try {
+    await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
+    await writeFile(databaseKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
+    await writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 })
+    await writeFile(
+      configPath,
+      `${JSON.stringify(
+        {
+          format: 'braid-startup-config',
+          schemaVersion: 2,
+          databaseKeyFile,
+          profile: `profiles/${profileFile}`,
+          connectionId: connection.id,
+          connections: [connection],
+        },
+        null,
+      )}\n`,
+      { mode: 0o600 },
+    )
+    generatedCredential =
+      credentialValue === undefined
+        ? undefined
+        : await installGeneratedCredential({
+            repository,
+            workspace,
+            configPath,
+            databaseKeyFile,
+            dataDirectory,
+            credentialId: generatedCredentialId,
+            value: credentialValue,
+            kind,
+            createCredentialContext: credentialContextFactory,
+          })
+    let cleaned = false
+    return {
+      root,
+      workspace,
+      configPath,
+      databaseKeyFile,
+      dataDirectory,
+      statePath: join(root, 'state.sqlite'),
+      connection,
+      profile,
+      endpoint: endpointEvidence(endpoint),
+      credentialConfigured: selectedCredentialId !== undefined,
+      environment: childEnvironment(environment, root, join(root, 'state.sqlite')),
+      cleanup: async () => {
+        if (cleaned) return
+        await generatedCredential?.remove()
+        await rm(root, { recursive: true, force: true })
+        cleaned = true
       },
-      null,
-    )}\n`,
-    { mode: 0o600 },
-  )
-  return {
-    root,
-    workspace,
-    statePath: join(root, 'state.sqlite'),
-    connection,
-    profile,
-    endpoint: endpointEvidence(endpoint),
-    credentialConfigured: selectedCredentialId !== undefined,
-    environment: childEnvironment(environment, root, join(root, 'state.sqlite')),
-    cleanup: async () => {
-      await generatedCredential?.remove().catch(() => undefined)
+    }
+  } catch (error) {
+    try {
+      await generatedCredential?.remove()
       await rm(root, { recursive: true, force: true })
-    },
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'The live workspace failed during setup and could not be cleaned up',
+      )
+    }
+    throw error
   }
 }
 

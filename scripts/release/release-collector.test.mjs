@@ -324,6 +324,13 @@ test('release children receive only credentials for their exact provider command
     BRAID_CLI_BRIDGE_URL: 'http://127.0.0.1:4010',
     BRAID_EVAL_API_KEY: 'eval-secret',
     BRAID_EVAL_BASE_URL: 'https://router.example/v1',
+    BRAID_TANGLE_API_KEY: 'tangle-secret',
+    BRAID_TANGLE_ENDPOINT: 'https://router.tangle.example',
+    BRAID_TANGLE_SANDBOX_API_KEY: 'sandbox-secret',
+    BRAID_ANALYSIS_API_KEY: 'analysis-secret',
+    BRAID_ANALYSIS_ENDPOINT: 'https://analysis.tangle.example',
+    BRAID_SUPERVISOR_ROOT: '/runtime-root',
+    BRAID_SUPERVISOR_ID: 'supervisor-1',
     BRAID_UPSTREAM_GITHUB_TOKEN: 'upstream-secret',
     GH_TOKEN: 'ambient-secret',
     NODE_OPTIONS: '--require=/tmp/inject.cjs',
@@ -339,6 +346,22 @@ test('release children receive only credentials for their exact provider command
   assert.equal(evaluation.BRAID_EVAL_API_KEY, 'eval-secret')
   assert.equal(evaluation.BRAID_EVAL_BASE_URL, 'https://router.example/v1')
   assert.equal(evaluation.BRAID_CLI_BRIDGE_BEARER, undefined)
+  assert.equal(evaluation.BRAID_TANGLE_API_KEY, undefined)
+  const tangle = releaseChildEnvironment(environment, 'pnpm test:live:tangle')
+  assert.equal(tangle.BRAID_TANGLE_API_KEY, 'tangle-secret')
+  assert.equal(tangle.BRAID_TANGLE_ENDPOINT, 'https://router.tangle.example')
+  assert.equal(tangle.BRAID_TANGLE_SANDBOX_API_KEY, 'sandbox-secret')
+  assert.equal(tangle.BRAID_ANALYSIS_API_KEY, undefined)
+  assert.equal(tangle.BRAID_SUPERVISOR_ROOT, undefined)
+  const analysis = releaseChildEnvironment(environment, 'pnpm test:live:analysis')
+  assert.equal(analysis.BRAID_ANALYSIS_API_KEY, 'analysis-secret')
+  assert.equal(analysis.BRAID_ANALYSIS_ENDPOINT, 'https://analysis.tangle.example')
+  assert.equal(analysis.BRAID_TANGLE_API_KEY, undefined)
+  const supervisor = releaseChildEnvironment(environment, 'pnpm test:live:supervisor')
+  assert.equal(supervisor.BRAID_SUPERVISOR_ROOT, '/runtime-root')
+  assert.equal(supervisor.BRAID_SUPERVISOR_ID, 'supervisor-1')
+  assert.equal(supervisor.BRAID_ANALYSIS_API_KEY, undefined)
+  assert.equal(supervisor.BRAID_TANGLE_API_KEY, undefined)
 })
 
 test('structured release capture handles split markers and rejects oversized marker lines', () => {

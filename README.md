@@ -15,13 +15,23 @@ Braid owns the conversation, transcript, branches, approvals, activity, graph, a
 
 The selected runner owns its native process and session, while `agent-runtime` owns admission, lifecycle, normalized events, and runtime control.
 
-![Braid routing a Product engineer AgentProfile through agent-runtime to Pi and GLM-5.2 over Local CLI Bridge, then answering a cited trace-analysis question](artifacts/demo/braid-live-pi.gif)
+![Braid using a Product engineer AgentProfile to fix code and run tests through agent-runtime, Local CLI Bridge, OpenCode, and GLM-5.2](artifacts/demo/braid-live-cli-bridge.gif)
 
-This recording uses the packed Braid source, Pi 0.83.0, GLM-5.2, and a local CLI Bridge.
+This recording shows a Braid terminal session captured from the working tree.
 
-Pi changes a real workspace and passes its tests before `/ask` analyzes the frozen run and returns cited findings.
+It opens the `Product engineer` AgentProfile, routes through `agent-runtime` and Local CLI Bridge, and runs OpenCode with GLM-5.2.
 
-The [capture manifest](artifacts/demo/braid-live-pi.json) records the exact route, profile, limits, usage, cost, latency, workspace checks, and artifact hashes.
+The user asks Braid to fix a failing JavaScript test.
+
+The session shows the source edit, test command, one passing test, and final response `Tests pass through Braid via CLI Bridge.`
+
+The [capture summary](artifacts/demo/braid-live-cli-bridge.json) records the displayed route, AgentProfile, final workspace state, test output, usage, latency, and image hashes.
+
+The terminal records 82,613 input tokens, 203 output tokens, one model call, and 27,710 ms of model latency.
+
+The [Pi and `/ask` recording](artifacts/demo/braid-live-pi.gif) shows a second real route followed by cited trace analysis.
+
+Its [capture manifest](artifacts/demo/braid-live-pi.json) records the exact route, profile, limits, usage, cost, latency, workspace checks, and artifact hashes.
 
 ## Product path
 

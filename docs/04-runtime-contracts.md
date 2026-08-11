@@ -377,6 +377,10 @@ Tangle sandbox records provider sandbox identity, lifecycle, cleanup, continuity
 
 The current Tangle sandbox path is deleted after each turn and rejects session continuation.
 
+If that ephemeral path requests approval, an answer, or a plan decision, Braid fails the turn with an unsupported-interaction explanation.
+
+Braid does not display a resumable interaction after its environment is deleted.
+
 The platform supports retained sandboxes, but Runtime does not yet expose safe retained identity and recovery to Braid.
 
 The observation record never contains API keys, bearer tokens, SSH credentials, secret values, credential-bearing URLs, Docker host strings, or internal listener addresses.

@@ -10,6 +10,7 @@ import {
   type SandboxClientFactoryInput,
 } from '../src/adapters/connections/production-connections.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
 import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
@@ -17,8 +18,11 @@ import {
 } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry, mergeConnectionTelemetry } from '../src/app/connections.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
+import { BRAID_SANDBOX_INTERACTION_UNSUPPORTED } from '../src/domain/runtime-diagnostics.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { ExecuteTurnInput } from '../src/ports/execution.js'
 
@@ -319,8 +323,19 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox')
   await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  let sandboxCreateOptions: Readonly<Record<string, unknown>> | undefined
   const clientFactory = async (_input: SandboxClientFactoryInput) => ({
-    create: async () => ({ id: 'sandbox-test', streamPrompt: async function* () {} }),
+    create: async (options?: Readonly<Record<string, unknown>>) => {
+      sandboxCreateOptions = options
+      return {
+        id: 'sandbox-test',
+        async *streamPrompt() {
+          yield { type: 'text', data: { text: 'hello from sandbox' } }
+          yield { type: 'result', data: { text: 'hello from sandbox' } }
+        },
+        async delete() {},
+      }
+    },
   })
   const options: ProductionBackendResolverOptions = {
     connections: new ConnectionRegistry([bridge, sandbox]),
@@ -348,7 +363,36 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   assert.equal(sandboxBackend.kind, 'prepared-execution')
   assert.equal(sandboxBackend.materializationReceipt.runner, 'opencode')
   assert.equal(sandboxBackend.materializationReceipt.model, 'openai/gpt-5')
+  assert.equal(Object.hasOwn(sandboxBackend.materializationReceipt, 'idempotencyKey'), false)
+  assert.equal(
+    sandboxBackend.materializationReceipt.environmentRequestDigest,
+    canonicalDigest({
+      kind: 'tangle-sandbox-environment-request',
+      idempotencyKey: 'env-braid-run-connection-test',
+    }),
+  )
   assert.deepEqual(sandboxBackend.backend.profile, profile())
+  const sandboxEvents = []
+  for await (const event of streamAgentTurn(sandboxBackend.backend, 'say hello')) {
+    sandboxEvents.push(event)
+  }
+  const sandboxTerminal = sandboxEvents.at(-1)
+  assert.equal(sandboxTerminal?.type, 'final')
+  assert.equal(sandboxTerminal?.type === 'final' ? sandboxTerminal.status : undefined, 'completed')
+  assert.equal(
+    sandboxTerminal?.type === 'final' ? sandboxTerminal.text : undefined,
+    'hello from sandbox',
+  )
+  assert.equal(Object.hasOwn(sandboxCreateOptions ?? {}, 'providerOptions'), false)
+  assert.equal(sandboxCreateOptions?.idempotencyKey, 'env-braid-run-connection-test')
+  assert.equal(
+    (sandboxCreateOptions?.backend as { readonly type?: unknown } | undefined)?.type,
+    'opencode',
+  )
+  assert.deepEqual(
+    (sandboxCreateOptions?.backend as { readonly profile?: unknown } | undefined)?.profile,
+    profile(),
+  )
 
   await assert.rejects(
     () =>
@@ -360,6 +404,199 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
       /harness=claude-code.*model=openai\/gpt-4o.*not changed/iu.test(error.message),
   )
+})
+
+test('sandbox success=false fails closed despite a conflicting success status', async () => {
+  const sandbox = connection('tangle-sandbox', 'failed-turn', 'https://sandbox.test', true)
+  const credentials = new MemoryCredentialStore()
+  const portRef = credentialRef('cred:v1:sandbox-failed-turn')
+  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  let deleted = 0
+  const options: ProductionBackendResolverOptions = {
+    connections: new ConnectionRegistry([sandbox]),
+    credentials,
+    credentialRefResolver: () => portRef,
+    sandboxClientFactory: async () => ({
+      create: async () => ({
+        id: 'sandbox-failed-turn',
+        async *streamPrompt() {
+          yield {
+            type: 'llm_call',
+            data: { tokensIn: 17, tokensOut: 3, costUsd: 0.004 },
+          }
+          yield {
+            type: 'done',
+            data: {
+              status: 'success',
+              success: false,
+              error: 'provider rejected token=do-not-persist',
+            },
+          }
+        },
+        async delete() {
+          deleted += 1
+        },
+      }),
+    }),
+    select: () => ({ connection: { connectionId: sandbox.id } }),
+  }
+  const input = turnInput(profile())
+  const execution = new AgentRuntimeExecutionPort(createProductionBackendResolver(options))
+  const events = []
+  for await (const event of execution.streamTurn(input)) events.push(event)
+  const terminal = events.at(-1)
+
+  assert.equal(terminal?.type, 'final')
+  if (terminal?.type !== 'final') assert.fail('missing terminal event')
+  assert.equal(terminal.status, 'failed')
+  assert.match(terminal.reason, /\[redacted secret\]/u)
+  assert.doesNotMatch(terminal.reason, /do-not-persist/u)
+  const tokenUsage = terminal.metadata?.tokenUsage as
+    | { readonly input?: unknown; readonly output?: unknown }
+    | undefined
+  assert.equal(tokenUsage?.input, 17)
+  assert.equal(tokenUsage?.output, 3)
+  assert.equal(terminal.metadata?.costUsd, 0.004)
+  assert.equal(deleted, 1)
+})
+
+test('ephemeral sandboxes reject interactions that cannot survive cleanup', async (suite) => {
+  for (const [status, label] of [
+    ['blocked_on_approval', 'approval'],
+    ['awaiting_question', 'question'],
+    ['awaiting_plan_decision', 'plan decision'],
+  ] as const) {
+    await suite.test(label, async () => {
+      const sandbox = connection(
+        'tangle-sandbox',
+        `unsupported-${status}`,
+        'https://sandbox.test',
+        true,
+      )
+      const credentials = new MemoryCredentialStore()
+      const portRef = credentialRef(`cred:v1:sandbox-${status}`)
+      await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+      let deleted = 0
+      const options: ProductionBackendResolverOptions = {
+        connections: new ConnectionRegistry([sandbox]),
+        credentials,
+        credentialRefResolver: () => portRef,
+        sandboxClientFactory: async () => ({
+          create: async () => ({
+            id: `sandbox-${status}`,
+            async *streamPrompt() {
+              if (status === 'blocked_on_approval') {
+                yield {
+                  type: 'result',
+                  data: {
+                    success: false,
+                    toolInvocations: [
+                      {
+                        toolName: 'github_create_issue',
+                        isError: true,
+                        result: { error: { code: 'HUB_APPROVAL_REQUIRED' } },
+                      },
+                    ],
+                  },
+                }
+              } else if (status === 'awaiting_question') {
+                yield {
+                  type: 'interaction',
+                  data: {
+                    request: { id: 'question-1', kind: 'question', answerSpec: { fields: [] } },
+                  },
+                }
+                yield { type: 'result', data: { finalText: '' } }
+              } else {
+                yield {
+                  type: 'result',
+                  data: {
+                    plan: {
+                      id: 'plan-1',
+                      revision: 1,
+                      body: 'Inspect the workspace',
+                      submittedAt: at,
+                    },
+                  },
+                }
+              }
+            },
+            async delete() {
+              deleted += 1
+            },
+          }),
+        }),
+        select: () => ({ connection: { connectionId: sandbox.id } }),
+      }
+      const execution = new AgentRuntimeExecutionPort(createProductionBackendResolver(options))
+      const input = turnInput(profile())
+      const events = []
+      for await (const event of execution.streamTurn(input)) events.push(event)
+      const terminal = events.at(-1)
+
+      assert.equal(terminal?.type, 'final')
+      if (terminal?.type !== 'final') assert.fail('missing terminal event')
+      assert.equal(terminal.status, 'failed')
+      assert.equal(terminal.reason, BRAID_SANDBOX_INTERACTION_UNSUPPORTED)
+      const projected = providerEventFor(input.runId, terminal, {
+        eventId: `event-${status}`,
+        providerSequence: 1,
+      })
+      assert.equal(projected.kind, 'run.finished')
+      if (projected.kind !== 'run.finished') assert.fail('missing projected terminal event')
+      assert.equal(
+        projected.reason,
+        'Sandbox requested user interaction, but this ephemeral route cannot retain and resume the environment',
+      )
+      assert.equal(projected.error, BRAID_SANDBOX_INTERACTION_UNSUPPORTED)
+      assert.equal(deleted, 1)
+    })
+  }
+})
+
+test('sandbox creation receives the Runtime abort signal', { timeout: 2_000 }, async () => {
+  const sandbox = connection('tangle-sandbox', 'create-abort', 'https://sandbox.test', true)
+  const credentials = new MemoryCredentialStore()
+  const portRef = credentialRef('cred:v1:sandbox-create-abort')
+  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  let createStarted: (() => void) | undefined
+  const started = new Promise<void>((resolve) => {
+    createStarted = resolve
+  })
+  let createSignal: AbortSignal | undefined
+  const options: ProductionBackendResolverOptions = {
+    connections: new ConnectionRegistry([sandbox]),
+    credentials,
+    credentialRefResolver: () => portRef,
+    sandboxClientFactory: async () => ({
+      create: async (_options, requestOptions) => {
+        createSignal = requestOptions?.signal
+        createStarted?.()
+        return new Promise((_resolve, reject) => {
+          const abort = () => reject(new DOMException('create aborted', 'AbortError'))
+          if (createSignal?.aborted) abort()
+          else createSignal?.addEventListener('abort', abort, { once: true })
+        })
+      },
+    }),
+    select: () => ({ connection: { connectionId: sandbox.id } }),
+  }
+  const controller = new AbortController()
+  const input = { ...turnInput(profile()), signal: controller.signal }
+  const execution = new AgentRuntimeExecutionPort(createProductionBackendResolver(options))
+  const eventsPromise = (async () => {
+    const events = []
+    for await (const event of execution.streamTurn(input)) events.push(event)
+    return events
+  })()
+
+  await started
+  controller.abort(new Error('user stopped startup'))
+  const events = await eventsPromise
+  const terminal = events.at(-1)
+  assert.equal(createSignal?.aborted, true)
+  assert.equal(terminal?.type, 'final')
+  assert.equal(terminal?.type === 'final' ? terminal.status : undefined, 'aborted')
 })
 
 test('CLI Bridge materializes portable models into routes and rejects incompatible runners', async () => {

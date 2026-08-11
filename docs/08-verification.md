@@ -482,6 +482,12 @@ The live Tangle sandbox check records sandbox account totals separately from per
 
 It marks physical machine IP, effective allocation, and per-sandbox CPU, RAM, and storage cost unavailable unless the live provider reports them.
 
+A sandbox `error` or failed terminal event must keep the Braid run failed while preserving measured usage and confirmed deletion.
+
+A Runtime abort must reach any pending sandbox create request and settle the Braid run as aborted.
+
+These checks guard [agent-runtime issue 781](https://github.com/tangle-network/agent-runtime/issues/781) and [agent-runtime issue 782](https://github.com/tangle-network/agent-runtime/issues/782).
+
 ## Reliability and recovery matrix
 
 | Failure point | Required result |
@@ -529,6 +535,12 @@ Pre-publication validation checks the candidate before the release key exists in
 After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64, macOS arm64, and Windows x64.
 
 The final process validates those six records, adds their immutable JSON artifacts to `VR-10`, then writes `<version>/manifest.json` and `<version>/report.md` below the external artifact directory.
+
+The report counts passed, failed, unavailable, uncaptured, and unrecognized check results separately.
+
+Each report row includes its exact result.
+
+The requirement total counts only rows backed by passed checks and present artifacts.
 
 A separate job that checks out no source and executes no package code computes a complete file index and signs a fixed-format candidate or final endorsement with Ed25519.
 
@@ -658,6 +670,12 @@ When cancellation is unavailable, the live driver checks the rejected control ag
 Tangle, supervisor, and live-analysis commands return a typed unavailable result until protected credentials, deployments, and evidence stores are supplied.
 
 The release workflow uses `pnpm release:prepare`, `pnpm release:collect`, and `pnpm verify:candidate` before publication.
+
+The candidate job supplies Bridge, eval, Tangle, analysis, and supervisor settings only to the complete release-check step.
+
+Inference, sandbox, and analysis use separate GitHub environment secrets.
+
+Endpoints, models, providers, runners, and supervisor identifiers remain environment variables.
 
 After publication it uses `pnpm release:record-publication` and `pnpm verify:release`; these workflow commands are not additional check records.
 
