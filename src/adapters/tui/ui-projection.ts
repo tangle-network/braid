@@ -47,7 +47,11 @@ const ALL_PROTOCOL_INTERACTION_OUTCOMES = [
 export function statusFor(state: BraidState): ViewStatus {
   if (state.activeRunId) {
     const active = state.runs.find((run) => run.id === state.activeRunId)
-    return active?.status === 'cancelling' ? 'cancelling' : 'running'
+    if (active?.status === 'cancelling') return 'cancelling'
+    if (active?.status === 'reconnecting') return 'reconnecting'
+    if (active?.status === 'starting') return 'starting'
+    if (active?.status === 'blocked') return 'waiting'
+    return 'running'
   }
   const status = state.runs.at(-1)?.status
   if (!status) return state.messages.length === 0 ? 'empty' : 'ready'
@@ -60,10 +64,20 @@ export function statusFor(state: BraidState): ViewStatus {
       return 'cancelled'
     case 'blocked':
       return 'waiting'
+    case 'starting':
+      return 'starting'
     case 'streaming':
       return 'running'
+    case 'reconnecting':
+      return 'reconnecting'
     case 'cancelling':
       return 'cancelling'
+    case 'detached':
+      return 'detached'
+    case 'cancelled':
+      return 'cancelled'
+    case 'expired':
+      return 'expired'
     case 'unknown':
       return 'unknown'
     default:
@@ -72,7 +86,13 @@ export function statusFor(state: BraidState): ViewStatus {
 }
 
 function statusForRun(state: BraidState, run: BraidState['runs'][number]): ViewStatus {
-  if (state.activeRunId === run.id) return run.status === 'cancelling' ? 'cancelling' : 'running'
+  if (state.activeRunId === run.id) {
+    if (run.status === 'cancelling') return 'cancelling'
+    if (run.status === 'reconnecting') return 'reconnecting'
+    if (run.status === 'starting') return 'starting'
+    if (run.status === 'blocked') return 'waiting'
+    return 'running'
+  }
   switch (run.status) {
     case 'completed':
       return 'completed'
@@ -82,8 +102,20 @@ function statusForRun(state: BraidState, run: BraidState['runs'][number]): ViewS
       return 'cancelled'
     case 'blocked':
       return 'waiting'
+    case 'starting':
+      return 'starting'
     case 'streaming':
       return 'running'
+    case 'reconnecting':
+      return 'reconnecting'
+    case 'cancelling':
+      return 'cancelling'
+    case 'detached':
+      return 'detached'
+    case 'cancelled':
+      return 'cancelled'
+    case 'expired':
+      return 'expired'
     default:
       return 'unknown'
   }

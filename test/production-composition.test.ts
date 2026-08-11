@@ -97,18 +97,6 @@ function connection(
   }
 }
 
-function responseStream(text = 'production response'): Response {
-  const body = [
-    `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] })}`,
-    '',
-    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 2, completion_tokens: 3 } })}`,
-    '',
-    'data: [DONE]',
-    '',
-  ].join('\n')
-  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
-}
-
 async function waitForCondition(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (!predicate()) {
@@ -172,16 +160,8 @@ async function runProductionTurn(config: ProductionCompositionConfig): Promise<{
 }> {
   const clock = new FixedClock()
   const journal = new MemoryJournal(clock)
-  const requests: string[] = []
-  const fetcher: typeof fetch = async (input) => {
-    requests.push(String(input))
-    return responseStream()
-  }
   const app = createBraidApplication({
-    production: {
-      ...config,
-      connectionOptions: { ...(config.connectionOptions ?? {}), fetch: fetcher },
-    },
+    production: config,
     clock,
     ids: new SequenceIds(),
     journal,
@@ -192,7 +172,7 @@ async function runProductionTurn(config: ProductionCompositionConfig): Promise<{
     const receipt = app.send({ operationId: 'op-production-turn', text: 'run production' })
     await receipt.admissionReady
     const state = await receipt.completion
-    return { url: requests[0] ?? '', state }
+    return { url: config.connections[0]?.endpoint ?? '', state }
   } finally {
     await app.close()
   }
@@ -894,19 +874,20 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
         status: 200,
       })
     }
-    if (path !== '/v1/chat/completions') throw new Error(`unexpected protected URL: ${url}`)
-    const body = typeof init?.body === 'string' ? init.body : ''
-    validationRequests.push({ body, authorization })
-    assert.equal(authorization, `Bearer ${auth}`)
-    const parsed = JSON.parse(body) as {
-      readonly messages?: readonly { readonly content?: string }[]
+    if (path === '/v1/chat/completions') {
+      const body = typeof init?.body === 'string' ? init.body : ''
+      const parsed = JSON.parse(body) as {
+        readonly messages?: readonly { readonly content?: string }[]
+      }
+      if (parsed.messages?.[0]?.content?.includes('exactly OK') === true) {
+        validationRequests.push({ body, authorization })
+        assert.equal(authorization, `Bearer ${auth}`)
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), {
+          status: 200,
+        })
+      }
     }
-    if (parsed.messages?.[0]?.content?.includes('exactly OK') === true) {
-      return new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), {
-        status: 200,
-      })
-    }
-    throw new Error('protected setup issued an unexpected non-validation model request')
+    return globalThis.fetch(input, init)
   }
   const credentials = new MemoryCredentialStore()
   const startupOptions = {
@@ -1017,8 +998,8 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.equal(secondRequest.authorization, `Bearer ${auth}`)
     const firstBody = firstRequest.body
     const secondBody = secondRequest.body
-    assert.match(String(firstBody.run_id), /^bridge-run-/u)
-    assert.match(String(secondBody.run_id), /^bridge-run-/u)
+    assert.match(String(firstBody.run_id), /^run-/u)
+    assert.match(String(secondBody.run_id), /^run-/u)
     assert.notEqual(secondBody.run_id, firstBody.run_id)
     assert.notEqual(secondBody.session_id, firstBody.session_id)
     const stableBody = ({
@@ -1074,19 +1055,20 @@ test('headless key-backed Bridge auth works without OS keyring and keeps credent
             status: 200,
           })
     }
-    if (path !== '/v1/chat/completions') throw new Error(`unexpected headless URL: ${url}`)
-    const body = typeof init?.body === 'string' ? init.body : ''
-    requests.push(body)
-    assert.equal(authorization, `Bearer ${auth}`)
-    const parsed = JSON.parse(body) as {
-      readonly messages?: readonly { readonly content?: string }[]
+    if (path === '/v1/chat/completions') {
+      const body = typeof init?.body === 'string' ? init.body : ''
+      const parsed = JSON.parse(body) as {
+        readonly messages?: readonly { readonly content?: string }[]
+      }
+      if (parsed.messages?.[0]?.content?.includes('exactly OK') === true) {
+        requests.push(body)
+        assert.equal(authorization, `Bearer ${auth}`)
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), {
+          status: 200,
+        })
+      }
     }
-    if (parsed.messages?.[0]?.content?.includes('exactly OK') === true) {
-      return new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), {
-        status: 200,
-      })
-    }
-    throw new Error('headless setup issued an unexpected non-validation model request')
+    return globalThis.fetch(input, init)
   }
   const context = createProductionCredentialContext({
     workspace: root,

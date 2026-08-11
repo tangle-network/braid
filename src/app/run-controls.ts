@@ -63,6 +63,7 @@ export async function steerRun(
     control: 'steer',
     text: input.text,
     ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
   }
   return control(context, request, 'steer')
 }
@@ -87,6 +88,7 @@ export async function cancelRun(
     runId: run.id,
     control: 'cancel',
     ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
     ...(input.reason === undefined ? {} : { reason: input.reason }),
   }
   const receipt = await control(context, request, 'cancel', input.terminalStatus ?? 'cancelled')
@@ -109,6 +111,7 @@ export async function detachRun(
     runId: run.id,
     control: 'detach',
     ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
     ...(run.lastCursor === undefined ? {} : { cursor: run.lastCursor }),
   }
   return control(context, request, 'detach')

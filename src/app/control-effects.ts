@@ -87,6 +87,10 @@ async function dispatchControl(
         await execution.cancelRun({
           runId: request.runId,
           operationId: request.operationId,
+          ...(request.providerSessionId === undefined
+            ? {}
+            : { providerSessionId: request.providerSessionId }),
+          ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
           signal,
           ...(request.reason === undefined ? {} : { reason: request.reason }),
         }),
@@ -105,6 +109,10 @@ async function dispatchControl(
     return execution.detachRun({
       runId: request.runId,
       operationId: request.operationId,
+      ...(request.providerSessionId === undefined
+        ? {}
+        : { providerSessionId: request.providerSessionId }),
+      ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
       signal,
       ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
     })
@@ -120,7 +128,13 @@ async function reconcileControl(
   if (request.control === 'steer' || !execution.status) return undefined
   let snapshot: ProviderRunSnapshot | null
   try {
-    snapshot = await execution.status({ runId: request.runId })
+    snapshot = await execution.status({
+      runId: request.runId,
+      ...(request.providerSessionId === undefined
+        ? {}
+        : { providerSessionId: request.providerSessionId }),
+      ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
+    })
   } catch {
     return undefined
   }

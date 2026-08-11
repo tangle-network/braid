@@ -117,10 +117,12 @@ export function usageFromMetadata(metadata: Record<string, unknown> | undefined)
   const estimatedCostUsd = optionalFiniteNonNegativeNumber(metadata?.estimatedCostUsd)
   const promptCache = safePromptCache(metadata?.promptCache)
   const latencyMs = optionalFiniteNonNegativeNumber(metadata?.latencyMs)
+  const calls = optionalModelRequestCount(metadata?.llmCalls)
   const model = safePublicIdentifier(metadata?.model)
   return {
     input,
     output,
+    ...(calls === undefined ? {} : { calls }),
     ...(tokensKnown ? {} : { tokensKnown: false }),
     ...(reasoning === undefined ? {} : { reasoning }),
     ...(costUsd === undefined ? {} : { costUsd }),
@@ -144,6 +146,7 @@ function usageFromLlm(event: Extract<RuntimeStreamEvent, { type: 'llm_call' }>):
   return {
     input: finiteNonNegativeNumber(event.tokensIn),
     output: finiteNonNegativeNumber(event.tokensOut),
+    calls: 1,
     ...(tokensKnown ? {} : { tokensKnown: false }),
     ...(costUsd === undefined ? {} : { costUsd }),
     ...(usdKnown ? {} : { usdKnown: false }),
@@ -152,6 +155,10 @@ function usageFromLlm(event: Extract<RuntimeStreamEvent, { type: 'llm_call' }>):
     ...(latencyMs === undefined ? {} : { latencyMs }),
     ...(model === undefined ? {} : { model }),
   }
+}
+
+function optionalModelRequestCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
 
 function safePromptCache(value: unknown): Readonly<Record<string, number>> | undefined {
@@ -462,6 +469,9 @@ export function providerEventFor(
         kind: 'run.environment.observed',
         runId,
         observation: safeValue(event.observation) as ExecutionEnvironmentObservation,
+        ...(event.controlRef === undefined
+          ? {}
+          : { controlRef: structuredClone(event.controlRef) }),
         provider,
       }
     case 'unknown':

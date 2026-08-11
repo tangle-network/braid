@@ -274,7 +274,7 @@ function usageGroup(
     (value) => String(Math.round(value)),
   )
   const latency = measurementMetric(
-    'model',
+    'latency',
     usage.llmLatencyMs,
     usage.latencyStatus,
     usage.unknownLatencySources,

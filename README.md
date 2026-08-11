@@ -15,19 +15,31 @@ Braid owns the conversation, transcript, branches, approvals, activity, graph, a
 
 The selected runner owns its native process and session, while `agent-runtime` owns admission, lifecycle, normalized events, and runtime control.
 
-![Braid using a Product engineer AgentProfile to fix code and run tests through agent-runtime, Local CLI Bridge, OpenCode, and GLM-5.2](artifacts/demo/braid-live-cli-bridge.gif)
+![Braid using a GLM reviewer AgentProfile through agent-runtime, Local CLI Bridge, Pi, and GLM-5.2, then opening the exact retained-run activity](artifacts/demo/braid-live-cli-bridge.gif)
 
-This recording shows a Braid terminal session captured from the working tree.
+This 13-second recording comes from a clean install of a freshly packed `@tangle-network/braid@0.1.0` artifact.
 
-It opens the `Product engineer` AgentProfile, routes through `agent-runtime` and Local CLI Bridge, and runs OpenCode with GLM-5.2.
+The installed artifact resolves `agent-runtime@0.132.0` and the CLI Bridge provider at `0.6.0` from npm.
 
-The user asks Braid to fix a failing JavaScript test.
+It restores the `Braid live GLM reviewer` AgentProfile and its retained Pi session through Local CLI Bridge.
 
-The session shows the source edit, test command, one passing test, and final response `Tests pass through Braid via CLI Bridge.`
+The user asks Braid to make a generated JavaScript CLI independent of an incompatible parent package configuration.
 
-The [capture summary](artifacts/demo/braid-live-cli-bridge.json) records the displayed route, AgentProfile, final workspace state, test output, usage, latency, and image hashes.
+Braid fixes the project, runs `node --test`, and reports 11 tests passed with zero failures.
 
-The terminal records 82,613 input tokens, 203 output tokens, one model call, and 27,710 ms of model latency.
+The user then types `/activity` and opens the retained run receipt.
+
+The receipt shows the AgentProfile, Pi runner, Local CLI Bridge connection, execution environment, provider session, exact GLM-5.2 route, thinking level, tokens, model calls, and measurement completeness.
+
+The run used 28,949 input tokens, 1,943 output tokens, and five model calls.
+
+Cost and model latency remain `unknown` because this route did not report them.
+
+An independent Node process reran all 11 tests successfully.
+
+A fresh Braid process then restored the same run and transcript from encrypted state and exited with code zero.
+
+The [capture summary](artifacts/demo/braid-live-cli-bridge.json) records the package hash, route, retained identifiers, independent test output, restart result, and artifact hashes.
 
 The [Pi and `/ask` recording](artifacts/demo/braid-live-pi.gif) shows a second real route followed by cited trace analysis.
 
@@ -58,11 +70,16 @@ Braid does not implement another agent loop, spawn runner processes directly, pa
 
 A concrete local route is `AgentProfile` with `harness: 'pi'` → Braid admission → `agent-runtime` → a CLI Bridge connection → Pi → normalized events back to Braid.
 
-## Install from source
+## Install
 
-Braid is currently source-installable and is not presented as a published registry package.
+Braid requires Node.js 22.19 or newer.
 
-It requires Node.js 22.19 or newer and pnpm 11.18.
+```bash
+npm install --global @tangle-network/braid
+braid
+```
+
+To build Braid from source, use pnpm 11.18.
 
 ```bash
 git clone https://github.com/tangle-network/braid.git
@@ -70,7 +87,7 @@ cd braid
 corepack enable
 pnpm install --frozen-lockfile
 pnpm build
-node dist/bin/braid.js
+pnpm exec braid
 ```
 
 The first-run flow selects an `AgentProfile` and a connection without requiring a hand-written runner configuration file.
@@ -78,7 +95,7 @@ The first-run flow selects an `AgentProfile` and a connection without requiring 
 For an offline deterministic terminal walkthrough, use the explicit fixture mode.
 
 ```bash
-node dist/bin/braid.js --fixture deterministic
+braid --fixture deterministic
 ```
 
 The fixture proves Braid rendering and state transitions only.
@@ -187,20 +204,20 @@ Interactive mode is the full-screen terminal experience with a multiline compose
 Use inline mode when preserving normal terminal scrollback matters.
 
 ```bash
-node dist/bin/braid.js
-node dist/bin/braid.js --inline
+braid
+braid --inline
 ```
 
 Headless mode is the same application core behind JSON Lines commands and state records.
 
 ```bash
-node dist/bin/braid.js rpc
+braid rpc
 ```
 
 Use plain mode for a readable non-interactive event stream without terminal control sequences.
 
 ```bash
-node dist/bin/braid.js --plain
+braid --plain
 ```
 
 The terminal and JSONL interfaces share command parsing, capability checks, operation identifiers, reducers, persistence, execution ports, and view projections.

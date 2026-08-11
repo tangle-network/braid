@@ -10,6 +10,8 @@ export async function reconnectRun(
   input: ReconnectInput,
 ): Promise<BraidState> {
   const run = context.findRun(input.runId)
+  if (context.isTerminal(run.status) && run.status !== 'unknown')
+    return structuredClone(context.currentState())
   if (
     !run.capabilities.streaming.replay ||
     !run.capabilities.events.cursor ||
@@ -32,6 +34,9 @@ export async function reconnectRun(
     for await (const envelope of context.execution.reconnect({
       runId: run.id,
       ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
+      afterSequence: run.lastProviderSequence,
+      ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+      ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
       signal: abort.signal,
     })) {
       const result = await context.ingestRuntimeEvent(envelope)
@@ -69,7 +74,11 @@ export async function reconcileRun(
   }
   let snapshot: ProviderRunSnapshot | null
   try {
-    snapshot = await context.execution.status({ runId: run.id })
+    snapshot = await context.execution.status({
+      runId: run.id,
+      ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+      ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+    })
   } catch (error) {
     if (!context.isTerminal(run.status))
       await context.commitAndWait({

@@ -232,11 +232,13 @@ async function dispatchSupervisorQuery(
     return unavailable('Supervisor snapshots require an initialized workspace')
   }
   try {
+    const hadSavedSupervision =
+      context.app.state().supervisors.length > 0 || context.app.state().workers.length > 0
     const projection =
       command === 'snapshot'
         ? await context.app.intelligence.supervisor.snapshot(root)
         : await context.app.intelligence.supervisor.reconnect(root)
-    if (projection.raw.supervisors.length === 0) {
+    if (projection.raw.supervisors.length === 0 && hadSavedSupervision) {
       return unavailable('The runtime returned no supervisor snapshot for this workspace')
     }
     return accepted(context.app, supervisorData(projection))

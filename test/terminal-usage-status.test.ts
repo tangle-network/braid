@@ -17,15 +17,15 @@ test('terminal usage keeps direct, analysis, and worker measurements separate an
   const metrics = metricsFor(view)
 
   assert.deepEqual(metrics, [
-    'turns in ≥10 · out ≥20 · ≥$0.0100 · calls ≥2 (+1 missing) · model ≥120ms (+1 missing)',
-    'analysis usage unknown · cost unknown · calls unknown (1 missing) · model unknown (1 missing)',
-    'workers in 0 · out 0 · $0.0000 · calls 0 · model 0ms',
+    'turns in ≥10 · out ≥20 · ≥$0.0100 · calls ≥2 (+1 missing) · latency ≥120ms (+1 missing)',
+    'analysis usage unknown · cost unknown · calls unknown (1 missing) · latency unknown (1 missing)',
+    'workers in 0 · out 0 · $0.0000 · calls 0 · latency 0ms',
   ])
 
   const context = activityDocument(view).context ?? ''
-  assert.match(context, /turns .*calls ≥2 \(\+1 missing\).*model ≥120ms \(\+1 missing\)/u)
-  assert.match(context, /analysis .*calls unknown \(1 missing\).*model unknown \(1 missing\)/u)
-  assert.match(context, /workers .*calls 0.*model 0ms/u)
+  assert.match(context, /turns .*calls ≥2 \(\+1 missing\).*latency ≥120ms \(\+1 missing\)/u)
+  assert.match(context, /analysis .*calls unknown \(1 missing\).*latency unknown \(1 missing\)/u)
+  assert.match(context, /workers .*calls 0.*latency 0ms/u)
 })
 
 test('terminal chrome keeps telemetry out of narrow layouts', () => {

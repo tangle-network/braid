@@ -15,7 +15,10 @@ export function applyExecutionObservation(
 ): BraidState {
   const run = state.runs.find((candidate) => candidate.id === event.runId)
   if (run === undefined) return state
-  const progressedRun = withProviderProgress(run, event.provider)
+  const progressedRun = {
+    ...withProviderProgress(run, event.provider),
+    ...(event.controlRef === undefined ? {} : { controlRef: structuredClone(event.controlRef) }),
+  }
   const workspaceId =
     state.conversations.find((candidate) => candidate.id === run.conversationId)?.workspaceId ??
     state.workspaceId

@@ -63,6 +63,7 @@ const scopeFiles = {
     'analysis-model-call-roundtrip.test.js',
     'application.test.js',
     'cli-bridge-profile-contract.test.js',
+    'cli-bridge-retained-restart.test.js',
     'conversations.test.js',
     'coordination.test.js',
     'domain-invariants.test.js',
@@ -75,6 +76,7 @@ const scopeFiles = {
   ],
   coordination: [
     'analysis-durable.test.js',
+    'cli-bridge-retained-restart.test.js',
     'coordination.test.js',
     'effect-admission.test.js',
     'run-admission-architecture.test.js',
@@ -129,6 +131,7 @@ const scopeFiles = {
     'w6-contract.test.js',
   ],
   crash: [
+    'cli-bridge-retained-restart.test.js',
     'conversation-storage.test.js',
     'profile-save-recovery.test.js',
     'storage-crash.test.js',

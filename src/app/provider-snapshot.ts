@@ -22,6 +22,10 @@ export function safeSnapshotUsage(
 ): TurnUsage {
   if (usage === undefined) return fallback
   const reasoning = optionalFiniteNonNegativeNumber(usage.reasoning)
+  const calls =
+    typeof usage.calls === 'number' && Number.isSafeInteger(usage.calls) && usage.calls >= 0
+      ? usage.calls
+      : undefined
   const costUsd = optionalFiniteNonNegativeNumber(usage.costUsd)
   const estimatedCostUsd = optionalFiniteNonNegativeNumber(usage.estimatedCostUsd)
   const latencyMs = optionalFiniteNonNegativeNumber(usage.latencyMs)
@@ -34,6 +38,7 @@ export function safeSnapshotUsage(
   return {
     input: finiteNonNegativeNumber(usage.input),
     output: finiteNonNegativeNumber(usage.output),
+    ...(calls === undefined ? {} : { calls }),
     ...(usage.tokensKnown === false ? { tokensKnown: false } : {}),
     ...(reasoning === undefined ? {} : { reasoning }),
     ...(costUsd === undefined ? {} : { costUsd }),

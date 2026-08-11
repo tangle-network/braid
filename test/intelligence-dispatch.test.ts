@@ -375,6 +375,28 @@ test('worker steering resolves the public Braid ids back to exact runtime ids', 
   await app.close()
 })
 
+test('an empty live supervisor snapshot is normal before any worker activity exists', async () => {
+  const raw = { ...supervisionSnapshot([]), supervisors: [] }
+  const watcher = new RuntimeSupervisorWatcher(() => raw)
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: { supervisorWatcher: watcher },
+  })
+  const controller = createApplicationUiController(app)
+  await controller.initialize('/workspace')
+
+  const result = await controller.dispatch({ type: 'refresh-supervision' })
+
+  assert.equal(result.kind, 'accepted')
+  assert.deepEqual(result.kind === 'accepted' ? result.data : undefined, {
+    supervisors: [],
+    workers: [],
+    graphNodes: [],
+    graphEdges: [],
+  })
+  await app.close()
+})
+
 test('the terminal opens saved ask and comparison results instead of reducing them to notices', async () => {
   const app = createTestApplication()
   const baselineRunId = await createCompletedRun(app, 'terminal baseline')

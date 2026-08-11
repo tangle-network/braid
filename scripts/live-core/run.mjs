@@ -97,6 +97,7 @@ function turnEvidence(turn) {
 async function packInstall(root) {
   const packageRoot = join(root, 'package')
   const installRoot = join(root, 'install')
+  await exec('pnpm', ['run', 'build'], { cwd: repository })
   const { stdout } = await exec('pnpm', ['pack', '--pack-destination', packageRoot], {
     cwd: repository,
   })

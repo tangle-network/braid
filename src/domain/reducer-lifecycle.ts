@@ -296,7 +296,6 @@ function reduceRequestedRun(
     outputTokens: 0,
     tokensKnown: false,
     usdKnown: false,
-    llmCalls: 0,
     complete: false,
     startedAt: occurredAt,
     updatedAt: occurredAt,

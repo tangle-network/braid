@@ -578,6 +578,27 @@ test('one searchable selector preserves query and supports keyboard selection', 
   assert.equal(cancelled, true)
 })
 
+test('searching a selector resets stale navigation to the best match', () => {
+  let selected = ''
+  const selector = new SearchableSelector({
+    title: 'commands',
+    items: [
+      { value: 'quit', label: '/quit', description: 'exit Braid' },
+      { value: 'queue', label: '/queue', description: 'queue input' },
+    ],
+    theme,
+    onSelect: (item) => {
+      selected = item.value
+    },
+    onCancel: () => {},
+  })
+  selector.handleInput('\u001b[B')
+  assert.equal(selector.selectedItem()?.value, 'queue')
+  selector.setQuery('quit')
+  selector.handleInput('\r')
+  assert.equal(selected, 'quit')
+})
+
 test('slash command autocomplete refreshes descriptions after capabilities change', async () => {
   let description = 'unavailable — complete a run first'
   const provider = new DynamicAutocompleteProvider({
