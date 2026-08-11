@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "8dddc8d112dd142b8a11c5c08a4f7c59ed031fcae80a31081264de353988671a"
+    "tarballSha256": "13f5acb1c143c9b08db168f359a7889320c0d6a6d7367d40cfed7927d60c1246"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-current-ux-wt  ·  session  New conversation\nAgentProfile Braid starter · pi / deterministic            deterministic fixture\n\n Send a task to Braid starter, or press Ctrl+P for commands.\n\n\n      Active profile · Braid starter\n      source Braid starter · trusted · read-only\n      runner pi · model fixture/deterministic\n      thinking none · max output provider default\n      digest sha256:44ed91c9…8cfa0a14\n      profiles\n     ──────────────────────────────────────────────────────────────────────\n     >\n     → ✓ Braid starter                 trusted · read-only · Braid starte\n     ──────────────────────────────────────────────────────────────────────\n      enter · ^V valid · ^S save · esc\n\n\n\n\n\n\nready for a message                                              Ctrl+P commands\n",
+  "frame": "braid  cwd  braid-release-ux-final-wt  ·  session  New conversation\nAgentProfile Braid starter · pi / deterministic            deterministic fixture\n\n Send a task to Braid starter, or press Ctrl+P for commands.\n\n\n      Active profile · Braid starter\n      source Braid starter · trusted · read-only\n      runner pi · model fixture/deterministic\n      thinking none · max output provider default\n      digest sha256:44ed91c9…8cfa0a14\n      profiles\n     ──────────────────────────────────────────────────────────────────────\n     >\n     → ✓ Braid starter                 trusted · read-only · Braid starte\n     ──────────────────────────────────────────────────────────────────────\n      enter · ^V valid · ^S save · esc\n\n\n\n\n\n\nready for a message                                              Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-current-ux-wt",
+      "workspace": "/home/drew/code/braid-release-ux-final-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -113,7 +113,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-current-ux-wt",
+      "workspace": "/home/drew/code/braid-release-ux-final-wt",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -358,7 +358,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-current-ux-wt"
+            "workspace": "/home/drew/code/braid-release-ux-final-wt"
           }
         }
       }

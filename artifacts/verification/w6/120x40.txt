@@ -1,4 +1,4 @@
-braid  cwd  braid-current-ux-wt  ·  session  New conversation  ·  branch  branch-1
+braid  cwd  braid-release-ux-final-wt  ·  session  New conversation  ·  branch  branch-1
 AgentProfile Braid starter · runner pi · model fixture/deterministic               deterministic fixture · thinking none
  W6 visual proof
 
@@ -37,4 +37,4 @@ AgentProfile Braid starter · runner pi · model fixture/deterministic          
 
 
 ────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────
-completed                                      Ctrl+E detail · turns in 8 · out 12 · cost unknown · calls 1 · model 49ms
+completed                                      Ctrl+E detail · turns in 8 · out 12 · cost unknown · calls 1 · model 50ms

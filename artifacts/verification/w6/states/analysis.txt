@@ -1,4 +1,4 @@
- analyses › /ask · frozen question · analysis · complete · 1/1
+ activity · analyses › /ask · frozen question · complete · 1/1
 ────────────────────────────────────────────────────────────────────────────────
  source: da8ae2345b2c17a…7c9190eb · frozen
  analyst: profile-trace-reviewer · completed
@@ -21,4 +21,4 @@
  ── run receipt
  source complete: yes
 ────────────────────────────────────────────────────────────────────────────────
- ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2
+ ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2 · tab filter: analys…

@@ -1,14 +1,14 @@
- permission · approve or reject
+ permission            Braid starter @ pi · run fixture-run-1 · timeout unknown
 ────────────────────────────────────────────────────────────────────────────────
  Allow the fixture tool to inspect the selected file?
- will: approve · reject · cancel
- request: src/app/application.ts · read-only
- detail: The fixture requests a bounded read for a real interaction preview.
+ src/app/application.ts · read-only
+ The fixture requests a bounded read for a real interaction preview.
  export class BraidApplication {
- answer: y approve · n reject
->
- keys: alt+1 approve · alt+2 reject · alt+3 cancel
 
+ › 1. Approve
+      Continue this request
+   2. Reject
+   3. Cancel
 
 
 
@@ -21,4 +21,4 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────
- enter submit · esc cancel · alt+a automate
+ ↑↓ move · enter confirm · 1-3 quick select · esc cancel · alt+a automate
