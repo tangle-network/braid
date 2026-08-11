@@ -20,6 +20,7 @@ import { AnalysisComparisonService } from '../src/app/analysis-comparison.js'
 import type { AnalysisAnalyst } from '../src/app/analysis-execution-session.js'
 import { snapshotAnalysisExecutionTarget } from '../src/app/analysis-execution-target.js'
 import { AnalysisPromotionService } from '../src/app/analysis-promotion.js'
+import { prepareAnalysisRequest } from '../src/app/analysis-request.js'
 import { AnalysisService } from '../src/app/analysis-service.js'
 import { freezeAnalysisSource } from '../src/app/analysis-source.js'
 import type { AnalysisApplicationHost, FrozenAnalysisEvidence } from '../src/app/analysis-types.js'
@@ -28,6 +29,7 @@ import { createBraidApplication } from '../src/app/composition.js'
 import { portablePlanForState } from '../src/app/conversation-context.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
+import { eventRunId } from '../src/domain/events.js'
 import {
   createAnalysisId,
   createBranchId,
@@ -184,15 +186,30 @@ class MemoryHost implements AnalysisApplicationHost {
   state: BraidState
   readonly committed: BraidEvent[] = []
   #events: JournalEventEnvelope[]
+  #persistedEvents: JournalEventEnvelope[]
   #failureKind: string | undefined
   #failed = false
 
-  constructor(events: readonly JournalEventEnvelope[]) {
-    this.#events = [...events]
+  constructor(
+    events: readonly JournalEventEnvelope[],
+    options: { readonly visibleEvents?: readonly JournalEventEnvelope[] } = {},
+  ) {
+    this.#events = [...(options.visibleEvents ?? events)]
+    this.#persistedEvents = [...events]
     this.state = replayEvents(initialState(PROFILE), this.#events)
+    if (options.visibleEvents !== undefined) {
+      this.state = replayEvents(initialState(PROFILE), events)
+    }
   }
 
   eventHistory = (): readonly JournalEventEnvelope[] => this.#events
+
+  loadEventHistory = async (
+    source: import('../src/app/analysis-types.js').AnalysisSourceRequest,
+  ): Promise<readonly JournalEventEnvelope[]> =>
+    this.#persistedEvents.filter(
+      (envelope) => source.runId === undefined || eventRunId(envelope.event) === source.runId,
+    )
 
   currentState = (): BraidState => this.state
 
@@ -218,6 +235,7 @@ class MemoryHost implements AnalysisApplicationHost {
     }
     const envelope = eventEnvelope(event, this.state.sequence + 1, 'journal-event')
     this.#events = [...this.#events, envelope]
+    this.#persistedEvents = [...this.#persistedEvents, envelope]
     this.committed.push(event)
     this.state = replayEvents(this.state, [envelope])
   }
@@ -366,6 +384,26 @@ function combinedHost(): MemoryHost {
   }))
   return new MemoryHost([...baseline, ...candidate])
 }
+
+test('analysis source does not cross the state revision while persisted events load', async () => {
+  const completeHistory = runHistory('run-analysis', 'turn-analysis')
+  const terminal = completeHistory.at(-1)
+  assert.equal(terminal?.event.kind, 'run.finished')
+  assert.ok(terminal)
+  const host = new MemoryHost(completeHistory.slice(0, -1))
+  const loadPersisted = host.loadEventHistory
+  host.loadEventHistory = async (source) => {
+    host.commit(terminal.event)
+    return loadPersisted(source)
+  }
+
+  const prepared = await prepareAnalysisRequest(host, { runId: 'run-analysis' })
+
+  assert.equal(host.state.runs[0]?.complete, true)
+  assert.equal(prepared.evidence.run?.complete, false)
+  assert.equal(prepared.evidence.source.complete, false)
+  assert.notEqual(prepared.evidence.events.at(-1)?.event.kind, 'run.finished')
+})
 
 test('stable operation identity replays exactly and rejects digest conflicts', async () => {
   const calls = { count: 0 }
@@ -582,10 +620,13 @@ test('production analyst builds its delegate from the request target', async () 
     connection,
   })
   const received: (typeof target)[] = []
+  const requests: Array<{ readonly signal?: AbortSignal; readonly totalTimeoutMs?: number }> = []
+  const controller = new AbortController()
   const analyst = new ProductionAnalysisAnalyst({
     bootstrap,
-    create: async (captured) => {
+    create: async (captured, request) => {
       received.push(captured)
+      requests.push(request)
       return bootstrap
     },
   })
@@ -597,6 +638,8 @@ test('production analyst builds its delegate from the request target', async () 
     trace,
     recipe: 'cost',
     executionTarget: target,
+    signal: controller.signal,
+    totalTimeoutMs: 5_000,
   })) {
     // Drain the request through the dynamically selected delegate.
   }
@@ -605,6 +648,8 @@ test('production analyst builds its delegate from the request target', async () 
   assert.equal(received[0], target)
   assert.equal(bootstrap.targets[0], target)
   assert.equal(received[0]?.connection?.id, connection.id)
+  assert.equal(requests[0]?.signal, controller.signal)
+  assert.equal(requests[0]?.totalTimeoutMs, 5_000)
 })
 
 test('a reservation crash leaves no external call and retries once after restart', async () => {
@@ -911,4 +956,39 @@ test('promotion persists only selected supported findings and portable forks car
   assert.equal(plan.analysisAttachments?.length, 1)
   assert.equal(plan.analysisAttachments?.[0]?.findings.length, 1)
   assert.equal(plan.analysisAttachments?.[0]?.analysisId, String(analysis.id))
+})
+
+test('promotion reloads exact source events after the restart cache is empty', async () => {
+  const sourceHost = singleHost()
+  const evidence = freezeAnalysisSource({
+    state: sourceHost.state,
+    events: sourceHost.eventHistory(),
+    runId: 'run-analysis',
+  })
+  const supported = findingFor(evidence)
+  const analyzed = await new AnalysisService(
+    sourceHost,
+    new AgentEvalAnalystAdapter(registry({ findings: [supported] })),
+  ).run({
+    runId: 'run-analysis',
+    recipe: 'cost',
+    operationId: 'operation-promotion-restart-source',
+  })
+  assert.equal(analyzed.status, 'completed', analyzed.error?.message ?? 'analysis did not complete')
+  const restarted = new MemoryHost(sourceHost.eventHistory(), { visibleEvents: [] })
+  assert.equal(restarted.eventHistory().length, 0)
+
+  const attachment = await new AnalysisPromotionService(restarted).promote({
+    operationId: 'operation-promotion-after-empty-cache',
+    analysis: analyzed.analysis,
+    selectedFindingIds: [supported.finding_id],
+    destinationConversationId: sourceHost.state.conversationId,
+    destinationBranchId: sourceHost.state.branchId,
+  })
+
+  assert.equal(attachment.sourceDigest, analyzed.analysis.source.digest)
+  assert.equal(
+    attachment.selectedFindings[0]?.citations[0]?.eventId,
+    analyzed.analysis.findings[0]?.citations[0]?.eventId,
+  )
 })

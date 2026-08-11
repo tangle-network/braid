@@ -7,6 +7,12 @@ import type {
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
+  MANAGED_AGENT_EVAL_RPC_VERSION,
+  MANAGED_ANALYSIS_PYTHON_VERSION,
+  MANAGED_ANALYSIS_RUNTIME_PROBE,
+  managedAnalysisRunner,
+} from '../src/adapters/analysis/managed-analysis-runtime.js'
+import {
   type PythonCommandProbe,
   type PythonCommandProbeResult,
   resolvePythonRunner,
@@ -31,6 +37,161 @@ import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 }
+
+test('managed analysis uses bundled uv with exact isolated runtime versions', () => {
+  const launcher = '/opt/braid/node_modules/@dataiku/uv/bin.cjs'
+  const runner = managedAnalysisRunner({
+    platform: 'linux',
+    architecture: 'x64',
+    resolvePackage: (specifier) => {
+      assert.equal(specifier, '@dataiku/uv/bin.cjs')
+      return launcher
+    },
+  })
+
+  assert.equal(runner?.command, process.execPath)
+  assert.deepEqual(runner?.args, [
+    launcher,
+    'run',
+    '--no-project',
+    '--no-config',
+    '--no-env-file',
+    '--isolated',
+    '--managed-python',
+    '--python',
+    MANAGED_ANALYSIS_PYTHON_VERSION,
+    '--with',
+    `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
+    '--exclude-newer',
+    '2026-08-11T05:00:00Z',
+    '--default-index',
+    'https://pypi.org/simple',
+    '--keyring-provider',
+    'disabled',
+    '--color',
+    'never',
+    '--no-progress',
+    'python',
+    '-m',
+    'agent_eval_rpc.dspy_rlm_bridge',
+  ])
+  assert.deepEqual(runner?.launcherProbeArgs, [launcher, '--version'])
+  assert.deepEqual(runner?.runtimeProbeArgs, [
+    launcher,
+    'run',
+    '--no-project',
+    '--no-config',
+    '--no-env-file',
+    '--isolated',
+    '--managed-python',
+    '--python',
+    MANAGED_ANALYSIS_PYTHON_VERSION,
+    '--with',
+    `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
+    '--exclude-newer',
+    '2026-08-11T05:00:00Z',
+    '--default-index',
+    'https://pypi.org/simple',
+    '--keyring-provider',
+    'disabled',
+    '--color',
+    'never',
+    '--no-progress',
+    'python',
+    '-c',
+    MANAGED_ANALYSIS_RUNTIME_PROBE,
+  ])
+  assert.equal(managedAnalysisRunner({ platform: 'freebsd', architecture: 'x64' }), undefined)
+})
+
+test('managed analysis keeps startup quick and verifies its complete runtime before execution', async () => {
+  const previous = process.env.BRAID_PYTHON
+  delete process.env.BRAID_PYTHON
+  const calls: Array<{ command: string; args: readonly string[]; timeoutMs: number }> = []
+  const probe: PythonCommandProbe = async (command, args, timeoutMs) => {
+    calls.push({ command, args: [...args], timeoutMs })
+    return { status: 'ok', exitCode: 0 }
+  }
+  try {
+    const startup = await resolvePythonRunner({ probe })
+    assert.equal(startup.status, 'ready')
+    assert.equal(startup.status === 'ready' ? startup.runner.source : undefined, 'managed')
+    assert.deepEqual(calls[0]?.args.slice(-1), ['--version'])
+
+    calls.length = 0
+    const execution = await resolvePythonRunner({
+      probe,
+      managedRuntimeReadiness: 'complete',
+    })
+    assert.equal(execution.status, 'ready')
+    assert.equal(execution.status === 'ready' ? execution.runner.source : undefined, 'managed')
+    assert.ok(calls[0]?.args.includes('run'))
+    assert.deepEqual(calls[0]?.args.slice(-2), ['-c', MANAGED_ANALYSIS_RUNTIME_PROBE])
+    assert.equal(calls[0]?.timeoutMs, 120_000)
+  } finally {
+    if (previous === undefined) delete process.env.BRAID_PYTHON
+    else process.env.BRAID_PYTHON = previous
+  }
+})
+
+test('managed runtime readiness isolates cancellation across concurrent first use', async () => {
+  const previous = process.env.BRAID_PYTHON
+  delete process.env.BRAID_PYTHON
+  let starts = 0
+  let release: ((result: PythonCommandProbeResult) => void) | undefined
+  const probe: PythonCommandProbe = async (_command, args) => {
+    if (!args.includes('run')) return { status: 'not-found' }
+    starts += 1
+    return new Promise((resolve) => {
+      release = resolve
+    })
+  }
+  const cancelled = new AbortController()
+  try {
+    const first = resolvePythonRunner({
+      probe,
+      managedRuntimeReadiness: 'complete',
+      signal: cancelled.signal,
+      timeoutMs: 5_000,
+    })
+    const second = resolvePythonRunner({
+      probe,
+      managedRuntimeReadiness: 'complete',
+      timeoutMs: 10_000,
+    })
+    cancelled.abort()
+    await assert.rejects(first, (error: unknown) => {
+      return error instanceof Error && error.name === 'AbortError'
+    })
+    assert.equal(starts, 1)
+    assert.ok(release)
+    release({ status: 'ok', exitCode: 0 })
+    const ready = await second
+    assert.equal(ready.status, 'ready')
+    assert.equal(ready.status === 'ready' ? ready.runner.source : undefined, 'managed')
+  } finally {
+    if (previous === undefined) delete process.env.BRAID_PYTHON
+    else process.env.BRAID_PYTHON = previous
+  }
+})
+
+test('managed runtime resolution failure is typed before analysis starts', async () => {
+  const previous = process.env.BRAID_PYTHON
+  delete process.env.BRAID_PYTHON
+  const probe: PythonCommandProbe = async (_command, args) =>
+    args.includes('run') ? { status: 'failed', exitCode: 1 } : { status: 'not-found' }
+  try {
+    const result = await resolvePythonRunner({
+      probe,
+      managedRuntimeReadiness: 'complete',
+    })
+    assert.equal(result.status, 'python-probe-failed')
+    assert.match(result.message, /could not resolve Python 3\.12/u)
+  } finally {
+    if (previous === undefined) delete process.env.BRAID_PYTHON
+    else process.env.BRAID_PYTHON = previous
+  }
+})
 
 function connection(
   kind: ConnectionKind,
@@ -95,6 +256,7 @@ test('configures the published DSPy RLM engine and model-backed analyst registry
   assert.equal(result.connection.endpoint, 'http://127.0.0.1:4010')
   assert.match(String(result.engine.executionConfig.call_ref), /^braid-agent-runtime:/u)
   assert.equal(result.engine.executionConfig.model, 'pi/tangle-router/glm-5.2')
+  assert.equal(result.engine.executionConfig.control_adapter, 'tolerant')
   assert.deepEqual(result.engine.executionConfig.pricing, PRICING)
   assert.equal('base_url' in result.engine.executionConfig, false)
   assert.equal('api_key_provided' in result.engine.executionConfig, false)

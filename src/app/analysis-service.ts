@@ -65,7 +65,7 @@ export class AnalysisService {
 
   async *stream(request: AnalysisRequest): AsyncGenerator<AnalysisProgress, void, void> {
     if (!this.#reconciled) await this.reconcile()
-    const prepared = prepareAnalysisRequest(this.#host, request)
+    const prepared = await prepareAnalysisRequest(this.#host, request)
     const existing = this.#lifecycle.existing(prepared.identity)
     if (existing !== undefined) {
       if (existing.status === 'preparing' || existing.status === 'running') {

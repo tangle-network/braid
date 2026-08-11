@@ -228,6 +228,12 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     return this.#events.map((event) => structuredClone(event))
   }
 
+  async loadEvents(input: { readonly runId?: RunId }): Promise<readonly BraidEventEnvelope[]> {
+    await this.flush()
+    const stored = await this.#storage.events(input)
+    return envelopesFromStored(stored).map((event) => structuredClone(event))
+  }
+
   replay(): readonly BraidEventEnvelope[] {
     const events = this.#replayEvents ?? this.#events
     this.#replayEvents = undefined

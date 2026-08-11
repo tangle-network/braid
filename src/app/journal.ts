@@ -1,4 +1,6 @@
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import { eventRunId } from '../domain/events.js'
+import type { RunId } from '../domain/ids.js'
 import { providerEventKey } from '../domain/events.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
@@ -44,6 +46,12 @@ export class MemoryJournal implements JournalPort, EffectStoragePort {
 
   all(): readonly BraidEventEnvelope[] {
     return this.#events.map((event) => structuredClone(event))
+  }
+
+  async loadEvents(input: { readonly runId?: RunId }): Promise<readonly BraidEventEnvelope[]> {
+    return this.#events
+      .filter((envelope) => input.runId === undefined || eventRunId(envelope.event) === input.runId)
+      .map((event) => structuredClone(event))
   }
 
   async flush(): Promise<void> {

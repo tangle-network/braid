@@ -270,12 +270,17 @@ function dataFor(
               usage: {
                 input: analysis.usage.input,
                 output: analysis.usage.output,
+                tokensKnown: analysis.usage.tokensKnown !== false,
                 ...(analysis.usage.reasoning === undefined
                   ? {}
                   : { reasoning: analysis.usage.reasoning }),
                 ...(analysis.usage.costUsd === undefined
                   ? {}
                   : { costUsd: analysis.usage.costUsd }),
+                ...(analysis.usage.estimatedCostUsd === undefined
+                  ? {}
+                  : { estimatedCostUsd: analysis.usage.estimatedCostUsd }),
+                usdKnown: analysis.usage.usdKnown !== false && analysis.usage.costUsd !== undefined,
                 ...(analysis.usage.model === undefined
                   ? {}
                   : { model: safe(analysis.usage.model) }),

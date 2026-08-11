@@ -235,6 +235,13 @@ test('latest valid generation restores after a process restart', async (t) => {
     now: () => '2026-08-03T00:00:00.000Z',
   })
   assert.equal(journal.initialState()?.draft, `${canary}-3`)
+  assert.equal(journal.all().length, 0)
+  const persistedEvents = await journal.loadEvents({ runId })
+  assert.equal(persistedEvents.length, 3)
+  assert.deepEqual(
+    persistedEvents.map((event) => event.event.kind),
+    ['draft.changed', 'draft.changed', 'draft.changed'],
+  )
 })
 
 test('append with a snapshot rolls back the event when snapshot storage fails', async (t) => {

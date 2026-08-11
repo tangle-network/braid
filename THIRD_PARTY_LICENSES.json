@@ -7,6 +7,14 @@
     },
     {
       "license": "MIT",
+      "name": "@dataiku/uv-linux-x64"
+    },
+    {
+      "license": "MIT",
+      "name": "@dataiku/uv"
+    },
+    {
+      "license": "MIT",
       "name": "@earendil-works/pi-tui"
     },
     {

@@ -5,6 +5,7 @@ import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import { redactBraidEvent } from '../domain/redaction.js'
 import { reduceEvent } from '../domain/reducer.js'
 import { usageSnapshotForRun } from '../domain/run-usage.js'
+import type { RunId } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort } from '../ports/effect-storage.js'
@@ -31,6 +32,9 @@ import type { RunLedger } from './run-ledger.js'
 
 export interface ApplicationJournal {
   readonly all: () => readonly BraidEventEnvelope[]
+  readonly loadEvents?: (input: {
+    readonly runId?: RunId
+  }) => Promise<readonly BraidEventEnvelope[]>
   readonly replay?: () => readonly BraidEventEnvelope[]
   readonly initialState?: () => BraidState | undefined
   readonly append: (

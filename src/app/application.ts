@@ -244,6 +244,10 @@ export class BraidApplication {
       {
         currentState: () => this.#state,
         eventHistory: () => this.#journal.all(),
+        loadEventHistory: (source) =>
+          source.runId === undefined || this.#journal.loadEvents === undefined
+            ? Promise.resolve(this.#journal.all())
+            : this.#journal.loadEvents({ runId: source.runId }),
         commit: (event) => this.#commit(event),
         commitAndWait: (event) => {
           if (this.#asynchronousJournal) return this.#commitAndWait(event)

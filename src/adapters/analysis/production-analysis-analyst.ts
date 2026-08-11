@@ -15,19 +15,25 @@ const MAX_COMPLETED_RUNS = 256
 /** Builds one trace-analysis adapter from the exact route captured for each request. */
 export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
   readonly #bootstrap: AnalysisAnalyst
-  readonly #create: (target: AnalysisExecutionTarget) => Promise<AnalysisAnalyst>
+  readonly #create: (
+    target: AnalysisExecutionTarget,
+    request: Pick<EvalAnalystRequest, 'signal' | 'totalTimeoutMs'>,
+  ) => Promise<AnalysisAnalyst>
   readonly #completed = new Map<string, readonly ExternalOptimizerModelExecutionObservation[]>()
 
   constructor(input: {
     readonly bootstrap: AnalysisAnalyst
     readonly connectionOptions?: ProductionConnectionOptions
-    readonly create?: (target: AnalysisExecutionTarget) => Promise<AnalysisAnalyst>
+    readonly create?: (
+      target: AnalysisExecutionTarget,
+      request: Pick<EvalAnalystRequest, 'signal' | 'totalTimeoutMs'>,
+    ) => Promise<AnalysisAnalyst>
   }) {
     this.#bootstrap = input.bootstrap
     const connectionOptions = input.connectionOptions ?? {}
     this.#create =
       input.create ??
-      (async (target) => {
+      (async (target, request) => {
         if (target.connection === undefined) {
           return createUnavailableTraceAnalysisAnalyst(
             'The captured analysis route has no matching connection record.',
@@ -42,6 +48,11 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
               ? {}
               : { maxOutputTokens: modelSettings.maxOutputTokens }),
             ...connectionOptions,
+            managedRuntimeReadiness: 'complete',
+            ...(request.signal === undefined ? {} : { signal: request.signal }),
+            ...(request.totalTimeoutMs === undefined
+              ? {}
+              : { pythonProbeTimeoutMs: request.totalTimeoutMs }),
           }),
         )
       })
@@ -69,7 +80,12 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
         ? createUnavailableTraceAnalysisAnalyst(
             'The analysis request has no captured execution route.',
           )
-        : await this.#create(target)
+        : await this.#create(target, {
+            ...(request.signal === undefined ? {} : { signal: request.signal }),
+            ...(request.totalTimeoutMs === undefined
+              ? {}
+              : { totalTimeoutMs: request.totalTimeoutMs }),
+          })
     try {
       for await (const item of analyst.stream(request)) yield item
     } finally {

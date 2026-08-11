@@ -172,6 +172,7 @@ export async function prepareProductionWorkspace({
   credentialContextFactory,
 }) {
   const root = await mkdtemp(join(tmpdir(), 'braid-live-required-'))
+  const kindId = kind.replace(/[^A-Za-z0-9._~-]/gu, '-')
   const workspace = join(root, 'workspace')
   const configDirectory = join(workspace, '.braid')
   const profileDirectory = join(configDirectory, 'profiles')
@@ -181,15 +182,15 @@ export async function prepareProductionWorkspace({
   const generatedCredentialId =
     credentialValue === undefined
       ? undefined
-      : `credential-live-${kind}-${randomUUID().replaceAll('-', '')}`
+      : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
   const selectedCredentialId = generatedCredentialId ?? credentialRef
   if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
   const profile = profileFor({ kind, model, runner, provider })
-  const profileFile = `profile-${kind}.json`
+  const profileFile = `profile-${kindId}.json`
   const profilePath = join(profileDirectory, profileFile)
   const now = timestamp()
   const connection = {
-    id: `connection-live-${kind}`,
+    id: `connection-live-${kindId}`,
     kind,
     name: `Live ${kind}`,
     endpoint,

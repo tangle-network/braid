@@ -29,7 +29,7 @@ export class AnalysisComparisonService {
   }
 
   async compare(input: CompareAnalysisInput): Promise<AnalysisComparisonResult> {
-    const prepared = prepareComparisonRequest(this.#host, input)
+    const prepared = await prepareComparisonRequest(this.#host, input)
     const { compareFrozenRuns } = await import('./analysis-comparison-facts.js')
     return compareFrozenRuns({
       baseline: prepared.baseline,
@@ -45,7 +45,7 @@ export class AnalysisComparisonService {
       await this.#lifecycle.reconcile()
       this.#reconciled = true
     }
-    const prepared = prepareComparisonRequest(this.#host, input)
+    const prepared = await prepareComparisonRequest(this.#host, input)
     const existing = this.#lifecycle.existing(prepared.identity)
     if (existing !== undefined) {
       if (existing.status !== 'completed') {

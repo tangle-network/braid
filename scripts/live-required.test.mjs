@@ -3,15 +3,15 @@ import { execFileSync } from 'node:child_process'
 import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { connectionConfiguration } from './live-required/configuration.mjs'
 import {
-  PROOF_OPERATIONS,
-  PUBLIC_EVIDENCE_SCHEMA,
   assertProofReceipt,
   classifyExternalFailure,
   normalizeExternalFailure,
+  PROOF_OPERATIONS,
+  PUBLIC_EVIDENCE_SCHEMA,
   proofReceipt,
   protectedUnavailable,
   releaseOutcome,
@@ -282,6 +282,40 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
   assert.equal(
     'evidence' in resultSummary('live-tangle', { status: 'partial', evidence: 'fake' }),
     false,
+  )
+})
+
+test('passed trace-analysis receipts require complete checks and model-call evidence', () => {
+  const receipt = proofReceipt({
+    invocationId: 'live-required-trace-proof',
+    operation: PROOF_OPERATIONS.traceAnalysis,
+    startedAt: '2026-08-10T00:00:00.000Z',
+    completedAt: '2026-08-10T00:00:01.000Z',
+    facts: {
+      analysisId: 'analysis-live-test',
+      findingCount: 1,
+      modelCallCount: 2,
+      promoted: true,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 3,
+        tokensKnown: true,
+        costKind: 'estimated',
+        costUsd: 0.001,
+        usdKnown: false,
+      },
+    },
+    checks: ['source-frozen', 'cited-finding', 'restart-restored', 'promoted'],
+  })
+
+  assert.throws(() => assertProofReceipt({ ...receipt, checks: ['source-frozen'] }), /every check/u)
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        facts: { ...receipt.facts, modelCallCount: null },
+      }),
+    /model-call record/u,
   )
 })
 

@@ -195,6 +195,12 @@ These commands inspect or compare recorded work rather than sending another ordi
 
 Each analysis has its own run identity, source digest, analyst profile, model, budget, usage, latency, cost, completeness, and citations.
 
+The standard Braid install includes `uv` for `/ask`.
+
+On first use, `uv` downloads a managed Python 3.12 runtime and runs `agent-eval-rpc[dspy]==0.144.11` in an isolated cached environment.
+
+Set `BRAID_PYTHON` only when an operator must use a preinstalled compatible environment instead.
+
 Findings remain separate until the user explicitly sends selected findings to a branch or forks from the analysis.
 
 ## Interactive and headless modes

@@ -148,6 +148,13 @@ test('analysis model calls survive event replay and appear as concise detail lin
     status: 'completed',
     findings: [],
     modelCalls: calls,
+    usage: {
+      input: 165,
+      output: 53,
+      tokensKnown: false,
+      estimatedCostUsd: 0.014,
+      usdKnown: false,
+    },
     wallTimeMs: 88,
     createdAt: startedAt,
     updatedAt: endedAt,
@@ -173,6 +180,13 @@ test('analysis model calls survive event replay and appear as concise detail lin
     '#1 openai/gpt-5.6-luna · tokens 120 in / 45 out · cost $0.0123 · latency 88ms\n' +
       '#2 provider unknown/glm-5.2 · tokens unknown · cost unknown · latency unknown',
   )
+  assert.deepEqual(details.data.usage, {
+    input: 165,
+    output: 53,
+    tokensKnown: false,
+    estimatedCostUsd: 0.014,
+    usdKnown: false,
+  })
   assert.equal(JSON.stringify(details).includes('secret-value'), false)
 
   const terminalView = buildBraidViewModel(restarted)
