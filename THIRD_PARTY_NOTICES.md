@@ -14,6 +14,7 @@ The implementation is expected to depend on and adapt behavior from the followin
 | [Microsoft Aspire](https://github.com/dotnet/aspire) | Windows Job Object creation and cleanup pattern for portable release proof | `dotnet/aspire@be77aa36daf995fae0e72091141410c7082fcba3` | MIT |
 | [`better-sqlite3-multiple-ciphers`](https://github.com/m4heshd/better-sqlite3-multiple-ciphers) | Pinned production SQLite binding with SQLCipher-compatible encryption | `better-sqlite3-multiple-ciphers@13.0.3` | MIT |
 | [`@napi-rs/keyring`](https://github.com/Brooooooklyn/keyring-node) | Native macOS Keychain, Linux Secret Service, and Windows Credential Manager access without passing secrets through command arguments | `@napi-rs/keyring@1.3.0` | MIT |
+| [Koffi](https://github.com/Koromix/koffi) | Prebuilt Node FFI for operating system `openat`, `mkdirat`, `linkat`, `renameat`, and `unlinkat` calls | `koffi@3.1.4` | MIT |
 
 ## Attribution rule
 
@@ -28,7 +29,9 @@ The original copyright and license notice must remain with every substantial cop
 
 A dependency declared in `package.json` does not require a file-level source header, but its license must remain represented in the generated release license inventory.
 
-W5 adds the pinned `better-sqlite3-multiple-ciphers@13.0.3` and `@napi-rs/keyring@1.3.0` production dependencies and no new copied source.
+W5 adds the pinned `better-sqlite3-multiple-ciphers@13.0.3`, `@napi-rs/keyring@1.3.0`, and `koffi@3.1.4` production dependencies.
+
+It contains no copied source from these packages.
 
 Its coordinator, storage port, credential port, and release scripts use Braid code and Node.js platform APIs around that binding.
 

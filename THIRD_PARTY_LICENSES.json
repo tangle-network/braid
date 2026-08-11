@@ -23,6 +23,10 @@
     },
     {
       "license": "MIT",
+      "name": "@koromix/koffi-linux-x64"
+    },
+    {
+      "license": "MIT",
       "name": "@napi-rs/keyring-linux-x64-gnu"
     },
     {
@@ -140,6 +144,10 @@
     {
       "license": "MIT",
       "name": "is-any-array"
+    },
+    {
+      "license": "MIT",
+      "name": "koffi"
     },
     {
       "license": "MIT",

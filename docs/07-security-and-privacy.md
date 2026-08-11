@@ -171,9 +171,11 @@ Trust review includes `.braid/config.json`, selected profile sources, hooks, loc
 
 All Braid local paths are converted to canonical absolute paths before policy checks.
 
-Operations use file descriptors or no-follow flags where available and recheck identity before mutation to resist symlink replacement.
+Linux and macOS path operations call the operating system's descriptor-relative functions through Koffi.
 
-Current npm releases support Linux and macOS, where Braid binds SQLite to an already opened file.
+Each path component opens below its parent descriptor with no-follow flags.
+
+Current npm releases support Linux and macOS, where Braid binds SQLite to an already opened file descriptor.
 
 The package rejects Windows until Braid has an equivalent native path-opening primitive.
 

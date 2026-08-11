@@ -381,7 +381,7 @@ if (process.env.BRAID_PACKAGE_PROOF_ISOLATED !== '1') {
       recursive: true,
       filter: (source) =>
         !source.startsWith(join(repository, '.test-dist-')) &&
-        !['.git', 'node_modules', 'dist', '.test-dist', 'artifacts'].some(
+        !['.git', 'node_modules', 'dist', '.test-dist', '.tmp', 'artifacts'].some(
           (excluded) =>
             source === join(repository, excluded) ||
             source.startsWith(`${join(repository, excluded)}${sep}`),

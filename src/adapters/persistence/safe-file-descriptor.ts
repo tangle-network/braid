@@ -1,12 +1,16 @@
-import { closeSync, constants, fstatSync, mkdirSync, openSync, unlinkSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync } from 'node:fs'
 import { join, parse, resolve, sep } from 'node:path'
+import {
+  mkdirAt as mkdirRelative,
+  openAt as openRelative,
+  unlinkAt as unlinkRelative,
+} from './posix-at.js'
 
 const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
 const LEAF_FLAGS = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
 
-// Node does not expose openat/unlinkat/renameat directly. Linux procfs and macOS devfs
-// provide descriptor-relative path namespaces, so every component is opened below the
-// descriptor acquired for its parent; unsupported platforms reject before path I/O.
+// Koffi calls the operating system's openat family. Every component remains below
+// the descriptor acquired for its parent; unsupported platforms reject before path I/O.
 
 export type SafeFileErrorCode =
   | 'SAFE_FILE_INVALID_LIMIT'
@@ -42,9 +46,8 @@ export interface OpenParent {
   readonly leafPath: string
 }
 
-function descriptorRoot(): string {
-  if (process.platform === 'linux') return '/proc/self/fd'
-  if (process.platform === 'darwin') return '/dev/fd'
+function assertSupportedPlatform(): void {
+  if (process.platform === 'linux' || process.platform === 'darwin') return
   throw new SafeFileError(
     'SAFE_FILE_PATH_RACE_UNSUPPORTED',
     `Descriptor-relative private-file access is unavailable on ${process.platform}; refusing the unsafe path operation`,
@@ -58,7 +61,7 @@ export function errorCode(error: unknown): string | undefined {
 }
 
 export function safePath(path: string): SafePath {
-  descriptorRoot()
+  assertSupportedPlatform()
   if (path.includes('\u0000')) {
     throw new SafeFileError(
       'SAFE_FILE_INVALID_PATH',
@@ -81,7 +84,7 @@ export function componentPath(path: SafePath, count: number): string {
   return join(path.root, ...path.components.slice(0, count))
 }
 
-export function childPath(directoryFd: number, leaf: string): string {
+function assertLeaf(leaf: string): void {
   if (
     leaf.length === 0 ||
     leaf === '.' ||
@@ -94,7 +97,6 @@ export function childPath(directoryFd: number, leaf: string): string {
       'Private storage path contains an invalid component',
     )
   }
-  return `${descriptorRoot()}/${directoryFd}/${leaf}`
 }
 
 export function normalizePathError(error: unknown, path: string): unknown {
@@ -135,7 +137,8 @@ export function openDirectoryComponents(path: SafePath, count: number): number {
       const nextPath = join(currentPath, component)
       let nextFd: number
       try {
-        nextFd = openSync(childPath(currentFd, component), DIRECTORY_FLAGS)
+        assertLeaf(component)
+        nextFd = openRelative(currentFd, component, DIRECTORY_FLAGS)
       } catch (error) {
         throw normalizePathError(error, nextPath)
       }
@@ -184,14 +187,25 @@ export function openParent(path: string): OpenParent {
   }
 }
 
-export function openLeaf(parent: OpenParent, flags: number, mode?: number): number {
+export function openChild(
+  directoryFd: number,
+  leaf: string,
+  path: string,
+  flags: number,
+  mode?: number,
+): number {
+  assertLeaf(leaf)
   try {
     return mode === undefined
-      ? openSync(childPath(parent.fd, parent.leaf), flags)
-      : openSync(childPath(parent.fd, parent.leaf), flags, mode)
+      ? openRelative(directoryFd, leaf, flags)
+      : openRelative(directoryFd, leaf, flags, mode)
   } catch (error) {
-    throw normalizePathError(error, parent.leafPath)
+    throw normalizePathError(error, path)
   }
+}
+
+export function openLeaf(parent: OpenParent, flags: number, mode?: number): number {
+  return openChild(parent.fd, parent.leaf, parent.leafPath, flags, mode)
 }
 
 export function openExistingLeaf(path: string): number {
@@ -226,8 +240,9 @@ export function openExistingLeaf(path: string): number {
 }
 
 export function unlinkAt(parentFd: number, leaf: string, path: string): void {
+  assertLeaf(leaf)
   try {
-    unlinkSync(childPath(parentFd, leaf))
+    unlinkRelative(parentFd, leaf)
   } catch (error) {
     if (errorCode(error) !== 'ENOENT') throw normalizePathError(error, path)
   }
@@ -277,12 +292,13 @@ export function ensurePrivateDirectory(path: string, mode = 0o700): void {
       let nextFd: number | undefined
       for (;;) {
         try {
-          nextFd = openSync(childPath(currentFd, component), DIRECTORY_FLAGS)
+          assertLeaf(component)
+          nextFd = openRelative(currentFd, component, DIRECTORY_FLAGS)
           break
         } catch (error) {
           if (errorCode(error) !== 'ENOENT') throw normalizePathError(error, nextPath)
           try {
-            mkdirSync(childPath(currentFd, component), { mode })
+            mkdirRelative(currentFd, component, mode)
           } catch (mkdirError) {
             if (errorCode(mkdirError) !== 'EEXIST') {
               throw normalizePathError(mkdirError, nextPath)

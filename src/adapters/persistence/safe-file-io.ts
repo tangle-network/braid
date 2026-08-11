@@ -5,20 +5,18 @@ import {
   fchmodSync,
   fstatSync,
   fsyncSync,
-  linkSync,
-  openSync,
   readSync,
-  renameSync,
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
 
+import { linkAt, renameAt } from './posix-at.js'
 import {
-  childPath,
   componentPath,
   errorCode,
   normalizePathError,
   type OpenParent,
+  openChild,
   openDirectoryComponents,
   openExistingLeaf,
   openLeaf,
@@ -91,7 +89,7 @@ export function readAt(
   let handle: number | undefined
   try {
     try {
-      handle = openSync(childPath(directoryFd, leaf), safeLeafFlags())
+      handle = openChild(directoryFd, leaf, path, safeLeafFlags())
     } catch (error) {
       if (errorCode(error) === 'ENOENT') return undefined
       throw normalizePathError(error, path)
@@ -134,15 +132,16 @@ function writeTemporary(
   bytes: Buffer,
   onPhase?: PrivateFileWriteOptions['onPhase'],
 ): void {
+  const temporaryPath = join(
+    componentPath(parent.path, parent.path.components.length - 1),
+    temporary,
+  )
   let handle: number | undefined
   try {
     try {
-      handle = openSync(childPath(parent.fd, temporary), CREATE_FLAGS, 0o600)
+      handle = openChild(parent.fd, temporary, temporaryPath, CREATE_FLAGS, 0o600)
     } catch (error) {
-      throw normalizePathError(
-        error,
-        join(componentPath(parent.path, parent.path.components.length - 1), temporary),
-      )
+      throw normalizePathError(error, temporaryPath)
     }
     requireRegularFile(handle, `${parent.leafPath}.${temporary}`)
     writeAll(handle, bytes)
@@ -255,11 +254,9 @@ export function replacePrivateFile(
       )
     }
     options.verify?.(written)
-    const source = childPath(parent.fd, temporary)
-    const target = childPath(parent.fd, parent.leaf)
     try {
-      if (options.overwrite) renameSync(source, target)
-      else linkSync(source, target)
+      if (options.overwrite) renameAt(parent.fd, temporary, parent.fd, parent.leaf)
+      else linkAt(parent.fd, temporary, parent.fd, parent.leaf)
     } catch (error) {
       throw normalizePathError(error, parent.leafPath)
     }

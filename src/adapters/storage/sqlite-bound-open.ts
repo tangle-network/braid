@@ -1,13 +1,6 @@
-import {
-  constants,
-  closeSync,
-  fchmodSync,
-  fstatSync,
-  openSync,
-  realpathSync,
-  unlinkSync,
-} from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { closeSync, constants, fchmodSync, fstatSync, openSync } from 'node:fs'
+import { basename, dirname, resolve } from 'node:path'
+import { openAt, unlinkAt } from '../persistence/posix-at.js'
 import type { SqliteDatabase, SqliteDatabaseFactory } from './sqlite-driver.js'
 import { StorageError } from './sqlite-errors.js'
 
@@ -28,15 +21,6 @@ function descriptorPath(fileDescriptor: number): string {
   if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
   if (process.platform === 'darwin') return `/dev/fd/${fileDescriptor}`
   throw unsupported('This platform has no inode-bound SQLite descriptor path')
-}
-
-function descriptorChildPath(fileDescriptor: number, component: string): string {
-  const descriptor = descriptorPath(fileDescriptor)
-  if (process.platform === 'linux') return `${descriptor}/${component}`
-
-  // Darwin can reopen /dev/fd/N, but its descriptor device is not a traversable
-  // directory. realpath(3) uses F_GETPATH to recover the bound directory path.
-  return join(realpathSync.native(descriptor), component)
 }
 
 function sameInode(
@@ -74,7 +58,7 @@ function openDirectoryChain(path: string): number {
   let descriptor = openSync('/', REQUIRED_PARENT_FLAGS)
   try {
     for (const component of resolve(path).split('/').filter(Boolean)) {
-      const next = openSync(descriptorChildPath(descriptor, component), REQUIRED_PARENT_FLAGS)
+      const next = openAt(descriptor, component, REQUIRED_PARENT_FLAGS)
       closeSync(descriptor)
       descriptor = next
     }
@@ -89,13 +73,16 @@ function openDatabaseFile(
   parentDescriptor: number,
   path: string,
 ): { readonly fileDescriptor: number; readonly newDatabase: boolean } {
-  const boundPath = descriptorChildPath(parentDescriptor, basename(path))
+  const name = basename(path)
   const createFlags = REQUIRED_FILE_FLAGS | constants.O_CREAT | constants.O_EXCL
   try {
-    return { fileDescriptor: openSync(boundPath, createFlags, 0o600), newDatabase: true }
+    return { fileDescriptor: openAt(parentDescriptor, name, createFlags, 0o600), newDatabase: true }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    return { fileDescriptor: openSync(boundPath, REQUIRED_FILE_FLAGS), newDatabase: false }
+    return {
+      fileDescriptor: openAt(parentDescriptor, name, REQUIRED_FILE_FLAGS),
+      newDatabase: false,
+    }
   }
 }
 
@@ -158,14 +145,12 @@ export function openBoundSqliteDatabase(
     if (fileDescriptor !== undefined) closeSync(fileDescriptor)
     if (created) {
       try {
-        const currentDescriptor = openSync(
-          descriptorChildPath(parentDescriptor, basename(normalizedPath)),
-          REQUIRED_FILE_FLAGS,
-        )
+        const name = basename(normalizedPath)
+        const currentDescriptor = openAt(parentDescriptor, name, REQUIRED_FILE_FLAGS)
         try {
           const current = fstatSync(currentDescriptor)
           if (openedMetadata !== undefined && sameInode(openedMetadata, current))
-            unlinkSync(descriptorChildPath(parentDescriptor, basename(normalizedPath)))
+            unlinkAt(parentDescriptor, name)
         } finally {
           closeSync(currentDescriptor)
         }
