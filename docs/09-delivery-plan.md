@@ -432,14 +432,14 @@ The registry package integrity must match the approved candidate and post-public
 | `PC-01`–`PC-12` | W7 | Schema, filesystem, credential, connection, and live materialization tests |
 | `CF-01`–`CF-10` | W10 | Graph properties, context receipts, forced restarts, and live environment fork |
 | `AN-01`–`AN-10` | W9 and W11 | Deterministic citations, `agent-eval` records, live analyst, and automation audit |
-| `SE-01`–`SE-12` | W3, W4, W5, W6, W9, W10, and W12 | Security tests, live auth boundaries, scans, and independent review |
+| `SE-01`–`SE-12` | W3, W4, W5, W6, W9, W10, and W12 | Security tests, live auth boundaries, scans, packed installation, and live analysis |
 | `ST-01`–`ST-10` | W5 and W12 | Encryption, transaction, replay, migration, integrity, retention, and concurrency tests |
 | `VT-01`–`VT-06` | W0 | Packed vertical slice |
 | `LIVE-01`–`LIVE-12` | W3, W4, W8, W9, W10, and W11 | Real provider and runtime artifacts |
 | `PERF-01`–`PERF-10` | W12 | Full measured distributions |
 | `EVAL-01`–`EVAL-06` | W11 | Calibrated `agent-eval` records |
 | `VR-01`–`VR-10` | W13 | Signed exact-build release manifest |
-| `US-01`–`US-10` | W0, W6, W12, and W13 | Dependency inventory, attribution, boundary tests, upgrade evidence, and independent review |
+| `US-01`–`US-10` | W0, W6, W12, and W13 | Dependency inventory, attribution, boundary tests, upgrade evidence, packed installation, and live analysis |
 
 The release verifier extracts required identifiers from the committed specification and fails if the manifest omits one.
 

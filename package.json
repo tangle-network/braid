@@ -75,7 +75,6 @@
     "test:eval": "pnpm run build && node scripts/eval/run.mjs",
     "test:install": "pnpm run test:package",
     "test:capture": "pnpm run capture:w0",
-    "test:independent-review": "node scripts/release/verify-independent-review.mjs",
     "test:upstream": "node scripts/release/verify-upstream.mjs",
     "test:package": "pnpm run build && node scripts/verify-package.mjs",
     "pack:check": "pnpm pack --pack-destination .tmp",

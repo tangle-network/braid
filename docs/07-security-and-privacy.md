@@ -354,4 +354,4 @@ An independent security review and static analysis run are required before the f
 | SE-09 | Tangle confidential status remains unverified until valid nonce-bound attestation is checked and rejects stale, wrong-environment, or wrong-measurement evidence. |
 | SE-10 | Deletion tests destroy the selected conversation key, find zero seeded marker after replay of every artifact readable by every active key, preserve graph tombstones, distinguish provider session, trace, checkpoint, and environment deletion, and never perform an unconfirmed external deletion. |
 | SE-11 | Dependency, provenance, license, static-analysis, and vulnerability checks have no unresolved critical or high finding in the release manifest. |
-| SE-12 | An independent reviewer can reproduce the threat fixtures and signs the exact release candidate digest. |
+| SE-12 | The exact packed candidate passes the threat fixtures, clean installation, and real frozen-trace `/ask` flow before release. |

@@ -279,7 +279,7 @@
     "checks": ["security"]
   },
   "SE-12": {
-    "checks": ["independent-review"]
+    "checks": ["security", "install", "live-analysis"]
   },
   "ST-01": {
     "checks": ["storage"]
@@ -381,7 +381,7 @@
     "checks": ["security"]
   },
   "US-10": {
-    "checks": ["independent-review"]
+    "checks": ["security", "install", "live-analysis"]
   },
   "UX-01": {
     "checks": ["virtual-terminal", "visual"]

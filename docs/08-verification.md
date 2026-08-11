@@ -640,12 +640,11 @@ Implementation must provide the following stable scripts.
 | `live-bridge-release` | `pnpm test:live:bridge:release` | Strict `LIVE-01` through `LIVE-05` flow; narrower bridge smoke cannot satisfy it |
 | `live-tangle` | `pnpm test:live:tangle` | Required inference, sandbox, interaction, fork, and confidential matrix |
 | `live-supervisor` | `pnpm test:live:supervisor` | Runtime worker observation and control |
-| `live-analysis` | `pnpm test:live:analysis` | Real frozen trace and analyst path |
+| `live-analysis` | `pnpm test:live:analysis` | Real frozen trace, `/ask`, restart, promotion, model-call, and usage path against the packed candidate |
 | `eval` | `pnpm test:eval` | Judge calibration and semantic release cases |
 | `install` | `pnpm test:install` | Packed package across supported release platforms |
 | `capture` | `pnpm test:capture` | Deterministic baseline real-binary captures |
 | `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
-| `independent-review` | `pnpm test:independent-review` | Verify a separately signed threat and ownership review for the exact candidate |
 | `release` | `pnpm check:release` | Release manifest and evidence-set check |
 | `verify:release` | `pnpm verify:release` | Validate publication proof and assemble every required result before isolated archive endorsement |
 

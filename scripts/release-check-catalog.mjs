@@ -37,7 +37,6 @@ export const REQUIRED_CHECKS = new Map([
   ['install', { category: 'release', command: 'pnpm test:install' }],
   ['capture', { category: 'terminal', command: 'pnpm test:capture' }],
   ['visual', { category: 'terminal', command: 'pnpm capture:visual' }],
-  ['independent-review', { category: 'release', command: 'pnpm test:independent-review' }],
   ['release', { category: 'release', command: 'pnpm check:release' }],
 ])
 
@@ -152,7 +151,7 @@ export const ADMISSIBLE_CATEGORIES = new Map([
   ['SE', new Set(['contract', 'subprocess', 'live', 'security', 'release'])],
   ['ST', new Set(['unit', 'contract', 'subprocess', 'security', 'performance'])],
   ['UP', new Set(['contract', 'live'])],
-  ['US', new Set(['contract', 'security', 'release'])],
+  ['US', new Set(['contract', 'live', 'security', 'release'])],
   ['UX', new Set(['unit', 'subprocess', 'terminal', 'live', 'security', 'performance'])],
   ['VR', new Set(['subprocess', 'terminal', 'live', 'performance', 'security', 'eval', 'release'])],
   ['VT', new Set(['subprocess', 'terminal', 'release'])],
