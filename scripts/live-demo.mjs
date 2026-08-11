@@ -320,14 +320,6 @@ async function main() {
     const analysisRecord = await waitForCompletedAnalysis(terminal)
     await terminal.waitForStable('completed trace analysis')
     const analysis = safeManifestAnalysis(analysisRecord)
-    terminal.input('\u001b[D')
-    await terminal.waitForScreen((screen) => screen.includes('analyses · 1'), 'analysis list')
-    await pause(700)
-    terminal.input('\u001b[C')
-    await terminal.waitForScreen(
-      (screen) => screen.includes('/ask · frozen question'),
-      'analysis detail',
-    )
     await terminal.waitForStable('final live demo frame')
     await pause(900)
     const hero = terminal.snapshot()
@@ -356,14 +348,13 @@ async function main() {
         )
       }
     }
-    const final = terminal.snapshot()
     const finalRecord = await terminal.captureState()
     const heroScreen = hero.screen
     const cast = castFor(
       terminal,
       'Braid · AgentProfile to Pi, then trace analysis',
       'braid --profile Product-engineer --connection Local-CLI-Bridge',
-      final.eventCount,
+      hero.eventCount,
     )
     assertPublicCapture(`${cast}\n${heroScreen}`)
     await terminal.closeNormally()

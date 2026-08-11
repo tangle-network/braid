@@ -5,6 +5,8 @@ import * as pty from 'node-pty'
 const XtermTerminal = xterm.Terminal
 const PTY_TERM_GRACE_MS = 1_000
 const PTY_KILL_GRACE_MS = 5_000
+const PRESENTATION_START_SECONDS = 0.01
+const INITIAL_SCREEN_HOLD_SECONDS = 1
 
 export function normalizeTerminal(value) {
   return value.replace(/\s+/gu, ' ').trim()
@@ -223,8 +225,36 @@ export async function typeText(terminal, value, delayMs = 12) {
   }
 }
 
+export function presentationTimeline(events, initialHoldSeconds = INITIAL_SCREEN_HOLD_SECONDS) {
+  if (events.length === 0) return []
+  const firstInputIndex = events.findIndex((event) => event[1] === 'i')
+  const firstTimestamp = events[0][0]
+  if (firstInputIndex <= 0) {
+    return events.map(([timestamp, direction, data]) => [
+      Number((timestamp - firstTimestamp + PRESENTATION_START_SECONDS).toFixed(6)),
+      direction,
+      data,
+    ])
+  }
+  const firstInputTimestamp = events[firstInputIndex][0]
+  return events.map(([timestamp, direction, data], index) => [
+    index < firstInputIndex
+      ? PRESENTATION_START_SECONDS
+      : Number(
+          (
+            timestamp -
+            firstInputTimestamp +
+            PRESENTATION_START_SECONDS +
+            initialHoldSeconds
+          ).toFixed(6),
+        ),
+    direction,
+    data,
+  ])
+}
+
 export function castFor(terminal, title, command, eventCount = terminal.events.length) {
-  const captured = terminal.events.slice(0, eventCount)
+  const captured = presentationTimeline(terminal.events.slice(0, eventCount))
   const lastEventAt = captured.at(-1)?.[0] ?? 0
   const events = [...captured, [Number((lastEventAt + 0.01).toFixed(6)), 'o', '\u001b[0m']]
   const header = {

@@ -12,11 +12,15 @@ This is a source-reuse plan, not a whole-application fork.
 
 The initial comparison used source, package metadata, licenses, application instructions, architecture documents, interaction code, and tests on 2026-08-01.
 
-The core terminal references were refreshed from their live default branches on 2026-08-10 before and after the production UX pass.
+The core terminal references were refreshed from their live default branches on 2026-08-10 before and during the production UX pass.
 
 The Pi repository head was `cd6852a`, with no newer change below `packages/tui` after `87142a8`.
 
-The Codex repository head was `070a26a`, with no newer change below `codex-rs/tui` after `9742cc8`.
+The Codex repository head was `2cc9dbb`, with no newer change below `codex-rs/tui` after `9742cc8`.
+
+The Kimi Code repository head was `0401ec4`.
+
+The Hermes Agent repository head was `697f289`.
 
 Line count is only a coupling signal and not a quality score.
 
@@ -28,11 +32,11 @@ The deciding question was how much source can be reused while preserving `AgentP
 | --- | --- | --- | ---: | --- |
 | [Pi TUI](https://github.com/earendil-works/pi/tree/main/packages/tui) | repository `cd6852a`; TUI `87142a8d50640e93d43fcb35123439d642bc0304`; npm `0.84.1` | MIT | 32,585 lines | Selected renderer dependency |
 | [Pi coding-agent interactive mode](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive) | repository `cd6852a`; interactive mode `87142a8d50640e93d43fcb35123439d642bc0304` | MIT | 17,379 lines, including a 6,399-line coordinator | Selective behavior and component source |
-| [Kimi Code terminal app](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | `e22479a62eed9c3b78a67b313f4332c2c0ba9670` | MIT | 39,688 lines; 65 files directly import Kimi Code SDK | Selective interaction and controller source |
-| [Kimi private Pi TUI fork](https://github.com/MoonshotAI/kimi-code/tree/main/packages/pi-tui) | package version `0.80.8` at `e22479a` | MIT | Included in repository inspection | Patch and regression reference only |
+| [Kimi Code terminal app](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | `0401ec4286f37929d1d298527c05f5351850bf8a` | MIT | No refreshed size claim | Selective interaction and controller source |
+| [Kimi private Pi TUI fork](https://github.com/MoonshotAI/kimi-code/tree/main/packages/pi-tui) | `0401ec4286f37929d1d298527c05f5351850bf8a` | MIT | Included in repository inspection | Patch and regression reference only |
 | [OpenCode terminal packages](https://github.com/anomalyco/opencode/tree/dev/packages/tui) | `3a90639cb57619a21e59f544b3e8d23ffed56f48`; npm `1.18.16` | MIT | 50,341 lines across the TUI and run command | OpenTUI alternative and workflow reference |
-| [Codex terminal application](https://github.com/openai/codex/tree/main/codex-rs/tui) | repository `070a26a`; TUI `9742cc8ed5def37a4575263733f70a01ca22047b`; CLI `0.147.0` | Apache-2.0 | 244,714 Rust lines | Composer, worker navigation, status, and snapshot-test reference |
-| [Hermes Agent terminal app](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | `f88ed6c71768cdc7ea3bfa8cf62d16654792fd2a` | MIT | No size claim used | Client/runtime and workflow reference |
+| [Codex terminal application](https://github.com/openai/codex/tree/main/codex-rs/tui) | repository `2cc9dbb`; TUI `9742cc8ed5def37a4575263733f70a01ca22047b`; CLI `0.147.0` | Apache-2.0 | 244,714 Rust lines | Composer, worker navigation, status, and snapshot-test reference |
+| [Hermes Agent terminal app](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | `697f2896bf948731eb6fcb93caa7264478590843` | MIT | No size claim used | Client/runtime and workflow reference |
 | [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | `9c18cb48`; npm `0.131.6` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
 
 The count commands selected the named TypeScript or Rust files from sparse clones and used `wc -l`.
@@ -93,7 +97,11 @@ Its selector, paging, terminal-theme, narrow-layout, CJK, keyboard, and streamin
 
 ### Coupling cost
 
-The complete terminal application is 39,688 TypeScript lines and 65 files directly import Kimi Code SDK types.
+The measured earlier terminal application was 39,688 TypeScript lines, and 65 files directly imported Kimi Code SDK types.
+
+The current source adds task and swarm workflows, background task replay, subagent controls, and richer approval state.
+
+Its current approval panels use contextual previews and explicit selectable actions with arrow, Enter, and number-key input.
 
 It also depends on a private `@moonshot-ai/pi-tui` package fork and project aliases throughout the application.
 
@@ -131,6 +139,8 @@ Braid may copy no OpenCode source during the initial implementation without a se
 
 Codex keeps its composer, footer, agent navigation, agent status feed, approvals, questions, and selectors in narrow modules with extensive render snapshots.
 
+Its current approval snapshots use explicit numbered action lists instead of a blank boolean input.
+
 Its agent navigation preserves first-seen spawn order, keeps closed children reviewable, and makes next and previous traversal stable while work changes.
 
 Braid adopts those behaviors through its runtime-owned activity tree and one entity browser.
@@ -142,6 +152,12 @@ Braid does not copy Codex thread ownership, backend events, model configuration,
 Hermes Agent's terminal package validates the product shape of a TypeScript client over a separate execution runtime.
 
 It provides useful references for modal permissions and clarification, session and model selection, queue, steering, interrupt, branches, forks, tools, and subagents.
+
+Its current agent view preserves completed spawn trees and stable nested worker identity for later review.
+
+The view combines worker status, model, token use, and cost with list-to-detail keyboard navigation.
+
+Braid adopts the review behavior only when the runtime reports stable worker identity and parent relations.
 
 Its React 19, Ink fork, nanostore, and Python JSON-RPC architecture would add a second rendering and runtime translation stack to Braid.
 

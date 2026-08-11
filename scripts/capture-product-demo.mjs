@@ -110,18 +110,6 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
       () => normalized(terminal.screen()).includes('/ask · frozen question'),
       'trace analysis',
     )
-    await pause(700)
-    terminal.input('\u001b[D')
-    await terminal.waitFor(
-      () => normalized(terminal.screen()).includes('analyses · 1'),
-      'analysis browser',
-    )
-    await pause(700)
-    terminal.input('\u001b[C')
-    await terminal.waitFor(
-      () => normalized(terminal.screen()).includes('/ask · frozen question'),
-      'analysis detail reopen',
-    )
     await terminal.waitForStable('product demo final frame')
     await pause(1_000)
     const demo = terminal.snapshot()
@@ -146,7 +134,7 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
         'Run through Local CLI Bridge',
         'Inspect tool activity',
         'Analyze the frozen trace with /ask',
-        'Move between analysis list and detail',
+        'Review the analysis list and details together',
       ],
     }
   } finally {

@@ -10,7 +10,9 @@ import { jsonRequest } from './live-demo/http.mjs'
 import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import {
+  castFor,
   createCapturedTerminal,
+  presentationTimeline,
   terminalPageProgress,
   visibleModelCallNumbers,
 } from './live-demo/terminal.mjs'
@@ -62,6 +64,42 @@ test('analysis pagination reaches real page bounds and records visible calls', (
   assert.equal(terminalPageProgress('page 3/2'), undefined)
   assert.equal(terminalPageProgress('one page'), undefined)
   assert.deepEqual(visibleModelCallNumbers('model call #4\nmodel call #2\nmodel call #4'), [2, 4])
+})
+
+test('live demo timeline starts on the configured screen and preserves captured bytes', () => {
+  const events = [
+    [0.4, 'o', '\u001b[2J'],
+    [0.8, 'o', 'Product engineer · runner pi'],
+    [1.5, 'i', '/'],
+    [1.51, 'o', '/'],
+  ]
+  const timeline = presentationTimeline(events, 1)
+  assert.deepEqual(
+    timeline.map((event) => event.slice(1)),
+    events.map((event) => event.slice(1)),
+  )
+  assert.deepEqual(
+    timeline.map((event) => event[0]),
+    [0.01, 0.01, 1.01, 1.02],
+  )
+
+  const cast = castFor(
+    { columns: 120, rows: 30, events },
+    'Braid live demo',
+    'braid --profile Product-engineer',
+  )
+  const [headerLine, ...eventLines] = cast.trim().split('\n')
+  const header = JSON.parse(headerLine)
+  const castEvents = eventLines.map((line) => JSON.parse(line))
+  assert.equal(header.width, 120)
+  assert.equal(header.height, 30)
+  assert.equal(castEvents[0][0], 0.01)
+  assert.equal(castEvents[1][0], 0.01)
+  assert.equal(castEvents[2][0], 1.01)
+  assert.deepEqual(
+    castEvents.slice(0, events.length).map((event) => event.slice(1)),
+    events.map((event) => event.slice(1)),
+  )
 })
 
 test('jsonRequest aborts a response that never finishes', async () => {

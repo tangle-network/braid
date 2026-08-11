@@ -3,6 +3,7 @@ import {
   type Focusable,
   Input,
   matchesKey,
+  Spacer,
   Text,
   TruncatedText,
 } from '@earendil-works/pi-tui'
@@ -10,22 +11,20 @@ import type { InteractionResponseValue } from '../shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { automationResponseFor } from './interaction-automation-response.js'
+import { booleanDecisionResponse, InteractionDecisionList } from './interaction-decisions.js'
 import { focusedSurfaceLines } from './focused-surface.js'
 import { interactionInputResponse } from './interaction-input-response.js'
 import {
   answerHelp,
   answerOutcome,
   cancellationOutcome,
-  consequence,
   interactionFooter,
   interactionHeading,
   interactionSubjectComponents,
   isPositiveOutcome,
   isSecretInteraction,
-  MutableTruncatedLine,
   OutcomeKeys,
   outcomeForKey,
-  rejectionOutcome,
   runContext,
   SecretInput,
 } from './interaction-presentation.js'
@@ -39,9 +38,9 @@ export class InteractionShell extends Container implements Focusable {
   readonly #onAutomate: ((response: InteractionResponseValue) => void) | undefined
   readonly #input: Input
   readonly #selector?: SearchableSelector
+  readonly #decisions?: InteractionDecisionList
   readonly #rows: () => number
   readonly #validation = new Text('', 1, 0)
-  readonly #consequence = new MutableTruncatedLine()
   #focused = false
   #responded = false
   #selectedOutcome: InteractionOutcome | undefined
@@ -61,7 +60,15 @@ export class InteractionShell extends Container implements Focusable {
     this.#rows = rows
     this.#input = isSecretInteraction(interaction) ? new SecretInput() : new Input()
     this.#selectedOutcome = answerOutcome(interaction)
-    this.#input.onSubmit = (value) => this.#submitValue(value)
+    this.#input.onSubmit = (value) => {
+      const result = interactionInputResponse(
+        this.#interaction,
+        this.#selectedOutcome ?? answerOutcome(this.#interaction),
+        value,
+      )
+      if ('error' in result) this.#setValidation(result.error)
+      else this.#respond(result.response)
+    }
     this.#input.onEscape = () => this.#cancel()
 
     const compactSelector = interaction.answerSpec.kind === 'select'
@@ -72,12 +79,21 @@ export class InteractionShell extends Container implements Focusable {
           : sanitizeTerminalText(interaction.prompt),
       ),
     )
-    this.#consequence.setValue(this.#theme.muted(consequence(interaction, this.#selectedOutcome)))
-    this.addChild(this.#consequence)
     for (const child of interactionSubjectComponents(interaction, theme, compactSelector))
       this.addChild(child)
-
-    if (interaction.answerSpec.kind === 'select') {
+    if (interaction.answerSpec.kind === 'boolean') {
+      this.addChild(new Spacer(1))
+      const decisions = new InteractionDecisionList({
+        outcomes: interaction.allowedOutcomes,
+        ...(this.#selectedOutcome === undefined ? {} : { selected: this.#selectedOutcome }),
+        theme,
+        onSelectionChange: (outcome) => this.#selectOutcome(outcome),
+        onConfirm: (outcome) =>
+          this.#respond({ outcome, ...(isPositiveOutcome(outcome) ? { value: true } : {}) }),
+      })
+      this.#decisions = decisions
+      this.addChild(decisions)
+    } else if (interaction.answerSpec.kind === 'select') {
       const selector = new SearchableSelector({
         title: 'response',
         items: interaction.answerSpec.options.map((option) => ({
@@ -85,7 +101,7 @@ export class InteractionShell extends Container implements Focusable {
           label: option.label,
         })),
         theme,
-        maxVisible: 1,
+        maxVisible: Math.min(6, Math.max(2, interaction.answerSpec.options.length)),
         embedded: true,
         onSelect: (item) => {
           const outcome = this.#selectedOutcome ?? answerOutcome(this.#interaction)
@@ -97,12 +113,16 @@ export class InteractionShell extends Container implements Focusable {
       this.#selector = selector
       this.addChild(selector)
       if (interaction.allowedOutcomes.length > 0)
-        this.addChild(new OutcomeKeys(interaction.allowedOutcomes, theme))
+        this.addChild(
+          new OutcomeKeys(interaction.allowedOutcomes, theme, () => this.#selectedOutcome),
+        )
     } else {
       this.addChild(this.#line(answerHelp(interaction)))
       this.addChild(this.#input)
       if (interaction.allowedOutcomes.length > 0)
-        this.addChild(new OutcomeKeys(interaction.allowedOutcomes, theme))
+        this.addChild(
+          new OutcomeKeys(interaction.allowedOutcomes, theme, () => this.#selectedOutcome),
+        )
     }
   }
 
@@ -112,7 +132,7 @@ export class InteractionShell extends Container implements Focusable {
 
   set focused(value: boolean) {
     this.#focused = value
-    this.#input.focused = value && !this.#selector
+    this.#input.focused = value && !this.#selector && !this.#decisions
     if (this.#selector) this.#selector.focused = value
   }
 
@@ -122,7 +142,13 @@ export class InteractionShell extends Container implements Focusable {
         this.#setValidation('Secret responses remain manual.')
         return
       }
-      const response = this.#automationResponse()
+      const selectedValue = this.#selector?.selectedItem()?.value
+      const response = automationResponseFor({
+        interaction: this.#interaction,
+        outcome: this.#selectedOutcome ?? answerOutcome(this.#interaction),
+        inputValue: this.#input.getValue(),
+        ...(selectedValue === undefined ? {} : { selectedValue }),
+      })
       if (response === undefined) {
         this.#setValidation('Choose an accepted response before automating it.')
         return
@@ -132,6 +158,15 @@ export class InteractionShell extends Container implements Focusable {
     }
     if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c')) {
       this.#cancel()
+      return
+    }
+    if (this.#decisions) {
+      const shortcut = booleanDecisionResponse(data, this.#interaction.allowedOutcomes)
+      if (shortcut !== undefined) {
+        this.#respond(shortcut)
+        return
+      }
+      if (this.#decisions.handleInput(data)) this.invalidate()
       return
     }
     if (this.#selector) {
@@ -160,22 +195,6 @@ export class InteractionShell extends Container implements Focusable {
       this.#respond({ outcome })
       return
     }
-    if (this.#interaction.answerSpec.kind === 'boolean') {
-      const approval = answerOutcome(this.#interaction)
-      const rejection = rejectionOutcome(this.#interaction)
-      if ((data === 'y' || data === 'Y') && approval) {
-        this.#respond({ outcome: approval, value: true })
-        return
-      }
-      if ((data === 'n' || data === 'N') && (rejection || approval)) {
-        this.#respond(
-          rejection
-            ? { outcome: rejection }
-            : { outcome: approval as InteractionOutcome, value: false },
-        )
-        return
-      }
-    }
     this.#input.handleInput(data)
   }
 
@@ -192,28 +211,16 @@ export class InteractionShell extends Container implements Focusable {
     })
   }
 
-  #submitValue(value: string): void {
-    const result = interactionInputResponse(
-      this.#interaction,
-      this.#selectedOutcome ?? answerOutcome(this.#interaction),
-      value,
-    )
-    if ('error' in result) this.#setValidation(result.error)
-    else this.#respond(result.response)
-  }
-
   #setValidation(message: string): void {
     this.#validation.setText(this.#theme.danger(message))
     if (!this.children.includes(this.#validation)) {
-      const consequenceIndex = this.children.indexOf(this.#consequence)
-      this.children.splice(Math.max(0, consequenceIndex + 1), 0, this.#validation)
+      this.addChild(this.#validation)
     }
     this.invalidate()
   }
 
   #selectOutcome(outcome: InteractionOutcome): void {
     this.#selectedOutcome = outcome
-    this.#consequence.setValue(this.#theme.muted(consequence(this.#interaction, outcome)))
     this.invalidate()
   }
   #respond(response: InteractionResponseValue): void {
@@ -234,15 +241,6 @@ export class InteractionShell extends Container implements Focusable {
     this.#respond({ outcome })
   }
 
-  #automationResponse(): InteractionResponseValue | undefined {
-    const selectedValue = this.#selector?.selectedItem()?.value
-    return automationResponseFor({
-      interaction: this.#interaction,
-      outcome: this.#selectedOutcome ?? answerOutcome(this.#interaction),
-      inputValue: this.#input.getValue(),
-      ...(selectedValue === undefined ? {} : { selectedValue }),
-    })
-  }
   #line(value: string): TruncatedText {
     return new TruncatedText(value, 1, 0)
   }
