@@ -312,11 +312,13 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     const lineWidth = Math.max(1, width - 1)
     return selected.detailLines.flatMap((value) => {
       const safe = sanitizeTerminalText(value)
-      const styled = safe.startsWith('! ')
-        ? this.#theme.warning(safe)
-        : safe.startsWith('↳ ')
-          ? this.#theme.muted(safe)
-          : safe
+      const styled = safe.startsWith('── ')
+        ? this.#theme.accent(safe)
+        : safe.startsWith('! ')
+          ? this.#theme.warning(safe)
+          : safe.startsWith('↳ ')
+            ? this.#theme.muted(safe)
+            : safe
       return wrapTextWithAnsi(styled, lineWidth)
     })
   }

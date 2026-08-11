@@ -42,6 +42,41 @@ export function analysisModelCallLine(call: AnalysisModelCallView): string {
   return `#${call.sequence} ${provider}/${call.model} · ${tokens(call)} · ${cost(call)} · ${latency}`
 }
 
+export function analysisModelCallSummary(calls: readonly AnalysisModelCallView[]): string {
+  if (calls.length === 0) return '0 model calls reported.'
+  const input = calls.reduce((sum, call) => sum + (call.inputTokens ?? 0), 0)
+  const output = calls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0)
+  const tokenGaps = calls.filter((call) => !call.tokensKnown).length
+  const knownCostCalls = calls.filter(
+    (call) => call.costStatus !== 'unknown' && call.costUsd !== undefined,
+  )
+  const cost = knownCostCalls.reduce((sum, call) => sum + (call.costUsd ?? 0), 0)
+  const costGaps = calls.length - knownCostCalls.length
+  const estimatedCosts = knownCostCalls.filter((call) => call.costStatus === 'estimated').length
+  const latency = calls.reduce((sum, call) => sum + (call.latencyMs ?? 0), 0)
+  const latencyGaps = calls.filter((call) => call.latencyMs === undefined).length
+  const failures = calls.filter((call) => call.outcome === 'failed').length
+  const gap = (count: number): string => (count === 0 ? '' : ` (+${count} unknown)`)
+  return [
+    `${calls.length} ${calls.length === 1 ? 'call' : 'calls'}`,
+    `tokens ${tokenGaps === 0 ? '' : '≥'}${input} in / ${tokenGaps === 0 ? '' : '≥'}${output} out${gap(tokenGaps)}`,
+    knownCostCalls.length === 0
+      ? `cost unknown${gap(costGaps)}`
+      : `cost ${costPrefix(estimatedCosts, costGaps)}$${cost.toFixed(4)}${gap(costGaps)}`,
+    latency === 0 && latencyGaps > 0
+      ? `latency unknown${gap(latencyGaps)}`
+      : `model ${latencyGaps === 0 ? '' : '≥'}${latency}ms${gap(latencyGaps)}`,
+    ...(failures === 0 ? [] : [`${failures} failed`]),
+  ].join(' · ')
+}
+
+function costPrefix(estimatedCosts: number, unknownCosts: number): string {
+  if (unknownCosts > 0 && estimatedCosts > 0) return 'known ~'
+  if (unknownCosts > 0) return '≥'
+  if (estimatedCosts > 0) return '~'
+  return ''
+}
+
 function tokens(call: AnalysisModelCallView): string {
   const input = call.inputTokens === undefined ? '?' : String(call.inputTokens)
   const output = call.outputTokens === undefined ? '?' : String(call.outputTokens)

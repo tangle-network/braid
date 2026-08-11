@@ -195,6 +195,14 @@ export function answerHelp(interaction: InteractionView): string {
   return spec.kind === 'text' && spec.secret ? 'answer: secret hidden' : 'answer: response'
 }
 
+export function interactionFooter(interaction: InteractionView, canAutomate: boolean): string {
+  const parts =
+    interaction.answerSpec.kind === 'select' ? ['↑↓ move', 'enter choose'] : ['enter submit']
+  if (cancellationOutcome(interaction) !== undefined) parts.push('esc cancel')
+  if (canAutomate && !isSecretInteraction(interaction)) parts.push('alt+a automate')
+  return parts.join(' · ')
+}
+
 function outcomeKeyLabel(outcome: InteractionOutcome): string {
   if (outcome === 'once') return 'once'
   if (outcome === 'session') return 'run'

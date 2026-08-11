@@ -46,7 +46,13 @@ export class TranscriptView extends Container {
     if (view.messages.length === 0) {
       this.addChild(new Spacer(1))
       this.addChild(
-        new Text(this.#theme.muted('Write a message, or press Ctrl+P for commands.'), 1, 0),
+        new Text(
+          this.#theme.muted(
+            `Send a task to ${sanitizeTerminalText(view.profileName)}, or press Ctrl+P for commands.`,
+          ),
+          1,
+          0,
+        ),
       )
     }
     const present = new Set(
@@ -249,9 +255,8 @@ export class TranscriptView extends Container {
 
   #card(part: TranscriptPartView): Container {
     const container = new Container()
-    const status = part.status ?? 'unknown'
-    const label =
-      part.kind === 'reasoning' ? 'thought' : (part.toolName ?? part.subject?.title ?? part.kind)
+    const status = part.status
+    const label = cardLabel(part)
     const color =
       status === 'failed'
         ? this.#theme.danger
@@ -271,8 +276,8 @@ export class TranscriptView extends Container {
       detailParts.length > 1 && detailIndex >= 0 ? ` ${detailIndex + 1}/${detailParts.length}` : ''
     container.addChild(
       new Text(
-        `${focus}${color(`${symbol} ${sanitizeTerminalText(label)} · ${status}`)}${position}${
-          detail ? this.#theme.muted(expanded ? ' · open' : ' · collapsed · ctrl+e next') : ''
+        `${focus}${color(`${symbol} ${sanitizeTerminalText(label)}${status === undefined ? '' : ` · ${status}`}`)}${position}${
+          detail ? this.#theme.muted(expanded ? ' · details open' : ' · Ctrl+E details') : ''
         }`,
         1,
         0,
@@ -319,6 +324,14 @@ export class TranscriptView extends Container {
         .filter((part) => COLLAPSIBLE_KINDS.has(part.kind) && hasPartDetail(part)) ?? []
     )
   }
+}
+
+function cardLabel(part: TranscriptPartView): string {
+  if (part.kind === 'reasoning') return 'thought'
+  if (part.toolName !== undefined) return part.toolName
+  const subject = part.subject?.title
+  if (subject && /(?:agent[-_ ]?)?turn[-_ ]result/iu.test(subject)) return 'run result'
+  return subject ?? part.kind
 }
 
 export function streamingTailText(text: string, streamingTail: boolean): string {

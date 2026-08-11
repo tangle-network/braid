@@ -11,6 +11,7 @@ import { createAnalysisId, createEventId } from '../src/domain/ids.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
+import { analysisModelCallSummary } from '../src/views/shared/analysis-model-call-presentation.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 
 const startedAt = '2026-08-10T00:00:00.000Z'
@@ -195,6 +196,52 @@ test('analysis model calls survive event replay and appear as concise detail lin
     wallTimeMs: 88,
   })
   assert.match(terminalDetail?.lines.join('\n') ?? '', /model call #1 openai\/gpt-5\.6-luna/u)
+})
+
+test('analysis model-call summary keeps partial telemetry explicit', () => {
+  assert.equal(
+    analysisModelCallSummary([
+      {
+        sequence: 1,
+        provider: 'openai',
+        model: 'gpt-5.6-luna',
+        inputTokens: 120,
+        outputTokens: 45,
+        tokensKnown: true,
+        costUsd: 0.0123,
+        costStatus: 'observed',
+        latencyMs: 88,
+        outcome: 'succeeded',
+      },
+      {
+        sequence: 2,
+        model: 'glm-5.2',
+        tokensKnown: false,
+        costStatus: 'unknown',
+        outcome: 'failed',
+      },
+    ]),
+    '2 calls · tokens ≥120 in / ≥45 out (+1 unknown) · cost ≥$0.0123 (+1 unknown) · model ≥88ms (+1 unknown) · 1 failed',
+  )
+})
+
+test('analysis model-call summary distinguishes estimates from exact charges', () => {
+  assert.equal(
+    analysisModelCallSummary([
+      {
+        sequence: 1,
+        model: 'gpt-5.6-luna',
+        inputTokens: 20,
+        outputTokens: 8,
+        tokensKnown: true,
+        costUsd: 0.0042,
+        costStatus: 'estimated',
+        latencyMs: 40,
+        outcome: 'succeeded',
+      },
+    ]),
+    '1 call · tokens 20 in / 8 out · cost ~$0.0042 · model 40ms',
+  )
 })
 
 test('conversation export, import, re-export, and restart retain model calls', async () => {

@@ -20,6 +20,7 @@ export interface ConversationOverlayActionOptions {
   readonly controller: BraidUiController
   readonly modals: ModalCoordinator
   readonly nextOperationId: () => string
+  readonly rows: () => number
 }
 
 export class ConversationOverlayActions {
@@ -27,12 +28,14 @@ export class ConversationOverlayActions {
   readonly #controller: BraidUiController
   readonly #modals: ModalCoordinator
   readonly #nextOperationId: () => string
+  readonly #rows: () => number
 
   constructor(options: ConversationOverlayActionOptions) {
     this.#theme = options.theme
     this.#controller = options.controller
     this.#modals = options.modals
     this.#nextOperationId = options.nextOperationId
+    this.#rows = options.rows
   }
 
   conversationAction(
@@ -87,9 +90,15 @@ export class ConversationOverlayActions {
     panel = new ForkPreviewPanel(this.#theme, {
       onConfirm: () => void this.#executeFork(panel, view),
       onCancel: () => this.#modals.closeTop(),
+      rows: this.#rows,
     })
     panel.setView(view)
-    this.#modals.open(panel, { anchor: 'center', width: '92%', maxHeight: '90%' })
+    this.#modals.open(panel, {
+      anchor: 'top-left',
+      width: '100%',
+      maxHeight: '100%',
+      margin: 0,
+    })
   }
 
   get theme(): BraidTheme {

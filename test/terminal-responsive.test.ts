@@ -77,24 +77,29 @@ test('chrome uses complete responsive groups at every reference width', () => {
   })
 
   const narrow = plainLines(chrome, 40)
-  assert.deepEqual(narrow, [
-    'braid  AgentProfile Release engineer',
-    'completed · runner pi · model glm-5.2',
-    'Local CLI Bridge · thinking high',
-  ])
+  assert.equal(narrow.length, 3)
+  assert.match(narrow[0] ?? '', /braid\s+AgentProfile Release engineer/u)
+  assert.match(narrow[1] ?? '', /pi \/ glm-5\.2.*Local CLI Bridge/u)
+  assert.match(narrow[2] ?? '', /completed.*Ctrl\+P commands/u)
   assert.doesNotMatch(narrow.join('\n'), /\/home\/drew|\.worktrees|…/u)
 
-  const standard = plainLines(chrome, 80).join('\n')
+  const standardTop = chrome.renderTop(80).join('\n')
+  const standardBottom = chrome.renderBottom(80).join('\n')
+  const standard = [standardTop, standardBottom].join('\n')
   assert.match(standard, /braid\s+cwd\s+braid-integration/u)
   assert.match(standard, /New conversation/u)
-  assert.match(standard, /tangle-router\/glm-5\.2/u)
+  assert.match(standardTop, /AgentProfile Release engineer/u)
+  assert.match(standardTop, /pi \/ glm-5\.2/u)
   assert.match(standard, /Local CLI Bridge/u)
-  assert.match(standard, /output ≤8\.2k/u)
+  assert.match(standardBottom, /completed.*Ctrl\+P commands/u)
   assert.doesNotMatch(standard, /branch-1|in 1\.2k|out 567|\$0\.0312/u)
   assert.doesNotMatch(standard, /…/u)
 
+  const wideTop = chrome.renderTop(120).join('\n')
   const wide = plainLines(chrome, 120).join('\n')
   assert.match(wide, /branch\s+branch-1/u)
+  assert.match(wideTop, /model tangle-router\/glm-5\.2/u)
+  assert.match(wideTop, /output ≤8\.2k/u)
   assert.match(wide, /in 1\.2k/u)
   assert.match(wide, /out 567/u)
   assert.match(wide, /\$0\.0312/u)

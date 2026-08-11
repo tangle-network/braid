@@ -157,7 +157,10 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
       await sleep(75)
     }
     input('\u0003')
-    await sleep(75)
+    await waitFor(
+      () => normalized(screen).includes('ctrl+c again to quit'),
+      `${name} safe exit prompt`,
+    )
     input('\u0003')
     const event = await waitForExit('normally')
     if (event.exitCode !== 0) throw new Error(`${name} exited ${event.exitCode}`)
@@ -186,6 +189,8 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
   }
   const waitForStable = (label = 'settled terminal frame') =>
     waitFor(() => pendingWrites === 0 && performance.now() - lastOutputAt >= 75, `${name} ${label}`)
+  const waitForInterface = () =>
+    waitFor(() => output.includes('\u001b]0;Braid —'), `${name} full interface handoff`)
   const captureState = async () => {
     await waitForStable()
     const point = snapshot()
@@ -212,6 +217,7 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
     screen: () => screen,
     snapshot,
     waitFor: (predicate, label, timeoutMs) => waitFor(predicate, `${name} ${label}`, timeoutMs),
+    waitForInterface,
     waitForStable,
     closeNormally,
     closeWithSignal,
@@ -304,6 +310,7 @@ async function plainFrame() {
 async function baselineCapture(columns, rows) {
   const terminal = await spawnTerminal(`baseline-${columns}x${rows}`, columns, rows)
   try {
+    await terminal.waitForInterface()
     await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
     terminal.input('W6 visual proof')
     terminal.input('\r')
@@ -343,6 +350,7 @@ async function transcriptKeyboardCapture() {
     (_, index) => `keyboard-flow-${String(index + 1).padStart(2, '0')}`,
   )
   try {
+    await terminal.waitForInterface()
     await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
     for (const prompt of prompts) {
       terminal.input(prompt)
@@ -418,6 +426,7 @@ try {
       definition.uiFixture,
     )
     try {
+      await terminal.waitForInterface()
       const result = await definition.run(terminal)
       const provenance = await captureProvenance()
       if (definition.name === 'active-streaming') {

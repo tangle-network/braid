@@ -1,4 +1,3 @@
-import { basename } from 'node:path'
 import { ProcessTerminal } from '@earendil-works/pi-tui/dist/terminal.js'
 import type { Terminal } from '@earendil-works/pi-tui/dist/terminal.js'
 import { CURSOR_MARKER, type Component, type TUI } from '@earendil-works/pi-tui/dist/tui.js'
@@ -6,7 +5,10 @@ import { TuiMainScreen } from '@earendil-works/pi-tui/dist/tui-main-screen.js'
 import { Text } from '@earendil-works/pi-tui/dist/components/text.js'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { boundVisibleText } from '../views/shared/sanitize.js'
+import { composerBorderLine } from '../views/tui/composer-view.js'
 import { installTerminalOutputPolicy } from '../views/tui/terminal-compatibility.js'
+import { fitTerminalColumns, renderTerminalIdentity } from '../views/tui/terminal-identity.js'
+import { createBraidTheme, type BraidTheme } from '../views/tui/theme.js'
 import { createTerminalSignalLatch, type TerminalSignalExitCode } from './terminal-signal-latch.js'
 
 const MAX_PREVIEW_MESSAGES = 4
@@ -28,14 +30,23 @@ interface StartupRun {
 
 export interface StartupFrameState {
   readonly workspace: string | null
+  readonly conversationId?: string
   readonly branchId: string
   readonly profile: {
     readonly name?: string
     readonly harness?: string
-    readonly model?: { readonly default?: string }
+    readonly model?: {
+      readonly default?: string
+      readonly reasoningEffort?: string
+      readonly maxOutputTokens?: number
+    }
   }
   readonly selectedConnectionId: string | null
   readonly connections: readonly { readonly id: string; readonly name: string }[]
+  readonly conversations?: readonly {
+    readonly id: string
+    readonly title?: string | null
+  }[]
   readonly messages: readonly StartupMessage[]
   readonly runs: readonly StartupRun[]
 }
@@ -54,16 +65,17 @@ export interface StartupPreviewHandoff {
 }
 
 class StartupFrame implements Component {
-  readonly #header: Text
-  readonly #metadata: Text
+  readonly #identity: Parameters<typeof renderTerminalIdentity>[1]
   readonly #transcript: Text
-  readonly #composer: Text
+  readonly #theme: BraidTheme
+  readonly #rows: () => number
+  readonly #status: string
   readonly #input: string[] = []
   #inputBytes = 0
   #inputOverflowed = false
   focused = false
 
-  constructor(state: StartupFrameState, workspace: string) {
+  constructor(state: StartupFrameState, workspace: string, rows: () => number, theme: BraidTheme) {
     const connection = state.connections.find(
       (candidate) => candidate.id === state.selectedConnectionId,
     )
@@ -74,12 +86,27 @@ class StartupFrame implements Component {
     const runner = state.profile.harness ?? 'auto'
     const model = state.profile.model?.default ?? 'profile default'
     const connectionName = connection?.name ?? 'no connection'
-    this.#header = new Text(`braid · ${basename(state.workspace ?? workspace)}`, 1, 0)
-    this.#metadata = new Text(
-      `${state.profile.name ?? 'AgentProfile'} · ${runner} · ${model} · ${connectionName} · ${status}`,
-      1,
-      0,
+    const conversation = state.conversations?.find(
+      (candidate) => candidate.id === state.conversationId,
     )
+    this.#identity = {
+      workspace: state.workspace ?? workspace,
+      conversationTitle: conversation?.title ?? 'New conversation',
+      branch: state.branchId,
+      profileName: state.profile.name ?? 'AgentProfile',
+      runner,
+      model,
+      connection: connectionName,
+      ...(state.profile.model?.reasoningEffort === undefined
+        ? {}
+        : { effort: state.profile.model.reasoningEffort }),
+      ...(state.profile.model?.maxOutputTokens === undefined
+        ? {}
+        : { maxOutputTokens: state.profile.model.maxOutputTokens }),
+    }
+    this.#theme = theme
+    this.#rows = rows
+    this.#status = status === 'ready' ? 'ready for a message' : status
     const messages = state.messages
       .filter((message) => message.branchId === state.branchId && message.status !== 'redacted')
       .slice(-MAX_PREVIEW_MESSAGES)
@@ -87,8 +114,12 @@ class StartupFrame implements Component {
         (message) => `${message.role === 'user' ? 'you' : 'braid'}\n${previewText(message.text)}`,
       )
       .join('\n\n')
-    this.#transcript = new Text(messages || 'Write a message, or press Ctrl+P for commands.', 1, 1)
-    this.#composer = new Text(`› ${CURSOR_MARKER}`, 1, 0)
+    this.#transcript = new Text(
+      messages ||
+        `Send a task to ${state.profile.name ?? 'this AgentProfile'}, or press Ctrl+P for commands.`,
+      1,
+      1,
+    )
   }
 
   handleInput(data: string): void {
@@ -112,19 +143,31 @@ class StartupFrame implements Component {
   }
 
   invalidate(): void {
-    this.#header.invalidate()
-    this.#metadata.invalidate()
     this.#transcript.invalidate()
-    this.#composer.invalidate()
   }
 
   render(width: number): string[] {
-    return [
-      ...this.#header.render(width),
-      ...this.#metadata.render(width),
-      ...this.#transcript.render(width),
-      ...this.#composer.render(width),
+    const rows = Math.max(1, Math.floor(this.#rows()))
+    const top = renderTerminalIdentity(this.#theme, this.#identity, width)
+    const footer = fitTerminalColumns(
+      [this.#theme.success(this.#status)],
+      [this.#theme.text('Ctrl+P commands')],
+      width,
+    )
+    const composer = [
+      composerBorderLine(width, '› send', this.#theme),
+      `${this.#theme.accent('›')}${CURSOR_MARKER}`,
+      '',
+      '',
+      composerBorderLine(width, 'alt+enter newline · paste', this.#theme),
     ]
+    const contentRows = Math.max(0, rows - top.length - composer.length - 1)
+    const transcript = contentRows === 0 ? [] : this.#transcript.render(width).slice(-contentRows)
+    const content = [
+      ...transcript,
+      ...Array.from({ length: Math.max(0, contentRows - transcript.length) }, () => ''),
+    ]
+    return [...top, ...content, ...composer, footer].slice(-rows)
   }
 }
 
@@ -139,6 +182,9 @@ export function createStartupPreview(input: {
   readonly workspace: string
   readonly inline: boolean
   readonly terminal?: Terminal
+  readonly colors?: boolean
+  readonly highContrast?: boolean
+  readonly reducedMotion?: boolean
   readonly suppressMetadata?: boolean
 }): StartupPreview {
   const terminal =
@@ -151,7 +197,16 @@ export function createStartupPreview(input: {
     restoreOutputPolicy()
   }
   const tui = new TuiMainScreen(terminal)
-  const frame = new StartupFrame(input.state, input.workspace)
+  const frame = new StartupFrame(
+    input.state,
+    input.workspace,
+    () => terminal.rows,
+    createBraidTheme({
+      ...(input.colors === undefined ? {} : { colors: input.colors }),
+      ...(input.highContrast === undefined ? {} : { highContrast: input.highContrast }),
+      ...(input.reducedMotion === undefined ? {} : { reducedMotion: input.reducedMotion }),
+    }),
+  )
   let removed = false
   let adopted = false
   let handoff: StartupPreviewHandoff | undefined

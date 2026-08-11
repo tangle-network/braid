@@ -43,6 +43,9 @@ export async function runBraid(options: CliOptions): Promise<number> {
         state: opened.app.state(),
         workspace,
         inline: options.inline,
+        colors: !options.noColor && process.env.NO_COLOR === undefined,
+        highContrast: options.highContrast,
+        reducedMotion: options.reducedMotion,
         suppressMetadata:
           options.noColor || options.reducedMotion || process.env.NO_COLOR !== undefined,
       })
@@ -68,8 +71,6 @@ export async function runBraid(options: CliOptions): Promise<number> {
 function usesInteractiveTerminal(options: CliOptions): boolean {
   return options.mode === 'tui' && !options.plain && process.stdin.isTTY && process.stdout.isTTY
 }
-
-/** Fixtures use memory; every other run owns encrypted SQLite and must close it. */
 async function openApplication(
   options: CliOptions,
   workspace: string,
@@ -173,7 +174,6 @@ async function openApplication(
     }
   }
 }
-
 async function openConfiguredApplication(
   startupOptions: ProductionStartupLoadOptions,
   production?: import('../app/production-composition.js').ProductionCompositionConfig,

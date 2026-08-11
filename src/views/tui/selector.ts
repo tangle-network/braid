@@ -1,4 +1,5 @@
 import {
+  type Component,
   Container,
   type Focusable,
   fuzzyFilter,
@@ -6,7 +7,6 @@ import {
   matchesKey,
   type SelectItem,
   SelectList,
-  Spacer,
   Text,
 } from '@earendil-works/pi-tui'
 import type { SelectorView } from '../shared/models.js'
@@ -24,6 +24,7 @@ export interface SearchableSelectorOptions {
   readonly emptyText?: string
   readonly noMatchText?: string
   readonly hideInputWhenEmpty?: boolean
+  readonly embedded?: boolean
   readonly onAction?: (key: string, item: SelectItem | null) => void
   readonly onSelect: (item: SelectItem) => void
   readonly onCancel: () => void
@@ -85,15 +86,17 @@ export class SearchableSelector extends Container implements Focusable {
     this.#input.onEscape = () => this.#onCancel()
     this.#list.onSelect = (item) => this.#onSelect(item)
     this.#list.onCancel = () => this.#onCancel()
-    this.addChild(this.#title)
-    this.addChild(new Spacer(1))
-    if (!this.#inputHidden) {
-      this.addChild(this.#input)
-      this.addChild(new Spacer(1))
+    if (options.embedded === true) {
+      if (!this.#inputHidden) this.addChild(this.#input)
+      this.addChild(this.#list)
+    } else {
+      this.addChild(this.#title)
+      this.addChild(new SelectorRule(this.#theme))
+      if (!this.#inputHidden) this.addChild(this.#input)
+      this.addChild(this.#list)
+      this.addChild(new SelectorRule(this.#theme))
+      this.addChild(this.#footer)
     }
-    this.addChild(this.#list)
-    this.addChild(new Spacer(1))
-    this.addChild(this.#footer)
     this.#applyFilter()
   }
 
@@ -185,6 +188,20 @@ export class SearchableSelector extends Container implements Focusable {
     list.onSelect = (item) => this.#onSelect(item)
     list.onCancel = () => this.#onCancel()
     return list
+  }
+}
+
+class SelectorRule implements Component {
+  readonly #theme: BraidTheme
+
+  constructor(theme: BraidTheme) {
+    this.#theme = theme
+  }
+
+  invalidate(): void {}
+
+  render(width: number): string[] {
+    return [this.#theme.muted('─'.repeat(Math.max(1, Math.floor(width))))]
   }
 }
 

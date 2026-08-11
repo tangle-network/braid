@@ -456,6 +456,7 @@ export interface AnalysisExecutionView {
 
 export interface AnalysisView {
   readonly source: string
+  readonly question?: string
   readonly analyst: string
   readonly recipe: string
   readonly status: ViewStatus

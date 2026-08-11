@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid current terminal UX diff against origin/main",
+  "files": 32,
+  "base": "0cd611d7c9a02845b6341ebe49d7542321423cd3",
+  "head": "0cd611d7c9a02845b6341ebe49d7542321423cd3",
+  "workingTree": true,
+  "diffSha256": "d367ad68f357c46026e7daa468ae5900b693e1ea376917557308c954165f9251",
+  "projectType": "TypeScript ESM terminal package",
+  "reviewers": [
+    "A: operator correctness, security, interaction, and accounting review",
+    "B: operator architecture and current-reference review",
+    "C: Luna Max read-only adversarial review and focused test pass",
+    "D: packed pseudo-terminal, responsive, dependency, and release checks"
+  ],
+  "mode": "current working-tree review followed by independent adversarial probes and exact packed visual checks",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 2,
+    "medium": 2,
+    "low": 0,
+    "resolved": 4,
+    "unresolved": 0,
+    "dropped": 1
+  }
+}

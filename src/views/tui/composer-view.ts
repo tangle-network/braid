@@ -102,9 +102,9 @@ export class ComposerView extends Container {
     const lines = boundedEditorLines(this.#editor.render(width), this.#rows())
     if (lines.length === 0) return lines
     const last = lines.length - 1
-    lines[0] = borderLabel(width, `› ${this.#projection.actionLabel}`, this.#theme)
+    lines[0] = composerBorderLine(width, `› ${this.#projection.actionLabel}`, this.#theme)
     if (last > 1) lines[1] = promptBodyLine(lines[1], this.#theme)
-    if (last > 0) lines[last] = borderLabel(width, this.#projection.hint, this.#theme)
+    if (last > 0) lines[last] = composerBorderLine(width, this.#projection.hint, this.#theme)
     return lines
   }
 }
@@ -141,7 +141,7 @@ export function composerRowBudget(terminalRows: number): number {
   return Math.min(safeRows, Math.max(MIN_USABLE_ROWS + 2, Math.floor(safeRows * COMPOSER_FRACTION)))
 }
 
-function borderLabel(width: number, label: string, theme: BraidTheme): string {
+export function composerBorderLine(width: number, label: string, theme: BraidTheme): string {
   const safeWidth = Math.max(1, Math.floor(width))
   const padded = truncateToWidth(` ${label} `, safeWidth, '…')
   const labelWidth = visibleWidth(padded)
