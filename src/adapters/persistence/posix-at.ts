@@ -9,7 +9,13 @@ interface PosixAtBindings {
     flags: number,
   ) => number
   readonly mkdirAt: (directory: number, path: string, mode: number) => number
-  readonly openAt: (directory: number, path: string, flags: number, mode: number) => number
+  readonly openAt: (
+    directory: number,
+    path: string,
+    flags: number,
+    modeType: 'unsigned int',
+    mode: number,
+  ) => number
   readonly renameAt: (
     sourceDirectory: number,
     source: string,
@@ -41,7 +47,7 @@ function bindings(): PosixAtBindings {
       'int mkdirat(int directory, const char *path, unsigned int mode)',
     ) as PosixAtBindings['mkdirAt'],
     openAt: libc.func(
-      'int openat(int directory, const char *path, int flags, unsigned int mode)',
+      'int openat(int directory, const char *path, int flags, ...)',
     ) as PosixAtBindings['openAt'],
     renameAt: libc.func(
       'int renameat(int sourceDirectory, const char *source, int targetDirectory, const char *target)',
@@ -72,7 +78,7 @@ function syscallError(syscall: string, path: string): NodeJS.ErrnoException {
 }
 
 export function openAt(directory: number, path: string, flags: number, mode = 0): number {
-  const result = bindings().openAt(directory, path, flags, mode)
+  const result = bindings().openAt(directory, path, flags, 'unsigned int', mode)
   if (result < 0) throw syscallError('openat', path)
   return result
 }
