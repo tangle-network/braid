@@ -22,6 +22,7 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
       text: citation.quote ?? 'citation has no quoted text',
     })),
   )
+  const costFooter = analysisCostFooter(record)
   return {
     source: String(record.source.digest),
     analyst: String(record.analystProfileId ?? 'configured analyst'),
@@ -62,9 +63,7 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
               value: `${record.usage.input} in / ${record.usage.output} out`,
             },
           ]),
-      ...(record.costUsd === undefined
-        ? []
-        : [{ label: 'analysis cost', value: `$${record.costUsd.toFixed(4)}` }]),
+      ...(costFooter === undefined ? [] : [costFooter]),
       ...(record.wallTimeMs === undefined
         ? []
         : [{ label: 'analysis time', value: `${record.wallTimeMs}ms` }]),
@@ -79,6 +78,25 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
         : {}
       : { error: record.error }),
   }
+}
+
+function analysisCostFooter(
+  record: AnalysisRecord,
+): { readonly label: string; readonly value: string } | undefined {
+  if (record.usage?.estimatedCostUsd !== undefined) {
+    return {
+      label: 'analysis cost estimate',
+      value: `~$${record.usage.estimatedCostUsd.toFixed(4)}`,
+    }
+  }
+  if (record.usage?.usdKnown === false && record.usage.costUsd !== undefined) {
+    return {
+      label: 'analysis cost minimum',
+      value: `≥$${record.usage.costUsd.toFixed(4)}`,
+    }
+  }
+  if (record.costUsd === undefined) return undefined
+  return { label: 'analysis cost', value: `$${record.costUsd.toFixed(4)}` }
 }
 
 export function analysisLines(analysis: AnalysisView): readonly string[] {

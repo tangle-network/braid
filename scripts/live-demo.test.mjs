@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { jsonRequest } from './live-demo/http.mjs'
-import { safeManifestAnalysis } from './live-demo/manifest.mjs'
+import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import { createCapturedTerminal } from './live-demo/terminal.mjs'
 
@@ -95,7 +95,10 @@ test('live manifest uses the typed public analysis execution view', () => {
               {
                 sequence: 1,
                 model: 'glm-5.2',
+                inputTokens: 12,
+                outputTokens: 7,
                 tokensKnown: true,
+                costUsd: 0.002,
                 costStatus: 'observed',
                 latencyMs: 321,
                 outcome: 'succeeded',
@@ -106,7 +109,13 @@ test('live manifest uses the typed public analysis execution view', () => {
         },
       ],
       sessionUsage: {
-        analyses: { sourceCount: 1, input: 12, output: 7, costUsd: 0.002 },
+        analyses: {
+          sourceCount: 1,
+          input: 12,
+          output: 7,
+          estimatedCostUsd: 0.002,
+          costStatus: 'estimated',
+        },
       },
     },
   }
@@ -119,10 +128,53 @@ test('live manifest uses the typed public analysis execution view', () => {
     modelCalls: 1,
     inputTokens: 12,
     outputTokens: 7,
-    costUsd: 0.002,
+    costUsd: null,
+    estimatedCostUsd: 0.002,
+    costStatus: 'estimated',
+    modelCallEvidence: [
+      {
+        sequence: 1,
+        model: 'glm-5.2',
+        inputTokens: 12,
+        outputTokens: 7,
+        tokensKnown: true,
+        costUsd: 0.002,
+        costStatus: 'observed',
+        latencyMs: 321,
+        outcome: 'succeeded',
+      },
+    ],
     modelLatencyMs: 321,
     wallTimeMs: 654,
   })
+})
+
+test('live demo accepts only the exact package proof', () => {
+  const proof = {
+    gitCommit: 'a'.repeat(40),
+    version: '0.1.0',
+    tarball: 'tangle-network-braid-0.1.0.tgz',
+    sha256: 'b'.repeat(64),
+  }
+  const expected = {
+    commit: proof.gitCommit,
+    version: proof.version,
+    tarball: proof.tarball,
+    tarballSha256: proof.sha256,
+  }
+
+  assert.doesNotThrow(() => assertExactPackageProof(proof, expected))
+  for (const [field, value] of [
+    ['commit', 'c'.repeat(40)],
+    ['version', '0.1.1'],
+    ['tarball', 'other.tgz'],
+    ['tarballSha256', 'd'.repeat(64)],
+  ]) {
+    assert.throws(
+      () => assertExactPackageProof(proof, { ...expected, [field]: value }),
+      /package proof/iu,
+    )
+  }
 })
 
 test('public capture rejects the credential patterns mirrored from the sanitizer', async (t) => {

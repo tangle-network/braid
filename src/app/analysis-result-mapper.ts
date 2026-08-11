@@ -184,15 +184,18 @@ function usageFromResult(result: ExactAnalystRunResult): TurnUsage | undefined {
     Number.isFinite(result.total_cost_usd) && result.total_cost_usd >= 0
       ? result.total_cost_usd
       : undefined
-  const costUncaptured = result.total_cost_provenance?.kind === 'uncaptured'
+  const costKind = result.total_cost_provenance?.kind
+  const costUncaptured = costKind === 'uncaptured'
+  const costEstimated = costKind === 'estimated'
   if (!hasTokens && totalCost === 0 && !costUncaptured) return undefined
   return {
     input,
     output,
     ...(!hasTokens || !tokensComplete ? { tokensKnown: false as const } : {}),
     ...(reasoning === 0 ? {} : { reasoning }),
-    ...(totalCost === undefined ? {} : { costUsd: totalCost }),
-    ...(costUncaptured ? { usdKnown: false as const } : {}),
+    ...(totalCost === undefined || costEstimated ? {} : { costUsd: totalCost }),
+    ...(totalCost === undefined || !costEstimated ? {} : { estimatedCostUsd: totalCost }),
+    ...(costUncaptured || costEstimated ? { usdKnown: false as const } : {}),
   }
 }
 
@@ -289,7 +292,8 @@ export async function completedAnalysisRecord(input: {
       input.executionTarget,
     ),
     ...(usage === undefined ? {} : { usage }),
-    ...(input.result.total_cost_provenance?.kind === 'uncaptured'
+    ...(input.result.total_cost_provenance?.kind === 'uncaptured' ||
+    input.result.total_cost_provenance?.kind === 'estimated'
       ? {}
       : Number.isFinite(input.result.total_cost_usd) && input.result.total_cost_usd >= 0
         ? { costUsd: input.result.total_cost_usd }

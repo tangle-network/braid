@@ -307,6 +307,10 @@ They never use mocked HTTP responses to claim provider success.
 
 Each live check records date, region, machine, operating system, package versions and integrities, bridge and server versions, runner versions, profile digest, command, attempts, event counts, identifiers, usage, cost, wall time, outcome, cleanup result, and artifact hashes.
 
+The public demo must use the same immutable tarball as package proof.
+
+Its manifest records observed and estimated cost separately, and its recording shows every model-call page.
+
 ### Layer 8: semantic evaluation
 
 `agent-eval` evaluates only behaviors whose quality cannot be decided by exact assertions.

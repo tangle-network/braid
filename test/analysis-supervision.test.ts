@@ -47,6 +47,7 @@ import { createAnalysisId, createEventId } from '../src/domain/ids-values.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { analysisEvidence } from '../src/eval/fixtures.js'
+import { analysisViewForRecord } from '../src/views/shared/analysis-presentation.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const TEST_PROFILE = {} as Readonly<AgentProfile>
@@ -490,6 +491,74 @@ test('analysis usage preserves uncaptured cost as an unknown lower bound', async
     usdKnown: false,
   })
   assert.equal(record.costUsd, undefined)
+})
+
+test('analysis usage and presentation preserve estimated cost provenance', async () => {
+  const first = history()
+  const evidence = freezeAnalysisSource({
+    state: first.state,
+    events: first.events,
+    runId: 'run-analysis',
+  })
+  const request = { runId: 'run-analysis', recipe: 'cost' } as AnalysisRequest
+  const identity = analysisIdentity({
+    kind: 'analysis',
+    sourceDigests: [String(evidence.source.digest)],
+    request,
+  })
+  const applicationHost = host(first.state, first.events)
+  const base = initialAnalysisRecord({
+    host: applicationHost,
+    evidence,
+    request,
+    identity,
+    at: NOW,
+  })
+  const result = {
+    run_id: String(identity.analysisRunId),
+    correlation_id: 'correlation-test',
+    started_at: NOW,
+    ended_at: NOW,
+    findings: [],
+    per_analyst: [
+      {
+        analyst_id: 'efficiency-behavioral',
+        usage: {
+          calls: 1,
+          tokens: { input: 10, output: 2 },
+          cost: { kind: 'estimated', usd: 0.123 },
+        },
+      },
+    ],
+    total_cost_usd: 0.123,
+    total_cost_provenance: { kind: 'estimated', usd: 0.123 },
+    execution_plan: {},
+    completion: { status: 'complete' },
+  } as unknown as ExactAnalystRunResult
+  const record = await completedAnalysisRecord({
+    host: applicationHost,
+    base,
+    evidence,
+    request,
+    identity,
+    analystIds: [],
+    descriptors: [],
+    modelExecutions: [],
+    result,
+    at: NOW,
+  })
+
+  assert.deepEqual(record.usage, {
+    input: 10,
+    output: 2,
+    estimatedCostUsd: 0.123,
+    usdKnown: false,
+  })
+  assert.equal(record.costUsd, undefined)
+  assert.deepEqual(
+    analysisViewForRecord(record).footer.find((field) => field.label.includes('cost')),
+    { label: 'analysis cost estimate', value: '~$0.1230' },
+  )
 })
 
 test('analysis service persists only analysis events, emits progress, and preserves citations', async () => {

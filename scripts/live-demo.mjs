@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
 import { configureWithPublicTui } from './live-core/setup-tui.mjs'
 import { jsonRequest } from './live-demo/http.mjs'
-import { safeManifestAnalysis } from './live-demo/manifest.mjs'
+import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import { castFor, createCapturedTerminal, pause, typeText } from './live-demo/terminal.mjs'
 import {
@@ -26,6 +26,9 @@ const endpoint = process.env.BRAID_LIVE_DEMO_ENDPOINT ?? 'http://127.0.0.1:3344'
 const outputRoot = process.env.BRAID_LIVE_DEMO_OUTPUT
   ? process.env.BRAID_LIVE_DEMO_OUTPUT
   : join(repository, 'artifacts', 'demo')
+const packageProofPath = process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
+  ? process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
+  : join(repository, 'artifacts', 'verification', 'w6', 'package-proof.json')
 const route = 'pi/tangle-router/glm-5.2'
 const columns = 120
 const rows = 30
@@ -170,11 +173,16 @@ async function verifyWorkspace(workspace) {
 
 async function main() {
   const baseUrl = assertLocalEndpoint(endpoint)
-  const agentEvalPackage = JSON.parse(
-    await readFile(
+  const [agentEvalPackage, sourcePackage, packageProofBytes, commitResult] = await Promise.all([
+    readFile(
       join(repository, 'node_modules', '@tangle-network', 'agent-eval', 'package.json'),
-    ),
-  )
+    ).then(JSON.parse),
+    readFile(join(repository, 'package.json'), 'utf8').then(JSON.parse),
+    readFile(packageProofPath),
+    run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
+  ])
+  const sourceCommit = commitResult.stdout.trim()
+  const packageProof = JSON.parse(packageProofBytes.toString('utf8'))
   const [bridge, analysisRuntime] = await Promise.all([
     bridgeProof(baseUrl),
     analysisDependencyProof(agentEvalPackage.version),
@@ -185,6 +193,12 @@ async function main() {
   })
   let terminal
   try {
+    assertExactPackageProof(packageProof, {
+      commit: sourceCommit,
+      version: sourcePackage.version,
+      tarball: packed.tarballName,
+      tarballSha256: packed.tarballSha256,
+    })
     const { workspace, profilePath } = await createLiveDemoWorkspace(temporaryRoot)
     const keyFile = join(temporaryRoot, 'database.key')
     const recordPath = join(temporaryRoot, 'live-demo-state.json')
@@ -309,6 +323,19 @@ async function main() {
     )
     await terminal.waitForStable('final live demo frame')
     await pause(900)
+    if (analysis.modelCalls !== null && analysis.modelCalls > 0) {
+      const lastCall = `model call #${analysis.modelCalls}`
+      for (
+        let page = 0;
+        page < analysis.modelCalls && !terminal.screen().includes(lastCall);
+        page += 1
+      ) {
+        terminal.input('\u001b[6~')
+        await terminal.waitForStable(`analysis model-call page ${page + 2}`)
+        await pause(700)
+      }
+      assert.ok(terminal.screen().includes(lastCall), `The public demo did not render ${lastCall}`)
+    }
     const final = terminal.snapshot()
     const finalRecord = await terminal.captureState()
     const finalScreen = final.screen
@@ -340,17 +367,16 @@ async function main() {
     ])
     await writeCastGif(castPath, gifPath, { loop: true })
     await writeRaster(frameCastPath, pngPath, join(temporaryRoot, 'frame.gif'))
-    const { stdout: commit } = await run('git', ['rev-parse', 'HEAD'], { cwd: repository })
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: 'passed',
       capturedAt: new Date().toISOString(),
       source: {
-        commit: commit.trim(),
-        packageVersion: JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'))
-          .version,
+        commit: sourceCommit,
+        packageVersion: sourcePackage.version,
         tarball: packed.tarballName,
         tarballSha256: packed.tarballSha256,
+        packageProofSha256: sha256(packageProofBytes),
       },
       route: {
         connection: 'Local CLI Bridge',
