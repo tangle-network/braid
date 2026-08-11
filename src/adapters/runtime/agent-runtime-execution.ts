@@ -1,6 +1,8 @@
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
+import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
+import { BRAID_SANDBOX_CLEANUP_UNCONFIRMED } from '../../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../../domain/runtime-events.js'
 import type {
   CancelRunInput,
@@ -23,6 +25,7 @@ import {
   type PreparedExecution,
   type RuntimeCancellationCapability,
 } from './prepared-execution.js'
+import { sandboxTerminalOutcomeFromExecutorOutput } from './sandbox-result-projection.js'
 
 export type AgentTurnBackendResolver = (
   input: ExecuteTurnInput,
@@ -90,9 +93,11 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
       prepared && execution.capabilities !== undefined
         ? capabilitiesFromEnvironment(execution.capabilities, execution.cancellation !== undefined)
         : this.#capabilitySnapshot
-    const materializationReceipt = prepared
-      ? execution.materializationReceipt
-      : { backendKind: execution.kind, provider: 'agent-runtime' }
+    const materializationReceipt = publicMaterializationReceipt(
+      prepared
+        ? execution.materializationReceipt
+        : { backendKind: execution.kind, provider: 'agent-runtime' },
+    )
     const provider =
       typeof materializationReceipt.provider === 'string'
         ? materializationReceipt.provider
@@ -207,7 +212,9 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         }
         const observed = observation === undefined ? undefined : await observationEvent(observation)
         if (observed !== undefined) yield observed
-        if (terminal !== undefined) yield terminalAfterCleanup(terminal, observed)
+        if (terminal !== undefined) {
+          yield terminalAfterCleanup(terminalAfterSandboxOutcome(terminal), observed)
+        }
       } catch (error) {
         if (observation !== undefined) {
           const observed = await observationEvent(observation)
@@ -240,6 +247,28 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   }
 }
 
+function terminalAfterSandboxOutcome(
+  terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
+): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+  if (terminal.status !== 'completed') return terminal
+  const result = terminal.metadata?.result
+  const output =
+    result !== null && typeof result === 'object' && !Array.isArray(result)
+      ? (result as { readonly output?: unknown }).output
+      : undefined
+  const outcome = sandboxTerminalOutcomeFromExecutorOutput(output)
+  if (outcome === undefined || outcome.status === 'completed') return terminal
+  const reason = outcome.reason ?? `Sandbox agent reported a ${outcome.status} turn`
+  return {
+    ...terminal,
+    status: outcome.status,
+    reason,
+    ...(outcome.status === 'failed'
+      ? { error: { kind: 'backend' as const, message: reason } }
+      : {}),
+  }
+}
+
 function terminalAfterCleanup(
   terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
   observed: Extract<BraidRuntimeEvent, { readonly type: 'braid.execution.observed' }> | undefined,
@@ -253,10 +282,10 @@ function terminalAfterCleanup(
   return {
     ...terminal,
     status: 'failed',
-    reason: 'Sandbox deletion was not acknowledged; resource state is unknown',
+    reason: BRAID_SANDBOX_CLEANUP_UNCONFIRMED,
     error: {
       kind: 'backend',
-      message: 'Sandbox deletion was not acknowledged; resource state is unknown',
+      message: BRAID_SANDBOX_CLEANUP_UNCONFIRMED,
     },
   }
 }

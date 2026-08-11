@@ -1,13 +1,13 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import type {
-  AgentEnvironmentCapabilities,
-  AgentEnvironmentProvider,
-} from '@tangle-network/agent-interface/environment-provider'
-import type { BackendType } from '@tangle-network/sandbox'
-import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
+import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
+import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
+import type { SandboxClient } from '@tangle-network/agent-runtime/kernel'
+import type { BackendType, CreateSandboxOptions, SandboxInstance } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
+import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
+import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
 import type { PreparedExecution, SandboxLifecyclePolicy } from './prepared-execution.js'
 import {
   connectionRecord,
@@ -17,10 +17,10 @@ import {
   type ProductionExecutionSelection,
   requiredProfileModel,
   requiredProfileRunner,
-  requiredWorkspaceCwd,
   safeExecutionId,
 } from './production-backend-common.js'
 import { observeSandboxClient } from './sandbox-observation.js'
+import { withSandboxResultProjection } from './sandbox-result-projection.js'
 
 export async function resolveTangleSandboxBackend(
   options: ProductionBackendResolverOptions,
@@ -51,21 +51,19 @@ export async function resolveTangleSandboxBackend(
     )
   }
 
-  const [
-    { createTangleSandboxClient },
-    { createTangleProvider },
-    { providerAsSandboxClient },
-    { createExecutor },
-  ] = await Promise.all([
-    import('../connections/production-connection-providers.js'),
-    import('@tangle-network/agent-provider-tangle'),
-    import('@tangle-network/agent-runtime/environment-provider'),
-    import('@tangle-network/agent-runtime/kernel'),
-  ])
+  const [{ createTangleSandboxClient }, { createTangleProvider }, { createExecutor }] =
+    await Promise.all([
+      import('../connections/production-connection-providers.js'),
+      import('@tangle-network/agent-provider-tangle'),
+      import('@tangle-network/agent-runtime/kernel'),
+    ])
   const record = connectionRecord(connectionId, options)
   const lifecycle = sandboxLifecycle()
   const idempotencyKey = `env-braid-${safeExecutionId(input.runId)}`
-  const workspace = requiredWorkspaceCwd(input.workspaceRoot, options.workspaceCwd)
+  const environmentRequestDigest = canonicalDigest({
+    kind: 'tangle-sandbox-environment-request',
+    idempotencyKey,
+  })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
   const sdkProvider = createTangleProvider({
@@ -75,25 +73,20 @@ export async function resolveTangleSandboxBackend(
   })
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
   const providerSessionId = providerSessionFor(input, capabilities)
-  const provider: AgentEnvironmentProvider = {
-    ...sdkProvider,
-    capabilities: () => capabilities,
-  }
-  const sandboxClient = providerAsSandboxClient(provider, {
-    defaults: {
-      workspace: { cwd: workspace },
-      name: record.name,
-      idempotencyKey,
-    },
-    requireTerminalEvent: true,
-  })
   const backend = Object.freeze({
     kind: 'executor' as const,
-    factory: createExecutor({
-      backend: 'sandbox',
-      sandboxClient,
-      maxIterations: 1,
-    }),
+    factory: withSandboxResultProjection((spec, context) =>
+      createExecutor({
+        backend: 'sandbox',
+        sandboxClient: runtimeSandboxClient(
+          observedClient.client,
+          record.name,
+          idempotencyKey,
+          context.signal,
+        ),
+        maxIterations: 1,
+      })(spec, context),
+    ),
     profile,
     agentRunName: model,
   })
@@ -107,7 +100,7 @@ export async function resolveTangleSandboxBackend(
       provider: 'tangle-sandbox',
       backend: 'executor',
       connectionId,
-      idempotencyKey,
+      environmentRequestDigest,
       lifecycle: lifecycle.mode,
       cleanup: lifecycle.cleanup,
       continuity: lifecycle.continuity,
@@ -115,6 +108,26 @@ export async function resolveTangleSandboxBackend(
       portableContext: 'unavailable',
       model,
       runner,
+    },
+  })
+}
+
+function runtimeSandboxClient(
+  client: SandboxClientLike,
+  name: string,
+  idempotencyKey: string,
+  signal: AbortSignal,
+): SandboxClient {
+  return Object.freeze({
+    async create(createOptions?: CreateSandboxOptions) {
+      return (await client.create(
+        {
+          ...createOptions,
+          name,
+          idempotencyKey,
+        },
+        { signal },
+      )) as unknown as SandboxInstance
     },
   })
 }

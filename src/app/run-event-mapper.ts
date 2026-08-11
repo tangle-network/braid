@@ -14,6 +14,7 @@ import type {
 } from '../domain/events.js'
 import type { ExecutionEnvironmentObservation } from '../domain/execution-observation.js'
 import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.js'
+import { publicRuntimeDiagnostic } from '../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
 import type { BraidMessagePart, RunStatus } from '../domain/state.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
@@ -406,7 +407,11 @@ export function providerEventFor(
           : { error: safeDiagnostic(event.error.message, 'RUNTIME_FINAL_ERROR') }),
         ...(event.reason === undefined
           ? {}
-          : { reason: safeProviderDiagnostic(event.reason, 'RUNTIME_FINAL_REASON') }),
+          : {
+              reason:
+                publicRuntimeDiagnostic(event.reason) ??
+                safeProviderDiagnostic(event.reason, 'RUNTIME_FINAL_REASON'),
+            }),
         provider,
       }
     case 'message.part.updated': {

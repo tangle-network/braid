@@ -39,6 +39,8 @@ const { npmInvocation, pnpmInvocation, portableEvidencePath } = platformSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
 const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const { renderVerificationReport } = await import('../scripts/release/verification-report.mjs')
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -469,6 +471,38 @@ test('release signatures use locale-independent canonical key ordering', () => {
   assert.equal(source, '{"A":3,"a":2,"aa":4,"z":1}')
 })
 
+test('release report counts each real result instead of treating captured rows as passed', () => {
+  const checks = ['passed', 'failed', 'unavailable', 'uncaptured', 'future-result'].map(
+    (result, index) => ({
+      id: `check-${index + 1}`,
+      result,
+      category: 'unit',
+      command: 'pnpm test:unit',
+      environment: 'linux-x64',
+      durationMs: index + 1,
+    }),
+  )
+  const report = renderVerificationReport({
+    braidVersion: '0.1.0',
+    gitCommit: 'a'.repeat(40),
+    packageIntegrity: 'sha512-example',
+    checks,
+    requirements: {
+      'PR-01': { checks: ['check-1'], artifacts: ['artifact-1'] },
+      'PR-02': { checks: [], artifacts: [] },
+      'PR-03': { checks: ['check-2'], artifacts: ['artifact-1'] },
+    },
+    artifacts: [{ id: 'artifact-1' }],
+  })
+  assert.match(
+    report,
+    /Checks: 1\/5 passed; 1 failed; 1 unavailable; 1 uncaptured; 1 unrecognized\./u,
+  )
+  assert.match(report, /Requirements: 1\/3 backed by passed checks and present artifacts\./u)
+  assert.match(report, /\| `check-2` \| failed \| unit \|/u)
+  assert.doesNotMatch(report, /Checks: 5\/5 passed/u)
+})
+
 test('packed-process proof includes all reference sizes, accessibility flags, and cleanup assertions', async () => {
   const source = await readFile(
     new URL('../../scripts/verify-package.mjs', import.meta.url),
@@ -593,10 +627,16 @@ test('release keys stay isolated and provider credentials are step-scoped', asyn
     workflow.indexOf('  endorse-candidate:'),
   )
   assert.doesNotMatch(candidate, /BRAID_RELEASE_SIGNING_KEY/u)
-  assert.doesNotMatch(
-    candidate.slice(0, candidate.indexOf('      - name: Run the complete release checks')),
-    /BRAID_(?:CLI_BRIDGE|EVAL)_/u,
+  const releaseCheckMarker = '      - name: Run the complete release checks'
+  const releaseCheckStart = candidate.indexOf(releaseCheckMarker)
+  assert.notEqual(releaseCheckStart, -1)
+  const releaseCheckEnd = candidate.indexOf(
+    '\n      - name:',
+    releaseCheckStart + releaseCheckMarker.length,
   )
+  assert.notEqual(releaseCheckEnd, -1)
+  const releaseCheckStep = candidate.slice(releaseCheckStart, releaseCheckEnd)
+  const otherCandidateSteps = `${candidate.slice(0, releaseCheckStart)}${candidate.slice(releaseCheckEnd)}`
   for (const [start, end] of [
     ['  endorse-candidate:', '  platform-smoke:'],
     ['  endorse-final:', '  tag-and-report:'],
@@ -606,9 +646,43 @@ test('release keys stay isolated and provider credentials are step-scoped', asyn
     assert.doesNotMatch(job, /actions\/checkout|\b(?:node|npm|pnpm)\b|scripts\//u)
   }
   assert.equal(workflow.match(/BRAID_RELEASE_SIGNING_KEY_BASE64/gu)?.length, 2)
-  assert.equal(workflow.match(/^\s+BRAID_CLI_BRIDGE_BEARER:/gmu)?.length, 1)
-  assert.equal(workflow.match(/^\s+BRAID_EVAL_API_KEY:/gmu)?.length, 1)
-  assert.equal(workflow.match(/^\s+BRAID_EVAL_BASE_URL:/gmu)?.length, 1)
+  for (const name of [
+    'BRAID_CLI_BRIDGE_BEARER',
+    'BRAID_CLI_BRIDGE_URL',
+    'BRAID_EVAL_API_KEY',
+    'BRAID_EVAL_BASE_URL',
+    'BRAID_EVAL_MODEL',
+    'BRAID_TANGLE_API_KEY',
+    'BRAID_TANGLE_ENDPOINT',
+    'BRAID_TANGLE_MODEL',
+    'BRAID_TANGLE_PROVIDER',
+    'BRAID_TANGLE_RUNNER',
+    'BRAID_TANGLE_SANDBOX_API_KEY',
+    'BRAID_TANGLE_SANDBOX_ENDPOINT',
+    'BRAID_TANGLE_SANDBOX_MODEL',
+    'BRAID_TANGLE_SANDBOX_PROVIDER',
+    'BRAID_TANGLE_SANDBOX_RUNNER',
+    'BRAID_ANALYSIS_API_KEY',
+    'BRAID_ANALYSIS_ENDPOINT',
+    'BRAID_ANALYSIS_MODEL',
+    'BRAID_ANALYSIS_PROVIDER',
+    'BRAID_ANALYSIS_RUNNER',
+    'BRAID_SUPERVISOR_ID',
+    'BRAID_SUPERVISOR_MESSAGE',
+    'BRAID_SUPERVISOR_ROOT',
+    'BRAID_SUPERVISOR_WORKER',
+  ]) {
+    const declaration = new RegExp(`^\\s+${name}:`, 'gmu')
+    assert.equal(releaseCheckStep.match(declaration)?.length, 1, name)
+    assert.doesNotMatch(otherCandidateSteps, declaration, name)
+  }
+  for (const name of [
+    'BRAID_TANGLE_API_KEY',
+    'BRAID_TANGLE_SANDBOX_API_KEY',
+    'BRAID_ANALYSIS_API_KEY',
+  ]) {
+    assert.ok(releaseCheckStep.includes(`${name}: ${'$'}{{ secrets.${name} }}`))
+  }
 })
 
 test('independent review approval is signed and bound to the exact candidate', () => {
