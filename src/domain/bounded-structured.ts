@@ -46,17 +46,21 @@ export function isSafeBooleanTelemetryField(key: string, value: unknown): value 
 }
 
 /** Accept Runtime's exact aggregate token counter without accepting arbitrary token-shaped data. */
-export function isSafeTokenUsageRecord(
-  key: string,
-  value: unknown,
-): value is Readonly<{ input: number; output: number; tokensKnown?: false }> {
+export function isSafeTokenUsageRecord(key: string, value: unknown): value is SafeTokenUsageRecord {
   return safeTokenUsageRecord(key, value) !== undefined
 }
 
-function safeTokenUsageRecord(
-  key: string,
-  value: unknown,
-): Readonly<{ input: number; output: number; tokensKnown?: false }> | undefined {
+interface SafeTokenUsageRecord {
+  readonly input: number
+  readonly output: number
+  readonly tokensKnown?: false
+  readonly freshInput?: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
+  readonly cacheBreakdownKnown?: false
+}
+
+function safeTokenUsageRecord(key: string, value: unknown): SafeTokenUsageRecord | undefined {
   const normalized = key.replace(/[^a-z0-9]/giu, '').toLowerCase()
   if ((normalized !== 'tokens' && normalized !== 'tokenusage') || !isRecord(value)) {
     return undefined
@@ -68,25 +72,63 @@ function safeTokenUsageRecord(
     let input: number | undefined
     let output: number | undefined
     let tokensKnown: false | undefined
+    let freshInput: number | undefined
+    let cacheRead: number | undefined
+    let cacheWrite: number | undefined
+    let cacheBreakdownKnown: false | undefined
     for (const field in value) {
       if (!Object.prototype.propertyIsEnumerable.call(value, field)) continue
-      if (field !== 'input' && field !== 'output' && field !== 'tokensKnown') return undefined
+      if (
+        field !== 'input' &&
+        field !== 'output' &&
+        field !== 'tokensKnown' &&
+        field !== 'freshInput' &&
+        field !== 'cacheRead' &&
+        field !== 'cacheWrite' &&
+        field !== 'cacheBreakdownKnown'
+      )
+        return undefined
       fields += 1
-      if (fields > 3) return undefined
+      if (fields > 7) return undefined
       const fieldValue = value[field]
       if (field === 'tokensKnown') {
         if (fieldValue !== false) return undefined
         tokensKnown = false
         continue
       }
+      if (field === 'cacheBreakdownKnown') {
+        if (fieldValue !== false) return undefined
+        cacheBreakdownKnown = false
+        continue
+      }
       const count = fieldValue
       if (typeof count !== 'number' || !Number.isFinite(count) || count < 0) return undefined
       if (field === 'input') input = count
-      else output = count
+      else if (field === 'output') output = count
+      else if (field === 'freshInput') freshInput = count
+      else if (field === 'cacheRead') cacheRead = count
+      else cacheWrite = count
     }
     if (input === undefined || output === undefined) return undefined
-    if (fields !== (tokensKnown === false ? 3 : 2)) return undefined
-    return { input, output, ...(tokensKnown === false ? { tokensKnown } : {}) }
+    const cacheValues = [freshInput, cacheRead, cacheWrite]
+    const cacheFieldCount = cacheValues.filter((entry) => entry !== undefined).length
+    if (input > 0 && cacheFieldCount > 0 && cacheFieldCount < 3 && cacheBreakdownKnown !== false)
+      return undefined
+    if (
+      cacheBreakdownKnown !== false &&
+      cacheFieldCount === 3 &&
+      (freshInput ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0) !== input
+    )
+      return undefined
+    return {
+      input,
+      output,
+      ...(tokensKnown === false ? { tokensKnown } : {}),
+      ...(freshInput === undefined ? {} : { freshInput }),
+      ...(cacheRead === undefined ? {} : { cacheRead }),
+      ...(cacheWrite === undefined ? {} : { cacheWrite }),
+      ...(cacheBreakdownKnown === false ? { cacheBreakdownKnown } : {}),
+    }
   } catch {
     return undefined
   }

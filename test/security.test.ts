@@ -816,11 +816,62 @@ test('secret-designated interaction values are rejected before journal persisten
   )
   assert.doesNotThrow(() =>
     assertPersistablePayload({
-      spend: { tokens: { input: 12, output: 7, tokensKnown: false } },
+      spend: {
+        tokens: {
+          input: 12,
+          output: 7,
+          tokensKnown: false,
+          cacheBreakdownKnown: false,
+        },
+      },
+    }),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({
+      spend: {
+        tokens: { input: 12, output: 7, freshInput: 5, cacheRead: 4, cacheWrite: 3 },
+      },
+    }),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({
+      tokens: { input: 0, output: 1, cacheRead: 0 },
+    }),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({
+      tokens: {
+        input: 12,
+        output: 7,
+        freshInput: 6,
+        cacheRead: 4,
+        cacheWrite: 3,
+        cacheBreakdownKnown: false,
+      },
     }),
   )
   assert.throws(
     () => assertPersistablePayload({ tokens: { input: 12, output: 7, tokensKnown: true } }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.throws(
+    () =>
+      assertPersistablePayload({
+        tokens: { input: 12, output: 7, cacheBreakdownKnown: true },
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.throws(
+    () =>
+      assertPersistablePayload({
+        tokens: { input: 12, output: 7, freshInput: 6, cacheRead: 4, cacheWrite: 3 },
+      }),
     (error: unknown) =>
       error instanceof Error &&
       error.name === 'StorageError' &&
@@ -876,7 +927,12 @@ test('runtime spend artifacts remain redacted and persistable when token totals 
       metadata: {
         spend: {
           iterations: 1,
-          tokens: { input: 12, output: 7, tokensKnown: false },
+          tokens: {
+            input: 12,
+            output: 7,
+            tokensKnown: false,
+            cacheBreakdownKnown: false,
+          },
           tokensKnown: false,
           usdKnown: false,
           usd: 0,
@@ -895,7 +951,12 @@ test('runtime spend artifacts remain redacted and persistable when token totals 
   assert.deepEqual(event.metadata, {
     spend: {
       iterations: 1,
-      tokens: { input: 12, output: 7, tokensKnown: false },
+      tokens: {
+        input: 12,
+        output: 7,
+        tokensKnown: false,
+        cacheBreakdownKnown: false,
+      },
       tokensKnown: false,
       usdKnown: false,
       usd: 0,
