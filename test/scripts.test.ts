@@ -686,10 +686,16 @@ test('release keys stay isolated while publication uses the installed product', 
 
   const candidateSmoke = job('platform-smoke', 'publish')
   const registrySmoke = job('post-publish-smoke', 'finalize')
+  const packageSmoke = await readFile('scripts/release/smoke-package.mjs', 'utf8')
   assert.match(candidateSmoke, /name: Install and use the exact candidate/u)
   assert.match(candidateSmoke, /node scripts\/release\/smoke-package\.mjs/u)
   assert.match(registrySmoke, /name: Download and use the registry package/u)
   assert.match(registrySmoke, /node scripts\/release\/smoke-package\.mjs/u)
+  assert.match(
+    packageSmoke,
+    /const smokeRoot = await realpath\(await mkdtemp\(/u,
+    'Package smoke must use a physical path for protected storage on macOS',
+  )
 
   const finalize = job('finalize', 'endorse-final')
   assert.match(finalize, /name: Validate candidate and registry use/u)

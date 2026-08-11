@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -140,7 +140,7 @@ const expectedArchitecture =
 assert(artifactRootValue, '--artifact-root is required')
 const artifactRoot = resolve(artifactRootValue)
 const proof = JSON.parse(await readFile(join(artifactRoot, 'w6', 'package-proof.json'), 'utf8'))
-const smokeRoot = await mkdtemp(join(tmpdir(), 'braid-platform-smoke-'))
+const smokeRoot = await realpath(await mkdtemp(join(tmpdir(), 'braid-platform-smoke-')))
 let smokeResult
 
 try {
