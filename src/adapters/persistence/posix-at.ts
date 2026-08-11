@@ -1,3 +1,5 @@
+import { readlinkSync } from 'node:fs'
+
 import koffi from 'koffi'
 
 interface PosixAtBindings {
@@ -70,11 +72,11 @@ const DARWIN_F_GETPATH = 50
 const DARWIN_MAX_PATH_LENGTH = 1024
 const CLOSE_ON_EXEC = process.platform === 'darwin' ? 0x01000000 : 0o2000000
 
-export function descriptorPath(fileDescriptor: number): string {
-  if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
+export function descriptorTargetPath(fileDescriptor: number): string {
+  if (process.platform === 'linux') return readlinkSync(`/proc/self/fd/${fileDescriptor}`)
   if (process.platform !== 'darwin') {
     const error = new Error(
-      `Descriptor paths are unavailable on ${process.platform}`,
+      `Descriptor target paths are unavailable on ${process.platform}`,
     ) as NodeJS.ErrnoException
     error.code = 'ENOSYS'
     error.syscall = 'fcntl'
@@ -93,6 +95,11 @@ export function descriptorPath(fileDescriptor: number): string {
     throw error
   }
   return output.toString('utf8', 0, terminator)
+}
+
+export function descriptorPath(fileDescriptor: number): string {
+  if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
+  return descriptorTargetPath(fileDescriptor)
 }
 
 function errnoCode(errno: number): string {

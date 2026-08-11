@@ -176,6 +176,7 @@ Linux and macOS path operations call the operating system's descriptor-relative 
 Each path component opens below its parent descriptor with no-follow flags.
 
 Current npm releases support Linux and macOS.
+Inherited key descriptors use procfs on Linux and `F_GETPATH` on macOS before Braid checks that the key stays outside the workspace.
 Linux reopens the validated SQLite descriptor through procfs.
 macOS resolves the validated descriptor because stock SQLite needs normal journal and WAL paths.
 Braid then rejects startup unless SQLite's live database descriptor matches the validated inode.
