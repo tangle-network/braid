@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "533f2a99931051ea72b43672f21f0dc0e27c63d33ec4c2ea67dcf65e0bedc7e8"
+    "tarballSha256": "32dda757d252bff4e120a8c69d776cb76b3ee971e3f2649d661875e77a20f7b8"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " analyses › /ask · frozen question · analysis · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n time: 2026-08-04T04:00:01.240Z\n run: run-cli-bridge-reconnect\n Where did this run waste time, and what should change?\n source: da8ae2345b2c17a…7c9190eb · frozen\n analyst: profile-trace-reviewer · completed\n • [citation-profile-route-order] Profile inspection and route resolution ran\n serially although their inputs were independent. · medium · confidence 0.94\n ↳ [citation-profile-route-order] profile.inspect completed before runtime.route\n started\n • [citation-package-proof] The answer claimed success before the packaged\n terminal check completed. · high · confidence 0.88\n ↳ [citation-package-proof] package check started; no terminal result was\n recorded\n source complete: yes · findings: 2\n analysis cost: $0.0048 · analysis time: 1240ms\n next: ask a narrower question, or use /compare <left> <right> against another\n frozen run\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back\n",
+  "frame": " analyses › /ask · frozen question · analysis · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n time: 2026-08-04T04:00:01.240Z\n run: run-cli-bridge-reconnect\n Where did this run waste time, and what should change?\n source: da8ae2345b2c17a…7c9190eb · frozen\n analyst: profile-trace-reviewer · completed\n route: runner unknown · configured model unknown\n • [citation-profile-route-order] Profile inspection and route resolution ran\n serially although their inputs were independent. · medium · confidence 0.94\n ↳ [citation-profile-route-order] profile.inspect completed before runtime.route\n started\n • [citation-package-proof] The answer claimed success before the packaged\n terminal check completed. · high · confidence 0.88\n ↳ [citation-package-proof] package check started; no terminal result was\n recorded\n model calls: unavailable\n source complete: yes · findings: 2\n analysis cost: $0.0048 · analysis time: 1240ms\n next: ask a narrower question, or use /compare <left> <right> against another\n frozen run\n\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -226,14 +226,20 @@
           "lines": [
             "source: da8ae2345b2c17a…7c9190eb · frozen",
             "analyst: profile-trace-reviewer · completed",
+            "route: runner unknown · configured model unknown",
             "• [citation-profile-route-order] Profile inspection and route resolution ran serially although their inputs were independent. · medium · confidence 0.94",
             "↳ [citation-profile-route-order] profile.inspect completed before runtime.route started",
             "• [citation-package-proof] The answer claimed success before the packaged terminal check completed. · high · confidence 0.88",
             "↳ [citation-package-proof] package check started; no terminal result was recorded",
+            "model calls: unavailable",
             "source complete: yes · findings: 2",
             "analysis cost: $0.0048 · analysis time: 1240ms",
             "next: ask a narrower question, or use /compare <left> <right> against another frozen run"
-          ]
+          ],
+          "analysisExecution": {
+            "observedModels": [],
+            "wallTimeMs": 1240
+          }
         }
       ],
       "capabilities": {

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid production terminal, real Pi demo, accounting evidence, and packaged release proof",
+  "files": 399,
+  "base": "5e2cc57101150b0a839a1eddd399af87082fb435",
+  "head": "bd8f607fd1045aabefd7153efe6d37d6b1e4ba36",
+  "projectType": "TypeScript ESM terminal package",
+  "reviewers": [
+    "A: operator architecture, correctness, security, and product review",
+    "B: existing focused audits for profile identity, storage, release, and terminal behavior",
+    "C: Luna Max adversarial re-review of exact package identity, cost provenance, and public demo coverage",
+    "D: repository, package, terminal, performance, live-route, visual, and secret checks"
+  ],
+  "mode": "operator review followed by independent adversarial review and exact artifact checks",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 4,
+    "medium": 4,
+    "low": 0,
+    "resolved": 8,
+    "unresolved": 0,
+    "dropped": 0
+  }
+}

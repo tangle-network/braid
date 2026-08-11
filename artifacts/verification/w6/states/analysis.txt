@@ -5,6 +5,7 @@
  Where did this run waste time, and what should change?
  source: da8ae2345b2c17a…7c9190eb · frozen
  analyst: profile-trace-reviewer · completed
+ route: runner unknown · configured model unknown
  • [citation-profile-route-order] Profile inspection and route resolution ran
  serially although their inputs were independent. · medium · confidence 0.94
  ↳ [citation-profile-route-order] profile.inspect completed before runtime.route
@@ -13,12 +14,11 @@
  terminal check completed. · high · confidence 0.88
  ↳ [citation-package-proof] package check started; no terminal result was
  recorded
+ model calls: unavailable
  source complete: yes · findings: 2
  analysis cost: $0.0048 · analysis time: 1240ms
  next: ask a narrower question, or use /compare <left> <right> against another
  frozen run
-
-
 
 ────────────────────────────────────────────────────────────────────────────────
  ↑↓ previous/next · PgUp/PgDn page · ←/esc back

@@ -6,7 +6,7 @@ appearance: none; high contrast off; reduced motion off
 event 2: draft.changed; status: ready for a message
 event 3: run.requested; status: admitted: W6 plain proof
 event 4: effect.upserted; status: streaming
-event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-a2d3dc44-0a6c-4669-a141-e01ea3007e5c","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:f75eb08b6c6a3120e5297421baed1e5e2553899395ec5981e0fda4c9ce725300"}}},"session":{"id":"0f4f96ff-0277-4296-9df0-c6158ffc4a0b","backend":"executor","status":"active","createdAt":"2026-08-10T23:37:50.453Z","updatedAt":"2026-08-10T23:37:50.453Z","metadata":"[unavailable]"},"
+event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-79f30ec5-74c8-467d-86ed-d1acbdc313ed","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:f75eb08b6c6a3120e5297421baed1e5e2553899395ec5981e0fda4c9ce725300"}}},"session":{"id":"7d504298-a745-48e6-9267-6a0d6f34d38f","backend":"executor","status":"active","createdAt":"2026-08-11T00:45:18.349Z","updatedAt":"2026-08-11T00:45:18.349Z","metadata":"[unavailable]"},"
 event 6: application.shutdown.requested; status: streaming
 event 7: run.control.requested; status: cancelling: requested
 event 8: run.cancel.requested; status: cancelling: requested
