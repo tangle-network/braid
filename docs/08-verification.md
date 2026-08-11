@@ -520,23 +520,35 @@ Each row has a forced-process-kill test at every durable boundary.
 
 Each case runs on at least three representative source fixtures and includes a seeded poor output plus a trivial raw-data baseline.
 
-## Release evidence manifest
+## Comprehensive audit manifest
 
-The release process requires `BRAID_RELEASE_ARTIFACT_ROOT` to name a real directory outside the clean source checkout.
+The comprehensive audit is available when a product decision needs every requirement record in one manifest.
 
-Candidate creation writes one npm tarball, its complete package-file manifest, check streams, terminal captures, resumable collection state, and `release/checks.json` below that external directory.
+It is not an npm publication prerequisite.
+
+The audit requires `BRAID_RELEASE_ARTIFACT_ROOT` to name a real directory outside the clean source checkout.
+
+Audit candidate creation writes one npm tarball, its package-file manifest, check streams, terminal captures, resumable state, and `release/checks.json` below that directory.
 
 The collector executes 25 distinct prerequisite commands and materializes 43 exact `UP-*`, `LIVE-*`, `PERF-*`, `EVAL-*`, and `VR-03` records from their matching command outputs, for 65 check records covering all 154 requirement identifiers.
 
-`verify:release` is the final assembler and never appears as one of its own prerequisite checks.
+`verify:release` assembles this optional audit and never appears as one of its own prerequisite checks.
 
-Pre-publication validation checks the candidate before the release key exists in any job that executes package code.
+Publication uses a smaller direct acceptance path.
+
+The candidate job runs `pnpm check` once, then `pnpm release:prepare` builds and uses one immutable package.
+
+A code-free job endorses that exact package before publication.
 
 After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64, macOS arm64, and Windows x64.
 
-The final process validates those six records, adds their immutable JSON artifacts to `VR-10`, then writes `<version>/manifest.json` and `<version>/report.md` below the external artifact directory.
+The publication process validates those six records, the package SHA-256, and npm provenance.
 
-The report counts passed, failed, unavailable, uncaptured, and unrecognized check results separately.
+It writes `publication/proof.json` below the external artifact directory.
+
+An isolated code-free job endorses the resulting release bundle before tagging the commit.
+
+When the comprehensive audit runs, its report counts passed, failed, unavailable, uncaptured, and unrecognized check results separately.
 
 Each report row includes its exact result.
 
@@ -585,7 +597,9 @@ The manifest contains the following top-level data.
 
 Each check records identifier, category, required status, command, working directory, environment identifier, start and end, exit code, attempt count, measured fields, result, stdout and stderr artifact hashes, and failure details.
 
-The complete archive, including every check field and output digest, is covered by the endorsement file index.
+An audit archive includes every check field and output digest.
+
+The publication endorsement covers the exact package, package manifest, six platform-use records, and npm provenance.
 
 The publication and tag jobs accept only the public key pinned in `release/endorsement-public-key.pem` and recompute the complete index before accepting its signature.
 
@@ -646,7 +660,7 @@ Implementation must provide the following stable scripts.
 | `capture` | `pnpm test:capture` | Deterministic baseline real-binary captures |
 | `visual` | `pnpm capture:visual` | Deterministic real-binary state captures and manifests |
 | `release` | `pnpm check:release` | Release manifest and evidence-set check |
-| `verify:release` | `pnpm verify:release` | Validate publication proof and assemble every required result before isolated archive endorsement |
+| `verify:release` | `pnpm verify:release` | Assemble the optional comprehensive audit from collected result records |
 
 The deterministic local commands are implemented in this repository.
 
@@ -668,15 +682,15 @@ When cancellation is unavailable, the live driver checks the rejected control ag
 
 Tangle, supervisor, and live-analysis commands return a typed unavailable result until protected credentials, deployments, and evidence stores are supplied.
 
-The release workflow uses `pnpm release:prepare`, `pnpm release:collect`, and `pnpm verify:candidate` before publication.
+The release workflow runs `pnpm check` once and uses `pnpm release:prepare` before publication.
 
-The candidate job supplies Bridge, eval, Tangle, analysis, and supervisor settings only to the complete release-check step.
+It does not require provider, sandbox, supervisor, or analysis credentials.
 
-Inference, sandbox, and analysis use separate GitHub environment secrets.
+Those settings remain inputs to explicit live audits.
 
-Endpoints, models, providers, runners, and supervisor identifiers remain environment variables.
+After publication, `release:record-publication` validates direct candidate and registry use plus npm provenance.
 
-After publication it uses `pnpm release:record-publication` and `pnpm verify:release`; these workflow commands are not additional check records.
+The comprehensive collector and verifier remain separate commands for explicit audits.
 
 ## Verification acceptance
 

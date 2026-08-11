@@ -621,32 +621,27 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
   }
 })
 
-test('release keys stay isolated and provider credentials are step-scoped', async () => {
+test('release keys stay isolated while publication uses the installed product', async () => {
   const workflow = await readFile('.github/workflows/release.yml', 'utf8')
-  const candidate = workflow.slice(
-    workflow.indexOf('  candidate:'),
-    workflow.indexOf('  endorse-candidate:'),
-  )
+  const job = (name: string, next: string) => {
+    const start = workflow.indexOf(`\n  ${name}:`)
+    const end = workflow.indexOf(`\n  ${next}:`, start + 1)
+    assert.notEqual(start, -1, name)
+    assert.notEqual(end, -1, next)
+    return workflow.slice(start, end)
+  }
+  const candidate = job('candidate', 'endorse-candidate')
   assert.doesNotMatch(candidate, /BRAID_RELEASE_SIGNING_KEY/u)
-  const releaseCheckMarker = '      - name: Run the complete release checks'
-  const releaseCheckStart = candidate.indexOf(releaseCheckMarker)
-  assert.notEqual(releaseCheckStart, -1)
-  const releaseCheckEnd = candidate.indexOf(
-    '\n      - name:',
-    releaseCheckStart + releaseCheckMarker.length,
-  )
-  assert.notEqual(releaseCheckEnd, -1)
-  const releaseCheckStep = candidate.slice(releaseCheckStart, releaseCheckEnd)
-  const otherCandidateSteps = `${candidate.slice(0, releaseCheckStart)}${candidate.slice(releaseCheckEnd)}`
   for (const [start, end] of [
     ['  endorse-candidate:', '  platform-smoke:'],
     ['  endorse-final:', '  tag-and-report:'],
   ] as const) {
-    const job = workflow.slice(workflow.indexOf(start), workflow.indexOf(end))
-    assert.match(job, /BRAID_RELEASE_SIGNING_KEY_BASE64/u)
-    assert.doesNotMatch(job, /actions\/checkout|\b(?:node|npm|pnpm)\b|scripts\//u)
+    const endorsement = job(start.trim().slice(0, -1), end.trim().slice(0, -1))
+    assert.match(endorsement, /BRAID_RELEASE_SIGNING_KEY_BASE64/u)
+    assert.doesNotMatch(endorsement, /actions\/checkout|\b(?:node|npm|pnpm)\b|scripts\//u)
   }
   assert.equal(workflow.match(/BRAID_RELEASE_SIGNING_KEY_BASE64/gu)?.length, 2)
+
   for (const name of [
     'BRAID_CLI_BRIDGE_BEARER',
     'BRAID_CLI_BRIDGE_URL',
@@ -673,17 +668,26 @@ test('release keys stay isolated and provider credentials are step-scoped', asyn
     'BRAID_SUPERVISOR_ROOT',
     'BRAID_SUPERVISOR_WORKER',
   ]) {
-    const declaration = new RegExp(`^\\s+${name}:`, 'gmu')
-    assert.equal(releaseCheckStep.match(declaration)?.length, 1, name)
-    assert.doesNotMatch(otherCandidateSteps, declaration, name)
+    assert.doesNotMatch(workflow, new RegExp(`\\b${name}\\b`, 'u'), name)
   }
-  for (const name of [
-    'BRAID_TANGLE_API_KEY',
-    'BRAID_TANGLE_SANDBOX_API_KEY',
-    'BRAID_ANALYSIS_API_KEY',
-  ]) {
-    assert.ok(releaseCheckStep.includes(`${name}: ${'$'}{{ secrets.${name} }}`))
-  }
+
+  assert.doesNotMatch(workflow, /release:collect|verify:candidate|verify:release/u)
+  assert.match(candidate, /name: Run source checks once[\s\S]*?run: pnpm check/u)
+  assert.match(
+    candidate,
+    /name: Build and use one immutable candidate[\s\S]*?run: pnpm release:prepare/u,
+  )
+
+  const candidateSmoke = job('platform-smoke', 'publish')
+  const registrySmoke = job('post-publish-smoke', 'finalize')
+  assert.match(candidateSmoke, /name: Install and use the exact candidate/u)
+  assert.match(candidateSmoke, /node scripts\/release\/smoke-package\.mjs/u)
+  assert.match(registrySmoke, /name: Download and use the registry package/u)
+  assert.match(registrySmoke, /node scripts\/release\/smoke-package\.mjs/u)
+
+  const finalize = job('finalize', 'endorse-final')
+  assert.match(finalize, /name: Validate candidate and registry use/u)
+  assert.match(finalize, /node scripts\/release\/record-publication\.mjs/u)
 })
 
 test('release acceptance uses candidate product checks without a manual attestation', async () => {
