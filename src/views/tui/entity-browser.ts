@@ -88,7 +88,8 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
   }
 
   goBack(): boolean {
-    if (this.#usesSplitView(this.#lastWidth)) return false
+    const document = this.#resolveDocument()
+    if (this.#usesWideBrowser(document, this.#lastWidth)) return false
     if (this.#mode === 'list') return false
     this.#mode = 'list'
     this.#page = 0
@@ -98,14 +99,16 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
 
   handleInput(data: string): void {
     const document = this.#resolveDocument()
-    const split = this.#usesSplitView(this.#lastWidth)
+    const split = this.#showsSplitView(document, this.#lastWidth)
+    const wide = this.#usesWideBrowser(document, this.#lastWidth)
+    const detailVisible = split || (wide && document.rows.length === 1) || this.#mode === 'detail'
     if (matchesKey(data, 'escape') || matchesKey(data, 'left')) {
       if (!this.goBack()) this.#onClose()
       return
     }
     if (document.rows.length === 0) return
     if (matchesKey(data, 'enter') || matchesKey(data, 'return') || matchesKey(data, 'right')) {
-      if (!split && this.#mode === 'list') {
+      if (!wide && this.#mode === 'list') {
         this.#mode = 'detail'
         this.#page = 0
         this.invalidate()
@@ -121,12 +124,12 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
       return
     }
     if (matchesKey(data, 'home')) {
-      if (split || this.#mode === 'list') this.#select(document, 0)
+      if (split || !detailVisible) this.#select(document, 0)
       else this.#setPage(0, document)
       return
     }
     if (matchesKey(data, 'end')) {
-      if (split || this.#mode === 'list') this.#select(document, document.rows.length - 1)
+      if (split || !detailVisible) this.#select(document, document.rows.length - 1)
       else this.#setPage(Number.MAX_SAFE_INTEGER, document)
       return
     }
@@ -138,7 +141,8 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     const document = this.#resolveDocument()
     const safeWidth = Math.max(1, width)
     this.#lastWidth = safeWidth
-    const split = this.#usesSplitView(safeWidth) && document.rows.length > 0
+    const split = this.#showsSplitView(document, safeWidth)
+    const singleDetail = this.#usesWideBrowser(document, safeWidth) && document.rows.length === 1
     const bodyRows = this.#bodyRows()
     const divider = this.#theme.muted('─'.repeat(safeWidth))
     const notice =
@@ -152,16 +156,18 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
         ? []
         : split
           ? this.#renderSplit(document, safeWidth, contentRows)
-          : this.#mode === 'detail'
+          : singleDetail
             ? this.#renderDetail(document, safeWidth, contentRows)
-            : this.#renderList(document, safeWidth, contentRows)
+            : this.#mode === 'detail'
+              ? this.#renderDetail(document, safeWidth, contentRows)
+              : this.#renderList(document, safeWidth, contentRows)
     const renderedBody = [...notice, ...pinned, ...content]
     const body = [
       ...renderedBody,
       ...Array.from({ length: bodyRows - renderedBody.length }, () => ''),
     ]
     return [
-      this.#header(document, safeWidth, split),
+      this.#header(document, safeWidth, split || singleDetail),
       divider,
       ...body,
       divider,
@@ -206,7 +212,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
   }
 
   #setPage(page: number, document: EntityBrowserDocument): void {
-    if (this.#mode !== 'detail' && !this.#usesSplitView(this.#lastWidth)) return
+    if (this.#mode !== 'detail' && !this.#usesWideBrowser(document, this.#lastWidth)) return
     const pages = this.#detailPageCount(document, this.#lastWidth)
     const next = Math.max(0, Math.min(page, pages - 1))
     if (next === this.#page) return
@@ -266,11 +272,11 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     })
   }
 
-  #header(document: EntityBrowserDocument, width: number, split: boolean): string {
+  #header(document: EntityBrowserDocument, width: number, detailVisible: boolean): string {
     const selected = document.rows[this.#selectedIndex]
     const title = sanitizeTerminalText(document.title)
     const primary =
-      (!split && this.#mode === 'list') || selected === undefined
+      (!detailVisible && this.#mode === 'list') || selected === undefined
         ? this.#theme.brand(`${title} · ${document.rows.length}`)
         : `${this.#theme.brand(title)} ${this.#theme.muted('›')} ${this.#theme.accent(sanitizeTerminalText(selected.title))} ${this.#theme.muted(`· ${selected.status} · ${this.#selectedIndex + 1}/${document.rows.length}`)}`
     const context =
@@ -283,13 +289,15 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
   #footer(document: EntityBrowserDocument, width: number): string {
     const filter =
       document.filterHint === undefined ? '' : ` · ${sanitizeTerminalText(document.filterHint)}`
-    if (this.#usesSplitView(width) && document.rows.length > 0) {
+    if (this.#usesWideBrowser(document, width)) {
       const pages = this.#detailPageCount(document, width)
       const page = pages > 1 ? ` · page ${this.#page + 1}/${pages}` : ''
       const keys =
-        width < 120
-          ? '↑↓ select · PgUp/PgDn detail · ←/esc close'
-          : '↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close'
+        document.rows.length === 1
+          ? 'PgUp/PgDn detail · ←/esc close'
+          : width < 120
+            ? '↑↓ select · PgUp/PgDn detail · ←/esc close'
+            : '↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close'
       return this.#line(this.#theme.muted(`${keys}${page}${filter}`), width)
     }
     if (this.#mode === 'list') {
@@ -322,7 +330,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
 
   #detailPageCount(document: EntityBrowserDocument, width: number): number {
     const selected = document.rows[this.#selectedIndex]
-    const detailWidth = this.#usesSplitView(width) ? splitDetailWidth(width) : width
+    const detailWidth = this.#showsSplitView(document, width) ? splitDetailWidth(width) : width
     const lines = selected === undefined ? 0 : this.#detailVisualLines(selected, detailWidth).length
     const noticeRows = document.notice === undefined ? 0 : 1
     const pinnedRows = this.#pinnedRows(document, width).length
@@ -377,6 +385,14 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
 
   #usesSplitView(width: number): boolean {
     return width >= 100 && this.#terminalRows() >= 16
+  }
+
+  #usesWideBrowser(document: EntityBrowserDocument, width: number): boolean {
+    return this.#usesSplitView(width) && document.rows.length > 0
+  }
+
+  #showsSplitView(document: EntityBrowserDocument, width: number): boolean {
+    return this.#usesSplitView(width) && document.rows.length > 1
   }
 }
 

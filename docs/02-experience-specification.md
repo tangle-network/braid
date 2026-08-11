@@ -501,6 +501,9 @@ The analysis header identifies the action, frozen source, selected profile, runn
 
 Analysis navigation uses the same list, details, arrow, `Left`, and `Esc` behavior as graph and runtime activity.
 
+At wide sizes, two or more results use a list-and-detail split.
+One result uses the full detail width and does not reserve an empty navigation rail.
+
 Detail text wraps before pagination, so citations and measured fields never disappear through horizontal clipping.
 
 The pending analysis row shows source, analyst profile, analysis recipe, budget, and cancel action.

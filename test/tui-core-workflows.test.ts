@@ -492,6 +492,51 @@ test('wide activity keeps the list and details together and tabs through bounded
   assert.equal(escapeCloses, 1)
 })
 
+test('wide activity gives one selected result the full surface', () => {
+  const original = baseView()
+  const view: BraidViewModel = {
+    ...original,
+    activity: [
+      {
+        id: 'analysis:only',
+        kind: 'analysis',
+        title: 'only analysis',
+        status: 'completed',
+        entityType: 'analysis',
+        entityId: 'only',
+      },
+    ],
+    entityDetails: [
+      {
+        entityType: 'analysis',
+        entityId: 'only',
+        title: '/ask · only',
+        status: 'completed',
+        lines: ['one result uses the full detail width'],
+      },
+    ],
+  }
+  let closes = 0
+  const browser = new ActivityBrowserPanel(theme, {
+    view: () => view,
+    rows: () => 24,
+    onClose: () => {
+      closes += 1
+    },
+    scope: 'analyses',
+    selectedId: 'analysis:only',
+    openSelected: true,
+  })
+
+  const rendered = browser.render(120).join('\n')
+  assert.match(rendered, /\/ask · only/u)
+  assert.match(rendered, /one result uses the full detail width/u)
+  assert.doesNotMatch(rendered, /│/u)
+  assert.match(rendered, /←\/esc close/u)
+  browser.handleInput('\u001b[D')
+  assert.equal(closes, 1)
+})
+
 test('analysis mode copy distinguishes ask, named analyze recipes, and compare', async () => {
   const expected = [
     ['/ask · frozen question', 'ask'] as const,
