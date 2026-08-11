@@ -1,4 +1,6 @@
-import { canonicalDigest } from '../dist/domain/canonical.js'
+import { loadPackageProofCanonicalDigest } from './package-proof-product-modules.mjs'
+
+const canonicalDigest = await loadPackageProofCanonicalDigest()
 
 export function baselineEventEnd(events) {
   const finishIndex = events.findIndex(

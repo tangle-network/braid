@@ -12,8 +12,6 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
-import { canonicalDigest } from '../dist/domain/canonical.js'
-import { sessionUsageFor } from '../dist/views/shared/usage-projection.js'
 import { assertAccessibleTerminalOutput } from './accessibility-output.mjs'
 import { runRpc, runSignalTerminal, runTerminal } from './package-proof-flows.mjs'
 import {
@@ -23,6 +21,10 @@ import {
   parityEvidence,
 } from './package-proof-parity.mjs'
 import { runPlain } from './package-proof-plain.mjs'
+import {
+  loadPackageProofCanonicalDigest,
+  loadPackageProofSessionUsage,
+} from './package-proof-product-modules.mjs'
 import {
   cleanEnvironment,
   gitValue,
@@ -36,6 +38,11 @@ import { packageFileManifestFromTarball } from './release/package-archive.mjs'
 import { npmInvocation, pnpmInvocation } from './release/platform.mjs'
 import { writeExclusiveAtomic } from './release-files.mjs'
 import { assertNoSecretArtifacts } from './scan-secret-artifacts.mjs'
+
+const [canonicalDigest, sessionUsageFor] = await Promise.all([
+  loadPackageProofCanonicalDigest(),
+  loadPackageProofSessionUsage(),
+])
 
 function option(name) {
   const index = process.argv.indexOf(name)
