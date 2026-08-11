@@ -1,6 +1,12 @@
 import koffi from 'koffi'
 
 interface PosixAtBindings {
+  readonly fcntl: (
+    fileDescriptor: number,
+    command: number,
+    pointerType: 'void *',
+    value: Buffer,
+  ) => number
   readonly linkAt: (
     sourceDirectory: number,
     source: string,
@@ -40,6 +46,7 @@ function bindings(): PosixAtBindings {
 
   const libc = koffi.load(null)
   cachedBindings = {
+    fcntl: libc.func('int fcntl(int fileDescriptor, int command, ...)') as PosixAtBindings['fcntl'],
     linkAt: libc.func(
       'int linkat(int sourceDirectory, const char *source, int targetDirectory, const char *target, int flags)',
     ) as PosixAtBindings['linkAt'],
@@ -57,6 +64,34 @@ function bindings(): PosixAtBindings {
     ) as PosixAtBindings['unlinkAt'],
   }
   return cachedBindings
+}
+
+const DARWIN_F_GETPATH = 50
+const DARWIN_MAX_PATH_LENGTH = 1024
+
+export function descriptorPath(fileDescriptor: number): string {
+  if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
+  if (process.platform !== 'darwin') {
+    const error = new Error(
+      `Descriptor paths are unavailable on ${process.platform}`,
+    ) as NodeJS.ErrnoException
+    error.code = 'ENOSYS'
+    error.syscall = 'fcntl'
+    throw error
+  }
+
+  const output = Buffer.alloc(DARWIN_MAX_PATH_LENGTH)
+  const result = bindings().fcntl(fileDescriptor, DARWIN_F_GETPATH, 'void *', output)
+  if (result < 0) throw syscallError('fcntl', String(fileDescriptor))
+  const terminator = output.indexOf(0)
+  if (terminator <= 0) {
+    const error = new Error('Darwin F_GETPATH returned an invalid path') as NodeJS.ErrnoException
+    error.code = 'EIO'
+    error.path = String(fileDescriptor)
+    error.syscall = 'fcntl'
+    throw error
+  }
+  return output.toString('utf8', 0, terminator)
 }
 
 function errnoCode(errno: number): string {

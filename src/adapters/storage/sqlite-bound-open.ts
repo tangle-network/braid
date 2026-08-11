@@ -1,6 +1,6 @@
 import { closeSync, constants, fchmodSync, fstatSync, openSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
-import { openAt, unlinkAt } from '../persistence/posix-at.js'
+import { descriptorPath, openAt, unlinkAt } from '../persistence/posix-at.js'
 import type { SqliteDatabase, SqliteDatabaseFactory } from './sqlite-driver.js'
 import { StorageError } from './sqlite-errors.js'
 
@@ -15,12 +15,6 @@ const REQUIRED_FILE_FLAGS = constants.O_RDWR | (constants.O_NOFOLLOW ?? 0)
 
 function unsupported(message: string): StorageError {
   return new StorageError('STORAGE_PATH_RACE_UNSUPPORTED', message)
-}
-
-function descriptorPath(fileDescriptor: number): string {
-  if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
-  if (process.platform === 'darwin') return `/dev/fd/${fileDescriptor}`
-  throw unsupported('This platform has no inode-bound SQLite descriptor path')
 }
 
 function sameInode(
@@ -87,11 +81,11 @@ function openDatabaseFile(
 }
 
 /**
- * Opens SQLite through an inode-bound descriptor path.
+ * Opens SQLite from a safely validated database descriptor.
  *
- * The native driver only accepts a filename, so the filename must refer to a
- * descriptor we already opened with O_NOFOLLOW. The descriptor remains open
- * until the owning storage closes the database.
+ * The native driver only accepts a filename. Linux reopens the descriptor.
+ * Darwin resolves the descriptor because SQLite needs a normal sidecar path.
+ * The validated descriptor remains open until the owning storage closes.
  */
 export function openBoundSqliteDatabase(
   path: string,
