@@ -6,7 +6,8 @@ import { createBraidApplication } from '../src/app/composition.js'
 import type { BraidViewModel } from '../src/views/shared/models.js'
 import { activityDocument } from '../src/views/tui/activity-browser.js'
 import { executionTargetFor } from '../src/views/tui/execution-target.js'
-import { metricsFor, TerminalChrome } from '../src/views/tui/terminal-chrome.js'
+import { TerminalChrome } from '../src/views/tui/terminal-chrome.js'
+import { metricsFor } from '../src/views/tui/terminal-usage.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 
 const theme = createBraidTheme({ colors: false, highContrast: true, reducedMotion: true })
@@ -40,6 +41,39 @@ test('terminal chrome keeps telemetry out of narrow layouts', () => {
   assert.equal(narrow.length, 3)
   assert.doesNotMatch(narrow.join('\n'), /calls|analysis|workers|missing/u)
   for (const line of narrow) assert.ok(visibleWidth(line) <= 40)
+})
+
+test('terminal usage presents a complete estimate instead of an observed-cost floor', () => {
+  const view = usageView()
+  const estimated: BraidViewModel = {
+    ...view,
+    sessionUsage: {
+      ...view.sessionUsage,
+      turns: {
+        ...view.sessionUsage.turns,
+        costUsd: 0.1,
+        estimatedCostUsd: 0.15,
+        costStatus: 'estimated',
+        unknownCostSources: 1,
+      },
+    },
+  }
+
+  assert.match(metricsFor(estimated)[0] ?? '', /~\$0\.1500/u)
+  assert.doesNotMatch(metricsFor(estimated)[0] ?? '', /≥\$0\.1000/u)
+
+  const freeEstimate = {
+    ...estimated,
+    sessionUsage: {
+      ...estimated.sessionUsage,
+      turns: {
+        ...estimated.sessionUsage.turns,
+        costUsd: 0,
+        estimatedCostUsd: 0,
+      },
+    },
+  }
+  assert.match(metricsFor(freeEstimate)[0] ?? '', /~\$0\.0000/u)
 })
 
 test('execution identity comes from one active run receipt instead of current profile fields', () => {

@@ -1,4 +1,5 @@
-braid  cwd  braid-unified-activity-wt  ·  session  New conversation
+braid  cwd  braid-current-ux-wt  ·  session  New conversation
+AgentProfile Braid starter · pi / deterministic    not connected · thinking none
  W6 active streaming
 
  working…
@@ -20,5 +21,4 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
 
 
 ────────────────────────── alt+enter newline · paste ───────────────────────────
-streaming · Ctrl+C cancel            model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · not connected        Enter queues input
+streaming · Ctrl+C cancel                                     Enter queues input

@@ -1,7 +1,7 @@
-braid  cwd  braid-unified-activity-wt  ·  session  New conversation
+braid  cwd  braid-current-ux-wt  ·  session  New conversation
+AgentProfile Braid starter · pi / deterministic            deterministic fixture
 
- Write a message, or press Ctrl+P for commands.
-
+ Send a task to Braid starter, or press Ctrl+P for commands.
 
 
       Active profile · Braid starter
@@ -10,15 +10,15 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
       thinking none · max output provider default
       digest sha256:44ed91c9…8cfa0a14
       profiles
-
+     ──────────────────────────────────────────────────────────────────────
      >
-
      → ✓ Braid starter                 trusted · read-only · Braid starte
-
+     ──────────────────────────────────────────────────────────────────────
       enter · ^V valid · ^S save · esc
 
 
 
 
-ready for a message                  model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands
+
+
+ready for a message                                              Ctrl+P commands

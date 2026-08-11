@@ -19,7 +19,8 @@ import { layoutFor } from '../src/views/tui/layout.js'
 import { ProfileEditorViewPanel } from '../src/views/tui/profile-editor.js'
 import { SearchableSelector } from '../src/views/tui/selector.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
-import { metricsFor, TerminalChrome } from '../src/views/tui/terminal-chrome.js'
+import { TerminalChrome } from '../src/views/tui/terminal-chrome.js'
+import { metricsFor } from '../src/views/tui/terminal-usage.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { DynamicAutocompleteProvider } from '../src/views/tui/dynamic-autocomplete.js'
@@ -307,13 +308,15 @@ test('stable chrome keeps identity and status outside transcript history', () =>
   const lines = chrome.render(40)
   const firstLine = lines[0] ?? ''
   assert.match(firstLine, /braid\s+AgentProfile reviewer/u)
-  assert.match(lines[1] ?? '', /completed.*runner pi/u)
-  assert.match(lines[2] ?? '', /deterministic fixture/u)
+  assert.match(lines[1] ?? '', /pi \/ deterministic/u)
+  assert.match(lines[2] ?? '', /completed.*Ctrl\+P commands/u)
   assert.doesNotMatch(firstLine, /fixture|deterministic/u)
   assert.ok(visibleWidth(firstLine) <= 40)
 
   const standard = chrome.render(80)
-  assert.match(standard[2] ?? '', /reviewer.*runner pi.*deterministic fixture/u)
+  assert.match(standard[1] ?? '', /reviewer.*pi \/ deterministic/u)
+  assert.match(standard[1] ?? '', /deterministic fixture/u)
+  assert.match(standard[2] ?? '', /completed.*Ctrl\+P commands/u)
   for (const line of standard) assert.ok(visibleWidth(line) <= 80)
 })
 
@@ -515,13 +518,40 @@ test('Ctrl+E cycles through every collapsible detail card', () => {
 
   assert.equal(transcript.toggleDetails(), true)
   let rendered = transcript.render(100).join('\n')
-  assert.match(rendered, /result · complete 2\/2 · open/u)
-  assert.match(rendered, /tool · running 1\/2 · collapsed/u)
+  assert.match(rendered, /result · complete 2\/2 · details open/u)
+  assert.match(rendered, /tool · running 1\/2 · Ctrl\+E details/u)
 
   assert.equal(transcript.toggleDetails(), true)
   rendered = transcript.render(100).join('\n')
-  assert.match(rendered, /tool · running 1\/2 · open/u)
-  assert.match(rendered, /result · complete 2\/2 · collapsed/u)
+  assert.match(rendered, /tool · running 1\/2 · details open/u)
+  assert.match(rendered, /result · complete 2\/2 · Ctrl\+E details/u)
+})
+
+test('terminal presentation translates runtime result labels without changing detail access', () => {
+  const transcript = new TranscriptView(theme)
+  transcript.setView({
+    ...viewFor('completed'),
+    messages: [
+      {
+        id: 'assistant-result',
+        role: 'assistant',
+        text: 'done',
+        status: 'complete',
+        parts: [
+          {
+            id: 'part-result',
+            kind: 'analysis',
+            text: 'receipt details',
+            subject: { type: 'proposal', title: 'agent-turn-result' },
+          },
+        ],
+      },
+    ],
+  })
+
+  const rendered = transcript.render(80).join('\n')
+  assert.match(rendered, /run result · Ctrl\+E details/u)
+  assert.doesNotMatch(rendered, /agent-turn-result|unknown|collapsed/u)
 })
 
 test('one searchable selector preserves query and supports keyboard selection', () => {

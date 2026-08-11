@@ -2,18 +2,24 @@ import { Container, type Focusable, matchesKey, Text, TruncatedText } from '@ear
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { forkExecutionIdentity } from './conversation-overlay-helpers.js'
+import { focusedSurfaceLines } from './focused-surface.js'
 import type { BraidTheme } from './theme.js'
 
 export interface ForkPreviewPanelOptions {
   readonly onConfirm?: () => void
   readonly onCancel?: () => void
+  readonly rows?: () => number
 }
 
 export class ForkPreviewPanel extends Container implements Focusable {
   readonly #theme: BraidTheme
   readonly #onConfirm: (() => void) | undefined
   readonly #onCancel: (() => void) | undefined
+  readonly #rows: () => number
   readonly #error = new Text('', 1, 0)
+  #title = 'fork preview'
+  #context: string | undefined
+  #footer = '←/esc cancel'
   #focused = false
   #submitted = false
   #canConfirm = false
@@ -23,6 +29,7 @@ export class ForkPreviewPanel extends Container implements Focusable {
     this.#theme = theme
     this.#onConfirm = options.onConfirm
     this.#onCancel = options.onCancel
+    this.#rows = options.rows ?? (() => 12)
   }
 
   get focused(): boolean {
@@ -40,19 +47,19 @@ export class ForkPreviewPanel extends Container implements Focusable {
     this.#error.setText('')
     const preview = view.forkPreview
     if (!preview) {
-      this.addChild(this.#line(this.#theme.brand('fork preview · unavailable')))
+      this.#title = 'fork preview · unavailable'
+      this.#context = undefined
+      this.#footer = '←/esc cancel'
       this.addChild(this.#line(this.#theme.muted('No fork plan is available.')))
       this.addChild(
         this.#line(
           this.#theme.warning('Checkpoint and fork capabilities were not reported by the core.'),
         ),
       )
-      this.addChild(this.#line(this.#theme.muted('esc cancel')))
     } else {
       this.#canConfirm = forkExecutionIdentity(preview) !== undefined
-      this.addChild(
-        this.#line(this.#theme.brand(`fork preview · ${sanitizeTerminalText(preview.kind)}`)),
-      )
+      this.#title = 'fork preview'
+      this.#context = sanitizeTerminalText(preview.kind)
       this.addChild(
         this.#line(
           this.#theme.muted(
@@ -96,9 +103,9 @@ export class ForkPreviewPanel extends Container implements Focusable {
             ),
           ),
         )
-        this.addChild(this.#line(this.#theme.muted('esc cancel')))
+        this.#footer = '←/esc cancel'
       } else {
-        this.addChild(this.#line(this.#theme.muted('enter/y create fork · esc cancel')))
+        this.#footer = 'enter/y create fork · ←/esc cancel'
       }
     }
     this.invalidate()
@@ -111,7 +118,7 @@ export class ForkPreviewPanel extends Container implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c')) {
+    if (matchesKey(data, 'escape') || matchesKey(data, 'left') || matchesKey(data, 'ctrl+c')) {
       this.#onCancel?.()
       return
     }
@@ -120,6 +127,18 @@ export class ForkPreviewPanel extends Container implements Focusable {
       this.#submitted = true
       this.#onConfirm()
     }
+  }
+
+  override render(width: number): string[] {
+    return focusedSurfaceLines({
+      theme: this.#theme,
+      title: this.#title,
+      ...(this.#context === undefined ? {} : { context: this.#context }),
+      body: super.render(width),
+      footer: this.#footer,
+      width,
+      rows: this.#rows(),
+    })
   }
 
   #line(value: string): TruncatedText {

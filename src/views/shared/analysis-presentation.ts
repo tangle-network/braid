@@ -1,5 +1,9 @@
 import type { AnalysisRecord } from '../../domain/entities.js'
-import { analysisExecutionView, analysisModelCallLine } from './analysis-model-call-presentation.js'
+import {
+  analysisExecutionView,
+  analysisModelCallLine,
+  analysisModelCallSummary,
+} from './analysis-model-call-presentation.js'
 import type { AnalysisView } from './models.js'
 import { sanitizeTerminalText } from './sanitize.js'
 
@@ -25,6 +29,7 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
   const costFooter = analysisCostFooter(record)
   return {
     source: String(record.source.digest),
+    ...(record.question === undefined ? {} : { question: sanitizeTerminalText(record.question) }),
     analyst: String(record.analystProfileId ?? 'configured analyst'),
     recipe: record.recipe ?? (record.question === undefined ? 'analysis' : 'ask'),
     status:
@@ -107,25 +112,37 @@ export function analysisLines(analysis: AnalysisView): readonly string[] {
 export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
   const mode = analysisMode(analysis)
   const citations = new Map(analysis.citations.map((citation) => [citation.id, citation]))
+  const citationNumbers = new Map(
+    analysis.citations.map((citation, index) => [citation.id, index + 1] as const),
+  )
   const referenced = new Set<string>()
   const details: string[] = []
 
-  for (const finding of analysis.findings) {
+  if (analysis.question !== undefined) {
+    details.push(section('question'))
+    details.push(sanitizeTerminalText(analysis.question))
+  }
+
+  details.push(section('findings'))
+  for (const [index, finding] of analysis.findings.entries()) {
     const severity = finding.severity ? ` · ${sanitizeTerminalText(finding.severity)}` : ''
     const confidence = finding.confidence
       ? ` · confidence ${sanitizeTerminalText(finding.confidence)}`
       : ''
     const cited = finding.citationIds.length
-      ? `[${finding.citationIds.map(sanitizeTerminalText).join(',')}] `
+      ? `[${finding.citationIds.map((id) => citationNumbers.get(id) ?? '?').join(',')}] `
       : '[no citation] '
-    details.push(`• ${cited}${sanitizeTerminalText(finding.title)}${severity}${confidence}`)
+    details.push(
+      `${index + 1}. ${cited}${sanitizeTerminalText(finding.title)}${severity}${confidence}`,
+    )
     for (const citationId of finding.citationIds) {
       referenced.add(citationId)
       const citation = citations.get(citationId)
+      const number = citationNumbers.get(citationId) ?? '?'
       details.push(
         citation === undefined
-          ? `! evidence unavailable: ${sanitizeTerminalText(citationId)}`
-          : `↳ [${sanitizeTerminalText(citation.id)}] ${sanitizeTerminalText(citation.text)}`,
+          ? `! evidence [${number}] unavailable · citation ${shortDigest(citationId)}`
+          : `↳ [${number}] ${sanitizeTerminalText(citation.text)} · event ${shortDigest(citation.eventId)}`,
       )
     }
   }
@@ -133,43 +150,60 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
   for (const citation of analysis.citations) {
     if (referenced.has(citation.id)) continue
     details.push(
-      `evidence [${sanitizeTerminalText(citation.id)}]: ${sanitizeTerminalText(citation.text)}`,
+      `↳ [${citationNumbers.get(citation.id) ?? '?'}] ${sanitizeTerminalText(citation.text)} · event ${shortDigest(citation.eventId)}`,
     )
   }
+
+  const nextAction = analysisNextAction(analysis, mode)
+  if (nextAction !== undefined) {
+    details.push(section('next'))
+    details.push(`next: ${nextAction}`)
+  }
+
+  details.push(section('model use'))
   const execution = analysis.execution
+  const route = analysisRouteLine(execution)
   if (execution?.modelCalls === undefined) {
-    details.push('model calls: unavailable')
+    details.push('Model calls were not reported.')
   } else if (execution.modelCalls.length === 0) {
-    details.push('model calls: 0')
+    details.push('0 model calls reported.')
   } else {
+    details.push(analysisModelCallSummary(execution.modelCalls))
     for (const call of execution.modelCalls)
       details.push(`model call ${analysisModelCallLine(call)}`)
   }
-  if (analysis.footer.length > 0) {
-    const footer = analysis.footer.map(
-      (field) => `${sanitizeTerminalText(field.label)}: ${sanitizeTerminalText(field.value)}`,
-    )
-    for (let index = 0; index < footer.length; index += 2) {
-      details.push(footer.slice(index, index + 2).join(' · '))
-    }
-  }
+
   if (analysis.error) details.push(`! ${sanitizeTerminalText(analysis.error)}`)
-  const nextAction = analysisNextAction(analysis, mode)
-  if (nextAction !== undefined) details.push(`next: ${nextAction}`)
+  if (analysis.footer.length > 0) {
+    details.push(section('run receipt'))
+    for (const field of analysis.footer)
+      details.push(`${sanitizeTerminalText(field.label)}: ${sanitizeTerminalText(field.value)}`)
+  }
 
   return {
     heading: `${mode.command} · ${mode.label}`,
     context: [
       `source: ${shortDigest(analysis.source)} · frozen`,
       `analyst: ${sanitizeTerminalText(analysis.analyst)} · ${sanitizeTerminalText(analysis.status)}`,
-      ...(execution === undefined
-        ? []
-        : [
-            `route: runner ${execution.runner ?? 'unknown'} · configured model ${execution.configuredModel ?? 'unknown'}`,
-          ]),
+      ...(route === undefined ? [] : [route]),
     ],
     details,
   }
+}
+
+function analysisRouteLine(execution: AnalysisView['execution']): string | undefined {
+  if (execution?.runner !== undefined && execution.configuredModel !== undefined) {
+    return `route: runner ${sanitizeTerminalText(execution.runner)} · configured model ${sanitizeTerminalText(execution.configuredModel)}`
+  }
+  if (execution?.runner !== undefined)
+    return `route: runner ${sanitizeTerminalText(execution.runner)}`
+  if (execution?.configuredModel !== undefined)
+    return `route: configured model ${sanitizeTerminalText(execution.configuredModel)}`
+  return undefined
+}
+
+function section(label: string): string {
+  return `── ${label}`
 }
 
 function analysisNextAction(analysis: AnalysisView, mode: AnalysisMode): string | undefined {

@@ -95,8 +95,14 @@ function rowFor(
       ? undefined
       : details.get(`${entityType}:${entityId}`)
   const elapsed = effectiveElapsedMs(item.status, item.startedAt, item.durationMs)
-  const lines = activityContext(item, elapsed)
-  if (entity !== undefined) lines.push(...entity.lines)
+  const activityLines = activityContext(item, elapsed, entity?.entityType !== 'analysis')
+  const lines =
+    entity?.entityType === 'analysis'
+      ? [
+          ...entity.lines,
+          ...(activityLines.length === 0 ? [] : ['── activity record', ...activityLines]),
+        ]
+      : [...activityLines, ...(entity?.lines ?? [])]
   if (item.kind === 'run') lines.push(...runContext(item, runs, view))
   const meta = listMeta(item, elapsed)
   return {
@@ -299,7 +305,11 @@ function compactNumber(value: number): string {
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}m`
 }
 
-function activityContext(item: ActivityDocumentItem, elapsed: number | undefined): string[] {
+function activityContext(
+  item: ActivityDocumentItem,
+  elapsed: number | undefined,
+  includeDetail: boolean,
+): string[] {
   const lines: string[] = []
   if (item.occurredAt !== undefined) lines.push(`time: ${sanitizeTerminalText(item.occurredAt)}`)
   if (elapsed !== undefined) lines.push(`elapsed: ${formatDuration(elapsed)}`)
@@ -308,7 +318,7 @@ function activityContext(item: ActivityDocumentItem, elapsed: number | undefined
   if (item.source?.eventId !== undefined) {
     lines.push(`source event: ${sanitizeTerminalText(item.source.eventId)}`)
   }
-  if (item.detail !== undefined && item.detail.trim().length > 0) {
+  if (includeDetail && item.detail !== undefined && item.detail.trim().length > 0) {
     lines.push(...item.detail.split('\n').map((line) => sanitizeTerminalText(line)))
   }
   return lines

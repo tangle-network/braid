@@ -1,7 +1,8 @@
 braid  cwd  agent-sdk  ·  session  New conversation  ·  branch  branch-1
+AgentProfile Release engineer · runner pi · model openai-codex/gpt-5.6-luna             Local CLI Bridge · thinking high
  Trace this request from AgentProfile to the selected runner.
 
- · agent-turn-result · unknown · collapsed · ctrl+e next
+ · run result · Ctrl+E details
  Route confirmed. Your AgentProfile stays intact while agent-runtime sends this turn through Pi over Local CLI Bridge.
  Braid keeps the conversation, forks, approvals, and trace analysis in one place.
 
@@ -14,5 +15,4 @@ braid  cwd  agent-sdk  ·  session  New conversation  ·  branch  branch-1
 
 
 ────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────
-completed   model openai-codex/gpt-5.6-luna · thinking high · turns in 1.3k · out 96 · ~$0.0026 · calls 1 · model 1192ms
-AgentProfile Release engineer · runner pi · Local CLI Bridge                                               Ctrl+E detail
+completed                                     Ctrl+E detail · turns in 1.3k · out 96 · ~$0.0026 · calls 1 · model 1193ms

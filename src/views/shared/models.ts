@@ -390,6 +390,7 @@ export interface EntityDetailView {
   readonly title: string
   readonly status: string
   readonly lines: readonly string[]
+  readonly analysisFindingCount?: number
   readonly analysisExecution?: AnalysisExecutionView
 }
 
@@ -456,6 +457,7 @@ export interface AnalysisExecutionView {
 
 export interface AnalysisView {
   readonly source: string
+  readonly question?: string
   readonly analyst: string
   readonly recipe: string
   readonly status: ViewStatus

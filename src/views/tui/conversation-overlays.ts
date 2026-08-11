@@ -10,6 +10,7 @@ export interface ConversationOverlayOptions {
   readonly controller: BraidUiController
   readonly modals: ModalCoordinator
   readonly nextOperationId: () => string
+  readonly rows: () => number
 }
 
 export class ConversationOverlayController {

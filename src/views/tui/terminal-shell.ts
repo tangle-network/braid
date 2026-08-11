@@ -114,8 +114,9 @@ export class BraidShell extends Container {
     if (!view) return super.render(width)
     const layout = layoutFor(width, this.#rows(), this.#showActivity)
     const editorLines = this.#modalVisible ? [] : this.#composer.render(width)
-    const chromeLines = this.#chrome.render(width)
-    const dockRows = chromeLines.length + editorLines.length
+    const topChrome = this.#chrome.renderTop(width)
+    const bottomChrome = this.#chrome.renderBottom(width)
+    const dockRows = topChrome.length + bottomChrome.length + editorLines.length
     const contentRows = Math.max(1, layout.rows - dockRows)
     this.#transcript.setViewportRows(contentRows)
     const transcriptLines = this.#transcript.render(layout.transcriptWidth)
@@ -136,12 +137,10 @@ export class BraidShell extends Container {
         )
       }
     }
-    return [
-      ...chromeLines.slice(0, 1),
-      ...content,
-      ...editorLines,
-      ...this.#chrome.render(width).slice(1),
-    ].slice(0, layout.rows)
+    return [...topChrome, ...content, ...editorLines, ...this.#chrome.renderBottom(width)].slice(
+      0,
+      layout.rows,
+    )
   }
 
   #refreshChrome(): void {

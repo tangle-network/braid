@@ -150,6 +150,7 @@ function analysisView(recipe: string): BraidViewModel {
     ...baseView(),
     analysis: {
       source: 'run:source-run · digest:source-digest',
+      question: 'Where did this run waste time?',
       analyst: 'profile:analyst',
       recipe,
       status: 'completed',
@@ -207,7 +208,7 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
     assert.match(forkScreen.join('\n'), /source: conversation:source/u)
     assert.match(forkScreen.join('\n'), /destination: conversation:copy/u)
     assert.match(forkScreen.join('\n'), /boundary: message:42/u)
-    assert.match(forkScreen.join('\n'), /enter\/y create fork · esc cancel/u)
+    assert.match(forkScreen.join('\n'), /enter\/y create fork · ←\/esc cancel/u)
 
     const graphScreen = await renderOverlay(graph, columns, rows)
     assertFits(graphScreen, columns)
@@ -239,7 +240,7 @@ test('long workflow state preserves the closing key instead of pushing it below 
     },
   })
   const forkScreen = await renderOverlay(fork, 40, 12)
-  assert.match(forkScreen.join('\n'), /enter\/y create fork · esc cancel/u)
+  assert.match(forkScreen.join('\n'), /enter\/y create fork · ←\/esc cancel/u)
 
   const graph = new GraphView(theme)
   graph.setView({
@@ -422,7 +423,9 @@ test('analysis mode copy distinguishes ask, named analyze recipes, and compare',
       new RegExp(heading.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'),
     )
     assert.match(screen.join('\n'), /source: run:source-run/u)
-    assert.match(screen.join('\n'), /\[event-1\]/u)
+    assert.match(screen.join('\n'), /── question/u)
+    assert.match(screen.join('\n'), /Where did this run waste time\?/u)
+    assert.match(screen.join('\n'), /\[1\].*retry dominates wait/u)
     assert.match(screen.join('\n'), /←\/esc back/u)
   }
 })
@@ -650,6 +653,37 @@ test('digit-leading text, secret, and number answers stay editable', () => {
   assert.match(numberShell.render(40).join('\n'), /will: approve run/u)
   numberShell.handleInput('\r')
   assert.deepEqual(numberResponse, [{ outcome: 'session', value: 12.5 }])
+})
+
+test('short interaction surfaces keep validation failures visible', () => {
+  const shell = new InteractionShell(
+    {
+      ...permission,
+      interactionId: 'interaction-invalid-number',
+      kind: 'question',
+      subject: {
+        type: 'file',
+        title: 'src/app/application.ts',
+        target: 'read-only',
+        detail: 'The runner will inspect the current source without changing it.',
+        preview: ['A preview row competes with the response controls.'],
+      },
+      answerSpec: { kind: 'number', required: true, minimum: 1 },
+    },
+    theme,
+    () => {},
+    undefined,
+    () => 12,
+  )
+
+  shell.handleInput('0')
+  shell.handleInput('\r')
+
+  const screen = shell.render(40).join('\n')
+  assert.match(screen, /Enter a number in the allowed range\./u)
+  assert.match(screen, /keys: alt\+1 approve · alt\+2 reject/u)
+  assert.match(screen, /alt\+3 cancel/u)
+  assert.match(screen, /enter submit · esc cancel/u)
 })
 
 test('alt-digit keys reach every allowed outcome without taking editable digits', () => {

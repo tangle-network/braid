@@ -1,24 +1,24 @@
-braid  cwd  braid-unified-activity-wt  ·  session  New conversation
-
- Write a message, or press Ctrl+P for commands.
-
-
-
-
-
-    fork preview · workspace
-    will create a new workspace from this source
-    source: workspace:/workspace
-    destination: workspace:/workspace-fork
-    boundary: conv-1 / branch-1 → conv-fork-1 / branch-1
-    profile snapshot: digest:fixture-source → digest:fixture-copy
-    workspace state: checkpoint:fixture-1 → checkpoint:fixture-1
-    enter/y create fork · esc cancel
+ fork preview                                                         workspace
+────────────────────────────────────────────────────────────────────────────────
+ will create a new workspace from this source
+ source: workspace:/workspace
+ destination: workspace:/workspace-fork
+ boundary: conv-1 / branch-1 → conv-fork-1 / branch-1
+ profile snapshot: digest:fixture-source → digest:fixture-copy
+ workspace state: checkpoint:fixture-1 → checkpoint:fixture-1
 
 
 
 
 
 
-ready for a message                  model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ enter/y create fork · ←/esc cancel

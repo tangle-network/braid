@@ -1,7 +1,8 @@
-braid  cwd  braid-unified-activity-wt  ·  session  New conversation  ·  branch  branch-1
+braid  cwd  braid-current-ux-wt  ·  session  New conversation  ·  branch  branch-1
+AgentProfile Braid starter · runner pi · model fixture/deterministic                                                                                               deterministic fixture · thinking none
  W6 visual proof
 
- · agent-turn-result · unknown · collapsed · ctrl+e next
+ · run result · Ctrl+E details
  Fixture response through pi: W6 visual proof
 
 
@@ -56,5 +57,4 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation  ·  branch
 
 
 ────────────────────────────────────────────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────────────────────────────────────────────
-completed                                                                                        model fixture/deterministic · thinking none · turns in 8 · out 12 · cost unknown · calls 1 · model 49ms
-AgentProfile Braid starter · runner pi · deterministic fixture                                                                                                                             Ctrl+E detail
+completed                                                                                                                      Ctrl+E detail · turns in 8 · out 12 · cost unknown · calls 1 · model 50ms

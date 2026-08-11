@@ -39,6 +39,7 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
     ['--connection', CONNECTION_ID, '--workspace', workspace],
   )
   try {
+    await terminal.waitForInterface()
     await terminal.waitFor(() => {
       const screen = normalized(terminal.screen())
       return (
@@ -76,7 +77,14 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
       15_000,
     )
     await terminal.waitFor(
-      () => normalized(terminal.screen()).includes('completed model openai-codex/gpt-5.6-luna'),
+      () => {
+        const screen = normalized(terminal.screen())
+        return (
+          screen.includes('completed') &&
+          screen.includes('model openai-codex/gpt-5.6-luna') &&
+          !screen.includes('Ctrl+C cancel')
+        )
+      },
       'completed run',
       15_000,
     )

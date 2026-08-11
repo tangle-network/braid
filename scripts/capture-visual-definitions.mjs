@@ -5,7 +5,6 @@ export function createStateDefinitions(normalized) {
       columns: 80,
       rows: 24,
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         const { point, record } = await terminal.captureState()
         await terminal.closeNormally()
         return { point, record }
@@ -17,7 +16,6 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       environment: { BRAID_FIXTURE_CHUNK_DELAY_MS: '1000' },
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('W6 active streaming')
         terminal.input('\r')
         await terminal.waitFor(
@@ -43,7 +41,6 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       uiFixture: 'interaction',
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         await terminal.waitFor(
           () => normalized(terminal.screen()).includes('Allow the fixture tool'),
           'interaction fixture',
@@ -58,7 +55,6 @@ export function createStateDefinitions(normalized) {
       columns: 80,
       rows: 24,
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('/automate')
         terminal.input('\r')
         await terminal.waitFor(
@@ -76,7 +72,6 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       uiFixture: 'fork',
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('/fork')
         await new Promise((resolve) => setTimeout(resolve, 50))
         terminal.input('\r')
@@ -94,7 +89,6 @@ export function createStateDefinitions(normalized) {
       columns: 80,
       rows: 24,
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('\u0007')
         await terminal.waitFor(
           () => normalized(terminal.screen()).includes('conversation graph'),
@@ -111,7 +105,6 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       uiFixture: 'analysis',
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('/ask Where did this run waste time?')
         terminal.input('\r')
         await terminal.waitFor(
@@ -129,7 +122,6 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       uiFixture: 'comparison',
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('/compare run-route-serial run-route-parallel')
         terminal.input('\r')
         await terminal.waitFor(
@@ -146,7 +138,6 @@ export function createStateDefinitions(normalized) {
       columns: 80,
       rows: 24,
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('/profile')
         terminal.input('\r')
         await terminal.waitFor(
@@ -163,7 +154,6 @@ export function createStateDefinitions(normalized) {
       columns: 40,
       rows: 12,
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         const { point, record } = await terminal.captureState()
         await terminal.closeNormally()
         return { point, record }
@@ -175,7 +165,6 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       environment: { BRAID_FIXTURE_FAILURE: '1' },
       run: async (terminal) => {
-        await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
         terminal.input('W6 failure state')
         terminal.input('\r')
         await terminal.waitFor(() => normalized(terminal.screen()).includes('failed'), 'failure')

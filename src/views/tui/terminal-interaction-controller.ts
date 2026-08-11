@@ -11,6 +11,7 @@ export interface TerminalInteractionControllerOptions {
   readonly dispatch: (intent: BraidIntent) => Promise<UiDispatchResult>
   readonly currentView: () => BraidViewModel
   readonly isStopped: () => boolean
+  readonly rows: () => number
   readonly openAutomation: (input: {
     readonly interaction: InteractionView
     readonly proposedResponse: InteractionResponseValue
@@ -26,6 +27,7 @@ export class TerminalInteractionController {
   readonly #dispatch: TerminalInteractionControllerOptions['dispatch']
   readonly #currentView: () => BraidViewModel
   readonly #isStopped: () => boolean
+  readonly #rows: () => number
   readonly #openAutomation: TerminalInteractionControllerOptions['openAutomation']
   #open = false
   #interactionKey: string | undefined
@@ -38,6 +40,7 @@ export class TerminalInteractionController {
     this.#dispatch = options.dispatch
     this.#currentView = options.currentView
     this.#isStopped = options.isStopped
+    this.#rows = options.rows
     this.#openAutomation = options.openAutomation
   }
 
@@ -98,8 +101,14 @@ export class TerminalInteractionController {
           proposedResponse,
           onClose: () => this.#resumeInteraction(interaction),
         }),
+      this.#rows,
     )
-    this.#modals.open(shell, { anchor: 'center', width: '90%', maxHeight: '90%' })
+    this.#modals.open(shell, {
+      anchor: 'top-left',
+      width: '100%',
+      maxHeight: '100%',
+      margin: 0,
+    })
   }
 
   #resumeInteraction(previous: InteractionView): void {

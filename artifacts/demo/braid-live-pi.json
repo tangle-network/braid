@@ -1,19 +1,19 @@
 {
   "schemaVersion": 2,
   "status": "passed",
-  "capturedAt": "2026-08-11T00:51:54.044Z",
+  "capturedAt": "2026-08-11T03:27:24.041Z",
   "source": {
-    "commit": "bd8f607fd1045aabefd7153efe6d37d6b1e4ba36",
+    "commit": "ab893af041e6d7d0efe670b9472af6a0d9bea651",
     "packageVersion": "0.1.0",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "32dda757d252bff4e120a8c69d776cb76b3ee971e3f2649d661875e77a20f7b8",
-    "packageProofSha256": "97578d57466a51d0ea27fc323b188a826f6296009c75e3a24c319cfc5b2ba1ca"
+    "tarballSha256": "8dddc8d112dd142b8a11c5c08a4f7c59ed031fcae80a31081264de353988671a",
+    "packageProofSha256": "b4df042a508e791d0dee7aae8c8e29dc4e914e1402da849bf5fa5da55238f5b3"
   },
   "route": {
     "connection": "Local CLI Bridge",
-    "endpoint": "http://127.0.0.1:29999",
+    "endpoint": "http://127.0.0.1:3345",
     "runner": "pi",
-    "runnerVersion": "0.84.1",
+    "runnerVersion": "0.83.0",
     "provider": "tangle-router",
     "model": "glm-5.2"
   },
@@ -24,12 +24,12 @@
   },
   "task": {
     "prompt": "Finish the slugify function. Normalize Unicode accents, treat underscores as punctuation, collapse punctuation and spaces to one dash, trim dashes, and lowercase. Add edge-case tests, run them, and summarize the proof.",
-    "runId": "run-61b14555-7441-4dbb-ba5c-0593cc3e7804",
-    "providerSessionId": "session-braid-run-61b14555-7441-4dbb-ba5c-0593cc3e7804",
-    "inputTokens": 17278,
-    "outputTokens": 3394,
+    "runId": "run-a501a7fd-d8b9-4b48-9590-490b477ecfe6",
+    "providerSessionId": "session-braid-run-a501a7fd-d8b9-4b48-9590-490b477ecfe6",
+    "inputTokens": 12804,
+    "outputTokens": 2173,
     "llmCalls": 1,
-    "llmLatencyMs": 53689,
+    "llmLatencyMs": 63300,
     "normalizedToolCalls": 0,
     "normalizedToolResults": 0,
     "toolProjection": {
@@ -37,30 +37,30 @@
       "issue": "https://github.com/tangle-network/agent-runtime/issues/762"
     },
     "workspaceProof": {
-      "testOutput": "> test\n> node --test --test-reporter=spec\n\n(node:74227) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[32m✔ joins words with a dash \u001b[90m(1.370734ms)\u001b[39m\u001b[39m\n\u001b[32m✔ lowercases letters \u001b[90m(0.094866ms)\u001b[39m\u001b[39m\n\u001b[32m✔ normalizes accented characters \u001b[90m(0.092752ms)\u001b[39m\u001b[39m\n\u001b[32m✔ normalizes cedilla and umlauts \u001b[90m(0.079055ms)\u001b[39m\u001b[39m\n\u001b[32m✔ treats underscores as punctuation \u001b[90m(0.067873ms)\u001b[39m\u001b[39m\n\u001b[32m✔ collapses multiple underscores into one dash \u001b[90m(0.053816ms)\u001b[39m\u001b[39m\n\u001b[32m✔ collapses mixed punctuation and spaces into one dash \u001b[90m(0.04593ms)\u001b[39m\u001b[39m\n\u001b[32m✔ collapses existing dashes and surrounding separators \u001b[90m(0.041812ms)\u001b[39m\u001b[39m\n\u001b[32m✔ trims leading and trailing spaces \u001b[90m(0.054006ms)\u001b[39m\u001b[39m\n\u001b[32m✔ trims leading and trailing punctuation \u001b[90m(0.104265ms)\u001b[39m\u001b[39m\n\u001b[32m✔ handles multiple spaces between words \u001b[90m(0.067743ms)\u001b[39m\u001b[39m\n\u001b[32m✔ handles tabs and newlines as separators \u001b[90m(0.061931ms)\u001b[39m\u001b[39m\n\u001b[32m✔ handles only-punctuation input \u001b[90m(0.057453ms)\u001b[39m\u001b[39m\n\u001b[32m✔ handles empty string \u001b[90m(0.034958ms)\u001b[39m\u001b[39m\n\u001b[32m✔ preserves numbers \u001b[90m(0.031372ms)\u001b[39m\u001b[39m\n\u001b[32m✔ does not split alphanumeric sequences \u001b[90m(0.035931ms)\u001b[39m\u001b[39m\n\u001b[32m✔ handles uppercase accented characters \u001b[90m(0.040159ms)\u001b[39m\u001b[39m\n\u001b[34mℹ tests 17\u001b[39m\n\u001b[34mℹ suites 0\u001b[39m\n\u001b[34mℹ pass 17\u001b[39m\n\u001b[34mℹ fail 0\u001b[39m\n\u001b[34mℹ cancelled 0\u001b[39m\n\u001b[34mℹ skipped 0\u001b[39m\n\u001b[34mℹ todo 0\u001b[39m\n\u001b[34mℹ duration_ms 47.640137\u001b[39m\n(node:74221) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
+      "testOutput": "> test\n> node --test --test-reporter=spec\n\n(node:1772785) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[32m✔ joins words with a dash \u001b[90m(0.991044ms)\u001b[39m\u001b[39m\n\u001b[32m✔ normalizes Unicode accents to ASCII \u001b[90m(0.248267ms)\u001b[39m\u001b[39m\n\u001b[32m✔ treats underscores as punctuation \u001b[90m(0.11212ms)\u001b[39m\u001b[39m\n\u001b[32m✔ collapses punctuation and spaces into a single dash \u001b[90m(0.105527ms)\u001b[39m\u001b[39m\n\u001b[32m✔ trims leading and trailing dashes \u001b[90m(0.302112ms)\u001b[39m\u001b[39m\n\u001b[32m✔ lowercases all letters \u001b[90m(0.103473ms)\u001b[39m\u001b[39m\n\u001b[32m✔ handles empty and punctuation-only input \u001b[90m(0.32651ms)\u001b[39m\u001b[39m\n\u001b[32m✔ leaves digits untouched \u001b[90m(0.102712ms)\u001b[39m\u001b[39m\n\u001b[34mℹ tests 8\u001b[39m\n\u001b[34mℹ suites 0\u001b[39m\n\u001b[34mℹ pass 8\u001b[39m\n\u001b[34mℹ fail 0\u001b[39m\n\u001b[34mℹ cancelled 0\u001b[39m\n\u001b[34mℹ skipped 0\u001b[39m\n\u001b[34mℹ todo 0\u001b[39m\n\u001b[34mℹ duration_ms 103.846564\u001b[39m\n(node:1772713) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
       "samples": [
         "cafe-deja-vu",
         "ship-it"
       ],
-      "sourceSha256": "54e209b8764ec64a12f39256da94aaded1abec12f80768965265945227bfc065",
-      "testSha256": "7feef0de9b09d7a752a12c1f363d3e9fae937506eed3d9f7ce8ab4a8e03c0d28"
+      "sourceSha256": "5aef01e5a8866ae274f2a2af3e621c2bd4335cc93dd329fa1431063bc3f7174e",
+      "testSha256": "a8cba9e6717c1f0ae5e1e6d754d673481796fc5d1e4e5b673117d3e7eee0a1ce"
     }
   },
   "analysis": {
     "question": "What changed, what was verified, and what should I review?",
     "agentEvalRpcVersion": "0.144.6",
-    "id": "analysis-e5f091a06ed4bf6fcdc25bbd0145fbfb274ea17b",
+    "id": "analysis-9bb5188c0e546575e2528b623645922814f289f9",
     "status": "completed",
     "findings": 3,
     "configuredModel": "tangle-router/glm-5.2",
     "observedModels": [
       "pi/tangle-router/glm-5.2"
     ],
-    "modelCalls": 6,
-    "inputTokens": 50780,
-    "outputTokens": 20690,
+    "modelCalls": 7,
+    "inputTokens": 53757,
+    "outputTokens": 8153,
     "costUsd": null,
-    "estimatedCostUsd": 0.075986,
+    "estimatedCostUsd": 0.050190799999999994,
     "costStatus": "estimated",
     "modelCallEvidence": [
       {
@@ -68,76 +68,88 @@
         "provider": "tangle-router",
         "model": "pi/tangle-router/glm-5.2",
         "inputTokens": 1856,
-        "outputTokens": 213,
+        "outputTokens": 216,
         "tokensKnown": true,
-        "costUsd": 0.0015822,
+        "costUsd": 0.0015888,
         "costStatus": "estimated",
-        "latencyMs": 5906,
+        "latencyMs": 10492,
         "outcome": "succeeded"
       },
       {
         "sequence": 2,
         "provider": "tangle-router",
         "model": "pi/tangle-router/glm-5.2",
-        "inputTokens": 2742,
-        "outputTokens": 200,
+        "inputTokens": 2691,
+        "outputTokens": 250,
         "tokensKnown": true,
-        "costUsd": 0.0020852,
+        "costUsd": 0.0021646,
         "costStatus": "estimated",
-        "latencyMs": 5872,
+        "latencyMs": 12232,
         "outcome": "succeeded"
       },
       {
         "sequence": 3,
         "provider": "tangle-router",
         "model": "pi/tangle-router/glm-5.2",
-        "inputTokens": 10881,
-        "outputTokens": 1656,
+        "inputTokens": 5239,
+        "outputTokens": 409,
         "tokensKnown": true,
-        "costUsd": 0.0101718,
+        "costUsd": 0.0040432,
         "costStatus": "estimated",
-        "latencyMs": 22906,
+        "latencyMs": 11105,
         "outcome": "succeeded"
       },
       {
         "sequence": 4,
         "provider": "tangle-router",
         "model": "pi/tangle-router/glm-5.2",
-        "inputTokens": 11321,
-        "outputTokens": 6341,
+        "inputTokens": 6143,
+        "outputTokens": 497,
         "tokensKnown": true,
-        "costUsd": 0.0207428,
+        "costUsd": 0.0047792,
         "costStatus": "estimated",
-        "latencyMs": 77477,
+        "latencyMs": 13727,
         "outcome": "succeeded"
       },
       {
         "sequence": 5,
         "provider": "tangle-router",
         "model": "pi/tangle-router/glm-5.2",
-        "inputTokens": 11572,
-        "outputTokens": 8318,
+        "inputTokens": 10890,
+        "outputTokens": 600,
         "tokensKnown": true,
-        "costUsd": 0.025242800000000003,
+        "costUsd": 0.007854,
         "costStatus": "estimated",
-        "latencyMs": 105349,
+        "latencyMs": 15444,
         "outcome": "succeeded"
       },
       {
         "sequence": 6,
         "provider": "tangle-router",
         "model": "pi/tangle-router/glm-5.2",
-        "inputTokens": 12408,
-        "outputTokens": 3962,
+        "inputTokens": 12841,
+        "outputTokens": 4929,
         "tokensKnown": true,
-        "costUsd": 0.0161612,
+        "costUsd": 0.0185484,
         "costStatus": "estimated",
-        "latencyMs": 49761,
+        "latencyMs": 100607,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 7,
+        "provider": "tangle-router",
+        "model": "pi/tangle-router/glm-5.2",
+        "inputTokens": 14097,
+        "outputTokens": 1252,
+        "tokensKnown": true,
+        "costUsd": 0.0112126,
+        "costStatus": "estimated",
+        "latencyMs": 28322,
         "outcome": "succeeded"
       }
     ],
-    "modelLatencyMs": 267271,
-    "wallTimeMs": 273048
+    "modelLatencyMs": 191929,
+    "wallTimeMs": 210327
   },
   "terminal": {
     "columns": 120,
@@ -145,9 +157,9 @@
     "finalRevision": 23
   },
   "artifacts": {
-    "braid-live-pi.cast": "39904433e7e388a5964af5d56c5643003ecb43e4b0ed368d2e56e07b4be903d5",
-    "braid-live-pi.gif": "a2f23b5491bdcdc419d829887d126ef549dbe17fd29aebe63eed5f1cf53915c8",
-    "braid-live-pi.png": "ea5b52759620c18e973b7f49be26fab0325828858ff82baa04652147bce6303d",
-    "braid-live-pi.txt": "e57dac993ee09116a06c307d3ef3ecfac8b2124a9ba1939793727f65213d4be3"
+    "braid-live-pi.cast": "84829820935433508921e86e872fc595ced4d0d015a0d1d5eed0be6623384d5c",
+    "braid-live-pi.gif": "8c1098e5d87c9b5c621e0aabe6d2d5737207c52a248028ccf433e55be51cec53",
+    "braid-live-pi.png": "1207abd618c3c49b03010c285972a7098f8f528d7e59382464b90f7a6b1a2906",
+    "braid-live-pi.txt": "55f122e043a23583660487e2fb325fdc4ff178990dd780431d4117b09086ce1a"
   }
 }

@@ -63,6 +63,7 @@ export class TerminalOverlayController {
       controller: this.#controller,
       modals: this.#modals,
       nextOperationId: options.nextOperationId,
+      rows: options.rows,
     })
     this.#dispatchCommand = options.dispatchCommand
     this.#configuration = options.configuration
