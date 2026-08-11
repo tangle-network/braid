@@ -11,7 +11,14 @@ import { configureWithPublicTui } from './live-core/setup-tui.mjs'
 import { jsonRequest } from './live-demo/http.mjs'
 import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
-import { castFor, createCapturedTerminal, pause, typeText } from './live-demo/terminal.mjs'
+import {
+  castFor,
+  createCapturedTerminal,
+  pause,
+  terminalPageProgress,
+  typeText,
+  visibleModelCallNumbers,
+} from './live-demo/terminal.mjs'
 import {
   createLiveDemoWorkspace,
   LIVE_DEMO_PROFILE,
@@ -323,18 +330,30 @@ async function main() {
     )
     await terminal.waitForStable('final live demo frame')
     await pause(900)
-    if (analysis.modelCalls !== null && analysis.modelCalls > 0) {
-      const lastCall = `model call #${analysis.modelCalls}`
-      for (
-        let page = 0;
-        page < analysis.modelCalls && !terminal.screen().includes(lastCall);
-        page += 1
-      ) {
-        terminal.input('\u001b[6~')
-        await terminal.waitForStable(`analysis model-call page ${page + 2}`)
-        await pause(700)
+    const visibleCalls = new Set(visibleModelCallNumbers(terminal.screen()))
+    let page = terminalPageProgress(terminal.screen())
+    assert.ok(page, 'The public demo did not render analysis page progress')
+    while (page.current < page.total) {
+      const previousPage = page.current
+      terminal.input('\u001b[6~')
+      await terminal.waitForScreen(
+        (screen) => (terminalPageProgress(screen)?.current ?? 0) > previousPage,
+        `analysis page ${previousPage + 1}`,
+      )
+      await terminal.waitForStable(`analysis page ${previousPage + 1}`)
+      await pause(700)
+      for (const sequence of visibleModelCallNumbers(terminal.screen())) visibleCalls.add(sequence)
+      page = terminalPageProgress(terminal.screen())
+      assert.ok(page, 'The public demo lost analysis page progress')
+    }
+    assert.equal(page.current, page.total, 'The public demo did not reach the final analysis page')
+    if (analysis.modelCalls !== null) {
+      for (let sequence = 1; sequence <= analysis.modelCalls; sequence += 1) {
+        assert.ok(
+          visibleCalls.has(sequence),
+          `The public demo did not render model call #${sequence}`,
+        )
       }
-      assert.ok(terminal.screen().includes(lastCall), `The public demo did not render ${lastCall}`)
     }
     const final = terminal.snapshot()
     const finalRecord = await terminal.captureState()

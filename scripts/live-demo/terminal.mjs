@@ -10,6 +10,24 @@ export function normalizeTerminal(value) {
   return value.replace(/\s+/gu, ' ').trim()
 }
 
+export function terminalPageProgress(screen) {
+  const matches = [...screen.matchAll(/\bpage (\d+)\/(\d+)\b/gu)]
+  const match = matches.at(-1)
+  if (match === undefined) return undefined
+  const current = Number.parseInt(match[1], 10)
+  const total = Number.parseInt(match[2], 10)
+  if (current < 1 || total < 1 || current > total) return undefined
+  return { current, total }
+}
+
+export function visibleModelCallNumbers(screen) {
+  return [
+    ...new Set(
+      [...screen.matchAll(/\bmodel call #(\d+)\b/gu)].map((match) => Number.parseInt(match[1], 10)),
+    ),
+  ].sort((left, right) => left - right)
+}
+
 export function pause(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }

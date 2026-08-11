@@ -309,7 +309,9 @@ Each live check records date, region, machine, operating system, package version
 
 The public demo must use the same immutable tarball as package proof.
 
-Its manifest records observed and estimated cost separately, and its recording shows every model-call page.
+Its manifest records observed and estimated cost separately.
+
+Its recording reaches the final analysis page and renders every model call.
 
 ### Layer 8: semantic evaluation
 

@@ -9,7 +9,11 @@ import test from 'node:test'
 import { jsonRequest } from './live-demo/http.mjs'
 import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
-import { createCapturedTerminal } from './live-demo/terminal.mjs'
+import {
+  createCapturedTerminal,
+  terminalPageProgress,
+  visibleModelCallNumbers,
+} from './live-demo/terminal.mjs'
 
 function isAlive(pid) {
   try {
@@ -50,6 +54,15 @@ async function closeServer(server) {
     server.closeAllConnections?.()
   })
 }
+
+test('analysis pagination reaches real page bounds and records visible calls', () => {
+  assert.deepEqual(terminalPageProgress('model call #1\npage 1/2'), { current: 1, total: 2 })
+  assert.deepEqual(terminalPageProgress('page 1/2\nfooter page 2/3'), { current: 2, total: 3 })
+  assert.equal(terminalPageProgress('page 0/2'), undefined)
+  assert.equal(terminalPageProgress('page 3/2'), undefined)
+  assert.equal(terminalPageProgress('one page'), undefined)
+  assert.deepEqual(visibleModelCallNumbers('model call #4\nmodel call #2\nmodel call #4'), [2, 4])
+})
 
 test('jsonRequest aborts a response that never finishes', async () => {
   const server = createServer((_request, response) => {
