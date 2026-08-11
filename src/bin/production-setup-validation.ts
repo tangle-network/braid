@@ -1,5 +1,8 @@
-import { harnessHonorsEffort, harnessHonorsModel } from '@tangle-network/agent-interface'
-import { materializeBridgeModelRoute } from '../adapters/connections/cli-bridge-model-route.js'
+import {
+  harnessHonorsEffort,
+  harnessHonorsModel,
+} from '../adapters/agent-interface/harness-runtime.js'
+import { cliBridgeModelValidationRequest } from '../adapters/connections/cli-bridge-model-validation.js'
 import { readConnectionCredential } from '../adapters/connections/production-connections.js'
 import type {
   ConfigurationEffectiveValues,
@@ -124,7 +127,8 @@ export async function validateProductionSelection(
   if (profile.harness === undefined) {
     throw new Error('Setup cannot validate a CLI Bridge profile without a runner')
   }
-  const model = materializeBridgeModelRoute(profile.harness, authoredModel, profile.model?.provider)
+  const validationRequest = cliBridgeModelValidationRequest(profile)
+  const model = validationRequest.model
   const endpoint = selection.connection.endpoint
   if (!endpoint) {
     throw new Error(
@@ -144,13 +148,7 @@ export async function validateProductionSelection(
       init: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: 'Braid setup validation. Reply with exactly OK.' }],
-          stream: false,
-          max_tokens: 1,
-          effort: selection.profile.profile.model?.reasoningEffort,
-        }),
+        body: JSON.stringify(validationRequest),
       },
     })
     const selectedEndpoint = displayBridgeEndpoint(endpoint)

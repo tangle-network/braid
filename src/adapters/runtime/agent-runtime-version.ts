@@ -1,1 +1,1 @@
-export const AGENT_RUNTIME_VERSION = '0.128.0'
+export const AGENT_RUNTIME_VERSION = '0.131.5'

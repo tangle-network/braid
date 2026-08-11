@@ -10,11 +10,9 @@ import {
 import type { CredentialRef, SecretHandle } from '../../ports/credentials.js'
 import { credentialRef } from '../../ports/credentials.js'
 import type { ConversationId, EventId, StoredJournalEvent } from '../../ports/storage.js'
+import { SqliteStorageBase } from './sqlite-base.js'
 import { decryptPayload, payloadChecksum } from './sqlite-crypto.js'
 import { StorageError } from './sqlite-errors.js'
-
-import { SqliteStorageBase } from './sqlite-base.js'
-import type { SqliteEventRow } from './sqlite-types.js'
 import {
   asBuffer,
   asNumber,
@@ -22,9 +20,32 @@ import {
   credentialErrorCode,
   redactedPersistedPayload,
 } from './sqlite-rows.js'
+import type { SqliteEventRow } from './sqlite-types.js'
+
+interface StoredEventReadContext {
+  readonly tombstones: Map<ConversationId, string | null>
+  readonly contentKeys: Map<ConversationId, Buffer | null>
+}
 
 export abstract class SqliteContentStorage extends SqliteStorageBase {
-  async storedEvent(row: SqliteEventRow): Promise<StoredJournalEvent> {
+  async storedEvents(rows: readonly SqliteEventRow[]): Promise<readonly StoredJournalEvent[]> {
+    const context: StoredEventReadContext = {
+      tombstones: new Map(),
+      contentKeys: new Map(),
+    }
+    try {
+      const events: StoredJournalEvent[] = []
+      for (const row of rows) events.push(await this.storedEvent(row, context))
+      return events
+    } finally {
+      for (const key of context.contentKeys.values()) key?.fill(0)
+    }
+  }
+
+  async storedEvent(
+    row: SqliteEventRow,
+    context?: StoredEventReadContext,
+  ): Promise<StoredJournalEvent> {
     const conversationId = parseConversationId(asString(row.conversation_id, 'conversation_id'))
     const base = {
       workspaceId: parseWorkspaceId(asString(row.workspace_id, 'workspace_id')),
@@ -46,18 +67,27 @@ export abstract class SqliteContentStorage extends SqliteStorageBase {
         ? {}
         : { providerEventId: asString(row.provider_event_id, 'provider_event_id') }),
     }
-    const tombstone = this.database
-      .prepare('SELECT reason FROM braid_conversation_tombstones WHERE conversation_id = ?')
-      .get(conversationId) as { readonly reason?: unknown } | undefined
-    if (tombstone) {
+    let tombstoneReason = context?.tombstones.get(conversationId)
+    if (context === undefined || !context.tombstones.has(conversationId)) {
+      const tombstone = this.database
+        .prepare('SELECT reason FROM braid_conversation_tombstones WHERE conversation_id = ?')
+        .get(conversationId) as { readonly reason?: unknown } | undefined
+      tombstoneReason = tombstone ? asString(tombstone.reason, 'tombstone.reason') : null
+      context?.tombstones.set(conversationId, tombstoneReason)
+    }
+    if (tombstoneReason !== null && tombstoneReason !== undefined) {
       return {
         ...base,
         payload: redactedPersistedPayload(null, row, 'destruction'),
         payloadState: 'deleted',
-        tombstoneReason: asString(tombstone.reason, 'tombstone.reason'),
+        tombstoneReason,
       }
     }
-    const key = await this.existingContentKey(conversationId)
+    let key = context?.contentKeys.get(conversationId) ?? undefined
+    if (context === undefined || !context.contentKeys.has(conversationId)) {
+      key = await this.existingContentKey(conversationId)
+      context?.contentKeys.set(conversationId, key ?? null)
+    }
     if (!key) return { ...base, payload: null, payloadState: 'content-key-unavailable' }
     try {
       const payload = decryptPayload(asBuffer(row.payload, 'payload'), key)
@@ -69,7 +99,7 @@ export abstract class SqliteContentStorage extends SqliteStorageBase {
       }
       return { ...base, payload, payloadState: row.redacted === 1 ? 'redacted' : 'available' }
     } finally {
-      key.fill(0)
+      if (context === undefined) key.fill(0)
     }
   }
 

@@ -10,6 +10,7 @@ import test from 'node:test'
 const releaseCatalog = await import('../scripts/release-check-catalog.mjs')
 const {
   CHECK_CATEGORIES,
+  LIVE_BRIDGE_RELEASE_PROOFS,
   releaseCheckEntry,
   RELEASE_COMMANDS,
   REQUIRED_CHECKS,
@@ -42,6 +43,9 @@ const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstr
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
 )
+const requirementBindings = JSON.parse(
+  await readFile(new URL('../../release/requirement-bindings.json', import.meta.url), 'utf8'),
+)
 
 test('W5 exposes stable checks for every requested release surface', () => {
   const required = [
@@ -68,11 +72,17 @@ test('the scoped test runner rejects an unregistered scope instead of silently r
   const source = await readFile(new URL('../../scripts/run-tests.mjs', import.meta.url), 'utf8')
   assert.match(source, /No compiled tests registered for scope/u)
   assert.match(source, /scopeFiles/u)
+  assert.match(
+    source,
+    /isolatedPerformanceFiles = new Set\(\['performance\.test\.js', 'storage-performance\.test\.js'\]\)/u,
+  )
+  assert.match(source, /runTestBatch\(\[path\]\)/u)
 })
 
 test('compiled tests receive the JavaScript helpers imported from scripts', async () => {
   const source = await readFile(new URL('../../scripts/clean-tests.mjs', import.meta.url), 'utf8')
-  assert.match(source, /\.test-dist\/scripts/u)
+  assert.match(source, /configuredTestDist/u)
+  assert.match(source, /join\(testDist, 'scripts'\)/u)
   assert.match(source, /entry\.name\.endsWith\('\.mjs'\)/u)
 })
 
@@ -91,6 +101,9 @@ test('every scoped package alias forwards its declared file set', () => {
   assert.equal(packageJson.scripts.test, 'node scripts/test.mjs')
   const aliases = {
     'test:unit': [
+      'agent-interface-runtime-parity.test.js',
+      'analysis-model-call-observability.test.js',
+      'analysis-model-call-roundtrip.test.js',
       'application.test.js',
       'cli-startup.test.js',
       'conversations.test.js',
@@ -100,21 +113,30 @@ test('every scoped package alias forwards its declared file set', () => {
       'domain-reducer.test.js',
       'domain-text.test.js',
       'eval.test.js',
+      'observability.test.js',
+      'plain-accessibility.test.js',
       'property.test.js',
       'reducer.test.js',
       'sanitize.test.js',
       'scripts.test.js',
+      'terminal-usage-status.test.js',
+      'usage-projection.test.js',
       'w6-ui.test.js',
     ],
     'test:contract': [
+      'agent-interface-runtime-parity.test.js',
+      'analysis-model-call-observability.test.js',
+      'analysis-model-call-roundtrip.test.js',
       'application.test.js',
       'cli-bridge-profile-contract.test.js',
       'conversations.test.js',
       'coordination.test.js',
       'domain-invariants.test.js',
       'domain-reducer.test.js',
+      'observability.test.js',
       'reducer.test.js',
       'scripts.test.js',
+      'usage-projection.test.js',
       'w6-contract.test.js',
     ],
     'test:coordination': [
@@ -130,12 +152,17 @@ test('every scoped package alias forwards its declared file set', () => {
       'w6-contract.test.js',
     ],
     'test:virtual-terminal': [
+      'activity-document.test.js',
       'configuration-product-flow.test.js',
+      'intelligence-dispatch.test.js',
       'keyboard.test.js',
       'terminal-responsive.test.js',
+      'terminal-usage-status.test.js',
       'tui-autocomplete.test.js',
       'tui-conversations.test.js',
       'tui-core-workflows.test.js',
+      'tui-interaction-security.test.js',
+      'tui-refresh-lifecycle.test.js',
       'tui.test.js',
       'w6-ui.test.js',
     ],
@@ -155,10 +182,14 @@ test('every scoped package alias forwards its declared file set', () => {
       'storage.test.js',
     ],
     'test:security': [
+      'analysis-model-call-observability.test.js',
+      'analysis-model-call-roundtrip.test.js',
       'cli-startup.test.js',
       'configuration-product-flow.test.js',
       'conversations.test.js',
       'coordination.test.js',
+      'observability.test.js',
+      'plain-accessibility.test.js',
       'profile-connection-actions.test.js',
       'profile-save-recovery.test.js',
       'sanitize.test.js',
@@ -166,6 +197,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'storage-snapshots.test.js',
       'storage.test.js',
       'tui-core-workflows.test.js',
+      'tui-interaction-security.test.js',
       'w6-contract.test.js',
     ],
     'test:performance': [
@@ -176,19 +208,27 @@ test('every scoped package alias forwards its declared file set', () => {
     ],
   }
   const criticalRegressionFiles = [
+    'agent-interface-runtime-parity.test.js',
     'analysis-durable.test.js',
+    'analysis-model-call-observability.test.js',
+    'analysis-model-call-roundtrip.test.js',
     'automation-interaction-commands.test.js',
     'cli-bridge-profile-contract.test.js',
     'cli-startup.test.js',
     'configuration-product-flow.test.js',
+    'observability.test.js',
+    'plain-accessibility.test.js',
     'profile-connection-actions.test.js',
     'profile-save-recovery.test.js',
     'run-admission-architecture.test.js',
     'storage-snapshots.test.js',
     'terminal-responsive.test.js',
+    'terminal-usage-status.test.js',
     'tui-autocomplete.test.js',
     'tui-conversations.test.js',
     'tui-core-workflows.test.js',
+    'tui-interaction-security.test.js',
+    'usage-projection.test.js',
   ]
   for (const [alias, expected] of Object.entries(aliases)) {
     assert.deepEqual(expected, [...expected].sort(), `${alias} must stay sorted`)
@@ -253,6 +293,27 @@ test('the release catalog exactly covers every stable verification command', asy
   ])
   assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 5)
   assert.equal(evidenceIds.includes('verify:release'), false)
+})
+
+test('LIVE-01 through LIVE-05 retain distinct strict proof bindings', () => {
+  const ids = ['LIVE-01', 'LIVE-02', 'LIVE-03', 'LIVE-04', 'LIVE-05']
+  const proofs = ids.map((id) => LIVE_BRIDGE_RELEASE_PROOFS[id])
+  assert(proofs.every((proof) => proof !== undefined))
+  assert.equal(new Set(proofs.map((proof) => proof.operation)).size, ids.length)
+  assert.deepEqual(
+    proofs.map((proof) => proof.target.mode),
+    [
+      'harness',
+      'harness',
+      'one-advertised-runner',
+      'one-advertised-runner',
+      'all-advertised-runners',
+    ],
+  )
+  for (const id of ids) {
+    assert.equal(releaseCheckEntry(id)?.command, 'pnpm test:live:bridge:release')
+    assert.deepEqual(requirementBindings[id]?.checks, [id])
+  }
 })
 
 test('release subprocesses and recorded paths are portable to Windows', async () => {
@@ -431,6 +492,18 @@ test('packed-process proof includes all reference sizes, accessibility flags, an
   assert.match(deterministicRpc, /await rm\(journalPath/u)
 })
 
+test('package parity normalizes generated identity but rejects changed references', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['scripts/verify-package.mjs', '--parity-self-test'],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    },
+  )
+  assert.match(output, /package parity self-test passed/u)
+})
+
 test('accessibility proof rejects terminal metadata instead of allowlisting it', () => {
   const proofSource = readFile(new URL('../../scripts/verify-package.mjs', import.meta.url), 'utf8')
   assert.doesNotThrow(() => assertAccessibleTerminalOutput('plain accessibility frame'))
@@ -508,7 +581,7 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
       output = `${result.stdout ?? ''}${result.stderr ?? ''}`
       assert.equal(result.status, 2, `${scope} returned an untyped failure`)
     }
-    assert.match(output, /requires protected live-provider credentials/u)
+    assert.match(output, /requires protected live-provider credentials|live check requires/u)
     assert.doesNotMatch(output, /pass(?:ed)?|success/iu)
   }
 })
@@ -534,7 +607,8 @@ test('release keys stay isolated and provider credentials are step-scoped', asyn
   }
   assert.equal(workflow.match(/BRAID_RELEASE_SIGNING_KEY_BASE64/gu)?.length, 2)
   assert.equal(workflow.match(/^\s+BRAID_CLI_BRIDGE_BEARER:/gmu)?.length, 1)
-  assert.equal(workflow.match(/^\s+BRAID_EVAL_BEARER:/gmu)?.length, 1)
+  assert.equal(workflow.match(/^\s+BRAID_EVAL_API_KEY:/gmu)?.length, 1)
+  assert.equal(workflow.match(/^\s+BRAID_EVAL_BASE_URL:/gmu)?.length, 1)
 })
 
 test('independent review approval is signed and bound to the exact candidate', () => {

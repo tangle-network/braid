@@ -6,9 +6,11 @@ import {
   type ExactAnalystRunResult,
   type ExactRegistryRunOpts,
 } from '@tangle-network/agent-eval'
-import type { AnalysisRecipe } from '../../app/analysis-types.js'
+import type { AnalysisExecutionTarget, AnalysisRecipe } from '../../app/analysis-types.js'
 import { AnalysisCapabilityError, type AnalysisCapabilityIssue } from '../../app/analysis-types.js'
 import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
+import type { ModelExecutionScope } from './model-execution-scope.js'
+import { BRAID_QUESTION_ANALYST_ID } from './question-analyst.js'
 import type { AnalysisTraceBundle } from './trace-store.js'
 
 export { AGENT_EVAL_VERSION }
@@ -35,6 +37,7 @@ export interface EvalAnalystRequest {
   readonly budgetUsd?: number
   readonly totalTimeoutMs?: number
   readonly signal?: AbortSignal
+  readonly executionTarget?: AnalysisExecutionTarget
 }
 
 export interface EvalAnalystStreamEvent {
@@ -78,10 +81,20 @@ function assertTimeout(value: number | undefined): void {
 export class AgentEvalAnalystAdapter {
   readonly #registry: AnalystRegistryPort
   readonly #unavailableIssue: AnalysisCapabilityIssue | undefined
+  readonly #modelExecutionScope: ModelExecutionScope | undefined
 
-  constructor(registry?: AnalystRegistryPort, unavailableIssue?: AnalysisCapabilityIssue) {
+  constructor(
+    registry?: AnalystRegistryPort,
+    unavailableIssue?: AnalysisCapabilityIssue,
+    modelExecutionScope?: ModelExecutionScope,
+  ) {
     this.#registry = registry ?? buildDefaultAnalystRegistry()
     this.#unavailableIssue = unavailableIssue
+    this.#modelExecutionScope = modelExecutionScope
+  }
+
+  modelExecutions(runId: string) {
+    return this.#modelExecutionScope?.modelExecutions(runId) ?? []
   }
 
   list(): ReadonlyArray<AnalystDescriptor> {
@@ -104,8 +117,8 @@ export class AgentEvalAnalystAdapter {
 
     const recipe = request.recipe ?? 'ask'
     if (recipe === 'ask') {
-      if (available.length === 0) throw unavailable(recipe, available)
-      return available.map((entry) => entry.id)
+      if (!availableIds.has(BRAID_QUESTION_ANALYST_ID)) throw unavailable(recipe, available)
+      return [BRAID_QUESTION_ANALYST_ID]
     }
 
     const candidates = RECIPE_ALIASES[recipe] ?? [recipe]
@@ -131,6 +144,7 @@ export class AgentEvalAnalystAdapter {
         ]),
       ),
     }
+    const focus = request.question?.trim()
     const options: ExactRegistryRunOpts = {
       analystIds,
       budget:
@@ -143,6 +157,7 @@ export class AgentEvalAnalystAdapter {
       tags: Object.freeze({
         braid_source_digest: request.sourceDigest,
         braid_recipe: request.recipe ?? 'ask',
+        ...(focus === undefined || focus.length === 0 ? {} : { focus }),
       }),
       priorFindings: null,
       chainFindings: false,
@@ -151,7 +166,12 @@ export class AgentEvalAnalystAdapter {
       useRegistryChat: false,
     }
 
-    for await (const event of this.#registry.runExactStream(request.runId, inputs, options)) {
+    const source = this.#registry.runExactStream(request.runId, inputs, options)
+    const events =
+      this.#modelExecutionScope === undefined
+        ? source
+        : this.#modelExecutionScope.stream(request.runId, source)
+    for await (const event of events) {
       if (event.type === 'run-completed') {
         yield { event, result: event.result }
       } else {

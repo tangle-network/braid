@@ -6,6 +6,7 @@ await build({
   absWorkingDir: root,
   entryPoints: {
     'startup/durable-runtime': 'src/startup/durable-runtime.ts',
+    'startup/preview-runtime': 'src/startup/preview-runtime.ts',
     'startup/terminal-runtime': 'src/startup/terminal-runtime.ts',
   },
   outdir: 'dist',
@@ -23,7 +24,7 @@ await build({
   treeShaking: true,
   minifySyntax: true,
   minifyWhitespace: true,
-  minifyIdentifiers: false,
+  minifyIdentifiers: true,
   external: [
     '@napi-rs/keyring',
     '@tangle-network/agent-eval',

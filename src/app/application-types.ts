@@ -77,6 +77,10 @@ export interface ControlOperationRecord {
   readonly control: BraidControlKind
   readonly completion: Promise<BraidState>
   readonly acknowledgement: Promise<ControlAcknowledgement>
+  /** Resolves after the bounded foreground result has been durably recorded. */
+  readonly lateSettlementReady?: Promise<void>
+  /** Coalesces duplicate late provider callbacks for one operation. */
+  readonly lateSettlement?: Promise<void>
   readonly providerSessionId?: string
   readonly reason?: string
   readonly text?: string

@@ -91,6 +91,7 @@ export async function dispatchHeadlessCommand(
         type: 'cancel-run',
         operationId: intent.operationId,
         ...(typeof intent.params.runId === 'string' ? { runId: intent.params.runId } : {}),
+        ...(typeof intent.params.reason === 'string' ? { reason: intent.params.reason } : {}),
       },
       context,
     )

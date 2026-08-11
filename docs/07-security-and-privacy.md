@@ -117,6 +117,8 @@ Braid encrypts its SQLite database and WAL at rest with SQLCipher or an equivale
 
 The database key is a random 256-bit value stored in the operating-system credential facility and never written beside the database.
 
+Braid supplies this value as a raw SQLCipher key because it is a key, not a password.
+
 Each conversation also receives a random content key stored only in that credential facility.
 
 Journal payloads are encrypted with the conversation content key before entering the already encrypted database, so database, WAL, and backup files contain no conversation content key.
@@ -124,6 +126,10 @@ Journal payloads are encrypted with the conversation content key before entering
 Encrypted backups use the same protected database-key generation or an explicit user-supplied export passphrase with a memory-hard key derivation function and recorded parameters, but they never embed conversation content keys.
 
 Headless environments without a credential facility must receive the database key through a protected file descriptor or a mode-0600 key file outside the workspace.
+
+That source must contain 32 bytes from a cryptographically secure random generator or the equivalent hexadecimal encoding.
+
+Human passwords and other low-entropy values are not valid database keys.
 
 Passing a state key directly on the command line is rejected because process listings and shell history can expose it.
 

@@ -14,6 +14,10 @@ The runner defines which coding program executes one run.
 
 Braid defines how the user sees, directs, forks, analyzes, approves, and audits that work.
 
+The `AgentProfile` is portable intent, while an admitted run stores an immutable receipt for the effective runner, model, reasoning effort, maximum output, connection, and execution environment.
+
+Changing the selected profile for a future run never rewrites the receipt or identity of an existing run.
+
 ## The problem
 
 Modern coding runners each ship their own terminal interface, session format, model selector, permission dialog, and fork semantics.
@@ -78,7 +82,7 @@ They need analyses to remain separate from the conversation they analyze unless 
 1. The user starts Braid in a project directory.
 2. Braid discovers or prompts for a CLI Bridge connection.
 3. The user selects an existing profile.
-4. Braid shows the effective runner, model, effort, working directory, and any unsupported profile dimensions before sending.
+4. Braid shows the effective runner, model, reasoning effort, maximum output, connection, execution location, and any unsupported profile dimensions before sending.
 5. CLI Bridge materializes the exact profile and starts the selected local runner.
 6. Braid streams normalized events, records the materialization receipt, and reconnects from the last event identifier after a transport loss.
 7. Explicit cancellation waits for a terminal cancellation result instead of treating a closed stream as success.
@@ -116,6 +120,12 @@ They need analyses to remain separate from the conversation they analyze unless 
 4. Braid creates a child analysis node with citations, findings, uncertainty, latency, token use, and cost.
 5. The active branch remains unchanged until the user explicitly sends selected findings into it or forks from the analysis.
 
+`/ask` is a free-form question over one frozen source.
+
+`/analyze` selects a named `agent-eval` recipe such as failure, cost, tools, or improvement.
+
+`/compare` freezes two sources, retains every measured asymmetry, and produces a paired result without choosing a branch winner automatically.
+
 ## Product principles
 
 ### Portable identity
@@ -139,6 +149,8 @@ The interface always distinguishes running, detached, reconnecting, cancelling, 
 An unknown provider run remains unknown until the provider proves a terminal outcome.
 
 Every branch and analysis exposes its source, profile digest, runner, model, connection, run identifier, and relevant environment identifiers.
+
+Activity also keeps direct turn usage, analysis usage, and runtime-worker usage separate, and labels values that the provider did not report as unknown.
 
 ### Fast default, full depth on demand
 
@@ -177,6 +189,7 @@ The first public release includes all of the following capabilities.
 - Cross-runner handoff with new provider-session identity and explicit context provenance.
 - `/ask`, specialized trace analysis, cited child nodes, comparison, promotion of findings, and graph navigation.
 - Runtime supervisor status, worker activity, logs, steering, and real cancellation through runtime-owned APIs.
+- Separate activity and usage views for direct turns, trace analyses, and runtime workers.
 - Queue and steer behavior while a run is active.
 - Local persistence, crash recovery, migrations, data export, retention controls, and secret separation.
 - Keyboard-only operation, responsive layouts, Unicode and IME support, no-color and high-contrast modes, sanitized untrusted output, and plain-text rendering.

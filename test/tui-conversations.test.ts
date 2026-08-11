@@ -207,3 +207,51 @@ test('fork preview executes the existing plan and branch navigation works with a
   assert.doesNotMatch(screen, /enter\/y create fork/u)
   await stopTerminal(view, done)
 })
+
+test('fork confirmation preserves an earlier message boundary from the preview plan', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const sourceBranch = app.state().branchId
+  const sent = app.send({
+    operationId: 'op-tui-fork-boundary-send',
+    text: 'preserve this boundary',
+  })
+  await sent.completion
+  const boundary = app
+    .state()
+    .messages.find((message) => message.branchId === sourceBranch && message.role === 'user')
+  assert(boundary)
+
+  const controller = createApplicationUiController(app)
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: operationIds('op-tui-fork-boundary'),
+  })
+  const done = view.start()
+
+  terminal.sendInput(`/fork ${boundary.id}`)
+  terminal.sendInput('\r')
+  let screen = await settle(terminal)
+  assert.match(screen, /boundary:/u)
+  assert.match(screen, new RegExp(boundary.id, 'u'))
+  const preview = controller.view().forkPreview
+  assert.equal(preview?.plan?.sourceBranchId, sourceBranch)
+  assert.equal(preview?.plan?.throughMessageId, boundary.id)
+  assert.equal(Object.isFrozen(preview?.plan), true)
+
+  const beforeFork = app.state().branches.length
+  terminal.sendInput('y')
+  await settle(terminal)
+  const created = app.state().branches.at(-1)
+  assert.equal(app.state().branches.length, beforeFork + 1)
+  assert.equal(created?.source?.branchId, sourceBranch)
+  assert.equal(created?.source?.throughMessageId, boundary.id)
+  screen = await settle(terminal)
+  assert.doesNotMatch(screen, /enter\/y create fork/u)
+  await stopTerminal(view, done)
+})

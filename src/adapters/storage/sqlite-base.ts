@@ -1,5 +1,6 @@
 import { createHash, createHmac } from 'node:crypto'
 import { closeSync } from 'node:fs'
+import { performance } from 'node:perf_hooks'
 import { canonicalJson } from '../../domain/canonical.js'
 import type { CredentialPort, CredentialRef } from '../../ports/credentials.js'
 import type { IntegrityReport, StorageArtifacts } from '../../ports/storage.js'
@@ -9,7 +10,12 @@ import { classifySqliteError } from './sqlite-paths.js'
 import { BoundedWriteQueue } from './sqlite-queue.js'
 import { acquireExclusiveLock } from './sqlite-recovery.js'
 import { pragmaNumber, pragmaString } from './sqlite-schema.js'
-import type { DurableBoundaryHook, MigrationHooks, SqliteStorageInput } from './sqlite-types.js'
+import type {
+  DurableBoundaryHook,
+  MigrationHooks,
+  SqliteStartupStage,
+  SqliteStorageInput,
+} from './sqlite-types.js'
 
 export abstract class SqliteStorageBase {
   protected readonly path: string
@@ -24,6 +30,7 @@ export abstract class SqliteStorageBase {
   protected readonly backupDirectory: string
   protected readonly migrationHooks: MigrationHooks | undefined
   protected readonly durableBoundaryHook: DurableBoundaryHook | undefined
+  protected readonly startupObserver: ((stage: SqliteStartupStage) => void) | undefined
   protected readonly writes: BoundedWriteQueue
   protected database: SqliteDatabase
   protected databaseFileDescriptor: number | undefined
@@ -46,6 +53,7 @@ export abstract class SqliteStorageBase {
     this.backupDirectory = input.backupDirectory
     this.migrationHooks = input.migrationHooks
     this.durableBoundaryHook = input.durableBoundaryHook
+    this.startupObserver = input.startupObserver
     this.writes = new BoundedWriteQueue(input.maxQueuedTransactions)
     this.database = input.database
     this.databaseFileDescriptor = input.databaseFileDescriptor
@@ -213,6 +221,14 @@ export abstract class SqliteStorageBase {
   assertOpen(): void {
     if (this.closed || !this.database.open)
       throw new StorageError('STORAGE_CLOSED', 'SQLite storage is closed')
+  }
+
+  protected observeStartup(name: SqliteStartupStage['name'], startedAt: number): void {
+    try {
+      this.startupObserver?.({ name, durationMs: performance.now() - startedAt })
+    } catch {
+      // Diagnostics cannot change storage startup.
+    }
   }
 
   async withExclusiveLock<T>(operation: () => Promise<T>): Promise<T> {

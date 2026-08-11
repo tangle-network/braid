@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { closeSync } from 'node:fs'
 import { link, lstat, rename, rm, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import { parseConversationId, parseEventId } from '../../domain/ids.js'
 import type { CredentialRef } from '../../ports/credentials.js'
 import { credentialRef } from '../../ports/credentials.js'
@@ -35,6 +36,7 @@ import {
 
 export abstract class SqliteLifecycleStorage extends SqliteProjectionStorage {
   async initialize(): Promise<void> {
+    let stageStarted = performance.now()
     const fromVersion = pragmaNumber(this.database, 'user_version')
     if (fromVersion > SQLITE_SCHEMA_VERSION)
       throw new StorageError(
@@ -55,9 +57,15 @@ export abstract class SqliteLifecycleStorage extends SqliteProjectionStorage {
         throw classifySqliteError(error)
       }
     }
+    this.observeStartup('schema', stageStarted)
+    stageStarted = performance.now()
     await this.reconcileContentKeyLifecycle()
+    this.observeStartup('content-keys', stageStarted)
+    stageStarted = performance.now()
     await this.stateSnapshots.reconcileUnsafe()
     await this.stateSnapshots.pruneUnsafe()
+    this.observeStartup('snapshot-maintenance', stageStarted)
+    stageStarted = performance.now()
     const stored = this.database
       .prepare(
         'SELECT revision, state_json, checksum FROM braid_projection_state WHERE projection_name = ?',
@@ -78,12 +86,17 @@ export abstract class SqliteLifecycleStorage extends SqliteProjectionStorage {
     } else {
       this.assertStoredProjectionSummary(stored)
     }
+    this.observeStartup('projection', stageStarted)
+    stageStarted = performance.now()
     if (fromVersion === SQLITE_SCHEMA_VERSION) this.assertStartupConfiguration()
     else {
       const report = this.integrityReport()
       if (!report.ok) throw new StorageError('STORAGE_INTEGRITY_FAILURE', report.errors.join('; '))
     }
+    this.observeStartup('configuration', stageStarted)
+    stageStarted = performance.now()
     await this.secureArtifacts()
+    this.observeStartup('artifact-permissions', stageStarted)
   }
 
   private assertStartupConfiguration(): void {

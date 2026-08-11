@@ -1,10 +1,10 @@
 import { execFile as execFileCallback } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { installPackedBraid } from '../packed-binary.mjs'
-import { npmInvocation } from '../release/platform.mjs'
 import { createPerformanceLifecycle } from './lifecycle.mjs'
 import { installedPackageRoot } from './packed-runtime.mjs'
 import { runProcessMeasurements } from './process-measurements.mjs'
@@ -51,6 +51,18 @@ async function createProcessFixture(eventCount, packageRoot) {
   }
 }
 
+function verifyNativeSqliteInstall(installRoot) {
+  const require = createRequire(join(installRoot, 'package.json'))
+  const Database = require('better-sqlite3-multiple-ciphers')
+  const database = new Database(':memory:')
+  try {
+    const result = database.prepare('select 1 as ready').get()
+    assert(result?.ready === 1, 'packed SQLite dependency did not execute a query')
+  } finally {
+    database.close()
+  }
+}
+
 async function createContext(mode, lifecycle) {
   const context = {
     mode,
@@ -66,18 +78,10 @@ async function createContext(mode, lifecycle) {
     context.packed = await installPackedBraid(repository)
     lifecycle.throwIfAborted()
     lifecycle.addCleanup(context.packed.cleanup)
-    const sqlitePackage = join(
-      context.packed.installRoot,
-      'node_modules',
-      'better-sqlite3-multiple-ciphers',
-    )
-    const npm = npmInvocation(['run', 'install', '--prefix', sqlitePackage])
-    await execFile(npm.file, npm.args, {
-      cwd: context.packed.installRoot,
-    })
+    verifyNativeSqliteInstall(context.packed.installRoot)
     lifecycle.throwIfAborted()
     context.nativeDependencyPreparation =
-      'native prebuild install for better-sqlite3-multiple-ciphers in extracted install'
+      'packed install loaded better-sqlite3-multiple-ciphers and executed an in-memory query'
     context.packageRoot = installedPackageRoot(context.packed)
     context.tarballSha256 = context.packed.tarballSha256
   } catch (error) {
@@ -144,6 +148,10 @@ function provenance(context, revision, packages) {
     arch: process.arch,
     packedPackageRoot: context.packageRoot ?? null,
     packedTarballSha256: context.tarballSha256 ?? null,
+    packedCandidate:
+      context.packedError === undefined
+        ? { status: 'ready' }
+        : { status: 'unavailable', reason: context.packedError },
     compileCache: context.compileCachePreparation ?? {
       status: 'unavailable',
       reason: context.compileCacheError ?? 'packed candidate unavailable',

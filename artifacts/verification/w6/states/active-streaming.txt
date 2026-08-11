@@ -1,4 +1,4 @@
-braid  cwd  braid-automation-main-wt  ·  session  New conversation
+braid  cwd  braid-unified-activity-wt  ·  session  New conversation
  W6 active streaming
 
  working…
@@ -15,10 +15,10 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation
 
 
 
+─────────────────────────────── › queue next #1 ────────────────────────────────
+›
 
 
-────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────
+────────────────────────── alt+enter newline · paste ───────────────────────────
 streaming · Ctrl+C cancel            model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi                        Enter queues input
+AgentProfile Braid starter · runner pi · not connected        Enter queues input

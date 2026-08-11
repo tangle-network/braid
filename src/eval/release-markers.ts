@@ -42,6 +42,8 @@ export function semanticEvalMeasurements(
     scalar('semantic-fixtures-passed', 'count', fixtures.filter((entry) => entry.pass).length),
     scalar('semantic-fixtures-total', 'count', fixtures.length),
     scalar('calibration-pairs', 'count', record.calibration.pairedExamples),
+    scalar('calibration-good-examples', 'count', record.calibration.goodExamples),
+    scalar('calibration-good-accepted', 'count', record.calibration.goodAccepted),
     scalar('calibration-good-preferred', 'count', record.calibration.goodPreferred),
     scalar('calibration-ties', 'count', record.calibration.ties),
     scalar('calibration-reversals', 'count', record.calibration.reversals),

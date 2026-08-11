@@ -1,15 +1,15 @@
 import {
-  canonicalCandidateDigest,
   canonicalAgentProfileDigest,
+  canonicalCandidateDigest,
   snapshotAgentProfile,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/profile-runtime.js'
 import { redactStructuredValue } from '../domain/bounded-structured.js'
 import { exportProfileDocument } from './profile-persistence.js'
+import type { ProfileIssue, ProfileSnapshotInput, ProfileSnapshotReceipt } from './profile-types.js'
 import {
   AGENT_INTERFACE_PACKAGE_NAME,
   AGENT_INTERFACE_PACKAGE_VERSION,
 } from './profile-validation.js'
-import type { ProfileIssue, ProfileSnapshotInput, ProfileSnapshotReceipt } from './profile-types.js'
 
 function freezeDeep<T>(value: T, seen = new WeakSet<object>()): T {
   if (value === null || typeof value !== 'object' || seen.has(value)) return value
@@ -51,7 +51,7 @@ export function createProfileSnapshot(input: ProfileSnapshotInput): ProfileSnaps
     authoredProfile: redactedAuthored,
     effectiveProfile: redactedEffective,
     authoredProfileDigest: canonicalAgentProfileDigest(authored),
-    effectiveProfileDigest: canonicalAgentProfileDigest(redactedEffective),
+    effectiveProfileDigest: canonicalAgentProfileDigest(effective),
     ...(input.effective.runner === undefined ? {} : { runner: input.effective.runner }),
     ...(input.effective.model === undefined ? {} : { model: input.effective.model }),
     ...(input.effective.effort === undefined ? {} : { effort: input.effective.effort }),

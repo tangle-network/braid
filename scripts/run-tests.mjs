@@ -3,7 +3,9 @@ import { readdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { extname, join, relative } from 'node:path'
 
-const root = new URL('../.test-dist/test/', import.meta.url)
+import { configuredTestDist } from './test-dist.mjs'
+
+const root = join(configuredTestDist(), 'test')
 
 async function testsUnder(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -17,7 +19,7 @@ async function testsUnder(directory) {
   return nested.flat()
 }
 
-const tests = (await testsUnder(root.pathname)).sort()
+const tests = (await testsUnder(root)).sort()
 if (tests.length === 0) {
   process.stderr.write('No compiled tests found\n')
   process.exit(1)
@@ -33,6 +35,9 @@ if (scopeIndex !== -1 && !scope) {
 
 const scopeFiles = {
   unit: [
+    'agent-interface-runtime-parity.test.js',
+    'analysis-model-call-observability.test.js',
+    'analysis-model-call-roundtrip.test.js',
     'application.test.js',
     'cli-startup.test.js',
     'conversations.test.js',
@@ -42,21 +47,30 @@ const scopeFiles = {
     'domain-reducer.test.js',
     'domain-text.test.js',
     'eval.test.js',
+    'observability.test.js',
+    'plain-accessibility.test.js',
     'property.test.js',
     'reducer.test.js',
     'sanitize.test.js',
     'scripts.test.js',
+    'terminal-usage-status.test.js',
+    'usage-projection.test.js',
     'w6-ui.test.js',
   ],
   contract: [
+    'agent-interface-runtime-parity.test.js',
+    'analysis-model-call-observability.test.js',
+    'analysis-model-call-roundtrip.test.js',
     'application.test.js',
     'cli-bridge-profile-contract.test.js',
     'conversations.test.js',
     'coordination.test.js',
     'domain-invariants.test.js',
     'domain-reducer.test.js',
+    'observability.test.js',
     'reducer.test.js',
     'scripts.test.js',
+    'usage-projection.test.js',
     'w6-contract.test.js',
   ],
   coordination: [
@@ -72,12 +86,17 @@ const scopeFiles = {
     'w6-contract.test.js',
   ],
   'virtual-terminal': [
+    'activity-document.test.js',
     'configuration-product-flow.test.js',
+    'intelligence-dispatch.test.js',
     'keyboard.test.js',
     'terminal-responsive.test.js',
+    'terminal-usage-status.test.js',
     'tui-autocomplete.test.js',
     'tui-conversations.test.js',
     'tui-core-workflows.test.js',
+    'tui-interaction-security.test.js',
+    'tui-refresh-lifecycle.test.js',
     'tui.test.js',
     'w6-ui.test.js',
   ],
@@ -91,10 +110,14 @@ const scopeFiles = {
     'storage.test.js',
   ],
   security: [
+    'analysis-model-call-observability.test.js',
+    'analysis-model-call-roundtrip.test.js',
     'cli-startup.test.js',
     'configuration-product-flow.test.js',
     'conversations.test.js',
     'coordination.test.js',
+    'observability.test.js',
+    'plain-accessibility.test.js',
     'profile-connection-actions.test.js',
     'profile-save-recovery.test.js',
     'sanitize.test.js',
@@ -102,6 +125,7 @@ const scopeFiles = {
     'storage-snapshots.test.js',
     'storage.test.js',
     'tui-core-workflows.test.js',
+    'tui-interaction-security.test.js',
     'w6-contract.test.js',
   ],
   crash: [
@@ -121,16 +145,14 @@ const scopeFiles = {
 const selectedTests =
   scope === undefined
     ? tests
-    : tests.filter((path) => scopeFiles[scope]?.includes(relative(root.pathname, path)))
+    : tests.filter((path) => scopeFiles[scope]?.includes(relative(root, path)))
 if (scope !== undefined && selectedTests.length === 0) {
   process.stderr.write(`No compiled tests registered for scope ${scope}\n`)
   process.exit(1)
 }
 
 if (listOnly) {
-  process.stdout.write(
-    `${JSON.stringify(selectedTests.map((path) => relative(root.pathname, path)))}\n`,
-  )
+  process.stdout.write(`${JSON.stringify(selectedTests.map((path) => relative(root, path)))}\n`)
   process.exit(0)
 }
 
@@ -153,5 +175,24 @@ if (nativeStorageRequired) {
   }
 }
 
-const result = spawnSync(process.execPath, ['--test', ...selectedTests], { stdio: 'inherit' })
-process.exit(result.status ?? 1)
+const isolatedPerformanceFiles = new Set(['performance.test.js', 'storage-performance.test.js'])
+const isolatedTests = selectedTests.filter((path) =>
+  isolatedPerformanceFiles.has(relative(root, path)),
+)
+const concurrentTests = selectedTests.filter(
+  (path) => !isolatedPerformanceFiles.has(relative(root, path)),
+)
+
+function runTestBatch(paths) {
+  if (paths.length === 0) return 0
+  const result = spawnSync(process.execPath, ['--test', ...paths], { stdio: 'inherit' })
+  if (result.error) throw result.error
+  return result.status ?? 1
+}
+
+let status = runTestBatch(concurrentTests)
+for (const path of isolatedTests) {
+  if (status !== 0) break
+  status = runTestBatch([path])
+}
+process.exit(status)

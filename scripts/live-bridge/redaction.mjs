@@ -13,13 +13,42 @@ const secretKeys = new Set([
   'credentialvalue',
 ])
 
+const bridgeSecretEnvironmentKeys = Object.freeze([
+  'BRAID_CLI_BRIDGE_BEARER',
+  'CLI_BRIDGE_BEARER',
+  'BRIDGE_BEARER',
+])
+
 function isSecretKey(key) {
   const normalized = key.replaceAll(/[-_]/gu, '').toLowerCase()
   return secretKeys.has(normalized)
 }
 
-export function redactString(value) {
-  return value
+export function secretValues(environment = process.env) {
+  return [
+    ...new Set(
+      bridgeSecretEnvironmentKeys
+        .map((key) => environment?.[key])
+        .filter((value) => typeof value === 'string' && value.length > 0),
+    ),
+  ]
+}
+
+export function withoutBridgeSecrets(environment = process.env) {
+  const childEnvironment = { ...environment }
+  for (const key of bridgeSecretEnvironmentKeys) delete childEnvironment[key]
+  return childEnvironment
+}
+
+export function redactString(value, secrets = secretValues()) {
+  const secretList = [...new Set(secrets)].filter(
+    (secret) => typeof secret === 'string' && secret.length > 0,
+  )
+  const valueWithoutSecrets = secretList.reduce(
+    (current, secret) => current.split(secret).join('[redacted]'),
+    value,
+  )
+  return valueWithoutSecrets
     .replace(/(https?:\/\/)([^/\s:@]+):([^/\s@]+)@/giu, '$1[redacted]@')
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/giu, 'Bearer [redacted]')
     .replace(/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}\b/gu, '[redacted]')
@@ -34,16 +63,16 @@ export function redactString(value) {
     )
 }
 
-export function evidenceValue(value, key = '', depth = 0) {
+export function evidenceValue(value, key = '', depth = 0, secrets = secretValues()) {
   if (isSecretKey(key)) return '[redacted]'
-  if (typeof value === 'string') return redactString(value)
+  if (typeof value === 'string') return redactString(value, secrets)
   if (value === null || typeof value !== 'object') return value
   if (depth > 8) return '[depth-limited]'
-  if (Array.isArray(value)) return value.map((item) => evidenceValue(item, key, depth + 1))
+  if (Array.isArray(value)) return value.map((item) => evidenceValue(item, key, depth + 1, secrets))
   return Object.fromEntries(
     Object.entries(value).map(([entryKey, entryValue]) => [
       entryKey,
-      evidenceValue(entryValue, entryKey, depth + 1),
+      evidenceValue(entryValue, entryKey, depth + 1, secrets),
     ]),
   )
 }

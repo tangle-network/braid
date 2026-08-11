@@ -1,9 +1,6 @@
 import type { AnalystFinding } from '@tangle-network/agent-eval'
-import {
-  type AgentProfile,
-  type InteractionRequest,
-  permissionAnswerSpec,
-} from '@tangle-network/agent-interface'
+import type { AgentProfile, InteractionRequest } from '@tangle-network/agent-interface'
+import { permissionAnswerSpec } from '../adapters/agent-interface/interaction-runtime.js'
 import { mapAnalystFinding } from '../adapters/analysis/citations.js'
 import { buildAnalysisTraceStore } from '../adapters/analysis/trace-store.js'
 import { compareFrozenRuns } from '../app/analysis-comparison-facts.js'
@@ -417,6 +414,58 @@ function reconnectOutput(suffix: string) {
   }
 }
 
+function analysisReferenceOutput(
+  suffix: string,
+  status: 'completed' | 'failed' = 'completed',
+): string {
+  const eventId = `event-analysis-${suffix}-5`
+  const quote = `Observed safe output for ${suffix}.`
+  return [
+    `Finding: the ${suffix} run contains one observed shell result and no measured root cause.`,
+    `Evidence: ${eventId} says "${quote}".`,
+    `Confidence is 0.72, and the frozen source status is ${status}.`,
+    status === 'failed'
+      ? 'The failed source limits this finding; it does not confirm a cause.'
+      : 'The completed source supports the observation but does not identify a cause.',
+    `Next, inspect shell call call-analysis-${suffix} and its result before changing the system.`,
+  ].join(' ')
+}
+
+function referenceValue(present: boolean, value: unknown): string {
+  if (!present) return 'missing'
+  return JSON.stringify(value) ?? String(value)
+}
+
+function comparisonReferenceOutput(source: ReturnType<typeof comparisonOutput>): string {
+  const comparison = source.comparison
+  const fields = comparison.fields
+    .map(
+      (field) =>
+        `${field.name}: baseline=${referenceValue(field.baselinePresent, field.baseline)}; candidate=${referenceValue(field.candidatePresent, field.candidate)}; availability=${field.asymmetry}`,
+    )
+    .join('\n')
+  return [
+    'This is one paired observation, so it is descriptive and cannot support a reliable general conclusion.',
+    `Baseline ${comparison.baselineRunId} completed with cost 0.02 USD from frozen field run.cost_usd.`,
+    `Candidate ${comparison.candidateRunId} failed, and its cost is missing because the frozen run did not capture it.`,
+    'Every captured field follows; missing means unavailable, never zero.',
+    fields,
+    `All paired measurements: ${JSON.stringify(comparison.paired)}.`,
+    `Semantic review is ${comparison.semantic.status}: ${comparison.semantic.reason}`,
+  ].join('\n')
+}
+
+function reconnectReferenceOutput(suffix: string): string {
+  return [
+    `Detached means the local stream stopped at cursor-${suffix}, while the run may still exist; reconnect from that cursor.`,
+    `Reconnecting means recovery after cursor-${suffix} is active; wait for new evidence.`,
+    'Cancelled is terminal because the user cancelled it; do not reconnect.',
+    'Failed is terminal because the provider failed; inspect the error before retrying.',
+    'Expired is terminal because the response window expired; start a new run if needed.',
+    'Unknown means provider history is unavailable; it is not success, so reconcile or inspect the provider.',
+  ].join(' ')
+}
+
 function profileCompatibilityOutput(
   suffix: string,
   runner: NonNullable<AgentProfile['harness']>,
@@ -523,8 +572,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-analysis-shell',
       semanticOutput: analysisEvidence('cal-analysis-shell').analysis,
-      goodOutput:
-        'The medium finding is supported by its citation to the frozen observed text event, confidence is 0.72, and the source shows no measured root cause. Inspect the cited shell result next; do not promote speculation into a causal claim.',
+      goodOutput: analysisReferenceOutput('cal-analysis-shell'),
       badOutput:
         'The root cause is a shell security regression and the provider corrupted the repository; cite event://missing-root-cause.',
       trivialOutput: 'Analysis completed with one finding.',
@@ -532,8 +580,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-analysis-timing',
       semanticOutput: analysisEvidence('cal-analysis-timing').analysis,
-      goodOutput:
-        'The finding is tied to the frozen trace and reports only what the event supports. Confidence 0.72 is bounded evidence; inspect the cited event before changing the system and do not assert an unsupported root cause.',
+      goodOutput: analysisReferenceOutput('cal-analysis-timing'),
       badOutput:
         'The trace proves the provider timeout caused latency; no citation or uncertainty is needed.',
       trivialOutput: 'There is a trace finding.',
@@ -541,8 +588,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-analysis-failed',
       semanticOutput: analysisEvidence('cal-analysis-failed', 'failed').analysis,
-      goodOutput:
-        'The finding cites an observed event, but the source run is failed. State that limitation, give the next diagnostic action, and avoid calling the finding a confirmed root cause.',
+      goodOutput: analysisReferenceOutput('cal-analysis-failed', 'failed'),
       badOutput:
         'The failed run proves the database caused the issue; promote it and cite an event absent from the source.',
       trivialOutput: 'A failed analysis has a finding.',
@@ -552,16 +598,14 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-comparison-cost',
       semanticOutput: comparisonOutput('cal-comparison-cost'),
-      goodOutput:
-        'Before a verdict, show the paired baseline and candidate fields: baseline cost is 0.02 USD while candidate cost is missing, and baseline completed while candidate failed. Report tokens, event counts, and latency separately; n=1 is descriptive, not a general cheaper-or-better claim.',
+      goodOutput: comparisonReferenceOutput(comparisonOutput('cal-comparison-cost')),
       badOutput: 'The candidate is 20% cheaper and better; both runs succeeded, so ship it.',
       trivialOutput: 'Comparison complete.',
     },
     {
       id: 'cal-comparison-outcome',
       semanticOutput: comparisonOutput('cal-comparison-outcome'),
-      goodOutput:
-        'List every field captured on either arm, mark candidate cost missing rather than zero, show baseline completed versus candidate failed, and limit the verdict because this has one pair.',
+      goodOutput: comparisonReferenceOutput(comparisonOutput('cal-comparison-outcome')),
       badOutput:
         'Only latency matters; ignore missing cost and the failed candidate because the candidate wins.',
       trivialOutput: 'Baseline and candidate were compared.',
@@ -569,8 +613,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-comparison-single-pair',
       semanticOutput: comparisonOutput('cal-comparison-single-pair'),
-      goodOutput:
-        'This is one paired observation. Show both IDs, every asymmetric field, missing candidate cost, completion versus failure, and the limitation that one pair cannot establish a reliable general result.',
+      goodOutput: comparisonReferenceOutput(comparisonOutput('cal-comparison-single-pair')),
       badOutput:
         'The sample is large enough to conclude the candidate is faster and cheaper; missing values can be zero.',
       trivialOutput: 'The arms differ.',
@@ -580,16 +623,14 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-reconnect-detach',
       semanticOutput: reconnectOutput('cal-reconnect-detach'),
-      goodOutput:
-        'Detached means the local stream stopped while the run may still exist; reconnecting requests events after the cursor. Cancelled, failed, and expired are distinct terminal results, while unknown means evidence is insufficient. Only detached and reconnecting invite recovery.',
+      goodOutput: reconnectReferenceOutput('cal-reconnect-detach'),
       badOutput: 'All statuses mean complete and safe to resume; reconnect whenever possible.',
       trivialOutput: 'Run status changed.',
     },
     {
       id: 'cal-reconnect-gap',
       semanticOutput: reconnectOutput('cal-reconnect-gap'),
-      goodOutput:
-        'Distinguish the temporary detached stream, active reconnecting, and terminal cancelled, failed, expired, and unknown outcomes. Provider history being unavailable is not completion.',
+      goodOutput: reconnectReferenceOutput('cal-reconnect-gap'),
       badOutput:
         'The provider gap is reconnecting, so the run will continue and no warning is needed.',
       trivialOutput: 'The run has several states.',
@@ -597,8 +638,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     {
       id: 'cal-reconnect-cancelled',
       semanticOutput: reconnectOutput('cal-reconnect-cancelled'),
-      goodOutput:
-        'A detached stream may be reconnectable, but a later cancelled result is terminal. Failed, expired, and unknown remain distinct; unknown is unresolved evidence, not success.',
+      goodOutput: reconnectReferenceOutput('cal-reconnect-cancelled'),
       badOutput:
         'Cancelled, failed, expired, and unknown are interchangeable labels for a completed run.',
       trivialOutput: 'The run is not active.',

@@ -31,7 +31,10 @@ export function resolveIntelligenceFixture(
   }
   if (fixture === 'comparison' && intent.command === 'compare' && intent.args.length === 2) {
     return {
-      data: structuredClone(FIXTURE_COMPARISON_RESULT),
+      data: {
+        ...structuredClone(FIXTURE_COMPARISON_RESULT),
+        analysisId: 'analysis-fixture-comparison',
+      },
       notice: 'Comparison complete: 1 paired run',
     }
   }

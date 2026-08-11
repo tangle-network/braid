@@ -1,10 +1,10 @@
+import type { BraidControlKind, BraidEventEnvelope } from '../domain/events.js'
+import type { BraidState } from '../domain/state.js'
 import type {
   ControlOperationRecord,
   OperationRecord,
   ShutdownRecord,
 } from './application-types.js'
-import type { BraidControlKind, BraidEventEnvelope } from '../domain/events.js'
-import type { BraidState } from '../domain/state.js'
 
 export interface InteractionOperationRecord {
   readonly digest: string
@@ -16,6 +16,7 @@ export interface RunLedger {
   readonly setOperation: (record: OperationRecord) => void
   readonly getControl: (operationId: string) => ControlOperationRecord | undefined
   readonly setControl: (operationId: string, record: ControlOperationRecord) => void
+  readonly deleteControl: (operationId: string) => void
   readonly getInteraction: (operationId: string) => InteractionOperationRecord | undefined
   readonly setInteraction: (operationId: string, record: InteractionOperationRecord) => void
   readonly getShutdown: (operationId: string) => ShutdownRecord | undefined
@@ -34,6 +35,9 @@ export interface RunLedger {
   readonly isExplicitlyCancelled: (runId: string) => boolean
   readonly markExplicitlyCancelled: (runId: string) => void
   readonly clearExplicitlyCancelled: (runId: string) => void
+  readonly isCancellationPending: (runId: string) => boolean
+  readonly markCancellationPending: (runId: string) => void
+  readonly clearCancellationPending: (runId: string) => void
   readonly getCancelStatus: (runId: string) => 'cancelled' | 'aborted' | undefined
   readonly setCancelStatus: (runId: string, status: 'cancelled' | 'aborted') => void
   readonly clearCancelStatus: (runId: string) => void
@@ -52,6 +56,7 @@ export function createRunLedger(): RunLedger {
   const aborts = new Map<string, AbortController>()
   const detached = new Set<string>()
   const explicitCancellations = new Set<string>()
+  const pendingCancellations = new Set<string>()
   const cancelStatuses = new Map<string, 'cancelled' | 'aborted'>()
   const queueDrains = new Set<string>()
   const providerEvents = new Set<string>()
@@ -61,6 +66,7 @@ export function createRunLedger(): RunLedger {
     setOperation: (record) => operations.set(record.admission.operationId, record),
     getControl: (operationId) => controls.get(operationId),
     setControl: (operationId, record) => controls.set(operationId, record),
+    deleteControl: (operationId) => controls.delete(operationId),
     getInteraction: (operationId) => interactions.get(operationId),
     setInteraction: (operationId, record) => interactions.set(operationId, record),
     getShutdown: (operationId) => shutdowns.get(operationId),
@@ -79,6 +85,9 @@ export function createRunLedger(): RunLedger {
     isExplicitlyCancelled: (runId) => explicitCancellations.has(runId),
     markExplicitlyCancelled: (runId) => explicitCancellations.add(runId),
     clearExplicitlyCancelled: (runId) => explicitCancellations.delete(runId),
+    isCancellationPending: (runId) => pendingCancellations.has(runId),
+    markCancellationPending: (runId) => pendingCancellations.add(runId),
+    clearCancellationPending: (runId) => pendingCancellations.delete(runId),
     getCancelStatus: (runId) => cancelStatuses.get(runId),
     setCancelStatus: (runId, status) => cancelStatuses.set(runId, status),
     clearCancelStatus: (runId) => cancelStatuses.delete(runId),

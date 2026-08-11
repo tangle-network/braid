@@ -1,4 +1,4 @@
-import { ProcessTerminal } from '@earendil-works/pi-tui'
+import { ProcessTerminal } from '@earendil-works/pi-tui/dist/terminal.js'
 
 const ENTER_ALTERNATE_SCREEN = '\u001b[?1049h'
 const LEAVE_ALTERNATE_SCREEN = '\u001b[?1049l'

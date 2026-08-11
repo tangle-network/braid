@@ -15,21 +15,29 @@ The following published versions were queried from npm and their installed decla
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
 | [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.46.1` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.128.0` | Sole execution layer; public box, executor, chat, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.131.5` | Sole execution layer; exact executor, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.144.6` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `0.4.3` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.6.0` | Tangle environment adapter over the sandbox client |
-| `@tangle-network/sandbox` | `0.19.3` | Tangle cloud client used by the provider |
+| `@tangle-network/agent-provider-tangle` | `0.6.1` | Tangle environment adapter over the sandbox client |
+| `@tangle-network/sandbox` | `0.19.4` | Tangle cloud client used by the provider |
 
-The installed runtime publishes `agent-eval >=0.143.0 <0.144.0`, `agent-interface >=0.43.0 <0.44.0`, and optional `sandbox >=0.17.2 <0.18.0` as peer ranges.
+The installed runtime publishes `agent-eval >=0.144.6 <0.145.0`, `agent-interface >=0.46.1 <0.47.0`, and optional `sandbox >=0.19.4 <0.20.0` as peer ranges.
 
-Braid exercises runtime `0.128.0` with interface `0.46.1`, eval `0.144.6`, CLI Bridge adapter `0.4.3`, Tangle adapter `0.6.0`, and sandbox `0.19.3`.
+Braid exercises runtime `0.131.5` with interface `0.46.1`, eval `0.144.6`, CLI Bridge adapter `0.4.3`, Tangle adapter `0.6.1`, and sandbox `0.19.4`.
 
-The lockfile pins the registry integrity for every installed package, and `pnpm peers check` passes with only the explicit runtime metadata exceptions below.
+The lockfile pins the registry integrity for every installed package.
+
+The published peer ranges accept the complete installed package set without a workspace exception.
 
 The workspace override resolves every transitive `agent-interface` dependency to `0.46.1`; the package tests prove that this version retains every public symbol Braid uses from the older dependency graph.
 
-The exact interface, eval, and sandbox exceptions in `pnpm-workspace.yaml` acknowledge runtime `0.128.0`'s stale peer metadata; [agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) records the metadata lag.
+[Agent-runtime issue 746](https://github.com/tangle-network/agent-runtime/issues/746) is closed by the peer ranges retained in `0.131.5`.
+
+Braid imports only the canonical root `agent-interface` entry point behind two local modules.
+
+An exact parity test compares every local export with the root package export and rejects path escapes.
+
+[Agent-sdk issue 135](https://github.com/tangle-network/agent-sdk/issues/135) requests supported narrow entry points to remove the root import cost.
 
 ### Installed package boundary
 
@@ -106,15 +114,110 @@ Method presence remains a second defensive check because a false capability must
 
 ## Existing runtime contract
 
-`streamAgentTurn` normalizes box, executor, and chat inputs into `RuntimeStreamEvent` and guarantees one final event.
+`streamAgentTurn` accepts only a Runtime-owned executor paired with one exact `AgentProfile`.
+
+It normalizes the terminal result into `RuntimeStreamEvent` and guarantees one final event.
 
 The current runtime event union includes lifecycle, text delta, reasoning delta, tool call, tool result, LLM call, artifact, proposal, error, and final events.
 
 It does not currently preserve every canonical interface event, including generalized interaction and interaction-cancel events.
 
-`AgentExecutionBackend` currently exposes start, resume, stream, and stop but no interaction-response operation.
+Braid creates Runtime's Bridge, Router, or sandbox executor only after durable run admission.
 
-`resolveAgentBackend` can select router, Tangle cloud, and CLI Bridge execution paths, but backend selection alone does not guarantee provider sessions, replay, interactions, or workspace controls survive the abstraction.
+Runtime validates the exact profile, materialization evidence, execution binding, usage, and terminal result.
+
+The durable receipt stores a redacted profile snapshot and the canonical digest of the exact private profile.
+
+A metadata-only profile change invalidates admission reuse and provider-session continuation.
+
+After restart, Braid keeps the reloaded exact profile only when its exact digest matches durable selection state.
+
+Braid preserves Runtime's aggregate `{ input, output, tokensKnown?: false }` token record.
+
+Braid rejects all other fields under token-bearing record names.
+
+Runtime `0.131.5` currently buffers executor output until the executor settles.
+
+Braid therefore receives terminal text, tool calls, usage, and result evidence but cannot render provider text deltas live through this path.
+
+[Agent-runtime issue 762](https://github.com/tangle-network/agent-runtime/issues/762) tracks incremental executor events.
+
+The Runtime provider executor currently lacks the terminal materialization evidence required by exact execution.
+
+[Agent-runtime issue 761](https://github.com/tangle-network/agent-runtime/issues/761) tracks that failure.
+
+Braid does not bypass exact execution.
+
+Its Tangle sandbox adapter converts the environment provider to Runtime's sandbox client, then uses the Runtime sandbox executor.
+
+The provider and remote environment remain lazy until execution starts after durable admission.
+
+### Current Braid cancellation path
+
+`PreparedExecution.cancellation` is the only capability that enables Braid cancellation for a production run.
+
+The capability is a typed Runtime-executor tag, not a provider-specific callback or a UI branch.
+
+`AgentRuntimeExecutionPort` wraps the Runtime `AgentTurnBackend.factory` only to retain the executor that Runtime creates for that run.
+
+When the tag is present, `/cancel` calls the public Runtime `Executor.teardown('infinity')` operation and waits for its result before committing control state.
+
+The installed Runtime `0.131.5` bridge executor implements that operation by posting `POST /v1/runs/:id/cancel` and waiting for a terminal bridge snapshot.
+
+`destroyed: true` becomes an accepted cancellation, while `destroyed: false`, a thrown error, or a control deadline becomes unknown.
+
+Braid may abort its local iterator after an accepted or unknown result to release local resources, but local abort never proves provider cancellation.
+
+The CLI Bridge production adapter is the only current production adapter that supplies this capability.
+
+The Tangle sandbox adapter and direct Tangle inference adapter omit it.
+
+The installed Runtime sandbox executor returns `destroyed: true` after aborting its local controller, while the Tangle session cancel method requires an exact `executionId` in a retained control reference.
+
+The current sandbox turn path passes only an `AbortSignal` to `streamPrompt`, and the published Tangle capability surface does not provide that exact control reference for this path.
+
+Braid therefore reports sandbox cancellation as unsupported or unknown instead of treating environment destruction or local stream closure as provider cancellation.
+
+The upstream Runtime change required to expand this support is recorded below with the exact installed source and type evidence.
+
+### Required upstream Runtime issue
+
+Title: `Expose typed, signal-aware provider cancellation acknowledgement from Executor`
+
+Runtime `0.131.5` exposes `Executor.teardown(grace): Promise<{ destroyed: boolean }>` in its published declaration bundle.
+
+The bridge executor's `teardown('infinity')` posts `POST /v1/runs/:id/cancel` and waits for a terminal bridge snapshot in `dist/supervisor-BI6Z-8Yi.js:6973-6977,7529-7570`.
+
+The public result collapses explicit provider rejection, transport failure, lost run identity, and timeout into either a generic thrown error or `destroyed: false`.
+
+The public method also accepts no `AbortSignal`, so a caller deadline can stop waiting in Braid but cannot stop Runtime's in-flight cancellation request.
+
+Please add a stable, provider-neutral cancellation operation, or extend teardown without breaking existing callers:
+
+```ts
+type ExecutorCancellationAcknowledgement =
+  | { outcome: 'accepted' | 'already-applied'; runId: string; terminal: true }
+  | { outcome: 'rejected'; runId: string; reason: string }
+  | { outcome: 'unknown'; runId: string; reason: string }
+
+cancel(options?: {
+  grace?: number | 'brutalKill' | 'infinity'
+  reason?: string
+  signal?: AbortSignal
+}): Promise<ExecutorCancellationAcknowledgement>
+```
+
+The accepted result must require a provider terminal cancellation acknowledgement.
+
+An explicit provider refusal must remain `rejected`.
+
+A transport error, missing run, lost identity, or deadline must remain `unknown`.
+
+The operation must preserve the provider run identifier and request digest, remain idempotent, and stop its wait when the caller signal aborts.
+
+Braid's production reproduction is `test/cli-bridge-profile-contract.test.ts`, where a Runtime-owned bridge executor receives a bridge `409` cancellation response.
+
+Braid currently records that response as `unknown` because the installed public Runtime API does not expose the refusal separately.
 
 ### Live root handle
 
@@ -138,9 +241,29 @@ The module owns snapshot loading and presentation types for runtime supervisor s
 
 That read model belongs in runtime because the on-disk layout is runtime-owned.
 
-Braid may adapt `loadTopSnapshot` into its own worker view, but it must not copy the runtime file layout or embed the separate terminal application.
+Braid adapts `loadTopSnapshot` into its own worker view, but it does not copy the runtime file layout or embed the separate terminal application.
 
-The module does not export its write-side steer and cancellation operations as a reusable API, so Braid does not advertise those controls through this surface.
+The runtime kernel exports `writeWorkerSteer` for worker inbox delivery.
+
+Braid resolves its public supervisor and worker identifiers to the exact runtime references before it calls that function.
+
+An explicit parent reference stays visible when no worker resolves it, and Braid does not create a replacement supervisor edge.
+
+The snapshot has no Braid run identifier, so Braid does not infer a run binding from snapshot order, current selection, or time.
+
+The snapshot also omits partial-read diagnostics.
+
+[agent-runtime issue 757](https://github.com/tangle-network/agent-runtime/issues/757) requests bounded completeness evidence.
+
+The runtime does not export worker-scoped cancellation or reconnectable external root cancellation.
+
+Braid therefore keeps those actions unavailable instead of treating an unread request as acknowledgement.
+
+[agent-runtime issue 758](https://github.com/tangle-network/agent-runtime/issues/758) tracks acknowledged worker and external root cancellation.
+
+The shared stream has no stable provider-native child-task lifecycle.
+
+[agent-runtime issue 756](https://github.com/tangle-network/agent-runtime/issues/756) tracks the normalized identity and replay contract.
 
 ## Existing CLI Bridge server contract
 
@@ -204,17 +327,61 @@ It exposes no generalized interaction response.
 
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.6.0` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.6.1` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
 
-Its default capabilities report full canonical profile dimensions, live and replay streaming, detach, turn idempotency, session continuation, session list and messages, workspace read/write/exec/git/upload/download, checkpoint and fork, placement, usage, and confidentiality.
+Its default document is an upper bound, not a claim about one client or deployment.
 
-The adapter exposes environment stream and dispatch, provider sessions and event replay, session prompt and cancel, workspace methods, checkpoint, fork, placement, refresh, and destroy when the sandbox instance implements them.
+It reports canonical profile dimensions, live and replay streaming, detach, turn idempotency, workspace read/write/exec/upload/download, and optional placement.
+
+It reports native continuation, session listing, session messages, workspace git, checkpoint, fork, usage, and confidentiality as unavailable.
+
+The adapter narrows placement against the client and narrows environment methods after creation.
+
+The adapter exposes environment stream and dispatch, provider sessions, workspace methods, refresh, and destroy only when the sandbox instance implements them.
 
 It requires an inline profile rather than a profile reference.
 
 It currently exposes no generalized interaction response through the environment or session adapter.
 
 Its capability claims must still be proven against a real current Tangle deployment because a TypeScript adapter cannot prove server support or deployment policy.
+
+## Current usage and execution observation contract
+
+Braid preserves each Runtime `llm_call` and the terminal cumulative usage.
+
+It records input, output, reasoning, prompt-cache values, reported cost, estimated cost, model, model-call count, and model-call latency when present.
+
+Each token and cost total retains complete, observed-minimum, estimated, or unknown status.
+
+An incomplete cost record keeps its observed minimum and its separate estimate when both exist.
+
+Conversation usage has three independent groups: direct turns, trace analyses, and explicitly bound Runtime worker trees.
+
+Braid does not add those groups together until Runtime provides stable model-call identity across them.
+
+The current Runtime supervisor TUI snapshot omits completeness flags and several usage dimensions.
+
+Braid therefore labels every supervisor and worker total from that surface as an observed minimum.
+
+Braid records one secret-free execution environment for CLI Bridge, direct Tangle inference, and Tangle sandbox paths.
+
+CLI Bridge records the configured endpoint location, retained provider session policy, and unavailable subscription quota.
+
+Direct inference records the service endpoint host and unavailable Router account spend.
+
+Tangle sandbox records provider sandbox identity, lifecycle, cleanup, continuity, requested resources, public endpoint host, placement, cgroup CPU and RAM use, GPU lease billing, and sandbox account usage when available.
+
+The current Tangle sandbox path is deleted after each turn and rejects session continuation.
+
+The platform supports retained sandboxes, but Runtime does not yet expose safe retained identity and recovery to Braid.
+
+The observation record never contains API keys, bearer tokens, SSH credentials, secret values, credential-bearing URLs, Docker host strings, or internal listener addresses.
+
+The following upstream issues own missing shared contracts:
+
+- [Runtime issue 763](https://github.com/tangle-network/agent-runtime/issues/763) requests one stable execution tree with complete usage provenance.
+- [Agent SDK issue 136](https://github.com/tangle-network/agent-sdk/issues/136) requests normalized provider observations and account usage.
+- [Sandbox issue 5076](https://github.com/tangle-network/agent-dev-container/issues/5076) requests resolved placement, effective resources, and per-sandbox billing.
 
 ## Existing `agent-eval` contract
 
@@ -229,9 +396,9 @@ Braid gives each analyst invocation one explicit runtime transport attempt by de
 
 Braid binds that function to the selected profile, connection, effective model, and runtime package version.
 
-`agent-runtime` executes each canonical text-message request through `runAgentTaskStream`; Braid returns normalized output, measured token usage, priced cost, terminal status, and finite redacted execution evidence to `agent-eval`.
+`agent-runtime` executes each canonical text-message request through `streamAgentTurn`; Braid returns normalized output, measured token usage, priced cost, terminal status, and finite redacted execution evidence to `agent-eval`.
 
-The callback rejects multimodal and request-level thinking controls because runtime `0.128.0` does not expose those fields on its OpenAI-compatible backend.
+The callback rejects multimodal and request-level thinking controls because runtime `0.131.5` does not expose those fields on this exact turn input.
 
 Reasoning remains an `AgentProfile` setting, and unsupported callback shapes fail before a provider call rather than being silently dropped.
 
@@ -334,6 +501,32 @@ Each operation returns an acknowledgement with operation identifier, target, acc
 In-process root handles may implement the same port, but durable clients cannot depend on a JavaScript object retained by the original process.
 
 Pause, resume, and ask remain unavailable until their state transitions and effects are implemented and tested.
+
+### Native terminal handoff target
+
+Normalized execution remains Braid's default interaction path.
+
+An attachable execution may also expose one Runtime-owned interactive terminal reference.
+
+`/attach` must suspend Braid, connect the user to the exact existing process, forward input and resize, and restore the same Braid state after detach.
+
+Attaching to an existing process and launching a new process that resumes logical context are different operations.
+
+Braid must never label the second operation as attachment.
+
+The same reference can identify an attachable Runtime worker or provider-native child only when Runtime reports a stable parent relation.
+
+The current shared interface and Runtime package do not expose terminal input, output bytes, resize, or an attachment lifecycle.
+
+The sandbox platform already provides authenticated PTY transport, while CLI Bridge currently provides logical session continuity without a retained terminal process.
+
+[Agent SDK issue 138](https://github.com/tangle-network/agent-sdk/issues/138) owns the portable terminal-session contract.
+
+[Runtime issue 773](https://github.com/tangle-network/agent-runtime/issues/773) owns exact execution and worker attachment.
+
+[CLI Bridge issue 140](https://github.com/drewstone/cli-bridge/issues/140) owns retained local terminal processes.
+
+Braid will consume the Runtime contract and will not add runner-specific attachment code.
 
 ## CLI Bridge target transport
 

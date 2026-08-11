@@ -25,6 +25,12 @@ function readyFramePredicate(marker) {
     !READY_ERROR.test(output)
 }
 
+function interactiveReadyFramePredicate(marker) {
+  const ready = readyFramePredicate(marker)
+  return (lines, output) =>
+    ready(lines, output) && lines.some((line) => line.includes('AgentProfile'))
+}
+
 function composerKeyPredicate(snapshot, token) {
   const keyLines = snapshot.lines.filter((line) => line.includes(token))
   const otherTokens = snapshot.lines.filter(
@@ -50,33 +56,29 @@ function startupStages(result) {
   if (timing === undefined) throw new Error('Packed startup timing was not captured')
   const duration = (end, start) => Number((end - start).toFixed(3))
   const compileCacheReadyEpochMs = timing.compileCacheReadyEpochMs ?? timing.scriptReadyEpochMs
-  const parallelReadyEpochMs = Math.max(
-    timing.applicationReadyEpochMs,
-    timing.terminalModulesReadyEpochMs,
-  )
-  const applicationOpenMs = duration(
-    timing.applicationReadyEpochMs,
+  const previewModulesReadyEpochMs =
+    timing.previewModulesReadyEpochMs ?? timing.applicationModulesReadyEpochMs
+  const startupModulesReadyEpochMs = Math.max(
     timing.applicationModulesReadyEpochMs,
+    previewModulesReadyEpochMs,
   )
-  const terminalImportsMs = duration(
-    timing.terminalModulesReadyEpochMs,
-    timing.applicationModulesReadyEpochMs,
-  )
-  const parallelStageMs = duration(parallelReadyEpochMs, timing.applicationModulesReadyEpochMs)
+  const previewReadyEpochMs = timing.previewReadyEpochMs ?? timing.applicationReadyEpochMs
+  const firstFrameEpochMs = result.startedAtEpochMs + result.value
+  const applicationOpenMs = duration(timing.applicationReadyEpochMs, startupModulesReadyEpochMs)
   return Object.freeze({
     spawnMs: duration(timing.processStartEpochMs, result.startedAtEpochMs),
     scriptMs: duration(timing.scriptReadyEpochMs, timing.processStartEpochMs),
     compileCacheMs: duration(compileCacheReadyEpochMs, timing.scriptReadyEpochMs),
     applicationImportsMs: duration(timing.applicationModulesReadyEpochMs, compileCacheReadyEpochMs),
+    previewImportsMs: duration(previewModulesReadyEpochMs, compileCacheReadyEpochMs),
+    startupImportsMs: duration(startupModulesReadyEpochMs, compileCacheReadyEpochMs),
     applicationOpenMs,
-    terminalImportsMs,
-    parallelStageMs,
-    overlapSavedMs: Number(
-      Math.max(0, applicationOpenMs + terminalImportsMs - parallelStageMs).toFixed(3),
-    ),
-    terminalMs: duration(timing.terminalReadyEpochMs, parallelReadyEpochMs),
+    applicationStages: timing.applicationStages ?? [],
+    previewRenderMs: duration(firstFrameEpochMs, timing.applicationReadyEpochMs),
+    terminalImportsMs: duration(timing.terminalModulesReadyEpochMs, previewReadyEpochMs),
+    terminalMs: duration(timing.terminalReadyEpochMs, timing.terminalModulesReadyEpochMs),
     initializeMs: duration(timing.initializedEpochMs, timing.terminalReadyEpochMs),
-    firstRenderMs: duration(result.startedAtEpochMs + result.value, timing.initializedEpochMs),
+    interactivePreparationMs: duration(timing.initializedEpochMs, previewReadyEpochMs),
   })
 }
 
@@ -114,6 +116,7 @@ export async function runProcessMeasurements(context, capture) {
           signal,
           startupTimingPath: timingPath,
           readyFramePredicate: readyFramePredicate(seedMarker(10_000)),
+          shutdownReadyFramePredicate: interactiveReadyFramePredicate(seedMarker(10_000)),
         }),
       )
     }
@@ -188,6 +191,7 @@ export async function runProcessMeasurements(context, capture) {
             signal,
             startupTimingPath: timingPath,
             readyFramePredicate: readyFramePredicate(seedMarker(100_000)),
+            shutdownReadyFramePredicate: interactiveReadyFramePredicate(seedMarker(100_000)),
           }),
         )
       } finally {
@@ -252,7 +256,7 @@ export async function runProcessMeasurements(context, capture) {
       ...packedOptions(packed, warmProcessFixture),
       signal,
       count: keyCount,
-      readyFramePredicate: readyFramePredicate(seedMarker(10_000)),
+      readyFramePredicate: interactiveReadyFramePredicate(seedMarker(10_000)),
       keyFramePredicate: composerKeyPredicate,
       emptyFramePredicate: composerEmptyPredicate,
     })

@@ -13,6 +13,11 @@ import { LiveBridgeError } from './errors.mjs'
 import { managedSpawn, sleep, terminateProcess } from './process.mjs'
 import { redactString } from './redaction.mjs'
 
+const requiredRuntimeCapabilities = Object.freeze({
+  profileMaterialization: 'cli-bridge.profile-materialization.v2',
+  usageCostProvenance: 'cli-bridge.usage-cost.v1',
+})
+
 export function bridgeSourceDirectory(repository, configuredDirectory) {
   return resolve(configuredDirectory ?? join(repository, '..', 'cli-bridge'))
 }
@@ -38,6 +43,149 @@ export function bridgeLaunchEnvironment(
   if (parsedEndpoint.port && childEnv.BRIDGE_PORT === undefined)
     childEnv.BRIDGE_PORT = parsedEndpoint.port
   return childEnv
+}
+
+function bridgeModelIdForDefinition(definition) {
+  return definition.bridgeModelId ?? definition.modelId
+}
+
+function canonicalTargetModelId(backend, bridgeModelId) {
+  const prefix = `${backend}/`
+  if (!bridgeModelId.startsWith(prefix)) return bridgeModelId
+  const route = bridgeModelId.slice(prefix.length)
+  const parts = route.split('/')
+  if (parts.length !== 1 || parts[0].length === 0) return bridgeModelId
+  return `${backend}/${backend}/${parts[0]}`
+}
+
+function targetKeyFor(backend, modelId) {
+  const suffix = modelId
+    .replace(`${backend}/`, '')
+    .replaceAll(/[^a-z0-9]+/giu, '-')
+    .replace(/^-|-$/gu, '')
+    .toLowerCase()
+  return `${backend}-${suffix || 'default'}`
+}
+
+function targetDefinitionForAdvertisedModel(backend, bridgeModelId) {
+  const modelId = canonicalTargetModelId(backend, bridgeModelId)
+  const route = modelId.slice(`${backend}/`.length)
+  const separator = route.indexOf('/')
+  const provider = separator > 0 ? route.slice(0, separator) : backend
+  const model = separator > 0 ? route.slice(separator + 1) : route
+  if (provider.length === 0 || model.length === 0) return undefined
+  return {
+    key: targetKeyFor(backend, modelId),
+    label: `${backend} ${provider}/${model}`,
+    modelId,
+    bridgeModelId,
+    backend,
+  }
+}
+
+/**
+ * Selects one canonical target for every ready runner represented by the bridge catalog.
+ *
+ * Bridge-only routes such as `codex/default` become `codex/codex/default` in the
+ * profile receipt while `bridgeModelId` keeps the exact route sent to discovery.
+ */
+export function releaseTargetDefinitions(definitions, modelsResponse, healthResponse) {
+  const advertised = modelIds(modelsResponse)
+  const readyBackends = new Set(
+    healthResponse?.body?.backends
+      ?.filter((backend) => backend?.state === 'ready' && typeof backend.name === 'string')
+      .map((backend) => backend.name) ?? [],
+  )
+  const selected = []
+  const missingBackends = []
+  for (const backend of readyBackends) {
+    const preferred = definitions.find(
+      (definition) =>
+        definition.backend === backend &&
+        advertised.includes(bridgeModelIdForDefinition(definition)),
+    )
+    const candidate =
+      preferred === undefined
+        ? advertised.find((modelId) => modelId.startsWith(`${backend}/`))
+        : undefined
+    const definition =
+      preferred ??
+      (candidate === undefined ? undefined : targetDefinitionForAdvertisedModel(backend, candidate))
+    if (definition === undefined) missingBackends.push(backend)
+    else selected.push(definition)
+  }
+  if (missingBackends.length > 0) {
+    throw new LiveBridgeError(
+      'LIVE_RELEASE_RUNNER_MODEL_UNAVAILABLE',
+      `CLI Bridge has ready runners without an advertised model route: ${missingBackends.join(', ')}`,
+      exitCodes.unavailable,
+      { missingBackends, advertisedModels: advertised },
+    )
+  }
+  return selected
+}
+
+export function selectBridgeTargets(
+  definitions,
+  modelsResponse,
+  healthResponse,
+  evidence,
+  { requireDefinitions = true } = {},
+) {
+  const ids = modelIds(modelsResponse)
+  const selected = definitions
+    .filter((definition) => ids.includes(bridgeModelIdForDefinition(definition)))
+    .map((definition) => ({
+      definition,
+      key: definition.key,
+      modelId: definition.modelId,
+      backend: definition.backend,
+      bridgeModelId: bridgeModelIdForDefinition(definition),
+    }))
+  const missing = definitions.filter(
+    (definition) => !ids.includes(bridgeModelIdForDefinition(definition)),
+  )
+  evidence.advertisedModels = ids
+  evidence.missingTargets = missing.map(({ key, label, modelId, bridgeModelId, backend }) => ({
+    key,
+    label,
+    modelId,
+    ...(bridgeModelId === modelId ? {} : { bridgeModelId }),
+    backend,
+  }))
+  evidence.selectedTargets = selected.map(({ definition, modelId, bridgeModelId }) => ({
+    key: definition.key,
+    label: definition.label,
+    modelId,
+    ...(bridgeModelId === modelId ? {} : { bridgeModelId }),
+  }))
+  if (requireDefinitions && missing.length > 0) {
+    throw new LiveBridgeError(
+      'TARGET_MODEL_NOT_ADVERTISED',
+      `CLI Bridge does not advertise every required target: ${missing.map(({ modelId }) => modelId).join(', ')}`,
+      exitCodes.unavailable,
+      {
+        requiredTargets: definitions.map(({ modelId }) => modelId),
+        missingTargets: missing.map(({ modelId, bridgeModelId }) => bridgeModelId ?? modelId),
+        advertisedModels: ids,
+      },
+    )
+  }
+  const unavailableBackends = selected.filter(
+    (target) => !healthBackendsReady(healthResponse, [target.backend]),
+  )
+  if (unavailableBackends.length > 0) {
+    throw new LiveBridgeError(
+      'TARGET_BACKEND_NOT_READY',
+      `CLI Bridge does not report every selected target backend ready: ${unavailableBackends.map((target) => target.modelId).join(', ')}`,
+      exitCodes.unavailable,
+      {
+        targets: unavailableBackends.map(({ modelId }) => modelId),
+        health: healthResponse,
+      },
+    )
+  }
+  return selected
 }
 
 export async function launchBridgeIfRequested(endpoint, token, evidence, repository, definitions) {
@@ -78,8 +226,16 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  const stdoutCapture = new StreamingRedactor()
-  const stderrCapture = new StreamingRedactor()
+  const stdoutCapture = new StreamingRedactor(
+    256_000,
+    undefined,
+    token === undefined ? [] : [token],
+  )
+  const stderrCapture = new StreamingRedactor(
+    256_000,
+    undefined,
+    token === undefined ? [] : [token],
+  )
   child.stdout.setEncoding('utf8')
   child.stderr.setEncoding('utf8')
   child.stdout.on('data', (chunk) => stdoutCapture.push(chunk))
@@ -153,61 +309,58 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
   }
 }
 
-export async function discoverBridge(endpoint, token, evidence, repository, definitions) {
-  const bridge = await launchBridgeIfRequested(endpoint, token, evidence, repository, definitions)
+export async function discoverBridge(
+  endpoint,
+  token,
+  evidence,
+  repository,
+  definitions,
+  { launchDefinitions = definitions, requireDefinitions = true } = {},
+) {
+  const bridge = await launchBridgeIfRequested(
+    endpoint,
+    token,
+    evidence,
+    repository,
+    launchDefinitions,
+  )
   try {
-    const modelsResponse = await requestJson(endpoint, '/v1/models', token)
-    evidence.models = modelsResponse
-    const ids = modelIds(modelsResponse)
-    const selected = definitions
-      .filter((definition) => ids.includes(definition.modelId))
-      .map((definition) => ({
-        definition,
-        key: definition.key,
-        modelId: definition.modelId,
-        backend: definition.backend,
-      }))
-    const missing = definitions.filter((definition) => !ids.includes(definition.modelId))
-    evidence.advertisedModels = ids
-    evidence.missingTargets = missing.map(({ key, label, modelId, backend }) => ({
-      key,
-      label,
-      modelId,
-      backend,
-    }))
-    evidence.selectedTargets = selected.map(({ definition, modelId }) => ({
-      key: definition.key,
-      label: definition.label,
-      modelId,
-    }))
-    if (missing.length > 0) {
+    const contract = await requestJson(endpoint, '/', token)
+    evidence.runtimeContract = contract
+    if (
+      !contract.ok ||
+      contract.body?.capabilities?.profileMaterialization !==
+        requiredRuntimeCapabilities.profileMaterialization ||
+      contract.body?.capabilities?.usageCostProvenance !==
+        requiredRuntimeCapabilities.usageCostProvenance
+    ) {
       throw new LiveBridgeError(
-        'TARGET_MODEL_NOT_ADVERTISED',
-        `CLI Bridge does not advertise every required target: ${missing.map(({ modelId }) => modelId).join(', ')}`,
+        'BRIDGE_RUNTIME_CONTRACT_UNAVAILABLE',
+        'CLI Bridge does not advertise the execution receipts required by the installed Agent Runtime',
         exitCodes.unavailable,
-        {
-          requiredTargets: definitions.map(({ modelId }) => modelId),
-          missingTargets: missing.map(({ modelId }) => modelId),
-          advertisedModels: ids,
-        },
+        { required: requiredRuntimeCapabilities, contract },
+      )
+    }
+    const configuredTimeout = Number(process.env.BRAID_CLI_BRIDGE_DISCOVERY_TIMEOUT_MS ?? 30_000)
+    const discoveryTimeoutMs =
+      Number.isFinite(configuredTimeout) && configuredTimeout > 0
+        ? Math.min(configuredTimeout, 120_000)
+        : 30_000
+    const modelsResponse = await requestJson(endpoint, '/v1/models', token, discoveryTimeoutMs)
+    evidence.models = modelsResponse
+    if (!modelsResponse.ok) {
+      throw new LiveBridgeError(
+        'BRIDGE_MODEL_DISCOVERY_FAILED',
+        'CLI Bridge model discovery failed on the configured live endpoint',
+        exitCodes.failed,
+        { models: modelsResponse },
       )
     }
     const health = await requestJson(endpoint, '/health', token)
     evidence.requiredHealth = health
-    const unavailableBackends = selected.filter(
-      (target) => !healthBackendsReady(health, [target.backend]),
-    )
-    if (unavailableBackends.length > 0) {
-      throw new LiveBridgeError(
-        'TARGET_BACKEND_NOT_READY',
-        `CLI Bridge does not report every selected target backend ready: ${unavailableBackends.map((target) => target.modelId).join(', ')}`,
-        exitCodes.unavailable,
-        {
-          targets: unavailableBackends.map((target) => target.modelId),
-          health,
-        },
-      )
-    }
+    const selected = selectBridgeTargets(definitions, modelsResponse, health, evidence, {
+      requireDefinitions,
+    })
     return { ...bridge, health, selected }
   } catch (error) {
     if (bridge.cleanup !== undefined) {

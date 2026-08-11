@@ -15,6 +15,7 @@ import { releaseChildEnvironment } from './child-environment.mjs'
 import { structuredChildEvidence } from './collection-contract.mjs'
 import { collectReleaseEvidence } from './collector.mjs'
 import { executeArgv } from './command-runner.mjs'
+import { evaluateLiveBridgeProof, MEASUREMENT_UNIT } from './live-bridge-proof.mjs'
 import { packageFileManifestFromTarball, sourceDigest } from './package-archive.mjs'
 import {
   BoundedCapture,
@@ -303,7 +304,7 @@ test('low-entropy control values stay redacted without corrupting structured rel
 
 test('structured failure reasons redact credential values before they enter release evidence', () => {
   const credential = 'TOPSECRET_MARKER_VALUE'
-  const secrets = collectCredentialSecrets({ BRAID_EVAL_BEARER: credential })
+  const secrets = collectCredentialSecrets({ BRAID_EVAL_API_KEY: credential })
   const output = Buffer.from(
     `BRAID_RELEASE_RESULT_JSON=${JSON.stringify({
       status: 'failed',
@@ -321,8 +322,8 @@ test('release children receive only credentials for their exact provider command
     PATH: '/bin',
     BRAID_CLI_BRIDGE_BEARER: 'bridge-secret',
     BRAID_CLI_BRIDGE_URL: 'http://127.0.0.1:4010',
-    BRAID_EVAL_BEARER: 'eval-secret',
-    BRAID_EVAL_BRIDGE_URL: 'http://127.0.0.1:4020',
+    BRAID_EVAL_API_KEY: 'eval-secret',
+    BRAID_EVAL_BASE_URL: 'https://router.example/v1',
     BRAID_UPSTREAM_GITHUB_TOKEN: 'upstream-secret',
     GH_TOKEN: 'ambient-secret',
     NODE_OPTIONS: '--require=/tmp/inject.cjs',
@@ -332,10 +333,11 @@ test('release children receive only credentials for their exact provider command
   const bridge = releaseChildEnvironment(environment, 'pnpm test:live:bridge:release')
   assert.equal(bridge.BRAID_CLI_BRIDGE_BEARER, 'bridge-secret')
   assert.equal(bridge.BRAID_CLI_BRIDGE_URL, 'http://127.0.0.1:4010')
-  assert.equal(bridge.BRAID_EVAL_BEARER, undefined)
+  assert.equal(bridge.BRAID_EVAL_API_KEY, undefined)
   assert.equal(bridge.GH_TOKEN, undefined)
   const evaluation = releaseChildEnvironment(environment, 'pnpm test:eval')
-  assert.equal(evaluation.BRAID_EVAL_BEARER, 'eval-secret')
+  assert.equal(evaluation.BRAID_EVAL_API_KEY, 'eval-secret')
+  assert.equal(evaluation.BRAID_EVAL_BASE_URL, 'https://router.example/v1')
   assert.equal(evaluation.BRAID_CLI_BRIDGE_BEARER, undefined)
 })
 
@@ -429,6 +431,86 @@ test('structured child results require an unambiguous passed marker and one meas
     structuredChildEvidence('contract', exactEvidence('UP-01', 'count', 1), 3, 'UP-01').result,
     'passed',
   )
+})
+
+test('strict CLI Bridge requirements require distinct packed target and operation receipts', () => {
+  const targets = [
+    {
+      status: 'passed',
+      target: 'pi/provider/model',
+      profile: { harness: 'pi', provider: 'provider', model: 'model' },
+      process: {
+        termination: { exited: true, descendantsExited: true, descendantsVerified: true },
+      },
+    },
+    {
+      status: 'passed',
+      target: 'codex/provider/model',
+      profile: { harness: 'codex', provider: 'provider', model: 'model' },
+      process: {
+        termination: { exited: true, descendantsExited: true, descendantsVerified: true },
+      },
+    },
+  ]
+  const proof = (requirementId, operation, key, harness, model) => ({
+    requirementId,
+    operation,
+    target: { key, harness, model },
+    status: 'passed',
+    packed: true,
+    runId: `run-${requirementId}`,
+    measurement: {
+      kind: 'scalar',
+      name: requirementId,
+      unit: MEASUREMENT_UNIT,
+      value: 1,
+    },
+  })
+  const evidence = {
+    schemaVersion: 1,
+    status: 'passed',
+    scope: { excludes: [] },
+    provider: { package: '@tangle-network/agent-provider-cli-bridge' },
+    bridge: { status: 'ready' },
+    cleanup: { ok: true },
+    selectedTargets: [
+      { key: 'pi-target', modelId: 'pi/provider/model' },
+      { key: 'codex-target', modelId: 'codex/provider/model' },
+    ],
+    targets,
+    releaseProofs: [
+      proof('LIVE-01', 'cli-bridge.pi.conformance', 'pi-target', 'pi', 'model'),
+      proof('LIVE-02', 'cli-bridge.codex.cross-runner-handoff', 'codex-target', 'codex', 'model'),
+      proof('LIVE-03', 'cli-bridge.interactive-protocol', 'pi-target', 'pi', 'model'),
+      proof('LIVE-04', 'cli-bridge.restart-reconciliation', 'codex-target', 'codex', 'model'),
+      proof('LIVE-05', 'cli-bridge.runner-conformance', 'pi-target', 'pi', 'model'),
+      proof('LIVE-05', 'cli-bridge.runner-conformance', 'codex-target', 'codex', 'model'),
+    ],
+  }
+
+  for (const requirementId of ['LIVE-01', 'LIVE-02', 'LIVE-03', 'LIVE-04', 'LIVE-05'])
+    assert.equal(evaluateLiveBridgeProof(evidence, requirementId)?.result, 'passed', requirementId)
+  const wrongOperation = structuredClone(evidence)
+  wrongOperation.releaseProofs[0].operation = 'cli-bridge.interactive-protocol'
+  assert.equal(evaluateLiveBridgeProof(wrongOperation, 'LIVE-01')?.result, 'uncaptured')
+
+  const wrongTarget = structuredClone(evidence)
+  wrongTarget.releaseProofs[0].target.key = 'codex-target'
+  assert.equal(evaluateLiveBridgeProof(wrongTarget, 'LIVE-01')?.result, 'uncaptured')
+
+  const excluded = structuredClone(evidence)
+  excluded.scope.excludes = ['LIVE-01..05 full interactive runner conformance']
+  assert.equal(evaluateLiveBridgeProof(excluded, 'LIVE-01')?.result, 'uncaptured')
+
+  const unavailable = structuredClone(evidence)
+  unavailable.status = 'unavailable'
+  assert.equal(evaluateLiveBridgeProof(unavailable, 'LIVE-01')?.result, 'unavailable')
+
+  const missingTarget = structuredClone(evidence)
+  missingTarget.releaseProofs = missingTarget.releaseProofs.filter(
+    ({ requirementId }) => requirementId !== 'LIVE-02',
+  )
+  assert.equal(evaluateLiveBridgeProof(missingTarget, 'LIVE-02')?.result, 'uncaptured')
 })
 
 test('command execution settles spawn, nonzero, signal, timeout, and parent-exit cleanup paths', async () => {

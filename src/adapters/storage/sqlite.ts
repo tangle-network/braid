@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { dirname } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import type { CredentialRef, SecretHandle } from '../../ports/credentials.js'
 import type { EffectStoragePort } from '../../ports/effect-storage.js'
 import type { StoragePort } from '../../ports/storage.js'
@@ -31,9 +32,14 @@ import {
   DEFAULT_MAX_QUEUED_TRANSACTIONS,
   type SqliteStorageInput,
   type SqliteStorageOptions,
+  type SqliteStartupStage,
 } from './sqlite-types.js'
 
-export type { DurableBoundaryHook, SqliteStorageOptions } from './sqlite-types.js'
+export type {
+  DurableBoundaryHook,
+  SqliteStartupStage,
+  SqliteStorageOptions,
+} from './sqlite-types.js'
 export class SqliteStorage
   extends SqliteRedactionStorage
   implements StoragePort, EffectStoragePort
@@ -43,6 +49,8 @@ export class SqliteStorage
   }
 
   static async open(options: SqliteStorageOptions): Promise<SqliteStorage> {
+    const pathLockStarted = performance.now()
+    let stageStarted = pathLockStarted
     const path = validatePath(options.path, 'SQLite path')
     const approvedRoot = validatePath(options.workspaceRoot ?? dirname(path), 'Approved root')
     const unsafeOptions = options as unknown as Record<string, unknown>
@@ -76,17 +84,26 @@ export class SqliteStorage
       'Backup directory',
     )
     await assertApprovedPath(backupDirectory, approvedRoot, 'Backup directory')
+    observeStartup(options.startupObserver, 'path-validation', stageStarted)
+    stageStarted = performance.now()
     const lock = await acquireExclusiveLock(`${path}.exclusive.lock`)
+    observeStartup(options.startupObserver, 'lock-acquire', stageStarted)
+    stageStarted = performance.now()
     let lockReleased = false
     try {
       await recoverRestoreManifest(path, approvedRoot)
+      observeStartup(options.startupObserver, 'recovery-check', stageStarted)
+      stageStarted = performance.now()
       const markerState = await inspectInitializationMarker(path)
+      observeStartup(options.startupObserver, 'initialization-marker', stageStarted)
       if (markerState === 'active') {
         throw new StorageError(
           'STORAGE_INITIALIZING',
           'Another process is initializing the encrypted database',
         )
       }
+      observeStartup(options.startupObserver, 'path-lock', pathLockStarted)
+      stageStarted = performance.now()
       let credentialStoreAvailable = false
       try {
         credentialStoreAvailable = await options.credentialStore.available()
@@ -106,6 +123,8 @@ export class SqliteStorage
       const databaseFactory = options.databaseFactory ?? loadCipherDatabaseFactory()
       const databaseKeyRef = options.databaseKeyRef ?? deterministicCredentialRef('database', path)
       const databaseKey = await resolveDatabaseKey(options, databaseKeyRef)
+      observeStartup(options.startupObserver, 'credential', stageStarted)
+      stageStarted = performance.now()
       let opened: ReturnType<typeof openBoundSqliteDatabase> | undefined
       let initializationClaimed = false
       try {
@@ -114,6 +133,7 @@ export class SqliteStorage
         if (initializationClaimed) await claimInitializationMarker(path)
         configureCipherDatabase(opened.database, databaseKey, { newDatabase: opened.newDatabase })
         applyConnectionPragmas(opened.database, busyTimeoutMs)
+        observeStartup(options.startupObserver, 'cipher-open', stageStarted)
       } catch (error) {
         try {
           if (opened) closeBoundSqliteDatabase(opened)
@@ -143,6 +163,9 @@ export class SqliteStorage
         ...(options.durableBoundaryHook === undefined
           ? {}
           : { durableBoundaryHook: options.durableBoundaryHook }),
+        ...(options.startupObserver === undefined
+          ? {}
+          : { startupObserver: options.startupObserver }),
         database: opened.database,
         databaseFileDescriptor: opened.fileDescriptor,
       })
@@ -168,6 +191,18 @@ export class SqliteStorage
     } finally {
       if (!lockReleased) await lock.release()
     }
+  }
+}
+
+function observeStartup(
+  observer: SqliteStorageOptions['startupObserver'],
+  name: SqliteStartupStage['name'],
+  startedAt: number,
+): void {
+  try {
+    observer?.({ name, durationMs: performance.now() - startedAt })
+  } catch {
+    // Diagnostics cannot change storage startup.
   }
 }
 

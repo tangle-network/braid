@@ -1,5 +1,10 @@
 import type { Editor } from '@earendil-works/pi-tui'
 import {
+  type AnalysisSourceReference,
+  formatAnalysisSourceReference,
+  parseAnalysisSourceReference,
+} from '../../app/analysis-source.js'
+import {
   type CommandName,
   commandAvailability,
   commandIntent,
@@ -7,6 +12,8 @@ import {
   parseCommandInput,
 } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import type { BraidViewModel } from '../shared/models.js'
+import { executionTargetFor } from './execution-target.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
 
@@ -19,7 +26,6 @@ export interface TerminalCommandControllerOptions {
   readonly dispatch: (intent: BraidIntent, restoreText?: string) => Promise<UiDispatchResult>
   readonly isStopped: () => boolean
   readonly stop: () => void
-  readonly showActivity: () => void
 }
 
 /** Owns prompt parsing and command routing; it never owns terminal layout. */
@@ -32,7 +38,6 @@ export class TerminalCommandController {
   readonly #dispatch: TerminalCommandControllerOptions['dispatch']
   readonly #isStopped: () => boolean
   readonly #stop: () => void
-  readonly #showActivity: () => void
 
   constructor(options: TerminalCommandControllerOptions) {
     this.#controller = options.controller
@@ -43,7 +48,6 @@ export class TerminalCommandController {
     this.#dispatch = options.dispatch
     this.#isStopped = options.isStopped
     this.#stop = options.stop
-    this.#showActivity = options.showActivity
   }
 
   submit(rawText: string): void {
@@ -74,13 +78,23 @@ export class TerminalCommandController {
     }
 
     const view = this.#controller.view()
-    const capability = view.activeRunId
-      ? view.capabilities['run.queue']
+    const active = view.activeRunId !== undefined
+    const queueCapability = view.capabilities['run.queue']
+    const steerCapability = view.capabilities['run.steer']
+    const queueAvailable = active && queueCapability?.available === true
+    const capability = active
+      ? queueAvailable
+        ? queueCapability
+        : steerCapability
       : view.capabilities['run.send']
     if (!capability?.available) {
       this.#editor.setText(rawText)
       this.#overlays.openUnavailable(
-        view.activeRunId ? 'Queue unavailable' : 'Send unavailable',
+        active && !queueAvailable
+          ? 'Steering unavailable'
+          : active
+            ? 'Queue unavailable'
+            : 'Send unavailable',
         capability?.reason ?? 'The current connection cannot accept this message',
       )
       return
@@ -89,9 +103,11 @@ export class TerminalCommandController {
     await this.#drafts.flush(rawText)
     this.#drafts.setText('')
     const operationId = this.#nextOperationId()
-    const intent: BraidIntent = view.activeRunId
-      ? { type: 'queue', operationId, text: parsed.text }
-      : { type: 'send', operationId, text: parsed.text }
+    const intent: BraidIntent = !active
+      ? { type: 'send', operationId, text: parsed.text }
+      : queueAvailable
+        ? { type: 'queue', operationId, text: parsed.text }
+        : steerIntent(operationId, parsed.text)
     void this.#dispatch(intent, rawText)
   }
 
@@ -130,10 +146,29 @@ export class TerminalCommandController {
       this.#overlays.openConversationSelector(args.join(' ').trim())
       return
     }
+    if (command === 'ask' && args.length > 0 && !isExplicitAnalysisSource(args[0])) {
+      const sources = this.#controller
+        .view()
+        .activity.filter(
+          (item) =>
+            item.kind === 'run' && (item.status === 'completed' || item.status === 'failed'),
+        )
+      if (sources.length > 1) {
+        this.#overlays.openAnalysisSource(args, sources)
+        return
+      }
+    }
     const operationId = isMutatingCommand(command) ? this.#nextOperationId() : undefined
+    if (command === 'steer') {
+      if (operationId === undefined) {
+        this.#overlays.openUnavailable('/steer', 'Steering requires an operation identifier')
+        return
+      }
+      void this.#dispatch(steerIntent(operationId, args.join(' ')))
+      return
+    }
     const intent = commandIntent(command, args, operationId)
     if (intent.type === 'open-surface') {
-      if (intent.surface === 'activity') this.#showActivity()
       void this.#dispatch(intent).then((result) => {
         if (result.kind !== 'accepted' || this.#isStopped()) return
         if (intent.surface === 'help') this.#overlays.openHelp(intent.query ?? '')
@@ -147,12 +182,71 @@ export class TerminalCommandController {
       })
       return
     }
+    const intelligenceProgress =
+      command === 'ask' || command === 'analyze' || command === 'compare'
+        ? this.#overlays.openIntelligenceProgress(
+            command,
+            intelligenceSourceContext(command, args, this.#controller.view()),
+          )
+        : undefined
     void this.#dispatch(intent).then((result) => {
       if (result.kind !== 'accepted' || this.#isStopped()) return
       if (command === 'fork') this.#overlays.openSurface('fork')
       else if (command === 'ask' || command === 'analyze' || command === 'compare') {
-        this.#overlays.openIntelligenceResult(command, result.data)
+        intelligenceProgress?.complete(result.data)
       }
     })
   }
+}
+
+function steerIntent(operationId: string, text: string): Extract<BraidIntent, { type: 'steer' }> {
+  return { type: 'steer', operationId, text }
+}
+
+function isExplicitAnalysisSource(value: string | undefined): boolean {
+  return value === undefined ? false : parseAnalysisSourceReference(value) !== undefined
+}
+
+function intelligenceSourceContext(
+  command: 'ask' | 'analyze' | 'compare',
+  args: readonly string[],
+  view: BraidViewModel,
+): string | undefined {
+  if (command === 'compare') {
+    const left = sourceReferenceForArgument(args[0], view)
+    const right = sourceReferenceForArgument(args[1], view)
+    return left === undefined || right === undefined
+      ? undefined
+      : `sources ${formatAnalysisSourceReference(left)} ↔ ${formatAnalysisSourceReference(right)}`
+  }
+  const source = sourceReferenceForArgument(args[0], view) ?? latestTerminalSource(view)
+  if (source === undefined) return undefined
+  if (source.kind === 'branch') return `source ${formatAnalysisSourceReference(source)}`
+  const target = executionTargetFor(view, source.id)
+  return `source ${formatAnalysisSourceReference(source)} · ${target.profileName} · ${target.runner} · ${target.model} · ${target.connection}`
+}
+
+function sourceReferenceForArgument(
+  value: string | undefined,
+  view: BraidViewModel,
+): AnalysisSourceReference | undefined {
+  if (value === undefined) return undefined
+  const parsed = parseAnalysisSourceReference(value)
+  if (parsed !== undefined) return parsed
+  if (view.runs.some((run) => run.id === value)) return { kind: 'run', id: value }
+  if (
+    view.branch === value ||
+    view.graph.some((node) => node.type === 'branch' && node.id === value)
+  ) {
+    return { kind: 'branch', id: value }
+  }
+  return undefined
+}
+
+function latestTerminalSource(view: BraidViewModel): AnalysisSourceReference | undefined {
+  const id = view.runs
+    .slice()
+    .reverse()
+    .find((run) => run.status === 'completed' || run.status === 'failed')?.id
+  return id === undefined ? undefined : { kind: 'run', id }
 }

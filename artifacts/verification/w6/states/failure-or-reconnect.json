@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "7d25b83d58d2a4f26d63009e147ab739559aeef242622c332110d573c2d8ba7d"
+    "tarballSha256": "32dda757d252bff4e120a8c69d776cb76b3ee971e3f2649d661875e77a20f7b8"
   },
   "dimensions": {
     "columns": 80,
@@ -29,16 +29,16 @@
     }
   },
   "capturePhase": "atomic-signal-frame",
-  "captureRevision": 7,
-  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n W6 failure state\n\n error · unknown\n RUNTIME_BACKEND_ERROR\n failed\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\noutcome failed · operation op-terminal-000002        model fixture/deterministic\nAgentProfile Braid starter · runner pi          /export preserve · /new continue\n",
+  "captureRevision": 8,
+  "frame": "braid  cwd  braid-unified-activity-wt  ·  session  New conversation\n W6 failure state\n\n error · unknown\n RUNTIME_BACKEND_ERROR\n failed\n\n\n\n\n\n\n\n\n\n\n\n──────────────────────────────────── › send ────────────────────────────────────\n›\n\n\n────────────────────────── alt+enter newline · paste ───────────────────────────\noutcome failed · operation op-terminal-000002        model fixture/deterministic\nAgentProfile Braid starter · runner pi          /export preserve · /new continue\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
     "state": {
       "schemaVersion": 2,
-      "revision": 7,
-      "sequence": 7,
-      "workspace": "/home/drew/code/braid-automation-main-wt",
+      "revision": 8,
+      "sequence": 8,
+      "workspace": "/home/drew/code/braid-unified-activity-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -56,6 +56,7 @@
         "harness": "pi",
         "model": {
           "default": "fixture/deterministic",
+          "provider": "fixture",
           "reasoningEffort": "none"
         }
       },
@@ -83,10 +84,10 @@
           "runId": "run-000001",
           "parts": [
             {
-              "id": "run-000001:error:run-000001:runtime:1",
+              "id": "run-000001:error:run-000001:runtime:2",
               "kind": "error",
               "text": "RUNTIME_BACKEND_ERROR",
-              "sourceEventId": "run-000001:runtime:1"
+              "sourceEventId": "run-000001:runtime:2"
             }
           ]
         }
@@ -99,22 +100,72 @@
           "status": "failed",
           "inputTokens": 0,
           "outputTokens": 0,
-          "costUsd": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "llmCalls": 0,
+          "model": "fixture/deterministic",
+          "provider": "agent-runtime",
+          "runner": "pi",
           "error": "RUNTIME_FINAL_ERROR",
           "completeness": "failed",
+          "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
           "contentBytes": 60
         }
       ],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 1,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "llmCalls": 0,
+          "unknownTokenSources": 1,
+          "unknownCostSources": 1,
+          "callStatus": "complete",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 1
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
       "interactions": [],
       "queue": [],
       "activeRunId": null,
       "lastError": "RUNTIME_FINAL_ERROR"
     },
     "view": {
-      "revision": 7,
-      "workspace": "/home/drew/code/braid-automation-main-wt",
+      "revision": 8,
+      "workspace": "/home/drew/code/braid-unified-activity-wt",
       "profileName": "Braid starter",
-      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
       "model": "fixture/deterministic",
       "effort": "none",
@@ -159,10 +210,10 @@
           "runId": "run-000001",
           "parts": [
             {
-              "id": "run-000001:error:run-000001:runtime:1",
+              "id": "run-000001:error:run-000001:runtime:2",
               "kind": "error",
               "text": "RUNTIME_BACKEND_ERROR",
-              "sourceEventId": "run-000001:runtime:1"
+              "sourceEventId": "run-000001:runtime:2"
             }
           ]
         }
@@ -174,11 +225,69 @@
           "turnId": "turn-000002",
           "operationId": "op-terminal-000002",
           "status": "failed",
+          "profileName": "Braid starter",
+          "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+          "model": "fixture/deterministic",
+          "effort": "none",
           "error": "RUNTIME_FINAL_ERROR",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "tokenStatus": "unknown",
+            "costStatus": "unknown",
+            "llmCalls": 0,
+            "model": "fixture/deterministic"
+          },
+          "runner": "pi",
+          "provider": "agent-runtime",
           "completeness": "failed",
           "contentBytes": 60
         }
       ],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 1,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "llmCalls": 0,
+          "unknownTokenSources": 1,
+          "unknownCostSources": 1,
+          "callStatus": "complete",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 1
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
       "interactions": [],
       "activity": [
         {
@@ -186,21 +295,47 @@
           "kind": "run",
           "title": "run run-000001",
           "status": "failed",
-          "detail": "RUNTIME_FINAL_ERROR"
+          "detail": "RUNTIME_FINAL_ERROR",
+          "startedAt": "2026-08-01T00:00:00.000Z",
+          "occurredAt": "2026-08-01T00:00:00.000Z",
+          "runId": "run-000001",
+          "entityType": "run",
+          "entityId": "run-000001"
         },
         {
           "id": "activity:run-000001:admission:local:admitted",
           "kind": "system",
           "title": "admitted",
           "status": "failed",
-          "detail": "profile 02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660"
+          "detail": "profile 44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+          "occurredAt": "2026-08-01T00:00:00.000Z",
+          "runId": "run-000001",
+          "entityType": "run",
+          "entityId": "run-000001"
         },
         {
-          "id": "activity:run-000001:run.error:run-000001:runtime:1:error",
+          "id": "event:run-000001:run-000001:runtime:1",
+          "kind": "system",
+          "title": "event backend_start",
+          "status": "failed",
+          "detail": "sequence 1",
+          "occurredAt": "2026-08-11T00:45:32.469Z",
+          "sourceEventId": "run-000001:runtime:1",
+          "runId": "run-000001",
+          "entityType": "run",
+          "entityId": "run-000001"
+        },
+        {
+          "id": "activity:run-000001:run.error:run-000001:runtime:2:error",
           "kind": "system",
           "title": "error",
           "status": "failed",
-          "detail": "RUNTIME_BACKEND_ERROR"
+          "detail": "RUNTIME_BACKEND_ERROR",
+          "occurredAt": "2026-08-11T00:45:32.475Z",
+          "sourceEventId": "run-000001:runtime:2",
+          "runId": "run-000001",
+          "entityType": "run",
+          "entityId": "run-000001"
         }
       ],
       "graph": [
@@ -210,7 +345,8 @@
           "title": "New conversation",
           "status": "complete",
           "depth": 0,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
           "id": "branch-1",
@@ -218,7 +354,8 @@
           "title": "Main",
           "status": "complete",
           "depth": 1,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
           "id": "turn-000002",
@@ -226,7 +363,8 @@
           "title": "Turn",
           "status": "failed",
           "depth": 2,
-          "edgeLabel": "continued"
+          "edgeLabel": "continued",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
           "id": "run-000001",
@@ -234,9 +372,12 @@
           "title": "Run",
           "status": "failed",
           "depth": 3,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "runner": "pi",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
+      "entityDetails": [],
       "details": {
         "title": "run run-000001",
         "fields": [
@@ -251,6 +392,18 @@
           {
             "label": "output tokens",
             "value": "0"
+          },
+          {
+            "label": "token measurement",
+            "value": "unknown"
+          },
+          {
+            "label": "cost measurement",
+            "value": "unknown"
+          },
+          {
+            "label": "model",
+            "value": "fixture/deterministic"
           }
         ]
       },
@@ -404,7 +557,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-automation-main-wt"
+            "workspace": "/home/drew/code/braid-unified-activity-wt"
           }
         }
       },
@@ -451,7 +604,7 @@
             "conversationId": "conv-1",
             "branchId": "branch-1",
             "admittedAt": "2026-08-01T00:00:00.000Z",
-            "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+            "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
             "requested": {
               "text": "W6 failure state",
               "profile": {
@@ -459,6 +612,7 @@
                 "description": "A portable starter profile for the Braid terminal",
                 "model": {
                   "default": "fixture/deterministic",
+                  "provider": "fixture",
                   "reasoningEffort": "none"
                 },
                 "harness": "pi"
@@ -493,14 +647,14 @@
             },
             "provider": "agent-runtime",
             "materializationReceipt": {
-              "backendKind": "chat",
+              "backendKind": "executor",
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "053e061d0a0b70a433bd2cf2deb4df1845c53bda37021413b058d44300b63037",
+            "requestDigest": "f080a8e87a51f6c8d898986826372cdf1767d2eb5101fad7cfb5df90caf5eabb",
             "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
-            "materializationDigest": "d463202424c67663b3863a357a670e72b7339dce890e476b8594a5c076fff1a5",
-            "digest": "3345dc168242a32cf8d96f886ba076c5bff7745e238377dfb5de9f5d598950cd"
+            "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
+            "digest": "b069aefd4ed0b6d1f93b2f14f40d280b3e60c5d45b63cb76294571f32be2444e"
           },
           "status": "admitted"
         }
@@ -513,10 +667,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-6a143966cc80d37453e5ec0c",
+              "id": "effect-op-terminal-000002-a6d547db96c04f9828ca1b1f",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "6a143966cc80d37453e5ec0cf1964caaccbdd871872f37b0a9ae50508b933fd4",
+              "requestDigest": "a6d547db96c04f9828ca1b1fc44f5b186a5d08cd3888e8d46d090699154a2373",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -529,12 +683,90 @@
       {
         "sequence": 5,
         "revision": 5,
-        "kind": "run.error",
+        "kind": "run.provider.event",
         "payload": {
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-10T00:03:05.878Z",
+            "occurredAt": "2026-08-11T00:45:32.469Z",
+            "receivedAt": "2026-08-01T00:00:00.000Z"
+          },
+          "unknown": {
+            "type": "backend_start",
+            "task": {
+              "id": "turn-c3ce8f46-37a2-4370-8f48-9bf3a9304ab0",
+              "intent": "W6 failure state",
+              "metadata": {
+                "identity": {
+                  "profileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
+                  "taskDigest": "sha256:a18a1b57b75ff55ccdc806e7e56baffcf9c30a9c5db512fdf150524971f262f8"
+                }
+              }
+            },
+            "session": {
+              "id": "8dadba17-d034-4bc3-b85a-f3b0eb74f4c8",
+              "backend": "executor",
+              "status": "active",
+              "createdAt": "2026-08-11T00:45:32.469Z",
+              "updatedAt": "2026-08-11T00:45:32.469Z",
+              "metadata": "[unavailable]"
+            },
+            "backend": "router",
+            "metadata": {
+              "identity": {
+                "profileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
+                "taskDigest": "sha256:a18a1b57b75ff55ccdc806e7e56baffcf9c30a9c5db512fdf150524971f262f8"
+              },
+              "materialization": {
+                "status": "known",
+                "authoredProfileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
+                "effectiveProfileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
+                "materializationPlanDigest": "sha256:00acc9b6378f74a84629ea6c26f6e800d054bc04588a1daba8d1924b79792478",
+                "runtime": "router",
+                "backend": "router",
+                "model": {
+                  "status": "known",
+                  "id": "fixture/deterministic"
+                },
+                "execution": {
+                  "kind": "request",
+                  "id": "turn-c3ce8f46-37a2-4370-8f48-9bf3a9304ab0"
+                },
+                "materializer": "router-prompt-model"
+              },
+              "executionBindings": [
+                {
+                  "status": "known",
+                  "attemptId": "turn-c3ce8f46-37a2-4370-8f48-9bf3a9304ab0:attempt:f452fd08-dcbc-457c-9ccc-21bafe19f9e4",
+                  "materializationReceiptDigest": "sha256:4e1f5c036a305e87a2f4d53ddfb66b0dd50097e36dcbd9c98bc8e36d8de71d7d",
+                  "bindingDigest": "sha256:2a33273893ef5dd92c4eaf12265aa920011d4eef0aa266b7bb9e13069bd018cc",
+                  "descriptor": {
+                    "kind": "router-request",
+                    "transport": "http",
+                    "backend": "router"
+                  }
+                }
+              ],
+              "budget": {
+                "timeoutMs": null
+              },
+              "timing": {
+                "startedAt": "2026-08-11T00:45:32.466Z"
+              }
+            },
+            "timestamp": "2026-08-11T00:45:32.469Z"
+          }
+        }
+      },
+      {
+        "sequence": 6,
+        "revision": 6,
+        "kind": "run.error",
+        "payload": {
+          "source": {
+            "eventId": "run-000001:runtime:2",
+            "providerSequence": 2,
+            "occurredAt": "2026-08-11T00:45:32.475Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "error": {
@@ -545,14 +777,14 @@
         }
       },
       {
-        "sequence": 6,
-        "revision": 6,
+        "sequence": 7,
+        "revision": 7,
         "kind": "run.finished",
         "payload": {
           "source": {
-            "eventId": "run-000001:runtime:2",
-            "providerSequence": 2,
-            "occurredAt": "2026-08-10T00:03:05.886Z",
+            "eventId": "run-000001:runtime:3",
+            "providerSequence": 3,
+            "occurredAt": "2026-08-11T00:45:32.479Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "status": "failed",
@@ -561,24 +793,25 @@
           "usage": {
             "input": 0,
             "output": 0,
-            "costUsd": 0
+            "tokensKnown": false,
+            "usdKnown": false
           },
           "reason": "RUNTIME_FINAL_REASON",
           "error": "RUNTIME_FINAL_ERROR"
         }
       },
       {
-        "sequence": 7,
-        "revision": 7,
+        "sequence": 8,
+        "revision": 8,
         "kind": "effect.upserted",
         "payload": {
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-6a143966cc80d37453e5ec0c",
+              "id": "effect-op-terminal-000002-a6d547db96c04f9828ca1b1f",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "6a143966cc80d37453e5ec0cf1964caaccbdd871872f37b0a9ae50508b933fd4",
+              "requestDigest": "a6d547db96c04f9828ca1b1fc44f5b186a5d08cd3888e8d46d090699154a2373",
               "kind": "send",
               "status": "failed",
               "attempt": 1,

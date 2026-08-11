@@ -20,6 +20,7 @@ import type { ConversationHost } from './conversation-types.js'
 import { AppError } from './errors.js'
 
 export const MAX_CONVERSATION_DOCUMENT_BYTES = 2 * 1024 * 1024
+export const MAX_CONVERSATION_DOCUMENT_ITEMS = 100_000
 
 export interface ConversationExportDocument {
   readonly schemaVersion: 2
@@ -182,7 +183,11 @@ function conversationDocument(
       ),
     },
     undefined,
-    { maxDepth: 24, maxItems: 20_000, maxBytes: MAX_CONVERSATION_DOCUMENT_BYTES },
+    {
+      maxDepth: 24,
+      maxItems: MAX_CONVERSATION_DOCUMENT_ITEMS,
+      maxBytes: MAX_CONVERSATION_DOCUMENT_BYTES,
+    },
   ) as Readonly<Record<string, unknown>>
   return {
     schemaVersion: 2,

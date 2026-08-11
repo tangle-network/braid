@@ -1,7 +1,7 @@
+import type { AutomationRuleScope } from '../../domain/entities-interactions.js'
+import type { RunAdmissionReceipt } from '../../domain/receipts.js'
 import type { CommandName } from './command-table.js'
 import type { HeadlessCommandName } from './headless-commands.js'
-import type { RunAdmissionReceipt } from '../../domain/receipts.js'
-import type { AutomationRuleScope } from '../../domain/entities-interactions.js'
 
 export type InteractionResponseValue =
   | {
@@ -28,7 +28,12 @@ export type BraidIntent =
     }
   | { readonly type: 'queue'; readonly operationId: string; readonly text: string }
   | { readonly type: 'steer'; readonly operationId: string; readonly text: string }
-  | { readonly type: 'cancel-run'; readonly operationId: string; readonly runId?: string }
+  | {
+      readonly type: 'cancel-run'
+      readonly operationId: string
+      readonly runId?: string
+      readonly reason?: string
+    }
   | {
       readonly type: 'respond-interaction'
       readonly operationId: string
@@ -58,6 +63,7 @@ export type BraidIntent =
       readonly operationId?: string
       readonly params: Readonly<Record<string, unknown>>
     }
+  | { readonly type: 'refresh-supervision' }
   | {
       readonly type: 'open-surface'
       readonly surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'
@@ -144,4 +150,5 @@ export interface BraidUiController {
   subscribe(subscriber: UiSubscriber, options?: UiSubscriptionOptions): () => void
   dispatch(intent: BraidIntent): Promise<UiDispatchResult>
   waitForIdle(): Promise<import('./models.js').BraidViewModel>
+  close?(): Promise<void>
 }

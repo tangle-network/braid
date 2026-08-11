@@ -4,6 +4,7 @@ import type { BraidEvent, BraidEventEnvelope } from './events.js'
 import { parseMessageId, parseOperationId, parseRunId, parseTurnId } from './ids.js'
 import { DomainInvariantError } from './invariants.js'
 import type { BraidState } from './state.js'
+import { finalizeRunUsage } from './run-usage.js'
 
 import {
   dateAt,
@@ -119,6 +120,9 @@ export function reduceLegacyEvent(
         status: 'streaming',
         inputTokens: 0,
         outputTokens: 0,
+        tokensKnown: false,
+        usdKnown: false,
+        llmCalls: 0,
         complete: false,
         startedAt: at,
         updatedAt: at,
@@ -153,14 +157,14 @@ export function reduceLegacyEvent(
     case 'run.cancel.requested': {
       const runId = parseRunId(event.runId)
       const run = find(state.runs, runId, 'Run')
-      if (runStatusTerminal(run.status)) {
-        throw new DomainInvariantError(`Cancellation requested for terminal run ${runId}`)
-      }
+      const next = runStatusTerminal(run.status)
+        ? state
+        : updateRun(state, { ...run, status: 'cancelling' }, at)
       return {
-        ...updateRun(state, { ...run, status: 'cancelling' }, at),
+        ...next,
         operations: upsert(
-          state.operations,
-          legacyOperation(state, parseOperationId(event.operationId), event, at, {
+          next.operations,
+          legacyOperation(next, parseOperationId(event.operationId), event, at, {
             kind: 'cancel-run',
             target: { kind: 'run', id: runId },
           }),
@@ -186,12 +190,8 @@ export function reduceLegacyEvent(
       let next = updateRun(
         state,
         {
-          ...run,
+          ...finalizeRunUsage(run, event.usage),
           status,
-          inputTokens: event.usage.input,
-          outputTokens: event.usage.output,
-          ...(event.usage.costUsd === undefined ? {} : { costUsd: event.usage.costUsd }),
-          ...(event.usage.model === undefined ? {} : { model: event.usage.model }),
           ...(event.error === undefined ? {} : { error: event.error }),
           complete: true,
         },

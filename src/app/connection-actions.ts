@@ -242,18 +242,14 @@ export class ConnectionActionService {
     readonly connectionId: string
   }): Promise<ConnectionTestResult> {
     const operationId = parseOperation(input.operationId, 'test_connection')
-    const model = selectedModel(this.#options.host.state().profile)
+    const state = this.#options.host.state()
+    const model = selectedModel(state.profile)
     const digest = requestDigest('test_connection', {
       connectionId: input.connectionId,
       model: model ?? null,
     })
     const record = this.#find(input.connectionId)
-    const replay = operationReplay(
-      this.#options.host.state(),
-      operationId,
-      'connection-change',
-      digest,
-    )
+    const replay = operationReplay(state, operationId, 'connection-change', digest)
     if (replay !== undefined) {
       if (replay.status !== 'acknowledged') throw reconciliationRequired(operationId)
       const result = operationTestResult(replay, record.credentialRef !== undefined)
@@ -277,7 +273,10 @@ export class ConnectionActionService {
     try {
       const [health, capabilities] = await Promise.all([probe.health(), probe.capabilities()])
       const modelVerification = probe.verifyModel
-        ? await probe.verifyModel(model ?? '', { now: () => this.#now() })
+        ? await probe.verifyModel(model ?? '', {
+            now: () => this.#now(),
+            profile: state.profile,
+          })
         : unverifiedModel(model, this.#now())
       const updated: ConnectionRecord = {
         ...record,

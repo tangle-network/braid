@@ -89,6 +89,10 @@ export function outcomeForKey(
   return undefined
 }
 
+export function cancellationOutcome(interaction: InteractionView): InteractionOutcome | undefined {
+  return interaction.allowedOutcomes.find((outcome) => outcome === 'cancel')
+}
+
 export function isSecretInteraction(interaction: InteractionView): boolean {
   return (
     interaction.secret ||
@@ -99,7 +103,13 @@ export function isSecretInteraction(interaction: InteractionView): boolean {
 
 export function interactionHeading(interaction: InteractionView): string {
   const kind = sanitizeTerminalText(interaction.kind).toLocaleLowerCase() || 'interaction'
-  if (kind === 'permission' || kind === 'plan') return `${kind} · approve or reject`
+  if (kind === 'permission' || kind === 'plan') {
+    const hasApproval = interaction.allowedOutcomes.some(isPositiveOutcome)
+    const hasRejection = rejectionOutcome(interaction) !== undefined
+    if (hasApproval && hasRejection) return `${kind} · approve or reject`
+    if (hasApproval) return `${kind} · approve`
+    if (hasRejection) return `${kind} · reject`
+  }
   if (kind === 'question') return `${kind} · answer required`
   return `${kind} · response required`
 }
@@ -171,8 +181,14 @@ export function answerHelp(interaction: InteractionView): string {
   const spec = interaction.answerSpec
   if (spec.kind === 'number')
     return `answer: number${spec.minimum === undefined ? '' : ` ≥ ${spec.minimum}`}${spec.maximum === undefined ? '' : ` ≤ ${spec.maximum}`}`
-  if (spec.kind === 'boolean')
-    return rejectionOutcome(interaction) ? 'answer: y approve · n reject' : 'answer: y yes · n no'
+  if (spec.kind === 'boolean') {
+    const hasApproval = interaction.allowedOutcomes.some(isPositiveOutcome)
+    const rejection = rejectionOutcome(interaction)
+    if (hasApproval && rejection) return 'answer: y approve · n reject'
+    if (hasApproval) return 'answer: y yes'
+    if (rejection) return 'answer: n reject'
+    return 'answer: esc cancel'
+  }
   if (spec.kind === 'unknown') return `answer: ${sanitizeTerminalText(spec.label)}`
   if (spec.kind === 'form') return `answer: JSON · ${spec.fields.length} field(s)`
   if (spec.kind === 'secret') return 'answer: secret hidden'

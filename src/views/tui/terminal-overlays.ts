@@ -1,21 +1,26 @@
 import type { Editor, SelectItem } from '@earendil-works/pi-tui'
 import type { ConnectionSummary } from '../../app/connection-action-types.js'
-import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import { type CommandName, commandItems } from '../shared/command-registry.js'
+import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import type { BraidUiController } from '../shared/intents.js'
+import type { ActivityItemView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import {
-  AutomationOverlayWorkflow,
   type AutomationOverlayOpenOptions,
+  AutomationOverlayWorkflow,
 } from './automation-overlay-workflow.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
-import { ConnectionSetupViewPanel } from './connection-setup.js'
 import { ConnectionOverlayWorkflow } from './connection-overlay-workflow.js'
+import { ConnectionSetupViewPanel } from './connection-setup.js'
 import { ConversationOverlayController } from './conversation-overlays.js'
+import { executionTargetFor } from './execution-target.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import { ProfileEditorViewPanel } from './profile-editor.js'
 import { SearchableSelector } from './selector.js'
-import { TerminalSurfaceOverlays } from './terminal-surface-overlays.js'
+import {
+  type IntelligenceProgressHandle,
+  TerminalSurfaceOverlays,
+} from './terminal-surface-overlays.js'
 import type { BraidTheme } from './theme.js'
 
 export interface TerminalOverlayOptions {
@@ -30,6 +35,7 @@ export interface TerminalOverlayOptions {
   readonly connectionLifecycle?: UiConnectionLifecycle
   readonly dispatchCommand: (command: CommandName, args: readonly string[]) => void
   readonly requestRender: () => void
+  readonly rows: () => number
 }
 
 export class TerminalOverlayController {
@@ -78,6 +84,8 @@ export class TerminalOverlayController {
       theme: this.#theme,
       controller: this.#controller,
       modals: this.#modals,
+      rows: options.rows,
+      requestRender: options.requestRender,
       ...(options.keyboardDiagnostic === undefined
         ? {}
         : { keyboardDiagnostic: options.keyboardDiagnostic }),
@@ -186,6 +194,37 @@ export class TerminalOverlayController {
     this.#modals.open(palette, { anchor: 'center', width: '70%', minWidth: 32, maxHeight: 14 })
   }
 
+  openAnalysisSource(question: readonly string[], sources: readonly ActivityItemView[]): void {
+    const view = this.#controller.view()
+    const selector = new SearchableSelector({
+      title: 'Ask about a run',
+      items: [...sources].reverse().map((source) => {
+        const runId = source.entityId ?? source.runId ?? source.id
+        const target = executionTargetFor(view, runId)
+        return {
+          value: runId,
+          label: source.title,
+          description: [
+            source.status,
+            target.runner,
+            target.model,
+            target.connection,
+            source.occurredAt,
+          ]
+            .filter((value): value is string => value !== undefined && value.length > 0)
+            .join(' · '),
+        }
+      }),
+      theme: this.#theme,
+      onSelect: (item) => {
+        this.#modals.closeTop()
+        this.#dispatchCommand('ask', [`run:${item.value}`, ...question])
+      },
+      onCancel: () => this.#modals.closeTop(),
+    })
+    this.#modals.open(selector, { anchor: 'center', width: '78%', minWidth: 36, maxHeight: '80%' })
+  }
+
   openAutomation(options: AutomationOverlayOpenOptions = {}): void {
     this.#automation.open(options)
   }
@@ -282,8 +321,19 @@ export class TerminalOverlayController {
     this.#surfaces.openHelp(query)
   }
 
+  dispose(): void {
+    this.#surfaces.dispose()
+  }
+
   openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {
     this.#surfaces.openIntelligenceResult(command, data)
+  }
+
+  openIntelligenceProgress(
+    command: 'ask' | 'analyze' | 'compare',
+    sourceContext?: string,
+  ): IntelligenceProgressHandle {
+    return this.#surfaces.openIntelligenceProgress(command, sourceContext)
   }
 
   openSurface(surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'): void {

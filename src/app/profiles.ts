@@ -1,14 +1,16 @@
+import { ProfileDraft } from './profile-draft.js'
+import { profileModelSettings } from './profile-model-settings.js'
 import {
   exportProfileDocument,
   exportProfileFile,
   exportProfileJson,
   importProfileJson,
   importProfileValue,
+  ProfilePersistenceError,
   readProfileFile,
   saveProfileFile,
-  ProfilePersistenceError,
 } from './profile-persistence.js'
-import { ProfileDraft } from './profile-draft.js'
+import { resolveEffectiveProfile, selectBaseProfile } from './profile-selection.js'
 import { createProfileSnapshot } from './profile-snapshots.js'
 import {
   createProfileRecord,
@@ -18,18 +20,13 @@ import {
   resolveProfileReference,
   resolveProfileSource,
 } from './profile-sources.js'
-import {
-  assertValidProfile,
-  validateProfile,
-  validateProfileShape,
-  ProfileValidationError,
-} from './profile-validation.js'
-import { resolveEffectiveProfile, selectBaseProfile } from './profile-selection.js'
 import type {
+  EffectiveProfileInput,
+  EffectiveProfileResult,
+  ExportProfileFileOptions,
   ProfileDiscoveryInput,
   ProfileDiscoveryResult,
   ProfileExportDocument,
-  ExportProfileFileOptions,
   ProfileExportOptions,
   ProfileFileState,
   ProfileImportOptions,
@@ -43,9 +40,13 @@ import type {
   ProfileValidationOptions,
   ProfileValidationReport,
   SaveProfileFileOptions,
-  EffectiveProfileInput,
-  EffectiveProfileResult,
 } from './profile-types.js'
+import {
+  assertValidProfile,
+  ProfileValidationError,
+  validateProfile,
+  validateProfileShape,
+} from './profile-validation.js'
 
 export * from './profile-draft.js'
 export * from './profile-persistence.js'
@@ -66,6 +67,9 @@ export {
   exportProfileJson,
   importProfileJson,
   importProfileValue,
+  ProfileDraft,
+  ProfilePersistenceError,
+  ProfileValidationError,
   readProfileFile,
   resolveEffectiveProfile,
   resolveProfileReference,
@@ -74,9 +78,6 @@ export {
   selectBaseProfile,
   validateProfile,
   validateProfileShape,
-  ProfileDraft,
-  ProfilePersistenceError,
-  ProfileValidationError,
 }
 
 export interface ProfileSummary {
@@ -89,6 +90,8 @@ export interface ProfileSummary {
   readonly digest: string
   readonly runner?: string
   readonly model?: string
+  readonly reasoningEffort?: string
+  readonly maxOutputTokens?: number
   readonly tools: readonly string[]
   readonly skills: readonly string[]
   readonly connections: readonly string[]
@@ -106,6 +109,7 @@ export function summarizeProfile(
   options: ProfileSummaryOptions = {},
 ): ProfileSummary {
   const profile = record.profile
+  const modelSettings = profileModelSettings(profile)
   return Object.freeze({
     id: record.id,
     name: profile.name ?? record.displayName,
@@ -116,6 +120,7 @@ export function summarizeProfile(
     digest: record.digest,
     ...(profile.harness === undefined ? {} : { runner: profile.harness }),
     ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
+    ...modelSettings,
     tools: Object.keys(profile.tools ?? {}).sort(),
     skills: (profile.resources?.skills ?? [])
       .map((resource) => (resource.kind === 'github' ? resource.path : resource.name))
@@ -234,10 +239,10 @@ export class ProfileCatalog {
 export type {
   EffectiveProfileInput,
   EffectiveProfileResult,
+  ExportProfileFileOptions,
   ProfileDiscoveryInput,
   ProfileDiscoveryResult,
   ProfileExportDocument,
-  ExportProfileFileOptions,
   ProfileExportOptions,
   ProfileFileState,
   ProfileImportOptions,

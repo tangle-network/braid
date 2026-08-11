@@ -1,13 +1,15 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { discoverBridge } from './bridge.mjs'
+import { discoverBridge, releaseTargetDefinitions, selectBridgeTargets } from './bridge.mjs'
+import { loadProviderCapabilities, probePackedAnalysisReadiness } from './config.mjs'
 import {
-  installBridgeCredential,
-  loadProviderCapabilities,
-  probePackedAnalysisReadiness,
-} from './config.mjs'
-import { defaultTimeoutMs, exitCodes, liveProofScope, repository } from './constants.mjs'
+  defaultTimeoutMs,
+  exitCodes,
+  liveProofScope,
+  liveReleaseProofScope,
+  repository,
+} from './constants.mjs'
 import {
   bridgeAuthToken,
   endpointForEvidence,
@@ -19,18 +21,21 @@ import { LiveBridgeError } from './errors.mjs'
 import { errorEvidence, removeTemp, safeErrorMessage, writeEvidence } from './evidence.mjs'
 import { buildPackedBinary } from './pack.mjs'
 import { evidenceValue } from './redaction.mjs'
+import { executeReleaseProofs } from './release-proofs.mjs'
 import { executeTarget } from './target-flow.mjs'
 import { defaultTargetPolicy, readTargetPolicy, targetPolicyEvidence } from './target-policy.mjs'
 
-function createEvidence(policy) {
+function createEvidence(policy, requireCompleteReleaseProof) {
   const rawEndpoint =
     process.env.BRAID_CLI_BRIDGE_URL ??
     process.env.CLI_BRIDGE_URL ??
     `http://127.0.0.1:${process.env.BRIDGE_PORT ?? '3344'}`
   return {
     schemaVersion: 1,
-    command: 'pnpm test:live:bridge',
-    scope: liveProofScope,
+    command: requireCompleteReleaseProof
+      ? 'pnpm test:live:bridge:release'
+      : 'pnpm test:live:bridge',
+    scope: requireCompleteReleaseProof ? liveReleaseProofScope : liveProofScope,
     optIn: process.env.BRAID_LIVE_BRIDGE === '1',
     startedAt: new Date().toISOString(),
     runtime: {
@@ -46,6 +51,7 @@ function createEvidence(policy) {
     },
     targetPolicy: targetPolicyEvidence(policy),
     targets: [],
+    ...(requireCompleteReleaseProof ? { releaseProofs: [], releaseOperations: [] } : {}),
   }
 }
 
@@ -81,12 +87,11 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
   } catch (error) {
     policyError = error
   }
-  const evidence = createEvidence(policy)
+  const evidence = createEvidence(policy, requireCompleteReleaseProof)
   let status = 'failed'
   let exitCode = exitCodes.failed
   let evidencePath
   let bridgeCleanup
-  let credential
   const tempPaths = []
   try {
     if (policyError !== undefined) throw policyError
@@ -113,15 +118,52 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
     }
     const bridgeEvidence = {}
     evidence.bridge = bridgeEvidence
+    const launchDefinitions = requireCompleteReleaseProof
+      ? [
+          ...policy.definitions,
+          { key: 'release-pi', label: 'release Pi runner', backend: 'pi' },
+          { key: 'release-codex', label: 'release Codex runner', backend: 'codex' },
+        ]
+      : policy.definitions
     const bridge = await discoverBridge(
       endpoint,
       token,
       bridgeEvidence,
       repository,
-      policy.definitions,
+      requireCompleteReleaseProof ? [] : policy.definitions,
+      {
+        launchDefinitions,
+        requireDefinitions: !requireCompleteReleaseProof,
+      },
     )
     bridgeCleanup = bridge.cleanup
-    const selected = bridge.selected
+    let selected = bridge.selected
+    if (requireCompleteReleaseProof) {
+      const releaseDefinitions = releaseTargetDefinitions(
+        policy.definitions,
+        bridgeEvidence.models,
+        bridge.health,
+      )
+      if (releaseDefinitions.length === 0) {
+        throw new LiveBridgeError(
+          'LIVE_RELEASE_TARGETS_UNAVAILABLE',
+          'The CLI Bridge advertised no ready runner with a usable model route',
+          exitCodes.unavailable,
+          { models: bridgeEvidence.models, health: bridge.health },
+        )
+      }
+      selected = selectBridgeTargets(
+        releaseDefinitions,
+        bridgeEvidence.models,
+        bridge.health,
+        bridgeEvidence,
+      )
+      evidence.targetPolicy = targetPolicyEvidence({
+        ...policy,
+        source: `${policy.source}:release-runners`,
+        definitions: releaseDefinitions,
+      })
+    }
     evidence.selectedTargets = bridgeEvidence.selectedTargets
     const packed = await buildPackedBinary(evidence, repository, (path) => tempPaths.push(path))
     const providerCapabilities = await loadProviderCapabilities(packed.installRoot)
@@ -134,7 +176,6 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
       endpoint,
       selected[0],
     )
-    credential = await installBridgeCredential(evidence, repository)
     const targetRoot = await mkdtemp(join(tmpdir(), 'braid-live-targets-'))
     tempPaths.push(targetRoot)
     let firstTargetFailure
@@ -143,12 +184,14 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
       try {
         targetEvidence = await executeTarget(
           packed.binary,
+          packed.installRoot,
           targetRoot,
           endpoint,
           providerCapabilities,
           target,
-          credential,
+          token,
           Number(process.env.BRAID_LIVE_BRIDGE_TIMEOUT_MS ?? defaultTimeoutMs),
+          { strict: requireCompleteReleaseProof },
         )
       } catch (error) {
         targetEvidence = targetFailure(error, target)
@@ -156,6 +199,16 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
       evidence.targets.push(targetEvidence)
       if (targetEvidence.status !== 'passed' && firstTargetFailure === undefined)
         firstTargetFailure = targetEvidence
+    }
+    evidence.credentialState = {
+      configured: token !== undefined,
+      facility: token === undefined ? 'none' : 'encrypted-headless',
+      targetCount: evidence.targets.length,
+      storedCount: evidence.targets.filter((target) => target.credentialLifecycle?.stored === true)
+        .length,
+      removedCount: evidence.targets.filter(
+        (target) => target.credentialLifecycle?.removed === true,
+      ).length,
     }
     if (firstTargetFailure !== undefined) {
       throw new LiveBridgeError(
@@ -167,6 +220,30 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
         { target: firstTargetFailure },
       )
     }
+    if (requireCompleteReleaseProof) {
+      const release = await executeReleaseProofs({
+        binary: packed.binary,
+        installRoot: packed.installRoot,
+        root: targetRoot,
+        endpoint,
+        providerCapabilities,
+        targets: selected,
+        targetRecords: evidence.targets,
+        token,
+        timeoutMs: Number(process.env.BRAID_LIVE_BRIDGE_TIMEOUT_MS ?? defaultTimeoutMs),
+      })
+      evidence.releaseProofs = release.releaseProofs
+      evidence.releaseOperations = release.releaseOperations
+      if (release.passed !== true) {
+        const unavailable = release.failures.some((failure) => failure.status === 'unavailable')
+        throw new LiveBridgeError(
+          'LIVE_RELEASE_PROOFS_INCOMPLETE',
+          'At least one named packed release operation did not produce its own proof receipt',
+          unavailable ? exitCodes.unavailable : exitCodes.failed,
+          { failures: release.failures },
+        )
+      }
+    }
     status = 'passed'
     exitCode = exitCodes.passed
   } catch (error) {
@@ -177,22 +254,6 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
     exitCode = error instanceof LiveBridgeError ? error.exitCode : exitCodes.failed
     evidence.error = errorEvidence(error)
   } finally {
-    if (credential !== undefined) {
-      try {
-        await credential.store.remove(credential.credentialRef)
-        evidence.credentialState = { ...(evidence.credentialState ?? {}), removed: true }
-      } catch (error) {
-        evidence.credentialState = {
-          ...(evidence.credentialState ?? {}),
-          removed: false,
-          error: errorEvidence(error),
-        }
-        if (status === 'passed') {
-          status = 'failed'
-          exitCode = exitCodes.failed
-        }
-      }
-    }
     if (bridgeCleanup !== undefined) {
       try {
         const cleanup = await bridgeCleanup()
@@ -230,18 +291,6 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
         status = 'failed'
         exitCode = exitCodes.failed
       })
-    }
-    if (requireCompleteReleaseProof && status === 'passed') {
-      status = 'unavailable'
-      exitCode = exitCodes.unavailable
-      evidence.error = errorEvidence(
-        new LiveBridgeError(
-          'LIVE_BRIDGE_RELEASE_PROOF_INCOMPLETE',
-          `The live bridge run excludes required release claims: ${evidence.scope.excludes.join(', ')}`,
-          exitCodes.unavailable,
-          { scope: evidence.scope },
-        ),
-      )
     }
     evidence.status = status
     evidence.exitCode = exitCode

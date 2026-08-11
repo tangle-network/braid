@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "7d25b83d58d2a4f26d63009e147ab739559aeef242622c332110d573c2d8ba7d"
+    "tarballSha256": "32dda757d252bff4e120a8c69d776cb76b3ee971e3f2649d661875e77a20f7b8"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-automation-main-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n    /compare · frozen runs\n    saved result: replayed from the local journal\n    baseline run: run-fixture-baseline\n    baseline source: bbbbbbbbbbbbbbb…bbbbbbbb\n    baseline outcome: completed · cost: 0.014 · source: frozen run field...\n    candidate run: run-fixture-candidate\n    candidate source: ccccccccccccccc…cccccccc\n    candidate outcome: completed · cost: 0.009 · source: frozen run fiel...\n    sample: 1 paired · 0 baseline-only · 0 candidate-only\n    PgUp/PgDn · page 1/9 · esc close\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nready for a message                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
+  "frame": " analyses › /compare · frozen runs · analysis · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n saved result: replayed from the local journal\n baseline run: run-route-serial\n baseline source: 9ee7d219c8b0092…8c519924\n baseline outcome: completed · cost: 0.014 · source: frozen run field\n run.cost_usd\n candidate run: run-route-parallel\n candidate source: 0328e6889082b14…86b0ff3d\n candidate outcome: completed · cost: 0.009 · source: frozen run field\n run.cost_usd\n sample: 1 paired · 0 baseline-only · 0 candidate-only\n ! One pair is descriptive; it cannot support a reliable general conclusion.\n captured fields · baseline | candidate | availability\n run.status: completed | completed | none\n run.cost_usd: 0.014 | 0.009 | none\n run.wall_time_ms: 18200 | 12100 | none\n run.input_tokens: 7420 | 6910 | none\n paired measurements · candidate minus baseline where applicable\n paired.correctness.b01: 0\n paired.correctness.b10: 0\n paired.correctness.mcnemar.b: 0\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-automation-main-wt",
+      "workspace": "/home/drew/code/braid-unified-activity-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -56,12 +56,56 @@
         "harness": "pi",
         "model": {
           "default": "fixture/deterministic",
+          "provider": "fixture",
           "reasoningEffort": "none"
         }
       },
       "draft": "",
       "messages": [],
       "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
       "interactions": [],
       "queue": [],
       "activeRunId": null,
@@ -69,9 +113,9 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-automation-main-wt",
+      "workspace": "/home/drew/code/braid-unified-activity-wt",
       "profileName": "Braid starter",
-      "profileDigest": "02a2ebddee943473ae42c9fa387abaa956799ab7791b68033006dd4029866660",
+      "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
       "model": "fixture/deterministic",
       "effort": "none",
@@ -96,8 +140,60 @@
       "messages": [],
       "hiddenMessageCount": 0,
       "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
       "interactions": [],
-      "activity": [],
+      "activity": [
+        {
+          "id": "analysis:analysis-fixture-comparison",
+          "kind": "analysis",
+          "title": "/compare · frozen runs",
+          "status": "complete",
+          "entityType": "analysis",
+          "entityId": "analysis-fixture-comparison"
+        }
+      ],
       "graph": [
         {
           "id": "conv-1",
@@ -105,7 +201,8 @@
           "title": "New conversation",
           "status": "complete",
           "depth": 0,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
           "id": "branch-1",
@@ -113,7 +210,88 @@
           "title": "Main",
           "status": "complete",
           "depth": 1,
-          "edgeLabel": "attached"
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "entityDetails": [
+        {
+          "entityType": "analysis",
+          "entityId": "analysis-fixture-comparison",
+          "title": "/compare · frozen runs",
+          "status": "completed",
+          "lines": [
+            "saved result: replayed from the local journal",
+            "baseline run: run-route-serial",
+            "baseline source: 9ee7d219c8b0092…8c519924",
+            "baseline outcome: completed · cost: 0.014 · source: frozen run field run.cost_usd",
+            "candidate run: run-route-parallel",
+            "candidate source: 0328e6889082b14…86b0ff3d",
+            "candidate outcome: completed · cost: 0.009 · source: frozen run field run.cost_usd",
+            "sample: 1 paired · 0 baseline-only · 0 candidate-only",
+            "! One pair is descriptive; it cannot support a reliable general conclusion.",
+            "captured fields · baseline | candidate | availability",
+            "run.status: completed | completed | none",
+            "run.cost_usd: 0.014 | 0.009 | none",
+            "run.wall_time_ms: 18200 | 12100 | none",
+            "run.input_tokens: 7420 | 6910 | none",
+            "paired measurements · candidate minus baseline where applicable",
+            "paired.correctness.b01: 0",
+            "paired.correctness.b10: 0",
+            "paired.correctness.mcnemar.b: 0",
+            "paired.correctness.mcnemar.c: 0",
+            "paired.correctness.mcnemar.n: 1",
+            "paired.correctness.mcnemar.nDiscordant: 0",
+            "paired.correctness.mcnemar.pValue: 1",
+            "paired.correctness.mcnemar.statistic: 0",
+            "paired.correctness.riskDifference.b: 0",
+            "paired.correctness.riskDifference.c: 0",
+            "paired.correctness.riskDifference.confidence: 0.95",
+            "paired.correctness.riskDifference.lower: 0",
+            "paired.correctness.riskDifference.n: 1",
+            "paired.correctness.riskDifference.riskDifference: 0",
+            "paired.correctness.riskDifference.upper: 0",
+            "paired.metricDeltas[0].bootstrapCi.confidence: 0.95",
+            "paired.metricDeltas[0].bootstrapCi.gateEligible: false",
+            "paired.metricDeltas[0].bootstrapCi.high: -0.005",
+            "paired.metricDeltas[0].bootstrapCi.low: -0.005",
+            "paired.metricDeltas[0].bootstrapCi.mean: -0.005",
+            "paired.metricDeltas[0].bootstrapCi.median: -0.005",
+            "paired.metricDeltas[0].bootstrapCi.n: 1",
+            "paired.metricDeltas[0].bootstrapCi.resamples: 2000",
+            "paired.metricDeltas[0].meanDelta: -0.005",
+            "paired.metricDeltas[0].medianDelta: -0.005",
+            "paired.metricDeltas[0].n: 1",
+            "paired.metricDeltas[0].name: cost_usd",
+            "paired.metricDeltas[0].nMissing: 0",
+            "paired.metricDeltas[0].wilcoxon.method: exact",
+            "paired.metricDeltas[0].wilcoxon.nNonZero: 1",
+            "paired.metricDeltas[0].wilcoxon.p: 1",
+            "paired.metricDeltas[0].wilcoxon.pFloor: 1",
+            "paired.metricDeltas[0].wilcoxon.w: 0",
+            "paired.metricDeltas[1].bootstrapCi.confidence: 0.95",
+            "paired.metricDeltas[1].bootstrapCi.gateEligible: false",
+            "paired.metricDeltas[1].bootstrapCi.high: -6100",
+            "paired.metricDeltas[1].bootstrapCi.low: -6100",
+            "paired.metricDeltas[1].bootstrapCi.mean: -6100",
+            "paired.metricDeltas[1].bootstrapCi.median: -6100",
+            "paired.metricDeltas[1].bootstrapCi.n: 1",
+            "paired.metricDeltas[1].bootstrapCi.resamples: 2000",
+            "paired.metricDeltas[1].meanDelta: -6100",
+            "paired.metricDeltas[1].medianDelta: -6100",
+            "paired.metricDeltas[1].n: 1",
+            "paired.metricDeltas[1].name: latency_ms",
+            "paired.metricDeltas[1].nMissing: 0",
+            "paired.metricDeltas[1].wilcoxon.method: exact",
+            "paired.metricDeltas[1].wilcoxon.nNonZero: 1",
+            "paired.metricDeltas[1].wilcoxon.p: 1",
+            "paired.metricDeltas[1].wilcoxon.pFloor: 1",
+            "paired.metricDeltas[1].wilcoxon.w: 0",
+            "paired.nPairs: 1",
+            "paired.nUnpairedBaseline: 0",
+            "paired.nUnpairedTreatment: 0",
+            "semantic review: unavailable · One saved pair is descriptive; semantic review was not requested."
+          ]
         }
       ],
       "capabilities": {
@@ -268,7 +446,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-automation-main-wt"
+            "workspace": "/home/drew/code/braid-unified-activity-wt"
           }
         }
       }

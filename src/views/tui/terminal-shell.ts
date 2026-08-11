@@ -9,6 +9,7 @@ import {
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { ActivityView } from './activity.js'
+import { ComposerView } from './composer-view.js'
 import { layoutFor } from './layout.js'
 import { TerminalChrome } from './terminal-chrome.js'
 import type { BraidTheme } from './theme.js'
@@ -18,11 +19,12 @@ export class BraidShell extends Container {
   readonly #transcript: TranscriptView
   readonly #activity: ActivityView
   readonly #chrome: TerminalChrome
-  readonly #editor: Editor
+  readonly #composer: ComposerView
   readonly #theme: BraidTheme
   readonly #rows: () => number
   #view: BraidViewModel | undefined
   #showActivity = false
+  #modalVisible = false
   #quitArmed = false
 
   constructor(
@@ -38,20 +40,26 @@ export class BraidShell extends Container {
     this.#transcript = new TranscriptView(theme)
     this.#activity = new ActivityView(theme)
     this.#chrome = new TerminalChrome(theme)
-    this.#editor = new Editor(tui, theme.editor, { paddingX: 1 })
-    this.#editor.onSubmit = onSubmit
-    this.#editor.onChange = onChange
+    const editor = new Editor(tui, theme.editor, { paddingX: 1 })
+    editor.onSubmit = onSubmit
+    editor.onChange = onChange
+    this.#composer = new ComposerView({ editor, rows, theme })
     this.addChild(this.#transcript)
     this.addChild(this.#activity)
-    this.addChild(this.#editor)
+    this.addChild(this.#composer)
   }
 
   get editor(): Editor {
-    return this.#editor
+    return this.#composer.editor
   }
 
   setActivityVisible(visible: boolean): void {
     this.#showActivity = visible
+    this.invalidate()
+  }
+
+  setModalVisible(visible: boolean): void {
+    this.#modalVisible = visible
     this.invalidate()
   }
 
@@ -60,14 +68,16 @@ export class BraidShell extends Container {
     this.#quitArmed = quitArmed
     this.#transcript.setView(view)
     this.#activity.setView(view)
+    this.#composer.setView(view)
     this.#chrome.setState({
       view,
       quitArmed,
       activityVisible: this.#showActivity,
       navigationHint: this.#transcript.navigationHint(),
     })
-    this.#editor.disableSubmit = false
-    this.#editor.borderColor = view.status === 'running' ? this.#theme.warning : this.#theme.accent
+    this.#composer.editor.disableSubmit = false
+    this.#composer.editor.borderColor =
+      view.status === 'running' ? this.#theme.warning : this.#theme.accent
     this.invalidate()
   }
 
@@ -79,7 +89,7 @@ export class BraidShell extends Container {
       matchesKey(data, 'pageDown') ||
       matchesKey(data, 'alt+pageUp') ||
       matchesKey(data, 'alt+pageDown')
-    if (!explicitTranscriptKey && this.#editor.getText().length > 0) return false
+    if (!explicitTranscriptKey && this.#composer.editor.getText().length > 0) return false
     const handled = this.#transcript.handleInput(data)
     if (handled) this.#refreshChrome()
     return handled
@@ -103,7 +113,7 @@ export class BraidShell extends Container {
     const view = this.#view
     if (!view) return super.render(width)
     const layout = layoutFor(width, this.#rows(), this.#showActivity)
-    const editorLines = this.#editor.render(width)
+    const editorLines = this.#modalVisible ? [] : this.#composer.render(width)
     const chromeLines = this.#chrome.render(width)
     const dockRows = chromeLines.length + editorLines.length
     const contentRows = Math.max(1, layout.rows - dockRows)
@@ -122,7 +132,7 @@ export class BraidShell extends Container {
       } else {
         const activity = activityLines[index] ?? ''
         content.push(
-          `${truncateToWidth(transcript, layout.transcriptWidth, '…', true)}${' '.repeat(layout.gap)}${truncateToWidth(activity, layout.activityWidth, '…', true)}`,
+          `${truncateToWidth(transcript, layout.transcriptWidth, '…', true)}${this.#theme.muted('│')}${truncateToWidth(activity, layout.activityWidth, '…', true)}`,
         )
       }
     }
@@ -148,7 +158,10 @@ export class BraidShell extends Container {
 }
 
 function tail(lines: readonly string[], count: number): string[] {
-  return lines.slice(Math.max(0, lines.length - count))
+  if (lines.length <= count) return [...lines]
+  const header = lines[0]
+  if (header === undefined || count <= 1) return lines.slice(-count)
+  return [header, ...lines.slice(-(count - 1))]
 }
 
 export class UnavailablePanel extends Container {

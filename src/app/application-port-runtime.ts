@@ -5,7 +5,12 @@ import type { Clock } from '../ports/clock.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import { buildPortViews, type PortViews } from './application-port-builder.js'
-import type { ControlEffectRequest, JournalWriter, StateReader } from './application-ports.js'
+import type {
+  ControlDispatchOptions,
+  ControlEffectRequest,
+  JournalWriter,
+  StateReader,
+} from './application-ports.js'
 import type { ApplicationJournal } from './application-support.js'
 import { startApplicationRun } from './application-support.js'
 import type { SendInput, SendReceipt } from './application-types.js'
@@ -17,6 +22,7 @@ export interface ApplicationPortRuntimeInput {
   readonly profile: () => Readonly<AgentProfile>
   readonly commit: (event: BraidEvent) => void
   readonly commitAndWait: JournalWriter['commitAndWait']
+  readonly commitBatchAndWait: NonNullable<JournalWriter['commitBatchAndWait']>
   readonly commitAndWaitRecovery: NonNullable<JournalWriter['commitAndWaitRecovery']>
   readonly execution: ExecutionPort
   readonly ledger: RunLedger
@@ -28,6 +34,7 @@ export interface ApplicationPortRuntimeInput {
   readonly fingerprint: import('./application-ports.js').AdmissionReplayAccess['fingerprint']
   readonly executeControl: (
     input: ControlEffectRequest,
+    options?: ControlDispatchOptions,
   ) => Promise<import('../ports/execution.js').ControlAcknowledgement>
   readonly flush: () => Promise<void>
   readonly storageFailure: () => unknown
@@ -56,6 +63,7 @@ export function buildApplicationPortRuntime(input: ApplicationPortRuntimeInput):
   const journal: JournalWriter = {
     commit: input.commit,
     commitAndWait: input.commitAndWait,
+    commitBatchAndWait: input.commitBatchAndWait,
     commitAndWaitRecovery: input.commitAndWaitRecovery,
   }
   return buildPortViews({

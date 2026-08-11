@@ -10,7 +10,9 @@ This is a source-reuse plan, not a whole-application fork.
 
 ## Research method
 
-The comparison used current source, package metadata, licenses, application instructions, architecture documents, interaction code, tests, and measured TypeScript surface at immutable commits on 2026-08-01.
+The initial comparison used source, package metadata, licenses, application instructions, architecture documents, interaction code, and tests on 2026-08-01.
+
+The core terminal references were refreshed from their live default branches on 2026-08-10 before the production UX pass.
 
 Line count is only a coupling signal and not a quality score.
 
@@ -20,15 +22,16 @@ The deciding question was how much source can be reused while preserving `AgentP
 
 | Source | Commit or version | License | Measured relevant TypeScript | Role in decision |
 | --- | --- | --- | ---: | --- |
-| [Pi TUI](https://github.com/earendil-works/pi/tree/master/packages/tui) | `53fa77ccd8a279eb87e92294ef3687b03ff80112`; npm `0.84.1` | MIT | 16,202 lines | Selected renderer dependency |
-| [Pi coding-agent interactive mode](https://github.com/earendil-works/pi/tree/master/packages/coding-agent/src/modes/interactive) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT | 16,925 lines, including a 6,125-line coordinator | Selective behavior and component source |
+| [Pi TUI](https://github.com/earendil-works/pi/tree/main/packages/tui) | `87142a8d50640e93d43fcb35123439d642bc0304`; npm `0.84.1` | MIT | 32,585 lines | Selected renderer dependency |
+| [Pi coding-agent interactive mode](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive) | `87142a8d50640e93d43fcb35123439d642bc0304` | MIT | 17,379 lines, including a 6,399-line coordinator | Selective behavior and component source |
 | [Kimi Code terminal app](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | `e22479a62eed9c3b78a67b313f4332c2c0ba9670` | MIT | 39,688 lines; 65 files directly import Kimi Code SDK | Selective interaction and controller source |
 | [Kimi private Pi TUI fork](https://github.com/MoonshotAI/kimi-code/tree/main/packages/pi-tui) | package version `0.80.8` at `e22479a` | MIT | Included in repository inspection | Patch and regression reference only |
-| [OpenCode terminal command](https://github.com/anomalyco/opencode/tree/dev/packages/opencode/src/cli/cmd/run) | `32f278b48f1a495611165d8a9f1ace0b512933e2` | MIT | 18,492 lines | OpenTUI alternative and workflow reference |
+| [OpenCode terminal packages](https://github.com/anomalyco/opencode/tree/dev/packages/tui) | `3a90639cb57619a21e59f544b3e8d23ffed56f48` | MIT | 50,341 lines across the TUI and run command | OpenTUI alternative and workflow reference |
+| [Codex terminal application](https://github.com/openai/codex/tree/main/codex-rs/tui) | `9742cc8ed5def37a4575263733f70a01ca22047b` | Apache-2.0 | 244,714 Rust lines | Composer, worker navigation, status, and snapshot-test reference |
 | [Hermes Agent terminal app](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | `f88ed6c71768cdc7ea3bfa8cf62d16654792fd2a` | MIT | No size claim used | Client/runtime and workflow reference |
-| [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | `9b2005d43186144cb7cbf606b98637434bee3c8f` | Project license | 1,657 lines | Runtime-owned supervisor source, not app base |
+| [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | `e9f17ff8172aabae4c34a78ce77658503771be1a`; npm `0.131.5` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
 
-The count commands selected tracked `.ts` and `.tsx` files under each named directory and used `wc -l`.
+The count commands selected the named TypeScript or Rust files from sparse clones and used `wc -l`.
 
 The Kimi SDK coupling count selected terminal files that directly import `@moonshot-ai/kimi-code-sdk`.
 
@@ -49,6 +52,10 @@ The package is independently versioned and published, which gives Braid a normal
 ### What the Pi application provides
 
 Pi's coding-agent interface provides polished assistant, reasoning, tool, model, effort, session, tree, footer, command, and error presentation.
+
+The current footer reports input, output, cache, cost, context, model, and session data without moving them into message history.
+
+The current busy editor distinguishes steering from follow-up input and lets the user recover queued messages into the editor.
 
 Its tree behavior distinguishes branching within session history, forking from a prior user message, and cloning an active branch.
 
@@ -106,6 +113,8 @@ OpenCode's current terminal application uses OpenTUI core and Solid bindings, pl
 
 It demonstrates a rich retained-mode terminal and useful permission, question, subagent, scrollback, and command surfaces.
 
+Its current subagent inspector keeps stable tabs, streams bounded child activity, cycles with one key, and preserves completed or failed child sessions for review.
+
 Its source is coupled to OpenCode's server, session synchronization, configuration, storage, and command architecture.
 
 Adopting OpenTUI would still require Braid to build its complete application core while replacing Pi's already suitable editor, renderer, and terminal interface.
@@ -113,6 +122,16 @@ Adopting OpenTUI would still require Braid to build its complete application cor
 OpenCode remains the renderer reversal candidate if Pi fails the vertical slice or becomes unmaintained.
 
 Braid may copy no OpenCode source during the initial implementation without a separate component-level comparison and notice entry.
+
+## Codex
+
+Codex keeps its composer, footer, agent navigation, agent status feed, approvals, questions, and selectors in narrow modules with extensive render snapshots.
+
+Its agent navigation preserves first-seen spawn order, keeps closed children reviewable, and makes next and previous traversal stable while work changes.
+
+Braid adopts those behaviors through its runtime-owned activity tree and one entity browser.
+
+Braid does not copy Codex thread ownership, backend events, model configuration, or execution controls.
 
 ## Hermes Agent
 
@@ -126,7 +145,7 @@ Braid uses Hermes as a workflow comparison and does not port its runtime protoco
 
 ## Runtime monitor
 
-`agent-runtime` source version `0.118.0` exports a diagnostic terminal module and `agent-runtime-top` binary.
+`agent-runtime` package version `0.131.5` exports a diagnostic terminal module and `agent-runtime-top` binary.
 
 The module understands runtime-owned supervisor files and shows worker state, spend, tokens, latency, logs, steering, shell action, and cancellation controls.
 

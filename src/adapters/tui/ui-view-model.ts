@@ -1,10 +1,15 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { BraidState } from '../../domain/state.js'
 import { type ColorMode, resolveColorMode } from '../../views/shared/appearance.js'
+import { environmentView } from '../../views/shared/environment-presentation.js'
 import { type BraidViewModel, freezeView } from '../../views/shared/models.js'
 import { sanitizeTerminalText } from '../../views/shared/sanitize.js'
+import { queryGraph } from '../../views/shared/semantic-graph.js'
+import { sessionUsageFor, usageForRun } from '../../views/shared/usage-projection.js'
 import { capabilityMap } from './ui-capabilities.js'
+import { entityDetailsFor } from './ui-entity-details.js'
 import {
   activityFor,
   graphFor,
@@ -15,11 +20,37 @@ import {
   runViews,
   statusFor,
 } from './ui-projection.js'
+import { uiSemanticState } from './ui-semantic-state.js'
 
 export interface UiAppearanceOptions {
   readonly color?: ColorMode
   readonly highContrast?: boolean
   readonly reducedMotion?: boolean
+}
+
+interface SemanticViewProjection {
+  readonly activity: BraidViewModel['activity']
+  readonly graph: BraidViewModel['graph']
+  readonly entityDetails: NonNullable<BraidViewModel['entityDetails']>
+  readonly hiddenGraphNodeCount: number
+}
+
+const semanticViewCache = new WeakMap<BraidState, SemanticViewProjection>()
+
+function semanticViewFor(state: BraidState): SemanticViewProjection {
+  const cached = semanticViewCache.get(state)
+  if (cached !== undefined) return cached
+  const activity = Object.freeze(activityFor(state))
+  const bounded = uiSemanticState(state)
+  const semanticGraph = queryGraph(bounded.state)
+  const projection = Object.freeze({
+    activity,
+    graph: Object.freeze(graphFor(bounded.state, semanticGraph)),
+    entityDetails: Object.freeze(entityDetailsFor(state, activity)),
+    hiddenGraphNodeCount: bounded.hiddenNodeCount,
+  })
+  semanticViewCache.set(state, projection)
+  return projection
 }
 
 export function buildBraidViewModel(
@@ -34,6 +65,7 @@ export function buildBraidViewModel(
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
   const profile = state.profile as Readonly<AgentProfile>
+  const modelSettings = profileModelSettings(profile)
   const fixture = profile.model?.default === 'fixture/deterministic'
   const profileDigest = canonicalDigest(profile)
   const selectedConnection = state.connections.find(
@@ -60,6 +92,7 @@ export function buildBraidViewModel(
   const model = profile.model?.default ?? 'automatic'
   const color =
     appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
+  const semantic = semanticViewFor(state)
   return freezeView({
     revision: state.revision,
     workspace: state.workspace ? sanitizeTerminalText(state.workspace) : null,
@@ -70,6 +103,9 @@ export function buildBraidViewModel(
     ...(profile.model?.reasoningEffort
       ? { effort: sanitizeTerminalText(profile.model.reasoningEffort) }
       : {}),
+    ...(modelSettings.maxOutputTokens === undefined
+      ? {}
+      : { maxOutputTokens: modelSettings.maxOutputTokens }),
     connection: fixture
       ? 'deterministic fixture'
       : sanitizeTerminalText(selectedConnection?.name ?? 'not connected'),
@@ -101,10 +137,16 @@ export function buildBraidViewModel(
     messages: Object.freeze(messagesFor(state, { completeText: true })),
     hiddenMessageCount: Math.max(0, state.messages.length - MAX_VISIBLE_MESSAGES),
     runs: Object.freeze(runViews(state)),
+    sessionUsage: sessionUsageFor(state),
+    environments: Object.freeze(state.environments.map(environmentView)),
     ...(state.activeRunId ? { activeRunId: state.activeRunId } : {}),
     interactions: Object.freeze(interactionViews(state)),
-    activity: Object.freeze(activityFor(state)),
-    graph: Object.freeze(graphFor(state)),
+    activity: semantic.activity,
+    graph: semantic.graph,
+    entityDetails: semantic.entityDetails,
+    ...(semantic.hiddenGraphNodeCount === 0
+      ? {}
+      : { hiddenGraphNodeCount: semantic.hiddenGraphNodeCount }),
     ...(latest
       ? {
           details: Object.freeze({
@@ -113,6 +155,14 @@ export function buildBraidViewModel(
               { label: 'status', value: latest.status },
               { label: 'input tokens', value: String(latest.inputTokens) },
               { label: 'output tokens', value: String(latest.outputTokens) },
+              {
+                label: 'token measurement',
+                value: usageForRun(latest).tokenStatus ?? 'unknown',
+              },
+              {
+                label: 'cost measurement',
+                value: usageForRun(latest).costStatus ?? 'unknown',
+              },
               ...(latest.model
                 ? [{ label: 'model', value: sanitizeTerminalText(latest.model) }]
                 : []),

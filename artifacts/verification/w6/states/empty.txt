@@ -1,4 +1,4 @@
-braid  cwd  braid-automation-main-wt  ·  session  New conversation
+braid  cwd  braid-unified-activity-wt  ·  session  New conversation
 
  Write a message, or press Ctrl+P for commands.
 
@@ -15,10 +15,10 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation
 
 
 
+──────────────────────────────────── › send ────────────────────────────────────
+›
 
 
-────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────
+────────────────────────── alt+enter newline · paste ───────────────────────────
 ready for a message                  model fixture/deterministic · thinking none
 AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands

@@ -5,9 +5,13 @@ import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import type { PortViews } from './application-port-builder.js'
 import { buildApplicationPortRuntime } from './application-port-runtime.js'
-import type { ControlEffectRequest } from './application-ports.js'
+import type { ControlDispatchOptions, ControlEffectRequest } from './application-ports.js'
 import type { ApplicationJournal } from './application-support.js'
-import { createTransitionHost, type TransitionHost } from './application-transition.js'
+import {
+  commitEventsAndWaitAtRevision,
+  createTransitionHost,
+  type TransitionHost,
+} from './application-transition.js'
 import type { AppSubscriber, SendInput, SendReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 import type { RunLedger } from './run-ledger.js'
@@ -35,6 +39,7 @@ export interface ApplicationRuntimeWiringInput {
   readonly flush: () => Promise<void>
   readonly executeControl: (
     input: ControlEffectRequest,
+    options?: ControlDispatchOptions,
   ) => Promise<import('../ports/execution.js').ControlAcknowledgement>
   readonly admitPersistedSend: (operationId: string, digest: string) => SendReceipt | undefined
   readonly fingerprint: import('./application-ports.js').AdmissionReplayAccess['fingerprint']
@@ -50,11 +55,25 @@ export interface ApplicationRuntimeWiring {
 export function wireApplicationRuntime(
   input: ApplicationRuntimeWiringInput,
 ): ApplicationRuntimeWiring {
+  const transition = createTransitionHost({
+    state: input.currentState,
+    setState: input.setState,
+    journal: input.journal,
+    clock: input.clock,
+    providerEventKeys: input.ledger,
+    subscribers: input.subscribers,
+    asynchronous: input.asynchronousJournal,
+    transitionTail: input.transitionTail,
+    setTransitionTail: input.setTransitionTail,
+    storageFailure: input.storageFailure,
+    markStorageFailure: input.markStorageFailure,
+  })
   const ports = buildApplicationPortRuntime({
     currentState: input.currentState,
     profile: input.profile,
     commit: input.commit,
     commitAndWait: input.commitAndWait,
+    commitBatchAndWait: (events) => commitEventsAndWaitAtRevision(transition, events),
     commitAndWaitRecovery: input.commitAndWaitRecovery,
     execution: input.execution,
     ledger: input.ledger,
@@ -71,19 +90,6 @@ export function wireApplicationRuntime(
     ...(input.afterRuntimeEvent === undefined
       ? {}
       : { afterRuntimeEvent: input.afterRuntimeEvent }),
-  })
-  const transition = createTransitionHost({
-    state: input.currentState,
-    setState: input.setState,
-    journal: input.journal,
-    clock: input.clock,
-    providerEventKeys: input.ledger,
-    subscribers: input.subscribers,
-    asynchronous: input.asynchronousJournal,
-    transitionTail: input.transitionTail,
-    setTransitionTail: input.setTransitionTail,
-    storageFailure: input.storageFailure,
-    markStorageFailure: input.markStorageFailure,
   })
   return { ports, transition }
 }

@@ -1,10 +1,11 @@
-import { redactSensitiveText } from '../domain/secret-sanitizer.js'
 import type { TurnUsage } from '../domain/entities.js'
+import { redactSensitiveText } from '../domain/secret-sanitizer.js'
 import type { ProviderRunSnapshot } from '../ports/execution.js'
 import {
   finiteNonNegativeNumber,
-  safePublicIdentifier,
+  optionalFiniteNonNegativeNumber,
   safeProviderDiagnostic,
+  safePublicIdentifier,
 } from './provider-values.js'
 
 export function safeSnapshotText(value: unknown): string {
@@ -20,14 +21,26 @@ export function safeSnapshotUsage(
   fallback: TurnUsage,
 ): TurnUsage {
   if (usage === undefined) return fallback
-  const reasoning = finiteNonNegativeNumber(usage.reasoning, undefined)
-  const costUsd = finiteNonNegativeNumber(usage.costUsd, undefined)
+  const reasoning = optionalFiniteNonNegativeNumber(usage.reasoning)
+  const costUsd = optionalFiniteNonNegativeNumber(usage.costUsd)
+  const estimatedCostUsd = optionalFiniteNonNegativeNumber(usage.estimatedCostUsd)
+  const latencyMs = optionalFiniteNonNegativeNumber(usage.latencyMs)
+  const promptCache = Object.fromEntries(
+    Object.entries(usage.promptCache ?? {}).filter(
+      ([, value]) => Number.isFinite(value) && value >= 0,
+    ),
+  )
   const model = safePublicIdentifier(usage.model)
   return {
     input: finiteNonNegativeNumber(usage.input),
     output: finiteNonNegativeNumber(usage.output),
+    ...(usage.tokensKnown === false ? { tokensKnown: false } : {}),
     ...(reasoning === undefined ? {} : { reasoning }),
     ...(costUsd === undefined ? {} : { costUsd }),
+    ...(usage.usdKnown === false ? { usdKnown: false } : {}),
+    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+    ...(Object.keys(promptCache).length === 0 ? {} : { promptCache: Object.freeze(promptCache) }),
+    ...(latencyMs === undefined ? {} : { latencyMs }),
     ...(model === undefined ? {} : { model }),
   }
 }

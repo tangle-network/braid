@@ -15,8 +15,11 @@ import {
   materializeBridgeModelRoute,
 } from '../connections/cli-bridge-model-route.js'
 import {
+  normalizeCliBridgeProviderBaseUrl,
+  normalizeTangleInferenceRuntimeBaseUrl,
+} from '../connections/production-connection-endpoints.js'
+import {
   connectionEndpoint,
-  normalizeCliBridgeRuntimeBaseUrl,
   type ProductionConnectionOptions,
   readConnectionCredential,
 } from '../connections/production-connections.js'
@@ -25,12 +28,14 @@ import {
   AgentEvalAnalystAdapter,
   createUnavailableAgentEvalAnalystAdapter,
 } from './eval-analyst.js'
+import { ModelExecutionScope } from './model-execution-scope.js'
 import {
   type PythonCommandProbe,
   type PythonRunnerIdentity,
   type PythonRunnerSpec,
   resolvePythonRunner,
 } from './python-runner.js'
+import { registerBraidQuestionAnalyst } from './question-analyst.js'
 import { createRuntimeTraceModelOwner } from './runtime-model-owner.js'
 
 export type TraceAnalysisDiagnosticKind =
@@ -92,6 +97,7 @@ export interface TraceAnalysisAdapterReady {
   readonly runner?: HarnessType
   readonly python: PythonRunnerIdentity
   readonly modelExecutions: () => readonly ExternalOptimizerModelExecutionObservation[]
+  readonly modelExecutionScope: ModelExecutionScope
   /** The credential value itself is deliberately absent from this result. */
   readonly credentialState: 'provided' | 'not-required'
 }
@@ -114,7 +120,11 @@ export function createTraceAnalysisAnalyst(
   configuration: TraceAnalysisConfiguration,
 ): AgentEvalAnalystAdapter {
   if (configuration.status === 'engine-configured') {
-    return new AgentEvalAnalystAdapter(configuration.registry)
+    return new AgentEvalAnalystAdapter(
+      configuration.registry,
+      undefined,
+      configuration.modelExecutionScope,
+    )
   }
   const diagnostic = configuration.diagnostics[0]
   return createUnavailableAgentEvalAnalystAdapter(
@@ -228,6 +238,14 @@ export async function createTraceAnalysisAdapter(
     })
   }
   const runner = options.runner ?? profile.harness
+  if (connection.kind === 'cli-bridge' && runner === undefined) {
+    return unavailable('unavailable', {
+      kind: 'connection-configuration-failed',
+      code: 'TRACE_ANALYSIS_RUNNER_REQUIRED',
+      message: 'CLI Bridge trace analysis requires AgentProfile.harness.',
+      connectionId: id,
+    })
+  }
   if (
     connection.kind === 'cli-bridge' &&
     runner !== undefined &&
@@ -289,9 +307,10 @@ export async function createTraceAnalysisAdapter(
 
   const baseUrl =
     connection.kind === 'cli-bridge'
-      ? normalizeCliBridgeRuntimeBaseUrl(endpoint, connection.id)
-      : endpoint
+      ? normalizeCliBridgeProviderBaseUrl(endpoint, connection.id)
+      : normalizeTangleInferenceRuntimeBaseUrl(endpoint, connection.id)
   try {
+    const modelExecutionScope = new ModelExecutionScope()
     const owner = createRuntimeTraceModelOwner({
       profile,
       connection,
@@ -299,10 +318,13 @@ export async function createTraceAnalysisAdapter(
       ...(credential === undefined ? {} : { credential }),
       model,
       ...(options.pricing === undefined ? {} : { pricing: { ...options.pricing } }),
-      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-      ...(options.recordExecution === undefined
+      ...(connection.kind !== 'tangle-inference' || options.routerComplete === undefined
         ? {}
-        : { recordExecution: options.recordExecution }),
+        : { complete: options.routerComplete }),
+      recordExecution: (observation) => {
+        modelExecutionScope.record(observation)
+        options.recordExecution?.(observation)
+      },
     })
     const engine = createDspyRlmTraceEngine({
       call: owner.call,
@@ -324,6 +346,7 @@ export async function createTraceAnalysisAdapter(
       },
     })
     const registry = buildDefaultAnalystRegistry({ engine })
+    registerBraidQuestionAnalyst(registry, engine)
     return {
       status: 'engine-configured',
       diagnostics: [],
@@ -339,6 +362,7 @@ export async function createTraceAnalysisAdapter(
       credentialState: credential === undefined ? 'not-required' : 'provided',
       ...(runner === undefined ? {} : { runner }),
       modelExecutions: owner.executions,
+      modelExecutionScope,
     }
   } catch (error) {
     return unavailable('unavailable', {

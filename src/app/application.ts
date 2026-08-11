@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentProfile, InteractionResponse } from '@tangle-network/agent-interface'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { providerEventKey } from '../domain/events.js'
 import { assertBraidState } from '../domain/invariants.js'
@@ -15,8 +16,10 @@ import { type BraidState, initialState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
+import { snapshotAnalysisExecutionTarget } from './analysis-execution-target.js'
 import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
 import { ApplicationInteractionActions } from './application-interaction-actions.js'
+import { ApplicationLifecycle } from './application-lifecycle.js'
 import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 import type { PortViews } from './application-port-builder.js'
 import type {
@@ -104,6 +107,7 @@ export class BraidApplication {
   readonly #clock: Clock
   readonly #journal: ApplicationJournal
   readonly #effects: SerializedEffectCoordinator
+  readonly #lifecycle = new ApplicationLifecycle()
   readonly #ledger = createRunLedger()
   readonly #conversationOperations = new ConversationOperationCoordinator()
   readonly #interactions: ApplicationInteractionActions
@@ -219,7 +223,7 @@ export class BraidApplication {
         this.#storageFailure ??= error
       },
       flush: () => this.whenDurable(),
-      executeControl: (input) => this.#executeControl(input),
+      executeControl: (input, options) => this.#executeControl(input, options),
       admitPersistedSend: (operationId, digest) =>
         admitPersistedSend({
           effects: this.#effects,
@@ -247,6 +251,27 @@ export class BraidApplication {
           return undefined
         },
         now: () => this.#clock.now(),
+        analysisExecutionTarget: (state) => {
+          const profile = this.runtimeSelection.profile()
+          const profileDigest = canonicalAgentProfileDigestHex(profile)
+          const selectedProfile =
+            state.selectedProfileId === null
+              ? undefined
+              : state.profiles.find(
+                  (candidate) =>
+                    candidate.id === state.selectedProfileId &&
+                    String(candidate.executionDigest ?? candidate.digest) === profileDigest,
+                )
+          const connectionId = this.runtimeSelection.connectionId()
+          const connection = state.connections.find(
+            (candidate) => String(candidate.id) === connectionId,
+          )
+          return snapshotAnalysisExecutionTarget({
+            profile,
+            ...(selectedProfile === undefined ? {} : { profileId: selectedProfile.id }),
+            ...(connection === undefined ? {} : { connection }),
+          })
+        },
       },
       options.intelligence,
     )
@@ -292,12 +317,18 @@ export class BraidApplication {
         }),
       requestDigest: (_state, value) =>
         fingerprint({ effectKind: 'run.execute', request: runEffectRequest(value) }),
-      sendAsync: (value, ids) => sendRunAsync(this.#portViews.asyncAdmission, value, ids),
+      registerAdmission: (runId) => this.#lifecycle.registerAdmission(runId),
+      sendAsync: (value, ids, signal) =>
+        sendRunAsync(this.#portViews.asyncAdmission, value, ids, signal),
     })
   }
 
   state(): BraidState {
     return structuredClone(this.#state)
+  }
+
+  revision(): number {
+    return this.#state.revision
   }
 
   events(): readonly BraidEventEnvelope[] {
@@ -341,6 +372,7 @@ export class BraidApplication {
   }
 
   send(input: SendInput): SendReceipt {
+    this.#assertAdmissionOpen()
     assertWritable(this.#storageFailure)
     operationId(input.operationId, 'send')
     if (Buffer.byteLength(input.text, 'utf8') > MAX_MESSAGE_BYTES)
@@ -355,13 +387,19 @@ export class BraidApplication {
     validateNativeProof(this.#portViews.admission, snapshot)
     if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {
       assertWritable(this.#storageFailure)
-      return this.#durableSender(snapshot)
+      const receipt = this.#durableSender(snapshot)
+      this.#trackOperation(receipt)
+      return receipt
     }
     try {
-      return sendRun(this.#portViews.admission, snapshot)
+      const receipt = sendRun(this.#portViews.admission, snapshot)
+      this.#trackOperation(receipt)
+      return receipt
     } catch (error) {
       if (!(error instanceof AppError) || error.code !== 'ASYNC_ADMISSION_REQUIRED') throw error
-      return this.#durableSender(snapshot)
+      const receipt = this.#durableSender(snapshot)
+      this.#trackOperation(receipt)
+      return receipt
     }
   }
 
@@ -404,6 +442,7 @@ export class BraidApplication {
   }
 
   cancelActive(): boolean {
+    if (!this.canCancel()) return false
     const runId = this.#state.activeRunId
     if (!runId) return false
     try {
@@ -418,7 +457,14 @@ export class BraidApplication {
     const runId = this.#state.activeRunId
     const run = runId ? this.#state.runs.find((candidate) => candidate.id === runId) : undefined
     const abort = runId ? this.#ledger.getAbort(runId) : undefined
-    return Boolean(run && !isTerminal(run.status) && run.capabilities.controls.cancel && abort)
+    return Boolean(
+      run &&
+        !isTerminal(run.status) &&
+        run.status !== 'cancelling' &&
+        run.capabilities.controls.cancel &&
+        abort &&
+        this.#ledger.controlForRun(run.id, 'cancel') === undefined,
+    )
   }
 
   canRespondToInteractions(): boolean {
@@ -443,6 +489,7 @@ export class BraidApplication {
 
   async #executeControl(
     input: ControlEffectRequest,
+    options: import('./application-ports.js').ControlDispatchOptions = {},
   ): Promise<import('../ports/execution.js').ControlAcknowledgement> {
     return executeControlEffect({
       effects: this.#effects,
@@ -451,6 +498,8 @@ export class BraidApplication {
       owner: this.#controlOwner,
       timeoutMs: this.#cancelTimeoutMs,
       whenDurable: () => this.whenDurable(),
+      canSettleLate: () => !this.#lifecycle.isClosed(),
+      onLateSettlement: options.onLateSettlement,
     })
   }
 
@@ -491,10 +540,19 @@ export class BraidApplication {
     return waitForIdle(this.#portViews.status)
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    return this.#lifecycle.close(() => this.#closeStorage())
+  }
+
+  async #closeStorage(): Promise<void> {
     let failure: unknown
     try {
-      await this.whenDurable()
+      await this.#lifecycle.settleActive({
+        runIds: this.#activeRunIds(),
+        timeoutMs: this.#cancelTimeoutMs,
+        cancel: (runId) => this.#cancelForClose(runId),
+        markUnknown: (runId) => this.#markRunUnknownAfterCloseDeadline(runId),
+      })
       await this.#automationReconciliation
       await this.#interactions.whenIdle()
       await this.whenDurable()
@@ -519,6 +577,7 @@ export class BraidApplication {
     contextPlanDigest?: string,
     nativeContextBoundaryProof?: NativeContextBoundaryProof,
   ): RunAdmissionReceipt {
+    this.#assertAdmissionOpen()
     return admitRun(
       this.#portViews.admission,
       input,
@@ -536,14 +595,61 @@ export class BraidApplication {
   }
 
   #commit(event: BraidEvent): void {
+    this.#assertNotClosed()
     commitEvent(this.#transition, event)
   }
 
   #commitAndWait(event: BraidEvent): Promise<void> {
+    this.#assertNotClosed()
     return commitEventAndWait(this.#transition, event)
   }
 
   #commitAndWaitRecovery(event: BraidEvent): Promise<void> {
+    if (this.#lifecycle.isClosed()) return Promise.resolve()
     return commitEventAndWaitRecovery(this.#transition, event)
+  }
+
+  #assertAdmissionOpen(): void {
+    if (!this.#lifecycle.acceptsAdmission())
+      throw new AppError('APPLICATION_CLOSING', 'Braid is closing and cannot admit a new run')
+  }
+
+  #assertNotClosed(): void {
+    if (this.#lifecycle.isClosed())
+      throw new AppError('APPLICATION_CLOSED', 'Braid is closed and cannot commit events')
+  }
+
+  #trackOperation(receipt: SendReceipt): void {
+    this.#lifecycle.track({ runId: receipt.runId, completion: receipt.completion })
+  }
+
+  #activeRunIds(): readonly string[] {
+    const active = this.#lifecycle.activeOperations().map((operation) => operation.runId)
+    const current = this.#state.activeRunId
+    return current === null ? active : [...active, current]
+  }
+
+  async #cancelForClose(runId: string): Promise<void> {
+    const run = this.#state.runs.find((candidate) => candidate.id === runId)
+    if (run === undefined || isTerminal(run.status)) return
+    const receipt = await this.cancelRun({
+      operationId: `operation-close-${runId}`,
+      runId,
+      reason: 'Braid is shutting down',
+      terminalStatus: 'aborted',
+      legacy: true,
+    })
+    await receipt.completion
+  }
+
+  async #markRunUnknownAfterCloseDeadline(runId: string): Promise<void> {
+    this.#ledger.getAbort(runId)?.abort(new Error('Application close deadline exceeded'))
+    const run = this.#state.runs.find((candidate) => candidate.id === runId)
+    if (run === undefined || isTerminal(run.status)) return
+    await this.#commitAndWaitRecovery({
+      kind: 'run.unknown',
+      runId,
+      detail: 'Application close deadline exceeded before the run settled',
+    })
   }
 }

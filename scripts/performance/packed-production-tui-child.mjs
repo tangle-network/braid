@@ -25,10 +25,19 @@ if (!databasePath || !workspaceRoot || !keyPath || !credentialRoot || !packageRo
     'Packed production TUI child requires database, workspace, key, credentials, and package paths',
   )
 
-const applicationRuntime = await import(
+const applicationModules = import(
   pathToFileURL(`${packageRoot}/dist/startup/durable-runtime.js`).href
-)
-startup.applicationModulesReadyEpochMs = epochNow()
+).then((value) => {
+  startup.applicationModulesReadyEpochMs = epochNow()
+  return value
+})
+const previewModules = import(
+  pathToFileURL(`${packageRoot}/dist/startup/preview-runtime.js`).href
+).then((value) => {
+  startup.previewModulesReadyEpochMs = epochNow()
+  return value
+})
+const [applicationRuntime, previewRuntime] = await Promise.all([applicationModules, previewModules])
 
 const profile = { name: 'Braid performance profile', harness: 'pi' }
 const connection = {
@@ -42,6 +51,7 @@ const connection = {
   lastHealth: { status: 'unknown' },
 }
 const credentials = new FileCredentialStore(credentialRoot)
+const applicationStages = []
 const application = applicationRuntime
   .createDurableBraidApplication({
     path: databasePath,
@@ -55,40 +65,37 @@ const application = applicationRuntime
       connectionId: connection.id,
       connectionOptions: { credentials },
     },
+    startupObserver: (stage) => applicationStages.push(stage),
   })
   .then((value) => {
+    startup.applicationStages = applicationStages
     startup.applicationReadyEpochMs = epochNow()
     return value
   })
-const terminalModules = import(
-  pathToFileURL(`${packageRoot}/dist/startup/terminal-runtime.js`).href
-).then((value) => {
-  startup.terminalModulesReadyEpochMs = epochNow()
-  return value
+const durable = await application
+let startupPreview = previewRuntime.createStartupPreview({
+  state: durable.app.state(),
+  workspace: workspaceRoot,
+  inline: true,
 })
-const [durable, terminalRuntime] = await Promise.all([application, terminalModules])
+startup.previewReadyEpochMs = epochNow()
+
+const terminalRuntime = await import(
+  pathToFileURL(`${packageRoot}/dist/startup/terminal-runtime.js`).href
+)
+startup.terminalModulesReadyEpochMs = epochNow()
 
 const controller = terminalRuntime.createApplicationUiController(durable.app, {
   color: 'none',
   reducedMotion: true,
 })
-const terminal = new terminalRuntime.ProcessTerminal()
-const tui = new terminalRuntime.TuiMainScreen(terminal)
-const terminalApp = new terminalRuntime.BraidTerminalApp({
-  controller,
-  tui,
-  theme: terminalRuntime.createBraidTheme({ colors: false, reducedMotion: true }),
-  workspace: workspaceRoot,
-  nextOperationId: (() => {
-    let next = 0
-    return () => `op-perf-production-ui-${++next}`
-  })(),
-})
 startup.terminalReadyEpochMs = epochNow()
 
 let started = false
+let terminalApp
 const stop = () => {
-  if (started) terminalApp.stop()
+  if (started) terminalApp?.stop()
+  else startupPreview?.close()
 }
 process.once('SIGINT', stop)
 process.once('SIGTERM', stop)
@@ -101,11 +108,26 @@ try {
       mode: 0o600,
     })
   }
+  const tui = startupPreview.tui
+  terminalApp = new terminalRuntime.BraidTerminalApp({
+    controller,
+    tui,
+    theme: terminalRuntime.createBraidTheme({ colors: false, reducedMotion: true }),
+    workspace: workspaceRoot,
+    nextOperationId: (() => {
+      let next = 0
+      return () => `op-perf-production-ui-${++next}`
+    })(),
+    tuiStarted: true,
+  })
+  const startupInput = startupPreview.adopt().input
+  startupPreview = undefined
   started = true
-  await terminalApp.start()
+  await terminalApp.start(startupInput)
 } finally {
   process.off('SIGINT', stop)
   process.off('SIGTERM', stop)
-  if (started) terminalApp.stop()
+  if (started) terminalApp?.stop()
+  else startupPreview?.close()
   await durable.app.close().catch(() => undefined)
 }

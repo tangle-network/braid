@@ -1,8 +1,5 @@
-import {
-  type HarnessType,
-  harnessSupportsModel,
-  harnessTypeSchema,
-} from '@tangle-network/agent-interface'
+import type { HarnessType } from '@tangle-network/agent-interface'
+import { harnessSupportsModel, harnessTypeSchema } from '../agent-interface/harness-runtime.js'
 
 /** Returns the runner encoded by a CLI Bridge `<runner>/<model>` route. */
 export function bridgeRouteRunner(model: string): HarnessType | undefined {
@@ -40,6 +37,7 @@ export function materializeBridgeModelRoute(
 export interface BridgeCatalogTarget {
   readonly route: string
   readonly runner: HarnessType
+  readonly provider: string
   readonly model: string
 }
 
@@ -52,7 +50,9 @@ export function bridgeCatalogTarget(
   if (runner === undefined) return undefined
   const model = route.slice(runner.length + 1)
   if (model.length === 0) return undefined
-  return { route, runner, model }
+  const providerSeparator = model.indexOf('/')
+  const provider = providerSeparator > 0 ? model.slice(0, providerSeparator) : runner
+  return { route, runner, provider, model }
 }
 
 /** Accepts a catalog entry only when its backend agrees with its encoded route. */

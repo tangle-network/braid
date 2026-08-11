@@ -12,6 +12,7 @@ import type {
   RunTerminalStatus,
   TurnUsage,
 } from '../domain/events.js'
+import type { ExecutionEnvironmentObservation } from '../domain/execution-observation.js'
 import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.js'
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
 import type { BraidMessagePart, RunStatus } from '../domain/state.js'
@@ -24,6 +25,7 @@ import {
 } from './interaction-request.js'
 import {
   finiteNonNegativeNumber,
+  optionalFiniteNonNegativeNumber,
   safeDiagnostic,
   safeProviderDiagnostic,
   safePublicIdentifier,
@@ -91,37 +93,75 @@ export function usageFromMetadata(metadata: Record<string, unknown> | undefined)
     metadata?.tokenUsage && typeof metadata.tokenUsage === 'object'
       ? (metadata.tokenUsage as Record<string, unknown>)
       : {}
-  const input = finiteNonNegativeNumber(
-    typeof tokenUsage.input === 'number' ? tokenUsage.input : tokenUsage.inputTokens,
-  )
-  const output = finiteNonNegativeNumber(
-    typeof tokenUsage.output === 'number' ? tokenUsage.output : tokenUsage.outputTokens,
-  )
+  const rawInput =
+    optionalFiniteNonNegativeNumber(tokenUsage.input) ??
+    optionalFiniteNonNegativeNumber(tokenUsage.inputTokens)
+  const rawOutput =
+    optionalFiniteNonNegativeNumber(tokenUsage.output) ??
+    optionalFiniteNonNegativeNumber(tokenUsage.outputTokens)
+  const input = rawInput ?? 0
+  const output = rawOutput ?? 0
+  const tokensKnown =
+    metadata?.tokensKnown !== false && rawInput !== undefined && rawOutput !== undefined
   const reasoning =
-    typeof tokenUsage.reasoningTokens === 'number' ? tokenUsage.reasoningTokens : undefined
-  const costUsd = finiteNonNegativeNumber(
+    typeof metadata?.reasoningTokens === 'number'
+      ? metadata.reasoningTokens
+      : typeof tokenUsage.reasoningTokens === 'number'
+        ? tokenUsage.reasoningTokens
+        : undefined
+  const costUsd = optionalFiniteNonNegativeNumber(
     typeof metadata?.costUsd === 'number' ? metadata.costUsd : tokenUsage.cost,
-    undefined,
   )
+  const usdKnown = metadata?.usdKnown !== false && costUsd !== undefined
+  const estimatedCostUsd = optionalFiniteNonNegativeNumber(metadata?.estimatedCostUsd)
+  const promptCache = safePromptCache(metadata?.promptCache)
+  const latencyMs = optionalFiniteNonNegativeNumber(metadata?.latencyMs)
   const model = safePublicIdentifier(metadata?.model)
   return {
     input,
     output,
+    ...(tokensKnown ? {} : { tokensKnown: false }),
     ...(reasoning === undefined ? {} : { reasoning }),
     ...(costUsd === undefined ? {} : { costUsd }),
+    ...(usdKnown ? {} : { usdKnown: false }),
+    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+    ...(promptCache === undefined ? {} : { promptCache }),
+    ...(latencyMs === undefined ? {} : { latencyMs }),
     ...(model === undefined ? {} : { model }),
   }
 }
 
 function usageFromLlm(event: Extract<RuntimeStreamEvent, { type: 'llm_call' }>): TurnUsage {
-  const costUsd = finiteNonNegativeNumber(event.costUsd, undefined)
+  const costUsd = optionalFiniteNonNegativeNumber(event.costUsd)
+  const tokensKnown =
+    event.tokensKnown !== false && event.tokensIn !== undefined && event.tokensOut !== undefined
+  const usdKnown = event.usdKnown !== false && costUsd !== undefined
+  const estimatedCostUsd = optionalFiniteNonNegativeNumber(event.estimatedCostUsd)
+  const promptCache = safePromptCache(event.promptCache)
+  const latencyMs = optionalFiniteNonNegativeNumber(event.latencyMs)
   const model = safePublicIdentifier(event.model)
   return {
     input: finiteNonNegativeNumber(event.tokensIn),
     output: finiteNonNegativeNumber(event.tokensOut),
+    ...(tokensKnown ? {} : { tokensKnown: false }),
     ...(costUsd === undefined ? {} : { costUsd }),
+    ...(usdKnown ? {} : { usdKnown: false }),
+    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+    ...(promptCache === undefined ? {} : { promptCache }),
+    ...(latencyMs === undefined ? {} : { latencyMs }),
     ...(model === undefined ? {} : { model }),
   }
+}
+
+function safePromptCache(value: unknown): Readonly<Record<string, number>> | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const output: Record<string, number> = {}
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 32)) {
+    const key = safePublicIdentifier(rawKey)
+    const number = optionalFiniteNonNegativeNumber(rawValue)
+    if (key !== undefined && number !== undefined) output[key] = number
+  }
+  return Object.keys(output).length === 0 ? undefined : Object.freeze(output)
 }
 
 export function providerMeta(
@@ -410,6 +450,13 @@ export function providerEventFor(
         ...(event.detail === undefined
           ? {}
           : { detail: safeProviderDiagnostic(event.detail, 'RUNTIME_STATUS') }),
+        provider,
+      }
+    case 'braid.execution.observed':
+      return {
+        kind: 'run.environment.observed',
+        runId,
+        observation: safeValue(event.observation) as ExecutionEnvironmentObservation,
         provider,
       }
     case 'unknown':

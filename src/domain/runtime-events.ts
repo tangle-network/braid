@@ -1,9 +1,15 @@
 import type { InteractionRequest, StreamEvent } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import type { ExecutionEnvironmentObservation } from './execution-observation.js'
 
 export type BraidRuntimeEvent =
   | RuntimeStreamEvent
   | StreamEvent
+  | {
+      readonly type: 'braid.execution.observed'
+      readonly observation: ExecutionEnvironmentObservation
+      readonly timestamp: string
+    }
   | {
       readonly type: 'unknown'
       readonly originalType: string

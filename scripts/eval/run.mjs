@@ -18,6 +18,9 @@ const summary = {
   calibration: {
     passed: result.record.calibration.passed,
     pairedExamples: result.record.calibration.pairedExamples,
+    goodExamples: result.record.calibration.goodExamples,
+    goodAccepted: result.record.calibration.goodAccepted,
+    minimumGoodAccepted: result.record.calibration.minimumGoodAccepted,
     goodPreferred: result.record.calibration.goodPreferred,
     minimumGoodPreferred: result.record.calibration.minimumGoodPreferred,
     ties: result.record.calibration.ties,

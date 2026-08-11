@@ -171,6 +171,8 @@ function minimalView(overrides: Readonly<Record<string, unknown>> = {}): BraidVi
     status: 'ready',
     statusText: 'ready',
     queueCount: 0,
+    sessionUsage: emptySessionUsage(),
+    environments: [],
     messages: [],
     hiddenMessageCount: 0,
     runs: [],
@@ -183,6 +185,19 @@ function minimalView(overrides: Readonly<Record<string, unknown>> = {}): BraidVi
     appearance: { color: 'none', highContrast: false, reducedMotion: true },
     ...overrides,
   }
+}
+
+function emptySessionUsage(): BraidViewModel['sessionUsage'] {
+  const empty = {
+    sourceCount: 0,
+    input: 0,
+    output: 0,
+    tokenStatus: 'unknown' as const,
+    costStatus: 'unknown' as const,
+    unknownTokenSources: 0,
+    unknownCostSources: 0,
+  }
+  return { turns: empty, analyses: empty, delegated: empty, attribution: 'complete' }
 }
 
 function renderFork(source: unknown): ProductOutput {

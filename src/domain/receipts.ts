@@ -1,4 +1,8 @@
-import { type AgentProfile, snapshotAgentProfile } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import {
+  canonicalAgentProfileDigestHex,
+  snapshotAgentProfile,
+} from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from './canonical.js'
 import { redactProfile, redactSensitiveText, redactStructuredValue } from './redaction.js'
 import type {
@@ -129,7 +133,9 @@ export function createAdmissionReceipt(input: {
   readonly warnings?: readonly string[]
   readonly admissionStatus?: 'admitted' | 'pending' | 'unavailable'
 }): RunAdmissionReceipt {
-  const profile = redactProfile(snapshotAgentProfile(input.profile))
+  const exactProfile = snapshotAgentProfile(input.profile)
+  const profileDigest = canonicalAgentProfileDigestHex(exactProfile)
+  const profile = redactProfile(exactProfile)
   const text = redactSensitiveText(input.text)
   const capabilities = redactStructuredValue(input.capabilities, undefined, {
     maxDepth: 6,
@@ -161,7 +167,7 @@ export function createAdmissionReceipt(input: {
     conversationId: input.conversationId,
     branchId: input.branchId,
     text,
-    profileDigest: canonicalDigest(profile),
+    profileDigest,
     connectionId: input.connectionId ?? null,
     contextPlanDigest: contextPlanDigest ?? null,
   })
@@ -169,6 +175,7 @@ export function createAdmissionReceipt(input: {
   const materializationDigest =
     materializationReceipt === undefined ? undefined : canonicalDigest(materializationReceipt)
   const provider = safeProviderIdentifier(input.provider)
+  const requestedSessionId = safeProviderIdentifier(input.sessionId)
   const environmentId = safeProviderIdentifier(input.environmentId)
   const providerSessionId = safeProviderIdentifier(input.providerSessionId)
   const base = {
@@ -179,10 +186,11 @@ export function createAdmissionReceipt(input: {
     conversationId: input.conversationId,
     branchId: input.branchId,
     admittedAt: input.admittedAt,
-    profileDigest: canonicalDigest(profile),
+    profileDigest,
     requested,
     capabilities: structuredClone(capabilities),
     ...(provider === undefined ? {} : { provider }),
+    ...(requestedSessionId === undefined ? {} : { requestedSessionId }),
     ...(environmentId === undefined ? {} : { environmentId }),
     ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(materializationReceipt === undefined

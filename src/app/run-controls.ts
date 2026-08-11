@@ -1,8 +1,11 @@
 import { canonicalDigest } from '../domain/canonical.js'
+import type { BraidEvent } from '../domain/events.js'
+import { usageSnapshotForRun } from '../domain/run-usage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
 import type { ControlEffectRequest, ControlPort, QueuePort } from './application-ports.js'
-import type { ControlReceipt, QueueReceipt } from './application-types.js'
+import type { ControlOperationRecord, ControlReceipt, QueueReceipt } from './application-types.js'
 import { AppError } from './errors.js'
+import { isTerminal } from './run-status.js'
 
 export function queueRunInput(
   context: QueuePort,
@@ -75,6 +78,8 @@ export async function cancelRun(
   },
 ): Promise<ControlReceipt> {
   const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  if (context.ledger.getControl(input.operationId) === undefined && isTerminal(run.status))
+    throw new AppError('UNKNOWN_RUN', `Run ${run.id} is not active`)
   if (!run.capabilities.controls.cancel && !input.legacy)
     throw new AppError('CAPABILITY_UNAVAILABLE', 'This run does not advertise cancellation support')
   const request: ControlEffectRequest = {
@@ -176,30 +181,11 @@ async function control(
     }
   }
 
-  const requested = context.commitAndWait({
-    kind: 'run.control.requested',
-    runId: request.runId,
-    operationId: request.operationId,
-    control: controlKind,
-    digest,
-    ...(request.reason === undefined ? {} : { reason: request.reason }),
-    ...(request.text === undefined ? {} : { text: request.text }),
-  })
-  if (requested !== undefined) await requested
   if (controlKind === 'cancel') {
-    const legacyRequested = context.commitAndWait({
-      kind: 'run.cancel.requested',
-      runId: request.runId,
-      operationId: request.operationId,
-      ...(request.reason === undefined ? {} : { reason: request.reason }),
-    })
-    if (legacyRequested !== undefined) await legacyRequested
+    const existing = context.ledger.controlForRun(request.runId, 'cancel')
+    if (existing !== undefined)
+      return existingControlReceipt(context, request.operationId, controlKind, existing)
   }
-  if (controlKind === 'cancel') {
-    context.ledger.markExplicitlyCancelled(request.runId)
-    context.ledger.setCancelStatus(request.runId, cancelStatus ?? 'cancelled')
-  }
-  if (controlKind === 'detach') context.ledger.markDetached(request.runId)
 
   let resolveAcknowledgement!: (value: ControlAcknowledgement) => void
   const acknowledgement = new Promise<ControlAcknowledgement>((resolve) => {
@@ -211,12 +197,17 @@ async function control(
     resolveCompletion = resolve
     rejectCompletion = reject
   })
+  let resolveLateSettlementReady!: () => void
+  const lateSettlementReady = new Promise<void>((resolve) => {
+    resolveLateSettlementReady = resolve
+  })
   context.ledger.setControl(request.operationId, {
     digest,
     runId: request.runId,
     control: controlKind,
     acknowledgement,
     completion,
+    lateSettlementReady,
     ...(request.providerSessionId === undefined
       ? {}
       : { providerSessionId: request.providerSessionId }),
@@ -224,12 +215,75 @@ async function control(
     ...(request.text === undefined ? {} : { text: request.text }),
     ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
   })
+
+  let preflightAcknowledgement: ControlAcknowledgement | undefined
+  try {
+    const requested: BraidEvent = {
+      kind: 'run.control.requested',
+      runId: request.runId,
+      operationId: request.operationId,
+      control: controlKind,
+      digest,
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
+      ...(request.text === undefined ? {} : { text: request.text }),
+    }
+    if (controlKind === 'cancel') {
+      const legacyRequested: BraidEvent = {
+        kind: 'run.cancel.requested',
+        runId: request.runId,
+        operationId: request.operationId,
+        ...(request.reason === undefined ? {} : { reason: request.reason }),
+      }
+      await commitControlRequestBatch(context, [requested, legacyRequested])
+      const afterRequest = context.findRun(request.runId)
+      if (context.isTerminal(afterRequest.status)) {
+        preflightAcknowledgement = {
+          operationId: request.operationId,
+          outcome: 'rejected',
+          detail: `Cancellation rejected because run ${request.runId} reached terminal status ${afterRequest.status} before the request was applied`,
+        }
+        await persistControlAcknowledgement(context, request, controlKind, preflightAcknowledgement)
+      } else {
+        context.ledger.markExplicitlyCancelled(request.runId)
+        context.ledger.markCancellationPending(request.runId)
+        context.ledger.setCancelStatus(request.runId, cancelStatus ?? 'cancelled')
+      }
+    } else {
+      const durable = context.commitAndWait(requested)
+      if (durable !== undefined) await durable
+      if (controlKind === 'detach') context.ledger.markDetached(request.runId)
+    }
+  } catch (error) {
+    context.ledger.deleteControl(request.operationId)
+    rejectCompletion(error)
+    resolveLateSettlementReady()
+    throw error
+  }
+
+  if (preflightAcknowledgement !== undefined) {
+    resolveAcknowledgement(preflightAcknowledgement)
+    resolveCompletion(structuredClone(context.currentState()))
+    resolveLateSettlementReady()
+    const ack = await acknowledgement
+    return {
+      operationId: request.operationId,
+      runId: request.runId,
+      control: controlKind,
+      acknowledgement: ack,
+      status: context.findRun(request.runId).status,
+      completion,
+    }
+  }
+
   if (controlKind === 'cancel' && !context.execution.cancelRun)
     context.ledger.getAbort(request.runId)?.abort(new Error(request.reason ?? 'Cancelled'))
   void (async () => {
     let ack: ControlAcknowledgement
     try {
-      ack = await context.executeControl(request)
+      ack = await context.executeControl(request, {
+        onLateSettlement: (late) =>
+          settleLateControl(context, request, late, cancelStatus ?? 'cancelled'),
+      })
     } catch {
       ack = { operationId: request.operationId, outcome: 'unknown', detail: 'CONTROL_UNKNOWN' }
     }
@@ -245,21 +299,7 @@ async function control(
     if (acknowledged !== undefined) await acknowledged
     if (ack.outcome === 'accepted' || ack.outcome === 'already-applied') {
       if (controlKind === 'cancel') {
-        context.ledger.getAbort(request.runId)?.abort(new Error(request.reason ?? 'Cancelled'))
-        if (!context.isTerminal(context.findRun(request.runId).status)) {
-          const finished = context.commitAndWait({
-            kind: 'run.finished',
-            runId: request.runId,
-            status: cancelStatus ?? 'cancelled',
-            finalText: '',
-            usage: { input: run.inputTokens, output: run.outputTokens },
-            error:
-              ack.detail === undefined || ack.detail === 'CONTROL_ACKNOWLEDGED'
-                ? 'Cancellation acknowledged by the provider'
-                : ack.detail,
-          })
-          if (finished !== undefined) await finished
-        }
+        await applyAcceptedCancellation(context, request, run, cancelStatus ?? 'cancelled', ack)
       } else if (controlKind === 'detach') {
         context.ledger.getAbort(request.runId)?.abort(new Error('Detached by user'))
         const detached = context.commitAndWait({
@@ -274,7 +314,10 @@ async function control(
       return
     }
     context.ledger.clearExplicitlyCancelled(request.runId)
-    context.ledger.clearCancelStatus(request.runId)
+    if (controlKind !== 'cancel' || ack.outcome === 'rejected') {
+      context.ledger.clearCancellationPending(request.runId)
+      context.ledger.clearCancelStatus(request.runId)
+    }
     context.ledger.clearDetached(request.runId)
     if (ack.outcome === 'unknown' && !context.isTerminal(context.findRun(request.runId).status)) {
       const unknown = context.commitAndWait({
@@ -288,7 +331,9 @@ async function control(
       if (unknown !== undefined) await unknown
     }
     resolveCompletion(structuredClone(context.currentState()))
-  })().catch((error: unknown) => rejectCompletion(error))
+  })()
+    .catch((error: unknown) => rejectCompletion(error))
+    .finally(() => resolveLateSettlementReady())
   const ack = await acknowledgement
   return {
     operationId: request.operationId,
@@ -300,8 +345,174 @@ async function control(
   }
 }
 
+async function settleLateControl(
+  context: ControlPort,
+  request: ControlEffectRequest,
+  acknowledgement: ControlAcknowledgement,
+  cancelStatus: 'cancelled' | 'aborted',
+): Promise<void> {
+  const existing = context.ledger.getControl(request.operationId)
+  if (existing === undefined) return
+  if (existing.lateSettlement !== undefined) {
+    await existing.lateSettlement
+    return
+  }
+  const task = (async () => {
+    await existing.lateSettlementReady
+    const current = context.ledger.getControl(request.operationId)
+    if (current === undefined) return
+    const previous = await current.acknowledgement
+    if (previous.outcome !== 'unknown') return
+
+    await persistControlAcknowledgement(context, request, request.control, acknowledgement)
+    const next = {
+      ...current,
+      acknowledgement: Promise.resolve(acknowledgement),
+      completion: Promise.resolve(structuredClone(context.currentState())),
+    }
+    context.ledger.setControl(request.operationId, next)
+
+    if (request.control === 'cancel') {
+      if (acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'already-applied') {
+        await applyAcceptedCancellation(
+          context,
+          request,
+          context.findRun(request.runId),
+          cancelStatus,
+          acknowledgement,
+        )
+      } else {
+        context.ledger.clearCancellationPending(request.runId)
+        context.ledger.clearCancelStatus(request.runId)
+        if (!context.isTerminal(context.findRun(request.runId).status)) {
+          const unknown = context.commitAndWait({
+            kind: 'run.unknown',
+            runId: request.runId,
+            detail: unknownCancellationDetail(acknowledgement.detail),
+          })
+          if (unknown !== undefined) await unknown
+        }
+      }
+    }
+    const settled = context.ledger.getControl(request.operationId)
+    if (settled !== undefined) {
+      context.ledger.setControl(request.operationId, {
+        ...settled,
+        acknowledgement: Promise.resolve(acknowledgement),
+        completion: Promise.resolve(structuredClone(context.currentState())),
+      })
+    }
+  })()
+  context.ledger.setControl(request.operationId, { ...existing, lateSettlement: task })
+  await task
+}
+
+async function applyAcceptedCancellation(
+  context: ControlPort,
+  request: ControlEffectRequest,
+  originalRun: import('../domain/state.js').BraidRun,
+  status: 'cancelled' | 'aborted',
+  acknowledgement: ControlAcknowledgement,
+): Promise<void> {
+  context.ledger.getAbort(request.runId)?.abort(new Error(request.reason ?? 'Cancelled'))
+  const run = context.findRun(request.runId)
+  const terminalReason = confirmedCancellationDetail(acknowledgement.detail)
+  if (
+    context.ledger.isCancellationPending(request.runId) &&
+    (run.status === 'unknown' || run.status === 'failed')
+  ) {
+    const reconciled = context.commitAndWait({
+      kind: 'run.reconciled',
+      runId: request.runId,
+      operationId: request.operationId,
+      status,
+      from: run.status,
+      to: status,
+      correction: 'cancellation-confirmed',
+      evidence: canonicalDigest({
+        kind: 'provider-cancellation-confirmed',
+        operationId: request.operationId,
+        runId: request.runId,
+        outcome: acknowledgement.outcome,
+        detail: acknowledgement.detail ?? null,
+      }),
+      detail: terminalReason,
+    })
+    if (reconciled !== undefined) await reconciled
+  } else if (!context.isTerminal(run.status)) {
+    const finished = context.commitAndWait({
+      kind: 'run.finished',
+      runId: request.runId,
+      status,
+      finalText: '',
+      usage: usageSnapshotForRun(originalRun),
+      reason: terminalReason,
+    })
+    if (finished !== undefined) await finished
+  }
+  context.ledger.clearExplicitlyCancelled(request.runId)
+  context.ledger.clearCancellationPending(request.runId)
+  context.ledger.clearCancelStatus(request.runId)
+}
+
+function confirmedCancellationDetail(detail: string | undefined): string {
+  return detail === undefined ||
+    detail === 'CONTROL_ACKNOWLEDGED' ||
+    detail === 'Provider cancellation acknowledged'
+    ? 'Cancellation acknowledged by the provider'
+    : detail
+}
+
 function unknownCancellationDetail(detail: string | undefined): string {
   return detail === undefined || detail.startsWith('CONTROL_')
     ? 'Cancellation outcome could not be confirmed by the provider'
     : detail
+}
+
+async function commitControlRequestBatch(
+  context: ControlPort,
+  events: readonly BraidEvent[],
+): Promise<void> {
+  if (context.commitBatchAndWait !== undefined) {
+    await context.commitBatchAndWait(events)
+    return
+  }
+  for (const event of events) {
+    const durable = context.commitAndWait(event)
+    if (durable !== undefined) await durable
+  }
+}
+
+async function persistControlAcknowledgement(
+  context: ControlPort,
+  request: ControlEffectRequest,
+  control: 'cancel' | 'steer' | 'detach',
+  acknowledgement: ControlAcknowledgement,
+): Promise<void> {
+  const durable = context.commitAndWait({
+    kind: 'run.control.acknowledged',
+    runId: request.runId,
+    operationId: request.operationId,
+    control,
+    outcome: acknowledgement.outcome,
+    ...(acknowledgement.detail === undefined ? {} : { detail: acknowledgement.detail }),
+  })
+  if (durable !== undefined) await durable
+}
+
+async function existingControlReceipt(
+  context: ControlPort,
+  operationId: string,
+  control: 'cancel' | 'steer' | 'detach',
+  record: ControlOperationRecord,
+): Promise<ControlReceipt> {
+  const acknowledgement = await record.acknowledgement
+  return {
+    operationId,
+    runId: record.runId,
+    control,
+    acknowledgement,
+    status: context.findRun(record.runId).status,
+    completion: record.completion,
+  }
 }

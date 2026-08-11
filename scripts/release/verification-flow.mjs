@@ -43,7 +43,7 @@ export async function verifyRelease(
   const environments = new Map(
     source.evidence.environments.map((environment) => [environment.id, environment]),
   )
-  const performanceMeasurements = validateReleaseChecks({
+  const performanceMeasurements = await validateReleaseChecks({
     checks: plan.checks,
     artifacts: artifactResult.artifacts,
     mappings: plan.mappings,
@@ -56,6 +56,7 @@ export async function verifyRelease(
     releaseWindow: source.releaseWindow,
     dependencyDigest: dependencyDigest(source.evidence.dependencies),
     packageFileManifestDigest: artifactResult.packageFileManifestDigest,
+    artifactRoot: options.artifactRoot,
   })
   validatePerformanceMatrix(performanceMeasurements, 'Release performance matrix')
   validateRequirementMappings({

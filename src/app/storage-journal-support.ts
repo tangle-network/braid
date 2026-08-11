@@ -13,7 +13,6 @@ import {
 } from '../domain/ids.js'
 import {
   createMaterializedStateSnapshot,
-  isMaterializedStateSnapshot,
   restoreMaterializedState,
 } from '../domain/materialized-state-snapshot.js'
 import { replayEvents } from '../domain/reducer.js'
@@ -88,12 +87,6 @@ export function snapshotForState(
 }
 
 export function restoreSnapshot(value: unknown): BraidState {
-  if (!isMaterializedStateSnapshot(value)) {
-    throw new StorageJournalRebuildError(
-      'JOURNAL_SNAPSHOT_INVALID',
-      'Persisted snapshot is not a valid materialized state',
-    )
-  }
   try {
     return restoreMaterializedState(value)
   } catch (error) {

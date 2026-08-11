@@ -31,6 +31,7 @@ import type {
   WorkspaceRecord,
 } from './entities.js'
 import type { LegacyBraidEvent, ProviderEventMeta } from './events-legacy.js'
+import type { ExecutionEnvironmentObservation } from './execution-observation.js'
 import type {
   AnalysisId,
   AnalysisRunId,
@@ -77,6 +78,25 @@ export interface InteractionResponseRequested {
   readonly dataDigest?: Digest
   readonly containsSecret: boolean
 }
+
+interface RunReconciledPayload {
+  readonly runId: RunId
+  readonly status: RunStatus
+  readonly evidence: Digest
+  readonly from?: RunStatus
+  readonly to?: RunStatus
+  readonly detail?: string
+}
+
+type RunReconciledEventPayload =
+  | (RunReconciledPayload & {
+      readonly correction?: never
+      readonly operationId?: never
+    })
+  | (RunReconciledPayload & {
+      readonly correction: 'cancellation-confirmed'
+      readonly operationId: OperationId
+    })
 
 export interface DomainBraidEventMap {
   readonly 'workspace.recorded': { readonly workspace: WorkspaceRecord }
@@ -162,13 +182,15 @@ export interface DomainBraidEventMap {
     readonly detail?: string
     readonly provider?: ProviderEventMeta
   }
-  readonly 'run.reconciled': {
+  /**
+   * A cancellation correction must carry the durable cancel operation id.
+   * Ordinary provider reconciliation has no operation id.
+   */
+  readonly 'run.reconciled': RunReconciledEventPayload
+  readonly 'run.environment.observed': {
     readonly runId: RunId
-    readonly status: RunStatus
-    readonly evidence: Digest
-    readonly from?: RunStatus
-    readonly to?: RunStatus
-    readonly detail?: string
+    readonly observation: ExecutionEnvironmentObservation
+    readonly provider: ProviderEventMeta
   }
   readonly 'history.missing': { readonly range: MissingHistoryRange }
   readonly 'interaction.requested': { readonly interaction: InteractionRecord }
@@ -279,6 +301,7 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'run.bound':
     case 'run.status.changed':
     case 'run.reconciled':
+    case 'run.environment.observed':
       return event.runId as RunId
     case 'history.missing':
       return event.range.runId

@@ -5,12 +5,20 @@ import type {
   ExactAnalystRunEvent,
   ExactAnalystRunResult,
 } from '@tangle-network/agent-eval'
+import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import {
+  canonicalAgentProfileDigestHex,
+  defineAgentProfile,
+} from '../src/adapters/agent-interface/profile-runtime.js'
 import {
   AgentEvalAnalystAdapter,
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
+import { ProductionAnalysisAnalyst } from '../src/adapters/analysis/production-analysis-analyst.js'
 import { AnalysisComparisonService } from '../src/app/analysis-comparison.js'
+import type { AnalysisAnalyst } from '../src/app/analysis-execution-session.js'
+import { snapshotAnalysisExecutionTarget } from '../src/app/analysis-execution-target.js'
 import { AnalysisPromotionService } from '../src/app/analysis-promotion.js'
 import { AnalysisService } from '../src/app/analysis-service.js'
 import { freezeAnalysisSource } from '../src/app/analysis-source.js'
@@ -23,7 +31,9 @@ import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
 import {
   createAnalysisId,
   createBranchId,
+  createConnectionId,
   createConversationId,
+  createDigest,
   createEventId,
 } from '../src/domain/ids-values.js'
 import { replayEvents } from '../src/domain/reducer.js'
@@ -32,6 +42,55 @@ import { FixedClock } from '../src/ports/clock.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const PROFILE = {} as Readonly<AgentProfile>
+
+class RouteCapturingAnalyst implements AnalysisAnalyst {
+  readonly targets: NonNullable<
+    import('../src/adapters/analysis/eval-analyst.js').EvalAnalystRequest['executionTarget']
+  >[] = []
+  onStream: (() => void) | undefined
+
+  list() {
+    return [
+      {
+        id: 'route-capture',
+        description: 'captures the immutable route',
+        version: '1.0.0',
+        cost: { kind: 'deterministic' },
+      },
+    ]
+  }
+
+  resolveAnalystIds(): readonly string[] {
+    return ['route-capture']
+  }
+
+  async *stream(
+    request: import('../src/adapters/analysis/eval-analyst.js').EvalAnalystRequest,
+  ): AsyncGenerator<
+    import('../src/app/analysis-execution-session.js').AnalysisExecutionEvent,
+    void,
+    void
+  > {
+    assert.ok(request.executionTarget)
+    this.targets.push(request.executionTarget)
+    this.onStream?.()
+    const result = {
+      run_id: request.runId,
+      correlation_id: 'correlation-route-capture',
+      started_at: NOW,
+      ended_at: NOW,
+      findings: [],
+      per_analyst: [],
+      total_cost_usd: 0,
+      execution_plan: {},
+      completion: { status: 'complete' },
+    } as unknown as ExactAnalystRunResult
+    yield {
+      event: { type: 'run-completed', result } as unknown as ExactAnalystRunEvent,
+      result,
+    }
+  }
+}
 
 function eventEnvelope(
   event: BraidEvent,
@@ -331,6 +390,221 @@ test('stable operation identity replays exactly and rejects digest conflicts', a
     /different request|conflicting request digest|already reserved/u,
   )
   assert.equal(calls.count, 1)
+})
+
+test('analysis dispatch and provenance use one immutable runtime profile', async () => {
+  const analyst = new RouteCapturingAnalyst()
+  const profileA = defineAgentProfile({
+    name: 'route A',
+    harness: 'pi',
+    model: { default: 'tangle-router/model-a' },
+  })
+  const profileB = defineAgentProfile({
+    name: 'route B',
+    harness: 'pi',
+    model: { default: 'tangle-router/model-b' },
+  })
+  const profileC = defineAgentProfile({
+    name: 'route C',
+    harness: 'codex',
+    model: { default: 'openai/model-c' },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    profile: profileA,
+    intelligence: { analyst },
+  })
+  const runId = await publicSourceRun(app, 'capture one route')
+
+  app.runtimeSelection.setProfile(profileB)
+  analyst.onStream = () => app.runtimeSelection.setProfile(profileC)
+  const first = await app.intelligence.analysis.run({
+    runId,
+    recipe: 'cost',
+    question: 'Which route ran this analysis?',
+  })
+
+  assert.equal(analyst.targets[0]?.model, 'tangle-router/model-b')
+  assert.equal(analyst.targets[0]?.runner, 'pi')
+  assert.equal(first.analysis.provenance?.model, 'tangle-router/model-b')
+  assert.equal(first.analysis.provenance?.runner, 'pi')
+  assert.equal(
+    first.analysis.provenance?.profileDigest,
+    createDigest(canonicalAgentProfileDigestHex(profileB)),
+  )
+
+  analyst.onStream = undefined
+  const second = await app.intelligence.analysis.run({
+    runId,
+    recipe: 'cost',
+    question: 'Which route ran this analysis?',
+  })
+  assert.equal(analyst.targets[1]?.model, 'openai/model-c')
+  assert.notEqual(first.analysis.id, second.analysis.id)
+  assert.notEqual(first.analysis.requestDigest, second.analysis.requestDigest)
+})
+
+test('analysis keeps its captured connection receipt when selection changes mid-run', async () => {
+  const profile = defineAgentProfile({
+    name: 'connection route',
+    harness: 'pi',
+    model: { default: 'tangle-router/glm-5.2' },
+  })
+  const connection = (suffix: string) => ({
+    id: createConnectionId(`connection-analysis-${suffix}`),
+    kind: 'cli-bridge' as const,
+    name: `CLI Bridge ${suffix}`,
+    endpoint: `http://127.0.0.1:${suffix === 'a' ? '29999' : '30000'}`,
+    providerOptions: { transport: 'local' as const },
+    createdAt: NOW,
+    updatedAt: NOW,
+    lastHealth: { status: 'unknown' as const },
+  })
+  const firstTarget = snapshotAnalysisExecutionTarget({
+    profile,
+    connection: connection('a'),
+  })
+  const secondTarget = snapshotAnalysisExecutionTarget({
+    profile,
+    connection: connection('b'),
+  })
+  const base = singleHost()
+  let selectedTarget = firstTarget
+  const host: AnalysisApplicationHost = {
+    currentState: base.currentState,
+    eventHistory: base.eventHistory,
+    commit: base.commit,
+    commitAndWait: base.commitAndWait,
+    now: base.now,
+    analysisExecutionTarget: () => selectedTarget,
+  }
+  const analyst = new RouteCapturingAnalyst()
+  analyst.onStream = () => {
+    selectedTarget = secondTarget
+  }
+
+  const result = await new AnalysisService(host, analyst).run({
+    runId: 'run-analysis',
+    recipe: 'cost',
+  })
+
+  assert.equal(analyst.targets[0], firstTarget)
+  assert.equal(result.analysis.provenance?.connectionId, firstTarget.connectionId)
+  assert.equal(result.analysis.provenance?.connectionDigest, firstTarget.connectionDigest)
+  assert.notEqual(result.analysis.provenance?.connectionId, secondTarget.connectionId)
+})
+
+test('failed analysis consumes and persists its model observations exactly once', async () => {
+  const observation: ExternalOptimizerModelExecutionObservation = {
+    sequence: 1,
+    callId: 'call-failed-analysis',
+    callRef: 'profile-failed-analysis',
+    path: '/v1/chat/completions',
+    model: 'glm-5.2',
+    succeeded: false,
+    error: 'provider failure stays outside the durable model-call record',
+    execution: {
+      provider: 'tangle-router',
+      route: 'cli-bridge/chat-completions',
+      startedAt: NOW,
+      endedAt: NOW,
+      durationMs: 1,
+      usage: { captured: true, inputTokens: 12, outputTokens: 3 },
+      billing: { status: 'observed', usd: 0.001 },
+      terminal: { errorKind: 'analysis-failed', errorStatus: 500 },
+    },
+  }
+  let observationReads = 0
+  const analyst: AnalysisAnalyst = {
+    list: () => [
+      {
+        id: 'failed-observed',
+        description: 'fails after one observed model call',
+        version: '1.0.0',
+        cost: { kind: 'model' },
+      },
+    ],
+    resolveAnalystIds: () => ['failed-observed'],
+    modelExecutions: () => {
+      observationReads += 1
+      return observationReads === 1 ? [observation] : []
+    },
+    stream: async function* (request) {
+      const result = {
+        run_id: request.runId,
+        correlation_id: 'correlation-failed-observed',
+        started_at: NOW,
+        ended_at: NOW,
+        findings: [],
+        per_analyst: [],
+        total_cost_usd: 0.001,
+        execution_plan: {},
+        completion: { status: 'failed', error: { message: 'observed analysis failure' } },
+      } as unknown as ExactAnalystRunResult
+      yield {
+        event: { type: 'run-completed', result } as unknown as ExactAnalystRunEvent,
+        result,
+      }
+    },
+  }
+
+  const result = await new AnalysisService(singleHost(), analyst).run({
+    runId: 'run-analysis',
+    recipe: 'cost',
+  })
+
+  assert.equal(result.status, 'failed')
+  assert.equal(observationReads, 1)
+  assert.equal(result.analysis.modelCalls?.length, 1)
+  assert.equal(result.analysis.modelCalls?.[0]?.inputTokens, 12)
+  assert.equal(result.analysis.modelCalls?.[0]?.cost.usd, 0.001)
+})
+
+test('production analyst builds its delegate from the request target', async () => {
+  const bootstrap = new RouteCapturingAnalyst()
+  const selectedProfile = defineAgentProfile({
+    name: 'selected route',
+    harness: 'pi',
+    model: { default: 'tangle-router/glm-5.2' },
+  })
+  const connection = {
+    id: createConnectionId('connection-route-capture'),
+    kind: 'cli-bridge' as const,
+    name: 'Local CLI Bridge',
+    endpoint: 'http://127.0.0.1:29999',
+    providerOptions: { transport: 'local' as const },
+    createdAt: NOW,
+    updatedAt: NOW,
+    lastHealth: { status: 'unknown' as const },
+  }
+  const target = snapshotAnalysisExecutionTarget({
+    profile: selectedProfile,
+    connection,
+  })
+  const received: (typeof target)[] = []
+  const analyst = new ProductionAnalysisAnalyst({
+    bootstrap,
+    create: async (captured) => {
+      received.push(captured)
+      return bootstrap
+    },
+  })
+  const trace = {} as import('../src/adapters/analysis/trace-store.js').AnalysisTraceBundle
+
+  for await (const _event of analyst.stream({
+    runId: 'analysis-run-route-capture',
+    sourceDigest: 'source-route-capture',
+    trace,
+    recipe: 'cost',
+    executionTarget: target,
+  })) {
+    // Drain the request through the dynamically selected delegate.
+  }
+
+  assert.equal(received.length, 1)
+  assert.equal(received[0], target)
+  assert.equal(bootstrap.targets[0], target)
+  assert.equal(received[0]?.connection?.id, connection.id)
 })
 
 test('a reservation crash leaves no external call and retries once after restart', async () => {

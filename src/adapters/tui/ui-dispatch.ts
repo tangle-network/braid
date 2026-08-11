@@ -26,6 +26,12 @@ export async function dispatchIntent(
     )
     if (profileConnectionResult !== undefined) return profileConnectionResult
 
+    if (intent.type === 'refresh-supervision') {
+      const refreshResult = await dispatchIntelligenceIntent(intent, context)
+      if (refreshResult === undefined) throw new Error('Supervision refresh was not dispatched')
+      return refreshResult
+    }
+
     const intelligenceResult = await dispatchIntelligenceIntent(intent, context)
     if (intelligenceResult !== undefined) return intelligenceResult
 

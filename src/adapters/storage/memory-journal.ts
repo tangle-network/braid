@@ -10,17 +10,17 @@ import type {
   StoredJournalEvent,
   WorkspaceId,
 } from '../../ports/storage.js'
-import { assertPersistablePayload, payloadChecksum } from './sqlite-crypto.js'
-import { StorageError } from './sqlite-errors.js'
-import { assertJournalEventInput } from './storage-validation.js'
 import {
-  MemoryStorageBase,
   clone,
+  type MemoryCursor,
+  MemoryStorageBase,
   missing,
   projectionOf,
   refreshCursor,
-  type MemoryCursor,
 } from './memory-base.js'
+import { assertPersistablePayload, payloadChecksum } from './sqlite-crypto.js'
+import { StorageError } from './sqlite-errors.js'
+import { assertJournalEventInput, canAppendAfterTerminal } from './storage-validation.js'
 
 export class MemoryJournalStorage extends MemoryStorageBase {
   async append(events: readonly JournalEvent[]): Promise<AppendResult> {
@@ -83,7 +83,7 @@ export class MemoryJournalStorage extends MemoryStorageBase {
         cursor?.missingTo !== undefined &&
         event.sequence >= cursor.missingFrom &&
         event.sequence <= cursor.missingTo
-      if (cursor?.terminal && !isMissingSequence) {
+      if (cursor?.terminal && !isMissingSequence && !canAppendAfterTerminal(event)) {
         throw new StorageError('TERMINAL_RUN_MUTATION', `Run ${event.runId} is terminal`)
       }
       const next: MemoryCursor = cursor ?? {

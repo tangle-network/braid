@@ -47,7 +47,16 @@ async function waitForSelection(getOutput, start, timeoutMs = 120_000) {
   }
 }
 
-export async function configureWithPublicTui(binary, workspace, keyFile, endpoint, runner, model) {
+export async function configureWithPublicTui(
+  binary,
+  workspace,
+  keyFile,
+  endpoint,
+  runner,
+  model,
+  profileReference,
+) {
+  const profileArgs = profileReference === undefined ? [] : ['--profile', profileReference]
   const output = { value: '' }
   const session = pty.spawn(
     process.execPath,
@@ -62,6 +71,7 @@ export async function configureWithPublicTui(binary, workspace, keyFile, endpoin
       runner,
       '--model',
       model,
+      ...profileArgs,
     ],
     {
       name: 'xterm-256color',

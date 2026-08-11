@@ -378,16 +378,31 @@ export async function measureReplayReduce(fixture, repetitions) {
   const { index, journalSupport, state } = await runtime(fixture.packageRoot)
   await fixture.seed()
   const samples = []
+  const stageSamples = {
+    storageOpenMs: [],
+    storageReadDecryptMs: [],
+    envelopeDecodeMs: [],
+    reducerMs: [],
+  }
   let finalState
   let eventCount = 0
   for (let repetition = 0; repetition < repetitions; repetition += 1) {
     const startedAt = performance.now()
     const storage = await fixture.open()
+    const openedAt = performance.now()
     try {
-      const envelopes = journalSupport.envelopesFromStored(await storage.events())
+      const storedEvents = await storage.events()
+      const eventsReadAt = performance.now()
+      const envelopes = journalSupport.envelopesFromStored(storedEvents)
+      const envelopesDecodedAt = performance.now()
       finalState = index.replayEvents(state.initialState(PROFILE), envelopes)
+      const reducedAt = performance.now()
       eventCount = envelopes.length
-      samples.push(performance.now() - startedAt)
+      samples.push(reducedAt - startedAt)
+      stageSamples.storageOpenMs.push(openedAt - startedAt)
+      stageSamples.storageReadDecryptMs.push(eventsReadAt - openedAt)
+      stageSamples.envelopeDecodeMs.push(envelopesDecodedAt - eventsReadAt)
+      stageSamples.reducerMs.push(reducedAt - envelopesDecodedAt)
     } finally {
       await storage.close()
     }
@@ -401,7 +416,12 @@ export async function measureReplayReduce(fixture, repetitions) {
     'Replay sequence did not reach the seeded event count',
   )
   assert(finalState?.projectionChecksum, 'Replay did not produce a projection checksum')
-  return { samples, eventCount, projectionChecksum: finalState.projectionChecksum }
+  return {
+    samples,
+    stageSamples,
+    eventCount,
+    projectionChecksum: finalState.projectionChecksum,
+  }
 }
 
 export async function measureOpenViewport(fixture, repetitions) {

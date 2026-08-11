@@ -1,4 +1,5 @@
 import { dirname, resolve } from 'node:path'
+import { ProductionAnalysisAnalyst } from '../adapters/analysis/production-analysis-analyst.js'
 import {
   createTraceAnalysisAdapter,
   createTraceAnalysisAnalyst,
@@ -6,15 +7,16 @@ import {
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import type { HeadlessKeySource } from '../adapters/credentials/headless-key.js'
 import type { BraidApplication } from '../app/application.js'
+import type { ConfigurationSelection } from '../app/configuration-session.js'
 import { ConnectionActionService } from '../app/connection-actions.js'
 import { ConnectionRegistry } from '../app/connections.js'
-import type { ConfigurationSelection } from '../app/configuration-session.js'
 import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../app/production-composition.js'
-import type { CredentialPort } from '../ports/credentials.js'
+import { profileModelSettings } from '../app/profile-model-settings.js'
 import { canonicalDigest } from '../domain/canonical.js'
+import type { CredentialPort } from '../ports/credentials.js'
 import { createDurableBraidApplication } from '../startup/durable-runtime.js'
 import {
   createProductionCredentialContext,
@@ -95,17 +97,26 @@ function databaseKeySource(
 }
 
 async function productionIntelligence(production: ProductionCompositionConfig): Promise<{
-  readonly analyst: ReturnType<typeof createTraceAnalysisAnalyst>
+  readonly analyst: ProductionAnalysisAnalyst
 }> {
   const selected = createProductionComposition(production)
+  const modelSettings = profileModelSettings(selected.profile)
   const analysis = await createTraceAnalysisAdapter({
     profile: selected.profile,
     connection: selected.connection,
-    ...(production.model === undefined ? {} : { model: production.model }),
-    ...(production.runner === undefined ? {} : { runner: production.runner }),
+    ...(modelSettings.maxOutputTokens === undefined
+      ? {}
+      : { maxOutputTokens: modelSettings.maxOutputTokens }),
     ...(production.connectionOptions ?? {}),
   })
-  return { analyst: createTraceAnalysisAnalyst(analysis) }
+  return {
+    analyst: new ProductionAnalysisAnalyst({
+      bootstrap: createTraceAnalysisAnalyst(analysis),
+      ...(production.connectionOptions === undefined
+        ? {}
+        : { connectionOptions: production.connectionOptions }),
+    }),
+  }
 }
 
 function withHeadlessCredentials(

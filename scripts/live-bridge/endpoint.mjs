@@ -83,14 +83,17 @@ export async function requestJson(endpoint, path, token, timeoutMs = 10_000) {
     return {
       status: response.status,
       ok: response.ok,
-      body: evidenceValue(body),
-      text: redactString(text).slice(0, 64_000),
+      body: evidenceValue(body, '', 0, token === undefined ? [] : [token]),
+      text: redactString(text, token === undefined ? [] : [token]).slice(0, 64_000),
     }
   } catch (error) {
     return {
       status: undefined,
       ok: false,
-      error: redactString(error instanceof Error ? error.message : String(error)),
+      error: redactString(
+        error instanceof Error ? error.message : String(error),
+        token === undefined ? [] : [token],
+      ),
     }
   } finally {
     clearTimeout(timer)

@@ -4,6 +4,7 @@ import { providerEventKey } from '../domain/events.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import { redactBraidEvent } from '../domain/redaction.js'
 import { reduceEvent } from '../domain/reducer.js'
+import { usageSnapshotForRun } from '../domain/run-usage.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort } from '../ports/effect-storage.js'
@@ -146,7 +147,8 @@ export function restoreApplicationOperations(
         control: 'cancel',
         acknowledgement: Promise.resolve({
           operationId: event.operationId,
-          outcome: 'already-applied',
+          outcome: 'unknown',
+          detail: 'Cancellation was requested before the provider acknowledged it',
         }),
         completion: Promise.resolve(target.state()),
         ...(restoredRun?.providerSessionId === undefined
@@ -215,7 +217,7 @@ export function reconcileRestartRun(context: RestartPort): Promise<void> {
       runId,
       status: 'unknown',
       finalText: '',
-      usage: { input: run.inputTokens, output: run.outputTokens },
+      usage: usageSnapshotForRun(run),
       error: 'The execution path cannot reconcile provider state after restart',
     })
     return Promise.resolve(unknown)
@@ -299,7 +301,7 @@ async function reconcileSnapshot(
       runId,
       status: snapshot.status,
       finalText: snapshot.finalText ?? '',
-      usage: snapshot.usage ?? { input: current.inputTokens, output: current.outputTokens },
+      usage: snapshot.usage ?? usageSnapshotForRun(current),
       ...(snapshot.error === undefined
         ? {}
         : { error: safeProviderDiagnostic(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),

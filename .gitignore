@@ -1,6 +1,7 @@
 node_modules
 dist/
 .test-dist/
+.test-dist-*/
 coverage/
 .tmp/
 .braid/

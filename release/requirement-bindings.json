@@ -390,7 +390,7 @@
     "checks": ["pty", "capture"]
   },
   "UX-03": {
-    "checks": ["rpc-packed"]
+    "checks": ["rpc-packed", "virtual-terminal"]
   },
   "UX-04": {
     "checks": ["unit"]
@@ -454,7 +454,16 @@
     "checks": ["eval"]
   },
   "VR-10": {
-    "checks": ["install"]
+    "checks": [
+      "install",
+      "live-analysis",
+      "live-supervisor",
+      "live-tangle",
+      "rpc-packed",
+      "security",
+      "unit",
+      "virtual-terminal"
+    ]
   },
   "VT-01": {
     "checks": ["pty"]

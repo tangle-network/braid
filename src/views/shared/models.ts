@@ -1,3 +1,5 @@
+import type { ForkPlan } from '../../app/conversation-types.js'
+
 export type ViewStatus =
   | 'empty'
   | 'loading'
@@ -75,9 +77,116 @@ export interface MessageView {
 export interface UsageView {
   readonly input?: number
   readonly output?: number
+  readonly reasoning?: number
+  readonly tokenStatus?: 'complete' | 'observed-floor' | 'unknown'
   readonly costUsd?: number
+  readonly estimatedCostUsd?: number
+  readonly costStatus?: 'reported' | 'estimated' | 'observed-floor' | 'unknown'
+  readonly promptCache?: Readonly<Record<string, number>>
+  readonly llmCalls?: number
+  readonly llmLatencyMs?: number
   readonly model?: string
   readonly elapsedMs?: number
+}
+
+export type UsageMeasurementStatus = 'complete' | 'partial' | 'unknown'
+
+export interface UsageTotalsView extends UsageView {
+  readonly sourceCount: number
+  readonly unknownTokenSources: number
+  readonly unknownCostSources: number
+  readonly callStatus?: UsageMeasurementStatus
+  readonly latencyStatus?: UsageMeasurementStatus
+  readonly unknownCallSources?: number
+  readonly unknownLatencySources?: number
+}
+
+export interface SessionUsageView {
+  /** Direct Braid turns in the selected conversation. */
+  readonly turns: UsageTotalsView
+  /** /ask, /analyze, and /compare work in the selected conversation. */
+  readonly analyses: UsageTotalsView
+  /** Runtime-owned worker trees explicitly bound to those turns. */
+  readonly delegated: UsageTotalsView
+  /** Separate totals prevent double counting until Runtime exports shared call identities. */
+  readonly attribution: 'complete' | 'separate-totals'
+}
+
+export interface EnvironmentView {
+  readonly id: string
+  readonly connectionId: string
+  readonly kind?: 'local-process' | 'remote-service' | 'sandbox'
+  readonly provider: string
+  readonly providerEnvironmentId?: string
+  readonly lifecycle: string
+  readonly lifecycleMode?: 'request' | 'ephemeral' | 'retained'
+  readonly cleanup?: 'delete-after-turn' | 'explicit' | 'not-applicable'
+  readonly continuity?: 'session' | 'unavailable' | 'not-applicable'
+  readonly location?: 'local' | 'remote' | 'unknown'
+  readonly runtimeEndpointHost?: string
+  readonly machineId?: string
+  readonly requestedRegion?: string
+  readonly verifiedRegion?: string
+  readonly storagePersistence?: 'ephemeral-home' | 'persistent-home' | 'unknown'
+  readonly requestedResources?: {
+    readonly cpuCores?: number
+    readonly memoryMB?: number
+    readonly diskGB?: number
+    readonly accelerator?: {
+      readonly kind: string
+      readonly count: number
+      readonly memoryMB?: number
+    }
+  }
+  readonly resourceSample?: {
+    readonly cgroupVersion: number
+    readonly memoryCurrentMb: number
+    readonly memoryPeakMb?: number
+    readonly memoryLimitMb?: number
+    readonly cpuUsageUsec: number
+    readonly sampledAt: string
+  }
+  readonly gpu?: {
+    readonly provider: string
+    readonly instanceType?: string
+    readonly region?: string
+    readonly accelerator: string
+    readonly count: number
+    readonly status: string
+    readonly customerPricePerHourUsd?: number
+    readonly estimatedCustomerCostUsd?: number
+    readonly billedSeconds?: number
+    readonly billedCustomerCostUsd?: number
+  }
+  readonly accountUsage?: {
+    readonly completeness: string
+    readonly customerId?: string
+    readonly billingOwnerId?: string
+    readonly computeMinutes?: number
+    readonly gpuSeconds?: number
+    readonly gpuCostUsd?: number
+    readonly activeSandboxes?: number
+    readonly totalSandboxes?: number
+    readonly creditsAvailableUsd?: number
+    readonly creditsUsedUsd?: number
+    readonly monthlyBalanceUsd?: number
+    readonly plan?: string
+    readonly subscriptionStatus?: string
+    readonly maximumConcurrentSandboxes?: number
+    readonly maximumCpuCores?: number
+    readonly maximumRamGB?: number
+    readonly maximumStorageGB?: number
+    readonly usagePeriodStart?: string
+    readonly usagePeriodEnd?: string
+    readonly subscriptionPeriodEnd?: string
+    readonly sampledAt: string
+  }
+  readonly unavailableTelemetry: readonly string[]
+  readonly createdAt: string
+  readonly startedAt?: string
+  readonly lastActivityAt?: string
+  readonly expiresAt?: string
+  readonly updatedAt: string
 }
 
 export interface RunView {
@@ -85,13 +194,21 @@ export interface RunView {
   readonly turnId?: string
   readonly status: ViewStatus
   readonly operationId?: string
+  readonly profileName?: string
+  readonly profileDigest?: string
+  readonly model?: string
+  readonly effort?: string
+  readonly maxOutputTokens?: number
   readonly usage?: UsageView
   readonly error?: string
   readonly cursor?: string
   readonly providerSessionId?: string
+  readonly requestedSessionId?: string
   readonly environmentId?: string
   readonly runner?: string
+  readonly provider?: string
   readonly connection?: string
+  readonly connectionId?: string
   readonly completeness:
     | 'complete'
     | 'incomplete'
@@ -214,35 +331,66 @@ export interface SelectorView {
 
 export interface ActivityItemView {
   readonly id: string
-  readonly kind: 'run' | 'tool' | 'worker' | 'interaction' | 'analysis' | 'system'
+  readonly kind:
+    | 'run'
+    | 'tool'
+    | 'supervisor'
+    | 'worker'
+    | 'interaction'
+    | 'analysis'
+    | 'environment'
+    | 'system'
   readonly title: string
   readonly status: ViewStatus | 'complete'
   readonly detail?: string
   readonly elapsedMs?: number
+  readonly startedAt?: string
+  readonly occurredAt?: string
+  readonly sourceEventId?: string
+  readonly runId?: string
+  readonly entityType?: GraphNodeType
+  readonly entityId?: string
+  readonly parentId?: string
+  readonly depth?: number
 }
+
+export type GraphNodeType =
+  | 'conversation'
+  | 'branch'
+  | 'turn'
+  | 'run'
+  | 'analysis'
+  | 'environment'
+  | 'checkpoint'
+  | 'supervisor'
+  | 'worker'
 
 export interface GraphNodeView {
   readonly id: string
-  readonly type:
-    | 'conversation'
-    | 'branch'
-    | 'turn'
-    | 'run'
-    | 'analysis'
-    | 'environment'
-    | 'checkpoint'
-    | 'supervisor'
-    | 'worker'
+  readonly type: GraphNodeType
   readonly title: string
   readonly status: ViewStatus | 'complete'
   readonly depth: number
   readonly edgeLabel?: string
+  readonly runner?: string
+  readonly elapsedMs?: number
+  readonly startedAt?: string
+  readonly costUsd?: number
 }
 
 export interface DetailsView {
   readonly title: string
   readonly fields: readonly { readonly label: string; readonly value: string }[]
   readonly sourceEventId?: string
+}
+
+export interface EntityDetailView {
+  readonly entityType: GraphNodeType
+  readonly entityId: string
+  readonly title: string
+  readonly status: string
+  readonly lines: readonly string[]
+  readonly analysisExecution?: AnalysisExecutionView
 }
 
 export interface ProfileEditorView {
@@ -285,6 +433,27 @@ export interface AnalysisFindingView {
   readonly citationIds: readonly string[]
 }
 
+export interface AnalysisModelCallView {
+  readonly sequence: number
+  readonly provider?: string
+  readonly model: string
+  readonly inputTokens?: number
+  readonly outputTokens?: number
+  readonly tokensKnown: boolean
+  readonly costUsd?: number
+  readonly costStatus: 'observed' | 'estimated' | 'unknown'
+  readonly latencyMs?: number
+  readonly outcome: 'succeeded' | 'failed'
+}
+
+export interface AnalysisExecutionView {
+  readonly configuredModel?: string
+  readonly runner?: string
+  readonly observedModels: readonly string[]
+  readonly modelCalls?: readonly AnalysisModelCallView[]
+  readonly wallTimeMs?: number
+}
+
 export interface AnalysisView {
   readonly source: string
   readonly analyst: string
@@ -296,6 +465,7 @@ export interface AnalysisView {
     readonly eventId: string
     readonly text: string
   }[]
+  readonly execution?: AnalysisExecutionView
   readonly footer: readonly { readonly label: string; readonly value: string }[]
   readonly error?: string
 }
@@ -330,6 +500,7 @@ export interface ComparisonView {
 }
 
 export interface ForkPreviewView {
+  readonly plan?: Readonly<ForkPlan>
   readonly source: string
   readonly destination: string
   readonly kind: 'conversation' | 'workspace' | 'cross-runner'
@@ -355,6 +526,7 @@ export interface BraidViewModel {
   readonly runner: string
   readonly model: string
   readonly effort?: string
+  readonly maxOutputTokens?: number
   readonly connection: string
   readonly conversationId: string
   readonly conversationTitle: string
@@ -374,10 +546,14 @@ export interface BraidViewModel {
   readonly messages: readonly MessageView[]
   readonly hiddenMessageCount: number
   readonly runs: readonly RunView[]
+  readonly sessionUsage: SessionUsageView
+  readonly environments: readonly EnvironmentView[]
   readonly activeRunId?: string
   readonly interactions: readonly InteractionView[]
   readonly activity: readonly ActivityItemView[]
   readonly graph: readonly GraphNodeView[]
+  readonly hiddenGraphNodeCount?: number
+  readonly entityDetails?: readonly EntityDetailView[]
   readonly details?: DetailsView
   readonly profileEditor?: ProfileEditorView
   readonly connectionSetup?: ConnectionSetupView
@@ -443,11 +619,24 @@ export interface HeadlessState {
     readonly status: string
     readonly inputTokens: number
     readonly outputTokens: number
+    readonly tokenStatus: NonNullable<UsageView['tokenStatus']>
+    readonly reasoningTokens?: number
     readonly costUsd?: number
+    readonly estimatedCostUsd?: number
+    readonly costStatus: NonNullable<UsageView['costStatus']>
+    readonly promptCache?: Readonly<Record<string, number>>
+    readonly llmCalls?: number
+    readonly llmLatencyMs?: number
     readonly model?: string
+    readonly provider?: string
+    readonly runner?: string
+    readonly connectionId?: string
+    readonly requestedSessionId?: string
     readonly error?: string
     readonly completeness: RunView['completeness']
     readonly providerSessionId?: string
+    readonly environmentId?: string
+    readonly materializationDigest?: string
     readonly cursor?: string
     readonly contentBytes?: number
     readonly contentTruncated?: boolean
@@ -455,6 +644,8 @@ export interface HeadlessState {
     readonly eventDetailsTruncated?: boolean
     readonly interactionsTruncated?: boolean
   }[]
+  readonly sessionUsage: SessionUsageView
+  readonly environments: readonly EnvironmentView[]
   readonly interactions: readonly InteractionView[]
   readonly queue: readonly {
     readonly operationId: string

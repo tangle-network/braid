@@ -1,9 +1,6 @@
 import { resolve } from 'node:path'
-import {
-  type AgentProfile,
-  canonicalCandidateJson,
-  sha256Bytes,
-} from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
+import { canonicalCandidateJson, sha256Bytes } from '../adapters/agent-interface/profile-runtime.js'
 import { readNoFollow } from '../adapters/persistence/safe-file.js'
 import type { Digest } from '../domain/ids.js'
 import { redactSensitiveText } from '../domain/redaction.js'

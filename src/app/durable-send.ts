@@ -1,6 +1,7 @@
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import type { BraidState } from '../domain/state.js'
 import type { IdSource } from '../ports/ids.js'
+import type { AdmissionRegistration } from './application-lifecycle.js'
 import type { SendReceipt } from './application-types.js'
 import { AppError } from './errors.js'
 import { pendingAdmissionReceipt } from './run-admission.js'
@@ -15,9 +16,11 @@ export interface DurableSendInput {
   readonly transitionTail: Promise<void>
   readonly admitPersistedSend: (operationId: string, digest: string) => SendReceipt | undefined
   readonly requestDigest: (state: BraidState, input: RunExecutionSnapshot) => string
+  readonly registerAdmission: (runId: string) => AdmissionRegistration
   readonly sendAsync: (
     input: RunExecutionSnapshot,
     ids: { readonly runId: string; readonly turnId: string },
+    signal: AbortSignal,
   ) => Promise<SendReceipt>
 }
 
@@ -28,6 +31,7 @@ export interface DurableSendRuntime {
   readonly transitionTail: () => Promise<void>
   readonly admitPersistedSend: (operationId: string, digest: string) => SendReceipt | undefined
   readonly requestDigest: DurableSendInput['requestDigest']
+  readonly registerAdmission: DurableSendInput['registerAdmission']
   readonly sendAsync: DurableSendInput['sendAsync']
 }
 
@@ -70,6 +74,7 @@ export function createDurableSender(
       transitionTail: runtime.transitionTail(),
       admitPersistedSend: runtime.admitPersistedSend,
       requestDigest: runtime.requestDigest,
+      registerAdmission: runtime.registerAdmission,
       sendAsync: runtime.sendAsync,
     })
     const reservation = { operationId: input.operationId, digest, receipt }
@@ -94,12 +99,15 @@ export function durableSend(input: DurableSendInput): SendReceipt {
     )
   const runId = input.ids.next('run')
   const turnId = input.ids.next('turn')
+  const registration = input.registerAdmission(runId)
   const pending = pendingAdmissionReceipt(input.input, runId, turnId)
   let admission: RunAdmissionReceipt = pending
   const admissionTask = input.restartReconciliation
     .then(() => input.transitionTail)
-    .then(() => input.sendAsync(input.input, { runId, turnId }))
+    .then(() => assertAdmissionActive(registration.signal))
+    .then(() => input.sendAsync(input.input, { runId, turnId }, registration.signal))
     .then((result) => {
+      assertAdmissionActive(registration.signal)
       admission = result.admission
       return result
     })
@@ -109,6 +117,9 @@ export function durableSend(input: DurableSendInput): SendReceipt {
         admissionStatus: 'unavailable',
       }
       throw error
+    })
+    .finally(() => {
+      registration.release()
     })
   const task = admissionTask.then((result) => result.completion)
   task.catch(() => undefined)
@@ -123,6 +134,11 @@ export function durableSend(input: DurableSendInput): SendReceipt {
     admissionReady: admissionTask.then(() => undefined),
     completion: task.then(() => structuredClone(input.currentState())),
   }
+}
+
+function assertAdmissionActive(signal: AbortSignal): void {
+  if (signal.aborted)
+    throw new AppError('APPLICATION_CLOSING', 'Braid is closing and cannot materialize a run')
 }
 
 function replayPendingReceipt(receipt: SendReceipt): SendReceipt {

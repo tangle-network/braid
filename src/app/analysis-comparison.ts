@@ -40,9 +40,7 @@ export class AnalysisComparisonService {
   }
 
   async compareAndStore(input: CompareAnalysisInput): Promise<AnalysisComparisonResult> {
-    const { compareFrozenRuns, resultFromComparisonRecord } = await import(
-      './analysis-comparison-facts.js'
-    )
+    const { resultFromComparisonRecord } = await import('./analysis-comparison-record.js')
     if (!this.#reconciled) {
       await this.#lifecycle.reconcile()
       this.#reconciled = true
@@ -57,6 +55,7 @@ export class AnalysisComparisonService {
       await this.#lifecycle.finish(existing)
       return resultFromComparisonRecord(existing)
     }
+    const { compareFrozenRuns } = await import('./analysis-comparison-facts.js')
     const result = compareFrozenRuns({
       baseline: prepared.baseline,
       candidate: prepared.candidate,

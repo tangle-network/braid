@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import {
   CHECK_CATEGORIES,
   REQUIRED_CHECKS,
@@ -13,8 +15,14 @@ import {
   validatePerformanceMatrix,
   validatePerformanceMeasurements,
 } from '../release-evidence.mjs'
+import { readContainedFile } from '../release-files.mjs'
+import { evaluateLiveBridgeProof } from './live-bridge-proof.mjs'
 
-export function validateReleaseChecks({
+function sha256(bytes) {
+  return createHash('sha256').update(bytes).digest('hex')
+}
+
+export async function validateReleaseChecks({
   checks,
   artifacts,
   mappings,
@@ -27,6 +35,7 @@ export function validateReleaseChecks({
   releaseWindow,
   dependencyDigest,
   packageFileManifestDigest,
+  artifactRoot,
 }) {
   const performanceMeasurements = []
   for (const [id, expected] of REQUIRED_CHECKS) {
@@ -86,6 +95,33 @@ export function validateReleaseChecks({
     assert(check.result === 'passed', `Check ${check.id} did not pass`)
     assert(check.result !== 'unavailable', `Required check ${check.id} is unavailable`)
     assert(check.required === true, `Check ${check.id} is not marked required`)
+    if (/^LIVE-0[1-5]$/u.test(check.id)) {
+      let liveEvidence
+      try {
+        const liveEvidenceBytes = await readContainedFile(artifactRoot, 'live/bridge/evidence.json')
+        const liveArtifactPrefix = `check-${check.id}-attempt-${check.attempt}-evidence-`
+        const liveArtifact = [...artifacts.values()].find(
+          (artifact) =>
+            artifact.id.startsWith(liveArtifactPrefix) &&
+            artifact.sha256 === sha256(liveEvidenceBytes),
+        )
+        assert(liveArtifact, `Check ${check.id} has no retained packed CLI Bridge evidence`)
+        liveEvidence = JSON.parse(
+          (await readContainedFile(artifactRoot, liveArtifact.path)).toString('utf8'),
+        )
+      } catch (error) {
+        throw new Error(`Check ${check.id} packed CLI Bridge evidence is invalid`, { cause: error })
+      }
+      const liveProof = evaluateLiveBridgeProof(liveEvidence, check.id)
+      assert(
+        liveProof?.result === 'passed',
+        liveProof?.reason ?? `Check ${check.id} has no exact live proof`,
+      )
+      assert(
+        canonicalJson(check.measurements) === canonicalJson(liveProof.measurements),
+        `Check ${check.id} measurement differs from its packed CLI Bridge proof`,
+      )
+    }
     assert(check.buildSha256 === packageProof.sha256, `Check ${check.id} used another build`)
     assert(typeof check.cwd === 'string' && check.cwd.length > 0, `Check ${check.id} has no cwd`)
     assert(Array.isArray(check.argv) && check.argv.length > 0, `Check ${check.id} has no argv`)

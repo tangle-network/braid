@@ -1,8 +1,8 @@
 import type { AdmissionPort, AsyncAdmissionPort } from './application-ports.js'
 import type { SendReceipt } from './application-types.js'
 import { AppError } from './errors.js'
-import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission-request.js'
 import { admitRun, admitRunAsync } from './run-admission-receipt.js'
+import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission-request.js'
 import { validateContextPlan, validateNativeProof } from './run-admission-validation.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 
@@ -93,7 +93,9 @@ export async function sendRunAsync(
   context: AsyncAdmissionPort,
   input: RunExecutionSnapshot,
   ids: { readonly runId: string; readonly turnId: string },
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<SendReceipt> {
+  assertAdmissionActive(signal)
   const state = context.currentState()
   if (state.workspace === null)
     throw new AppError('NOT_INITIALIZED', 'Initialize a workspace before sending')
@@ -128,7 +130,7 @@ export async function sendRunAsync(
       profile: input.profile,
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
-      signal: new AbortController().signal,
+      signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
     },
@@ -140,8 +142,10 @@ export async function sendRunAsync(
     input.nativeContextBoundaryProof,
     input.contextPlan,
   )
+  assertAdmissionActive(signal)
   if (state.draft !== input.text)
     await context.commitAndWait({ kind: 'draft.changed', text: input.text })
+  assertAdmissionActive(signal)
   await context.commitAndWait({
     kind: 'run.requested',
     operationId: input.operationId,
@@ -153,6 +157,7 @@ export async function sendRunAsync(
     requestDigest: digest,
     receipt: admission,
   })
+  assertAdmissionActive(signal)
   const abort = new AbortController()
   const operation = {
     digest,
@@ -171,4 +176,9 @@ export async function sendRunAsync(
     admission,
     completion: operation.completion.then(() => structuredClone(context.currentState())),
   }
+}
+
+function assertAdmissionActive(signal: AbortSignal): void {
+  if (signal.aborted)
+    throw new AppError('APPLICATION_CLOSING', 'Braid is closing and cannot materialize a run')
 }

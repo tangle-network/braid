@@ -9,6 +9,7 @@ import { createApplicationUiController } from '../src/adapters/tui/application-u
 import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-contracts.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import type { BraidViewModel, InteractionView } from '../src/views/shared/models.js'
+import { ActivityBrowserPanel } from '../src/views/tui/activity-browser.js'
 import { AnalysisViewPanel } from '../src/views/tui/analysis.js'
 import {
   comparisonLines,
@@ -210,10 +211,11 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
 
     const graphScreen = await renderOverlay(graph, columns, rows)
     assertFits(graphScreen, columns)
-    assert.match(graphScreen.join('\n'), /current branch/u)
-    assert.match(graphScreen.join('\n'), /› current/u)
-    assert.match(graphScreen.join('\n'), /─analyzed→/u)
-    assert.match(graphScreen.join('\n'), /─compared left→/u)
+    assert.match(graphScreen.join('\n'), /Main · branch .*current/u)
+    if (columns === 80) {
+      assert.match(graphScreen.join('\n'), /─analyzed→/u)
+      assert.match(graphScreen.join('\n'), /─compared left→/u)
+    }
     assert.match(graphScreen.join('\n'), /esc close/u)
   }
 })
@@ -252,9 +254,17 @@ test('long workflow state preserves the closing key instead of pushing it below 
     })),
   })
   const graphScreen = await renderOverlay(graph, 40, 12)
-  assert.match(graphScreen.join('\n'), /› current/u)
-  assert.match(graphScreen.join('\n'), /\+8 nodes not shown/u)
+  assert.match(graphScreen.join('\n'), /Main · branch .*current/u)
+  assert.match(graphScreen.join('\n'), /16\/16/u)
   assert.match(graphScreen.join('\n'), /esc close/u)
+
+  graph.handleInput('\u001b[H')
+  assert.match(graph.render(40).join('\n'), /1\/16/u)
+  graph.handleInput('\u001b[F')
+  graph.handleInput('\u001b[C')
+  assert.match(graph.render(40).join('\n'), /id: branch-current/u)
+  graph.handleInput('\u001b[D')
+  assert.match(graph.render(40).join('\n'), /Main · branch .*current/u)
 
   const analysisBase = analysisView('failure')
   const analysisValue = analysisBase.analysis
@@ -284,10 +294,116 @@ test('long workflow state preserves the closing key instead of pushing it below 
     },
   })
   const analysisScreen = await renderOverlay(analysis, 40, 12)
-  assert.match(analysisScreen.join('\n'), /page 1\/3/u)
-  analysis.handleInput('\u001b[B')
+  assert.match(analysisScreen.join('\n'), /page 1\/\d+/u)
+  analysis.handleInput('\u001b[6~')
   assert.match(analysis.render(40).join('\n'), /finding 4/u)
-  assert.match(analysisScreen.join('\n'), /esc close/u)
+  assert.match(analysisScreen.join('\n'), /←\/esc back/u)
+})
+
+test('one activity browser keeps selection stable and makes left and escape equivalent', () => {
+  const original = baseView()
+  let current: BraidViewModel = {
+    ...original,
+    activity: [
+      {
+        id: 'analysis:older',
+        kind: 'analysis',
+        title: 'ask',
+        status: 'completed',
+        detail: 'Why did the first run stop?',
+        entityType: 'analysis',
+        entityId: 'older',
+      },
+      {
+        id: 'analysis:newer',
+        kind: 'analysis',
+        title: 'failure',
+        status: 'completed',
+        detail: 'Find the retry loop.',
+        entityType: 'analysis',
+        entityId: 'newer',
+      },
+    ],
+    entityDetails: [
+      {
+        entityType: 'analysis',
+        entityId: 'older',
+        title: '/ask · frozen question',
+        status: 'completed',
+        lines: ['source: older · frozen', '• [event-1] Retry stopped after one attempt.'],
+      },
+      {
+        entityType: 'analysis',
+        entityId: 'newer',
+        title: '/analyze · failure',
+        status: 'completed',
+        lines: [
+          'source: newer · frozen',
+          '• [event-2] The retry loop reached its limit after the second provider attempt; final-proof-token remains visible.',
+        ],
+      },
+    ],
+  }
+  let closes = 0
+  const browser = new ActivityBrowserPanel(theme, {
+    view: () => current,
+    rows: () => 12,
+    onClose: () => {
+      closes += 1
+    },
+    scope: 'analyses',
+  })
+
+  const list = browser.render(40).join('\n')
+  assert.match(list, /analyses · 2/u)
+  assert.match(list, /^─{40}$/mu)
+  assert.equal(browser.selectedId, 'analysis:newer')
+
+  browser.handleInput('\u001b[C')
+  assert.equal(browser.mode, 'detail')
+  const wrappedDetail = browser.render(40)
+  assertFits(wrappedDetail, 40)
+  assert.match(wrappedDetail.join(' ').replace(/\s+/gu, ' '), /final-proof-token remains visible/u)
+  browser.handleInput('\u001b[B')
+  assert.equal(browser.selectedId, 'analysis:older')
+  assert.match(browser.render(40).join('\n'), /Retry stopped after one/u)
+
+  current = {
+    ...current,
+    activity: [
+      ...current.activity,
+      {
+        id: 'analysis:latest',
+        kind: 'analysis',
+        title: 'cost',
+        status: 'running',
+        entityType: 'analysis',
+        entityId: 'latest',
+      },
+    ],
+  }
+  browser.render(40)
+  assert.equal(browser.selectedId, 'analysis:older')
+
+  browser.handleInput('\u001b[D')
+  assert.equal(browser.mode, 'list')
+  browser.handleInput('\u001b[D')
+  assert.equal(closes, 1)
+
+  const escaped = new ActivityBrowserPanel(theme, {
+    view: () => current,
+    rows: () => 12,
+    onClose: () => {
+      closes += 1
+    },
+    scope: 'analyses',
+    selectedId: 'analysis:older',
+    openSelected: true,
+  })
+  escaped.handleInput('\u001b')
+  assert.equal(escaped.mode, 'list')
+  escaped.handleInput('\u001b')
+  assert.equal(closes, 2)
 })
 
 test('analysis mode copy distinguishes ask, named analyze recipes, and compare', async () => {
@@ -307,7 +423,7 @@ test('analysis mode copy distinguishes ask, named analyze recipes, and compare',
     )
     assert.match(screen.join('\n'), /source: run:source-run/u)
     assert.match(screen.join('\n'), /\[event-1\]/u)
-    assert.match(screen.join('\n'), /esc close/u)
+    assert.match(screen.join('\n'), /←\/esc back/u)
   }
 })
 
@@ -382,7 +498,7 @@ test('comparison view leads with both outcomes and pages through every captured 
   assert.match(firstPage.join('\n'), /baseline outcome: completed/u)
   assert.match(firstPage.join('\n'), /candidate outcome: failed/u)
   assert.match(firstPage.join('\n'), /page 1\//u)
-  panel.handleInput('\u001b[B')
+  panel.handleInput('\u001b[6~')
   assert.match(panel.render(80).join('\n'), /run\.cost_usd/u)
 })
 

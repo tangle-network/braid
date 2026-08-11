@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { exitCodes } from './constants.mjs'
-import { bridgeAuthToken } from './endpoint.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { errorEvidence } from './evidence.mjs'
 import { evidenceValue } from './redaction.mjs'
@@ -37,28 +36,74 @@ export function profileForBridgeTarget(target) {
   }
 }
 
-export async function installBridgeCredential(evidence, repository) {
-  const token = bridgeAuthToken()
-  if (token === undefined) return undefined
-  const credentialId = `live-bridge-${randomUUID().replaceAll('-', '')}`
-  const credentialRef = `cred:v1:${credentialId}`
+export function createLiveCredentialId(uuid = randomUUID()) {
+  return `credential-live-bridge-${uuid.replaceAll('-', '')}`
+}
+
+export function createLiveCredentialReference() {
+  const recordRef = createLiveCredentialId()
+  return { recordRef, credentialRef: `cred:v1:${recordRef}` }
+}
+
+export async function installPackedTargetCredential(installRoot, config, credential, token) {
+  let context
   try {
     const module = await import(
-      pathToFileURL(join(repository, 'dist', 'adapters', 'credentials', 'os.js')).href
+      pathToFileURL(
+        join(
+          installRoot,
+          'node_modules',
+          '@tangle-network',
+          'braid',
+          'dist',
+          'bin',
+          'production-credential-context.js',
+        ),
+      ).href
     )
-    const store = module.createOperatingSystemCredentialStore()
-    await store.store({
-      ref: credentialRef,
-      value: Buffer.from(token),
-      label: 'Braid live CLI Bridge smoke',
+    context = module.createProductionCredentialContext({
+      workspace: config.workspace,
+      configPath: config.configPath,
+      databaseKeyFile: config.databaseKeyFile,
+      dataDirectory: join(config.workspace, '.xdg-data', 'braid'),
     })
-    evidence.credentialState = { configured: true, stored: true, facility: process.platform }
-    return { store, credentialRef, recordRef: credentialId }
+    if (context === undefined) throw new Error('headless credential context was not created')
+    const secret = Buffer.from(token)
+    try {
+      await context.store.store({
+        ref: credential.credentialRef,
+        value: secret,
+        label: 'Braid live CLI Bridge smoke',
+      })
+    } finally {
+      secret.fill(0)
+    }
+    return {
+      state: {
+        configured: true,
+        stored: true,
+        facility: 'encrypted-headless',
+      },
+      cleanup: async () => {
+        try {
+          await context.store.remove(credential.credentialRef)
+          return {
+            configured: true,
+            stored: true,
+            removed: true,
+            facility: 'encrypted-headless',
+          }
+        } finally {
+          context.dispose()
+        }
+      },
+    }
   } catch (error) {
+    context?.dispose()
     throw new LiveBridgeError(
-      'CREDENTIAL_STORE_UNAVAILABLE',
-      'A bridge bearer token was provided, but Braid could not install it in the operating-system credential store',
-      exitCodes.unavailable,
+      'TARGET_CREDENTIAL_STORE_FAILED',
+      'The packed Braid credential store could not prepare the live Bridge credential',
+      exitCodes.failed,
       { cause: error instanceof Error ? error.message : String(error) },
     )
   }
@@ -185,5 +230,13 @@ export async function writeTargetConfig(root, endpoint, target, credential) {
     )}\n`,
     { mode: 0o600 },
   )
-  return { workspace, configPath, profilePath, profile, connection, key }
+  return {
+    workspace,
+    configPath,
+    profilePath,
+    profile,
+    connection,
+    key,
+    databaseKeyFile,
+  }
 }

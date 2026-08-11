@@ -8,6 +8,12 @@ The core talks to `agent-runtime`, `agent-interface`, provider packages, `agent-
 
 There is no agent loop, provider-native parser, or profile materializer in Braid.
 
+The presentation layer uses one immutable execution-target projection for the focused context.
+
+That projection reads the exact run receipt when a run exists and falls back to the pending profile only before admission.
+
+This keeps profile identity, run identity, connection, environment, and output limits coherent without a shared god object or duplicated formatting logic.
+
 ## System context
 
 ```mermaid
@@ -47,6 +53,7 @@ The arrows describe dependency direction, not ownership transfer.
 | Conversation graph and interface decisions | Braid | Persist an append-only journal and derived views |
 | Credentials | Provider authentication plus operating-system credential store | Persist only opaque credential references |
 | Terminal layout and input | Pi TUI plus Braid components | Render immutable view models and emit intents |
+| Effective execution target | Braid view projection from profile or run receipt | Show one coherent profile, runner, model, limit, connection, and environment context |
 
 ## Dependency rule
 
@@ -296,6 +303,16 @@ A sequence gap pauses reduction for that run and requests replay from the last c
 
 If the provider cannot fill the gap, the run becomes incomplete with an explicit missing range and the transcript is never presented as complete.
 
+The run receipt is projected independently from the event document so the terminal and headless views can identify the exact profile, runner, model, effort, output limit, connection, and environment for each run.
+
+Analysis events retain their own analysis run identity and source digest, while runtime worker events retain their supervisor and parent-worker identities.
+
+Each analysis captures one exact profile and connection before dispatch.
+
+The analysis adapter and durable provenance use that same snapshot, even when the selected route changes during execution.
+
+The projections therefore expose direct turns, analyses, and workers as separate activity records even when they share a terminal timeline.
+
 ## Runtime event envelope requirement
 
 Every event delivered to Braid must have a stable runtime run identifier, stable event identifier, monotonic run-local sequence, event type, normalized payload, occurrence time when known, and replay cursor when distinct from event identity.
@@ -311,6 +328,12 @@ Unknown future event types are journaled and displayed as redacted diagnostics w
 ## State model
 
 Application state contains workspace navigation, conversations and branches, active run projections, pending interactions, profile and connection selections, drafts and queues, analyses, supervisor projections, overlay stack, focus, appearance, and health.
+
+The terminal builds one immutable semantic projection for each state object and reuses it for repeated renders.
+
+The terminal graph includes the newest 2,048 workers and up to 4,096 workers after parent inclusion.
+
+It reports the omitted count, while headless semantic queries retain complete history.
 
 Ephemeral terminal details such as current viewport row and cursor blink are interface-local.
 
@@ -352,8 +375,8 @@ Every identifier is a branded type in TypeScript and a separate column in storag
 | `ProviderSessionId` | Native continuity within one provider or runner | Provider |
 | `EnvironmentId` | Local or cloud execution environment | Provider |
 | `CheckpointId` | Immutable provider workspace checkpoint | Provider |
-| `SupervisorId` | Runtime worker-tree identity | Runtime |
-| `WorkerId` | One runtime-supervised worker | Runtime |
+| `SupervisorId` | Braid identity for one runtime supervisor in one workspace | Braid from the opaque runtime reference |
+| `WorkerId` | Braid identity for one runtime worker under one supervisor | Braid from the opaque runtime reference |
 | `InteractionId` | One answerable request, unique within its bound run or session | Provider through shared contract |
 | `AnalysisId` | One Braid analysis graph node | Braid |
 | `AnalysisRunId` | One `agent-eval` execution | `agent-eval` or caller according to contract |
@@ -361,6 +384,14 @@ Every identifier is a branded type in TypeScript and a separate column in storag
 | `EventId` | One stable event in a run | Runtime/provider contract |
 
 Serialization never uses a bare `id` field without an enclosing object type or explicit name.
+
+Braid stores each runtime supervisor and worker reference separately from its public identifier.
+
+Runtime control resolves the public identifier to that opaque reference at the adapter boundary.
+
+A runtime snapshot does not imply a Braid run binding.
+
+Braid adds a run edge only when an explicit binding names both the runtime supervisor and Braid run.
 
 An interaction is addressed and constrained uniquely by `(RunId, InteractionId)` and its provider-session binding; an interaction identifier alone is never a global lookup key.
 
@@ -523,6 +554,8 @@ The protocol never exposes a provider client object or allows arbitrary method i
 
 A render-state query returns semantic view data, not terminal escape output.
 
+Headless attach and reconnect operate on the durable Braid conversation and provider run binding, not on private runner process state.
+
 The terminal driver used by visual tests remains separate and renders through Pi TUI.
 
 ## Terminal interface architecture
@@ -538,6 +571,8 @@ Braid's root component receives one immutable application view model and emits t
 A modal coordinator owns the overlay stack and interaction preemption.
 
 A layout function maps width and height to narrow, standard, or wide composition without changing application state.
+
+The activity rail and focused activity browser consume the same activity document projection, so filtering and event status do not diverge between layouts.
 
 Theme tokens are semantic and views cannot use raw ANSI codes.
 

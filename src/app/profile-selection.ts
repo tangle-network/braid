@@ -4,14 +4,16 @@ import {
   harnessHonorsSelectors,
   harnessReasoningEfforts,
   harnessSupportsModel,
-  mergeAgentProfiles,
   preferredHarnessForModel,
   reasoningEffortsFor,
   snapHarnessToModel,
   snapModelToHarness,
+} from '../adapters/agent-interface/harness-runtime.js'
+import {
+  mergeAgentProfiles,
   snapshotAgentProfile,
-  type AgentProfile,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/profile-runtime.js'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import type {
   EffectiveProfileInput,
   EffectiveProfileResult,

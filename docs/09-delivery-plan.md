@@ -288,6 +288,8 @@ A repository search and dependency test must prove no Braid-owned runner/model m
 - Implement run admission, immutable receipts, runtime event ingestion, stable message-part updates, tools, reasoning, artifacts, proposals, warnings, usage, cost, errors, and terminal outcomes.
 - Implement provider-boundary-verified native continuation, background runs, input queue, typed steering, explicit cancel, detach, reconnect, replay, status reconciliation, and unknown state.
 - Implement bounded transcript virtualization, tool-output detail, event detail, and activity.
+- Preserve per-call and terminal usage with reported, estimated, observed-minimum, and unknown states.
+- Record one secret-free execution environment for local CLI Bridge, direct inference, and sandbox paths.
 - Implement shutdown behavior that distinguishes detachable and non-detachable runs.
 - Run the packed Braid binary against CLI Bridge, Tangle inference, and Tangle sandbox.
 
@@ -356,6 +358,7 @@ The UI proof includes the source and destination file state of a real cloud envi
 - Implement feedback trajectory export from structured decisions.
 - Implement the complete graph with conversation, branch, turn, run, analysis, environment, checkpoint, supervisor, and worker nodes and named edges.
 - Implement runtime-owned supervisor snapshot watch, activity, log tail, typed steering, typed cancellation, and reconnect.
+- Keep direct-turn, trace-analysis, and delegated-worker usage separate until Runtime exports stable shared call identity.
 - Add calibrated semantic cases and raw evidence capture.
 
 ### Done when

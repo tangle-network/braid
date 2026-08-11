@@ -21,7 +21,7 @@ import { classifySqliteError } from './sqlite-paths.js'
 import { asNumber, asString, missingFromCursor, now } from './sqlite-rows.js'
 import type { PreparedStateSnapshot } from './sqlite-state-snapshot-types.js'
 import type { CursorRow, SqliteEventRow } from './sqlite-types.js'
-import { assertJournalEventInput } from './storage-validation.js'
+import { assertJournalEventInput, canAppendAfterTerminal } from './storage-validation.js'
 
 export abstract class SqliteJournalStorage extends SqliteLifecycleStorage {
   async append(events: readonly JournalEvent[]): Promise<AppendResult> {
@@ -225,7 +225,7 @@ export abstract class SqliteJournalStorage extends SqliteLifecycleStorage {
             cursor?.missing_to !== undefined &&
             event.sequence >= cursor.missing_from &&
             event.sequence <= cursor.missing_to
-          if (cursor?.terminal === 1 && !isMissingSequence) {
+          if (cursor?.terminal === 1 && !isMissingSequence && !canAppendAfterTerminal(event)) {
             throw new StorageError(
               'TERMINAL_RUN_MUTATION',
               `Run ${event.runId} is already terminal`,
@@ -361,9 +361,7 @@ export abstract class SqliteJournalStorage extends SqliteLifecycleStorage {
     const rows = this.database
       .prepare(`SELECT * FROM braid_journal_events${where} ORDER BY storage_id`)
       .all(...parameters) as readonly SqliteEventRow[]
-    const result: StoredJournalEvent[] = []
-    for (const row of rows) result.push(await this.storedEvent(row))
-    return result
+    return this.storedEvents(rows)
   }
 
   async replay(input: {
@@ -380,8 +378,7 @@ export abstract class SqliteJournalStorage extends SqliteLifecycleStorage {
         'SELECT * FROM braid_journal_events WHERE run_id = ? AND run_sequence > ? ORDER BY run_sequence',
       )
       .all(input.runId, after) as readonly SqliteEventRow[]
-    const events: StoredJournalEvent[] = []
-    for (const row of rows) events.push(await this.storedEvent(row))
+    const events = await this.storedEvents(rows)
     const missing = cursor ? missingFromCursor(cursor) : null
     return {
       events,

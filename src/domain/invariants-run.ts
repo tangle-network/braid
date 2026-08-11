@@ -1,5 +1,6 @@
 import type {
   AnalysisAttachmentRecord,
+  AnalysisModelCallRecord,
   AnalysisRecord,
   InteractionRecord,
   RunRecord,
@@ -17,6 +18,7 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
+import { safePublicIdentifier } from './provider-values.js'
 
 export function assertRunRecord(record: RunRecord): void {
   assertEntityId('run', record.id, 'run.id')
@@ -26,7 +28,19 @@ export function assertRunRecord(record: RunRecord): void {
   assertEntityId('operation', record.operationId, 'run.operationId')
   finiteNonNegative(record.inputTokens, 'run.inputTokens')
   finiteNonNegative(record.outputTokens, 'run.outputTokens')
+  if (record.tokensKnown !== undefined && record.tokensKnown !== false)
+    fail('run.tokensKnown must be false when present')
   if (record.costUsd !== undefined) finiteNonNegative(record.costUsd, 'run.costUsd')
+  if (record.usdKnown !== undefined && record.usdKnown !== false)
+    fail('run.usdKnown must be false when present')
+  if (record.estimatedCostUsd !== undefined)
+    finiteNonNegative(record.estimatedCostUsd, 'run.estimatedCostUsd')
+  if (record.llmCalls !== undefined) finiteNonNegative(record.llmCalls, 'run.llmCalls')
+  if (record.llmLatencyMs !== undefined) finiteNonNegative(record.llmLatencyMs, 'run.llmLatencyMs')
+  for (const [key, value] of Object.entries(record.promptCache ?? {})) {
+    nonEmpty(key, 'run.promptCache key')
+    finiteNonNegative(value, `run.promptCache.${key}`)
+  }
   if (record.profileSnapshotId !== undefined)
     assertEntityId('profileSnapshot', record.profileSnapshotId, 'run.profileSnapshotId')
   if (record.connectionId !== undefined)
@@ -151,9 +165,12 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
       assertEntityId('profile', record.provenance.profileId, 'analysis.provenance.profileId')
     if (record.provenance.profileDigest !== undefined)
       assertDigest(record.provenance.profileDigest, 'analysis.provenance.profileDigest')
+    if (record.provenance.connectionDigest !== undefined)
+      assertDigest(record.provenance.connectionDigest, 'analysis.provenance.connectionDigest')
     for (const check of record.provenance.checks) nonEmpty(check.id, 'analysis.check.id')
   }
   for (const check of record.checks ?? []) nonEmpty(check.id, 'analysis.check.id')
+  for (const modelCall of record.modelCalls ?? []) assertAnalysisModelCall(modelCall)
   if (record.usage !== undefined) {
     finiteNonNegative(record.usage.input, 'analysis.usage.input')
     finiteNonNegative(record.usage.output, 'analysis.usage.output')
@@ -162,6 +179,65 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
   if (record.wallTimeMs !== undefined) finiteNonNegative(record.wallTimeMs, 'analysis.wallTimeMs')
   assertDate(record.createdAt, 'analysis.createdAt')
   assertDate(record.updatedAt, 'analysis.updatedAt')
+}
+
+function assertAnalysisModelCall(record: AnalysisModelCallRecord): void {
+  if (!Number.isSafeInteger(record.sequence) || record.sequence <= 0)
+    fail('analysis.modelCalls.sequence must be a positive safe integer')
+  assertPublicIdentifier(record.callId, 'analysis.modelCalls.callId')
+  assertPublicIdentifier(record.callRef, 'analysis.modelCalls.callRef')
+  if (!['/v1/chat/completions', '/v1/responses', 'unknown-path'].includes(record.path))
+    fail('analysis.modelCalls.path is invalid')
+  assertPublicIdentifier(record.model, 'analysis.modelCalls.model')
+  if (record.provider !== undefined)
+    assertPublicIdentifier(record.provider, 'analysis.modelCalls.provider')
+  if (record.route !== undefined) assertPublicIdentifier(record.route, 'analysis.modelCalls.route')
+  for (const [key, value] of Object.entries({
+    inputTokens: record.inputTokens,
+    outputTokens: record.outputTokens,
+    cachedTokens: record.cachedTokens,
+    cacheWriteTokens: record.cacheWriteTokens,
+    latencyMs: record.latencyMs,
+    responseStatus: record.responseStatus,
+  })) {
+    if (value !== undefined) finiteNonNegative(value, `analysis.modelCalls.${key}`)
+  }
+  if (
+    record.cost.status !== 'observed' &&
+    record.cost.status !== 'estimated' &&
+    record.cost.status !== 'unknown'
+  ) {
+    fail('analysis.modelCalls.cost.status is invalid')
+  }
+  if (record.cost.usd !== undefined)
+    finiteNonNegative(record.cost.usd, 'analysis.modelCalls.cost.usd')
+  if (record.cost.status === 'unknown' && record.cost.usd !== undefined)
+    fail('analysis.modelCalls.cost.usd must be absent when cost is unknown')
+  if (record.cost.status !== 'unknown' && record.cost.usd === undefined)
+    fail('analysis.modelCalls.cost.usd is required when cost is known')
+  if (typeof record.tokensKnown !== 'boolean')
+    fail('analysis.modelCalls.tokensKnown must be boolean')
+  if (record.tokensKnown && (record.inputTokens === undefined || record.outputTokens === undefined))
+    fail('analysis.modelCalls known tokens require input and output')
+  if (
+    record.responseStatus !== undefined &&
+    (!Number.isSafeInteger(record.responseStatus) ||
+      record.responseStatus < 100 ||
+      record.responseStatus > 599)
+  )
+    fail('analysis.modelCalls.responseStatus is invalid')
+  if (record.failureCode !== undefined)
+    assertPublicIdentifier(record.failureCode, 'analysis.modelCalls.failureCode')
+  if (record.startedAt !== undefined) assertDate(record.startedAt, 'analysis.modelCalls.startedAt')
+  if (record.endedAt !== undefined) assertDate(record.endedAt, 'analysis.modelCalls.endedAt')
+  const unsafe = record as unknown as Record<string, unknown>
+  if ('prompt' in unsafe || 'request' in unsafe || 'response' in unsafe || 'credential' in unsafe) {
+    fail('analysis.modelCalls cannot retain model payloads or credentials')
+  }
+}
+
+function assertPublicIdentifier(value: string, label: string): void {
+  if (safePublicIdentifier(value) !== value) fail(`${label} must be a safe public identifier`)
 }
 
 export function assertAnalysisAttachment(record: AnalysisAttachmentRecord): void {

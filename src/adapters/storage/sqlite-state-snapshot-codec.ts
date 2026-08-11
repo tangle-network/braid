@@ -86,9 +86,6 @@ export function materializedSnapshotFromPayload(
     state: payload,
     stateChecksum: metadata.stateChecksum,
   }
-  if (!isMaterializedStateSnapshot(candidate)) {
-    throw new StorageError('STATE_SNAPSHOT_INVALID', 'Snapshot payload failed validation')
-  }
   try {
     restoreMaterializedState(candidate)
   } catch (error) {
@@ -96,7 +93,7 @@ export function materializedSnapshotFromPayload(
       cause: error,
     })
   }
-  return candidate
+  return candidate as MaterializedStateSnapshot
 }
 
 export function asPositiveNumber(value: unknown): number | null {

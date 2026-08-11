@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 import type { CostLedger, CostReceipt } from '@tangle-network/agent-eval'
 import type { CampaignResult } from '@tangle-network/agent-eval/contract'
+import {
+  redactStructuredValueWithNumericTelemetry,
+  type StructuredRedactionLimits,
+} from '../domain/bounded-structured.js'
 import { canonicalJson } from '../domain/canonical.js'
 import type {
   CalibrationSummary,
@@ -15,11 +19,6 @@ import type {
 } from './types.js'
 import { SEMANTIC_EVAL_CASE_IDS } from './types.js'
 
-const SECRET_KEY =
-  /(api[_-]?key|authorization|bearer|cookie|credential|password|passphrase|private[_-]?key|secret|token)/iu
-const SECRET_ASSIGNMENT =
-  /(api[_-]?key|authorization|bearer|cookie|credential|password|passphrase|private[_-]?key|secret|token)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;}]+)/giu
-
 /** Deliberate values used by tests and live-record redaction checks. */
 export const EVAL_SECRET_CANARIES = Object.freeze([
   'BRAID_EVAL_SECRET_CANARY',
@@ -29,6 +28,12 @@ export const EVAL_SECRET_CANARIES = Object.freeze([
 ])
 
 export const SEMANTIC_EVAL_RECORD_SCHEMA_VERSION = 2 as const
+
+const EVAL_ARTIFACT_REDACTION_LIMITS = Object.freeze({
+  maxDepth: 24,
+  maxItems: 100_000,
+  maxBytes: 4 * 1024 * 1024,
+})
 
 export interface EvalArtifactReference {
   readonly artifactId: string
@@ -105,8 +110,8 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 }
 
-function redactString(value: string): string {
-  let output = value.replace(SECRET_ASSIGNMENT, '$1=[REDACTED]')
+function replaceEvalCanaries(value: string): string {
+  let output = value
   for (const canary of EVAL_SECRET_CANARIES) {
     output = output.replace(new RegExp(escapeRegExp(canary), 'giu'), '[REDACTED_SECRET]')
   }
@@ -120,24 +125,28 @@ export function containsEvalSecretCanary(value: unknown): boolean {
   )
 }
 
-export function redactEvalValue(value: unknown, _key?: string): unknown {
-  if (typeof value === 'string') return redactString(value)
-  if (Array.isArray(value)) return value.map((entry) => redactEvalValue(entry))
-  if (value === null || typeof value !== 'object') return value
-  return Object.fromEntries(
-    Object.entries(value).map(([entryKey, entryValue]) => [
-      entryKey,
-      SECRET_KEY.test(entryKey) ? '[REDACTED]' : redactEvalValue(entryValue, entryKey),
-    ]),
-  )
+export function redactEvalValue(
+  value: unknown,
+  _key?: string,
+  limits: StructuredRedactionLimits = {},
+): unknown {
+  return redactStructuredValueWithNumericTelemetry(value, _key, {
+    ...limits,
+    redactionMarker: '[REDACTED]',
+    stringTransform: replaceEvalCanaries,
+  })
 }
 
-export function evalCanonicalJson(value: unknown): string {
-  return canonicalJson(redactEvalValue(value))
+export function redactEvalArtifactValue(value: unknown, key?: string): unknown {
+  return redactEvalValue(value, key, EVAL_ARTIFACT_REDACTION_LIMITS)
 }
 
-export function evalSha256(value: unknown): string {
-  return `sha256:${createHash('sha256').update(evalCanonicalJson(value)).digest('hex')}`
+export function evalCanonicalJson(value: unknown, limits: StructuredRedactionLimits = {}): string {
+  return canonicalJson(redactEvalValue(value, undefined, limits))
+}
+
+export function evalSha256(value: unknown, limits: StructuredRedactionLimits = {}): string {
+  return `sha256:${createHash('sha256').update(evalCanonicalJson(value, limits)).digest('hex')}`
 }
 
 export function hashText(value: string): string {
@@ -205,7 +214,7 @@ export function cellEvidence(
     scenarioId: cell.scenarioId,
     fixtureId: cell.artifact.fixtureId,
     semanticOutput: redactEvalValue(cell.artifact.semanticOutput),
-    candidateOutput: redactString(cell.artifact.candidateOutput),
+    candidateOutput: redactEvalValue(cell.artifact.candidateOutput) as string,
     productPath,
     judgeScores,
     pass:
@@ -250,13 +259,16 @@ export function cellCostEvidence(
 }
 
 export function recordHashMaterial(record: Omit<SemanticEvalRecord, 'artifactHash'>): unknown {
-  return redactEvalValue(record)
+  return redactEvalArtifactValue(record)
 }
 
 export function withArtifactHash(
   record: Omit<SemanticEvalRecord, 'artifactHash'>,
 ): SemanticEvalRecord {
-  return { ...record, artifactHash: evalSha256(recordHashMaterial(record)) }
+  return {
+    ...record,
+    artifactHash: evalSha256(recordHashMaterial(record), EVAL_ARTIFACT_REDACTION_LIMITS),
+  }
 }
 
 function requiredNumber(value: unknown, label: string, errors: string[]): void {
@@ -355,7 +367,7 @@ export function validateSemanticEvalRecord(record: unknown): readonly string[] {
   if (candidate.artifactHash !== undefined) {
     const material = { ...candidate }
     delete (material as { artifactHash?: string }).artifactHash
-    const expected = evalSha256(material)
+    const expected = evalSha256(material, EVAL_ARTIFACT_REDACTION_LIMITS)
     if (candidate.artifactHash !== expected)
       errors.push('artifactHash does not match canonical record')
   } else errors.push('artifactHash is required')
@@ -374,7 +386,7 @@ export async function writeJsonArtifact(
   artifactId: string,
   value: unknown,
 ): Promise<EvalArtifactReference> {
-  const content = `${evalCanonicalJson(value)}\n`
+  const content = `${evalCanonicalJson(value, EVAL_ARTIFACT_REDACTION_LIMITS)}\n`
   await writeFile(path, content, { encoding: 'utf8', mode: 0o600 })
   return { artifactId, sha256: hashText(content), path }
 }

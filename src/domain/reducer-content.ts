@@ -1,6 +1,7 @@
 import type { BraidEvent } from './events.js'
 import { reserveText, reserveValue } from './content-budget.js'
 import type { BraidMessagePart, BraidState } from './state.js'
+import { addRunUsage } from './run-usage.js'
 import {
   activity,
   addActivity,
@@ -261,26 +262,17 @@ export function reduceContentEvent(
         ...base,
         runs: updateRun(state, event.runId, (run) => {
           const withProgress = withProviderProgress(run, event.provider)
-          return {
-            ...withProgress,
-            inputTokens: event.usage.input,
-            outputTokens: event.usage.output,
-            ...(event.usage.reasoning === undefined
-              ? {}
-              : { reasoningTokens: event.usage.reasoning }),
-            ...(event.usage.costUsd === undefined ? {} : { costUsd: event.usage.costUsd }),
-            ...(event.usage.model === undefined ? {} : { model: event.usage.model }),
-          }
+          return addRunUsage(withProgress, event.usage)
         }),
       }
     case 'run.cost':
       return {
         ...state,
         ...base,
-        runs: updateRun(state, event.runId, (run) => ({
-          ...withProviderProgress(run, event.provider),
-          costUsd: event.costUsd,
-        })),
+        runs: updateRun(state, event.runId, (run) => {
+          const { usdKnown: _usdKnown, ...known } = withProviderProgress(run, event.provider)
+          return { ...known, costUsd: event.costUsd }
+        }),
       }
     default: {
       const exhaustive: never = event

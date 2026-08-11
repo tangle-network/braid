@@ -1,3 +1,4 @@
+import { boundedDrain } from '../../app/application-lifecycle.js'
 import { canonicalDigest } from '../shared/canonical.js'
 import type { BraidUiController, UiEvent } from '../shared/intents.js'
 import { redactSensitiveText, sanitizeTerminalText } from '../shared/sanitize.js'
@@ -139,6 +140,9 @@ export async function runRpc(
   let replayBytes = 0
   const outputQueue = new BoundedOutputQueue(output)
   let outputFailure: unknown
+  let shutdownStarted = false
+  let applicationClosed = false
+  let closePromise: Promise<void> | undefined
   const writeRaw = async (line: string): Promise<void> => {
     if (outputFailure !== undefined) throw outputFailure
     try {
@@ -153,6 +157,21 @@ export async function runRpc(
   const emit = async (response: BraidResponse): Promise<void> => {
     if (outputFailure !== undefined) throw outputFailure
     await write(response)
+  }
+  const requestShutdown = async (): Promise<void> => {
+    if (shutdownStarted) return
+    shutdownStarted = true
+    const result = await controller.dispatch({
+      type: 'shutdown',
+      operationId: 'op-rpc-eof-shutdown',
+      mode: 'cancel',
+    })
+    if (result.kind === 'accepted' && result.completion) await result.completion
+  }
+  const closeApplication = async (): Promise<void> => {
+    closePromise ??= controller.close?.() ?? boundedDrain(pendingCompletions).then(() => undefined)
+    await closePromise
+    applicationClosed = true
   }
   const trimReplayHistory = () => {
     while (requests.size > RPC_REPLAY_MAX_ENTRIES || replayBytes > RPC_REPLAY_MAX_BYTES) {
@@ -328,7 +347,10 @@ export async function runRpc(
               tracked = result.completion.finally(() => pendingCompletions.delete(tracked))
               pendingCompletions.add(tracked)
               void tracked
-                .then(() => respond(stateResponse(controller, request.requestId)))
+                .then(() => {
+                  if (applicationClosed) return
+                  return respond(stateResponse(controller, request.requestId))
+                })
                 .catch(() => undefined)
             } else {
               await respond(stateResponse(controller, request.requestId))
@@ -336,6 +358,7 @@ export async function runRpc(
             break
           }
           case 'shutdown': {
+            shutdownStarted = true
             const result = await controller.dispatch({
               type: 'shutdown',
               operationId: request.operationId,
@@ -354,7 +377,7 @@ export async function runRpc(
               command: request.command,
             })
             if (result.completion) await result.completion
-            await Promise.all(pendingCompletions)
+            await closeApplication()
             await outputQueue.flush()
             if (outputFailure !== undefined) throw outputFailure
             return 0
@@ -403,17 +426,18 @@ export async function runRpc(
         else await write(response)
       }
     }
-    const eofShutdown = await controller.dispatch({
-      type: 'shutdown',
-      operationId: 'rpc-eof-shutdown',
-      mode: 'cancel',
-    })
-    if (eofShutdown.kind === 'accepted' && eofShutdown.completion) await eofShutdown.completion
-    await Promise.all(pendingCompletions)
+    await requestShutdown()
+    await closeApplication()
     await outputQueue.flush()
     if (outputFailure !== undefined) throw outputFailure
     return 0
   } finally {
+    try {
+      await requestShutdown()
+      await closeApplication()
+    } catch {
+      // The outer application close barrier records any unresolved run state.
+    }
     unsubscribe()
   }
 }

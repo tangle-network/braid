@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { canonicalCandidateJson } from '@tangle-network/agent-interface'
+import { canonicalCandidateJson } from '../adapters/agent-interface/profile-runtime.js'
 import { isLoopbackEndpoint } from '../adapters/connections/production-connection-endpoints.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
 import {

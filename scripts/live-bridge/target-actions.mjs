@@ -18,9 +18,19 @@ import {
 } from './protocol.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
 
-export async function initializeTarget(session, result, classifyStartup) {
+export async function initializeTarget(
+  session,
+  result,
+  classifyStartup,
+  { operationPrefix = 'live' } = {},
+) {
   const initialize = {
-    ...requestBase(`init-${result.targetKey}`, 'initialize'),
+    ...requestBase(
+      operationPrefix === 'live'
+        ? `init-${result.targetKey}`
+        : `${operationPrefix}-init-${result.targetKey}`,
+      'initialize',
+    ),
     params: { workspace: result.workspace, subscribe: true },
   }
   result.requests.push(evidenceValue(initialize))
@@ -54,11 +64,31 @@ export async function initializeTarget(session, result, classifyStartup) {
   result.initialCapabilities = evidenceValue(targetCapabilities(initialState, initialState.state))
 }
 
-export async function runNormalTurn(session, result, target, timeoutMs) {
-  const normalPrompt = livePrompts.normal(target.key)
-  const marker = `LIVE_BRAID_${target.key.toUpperCase().replaceAll('.', '_')}_OK`
+function requestIdFor(operationPrefix, action, targetKey) {
+  return operationPrefix === 'live'
+    ? `${action}-${targetKey}`
+    : `${operationPrefix}-${action}-${targetKey}`
+}
+
+function operationIdFor(operationPrefix, action, targetKey) {
+  return `op-${operationPrefix}-${action}-${targetKey}`
+}
+
+export async function runNormalTurn(
+  session,
+  result,
+  target,
+  timeoutMs,
+  { operationPrefix = 'live', prompt, marker } = {},
+) {
+  const normalPrompt = prompt ?? livePrompts.normal(target.key)
+  const expectedMarker = marker ?? `LIVE_BRAID_${target.key.toUpperCase().replaceAll('.', '_')}_OK`
   const send = {
-    ...requestBase(`send-${target.key}`, 'send', `op-live-send-${target.key}`),
+    ...requestBase(
+      requestIdFor(operationPrefix, 'send', target.key),
+      'send',
+      operationIdFor(operationPrefix, 'send', target.key),
+    ),
     params: {
       conversationId: result.conversationId,
       branchId: result.branchId,
@@ -102,14 +132,14 @@ export async function runNormalTurn(session, result, target, timeoutMs) {
   )
   const finalRun = runFromState(terminal.state, runId)
   const finalMessage = terminalMessage(terminal.state, runId)
-  const markerObserved = exactMarker(finalMessage?.text, marker)
+  const markerObserved = exactMarker(finalMessage?.text, expectedMarker)
   result.normal = {
     status: finalRun?.status,
     runId,
     run: evidenceValue(finalRun),
     assistant: evidenceValue(finalMessage),
     finalText: finalMessage?.text === undefined ? undefined : redactString(finalMessage.text),
-    marker,
+    marker: expectedMarker,
     markerObserved,
     prompt: normalPrompt,
   }
@@ -131,16 +161,24 @@ export async function runNormalTurn(session, result, target, timeoutMs) {
   return { finalRun, runId, terminal }
 }
 
-export async function verifyReconnect(session, result, runId, finalRun, providerCapabilities) {
+export async function verifyReconnect(
+  session,
+  result,
+  runId,
+  finalRun,
+  providerCapabilities,
+  { operationPrefix = 'live' } = {},
+) {
   const reconnect = {
     ...requestBase(
-      `reconnect-${result.targetKey}`,
+      requestIdFor(operationPrefix, 'reconnect', result.targetKey),
       'reconnect',
-      `op-live-reconnect-${result.targetKey}`,
+      operationIdFor(operationPrefix, 'reconnect', result.targetKey),
     ),
     params: { runId },
   }
   result.requests.push(evidenceValue(reconnect))
+  const responseCount = session.responses?.length ?? 0
   session.send(reconnect)
   const reconnectResponse = await session.waitFor(
     'reconnect result',
@@ -154,22 +192,55 @@ export async function verifyReconnect(session, result, runId, finalRun, provider
     providerCapabilities.streaming?.replay,
     advertisedByRun,
   )
+  const replayEvent = await session
+    .waitFor(
+      'replayed run event',
+      (response) =>
+        (session.responses?.indexOf(response) ?? responseCount) >= responseCount &&
+        response.type === 'event' &&
+        ['run.reconnecting', 'run.reconciled', 'run.finished', 'run.unknown'].includes(
+          response.event?.kind,
+        ) &&
+        response.event?.runId === runId,
+      15_000,
+    )
+    .catch(() => undefined)
+  const replayObserved = replayEvent !== undefined
   result.reconnect = {
     advertisedByProvider: availability.advertisedByProvider,
     advertisedByRun,
     advertised: availability.advertised,
     response: evidenceValue(reconnectResponse),
-    status: semanticCommandStatus(reconnectResponse, availability.advertised),
+    replayEvent: evidenceValue(replayEvent),
+    replayObserved,
+    status:
+      semanticCommandStatus(reconnectResponse, availability.advertised) === 'verified' &&
+      !replayObserved
+        ? 'replay-missing'
+        : semanticCommandStatus(reconnectResponse, availability.advertised),
   }
 }
 
-export async function verifyCancel(session, result, target, finalRun, providerCapabilities) {
+export async function verifyCancel(
+  session,
+  result,
+  target,
+  finalRun,
+  providerCapabilities,
+  { operationPrefix = 'live', timeoutMs = 30_000 } = {},
+) {
+  const advertisedByNormalAdmission =
+    result.send?.admission?.capabilities?.controls?.cancel === true
   const advertisedByNormalRun = finalRun?.capabilities?.controls?.cancel === true
   const advertisedByProvider = capabilityAdvertised(providerCapabilities.controls?.cancel)
-  if (!advertisedByProvider && !advertisedByNormalRun) {
+  if (!advertisedByProvider && !advertisedByNormalAdmission && !advertisedByNormalRun) {
     const availability = capabilityAvailability(providerCapabilities.controls?.cancel, false)
     const cancel = {
-      ...requestBase(`cancel-${target.key}`, 'cancel_run', `op-live-cancel-${target.key}`),
+      ...requestBase(
+        requestIdFor(operationPrefix, 'cancel', target.key),
+        'cancel_run',
+        operationIdFor(operationPrefix, 'cancel', target.key),
+      ),
       params: { runId: finalRun.id, reason: 'live packed smoke cancellation' },
     }
     result.requests.push(evidenceValue(cancel))
@@ -177,12 +248,13 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
     const cancelResponse = await session.waitFor(
       'unavailable cancel result',
       responseForRequest(cancel.requestId),
-      30_000,
+      timeoutMs,
     )
     result.cancel = {
       attemptedRun: false,
       response: evidenceValue(cancelResponse),
       advertisedByProvider: availability.advertisedByProvider,
+      advertisedByNormalAdmission,
       advertisedByNormalRun,
       advertisedByRun: false,
       advertised: false,
@@ -192,7 +264,11 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   }
   const cancelPrompt = livePrompts.cancel(target.key)
   const cancelSend = {
-    ...requestBase(`cancel-send-${target.key}`, 'send', `op-live-cancel-send-${target.key}`),
+    ...requestBase(
+      requestIdFor(operationPrefix, 'cancel-send', target.key),
+      'send',
+      operationIdFor(operationPrefix, 'cancel-send', target.key),
+    ),
     params: {
       conversationId: result.conversationId,
       branchId: result.branchId,
@@ -208,8 +284,10 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   result.cancel = { prompt: cancelPrompt, send: evidenceValue(cancelSendResponse) }
   if (cancelSendResponse.type !== 'ack' || typeof cancelSendResponse.runId !== 'string') {
     result.cancel.advertisedByProvider = advertisedByProvider
+    result.cancel.advertisedByNormalAdmission = advertisedByNormalAdmission
     result.cancel.advertisedByNormalRun = advertisedByNormalRun
-    result.cancel.advertised = advertisedByProvider || advertisedByNormalRun
+    result.cancel.advertised =
+      advertisedByProvider || advertisedByNormalAdmission || advertisedByNormalRun
     result.cancel.status = 'not-admitted'
     return
   }
@@ -219,12 +297,18 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
     advertisedByRun,
   )
   result.cancel.advertisedByProvider = availability.advertisedByProvider
+  result.cancel.advertisedByNormalAdmission = advertisedByNormalAdmission
   result.cancel.advertisedByNormalRun = advertisedByNormalRun
   result.cancel.advertisedByRun = advertisedByRun
   result.cancel.advertised = availability.advertised
+  result.cancel.runId = cancelSendResponse.runId
   await sleep(25)
   const cancel = {
-    ...requestBase(`cancel-${target.key}`, 'cancel_run', `op-live-cancel-${target.key}`),
+    ...requestBase(
+      requestIdFor(operationPrefix, 'cancel', target.key),
+      'cancel_run',
+      operationIdFor(operationPrefix, 'cancel', target.key),
+    ),
     params: { runId: cancelSendResponse.runId, reason: 'live packed smoke cancellation' },
   }
   result.requests.push(evidenceValue(cancel))
@@ -242,10 +326,13 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   }
   const cancelStateResponse = await session
     .waitFor(
-      'cancel terminal state',
-      (response) =>
-        response.requestId === cancel.requestId && stateForRun(response, cancelSendResponse.runId),
-      30_000,
+      'confirmed cancel terminal state',
+      (response) => {
+        if (response.type !== 'state') return false
+        const run = runFromState(response.state, cancelSendResponse.runId)
+        return run?.status === 'cancelled' || run?.status === 'aborted'
+      },
+      timeoutMs,
     )
     .catch(() => undefined)
   const cancelledRun = runFromState(cancelStateResponse?.state, cancelSendResponse.runId)
@@ -254,7 +341,13 @@ export async function verifyCancel(session, result, target, finalRun, providerCa
   result.cancel.status = cancelSemanticStatus(cancelResponse, cancelledRun, availability.advertised)
 }
 
-export async function verifyInteraction(session, result, providerCapabilities, terminal) {
+export async function verifyInteraction(
+  session,
+  result,
+  providerCapabilities,
+  terminal,
+  { operationPrefix = 'live' } = {},
+) {
   const interaction = terminal.view?.interactions?.[0]
   const interactionCapability = terminal.view?.capabilities?.['interaction.respond']
   const advertisedByBraid = capabilityAdvertised(interactionCapability)
@@ -273,9 +366,9 @@ export async function verifyInteraction(session, result, providerCapabilities, t
   }
   const response = {
     ...requestBase(
-      `interaction-${result.targetKey}`,
+      requestIdFor(operationPrefix, 'interaction', result.targetKey),
       'respond_interaction',
-      `op-live-interaction-${result.targetKey}`,
+      operationIdFor(operationPrefix, 'interaction', result.targetKey),
     ),
     params: {
       runId: interaction.runId,
@@ -298,18 +391,33 @@ export async function verifyInteraction(session, result, providerCapabilities, t
     provider: evidenceValue(providerCapabilities.interactions),
     braid: evidenceValue(interactionCapability),
     attempted: true,
+    runId: interaction.runId,
     response: evidenceValue(interactionResponse),
   }
 }
 
-export function assertTargetSemantics(result) {
+export function assertTargetSemantics(result, { strict = false } = {}) {
   for (const [name, capability] of [
     ['reconnect', result.reconnect],
     ['cancel', result.cancel],
     ['interaction', result.interaction],
   ]) {
     assertSemanticOutcome(name, capability.status, capability.advertised, { capability })
+    if (strict && capability.status !== 'verified')
+      throw new LiveBridgeError(
+        'LIVE_RELEASE_REQUIRED_PROOF_MISSING',
+        `${name} did not produce a verified live proof`,
+        exitCodes.failed,
+        { capability },
+      )
   }
+  if (strict && result.reconnect.replayObserved !== true)
+    throw new LiveBridgeError(
+      'LIVE_RELEASE_REPLAY_MISSING',
+      'The reconnect operation did not retain a replay event for the requested run',
+      exitCodes.failed,
+      { reconnect: result.reconnect },
+    )
   result.semanticAssertions = {
     reconnect: result.reconnect.status,
     cancel: result.cancel.status,
@@ -317,9 +425,9 @@ export function assertTargetSemantics(result) {
   }
 }
 
-export async function finishTarget(session, result) {
+export async function finishTarget(session, result, { operationPrefix = 'live' } = {}) {
   const finalStateRequest = {
-    ...requestBase(`final-state-${result.targetKey}`, 'get_state'),
+    ...requestBase(requestIdFor(operationPrefix, 'final-state', result.targetKey), 'get_state'),
     params: { projection: 'full' },
   }
   result.requests.push(evidenceValue(finalStateRequest))
@@ -329,9 +437,9 @@ export async function finishTarget(session, result) {
   )
   const shutdown = {
     ...requestBase(
-      `shutdown-${result.targetKey}`,
+      requestIdFor(operationPrefix, 'shutdown', result.targetKey),
       'shutdown',
-      `op-live-shutdown-${result.targetKey}`,
+      operationIdFor(operationPrefix, 'shutdown', result.targetKey),
     ),
     params: { mode: 'wait' },
   }

@@ -1,11 +1,13 @@
+import type {
+  InteractionBinding,
+  InteractionRequest,
+  InteractionRequestBinding,
+  InteractionRequestMaterial,
+} from '@tangle-network/agent-interface'
 import {
   InteractionRequestSchema,
   interactionRequestDigest,
-  type InteractionBinding,
-  type InteractionRequest,
-  type InteractionRequestBinding,
-  type InteractionRequestMaterial,
-} from '@tangle-network/agent-interface'
+} from '../adapters/agent-interface/interaction-runtime.js'
 
 type ParsedInteractionRequest = ReturnType<typeof InteractionRequestSchema.parse>
 

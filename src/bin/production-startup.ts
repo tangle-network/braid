@@ -1,5 +1,5 @@
 import { dirname, resolve } from 'node:path'
-import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import { portableBridgeModel } from '../adapters/connections/cli-bridge-model-route.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
@@ -216,6 +216,7 @@ function migrateStartupProfile(
     return profile
   }
   const portable = portableBridgeModel(runner, model, profile.model?.provider)
+  if (!portable.includes('/') && profile.model?.provider === runner) return profile
   if (portable === model) return profile
   return {
     ...profile,
@@ -224,6 +225,32 @@ function migrateStartupProfile(
       default: portable,
     },
   }
+}
+
+function effectiveStartupProfile(
+  profile: Readonly<AgentProfile>,
+  options: Pick<ProductionStartupLoadOptions, 'model' | 'runner'>,
+): Readonly<AgentProfile> {
+  const candidate = {
+    ...profile,
+    ...(options.runner === undefined ? {} : { harness: options.runner }),
+    ...(options.model === undefined
+      ? {}
+      : {
+          model: {
+            ...(profile.model ?? {}),
+            default: options.model,
+          },
+        }),
+  }
+  const validated = validateProfileShape(candidate)
+  if (!validated.ok || validated.profile === undefined) {
+    throw new ProductionStartupError(
+      'PRODUCTION_CONFIGURATION_INVALID',
+      'The selected run-level model and runner do not produce a valid canonical AgentProfile',
+    )
+  }
+  return validated.profile
 }
 
 function configPathFor(options: ProductionStartupLoadOptions): string {
@@ -369,18 +396,10 @@ export async function loadProductionStartup(
     )
   }
   const selectedConnection = connections.find((record) => record.id === selectedConnectionId)
-  const profile = migrateStartupProfile(loadedProfile, document.schemaVersion, selectedConnection)
-  let runner: HarnessType | undefined
-  if (options.runner !== undefined) {
-    const runnerProfile = validateProfileShape({ ...profile, harness: options.runner })
-    if (!runnerProfile.ok || runnerProfile.profile?.harness === undefined) {
-      throw new ProductionStartupError(
-        'PRODUCTION_CONFIGURATION_INVALID',
-        `The requested runner is not supported by the installed agent-interface package: ${options.runner}`,
-      )
-    }
-    runner = runnerProfile.profile.harness
-  }
+  const profile = effectiveStartupProfile(
+    migrateStartupProfile(loadedProfile, document.schemaVersion, selectedConnection),
+    options,
+  )
   const credentialStore =
     selectedConnection?.credentialRef === undefined
       ? undefined
@@ -401,8 +420,6 @@ export async function loadProductionStartup(
     profile,
     connections,
     connectionId: selectedConnectionId,
-    ...(options.model === undefined ? {} : { model: options.model }),
-    ...(runner === undefined ? {} : { runner }),
     ...(databaseKeyFile === undefined ? {} : { databaseKeyFile }),
     ...(Object.keys(connectionOptions).length === 0 ? {} : { connectionOptions }),
   }

@@ -1,4 +1,7 @@
-import { canonicalAgentProfileDigest, snapshotAgentProfile } from '@tangle-network/agent-interface'
+import {
+  canonicalAgentProfileDigest,
+  snapshotAgentProfile,
+} from '../adapters/agent-interface/profile-runtime.js'
 
 import type {
   ConnectionRecord,
@@ -31,6 +34,8 @@ export function assertProfileRecord(record: ProfileRecord): void {
   assertCanonicalProfile(record.profile, record.digest, 'profile.profile')
   assertPublicReference(record.source.reference, 'profile.source.reference')
   assertDigest(record.digest, 'profile.digest')
+  if (record.executionDigest !== undefined)
+    assertDigest(record.executionDigest, 'profile.executionDigest')
   if (!Array.isArray(record.validation.issues)) fail('profile.validation.issues must be an array')
   assertDate(record.createdAt, 'profile.createdAt')
   assertDate(record.updatedAt, 'profile.updatedAt')

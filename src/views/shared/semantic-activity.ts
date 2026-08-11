@@ -1,5 +1,6 @@
 import type { BraidState } from '../../domain/state.js'
 import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
+import { recentWorkersForActivity } from './semantic-activity-limit.js'
 import { compareSemanticText } from './semantic-graph-filters.js'
 import {
   assertRunScope,
@@ -12,8 +13,6 @@ import type {
   SemanticActivityItem,
   SemanticNodeType,
 } from './semantic-query-types.js'
-
-const MAX_ACTIVITY_ITEMS = 2_048
 
 function safe(value: string): string {
   return sanitizeTerminalText(value)
@@ -71,6 +70,7 @@ function activityForRun(
     runId: run.id,
     entityType: 'run',
     entityId: run.id,
+    startedAt: run.startedAt,
     ...(runElapsedMs === undefined ? {} : { elapsedMs: runElapsedMs }),
   })
 
@@ -155,7 +155,27 @@ function activityForAnalysis(analysis: BraidState['analyses'][number]): Semantic
   }
 }
 
-function activityForWorker(worker: BraidState['workers'][number]): SemanticActivityItem {
+function activityForSupervisor(
+  supervisor: BraidState['supervisors'][number],
+): SemanticActivityItem {
+  return {
+    id: `supervisor:${supervisor.id}`,
+    kind: 'supervisor',
+    title: safeTitle(supervisor.title ?? `supervisor ${supervisor.id}`),
+    status: supervisor.status,
+    occurredAt: supervisor.updatedAt,
+    ...(supervisor.rootRunId === undefined ? {} : { runId: supervisor.rootRunId }),
+    entityType: 'supervisor',
+    entityId: supervisor.id,
+    startedAt: supervisor.createdAt,
+  }
+}
+
+function activityForWorker(
+  worker: BraidState['workers'][number],
+  rootRunId: string | undefined,
+): SemanticActivityItem {
+  const runId = worker.runId ?? rootRunId
   return {
     id: `worker:${worker.id}`,
     kind: 'worker',
@@ -163,18 +183,43 @@ function activityForWorker(worker: BraidState['workers'][number]): SemanticActiv
     status: worker.status,
     occurredAt: worker.updatedAt,
     ...(worker.logTail === undefined ? {} : { detail: safe(worker.logTail) }),
-    ...(worker.runId === undefined ? {} : { runId: worker.runId }),
+    ...(runId === undefined ? {} : { runId }),
     entityType: 'worker',
     entityId: worker.id,
+    startedAt: worker.createdAt,
+    ...(worker.latencyMs === undefined ? {} : { elapsedMs: worker.latencyMs }),
   }
 }
 
-function compare(left: SemanticActivityItem, right: SemanticActivityItem): number {
+function activityForEnvironment(
+  environment: BraidState['environments'][number],
+  runId: string | undefined,
+): SemanticActivityItem {
+  return {
+    id: `environment:${environment.id}`,
+    kind: 'environment',
+    title: safeTitle(`${environment.placement.provider} execution`),
+    status: environment.lifecycle,
+    occurredAt: environment.updatedAt,
+    detail: `${environment.kind ?? 'execution'} · ${environment.location ?? 'unknown location'} · ${environment.cleanup ?? 'unknown cleanup'}`,
+    ...(runId === undefined ? {} : { runId }),
+    entityType: 'environment',
+    entityId: environment.id,
+    startedAt: environment.startedAt ?? environment.createdAt,
+  }
+}
+
+function compare(
+  left: SemanticActivityItem,
+  right: SemanticActivityItem,
+  insertionOrder: ReadonlyMap<string, number>,
+): number {
   const dates = Date.parse(left.occurredAt) - Date.parse(right.occurredAt)
   if (Number.isFinite(dates) && dates !== 0) return dates
   const kinds = compareSemanticText(left.kind, right.kind)
   if (kinds !== 0) return kinds
-  return compareSemanticText(left.id, right.id)
+  const order = (insertionOrder.get(left.id) ?? 0) - (insertionOrder.get(right.id) ?? 0)
+  return order === 0 ? compareSemanticText(left.id, right.id) : order
 }
 
 export function queryActivity(
@@ -183,6 +228,7 @@ export function queryActivity(
     readonly conversationId?: string
     readonly branchId?: string
     readonly runId?: string
+    readonly limit?: number
   } = {},
 ): ActivityQueryResult {
   const scope = resolveScope(state, input)
@@ -199,20 +245,49 @@ export function queryActivity(
       output.push(activityForAnalysis(analysis))
     }
   }
-  for (const worker of state.workers) {
+  for (const supervisor of state.supervisors) {
     if (
-      isInScope(state, 'worker', worker.id, scope) &&
-      (input.runId === undefined || worker.runId === input.runId)
+      isInScope(state, 'supervisor', supervisor.id, scope) &&
+      (input.runId === undefined || supervisor.rootRunId === input.runId)
     ) {
-      output.push(activityForWorker(worker))
+      output.push(activityForSupervisor(supervisor))
     }
   }
-  output.sort(compare)
+  const supervisorRootRuns = new Map(
+    state.supervisors.map((supervisor) => [supervisor.id, supervisor.rootRunId] as const),
+  )
+  const workers =
+    input.limit === undefined ? state.workers : recentWorkersForActivity(state.workers, input.limit)
+  for (const worker of workers) {
+    const rootRunId = supervisorRootRuns.get(worker.supervisorId)
+    if (
+      isInScope(state, 'worker', worker.id, scope) &&
+      (input.runId === undefined || worker.runId === input.runId || rootRunId === input.runId)
+    ) {
+      output.push(activityForWorker(worker, rootRunId))
+    }
+  }
+  for (const environment of state.environments) {
+    const linkedRuns = state.runs.filter((run) => run.environmentId === environment.id)
+    const linkedRun =
+      input.runId === undefined
+        ? linkedRuns.find((run) => isInScope(state, 'run', run.id, scope))
+        : linkedRuns.find((run) => run.id === input.runId)
+    if (
+      isInScope(state, 'environment', environment.id, scope) &&
+      (input.runId === undefined || linkedRun !== undefined)
+    ) {
+      output.push(activityForEnvironment(environment, linkedRun?.id))
+    }
+  }
+  const insertionOrder = new Map(output.map((item, index) => [item.id, index] as const))
+  output.sort((left, right) => compare(left, right, insertionOrder))
+  const activity = input.limit === undefined ? output : output.slice(-input.limit)
   return {
     ...(scope.conversationId === undefined ? {} : { conversationId: scope.conversationId }),
     ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
     ...(input.runId === undefined ? {} : { runId: input.runId }),
-    activity: output.slice(-MAX_ACTIVITY_ITEMS),
+    activity,
   }
 }
 

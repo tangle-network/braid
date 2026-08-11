@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
@@ -336,6 +337,45 @@ test('native continuation requires and records a matching provider boundary proo
   assert.equal(continued.admission.nativeContextBoundaryProof?.boundary, 'boundary-native')
   assert.equal(state.runs.length, 2)
   assert.equal(state.runs[1]?.status, 'completed')
+})
+
+test('metadata-only profile changes cannot reuse an admitted provider session', async () => {
+  const firstProfile = defineAgentProfile({
+    name: 'metadata-bound-profile',
+    harness: 'pi',
+    model: { default: 'openai/gpt-5.6-luna', metadata: { route: 'primary' } },
+  })
+  const secondProfile = defineAgentProfile({
+    name: 'metadata-bound-profile',
+    harness: 'pi',
+    model: { default: 'openai/gpt-5.6-luna', metadata: { route: 'fallback' } },
+  })
+  const dispatchedSessions: Array<string | undefined> = []
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    admit: () => ({ capabilities: REPLAY_CAPABILITIES, providerSessionId: 'session-bound' }),
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      dispatchedSessions.push(input.sessionId)
+      yield finalEvent('metadata binding')
+    },
+  }
+  const app = new BraidApplication({
+    profile: firstProfile,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+  })
+  app.initialize('/workspace')
+  const first = app.send({ operationId: 'op-metadata-first', text: 'first' })
+  await first.completion
+
+  app.runtimeSelection.setProfile(secondProfile)
+  const second = app.send({ operationId: 'op-metadata-second', text: 'second' })
+  await second.completion
+
+  assert.deepEqual(first.admission.requested.profile, second.admission.requested.profile)
+  assert.notEqual(first.admission.profileDigest, second.admission.profileDigest)
+  assert.deepEqual(dispatchedSessions, [undefined, undefined])
 })
 
 test('detach stops the iterator and reconnect resumes the same run', async () => {

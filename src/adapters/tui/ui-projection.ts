@@ -1,11 +1,19 @@
+import type {
+  InteractionRequest,
+  InteractionOutcome as ProtocolInteractionOutcome,
+} from '@tangle-network/agent-interface'
 import { messagesVisibleOnBranch } from '../../app/conversation-visibility.js'
+import { profileModelSettings } from '../../app/profile-model-settings.js'
+import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import type { BraidState } from '../../domain/state.js'
+import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
 import type {
   ActivityItemView,
   GraphNodeView,
   HeadlessState,
+  InteractionOutcome,
   InteractionView,
   MessageView,
   RunView,
@@ -21,10 +29,20 @@ import {
 import { queryActivity } from '../../views/shared/semantic-activity.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
 import { projectSemanticEvent, semanticPart } from '../../views/shared/semantic-projection.js'
-import { viewStatusForSemanticStatus } from '../../views/shared/semantic-query-types.js'
+import {
+  type GraphQueryResult,
+  viewStatusForSemanticStatus,
+} from '../../views/shared/semantic-query-types.js'
+import { sessionUsageFor, usageForRun } from '../../views/shared/usage-projection.js'
 
 export const MAX_VISIBLE_MESSAGES = 200
 export const MAX_VISIBLE_RUNS = 500
+
+const ALL_PROTOCOL_INTERACTION_OUTCOMES = [
+  'accepted',
+  'declined',
+  'cancelled',
+] as const satisfies readonly ProtocolInteractionOutcome[]
 
 export function statusFor(state: BraidState): ViewStatus {
   if (state.activeRunId) {
@@ -123,33 +141,65 @@ function messagesFor(
 }
 
 export function runViews(state: BraidState): RunView[] {
-  return state.runs.slice(-MAX_VISIBLE_RUNS).map((run) =>
-    Object.freeze({
+  return state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
+    const elapsed =
+      run.terminalAt === undefined
+        ? undefined
+        : Date.parse(run.terminalAt) - Date.parse(run.startedAt)
+    const profile = run.receipt.requested.profile
+    const modelSettings = profileModelSettings(profile)
+    const runner = run.receipt.requested.runner ?? run.receipt.provider
+    const model = run.model ?? run.receipt.requested.model
+    const connectionId = run.connectionId === undefined ? undefined : String(run.connectionId)
+    const connection =
+      connectionId === undefined
+        ? undefined
+        : state.connections.find((candidate) => String(candidate.id) === connectionId)
+    return Object.freeze({
       id: run.id,
       turnId: run.turnId,
       operationId: run.operationId,
       status: statusForRun(state, run),
+      ...(profile.name === undefined ? {} : { profileName: sanitizeTerminalText(profile.name) }),
+      profileDigest: sanitizeTerminalText(run.receipt.profileDigest),
+      ...(model === undefined ? {} : { model: sanitizeTerminalText(model) }),
+      ...(modelSettings.reasoningEffort === undefined
+        ? {}
+        : { effort: sanitizeTerminalText(modelSettings.reasoningEffort) }),
+      ...(modelSettings.maxOutputTokens === undefined
+        ? {}
+        : { maxOutputTokens: modelSettings.maxOutputTokens }),
       ...(run.error ? { error: sanitizeTerminalText(run.error) } : {}),
       ...(run.lastCursor ? { cursor: sanitizeTerminalText(run.lastCursor) } : {}),
       ...(run.providerSessionId
         ? { providerSessionId: sanitizeTerminalText(run.providerSessionId) }
         : {}),
-      ...(run.costUsd === undefined && run.model === undefined
+      ...(run.receipt.requestedSessionId === undefined
+        ? {}
+        : { requestedSessionId: sanitizeTerminalText(run.receipt.requestedSessionId) }),
+      usage: usageForRun(
+        run,
+        elapsed === undefined || !Number.isFinite(elapsed) || elapsed < 0 ? undefined : elapsed,
+      ),
+      ...(runner === undefined ? {} : { runner: sanitizeTerminalText(runner) }),
+      ...(run.receipt.provider === undefined
+        ? {}
+        : { provider: sanitizeTerminalText(run.receipt.provider) }),
+      ...(connectionId === undefined ? {} : { connectionId }),
+      ...(connectionId === undefined
         ? {}
         : {
-            usage: {
-              ...(run.costUsd === undefined ? {} : { costUsd: run.costUsd }),
-              ...(run.model === undefined ? {} : { model: run.model }),
-            },
+            connection: sanitizeTerminalText(connection?.name ?? connectionId),
           }),
+      ...(run.environmentId === undefined ? {} : { environmentId: String(run.environmentId) }),
       completeness: completenessFor(state, run),
       ...(run.contentBytes === undefined ? {} : { contentBytes: run.contentBytes }),
       ...(run.contentTruncated ? { contentTruncated: true } : {}),
       ...(run.activityTruncated ? { activityTruncated: true } : {}),
       ...(run.eventDetailsTruncated ? { eventDetailsTruncated: true } : {}),
       ...(run.interactionsTruncated ? { interactionsTruncated: true } : {}),
-    }),
-  )
+    })
+  })
 }
 
 function completenessFor(
@@ -173,7 +223,6 @@ export function interactionViews(state: BraidState): InteractionView[] {
       const request = item.request
       const fields = Array.isArray(request.answerSpec?.fields) ? request.answerSpec.fields : []
       const answerSpec = answerSpecFor(fields, request.kind)
-      const knownKind = request.kind === 'question' || request.kind === 'permission'
       const subject = request.subject
         ? {
             type: request.subject.type,
@@ -200,15 +249,13 @@ export function interactionViews(state: BraidState): InteractionView[] {
         prompt: sanitizeTerminalText(request.body ?? request.title),
         ...(subject === undefined ? {} : { subject }),
         answerSpec,
-        allowedOutcomes: knownKind ? ['accept', 'reject', 'cancel'] : ['deny', 'cancel'],
+        allowedOutcomes: allowedOutcomesFor(request),
         responseScopes: (request.responseScopes ?? ['interaction']).map((scope) =>
           scope === 'interaction' ? 'once' : scope,
         ),
         ...(request.timeoutMs === undefined ? {} : { remainingMs: request.timeoutMs }),
         queuePosition: views.length,
-        secret: fields.some(
-          (field) => field.type === 'secret' || field.name.toLowerCase().includes('secret'),
-        ),
+        secret: fields.some((field) => field.type === 'secret' || isSensitiveFieldName(field.name)),
         ...(run.providerSessionId === undefined ? {} : { providerSession: run.providerSessionId }),
       })
     }
@@ -227,7 +274,10 @@ function answerSpecFor(
       fields: fields.slice(0, 64).map((candidate) => ({
         name: sanitizeTerminalText(candidate.name),
         label: sanitizeTerminalText(candidate.label),
-        type: candidate.type,
+        type:
+          candidate.type === 'text' && isSensitiveFieldName(candidate.name)
+            ? 'secret'
+            : candidate.type,
         required: candidate.required ?? false,
         ...(candidate.type === 'select'
           ? {
@@ -249,7 +299,11 @@ function answerSpecFor(
   if (!field) return { kind: 'unknown', label: `${kind} response`, safeToCancel: true }
   switch (field.type) {
     case 'text':
-      return { kind: 'text', required: field.required ?? false, secret: false }
+      return {
+        kind: 'text',
+        required: field.required ?? false,
+        secret: isSensitiveFieldName(field.name),
+      }
     case 'number':
       return {
         kind: 'number',
@@ -279,6 +333,22 @@ function answerSpecFor(
   }
 }
 
+function allowedOutcomesFor(request: InteractionRequest): readonly InteractionOutcome[] {
+  const outcomes = request.allowedOutcomes ?? ALL_PROTOCOL_INTERACTION_OUTCOMES
+  return outcomes.map(uiOutcomeForProtocolOutcome)
+}
+
+function uiOutcomeForProtocolOutcome(outcome: ProtocolInteractionOutcome): InteractionOutcome {
+  switch (outcome) {
+    case 'accepted':
+      return 'accept'
+    case 'declined':
+      return 'reject'
+    case 'cancelled':
+      return 'cancel'
+  }
+}
+
 function fieldsOf(request: BraidState['runs'][number]['interactions'][number]['request']) {
   return Array.isArray(request.answerSpec?.fields) ? request.answerSpec.fields : []
 }
@@ -305,43 +375,97 @@ function queueViews(state: BraidState): readonly {
 }
 
 export function activityFor(state: BraidState): ActivityItemView[] {
-  return queryActivity(state)
-    .activity.slice(-MAX_VISIBLE_RUNS)
-    .map((item) => {
-      const run =
-        item.runId === undefined
-          ? undefined
-          : state.runs.find((candidate) => candidate.id === item.runId)
-      return {
-        id: item.id,
-        kind: item.kind,
-        title: item.title,
-        status:
-          run === undefined ? viewStatusForSemanticStatus(item.status) : statusForRun(state, run),
-        ...(item.detail === undefined ? {} : { detail: item.detail }),
-        ...(item.elapsedMs === undefined ? {} : { elapsedMs: item.elapsedMs }),
-      }
-    })
+  const workers = new Map(state.workers.map((worker) => [String(worker.id), worker] as const))
+  const workerDepth = new Map<string, number>()
+  const runs = new Map(state.runs.map((run) => [String(run.id), run] as const))
+  return queryActivity(state, { limit: MAX_VISIBLE_RUNS }).activity.map((item) => {
+    const run = item.runId === undefined ? undefined : runs.get(item.runId)
+    const worker = item.entityType === 'worker' ? workers.get(item.entityId ?? '') : undefined
+    const parentId =
+      worker?.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined
+        ? undefined
+        : (worker?.parentWorkerId ?? worker?.supervisorId)
+    const depth =
+      item.entityType === 'supervisor'
+        ? 0
+        : item.entityType === 'worker' && item.entityId !== undefined
+          ? depthForWorker(item.entityId, workers, workerDepth)
+          : undefined
+    return {
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      status:
+        run !== undefined && item.entityType === 'run'
+          ? statusForRun(state, run)
+          : viewStatusForSemanticStatus(item.status),
+      ...(item.detail === undefined ? {} : { detail: item.detail }),
+      ...(item.elapsedMs === undefined ? {} : { elapsedMs: item.elapsedMs }),
+      ...(item.startedAt === undefined ? {} : { startedAt: item.startedAt }),
+      occurredAt: item.occurredAt,
+      ...(item.sourceEventId === undefined ? {} : { sourceEventId: item.sourceEventId }),
+      ...(item.runId === undefined ? {} : { runId: item.runId }),
+      ...(item.entityType === undefined ? {} : { entityType: item.entityType }),
+      ...(item.entityId === undefined ? {} : { entityId: item.entityId }),
+      ...(parentId === undefined ? {} : { parentId: String(parentId) }),
+      ...(depth === undefined ? {} : { depth }),
+    }
+  })
 }
 
-export function graphFor(state: BraidState): GraphNodeView[] {
-  const result = queryGraph(state)
-  const incoming = new Map<string, string>()
+function depthForWorker(
+  workerId: string,
+  workers: ReadonlyMap<string, BraidState['workers'][number]>,
+  memo: Map<string, number>,
+): number {
+  const known = memo.get(workerId)
+  if (known !== undefined) return known
+  const path: string[] = []
+  const seen = new Set<string>()
+  let cursor: string | undefined = workerId
+  let depth = 0
+  while (cursor !== undefined) {
+    const previous = memo.get(cursor)
+    if (previous !== undefined) {
+      depth = previous
+      break
+    }
+    if (seen.has(cursor) || path.length >= 256) break
+    seen.add(cursor)
+    path.push(cursor)
+    cursor = workers.get(cursor)?.parentWorkerId
+  }
+  for (let index = path.length - 1; index >= 0; index -= 1) {
+    depth += 1
+    const id = path[index]
+    if (id !== undefined) memo.set(id, depth)
+  }
+  return memo.get(workerId) ?? 1
+}
+
+export function graphFor(
+  state: BraidState,
+  result: GraphQueryResult = queryGraph(state),
+): GraphNodeView[] {
+  const runs = new Map(state.runs.map((run) => [String(run.id), run] as const))
+  const canonicalNodes: Map<string, BraidState['graphNodes'][number]> = new Map(
+    state.graphNodes.map((node) => [`${node.reference.kind}:${node.reference.id}`, node] as const),
+  )
+  const incoming: Map<string, string> = new Map()
+  const semanticIncoming: Map<string, string> = new Map()
   for (const edge of result.edges) {
     incoming.set(edge.destinationNodeId, edge.kind)
+    semanticIncoming.set(`${edge.destinationType}:${edge.destination}`, edge.kind)
   }
-  const canonicalIncoming = new Map(state.graphEdges.map((edge) => [edge.destination, edge.kind]))
+  const canonicalIncoming: Map<string, string> = new Map(
+    state.graphEdges.map((edge) => [edge.destination, edge.kind]),
+  )
   return result.nodes.map((node) => {
-    const run =
-      node.type === 'run' ? state.runs.find((candidate) => candidate.id === node.id) : undefined
-    const canonicalNode = state.graphNodes.find(
-      (candidate) => candidate.reference.kind === node.type && candidate.reference.id === node.id,
-    )
+    const run = node.type === 'run' ? runs.get(node.id) : undefined
+    const canonicalNode = canonicalNodes.get(`${node.type}:${node.id}`)
     const edgeLabel =
       (canonicalNode === undefined
-        ? result.edges.find(
-            (edge) => edge.destinationType === node.type && edge.destination === node.id,
-          )?.kind
+        ? semanticIncoming.get(`${node.type}:${node.id}`)
         : (canonicalIncoming.get(canonicalNode.id) ?? incoming.get(canonicalNode.id))) ?? undefined
     return {
       id: node.id,
@@ -350,6 +474,10 @@ export function graphFor(state: BraidState): GraphNodeView[] {
       status: run ? statusForRun(state, run) : viewStatusForSemanticStatus(node.status),
       depth: node.depth,
       ...(edgeLabel === undefined ? {} : { edgeLabel }),
+      ...(node.runner === undefined ? {} : { runner: node.runner }),
+      ...(node.elapsedMs === undefined ? {} : { elapsedMs: node.elapsedMs }),
+      startedAt: node.createdAt,
+      ...(node.costUsd === undefined ? {} : { costUsd: node.costUsd }),
     }
   })
 }
@@ -388,11 +516,32 @@ export function toHeadlessState(
       status: run.status,
       inputTokens: run.inputTokens,
       outputTokens: run.outputTokens,
+      tokenStatus: usageForRun(run).tokenStatus ?? 'unknown',
+      ...(run.reasoningTokens === undefined ? {} : { reasoningTokens: run.reasoningTokens }),
       ...(run.costUsd === undefined ? {} : { costUsd: run.costUsd }),
+      ...(run.estimatedCostUsd === undefined ? {} : { estimatedCostUsd: run.estimatedCostUsd }),
+      costStatus: usageForRun(run).costStatus ?? 'unknown',
+      ...(run.promptCache === undefined ? {} : { promptCache: run.promptCache }),
+      ...(run.llmCalls === undefined ? {} : { llmCalls: run.llmCalls }),
+      ...(run.llmLatencyMs === undefined ? {} : { llmLatencyMs: run.llmLatencyMs }),
       ...(run.model === undefined ? {} : { model: sanitizeTerminalText(run.model) }),
+      ...(run.receipt.provider === undefined
+        ? {}
+        : { provider: sanitizeTerminalText(run.receipt.provider) }),
+      ...(run.receipt.requested.runner === undefined
+        ? {}
+        : { runner: sanitizeTerminalText(run.receipt.requested.runner) }),
+      ...(run.connectionId === undefined ? {} : { connectionId: String(run.connectionId) }),
+      ...(run.receipt.requestedSessionId === undefined
+        ? {}
+        : { requestedSessionId: sanitizeTerminalText(run.receipt.requestedSessionId) }),
       ...(run.error === undefined ? {} : { error: sanitizeTerminalText(run.error) }),
       completeness: completenessFor(state, run),
       ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+      ...(run.environmentId === undefined ? {} : { environmentId: run.environmentId }),
+      ...(run.receipt.materializationDigest === undefined
+        ? {}
+        : { materializationDigest: run.receipt.materializationDigest }),
       ...(run.lastCursor === undefined ? {} : { cursor: run.lastCursor }),
       ...(run.contentBytes === undefined ? {} : { contentBytes: run.contentBytes }),
       ...(run.contentTruncated ? { contentTruncated: true } : {}),
@@ -400,6 +549,8 @@ export function toHeadlessState(
       ...(run.eventDetailsTruncated ? { eventDetailsTruncated: true } : {}),
       ...(run.interactionsTruncated ? { interactionsTruncated: true } : {}),
     })),
+    sessionUsage: sessionUsageFor(state),
+    environments: Object.freeze(state.environments.map(environmentView)),
     interactions: interactionViews(state),
     queue: queueViews(state),
     activeRunId: state.activeRunId,

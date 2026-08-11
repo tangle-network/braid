@@ -6,8 +6,12 @@ import { join } from 'node:path'
 import { cleanEnvironment, sleep, waitFor } from './package-proof-runtime.mjs'
 
 const PROMPT = 'plain package proof'
-const RESPONSE = `run.finished: Fixture response through pi: ${PROMPT}; status: completed`
+const RESPONSE = `run.finished; status: completed: Fixture response through pi: ${PROMPT}`
 const CANCEL_PROMPT = 'cancel from plain package proof'
+
+function admittedRequest(prompt) {
+  return `run.requested; status: admitted: ${prompt}`
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -15,6 +19,13 @@ function assert(condition, message) {
 
 function occurrences(text, value) {
   return text.split(value).length - 1
+}
+
+function settledCompletions(text) {
+  return Math.min(
+    occurrences(text, RESPONSE),
+    occurrences(text, 'effect.upserted; status: completed'),
+  )
 }
 
 export async function runPlain(binary, cwd) {
@@ -88,11 +99,12 @@ export async function runPlain(binary, cwd) {
 
     await writeLine(PROMPT)
     await waitForOutput(() => occurrences(stdout, RESPONSE) >= 1, 'first plain completion')
+    await waitForOutput(() => settledCompletions(stdout) >= 1, 'first plain settlement')
 
     await writeLine('/graph')
     await writeLine(PROMPT)
     await waitForOutput(
-      () => occurrences(stdout, `run.requested: ${PROMPT}; status: streaming`) >= 2,
+      () => occurrences(stdout, admittedRequest(PROMPT)) >= 2,
       'plain retry start',
     )
     await writeLine('/steer deterministic package proof')
@@ -101,15 +113,16 @@ export async function runPlain(binary, cwd) {
       'plain unavailable steering result',
     )
     await waitForOutput(() => occurrences(stdout, RESPONSE) >= 2, 'plain retry completion')
+    await waitForOutput(() => settledCompletions(stdout) >= 2, 'plain retry settlement')
 
     await writeLine(CANCEL_PROMPT)
     await waitForOutput(
-      () => stdout.includes(`run.requested: ${CANCEL_PROMPT}; status: streaming`),
+      () => stdout.includes(admittedRequest(CANCEL_PROMPT)),
       'plain cancellation start',
     )
     await writeLine('/cancel')
     await waitForOutput(
-      () => stdout.includes('run.control.acknowledged: CONTROL_ACKNOWLEDGED'),
+      () => stdout.includes('run.control.acknowledged; status: cancelling: CONTROL_ACKNOWLEDGED'),
       'plain cancellation acknowledgement',
     )
     await writeLine('/graph')

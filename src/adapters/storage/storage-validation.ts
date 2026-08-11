@@ -13,6 +13,26 @@ import type { EffectRecord } from '../../ports/effect-storage.js'
 import type { JournalEvent, JsonValue, OperationIntent } from '../../ports/storage.js'
 import { StorageError } from './sqlite-errors.js'
 
+const POST_TERMINAL_SIDEBAND_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'interaction.automation.audited',
+  'replay.cursor.advanced',
+  'run.cancel.requested',
+  'run.control.acknowledged',
+  'run.control.requested',
+  'run.interaction.responded',
+  'run.interaction.response.requested',
+  'run.queue.removed',
+  'run.reconciled',
+])
+
+/**
+ * A provider terminal event closes run output, not commands already racing with it.
+ * These events record command settlement or local bookkeeping without reopening output.
+ */
+export function canAppendAfterTerminal(event: Pick<JournalEvent, 'kind' | 'terminal'>): boolean {
+  return event.terminal !== true && POST_TERMINAL_SIDEBAND_EVENT_KINDS.has(event.kind)
+}
+
 export function assertJournalEventInput(event: JournalEvent): void {
   try {
     parseWorkspaceId(event.workspaceId)

@@ -74,41 +74,41 @@ const FIXTURE_ANALYSIS_RECORD: AnalysisRecord = Object.freeze({
   id: createAnalysisId('analysis-fixture-1'),
   question: 'Where did this run waste time, and what should change?',
   recipe: 'ask',
-  analystProfileId: createProfileId('profile-trace-analyst'),
+  analystProfileId: createProfileId('profile-trace-reviewer'),
   status: 'completed',
   source: Object.freeze({
     conversationId: createConversationId('conversation-fixture-analysis'),
     branchId: createBranchId('branch-fixture-analysis'),
-    runId: createRunId('run-fixture-analysis'),
-    digest: createDigest('a'.repeat(64)),
+    runId: createRunId('run-cli-bridge-reconnect'),
+    digest: createDigest('da8ae2345b2c17abf658ad4b126ae4480fe92be54e94e701b6ea9ff67c9190eb'),
     complete: true,
   }),
   findings: Object.freeze([
     Object.freeze({
-      id: 'finding-repeat-read',
-      text: 'The same file was read twice without an intervening change.',
+      id: 'finding-route-order',
+      text: 'Profile inspection and route resolution ran serially although their inputs were independent.',
       severity: 'medium' as const,
       confidence: 0.94,
       supported: true,
       citations: Object.freeze([
         Object.freeze({
-          id: createCitationId('citation-repeat-read'),
-          eventId: createEventId('event-read-second'),
-          quote: 'read src/app/application.ts',
+          id: createCitationId('citation-profile-route-order'),
+          eventId: createEventId('event-runtime-route-start'),
+          quote: 'profile.inspect completed before runtime.route started',
         }),
       ]),
     }),
     Object.freeze({
-      id: 'finding-missing-proof',
-      text: 'The answer claimed success before the terminal test completed.',
+      id: 'finding-package-proof',
+      text: 'The answer claimed success before the packaged terminal check completed.',
       severity: 'high' as const,
       confidence: 0.88,
       supported: true,
       citations: Object.freeze([
         Object.freeze({
-          id: createCitationId('citation-missing-proof'),
-          eventId: createEventId('event-test-start'),
-          quote: 'test started; no terminal result was recorded',
+          id: createCitationId('citation-package-proof'),
+          eventId: createEventId('event-package-check-start'),
+          quote: 'package check started; no terminal result was recorded',
         }),
       ]),
     }),
@@ -193,10 +193,10 @@ export const PRODUCT_DEMO_ANALYSIS_DATA = Object.freeze({
 })
 
 export const FIXTURE_COMPARISON_RESULT: AnalysisComparisonResult = Object.freeze({
-  baselineSourceDigest: 'b'.repeat(64),
-  candidateSourceDigest: 'c'.repeat(64),
-  baselineRunId: 'run-fixture-baseline',
-  candidateRunId: 'run-fixture-candidate',
+  baselineSourceDigest: '9ee7d219c8b00928de97a5ceccddc718ba478955ccd7824df834a8458c519924',
+  candidateSourceDigest: '0328e6889082b14ba363c0d9e6a924a5cf44edea3cd67f54745b50aa86b0ff3d',
+  baselineRunId: 'run-route-serial',
+  candidateRunId: 'run-route-parallel',
   fields: Object.freeze([
     Object.freeze({
       name: 'run.status',

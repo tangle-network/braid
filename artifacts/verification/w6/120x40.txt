@@ -1,6 +1,7 @@
-braid  cwd  braid-automation-main-wt  ·  session  New conversation  ·  branch  branch-1
+braid  cwd  braid-unified-activity-wt  ·  session  New conversation  ·  branch  branch-1
  W6 visual proof
 
+ · agent-turn-result · unknown · collapsed · ctrl+e next
  Fixture response through pi: W6 visual proof
 
 
@@ -30,11 +31,10 @@ braid  cwd  braid-automation-main-wt  ·  session  New conversation  ·  branch 
 
 
 
+──────────────────────────────────────────────────────── › send ────────────────────────────────────────────────────────
+›
 
 
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-completed                                                                    model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · deterministic fixture                                           Ctrl+P commands
+────────────────────────────────────────────── alt+enter newline · paste ───────────────────────────────────────────────
+completed        model fixture/deterministic · thinking none · turns in 8 · out 12 · cost unknown · calls 1 · model 50ms
+AgentProfile Braid starter · runner pi · deterministic fixture                                             Ctrl+E detail

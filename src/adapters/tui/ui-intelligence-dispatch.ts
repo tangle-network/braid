@@ -1,4 +1,6 @@
+import type { AnalysisComparisonResult } from '../../app/analysis-comparison-contracts.js'
 import type { AnalysisExecutionResult } from '../../app/analysis-service.js'
+import { parseAnalysisSourceReference, projectAnalysisSource } from '../../app/analysis-source.js'
 import type { AnalysisRequest, AnalysisSourceRequest } from '../../app/analysis-types.js'
 import { AnalysisCapabilityError } from '../../app/analysis-types.js'
 import type { BraidApplication } from '../../app/application.js'
@@ -62,6 +64,18 @@ function accepted(app: BraidApplication, data: unknown, operationId?: string): U
   }
 }
 
+function storedComparisonData(
+  state: BraidState,
+  operationId: string,
+  result: AnalysisComparisonResult,
+): AnalysisComparisonResult & { readonly analysisId: string } {
+  const record = state.analyses.find(
+    (analysis) => analysis.kind === 'comparison' && analysis.operationId === operationId,
+  )
+  if (record === undefined) throw new Error('The stored comparison record is unavailable')
+  return { ...result, analysisId: String(record.id) }
+}
+
 function unavailable(reason: string): UiDispatchResult {
   return {
     kind: 'unavailable',
@@ -74,39 +88,16 @@ function invalid(code: string, message: string): never {
   throw new AppError(code, message)
 }
 
-function latestAnalysisSource(state: BraidState): AnalysisSourceRequest {
-  const run = [...state.runs]
-    .reverse()
-    .find(
-      (candidate) =>
-        candidate.branchId === state.branchId &&
-        candidate.complete &&
-        (candidate.status === 'completed' || candidate.status === 'failed'),
-    )
-  if (run === undefined) {
+function sourceRequest(state: BraidState, reference: string): AnalysisSourceRequest {
+  const value = reference.trim()
+  if (!value) invalid('ANALYSIS_SOURCE_INVALID', 'Analysis source must not be empty')
+  const projection = projectAnalysisSource(state, value)
+  if (projection !== undefined) return projection.request
+  if (value === 'active' || value === 'last') {
     invalid(
       'ANALYSIS_SOURCE_MISSING',
       'No completed or failed run is available on the selected branch',
     )
-  }
-  return { conversationId: run.conversationId, branchId: run.branchId, runId: run.id }
-}
-
-function sourceRequest(state: BraidState, reference: string): AnalysisSourceRequest {
-  const value = reference.trim()
-  if (!value) invalid('ANALYSIS_SOURCE_INVALID', 'Analysis source must not be empty')
-  if (value === 'active' || value === 'last') return latestAnalysisSource(state)
-
-  const runReference = value.startsWith('run:') ? value.slice('run:'.length) : value
-  const run = state.runs.find((candidate) => candidate.id === runReference)
-  if (run !== undefined) {
-    return { conversationId: run.conversationId, branchId: run.branchId, runId: run.id }
-  }
-
-  const branchReference = value.startsWith('branch:') ? value.slice('branch:'.length) : value
-  const branch = state.branches.find((candidate) => candidate.id === branchReference)
-  if (branch !== undefined) {
-    return { conversationId: branch.conversationId, branchId: branch.id }
   }
 
   invalid('ANALYSIS_SOURCE_UNKNOWN', `Analysis source '${value}' is not present in Braid state`)
@@ -196,9 +187,14 @@ function analysisRequestForCommand(
   args: readonly string[],
 ): { readonly request: AnalysisRequest } {
   if (command === 'ask') {
-    const question = args.join(' ').trim()
+    const explicitSource =
+      args[0] !== undefined && parseAnalysisSourceReference(args[0]) !== undefined
+    const source = explicitSource
+      ? sourceRequest(state, args[0] ?? '')
+      : sourceRequest(state, 'last')
+    const question = (explicitSource ? args.slice(1) : args).join(' ').trim()
     if (!question) invalid('INVALID_PARAMS', '/ask requires a question')
-    return { request: { ...latestAnalysisSource(state), question, recipe: 'ask' } }
+    return { request: { ...source, question, recipe: 'ask' } }
   }
   if (command === 'analyze') {
     if (args.length !== 1 || !['failure', 'cost', 'tools', 'improvement'].includes(args[0] ?? '')) {
@@ -206,36 +202,14 @@ function analysisRequestForCommand(
     }
     const recipe = args[0]
     if (recipe === undefined) invalid('INVALID_PARAMS', '/analyze requires a named recipe')
-    return { request: { ...latestAnalysisSource(state), recipe } }
+    return { request: { ...sourceRequest(state, 'last'), recipe } }
   }
   invalid('INVALID_PARAMS', '/compare requires two source references')
 }
 
-function rootRunForSupervisor(
-  state: BraidState,
-  supervisorId?: string,
-  runId?: string,
-): string | undefined {
-  return (
-    (supervisorId === undefined
-      ? undefined
-      : state.supervisors.find((candidate) => String(candidate.id) === supervisorId)?.rootRunId) ??
-    runId ??
-    state.supervisors.at(-1)?.rootRunId ??
-    state.activeRunId ??
-    state.runs.at(-1)?.id
-  )
-}
-
-function supervisorRoot(
-  state: BraidState,
-  supervisorId?: string,
-  runId?: string,
-): { readonly rootDir: string; readonly rootRunId: string } | undefined {
+function supervisorRoot(state: BraidState): { readonly rootDir: string } | undefined {
   if (state.workspace === null) return undefined
-  const rootRunId = rootRunForSupervisor(state, supervisorId, runId)
-  if (rootRunId === undefined) return undefined
-  return { rootDir: state.workspace, rootRunId }
+  return { rootDir: state.workspace }
 }
 
 function supervisorData(
@@ -252,12 +226,10 @@ function supervisorData(
 async function dispatchSupervisorQuery(
   command: 'snapshot' | 'reconnect',
   context: IntelligenceDispatchContext,
-  supervisorId?: string,
-  runId?: string,
 ): Promise<UiDispatchResult> {
-  const root = supervisorRoot(context.app.state(), supervisorId, runId)
+  const root = supervisorRoot(context.app.state())
   if (root === undefined) {
-    return unavailable('Supervisor snapshots require an initialized workspace and a known root run')
+    return unavailable('Supervisor snapshots require an initialized workspace')
   }
   try {
     const projection =
@@ -267,12 +239,35 @@ async function dispatchSupervisorQuery(
     if (projection.raw.supervisors.length === 0) {
       return unavailable('The runtime returned no supervisor snapshot for this workspace')
     }
-    context.notify()
     return accepted(context.app, supervisorData(projection))
   } catch (error) {
     return unavailable(
       `Supervisor ${command} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
     )
+  }
+}
+
+function runtimeWorkerReference(
+  state: BraidState,
+  supervisorId: string,
+  workerId: string,
+):
+  | {
+      readonly rootDir: string
+      readonly runtimeSupervisorId: string
+      readonly runtimeWorkerId: string
+    }
+  | undefined {
+  const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
+  if (supervisor === undefined || state.workspace !== supervisor.runtimeRoot) return undefined
+  const worker = state.workers.find(
+    (candidate) => String(candidate.id) === workerId && candidate.supervisorId === supervisor.id,
+  )
+  if (worker === undefined) return undefined
+  return {
+    rootDir: supervisor.runtimeRoot,
+    runtimeSupervisorId: supervisor.runtimeId,
+    runtimeWorkerId: worker.runtimeId,
   }
 }
 
@@ -284,24 +279,27 @@ async function dispatchSupervisorWorker(
 ): Promise<UiDispatchResult> {
   const workerId = params.workerId
   if (typeof workerId !== 'string') invalid('INVALID_PARAMS', `${command} requires workerId`)
+  const supervisorId = params.supervisorId
+  if (typeof supervisorId !== 'string') {
+    invalid('INVALID_PARAMS', `${command} requires supervisorId and workerId`)
+  }
   if (command === 'cancel_worker') {
     const result = await context.app.intelligence.supervisor.cancelWorker(workerId)
     return unavailable(issueReason(result.issue))
   }
-  const supervisorId = params.supervisorId
-  const text = params.text
-  if (typeof supervisorId !== 'string' || typeof text !== 'string') {
-    invalid('INVALID_PARAMS', 'steer_worker requires supervisorId, workerId, and text')
+  const reference = runtimeWorkerReference(context.app.state(), supervisorId, workerId)
+  if (reference === undefined) {
+    return unavailable('The selected worker is not present under the selected supervisor')
   }
-  const root = supervisorRoot(context.app.state(), supervisorId)
-  if (root === undefined) {
-    return unavailable('Worker steering requires an initialized workspace and a known supervisor')
+  const text = params.text
+  if (typeof text !== 'string') {
+    invalid('INVALID_PARAMS', 'steer_worker requires supervisorId, workerId, and text')
   }
   try {
     const result = await context.app.intelligence.supervisor.steerWorker(
-      root.rootDir,
-      supervisorId,
-      workerId,
+      reference.rootDir,
+      reference.runtimeSupervisorId,
+      reference.runtimeWorkerId,
       text,
     )
     if (result.status === 'unavailable') {
@@ -309,7 +307,7 @@ async function dispatchSupervisorWorker(
         result.issue === undefined ? 'Worker steering is unavailable' : issueReason(result.issue),
       )
     }
-    return accepted(context.app, result, operationId)
+    return accepted(context.app, { ...result, worker: workerId }, operationId)
   } catch (error) {
     return unavailable(
       `Worker steering is unavailable: ${error instanceof Error ? error.message : String(error)}`,
@@ -321,6 +319,9 @@ export async function dispatchIntelligenceIntent(
   intent: BraidIntent,
   context: IntelligenceDispatchContext,
 ): Promise<UiDispatchResult | undefined> {
+  if (intent.type === 'refresh-supervision') {
+    return dispatchSupervisorQuery('snapshot', context)
+  }
   if (requiresOperationId(intent)) {
     const command =
       intent.type === 'run-command' || intent.type === 'headless-command'
@@ -358,7 +359,11 @@ export async function dispatchIntelligenceIntent(
         candidate,
       })
       context.setNotice(`Comparison complete: ${result.paired.nPairs} paired run(s)`)
-      return accepted(context.app, result, operationId)
+      return accepted(
+        context.app,
+        storedComparisonData(context.app.state(), operationId, result),
+        operationId,
+      )
     }
     const request = analysisRequestForCommand(state, intent.command, intent.args).request
     return runAnalysis(context, request, intent.operationId)
@@ -407,7 +412,11 @@ export async function dispatchIntelligenceIntent(
         baseline: sourceRequest(context.app.state(), left),
         candidate: sourceRequest(context.app.state(), right),
       })
-      return accepted(context.app, result, operationId)
+      return accepted(
+        context.app,
+        storedComparisonData(context.app.state(), operationId, result),
+        operationId,
+      )
     }
     case 'promote_analysis': {
       const analysisId = intent.params.analysisId
@@ -443,9 +452,14 @@ export async function dispatchIntelligenceIntent(
       const runId = intent.params.runId
       if (
         typeof runId === 'string' &&
-        context.app.state().supervisors.some((supervisor) => String(supervisor.rootRunId) === runId)
+        context.app
+          .state()
+          .supervisors.some(
+            (supervisor) =>
+              supervisor.rootRunId !== undefined && String(supervisor.rootRunId) === runId,
+          )
       ) {
-        return dispatchSupervisorQuery('reconnect', context, undefined, runId)
+        return dispatchSupervisorQuery('reconnect', context)
       }
       return undefined
     }

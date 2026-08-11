@@ -1,6 +1,7 @@
 import type { TUI } from '@earendil-works/pi-tui'
 import { commandAvailability } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import type { BraidViewModel } from '../shared/models.js'
 import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
@@ -22,6 +23,17 @@ export interface TerminalInputControllerOptions {
   readonly stateChanged: () => void
 }
 
+export type ActivityVisibility = 'auto' | 'hidden' | 'visible'
+
+export function activityVisibleFor(
+  view: Pick<BraidViewModel, 'activeRunId'>,
+  visibility: ActivityVisibility,
+): boolean {
+  if (visibility === 'visible') return true
+  if (visibility === 'hidden') return false
+  return view.activeRunId !== undefined
+}
+
 /** Routes non-text terminal keys and owns the short-lived quit/activity state. */
 export class TerminalInputController {
   readonly #tui: TUI
@@ -38,7 +50,7 @@ export class TerminalInputController {
   readonly #stateChanged: () => void
   #quitTimer: ReturnType<typeof setTimeout> | undefined
   #quitArmed = false
-  #activityVisible = false
+  #activityVisibility: ActivityVisibility = 'auto'
 
   constructor(options: TerminalInputControllerOptions) {
     this.#tui = options.tui
@@ -60,7 +72,7 @@ export class TerminalInputController {
   }
 
   get activityVisible(): boolean {
-    return this.#activityVisible
+    return activityVisibleFor(this.#controller.view(), this.#activityVisibility)
   }
 
   close(): void {
@@ -68,16 +80,11 @@ export class TerminalInputController {
     this.#quitTimer = undefined
   }
 
-  showActivity(): void {
-    this.#activityVisible = true
-    this.#stateChanged()
-  }
-
   handle(data: string): { consume?: boolean } | undefined {
     if (isTextInputSequence(data)) return undefined
     if (matchesKeyAction(data, this.#keymap, 'closeOverlay') && this.#tui.hasOverlay()) {
       if (this.#interactionOpen()) return undefined
-      this.#modals.closeTop()
+      this.#modals.backOrClose()
       return { consume: true }
     }
     if (this.#interactionOpen()) return undefined
@@ -120,7 +127,7 @@ export class TerminalInputController {
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'activity')) {
-      this.#activityVisible = !this.#activityVisible
+      this.#activityVisibility = this.activityVisible ? 'hidden' : 'visible'
       this.#stateChanged()
       return { consume: true }
     }

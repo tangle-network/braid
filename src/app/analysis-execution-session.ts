@@ -1,7 +1,12 @@
 import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
+import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalystDescriptor, EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
 import type { AnalysisIdentity } from './analysis-operation.js'
-import type { AnalysisRequest, FrozenAnalysisEvidence } from './analysis-types.js'
+import type {
+  AnalysisExecutionTarget,
+  AnalysisRequest,
+  FrozenAnalysisEvidence,
+} from './analysis-types.js'
 
 export interface AnalysisExecutionEvent {
   readonly event: ExactAnalystRunEvent
@@ -12,6 +17,7 @@ export interface AnalysisAnalyst {
   list(): ReadonlyArray<AnalystDescriptor>
   resolveAnalystIds(request: AnalysisRequest): readonly string[]
   stream(request: EvalAnalystRequest): AsyncGenerator<AnalysisExecutionEvent, void, void>
+  modelExecutions?(runId: string): readonly ExternalOptimizerModelExecutionObservation[]
 }
 
 export class AnalysisExecutionSession {
@@ -29,6 +35,10 @@ export class AnalysisExecutionSession {
 
   resolveAnalystIds(request: AnalysisRequest): readonly string[] {
     return this.#analyst.resolveAnalystIds(request)
+  }
+
+  modelExecutions(runId: string): readonly ExternalOptimizerModelExecutionObservation[] {
+    return this.#analyst.modelExecutions?.(runId) ?? []
   }
 
   cancel(analysisId: string, reason = 'cancelled by user'): boolean {
@@ -49,6 +59,7 @@ export class AnalysisExecutionSession {
     readonly evidence: FrozenAnalysisEvidence
     readonly request: AnalysisRequest
     readonly analystIds: readonly string[]
+    readonly executionTarget: AnalysisExecutionTarget
   }): AsyncGenerator<AnalysisExecutionEvent, void, void> {
     const controller = new AbortController()
     this.#active.set(String(input.identity.analysisId), controller)
@@ -59,6 +70,7 @@ export class AnalysisExecutionSession {
       sourceDigest: String(input.evidence.source.digest),
       trace,
       analystIds: input.analystIds,
+      executionTarget: input.executionTarget,
       ...(input.request.question === undefined ? {} : { question: input.request.question }),
       ...(input.request.recipe === undefined ? {} : { recipe: input.request.recipe }),
       ...(input.request.budgetUsd === undefined ? {} : { budgetUsd: input.request.budgetUsd }),

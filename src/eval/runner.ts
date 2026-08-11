@@ -15,7 +15,7 @@ import { definitionForCase, SEMANTIC_CASES, scenariosForRelease } from './cases.
 import {
   createEvalChatClient,
   type EvalRouteConfig,
-  probeCliBridge,
+  probeEvalRoute,
   readEvalRouteConfig,
   recordingChatClient,
 } from './execution.js'
@@ -250,7 +250,7 @@ export async function runSemanticEvaluation(
     })
   }
 
-  const probe = await probeCliBridge(route, options.fetchImpl)
+  const probe = await probeEvalRoute(route, options.fetchImpl)
   artifacts.push(await writeJsonArtifact(join(outputDir, 'route-probe.json'), 'route-probe', probe))
   if (probe.status === 'unavailable') {
     return stoppedRun({

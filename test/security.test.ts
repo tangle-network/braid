@@ -48,9 +48,11 @@ import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import { assertPersistablePayload } from '../src/adapters/storage/sqlite-crypto.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { prepareConversationImport } from '../src/app/conversation-import-document.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import { TerminalControlSanitizer } from '../src/domain/terminal-sanitizer.js'
 import { credentialRef } from '../src/ports/credentials.js'
+import type { JsonValue } from '../src/ports/storage.js'
 
 test('terminal control sanitization remains safe when hostile sequences split across chunks', () => {
   const sanitizer = new TerminalControlSanitizer()
@@ -794,6 +796,43 @@ test('secret-designated interaction values are rejected before journal persisten
   assert.doesNotThrow(() =>
     assertPersistablePayload({ inputTokens: 12, outputTokens: 7, reasoningTokens: 3 }),
   )
+  assert.doesNotThrow(() => assertPersistablePayload({ tokensKnown: false }))
+  assert.throws(
+    () => assertPersistablePayload({ tokensKnown: 'false' }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.throws(
+    () => assertPersistablePayload({ token: true }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({ spend: { tokens: { input: 12, output: 7 } } }),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({
+      spend: { tokens: { input: 12, output: 7, tokensKnown: false } },
+    }),
+  )
+  assert.throws(
+    () => assertPersistablePayload({ tokens: { input: 12, output: 7, tokensKnown: true } }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.throws(
+    () => assertPersistablePayload({ tokens: { input: 12, output: 7, credential: 'canary' } }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
   assert.throws(
     () => assertPersistablePayload({ inputTokens: 'never persist this' }),
     (error: unknown) =>
@@ -826,6 +865,44 @@ test('secret-designated interaction values are rejected before journal persisten
       error.name === 'StorageError' &&
       /secret-designated/iu.test(error.message),
   )
+})
+
+test('runtime spend artifacts remain redacted and persistable when token totals are incomplete', () => {
+  const event = providerEventFor(
+    'run-runtime-spend',
+    {
+      type: 'artifact',
+      artifactId: 'runtime-spend',
+      metadata: {
+        spend: {
+          iterations: 1,
+          tokens: { input: 12, output: 7, tokensKnown: false },
+          tokensKnown: false,
+          usdKnown: false,
+          usd: 0,
+          ms: 4,
+        },
+      },
+    },
+    {
+      eventId: 'runtime-spend-event',
+      providerSequence: 1,
+      receivedAt: '2026-08-10T00:00:00.000Z',
+    },
+  )
+
+  assert.equal(event.kind, 'run.artifact')
+  assert.deepEqual(event.metadata, {
+    spend: {
+      iterations: 1,
+      tokens: { input: 12, output: 7, tokensKnown: false },
+      tokensKnown: false,
+      usdKnown: false,
+      usd: 0,
+      ms: 4,
+    },
+  })
+  assert.doesNotThrow(() => assertPersistablePayload(event as unknown as JsonValue))
 })
 
 test('backup and restore enforce the approved root, descriptor identity, and no-clobber publication', async () => {

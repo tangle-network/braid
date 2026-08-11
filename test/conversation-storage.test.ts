@@ -169,6 +169,8 @@ test('an imported conversation survives an encrypted restart with controls disab
   })
   await sourceApp.send({ operationId: 'op-storage-import-source-turn', text: 'encrypted history' })
     .completion
+  const sourceRun = sourceApp.state().runs.at(-1)
+  assert.ok(sourceRun)
   await sourceApp.conversations.branches.create({
     operationId: 'op-storage-import-source-branch',
     conversationId: source.id,
@@ -220,8 +222,8 @@ test('an imported conversation survives an encrypted restart with controls disab
   const runIds = new Set(turns.flatMap((turn) => turn.runIds))
   const runs = state.runs.filter((run) => runIds.has(run.id))
   assert.equal(runs.length, 1)
-  assert.equal(runs[0]?.inputTokens, 0)
-  assert.equal(runs[0]?.outputTokens, 0)
+  assert.equal(runs[0]?.inputTokens, sourceRun.inputTokens)
+  assert.equal(runs[0]?.outputTokens, sourceRun.outputTokens)
   assert.equal(runs[0]?.capabilities.controls.cancel, false)
   assert.equal(runs[0]?.receipt.admissionStatus, 'unavailable')
   assert.equal(

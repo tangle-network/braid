@@ -1,4 +1,5 @@
 import { environment } from './reporting.mjs'
+import { summarizeStage } from './stage-timings.mjs'
 import { observation } from './statistics.mjs'
 import {
   createEncryptedStorageFixture,
@@ -55,6 +56,14 @@ export async function runStorageMeasurements(context, capture, fixtures) {
       observations: {
         replayedEvents: observation(measured.eventCount, 'Every committed event was replayed'),
         projectionChecksum: measured.projectionChecksum,
+      },
+      details: {
+        stageTimings: Object.fromEntries(
+          Object.entries(measured.stageSamples).map(([name, samples]) => [
+            name,
+            { ...summarizeStage(samples), rawSamples: samples },
+          ]),
+        ),
       },
       provenance: {
         seed: 'packed encrypted SQLite production storage; complete receipt-backed run',

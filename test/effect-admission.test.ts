@@ -19,7 +19,10 @@ const sqliteAvailable = (() => {
   }
 })()
 
-const childPath = join(process.cwd(), '.test-dist/test/effect-admission-child.js')
+const childPath = join(
+  process.env.BRAID_TEST_DIST ?? join(process.cwd(), '.test-dist'),
+  'test/effect-admission-child.js',
+)
 
 test('two SQLite processes admit one external effect', async () => {
   if (!sqliteAvailable) {

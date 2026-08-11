@@ -1,4 +1,5 @@
 import type { AnalystFinding, ExactAnalystRunResult } from '@tangle-network/agent-eval'
+import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import { AGENT_EVAL_VERSION } from '../adapters/analysis/agent-eval-version.js'
 import { mapAnalystFinding } from '../adapters/analysis/citations.js'
 import type { AnalystDescriptor } from '../adapters/analysis/eval-analyst.js'
@@ -11,9 +12,12 @@ import type {
   TurnUsage,
 } from '../domain/entities.js'
 import type { JsonValue } from '../domain/entities-base.js'
+import { analysisExecutionTargetFromState } from './analysis-execution-target.js'
+import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import type { AnalysisIdentity } from './analysis-operation.js'
 import type {
   AnalysisApplicationHost,
+  AnalysisExecutionTarget,
   AnalysisRequest,
   FrozenAnalysisEvidence,
 } from './analysis-types.js'
@@ -89,24 +93,25 @@ function provenance(
   analystIds: readonly string[],
   analystVersions: readonly { readonly id: string; readonly version: string }[],
   checks: readonly AnalysisCheck[],
+  executionTarget?: AnalysisExecutionTarget,
 ): AnalysisProvenance {
-  const state = host.currentState()
-  const selectedConnectionId = state.selectedConnectionId
-  const model = state.profile.model?.default
-  const runner = state.profile.harness
+  const target = executionTarget ?? analysisExecutionTargetFromState(host.currentState())
   return {
     operationId: identity.operationId,
     requestDigest: identity.requestDigest,
     analystIds,
     analystVersions,
     agentEvalVersion: AGENT_EVAL_VERSION,
-    ...(request.analystProfileId === undefined ? {} : { profileId: request.analystProfileId }),
-    ...(request.analystProfileDigest === undefined
-      ? {}
-      : { profileDigest: request.analystProfileDigest }),
-    ...(model === undefined ? {} : { model }),
-    ...(runner === undefined ? {} : { runner }),
-    ...(selectedConnectionId === null ? {} : { connectionId: selectedConnectionId }),
+    ...(target.profileId === undefined
+      ? request.analystProfileId === undefined
+        ? {}
+        : { profileId: request.analystProfileId }
+      : { profileId: target.profileId }),
+    profileDigest: target.profileDigest,
+    ...(target.model === undefined ? {} : { model: target.model }),
+    ...(target.runner === undefined ? {} : { runner: target.runner }),
+    ...(target.connectionId === undefined ? {} : { connectionId: target.connectionId }),
+    ...(target.connectionDigest === undefined ? {} : { connectionDigest: target.connectionDigest }),
     tools: toolNames(evidence),
     completeness: evidence.source.complete ? 'complete' : 'incomplete',
     checks,
@@ -119,6 +124,7 @@ export function initialAnalysisRecord(input: {
   readonly request: AnalysisRequest
   readonly identity: AnalysisIdentity
   readonly at: string
+  readonly executionTarget?: AnalysisExecutionTarget
 }): AnalysisRecord {
   const checks = initialAnalysisChecks(input.evidence)
   return {
@@ -140,6 +146,7 @@ export function initialAnalysisRecord(input: {
       : { analystProfileDigest: input.request.analystProfileDigest }),
     status: 'preparing',
     findings: [],
+    modelCalls: analysisModelCallRecords([]),
     checks,
     provenance: provenance(
       input.host,
@@ -149,6 +156,7 @@ export function initialAnalysisRecord(input: {
       input.request.analystIds ?? [],
       [],
       checks,
+      input.executionTarget,
     ),
     createdAt: input.at,
     updatedAt: input.at,
@@ -160,22 +168,34 @@ function usageFromResult(result: ExactAnalystRunResult): TurnUsage | undefined {
   let output = 0
   let reasoning = 0
   let hasTokens = false
+  let tokensComplete = true
   for (const summary of result.per_analyst) {
     const tokens = summary.usage.tokens
-    if (tokens === null) continue
+    if (tokens === null) {
+      tokensComplete = false
+      continue
+    }
     hasTokens = true
     input += tokens.input
     output += tokens.output
     reasoning += tokens.reasoning ?? 0
   }
-  if (!hasTokens && result.total_cost_usd === 0) return undefined
+  const totalCost =
+    Number.isFinite(result.total_cost_usd) && result.total_cost_usd >= 0
+      ? result.total_cost_usd
+      : undefined
+  const costKind = result.total_cost_provenance?.kind
+  const costUncaptured = costKind === 'uncaptured'
+  const costEstimated = costKind === 'estimated'
+  if (!hasTokens && totalCost === 0 && !costUncaptured) return undefined
   return {
     input,
     output,
+    ...(!hasTokens || !tokensComplete ? { tokensKnown: false as const } : {}),
     ...(reasoning === 0 ? {} : { reasoning }),
-    ...(Number.isFinite(result.total_cost_usd) && result.total_cost_usd >= 0
-      ? { costUsd: result.total_cost_usd }
-      : {}),
+    ...(totalCost === undefined || costEstimated ? {} : { costUsd: totalCost }),
+    ...(totalCost === undefined || !costEstimated ? {} : { estimatedCostUsd: totalCost }),
+    ...(costUncaptured || costEstimated ? { usdKnown: false as const } : {}),
   }
 }
 
@@ -229,8 +249,10 @@ export async function completedAnalysisRecord(input: {
   readonly identity: AnalysisIdentity
   readonly analystIds: readonly string[]
   readonly descriptors: readonly AnalystDescriptor[]
+  readonly modelExecutions: readonly ExternalOptimizerModelExecutionObservation[]
   readonly result: ExactAnalystRunResult
   readonly at: string
+  readonly executionTarget?: AnalysisExecutionTarget
 }): Promise<AnalysisRecord> {
   const mapped = await mapFindings(input.evidence, input.result.findings)
   const checks: readonly AnalysisCheck[] = [
@@ -258,6 +280,7 @@ export async function completedAnalysisRecord(input: {
     status: 'completed',
     findings: mapped.findings,
     checks,
+    modelCalls: analysisModelCallRecords(input.modelExecutions),
     provenance: provenance(
       input.host,
       input.evidence,
@@ -266,11 +289,15 @@ export async function completedAnalysisRecord(input: {
       input.analystIds,
       analystVersions,
       checks,
+      input.executionTarget,
     ),
     ...(usage === undefined ? {} : { usage }),
-    ...(Number.isFinite(input.result.total_cost_usd) && input.result.total_cost_usd >= 0
-      ? { costUsd: input.result.total_cost_usd }
-      : {}),
+    ...(input.result.total_cost_provenance?.kind === 'uncaptured' ||
+    input.result.total_cost_provenance?.kind === 'estimated'
+      ? {}
+      : Number.isFinite(input.result.total_cost_usd) && input.result.total_cost_usd >= 0
+        ? { costUsd: input.result.total_cost_usd }
+        : {}),
     ...(latency === undefined ? {} : { wallTimeMs: latency }),
     updatedAt: input.at,
   }

@@ -1,24 +1,24 @@
-braid  cwd  braid-automation-main-wt  ·  session  New conversation
-
- Write a message, or press Ctrl+P for commands.
-
-
-
-
-    /ask · frozen question
-    source: aaaaaaaaaaaaaaa…aaaaaaaa · frozen
-    analyst: profile-trace-analyst · completed
-    • [citation-repeat-read] The same file was read twice without an int...
-    ↳ [citation-repeat-read] read src/app/application.ts
-    • [citation-missing-proof] The answer claimed success before the ter...
-    ↳ [citation-missing-proof] test started; no terminal result was reco...
-    source complete: yes · findings: 2
-    analysis cost: $0.0048 · analysis time: 1240ms
-    esc close
-
+ analyses › /ask · frozen question · analysis · complete · 1/1
+────────────────────────────────────────────────────────────────────────────────
+ time: 2026-08-04T04:00:01.240Z
+ run: run-cli-bridge-reconnect
+ Where did this run waste time, and what should change?
+ source: da8ae2345b2c17a…7c9190eb · frozen
+ analyst: profile-trace-reviewer · completed
+ route: runner unknown · configured model unknown
+ • [citation-profile-route-order] Profile inspection and route resolution ran
+ serially although their inputs were independent. · medium · confidence 0.94
+ ↳ [citation-profile-route-order] profile.inspect completed before runtime.route
+ started
+ • [citation-package-proof] The answer claimed success before the packaged
+ terminal check completed. · high · confidence 0.88
+ ↳ [citation-package-proof] package check started; no terminal result was
+ recorded
+ model calls: unavailable
+ source complete: yes · findings: 2
+ analysis cost: $0.0048 · analysis time: 1240ms
+ next: ask a narrower question, or use /compare <left> <right> against another
+ frozen run
 
 ────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────
-ready for a message                  model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands
+ ↑↓ previous/next · PgUp/PgDn page · ←/esc back

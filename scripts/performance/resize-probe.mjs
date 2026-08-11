@@ -45,9 +45,16 @@ function streamingExecution({ intervalMs, totalEvents, generated, capabilities }
     admissionMode: 'sync',
     capabilities: () => capabilities,
     async *streamTurn(input) {
+      const cadenceStartedAt = performance.now()
       for (let sequence = 1; sequence <= totalEvents; sequence += 1) {
         if (input.signal.aborted) return
-        if (sequence > 1) await sleep(intervalMs, undefined, { signal: input.signal })
+        const delayMs = scheduledProducerDelay({
+          cadenceStartedAt,
+          sequence,
+          intervalMs,
+          now: performance.now(),
+        })
+        if (delayMs > 0) await sleep(delayMs, undefined, { signal: input.signal })
         const generatedAt = performance.now()
         generated.events.push({ sequence, generatedAt })
         generated.firstGeneratedAt ??= generatedAt
@@ -73,6 +80,10 @@ function streamingExecution({ intervalMs, totalEvents, generated, capabilities }
       return { operationId: input.operationId, outcome: 'accepted' }
     },
   }
+}
+
+export function scheduledProducerDelay({ cadenceStartedAt, sequence, intervalMs, now }) {
+  return Math.max(0, cadenceStartedAt + (sequence - 1) * intervalMs - now)
 }
 
 export function evaluateResizeStreamRate({

@@ -32,7 +32,6 @@ import type {
 } from './entities.js'
 import type { BranchId, ConversationId, EventId, RunId, WorkspaceId } from './ids.js'
 import { assertBraidState } from './invariants.js'
-import { canonicalProjectionChecksum } from './projection-checksum.js'
 import { withHealth } from './reducer-helpers.js'
 import { type BraidState, initialState } from './state.js'
 
@@ -199,10 +198,11 @@ export function isMaterializedStateSnapshot(value: unknown): value is Materializ
   return canonicalDigest(candidate.state) === candidate.stateChecksum
 }
 
-export function restoreMaterializedState(snapshot: MaterializedStateSnapshot): BraidState {
-  if (!isMaterializedStateSnapshot(snapshot)) {
+export function restoreMaterializedState(value: unknown): BraidState {
+  if (!isMaterializedStateSnapshot(value)) {
     throw new Error('Materialized state snapshot failed validation')
   }
+  const snapshot = value
   const base = initialState(snapshot.state.profile, {
     conversationId: snapshot.state.conversationId,
     branchId: snapshot.state.branchId,
@@ -225,7 +225,8 @@ export function restoreMaterializedState(snapshot: MaterializedStateSnapshot): B
   const healthy = withHealth(restored)
   const finalized: BraidState = {
     ...healthy,
-    projectionChecksum: canonicalProjectionChecksum(healthy),
+    // MaterializedState is exactly the canonical projection field set.
+    projectionChecksum: snapshot.stateChecksum,
   }
   assertBraidState(finalized)
   return finalized

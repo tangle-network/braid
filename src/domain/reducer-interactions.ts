@@ -2,6 +2,7 @@ import type { BraidEvent } from './events.js'
 import { reserveText } from './content-budget.js'
 import type { BraidInteraction, BraidState } from './state.js'
 import { createOperationId } from './ids.js'
+import { finalizeRunUsage } from './run-usage.js'
 import {
   activity,
   addActivity,
@@ -258,13 +259,8 @@ function reduceFinishedEvent(
         event.provider,
       )
       return {
-        ...withProgress,
+        ...finalizeRunUsage(withProgress, event.usage),
         status: event.status,
-        inputTokens: event.usage.input,
-        outputTokens: event.usage.output,
-        ...(event.usage.reasoning === undefined ? {} : { reasoningTokens: event.usage.reasoning }),
-        ...(event.usage.costUsd === undefined ? {} : { costUsd: event.usage.costUsd }),
-        ...(event.usage.model === undefined ? {} : { model: event.usage.model }),
         ...(errorReservation === undefined ? {} : { error: errorReservation.value }),
         ...(reasonReservation === undefined ? {} : { terminalReason: reasonReservation.value }),
         complete: event.status !== 'unknown' && !hasMissingHistory,

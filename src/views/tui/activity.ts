@@ -1,6 +1,7 @@
 import { Container, Spacer, Text, TruncatedText } from '@earendil-works/pi-tui'
-import type { ActivityItemView, BraidViewModel } from '../shared/models.js'
+import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { projectActivityDocument, type ActivityDocumentItem } from './activity-document.js'
 import type { BraidTheme } from './theme.js'
 
 export class ActivityView extends Container {
@@ -12,21 +13,22 @@ export class ActivityView extends Container {
   }
 
   setView(view: BraidViewModel): void {
+    const document = projectActivityDocument(view)
     this.clear()
     this.addChild(new Text(this.#theme.brand('activity'), 1, 0))
-    if (view.activity.length === 0) {
+    if (document.items.length === 0) {
       this.addChild(new Spacer(1))
       this.addChild(new Text(this.#theme.muted('No recorded activity.'), 1, 0))
     } else {
       this.addChild(new Spacer(1))
-      for (const item of view.activity) this.addChild(this.#item(item))
+      for (const item of document.items) this.addChild(this.#item(item))
     }
     this.invalidate()
   }
 
-  #item(item: ActivityItemView): TruncatedText {
+  #item(item: ActivityDocumentItem): TruncatedText {
     const status = sanitizeTerminalText(item.status)
-    const detail = item.detail ? ` · ${sanitizeTerminalText(item.detail)}` : ''
+    const detail = item.summary !== item.title ? ` · ${sanitizeTerminalText(item.summary)}` : ''
     const title = sanitizeTerminalText(item.title)
     const color =
       item.status === 'failed' || item.status === 'storage-failure'
@@ -44,7 +46,7 @@ export class ActivityView extends Container {
           : item.status === 'complete' || item.status === 'completed'
             ? 'ok'
             : '·'
-    const elapsed = item.elapsedMs === undefined ? '' : ` ${Math.round(item.elapsedMs)}ms`
+    const elapsed = item.durationMs === undefined ? '' : ` ${Math.round(item.durationMs)}ms`
     return new TruncatedText(`${color(`${symbol} ${status}`)} ${title}${elapsed}${detail}`, 1, 0)
   }
 }

@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 1,
+  "measurements": [
+    {
+      "kind": "distribution",
+      "name": "PERF-01",
+      "unit": "ms",
+      "n": 20,
+      "minimum": 128.5467520000093,
+      "median": 134.52279899999849,
+      "p90": 137.93009399999573,
+      "p95": 139.9279600000009,
+      "p99": 146.11429899999348,
+      "maximum": 146.11429899999348,
+      "target": {
+        "metric": "process-start-to-first-visible-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 250
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 20
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-02",
+      "unit": "ms",
+      "n": 20,
+      "minimum": 152.1218050000025,
+      "median": 168.79698400000052,
+      "p90": 184.84830299999157,
+      "p95": 198.06498500000453,
+      "p99": 202.07973899999342,
+      "maximum": 202.07973899999342,
+      "target": {
+        "metric": "process-start-to-first-visible-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 1000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "80x24",
+        "database": "cold-100000-event-encrypted-sqlite",
+        "eventCount": 100000
+      },
+      "state": "cold",
+      "repetitions": 20
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-03",
+      "unit": "ms",
+      "n": 1000,
+      "minimum": 1.572889999995823,
+      "median": 3.8978009999991627,
+      "p90": 4.429468000002089,
+      "p95": 4.630062999989605,
+      "p99": 5.886098999995738,
+      "maximum": 67.48604000000341,
+      "target": {
+        "metric": "idle-key-to-updated-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 1000
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-04",
+      "unit": "ms",
+      "n": 10000,
+      "minimum": 3.924732000014046,
+      "median": 21.236068000027444,
+      "p90": 30.873592999996617,
+      "p95": 32.554675000021234,
+      "p99": 34.78197299997555,
+      "maximum": 43.15914599999087,
+      "target": {
+        "metric": "runtime-event-to-updated-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "@xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "80x24",
+        "database": "memory-journal-runtime-frame-path",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 10000
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-05",
+      "unit": "ms",
+      "n": 20,
+      "minimum": 749.9611370000057,
+      "median": 803.2254679999896,
+      "p90": 837.0514050000347,
+      "p95": 872.9583330000169,
+      "p99": 910.5310999999638,
+      "maximum": 910.5310999999638,
+      "target": {
+        "metric": "replay-reduce-10000-events",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 2000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "none; production StorageJournal + reducer",
+        "dimensions": "none",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 20
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-06",
+      "unit": "ms",
+      "n": 20,
+      "minimum": 11.109155000012834,
+      "median": 12.112230999977328,
+      "p90": 15.245353000005707,
+      "p95": 15.764255000045523,
+      "p99": 15.87886100000469,
+      "maximum": 15.87886100000469,
+      "target": {
+        "metric": "open-100000-event-conversation",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 2000
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "80x24",
+        "database": "cold-100000-event-encrypted-sqlite",
+        "eventCount": 100000
+      },
+      "state": "cold",
+      "repetitions": 20
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-07",
+      "unit": "ms",
+      "n": 1000,
+      "minimum": 9.40662500000326,
+      "median": 16.065145999993547,
+      "p90": 18.11038600000029,
+      "p95": 18.98701299999084,
+      "p99": 19.99051000000327,
+      "maximum": 21.398293999998714,
+      "target": {
+        "metric": "resize-during-stream-frame",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 100
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "40x12,80x24,120x40,200x60",
+        "database": "packed headless 100-events-per-second stream",
+        "eventCount": 2004
+      },
+      "state": "warm",
+      "repetitions": 1000
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-08",
+      "unit": "% of one core",
+      "n": 2,
+      "minimum": 0,
+      "median": 0,
+      "p90": 0.01666437090266441,
+      "p95": 0.01666437090266441,
+      "p99": 0.01666437090266441,
+      "maximum": 0.01666437090266441,
+      "target": {
+        "metric": "idle-cpu",
+        "percentile": "median",
+        "operator": "<=",
+        "value": 1
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1",
+        "dimensions": "80x24",
+        "database": "deterministic-offline-fixture-idle",
+        "eventCount": 0
+      },
+      "state": "warm",
+      "repetitions": 2
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-09",
+      "unit": "MiB RSS",
+      "n": 20,
+      "minimum": 86.10546875,
+      "median": 87.21484375,
+      "p90": 87.56640625,
+      "p95": 87.73828125,
+      "p99": 88.0703125,
+      "maximum": 88.0703125,
+      "target": {
+        "metric": "resident-memory-10000-event-conversation",
+        "percentile": "p95",
+        "operator": "<=",
+        "value": 150
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "packed production view model; child process RSS",
+        "dimensions": "80x24",
+        "database": "warm-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "warm",
+      "repetitions": 20
+    },
+    {
+      "kind": "distribution",
+      "name": "PERF-10",
+      "unit": "MiB",
+      "n": 20,
+      "minimum": 8.1328125,
+      "median": 8.1328125,
+      "p90": 8.1328125,
+      "p95": 8.1328125,
+      "p99": 8.1328125,
+      "maximum": 8.1328125,
+      "target": {
+        "metric": "database-growth-10000-events",
+        "percentile": "maximum",
+        "operator": "<=",
+        "value": 50
+      },
+      "environment": {
+        "machine": "drew-GTR-Pro (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S; x64; 32 logical CPUs)",
+        "os": "linux 7.0.0-28-generic",
+        "node": "v24.13.0",
+        "terminal": "none; packed production encrypted SQLite artifacts",
+        "dimensions": "none",
+        "database": "cold-10000-event-encrypted-sqlite",
+        "eventCount": 10000
+      },
+      "state": "cold",
+      "repetitions": 20
+    }
+  ]
+}

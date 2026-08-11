@@ -266,6 +266,7 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
 
 function forkPreview(plan: ForkPlan): ForkPreviewView {
   return {
+    plan: Object.freeze(plan),
     source: `${plan.sourceConversationId} / ${plan.sourceBranchId}`,
     destination: `${plan.sourceConversationId} / ${plan.destinationBranchId}`,
     kind: plan.kind,

@@ -6,7 +6,6 @@ import { ConversationConfirmation, ConversationRename } from './conversation-dia
 import {
   type ConversationItem,
   findConversation,
-  forkExecutionIdentity,
   resultMessage,
   unique,
 } from './conversation-overlay-helpers.js'
@@ -212,16 +211,25 @@ export class ConversationOverlayActions {
 
   async #executeFork(panel: ForkPreviewPanel, view: BraidViewModel): Promise<void> {
     const preview = view.forkPreview
-    const execution = forkExecutionIdentity(preview)
-    if (execution === undefined) {
+    const plan = preview?.plan
+    if (!preview?.allowed || plan === undefined || !plan.allowed) {
       panel.setError('The fork plan is not executable; create a fresh preview')
       return
     }
     const result = await this.#controller.dispatch({
       type: 'headless-command',
       command: 'execute_fork',
-      operationId: execution.operationId,
-      params: { planDigest: execution.planDigest },
+      operationId: plan.operationId,
+      params: {
+        planDigest: plan.digest,
+        conversationId: plan.sourceConversationId,
+        branchId: plan.sourceBranchId,
+        ...(plan.throughMessageId === undefined ? {} : { messageId: plan.throughMessageId }),
+        workspace: plan.kind === 'workspace',
+        ...(plan.context.destinationRunner === undefined
+          ? {}
+          : { runner: plan.context.destinationRunner }),
+      },
     })
     if (result.kind === 'accepted') this.#modals.closeTop()
     else panel.setError(resultMessage(result, 'Fork failed; review the plan and retry'))

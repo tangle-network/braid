@@ -1,8 +1,8 @@
+import type { InteractionRequest } from '@tangle-network/agent-interface'
 import type { BraidEvent, BraidEventEnvelope, ProviderEventMeta } from '../../domain/events.js'
 import type { BraidMessagePart } from '../../domain/state.js'
-import { redactStructuredValue } from './sanitize.js'
-import { boundVisibleText, sanitizeTerminalText } from './sanitize.js'
 import type { TranscriptPartView } from './models.js'
+import { boundVisibleText, redactStructuredValue, sanitizeTerminalText } from './sanitize.js'
 
 const MAX_EVENT_ITEMS = 128
 const MAX_EVENT_BYTES = 64 * 1024
@@ -150,7 +150,10 @@ export function projectSemanticEvent(
         ...(event.error === undefined ? {} : { error: text(event.error) ?? 'RUNTIME_ERROR' }),
       })
     case 'run.interaction':
-      return withSource(event, { ...base, interaction: safe(event.request) })
+      return withSource(event, {
+        ...base,
+        interaction: semanticInteractionRequest(event.request),
+      })
     case 'run.interaction.cancelled':
       return withSource(event, {
         ...base,
@@ -222,8 +225,21 @@ export function projectSemanticEvent(
         completeness: 'unknown',
         error: text(event.detail) ?? 'RUNTIME_UNKNOWN',
       }
+    case 'run.detached':
+      return {
+        ...base,
+        status: 'detached',
+        completeness: 'streaming',
+        ...(event.cursor === undefined ? {} : { cursor: text(event.cursor) ?? '' }),
+        ...(event.detail === undefined ? {} : { detail: text(event.detail) ?? '' }),
+      }
     case 'run.reconnecting':
-      return { ...base, status: 'reconnecting', completeness: 'streaming', cursor: event.after }
+      return {
+        ...base,
+        status: 'reconnecting',
+        completeness: 'streaming',
+        ...(event.after === undefined ? {} : { cursor: text(event.after) ?? '' }),
+      }
     case 'run.reconciled':
       return {
         ...base,
@@ -234,6 +250,97 @@ export function projectSemanticEvent(
       }
     default:
       return { ...base, value: safe(event) }
+  }
+}
+
+function semanticInteractionRequest(
+  request: InteractionRequest,
+): Readonly<Record<string, unknown>> {
+  return {
+    id: text(request.id) ?? '',
+    kind: text(request.kind) ?? '',
+    title: text(request.title) ?? '',
+    ...(request.body === undefined ? {} : { body: text(request.body) ?? '' }),
+    ...(request.subject === undefined
+      ? {}
+      : { subject: semanticInteractionSubject(request.subject) }),
+    answerSpec: semanticAnswerSpec(request.answerSpec),
+    ...(request.responseScopes === undefined
+      ? {}
+      : { responseScopes: request.responseScopes.map((scope) => text(scope) ?? '') }),
+    ...(request.allowedOutcomes === undefined
+      ? {}
+      : { allowedOutcomes: request.allowedOutcomes.map((outcome) => text(outcome) ?? '') }),
+  }
+}
+
+function semanticInteractionSubject(
+  subject: NonNullable<InteractionRequest['subject']>,
+): Readonly<Record<string, unknown>> {
+  switch (subject.type) {
+    case 'tool':
+      return { type: 'tool', toolName: text(subject.toolName) ?? '' }
+    case 'command':
+      return { type: 'command', command: text(subject.command) ?? '' }
+    case 'file':
+      return {
+        type: 'file',
+        path: text(subject.path) ?? '',
+        ...(subject.preview === undefined ? {} : { preview: text(subject.preview) ?? '' }),
+      }
+    case 'resource':
+      return { type: 'resource', uri: text(subject.uri) ?? '' }
+  }
+}
+
+function semanticAnswerSpec(
+  answerSpec: InteractionRequest['answerSpec'],
+): Readonly<Record<string, unknown>> {
+  return {
+    fields: answerSpec.fields.map((field) => {
+      const base = {
+        type: field.type,
+        name: text(field.name) ?? '',
+        label: text(field.label) ?? '',
+        ...(field.required === undefined ? {} : { required: field.required }),
+      }
+      switch (field.type) {
+        case 'text':
+          return {
+            ...base,
+            ...(field.multiline === undefined ? {} : { multiline: field.multiline }),
+            ...(field.maxLength === undefined ? {} : { maxLength: field.maxLength }),
+          }
+        case 'number':
+          return {
+            ...base,
+            ...(field.min === undefined ? {} : { min: field.min }),
+            ...(field.max === undefined ? {} : { max: field.max }),
+          }
+        case 'boolean':
+          return base
+        case 'select':
+          return {
+            ...base,
+            options: field.options.map((option) => ({
+              value: text(option.value) ?? '',
+              label: text(option.label) ?? '',
+              ...(option.description === undefined
+                ? {}
+                : { description: text(option.description) ?? '' }),
+            })),
+            ...(field.multi === undefined ? {} : { multi: field.multi }),
+            ...(field.allowCustom === undefined ? {} : { allowCustom: field.allowCustom }),
+          }
+        case 'secret':
+          return {
+            ...base,
+            ...(field.maxLength === undefined ? {} : { maxLength: field.maxLength }),
+          }
+        default:
+          return base
+      }
+    }),
   }
 }
 

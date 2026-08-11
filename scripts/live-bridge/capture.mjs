@@ -45,7 +45,7 @@ export function appendBounded(current, chunk, maxBytes = 256_000) {
   return next.subarray(start).toString('utf8')
 }
 
-function sensitiveStartAtBoundary(value, boundary) {
+function sensitiveStartAtBoundary(value, boundary, secrets) {
   const prefix = value.slice(0, boundary)
   const match = prefix.match(sensitiveBoundaryPattern)
   if (match?.index !== undefined) return match.index
@@ -55,13 +55,20 @@ function sensitiveStartAtBoundary(value, boundary) {
       if (lowerPrefix.endsWith(marker.slice(0, length))) return boundary - length
     }
   }
+  for (const secret of secrets) {
+    const maxLength = Math.min(secret.length - 1, boundary)
+    for (let length = 1; length <= maxLength; length += 1) {
+      if (prefix.endsWith(secret.slice(0, length))) return boundary - length
+    }
+  }
   return undefined
 }
 
 export class StreamingRedactor {
-  constructor(maxBytes = 256_000, holdChars = defaultHoldChars) {
+  constructor(maxBytes = 256_000, holdChars = defaultHoldChars, secrets = []) {
     this.maxBytes = maxBytes
     this.holdChars = holdChars
+    this.secrets = secrets
     this.pending = ''
     this.retained = ''
     this.finished = false
@@ -75,7 +82,7 @@ export class StreamingRedactor {
       return this.retained
     }
     let boundary = value.length - this.holdChars
-    const sensitiveStart = sensitiveStartAtBoundary(value, boundary)
+    const sensitiveStart = sensitiveStartAtBoundary(value, boundary, this.secrets)
     if (sensitiveStart !== undefined) boundary = sensitiveStart
     if (value.length - boundary > maxPendingChars) {
       this.retained = appendBounded(this.retained, '[redacted-stream-overflow]', this.maxBytes)
@@ -84,7 +91,7 @@ export class StreamingRedactor {
     }
     this.retained = appendBounded(
       this.retained,
-      redactString(value.slice(0, boundary)),
+      redactString(value.slice(0, boundary), this.secrets),
       this.maxBytes,
     )
     this.pending = value.slice(boundary)
@@ -97,7 +104,11 @@ export class StreamingRedactor {
 
   finish() {
     if (this.finished) return this.retained
-    this.retained = appendBounded(this.retained, redactString(this.pending), this.maxBytes)
+    this.retained = appendBounded(
+      this.retained,
+      redactString(this.pending, this.secrets),
+      this.maxBytes,
+    )
     this.pending = ''
     this.finished = true
     return this.retained
