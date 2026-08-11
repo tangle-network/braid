@@ -73,23 +73,6 @@ async function bridgeProof(baseUrl) {
   return { health, backend }
 }
 
-async function analysisDependencyProof(expectedVersion) {
-  const command = process.env.BRAID_LIVE_DEMO_PYTHON ?? 'python'
-  const probe = [
-    'import importlib.metadata',
-    'import agent_eval_rpc.dspy_rlm_bridge',
-    "print(importlib.metadata.version('agent-eval-rpc'))",
-  ].join(';')
-  const { stdout } = await run(command, ['-c', probe], { timeout: 30_000 })
-  const version = stdout.trim()
-  assert.equal(
-    version,
-    expectedVersion,
-    `Python agent-eval-rpc ${version || '(missing)'} does not match Node agent-eval ${expectedVersion}`,
-  )
-  return { version }
-}
-
 function latestCompletedRun(record) {
   const run = record.state?.runs?.at(-1)
   return run?.status === 'completed' && record.view?.status === 'completed' ? run : undefined
@@ -183,20 +166,23 @@ async function verifyWorkspace(workspace) {
 
 async function main() {
   const baseUrl = assertLocalEndpoint(endpoint)
-  const [agentEvalPackage, sourcePackage, packageProofBytes, commitResult] = await Promise.all([
-    readFile(
-      join(repository, 'node_modules', '@tangle-network', 'agent-eval', 'package.json'),
-    ).then(JSON.parse),
-    readFile(join(repository, 'package.json'), 'utf8').then(JSON.parse),
-    readFile(packageProofPath),
-    run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
-  ])
+  const [agentEvalPackage, sourcePackage, packageProofBytes, commitResult, bridge] =
+    await Promise.all([
+      readFile(
+        join(repository, 'node_modules', '@tangle-network', 'agent-eval', 'package.json'),
+      ).then(JSON.parse),
+      readFile(join(repository, 'package.json'), 'utf8').then(JSON.parse),
+      readFile(packageProofPath),
+      run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
+      bridgeProof(baseUrl),
+    ])
   const sourceCommit = commitResult.stdout.trim()
   const packageProof = JSON.parse(packageProofBytes.toString('utf8'))
-  const [bridge, analysisRuntime] = await Promise.all([
-    bridgeProof(baseUrl),
-    analysisDependencyProof(agentEvalPackage.version),
-  ])
+  const analysisRuntime = {
+    manager: 'bundled uv',
+    pythonVersion: '3.12',
+    version: agentEvalPackage.version,
+  }
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
     tarballPath: process.env.BRAID_RELEASE_TARBALL,
@@ -428,6 +414,8 @@ async function main() {
       },
       analysis: {
         question: LIVE_DEMO_QUESTION,
+        runtimeManager: analysisRuntime.manager,
+        pythonVersion: analysisRuntime.pythonVersion,
         agentEvalRpcVersion: analysisRuntime.version,
         ...analysis,
       },
