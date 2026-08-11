@@ -8,6 +8,7 @@ import { createBraidApplication } from '../src/app/composition.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
 import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
 import { createStartupPreview } from '../src/startup/preview-runtime.js'
+import { BRAID_VERSION } from '../src/version.js'
 import type { BraidUiController } from '../src/views/shared/intents.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -37,6 +38,14 @@ async function waitForRecordedRevision(path: string, revision: number): Promise<
   }
   assert.fail(`Timed out waiting for recorded revision ${revision}`)
 }
+
+test('command version comes from the package manifest', async () => {
+  const root = await repositoryRoot()
+  const packageDocument = JSON.parse(await readFile(new URL('package.json', root), 'utf8')) as {
+    readonly version: string
+  }
+  assert.equal(BRAID_VERSION, packageDocument.version)
+})
 
 test('expected command-line mistakes remain actionable without echoing arbitrary values', () => {
   assert.throws(

@@ -1,6 +1,6 @@
 import { analysisExecutionTargetFromState } from './analysis-execution-target.js'
 import { type AnalysisIdentity, analysisIdentity } from './analysis-operation.js'
-import { freezeAnalysisSource } from './analysis-source.js'
+import { loadFrozenAnalysisSource } from './analysis-source.js'
 import type {
   AnalysisApplicationHost,
   AnalysisExecutionTarget,
@@ -37,18 +37,14 @@ function requestForDigest(
   }
 }
 
-export function prepareAnalysisRequest(
+export async function prepareAnalysisRequest(
   host: AnalysisApplicationHost,
   request: AnalysisRequest,
-): PreparedAnalysisRequest {
+): Promise<PreparedAnalysisRequest> {
   const state = host.currentState()
   const executionTarget =
     host.analysisExecutionTarget?.(state) ?? analysisExecutionTargetFromState(state)
-  const evidence = freezeAnalysisSource({
-    ...request,
-    state,
-    events: host.eventHistory(),
-  })
+  const evidence = await loadFrozenAnalysisSource(host, state, request)
   return {
     evidence,
     executionTarget,

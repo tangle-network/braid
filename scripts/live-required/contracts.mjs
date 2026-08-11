@@ -27,7 +27,7 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'source-frozen',
     'cited-finding',
-    'persisted',
+    'restart-restored',
     'promoted',
   ]),
   [PROOF_OPERATIONS.supervisor]: Object.freeze(['snapshot', 'reconnect', 'steering']),
@@ -36,7 +36,13 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
 const PROOF_OPERATION_FACT_KEYS = Object.freeze({
   [PROOF_OPERATIONS.tangleInference]: Object.freeze(['normalRunId', 'cancelledRunId']),
   [PROOF_OPERATIONS.tangleSandbox]: Object.freeze(['environmentId']),
-  [PROOF_OPERATIONS.traceAnalysis]: Object.freeze(['analysisId', 'findingCount', 'promoted']),
+  [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
+    'analysisId',
+    'findingCount',
+    'modelCallCount',
+    'promoted',
+    'usage',
+  ]),
   [PROOF_OPERATIONS.supervisor]: Object.freeze([
     'supervisorId',
     'workerId',
@@ -234,14 +240,34 @@ function validTimestamp(value, label) {
     throw new Error(`${label} must be an ISO timestamp`)
 }
 
-function validateProofFacts(operation, facts) {
+function validateProofFacts(operation, status, facts) {
   if (facts === null || typeof facts !== 'object' || Array.isArray(facts))
     throw new Error('Live proof facts must be an object')
   exactKeys(facts, PROOF_OPERATION_FACT_KEYS[operation], 'Live proof facts')
   for (const [key, value] of Object.entries(facts)) {
-    if (key === 'findingCount') {
+    if (key === 'findingCount' || key === 'modelCallCount') {
       if (value !== null && (!Number.isInteger(value) || value < 0))
-        throw new Error('Live proof findingCount must be a non-negative integer or null')
+        throw new Error(`Live proof ${key} must be a non-negative integer or null`)
+      continue
+    }
+    if (key === 'usage') {
+      if (value === null || typeof value !== 'object' || Array.isArray(value))
+        throw new Error('Live proof usage must be an object')
+      exactKeys(
+        value,
+        ['inputTokens', 'outputTokens', 'tokensKnown', 'costKind', 'costUsd', 'usdKnown'],
+        'Live proof usage',
+      )
+      for (const tokenField of ['inputTokens', 'outputTokens']) {
+        if (!Number.isSafeInteger(value[tokenField]) || value[tokenField] < 0)
+          throw new Error(`Live proof usage ${tokenField} must be a non-negative safe integer`)
+      }
+      if (typeof value.tokensKnown !== 'boolean' || typeof value.usdKnown !== 'boolean')
+        throw new Error('Live proof usage knowledge fields must be boolean')
+      if (!['observed', 'estimated'].includes(value.costKind))
+        throw new Error('Live proof usage costKind must be observed or estimated')
+      if (typeof value.costUsd !== 'number' || !Number.isFinite(value.costUsd) || value.costUsd < 0)
+        throw new Error('Live proof usage costUsd must be a non-negative finite number')
       continue
     }
     if (key === 'promoted' || key === 'cancellationAvailable') {
@@ -249,6 +275,16 @@ function validateProofFacts(operation, facts) {
       continue
     }
     validNullableString(value, `Live proof ${key}`)
+  }
+  if (operation === PROOF_OPERATIONS.traceAnalysis && status === 'passed') {
+    if (!Number.isInteger(facts.findingCount) || facts.findingCount < 1)
+      throw new Error('Passed trace-analysis proof requires at least one cited finding')
+    if (!Number.isInteger(facts.modelCallCount) || facts.modelCallCount < 1)
+      throw new Error('Passed trace-analysis proof requires at least one model-call record')
+    if (facts.promoted !== true)
+      throw new Error('Passed trace-analysis proof requires successful promotion')
+    if (facts.usage.tokensKnown !== true)
+      throw new Error('Passed trace-analysis proof requires known token usage')
   }
 }
 
@@ -298,7 +334,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     throw new Error('Live proof run ids are invalid')
   validNullableString(receipt.run.environmentId, 'Live proof environmentId')
   validNullableString(receipt.run.materializationDigest, 'Live proof materializationDigest')
-  validateProofFacts(receipt.operation, receipt.facts)
+  validateProofFacts(receipt.operation, receipt.status, receipt.facts)
+  const requiredChecks = PROOF_OPERATION_CHECKS[receipt.operation]
   if (
     !Array.isArray(receipt.checks) ||
     receipt.checks.length === 0 ||
@@ -309,6 +346,12 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     )
   )
     throw new Error('Live proof checks are not part of the named operation')
+  if (
+    receipt.status === 'passed' &&
+    (receipt.checks.length !== requiredChecks.length ||
+      requiredChecks.some((check) => !receipt.checks.includes(check)))
+  )
+    throw new Error('Passed live proof must include every check for the named operation')
   return receipt
 }
 

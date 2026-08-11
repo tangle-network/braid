@@ -22,6 +22,7 @@ import { redactBraidEvent } from '../domain/redaction.js'
 import type { BraidState } from '../domain/state.js'
 import {
   AnalysisSourceError,
+  type AnalysisApplicationHost,
   type AnalysisSourceRequest,
   type FrozenAnalysisEvent,
   type FrozenAnalysisEvidence,
@@ -43,6 +44,41 @@ export interface AnalysisSourceReference {
 export interface AnalysisSourceProjection {
   readonly reference: AnalysisSourceReference
   readonly request: AnalysisSourceRequest
+}
+
+async function loadAnalysisSourceEvents(
+  host: AnalysisApplicationHost,
+  source: AnalysisSourceRequest,
+): Promise<readonly BraidEventEnvelope[]> {
+  return host.loadEventHistory === undefined ? host.eventHistory() : host.loadEventHistory(source)
+}
+
+/** Loads exact persisted history without crossing the captured state revision. */
+export async function loadFrozenAnalysisSources(
+  host: AnalysisApplicationHost,
+  state: BraidState,
+  sources: readonly AnalysisSourceRequest[],
+): Promise<readonly FrozenAnalysisEvidence[]> {
+  const histories = await Promise.all(
+    sources.map(async (source) => {
+      const events = await loadAnalysisSourceEvents(host, source)
+      return events.filter((envelope) => envelope.sequence <= state.sequence)
+    }),
+  )
+  return sources.map((source, index) =>
+    freezeAnalysisSource({ ...source, state, events: histories[index] ?? [] }),
+  )
+}
+
+export async function loadFrozenAnalysisSource(
+  host: AnalysisApplicationHost,
+  state: BraidState,
+  source: AnalysisSourceRequest,
+): Promise<FrozenAnalysisEvidence> {
+  const evidence = await loadFrozenAnalysisSources(host, state, [source])
+  const captured = evidence[0]
+  if (captured === undefined) throw new AnalysisSourceError('Analysis source was not captured')
+  return captured
 }
 
 /** Parses the stable command token without resolving it against current state. */

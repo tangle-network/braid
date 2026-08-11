@@ -1,31 +1,27 @@
+import { connectionConfiguration } from './configuration.mjs'
+import {
+  classifyExternalFailure,
+  PROOF_OPERATIONS,
+  proofInvocation,
+  proofReceipt,
+  scalarMeasurement,
+} from './contracts.mjs'
 import {
   closeSession,
   configEvidence,
+  initializedSession,
   prepareProductionWorkspace,
   resolveBinary,
   rpcRequest,
   rpcState,
   runHeadlessTurn,
 } from './headless.mjs'
-import {
-  PROOF_OPERATIONS,
-  classifyExternalFailure,
-  proofInvocation,
-  proofReceipt,
-  scalarMeasurement,
-} from './contracts.mjs'
-import { connectionConfiguration } from './configuration.mjs'
 
 function sourceSnapshot(state) {
   return JSON.stringify({
     messages: state.messages,
     runs: state.runs,
   })
-}
-
-function analysisRecord(state, analysisId) {
-  const analyses = Array.isArray(state.analyses) ? state.analyses : []
-  return analyses.find((candidate) => String(candidate.id) === analysisId)
 }
 
 function supportedFindings(analysis) {
@@ -38,13 +34,31 @@ function supportedFindings(analysis) {
   )
 }
 
+function analysisSummary(analysis) {
+  if (analysis === undefined) return null
+  return {
+    id: analysis.id,
+    status: analysis.status,
+    findings: Array.isArray(analysis.findings)
+      ? analysis.findings.map((finding) => ({
+          id: finding.id,
+          supported: finding.supported,
+          citations: Array.isArray(finding.citations) ? finding.citations.length : null,
+        }))
+      : null,
+    checks: Array.isArray(analysis.checks)
+      ? analysis.checks.map((check) => ({ id: check.id, status: check.status }))
+      : null,
+  }
+}
+
 export async function runTraceAnalysis({ repository, environment }) {
   const binary = await resolveBinary(repository, environment)
   const invocationId = proofInvocation('live-analysis')
   const startedAt = new Date().toISOString()
   const values = connectionConfiguration(environment, {
     prefix: 'BRAID_ANALYSIS',
-    kind: 'trace analysis',
+    kind: 'tangle-inference',
     endpointNames: ['BRAID_TANGLE_ENDPOINT'],
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
@@ -58,6 +72,7 @@ export async function runTraceAnalysis({ repository, environment }) {
     ...values,
   })
   let source
+  let restored
   try {
     source = await runHeadlessTurn({
       binary,
@@ -80,14 +95,25 @@ export async function runTraceAnalysis({ repository, environment }) {
     const data = result.result
     const analysis = data?.analysis
     if (data?.status !== 'completed' || typeof analysis?.id !== 'string') {
-      throw new Error('trace analysis did not return a completed analysis record')
+      const detail = typeof data?.error === 'string' ? `: ${data.error}` : ''
+      throw new Error(
+        `trace analysis returned ${String(data?.status ?? 'no status')} instead of completed${detail}`,
+      )
     }
     if (!supportedFindings(analysis)) {
       throw new Error('trace analysis returned no finding with supported citations')
     }
-    const persisted = analysisRecord(afterResponse.state, analysis.id)
+    await closeSession(source.session)
+    restored = await initializedSession(binary, config)
+    const persistedResponse = await rpcRequest(restored.session, 'get_details', {
+      entityType: 'analysis',
+      entityId: analysis.id,
+    })
+    const persisted = persistedResponse.result?.data
     if (persisted?.status !== 'completed' || !supportedFindings(persisted)) {
-      throw new Error('trace analysis result was not durably persisted with supported citations')
+      throw new Error(
+        `trace analysis result was not durably persisted with supported citations: ${JSON.stringify({ returned: analysisSummary(analysis), persisted: analysisSummary(persisted) })}`,
+      )
     }
     if (JSON.stringify(persisted.source?.digest) !== JSON.stringify(data.source?.digest)) {
       throw new Error('trace analysis persisted a different frozen source digest')
@@ -96,16 +122,23 @@ export async function runTraceAnalysis({ repository, environment }) {
       throw new Error('trace analysis changed the frozen source run')
     }
     if (
-      !Number.isFinite(persisted.costUsd) ||
       !persisted.usage ||
+      persisted.usage.tokensKnown === false ||
       !Number.isFinite(persisted.usage.input) ||
-      !Number.isFinite(persisted.usage.output)
+      !Number.isFinite(persisted.usage.output) ||
+      (!Number.isFinite(persisted.usage.costUsd) &&
+        !Number.isFinite(persisted.usage.estimatedCostUsd))
     ) {
-      throw new Error('trace analysis did not settle usage and cost receipts')
+      throw new Error(
+        `trace analysis did not settle usage and cost receipts: ${JSON.stringify({ usage: persisted.usage ?? null, costUsd: persisted.costUsd ?? null, modelCalls: persisted.modelCalls ?? null })}`,
+      )
+    }
+    if (!Array.isArray(persisted.modelCalls) || persisted.modelCalls.length === 0) {
+      throw new Error('trace analysis did not persist any model-call records')
     }
     const findingIds = analysis.findings.map((finding) => finding.id)
     const promotion = await rpcRequest(
-      source.session,
+      restored.session,
       'promote_analysis',
       {
         analysisId: analysis.id,
@@ -121,10 +154,10 @@ export async function runTraceAnalysis({ repository, environment }) {
     ) {
       throw new Error('trace analysis promotion did not preserve analysis provenance')
     }
-    await closeSession(source.session)
+    await closeSession(restored.session)
     return {
       status: 'passed',
-      measurement: scalarMeasurement('LIVE-12'),
+      measurements: [scalarMeasurement('LIVE-12')],
       evidence: proofReceipt({
         invocationId,
         operation: PROOF_OPERATIONS.traceAnalysis,
@@ -135,9 +168,25 @@ export async function runTraceAnalysis({ repository, environment }) {
         facts: {
           analysisId: analysis.id,
           findingCount: findingIds.length,
+          modelCallCount: persisted.modelCalls.length,
           promoted: true,
+          usage: {
+            inputTokens: persisted.usage.input,
+            outputTokens: persisted.usage.output,
+            tokensKnown: persisted.usage.tokensKnown !== false,
+            costKind:
+              persisted.usage.usdKnown !== false && Number.isFinite(persisted.usage.costUsd)
+                ? 'observed'
+                : 'estimated',
+            costUsd:
+              persisted.usage.usdKnown !== false && Number.isFinite(persisted.usage.costUsd)
+                ? persisted.usage.costUsd
+                : persisted.usage.estimatedCostUsd,
+            usdKnown:
+              persisted.usage.usdKnown !== false && Number.isFinite(persisted.usage.costUsd),
+          },
         },
-        checks: ['source-frozen', 'cited-finding', 'persisted', 'promoted'],
+        checks: ['source-frozen', 'cited-finding', 'restart-restored', 'promoted'],
       }),
     }
   } catch (error) {
@@ -145,6 +194,7 @@ export async function runTraceAnalysis({ repository, environment }) {
     throw classified
   } finally {
     if (source?.session) await closeSession(source.session).catch(() => undefined)
+    if (restored?.session) await closeSession(restored.session).catch(() => undefined)
     await config.cleanup()
   }
 }

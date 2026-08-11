@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { managedAnalysisRunner } from './managed-analysis-runtime.js'
 
 const PACKAGE_PROBE = [
   'import importlib.util',
@@ -16,6 +17,7 @@ const PACKAGE_PROBE = [
 
 const PACKAGE_MISSING_EXIT_CODE = 13
 const DEFAULT_PROBE_TIMEOUT_MS = 2_000
+const DEFAULT_MANAGED_RUNTIME_PROBE_TIMEOUT_MS = 120_000
 
 export interface PythonRunnerSpec {
   readonly command: string
@@ -23,7 +25,7 @@ export interface PythonRunnerSpec {
 }
 
 export interface PythonRunnerIdentity extends PythonRunnerSpec {
-  readonly source: 'explicit' | 'detected'
+  readonly source: 'explicit' | 'detected' | 'managed'
 }
 
 export type PythonCommandProbeStatus = 'ok' | 'not-found' | 'failed' | 'timed-out'
@@ -46,6 +48,8 @@ export interface ResolvePythonRunnerOptions {
   readonly candidates?: readonly string[]
   readonly probe?: PythonCommandProbe
   readonly timeoutMs?: number
+  readonly managedRuntimeReadiness?: 'launcher' | 'complete'
+  readonly signal?: AbortSignal
 }
 
 export type PythonRunnerResolution =
@@ -125,6 +129,78 @@ async function defaultProbe(
   })
 }
 
+const completeManagedRuntimeProbes = new WeakMap<
+  PythonCommandProbe,
+  Map<string, Promise<PythonCommandProbeResult>>
+>()
+
+function waitForProbe(
+  pending: Promise<PythonCommandProbeResult>,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<PythonCommandProbeResult> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (result: PythonCommandProbeResult): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', aborted)
+      resolve(result)
+    }
+    const fail = (error: unknown): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', aborted)
+      reject(error)
+    }
+    const aborted = (): void => {
+      fail(
+        signal?.reason instanceof Error
+          ? signal.reason
+          : new DOMException('The operation was aborted', 'AbortError'),
+      )
+    }
+    const timer = setTimeout(() => finish({ status: 'timed-out' }), timeoutMs)
+    if (signal?.aborted) {
+      aborted()
+      return
+    }
+    signal?.addEventListener('abort', aborted, { once: true })
+    pending.then(finish, fail)
+  })
+}
+
+async function probeCompleteManagedRuntime(
+  command: string,
+  args: readonly string[],
+  probe: PythonCommandProbe,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<PythonCommandProbeResult> {
+  const key = JSON.stringify([command, args])
+  let probes = completeManagedRuntimeProbes.get(probe)
+  if (probes === undefined) {
+    probes = new Map()
+    completeManagedRuntimeProbes.set(probe, probes)
+  }
+  let pending = probes.get(key)
+  if (pending === undefined) {
+    pending = probe(command, args, DEFAULT_MANAGED_RUNTIME_PROBE_TIMEOUT_MS)
+    probes.set(key, pending)
+    void pending.then(
+      (result) => {
+        if (result.status !== 'ok' && probes.get(key) === pending) probes.delete(key)
+      },
+      () => {
+        if (probes.get(key) === pending) probes.delete(key)
+      },
+    )
+  }
+  return waitForProbe(pending, timeoutMs, signal)
+}
+
 async function probeRunner(
   runner: PythonRunnerIdentity,
   probe: PythonCommandProbe,
@@ -167,8 +243,18 @@ async function probeRunner(
 export async function resolvePythonRunner(
   options: ResolvePythonRunnerOptions = {},
 ): Promise<PythonRunnerResolution> {
+  if (options.signal?.aborted) {
+    throw options.signal.reason instanceof Error
+      ? options.signal.reason
+      : new DOMException('The operation was aborted', 'AbortError')
+  }
   const probe = options.probe ?? defaultProbe
-  const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
+  const managedRuntimeReadiness = options.managedRuntimeReadiness ?? 'launcher'
+  const timeoutMs =
+    options.timeoutMs ??
+    (managedRuntimeReadiness === 'complete'
+      ? DEFAULT_MANAGED_RUNTIME_PROBE_TIMEOUT_MS
+      : DEFAULT_PROBE_TIMEOUT_MS)
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new RangeError('Python readiness probe timeout must be a positive safe integer')
   }
@@ -187,6 +273,48 @@ export async function resolvePythonRunner(
 
   let packageMissing: PythonRunnerResolution | undefined
   let probeFailed: PythonRunnerResolution | undefined
+  if (options.candidates === undefined && !process.env.BRAID_PYTHON?.trim()) {
+    const managed = managedAnalysisRunner()
+    if (managed !== undefined) {
+      const readinessArgs =
+        managedRuntimeReadiness === 'complete'
+          ? managed.runtimeProbeArgs
+          : managed.launcherProbeArgs
+      const readiness =
+        managedRuntimeReadiness === 'complete'
+          ? await probeCompleteManagedRuntime(
+              managed.command,
+              readinessArgs,
+              probe,
+              timeoutMs,
+              options.signal,
+            )
+          : await probe(managed.command, readinessArgs, timeoutMs)
+      if (readiness.status === 'ok') {
+        return {
+          status: 'ready',
+          runner: {
+            command: managed.command,
+            args: managed.args,
+            source: 'managed',
+          },
+        }
+      }
+      probeFailed = {
+        status: 'python-probe-failed',
+        runner: {
+          command: managed.command,
+          args: managed.args,
+          source: 'managed',
+        },
+        message:
+          managedRuntimeReadiness === 'complete'
+            ? 'The managed trace-analysis runtime could not resolve Python 3.12 and the pinned Agent Eval package.'
+            : 'The managed trace-analysis launcher could not be started.',
+      }
+    }
+  }
+
   for (const candidate of options.candidates ?? defaultCandidates()) {
     const runner = normalizedRunner({ command: candidate }, 'detected')
     if (runner === undefined) continue

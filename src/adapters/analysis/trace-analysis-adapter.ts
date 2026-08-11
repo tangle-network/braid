@@ -64,6 +64,8 @@ export interface TraceAnalysisAdapterOptions extends ProductionConnectionOptions
   readonly pythonCandidates?: readonly string[]
   readonly pythonProbe?: PythonCommandProbe
   readonly pythonProbeTimeoutMs?: number
+  readonly managedRuntimeReadiness?: 'launcher' | 'complete'
+  readonly signal?: AbortSignal
   readonly pricing?: CustomTokenPricing
   readonly maxCostUsd?: number
   readonly maxOutputTokens?: number
@@ -277,6 +279,10 @@ export async function createTraceAnalysisAdapter(
     ...(options.pythonProbeTimeoutMs === undefined
       ? {}
       : { timeoutMs: options.pythonProbeTimeoutMs }),
+    ...(options.managedRuntimeReadiness === undefined
+      ? {}
+      : { managedRuntimeReadiness: options.managedRuntimeReadiness }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   })
   if (python.status !== 'ready') {
     const diagnostic: TraceAnalysisDiagnostic = {
@@ -331,6 +337,8 @@ export async function createTraceAnalysisAdapter(
       callRef: owner.callRef,
       recordExecution: owner.recordExecution,
       model,
+      // Coding models often return natural code and prose from RLM control turns.
+      controlAdapter: 'tolerant',
       ...(owner.pricing === undefined ? {} : { pricing: { ...owner.pricing } }),
       ...(options.maxCostUsd === undefined ? {} : { maxCostUsd: options.maxCostUsd }),
       ...(options.maxOutputTokens === undefined

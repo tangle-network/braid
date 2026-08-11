@@ -4,7 +4,7 @@ import type {
   PreparedComparisonRequest,
 } from './analysis-comparison-contracts.js'
 import { analysisIdentity } from './analysis-operation.js'
-import { freezeAnalysisSource } from './analysis-source.js'
+import { loadFrozenAnalysisSources } from './analysis-source.js'
 import type { AnalysisApplicationHost } from './analysis-types.js'
 
 function persistedSourceRequest(
@@ -27,14 +27,18 @@ export function persistedComparisonRequest(input: CompareAnalysisInput): JsonVal
   }
 }
 
-export function prepareComparisonRequest(
+export async function prepareComparisonRequest(
   host: AnalysisApplicationHost,
   input: CompareAnalysisInput,
-): PreparedComparisonRequest {
+): Promise<PreparedComparisonRequest> {
   const state = host.currentState()
-  const events = host.eventHistory()
-  const baseline = freezeAnalysisSource({ ...input.baseline, state, events })
-  const candidate = freezeAnalysisSource({ ...input.candidate, state, events })
+  const [baseline, candidate] = await loadFrozenAnalysisSources(host, state, [
+    input.baseline,
+    input.candidate,
+  ])
+  if (baseline === undefined || candidate === undefined) {
+    throw new Error('Comparison sources were not captured')
+  }
   const request = persistedComparisonRequest(input)
   return {
     baseline,

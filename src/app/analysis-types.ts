@@ -73,6 +73,9 @@ export interface AnalysisExecutionTarget {
 export interface AnalysisApplicationHost {
   readonly currentState: () => BraidState
   readonly eventHistory: () => readonly BraidEventEnvelope[]
+  readonly loadEventHistory?: (
+    source: AnalysisSourceRequest,
+  ) => Promise<readonly BraidEventEnvelope[]>
   readonly commit: (event: BraidEvent) => void | Promise<void>
   readonly commitAndWait?: (event: BraidEvent) => void | Promise<void>
   readonly now: () => string

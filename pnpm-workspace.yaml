@@ -3,6 +3,7 @@ overrides:
   hono: 4.13.0
   undici: 7.29.0
 allowBuilds:
+  '@dataiku/uv': true
   better-sqlite3-multiple-ciphers: true
   esbuild: true
   node-pty: true

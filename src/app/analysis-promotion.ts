@@ -17,7 +17,7 @@ import {
   updateAnalysisOperation,
 } from './analysis-operation.js'
 import { commitAnalysisEvent } from './analysis-persistence.js'
-import { freezeAnalysisSource } from './analysis-source.js'
+import { loadFrozenAnalysisSource } from './analysis-source.js'
 import type { AnalysisApplicationHost } from './analysis-types.js'
 
 export type AnalysisPromotionAttachment = AnalysisAttachmentRecord
@@ -95,16 +95,15 @@ export class AnalysisPromotionService {
     if (!analysis.source.complete) {
       throw new Error(`Analysis ${String(analysis.id)} has incomplete source history`)
     }
-    const current = freezeAnalysisSource({
+    const sourceRequest = {
       conversationId: analysis.source.conversationId,
       branchId: analysis.source.branchId,
       ...(analysis.source.runId === undefined ? {} : { runId: analysis.source.runId }),
       ...(analysis.source.throughMessageId === undefined
         ? {}
         : { throughMessageId: analysis.source.throughMessageId }),
-      state: this.#host.currentState(),
-      events: this.#host.eventHistory(),
-    })
+    }
+    const current = await loadFrozenAnalysisSource(this.#host, state, sourceRequest)
     if (current.source.digest !== analysis.source.digest) {
       throw new Error(
         `Analysis source changed before promotion: expected ${String(analysis.source.digest)}, received ${String(current.source.digest)}`,

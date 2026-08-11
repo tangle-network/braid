@@ -1,4 +1,5 @@
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import type { RunId } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 
 /**
@@ -14,6 +15,8 @@ export interface JournalPort {
     | { readonly appended?: boolean }
     | Promise<{ readonly appended?: boolean } | undefined>
   all(): readonly BraidEventEnvelope[]
+  /** Loads the complete persisted history needed to freeze one analysis source. */
+  loadEvents?(input: { readonly runId?: RunId }): Promise<readonly BraidEventEnvelope[]>
   /** Resolves once an asynchronous durable journal has committed its queue. */
   flush?(): Promise<void>
   /** Drains pending writes before releasing the underlying durable store. */
