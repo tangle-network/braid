@@ -2,7 +2,7 @@
 
 **Verdict:** APPROVE.
 
-Four measured defects are resolved, and no actionable defect remains in the reviewed diff.
+Five measured defects are resolved, and no actionable defect remains in the reviewed diff.
 
 ## Scope
 
@@ -19,12 +19,14 @@ Four measured defects are resolved, and no actionable defect remains in the revi
 | --- | ---: | ---: |
 | Critical | 0 | 0 |
 | High | 2 | 0 |
-| Medium | 2 | 0 |
+| Medium | 3 | 0 |
 | Low | 0 | 0 |
 
 The worst defects made estimated analysis cost look exact and hid decision controls at 40 by 12 cells.
 
 Both now have named regressions.
+
+The exact Pi run also found and removed a proof parser dependency on display punctuation.
 
 One formatter-only report was dropped after the formatter passed because it had no remaining failure scenario.
 

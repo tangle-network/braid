@@ -109,12 +109,20 @@ Accessibility proof covers no-color output, high contrast, reduced motion, Unico
 | Visual states | 11 of 11 captured |
 | Reference terminal sizes | 4 of 4 captured |
 | Packed visual artifacts | 75 written and inspected |
-| Real coding task | 17 passed, 0 failed in the retained Pi demo |
-| Real analysis evidence | 6 of 6 calls retained across 2 pages in the retained Pi demo |
+| Exact packed source | Commit `ab893af041e6d7d0efe670b9472af6a0d9bea651`, tarball SHA-256 `8dddc8d112dd142b8a11c5c08a4f7c59ed031fcae80a31081264de353988671a` |
+| Real coding task | 8 passed, 0 failed in the retained Pi demo |
+| Real coding route | Product engineer profile, Pi `0.83.0`, GLM 5.2, high reasoning, and Local CLI Bridge |
+| Real coding usage | 12,804 input tokens, 2,173 output tokens, 1 call, and 63,300 ms model latency |
+| Real analysis evidence | 7 of 7 calls retained across 2 pages in the retained Pi demo |
+| Real analysis usage | 53,757 input tokens, 8,153 output tokens, estimated $0.0501908, and 210,327 ms wall time |
 
-The final local visual capture is `/tmp/braid-current-ux-final2.nDzAxa/w6`.
+The retained visual capture is [`artifacts/verification/w6`](../artifacts/verification/w6).
 
-It was generated from a clean install of the packed tarball through a real pseudo-terminal.
+It was generated from a clean install of the exact packed tarball through a real pseudo-terminal.
+
+The retained Pi demo is [`artifacts/demo/braid-live-pi.json`](../artifacts/demo/braid-live-pi.json).
+
+It ran the exact packed tarball through Local CLI Bridge and real Pi before it rendered the coding result and `/ask` analysis.
 
 ## Remaining external limits
 

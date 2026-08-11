@@ -18,9 +18,9 @@
   "counts": {
     "critical": 0,
     "high": 2,
-    "medium": 2,
+    "medium": 3,
     "low": 0,
-    "resolved": 4,
+    "resolved": 5,
     "unresolved": 0,
     "dropped": 1
   }

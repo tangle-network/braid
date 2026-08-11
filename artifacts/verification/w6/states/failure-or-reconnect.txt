@@ -1,4 +1,5 @@
-braid  cwd  braid-unified-activity-wt  ·  session  New conversation
+braid  cwd  braid-current-ux-wt  ·  session  New conversation
+AgentProfile Braid starter · pi / deterministic            deterministic fixture
  W6 failure state
 
  error · unknown
@@ -20,5 +21,4 @@ braid  cwd  braid-unified-activity-wt  ·  session  New conversation
 
 
 ────────────────────────── alt+enter newline · paste ───────────────────────────
-outcome failed · operation op-terminal-000002        model fixture/deterministic
-AgentProfile Braid starter · runner pi          /export preserve · /new continue
+outcome failed · operation op-terminal-000002   /export preserve · /new continue

@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "32dda757d252bff4e120a8c69d776cb76b3ee971e3f2649d661875e77a20f7b8"
+    "tarballSha256": "8dddc8d112dd142b8a11c5c08a4f7c59ed031fcae80a31081264de353988671a"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "braid  cwd  braid-unified-activity-wt  ·  session  New conversation\n\n Write a message, or press Ctrl+P for commands.\n\n\n\n\n\n\n      automation rules\n\n       No saved automation rules\n\n      create from a pending request with Alt+A · esc close\n\n\n\n\n\n\n\n\nNo automation rules                  model fixture/deterministic · thinking none\nAgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands\n",
+  "frame": "braid  cwd  braid-current-ux-wt  ·  session  New conversation\nAgentProfile Braid starter · pi / deterministic            deterministic fixture\n\n Send a task to Braid starter, or press Ctrl+P for commands.\n\n\n\n\n\n      automation rules\n     ──────────────────────────────────────────────────────────────────────\n       No saved automation rules\n     ──────────────────────────────────────────────────────────────────────\n      create from a pending request with Alt+A · esc close\n\n\n\n\n\n\n\n\n\nNo automation rules                                              Ctrl+P commands\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-unified-activity-wt",
+      "workspace": "/home/drew/code/braid-current-ux-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -113,7 +113,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-unified-activity-wt",
+      "workspace": "/home/drew/code/braid-current-ux-wt",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -359,7 +359,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-unified-activity-wt"
+            "workspace": "/home/drew/code/braid-current-ux-wt"
           }
         }
       }

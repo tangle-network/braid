@@ -1,24 +1,24 @@
-braid  cwd  braid-unified-activity-wt  ·  session  New conversation
-
- Write a message, or press Ctrl+P for commands.
-
-
-
-     permission · approve or reject
-     run: fixture-run-1 · Braid starter @ pi · queue 1 · timeout unknown
-     Allow the fixture tool to inspect the selected file?
-     will: approve · reject · cancel
-     request: src/app/application.ts · read-only
-     detail: The fixture requests a bounded read for a real interaction ...
-     export class BraidApplication {
-     answer: y approve · n reject
-    >
-     keys: alt+1 approve · alt+2 reject · alt+3 cancel
-     enter submit · esc cancel
-     alt+a automate this response
+ permission · approve or reject
+────────────────────────────────────────────────────────────────────────────────
+ Allow the fixture tool to inspect the selected file?
+ will: approve · reject · cancel
+ request: src/app/application.ts · read-only
+ detail: The fixture requests a bounded read for a real interaction preview.
+ export class BraidApplication {
+ answer: y approve · n reject
+>
+ keys: alt+1 approve · alt+2 reject · alt+3 cancel
 
 
 
 
-ready for a message                  model fixture/deterministic · thinking none
-AgentProfile Braid starter · runner pi · deterministic fixture   Ctrl+P commands
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ enter submit · esc cancel · alt+a automate
