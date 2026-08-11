@@ -266,7 +266,9 @@ async function main() {
     await terminal.waitForScreen(
       (screen) =>
         screen.includes('Active profile · Product engineer') &&
-        screen.includes('thinking high · max output 16,384 tokens'),
+        screen.includes(
+          `thinking high · max output ${LIVE_DEMO_PROFILE.model.metadata.maxTokens.toLocaleString('en-US')} tokens`,
+        ),
       'AgentProfile details',
     )
     await pause(900)
