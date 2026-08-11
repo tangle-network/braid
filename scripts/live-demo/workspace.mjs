@@ -23,7 +23,7 @@ export const LIVE_DEMO_PROFILE = Object.freeze({
 })
 
 export const LIVE_DEMO_PROMPT =
-  'Finish the slugify function. Normalize Unicode accents, collapse punctuation and spaces to one dash, trim dashes, and lowercase. Add edge-case tests, run them, and summarize the proof.'
+  'Finish the slugify function. Normalize Unicode accents, treat underscores as punctuation, collapse punctuation and spaces to one dash, trim dashes, and lowercase. Add edge-case tests, run them, and summarize the proof.'
 
 export const LIVE_DEMO_QUESTION = 'What changed, what was verified, and what should I review?'
 
