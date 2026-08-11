@@ -31,27 +31,19 @@ export class SecretInput extends Input {
   }
 }
 
-export class MutableTruncatedLine implements Component {
-  #value = ''
-
-  setValue(value: string): void {
-    this.#value = value
-  }
-
-  invalidate(): void {}
-
-  render(width: number): string[] {
-    return new TruncatedText(this.#value, 1, 0).render(width)
-  }
-}
-
 export class OutcomeKeys implements Component {
   readonly #outcomes: readonly InteractionOutcome[]
   readonly #theme: BraidTheme
+  readonly #selected: (() => InteractionOutcome | undefined) | undefined
 
-  constructor(outcomes: readonly InteractionOutcome[], theme: BraidTheme) {
+  constructor(
+    outcomes: readonly InteractionOutcome[],
+    theme: BraidTheme,
+    selected?: () => InteractionOutcome | undefined,
+  ) {
     this.#outcomes = outcomes
     this.#theme = theme
+    this.#selected = selected
   }
 
   invalidate(): void {}
@@ -59,21 +51,23 @@ export class OutcomeKeys implements Component {
   render(width: number): string[] {
     const maxWidth = Math.max(1, Math.floor(width))
     const rows: string[] = []
-    let row = 'keys:'
+    let row = ''
     for (const [index, outcome] of this.#outcomes.entries()) {
       const key = OUTCOME_KEYS[index]
       if (key === undefined) break
-      const token = `${key} ${outcomeKeyLabel(outcome)}`
-      const separator = row === 'keys:' ? ' ' : ' · '
+      const active = outcome === this.#selected?.()
+      const value = `${active ? '› ' : ''}${key} ${outcomeKeyLabel(outcome)}`
+      const token = active ? this.#theme.accent(value) : value
+      const separator = row === '' ? '' : ' · '
       const candidate = `${row}${separator}${token}`
-      if (row !== 'keys:' && visibleWidth(candidate) > maxWidth) {
+      if (row !== '' && visibleWidth(candidate) > maxWidth) {
         rows.push(row)
         row = token
       } else {
         row = candidate
       }
     }
-    if (row !== 'keys:' || rows.length === 0) rows.push(row)
+    if (row !== '' || rows.length === 0) rows.push(row)
     return rows.flatMap((line) => new TruncatedText(this.#theme.muted(line), 1, 0).render(width))
   }
 }
@@ -103,15 +97,8 @@ export function isSecretInteraction(interaction: InteractionView): boolean {
 
 export function interactionHeading(interaction: InteractionView): string {
   const kind = sanitizeTerminalText(interaction.kind).toLocaleLowerCase() || 'interaction'
-  if (kind === 'permission' || kind === 'plan') {
-    const hasApproval = interaction.allowedOutcomes.some(isPositiveOutcome)
-    const hasRejection = rejectionOutcome(interaction) !== undefined
-    if (hasApproval && hasRejection) return `${kind} · approve or reject`
-    if (hasApproval) return `${kind} · approve`
-    if (hasRejection) return `${kind} · reject`
-  }
-  if (kind === 'question') return `${kind} · answer required`
-  return `${kind} · response required`
+  if (kind === 'plan') return 'plan review'
+  return kind
 }
 
 export function runContext(interaction: InteractionView): string {
@@ -123,7 +110,14 @@ export function runContext(interaction: InteractionView): string {
     .map((value) => (value === undefined ? '' : sanitizeTerminalText(value)))
     .filter((value) => value.length > 0)
     .join(' @ ')
-  return `run: ${sanitizeTerminalText(interaction.runId)}${requester ? ` · ${requester}` : ''} · queue ${interaction.queuePosition + 1} · ${timeout}`
+  return [
+    requester,
+    `run ${shortIdentifier(interaction.runId)}`,
+    ...(interaction.queuePosition > 0 ? [`request ${interaction.queuePosition + 1}`] : []),
+    timeout,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 export function interactionSubjectComponents(
@@ -134,33 +128,18 @@ export function interactionSubjectComponents(
   const subject = interaction.subject
   if (subject === undefined) return []
   if (isSecretInteraction(interaction))
-    return [new TruncatedText(theme.muted('request: secret input · details hidden'), 1, 0)]
+    return [new TruncatedText(theme.muted('Secret details stay hidden.'), 1, 0)]
   const title = sanitizeTerminalText(subject.title)
   const target = subject.target ? ` · ${sanitizeTerminalText(subject.target)}` : ''
   return [
-    new TruncatedText(theme.muted(`request: ${title}${target}`), 1, 0),
+    new TruncatedText(`${theme.accent(title)}${theme.muted(target)}`, 1, 0),
     ...(compact || subject.detail === undefined
       ? []
-      : [new TruncatedText(`detail: ${sanitizeTerminalText(subject.detail)}`, 1, 0)]),
+      : [new TruncatedText(theme.muted(sanitizeTerminalText(subject.detail)), 1, 0)]),
     ...(compact || subject.preview?.[0] === undefined
       ? []
       : [new TruncatedText(sanitizeDiff(subject.preview[0]), 1, 0)]),
   ]
-}
-
-export function consequence(
-  interaction: InteractionView,
-  selectedOutcome?: InteractionOutcome,
-): string {
-  const outcomes =
-    selectedOutcome !== undefined && isPositiveOutcome(selectedOutcome)
-      ? [
-          selectedOutcome,
-          ...interaction.allowedOutcomes.filter((outcome) => outcome !== selectedOutcome),
-        ]
-      : interaction.allowedOutcomes
-  const choices = outcomes.map((outcome) => outcomeConsequenceLabel(outcome))
-  return choices.length > 0 ? `will: ${choices.join(' · ')}` : 'will: choose a response'
 }
 
 export function isPositiveOutcome(outcome: InteractionOutcome): boolean {
@@ -197,7 +176,17 @@ export function answerHelp(interaction: InteractionView): string {
 
 export function interactionFooter(interaction: InteractionView, canAutomate: boolean): string {
   const parts =
-    interaction.answerSpec.kind === 'select' ? ['↑↓ move', 'enter choose'] : ['enter submit']
+    interaction.answerSpec.kind === 'boolean'
+      ? [
+          '↑↓ move',
+          'enter confirm',
+          ...(interaction.allowedOutcomes.length > 1
+            ? [`1-${interaction.allowedOutcomes.length} quick select`]
+            : []),
+        ]
+      : interaction.answerSpec.kind === 'select'
+        ? ['↑↓ move', 'enter choose']
+        : ['enter submit']
   if (cancellationOutcome(interaction) !== undefined) parts.push('esc cancel')
   if (canAutomate && !isSecretInteraction(interaction)) parts.push('alt+a automate')
   return parts.join(' · ')
@@ -214,13 +203,7 @@ function outcomeKeyLabel(outcome: InteractionOutcome): string {
   return 'cancel'
 }
 
-function outcomeConsequenceLabel(outcome: InteractionOutcome): string {
-  if (outcome === 'once') return 'approve once'
-  if (outcome === 'session') return 'approve run'
-  if (outcome === 'persistent') return 'save approval'
-  if (outcome === 'accept') return 'approve'
-  if (outcome === 'reject') return 'reject'
-  if (outcome === 'deny') return 'deny'
-  if (outcome === 'revise') return 'revise'
-  return 'cancel'
+function shortIdentifier(value: string): string {
+  const safe = sanitizeTerminalText(value)
+  return safe.length <= 20 ? safe : `${safe.slice(0, 12)}…${safe.slice(-6)}`
 }

@@ -1,7 +1,6 @@
 import type { Editor } from '@earendil-works/pi-tui'
 import {
   type AnalysisSourceReference,
-  formatAnalysisSourceReference,
   parseAnalysisSourceReference,
 } from '../../app/analysis-source.js'
 import {
@@ -217,13 +216,18 @@ function intelligenceSourceContext(
     const right = sourceReferenceForArgument(args[1], view)
     return left === undefined || right === undefined
       ? undefined
-      : `sources ${formatAnalysisSourceReference(left)} ↔ ${formatAnalysisSourceReference(right)}`
+      : `sources ${displaySourceReference(left)} ↔ ${displaySourceReference(right)}`
   }
   const source = sourceReferenceForArgument(args[0], view) ?? latestTerminalSource(view)
   if (source === undefined) return undefined
-  if (source.kind === 'branch') return `source ${formatAnalysisSourceReference(source)}`
+  if (source.kind === 'branch') return `source ${displaySourceReference(source)}`
   const target = executionTargetFor(view, source.id)
-  return `source ${formatAnalysisSourceReference(source)} · ${target.profileName} · ${target.runner} · ${target.model} · ${target.connection}`
+  return `source ${displaySourceReference(source)} · ${target.profileName} · ${target.runner} · ${target.model} · ${target.connection}`
+}
+
+function displaySourceReference(source: AnalysisSourceReference): string {
+  const id = source.id.length <= 24 ? source.id : `${source.id.slice(0, 12)}…${source.id.slice(-6)}`
+  return `${source.kind} ${id}`
 }
 
 function sourceReferenceForArgument(

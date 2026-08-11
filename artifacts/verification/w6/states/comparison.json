@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "8dddc8d112dd142b8a11c5c08a4f7c59ed031fcae80a31081264de353988671a"
+    "tarballSha256": "32f19ba707aa659f776a604fe241111fe2bfb68928ac6f005014d81bd924182c"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " analyses › /compare · frozen runs · analysis · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n saved result: replayed from the local journal\n baseline run: run-route-serial\n baseline source: 9ee7d219c8b0092…8c519924\n baseline outcome: completed · cost: 0.014 · source: frozen run field\n run.cost_usd\n candidate run: run-route-parallel\n candidate source: 0328e6889082b14…86b0ff3d\n candidate outcome: completed · cost: 0.009 · source: frozen run field\n run.cost_usd\n sample: 1 paired · 0 baseline-only · 0 candidate-only\n ! One pair is descriptive; it cannot support a reliable general conclusion.\n captured fields · baseline | candidate | availability\n run.status: completed | completed | none\n run.cost_usd: 0.014 | 0.009 | none\n run.wall_time_ms: 18200 | 12100 | none\n run.input_tokens: 7420 | 6910 | none\n paired measurements · candidate minus baseline where applicable\n paired.correctness.b01: 0\n paired.correctness.b10: 0\n paired.correctness.mcnemar.b: 0\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4\n",
+  "frame": " activity · analyses › /compare · frozen runs · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n saved result: replayed from the local journal\n baseline run: run-route-serial\n baseline source: 9ee7d219c8b0092…8c519924\n baseline outcome: completed · cost: 0.014 · source: frozen run field\n run.cost_usd\n candidate run: run-route-parallel\n candidate source: 0328e6889082b14…86b0ff3d\n candidate outcome: completed · cost: 0.009 · source: frozen run field\n run.cost_usd\n sample: 1 paired · 0 baseline-only · 0 candidate-only\n ! One pair is descriptive; it cannot support a reliable general conclusion.\n captured fields · baseline | candidate | availability\n run.status: completed | completed | none\n run.cost_usd: 0.014 | 0.009 | none\n run.wall_time_ms: 18200 | 12100 | none\n run.input_tokens: 7420 | 6910 | none\n paired measurements · candidate minus baseline where applicable\n paired.correctness.b01: 0\n paired.correctness.b10: 0\n paired.correctness.mcnemar.b: 0\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab filter: analys…\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-current-ux-wt",
+      "workspace": "/home/drew/code/braid-release-ux-final-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -113,7 +113,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-current-ux-wt",
+      "workspace": "/home/drew/code/braid-release-ux-final-wt",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -446,7 +446,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-current-ux-wt"
+            "workspace": "/home/drew/code/braid-release-ux-final-wt"
           }
         }
       }

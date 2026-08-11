@@ -17,7 +17,7 @@ The selected runner owns its native process and session, while `agent-runtime` o
 
 ![Braid routing a Product engineer AgentProfile through agent-runtime to Pi and GLM-5.2 over Local CLI Bridge, then answering a cited trace-analysis question](artifacts/demo/braid-live-pi.gif)
 
-This recording uses the packed Braid source, Pi 0.84.1, GLM-5.2, and a local CLI Bridge.
+This recording uses the packed Braid source, Pi 0.83.0, GLM-5.2, and a local CLI Bridge.
 
 Pi changes a real workspace and passes its tests before `/ask` analyzes the frozen run and returns cited findings.
 

@@ -169,7 +169,7 @@ test('interaction projection preserves accepted-only and declined-only outcomes'
       acceptedResponses.push(response),
     )
     const acceptedScreen = acceptedShell.render(80).join('\n')
-    assert.match(acceptedScreen, /keys: alt\+1 approve/u)
+    assert.match(acceptedScreen, /1\. Approve/u)
     assert.doesNotMatch(acceptedScreen, /reject|cancel/u)
     acceptedShell.handleInput('\u001b')
     assert.deepEqual(acceptedResponses, [])
@@ -195,8 +195,7 @@ test('interaction projection preserves accepted-only and declined-only outcomes'
       declinedResponses.push(response),
     )
     const declinedScreen = declinedShell.render(80).join('\n')
-    assert.match(declinedScreen, /keys: alt\+1 reject/u)
-    assert.match(declinedScreen, /answer: n reject/u)
+    assert.match(declinedScreen, /1\. Reject/u)
     assert.doesNotMatch(declinedScreen, /approve|cancel/u)
     declinedShell.handleInput('\u001b1')
     assert.deepEqual(declinedResponses, [{ outcome: 'reject' }])

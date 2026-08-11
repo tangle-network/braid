@@ -1,4 +1,4 @@
-braid  cwd  braid-current-ux-wt  ·  session  New conversation
+braid  cwd  braid-release-ux-final-wt  ·  session  New conversation
 AgentProfile Braid starter · pi / deterministic            deterministic fixture
  W6 visual proof
 

@@ -319,6 +319,16 @@ Long lists virtualize rows and preserve the selected stable identifier across re
 
 The footer shows only keys valid in the current overlay.
 
+At 100 columns and 16 rows, entity browsers keep the selected list row and its details visible together.
+
+Smaller terminals show the same list first and open details without layering content over the transcript.
+
+`Up` and `Down` change selection, while `PageUp` and `PageDown` page through the selected details.
+
+`Home` and `End` move to list boundaries.
+
+`Left` and `Esc` perform the same back or close action at every browser depth.
+
 Overlays are coordinated by one modal controller so an interaction cannot appear behind a profile picker or another interaction.
 
 Foreground interactions preempt non-destructive selectors after preserving their query and selection.
@@ -360,6 +370,14 @@ The body shows the prompt and a sanitized subject preview.
 The response area is generated from text, number, boolean, select, or secret answer specifications and enforces required values, defaults, and constraints before submission.
 
 Permission views show only response scopes allowed by the request, such as once, session, or persistent policy.
+
+Boolean decisions use an explicit vertical action list with one selected row and one short consequence description.
+
+`Up` and `Down` move between allowed actions, and `Enter` confirms the selected action.
+
+Number keys remain direct shortcuts for decisions.
+
+The compatibility keys `y` and `n` select an equivalent allowed action when one exists.
 
 Persistent approval requires a second confirmation that names the exact subject pattern and storage scope.
 
@@ -483,6 +501,9 @@ The analysis header identifies the action, frozen source, selected profile, runn
 
 Analysis navigation uses the same list, details, arrow, `Left`, and `Esc` behavior as graph and runtime activity.
 
+At wide sizes, two or more results use a list-and-detail split.
+One result uses the full detail width and does not reserve an empty navigation rail.
+
 Detail text wraps before pagination, so citations and measured fields never disappear through horizontal clipping.
 
 The pending analysis row shows source, analyst profile, analysis recipe, budget, and cancel action.
@@ -504,6 +525,8 @@ The analysis footer shows source digest, analyst profile digest, model, tokens, 
 The activity view consumes runtime-owned snapshots and controls rather than reading supervisor files.
 
 `/activity` opens the same focused full-viewport browser used by analysis and graph entities.
+
+The browser defaults to all activity and uses `Tab` to cycle through runs, analyses, workers, and all activity.
 
 It lists an explicit root run binding, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
 

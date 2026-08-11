@@ -116,24 +116,27 @@ async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
 }
 
 async function waitForCompletedAnalysis(terminal, timeoutMs = 360_000) {
-  const deadline = Date.now() + timeoutMs
-  let lastRecord
-  while (Date.now() < deadline) {
-    lastRecord = await terminal.captureState()
-    const analysis = lastRecord.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
-    if (analysis?.status === 'complete') return lastRecord
-    if (analysis?.status === 'failed' || analysis?.status === 'cancelled') {
-      const detail = lastRecord.view?.entityDetails?.find(
-        (item) => item.entityType === 'analysis' && item.entityId === analysis.entityId,
-      )
-      throw new Error(
-        `The real /ask analysis ended ${analysis.status}: ${detail?.lines?.join(' | ') ?? 'no public detail'}`,
-      )
-    }
-    await pause(500)
+  await terminal.waitForScreen(
+    (screen) =>
+      screen.includes('/ask · frozen question · complete') ||
+      screen.includes('/ask · frozen question · failed') ||
+      screen.includes('/ask · frozen question · cancelled'),
+    'trace analysis outcome',
+    timeoutMs,
+  )
+  const record = await terminal.captureState(60_000)
+  const analysis = record.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
+  if (analysis?.status === 'complete') return record
+  if (analysis?.status === 'failed' || analysis?.status === 'cancelled') {
+    const detail = record.view?.entityDetails?.find(
+      (item) => item.entityType === 'analysis' && item.entityId === analysis.entityId,
+    )
+    throw new Error(
+      `The real /ask analysis ended ${analysis.status}: ${detail?.lines?.join(' | ') ?? 'no public detail'}`,
+    )
   }
   throw new Error(
-    `Timed out waiting for /ask; last status=${lastRecord?.view?.status ?? 'unknown'}`,
+    `The real /ask terminal outcome did not match semantic status=${analysis?.status ?? 'unknown'}`,
   )
 }
 
@@ -266,7 +269,9 @@ async function main() {
     await terminal.waitForScreen(
       (screen) =>
         screen.includes('Active profile · Product engineer') &&
-        screen.includes('thinking high · max output 16,384 tokens'),
+        screen.includes(
+          `thinking high · max output ${LIVE_DEMO_PROFILE.model.metadata.maxTokens.toLocaleString('en-US')} tokens`,
+        ),
       'AgentProfile details',
     )
     await pause(900)
@@ -320,14 +325,6 @@ async function main() {
     const analysisRecord = await waitForCompletedAnalysis(terminal)
     await terminal.waitForStable('completed trace analysis')
     const analysis = safeManifestAnalysis(analysisRecord)
-    terminal.input('\u001b[D')
-    await terminal.waitForScreen((screen) => screen.includes('analyses · 1'), 'analysis list')
-    await pause(700)
-    terminal.input('\u001b[C')
-    await terminal.waitForScreen(
-      (screen) => screen.includes('/ask · frozen question'),
-      'analysis detail',
-    )
     await terminal.waitForStable('final live demo frame')
     await pause(900)
     const hero = terminal.snapshot()
@@ -356,14 +353,13 @@ async function main() {
         )
       }
     }
-    const final = terminal.snapshot()
     const finalRecord = await terminal.captureState()
     const heroScreen = hero.screen
     const cast = castFor(
       terminal,
       'Braid · AgentProfile to Pi, then trace analysis',
       'braid --profile Product-engineer --connection Local-CLI-Bridge',
-      final.eventCount,
+      hero.eventCount,
     )
     assertPublicCapture(`${cast}\n${heroScreen}`)
     await terminal.closeNormally()

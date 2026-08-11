@@ -407,6 +407,136 @@ test('one activity browser keeps selection stable and makes left and escape equi
   assert.equal(closes, 2)
 })
 
+test('wide activity keeps the list and details together and tabs through bounded scopes', () => {
+  const original = baseView()
+  const view: BraidViewModel = {
+    ...original,
+    activity: [
+      {
+        id: 'analysis:first',
+        kind: 'analysis',
+        title: 'first analysis',
+        status: 'completed',
+        entityType: 'analysis',
+        entityId: 'first',
+      },
+      {
+        id: 'analysis:second',
+        kind: 'analysis',
+        title: 'second analysis',
+        status: 'completed',
+        entityType: 'analysis',
+        entityId: 'second',
+      },
+    ],
+    entityDetails: [
+      {
+        entityType: 'analysis',
+        entityId: 'first',
+        title: '/ask · first',
+        status: 'completed',
+        lines: ['first detail remains visible'],
+      },
+      {
+        entityType: 'analysis',
+        entityId: 'second',
+        title: '/ask · second',
+        status: 'completed',
+        lines: [
+          'second detail remains visible',
+          ...Array.from({ length: 24 }, (_, index) => `detail line ${index + 2}`),
+        ],
+      },
+    ],
+  }
+  let leftCloses = 0
+  const browser = new ActivityBrowserPanel(theme, {
+    view: () => view,
+    rows: () => 24,
+    onClose: () => {
+      leftCloses += 1
+    },
+    scope: 'analyses',
+  })
+
+  const initial = browser.render(120).join('\n')
+  assert.match(initial, /\/ask · second/u)
+  assert.match(initial, /second detail remains visible/u)
+  assert.match(initial, /│/u)
+  browser.handleInput('\u001b[6~')
+  const secondPage = browser.render(120).join('\n')
+  assert.match(secondPage, /page 2\/2/u)
+  assert.match(secondPage, /detail line 21/u)
+  browser.handleInput('\u001b[5~')
+  assert.match(browser.render(120).join('\n'), /second detail remains visible/u)
+  browser.handleInput('\u001b[B')
+  assert.match(browser.render(120).join('\n'), /first detail remains visible/u)
+  browser.handleInput('\t')
+  assert.match(browser.render(120).join('\n'), /activity · workers · 0/u)
+  browser.handleInput('\t')
+  assert.match(browser.render(120).join('\n'), /tab filter: all/u)
+  browser.handleInput('\u001b[D')
+  assert.equal(leftCloses, 1)
+
+  let escapeCloses = 0
+  const escaped = new ActivityBrowserPanel(theme, {
+    view: () => view,
+    rows: () => 24,
+    onClose: () => {
+      escapeCloses += 1
+    },
+    scope: 'analyses',
+  })
+  escaped.render(120)
+  escaped.handleInput('\u001b')
+  assert.equal(escapeCloses, 1)
+})
+
+test('wide activity gives one selected result the full surface', () => {
+  const original = baseView()
+  const view: BraidViewModel = {
+    ...original,
+    activity: [
+      {
+        id: 'analysis:only',
+        kind: 'analysis',
+        title: 'only analysis',
+        status: 'completed',
+        entityType: 'analysis',
+        entityId: 'only',
+      },
+    ],
+    entityDetails: [
+      {
+        entityType: 'analysis',
+        entityId: 'only',
+        title: '/ask · only',
+        status: 'completed',
+        lines: ['one result uses the full detail width'],
+      },
+    ],
+  }
+  let closes = 0
+  const browser = new ActivityBrowserPanel(theme, {
+    view: () => view,
+    rows: () => 24,
+    onClose: () => {
+      closes += 1
+    },
+    scope: 'analyses',
+    selectedId: 'analysis:only',
+    openSelected: true,
+  })
+
+  const rendered = browser.render(120).join('\n')
+  assert.match(rendered, /\/ask · only/u)
+  assert.match(rendered, /one result uses the full detail width/u)
+  assert.doesNotMatch(rendered, /│/u)
+  assert.match(rendered, /←\/esc close/u)
+  browser.handleInput('\u001b[D')
+  assert.equal(closes, 1)
+})
+
 test('analysis mode copy distinguishes ask, named analyze recipes, and compare', async () => {
   const expected = [
     ['/ask · frozen question', 'ask'] as const,
@@ -505,19 +635,28 @@ test('comparison view leads with both outcomes and pages through every captured 
   assert.match(panel.render(80).join('\n'), /run\.cost_usd/u)
 })
 
-test('approval keys name their consequences and secret responses never render values', async () => {
+test('approval actions are navigable and secret responses never render values', async () => {
   const responses: unknown[] = []
   const shell = new InteractionShell(permission, theme, (response) => responses.push(response))
   const screen = await renderOverlay(shell, 40, 12)
   assertFits(screen, 40)
-  assert.match(screen.join('\n'), /permission · approve or reject/u)
-  assert.match(screen.join('\n'), /will: approve · reject · cancel/u)
-  assert.match(screen.join('\n'), /keys: alt\+1 approve · alt\+2 reject/u)
-  assert.match(screen.join('\n'), /alt\+3 cancel/u)
-  assert.match(screen.join('\n'), /enter submit · esc cancel/u)
+  assert.match(screen.join('\n'), /permission/u)
+  assert.match(screen.join('\n'), /1\. Approve/u)
+  assert.match(screen.join('\n'), /2\. Reject/u)
+  assert.match(screen.join('\n'), /3\. Cancel/u)
+  assert.match(screen.join('\n'), /↑↓ move · enter confirm/u)
 
   shell.handleInput('y')
   assert.deepEqual(responses, [{ outcome: 'accept', value: true }])
+
+  const arrowResponses: unknown[] = []
+  const arrowShell = new InteractionShell(permission, theme, (response) =>
+    arrowResponses.push(response),
+  )
+  arrowShell.handleInput('\u001b[B')
+  assert.match(arrowShell.render(40).join('\n'), /› 2\. Reject/u)
+  arrowShell.handleInput('\r')
+  assert.deepEqual(arrowResponses, [{ outcome: 'reject' }])
 
   const secret = 'do-not-render'
   const secretInteraction: InteractionView = {
@@ -650,7 +789,7 @@ test('digit-leading text, secret, and number answers stay editable', () => {
   numberShell.handleInput('12.5')
   numberShell.handleInput('\u001b2')
   assert.deepEqual(numberResponse, [])
-  assert.match(numberShell.render(40).join('\n'), /will: approve run/u)
+  assert.match(numberShell.render(40).join('\n'), /alt\+2 run/u)
   numberShell.handleInput('\r')
   assert.deepEqual(numberResponse, [{ outcome: 'session', value: 12.5 }])
 })
@@ -681,7 +820,7 @@ test('short interaction surfaces keep validation failures visible', () => {
 
   const screen = shell.render(40).join('\n')
   assert.match(screen, /Enter a number in the allowed range\./u)
-  assert.match(screen, /keys: alt\+1 approve · alt\+2 reject/u)
+  assert.match(screen, /alt\+1 approve · alt\+2 reject/u)
   assert.match(screen, /alt\+3 cancel/u)
   assert.match(screen, /enter submit · esc cancel/u)
 })
@@ -764,8 +903,12 @@ test('workflow presentation modules stay bounded and acyclic', () => {
   const tuiRoot = fileURLToPath(existsSync(directSource) ? directRoot : compiledRoot)
   const interactionPath = join(tuiRoot, 'interaction.ts')
   const overlayPath = join(tuiRoot, 'conversation-overlays.ts')
+  const entityBrowserPath = join(tuiRoot, 'entity-browser.ts')
+  const activityBrowserPath = join(tuiRoot, 'activity-browser.ts')
   assert.ok(readFileSync(interactionPath, 'utf8').split('\n').length - 1 < 250)
   assert.ok(readFileSync(overlayPath, 'utf8').split('\n').length - 1 < 300)
+  assert.ok(readFileSync(entityBrowserPath, 'utf8').split('\n').length - 1 < 450)
+  assert.ok(readFileSync(activityBrowserPath, 'utf8').split('\n').length - 1 < 400)
 
   const files = new Set(tuiSourceFiles(tuiRoot))
   const graph = new Map<string, Set<string>>()

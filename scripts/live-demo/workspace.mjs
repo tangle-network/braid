@@ -9,7 +9,7 @@ export const LIVE_DEMO_PROFILE = Object.freeze({
     provider: 'tangle-router',
     default: 'tangle-router/glm-5.2',
     reasoningEffort: 'high',
-    metadata: { maxTokens: 16384 },
+    metadata: { maxTokens: 32768 },
   },
   prompt: {
     instructions: [

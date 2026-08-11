@@ -1,3 +1,4 @@
+import { matchesKey } from '@earendil-works/pi-tui'
 import { effectiveElapsedMs, formatDuration } from '../shared/duration.js'
 import type {
   BraidViewModel,
@@ -16,7 +17,9 @@ import {
 } from './entity-browser.js'
 import type { BraidTheme } from './theme.js'
 
-export type ActivityBrowserScope = 'all' | 'analyses' | 'workers'
+export type ActivityBrowserScope = 'all' | 'runs' | 'analyses' | 'workers'
+
+const ACTIVITY_SCOPES = ['all', 'runs', 'analyses', 'workers'] as const
 
 export interface ActivityBrowserOptions {
   readonly view: () => BraidViewModel
@@ -31,13 +34,15 @@ export interface ActivityBrowserOptions {
 }
 
 export class ActivityBrowserPanel extends EntityBrowser {
+  readonly #scopeState: { scope: ActivityBrowserScope }
+
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
-    const scope = options.scope ?? 'all'
+    const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
     super(theme, {
       document: () =>
         activityDocument(
           options.view(),
-          scope,
+          scopeState.scope,
           options.notice?.(),
           options.emptyMessage,
           options.pinned,
@@ -47,6 +52,17 @@ export class ActivityBrowserPanel extends EntityBrowser {
       ...(options.selectedId === undefined ? {} : { selectedId: options.selectedId }),
       ...(options.openSelected === undefined ? {} : { openSelected: options.openSelected }),
     })
+    this.#scopeState = scopeState
+  }
+
+  override handleInput(data: string): void {
+    if (matchesKey(data, 'tab')) {
+      const current = ACTIVITY_SCOPES.indexOf(this.#scopeState.scope)
+      this.#scopeState.scope = ACTIVITY_SCOPES[(current + 1) % ACTIVITY_SCOPES.length] ?? 'all'
+      this.invalidate()
+      return
+    }
+    super.handleInput(data)
   }
 }
 
@@ -67,8 +83,9 @@ export function activityDocument(
     .reverse()
   const target = executionTargetFor(view)
   return {
-    title: scope === 'all' ? 'activity' : scope,
+    title: scope === 'all' ? 'activity' : `activity · ${scope}`,
     context: `${target.profileName} · ${target.runner} · ${target.model} · ${sessionUsageLabel(view)}`,
+    filterHint: `tab filter: ${scope}`,
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
@@ -332,7 +349,8 @@ function listMeta(item: ActivityDocumentItem, elapsed: number | undefined): stri
 function included(item: ActivityDocumentItem, scope: ActivityBrowserScope): boolean {
   if (scope === 'all') return true
   if (scope === 'analyses') return item.kind === 'analysis'
-  return item.kind === 'supervisor' || item.kind === 'worker'
+  if (scope === 'workers') return item.kind === 'supervisor' || item.kind === 'worker'
+  return item.kind !== 'analysis' && item.kind !== 'supervisor' && item.kind !== 'worker'
 }
 
 function detailKey(detail: EntityDetailView): string {
