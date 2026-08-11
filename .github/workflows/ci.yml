@@ -78,4 +78,6 @@ jobs:
         run: node scripts/release/storage-smoke-child.mjs "$PWD" "$RUNNER_TEMP/braid-storage-smoke"
 
       - name: Test macOS storage security boundaries
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: pnpm run test -- --scope security
