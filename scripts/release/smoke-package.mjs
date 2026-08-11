@@ -29,6 +29,7 @@ async function run(file, args, options = {}) {
     let stdout = ''
     let stderr = ''
     let timer
+    let timedOut = false
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (chunk) => {
@@ -39,20 +40,26 @@ async function run(file, args, options = {}) {
       stderr += chunk
       if (stderr.length > 2 * 1024 * 1024) child.kill('SIGKILL')
     })
-    child.once('error', reject)
+    child.once('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
     child.once('close', (code, signal) => {
       clearTimeout(timer)
       if (code === 0 && signal === null) resolvePromise({ stdout, stderr })
       else
         reject(
           new Error(
-            `${file} exited with code ${String(code)} and signal ${String(signal)}\n${stdout}\n${stderr}`,
+            `${options.label ?? file}${timedOut ? ` timed out after ${String(options.timeoutMs ?? 120_000)} ms` : ` exited with code ${String(code)} and signal ${String(signal)}`}\n${stdout}\n${stderr}`,
           ),
         )
     })
     if (options.stdin !== undefined) child.stdin.end(options.stdin)
     else child.stdin.end()
-    timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs ?? 120_000)
+    timer = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGKILL')
+    }, options.timeoutMs ?? 120_000)
   })
 }
 
@@ -166,7 +173,11 @@ try {
     '--package-lock=false',
     tarballPath,
   ])
-  await run(npm.file, npm.args, { cwd: smokeRoot })
+  await run(npm.file, npm.args, {
+    cwd: smokeRoot,
+    label: 'Package installation',
+    timeoutMs: 10 * 60_000,
+  })
   const packageRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid')
   const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert(packageJson.version === proof.version, 'Installed package version differs')

@@ -74,6 +74,10 @@ A concrete local route is `AgentProfile` with `harness: 'pi'` → Braid admissio
 
 Braid requires Node.js 22.19 or newer.
 
+Current validated release targets are Linux x64 and macOS arm64.
+
+npm rejects Windows installation because encrypted state cannot yet meet Braid's path-race boundary there.
+
 ```bash
 npm install --global @tangle-network/braid
 braid

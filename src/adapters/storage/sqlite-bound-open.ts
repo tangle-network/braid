@@ -1,5 +1,6 @@
-import { constants, closeSync, fchmodSync, fstatSync, openSync, unlinkSync } from 'node:fs'
+import { closeSync, constants, fchmodSync, fstatSync, openSync, readdirSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
+import { descriptorPath, openAt, unlinkAt } from '../persistence/posix-at.js'
 import type { SqliteDatabase, SqliteDatabaseFactory } from './sqlite-driver.js'
 import { StorageError } from './sqlite-errors.js'
 
@@ -16,19 +17,46 @@ function unsupported(message: string): StorageError {
   return new StorageError('STORAGE_PATH_RACE_UNSUPPORTED', message)
 }
 
-function descriptorPath(fileDescriptor: number): string {
-  if (process.platform === 'linux') return `/proc/self/fd/${fileDescriptor}`
-  if (process.platform === 'darwin' || process.platform === 'freebsd') {
-    return `/dev/fd/${fileDescriptor}`
-  }
-  throw unsupported('This platform has no inode-bound SQLite descriptor path')
-}
-
 function sameInode(
   left: ReturnType<typeof fstatSync>,
   right: ReturnType<typeof fstatSync>,
 ): boolean {
   return left.dev === right.dev && left.ino === right.ino
+}
+
+function liveFileDescriptors(): ReadonlySet<number> {
+  const directory = process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd'
+  const descriptors = new Set<number>()
+  for (const name of readdirSync(directory)) {
+    if (!/^\d+$/u.test(name)) continue
+    const descriptor = Number(name)
+    try {
+      fstatSync(descriptor)
+      descriptors.add(descriptor)
+    } catch {
+      // readdir can expose its own descriptor after it closes.
+    }
+  }
+  return descriptors
+}
+
+function assertDatabaseDescriptorIdentity(
+  before: ReadonlySet<number>,
+  expected: ReturnType<typeof fstatSync>,
+  path: string,
+): void {
+  for (const descriptor of liveFileDescriptors()) {
+    if (before.has(descriptor)) continue
+    try {
+      if (sameInode(expected, fstatSync(descriptor))) return
+    } catch {
+      // A concurrent close cannot establish the required identity.
+    }
+  }
+  throw new StorageError(
+    'STORAGE_PATH_RACE',
+    `SQLite did not open the validated database file: ${path}`,
+  )
 }
 
 function assertOwnedDirectory(metadata: ReturnType<typeof fstatSync>, path: string): void {
@@ -59,7 +87,7 @@ function openDirectoryChain(path: string): number {
   let descriptor = openSync('/', REQUIRED_PARENT_FLAGS)
   try {
     for (const component of resolve(path).split('/').filter(Boolean)) {
-      const next = openSync(`${descriptorPath(descriptor)}/${component}`, REQUIRED_PARENT_FLAGS)
+      const next = openAt(descriptor, component, REQUIRED_PARENT_FLAGS)
       closeSync(descriptor)
       descriptor = next
     }
@@ -74,22 +102,25 @@ function openDatabaseFile(
   parentDescriptor: number,
   path: string,
 ): { readonly fileDescriptor: number; readonly newDatabase: boolean } {
-  const boundPath = `${descriptorPath(parentDescriptor)}/${basename(path)}`
+  const name = basename(path)
   const createFlags = REQUIRED_FILE_FLAGS | constants.O_CREAT | constants.O_EXCL
   try {
-    return { fileDescriptor: openSync(boundPath, createFlags, 0o600), newDatabase: true }
+    return { fileDescriptor: openAt(parentDescriptor, name, createFlags, 0o600), newDatabase: true }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    return { fileDescriptor: openSync(boundPath, REQUIRED_FILE_FLAGS), newDatabase: false }
+    return {
+      fileDescriptor: openAt(parentDescriptor, name, REQUIRED_FILE_FLAGS),
+      newDatabase: false,
+    }
   }
 }
 
 /**
- * Opens SQLite through an inode-bound descriptor path.
+ * Opens SQLite from a safely validated database descriptor.
  *
- * The native driver only accepts a filename, so the filename must refer to a
- * descriptor we already opened with O_NOFOLLOW. The descriptor remains open
- * until the owning storage closes the database.
+ * The native driver only accepts a filename. Linux reopens the descriptor.
+ * Darwin resolves the descriptor because SQLite needs a normal sidecar path.
+ * The validated descriptor remains open until the owning storage closes.
  */
 export function openBoundSqliteDatabase(
   path: string,
@@ -132,7 +163,9 @@ export function openBoundSqliteDatabase(
       )
     }
     fchmodSync(fileDescriptor, 0o600)
+    const descriptorsBefore = liveFileDescriptors()
     database = factory(descriptorPath(fileDescriptor), { timeout })
+    assertDatabaseDescriptorIdentity(descriptorsBefore, metadata, normalizedPath)
     return { database, fileDescriptor, newDatabase: opened.newDatabase }
   } catch (error) {
     try {
@@ -143,14 +176,12 @@ export function openBoundSqliteDatabase(
     if (fileDescriptor !== undefined) closeSync(fileDescriptor)
     if (created) {
       try {
-        const currentDescriptor = openSync(
-          `${descriptorPath(parentDescriptor)}/${basename(normalizedPath)}`,
-          REQUIRED_FILE_FLAGS,
-        )
+        const name = basename(normalizedPath)
+        const currentDescriptor = openAt(parentDescriptor, name, REQUIRED_FILE_FLAGS)
         try {
           const current = fstatSync(currentDescriptor)
           if (openedMetadata !== undefined && sameInode(openedMetadata, current))
-            unlinkSync(`${descriptorPath(parentDescriptor)}/${basename(normalizedPath)}`)
+            unlinkAt(parentDescriptor, name)
         } finally {
           closeSync(currentDescriptor)
         }

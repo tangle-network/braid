@@ -26,6 +26,10 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "packageManager": "pnpm@11.18.0",
   "license": "MIT",
   "repository": {
@@ -100,7 +104,8 @@
     "@tangle-network/agent-runtime": "0.132.0",
     "@tangle-network/sandbox": "0.19.4",
     "better-sqlite3-multiple-ciphers": "13.0.3",
-    "chalk": "6.0.0"
+    "chalk": "6.0.0",
+    "koffi": "3.1.4"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",

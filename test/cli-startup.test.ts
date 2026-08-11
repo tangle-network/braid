@@ -120,6 +120,7 @@ test('startup responsibilities stay split into bounded modules', async () => {
   assert.match(startupBuild, /minifySyntax: true/u)
   assert.match(startupBuild, /minifyWhitespace: true/u)
   assert.match(startupBuild, /minifyIdentifiers: true/u)
+  assert.match(startupBuild, /['"]koffi['"]/u)
 })
 
 test('verification signals capture more than one atomic semantic frame', async () => {

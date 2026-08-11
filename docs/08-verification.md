@@ -349,7 +349,7 @@ A failing or uncalibrated judge blocks semantic claims but cannot override passi
 
 ### Layer 9: installation and release checks
 
-The exact npm tarball installs in clean current supported macOS arm64, Linux x64, and Windows x64 environments.
+The exact npm tarball installs in clean current supported macOS arm64 and Linux x64 environments.
 
 Each environment verifies native database encryption, terminal startup, headless turn, path handling, credential adapter behavior, update check disablement, and uninstall without deleting user data.
 
@@ -540,9 +540,9 @@ The candidate job runs `pnpm check` once, then `pnpm release:prepare` builds and
 
 A code-free job endorses that exact package before publication.
 
-After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64, macOS arm64, and Windows x64.
+After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64 and macOS arm64.
 
-The publication process validates those six records, the package SHA-256, and npm provenance.
+The publication process validates those four records, the package SHA-256, and npm provenance.
 
 It writes `publication/proof.json` below the external artifact directory.
 
@@ -599,7 +599,7 @@ Each check records identifier, category, required status, command, working direc
 
 An audit archive includes every check field and output digest.
 
-The publication endorsement covers the exact package, package manifest, six platform-use records, and npm provenance.
+The publication endorsement covers the exact package, package manifest, four platform-use records, and npm provenance.
 
 The publication and tag jobs accept only the public key pinned in `release/endorsement-public-key.pem` and recompute the complete index before accepting its signature.
 

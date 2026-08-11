@@ -405,8 +405,8 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 - Endorse the exact candidate package and package manifest in an isolated code-free job.
 - Publish `@tangle-network/braid` with npm provenance.
 - Download the registry package in clean supported environments and repeat the post-publication smoke.
-- Require matching candidate and registry package digests plus successful plain messaging, encrypted storage, and temporary-state cleanup on Linux x64, macOS arm64, and Windows x64.
-- Validate the six platform results and npm provenance in one publication record.
+- Require matching candidate and registry package digests plus successful plain messaging, encrypted storage, and temporary-state cleanup on Linux x64 and macOS arm64.
+- Validate the four platform results and npm provenance in one publication record.
 - Endorse that fixed release bundle in an isolated code-free job.
 - Tag the source commit and attach the package, publication records, screenshots, and flow recording.
 
@@ -414,7 +414,7 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 
 The exact main commit passes `pnpm check` and `pnpm release:prepare`.
 
-All three candidate checks and all three registry checks must pass.
+Both candidate checks and both registry checks must pass.
 
 The registry package SHA-256 must match the approved candidate.
 

@@ -5,13 +5,13 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  readlinkSync,
   readSync,
   realpathSync,
   statSync,
 } from 'node:fs'
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import { CredentialError } from '../../ports/credentials.js'
+import { descriptorTargetPath } from '../persistence/posix-at.js'
 
 export interface HeadlessKeyFileSource {
   readonly type: 'file'
@@ -127,7 +127,7 @@ function parseKey(bytes: Buffer): Buffer {
 
 function descriptorPath(fd: number): string | undefined {
   try {
-    const path = readlinkSync(`/proc/self/fd/${fd}`)
+    const path = descriptorTargetPath(fd)
     if (path.includes(' (deleted)')) {
       throw new CredentialError(
         'HEADLESS_KEY_FD_DELETED',

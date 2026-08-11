@@ -34,5 +34,6 @@ await build({
     '@tangle-network/sandbox',
     'better-sqlite3-multiple-ciphers',
     'keytar',
+    'koffi',
   ],
 })

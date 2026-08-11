@@ -80,7 +80,7 @@ export async function verifyRelease(
   process.stdout.write(
     publicationRequired
       ? `Validated ${documentation.requirements.size} requirements, ${plan.checks.size} recorded checks, and ${artifactResult.artifacts.size} artifacts for @tangle-network/braid@${source.evidence.braidVersion}\n`
-      : `Validated the pre-publication candidate; VR-10 remains pending until three registry package smokes pass.\n`,
+      : `Validated the pre-publication candidate; VR-10 remains pending until every supported registry package smoke passes.\n`,
   )
   return { ...source, ...artifactResult, ...output }
 }

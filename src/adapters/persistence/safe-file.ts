@@ -1,8 +1,8 @@
-import { closeSync, constants, fsyncSync, openSync, writeSync } from 'node:fs'
+import { closeSync, constants, fsyncSync, writeSync } from 'node:fs'
 import {
-  childPath,
   errorCode,
   normalizePathError,
+  openLeaf,
   openParent,
   requireRegularFile,
   SafeFileError,
@@ -21,9 +21,9 @@ export {
 export {
   ensurePrivateFile,
   fsyncDirectory,
-  removePrivateFile,
   type PrivateFileWriteOptions,
   readNoFollow,
+  removePrivateFile,
   replacePrivateFile,
   writePrivateFile,
 } from './safe-file-io.js'
@@ -47,7 +47,7 @@ export function acquirePrivateFileLock(path: string, description = 'Private stor
     let handle: number | undefined
     try {
       try {
-        handle = openSync(childPath(parent.fd, parent.leaf), CREATE_FLAGS, 0o600)
+        handle = openLeaf(parent, CREATE_FLAGS, 0o600)
       } catch (error) {
         if (errorCode(error) !== 'EEXIST') throw normalizePathError(error, parent.leafPath)
         const bytes = readAt(parent.fd, parent.leaf, parent.leafPath, 128)
