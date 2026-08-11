@@ -173,6 +173,10 @@ All Braid local paths are converted to canonical absolute paths before policy ch
 
 Operations use file descriptors or no-follow flags where available and recheck identity before mutation to resist symlink replacement.
 
+Current npm releases support Linux and macOS, where Braid binds SQLite to an already opened file.
+
+The package rejects Windows until Braid has an equivalent native path-opening primitive.
+
 Writes reject path traversal, NUL bytes, device files, sockets, FIFOs, hard-link surprises where detectable, and destinations outside allowed roots.
 
 Reading a path does not imply permission to execute or write it.

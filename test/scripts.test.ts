@@ -623,6 +623,12 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
 
 test('release keys stay isolated while publication uses the installed product', async () => {
   const workflow = await readFile('.github/workflows/release.yml', 'utf8')
+  assert.deepEqual(packageJson.os, ['darwin', 'linux'])
+  assert.deepEqual(REQUIRED_RELEASE_TARGETS, [
+    { id: 'linux-x64', platform: 'linux', architecture: 'x64' },
+    { id: 'macos-arm64', platform: 'darwin', architecture: 'arm64' },
+  ])
+  assert.doesNotMatch(workflow, /windows-x64|platform: win32/u)
   const job = (name: string, next: string) => {
     const start = workflow.indexOf(`\n  ${name}:`)
     const end = workflow.indexOf(`\n  ${next}:`, start + 1)
@@ -834,8 +840,8 @@ test('the final release proof requires matching candidate and registry smokes on
     }
     const augmented = await applyPublicationProof({ evidence, artifactRoot, packageProof })
     assert.equal(augmented.evidence.finishedAt, completedAt)
-    assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 9)
-    assert.equal(augmented.evidence.artifacts.length, 9)
+    assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 7)
+    assert.equal(augmented.evidence.artifacts.length, 7)
 
     const registryPath = join(artifactRoot, 'publication', 'registry', 'linux-x64.json')
     const mismatched = JSON.parse(await readFile(registryPath, 'utf8'))

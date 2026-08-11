@@ -15,7 +15,6 @@ import { readAndValidateNpmProvenance } from './npm-provenance.mjs'
 export const REQUIRED_RELEASE_TARGETS = Object.freeze([
   Object.freeze({ id: 'linux-x64', platform: 'linux', architecture: 'x64' }),
   Object.freeze({ id: 'macos-arm64', platform: 'darwin', architecture: 'arm64' }),
-  Object.freeze({ id: 'windows-x64', platform: 'win32', architecture: 'x64' }),
 ])
 
 function sha256(bytes) {

@@ -604,7 +604,7 @@ Raw trace export is a separate explicit action with a preview of included conten
 
 The required installation route is `npm install --global @tangle-network/braid` with binary name `braid`.
 
-Release verification covers clean installations on current supported macOS arm64, Linux x64, and Windows x64 environments.
+Release verification covers clean installations on current supported macOS arm64 and Linux x64 environments.
 
 The package refuses to run against a shared contract version outside its tested range and explains the supported range.
 

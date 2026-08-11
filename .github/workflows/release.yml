@@ -149,10 +149,6 @@ jobs:
             os: macos-15
             platform: darwin
             architecture: arm64
-          - id: windows-x64
-            os: windows-latest
-            platform: win32
-            architecture: x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
@@ -281,10 +277,6 @@ jobs:
             os: macos-15
             platform: darwin
             architecture: arm64
-          - id: windows-x64
-            os: windows-latest
-            platform: win32
-            architecture: x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
@@ -474,7 +466,7 @@ jobs:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           TAG="v$VERSION"
-          NOTES="Published @tangle-network/braid@$VERSION from commit ${{ inputs.commit }}. The exact package completed candidate and registry install/use checks on Linux x64, macOS arm64, and Windows x64."
+          NOTES="Published @tangle-network/braid@$VERSION from commit ${{ inputs.commit }}. The exact package completed candidate and registry install/use checks on Linux x64 and macOS arm64."
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             test "$(git rev-list -n 1 "$TAG")" = "${{ inputs.commit }}"
           else

@@ -26,6 +26,10 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "packageManager": "pnpm@11.18.0",
   "license": "MIT",
   "repository": {
