@@ -330,6 +330,7 @@ async function main() {
     )
     await terminal.waitForStable('final live demo frame')
     await pause(900)
+    const hero = terminal.snapshot()
     const visibleCalls = new Set(visibleModelCallNumbers(terminal.screen()))
     let page = terminalPageProgress(terminal.screen())
     assert.ok(page, 'The public demo did not render analysis page progress')
@@ -357,14 +358,14 @@ async function main() {
     }
     const final = terminal.snapshot()
     const finalRecord = await terminal.captureState()
-    const finalScreen = final.screen
+    const heroScreen = hero.screen
     const cast = castFor(
       terminal,
       'Braid · AgentProfile to Pi, then trace analysis',
       'braid --profile Product-engineer --connection Local-CLI-Bridge',
       final.eventCount,
     )
-    assertPublicCapture(`${cast}\n${finalScreen}`)
+    assertPublicCapture(`${cast}\n${heroScreen}`)
     await terminal.closeNormally()
 
     await mkdir(outputRoot, { recursive: true })
@@ -375,14 +376,14 @@ async function main() {
     const textPath = join(outputRoot, 'braid-live-pi.txt')
     const manifestPath = join(outputRoot, 'braid-live-pi.json')
     const frameCast = castFor(
-      { ...terminal, events: terminal.events.slice(0, final.eventCount) },
+      { ...terminal, events: terminal.events.slice(0, hero.eventCount) },
       'Braid · completed trace analysis',
       'braid --profile Product-engineer --connection Local-CLI-Bridge',
     )
     await Promise.all([
       writeFile(castPath, cast),
       writeFile(frameCastPath, frameCast),
-      writeFile(textPath, finalScreen),
+      writeFile(textPath, heroScreen),
     ])
     await writeCastGif(castPath, gifPath, { loop: true })
     await writeRaster(frameCastPath, pngPath, join(temporaryRoot, 'frame.gif'))
