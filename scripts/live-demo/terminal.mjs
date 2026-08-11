@@ -136,7 +136,7 @@ export async function createCapturedTerminal(options) {
   }
   const waitForStable = (label = 'stable terminal') =>
     waitFor(() => pendingWrites === 0 && performance.now() - lastOutputAt >= 100, label, 10_000)
-  const captureState = async () => {
+  const captureState = async (timeoutMs = 10_000) => {
     await waitForStable()
     await rm(`${options.recordPath}.frame`, { force: true })
     process.kill(session.pid, 'SIGUSR2')
@@ -150,7 +150,7 @@ export async function createCapturedTerminal(options) {
         }
       },
       'atomic semantic frame',
-      10_000,
+      timeoutMs,
     )
     return readJson(`${options.recordPath}.frame`)
   }

@@ -116,24 +116,27 @@ async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
 }
 
 async function waitForCompletedAnalysis(terminal, timeoutMs = 360_000) {
-  const deadline = Date.now() + timeoutMs
-  let lastRecord
-  while (Date.now() < deadline) {
-    lastRecord = await terminal.captureState()
-    const analysis = lastRecord.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
-    if (analysis?.status === 'complete') return lastRecord
-    if (analysis?.status === 'failed' || analysis?.status === 'cancelled') {
-      const detail = lastRecord.view?.entityDetails?.find(
-        (item) => item.entityType === 'analysis' && item.entityId === analysis.entityId,
-      )
-      throw new Error(
-        `The real /ask analysis ended ${analysis.status}: ${detail?.lines?.join(' | ') ?? 'no public detail'}`,
-      )
-    }
-    await pause(500)
+  await terminal.waitForScreen(
+    (screen) =>
+      screen.includes('/ask · frozen question · complete') ||
+      screen.includes('/ask · frozen question · failed') ||
+      screen.includes('/ask · frozen question · cancelled'),
+    'trace analysis outcome',
+    timeoutMs,
+  )
+  const record = await terminal.captureState(60_000)
+  const analysis = record.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
+  if (analysis?.status === 'complete') return record
+  if (analysis?.status === 'failed' || analysis?.status === 'cancelled') {
+    const detail = record.view?.entityDetails?.find(
+      (item) => item.entityType === 'analysis' && item.entityId === analysis.entityId,
+    )
+    throw new Error(
+      `The real /ask analysis ended ${analysis.status}: ${detail?.lines?.join(' | ') ?? 'no public detail'}`,
+    )
   }
   throw new Error(
-    `Timed out waiting for /ask; last status=${lastRecord?.view?.status ?? 'unknown'}`,
+    `The real /ask terminal outcome did not match semantic status=${analysis?.status ?? 'unknown'}`,
   )
 }
 
