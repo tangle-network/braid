@@ -21,6 +21,13 @@ function occurrences(text, value) {
   return text.split(value).length - 1
 }
 
+function settledCompletions(text) {
+  return Math.min(
+    occurrences(text, RESPONSE),
+    occurrences(text, 'effect.upserted; status: completed'),
+  )
+}
+
 export async function runPlain(binary, cwd) {
   const recordPath = join(cwd, 'plain-final-state.json')
   const child = spawn(
@@ -92,6 +99,7 @@ export async function runPlain(binary, cwd) {
 
     await writeLine(PROMPT)
     await waitForOutput(() => occurrences(stdout, RESPONSE) >= 1, 'first plain completion')
+    await waitForOutput(() => settledCompletions(stdout) >= 1, 'first plain settlement')
 
     await writeLine('/graph')
     await writeLine(PROMPT)
@@ -105,6 +113,7 @@ export async function runPlain(binary, cwd) {
       'plain unavailable steering result',
     )
     await waitForOutput(() => occurrences(stdout, RESPONSE) >= 2, 'plain retry completion')
+    await waitForOutput(() => settledCompletions(stdout) >= 2, 'plain retry settlement')
 
     await writeLine(CANCEL_PROMPT)
     await waitForOutput(
