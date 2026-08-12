@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "braid.tangle-sandbox-execution-soak.v1",
+  "status": "failed",
+  "proofId": "1786552467896-0a06399a",
+  "startedAt": "2026-08-12T16:34:27.896Z",
+  "completedAt": "2026-08-12T16:37:34.793Z",
+  "requestedRuns": 1,
+  "attemptedRuns": 1,
+  "concurrency": 1,
+  "failures": [
+    "run 1 failed",
+    "run 1 lacked automatic cleanup"
+  ],
+  "config": {
+    "endpoint": {
+      "scheme": "https",
+      "host": "sandbox.tangle.tools"
+    },
+    "connectionId": "connection-live-tangle-sandbox",
+    "connectionKind": "tangle-sandbox",
+    "credentialConfigured": true,
+    "model": "tangle-router/glm-5.2",
+    "runner": "opencode",
+    "provider": "tangle-router"
+  },
+  "account": {
+    "stable": true,
+    "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46"
+  },
+  "usage": {
+    "before": {
+      "computeMinutes": 1052,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "gpuProviderCostUsd": 0,
+      "activeSandboxes": 4,
+      "totalSandboxes": 9241,
+      "periodStart": "2026-08-12T00:00:00.000Z",
+      "periodEnd": "2026-08-13T00:00:00.000Z"
+    },
+    "after": {
+      "computeMinutes": 1056,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "gpuProviderCostUsd": 0,
+      "activeSandboxes": 4,
+      "totalSandboxes": 9241,
+      "periodStart": "2026-08-12T00:00:00.000Z",
+      "periodEnd": "2026-08-13T00:00:00.000Z"
+    },
+    "delta": {
+      "activeSandboxes": 0,
+      "totalSandboxes": 0,
+      "computeMinutes": 4,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "unknownFields": []
+    }
+  },
+  "latencyMs": {
+    "n": 1,
+    "min": 182581.257125,
+    "median": 182581.257125,
+    "p90": 182581.257125,
+    "max": 182581.257125
+  },
+  "attempts": [
+    {
+      "index": 0,
+      "status": "failed",
+      "elapsedMs": 182581.257125,
+      "environmentId": null,
+      "automaticCleanup": false,
+      "error": {
+        "name": "LiveBridgeError",
+        "message": "timed out waiting for turn terminal state"
+      },
+      "cleanup": {
+        "status": "passed",
+        "matchedCount": 0,
+        "remainingCount": 0
+      }
+    }
+  ]
+}

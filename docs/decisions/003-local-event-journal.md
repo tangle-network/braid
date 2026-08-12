@@ -22,6 +22,10 @@ The journal is authoritative for Braid's product graph and user decisions.
 
 The provider remains authoritative for the live process, native session, cloud environment, and provider-specific replay cursor.
 
+Pre-dispatch journaling protects local intent but does not prove that remote work can be recovered.
+
+Braid enables remote retention only when the provider can look up the exact accepted work from durable request keys.
+
 Every ingested local event uses a unique `(run_id, event_id)` key.
 
 Provider event identity is stored separately because a provider's event identifier has provider-session scope and must not become Braid's global identity.

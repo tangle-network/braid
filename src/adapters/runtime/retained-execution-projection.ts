@@ -8,7 +8,13 @@ import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RunStatus } from '../../domain/state.js'
 import type { RunCapabilities } from '../../ports/execution.js'
 
-export function retainedCapabilities(environment: AgentEnvironmentCapabilities): RunCapabilities {
+export function retainedCapabilities(
+  environment: AgentEnvironmentCapabilities,
+  options: {
+    readonly sessionContinuation?: boolean
+    readonly exactStatus?: boolean
+  } = {},
+): RunCapabilities {
   return Object.freeze({
     streaming: {
       live: environment.streaming.live,
@@ -16,8 +22,17 @@ export function retainedCapabilities(environment: AgentEnvironmentCapabilities):
       detach: environment.streaming.detach,
       turnIdempotency: environment.streaming.turnIdempotency,
     },
-    sessions: { continue: environment.sessions.continue, messages: false },
-    controls: { cancel: true, steer: false, queue: true, status: true, recreate: true },
+    sessions: {
+      continue: options.sessionContinuation ?? environment.sessions.continue,
+      messages: false,
+    },
+    controls: {
+      cancel: true,
+      steer: false,
+      queue: true,
+      status: options.exactStatus ?? true,
+      recreate: true,
+    },
     events: { stableIdentity: true, sequence: true, cursor: true },
     usage: environment.usage,
     environment,

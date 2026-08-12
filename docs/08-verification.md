@@ -365,8 +365,8 @@ The published package is downloaded from the registry after publication and its 
 | LIVE-04 | CLI Bridge restart | Run state becomes honestly unknown or recovers according to retained state; Braid never labels it cancelled or resubmits unsafely |
 | LIVE-05 | Every advertised interactive bridge runner | Common conformance flow at a pinned minimum runner version; failures remove the interactive capability claim |
 | LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, cancellation, and immutable receipt |
-| LIVE-07 | Tangle sandbox | Environment create, profile validation, turn, replay after client restart, workspace read/write/exec/git, run cancel, and retained environment |
-| LIVE-08 | Tangle interaction | Replayed cloud interaction remains answerable after Braid reconnect and the session continues from the response |
+| LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, and confirmed cleanup |
+| LIVE-08 | Tangle interaction | A retained cloud interaction remains answerable after Braid reconnect and continues once from the acknowledged response |
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |
 | LIVE-10 | Confidential Tangle path | Requested placement remains unverified until valid attestation is checked; negative nonce and measurement tests fail |
 | LIVE-11 | Runtime supervisor | Real root and worker stream, spend and status update, typed steering effect, typed cancellation effect, and reconnectable control |
@@ -385,6 +385,8 @@ The default cohort contains three proofs with at most two concurrent proofs.
 The command stops scheduling new proofs after any failure.
 
 Each proof creates one retained cloud environment through Braid and records the exact six-field cloud identity.
+
+When the provider does not report the required exact-control contract, the canary must fail before resource creation and the cohort must not start.
 
 The proof kills the first Braid process after a committed provider cursor.
 
@@ -432,13 +434,91 @@ The artifact is `artifacts/verification/live/tangle-sandbox-braid-execution-stre
 
 Its SHA-256 is `1a38a26e97917073ef760525f7b18abbcca43fcf6faba54cf862e55e4886693c`.
 
-This proves production cloud execution, observation, concurrency, and cleanup only.
+This proves production ephemeral cloud execution, observation, concurrency, and cleanup only.
 
-It does not pass `LIVE-07` because the current provider cannot recover an exact retained run after a Braid process crash.
+The retained implementation passes its local lifecycle, restart, CLI Bridge regression, and error-observability tests.
 
-Production and staging durability canaries both failed closed and left zero owned resources.
+The post-hardening retained canary used a fresh bounded Sandbox key and stopped before allocation in 4.695 seconds.
 
-[Runtime issue 800](https://github.com/tangle-network/agent-runtime/issues/800) and [Agent SDK issue 146](https://github.com/tangle-network/agent-sdk/issues/146) own the missing shared recovery path.
+Braid rejected the run because the published provider does not supply lookup after an unacknowledged dispatch.
+
+Account identity stayed stable, active Sandboxes stayed at four, total Sandboxes stayed at 9,241, and every metered usage delta was zero.
+
+The exact owner-tag query matched zero resources before and after cleanup.
+
+The artifact is `artifacts/verification/live/tangle-sandbox-braid-retained-post-hardening-production-20260812.json`.
+
+Its SHA-256 is `625f3bf9f90bec707485592e5cab2226cefd8cdc6020a82c6d98e4bec2064fe9`.
+
+This is admissible failure evidence for safe retained admission, but it is not a passing retained-run proof.
+
+An earlier capability-injected production diagnostic canary stopped after its first attempt in 24.836 seconds.
+
+The attempt increased total Sandboxes by one, observed zero compute-minute change, and returned active Sandbox count from four to four.
+
+The owner-tag lookup found no Braid environments afterward.
+
+Exact deletion remained unconfirmed because Braid never received the resource identity.
+
+The direct start trace first found that Sandbox SDK `0.19.6` throws for a missing-turn `404` whose retry meaning is not machine-readable.
+
+Braid now fails closed on every numeric `404` instead of converting an ambiguous response into a cache miss.
+
+The next direct start reached production and failed because the deployed sidecar rejected `runControlRef` as an unknown field.
+
+Production serves ADC revision `7437945e19bb`, and staging serves `955e6e767e77`; neither contains exact retained-run support from `f3e09d3bf`.
+
+The failed secret-free canary artifact is `artifacts/verification/live/tangle-sandbox-braid-retained-canary-production-20260812.json`.
+
+Its SHA-256 is `c411474b31e51643e724cace10e58cba6695619e67d52640bc3bd5515650a550`.
+
+The artifact predates the fail-closed provider capability check and is diagnostic evidence, not release acceptance for the current implementation.
+
+An older preflight rejected retained execution before dispatch in 3.764 seconds because the published provider lacked the required retained contract.
+
+The vault Sandbox key was revoked, so account usage and cleanup queries were unavailable and that preflight cannot prove a zero-resource delta.
+
+Its diagnostic artifact is `artifacts/verification/live/tangle-sandbox-braid-retained-safe-preflight-production-20260812.json`.
+
+Its SHA-256 is `840a6234c26b7efd6f9478fb27bca753ff2726a2bb348d41480dc7ee27bd0cb9`.
+
+The authenticated post-hardening canary supersedes this older credential-limited preflight.
+
+A later ephemeral Braid canary selected Sandbox, OpenCode, and `tangle-router/glm-5.2`, but no environment reached creation.
+
+The canary timed out after 182.581 seconds while Runtime kept the run in `streaming`.
+
+Active and total Sandbox counts stayed unchanged, and the exact cleanup query found zero owned resources.
+
+The account-wide compute counter increased by four minutes during the wait, so that delta cannot be attributed to this zero-allocation run.
+
+Its artifact is `artifacts/verification/live/tangle-sandbox-braid-execution-canary-post-hardening-production-20260812.json`.
+
+Its SHA-256 is `78c22b68221606c9acd6abd6f79094e58774c8a4863fdc7aec7e1f9258011b2c`.
+
+A direct Sandbox SDK request with the same profile failed in 2.177 seconds with outer HTTP 400 `CONFIG_ERROR` and nested HTTP 403.
+
+The nested service message was `Service "sandbox" is not authorized for this endpoint`.
+
+The same bounded key authenticated Sandbox usage and the Router model list before revocation.
+
+[Sandbox issue 5277](https://github.com/tangle-network/agent-dev-container/issues/5277) owns this production authorization failure.
+
+Runtime `0.132.12` still retries this permanent error because its text contains `provision failed`.
+
+[Runtime issue 808](https://github.com/tangle-network/agent-runtime/issues/808) owns the fail-fast correction.
+
+Sandbox npm `latest` resolves to `0.21.0`, although Runtime `0.132.12` requires Sandbox `>=0.21.1 <0.22.0`.
+
+Braid pins `0.21.1`, and [Sandbox issue 5278](https://github.com/tangle-network/agent-dev-container/issues/5278) owns the incorrect tag.
+
+[Sandbox issue 5249](https://github.com/tangle-network/agent-dev-container/issues/5249) owns the SDK response mismatch.
+
+[Sandbox issue 5251](https://github.com/tangle-network/agent-dev-container/issues/5251) owns the blocked platform rollout.
+
+`LIVE-07` remains blocked until cloud creation works, retained lookup ships, and the default three-proof cohort passes.
+
+[Runtime issue 800](https://github.com/tangle-network/agent-runtime/issues/800) owns the shared lookup contract; Braid keeps retained production admission off until a provider supplies it.
 
 ## Runner conformance
 

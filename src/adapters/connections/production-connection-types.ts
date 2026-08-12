@@ -1,4 +1,4 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
@@ -73,6 +73,20 @@ export type SandboxClientFactory = (
   input: SandboxClientFactoryInput,
 ) => SandboxClientLike | Promise<SandboxClientLike>
 
+export interface TangleRetainedControlLookupInput {
+  readonly connectionId: ConnectionId
+  readonly braidRunId: string
+  readonly providerSessionId: string
+  readonly executionId: string
+  readonly environmentIdempotencyKey: string
+  readonly signal?: AbortSignal
+}
+
+/** Provider-backed lookup for a dispatch whose acknowledgement was not journaled. */
+export type TangleRetainedControlLookup = (
+  input: TangleRetainedControlLookupInput,
+) => Promise<AgentExactRunControlRef | null>
+
 export interface ProductionConnectionOptions {
   readonly credentials?: CredentialPort
   /** Map Braid's durable credential id to the credential-port's opaque ref. */
@@ -89,6 +103,7 @@ export interface ProductionConnectionOptions {
   }) => boolean
   readonly sandboxClient?: SandboxClientLike
   readonly sandboxClientFactory?: SandboxClientFactory
+  readonly tangleRetainedControlLookup?: TangleRetainedControlLookup
   readonly now?: () => IsoDateTime
 }
 

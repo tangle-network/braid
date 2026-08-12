@@ -40,6 +40,7 @@ const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_HOLD_MS = 30_000
+const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const SANDBOX_LIST_PAGE_SIZE = 100
 const BRAID_RESOURCE_OWNER = 'braid'
 const RETAINED_LIFECYCLE = 'retained'
@@ -80,12 +81,11 @@ function configurationEnvironment(environment) {
   return environment
 }
 
-function sandboxClient(values, environment) {
-  const apiKey =
-    values.credentialValue?.trim() ||
-    environment.BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY?.trim() ||
-    environment.BRAID_TANGLE_SANDBOX_API_KEY?.trim() ||
-    environment.TANGLE_API_KEY?.trim()
+function sandboxClient(values) {
+  // Direct verification must use the value installed under this proof's
+  // generated credential reference. An independent cleanup key could observe
+  // another account and make identity or resource-delta evidence meaningless.
+  const apiKey = values.credentialValue?.trim()
   if (!apiKey) return undefined
   return new Sandbox({ baseUrl: values.endpoint, apiKey })
 }
@@ -294,7 +294,7 @@ function diagnosticText(value) {
   if (text.length === 0) return undefined
   return text
     .replace(
-      /\b(authorization|bearer|token|api[-_]?key|password|passphrase|secret|credential)\b\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+/giu,
+      /\b(authorization|bearer|token|api[-_ ]*key|password|passphrase|secret|credential)\b\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+/giu,
       '$1=[redacted]',
     )
     .slice(0, 512)
@@ -542,12 +542,6 @@ async function cleanupOwnedRetainedResources(client, { controlRef, firstRunId, o
       listed.push(exact)
     }
   }
-  if (firstRunId !== undefined && listed.length === 0) {
-    throw new MissingIntegrationError(
-      'Cleanup found no retained Sandbox for the acknowledged Braid run',
-      { firstRunId, operationId, environmentId: controlRef?.environmentId },
-    )
-  }
   const deletions = []
   for (const box of listed) deletions.push(await deleteOwnedResource(client, box, predicate))
   const remaining = (await listAllSandboxes(client)).filter(predicate)
@@ -591,6 +585,19 @@ function publicAccountIdentity(value) {
   }
 }
 
+function accountIdentityDigest(value) {
+  return createHash('sha256').update(`${value.customerId}:${value.billingOwnerId}`).digest('hex')
+}
+
+function publicAccountIdentityEvidence(value) {
+  return {
+    identityDigest: accountIdentityDigest(value),
+    ...(typeof value.billingDelegationAuthorized === 'boolean'
+      ? { billingDelegationAuthorized: value.billingDelegationAuthorized }
+      : {}),
+  }
+}
+
 async function accountIdentity(client, phase) {
   if (!client) return { phase, value: undefined, error: undefined }
   try {
@@ -621,8 +628,7 @@ function assertStableAccountIdentity(records) {
   )
   return {
     stable: true,
-    customerId: before.value.customerId,
-    billingOwnerId: before.value.billingOwnerId,
+    identityDigest: accountIdentityDigest(before.value),
   }
 }
 
@@ -642,8 +648,7 @@ function assertSameAccount(state, run, directIdentity) {
     'Sandbox billing owner identity changed',
   )
   return {
-    customerId: observed.customerId,
-    billingOwnerId: observed.billingOwnerId,
+    identityDigest: accountIdentityDigest(observed),
     usage: {
       computeMinutes: observed.computeMinutes ?? null,
       gpuSeconds: observed.gpuSeconds ?? null,
@@ -671,6 +676,21 @@ function toolEvidence(observation, label) {
   return events
 }
 
+export function assertExactRemoteStatus(status, controlRef, label = 'remote execution') {
+  if (!status) {
+    throw new MissingIntegrationError(`${label} status was unavailable`, {
+      executionId: controlRef.executionId,
+    })
+  }
+  assert.equal(
+    status.latestExecutionId,
+    controlRef.executionId,
+    `${label} status described another execution`,
+  )
+  assertSameControlRef(controlRef, status.runControlRef, `${label} status`)
+  return status
+}
+
 async function verifyRemoteCancellation(client, controlRef, marker, timeoutMs) {
   const box = await retainedBox(client, controlRef, 'Remote cancellation verification')
   const session = box.session(controlRef.sessionId)
@@ -678,7 +698,13 @@ async function verifyRemoteCancellation(client, controlRef, marker, timeoutMs) {
   const samples = []
   for (;;) {
     const status = await session.status()
-    samples.push({ status: status?.status ?? null, observedAt: new Date().toISOString() })
+    assertExactRemoteStatus(status, controlRef, 'remote cancellation')
+    samples.push({
+      status: status.status,
+      activeExecutionId: status.activeExecutionId ?? null,
+      latestExecutionId: status.latestExecutionId,
+      observedAt: new Date().toISOString(),
+    })
     if (status?.status === 'cancelled') break
     if (performance.now() >= deadline) {
       throw new MissingIntegrationError('The exact cloud execution did not become cancelled', {
@@ -689,11 +715,19 @@ async function verifyRemoteCancellation(client, controlRef, marker, timeoutMs) {
     await sleep(Math.min(250, Math.max(25, deadline - performance.now())))
   }
   await sleep(1_000)
-  const [settledStatus, messages] = await Promise.all([
+  const [settledStatus, exactResult, messages] = await Promise.all([
     session.status(),
+    session.result({ executionId: controlRef.executionId }),
     box.messages({ sessionId: controlRef.sessionId, limit: 100 }),
   ])
+  assertExactRemoteStatus(settledStatus, controlRef, 'settled remote cancellation')
   assert.equal(settledStatus?.status, 'cancelled', 'remote cancellation did not remain terminal')
+  assert.equal(
+    exactResult.executionId,
+    controlRef.executionId,
+    'remote cancellation result described another execution',
+  )
+  assert.equal(exactResult.success, false, 'cancelled remote execution reported success')
   const lateResult = messages
     .filter((message) => message?.role === 'assistant')
     .some((message) => JSON.stringify(message).includes(marker))
@@ -702,6 +736,12 @@ async function verifyRemoteCancellation(client, controlRef, marker, timeoutMs) {
     controlRef,
     samples,
     settledStatus: settledStatus?.status ?? null,
+    exactResult: {
+      executionId: exactResult.executionId,
+      status: exactResult.status,
+      success: exactResult.success,
+      ...(typeof exactResult.errorCode === 'string' ? { errorCode: exactResult.errorCode } : {}),
+    },
     messageCount: messages.length,
     lateResult,
   }
@@ -781,7 +821,13 @@ export function spendDisclosure(runs) {
   }
 }
 
-function telemetryDisclosure(run, state, workspaceVerification, account) {
+export function telemetryDisclosure(
+  run,
+  state,
+  workspaceVerification,
+  account,
+  { allowInFlight = false } = {},
+) {
   const environment = state.environments?.find((candidate) => candidate.id === run?.environmentId)
   const unavailable = environment?.unavailableTelemetry ?? []
   const unavailableByPrefix = (prefix) => unavailable.some((entry) => entry.startsWith(prefix))
@@ -790,13 +836,28 @@ function telemetryDisclosure(run, state, workspaceVerification, account) {
     tokens:
       run?.tokensKnown === false
         ? { status: 'unavailable' }
-        : { status: 'observed', input: run?.inputTokens, output: run?.outputTokens },
+        : Number.isSafeInteger(run?.inputTokens) &&
+            run.inputTokens >= 0 &&
+            Number.isSafeInteger(run?.outputTokens) &&
+            run.outputTokens >= 0
+          ? { status: 'observed', input: run.inputTokens, output: run.outputTokens }
+          : allowInFlight
+            ? { status: 'in-flight' }
+            : { status: 'missing' },
     cost:
-      run?.usdKnown === false || run?.costUsd === undefined
+      run?.usdKnown === false
         ? { status: 'unavailable' }
-        : { status: 'observed', usd: run.costUsd },
+        : typeof run?.costUsd === 'number' && Number.isFinite(run.costUsd) && run.costUsd >= 0
+          ? { status: 'observed', usd: run.costUsd }
+          : allowInFlight
+            ? { status: 'in-flight' }
+            : { status: 'missing' },
     endToEndDuration:
-      elapsed === undefined ? { status: 'missing' } : { status: 'observed', milliseconds: elapsed },
+      elapsed === undefined
+        ? allowInFlight
+          ? { status: 'in-flight' }
+          : { status: 'missing' }
+        : { status: 'observed', milliseconds: elapsed },
     model:
       typeof run?.model === 'string'
         ? { status: 'observed', value: run.model }
@@ -829,7 +890,10 @@ function telemetryDisclosure(run, state, workspaceVerification, account) {
     account: { status: 'observed', value: account },
   }
   const missing = Object.entries(fields)
-    .filter(([, value]) => value.status === 'missing')
+    .filter(
+      ([name, value]) =>
+        value.status === 'missing' || (name === 'resourceSample' && value?.status === 'missing'),
+    )
     .map(([name]) => name)
   if (missing.length > 0) {
     throw new MissingIntegrationError('Required Sandbox telemetry was silently missing', {
@@ -840,14 +904,57 @@ function telemetryDisclosure(run, state, workspaceVerification, account) {
   return { completeDisclosure: true, fields, unavailable }
 }
 
+export function assertVerifiedProcessCleanup(result, label) {
+  if (
+    result?.termination?.exited !== true ||
+    result.termination.descendantsVerified !== true ||
+    result?.exit?.timeout === true
+  ) {
+    throw new MissingIntegrationError(`${label} did not prove complete process-tree cleanup`, {
+      termination: result?.termination,
+      exit: result?.exit,
+    })
+  }
+  return {
+    cleanupStatus: result.termination.cleanupStatus,
+    exited: true,
+    descendantsVerified: true,
+    exit: result.exit,
+  }
+}
+
+export async function closeBraidWithProof(session, label) {
+  let shutdownError
+  try {
+    await closeSession(session)
+  } catch (error) {
+    shutdownError = error
+  }
+  const cleanup = assertVerifiedProcessCleanup(await session.close(), label)
+  if (shutdownError !== undefined) {
+    if (
+      shutdownError !== null &&
+      (typeof shutdownError === 'object' || typeof shutdownError === 'function')
+    ) {
+      Object.defineProperty(shutdownError, 'processCleanup', {
+        configurable: true,
+        enumerable: false,
+        value: cleanup,
+      })
+    }
+    throw shutdownError
+  }
+  return cleanup
+}
+
 async function killFirstBraid(session) {
   if (!session?.child) throw new Error('The first Braid process was not started')
   const sent = session.child.kill('SIGKILL')
   const exit = await session.exit
-  await session.close().catch(() => undefined)
+  const cleanup = assertVerifiedProcessCleanup(await session.close(), 'SIGKILL Braid process')
   assert.equal(sent, true, 'SIGKILL was not sent to the first Braid process')
   assert.equal(exit.signal, 'SIGKILL', `first Braid process exited with ${JSON.stringify(exit)}`)
-  return { signal: exit.signal, code: exit.code, sent }
+  return { signal: exit.signal, code: exit.code, sent, cleanup }
 }
 
 function assertAck(result, command) {
@@ -858,6 +965,16 @@ function assertAck(result, command) {
   return result.response
 }
 
+export function assertRestartedCancellationRun(run, controlRef) {
+  assert.ok(run, 'fresh cancellation process did not restore the cancelled run')
+  assert.ok(
+    ['aborted', 'cancelled'].includes(run.status),
+    `fresh cancellation process restored ${run.status ?? 'missing'}`,
+  )
+  assertSameControlRef(controlRef, run.controlRef, 'cancellation restart')
+  return run
+}
+
 function localRunCount(state, runId) {
   return (state?.runs ?? []).filter((run) => run.id === runId).length
 }
@@ -866,6 +983,17 @@ function assistantMarker(state, runId) {
   return [...(state?.messages ?? [])]
     .reverse()
     .find((message) => message.runId === runId && message.role === 'assistant')?.text
+}
+
+export function runIdForOperation(state, operationId) {
+  const matches = (state?.runs ?? []).filter((run) => run.operationId === operationId)
+  if (matches.length > 1) {
+    throw new MissingIntegrationError(
+      'Durable cleanup found more than one Braid run for one operation identity',
+      { operationId, runIds: matches.map((run) => run.id) },
+    )
+  }
+  return matches[0]?.id
 }
 
 function collectIntegrationNeed(error, needs) {
@@ -899,6 +1027,14 @@ export async function runBraidSandboxStress({
     'BRAID_LIVE_REQUIRED_TIMEOUT_MS',
     DEFAULT_TIMEOUT_MS,
   )
+  const idleTtlSeconds = numberEnvironment(
+    environment,
+    'BRAID_TANGLE_SANDBOX_IDLE_TTL_SECONDS',
+    DEFAULT_IDLE_TTL_SECONDS,
+  )
+  if (!Number.isSafeInteger(idleTtlSeconds) || idleTtlSeconds < 60 || idleTtlSeconds > 604_800) {
+    throw new Error('BRAID_TANGLE_SANDBOX_IDLE_TTL_SECONDS must be an integer from 60 to 604800')
+  }
   const prompts = proofPrompts(coordinates, holdMs)
   const phases = {}
   const unresolvedIntegrationNeeds = []
@@ -910,6 +1046,7 @@ export async function runBraidSandboxStress({
   let client
   let firstSession
   let freshSession
+  let retrySession
   let firstRunId
   let cancelRunId
   let knownEnvironmentId
@@ -924,6 +1061,8 @@ export async function runBraidSandboxStress({
   let telemetry
   let followUpVisible
   let remoteCancellation
+  let cancelledProcessCleanup
+  let retryProcessCleanup
   let resumeFromCursor
   let finalCursor
   let resumeIntersection
@@ -940,6 +1079,9 @@ export async function runBraidSandboxStress({
   let finalUsage
   let result
   let binarySha256
+  let firstSendAttempted = false
+  let cleanupRecovery
+  const failureProcessCleanup = {}
 
   const phase = async (name, task) => {
     const start = performance.now()
@@ -951,7 +1093,16 @@ export async function runBraidSandboxStress({
   }
 
   try {
-    client = sandboxClient(values, environment)
+    client = sandboxClient(values)
+    if (!client) {
+      throw new MissingIntegrationError(
+        'Retained stress requires the same credential value that Braid installs for execution',
+        {
+          required:
+            'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY; an independent cleanup credential is not admissible proof',
+        },
+      )
+    }
     usageRecords.push(await usage(client, 'before'))
     identityRecords.push(await accountIdentity(client, 'before'))
     binary = suppliedBinary ?? (await resolveBinary(suppliedRepository, environment))
@@ -961,12 +1112,14 @@ export async function runBraidSandboxStress({
         repository: suppliedRepository,
         environment: sanitizedEnvironment(environment),
         ...values,
+        providerOptions: { lifecycle: RETAINED_LIFECYCLE, idleTtlSeconds },
       }),
     )
 
     const first = await phase('firstProcess.initialize', () => initializedSession(binary, config))
     firstSession = first.session
     const initialState = first.state.state
+    firstSendAttempted = true
     const send = await phase('firstProcess.send', () =>
       rpcRoundTrip(
         firstSession,
@@ -1170,13 +1323,6 @@ export async function runBraidSandboxStress({
       followUpTerminal.run,
       identityRecords[0]?.value,
     )
-    telemetry = telemetryDisclosure(
-      followUpTerminal.run,
-      followUpTerminal.response.state,
-      workspaceVerification,
-      account,
-    )
-
     const cancelSend = await phase('cancel.send', () =>
       rpcRoundTrip(
         freshSession,
@@ -1232,9 +1378,19 @@ export async function runBraidSandboxStress({
       ),
     )
 
+    cancelledProcessCleanup = await phase('cancel.restart.closeFirstProcess', () =>
+      closeBraidWithProof(freshSession, 'pre-retry cancellation process'),
+    )
+    freshSession = undefined
+    const retry = await phase('cancel.restart.initialize', () => initializedSession(binary, config))
+    retrySession = retry.session
+    const retryState = await stateRoundTrip(retrySession)
+    const retryRun = retryState.state.runs?.find((run) => run.id === cancelRunId)
+    assertRestartedCancellationRun(retryRun, cancelObservation.controlRef)
+
     const cancelRetry = await phase('cancel.retrySameBody', () =>
       rpcRoundTrip(
-        freshSession,
+        retrySession,
         'cancel_run',
         { runId: cancelRunId, reason: `Braid live cancellation ${coordinates.proofId}` },
         ids.cancel,
@@ -1255,7 +1411,7 @@ export async function runBraidSandboxStress({
 
     const cancelConflict = await phase('cancel.retryChangedBody', () =>
       rpcRoundTrip(
-        freshSession,
+        retrySession,
         'cancel_run',
         { runId: cancelRunId, reason: `changed-body-${coordinates.proofId}` },
         ids.cancel,
@@ -1264,6 +1420,45 @@ export async function runBraidSandboxStress({
     )
     assert.equal(cancelConflict.response.type, 'error', 'changed cancel body was accepted')
     assert.equal(cancelConflict.response.code, 'OPERATION_CONFLICT')
+    retryProcessCleanup = await phase('cancel.restart.closeRetryProcess', () =>
+      closeBraidWithProof(retrySession, 'cancellation retry process'),
+    )
+    retrySession = undefined
+
+    const firstTelemetry = telemetryDisclosure(
+      firstRun,
+      firstState.state,
+      workspaceVerification,
+      assertSameAccount(firstState.state, firstRun, identityRecords[0]?.value),
+      { allowInFlight: true },
+    )
+    const resumedTelemetry = telemetryDisclosure(
+      freshRun,
+      freshTerminal.response.state,
+      workspaceVerification,
+      assertSameAccount(freshTerminal.response.state, freshRun, identityRecords[0]?.value),
+    )
+    const followUpTelemetry = telemetryDisclosure(
+      followUpTerminal.run,
+      followUpTerminal.response.state,
+      workspaceVerification,
+      account,
+    )
+    const cancelledTelemetry = telemetryDisclosure(
+      cancelled.run,
+      cancelled.response.state,
+      workspaceVerification,
+      assertSameAccount(cancelled.response.state, cancelled.run, identityRecords[0]?.value),
+    )
+    telemetry = {
+      ...followUpTelemetry,
+      runs: {
+        first: firstTelemetry,
+        resumed: resumedTelemetry,
+        followUp: followUpTelemetry,
+        cancelled: cancelledTelemetry,
+      },
+    }
 
     const runRecords = {
       first: firstSnapshot,
@@ -1288,6 +1483,8 @@ export async function runBraidSandboxStress({
       config: configEvidence(config),
       processes: {
         first: killed,
+        cancelled: cancelledProcessCleanup,
+        retry: retryProcessCleanup,
         localRunCountAfterReconnect: firstRunCountAfterReplay,
         binarySha256,
       },
@@ -1332,8 +1529,79 @@ export async function runBraidSandboxStress({
     }
     collectIntegrationNeed(error, unresolvedIntegrationNeeds)
   } finally {
-    if (freshSession) await closeSession(freshSession).catch((error) => (cleanupError ??= error))
-    if (firstSession) await firstSession.close().catch((error) => (cleanupError ??= error))
+    for (const [label, session] of [
+      ['retry', retrySession],
+      ['fresh', freshSession],
+      ['first', firstSession],
+    ]) {
+      if (!session) continue
+      try {
+        failureProcessCleanup[label] = await closeBraidWithProof(
+          session,
+          `${label} failure-path Braid process`,
+        )
+      } catch (error) {
+        if (error?.processCleanup) failureProcessCleanup[label] = error.processCleanup
+        cleanupError ??= error
+        collectIntegrationNeed(error, unresolvedIntegrationNeeds)
+      }
+    }
+    if (firstRunId === undefined && firstSendAttempted && binary && config) {
+      let recoverySession
+      try {
+        const recovered = await initializedSession(binary, config)
+        recoverySession = recovered.session
+        firstRunId = runIdForOperation(recovered.state.state, ids.first)
+        const processCleanup = await closeBraidWithProof(
+          recoverySession,
+          'cleanup identity recovery Braid process',
+        )
+        recoverySession = undefined
+        cleanupRecovery = {
+          attempted: true,
+          operationId: ids.first,
+          runId: firstRunId ?? null,
+          processCleanup,
+        }
+      } catch (error) {
+        if (error?.processCleanup) {
+          cleanupRecovery = {
+            attempted: true,
+            operationId: ids.first,
+            runId: firstRunId ?? null,
+            processCleanup: error.processCleanup,
+          }
+        }
+        cleanupError ??= error
+        collectIntegrationNeed(error, unresolvedIntegrationNeeds)
+      } finally {
+        if (recoverySession) {
+          try {
+            const processCleanup = await closeBraidWithProof(
+              recoverySession,
+              'failed cleanup identity recovery Braid process',
+            )
+            cleanupRecovery = {
+              attempted: true,
+              operationId: ids.first,
+              runId: firstRunId ?? null,
+              processCleanup,
+            }
+          } catch (error) {
+            if (error?.processCleanup) {
+              cleanupRecovery = {
+                attempted: true,
+                operationId: ids.first,
+                runId: firstRunId ?? null,
+                processCleanup: error.processCleanup,
+              }
+            }
+            cleanupError ??= error
+            collectIntegrationNeed(error, unresolvedIntegrationNeeds)
+          }
+        }
+      }
+    }
     if (client) {
       try {
         const cleanup = await cleanupOwnedRetainedResources(client, {
@@ -1461,7 +1729,7 @@ export async function runBraidSandboxStress({
     accountIdentities: identityRecords.map((entry) => ({
       phase: entry.phase,
       status: entry.error ? 'unavailable' : entry.value === undefined ? 'missing' : 'observed',
-      ...(entry.value === undefined ? {} : { value: entry.value }),
+      ...(entry.value === undefined ? {} : { value: publicAccountIdentityEvidence(entry.value) }),
       ...(entry.error ? { error: entry.error } : {}),
     })),
     accountIdentityConsistency: accountIdentityConsistency ?? null,
@@ -1480,6 +1748,8 @@ export async function runBraidSandboxStress({
     ...(diagnostics && Object.keys(diagnostics).length > 0 ? { diagnostics } : {}),
     ...(cleanupError ? { cleanupFailure: errorDetails(cleanupError) } : {}),
     ...(accountIdentityError ? { accountIdentityFailure: errorDetails(accountIdentityError) } : {}),
+    ...(cleanupRecovery === undefined ? {} : { cleanupRecovery }),
+    ...(Object.keys(failureProcessCleanup).length === 0 ? {} : { failureProcessCleanup }),
     ...(unresolvedIntegrationNeeds.length > 0
       ? { unresolvedIntegrationNeeds: [...new Set(unresolvedIntegrationNeeds)] }
       : {}),

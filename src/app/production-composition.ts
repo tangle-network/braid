@@ -10,7 +10,9 @@ import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
   resolveProductionCliBridgeConnection,
+  resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
+import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import { ConnectionError } from './connection-errors.js'
@@ -187,17 +189,32 @@ export function createProductionComposition(
     ...(config.workspaceRoot === undefined ? {} : { workspaceRoot: config.workspaceRoot }),
     signal: new AbortController().signal,
   })
-  const execution =
-    connection.kind === 'cli-bridge'
-      ? new CliBridgeRetainedExecutionPort({
-          resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
-          recover: ({ runId, providerSessionId }) =>
-            resolveProductionCliBridgeConnection(
-              resolverOptions,
-              recoveryInput(runId, providerSessionId),
-            ),
-        })
-      : new AgentRuntimeExecutionPort(backendResolver)
+  const execution = (() => {
+    if (connection.kind === 'cli-bridge') {
+      return new CliBridgeRetainedExecutionPort({
+        resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
+        recover: ({ runId, providerSessionId }) =>
+          resolveProductionCliBridgeConnection(
+            resolverOptions,
+            recoveryInput(runId, providerSessionId),
+          ),
+      })
+    }
+    if (
+      connection.kind === 'tangle-sandbox' &&
+      connection.providerOptions.lifecycle === 'retained'
+    ) {
+      return new TangleRetainedExecutionPort({
+        resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        recover: ({ runId, providerSessionId }) =>
+          resolveProductionTangleRetainedConnection(
+            resolverOptions,
+            recoveryInput(runId, providerSessionId),
+          ),
+      })
+    }
+    return new AgentRuntimeExecutionPort(backendResolver)
+  })()
 
   return Object.freeze({
     profile,

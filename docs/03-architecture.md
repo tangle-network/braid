@@ -275,6 +275,32 @@ The production SQLite implementation makes `appendEffect` durable before it retu
 
 The execution adapter must be thin enough that contract tests can run directly against both CLI Bridge and Tangle providers.
 
+### Retained execution composition
+
+`RetainedExecutionPort` owns the provider-neutral lifecycle for admission, start, event reading, cursor tracking, detach, reconnect, status, and cancellation.
+
+It stores only process-local handles and exact provider bindings; the Braid journal remains the durable authority.
+
+Each provider supplies a small plan that resolves one current provider, maps status and result records, and delegates start, reconnect, and cancel to `agent-runtime`.
+
+The CLI Bridge plan adds Bridge discovery because that service can recover a run before Braid has its exact reference.
+
+The Tangle plan accepts only provider-backed lookup that returns the exact run reference from deterministic request keys.
+
+The production path stays unavailable when that lookup is absent.
+
+The Tangle resolver validates the selected `AgentProfile`, connection, runner, model, client methods, and retained capabilities without creating a sandbox.
+
+The Tangle policy module owns only deterministic environment tags and bounded idle expiry.
+
+The Tangle run module owns only Runtime calls and never guesses whether an idempotent create returned a new or existing environment.
+
+An ambiguous dispatch failure can be recovered by lookup, but cleanup still waits for a creation receipt that proves ownership.
+
+No retained module runs an agent loop, parses runner output, or becomes a second provider implementation.
+
+This split prevents one execution object from accumulating provider setup, durable state, product rules, cloud cleanup, event projection, and terminal behavior.
+
 ## Event path
 
 ```mermaid

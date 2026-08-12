@@ -1,0 +1,200 @@
+{
+  "schemaVersion": "braid.tangle-sandbox-braid-soak.v1",
+  "status": "failed",
+  "startedAt": "2026-08-12T15:23:52.398Z",
+  "completedAt": "2026-08-12T15:23:56.164Z",
+  "requestedRuns": 1,
+  "attemptedRuns": 1,
+  "concurrency": 1,
+  "stoppedAfterCanary": true,
+  "failures": [
+    "run 1 did not pass exact proof",
+    "cloud environment identity was missing",
+    "Braid binary digest was missing",
+    "Sandbox account identity was missing",
+    "cohort active-resource usage was unavailable"
+  ],
+  "cleanup": {
+    "exactProofs": 0,
+    "exactResourcesRemaining": null,
+    "resourceProofsUnavailable": 1,
+    "activeResourceDelta": null,
+    "activeResourceDeltas": [
+      null
+    ]
+  },
+  "accountUsage": {
+    "complete": false,
+    "before": null,
+    "after": null,
+    "delta": {
+      "activeSandboxes": null,
+      "totalSandboxes": null,
+      "computeMinutes": null,
+      "gpuSeconds": null,
+      "gpuCostUsd": null,
+      "unknownFields": [
+        "activeSandboxes",
+        "totalSandboxes",
+        "computeMinutes",
+        "gpuSeconds",
+        "gpuCostUsd"
+      ]
+    }
+  },
+  "latency": {
+    "totalMs": {
+      "n": 1,
+      "min": 3763.776227,
+      "median": 3763.776227,
+      "p90": 3763.776227,
+      "max": 3763.776227
+    },
+    "phases": {}
+  },
+  "sessionSpend": {
+    "scope": "every unique local run in every cloud proof",
+    "rows": [],
+    "tokens": {
+      "observedRuns": 0,
+      "unavailableRuns": 0,
+      "missingRuns": 0,
+      "input": 0,
+      "output": 0
+    },
+    "cost": {
+      "observedRuns": 0,
+      "unavailableRuns": 0,
+      "missingRuns": 0,
+      "usd": 0
+    }
+  },
+  "attempts": [
+    {
+      "index": 0,
+      "completionSequence": 0,
+      "startedAt": "2026-08-12T15:23:52.398Z",
+      "completedAt": "2026-08-12T15:23:56.163Z",
+      "requireZeroActiveResourceDelta": true,
+      "proof": {
+        "schemaVersion": "braid.tangle-sandbox-braid-stress.v1",
+        "proofId": "braid-cloud-stress-1786548232400-1267321-26f346e3",
+        "config": {
+          "endpoint": "https://sandbox.tangle.tools",
+          "connectionId": "connection-live-tangle-sandbox",
+          "connectionKind": "tangle-sandbox",
+          "credentialConfigured": true,
+          "model": "tangle-router/glm-5.2",
+          "runner": "opencode",
+          "lifecycle": "retained",
+          "idleTtlSeconds": 300
+        },
+        "timing": {
+          "totalMs": 3763.776227
+        },
+        "status": "failed",
+        "cleanup": {
+          "exactResource": false,
+          "activeResourceDelta": null,
+          "activeResourceDeltaRequired": true,
+          "usageObservationComplete": false,
+          "usageDelta": {
+            "activeSandboxes": null,
+            "totalSandboxes": null,
+            "computeMinutes": null,
+            "gpuSeconds": null,
+            "gpuCostUsd": null,
+            "unknownFields": [
+              "activeSandboxes",
+              "totalSandboxes",
+              "computeMinutes",
+              "gpuSeconds",
+              "gpuCostUsd"
+            ]
+          }
+        },
+        "usage": [
+          {
+            "phase": "before",
+            "status": "unavailable",
+            "error": {
+              "name": "AuthError",
+              "message": "Platform key is revoked, expired, or not eligible"
+            }
+          },
+          {
+            "phase": "after",
+            "status": "unavailable",
+            "error": {
+              "name": "AuthError",
+              "message": "Platform key is revoked, expired, or not eligible"
+            }
+          }
+        ],
+        "accountIdentities": [
+          {
+            "phase": "before",
+            "status": "unavailable",
+            "error": {
+              "name": "AuthError",
+              "message": "Platform key is revoked, expired, or not eligible"
+            }
+          },
+          {
+            "phase": "after",
+            "status": "unavailable",
+            "error": {
+              "name": "AuthError",
+              "message": "Platform key is revoked, expired, or not eligible"
+            }
+          }
+        ],
+        "accountIdentityConsistency": null,
+        "workspaceVerification": null,
+        "progress": {},
+        "failure": {
+          "name": "Error",
+          "message": "send failed: CONNECTION_UNSUPPORTED: The published Tangle provider did not report exact retained-run control"
+        },
+        "diagnostics": {
+          "firstProcess": {
+            "responseCount": 3,
+            "errors": [
+              {
+                "requestId": "braid-live-send-391e963c-e08f-44ab-9e64-29287e561ac7",
+                "code": "CONNECTION_UNSUPPORTED",
+                "message": "The published Tangle provider did not report exact retained-run control"
+              }
+            ]
+          }
+        },
+        "cleanupFailure": {
+          "name": "AuthError",
+          "message": "Platform key is revoked, expired, or not eligible"
+        },
+        "accountIdentityFailure": {
+          "name": "MissingIntegrationError",
+          "message": "Sandbox account identity was unavailable before execution",
+          "code": "BRAID_LIVE_INTEGRATION_MISSING",
+          "details": {
+            "observation": {
+              "phase": "before",
+              "error": {
+                "name": "AuthError",
+                "message": "Platform key is revoked, expired, or not eligible"
+              }
+            }
+          }
+        },
+        "unresolvedIntegrationNeeds": [
+          "Sandbox account identity was unavailable before execution",
+          "The live run did not prove the exact retained Braid Sandbox resource identity",
+          "Sandbox usage must expose activeSandboxes before and after cleanup",
+          "Sandbox usage-before observation failed",
+          "Sandbox usage-after observation failed",
+          "Sandbox usage must expose activeSandboxes before execution and after cleanup"
+        ]
+      }
+    }
+  ]
+}

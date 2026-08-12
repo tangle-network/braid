@@ -67,9 +67,14 @@ export async function capabilitiesForConnection(
         respondToInteraction: false,
       })
     case 'tangle-sandbox': {
-      const environment = options.sandboxClient
+      const reported = options.sandboxClient
         ? await createTangleProvider({ client: options.sandboxClient }).capabilities()
         : defaultTangleSandboxCapabilities()
+      const environment = tangleConnectionCapabilities(
+        record,
+        reported,
+        options.tangleRetainedControlLookup !== undefined,
+      )
       const client = options.sandboxClient
       return capabilityReport(record, 'executor', environment, {
         create: true,
@@ -78,6 +83,41 @@ export async function capabilitiesForConnection(
         respondToInteraction: environment.interactions === undefined ? false : 'unknown',
       })
     }
+  }
+}
+
+function tangleConnectionCapabilities(
+  record: ConnectionRecord,
+  reported: AgentEnvironmentCapabilities,
+  hasRetainedControlLookup = false,
+): AgentEnvironmentCapabilities {
+  if (record.providerOptions.lifecycle !== 'retained') {
+    return {
+      ...reported,
+      streaming: { ...reported.streaming, replay: false, detach: false },
+      sessions: { ...reported.sessions, continue: false, list: false, messages: false },
+    }
+  }
+  const retained = reported.retainedControl
+  const exactRetained =
+    hasRetainedControlLookup &&
+    retained?.exactRunIdentity === true &&
+    retained.resultIdentity === true &&
+    retained.eventIdentity === true &&
+    retained.cancellationIdempotency === true &&
+    reported.streaming.replay &&
+    reported.streaming.detach &&
+    reported.streaming.turnIdempotency
+  return {
+    ...reported,
+    streaming: {
+      ...reported.streaming,
+      live: exactRetained && reported.streaming.live,
+      replay: exactRetained && reported.streaming.replay,
+      detach: exactRetained && reported.streaming.detach,
+      turnIdempotency: exactRetained && reported.streaming.turnIdempotency,
+    },
+    sessions: { ...reported.sessions, continue: false, list: false, messages: false },
   }
 }
 

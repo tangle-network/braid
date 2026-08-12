@@ -30,6 +30,8 @@ The runtime remains responsible for lifecycle, execution admission, event normal
 
 Providers remain responsible for native sessions, transport replay, workspaces, and profile materialization.
 
+Providers also own exact lookup for remote work accepted before Braid commits its control reference.
+
 ## Consequences
 
 Interactive permission prompts work the same way for local and cloud runs.

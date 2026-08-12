@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   cloudFailureEventTimeline,
+  runIdForOperation,
   spendDisclosure,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 
@@ -21,6 +22,7 @@ import {
   observationFromResponses,
   resourceDelta,
   runObservations,
+  stateRoundTrip,
   visibleEventKeys,
   waitForControlIdentity,
   waitForVisibleEvents,
@@ -38,6 +40,48 @@ const controlRef = {
 function event(kind, payload) {
   return { type: 'event', event: { kind, payload } }
 }
+
+test('get_state waits for the state response instead of an acknowledgement', async () => {
+  let sent
+  const session = {
+    responses: [],
+    send(request) {
+      sent = request
+    },
+    async waitFor(_label, predicate) {
+      const response = { type: 'state', requestId: sent.requestId, state: { runs: [] } }
+      assert.equal(predicate(response), true)
+      return response
+    },
+  }
+
+  const result = await stateRoundTrip(session)
+  assert.deepEqual(result.state, { runs: [] })
+})
+
+test('cleanup recovers exactly one durable run after a lost send acknowledgement', () => {
+  const state = {
+    runs: [
+      { id: 'run-other', operationId: 'operation-other' },
+      { id: 'run-proof', operationId: 'operation-proof' },
+    ],
+  }
+  assert.equal(runIdForOperation(state, 'operation-proof'), 'run-proof')
+  assert.equal(runIdForOperation(state, 'operation-missing'), undefined)
+  assert.throws(
+    () =>
+      runIdForOperation(
+        {
+          runs: [
+            { id: 'run-1', operationId: 'operation-duplicate' },
+            { id: 'run-2', operationId: 'operation-duplicate' },
+          ],
+        },
+        'operation-duplicate',
+      ),
+    /more than one Braid run/u,
+  )
+})
 
 test('extracts exact control identity and an explicit provider cursor', () => {
   const responses = [
@@ -81,6 +125,50 @@ test('rejects visible events without stable provider identity and catches duplic
     }),
   ]
   assert.throws(() => assertUniqueVisibleEvents(responses, 'run-1', 'test'), /duplicate visible/iu)
+})
+
+test('rejects foreign provider run and execution identities in visible events', () => {
+  const observed = event('run.environment.observed', {
+    runId: 'run-1',
+    controlRef,
+    provider: { eventId: 'environment-event-1', providerSequence: 1 },
+  })
+  const visible = (identity) =>
+    event('run.text.delta', {
+      runId: 'run-1',
+      provider: {
+        eventId: 'event-2',
+        providerSequence: 2,
+        cursor: 'cursor-2',
+        ...identity,
+      },
+    })
+
+  assert.doesNotThrow(() =>
+    assertUniqueVisibleEvents(
+      [observed, visible({ runId: controlRef.runId, executionId: controlRef.executionId })],
+      'run-1',
+      'identity',
+    ),
+  )
+  assert.throws(
+    () =>
+      assertUniqueVisibleEvents(
+        [observed, visible({ runId: 'foreign-provider-run' })],
+        'run-1',
+        'identity',
+      ),
+    /foreign provider runId/iu,
+  )
+  assert.throws(
+    () =>
+      assertUniqueVisibleEvents(
+        [observed, visible({ executionId: 'foreign-provider-execution' })],
+        'run-1',
+        'identity',
+      ),
+    /foreign provider executionId/iu,
+  )
 })
 
 test('never attributes an unscoped provider event to a run', () => {
@@ -236,6 +324,7 @@ test('failure diagnostics retain the run boundary without exposing credentials',
           kind: 'run.unknown',
           runId: 'run-1',
           detail: 'HTTP 404 authorization: Bearer should-not-leak',
+          error: 'Invalid API key: sk-live-sentinel-123',
         },
       },
       event('run.unknown', { runId: 'run-2', detail: 'unrelated' }),
@@ -249,9 +338,11 @@ test('failure diagnostics retain the run boundary without exposing credentials',
       kind: 'run.unknown',
       runId: 'run-1',
       detail: 'HTTP 404 authorization=[redacted]',
+      error: 'Invalid API key=[redacted]',
     },
   ])
   assert.equal(JSON.stringify(timeline).includes('should-not-leak'), false)
+  assert.equal(JSON.stringify(timeline).includes('sk-live-sentinel-123'), false)
   assert.equal(JSON.stringify(timeline).includes('unrelated'), false)
 })
 
@@ -302,6 +393,60 @@ test('requires fresh replay to advance beyond the persisted provider cursor', ()
   assert.throws(
     () => assertProviderResumeProgress(acknowledged, resumed, 'run-1', 'wrong-cursor'),
     /did not identify an acknowledged provider event/iu,
+  )
+})
+
+test('rejects a 4-to-6 replay gap and any reported missing history', () => {
+  const acknowledged = [
+    event('run.text.delta', {
+      runId: 'run-1',
+      provider: { eventId: 'event-4', providerSequence: 4, cursor: 'cursor-4' },
+    }),
+  ]
+  const skipped = [
+    event('run.text.delta', {
+      runId: 'run-1',
+      provider: { eventId: 'event-6', providerSequence: 6, cursor: 'cursor-6' },
+    }),
+  ]
+
+  assert.throws(
+    () => assertProviderResumeProgress(acknowledged, skipped, 'run-1', 'cursor-4'),
+    /not contiguous/iu,
+  )
+  assert.throws(
+    () =>
+      assertProviderResumeProgress(
+        [
+          ...acknowledged,
+          {
+            type: 'state',
+            state: { runs: [{ id: 'run-1', missingSequence: { from: 5, to: 5 } }] },
+          },
+        ],
+        [...skipped, { type: 'state', state: { missingHistory: [] } }],
+        'run-1',
+        'cursor-4',
+      ),
+    /missing provider history/iu,
+  )
+  assert.throws(
+    () =>
+      assertProviderResumeProgress(
+        acknowledged,
+        [
+          ...skipped,
+          {
+            type: 'state',
+            state: {
+              missingHistory: [{ runId: 'run-1', fromSequence: 5, toSequence: 5 }],
+            },
+          },
+        ],
+        'run-1',
+        'cursor-4',
+      ),
+    /missing provider history/iu,
   )
 })
 

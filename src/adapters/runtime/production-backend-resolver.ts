@@ -11,7 +11,11 @@ import {
   resolveCliBridgeBackend,
 } from './production-cli-bridge-backend.js'
 import { resolveTangleInferenceBackend } from './production-tangle-inference-backend.js'
-import { resolveTangleSandboxBackend } from './production-tangle-sandbox-backend.js'
+import {
+  type PreparedTangleRetainedConnection,
+  resolveTangleSandboxBackend,
+  resolveTangleSandboxRetainedConnection,
+} from './production-tangle-sandbox-backend.js'
 
 export type {
   ProductionBackendResolverOptions,
@@ -83,4 +87,21 @@ export async function resolveProductionCliBridgeConnection(
     record.id,
     connectionEndpoint(record, options),
   )
+}
+
+/** Resolve one retained Tangle plan without creating a billable environment. */
+export async function resolveProductionTangleRetainedConnection(
+  options: ProductionBackendResolverOptions,
+  input: ExecuteTurnInput,
+): Promise<PreparedTangleRetainedConnection> {
+  const selected = await options.select(input)
+  const selection =
+    input.connectionId === undefined
+      ? selected
+      : { ...selected, connection: { connectionId: input.connectionId } }
+  const record = options.connections.select(selection.connection).record
+  if (record.kind !== 'tangle-sandbox') {
+    throw new Error('The retained Tangle port received another connection kind')
+  }
+  return resolveTangleSandboxRetainedConnection(options, input, selection, record.id)
 }

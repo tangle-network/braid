@@ -215,6 +215,7 @@ function assertSecretFree(record: ConnectionRecord): void {
     record.providerOptions.endpoint,
     record.providerOptions.region,
     record.providerOptions.account,
+    record.providerOptions.lifecycle,
     ...(record.providerOptions.capabilityHints ?? []),
     ...('message' in record.lastHealth ? [record.lastHealth.message] : []),
     ...(record.lastModelVerification === undefined

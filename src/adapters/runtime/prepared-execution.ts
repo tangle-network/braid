@@ -6,6 +6,7 @@ export interface SandboxLifecyclePolicy {
   readonly mode: 'ephemeral' | 'retained'
   readonly cleanup: 'delete-after-turn' | 'explicit'
   readonly continuity: 'session' | 'unavailable'
+  readonly idleTtlSeconds?: number
   readonly reason?: string
 }
 

@@ -6,7 +6,7 @@ const MAX_PENDING_BYTES = 4096
 const MAX_LOOKBEHIND_CHARS = 1024
 const BIDI_CONTROLS = /\p{Bidi_Control}/gu
 const SECRET_ASSIGNMENT =
-  /(^|[\s,;{[(])(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|signature|cookie|header|query|fragment)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;}\])}]*)/giu
+  /(^|[\s,;{[(])(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_ -]*key|access[_ -]*key|private[_ -]*key|client[_ -]*secret|signature|cookie|header|query|fragment)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;}\])}]*)/giu
 const BEARER_ASSIGNMENT = /\bBearer(?:\s+|\s*=\s*)[^\s,;]*/giu
 const BARE_CREDENTIAL =
   /(?:sk-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,})/gu
@@ -14,7 +14,7 @@ const WEB_URL = /https?:\/\/[^\s\p{Cc}<>"']+/giu
 const INCOMPLETE_BEARER = /\bBearer(?:[\s]+|[\s]*=[\s]*)$/iu
 const INCOMPLETE_URL = /(^|[\s([{<])https?:\/\/[^\s\p{Cc}<>"']*$/iu
 const INCOMPLETE_ASSIGNMENT =
-  /(^|[\s,;{[(])(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|signature|cookie|header|query|fragment)\s*[:=]\s*(?:"[^"]*|'[^']*|[^\s,;}\])}]*)$/iu
+  /(^|[\s,;{[(])(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_ -]*key|access[_ -]*key|private[_ -]*key|client[_ -]*secret|signature|cookie|header|query|fragment)\s*[:=]\s*(?:"[^"]*|'[^']*|[^\s,;}\])}]*)$/iu
 
 const INCOMPLETE_BARE_CREDENTIAL =
   /(?:sk-|github_pat_|gh[pousr]_|AKIA|AIza|xox[baprs]-)[A-Za-z0-9_-]*$/u

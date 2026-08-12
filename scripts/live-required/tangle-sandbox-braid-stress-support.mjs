@@ -7,6 +7,7 @@ import {
   requestBase,
   responseForRequest,
   runFromState,
+  stateForRequest,
   stateForRun,
 } from '../live-bridge/protocol.mjs'
 
@@ -191,7 +192,10 @@ export async function rpcRoundTrip(session, command, params = {}, operationId, l
   const request = { ...requestBase(requestId, command, operationId), params }
   const started = performance.now()
   session.send(request)
-  const response = await session.waitFor(label, responseForRequest(requestId))
+  const response = await session.waitFor(
+    label,
+    command === 'get_state' ? stateForRequest(requestId) : responseForRequest(requestId),
+  )
   return { request, response, elapsedMs: performance.now() - started }
 }
 
@@ -233,8 +237,91 @@ function belongsToRun(response, runId) {
   return observedRunId === runId
 }
 
+function localControlRefFromResponses(responses, runId) {
+  for (const response of responses) {
+    if (!belongsToRun(response, runId)) continue
+    if (eventParts(response)?.event.kind !== 'run.environment.observed') continue
+    const controlRef = controlRefFromEvent(response)
+    if (controlRef !== undefined) return controlRef
+  }
+  return undefined
+}
+
+function providerIdentityFromEvent(response, kind, eventId) {
+  const parts = eventParts(response)
+  const payload = parts?.payload
+  const provider = record(payload?.provider)
+  const sources = [
+    ['provider', provider, ['runId', 'providerRunId', 'executionId', 'providerExecutionId']],
+    ['provider.controlRef', record(provider?.controlRef), ['runId', 'executionId']],
+    ['payload.controlRef', record(payload?.controlRef), ['runId', 'executionId']],
+    ['payload.providerControlRef', record(payload?.providerControlRef), ['runId', 'executionId']],
+    ['payload', payload, ['executionId', 'providerRunId', 'providerExecutionId']],
+  ]
+  const fields = {
+    runId: ['runId', 'providerRunId'],
+    executionId: ['executionId', 'providerExecutionId'],
+  }
+  const identity = {}
+  for (const [field, aliases] of Object.entries(fields)) {
+    const observed = []
+    for (const [sourceName, source, sourceAliases] of sources) {
+      if (!source) continue
+      for (const alias of aliases) {
+        if (!sourceAliases.includes(alias)) continue
+        if (Object.hasOwn(source, alias)) observed.push({ sourceName, alias, value: source[alias] })
+      }
+    }
+    if (observed.length === 0) continue
+    const values = observed.map((candidate) => nonEmptyString(candidate.value))
+    if (values.some((value) => value === undefined)) {
+      throw new MissingIntegrationError(
+        `Braid emitted visible ${kind} with an invalid provider ${field}`,
+        { runId: eventRunId(response), kind, eventId, field, observed },
+      )
+    }
+    const uniqueValues = [...new Set(values)]
+    if (uniqueValues.length !== 1) {
+      throw new MissingIntegrationError(
+        `Braid emitted visible ${kind} with conflicting provider ${field} values`,
+        { runId: eventRunId(response), kind, eventId, field, observed },
+      )
+    }
+    identity[field] = uniqueValues[0]
+  }
+  return Object.keys(identity).length === 0 ? undefined : identity
+}
+
+function assertProviderIdentity(response, runId, kind, eventId, expectedControlRef) {
+  const observed = providerIdentityFromEvent(response, kind, eventId)
+  if (observed === undefined) return
+  if (expectedControlRef === undefined) {
+    throw new MissingIntegrationError(
+      `Braid emitted visible ${kind} with provider identity before exposing the exact local control reference`,
+      { runId, kind, eventId, observed },
+    )
+  }
+  for (const field of ['runId', 'executionId']) {
+    if (observed[field] === undefined) continue
+    if (observed[field] !== expectedControlRef[field]) {
+      throw new MissingIntegrationError(
+        `Braid emitted visible ${kind} for a foreign provider ${field}`,
+        {
+          runId,
+          kind,
+          eventId,
+          field,
+          expected: expectedControlRef[field],
+          observed: observed[field],
+        },
+      )
+    }
+  }
+}
+
 export function providerEventsForRun(responses, runId) {
   const events = []
+  const expectedControlRef = localControlRefFromResponses(responses, runId)
   for (const response of responses) {
     if (!belongsToRun(response, runId, responses)) continue
     const kind = eventParts(response)?.event.kind
@@ -263,6 +350,9 @@ export function providerEventsForRun(responses, runId) {
         `Braid emitted ${kind} without a stable provider sequence`,
         { runId, kind, eventId },
       )
+    }
+    if (!NON_VISIBLE_KINDS.has(kind)) {
+      assertProviderIdentity(response, runId, kind, eventId, expectedControlRef)
     }
     const payload = eventParts(response)?.payload
     events.push({
@@ -296,7 +386,29 @@ export function visibleEventKeys(responses, runId) {
   return visibleProviderEvents(responses, runId).map((event) => event.eventId)
 }
 
+function assertNoMissingReplayEvidence(responses, runId, phase) {
+  const missingSequence = []
+  const missingHistory = []
+  for (const response of responses) {
+    if (response?.type !== 'state') continue
+    const state = record(response.state)
+    const run = runFromState(state, runId)
+    if (run?.missingSequence !== undefined && run.missingSequence !== null) {
+      missingSequence.push(run.missingSequence)
+    }
+    if (Array.isArray(state?.missingHistory)) {
+      missingHistory.push(...state.missingHistory.filter((range) => record(range)?.runId === runId))
+    }
+  }
+  if (missingSequence.length === 0 && missingHistory.length === 0) return
+  throw new MissingIntegrationError(
+    `${phase} cannot prove replay because Braid reported missing provider history`,
+    { runId, missingSequence, missingHistory },
+  )
+}
+
 export function assertUniqueVisibleEvents(responses, runId, phase) {
+  assertNoMissingReplayEvidence(responses, runId, phase)
   const events = visibleProviderEvents(responses, runId)
   const keys = events.map((event) => event.eventId)
   const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index)
@@ -321,6 +433,28 @@ export function assertUniqueVisibleEvents(responses, runId, phase) {
     )
   }
   return { count: keys.length, keys, events }
+}
+
+function assertContiguousReplay(responses, runId, acknowledgedSequence, phase) {
+  const freshEvents = providerEventsForRun(responses, runId).filter(
+    (event) => event.providerSequence > acknowledgedSequence,
+  )
+  assert.ok(
+    freshEvents.length > 0,
+    `${phase} replay exposed no provider sequence after the acknowledged cursor`,
+  )
+  assert.equal(
+    freshEvents[0].providerSequence,
+    acknowledgedSequence + 1,
+    `${phase} replay provider sequences after the cursor were not contiguous`,
+  )
+  for (let index = 1; index < freshEvents.length; index += 1) {
+    assert.equal(
+      freshEvents[index].providerSequence,
+      freshEvents[index - 1].providerSequence + 1,
+      `${phase} replay provider sequences after the cursor were not contiguous`,
+    )
+  }
 }
 
 export function exclusiveResumeIntersection(acknowledged, resumed) {
@@ -364,6 +498,7 @@ export function assertProviderResumeProgress(
     'fresh process replay did not advance beyond the acknowledged provider cursor',
   )
   assert.notEqual(first.cursor, cursor, 'fresh process replay started at the acknowledged cursor')
+  assertContiguousReplay(resumedResponses, runId, cursorEvent.providerSequence, 'fresh-process')
   return {
     acknowledgedSequence: cursorEvent.providerSequence,
     firstFreshSequence: first.providerSequence,

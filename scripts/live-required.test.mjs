@@ -22,6 +22,7 @@ import {
 } from './live-required/contracts.mjs'
 import {
   closeSession,
+  configEvidence,
   initializedSession,
   prepareProductionWorkspace,
   runHeadlessTurn,
@@ -52,6 +53,25 @@ test('cloud execution stress reports exact small-sample latency distributions', 
     p90: null,
     max: null,
   })
+})
+
+test('config evidence accepts connections without optional provider options', () => {
+  assert.deepEqual(
+    configEvidence({
+      endpoint: { scheme: 'https', host: 'sandbox.tangle.tools' },
+      connection: { id: 'connection-test', kind: 'tangle-sandbox' },
+      credentialConfigured: true,
+      profile: { model: { default: 'glm-5.2' }, harness: 'opencode' },
+    }),
+    {
+      endpoint: { scheme: 'https', host: 'sandbox.tangle.tools' },
+      connectionId: 'connection-test',
+      connectionKind: 'tangle-sandbox',
+      credentialConfigured: true,
+      model: 'glm-5.2',
+      runner: 'opencode',
+    },
+  )
 })
 
 function protectedEnvironment() {
@@ -785,9 +805,11 @@ test('generated live credentials use the same protected store as production Brai
   }
 })
 
-test('generated credential cleanup reports failure and succeeds when retried', async () => {
+test('generated credential cleanup disposes failed removal, cleans root, and retains evidence', async () => {
   let removeAttempts = 0
   let disposeCalls = 0
+  let rootRemovalAttempts = 0
+  const secret = 'live-required-cleanup-retry-canary-822f'
   const config = await prepareProductionWorkspace({
     repository,
     environment: protectedEnvironment(),
@@ -796,7 +818,7 @@ test('generated credential cleanup reports failure and succeeds when retried', a
     model: 'glm-5.2',
     runner: 'cli-base',
     provider: 'tangle',
-    credentialValue: 'live-required-cleanup-retry-canary-822f',
+    credentialValue: secret,
     credentialContextFactory: () => ({
       store: {
         async store(input) {
@@ -804,31 +826,123 @@ test('generated credential cleanup reports failure and succeeds when retried', a
         },
         async remove() {
           removeAttempts += 1
-          if (removeAttempts === 1) throw new Error('transient removal failure')
+          if (removeAttempts === 1) throw new Error(`transient removal failure: ${secret}`)
         },
       },
       dispose() {
         disposeCalls += 1
       },
     }),
+    removeTemporaryRoot: async (root) => {
+      rootRemovalAttempts += 1
+      if (rootRemovalAttempts === 1)
+        throw new Error('transient temporary-root cleanup failure after credential failure')
+      await rm(root, { recursive: true, force: true })
+    },
   })
 
   await assert.rejects(
     () => config.cleanup(),
-    (error) => error?.code === 'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
+    (error) => {
+      assert(error instanceof AggregateError)
+      assert.equal(error.errors.length, 2)
+      assert.equal(error.errors[0]?.code, 'PROTECTED_CREDENTIAL_CLEANUP_FAILED')
+      assert.equal(
+        error.errors[1]?.message,
+        'transient temporary-root cleanup failure after credential failure',
+      )
+      assert.deepEqual(error?.cleanupEvidence, {
+        credentialRemoved: false,
+        temporaryRootRemoved: false,
+      })
+      assert.doesNotMatch(safeMessage(error), new RegExp(secret, 'u'))
+      return true
+    },
   )
   await access(config.root)
   assert.equal(removeAttempts, 1)
-  assert.equal(disposeCalls, 0)
+  assert.equal(disposeCalls, 1)
+  assert.equal(rootRemovalAttempts, 1)
 
-  await config.cleanup()
+  assert.deepEqual(await config.cleanup(), {
+    credentialRemoved: true,
+    temporaryRootRemoved: true,
+  })
   await assert.rejects(() => access(config.root), /ENOENT/u)
   assert.equal(removeAttempts, 2)
-  assert.equal(disposeCalls, 1)
+  assert.equal(disposeCalls, 2)
+  assert.equal(rootRemovalAttempts, 2)
 
-  await config.cleanup()
+  assert.deepEqual(await config.cleanup(), {
+    credentialRemoved: true,
+    temporaryRootRemoved: true,
+  })
   assert.equal(removeAttempts, 2)
-  assert.equal(disposeCalls, 1)
+  assert.equal(disposeCalls, 2)
+  assert.equal(rootRemovalAttempts, 2)
+})
+
+test('temporary-root cleanup retries after a transient failure without repeating credential removal', async () => {
+  let credentialRemovalAttempts = 0
+  let disposeCalls = 0
+  let rootRemovalAttempts = 0
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment: protectedEnvironment(),
+    kind: 'temporary-root-retry',
+    endpoint: 'https://router.tangle.tools',
+    model: 'glm-5.2',
+    runner: 'cli-base',
+    provider: 'tangle',
+    credentialValue: 'live-required-root-cleanup-canary-154d',
+    credentialContextFactory: () => ({
+      store: {
+        async store(input) {
+          return input.ref
+        },
+        async remove() {
+          credentialRemovalAttempts += 1
+        },
+      },
+      dispose() {
+        disposeCalls += 1
+      },
+    }),
+    removeTemporaryRoot: async (root) => {
+      rootRemovalAttempts += 1
+      if (rootRemovalAttempts === 1) throw new Error('transient temporary-root cleanup failure')
+      await rm(root, { recursive: true, force: true })
+    },
+  })
+
+  try {
+    await assert.rejects(
+      () => config.cleanup(),
+      (error) => {
+        assert.equal(error?.message, 'transient temporary-root cleanup failure')
+        assert.deepEqual(error?.cleanupEvidence, {
+          credentialRemoved: true,
+          temporaryRootRemoved: false,
+        })
+        return true
+      },
+    )
+    await access(config.root)
+    assert.equal(credentialRemovalAttempts, 1)
+    assert.equal(disposeCalls, 1)
+    assert.equal(rootRemovalAttempts, 1)
+
+    assert.deepEqual(await config.cleanup(), {
+      credentialRemoved: true,
+      temporaryRootRemoved: true,
+    })
+    await assert.rejects(() => access(config.root), /ENOENT/u)
+    assert.equal(credentialRemovalAttempts, 1)
+    assert.equal(disposeCalls, 1)
+    assert.equal(rootRemovalAttempts, 2)
+  } finally {
+    await config.cleanup().catch(() => undefined)
+  }
 })
 
 test('configured real-path assertion failures emit failed release evidence', async () => {

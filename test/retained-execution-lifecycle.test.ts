@@ -203,6 +203,50 @@ test('in-flight start cancellation omits an expired foreground signal', async ()
   assert.equal(receivedSignal, undefined)
 })
 
+test('in-flight detach starts the cloud run but never opens a local event reader', async () => {
+  const exact = controlRef('detach-in-flight')
+  let resolveStart: (value: RetainedRunHandle) => void = () => undefined
+  let starts = 0
+  const started = new Promise<RetainedRunHandle>((resolve) => {
+    resolveStart = resolve
+  })
+  const retainedHandle = handle(exact)
+  const execution = executionFor(async () =>
+    plan(exact, async () => {
+      starts += 1
+      return started
+    }),
+  )
+  const runInput = input('detach-in-flight')
+  await execution.admit(runInput)
+  const stream = execution.streamTurn(runInput)[Symbol.asyncIterator]()
+  const streamCompletion = stream.next()
+  await new Promise((resolve) => setImmediate(resolve))
+
+  const acknowledgement = await execution.detachRun({
+    operationId: 'operation-detach-in-flight',
+    runId: runInput.runId,
+  })
+  resolveStart(retainedHandle)
+
+  assert.deepEqual(acknowledgement, {
+    operationId: 'operation-detach-in-flight',
+    outcome: 'accepted',
+    detail: 'detached',
+  })
+  assert.deepEqual(await streamCompletion, { done: true, value: undefined })
+  assert.equal(starts, 1)
+  assert.equal(
+    (
+      await execution.detachRun({
+        operationId: 'operation-detach-in-flight-retry',
+        runId: runInput.runId,
+      })
+    ).outcome,
+    'already-applied',
+  )
+})
+
 test('ambiguous cancellation effects reconcile or remain unknown', async () => {
   for (const effect of ['unknown', 'not_live'] as const) {
     const exact = controlRef(`ambiguous-${effect}`)

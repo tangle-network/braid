@@ -33,6 +33,26 @@ function finalEvent(text: string): RuntimeStreamEvent {
   }
 }
 
+function failedAsyncIterable<T>(error: unknown): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      return {
+        next: async () => Promise.reject(error),
+      }
+    },
+  }
+}
+
+function emptyAsyncIterable<T>(): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      return {
+        next: async () => ({ done: true, value: undefined }),
+      }
+    },
+  }
+}
+
 function appFor(execution: ExecutionPort, journal?: MemoryJournal): BraidApplication {
   const app = new BraidApplication({
     profile: DETERMINISTIC_PROFILE,
@@ -200,6 +220,54 @@ test('a disconnected live iterator reconnects and replays before declaring an un
   const state = await app.send({ operationId: 'op-disconnect', text: 'reconnect me' }).completion
   assert.equal(state.runs[0]?.status, 'completed')
   assert.equal(state.messages[1]?.text, 'after replay')
+})
+
+test('failed dispatch preserves its diagnostic when recovery finds no provider run', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    streamTurn: () =>
+      failedAsyncIterable(
+        Object.assign(new Error('[{"unrecognized":"runControlRef"}]'), {
+          code: 'SIDECAR_SCHEMA_REJECTED',
+        }),
+      ),
+    reconnect: () => emptyAsyncIterable(),
+    status: async () => null,
+  }
+  const app = appFor(execution)
+
+  const state = await app.send({ operationId: 'op-failed-dispatch', text: 'start once' }).completion
+
+  assert.equal(state.runs[0]?.status, 'unknown')
+  assert.equal(state.lastError, 'SIDECAR_SCHEMA_REJECTED')
+  const unknown = app
+    .events()
+    .filter((entry) => entry.event.kind === 'run.unknown')
+    .at(-1)?.event
+  if (unknown?.kind !== 'run.unknown') throw new Error('Missing run.unknown event')
+  assert.equal(unknown.detail, 'SIDECAR_SCHEMA_REJECTED')
+})
+
+test('failed dispatch preserves its typed diagnostic when exact status is unavailable', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => ({
+      ...REPLAY_CAPABILITIES,
+      controls: { ...REPLAY_CAPABILITIES.controls, status: false },
+    }),
+    streamTurn: () =>
+      failedAsyncIterable(
+        Object.assign(new Error('permanent cloud provisioning rejection'), {
+          code: 'CLOUD_PROVISION_REJECTED',
+        }),
+      ),
+    reconnect: () => emptyAsyncIterable(),
+  }
+  const app = appFor(execution)
+
+  const state = await app.send({ operationId: 'op-no-status', text: 'start once' }).completion
+
+  assert.equal(state.runs[0]?.status, 'unknown')
+  assert.equal(state.lastError, 'CLOUD_PROVISION_REJECTED')
 })
 
 test('explicit cancellation is acknowledged and reaches cancelled, while legacy abort remains distinct', async () => {

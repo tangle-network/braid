@@ -54,7 +54,7 @@ export function redactString(value, secrets = secretValues()) {
     .replace(/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}\b/gu, '[redacted]')
     .replace(/\bgh[pousr]_[A-Za-z0-9_]{20,}\b/gu, '[redacted]')
     .replace(
-      /((?:token|access[-_]?token|refresh[-_]?token|api[-_]?key|secret|client[-_]?secret|password|authorization|credential)\s*[:=]\s*)[^,\s;&#]+/giu,
+      /((?:token|access[-_ ]*token|refresh[-_ ]*token|api[-_ ]*key|secret|client[-_ ]*secret|password|authorization|credential)\s*[:=]\s*)[^,\s;&#]+/giu,
       '$1[redacted]',
     )
     .replace(

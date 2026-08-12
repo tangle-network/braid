@@ -10,6 +10,7 @@ import type {
   ProfileSnapshotRecord,
   WorkspaceRecord,
 } from './entities.js'
+import { MAX_RETAINED_IDLE_TTL_SECONDS, MIN_RETAINED_IDLE_TTL_SECONDS } from './entities-core.js'
 import {
   assertDate,
   assertDigest,
@@ -86,7 +87,15 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
     assertEntityId('workspace', record.workspaceId, 'connection.workspaceId')
   nonEmpty(record.name, 'connection.name')
   if (record.endpoint !== undefined) assertPublicReference(record.endpoint, 'connection.endpoint')
-  const allowedOptions = new Set(['transport', 'endpoint', 'region', 'account', 'capabilityHints'])
+  const allowedOptions = new Set([
+    'transport',
+    'endpoint',
+    'region',
+    'account',
+    'capabilityHints',
+    'lifecycle',
+    'idleTtlSeconds',
+  ])
   for (const [key, value] of Object.entries(record.providerOptions)) {
     if (!allowedOptions.has(key)) fail(`connection.providerOptions.${key} is provider-native state`)
     if (key === 'capabilityHints') {
@@ -96,11 +105,44 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
       ) {
         fail('connection.providerOptions.capabilityHints must contain non-empty names')
       }
+    } else if (key === 'lifecycle') {
+      if (value !== 'ephemeral' && value !== 'retained') {
+        fail('connection.providerOptions.lifecycle is invalid')
+      }
+    } else if (key === 'idleTtlSeconds') {
+      if (
+        !Number.isSafeInteger(value) ||
+        (value as number) < MIN_RETAINED_IDLE_TTL_SECONDS ||
+        (value as number) > MAX_RETAINED_IDLE_TTL_SECONDS
+      ) {
+        fail(
+          `connection.providerOptions.idleTtlSeconds must be an integer from ${MIN_RETAINED_IDLE_TTL_SECONDS} to ${MAX_RETAINED_IDLE_TTL_SECONDS}`,
+        )
+      }
     } else if (typeof value !== 'string' || value.length === 0) {
       fail(`connection.providerOptions.${key} must be a non-empty string`)
     }
     if (key === 'endpoint' && typeof value === 'string')
       assertPublicReference(value, 'connection.providerOptions.endpoint')
+  }
+  if (
+    record.providerOptions.lifecycle === 'retained' &&
+    record.providerOptions.idleTtlSeconds === undefined
+  ) {
+    fail('connection.providerOptions.lifecycle=retained requires idleTtlSeconds')
+  }
+  if (
+    record.providerOptions.lifecycle !== 'retained' &&
+    record.providerOptions.idleTtlSeconds !== undefined
+  ) {
+    fail('connection.providerOptions.idleTtlSeconds requires lifecycle=retained')
+  }
+  if (
+    record.kind !== 'tangle-sandbox' &&
+    (record.providerOptions.lifecycle !== undefined ||
+      record.providerOptions.idleTtlSeconds !== undefined)
+  ) {
+    fail('connection.providerOptions lifecycle is available only for tangle-sandbox')
   }
   assertDate(record.createdAt, 'connection.createdAt')
   assertDate(record.updatedAt, 'connection.updatedAt')

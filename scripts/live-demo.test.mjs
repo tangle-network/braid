@@ -304,6 +304,7 @@ test('public capture rejects the credential patterns mirrored from the sanitizer
   const filler = 'A'.repeat(32)
   const cases = [
     ['API key assignment', `api${'_key'}=${filler}`],
+    ['API key phrase', `API key: ${filler}`],
     ['Bearer value', `Bearer ${'B'.repeat(24)}`],
     ['OpenAI-style key', `${'s' + 'k-'}${filler}`],
     ['GitHub classic token', `gh${'p_'}${filler.slice(0, 20)}`],

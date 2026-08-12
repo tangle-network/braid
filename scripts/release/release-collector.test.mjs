@@ -270,6 +270,7 @@ test('environment sanitization unions explicit and innocent-name canaries withou
     [...secrets, 'bearer-canary'],
   )
   for (const canary of ['password', 'query-canary', 'bearer-canary']) assert(!text.includes(canary))
+  assert.equal(redactText('Invalid API key: phrase-canary'), 'Invalid API key: [REDACTED]')
 })
 
 test('low-entropy control values stay redacted without corrupting structured release markers', async () => {

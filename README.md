@@ -223,21 +223,41 @@ Changing runners creates a new provider session with an explicit portable-contex
 
 It does not claim to transfer hidden process memory, runner-specific todos, opaque tool state, or native session internals.
 
-A Tangle sandbox connection can provide an isolated remote workspace, environment lifecycle, checkpoint, fork, replay, and resource metadata when its capabilities report those operations.
+A Tangle sandbox connection provides an isolated remote workspace and reports only the lifecycle, replay, control, and resource capabilities that the current provider proves.
 
 Braid shows those capabilities and their receipts through the same activity and graph surfaces.
 
-The current published Tangle path runs one isolated cloud turn and deletes its environment after the turn.
+New Tangle Sandbox connections default to one ephemeral cloud turn and delete that environment after the turn.
 
-Cloud restart, retained-session continuation, checkpoint, and fork remain unavailable until the shared provider reports exact recovery support.
+Retained lifecycle is an explicit connection configuration option with a bounded idle limit.
+
+Before retained execution creates a sandbox, Braid requires exact control plus provider-backed lookup for an unacknowledged dispatch.
+
+The current published provider does not report that complete contract or lookup, so Braid rejects retained mode without creating a resource.
+
+When the provider reports both, a fresh Braid process can recover before or after the six-field reference commits.
+
+Native follow-up turns remain disabled until the provider also proves that its context boundary matches Braid's recorded boundary.
+
+Checkpoint, environment fork, and interaction response remain unavailable until the shared provider reports and proves those operations.
 
 The user can inspect the requested and verified execution location, but provider-private machine details remain unavailable when they are not reported.
 
-The latest production stress proof completed 20 of 20 Braid turns through OpenCode, GLM 5.2, and Tangle Sandbox at four-way concurrency.
+The latest passing production stress proof completed 20 of 20 ephemeral Braid turns through OpenCode, GLM 5.2, and Tangle Sandbox at four-way concurrency.
 
 All 20 remote environments were unique and confirmed deleted, while the account's active Sandbox count returned from four to four.
 
 See the [secret-free proof artifact](artifacts/verification/live/tangle-sandbox-braid-execution-stress-production-20260812.json) for every run, token receipt, latency, environment observation, and cleanup result.
+
+A later canary found a current platform regression before environment allocation.
+
+Fresh credentials authenticated Sandbox and Router, but the internal model-key step rejected the Sandbox service with HTTP 403.
+
+Braid left zero owned environments, while [ADC issue 5277](https://github.com/tangle-network/agent-dev-container/issues/5277) tracks the platform failure.
+
+[Runtime issue 808](https://github.com/tangle-network/agent-runtime/issues/808) tracks the separate ten-minute retry of that permanent rejection.
+
+The [verification record](docs/08-verification.md#current-core-path-observations) keeps the full results, limits, and tracked platform work.
 
 ## Commands users reach for first
 

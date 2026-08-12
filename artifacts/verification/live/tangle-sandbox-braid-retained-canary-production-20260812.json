@@ -1,0 +1,493 @@
+{
+  "schemaVersion": "braid.tangle-sandbox-braid-soak.v1",
+  "status": "failed",
+  "startedAt": "2026-08-12T14:08:10.841Z",
+  "completedAt": "2026-08-12T14:08:35.679Z",
+  "requestedRuns": 1,
+  "attemptedRuns": 1,
+  "concurrency": 1,
+  "stoppedAfterCanary": true,
+  "failures": [
+    "run 1 did not pass exact proof",
+    "cloud environment identity was missing",
+    "Braid binary digest was missing"
+  ],
+  "cleanup": {
+    "exactProofs": 0,
+    "exactResourcesRemaining": 1,
+    "activeResourceDelta": 0,
+    "activeResourceDeltas": [
+      0
+    ]
+  },
+  "accountUsage": {
+    "complete": true,
+    "before": {
+      "computeMinutes": 906,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "gpuProviderCostUsd": 0,
+      "activeSandboxes": 4,
+      "totalSandboxes": 9239,
+      "periodStart": "2026-08-12T00:00:00.000Z",
+      "periodEnd": "2026-08-13T00:00:00.000Z"
+    },
+    "after": {
+      "computeMinutes": 906,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "gpuProviderCostUsd": 0,
+      "activeSandboxes": 4,
+      "totalSandboxes": 9240,
+      "periodStart": "2026-08-12T00:00:00.000Z",
+      "periodEnd": "2026-08-13T00:00:00.000Z"
+    },
+    "delta": {
+      "activeSandboxes": 0,
+      "totalSandboxes": 1,
+      "computeMinutes": 0,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "unknownFields": []
+    }
+  },
+  "latency": {
+    "totalMs": {
+      "n": 1,
+      "min": 24835.949061000003,
+      "median": 24835.949061000003,
+      "p90": 24835.949061000003,
+      "max": 24835.949061000003
+    },
+    "phases": {}
+  },
+  "sessionSpend": {
+    "scope": "every unique local run in every cloud proof",
+    "rows": [],
+    "tokens": {
+      "observedRuns": 0,
+      "unavailableRuns": 0,
+      "missingRuns": 0,
+      "input": 0,
+      "output": 0
+    },
+    "cost": {
+      "observedRuns": 0,
+      "unavailableRuns": 0,
+      "missingRuns": 0,
+      "usd": 0
+    }
+  },
+  "attempts": [
+    {
+      "index": 0,
+      "completionSequence": 0,
+      "startedAt": "2026-08-12T14:08:10.841Z",
+      "completedAt": "2026-08-12T14:08:35.678Z",
+      "requireZeroActiveResourceDelta": true,
+      "proof": {
+        "schemaVersion": "braid.tangle-sandbox-braid-stress.v1",
+        "proofId": "braid-cloud-stress-1786543690842-528499-25488059",
+        "config": {
+          "endpoint": "https://sandbox.tangle.tools",
+          "connectionId": "connection-live-tangle-sandbox",
+          "connectionKind": "tangle-sandbox",
+          "credentialConfigured": true,
+          "model": "tangle-router/glm-5.2",
+          "runner": "opencode",
+          "lifecycle": "retained",
+          "idleTtlSeconds": 300
+        },
+        "timing": {
+          "totalMs": 24835.949061000003
+        },
+        "status": "failed",
+        "cleanup": {
+          "exactResource": false,
+          "activeResourceDelta": 0,
+          "activeResourceDeltaRequired": true,
+          "usageObservationComplete": true,
+          "usageDelta": {
+            "activeSandboxes": 0,
+            "totalSandboxes": 1,
+            "computeMinutes": 0,
+            "gpuSeconds": 0,
+            "gpuCostUsd": 0,
+            "unknownFields": []
+          }
+        },
+        "usage": [
+          {
+            "phase": "before",
+            "status": "observed",
+            "value": {
+              "computeMinutes": 906,
+              "gpuSeconds": 0,
+              "gpuCostUsd": 0,
+              "gpuProviderCostUsd": 0,
+              "activeSandboxes": 4,
+              "totalSandboxes": 9239,
+              "periodStart": "2026-08-12T00:00:00.000Z",
+              "periodEnd": "2026-08-13T00:00:00.000Z"
+            }
+          },
+          {
+            "phase": "after",
+            "status": "observed",
+            "value": {
+              "computeMinutes": 906,
+              "gpuSeconds": 0,
+              "gpuCostUsd": 0,
+              "gpuProviderCostUsd": 0,
+              "activeSandboxes": 4,
+              "totalSandboxes": 9240,
+              "periodStart": "2026-08-12T00:00:00.000Z",
+              "periodEnd": "2026-08-13T00:00:00.000Z"
+            }
+          }
+        ],
+        "accountIdentities": [
+          {
+            "phase": "before",
+            "status": "observed",
+            "value": {
+              "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46",
+              "billingDelegationAuthorized": false
+            }
+          },
+          {
+            "phase": "after",
+            "status": "observed",
+            "value": {
+              "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46",
+              "billingDelegationAuthorized": false
+            }
+          }
+        ],
+        "accountIdentityConsistency": {
+          "stable": true,
+          "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46"
+        },
+        "workspaceVerification": null,
+        "progress": {
+          "firstRunId": "run-54929ef5-640b-4a63-95af-3526dc967a67"
+        },
+        "failure": {
+          "name": "MissingIntegrationError",
+          "message": "Braid run run-54929ef5-640b-4a63-95af-3526dc967a67 became unknown before exposing exact provider identity",
+          "code": "BRAID_LIVE_INTEGRATION_MISSING",
+          "details": {
+            "runId": "run-54929ef5-640b-4a63-95af-3526dc967a67",
+            "status": "unknown",
+            "required": "exposing exact provider identity"
+          }
+        },
+        "diagnostics": {
+          "firstProcess": {
+            "responseCount": 10,
+            "run": {
+              "id": "run-54929ef5-640b-4a63-95af-3526dc967a67",
+              "operationId": "op-braid-cloud-stress-1786543690842-528499-25488059-turn-1",
+              "status": "unknown",
+              "providerSessionId": "session-braid-run-54929ef5-640b-4a63-95af-3526dc967a67",
+              "materializationDigest": "7b7c74a29b08f3dd1beb3ce62af2c4f001d5bcc6ec3f6060acd513dcc65ea312",
+              "observations": {
+                "localEnvironmentId": null,
+                "providerEnvironmentId": null,
+                "environmentRecord": null,
+                "run": {
+                  "inputTokens": {
+                    "status": "observed",
+                    "value": 0
+                  },
+                  "outputTokens": {
+                    "status": "observed",
+                    "value": 0
+                  },
+                  "reasoningTokens": {
+                    "status": "missing"
+                  },
+                  "cacheReadTokens": {
+                    "status": "missing"
+                  },
+                  "cacheWriteTokens": {
+                    "status": "missing"
+                  },
+                  "costUsd": {
+                    "status": "missing"
+                  },
+                  "costStatus": {
+                    "status": "observed",
+                    "value": "unknown"
+                  },
+                  "usage": {
+                    "status": "missing"
+                  },
+                  "cost": {
+                    "status": "missing"
+                  },
+                  "tokensKnown": {
+                    "status": "missing"
+                  },
+                  "usdKnown": {
+                    "status": "missing"
+                  },
+                  "usageCompleteness": {
+                    "status": "missing"
+                  },
+                  "latencyMs": {
+                    "status": "missing"
+                  },
+                  "durationMs": {
+                    "status": "missing"
+                  },
+                  "model": {
+                    "status": "observed",
+                    "value": "tangle-router/glm-5.2"
+                  },
+                  "provider": {
+                    "status": "observed",
+                    "value": "tangle-sandbox"
+                  },
+                  "runner": {
+                    "status": "observed",
+                    "value": "opencode"
+                  },
+                  "operationId": {
+                    "status": "observed",
+                    "value": "op-braid-cloud-stress-1786543690842-528499-25488059-turn-1"
+                  },
+                  "profileSnapshotId": {
+                    "status": "missing"
+                  },
+                  "connectionId": {
+                    "status": "observed",
+                    "value": "connection-live-tangle-sandbox"
+                  },
+                  "providerSessionId": {
+                    "status": "observed",
+                    "value": "session-braid-run-54929ef5-640b-4a63-95af-3526dc967a67"
+                  },
+                  "environmentId": {
+                    "status": "missing"
+                  },
+                  "replayCursor": {
+                    "status": "missing"
+                  },
+                  "lastCursor": {
+                    "status": "missing"
+                  },
+                  "lastProviderSequence": {
+                    "status": "missing"
+                  },
+                  "eventCount": {
+                    "status": "missing"
+                  },
+                  "contentBytes": {
+                    "status": "missing"
+                  },
+                  "contentTruncated": {
+                    "status": "missing"
+                  },
+                  "missingSequence": {
+                    "status": "missing"
+                  },
+                  "terminalReason": {
+                    "status": "missing"
+                  },
+                  "materializationDigest": {
+                    "status": "observed",
+                    "value": "7b7c74a29b08f3dd1beb3ce62af2c4f001d5bcc6ec3f6060acd513dcc65ea312"
+                  },
+                  "complete": {
+                    "status": "missing"
+                  },
+                  "status": {
+                    "status": "observed",
+                    "value": "unknown"
+                  },
+                  "error": {
+                    "status": "missing"
+                  },
+                  "startedAt": {
+                    "status": "missing"
+                  },
+                  "updatedAt": {
+                    "status": "missing"
+                  },
+                  "terminalAt": {
+                    "status": "missing"
+                  },
+                  "placement": {
+                    "status": "missing"
+                  },
+                  "resourceSample": {
+                    "status": "missing"
+                  },
+                  "requestedResources": {
+                    "status": "missing"
+                  },
+                  "machineId": {
+                    "status": "missing"
+                  },
+                  "runtimeEndpointHost": {
+                    "status": "missing"
+                  },
+                  "requestedRegion": {
+                    "status": "missing"
+                  },
+                  "verifiedRegion": {
+                    "status": "missing"
+                  },
+                  "storagePersistence": {
+                    "status": "missing"
+                  },
+                  "gpu": {
+                    "status": "missing"
+                  }
+                },
+                "environment": {
+                  "kind": {
+                    "status": "missing"
+                  },
+                  "providerEnvironmentId": {
+                    "status": "missing"
+                  },
+                  "provider": {
+                    "status": "missing"
+                  },
+                  "name": {
+                    "status": "missing"
+                  },
+                  "lifecycle": {
+                    "status": "missing"
+                  },
+                  "lifecycleMode": {
+                    "status": "missing"
+                  },
+                  "cleanup": {
+                    "status": "missing"
+                  },
+                  "continuity": {
+                    "status": "missing"
+                  },
+                  "location": {
+                    "status": "missing"
+                  },
+                  "region": {
+                    "status": "missing"
+                  },
+                  "runtimeEndpointHost": {
+                    "status": "missing"
+                  },
+                  "machineId": {
+                    "status": "missing"
+                  },
+                  "requestedRegion": {
+                    "status": "missing"
+                  },
+                  "verifiedRegion": {
+                    "status": "missing"
+                  },
+                  "storagePersistence": {
+                    "status": "missing"
+                  },
+                  "requestedResources": {
+                    "status": "missing"
+                  },
+                  "resourceSample": {
+                    "status": "missing"
+                  },
+                  "gpu": {
+                    "status": "missing"
+                  },
+                  "accountUsage": {
+                    "status": "missing"
+                  },
+                  "unavailableTelemetry": {
+                    "status": "missing"
+                  },
+                  "placement": {
+                    "status": "missing"
+                  },
+                  "repository": {
+                    "status": "missing"
+                  },
+                  "gitRef": {
+                    "status": "missing"
+                  },
+                  "workingDirectory": {
+                    "status": "missing"
+                  },
+                  "image": {
+                    "status": "missing"
+                  },
+                  "createdAt": {
+                    "status": "missing"
+                  },
+                  "startedAt": {
+                    "status": "missing"
+                  },
+                  "lastActivityAt": {
+                    "status": "missing"
+                  },
+                  "expiresAt": {
+                    "status": "missing"
+                  },
+                  "updatedAt": {
+                    "status": "missing"
+                  }
+                }
+              }
+            },
+            "eventTimeline": [
+              {
+                "sequence": 5,
+                "kind": "draft.changed"
+              },
+              {
+                "sequence": 6,
+                "kind": "run.requested",
+                "status": "admitted"
+              },
+              {
+                "sequence": 7,
+                "kind": "effect.upserted"
+              },
+              {
+                "sequence": 8,
+                "kind": "run.reconnecting",
+                "status": "reconnecting"
+              },
+              {
+                "sequence": 9,
+                "kind": "run.unknown",
+                "status": "unknown",
+                "error": "The provider returned no run record"
+              },
+              {
+                "sequence": 10,
+                "kind": "effect.upserted"
+              }
+            ]
+          }
+        },
+        "cleanupFailure": {
+          "name": "MissingIntegrationError",
+          "message": "Cleanup found no retained Sandbox for the acknowledged Braid run",
+          "code": "BRAID_LIVE_INTEGRATION_MISSING",
+          "details": {
+            "firstRunId": "run-54929ef5-640b-4a63-95af-3526dc967a67",
+            "operationId": "op-braid-cloud-stress-1786543690842-528499-25488059-turn-1"
+          }
+        },
+        "unresolvedIntegrationNeeds": [
+          "exposing exact provider identity",
+          "Braid run run-54929ef5-640b-4a63-95af-3526dc967a67 became unknown before exposing exact provider identity",
+          "Cleanup found no retained Sandbox for the acknowledged Braid run",
+          "The live run did not prove the exact retained Braid Sandbox resource identity"
+        ]
+      }
+    }
+  ]
+}

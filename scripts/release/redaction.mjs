@@ -2,15 +2,15 @@ import { createHash } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 
 const SENSITIVE_FLAG =
-  /(?:auth|api[-_]?key|bearer|credential|password|private[-_]?key|secret|token)/iu
+  /(?:auth|api[-_ ]*key|bearer|credential|password|private[-_ ]*key|secret|token)/iu
 const SECRET_ASSIGNMENT =
-  /((?:authorization|cookie|credential|api[-_]?key|password|private[-_]?key|secret|token)\s*[:=]\s*)(["']?)[^\s,;}"']+\2/giu
+  /((?:authorization|cookie|credential|api[-_ ]*key|password|private[-_ ]*key|secret|token)\s*[:=]\s*)(["']?)[^\s,;}"']+\2/giu
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/giu
 const URL_USERINFO = /(https?:\/\/)([^\s/@:]+)(?::[^\s/@]*)?@/giu
 const URL_QUERY_SECRET =
   /([?&](?:authorization|cookie|credential|api[-_]?key|password|private[-_]?key|secret|token)[^=]*=)[^&#\s]+/giu
 const ASSIGNMENT_START =
-  /(?:authorization|cookie|credential|api[-_]?key|password|private[-_]?key|secret|token)\s*[:=]\s*["']?/giu
+  /(?:authorization|cookie|credential|api[-_ ]*key|password|private[-_ ]*key|secret|token)\s*[:=]\s*["']?/giu
 const BEARER_START = /\bBearer\s+/giu
 const URL_USERINFO_START = /https?:\/\/[^\s/@:]+(?::[^\s/@]*)?/giu
 const URL_QUERY_START =
