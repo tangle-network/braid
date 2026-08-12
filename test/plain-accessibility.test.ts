@@ -194,6 +194,7 @@ test('plain accessibility output includes non-secret interaction details and cho
     responseScopes: ['once', 'session'],
     allowedOutcomes: ['accept', 'reject', 'cancel'],
     queuePosition: 0,
+    queueTotal: 1,
     secret: false,
   }
   const output = plainAccessibilityText(minimalView({ interactions: [interaction] }))

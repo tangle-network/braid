@@ -1,12 +1,12 @@
-braid  AgentProfile Braid starter
-pi / deterministic · fixture
 
- Send a task to Braid starter, or press
- Ctrl+P for commands.
+ Ask Braid starter anything.
 
-──────────────── › send ────────────────
+
+
+
+
+
 ›
 
 
-────── alt+enter newline · paste ───────
-ready for a message      Ctrl+P commands
+Braid starter            Ctrl+P commands

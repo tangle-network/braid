@@ -8,8 +8,8 @@ import {
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import {
   createProductionBackendResolver,
-  resolveProductionCliBridgeConnection,
   type ProductionBackendResolverOptions,
+  resolveProductionCliBridgeConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import type { ExecutionPort } from '../ports/execution.js'
@@ -174,28 +174,28 @@ export function createProductionComposition(
         expectedKind: connection.kind,
         expectedUpdatedAt: connection.updatedAt,
       },
-      ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
-      ...(profile.harness === undefined ? {} : { runner: profile.harness }),
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
+  const recoveryInput = (runId: string, providerSessionId?: string) => ({
+    operationId: `recover-${runId}`,
+    runId,
+    text: '',
+    profile,
+    connectionId: connection.id,
+    ...(providerSessionId === undefined ? {} : { sessionId: providerSessionId }),
+    ...(config.workspaceRoot === undefined ? {} : { workspaceRoot: config.workspaceRoot }),
+    signal: new AbortController().signal,
+  })
   const execution =
     connection.kind === 'cli-bridge'
       ? new CliBridgeRetainedExecutionPort({
           resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
           recover: ({ runId, providerSessionId }) =>
-            resolveProductionCliBridgeConnection(resolverOptions, {
-              operationId: `recover-${runId}`,
-              runId,
-              text: '',
-              profile,
-              connectionId: connection.id,
-              ...(providerSessionId === undefined ? {} : { sessionId: providerSessionId }),
-              ...(config.workspaceRoot === undefined
-                ? {}
-                : { workspaceRoot: config.workspaceRoot }),
-              signal: new AbortController().signal,
-            }),
+            resolveProductionCliBridgeConnection(
+              resolverOptions,
+              recoveryInput(runId, providerSessionId),
+            ),
         })
       : new AgentRuntimeExecutionPort(backendResolver)
 

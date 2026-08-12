@@ -75,9 +75,6 @@ If a connection is unavailable, the conversation opens offline and retains full 
 ### Standard layout from 80 to 119 columns
 
 ```text
- Braid  Release engineer  runner:pi  model:tangle-router/glm-5.2  thinking:high  out:≤16k
-        Local CLI Bridge  exec:local workspace
-───────────────────────────────────────────────────────────────────────────────
  user   Explain the failing integration test.
 
  agent  I found the failure in the session replay path.
@@ -86,33 +83,47 @@ If a connection is unavailable, the conversation opens offline and retains full 
 
         The reconnect starts one event too early …
 
-───────────────────────────────────────────────────────────────────────────────
- > _
-───────────────────────────────────────────────────────────────────────────────
- main • running  12.4k in / 1.8k out  $0.08  00:37  queue:0  ctrl+p commands
+ › _
+
+
+ profile Release engineer · pi / glm-5.2 · Local CLI Bridge      Ctrl+P commands
 ```
 
-The header area identifies the product, profile, connection, runner, model, and effort in one scan.
+The main shell has no persistent header.
 
-The execution line keeps the maximum output limit and local or remote execution location visible without folding them into the model name.
+The transcript begins at the top of the viewport and remains visually primary.
 
-The transcript consumes all remaining vertical space above the composer.
+One quiet line below the composer identifies the profile, runner, model, and connection.
 
-The composer grows from one line to at most 40% of terminal height, then scrolls internally.
+Remote or sandbox execution appears there only when location changes the user's mental model.
 
-The status line identifies branch, run state, usage, elapsed time, queue count, and one contextual shortcut.
+The composer has no border during normal input and keeps at least three usable rows.
 
-The status line omits unavailable values instead of displaying empty placeholders.
+Autocomplete adds one divider between input and results.
+
+The composer grows to at most 40% of terminal height, then scrolls internally.
+
+During work, the context line gives priority to state, cancel, queue, and steer controls.
+
+At rest, it gives priority to execution identity and measured usage.
+
+Transient confirmations temporarily replace the context line so they remain visible at 40 columns.
+
+The context line omits unavailable values instead of displaying placeholders.
 
 The activity view keeps direct turn totals, analysis totals, and worker-tree totals separate.
 
-Each total identifies whether its tokens, cost, latency, and completion state were reported, estimated, observed as a floor, or unavailable.
+Each visible total identifies reported values, estimates, or observed minimums without inventing zeroes.
 
 ### Usage and execution inspector
 
-The status line shows direct conversation tokens and cost when at least one turn exists.
+The wide context line shows direct conversation tokens and cost when measured values exist.
 
-It labels each total as reported, estimated, an observed minimum, or unknown.
+It labels estimates and observed minimums explicitly.
+
+It omits an unreported metric from the main shell and activity summary.
+
+Focused run details label the metric as not reported.
 
 It never displays missing spend as zero.
 
@@ -132,28 +143,29 @@ Account sandbox spend and per-run model spend are never presented as the same fa
 
 The physical machine IP, effective resource allocation, and per-sandbox CPU, RAM, and storage cost remain unavailable when the provider does not report them.
 
-Headless state contains the same usage groups and secret-free execution records as the terminal.
+Headless state retains complete measurement status, including unavailable fields, for automation and audit.
 
 ### Wide layout at 120 columns and above
 
 ```text
- Braid  profile:reviewer  cloud:tangle  codex/gpt-5.6  xhigh
-──────────────────────────────────────────────────────────────┬──────────────────────
- transcript                                                    │ Activity
-                                                               │ run  streaming  00:37
- agent output                                                  │ tool read  complete
-                                                               │ worker test  running
-                                                               │ interaction  1 waiting
-                                                               │ cost  $0.08
-──────────────────────────────────────────────────────────────┴──────────────────────
- > _
-─────────────────────────────────────────────────────────────────────────────────────
- fix/replay • running  env:sbx_…  checkpoint:none  queue:0  ctrl+g graph
+ user   Fix the replay race and run the focused tests.          │ live work
+                                                               │ > running  replay fix
+ agent  I found the stale cursor update.                        │ > running  test worker
+        I am applying the fix now.                              │ · waiting  approval
+
+ › _
+
+
+ profile reviewer · codex / openai/gpt-5.6 · sandbox · xhigh   working · Ctrl+C cancel
 ```
 
-The right pane is optional and defaults to activity while a run is active.
+The right pane is hidden by default, including while a run is active.
 
-The user may switch the pane among activity, graph, details, workspace, and hidden.
+F2 toggles one live-work pane that contains only active, waiting, detached, or reconnecting work.
+
+Completed history remains available through `/activity` instead of accumulating in the pane.
+
+Graph, details, and workspace views use focused overlays.
 
 The pane never reduces the transcript below 72 columns; below that boundary it becomes an overlay.
 
@@ -161,7 +173,9 @@ The pane never reduces the transcript below 72 columns; below that boundary it b
 
 The transcript, composer, and one compact status line remain visible.
 
-The top line collapses to profile and run state.
+There is no top line.
+
+The bottom context keeps the profile at rest and gives active controls priority during work.
 
 Selectors, interactions, details, activity, and graph occupy the full viewport as focused overlays.
 

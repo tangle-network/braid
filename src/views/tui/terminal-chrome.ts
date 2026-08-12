@@ -2,22 +2,18 @@ import type { Component } from '@earendil-works/pi-tui'
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeNotification } from '../shared/sanitize.js'
 import { executionTargetFor, type ExecutionTargetView } from './execution-target.js'
-import {
-  cleanTerminalField,
-  fitTerminalAtomic,
-  fitTerminalColumns,
-  renderTerminalIdentity,
-  terminalValuePart,
-} from './terminal-identity.js'
+import { fitTerminalAtomic, renderTerminalContext, terminalValuePart } from './terminal-identity.js'
 import { modeForColumns } from './layout.js'
 import type { BraidTheme } from './theme.js'
 import { metricsFor } from './terminal-usage.js'
+import type { ComposerMode } from './composer-view.js'
 
 export interface TerminalChromeState {
   readonly view: BraidViewModel
   readonly quitArmed: boolean
   readonly activityVisible: boolean
   readonly navigationHint: string
+  readonly composerMode: ComposerMode
 }
 
 /** Fixed-height terminal chrome; the transcript never owns these lines. */
@@ -39,29 +35,8 @@ export class TerminalChrome implements Component {
     return [...this.renderTop(width), ...this.renderBottom(width)]
   }
 
-  renderTop(width: number): string[] {
-    const state = this.#state
-    if (!state) return []
-    const { view } = state
-    const target = executionTargetFor(view)
-    return renderTerminalIdentity(
-      this.#theme,
-      {
-        workspace: view.workspace,
-        conversationTitle: view.conversationTitle,
-        branch: view.branch,
-        profileName: target.profileName,
-        runner: target.runner,
-        model: target.model,
-        connection: target.connection,
-        ...(target.effort === undefined ? {} : { effort: target.effort }),
-        ...(target.maxOutputTokens === undefined
-          ? {}
-          : { maxOutputTokens: target.maxOutputTokens }),
-        execution: executionLabel(target),
-      },
-      width,
-    )
+  renderTop(_width: number): string[] {
+    return []
   }
 
   renderBottom(width: number): string[] {
@@ -70,35 +45,71 @@ export class TerminalChrome implements Component {
     const safeWidth = Math.max(1, Math.floor(width))
     const { view } = state
     const mode = modeForColumns(safeWidth)
-    const execution = terminalValuePart(this.#theme, executionLabel(executionTargetFor(view)))
-    const status = fitTerminalAtomic(
-      statusText(this.#theme, view, conciseStatus(view, state.quitArmed)),
-      safeWidth,
+    const target = executionTargetFor(view)
+    const transientNotice = state.quitArmed ? undefined : transientNoticeFor(view)
+    if (transientNotice !== undefined) {
+      return [fitTerminalAtomic(statusText(this.#theme, view, transientNotice), safeWidth)]
+    }
+    const status = statusText(this.#theme, view, conciseStatus(view, state.quitArmed, mode))
+    const hint = terminalValuePart(
+      this.#theme,
+      navigationHint(view, state.navigationHint, state.composerMode),
     )
-    const hint = terminalValuePart(this.#theme, navigationHint(view, state.navigationHint))
     const metrics =
       mode === 'wide'
         ? metricsFor(view).map((metric) => terminalValuePart(this.#theme, metric))
         : []
-    return [fitTerminalColumns([status, execution], [hint, ...metrics], safeWidth)]
+    const prioritizesAction = state.quitArmed || view.activeRunId !== undefined || status.length > 0
+    const right = state.quitArmed
+      ? [status]
+      : view.activeRunId !== undefined
+        ? [status, hint]
+        : status.length > 0
+          ? [status, hint]
+          : metrics.length > 0
+            ? metrics
+            : [status, hint]
+    return [
+      renderTerminalContext(
+        this.#theme,
+        {
+          workspace: view.workspace,
+          conversationTitle: view.conversationTitle,
+          branch: view.branch,
+          profileName: target.profileName,
+          runner: target.runner,
+          model: target.model,
+          connection: target.connection,
+          ...(target.effort === undefined ? {} : { effort: target.effort }),
+          ...(target.maxOutputTokens === undefined
+            ? {}
+            : { maxOutputTokens: target.maxOutputTokens }),
+          execution: executionLabel(target),
+        },
+        right,
+        safeWidth,
+        prioritizesAction ? 'right' : 'left',
+      ),
+    ]
   }
 }
 
 function executionLabel(target: ExecutionTargetView): string {
   const environment = target.environment
   if (environment === undefined) return ''
-  const location = environment.location === 'local' ? 'local' : environment.location
-  const executionKind =
-    environment.kind === 'sandbox'
-      ? 'sandbox'
-      : environment.provider === 'cli-bridge'
-        ? 'CLI'
-        : environment.provider
-  return `exec ${location ?? 'unknown'} ${executionKind} · ${environment.lifecycle}`
+  if (environment.location === 'local' && environment.provider === 'cli-bridge') return ''
+  const location = environment.location === 'unknown' ? undefined : environment.location
+  const executionKind = environment.kind === 'sandbox' ? 'sandbox' : environment.provider
+  const lifecycle =
+    environment.lifecycle === 'active' || environment.lifecycle === 'ready'
+      ? undefined
+      : environment.lifecycle
+  return [location, executionKind, lifecycle].filter(Boolean).join(' ')
 }
 
 function statusText(theme: BraidTheme, view: BraidViewModel, value: string): string {
   const safe = sanitizeNotification(value)
+  if (value === 'outcome unknown') return theme.warning(safe)
   if (view.status === 'failed' || view.status === 'storage-failure') return theme.danger(safe)
   if (view.status === 'running' || view.status === 'waiting' || view.status === 'cancelling')
     return theme.warning(safe)
@@ -106,38 +117,70 @@ function statusText(theme: BraidTheme, view: BraidViewModel, value: string): str
   return theme.success(safe)
 }
 
-function conciseStatus(view: BraidViewModel, quitArmed: boolean): string {
-  if (quitArmed) return 'ctrl+c again to quit'
+function conciseStatus(
+  view: BraidViewModel,
+  quitArmed: boolean,
+  mode: ReturnType<typeof modeForColumns>,
+): string {
+  if (quitArmed) return 'Ctrl+C again to quit'
+  if (terminalOutcomeIsUnknown(view)) return 'outcome unknown'
+  const status = view.status
+  if (status === 'starting')
+    return mode === 'narrow' ? 'starting · Ctrl+C stop' : 'starting · Ctrl+C cancel'
+  if (status === 'streaming' || status === 'running')
+    return mode === 'narrow' ? 'working · Ctrl+C stop' : 'working · Ctrl+C cancel'
+  if (status === 'waiting') return 'waiting for input'
+  if (status === 'detached') return 'running remotely'
+  if (status === 'reconnecting') return 'reconnecting'
+  if (status === 'cancelling') return 'stopping'
+  if (status === 'completed' || status === 'ready' || status === 'empty') return ''
+  if (status === 'cancelled') return 'cancelled'
+  if (status === 'failed') return 'failed'
+  if (status === 'expired') return 'expired'
+  if (status === 'unknown') return 'status unavailable'
+  if (status === 'storage-failure') return 'storage error'
   const notification = sanitizeNotification(view.notice ?? view.statusText)
-  if (
-    view.activeRunId !== undefined &&
-    (view.status === 'starting' ||
-      view.status === 'streaming' ||
-      view.status === 'running' ||
-      view.status === 'waiting')
-  ) {
-    return `${notification || view.status} · Ctrl+C cancel`
-  }
-  if (view.status === 'failed' || view.status === 'unknown') {
-    const run = view.runs.at(-1)
-    if (run !== undefined) {
-      const outcome = run.completeness === 'unknown' ? 'outcome unknown' : 'outcome failed'
-      return `${outcome} · operation ${shortIdentifier(run.operationId ?? run.id)}`
-    }
-  }
-  if (notification.length > 0) return notification
-  return cleanTerminalField(view.status) || 'unknown'
+  return notification === 'ready for a message' ? '' : notification
 }
 
-function navigationHint(view: BraidViewModel, fallback: string): string {
-  if (view.activeRunId !== undefined) return 'Enter queues input'
+function navigationHint(
+  view: BraidViewModel,
+  fallback: string,
+  composerMode: ComposerMode,
+): string {
+  if (view.activeRunId !== undefined) {
+    const queue = view.capabilities['run.queue']?.available === true
+    const steer = view.capabilities['run.steer']?.available === true
+    if (queue && steer)
+      return composerMode === 'steer' ? 'Enter steers · Alt+S queue' : 'Enter queues · Alt+S steer'
+    if (queue) return 'Enter queues'
+    if (steer) return 'Enter steers'
+    return 'input unavailable'
+  }
+  if (terminalOutcomeIsUnknown(view)) return '/activity inspect'
   if (view.status === 'failed' || view.status === 'unknown') {
-    return '/export preserve · /new continue'
+    return '/activity details · /new'
   }
   return fallback
 }
 
-function shortIdentifier(value: string): string {
-  const safe = cleanTerminalField(value)
-  return safe.length <= 18 ? safe : `${safe.slice(0, 10)}…${safe.slice(-6)}`
+function terminalOutcomeIsUnknown(view: BraidViewModel): boolean {
+  if (view.activeRunId !== undefined) return false
+  const completeness = view.runs.at(-1)?.completeness
+  return (
+    completeness === 'incomplete' ||
+    completeness === 'missing-history' ||
+    completeness === 'unknown'
+  )
+}
+
+function transientNoticeFor(view: BraidViewModel): string | undefined {
+  if (view.status !== 'empty' && view.status !== 'ready' && view.status !== 'completed') {
+    return undefined
+  }
+  const notice = sanitizeNotification(view.notice ?? view.statusText)
+  if (!notice || notice === 'ready' || notice === 'completed' || notice === 'ready for a message') {
+    return undefined
+  }
+  return notice
 }

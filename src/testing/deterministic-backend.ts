@@ -6,7 +6,7 @@ import { isProductDemoProfile } from './product-demo-fixture.js'
 
 function responseFor(profile: Readonly<AgentProfile>, text: string): string {
   if (isProductDemoProfile(profile)) {
-    return 'Route confirmed. Your AgentProfile stays intact while agent-runtime sends this turn through Pi over Local CLI Bridge. Braid keeps the conversation, forks, approvals, and trace analysis in one place.'
+    return 'Pi will run the task through Local CLI Bridge with gpt-5.6-luna. The Release engineer AgentProfile supplies its instructions and permissions. Braid keeps the transcript, approvals, branches, and trace analysis.'
   }
   const runner = profile.harness ?? 'runtime default'
   return `Fixture response through ${runner}: ${text}`

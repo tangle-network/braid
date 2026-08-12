@@ -7,15 +7,21 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { jsonRequest } from './live-demo/http.mjs'
-import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
+import {
+  assertExactPackageProof,
+  packageTarballPath,
+  safeManifestAnalysis,
+} from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import {
   castFor,
   createCapturedTerminal,
   presentationTimeline,
+  terminalFailureDetail,
   terminalPageProgress,
   visibleModelCallNumbers,
 } from './live-demo/terminal.mjs'
+import { LIVE_DEMO_ANALYST_PROFILE, LIVE_DEMO_PROFILE } from './live-demo/workspace.mjs'
 
 function isAlive(pid) {
   try {
@@ -102,6 +108,30 @@ test('live demo timeline starts on the configured screen and preserves captured 
   )
 })
 
+test('live demo profile leaves native tool policy with the selected harness', () => {
+  assert.equal(LIVE_DEMO_PROFILE.harness, 'claude-code')
+  assert.equal(LIVE_DEMO_PROFILE.model.default, 'opus')
+  assert.equal('tools' in LIVE_DEMO_PROFILE, false)
+  assert.equal('permissions' in LIVE_DEMO_PROFILE, false)
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.harness, 'claude-code')
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.default, 'sonnet')
+  assert.equal('tools' in LIVE_DEMO_ANALYST_PROFILE, false)
+  assert.equal('permissions' in LIVE_DEMO_ANALYST_PROFILE, false)
+})
+
+test('live demo failures preserve the sanitized Braid diagnostic', () => {
+  assert.equal(
+    terminalFailureDetail({
+      state: {
+        lastError: 'portable profile rejected',
+        runs: [{ id: 'run-live', status: 'failed' }],
+        messages: [],
+      },
+    }),
+    'portable profile rejected',
+  )
+})
+
 test('jsonRequest aborts a response that never finishes', async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' })
@@ -140,6 +170,8 @@ test('live manifest uses the typed public analysis execution view', () => {
           status: 'completed',
           lines: ['• [citation-1] Complete finding'],
           analysisFindingCount: 1,
+          analysisSupportedFindingCount: 1,
+          analysisCitationSupport: 'passed',
           analysisExecution: {
             configuredModel: 'tangle-router/glm-5.2',
             observedModels: ['glm-5.2'],
@@ -175,6 +207,8 @@ test('live manifest uses the typed public analysis execution view', () => {
     id: 'analysis-live',
     status: 'completed',
     findings: 1,
+    supportedFindings: 1,
+    citationSupport: 'passed',
     configuredModel: 'tangle-router/glm-5.2',
     observedModels: ['glm-5.2'],
     modelCalls: 1,
@@ -199,6 +233,27 @@ test('live manifest uses the typed public analysis execution view', () => {
     modelLatencyMs: 321,
     wallTimeMs: 654,
   })
+})
+
+test('live manifest rejects unsupported analysis findings', () => {
+  const record = {
+    state: { analyses: [] },
+    view: {
+      activity: [{ kind: 'analysis', status: 'complete', entityId: 'analysis-live' }],
+      entityDetails: [
+        {
+          entityType: 'analysis',
+          entityId: 'analysis-live',
+          status: 'completed',
+          lines: [],
+          analysisFindingCount: 1,
+          analysisSupportedFindingCount: 0,
+          analysisCitationSupport: 'failed',
+        },
+      ],
+    },
+  }
+  assert.throws(() => safeManifestAnalysis(record), /citation check did not pass/u)
 })
 
 test('live demo accepts only the exact package proof', () => {
@@ -227,6 +282,22 @@ test('live demo accepts only the exact package proof', () => {
       /package proof/iu,
     )
   }
+})
+
+test('live demo installs the archive beside its package proof', () => {
+  const proofPath = join('/tmp', 'braid-proof', 'package-proof.json')
+  assert.equal(
+    packageTarballPath(proofPath, { tarball: 'tangle-network-braid-0.1.1.tgz' }),
+    join('/tmp', 'braid-proof', 'tangle-network-braid-0.1.1.tgz'),
+  )
+  assert.throws(
+    () => packageTarballPath(proofPath, { tarball: '../different-build.tgz' }),
+    /must be a file name/u,
+  )
+  assert.throws(
+    () => packageTarballPath(proofPath, { tarball: 'different-build.zip' }),
+    /gzip archive/u,
+  )
 })
 
 test('public capture rejects the credential patterns mirrored from the sanitizer', async (t) => {

@@ -32,18 +32,21 @@ function sourceEvent(evidence: FrozenAnalysisEvidence, id: string): FrozenAnalys
   return event
 }
 
+function scalarStrings(value: unknown, seen = new Set<object>()): readonly string[] {
+  if (typeof value === 'string') return [value]
+  if (value === null || typeof value !== 'object') return []
+  if (seen.has(value)) return []
+  seen.add(value)
+  const values = Array.isArray(value) ? value : Object.values(value)
+  return values.flatMap((item) => scalarStrings(item, seen))
+}
+
 function eventText(event: FrozenAnalysisEvent): string {
-  if (event.event.kind === 'run.text.delta' || event.event.kind === 'run.reasoning.delta') {
-    return event.event.text
-  }
-  if (event.event.kind === 'run.warning' || event.event.kind === 'run.error') {
-    return event.event.message
-  }
-  try {
-    return JSON.stringify(event.event)
-  } catch {
-    return ''
-  }
+  return scalarStrings(event.event).join('\n')
+}
+
+function eventContainsExcerpt(event: FrozenAnalysisEvent, excerpt: string): boolean {
+  return scalarStrings(event.event).some((value) => value.includes(excerpt))
 }
 
 function messageText(evidence: FrozenAnalysisEvidence, messageId: string): string {
@@ -80,7 +83,7 @@ function partText(evidence: FrozenAnalysisEvidence, partId: string): string {
 
 function assertExcerpt(event: FrozenAnalysisEvent, excerpt: string | undefined): void {
   if (excerpt === undefined) return
-  if (excerpt.length === 0 || !eventText(event).includes(excerpt)) {
+  if (excerpt.length === 0 || !eventContainsExcerpt(event, excerpt)) {
     throw new AnalysisCitationError(
       `Citation excerpt does not occur in frozen event ${String(event.id)}`,
     )
@@ -106,7 +109,7 @@ function sourceEventForSpan(
       throw new AnalysisCitationError(`Citation span ${span.spanId} has no frozen event`)
     return source
   }
-  const source = candidates.find((candidate) => eventText(candidate).includes(excerpt))
+  const source = candidates.find((candidate) => eventContainsExcerpt(candidate, excerpt))
   if (source === undefined) {
     throw new AnalysisCitationError(
       `Citation excerpt does not occur in frozen events for span ${span.spanId}`,

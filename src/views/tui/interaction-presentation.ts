@@ -97,8 +97,10 @@ export function isSecretInteraction(interaction: InteractionView): boolean {
 
 export function interactionHeading(interaction: InteractionView): string {
   const kind = sanitizeTerminalText(interaction.kind).toLocaleLowerCase() || 'interaction'
-  if (kind === 'plan') return 'plan review'
-  return kind
+  const heading = kind === 'plan' ? 'plan review' : kind
+  return interaction.queueTotal > 1
+    ? `${heading} · request ${interaction.queuePosition + 1}/${interaction.queueTotal}`
+    : heading
 }
 
 export function runContext(interaction: InteractionView): string {
@@ -110,12 +112,7 @@ export function runContext(interaction: InteractionView): string {
     .map((value) => (value === undefined ? '' : sanitizeTerminalText(value)))
     .filter((value) => value.length > 0)
     .join(' @ ')
-  return [
-    requester,
-    `run ${shortIdentifier(interaction.runId)}`,
-    ...(interaction.queuePosition > 0 ? [`request ${interaction.queuePosition + 1}`] : []),
-    timeout,
-  ]
+  return [requester, `run ${shortIdentifier(interaction.runId)}`, timeout]
     .filter(Boolean)
     .join(' · ')
 }

@@ -170,6 +170,7 @@ export class BraidTerminalApp {
       dispatch: (intent, restoreText) => this.#dispatch(intent, restoreText),
       isStopped: () => this.#stopped,
       stop: () => this.stop(),
+      composerMode: () => this.#input.composerMode,
     })
     this.#shell.editor.setAutocompleteProvider(autocomplete)
     options.tui.addChild(this.#shell)

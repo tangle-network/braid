@@ -374,6 +374,36 @@ The published package is downloaded from the registry after publication and its 
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
 
+### Tangle Sandbox durability stress
+
+Run `pnpm test:live:tangle:sandbox:stress` against the public Sandbox endpoint.
+
+The command runs one canary before it starts the remaining cohort.
+
+The default cohort contains three proofs with at most two concurrent proofs.
+
+The command stops scheduling new proofs after any failure.
+
+Each proof creates one retained cloud environment through Braid and records the exact six-field cloud identity.
+
+The proof kills the first Braid process after a committed provider cursor.
+
+A fresh Braid process must reconnect to the same cloud execution without duplicate visible provider events.
+
+A follow-up turn must solve a hidden workspace continuity challenge in the same cloud session.
+
+Cancellation must become durable in the cloud and remain safe when the same request is retried.
+
+Every proof checks the execution account before and after cleanup.
+
+Every proof deletes only resources with its exact Braid ownership metadata.
+
+The cohort reports each result and the minimum, median, p90, and maximum latency for every observed phase.
+
+The cohort also reports observed tokens, costs, active-resource deltas, and explicit unavailable values.
+
+The command fails when a cloud identity repeats, an account changes, evidence is missing, or one owned resource remains.
+
 ### Current core-path observations
 
 On 2026-08-09, the packed public setup, RPC dispatch, durable transcript, native continuation, process restart, and post-restart send passed separately against CLI Bridge commit `33695db` for Pi 0.83.0 with `tangle-router/glm-5.2` in 136.492 seconds and Codex CLI 0.147.0 with its default model in 43.462 seconds.
@@ -385,6 +415,30 @@ The two records share source tree `5c411d9`, tarball SHA-256 `4008b3e9d48c8cc780
 An aggregate run proved that the current bridge cannot enable its process-wide Pi isolation requirement and Codex 0.147.0 together because Codex receives a read-only `CODEX_HOME`; [CLI Bridge issue 130](https://github.com/drewstone/cli-bridge/issues/130) records the upstream defect, while the separate passing artifacts remain `artifacts/verification/live-core/pi.json` and `artifacts/verification/live-core/codex.json`.
 
 These observations prove the shared core flow only; they do not claim the broader interaction, tool, replay-cursor, cancellation, Tangle, or analysis rows in the required live matrix.
+
+On 2026-08-12, a production Braid cloud-execution cohort completed 20 Tangle Sandbox jobs with OpenCode and `tangle-router/glm-5.2`.
+
+The cohort used four-way concurrency and completed in 198.554 seconds.
+
+Per-job latency was 24.671 seconds minimum, 27.981 seconds median, 34.738 seconds p90, and 44.578 seconds maximum.
+
+The jobs reported 10,180 input tokens, 460 output tokens, zero provider-reported model cost, and eight Sandbox compute-minutes.
+
+All 20 provider environment identifiers were unique.
+
+All 20 environments were absent after their turns, and active Sandbox count stayed at four.
+
+The artifact is `artifacts/verification/live/tangle-sandbox-braid-execution-stress-production-20260812.json`.
+
+Its SHA-256 is `1a38a26e97917073ef760525f7b18abbcca43fcf6faba54cf862e55e4886693c`.
+
+This proves production cloud execution, observation, concurrency, and cleanup only.
+
+It does not pass `LIVE-07` because the current provider cannot recover an exact retained run after a Braid process crash.
+
+Production and staging durability canaries both failed closed and left zero owned resources.
+
+[Runtime issue 800](https://github.com/tangle-network/agent-runtime/issues/800) and [Agent SDK issue 146](https://github.com/tangle-network/agent-sdk/issues/146) own the missing shared recovery path.
 
 ## Runner conformance
 

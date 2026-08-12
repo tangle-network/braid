@@ -1,10 +1,40 @@
 import type { BraidState } from '../../domain/state.js'
-import type {
-  SessionUsageView,
-  UsageMeasurementStatus,
-  UsageTotalsView,
-  UsageView,
+import {
+  freezeView,
+  type SessionUsageView,
+  type UsageMeasurementStatus,
+  type UsageTotalsView,
+  type UsageView,
 } from './models.js'
+
+const sessionUsageCache = new WeakMap<BraidState, SessionUsageView>()
+
+/*
+ * Application state is immutable and receives a new identity for each revision.
+ * Retain its complete usage projection so idle renders do not rescan worker history.
+ */
+export function sessionUsageFor(state: BraidState): SessionUsageView {
+  const cached = sessionUsageCache.get(state)
+  if (cached !== undefined) return cached
+  const runs = state.runs.filter((run) => run.conversationId === state.conversationId)
+  const analyses = state.analyses.filter(
+    (analysis) => analysis.source.conversationId === state.conversationId,
+  )
+  const runIds = new Set(runs.map((run) => String(run.id)))
+  const supervisors = state.supervisors.filter(
+    (supervisor) => supervisor.rootRunId !== undefined && runIds.has(String(supervisor.rootRunId)),
+  )
+  const supervisorIds = new Set(supervisors.map((supervisor) => String(supervisor.id)))
+  const workers = state.workers.filter((worker) => supervisorIds.has(String(worker.supervisorId)))
+  const usage = freezeView({
+    turns: totalsForRuns(runs),
+    analyses: totalsForAnalyses(analyses),
+    delegated: totalsForWorkers(workers),
+    attribution: supervisors.length === 0 && analyses.length === 0 ? 'complete' : 'separate-totals',
+  } satisfies SessionUsageView)
+  sessionUsageCache.set(state, usage)
+  return usage
+}
 
 export function usageForRun(run: BraidState['runs'][number], elapsedMs?: number): UsageView {
   return {
@@ -20,25 +50,6 @@ export function usageForRun(run: BraidState['runs'][number], elapsedMs?: number)
     ...(run.llmLatencyMs === undefined ? {} : { llmLatencyMs: run.llmLatencyMs }),
     ...(run.model === undefined ? {} : { model: run.model }),
     ...(elapsedMs === undefined ? {} : { elapsedMs }),
-  }
-}
-
-export function sessionUsageFor(state: BraidState): SessionUsageView {
-  const runs = state.runs.filter((run) => run.conversationId === state.conversationId)
-  const analyses = state.analyses.filter(
-    (analysis) => analysis.source.conversationId === state.conversationId,
-  )
-  const runIds = new Set(runs.map((run) => String(run.id)))
-  const supervisors = state.supervisors.filter(
-    (supervisor) => supervisor.rootRunId !== undefined && runIds.has(String(supervisor.rootRunId)),
-  )
-  const supervisorIds = new Set(supervisors.map((supervisor) => String(supervisor.id)))
-  const workers = state.workers.filter((worker) => supervisorIds.has(String(worker.supervisorId)))
-  return {
-    turns: totalsForRuns(runs),
-    analyses: totalsForAnalyses(analyses),
-    delegated: totalsForWorkers(workers),
-    attribution: supervisors.length === 0 && analyses.length === 0 ? 'complete' : 'separate-totals',
   }
 }
 

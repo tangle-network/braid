@@ -17,15 +17,18 @@ test('terminal usage keeps direct, analysis, and worker measurements separate an
   const metrics = metricsFor(view)
 
   assert.deepEqual(metrics, [
-    'turns in ≥10 · out ≥20 · ≥$0.0100 · calls ≥2 (+1 missing) · latency ≥120ms (+1 missing)',
-    'analysis usage unknown · cost unknown · calls unknown (1 missing) · latency unknown (1 missing)',
-    'workers in 0 · out 0 · $0.0000 · calls 0 · latency 0ms',
+    'in ≥10',
+    'out ≥20',
+    '≥$0.0100',
+    'calls ≥2',
+    'model ≥120ms',
+    'workers in 0 · out 0 · $0.0000 · calls 0 · model 0ms',
   ])
 
   const context = activityDocument(view).context ?? ''
-  assert.match(context, /turns .*calls ≥2 \(\+1 missing\).*latency ≥120ms \(\+1 missing\)/u)
-  assert.match(context, /analysis .*calls unknown \(1 missing\).*latency unknown \(1 missing\)/u)
-  assert.match(context, /workers .*calls 0.*latency 0ms/u)
+  assert.match(context, /in ≥10.*calls ≥2.*model ≥120ms/u)
+  assert.doesNotMatch(context, /analysis|unknown|missing/u)
+  assert.match(context, /workers .*calls 0.*model 0ms/u)
 })
 
 test('terminal chrome keeps telemetry out of narrow layouts', () => {
@@ -35,10 +38,11 @@ test('terminal chrome keeps telemetry out of narrow layouts', () => {
     quitArmed: false,
     activityVisible: false,
     navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
   })
 
   const narrow = chrome.render(40)
-  assert.equal(narrow.length, 3)
+  assert.equal(narrow.length, 1)
   assert.doesNotMatch(narrow.join('\n'), /calls|analysis|workers|missing/u)
   for (const line of narrow) assert.ok(visibleWidth(line) <= 40)
 })
@@ -59,8 +63,8 @@ test('terminal usage presents a complete estimate instead of an observed-cost fl
     },
   }
 
-  assert.match(metricsFor(estimated)[0] ?? '', /~\$0\.1500/u)
-  assert.doesNotMatch(metricsFor(estimated)[0] ?? '', /≥\$0\.1000/u)
+  assert.match(metricsFor(estimated).join(' · '), /~\$0\.1500/u)
+  assert.doesNotMatch(metricsFor(estimated).join(' · '), /≥\$0\.1000/u)
 
   const freeEstimate = {
     ...estimated,
@@ -73,7 +77,7 @@ test('terminal usage presents a complete estimate instead of an observed-cost fl
       },
     },
   }
-  assert.match(metricsFor(freeEstimate)[0] ?? '', /~\$0\.0000/u)
+  assert.match(metricsFor(freeEstimate).join(' · '), /~\$0\.0000/u)
 })
 
 test('execution identity comes from one active run receipt instead of current profile fields', () => {
@@ -151,13 +155,13 @@ test('execution identity comes from one active run receipt instead of current pr
     quitArmed: false,
     activityVisible: true,
     navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
   })
   const rendered = chrome.render(120).join('\n')
-  assert.match(rendered, /AgentProfile Exact run profile/u)
-  assert.match(rendered, /runner pi/u)
-  assert.match(rendered, /tangle-router\/glm-5\.2/u)
+  assert.match(rendered, /profile Exact run profile/u)
+  assert.match(rendered, /pi \/ tangle-router\/glm-5\.2/u)
   assert.match(rendered, /Local CLI Bridge/u)
-  assert.match(rendered, /exec local CLI · active/u)
+  assert.doesNotMatch(rendered, /exec local CLI|active/u)
   assert.doesNotMatch(rendered, /Next profile|openai\/gpt-next|Next connection/u)
 
   const activity = activityDocument(view)

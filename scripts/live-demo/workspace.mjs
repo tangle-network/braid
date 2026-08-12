@@ -4,10 +4,9 @@ import { join } from 'node:path'
 export const LIVE_DEMO_PROFILE = Object.freeze({
   name: 'Product engineer',
   description: 'Implements one bounded change and proves it with tests.',
-  harness: 'pi',
+  harness: 'claude-code',
   model: {
-    provider: 'tangle-router',
-    default: 'tangle-router/glm-5.2',
+    default: 'opus',
     reasoningEffort: 'high',
     metadata: { maxTokens: 32768 },
   },
@@ -18,8 +17,24 @@ export const LIVE_DEMO_PROFILE = Object.freeze({
       'Run the relevant tests and report the exact result.',
     ],
   },
-  tools: { read: true, write: true, shell: true },
-  permissions: { read: 'allow', write: 'allow', shell: 'allow' },
+})
+
+export const LIVE_DEMO_ANALYST_PROFILE = Object.freeze({
+  name: 'Trace analyst',
+  description: 'Reviews a completed run and cites the retained execution evidence.',
+  harness: 'claude-code',
+  model: {
+    default: 'sonnet',
+    reasoningEffort: 'high',
+    metadata: { maxTokens: 16384 },
+  },
+  prompt: {
+    instructions: [
+      'Base every finding on the retained execution evidence.',
+      'Cite the exact evidence that supports each finding.',
+      'Separate verified facts from recommendations.',
+    ],
+  },
 })
 
 export const LIVE_DEMO_PROMPT =
@@ -31,9 +46,11 @@ export async function createLiveDemoWorkspace(root) {
   const workspace = join(root, 'braid-demo')
   const sourceRoot = join(workspace, 'src')
   const testRoot = join(workspace, 'test')
+  const profileRoot = join(workspace, '.braid')
   await Promise.all([
     mkdir(sourceRoot, { recursive: true, mode: 0o700 }),
     mkdir(testRoot, { recursive: true, mode: 0o700 }),
+    mkdir(profileRoot, { recursive: true, mode: 0o700 }),
   ])
   const profilePath = join(workspace, 'braid.profile.json')
   await Promise.all([
@@ -76,6 +93,11 @@ export async function createLiveDemoWorkspace(root) {
       { mode: 0o600 },
     ),
     writeFile(profilePath, `${JSON.stringify(LIVE_DEMO_PROFILE, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(
+      join(profileRoot, 'profile.json'),
+      `${JSON.stringify(LIVE_DEMO_ANALYST_PROFILE, null, 2)}\n`,
+      { mode: 0o600 },
+    ),
   ])
   return { workspace, profilePath }
 }

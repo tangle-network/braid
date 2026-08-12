@@ -26,13 +26,13 @@ import { AnalysisComparisonService } from '../src/app/analysis-comparison.js'
 import { comparisonSnapshot } from '../src/app/analysis-comparison-evidence.js'
 import { compareFrozenRuns } from '../src/app/analysis-comparison-facts.js'
 import { resultFromComparisonRecord } from '../src/app/analysis-comparison-record.js'
-import { AnalysisPromotionService } from '../src/app/analysis-promotion.js'
-import { AnalysisService } from '../src/app/analysis-service.js'
 import { analysisIdentity } from '../src/app/analysis-operation.js'
+import { AnalysisPromotionService } from '../src/app/analysis-promotion.js'
 import {
   completedAnalysisRecord,
   initialAnalysisRecord,
 } from '../src/app/analysis-result-mapper.js'
+import { AnalysisService } from '../src/app/analysis-service.js'
 import { freezeAnalysisSource, verifyFrozenAnalysisSource } from '../src/app/analysis-source.js'
 import {
   type AnalysisApplicationHost,
@@ -316,7 +316,8 @@ test('trace analysis keeps run identity, outcome, usage, and merged tools in one
   const trace = buildAnalysisTraceStore(evidence)
   const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext(trace.store)
   assert.match(prepared, /Exact trace id: "run-analysis-trace-projection"/u)
-  assert.match(prepared, /SUBMIT\(answer, json\.dumps\(findings\)\)/u)
+  assert.match(prepared, /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u)
+  assert.doesNotMatch(prepared, /SUBMIT\(answer, json\.dumps\(findings\)\)/u)
   assert.match(prepared, /Omit subject from every finding/u)
   const view = await trace.store.viewTrace({ trace_id: trace.traceId })
   assert.equal('spans' in view, true)

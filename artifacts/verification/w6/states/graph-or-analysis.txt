@@ -1,8 +1,8 @@
  conversation graph · 2               Braid starter · pi · fixture/deterministic
 ────────────────────────────────────────────────────────────────────────────────
- ! runtime activity unavailable; showing last saved state: The runtime returned…
    ✓ New conversation · conversation · complete · ─attached→
  ›   └ ✓ Main · branch · complete · current · ─attached→
+
 
 
 

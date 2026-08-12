@@ -5,6 +5,8 @@ import {
 } from '../adapters/connections/production-connection-endpoints.js'
 import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from '../adapters/connections/production-connection-types.js'
 import { discoverProfiles } from '../app/profiles.js'
+import type { ProfileRecord } from '../app/profile-types.js'
+import type { ProductionCompositionConfig } from '../app/production-composition.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { createConnectionId } from '../domain/ids.js'
 import {
@@ -14,6 +16,7 @@ import {
 import { discoverBridge } from './production-bridge-discovery.js'
 import { recoverPendingConnectionCredentialRemoval } from './production-connection-credential-cleanup.js'
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
+import { productionActiveProfile } from './production-active-profile.js'
 import { projectSetupProfiles, trustedProfileSources } from './production-profile-projection.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupSetup } from './production-setup-types.js'
@@ -145,4 +148,43 @@ export async function loadProductionSetup(
         'Discovery only: /health and /v1/models do not prove that the selected model can authenticate or run.',
     },
   }
+}
+
+/** Rebuilds the profile picker after restart without changing the active profile. */
+export async function loadProductionProfileCatalog(
+  options: ProductionStartupLoadOptions,
+  production: ProductionCompositionConfig,
+  connectionId: string,
+): Promise<readonly ProfileRecord[]> {
+  const connection = production.connections.find((record) => record.id === connectionId)
+  if (connection === undefined) {
+    throw new ProductionStartupError(
+      'PRODUCTION_CONNECTION_REQUIRED',
+      'The selected production connection does not exist',
+    )
+  }
+  const discovered = await discoverProfiles({
+    explicit: trustedProfileSources(options),
+    resolverContext: { workspaceRoot: options.workspace },
+  })
+  const active = productionActiveProfile(production.profile)
+  const seenDigests = new Set([active.digest])
+  const profiles = [
+    active,
+    ...discovered.profiles.filter((record) => {
+      if (seenDigests.has(record.digest)) return false
+      seenDigests.add(record.digest)
+      return true
+    }),
+  ]
+  const merged = { profiles, issues: discovered.issues }
+  if (connection.kind !== 'cli-bridge') {
+    return projectSetupProfiles(options, connection.endpoint ?? '', [], merged).profiles
+  }
+  const endpoint = canonicalBridgeEndpoint({
+    ...options,
+    ...(connection.endpoint === undefined ? {} : { cliBridgeEndpoint: connection.endpoint }),
+  })
+  const bridge = await discoverBridge(options, endpoint)
+  return projectSetupProfiles(options, endpoint, bridge.models, merged).profiles
 }

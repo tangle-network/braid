@@ -170,6 +170,7 @@ function analysisView(recipe: string): BraidViewModel {
           text: 'retry started after the provider timeout',
         },
       ],
+      citationSupport: { status: 'passed', supportedFindings: 1 },
       footer: [{ label: 'cost', value: '$0.02 · 120ms' }],
     },
   }
@@ -190,6 +191,7 @@ const permission: InteractionView = {
   allowedOutcomes: ['accept', 'reject', 'cancel'],
   responseScopes: ['once', 'session'],
   queuePosition: 0,
+  queueTotal: 1,
   secret: false,
 }
 
@@ -208,7 +210,13 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
     assert.match(forkScreen.join('\n'), /source: conversation:source/u)
     assert.match(forkScreen.join('\n'), /destination: conversation:copy/u)
     assert.match(forkScreen.join('\n'), /boundary: message:42/u)
-    assert.match(forkScreen.join('\n'), /enter\/y create fork · ←\/esc cancel/u)
+    assert.match(forkScreen.join('\n'), /operation id:/u)
+    assert.match(forkScreen.join('\n'), /plan digest:/u)
+    if (columns === 80) {
+      assert.match(forkScreen.join('\n'), /operation id: operation-fork-preview/u)
+      assert.match(forkScreen.join('\n'), /plan digest: digest:fork-preview/u)
+    }
+    assert.match(forkScreen.join('\n'), /enter\/y create(?: fork)? .*←\/esc/u)
 
     const graphScreen = await renderOverlay(graph, columns, rows)
     assertFits(graphScreen, columns)
@@ -240,7 +248,11 @@ test('long workflow state preserves the closing key instead of pushing it below 
     },
   })
   const forkScreen = await renderOverlay(fork, 40, 12)
-  assert.match(forkScreen.join('\n'), /enter\/y create fork · ←\/esc cancel/u)
+  assert.match(forkScreen.join('\n'), /enter\/y create .*←\/esc/u)
+  fork.handleInput('\u001b[F')
+  const forkTail = fork.render(40).join('\n')
+  assert.match(forkTail, /metadata 8: source-8/u)
+  assert.match(forkTail, /↑\/↓ inspect/u)
 
   const graph = new GraphView(theme)
   graph.setView({
@@ -637,10 +649,13 @@ test('comparison view leads with both outcomes and pages through every captured 
 
 test('approval actions are navigable and secret responses never render values', async () => {
   const responses: unknown[] = []
-  const shell = new InteractionShell(permission, theme, (response) => responses.push(response))
+  const shell = new InteractionShell({ ...permission, queueTotal: 3 }, theme, (response) =>
+    responses.push(response),
+  )
   const screen = await renderOverlay(shell, 40, 12)
   assertFits(screen, 40)
   assert.match(screen.join('\n'), /permission/u)
+  assert.match(screen.join('\n'), /request 1\/3/u)
   assert.match(screen.join('\n'), /1\. Approve/u)
   assert.match(screen.join('\n'), /2\. Reject/u)
   assert.match(screen.join('\n'), /3\. Cancel/u)

@@ -1,5 +1,6 @@
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
 import type { ExecutionEnvironmentObservation } from '../../domain/execution-observation.js'
+import type { ExecutionObservationSource, SandboxLifecyclePolicy } from './prepared-execution.js'
 import { observeSandboxAccount } from './sandbox-account-observation.js'
 import {
   captureSandboxBox,
@@ -15,7 +16,6 @@ import {
   type ObservableSandboxClient,
   type ObservableSandboxInstance,
 } from './sandbox-observation-types.js'
-import type { ExecutionObservationSource, SandboxLifecyclePolicy } from './prepared-execution.js'
 
 export interface SandboxObservationBinding {
   readonly client: SandboxClientLike
@@ -53,6 +53,22 @@ export function observeSandboxClient(
 
   observeSandboxAccount(client, state, unavailable, track, now)
 
+  const observeBox = (box: ObservableSandboxInstance): SandboxInstanceLike => {
+    captureSandboxBox(state, box, unavailable)
+    if (source.describePlacement === undefined) {
+      unavailable.add('verified-placement:not-exposed-by-client')
+    } else {
+      track(
+        Promise.resolve()
+          .then(() => source.describePlacement?.(box))
+          .then((placement) => captureSandboxPlacement(state, placement, unavailable)),
+      )
+    }
+    const proxy = wrapObservedSandboxBox(box, state, unavailable)
+    originals.set(proxy as object, box)
+    return proxy
+  }
+
   const wrapped: SandboxClientLike = {
     async create(options, requestOptions) {
       state.lifecycle = 'creating'
@@ -62,19 +78,7 @@ export function observeSandboxClient(
       state.storagePersistence = options?.ephemeral === true ? 'ephemeral-home' : 'persistent-home'
       try {
         const box = (await source.create(options, requestOptions)) as ObservableSandboxInstance
-        captureSandboxBox(state, box, unavailable)
-        if (source.describePlacement === undefined) {
-          unavailable.add('verified-placement:not-exposed-by-client')
-        } else {
-          track(
-            Promise.resolve()
-              .then(() => source.describePlacement?.(box))
-              .then((placement) => captureSandboxPlacement(state, placement, unavailable)),
-          )
-        }
-        const proxy = wrapObservedSandboxBox(box, state, unavailable)
-        originals.set(proxy as object, box)
-        return proxy
+        return observeBox(box)
       } catch (error) {
         state.lifecycle = 'failed'
         unavailable.add('provider-environment-id:not-materialized')
@@ -84,7 +88,13 @@ export function observeSandboxClient(
     ...(source.get === undefined
       ? {}
       : {
-          get: (id, requestOptions) => source.get?.(id, requestOptions) ?? Promise.resolve(null),
+          async get(id, requestOptions) {
+            const box = (await source.get?.(id, requestOptions)) as
+              | ObservableSandboxInstance
+              | null
+              | undefined
+            return box === null || box === undefined ? null : observeBox(box)
+          },
         }),
     ...(source.list === undefined
       ? {}

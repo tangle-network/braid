@@ -259,6 +259,7 @@ test('automation commands work through the command controller and Escape remains
     allowedOutcomes: ['accept', 'cancel'],
     responseScopes: ['once'],
     queuePosition: 0,
+    queueTotal: 1,
     secret: false,
   }
   const interactionShell = new InteractionShell(

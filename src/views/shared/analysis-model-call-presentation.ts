@@ -37,9 +37,9 @@ export function analysisModelCallView(record: AnalysisModelCallRecord): Analysis
 }
 
 export function analysisModelCallLine(call: AnalysisModelCallView): string {
-  const provider = call.provider ?? 'provider unknown'
+  const route = call.provider === undefined ? call.model : `${call.provider}/${call.model}`
   const latency = call.latencyMs === undefined ? 'latency unknown' : `latency ${call.latencyMs}ms`
-  return `#${call.sequence} ${provider}/${call.model} · ${tokens(call)} · ${cost(call)} · ${latency}`
+  return `#${call.sequence} ${route} · ${tokens(call)} · ${cost(call)} · ${latency}`
 }
 
 export function analysisModelCallSummary(calls: readonly AnalysisModelCallView[]): string {

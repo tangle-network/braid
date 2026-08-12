@@ -34,7 +34,7 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
     'product-demo',
     COLUMNS,
     ROWS,
-    { BRAID_FIXTURE_CHUNK_DELAY_MS: '70' },
+    { BRAID_FIXTURE_CHUNK_DELAY_MS: '300' },
     'product-demo',
     ['--connection', CONNECTION_ID, '--workspace', workspace],
   )
@@ -43,10 +43,10 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
     await terminal.waitFor(() => {
       const screen = normalized(terminal.screen())
       return (
-        screen.includes('Release engineer') &&
-        screen.includes('runner pi') &&
+        screen.includes('profile Release engineer') &&
+        screen.includes('pi / openai-codex/gpt-5.6-luna') &&
         screen.includes('Local CLI Bridge') &&
-        screen.includes('openai-codex/gpt-5.6-luna')
+        screen.includes('Ctrl+P commands')
       )
     }, 'complete product configuration')
     await pause(700)
@@ -60,6 +60,11 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
         screen.includes('runner pi · model openai-codex/gpt-5.6-luna')
       )
     }, 'AgentProfile panel')
+    terminal.resize(COLUMNS - 1, ROWS)
+    await terminal.waitForStable('pre-demo redraw')
+    const demoStartIndex = terminal.events.length
+    terminal.resize(COLUMNS, ROWS)
+    await terminal.waitForStable('demo redraw')
     await pause(1_000)
     terminal.input('\u001b')
     await terminal.waitFor(
@@ -68,11 +73,22 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
     )
     await pause(350)
 
-    const prompt = 'Trace this request from AgentProfile to the selected runner.'
+    const prompt = 'Which coding agent will handle my next task, and where will it run?'
     await typeText(terminal, prompt)
     terminal.input('\r')
     await terminal.waitFor(
-      () => normalized(terminal.screen()).includes('Route confirmed.'),
+      () => normalized(terminal.screen()).includes('working'),
+      'active run',
+      15_000,
+    )
+    terminal.input('\u001bOQ')
+    await terminal.waitFor(
+      () => normalized(terminal.screen()).includes('live work'),
+      'live-work pane',
+    )
+    await pause(500)
+    await terminal.waitFor(
+      () => normalized(terminal.screen()).includes('Pi will run the task'),
       'routed response',
       15_000,
     )
@@ -80,29 +96,30 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
       () => {
         const screen = normalized(terminal.screen())
         return (
-          screen.includes('completed') &&
-          screen.includes('model openai-codex/gpt-5.6-luna') &&
-          !screen.includes('Ctrl+C cancel')
+          screen.includes('pi / openai-codex/gpt-5.6-luna') && !screen.includes('Ctrl+C cancel')
         )
       },
       'completed run',
       15_000,
     )
+    terminal.input('\u001bOQ')
+    await terminal.waitFor(
+      () => !normalized(terminal.screen()).includes('live work'),
+      'live-work pane close',
+    )
     await terminal.waitForStable('product screenshot')
     const screenshot = terminal.snapshot()
     await pause(900)
 
-    terminal.input('\u001bOQ')
+    await typeText(terminal, '/activity', 30)
+    terminal.input('\r')
     await terminal.waitFor(
       () => normalized(terminal.screen()).includes('activity'),
-      'activity pane',
+      'retained activity',
     )
-    await pause(700)
-    terminal.input('\u001bOQ')
-    await terminal.waitFor(
-      () => !normalized(terminal.screen()).includes('activity'),
-      'activity pane close',
-    )
+    await pause(900)
+    terminal.input('\u001b')
+    await pause(350)
 
     await typeText(terminal, '/ask What should this agent improve next?', 18)
     terminal.input('\r')
@@ -126,13 +143,13 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
       ),
       demoCast: castFor(
         terminal,
-        rebaseEvents(terminal.events.slice(0, demo.eventCount)),
+        rebaseEvents(terminal.events.slice(demoStartIndex, demo.eventCount)),
         'Braid product demo',
       ),
       steps: [
         'Inspect AgentProfile',
         'Run through Local CLI Bridge',
-        'Inspect tool activity',
+        'Inspect live work and the retained run',
         'Analyze the frozen trace with /ask',
         'Review the analysis list and details together',
       ],

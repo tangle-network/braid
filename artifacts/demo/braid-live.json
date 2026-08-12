@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 2,
+  "status": "passed",
+  "capturedAt": "2026-08-12T12:42:08.886Z",
+  "source": {
+    "commit": "8cce4c6e8aade3b1fc51f558d65a823ac12a5e1a",
+    "packageVersion": "0.1.1",
+    "tarball": "tangle-network-braid-0.1.1.tgz",
+    "tarballSha256": "9bbd7b5b9f78b3d202dbb09d4375970edfd4965ffc5ad94b04bd7fa6ce01c4c7",
+    "packageProofSha256": "d6b3c565d628046ff29a46508ee7f0209931e08fe08711d03e58ea3229880989"
+  },
+  "route": {
+    "connection": "Local CLI Bridge",
+    "endpoint": "http://127.0.0.1:3345",
+    "runner": "claude-code",
+    "runnerVersion": "2.1.228 (Claude Code)",
+    "provider": null,
+    "model": "opus"
+  },
+  "profile": {
+    "name": "Product engineer",
+    "reasoningEffort": "high",
+    "maxOutputTokens": 32768
+  },
+  "analysisProfile": {
+    "name": "Trace analyst",
+    "runner": "claude-code",
+    "model": "sonnet",
+    "reasoningEffort": "high",
+    "maxOutputTokens": 16384
+  },
+  "task": {
+    "prompt": "Finish the slugify function. Normalize Unicode accents, treat underscores as punctuation, collapse punctuation and spaces to one dash, trim dashes, and lowercase. Add edge-case tests, run them, and summarize the proof.",
+    "runId": "run-b413c4d4-820d-453f-93d2-ff52f9751b83",
+    "providerSessionId": "session-braid-run-b413c4d4-820d-453f-93d2-ff52f9751b83",
+    "inputTokens": 15,
+    "outputTokens": 2944,
+    "llmCalls": null,
+    "llmLatencyMs": null,
+    "normalizedToolCalls": 10,
+    "normalizedToolResults": 0,
+    "toolProjection": {
+      "status": "blocked-upstream",
+      "issue": "https://github.com/tangle-network/agent-runtime/issues/762"
+    },
+    "workspaceProof": {
+      "testOutput": "> test\n> node --test --test-reporter=spec\n\n(node:3864502) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[32m✔ joins words with a dash \u001b[90m(1.009307ms)\u001b[39m\u001b[39m\n\u001b[32m✔ strips Unicode accents \u001b[90m(0.196197ms)\u001b[39m\u001b[39m\n\u001b[32m✔ normalizes precomposed and decomposed forms alike \u001b[90m(0.075729ms)\u001b[39m\u001b[39m\n\u001b[32m✔ treats underscores as punctuation \u001b[90m(0.654959ms)\u001b[39m\u001b[39m\n\u001b[32m✔ collapses runs of punctuation and spaces to one dash \u001b[90m(0.061551ms)\u001b[39m\u001b[39m\n\u001b[32m✔ trims leading and trailing dashes \u001b[90m(0.080679ms)\u001b[39m\u001b[39m\n\u001b[32m✔ keeps digits \u001b[90m(0.046902ms)\u001b[39m\u001b[39m\n\u001b[32m✔ returns an empty string for punctuation-only input \u001b[90m(0.037904ms)\u001b[39m\u001b[39m\n\u001b[32m✔ returns an empty string for empty input \u001b[90m(0.053705ms)\u001b[39m\u001b[39m\n\u001b[32m✔ is idempotent \u001b[90m(0.120778ms)\u001b[39m\u001b[39m\n\u001b[34mℹ tests 10\u001b[39m\n\u001b[34mℹ suites 0\u001b[39m\n\u001b[34mℹ pass 10\u001b[39m\n\u001b[34mℹ fail 0\u001b[39m\n\u001b[34mℹ cancelled 0\u001b[39m\n\u001b[34mℹ skipped 0\u001b[39m\n\u001b[34mℹ todo 0\u001b[39m\n\u001b[34mℹ duration_ms 40.398807\u001b[39m\n(node:3864496) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
+      "samples": [
+        "cafe-deja-vu",
+        "ship-it"
+      ],
+      "sourceSha256": "04c489c2a24d8fe578abc57d22998978ca01670f062b7c5c9afb952a7fd4d6e9",
+      "testSha256": "42068ff1ccab7c5ddfb03027ff2f55ddcc931ea16364b620ea87867ec6545c37"
+    }
+  },
+  "analysis": {
+    "question": "What changed, what was verified, and what should I review?",
+    "runtimeManager": "bundled uv",
+    "pythonVersion": "3.12",
+    "agentEvalRpcVersion": "0.145.1",
+    "id": "analysis-017ec9050a1b5f534bea4fd2d31e3bd7624fd6e9",
+    "status": "completed",
+    "findings": 3,
+    "supportedFindings": 3,
+    "citationSupport": "passed",
+    "configuredModel": "sonnet",
+    "observedModels": [
+      "claude-code/sonnet"
+    ],
+    "modelCalls": 5,
+    "inputTokens": 10,
+    "outputTokens": 3122,
+    "costUsd": null,
+    "estimatedCostUsd": 0.324612,
+    "costStatus": "estimated",
+    "modelCallEvidence": [
+      {
+        "sequence": 1,
+        "model": "claude-code/sonnet",
+        "inputTokens": 2,
+        "outputTokens": 246,
+        "tokensKnown": true,
+        "costUsd": 0.075312,
+        "costStatus": "estimated",
+        "latencyMs": 5721,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 2,
+        "model": "claude-code/sonnet",
+        "inputTokens": 2,
+        "outputTokens": 271,
+        "tokensKnown": true,
+        "costUsd": 0.055604999999999995,
+        "costStatus": "estimated",
+        "latencyMs": 8056,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 3,
+        "model": "claude-code/sonnet",
+        "inputTokens": 2,
+        "outputTokens": 348,
+        "tokensKnown": true,
+        "costUsd": 0.05676,
+        "costStatus": "estimated",
+        "latencyMs": 8051,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 4,
+        "model": "claude-code/sonnet",
+        "inputTokens": 2,
+        "outputTokens": 609,
+        "tokensKnown": true,
+        "costUsd": 0.06067499999999999,
+        "costStatus": "estimated",
+        "latencyMs": 10484,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 5,
+        "model": "claude-code/sonnet",
+        "inputTokens": 2,
+        "outputTokens": 1648,
+        "tokensKnown": true,
+        "costUsd": 0.07626,
+        "costStatus": "estimated",
+        "latencyMs": 17670,
+        "outcome": "succeeded"
+      }
+    ],
+    "modelLatencyMs": 49982,
+    "wallTimeMs": 59982
+  },
+  "terminal": {
+    "columns": 120,
+    "rows": 30,
+    "finalRevision": 36
+  },
+  "artifacts": {
+    "braid-live.cast": "40eedba7245c0fb5728d7500a6a8080a083def613a89cbbf8934bdbabba135b3",
+    "braid-live.gif": "038ca8e599e09856d56706a6063cb5ea3319bb9d1d64edcb8bfb67bb1003eed8",
+    "braid-live.png": "f92520e708be76f3e9aa6a9f6199e16881ef89ef973fcea2cb7b015fcd1ada89",
+    "braid-live.txt": "602d468c667c6d12616842761caba2105ed023ee2359f8f46c98500152950d3b"
+  }
+}

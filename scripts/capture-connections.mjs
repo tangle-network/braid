@@ -224,7 +224,10 @@ async function spawnTerminal(binary, columns, rows, root) {
 }
 
 async function reachCredentialPrompt(terminal) {
-  await waitFor(() => normalized(terminal.screen()).includes('braid'), 'Braid header')
+  await waitFor(
+    () => normalized(terminal.screen()).includes('Braid starter'),
+    'Braid conversation shell',
+  )
   terminal.input('/connection create\r')
   await waitFor(
     () => normalized(terminal.screen()).includes('connection metadata'),

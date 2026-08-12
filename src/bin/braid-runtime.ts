@@ -9,12 +9,12 @@ import { SystemClock } from '../ports/clock.js'
 import type { StartupPreview } from '../startup/preview-runtime.js'
 import { PRODUCT_DEMO_CONNECTION, PRODUCT_DEMO_PROFILE } from '../testing/product-demo-fixture.js'
 import type { CliOptions } from './args.js'
-import { productionActiveProfile } from './production-active-profile.js'
 import {
   activateProductionConnection,
   openProductionApplication,
 } from './production-application.js'
-import { loadProductionSetup, type ProductionStartupSetup } from './production-setup.js'
+import { loadProductionProfileCatalog, loadProductionSetup } from './production-setup.js'
+import type { ProductionStartupSetup } from './production-setup-types.js'
 import {
   loadProductionStartup,
   ProductionStartupError,
@@ -24,9 +24,10 @@ import { createRuntimeStartupOptions } from './runtime-startup-options.js'
 import { defaultStatePath } from './state-path.js'
 export async function runBraid(options: CliOptions): Promise<number> {
   const workspace = resolve(options.workspace)
-  const previewRuntime = usesInteractiveTerminal(options)
-    ? import('../startup/preview-runtime.js')
-    : undefined
+  const previewRuntime =
+    options.mode === 'tui' && !options.plain && process.stdin.isTTY && process.stdout.isTTY
+      ? import('../startup/preview-runtime.js')
+      : undefined
   const opened = await openApplication(options, workspace)
   const active = {
     current: {
@@ -68,9 +69,6 @@ export async function runBraid(options: CliOptions): Promise<number> {
     await active.current.close()
   }
 }
-function usesInteractiveTerminal(options: CliOptions): boolean {
-  return options.mode === 'tui' && !options.plain && process.stdin.isTTY && process.stdout.isTTY
-}
 async function openApplication(
   options: CliOptions,
   workspace: string,
@@ -109,7 +107,9 @@ async function openApplication(
     const connectionId =
       startupOptions.connectionId ??
       (restoredConnectionAvailable ? restoredConnectionId : production.connectionId)
+    let profiles: Awaited<ReturnType<typeof loadProductionProfileCatalog>>
     try {
+      profiles = await loadProductionProfileCatalog(startupOptions, production, connectionId)
       await activateProductionConnection(configured.app, connectionId, production.connections)
     } catch (activationError) {
       await configured.close().catch(() => undefined)
@@ -119,7 +119,7 @@ async function openApplication(
       ...configured,
       startupOptions,
       profileConnectionOptions: {
-        profiles: [productionActiveProfile(production.profile)],
+        profiles,
         connections: production.connections,
         ...(production.connectionOptions === undefined
           ? {}

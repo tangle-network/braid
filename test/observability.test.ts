@@ -187,6 +187,38 @@ test('sandbox cleanup continues when resource sampling throws', async () => {
   )
 })
 
+test('sandbox reconnect observes the server-issued environment returned by get', async () => {
+  const source = {
+    async create() {
+      throw new Error('reconnect must not create another sandbox')
+    },
+    async get(id: string) {
+      return {
+        id,
+        name: 'reconnected-box',
+        status: 'running',
+        createdAt: new Date('2026-08-09T11:58:00.000Z'),
+        async *streamPrompt() {},
+      }
+    },
+  } as unknown as SandboxClientLike
+  const observed = observeSandboxClient(
+    source,
+    { mode: 'retained', cleanup: 'explicit', continuity: 'session' },
+    () => at,
+  )
+
+  const box = await observed.client.get?.('sandbox-reconnected')
+  const snapshot = await observed.observation.snapshot()
+
+  assert.equal(box?.id, 'sandbox-reconnected')
+  assert.equal(snapshot?.providerEnvironmentId, 'sandbox-reconnected')
+  assert.equal(snapshot?.name, 'reconnected-box')
+  assert.equal(snapshot?.lifecycle, 'ready')
+  assert.equal(snapshot?.lifecycleMode, 'retained')
+  assert.equal(snapshot?.cleanup, 'explicit')
+})
+
 test('sandbox observation never guesses an unrecognized provider lifecycle', async () => {
   const source = {
     async create() {

@@ -74,36 +74,37 @@ test('chrome uses complete responsive groups at every reference width', () => {
     quitArmed: false,
     activityVisible: false,
     navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
   })
 
   const narrow = plainLines(chrome, 40)
-  assert.equal(narrow.length, 3)
-  assert.match(narrow[0] ?? '', /braid\s+AgentProfile Release engineer/u)
-  assert.match(narrow[1] ?? '', /pi \/ glm-5\.2.*Local CLI Bridge/u)
-  assert.match(narrow[2] ?? '', /completed.*Ctrl\+P commands/u)
+  assert.equal(narrow.length, 1)
+  assert.match(narrow[0] ?? '', /Release engineer.*Ctrl\+P commands/u)
   assert.doesNotMatch(narrow.join('\n'), /\/home\/drew|\.worktrees|…/u)
 
   const standardTop = chrome.renderTop(80).join('\n')
   const standardBottom = chrome.renderBottom(80).join('\n')
   const standard = [standardTop, standardBottom].join('\n')
-  assert.match(standard, /braid\s+cwd\s+braid-integration/u)
-  assert.match(standard, /New conversation/u)
-  assert.match(standardTop, /AgentProfile Release engineer/u)
-  assert.match(standardTop, /pi \/ glm-5\.2/u)
+  assert.equal(standardTop, '')
+  assert.match(standardBottom, /profile Release engineer/u)
+  assert.match(standardBottom, /pi \/ glm-5\.2/u)
   assert.match(standard, /Local CLI Bridge/u)
-  assert.match(standardBottom, /completed.*Ctrl\+P commands/u)
-  assert.doesNotMatch(standard, /branch-1|in 1\.2k|out 567|\$0\.0312/u)
+  assert.match(standardBottom, /Ctrl\+P commands/u)
+  assert.doesNotMatch(standard, /braid|cwd|New conversation|branch-1|in 1\.2k|out 567|\$0\.0312/u)
   assert.doesNotMatch(standard, /…/u)
 
-  const wideTop = chrome.renderTop(120).join('\n')
   const wide = plainLines(chrome, 120).join('\n')
-  assert.match(wide, /branch\s+branch-1/u)
-  assert.match(wideTop, /model tangle-router\/glm-5\.2/u)
-  assert.match(wideTop, /output ≤8\.2k/u)
+  assert.match(wide, /profile Release engineer/u)
+  assert.match(wide, /pi \/ tangle-router\/glm-5\.2/u)
+  assert.match(wide, /Local CLI Bridge/u)
+  assert.match(wide, /high/u)
   assert.match(wide, /in 1\.2k/u)
   assert.match(wide, /out 567/u)
   assert.match(wide, /\$0\.0312/u)
-  assert.doesNotMatch(wide, /\/home\/drew|\.worktrees|…/u)
+  assert.doesNotMatch(
+    wide,
+    /braid|cwd|New conversation|branch-1|output ≤|\/home\/drew|\.worktrees|…/u,
+  )
 
   for (const width of [1, 2, 10, 40, 80, 120, 200]) {
     for (const line of plainLines(chrome, width)) assert.ok(visibleWidth(line) <= width)
@@ -122,14 +123,20 @@ test('chrome exposes active-run controls and failure recovery without hiding out
       statusText: 'streaming',
       activeRunId: 'run-metrics',
       runs: [{ ...run, status: 'running', completeness: 'streaming' }],
+      capabilities: {
+        ...base.capabilities,
+        'run.queue': { available: true, source: 'provider' },
+        'run.steer': { available: true, source: 'provider' },
+      },
     },
     quitArmed: false,
     activityVisible: false,
     navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
   })
   const active = chrome.render(80).join('\n')
   assert.match(active, /Ctrl\+C cancel/u)
-  assert.match(active, /Enter queues input/u)
+  assert.match(active, /Enter queues · Alt\+S steer/u)
 
   chrome.setState({
     view: {
@@ -148,11 +155,29 @@ test('chrome exposes active-run controls and failure recovery without hiding out
     quitArmed: false,
     activityVisible: false,
     navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
   })
   const failed = chrome.render(80).join('\n')
-  assert.match(failed, /outcome failed · operation operation-/u)
-  assert.match(failed, /\/export preserve · \/new continue/u)
+  assert.match(failed, /failed/u)
+  assert.match(failed, /\/activity details · \/new/u)
   assert.doesNotMatch(failed, /operation-that-is-long-enough-to-shorten/u)
+
+  chrome.setState({
+    view: {
+      ...base,
+      status: 'failed',
+      statusText: 'RUNTIME_FINAL_ERROR',
+      runs: [{ ...run, status: 'failed', completeness: 'missing-history' }],
+    },
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
+  })
+  const uncertain = chrome.render(80).join('\n')
+  assert.match(uncertain, /outcome unknown/u)
+  assert.match(uncertain, /\/activity inspect/u)
+  assert.doesNotMatch(uncertain, /failed|\/new/u)
 })
 
 test('layout breakpoints preserve transcript room and short-terminal overlays', () => {
@@ -191,16 +216,11 @@ test('published Pi virtual terminals keep the composer and valid cells at all si
     assert.equal(viewport.length, rows, `${columns}x${rows} row count`)
     for (const line of viewport)
       assert.ok(visibleWidth(line) <= columns, `${columns}x${rows} line exceeds width`)
-    assert.match(viewport.join('\n'), /braid/u)
-    assert.match(viewport.join('\n'), /completed/u)
-    assert.ok(
-      viewport.some((line) => line.includes('─')),
-      `${columns}x${rows} composer border`,
-    )
-    const composerTop = viewport.findIndex((line) => line.includes('› send'))
-    const composerBottom = viewport.findIndex((line) => line.includes('alt+enter newline'))
-    assert.ok(composerTop >= 0, `${columns}x${rows} composer action`)
-    assert.equal(composerBottom - composerTop, 4, `${columns}x${rows} idle composer rows`)
+    assert.doesNotMatch(viewport.join('\n'), /braid|completed|─/u)
+    const prompt = viewport.findIndex((line) => line.includes('›'))
+    assert.ok(prompt >= 0, `${columns}x${rows} composer prompt`)
+    assert.equal(rows - prompt, 4, `${columns}x${rows} composer and context rows`)
+    assert.match(viewport.at(-1) ?? '', /Release engineer/u)
     assert.doesNotMatch(viewport.join('\n'), /\/home\/drew|\.worktrees/u)
 
     tui.stop()
@@ -239,7 +259,11 @@ test('composer derives truthful actions and keeps three usable rows at 40x12', a
   assert.equal(projection.action, 'queue')
   assert.equal(projection.queuePosition, 2)
   assert.match(projection.actionLabel, /queue next #2/u)
-  assert.match(projection.actionLabel, /steer \/steer/u)
+  assert.match(projection.actionLabel, /Alt\+S steer/u)
+
+  const steering = composerProjectionFor(active, 'steer')
+  assert.equal(steering.action, 'steer')
+  assert.match(steering.actionLabel, /Alt\+S queue/u)
   assert.equal(composerRowBudget(12), 5)
 
   const unavailable = composerProjectionFor({
@@ -251,7 +275,7 @@ test('composer derives truthful actions and keeps three usable rows at 40x12', a
     },
   })
   assert.equal(unavailable.action, 'unavailable')
-  assert.equal(unavailable.actionLabel, 'queue unavailable')
+  assert.equal(unavailable.actionLabel, 'input unavailable')
 
   const terminal = new VirtualTerminal(40, 12)
   const tui = new TuiMainScreen(terminal)
@@ -268,13 +292,11 @@ test('composer derives truthful actions and keeps three usable rows at 40x12', a
   await terminal.waitForRender()
 
   const viewport = terminal.getViewport()
-  const top = viewport.findIndex((line) => line.includes('queue next #2'))
-  const bottom = viewport.findIndex((line) => line.includes('alt+enter newline'))
-  assert.ok(top >= 0)
-  assert.ok(bottom > top)
-  assert.equal(bottom - top, 4, 'composer must retain three usable rows')
-  assert.match(viewport.join('\n'), /steer \/steer/u)
-  assert.ok(viewport.slice(top + 1, bottom).some((line) => line.includes('›')))
+  const prompt = viewport.findIndex((line) => line.includes('›'))
+  assert.ok(prompt >= 0)
+  assert.equal(viewport.length - prompt, 4, 'composer must retain three usable rows and context')
+  assert.match(viewport.join('\n'), /working · Ctrl\+C stop/u)
+  assert.match(viewport[prompt] ?? '', /› queue #2/u)
   assert.equal(viewport.length, 12)
   for (const line of viewport) assert.ok(visibleWidth(line) <= 40)
 
@@ -305,11 +327,10 @@ test('composer bounds long drafts without changing Pi editor input behavior', ()
 
   shell.editor.setText(Array.from({ length: 60 }, (_, index) => `line-${index}`).join('\n'))
   const lines = shell.render(40)
-  const top = lines.findIndex((line) => line.includes('› send'))
-  const bottom = lines.findIndex((line) => line.includes('alt+enter newline'))
-  assert.ok(top >= 0)
-  assert.ok(bottom > top)
-  assert.equal(bottom - top, 4)
+  const prompt = lines.findIndex((line) => line.includes('›'))
+  assert.ok(prompt >= 0)
+  assert.equal(lines.length - prompt, 4)
+  assert.doesNotMatch(lines.join('\n'), /─|alt\+enter newline/u)
   assert.equal(lines.length, 12)
   for (const line of lines) assert.ok(visibleWidth(line) <= 40)
 })

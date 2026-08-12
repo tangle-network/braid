@@ -1,12 +1,12 @@
-braid  AgentProfile Braid starter
-pi / deterministic · fixture
+ › W6 visual proof
 
  · run result · Ctrl+E details
  Fixture response through pi: W6 visual
  proof
-──────────────── › send ────────────────
+
+
+
 ›
 
 
-────── alt+enter newline · paste ───────
-completed                  Ctrl+E detail
+Braid starter              Ctrl+E detail

@@ -38,6 +38,10 @@ import {
 import { registerBraidQuestionAnalyst } from './question-analyst.js'
 import { createRuntimeTraceModelOwner } from './runtime-model-owner.js'
 
+const DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS = 16_384
+const DEFAULT_ANALYSIS_REASONING_MULTIPLIER = 4
+const MINIMUM_ANALYSIS_INPUT_HEADROOM_USD = 1
+
 export type TraceAnalysisDiagnosticKind =
   | 'missing-python'
   | 'missing-python-package'
@@ -207,6 +211,24 @@ function engineConfigurationMessage(error: unknown): string {
   return 'The published agent-eval trace engine rejected the selected configuration.'
 }
 
+function defaultModelCostCeiling(
+  pricing: CustomTokenPricing,
+  maxOutputTokens: number,
+  maxReasoningTokens: number,
+): number {
+  const maximumOutputCost =
+    ((maxOutputTokens + maxReasoningTokens) * pricing.outputUsdPerMillion) / 1_000_000
+  // The proxy reserves the complete output and reasoning limits before dispatch.
+  // Keep additional room for the actual control prompt without weakening token limits.
+  return (
+    Math.ceil(
+      (maximumOutputCost +
+        Math.max(MINIMUM_ANALYSIS_INPUT_HEADROOM_USD, maximumOutputCost * 0.25)) *
+        1_000_000,
+    ) / 1_000_000
+  )
+}
+
 /**
  * Configure the model-backed trace analysts for one exact profile/connection pair.
  *
@@ -332,6 +354,14 @@ export async function createTraceAnalysisAdapter(
         options.recordExecution?.(observation)
       },
     })
+    const maxOutputTokens = options.maxOutputTokens ?? DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS
+    const maxReasoningTokens =
+      options.maxReasoningTokens ?? maxOutputTokens * DEFAULT_ANALYSIS_REASONING_MULTIPLIER
+    const maxCostUsd =
+      options.maxCostUsd ??
+      (owner.pricing === undefined
+        ? undefined
+        : defaultModelCostCeiling(owner.pricing, maxOutputTokens, maxReasoningTokens))
     const engine = createDspyRlmTraceEngine({
       call: owner.call,
       callRef: owner.callRef,
@@ -340,13 +370,9 @@ export async function createTraceAnalysisAdapter(
       // Coding models often return natural code and prose from RLM control turns.
       controlAdapter: 'tolerant',
       ...(owner.pricing === undefined ? {} : { pricing: { ...owner.pricing } }),
-      ...(options.maxCostUsd === undefined ? {} : { maxCostUsd: options.maxCostUsd }),
-      ...(options.maxOutputTokens === undefined
-        ? {}
-        : { maxOutputTokens: options.maxOutputTokens }),
-      ...(options.maxReasoningTokens === undefined
-        ? {}
-        : { maxReasoningTokens: options.maxReasoningTokens }),
+      ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
+      maxOutputTokens,
+      maxReasoningTokens,
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       runner: {
         command: python.runner.command,

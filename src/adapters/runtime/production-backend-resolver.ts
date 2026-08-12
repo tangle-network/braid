@@ -1,3 +1,4 @@
+import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { connectionEndpoint } from '../connections/production-connection-endpoints.js'
 import type { PreparedExecution } from './prepared-execution.js'
 import type {
@@ -5,13 +6,12 @@ import type {
   ProductionExecutionSelection,
 } from './production-backend-common.js'
 import {
+  type PreparedCliBridgeConnection,
   prepareCliBridgeConnection,
   resolveCliBridgeBackend,
-  type PreparedCliBridgeConnection,
 } from './production-cli-bridge-backend.js'
 import { resolveTangleInferenceBackend } from './production-tangle-inference-backend.js'
 import { resolveTangleSandboxBackend } from './production-tangle-sandbox-backend.js'
-import type { ExecuteTurnInput } from '../../ports/execution.js'
 
 export type {
   ProductionBackendResolverOptions,

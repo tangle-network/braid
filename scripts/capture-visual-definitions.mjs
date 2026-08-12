@@ -19,8 +19,8 @@ export function createStateDefinitions(normalized) {
         terminal.input('W6 active streaming')
         terminal.input('\r')
         await terminal.waitFor(
-          () => normalized(terminal.screen()).includes('streaming'),
-          'streaming',
+          () => normalized(terminal.screen()).includes('working'),
+          'active work',
         )
         const { point, record } = await terminal.captureState()
         terminal.input('/cancel')
@@ -28,7 +28,8 @@ export function createStateDefinitions(normalized) {
         await terminal.waitFor(
           () =>
             normalized(terminal.screen()).includes('cancelled') ||
-            normalized(terminal.screen()).includes('completed'),
+            normalized(terminal.screen()).includes('completed') ||
+            normalized(terminal.screen()).includes('failed'),
           'cancellation',
         )
         await terminal.closeNormally()

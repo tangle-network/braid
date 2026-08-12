@@ -37,7 +37,7 @@ export function materializeBridgeModelRoute(
 export interface BridgeCatalogTarget {
   readonly route: string
   readonly runner: HarnessType
-  readonly provider: string
+  readonly provider?: string
   readonly model: string
 }
 
@@ -51,8 +51,12 @@ export function bridgeCatalogTarget(
   const model = route.slice(runner.length + 1)
   if (model.length === 0) return undefined
   const providerSeparator = model.indexOf('/')
-  const provider = providerSeparator > 0 ? model.slice(0, providerSeparator) : runner
-  return { route, runner, provider, model }
+  return {
+    route,
+    runner,
+    model,
+    ...(providerSeparator > 0 ? { provider: model.slice(0, providerSeparator) } : {}),
+  }
 }
 
 /** Accepts a catalog entry only when its backend agrees with its encoded route. */

@@ -1,4 +1,15 @@
 import assert from 'node:assert/strict'
+import { basename, dirname, resolve } from 'node:path'
+
+export function packageTarballPath(proofPath, proof) {
+  assert.equal(
+    basename(proof.tarball ?? ''),
+    proof.tarball,
+    'The package proof tarball must be a file name',
+  )
+  assert.match(proof.tarball, /\.tgz$/u, 'The package proof tarball must be a gzip archive')
+  return resolve(dirname(proofPath), proof.tarball)
+}
 
 export function assertExactPackageProof(proof, expected) {
   assert.ok(proof && typeof proof === 'object', 'The package proof is not an object')
@@ -23,6 +34,16 @@ export function safeManifestAnalysis(record) {
   const findings = detail.analysisFindingCount
   assert.ok(Number.isInteger(findings), 'The real /ask analysis omitted its typed finding count')
   assert.ok(findings > 0, 'The real /ask analysis returned no findings')
+  assert.equal(
+    detail.analysisCitationSupport,
+    'passed',
+    'The real /ask citation check did not pass',
+  )
+  assert.equal(
+    detail.analysisSupportedFindingCount,
+    findings,
+    'The real /ask analysis retained an unsupported finding',
+  )
   const usage = record.view?.sessionUsage?.analyses
   assert.equal(usage?.sourceCount, 1, 'The live demo expected exactly one analysis usage source')
   const execution = detail.analysisExecution
@@ -42,6 +63,8 @@ export function safeManifestAnalysis(record) {
     id: analysis.entityId,
     status: detail.status,
     findings,
+    supportedFindings: detail.analysisSupportedFindingCount,
+    citationSupport: detail.analysisCitationSupport,
     configuredModel: execution.configuredModel ?? null,
     observedModels: [...execution.observedModels],
     modelCalls: modelCalls?.length ?? null,

@@ -75,13 +75,34 @@ test('one activity document preserves event status, tree identity, duration, usa
   const browserRows = activityDocument(view).rows
   assert.equal(browserRows.find((row) => row.id === 'tool-result')?.status, 'failed')
 
+  const recordedRun = view.runs[0]
+  assert.ok(recordedRun)
+  const missingUsage = activityDocument({
+    ...view,
+    runs: [
+      {
+        ...recordedRun,
+        usage: {
+          tokenStatus: 'unknown',
+          costStatus: 'unknown',
+        },
+      },
+    ],
+  })
+  const missingDetail = missingUsage.rows.find((row) => row.id === 'run-1')?.detailLines.join('\n')
+  assert.match(missingDetail ?? '', /model calls: not reported/u)
+  assert.match(missingDetail ?? '', /model latency: not reported/u)
+  assert.match(missingDetail ?? '', /token measurement: not reported/u)
+  assert.match(missingDetail ?? '', /cost measurement: not reported/u)
+
   const rail = new ActivityView(theme)
   rail.setView(view)
-  assert.match(rail.render(80).join('\n'), /failed shell.*permission denied/u)
+  assert.match(rail.render(80).join('\n'), /running shell.*started/u)
+  assert.doesNotMatch(rail.render(80).join('\n'), /failed shell|permission denied/u)
 })
 
-test('the wide rail uses a divider and activity visibility defaults to active runs', async () => {
-  assert.equal(activityVisibleFor({ activeRunId: 'run-1' }, 'auto'), true)
+test('the wide live-work rail uses a divider and remains explicitly opt-in', async () => {
+  assert.equal(activityVisibleFor({ activeRunId: 'run-1' }, 'auto'), false)
   assert.equal(activityVisibleFor({}, 'auto'), false)
   assert.equal(activityVisibleFor({}, 'visible'), true)
   assert.equal(activityVisibleFor({ activeRunId: 'run-1' }, 'hidden'), false)

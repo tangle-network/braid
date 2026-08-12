@@ -7,6 +7,7 @@ import type { ModalCoordinator } from './modal-coordinator.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
 import type { BraidShell } from './terminal-shell.js'
+import type { ComposerMode } from './composer-view.js'
 
 export interface TerminalInputControllerOptions {
   readonly tui: TUI
@@ -26,12 +27,10 @@ export interface TerminalInputControllerOptions {
 export type ActivityVisibility = 'auto' | 'hidden' | 'visible'
 
 export function activityVisibleFor(
-  view: Pick<BraidViewModel, 'activeRunId'>,
+  _view: Pick<BraidViewModel, 'activeRunId'>,
   visibility: ActivityVisibility,
 ): boolean {
-  if (visibility === 'visible') return true
-  if (visibility === 'hidden') return false
-  return view.activeRunId !== undefined
+  return visibility === 'visible'
 }
 
 /** Routes non-text terminal keys and owns the short-lived quit/activity state. */
@@ -51,6 +50,7 @@ export class TerminalInputController {
   #quitTimer: ReturnType<typeof setTimeout> | undefined
   #quitArmed = false
   #activityVisibility: ActivityVisibility = 'auto'
+  #composerMode: ComposerMode = 'queue'
 
   constructor(options: TerminalInputControllerOptions) {
     this.#tui = options.tui
@@ -75,12 +75,21 @@ export class TerminalInputController {
     return activityVisibleFor(this.#controller.view(), this.#activityVisibility)
   }
 
+  get composerMode(): ComposerMode {
+    return this.#composerMode
+  }
+
   close(): void {
     if (this.#quitTimer) clearTimeout(this.#quitTimer)
     this.#quitTimer = undefined
   }
 
   handle(data: string): { consume?: boolean } | undefined {
+    if (matchesKeyAction(data, this.#keymap, 'toggleSteer')) {
+      if (this.#tui.hasOverlay() || this.#interactionOpen()) return undefined
+      this.#toggleComposerMode()
+      return { consume: true }
+    }
     if (isTextInputSequence(data)) return undefined
     if (matchesKeyAction(data, this.#keymap, 'closeOverlay') && this.#tui.hasOverlay()) {
       if (this.#interactionOpen()) return undefined
@@ -165,6 +174,24 @@ export class TerminalInputController {
       return { consume: true }
     }
     return undefined
+  }
+
+  #toggleComposerMode(): void {
+    const view = this.#controller.view()
+    const queue =
+      view.activeRunId !== undefined && view.capabilities['run.queue']?.available === true
+    const steer =
+      view.activeRunId !== undefined && view.capabilities['run.steer']?.available === true
+    if (!steer) {
+      this.#overlays.openUnavailable(
+        'Steering unavailable',
+        'The active run does not advertise live steering.',
+      )
+      return
+    }
+    this.#composerMode = queue && this.#composerMode === 'steer' ? 'queue' : 'steer'
+    this.#shell.setComposerMode(this.#composerMode)
+    this.#stateChanged()
   }
 
   #requestShutdown(): void {

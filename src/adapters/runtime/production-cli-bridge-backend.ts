@@ -3,10 +3,10 @@ import type {
   AgentProfile,
   HarnessType,
 } from '@tangle-network/agent-interface'
-import { snapHarnessToModel } from '../agent-interface/harness-runtime.js'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
+import { snapHarnessToModel } from '../agent-interface/harness-runtime.js'
 import {
   bridgeRunnerSupportsModel,
   materializeBridgeModelRoute,
@@ -89,7 +89,9 @@ export async function prepareCliBridgeConnection(
   connectionId: ConnectionId,
   endpoint: string,
 ): Promise<PreparedCliBridgeConnection> {
-  const profile = await exactExecutionProfile(input.profile, selection, connectionId)
+  const profile = await exactExecutionProfile(input.profile, selection, connectionId, {
+    requireProvider: false,
+  })
   const model = requiredProfileModel(profile, connectionId)
   const runner = requiredProfileRunner(profile, connectionId)
   if (!bridgeRunnerSupportsModel(runner, model)) {

@@ -9,7 +9,7 @@ import {
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { ActivityView } from './activity.js'
-import { ComposerView } from './composer-view.js'
+import { type ComposerMode, ComposerView } from './composer-view.js'
 import { layoutFor } from './layout.js'
 import { TerminalChrome } from './terminal-chrome.js'
 import type { BraidTheme } from './theme.js'
@@ -26,6 +26,7 @@ export class BraidShell extends Container {
   #showActivity = false
   #modalVisible = false
   #quitArmed = false
+  #composerMode: ComposerMode = 'queue'
 
   constructor(
     tui: TUI,
@@ -53,6 +54,13 @@ export class BraidShell extends Container {
     return this.#composer.editor
   }
 
+  setComposerMode(mode: ComposerMode): void {
+    this.#composerMode = mode
+    this.#composer.setMode(mode)
+    if (this.#view) this.#composer.setView(this.#view)
+    this.#refreshChrome()
+  }
+
   setActivityVisible(visible: boolean): void {
     this.#showActivity = visible
     this.invalidate()
@@ -74,6 +82,7 @@ export class BraidShell extends Container {
       quitArmed,
       activityVisible: this.#showActivity,
       navigationHint: this.#transcript.navigationHint(),
+      composerMode: this.#composerMode,
     })
     this.#composer.editor.disableSubmit = false
     this.#composer.editor.borderColor =
@@ -151,6 +160,7 @@ export class BraidShell extends Container {
       quitArmed: this.#quitArmed,
       activityVisible: this.#showActivity,
       navigationHint: this.#transcript.navigationHint(),
+      composerMode: this.#composerMode,
     })
     this.invalidate()
   }

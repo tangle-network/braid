@@ -28,8 +28,8 @@ async function prepareQuestionContext(store: TraceAnalysisStore): Promise<string
     'Never use an attribute label or a constructed JSON fragment as an excerpt.',
     'For numeric facts, quote a related model, status, or output string from the same span.',
     'Before SUBMIT, ensure each distinct request in Focus has one finding or one explicit limit.',
-    'The final call must be SUBMIT(answer, json.dumps(findings)).',
-    'Never pass the findings list directly to SUBMIT.',
+    'The final call must be SUBMIT(answer=answer, findings_json=json.dumps(findings)).',
+    'Never pass either output positionally or pass the findings list without JSON encoding.',
   ].join('\n')
 }
 

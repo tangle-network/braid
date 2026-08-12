@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "scope": "Tangle sandbox stress and worker scripts with deterministic fake seams",
+  "files": 3,
+  "base": "8cce4c6e8aade3b1fc51f558d65a823ac12a5e1a",
+  "head": "8cce4c6e8aade3b1fc51f558d65a823ac12a5e1a",
+  "workingTree": true,
+  "diffSha256": "b8d943482ed98ce1cbf6c0792da8d4de043ea383c2a0de001af57b20a94423d5",
+  "projectType": "Node.js ESM package",
+  "reviewers": [
+    "A: correctness, process lifecycle, cleanup, and failure persistence",
+    "B: architecture, SDK contract, and boundary coverage",
+    "C: independent read-only adversarial review and focused test pass"
+  ],
+  "mode": "current working-tree review with serial local checks",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 2,
+    "medium": 2,
+    "low": 0,
+    "resolved": 4,
+    "unresolved": 0,
+    "dropped": 1
+  }
+}

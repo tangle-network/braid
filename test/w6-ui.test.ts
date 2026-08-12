@@ -279,7 +279,7 @@ test('named graph, analysis, activity, profile editor, connection setup, and sto
   const fork = new ForkPreviewPanel(theme)
   fork.setView(view)
   assert.match(graph.render(80).join('\n'), /conversation graph/u)
-  assert.match(activity.render(80).join('\n'), /activity/u)
+  assert.match(activity.render(80).join('\n'), /live work/u)
   assert.match(profile.render(80).join('\n'), /profile/u)
   assert.match(connection.render(80).join('\n'), /connection/u)
   assert.match(help.render(80).join('\n'), /analyze/u)
@@ -304,19 +304,20 @@ test('stable chrome keeps identity and status outside transcript history', () =>
     quitArmed: false,
     activityVisible: false,
     navigationHint: 'Ctrl+P commands',
+    composerMode: 'queue',
   })
   const lines = chrome.render(40)
   const firstLine = lines[0] ?? ''
-  assert.match(firstLine, /braid\s+AgentProfile reviewer/u)
-  assert.match(lines[1] ?? '', /pi \/ deterministic/u)
-  assert.match(lines[2] ?? '', /completed.*Ctrl\+P commands/u)
+  assert.equal(lines.length, 1)
+  assert.match(firstLine, /reviewer.*Ctrl\+P commands/u)
   assert.doesNotMatch(firstLine, /fixture|deterministic/u)
   assert.ok(visibleWidth(firstLine) <= 40)
 
   const standard = chrome.render(80)
-  assert.match(standard[1] ?? '', /reviewer.*pi \/ deterministic/u)
-  assert.match(standard[1] ?? '', /deterministic fixture/u)
-  assert.match(standard[2] ?? '', /completed.*Ctrl\+P commands/u)
+  assert.equal(standard.length, 1)
+  assert.match(standard[0] ?? '', /reviewer.*pi \/ deterministic/u)
+  assert.match(standard[0] ?? '', /deterministic fixture/u)
+  assert.match(standard[0] ?? '', /Ctrl\+P commands/u)
   for (const line of standard) assert.ok(visibleWidth(line) <= 80)
 })
 
@@ -358,7 +359,7 @@ test('terminal chrome aggregates known conversation metrics without filling gaps
         },
       },
     }),
-    ['out 0', 'cost unknown'],
+    ['out 0'],
   )
   assert.deepEqual(
     metricsFor({
@@ -375,7 +376,7 @@ test('terminal chrome aggregates known conversation metrics without filling gaps
         },
       },
     }),
-    ['usage unknown'],
+    [],
   )
 })
 
@@ -624,6 +625,7 @@ const interaction: InteractionView = {
   allowedOutcomes: ['once', 'reject', 'cancel'],
   responseScopes: ['once'],
   queuePosition: 0,
+  queueTotal: 1,
   secret: true,
 }
 

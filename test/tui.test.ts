@@ -34,7 +34,7 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
   }
 }
 
-async function startSteeringTerminal(): Promise<{
+async function startSteeringTerminal(queue = false): Promise<{
   readonly app: ReturnType<typeof createBraidApplication>
   readonly terminal: VirtualTerminal
   readonly view: BraidTerminalApp
@@ -50,7 +50,7 @@ async function startSteeringTerminal(): Promise<{
   const execution: ExecutionPort = {
     capabilities: () => ({
       ...DEFAULT_RUN_CAPABILITIES,
-      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, queue: false, steer: true },
+      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, queue, steer: true },
     }),
     async *streamTurn(input): AsyncIterable<never> {
       await new Promise<void>((resolve) => {
@@ -245,7 +245,7 @@ test('the real Braid root renders and sends at all four reference sizes', async 
     await terminal.waitForRender()
 
     const screen = terminal.getScrollBuffer().join('\n')
-    assert.match(screen, /braid/u)
+    assert.match(screen, /Braid starter/u)
     assert.match(screen, /hello\s+Braid/u)
     assert.match(screen, /Fixture response through pi/u)
     assert.equal(
@@ -263,7 +263,7 @@ test('composer fallback steers exactly once without queueing or sending', async 
   const harness = await startSteeringTerminal()
   try {
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /steer \/steer/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /Enter steers/u)
     harness.terminal.sendInput('correct course')
     harness.terminal.sendInput('\r')
     await waitUntil(() => harness.calls.steer === 1)
@@ -289,6 +289,27 @@ test('/steer text uses the typed steer path exactly once without queueing or sen
 
     assert.deepEqual(harness.calls.steerTexts, ['focus on tests'])
     assert.equal(harness.calls.send, 0)
+    assert.equal(harness.calls.queue, 0)
+  } finally {
+    harness.view.stop()
+    await harness.done
+    await harness.app.close()
+  }
+})
+
+test('Alt+S changes an active composer from queue to steer', async () => {
+  const harness = await startSteeringTerminal(true)
+  try {
+    await harness.terminal.waitForRender()
+    assert.match(harness.terminal.getViewport().join('\n'), /Enter queues · Alt\+S steer/u)
+    harness.terminal.sendInput('\u001bs')
+    await harness.terminal.waitForRender()
+    assert.match(harness.terminal.getViewport().join('\n'), /Enter steers · Alt\+S queue/u)
+
+    harness.terminal.sendInput('change direction')
+    harness.terminal.sendInput('\r')
+    await waitUntil(() => harness.calls.steer === 1)
+    assert.deepEqual(harness.calls.steerTexts, ['change direction'])
     assert.equal(harness.calls.queue, 0)
   } finally {
     harness.view.stop()
@@ -409,7 +430,7 @@ test('the searchable command overlay restores editor focus after close', async (
   assert.doesNotMatch(overlay, /alt\+enter newline/u)
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /alt\+enter newline/u)
+  assert.match(terminal.getViewport().join('\n'), /profile Braid starter.*Ctrl\+P commands/u)
   terminal.sendInput('focus restored')
   assert.equal(view.editor.getText(), 'focus restored')
 
@@ -619,7 +640,7 @@ test('Ctrl+C clears, cancels, then requires a second idle press to quit', async 
   terminal.sendInput('\u0003')
   await terminal.waitForRender()
   assert.equal(stopped, false)
-  assert.match(terminal.getViewport().join('\n'), /ctrl\+c again to quit/u)
+  assert.match(terminal.getViewport().join('\n'), /Ctrl\+C again to quit/u)
   terminal.sendInput('\u0003')
   await done
   assert.equal(stopped, true)

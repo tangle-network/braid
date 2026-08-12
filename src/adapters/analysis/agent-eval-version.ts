@@ -1,1 +1,3 @@
-export const AGENT_EVAL_VERSION = '0.144.11'
+import { installedPackageVersion } from '../../installed-package-version.js'
+
+export const AGENT_EVAL_VERSION = installedPackageVersion('@tangle-network/agent-eval')

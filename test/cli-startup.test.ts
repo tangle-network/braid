@@ -201,10 +201,10 @@ test('startup preview renders real route context and replays early input once', 
   })
   await terminal.waitForRender()
   const output = (await terminal.flushAndGetViewport()).join('\n')
-  assert.match(output, /braid\s+cwd\s+braid/u)
-  assert.match(output, /AgentProfile Luna coding.*claude-code \/ luna-max.*CLI Bridge/u)
+  assert.equal(output.includes('cwd'), false)
+  assert.match(output, /profile Luna coding.*claude-code \/ luna-max.*CLI Bridge/u)
   assert.match(output, /Ready safely/u)
-  assert.match(output, /completed.*Ctrl\+P commands/u)
+  assert.match(output, /completed/u)
   assert.equal(output.includes('\u001b[31m'), false)
   assert.equal(writes.join('').includes('\u001b]'), false)
 

@@ -23,7 +23,16 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'cancelled-turn',
     'materialization-receipt',
   ]),
-  [PROOF_OPERATIONS.tangleSandbox]: Object.freeze(['marker', 'environment-id']),
+  [PROOF_OPERATIONS.tangleSandbox]: Object.freeze([
+    'marker',
+    'environment-id',
+    'workspace-read-write-exec-git',
+    'sigkill-reconnect',
+    'exclusive-replay',
+    'follow-up-session',
+    'cancel-retry-conflict',
+    'exact-resource-cleanup',
+  ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'source-frozen',
     'cited-finding',
@@ -35,7 +44,17 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
 
 const PROOF_OPERATION_FACT_KEYS = Object.freeze({
   [PROOF_OPERATIONS.tangleInference]: Object.freeze(['normalRunId', 'cancelledRunId']),
-  [PROOF_OPERATIONS.tangleSandbox]: Object.freeze(['environmentId']),
+  [PROOF_OPERATIONS.tangleSandbox]: Object.freeze([
+    'environmentId',
+    'resumedRunId',
+    'followUpRunId',
+    'cancelledRunId',
+    'resumeFromCursor',
+    'finalCursor',
+    'cloudControl',
+    'exactResource',
+    'activeResourceDelta',
+  ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'analysisId',
     'findingCount',
@@ -51,7 +70,7 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
   ]),
 })
 
-const PROOF_STATUSES = new Set(['passed', 'partial', 'unavailable'])
+const PROOF_STATUSES = new Set(['passed', 'partial', 'failed', 'unavailable'])
 const PROOF_EVIDENCE_KEYS = Object.freeze([
   'schema',
   'invocationId',
@@ -63,6 +82,7 @@ const PROOF_EVIDENCE_KEYS = Object.freeze([
   'run',
   'facts',
   'checks',
+  'observations',
 ])
 const PROOF_CONNECTION_KEYS = Object.freeze([
   'endpoint',
@@ -73,6 +93,14 @@ const PROOF_CONNECTION_KEYS = Object.freeze([
   'runner',
 ])
 const PROOF_RUN_KEYS = Object.freeze(['ids', 'environmentId', 'materializationDigest'])
+const CLOUD_CONTROL_KEYS = Object.freeze([
+  'provider',
+  'environmentId',
+  'sessionId',
+  'executionId',
+  'runId',
+  'requestDigest',
+])
 const CREDENTIAL_KEY_PATTERN =
   /(?:^|_)(?:access_key|api_key|auth|authorization|bearer|client_secret|cookie|credential|password|passwd|private_key|secret|session|token)(?:_|$)/u
 const MAX_PUBLIC_DEPTH = 8
@@ -235,6 +263,44 @@ function validNullableString(value, label) {
     throw new Error(`${label} must be a non-empty string or null`)
 }
 
+function validRequiredString(value, label) {
+  if (typeof value !== 'string' || value.length === 0)
+    throw new Error(`${label} must be a non-empty string`)
+}
+
+function validateCloudControl(value) {
+  if (value === null) return
+  if (typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Live proof cloudControl must be an object or null')
+  exactKeys(value, CLOUD_CONTROL_KEYS, 'Live proof cloudControl')
+  for (const key of CLOUD_CONTROL_KEYS) validNullableString(value[key], `Live proof ${key}`)
+}
+
+function validateObservations(value) {
+  if (value !== null && (typeof value !== 'object' || Array.isArray(value)))
+    throw new Error('Live proof observations must be an object or null')
+  if (value === null) return
+
+  const seen = new Set()
+  const visit = (candidate, path) => {
+    if (candidate === null || typeof candidate !== 'object') return
+    if (seen.has(candidate)) return
+    seen.add(candidate)
+    if (Array.isArray(candidate)) {
+      candidate.forEach((entry, index) => {
+        visit(entry, `${path}[${index}]`)
+      })
+      return
+    }
+    for (const [key, nested] of Object.entries(candidate)) {
+      if (credentialKey(key) && nested !== '[REDACTED]')
+        throw new Error(`Live proof observations.${key} must be redacted`)
+      visit(nested, `${path}.${key}`)
+    }
+  }
+  visit(value, 'observations')
+}
+
 function validTimestamp(value, label) {
   if (typeof value !== 'string' || Number.isNaN(Date.parse(value)))
     throw new Error(`${label} must be an ISO timestamp`)
@@ -274,6 +340,20 @@ function validateProofFacts(operation, status, facts) {
       if (typeof value !== 'boolean') throw new Error(`Live proof ${key} must be boolean`)
       continue
     }
+    if (key === 'exactResource') {
+      if (value !== null && typeof value !== 'boolean')
+        throw new Error('Live proof exactResource must be boolean or null')
+      continue
+    }
+    if (key === 'activeResourceDelta') {
+      if (value !== null && (typeof value !== 'number' || !Number.isFinite(value)))
+        throw new Error('Live proof activeResourceDelta must be a finite number or null')
+      continue
+    }
+    if (key === 'cloudControl') {
+      validateCloudControl(value)
+      continue
+    }
     validNullableString(value, `Live proof ${key}`)
   }
   if (operation === PROOF_OPERATIONS.traceAnalysis && status === 'passed') {
@@ -286,6 +366,50 @@ function validateProofFacts(operation, status, facts) {
     if (facts.usage.tokensKnown !== true)
       throw new Error('Passed trace-analysis proof requires known token usage')
   }
+}
+
+function validatePassedTangleSandboxReceipt(receipt) {
+  if (receipt.run.ids.length === 0)
+    throw new Error('Passed Tangle Sandbox proof requires at least one local run ID')
+  if (new Set(receipt.run.ids).size !== receipt.run.ids.length)
+    throw new Error('Passed Tangle Sandbox proof requires unique local run IDs')
+  validRequiredString(receipt.run.environmentId, 'Passed Tangle Sandbox local environmentId')
+
+  const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
+  for (const field of requiredConnectionFields)
+    validRequiredString(receipt.connection[field], `Passed Tangle Sandbox connection.${field}`)
+  if (receipt.connection.connectionKind !== 'tangle-sandbox')
+    throw new Error('Passed Tangle Sandbox proof requires a tangle-sandbox connection')
+  if (receipt.connection.credentialConfigured !== true)
+    throw new Error('Passed Tangle Sandbox proof requires configured credentials')
+
+  const cloudControl = receipt.facts.cloudControl
+  if (cloudControl === null) {
+    throw new Error('Passed Tangle Sandbox proof requires exact cloud control identity')
+  }
+  for (const field of CLOUD_CONTROL_KEYS)
+    validRequiredString(cloudControl[field], `Passed Tangle Sandbox cloudControl.${field}`)
+  if (cloudControl.provider !== 'tangle-sandbox')
+    throw new Error('Passed Tangle Sandbox cloud control identity has the wrong provider')
+  if (!/^sha256:[0-9a-f]{64}$/u.test(cloudControl.requestDigest))
+    throw new Error('Passed Tangle Sandbox cloud control requestDigest is not a SHA-256 digest')
+
+  for (const field of ['resumedRunId', 'followUpRunId', 'cancelledRunId'])
+    validRequiredString(receipt.facts[field], `Passed Tangle Sandbox facts.${field}`)
+  if (receipt.facts.environmentId !== receipt.run.environmentId)
+    throw new Error('Passed Tangle Sandbox local environment identity is inconsistent')
+  for (const field of ['resumedRunId', 'followUpRunId', 'cancelledRunId']) {
+    if (!receipt.run.ids.includes(receipt.facts[field]))
+      throw new Error(`Passed Tangle Sandbox ${field} is missing from local run IDs`)
+  }
+  for (const field of ['resumeFromCursor', 'finalCursor'])
+    validRequiredString(receipt.facts[field], `Passed Tangle Sandbox facts.${field}`)
+  if (receipt.facts.exactResource !== true)
+    throw new Error('Passed Tangle Sandbox proof requires cleanup exactResource=true')
+  if (receipt.facts.activeResourceDelta !== 0)
+    throw new Error('Passed Tangle Sandbox proof requires numeric activeResourceDelta=0')
+  if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
+    throw new Error('Passed Tangle Sandbox proof requires redacted observations')
 }
 
 export function proofInvocation(scope) {
@@ -325,6 +449,7 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     throw new Error('Live proof credentialConfigured must be boolean or null')
   validNullableString(receipt.connection.model, 'Live proof model')
   validNullableString(receipt.connection.runner, 'Live proof runner')
+  validateObservations(receipt.observations)
   exactKeys(receipt.run, PROOF_RUN_KEYS, 'Live proof run')
   if (
     !Array.isArray(receipt.run.ids) ||
@@ -352,6 +477,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
       requiredChecks.some((check) => !receipt.checks.includes(check)))
   )
     throw new Error('Passed live proof must include every check for the named operation')
+  if (receipt.operation === PROOF_OPERATIONS.tangleSandbox && receipt.status === 'passed')
+    validatePassedTangleSandboxReceipt(receipt)
   return receipt
 }
 
@@ -367,7 +494,17 @@ export function proofReceipt({
   materializationDigest = null,
   facts = {},
   checks = [],
+  observations = null,
+  environment = process.env,
 }) {
+  const publicObservations =
+    observations === null
+      ? null
+      : sanitizePublicValue(
+          observations,
+          environment,
+          redactionSecretsFor(observations, environment),
+        )
   const receipt = {
     schema: PUBLIC_EVIDENCE_SCHEMA,
     invocationId,
@@ -391,6 +528,7 @@ export function proofReceipt({
     },
     facts,
     checks: [...checks],
+    observations: publicObservations,
   }
   assertProofReceipt(receipt, { invocationId, operation })
   return Object.freeze({
@@ -399,6 +537,7 @@ export function proofReceipt({
     run: Object.freeze({ ...receipt.run, ids: Object.freeze(receipt.run.ids) }),
     facts: Object.freeze({ ...receipt.facts }),
     checks: Object.freeze(receipt.checks),
+    observations: receipt.observations === null ? null : Object.freeze({ ...receipt.observations }),
   })
 }
 

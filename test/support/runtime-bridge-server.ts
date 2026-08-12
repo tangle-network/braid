@@ -23,10 +23,20 @@ export interface RuntimeBridgeServerOptions {
   readonly expectedBearer?: string
   readonly responseText?: string | ((body: Readonly<Record<string, unknown>>) => string)
   readonly estimatedCostUsd?: number
+  readonly usage?: {
+    readonly promptTokens: number
+    readonly completionTokens: number
+    readonly cacheReadInputTokens?: number
+    readonly cacheCreationInputTokens?: number
+    readonly reasoningTokens?: number
+  }
   readonly holdStreams?: boolean
+  readonly statusFailureStatus?: number
+  readonly statusRunId?: string
   readonly cancellation?: {
     readonly mode?: 'acknowledged' | 'rejected'
     readonly delayMs?: number
+    readonly effect?: 'cancel_requested' | 'cancelled'
   }
 }
 
@@ -130,13 +140,21 @@ function runtimeResponseFrames(
   body: Readonly<Record<string, unknown>>,
   responseText: string,
   estimatedCostUsd?: number,
+  usage?: RuntimeBridgeServerOptions['usage'],
 ): readonly RuntimeResponseFrame[] {
   const terminal = {
     choices: [{ delta: {}, finish_reason: 'stop' }],
     usage: {
       model_requests: 1,
-      prompt_tokens: 2,
-      completion_tokens: 3,
+      prompt_tokens: usage?.promptTokens ?? 2,
+      completion_tokens: usage?.completionTokens ?? 3,
+      ...(usage?.cacheReadInputTokens === undefined
+        ? {}
+        : { cache_read_input_tokens: usage.cacheReadInputTokens }),
+      ...(usage?.cacheCreationInputTokens === undefined
+        ? {}
+        : { cache_creation_input_tokens: usage.cacheCreationInputTokens }),
+      ...(usage?.reasoningTokens === undefined ? {} : { reasoning_tokens: usage.reasoningTokens }),
       cost_known: false,
       ...(estimatedCostUsd === undefined
         ? {}
@@ -161,14 +179,24 @@ function runtimeResponseResult(
   body: Readonly<Record<string, unknown>>,
   text: string,
   estimatedCostUsd?: number,
+  usage?: RuntimeBridgeServerOptions['usage'],
 ): Readonly<Record<string, unknown>> {
+  const promptTokens = usage?.promptTokens ?? 2
+  const completionTokens = usage?.completionTokens ?? 3
   return {
     choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
     usage: {
       model_requests: 1,
-      prompt_tokens: 2,
-      completion_tokens: 3,
-      total_tokens: 5,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+      ...(usage?.cacheReadInputTokens === undefined
+        ? {}
+        : { cache_read_input_tokens: usage.cacheReadInputTokens }),
+      ...(usage?.cacheCreationInputTokens === undefined
+        ? {}
+        : { cache_creation_input_tokens: usage.cacheCreationInputTokens }),
+      ...(usage?.reasoningTokens === undefined ? {} : { reasoning_tokens: usage.reasoningTokens }),
       ...(estimatedCostUsd === undefined ? {} : { cost: estimatedCostUsd }),
     },
     profile_materialization: profileMaterialization(body),
@@ -315,10 +343,15 @@ export async function startRuntimeBridgeServer(
         response.end(JSON.stringify({ error: { type: 'run_not_found' } }))
         return
       }
+      if (options.statusFailureStatus !== undefined) {
+        response.writeHead(options.statusFailureStatus, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'status_unavailable' } }))
+        return
+      }
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(
         JSON.stringify({
-          id: run.id,
+          id: options.statusRunId ?? run.id,
           requestDigest: run.digest,
           status: run.status,
           terminal: run.terminal,
@@ -365,7 +398,9 @@ export async function startRuntimeBridgeServer(
         }
         return
       }
-      if (run !== undefined) {
+      const cancellationEffect =
+        run === undefined ? 'not_live' : (options.cancellation?.effect ?? 'cancelled')
+      if (run !== undefined && cancellationEffect === 'cancelled') {
         run.status = 'cancelled'
         run.terminal = true
         finishReaders(run)
@@ -388,7 +423,7 @@ export async function startRuntimeBridgeServer(
             requestDigest: exactCancellation.requestDigest,
             run: exactCancellation.run,
             status: 'accepted',
-            effect: run === undefined ? 'not_live' : 'cancelled',
+            effect: cancellationEffect,
           }),
         )
       } else {
@@ -396,8 +431,13 @@ export async function startRuntimeBridgeServer(
           JSON.stringify({
             cancelled: run !== undefined,
             cancel_requested: true,
-            terminal: true,
-            run: { id: runId, requestDigest, status: 'cancelled', terminal: true },
+            terminal: cancellationEffect !== 'cancel_requested',
+            run: {
+              id: runId,
+              requestDigest,
+              status: cancellationEffect === 'cancel_requested' ? 'running' : 'cancelled',
+              terminal: cancellationEffect !== 'cancel_requested',
+            },
           }),
         )
       }
@@ -435,10 +475,12 @@ export async function startRuntimeBridgeServer(
         'x-run-id': runId,
         'x-run-request-digest': digest,
       })
-      response.end(JSON.stringify(runtimeResponseResult(body, text, options.estimatedCostUsd)))
+      response.end(
+        JSON.stringify(runtimeResponseResult(body, text, options.estimatedCostUsd, options.usage)),
+      )
       return
     }
-    const frames = runtimeResponseFrames(body, text, options.estimatedCostUsd)
+    const frames = runtimeResponseFrames(body, text, options.estimatedCostUsd, options.usage)
     const run =
       existing ??
       ({

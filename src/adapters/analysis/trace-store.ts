@@ -5,7 +5,7 @@ import {
   otlpTextToTraceAnalysisStore,
   type ToolSpan,
   type TraceAnalysisStore,
-} from '@tangle-network/agent-eval'
+} from '@tangle-network/agent-eval/traces'
 import { verifyFrozenAnalysisSource } from '../../app/analysis-source.js'
 import type { FrozenAnalysisEvent, FrozenAnalysisEvidence } from '../../app/analysis-types.js'
 import { AnalysisSourceError } from '../../app/analysis-types.js'

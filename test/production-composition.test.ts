@@ -46,6 +46,7 @@ import { createProductionCredentialContext } from '../src/bin/production-credent
 import {
   DEFAULT_CLI_BRIDGE_ENDPOINT,
   describeProductionSelection,
+  loadProductionProfileCatalog,
   loadProductionSetup,
   persistableProductionProfile,
   prepareProductionSelection,
@@ -228,7 +229,15 @@ test('production composition persists acknowledged CLI Bridge cancellation', asy
       reason: 'operator requested cancellation',
     })
     const state = await cancellation.completion
-    assert.equal(state.runs[0]?.status, 'aborted')
+    assert.equal(
+      state.runs[0]?.status,
+      'aborted',
+      JSON.stringify({
+        run: state.runs[0],
+        events: app.events(),
+        cancellations: bridge.cancellations,
+      }),
+    )
     assert.equal(state.runs[0]?.terminalReason, 'CONTROL_DETAIL')
     assert.equal(state.lastError, null)
     assert.equal(bridge.cancellations.length, 1)
@@ -547,6 +556,36 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
     assert.equal(prepared.backend.profile.model?.default, candidate.portable)
     assert.equal(prepared.materializationReceipt.route, candidate.routed)
   }
+})
+
+test('runner-only CLI Bridge models execute without an invented provider', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-runner-model-'))
+  const record = connection('cli-bridge', 'runner-model', 'http://127.0.0.1:4010')
+  const runnerProfile = defineAgentProfile({
+    name: 'Claude runner alias',
+    harness: 'claude-code',
+    model: { default: 'opus', reasoningEffort: 'high' },
+  })
+  const prepared = await resolveProductionBackend(
+    {
+      connections: new ConnectionRegistry([record]),
+      workspaceCwd: root,
+      select: () => ({ connection: { connectionId: record.id } }),
+    },
+    {
+      operationId: 'operation-runner-model',
+      runId: 'run-runner-model',
+      text: 'verify runner alias',
+      profile: runnerProfile,
+      signal: new AbortController().signal,
+    },
+    { connection: { connectionId: record.id } },
+  )
+
+  assert.equal(prepared.kind, 'prepared-execution')
+  assert.equal(prepared.backend.profile.model?.default, 'opus')
+  assert.equal(prepared.backend.profile.model?.provider, undefined)
+  assert.equal(prepared.materializationReceipt.route, 'claude-code/opus')
 })
 
 test('startup resolves relative database keys beside external config and rejects workspace paths', async () => {
@@ -1555,11 +1594,8 @@ test('first-run catalog preserves trusted profiles and adds each advertised mode
     true,
   )
   assert.equal(
-    setup.profiles.filter(
-      (record) =>
-        record.profile.model?.default === 'zai-coding-plan/glm-5.2' &&
-        record.profile.model.provider === 'zai-coding-plan',
-    ).length,
+    setup.profiles.filter((record) => record.profile.model?.default === 'zai-coding-plan/glm-5.2')
+      .length,
     1,
   )
   assert.equal(
@@ -1578,6 +1614,70 @@ test('first-run catalog preserves trusted profiles and adds each advertised mode
   const initial = constrained.profiles.find((record) => record.id === constrained.initialProfileId)
   assert.equal(initial?.profile.harness, 'opencode')
   assert.equal(initial?.profile.model?.default, 'zai-coding-plan/glm-5.2')
+})
+
+test('configured restart keeps alternate profiles and routes each run from its AgentProfile', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-restart-profiles-'))
+  await mkdir(join(root, '.braid'), { recursive: true })
+  const product = defineAgentProfile({
+    name: 'Product engineer',
+    harness: 'claude-code',
+    model: { default: 'opus' },
+  })
+  const analyst = defineAgentProfile({
+    name: 'Trace analyst',
+    harness: 'claude-code',
+    model: { default: 'sonnet' },
+  })
+  await writeFile(join(root, '.braid', 'profile.json'), `${canonicalCandidateJson(analyst)}\n`, {
+    mode: 0o600,
+  })
+  const selectedConnection = connection('cli-bridge', 'restart-profiles', 'http://127.0.0.1:3345')
+  const fetch: typeof globalThis.fetch = async (input) => {
+    const path = new URL(String(input)).pathname
+    if (path === '/health') {
+      return new Response(
+        JSON.stringify({ status: 'ok', backends: [{ name: 'claude-code', state: 'ready' }] }),
+        { status: 200 },
+      )
+    }
+    return new Response(
+      JSON.stringify({
+        data: [
+          { id: 'claude-code/opus', backend: 'claude-code' },
+          { id: 'claude-code/sonnet', backend: 'claude-code' },
+        ],
+      }),
+      { status: 200 },
+    )
+  }
+  const catalog = await loadProductionProfileCatalog(
+    { workspace: root, fetch },
+    { profile: product, connections: [selectedConnection], connectionId: selectedConnection.id },
+    selectedConnection.id,
+  )
+  assert.deepEqual(catalog.map((record) => record.profile.name).sort(), [
+    'Product engineer',
+    'Trace analyst',
+  ])
+
+  const composition = createProductionComposition({
+    profile: product,
+    connections: [selectedConnection],
+    connectionId: selectedConnection.id,
+    workspaceRoot: root,
+    connectionOptions: { fetch },
+  })
+  const admission = await composition.execution.admit?.({
+    operationId: 'operation-restart-profile-route',
+    runId: 'run-restart-profile-route',
+    text: 'Review the retained run.',
+    profile: analyst,
+    connectionId: selectedConnection.id,
+    workspaceRoot: root,
+    signal: new AbortController().signal,
+  })
+  assert.equal(admission?.materializationReceipt?.route, 'claude-code/sonnet')
 })
 
 test('first-run catalog keeps the Codex route out of the portable profile', async () => {
@@ -1609,6 +1709,7 @@ test('first-run catalog keeps the Codex route out of the portable profile', asyn
   const initial = setup.profiles.find((record) => record.id === setup.initialProfileId)
   assert.equal(initial?.profile.harness, 'codex')
   assert.equal(initial?.profile.model?.default, 'default')
+  assert.equal(initial?.profile.model?.provider, undefined)
   assert.equal(
     setup.profiles.some((record) => record.profile.model?.default === 'openai-codex/gpt-5.6-luna'),
     false,

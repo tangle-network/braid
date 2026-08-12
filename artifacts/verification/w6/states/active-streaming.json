@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "32f19ba707aa659f776a604fe241111fe2bfb68928ac6f005014d81bd924182c"
+    "tarball": "tangle-network-braid-0.1.1.tgz",
+    "tarballSha256": "9bbd7b5b9f78b3d202dbb09d4375970edfd4965ffc5ad94b04bd7fa6ce01c4c7"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 5,
-  "frame": "braid  cwd  braid-release-ux-final-wt  ·  session  New conversation\nAgentProfile Braid starter · pi / deterministic    not connected · thinking none\n W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────────────────────────────── › queue next #1 ────────────────────────────────\n›\n\n\n────────────────────────── alt+enter newline · paste ───────────────────────────\nstreaming · Ctrl+C cancel                                     Enter queues input\n",
+  "frame": " › W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› queue #1\n\n\nprofile Braid starter                     working · Ctrl+C cancel · Enter queues\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 5,
       "sequence": 5,
-      "workspace": "/home/drew/code/braid-release-ux-final-wt",
+      "workspace": "/home/drew/code/braid-transcript-first-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -95,7 +95,6 @@
           "outputTokens": 0,
           "tokenStatus": "unknown",
           "costStatus": "unknown",
-          "llmCalls": 0,
           "model": "fixture/deterministic",
           "provider": "agent-runtime",
           "runner": "pi",
@@ -110,12 +109,11 @@
           "output": 0,
           "tokenStatus": "unknown",
           "costStatus": "unknown",
-          "llmCalls": 0,
           "unknownTokenSources": 1,
           "unknownCostSources": 1,
-          "callStatus": "complete",
+          "callStatus": "unknown",
           "latencyStatus": "unknown",
-          "unknownCallSources": 0,
+          "unknownCallSources": 1,
           "unknownLatencySources": 1
         },
         "analyses": {
@@ -154,7 +152,7 @@
     },
     "view": {
       "revision": 5,
-      "workspace": "/home/drew/code/braid-release-ux-final-wt",
+      "workspace": "/home/drew/code/braid-transcript-first-wt",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -218,7 +216,6 @@
             "output": 0,
             "tokenStatus": "unknown",
             "costStatus": "unknown",
-            "llmCalls": 0,
             "model": "fixture/deterministic"
           },
           "runner": "pi",
@@ -233,12 +230,11 @@
           "output": 0,
           "tokenStatus": "unknown",
           "costStatus": "unknown",
-          "llmCalls": 0,
           "unknownTokenSources": 1,
           "unknownCostSources": 1,
-          "callStatus": "complete",
+          "callStatus": "unknown",
           "latencyStatus": "unknown",
-          "unknownCallSources": 0,
+          "unknownCallSources": 1,
           "unknownLatencySources": 1
         },
         "analyses": {
@@ -301,7 +297,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-11T05:08:10.659Z",
+          "occurredAt": "2026-08-12T12:37:37.459Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -510,12 +506,12 @@
         "run.reconnect": {
           "available": false,
           "source": "provider",
-          "reason": "The current runtime does not report replay support"
+          "reason": "Detach the active run before reconnecting it"
         },
         "run.reconcile": {
           "available": false,
           "source": "provider",
-          "reason": "The current runtime does not report status reconciliation"
+          "reason": "Detach the active run before reconciling it"
         }
       },
       "draft": "",
@@ -534,7 +530,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-release-ux-final-wt"
+            "workspace": "/home/drew/code/braid-transcript-first-wt"
           }
         }
       },
@@ -644,10 +640,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-5de0e82b220f27cb6f90a090",
+              "id": "effect-op-terminal-000002-0a838249b94207b11007ccae",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "5de0e82b220f27cb6f90a090fa6f46e8a81a0c7d101654cfed0273b31bd2510c",
+              "requestDigest": "0a838249b94207b11007ccae8a84f3baa7e3b080a7f8fd0a909dbab19fa7e6a1",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -665,13 +661,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-11T05:08:10.659Z",
+            "occurredAt": "2026-08-12T12:37:37.459Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-f47c74fa-ae4c-47d3-a2b3-8503aff616f1",
+              "id": "turn-db68a0cb-0c7c-4589-8347-fb36879b38e3",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
@@ -681,11 +677,11 @@
               }
             },
             "session": {
-              "id": "c6ca70af-e24b-4ad7-b1e4-c8a21cff9efd",
+              "id": "590229a9-1f09-4c04-ba48-6a314df1a398",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-11T05:08:10.659Z",
-              "updatedAt": "2026-08-11T05:08:10.659Z",
+              "createdAt": "2026-08-12T12:37:37.459Z",
+              "updatedAt": "2026-08-12T12:37:37.459Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -707,16 +703,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-f47c74fa-ae4c-47d3-a2b3-8503aff616f1"
+                  "id": "turn-db68a0cb-0c7c-4589-8347-fb36879b38e3"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-f47c74fa-ae4c-47d3-a2b3-8503aff616f1:attempt:23a3c309-2515-4c12-be07-83ea488bd05d",
-                  "materializationReceiptDigest": "sha256:964f6efa1b1f7c64895d43ba7752c4811d9c445c18d706e9580dad8e6452fe19",
-                  "bindingDigest": "sha256:4a47ef0529bd415c75c8a3af276f9c6e8655f211c5a9e91c10111803e0991784",
+                  "attemptId": "turn-db68a0cb-0c7c-4589-8347-fb36879b38e3:attempt:5654b7d0-b218-4427-95c6-361d6dd76cc8",
+                  "materializationReceiptDigest": "sha256:dad1132b1c7dd7c6fe79575ac4fc5da786d05d0b35d84d97698e1d43c21ba925",
+                  "bindingDigest": "sha256:3ec6106218348b41e13fc244f20dbeae88da12fec1825bfb19090e1a343467c1",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -728,10 +724,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-11T05:08:10.657Z"
+                "startedAt": "2026-08-12T12:37:37.455Z"
               }
             },
-            "timestamp": "2026-08-11T05:08:10.659Z"
+            "timestamp": "2026-08-12T12:37:37.459Z"
           }
         }
       }

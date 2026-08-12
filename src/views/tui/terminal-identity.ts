@@ -1,6 +1,6 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { type LayoutMode, modeForColumns } from './layout.js'
+import { modeForColumns } from './layout.js'
 import type { BraidTheme } from './theme.js'
 
 export interface TerminalIdentityView {
@@ -21,62 +21,47 @@ export function renderTerminalIdentity(
   identity: TerminalIdentityView,
   width: number,
 ): string[] {
+  return [renderTerminalContext(theme, identity, [], width)]
+}
+
+/** Renders the selected AgentProfile and execution route beside the composer. */
+export function renderTerminalContext(
+  theme: BraidTheme,
+  identity: TerminalIdentityView,
+  right: readonly string[],
+  width: number,
+  priority: 'left' | 'right' = 'left',
+): string {
   const safeWidth = Math.max(1, Math.floor(width))
   const mode = modeForColumns(safeWidth)
-  const header = identityHeader(theme, identity, safeWidth, mode)
-  const profile = terminalValuePart(theme, `AgentProfile ${identity.profileName}`)
-  const route = terminalValuePart(
+  const model =
+    mode === 'wide' ? cleanTerminalField(identity.model) : compactModelName(identity.model)
+  const profile = terminalValuePart(
     theme,
-    mode === 'wide'
-      ? `runner ${identity.runner} · model ${identity.model}`
-      : `${identity.runner} / ${compactModelName(identity.model)}`,
+    mode === 'narrow' ? identity.profileName : `profile ${identity.profileName}`,
   )
-  const effort = identity.effort ? terminalValuePart(theme, `thinking ${identity.effort}`) : ''
-  const outputLimit =
-    identity.maxOutputTokens === undefined
-      ? ''
-      : terminalValuePart(theme, `output ≤${compactTerminalNumber(identity.maxOutputTokens)}`)
+  const route = terminalValuePart(theme, `${identity.runner} / ${model}`)
   const connection = terminalValuePart(
     theme,
     mode === 'narrow' ? compactConnectionName(identity.connection) : identity.connection,
   )
+  const effortValue = cleanTerminalField(identity.effort)
+  const effort =
+    mode === 'wide' && effortValue && effortValue !== 'none' && effortValue !== 'off'
+      ? terminalValuePart(theme, effortValue)
+      : ''
   const execution = terminalValuePart(theme, identity.execution ?? '')
-
-  if (mode === 'narrow') {
-    return [
-      header,
-      fitTerminalAtomic(joinPrefix([route, connection, effort, outputLimit], safeWidth), safeWidth),
-    ]
-  }
-
-  return [
-    header,
-    fitTerminalColumns([profile, route], [connection, effort, outputLimit, execution], safeWidth),
-  ]
-}
-
-function identityHeader(
-  theme: BraidTheme,
-  identity: TerminalIdentityView,
-  width: number,
-  mode: LayoutMode,
-): string {
-  if (mode === 'narrow') {
-    return fitTerminalAtomic(
-      `${theme.brand('braid')}  ${terminalValuePart(theme, `AgentProfile ${identity.profileName}`)}`,
-      width,
-    )
-  }
-  const workspace = fieldPart(theme, 'cwd', workspaceBasename(identity.workspace))
-  const session = fieldPart(
-    theme,
-    'session',
-    cleanTerminalField(identity.conversationTitle) || 'new conversation',
+  const branchValue = cleanTerminalField(identity.branch)
+  const branch =
+    mode === 'wide' && branchValue && branchValue !== 'main' && branchValue !== 'branch-1'
+      ? terminalValuePart(theme, branchValue)
+      : ''
+  return fitTerminalColumns(
+    [profile, route, connection, effort, execution, branch],
+    right,
+    safeWidth,
+    priority,
   )
-  const branch = fieldPart(theme, 'branch', identity.branch)
-  const parts = [theme.brand('braid'), workspace, session]
-  if (mode === 'wide' && branch) parts.push(branch)
-  return joinHeader(parts, width)
 }
 
 function compactModelName(value: string): string {
@@ -99,51 +84,9 @@ export function cleanTerminalField(value: string | null | undefined): string {
         .trim()
 }
 
-function workspaceBasename(workspace: string | null | undefined): string {
-  const safe = cleanTerminalField(workspace)
-  if (!safe) return 'workspace'
-  const trimmed = safe.replace(/[\\/]+$/gu, '')
-  if (!trimmed) return 'workspace'
-  const pieces = trimmed.split(/[\\/]/u).filter((piece) => piece.length > 0)
-  if (pieces.length <= 1) return safe
-  return pieces.at(-1) ?? 'workspace'
-}
-
 export function terminalValuePart(theme: BraidTheme, value: string): string {
   const safe = cleanTerminalField(value)
   return safe ? theme.text(safe) : ''
-}
-
-function fieldPart(theme: BraidTheme, label: string, value: string | null | undefined): string {
-  const safeLabel = cleanTerminalField(label)
-  const safeValue = cleanTerminalField(value)
-  if (!safeLabel || !safeValue) return ''
-  return `${theme.muted(safeLabel)}  ${theme.text(safeValue)}`
-}
-
-function joinHeader(parts: readonly string[], width: number): string {
-  const present = parts.filter((part) => part.length > 0)
-  if (present.length === 0) return ''
-  const base = joinPrefix(present.slice(0, 2), width, '  ')
-  if (present.length <= 2 || !base) return base
-  let result = base
-  for (const part of present.slice(2)) {
-    const candidate = `${result}  ·  ${part}`
-    if (visibleWidth(candidate) > width) break
-    result = candidate
-  }
-  return result
-}
-
-function joinPrefix(parts: readonly string[], width: number, separator = ' · '): string {
-  const present = parts.filter((part) => part.length > 0)
-  let result = ''
-  for (const part of present) {
-    const candidate = result ? `${result}${separator}${part}` : part
-    if (visibleWidth(candidate) > width) break
-    result = candidate
-  }
-  return result
 }
 
 export function fitTerminalAtomic(value: string, width: number): string {
@@ -173,6 +116,7 @@ export function fitTerminalColumns(
   left: readonly string[],
   right: readonly string[],
   width: number,
+  priority: 'left' | 'right' = 'left',
 ): string {
   const leftPrefixes = prefixes(left, width, ' · ')
   const rightPrefixes = prefixes(right, width, ' · ')
@@ -189,7 +133,9 @@ export function fitTerminalColumns(
         leftValue && rightValue
           ? `${leftValue}${' '.repeat(gap)}${rightValue}`
           : leftValue || rightValue
-      const score = (leftValue && rightValue ? 1_000 : 0) + leftIndex * 10 + rightIndex
+      const score =
+        (leftValue && rightValue ? 1_000 : 0) +
+        (priority === 'right' ? rightIndex * 10 + leftIndex : leftIndex * 10 + rightIndex)
       if (score > bestScore && visibleWidth(candidate) <= width) {
         best = candidate
         bestScore = score

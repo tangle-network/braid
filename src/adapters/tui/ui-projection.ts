@@ -248,7 +248,7 @@ function completenessFor(
 }
 
 export function interactionViews(state: BraidState): InteractionView[] {
-  const views: InteractionView[] = []
+  const views: Array<Omit<InteractionView, 'queueTotal'>> = []
   for (const run of state.runs) {
     for (const item of run.interactions) {
       if (item.status !== 'pending') continue
@@ -292,7 +292,7 @@ export function interactionViews(state: BraidState): InteractionView[] {
       })
     }
   }
-  return views
+  return views.map((view) => ({ ...view, queueTotal: views.length }))
 }
 
 function answerSpecFor(

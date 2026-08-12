@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { EventEmitter } from 'node:events'
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -25,9 +26,33 @@ import {
   prepareProductionWorkspace,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
-import { runMatrixAdapter } from './live-required/tangle.mjs'
+import { runMatrixAdapter, runSandbox } from './live-required/tangle.mjs'
+import { executionLatencyDistribution } from './live-required/tangle-sandbox-braid-execution-soak.mjs'
+import {
+  assertExactResumeEvidence,
+  cancellationReplayDetected,
+  cleanupProof,
+  duplicateTurnDetected,
+  PROOF_OWNER,
+  runStressProof,
+} from './live-required/tangle-sandbox-stress.mjs'
+import { runWorker } from './live-required/tangle-sandbox-worker.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+test('cloud execution stress reports exact small-sample latency distributions', () => {
+  assert.deepEqual(
+    executionLatencyDistribution([{ elapsedMs: 30 }, { elapsedMs: 10 }, { elapsedMs: 20 }]),
+    { n: 3, min: 10, median: 20, p90: 30, max: 30 },
+  )
+  assert.deepEqual(executionLatencyDistribution([]), {
+    n: 0,
+    min: null,
+    median: null,
+    p90: null,
+    max: null,
+  })
+})
 
 function protectedEnvironment() {
   const environment = { ...process.env }
@@ -61,6 +86,63 @@ function protectedEnvironment() {
   ])
     delete environment[name]
   return environment
+}
+
+const TANGLE_SANDBOX_CHECKS = [
+  'marker',
+  'environment-id',
+  'workspace-read-write-exec-git',
+  'sigkill-reconnect',
+  'exclusive-replay',
+  'follow-up-session',
+  'cancel-retry-conflict',
+  'exact-resource-cleanup',
+]
+
+function validTangleSandboxReceiptInput(overrides = {}) {
+  const cloudControl = {
+    provider: 'tangle-sandbox',
+    environmentId: 'sandbox-environment-1',
+    sessionId: 'sandbox-session-1',
+    executionId: 'sandbox-execution-1',
+    runId: 'sandbox-run-1',
+    requestDigest: `sha256:${'a'.repeat(64)}`,
+  }
+  return {
+    invocationId: 'live-required-tangle-sandbox-proof',
+    operation: PROOF_OPERATIONS.tangleSandbox,
+    status: 'passed',
+    startedAt: '2026-08-10T00:00:00.000Z',
+    completedAt: '2026-08-10T00:00:01.000Z',
+    config: {
+      endpoint: 'https://sandbox.tangle.tools',
+      connectionId: 'connection-live-07',
+      connectionKind: 'tangle-sandbox',
+      credentialConfigured: true,
+      model: 'glm-5.2',
+      runner: 'pi',
+    },
+    runIds: ['local-run-1', 'local-run-follow-up', 'local-run-cancelled'],
+    environmentId: 'local-environment-1',
+    facts: {
+      environmentId: 'local-environment-1',
+      resumedRunId: 'local-run-1',
+      followUpRunId: 'local-run-follow-up',
+      cancelledRunId: 'local-run-cancelled',
+      resumeFromCursor: 'provider-cursor-before-kill',
+      finalCursor: 'provider-cursor-final',
+      cloudControl,
+      exactResource: true,
+      activeResourceDelta: 0,
+    },
+    observations: {
+      phase: 'completed',
+      cloudControl,
+      usage: { inputTokens: 12, outputTokens: 8, costUsd: 0.001 },
+    },
+    checks: TANGLE_SANDBOX_CHECKS,
+    ...overrides,
+  }
 }
 
 function expectedFailureOutput(scope, environment, expectedStatus = 1) {
@@ -121,7 +203,12 @@ test('protected live scopes emit unavailable release evidence without credential
           /requires protected live-provider credentials\/adapters|live check requires/u,
         )
         assert.match(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
-        if (scope === 'live-tangle') assert.match(output, /"status":"partial"/u)
+        if (scope === 'live-tangle') {
+          assert.match(output, /"row":"LIVE-07","status":"unavailable"/u)
+          assert.doesNotMatch(output, /"row":"LIVE-07","status":"partial"/u)
+          for (const row of ['LIVE-08', 'LIVE-09', 'LIVE-10'])
+            assert.match(output, new RegExp(`"row":"${row}","status":"unavailable"`, 'u'))
+        }
         assert.doesNotMatch(output, /\b(?:passed|success)\b/iu)
         return true
       },
@@ -248,7 +335,18 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
     },
     runIds: ['run-live-test'],
     environmentId: 'environment-live-test',
-    facts: { environmentId: 'environment-live-test' },
+    facts: {
+      environmentId: 'environment-live-test',
+      resumedRunId: null,
+      followUpRunId: null,
+      cancelledRunId: null,
+      resumeFromCursor: null,
+      finalCursor: null,
+      cloudControl: null,
+      exactResource: null,
+      activeResourceDelta: null,
+    },
+    observations: null,
     checks: ['marker', 'environment-id'],
   })
   assert.equal(receipt.schema, PUBLIC_EVIDENCE_SCHEMA)
@@ -258,6 +356,7 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
     'connection',
     'facts',
     'invocationId',
+    'observations',
     'operation',
     'run',
     'schema',
@@ -283,6 +382,179 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
     'evidence' in resultSummary('live-tangle', { status: 'partial', evidence: 'fake' }),
     false,
   )
+})
+
+test('passed Tangle Sandbox receipts preserve redacted observations and exact release proof', () => {
+  const secret = 'live-required-tangle-sandbox-observation-secret-7f3a'
+  const input = validTangleSandboxReceiptInput()
+  input.observations = {
+    ...input.observations,
+    apiKey: secret,
+    nested: { authorization: `Bearer ${secret}`, retained: true },
+  }
+  const receipt = proofReceipt({
+    ...input,
+    environment: { BRAID_TANGLE_SANDBOX_API_KEY: secret },
+  })
+
+  assert.equal(receipt.status, 'passed')
+  assert.deepEqual(receipt.facts.cloudControl, input.facts.cloudControl)
+  assert.equal(receipt.facts.activeResourceDelta, 0)
+  assert.equal(receipt.facts.exactResource, true)
+  assert.equal(receipt.observations.phase, 'completed')
+  assert.equal(receipt.observations.apiKey, '[REDACTED]')
+  assert.equal(receipt.observations.nested.authorization, '[REDACTED]')
+  assert.deepEqual(
+    resultSummary('live-tangle', { status: 'passed', evidence: receipt }).evidence.observations,
+    receipt.observations,
+  )
+})
+
+test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations into evidence', async () => {
+  const input = validTangleSandboxReceiptInput()
+  const firstRun = { id: input.runIds[0], environmentId: input.environmentId }
+  const proof = {
+    status: 'passed',
+    config: input.config,
+    runs: {
+      first: firstRun,
+      resumed: firstRun,
+      followUp: { id: input.facts.followUpRunId, environmentId: input.environmentId },
+      cancelled: { id: input.facts.cancelledRunId, environmentId: input.environmentId },
+    },
+    replay: {
+      resumeFromCursor: input.facts.resumeFromCursor,
+      finalCursor: input.facts.finalCursor,
+    },
+    cleanup: {
+      exactResource: input.facts.exactResource,
+      activeResourceDelta: input.facts.activeResourceDelta,
+    },
+    progress: { firstControlRef: input.facts.cloudControl },
+    detailed: true,
+  }
+  const cohort = {
+    status: 'passed',
+    failures: [],
+    requestedRuns: 3,
+    attemptedRuns: 3,
+    concurrency: 2,
+    cleanup: { exactProofs: 3, exactResourcesRemaining: 0, activeResourceDelta: 0 },
+    attempts: Array.from({ length: 3 }, (_, index) => ({
+      index,
+      proof: {
+        ...proof,
+        proofId: `proof-${index}`,
+        progress: {
+          firstControlRef: {
+            ...proof.progress.firstControlRef,
+            environmentId:
+              index === 0
+                ? proof.progress.firstControlRef.environmentId
+                : `cloud-environment-${index}`,
+          },
+        },
+      },
+    })),
+    detailed: true,
+  }
+  const result = await runSandbox({
+    repository,
+    environment: {},
+    binary: 'unused-injected-binary',
+    invocationId: input.invocationId,
+    stressRunner: async () => cohort,
+  })
+
+  assert.equal(result.evidence.status, 'passed')
+  assert.deepEqual(result.evidence.facts.cloudControl, input.facts.cloudControl)
+  assert.equal(result.evidence.facts.exactResource, true)
+  assert.equal(result.evidence.facts.activeResourceDelta, 0)
+  assert.equal(result.evidence.observations.detailed, true)
+})
+
+test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {
+  const valid = proofReceipt(validTangleSandboxReceiptInput())
+  const cases = [
+    [
+      'empty local run IDs',
+      { ...valid, run: { ...valid.run, ids: [] } },
+      /at least one local run ID/u,
+    ],
+    [
+      'null cloud identity',
+      { ...valid, facts: { ...valid.facts, cloudControl: null } },
+      /exact cloud control identity/u,
+    ],
+    [
+      'wrong cloud provider',
+      {
+        ...valid,
+        facts: {
+          ...valid.facts,
+          cloudControl: { ...valid.facts.cloudControl, provider: 'other-provider' },
+        },
+      },
+      /wrong provider/u,
+    ],
+    [
+      'missing acknowledged cursor',
+      { ...valid, facts: { ...valid.facts, resumeFromCursor: null } },
+      /facts\.resumeFromCursor/u,
+    ],
+    [
+      'missing model configuration',
+      { ...valid, connection: { ...valid.connection, model: null } },
+      /connection\.model/u,
+    ],
+    [
+      'unconfirmed exact cleanup',
+      { ...valid, facts: { ...valid.facts, exactResource: false } },
+      /exactResource=true/u,
+    ],
+    [
+      'non-zero resource delta',
+      { ...valid, facts: { ...valid.facts, activeResourceDelta: 1 } },
+      /activeResourceDelta=0/u,
+    ],
+    ['missing observations', { ...valid, observations: null }, /redacted observations/u],
+    [
+      'unredacted observation credential',
+      { ...valid, observations: { apiKey: 'raw-secret' } },
+      /observations\.apiKey must be redacted/u,
+    ],
+  ]
+
+  for (const [label, forged, expected] of cases)
+    assert.throws(() => assertProofReceipt(forged), expected, label)
+  assert.throws(() => assertProofReceipt(null), /must be an object/u)
+})
+
+test('failed Tangle Sandbox receipts remain representable without passed-only facts', () => {
+  const receipt = proofReceipt({
+    ...validTangleSandboxReceiptInput(),
+    status: 'failed',
+    runIds: [],
+    environmentId: null,
+    facts: {
+      environmentId: null,
+      resumedRunId: null,
+      followUpRunId: null,
+      cancelledRunId: null,
+      resumeFromCursor: null,
+      finalCursor: null,
+      cloudControl: null,
+      exactResource: null,
+      activeResourceDelta: null,
+    },
+    observations: null,
+    checks: ['marker'],
+  })
+
+  assert.equal(receipt.status, 'failed')
+  assert.deepEqual(receipt.run.ids, [])
+  assert.equal(receipt.facts.cloudControl, null)
+  assert.equal(receipt.observations, null)
 })
 
 test('passed trace-analysis receipts require complete checks and model-call evidence', () => {
@@ -629,5 +901,623 @@ test('provider configuration names protected references and never accepts a miss
         },
       ),
     /protected credential/u,
+  )
+})
+
+class FakeWorkerChild extends EventEmitter {
+  constructor() {
+    super()
+    this.exitCode = null
+    this.signalCode = null
+    this.killSignals = []
+    this.inputHandler = () => undefined
+    this.stdin = {
+      write: (value) => {
+        this.inputHandler(String(value))
+        return true
+      },
+    }
+  }
+
+  finish(code = 0) {
+    if (this.exitCode !== null || this.signalCode !== null) return
+    this.exitCode = code
+    queueMicrotask(() => this.emit('exit', code, null))
+  }
+
+  kill(signal) {
+    this.killSignals.push(signal)
+    if (this.exitCode !== null || this.signalCode !== null) return false
+    this.signalCode = signal
+    queueMicrotask(() => this.emit('exit', null, signal))
+    return true
+  }
+}
+
+function fakeWorker(mode, records = []) {
+  const child = new FakeWorkerChild()
+  const waiters = new Set()
+  const worker = {
+    mode,
+    child,
+    records,
+    waiters,
+    stderr: [],
+    push(record) {
+      records.push(record)
+      for (const waiter of waiters) waiter(record)
+    },
+  }
+  return worker
+}
+
+function defaultResumedRecord(values) {
+  const executionId = values['execution-id']
+  const cursor = values.cursor
+  return {
+    type: 'resumed',
+    environmentId: values['environment-id'],
+    sessionId: values['session-id'],
+    executionId,
+    reconnectToResultMs: 1,
+    replay: [
+      { id: cursor, type: 'execution.started', executionId },
+      { id: 'event-2', type: 'result', executionId },
+    ],
+    cursorWasInclusive: true,
+    result: {
+      status: 'success',
+      executionId,
+      markerMatched: true,
+      usage: { inputTokens: 2, outputTokens: 1 },
+      costUsd: 0.001,
+    },
+    sessionStatus: 'completed',
+    completedTurn: { found: true, executionId },
+    messageStates: [],
+    duplicate: {
+      dispatched: false,
+      executionId,
+      sameExecution: true,
+      alreadyExisted: true,
+      cancellation: null,
+    },
+    workspaceRetained: true,
+  }
+}
+
+function createFakeWorkerFactory({
+  resumeRecord,
+  cancelRecord,
+  dispatchFailure,
+  cursorFailure,
+} = {}) {
+  const workers = []
+  let watcher
+  const factory = (mode, values) => {
+    const worker = fakeWorker(mode)
+    workers.push(worker)
+    if (mode === 'dispatch') {
+      if (dispatchFailure) {
+        worker.push({ type: 'error', message: dispatchFailure })
+      } else {
+        worker.push({
+          type: 'created',
+          environmentId: 'environment-1',
+          proofId: values['proof-id'],
+          sessionId: values['session-id'],
+          turnId: values['turn-id'],
+          marker: values.marker,
+          createdMs: 1,
+          workspaceMs: 1,
+          workspace: {
+            readMatched: true,
+            gitExitCode: 0,
+            gitCommit: 'a'.repeat(40),
+            resourceUsageReported: true,
+          },
+        })
+        worker.child.inputHandler = (value) => {
+          if (value !== 'dispatch\n') return
+          worker.push({
+            type: 'admitted',
+            environmentId: 'environment-1',
+            sessionId: values['session-id'],
+            executionId: 'execution-1',
+            turnId: values['turn-id'],
+            marker: values.marker,
+            prompt: 'fake prompt',
+            dispatchMs: 1,
+            dispatched: true,
+            alreadyExisted: false,
+          })
+          watcher?.push(
+            cursorFailure
+              ? { type: 'error', message: cursorFailure }
+              : {
+                  type: 'cursor',
+                  environmentId: 'environment-1',
+                  sessionId: values['session-id'],
+                  eventId: 'event-1',
+                  eventType: 'execution.started',
+                  executionId: 'execution-1',
+                },
+          )
+        }
+      }
+    } else if (mode === 'watch') {
+      watcher = worker
+      worker.push({ type: 'listening', environmentId: values['environment-id'] })
+    } else if (mode === 'resume') {
+      worker.push(resumeRecord ?? defaultResumedRecord(values))
+      queueMicrotask(() => worker.child.finish())
+    } else if (mode === 'cancel') {
+      worker.push(
+        cancelRecord ?? {
+          type: 'cancelled',
+          environmentId: values['environment-id'],
+          sessionId: values['session-id'],
+          executionId: values['execution-id'],
+          first: { cancelled: true },
+          second: { cancelled: false },
+          replayDetected: true,
+          sessionStatus: 'cancelled',
+        },
+      )
+      queueMicrotask(() => worker.child.finish())
+    }
+    return worker
+  }
+  return { factory, workers }
+}
+
+function createFakeClient(proofId, { includeExact = true } = {}) {
+  const exact = {
+    id: 'environment-1',
+    name: proofId,
+    metadata: { owner: PROOF_OWNER, proofId },
+    deleted: false,
+    deleteCalls: 0,
+    async dispatchPrompt() {
+      return {
+        sessionId: 'cancel-session',
+        executionId: 'cancel-execution',
+        status: 'running',
+        alreadyExisted: false,
+        dispatched: true,
+      }
+    },
+    async delete() {
+      this.deleted = true
+      this.deleteCalls += 1
+    },
+  }
+  const other = {
+    id: 'environment-other',
+    name: proofId,
+    metadata: { owner: 'someone-else', proofId },
+    deleted: false,
+    deleteCalls: 0,
+    async delete() {
+      this.deleted = true
+      this.deleteCalls += 1
+    },
+  }
+  let usageCalls = 0
+  return {
+    exact,
+    other,
+    async usage() {
+      usageCalls += 1
+      return usageCalls === 1
+        ? { activeSandboxes: 1, totalSandboxes: 1, computeMinutes: 0 }
+        : { activeSandboxes: 0, totalSandboxes: 1, computeMinutes: 1 }
+    },
+    async get(id) {
+      return id === exact.id && includeExact ? exact : null
+    },
+    async list() {
+      return [...(includeExact && !exact.deleted ? [exact] : []), other]
+    },
+  }
+}
+
+function workerArguments(values) {
+  return [
+    'node',
+    'tangle-sandbox-worker.mjs',
+    ...Object.entries(values).flatMap(([name, value]) => [`--${name}`, value]),
+  ]
+}
+
+test('Tangle sandbox stress uses exact replay, duplicate, cancellation, and SIGKILL checks', async () => {
+  const proofId = 'proof-hardened-success'
+  const client = createFakeClient(proofId)
+  const fakeWorkers = createFakeWorkerFactory()
+  const proof = await runStressProof({
+    client,
+    workerFactory: fakeWorkers.factory,
+    coordinates: {
+      proofId,
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      marker: 'MARKER-1',
+    },
+  })
+
+  assert.equal(proof.status, 'passed')
+  assert.deepEqual(proof.gaps, [])
+  assert.equal(proof.checks.processKilledAfterDispatch, true)
+  assert.equal(proof.checks.processKilledAfterCursor, true)
+  assert.equal(proof.checks.exactResultIdentity, true)
+  assert.equal(proof.checks.turnIdempotency, true)
+  assert.equal(proof.checks.turnIdempotencyReceipt, true)
+  assert.equal(proof.checks.cancellationOperationReplay, true)
+  assert.deepEqual(proof.exactRun, {
+    sessionId: 'session-1',
+    executionId: 'execution-1',
+    turnId: 'turn-1',
+  })
+  assert.deepEqual(proof.events, {
+    firstObservedId: 'event-1',
+    firstObservedType: 'execution.started',
+    replayCount: 2,
+    replayUniqueCount: 2,
+    providerCursorInclusive: true,
+  })
+  assert.deepEqual(
+    fakeWorkers.workers
+      .filter((worker) => worker.mode === 'dispatch' || worker.mode === 'watch')
+      .map((worker) => worker.child.killSignals),
+    [['SIGKILL'], ['SIGKILL']],
+  )
+  assert.equal(client.exact.deleteCalls, 1)
+  assert.equal(client.other.deleteCalls, 0)
+  assert.equal(duplicateTurnDetected(proof.idempotency.duplicate, 'execution-1'), true)
+  assert.equal(
+    duplicateTurnDetected(
+      { dispatched: false, executionId: 'execution-1', sameExecution: true },
+      'execution-1',
+    ),
+    false,
+  )
+  const duplicateGapProofId = 'proof-duplicate-gap'
+  const duplicateGap = defaultResumedRecord({
+    'environment-id': 'environment-1',
+    'session-id': 'session-gap',
+    'execution-id': 'execution-1',
+    cursor: 'event-1',
+  })
+  duplicateGap.duplicate.alreadyExisted = false
+  const duplicateGapProof = await runStressProof({
+    client: createFakeClient(duplicateGapProofId),
+    workerFactory: createFakeWorkerFactory({ resumeRecord: duplicateGap }).factory,
+    coordinates: {
+      proofId: duplicateGapProofId,
+      sessionId: 'session-gap',
+      turnId: 'turn-gap',
+      marker: 'MARKER-GAP',
+    },
+  })
+  assert.equal(duplicateGapProof.status, 'passed-with-gaps')
+  assert.deepEqual(duplicateGapProof.gaps, ['turn-idempotency-receipt'])
+  assert.equal(duplicateGapProof.checks.turnIdempotency, false)
+  assert.equal(cancellationReplayDetected(proof.cancellation, 'cancel-execution'), true)
+  assert.equal(
+    cancellationReplayDetected(
+      {
+        executionId: 'cancel-execution',
+        first: { cancelled: false },
+        second: { cancelled: false },
+      },
+      'cancel-execution',
+    ),
+    false,
+  )
+  assert.equal(
+    cancellationReplayDetected(
+      {
+        executionId: 'other-execution',
+        first: { cancelled: true },
+        second: { cancelled: false },
+        sessionStatus: 'cancelled',
+      },
+      'cancel-execution',
+    ),
+    false,
+  )
+  assert.equal(
+    cancellationReplayDetected(
+      {
+        executionId: 'cancel-execution',
+        first: { cancelled: true },
+        second: { cancelled: false },
+        sessionStatus: 'running',
+      },
+      'cancel-execution',
+    ),
+    false,
+  )
+})
+
+test('Tangle sandbox stress persists partial artifacts for assertion and worker failure', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-tangle-sandbox-partial-'))
+  try {
+    const assertionProofId = 'proof-failure'
+    const assertionClient = createFakeClient(assertionProofId)
+    const badResume = defaultResumedRecord({
+      'environment-id': 'environment-1',
+      'session-id': 'session-1',
+      'execution-id': 'execution-1',
+      cursor: 'event-1',
+    })
+    badResume.result.executionId = 'wrong-execution'
+    const assertionWorkers = createFakeWorkerFactory({ resumeRecord: badResume })
+    const assertionArtifact = join(root, 'assertion', 'proof.json')
+    await assert.rejects(
+      () =>
+        runStressProof({
+          client: assertionClient,
+          workerFactory: assertionWorkers.factory,
+          outputPath: assertionArtifact,
+          coordinates: {
+            proofId: assertionProofId,
+            sessionId: 'session-1',
+            turnId: 'turn-1',
+            marker: 'MARKER-1',
+          },
+        }),
+      /resume result execution ID changed during replay/u,
+    )
+    const assertionEvidence = JSON.parse(await readFile(assertionArtifact, 'utf8'))
+    assert.equal(assertionEvidence.status, 'failed')
+    assert.equal(assertionEvidence.failure.name, 'AssertionError')
+    assert.equal(assertionEvidence.environmentId, 'environment-1')
+    assert.equal(assertionEvidence.phase, 'resume')
+    assert.deepEqual(assertionEvidence.progress.dispatcherDeath, {
+      code: null,
+      signal: 'SIGKILL',
+    })
+    assert.deepEqual(assertionEvidence.progress.watcherDeath, {
+      code: null,
+      signal: 'SIGKILL',
+    })
+    assert.equal(assertionEvidence.progress.resumed.result.executionId, 'wrong-execution')
+
+    const workerFailureProofId = 'proof-worker-failure'
+    const workerFailureArtifact = join(root, 'worker', 'proof.json')
+    const workerFailureClient = createFakeClient(workerFailureProofId, { includeExact: false })
+    const workerFailureWorkers = createFakeWorkerFactory({ dispatchFailure: 'fake worker failed' })
+    await assert.rejects(
+      () =>
+        runStressProof({
+          client: workerFailureClient,
+          workerFactory: workerFailureWorkers.factory,
+          outputPath: workerFailureArtifact,
+          coordinates: {
+            proofId: workerFailureProofId,
+            sessionId: 'session-2',
+            turnId: 'turn-2',
+            marker: 'MARKER-2',
+          },
+        }),
+      /fake worker failed/u,
+    )
+    const workerEvidence = JSON.parse(await readFile(workerFailureArtifact, 'utf8'))
+    assert.equal(workerEvidence.status, 'failed')
+    assert.equal(workerEvidence.failure.message, 'fake worker failed')
+    assert.equal(workerEvidence.phase, 'dispatch-create')
+    assert.equal(workerEvidence.cleanupConfirmed, true)
+
+    const partialProofId = 'proof-partial-admission'
+    const partialArtifact = join(root, 'partial', 'proof.json')
+    const partialWorkers = createFakeWorkerFactory({
+      cursorFailure: 'watcher failed after admission',
+    })
+    await assert.rejects(
+      () =>
+        runStressProof({
+          client: createFakeClient(partialProofId),
+          workerFactory: partialWorkers.factory,
+          outputPath: partialArtifact,
+          coordinates: {
+            proofId: partialProofId,
+            sessionId: 'session-3',
+            turnId: 'turn-3',
+            marker: 'MARKER-3',
+          },
+        }),
+      /watcher failed after admission/u,
+    )
+    const partialEvidence = JSON.parse(await readFile(partialArtifact, 'utf8'))
+    assert.equal(partialEvidence.status, 'failed')
+    assert.equal(partialEvidence.phase, 'dispatch')
+    assert.equal(partialEvidence.progress.admitted.executionId, 'execution-1')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Tangle sandbox cleanup deletes only the exact proof tag', async () => {
+  const proofId = 'proof-exact-cleanup'
+  const exact = {
+    id: 'exact',
+    name: proofId,
+    metadata: { owner: PROOF_OWNER, proofId },
+    deleteCalls: 0,
+    async delete() {
+      this.deleteCalls += 1
+    },
+  }
+  const wrongOwner = {
+    id: 'wrong-owner',
+    name: proofId,
+    metadata: { owner: 'not-braid', proofId },
+    deleteCalls: 0,
+    async delete() {
+      this.deleteCalls += 1
+    },
+  }
+  const wrongProof = {
+    id: 'wrong-proof',
+    name: proofId,
+    metadata: { owner: PROOF_OWNER, proofId: 'other-proof' },
+    deleteCalls: 0,
+    async delete() {
+      this.deleteCalls += 1
+    },
+  }
+  const pagedExact = {
+    id: 'exact-page-2',
+    name: proofId,
+    metadata: { owner: PROOF_OWNER, proofId },
+    deleteCalls: 0,
+    async delete() {
+      this.deleteCalls += 1
+    },
+  }
+  const unrelated = Array.from({ length: 98 }, (_, index) => ({
+    id: `unrelated-${index}`,
+    name: `unrelated-${index}`,
+    metadata: {},
+  }))
+  const client = {
+    async get(id) {
+      assert.equal(id, exact.id)
+      return exact
+    },
+    async list({ offset = 0 } = {}) {
+      if (offset === 0) return [wrongOwner, wrongProof, ...unrelated]
+      if (offset === 100 && exact.deleteCalls === 0) return [exact, pagedExact]
+      return []
+    },
+  }
+
+  assert.equal(await cleanupProof(client, proofId, exact.id), true)
+  assert.equal(exact.deleteCalls, 1)
+  assert.equal(pagedExact.deleteCalls, 1)
+  assert.equal(wrongOwner.deleteCalls, 0)
+  assert.equal(wrongProof.deleteCalls, 0)
+})
+
+test('Tangle sandbox worker preserves exact replay and cancellation acknowledgements through fakes', async () => {
+  const replayRecords = []
+  const interruptOptions = []
+  const session = {
+    async *events(options) {
+      assert.deepEqual(options, { since: 'event-1', executionId: 'execution-1' })
+      yield { id: 'event-1', type: 'execution.started', data: { executionId: 'execution-1' } }
+      yield { id: 'event-2', type: 'result', executionId: 'execution-1' }
+    },
+    async result(options) {
+      assert.deepEqual(options, { executionId: 'execution-1' })
+      return {
+        status: 'success',
+        executionId: 'execution-1',
+        response: 'MARKER-1',
+        usage: { inputTokens: 2, outputTokens: 1 },
+        costUsd: 0.001,
+      }
+    },
+    async status() {
+      return { status: interruptOptions.length === 0 ? 'completed' : 'cancelled' }
+    },
+    async interrupt(options) {
+      interruptOptions.push(options)
+      return { cancelled: interruptOptions.length === 1 }
+    },
+  }
+  const box = {
+    async read() {
+      return 'MARKER-1\n'
+    },
+    session() {
+      return session
+    },
+    async findCompletedTurn() {
+      return { result: { executionId: 'execution-1' } }
+    },
+    async messages() {
+      return [{ role: 'assistant', metadata: { status: 'completed', turnId: 'turn-1' } }]
+    },
+    async dispatchPrompt() {
+      return {
+        dispatched: false,
+        executionId: 'execution-1',
+        alreadyExisted: true,
+      }
+    },
+  }
+  const client = {
+    async get() {
+      return box
+    },
+  }
+  const argv = workerArguments({
+    'environment-id': 'environment-1',
+    'session-id': 'session-1',
+    'execution-id': 'execution-1',
+    'turn-id': 'turn-1',
+    marker: 'MARKER-1',
+    cursor: 'event-1',
+  })
+
+  await runWorker('resume', { argv, client, write: (record) => replayRecords.push(record) })
+  assert.equal(replayRecords.length, 1)
+  assert.deepEqual(replayRecords[0].replay, [
+    { id: 'event-1', type: 'execution.started', executionId: 'execution-1' },
+    { id: 'event-2', type: 'result', executionId: 'execution-1' },
+  ])
+  assert.deepEqual(replayRecords[0].result, {
+    status: 'success',
+    executionId: 'execution-1',
+    markerMatched: true,
+    usage: { inputTokens: 2, outputTokens: 1 },
+    costUsd: 0.001,
+  })
+  assert.deepEqual(replayRecords[0].duplicate, {
+    dispatched: false,
+    executionId: 'execution-1',
+    sameExecution: true,
+    alreadyExisted: true,
+    cancellation: null,
+  })
+
+  const cancellationRecords = []
+  await runWorker('cancel', {
+    argv: workerArguments({
+      'environment-id': 'environment-1',
+      'session-id': 'session-1',
+      'execution-id': 'execution-1',
+    }),
+    client,
+    write: (record) => cancellationRecords.push(record),
+  })
+  assert.deepEqual(interruptOptions, [
+    { executionId: 'execution-1' },
+    { executionId: 'execution-1' },
+  ])
+  assert.equal(cancellationRecords[0].replayDetected, true)
+  assert.equal(cancellationRecords[0].sessionStatus, 'cancelled')
+  assert.deepEqual(cancellationRecords[0].first, { cancelled: true })
+  assert.deepEqual(cancellationRecords[0].second, { cancelled: false })
+  assert.equal(cancellationReplayDetected(cancellationRecords[0], 'execution-1'), true)
+  assertExactResumeEvidence(replayRecords[0], {
+    executionId: 'execution-1',
+    cursorEventId: 'event-1',
+  })
+  assert.throws(
+    () =>
+      assertExactResumeEvidence(
+        {
+          ...replayRecords[0],
+          replay: [
+            ...replayRecords[0].replay,
+            { id: 'foreign-event', type: 'result', executionId: 'execution-2' },
+          ],
+        },
+        { executionId: 'execution-1', cursorEventId: 'event-1' },
+      ),
+    /replay included a different execution/u,
   )
 })
