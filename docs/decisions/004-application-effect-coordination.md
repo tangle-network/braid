@@ -34,6 +34,10 @@ A previously pending operation is resolved only through an explicit reconciliati
 
 Without reconciliation evidence the coordinator leaves it pending and never guesses that repeating the mutation is safe.
 
+A pending local effect is not a remote control reference.
+
+Remote retention requires provider lookup for success that occurred before the exact reference committed.
+
 `JournalPort` and `EffectStoragePort` are application seams rather than new provider protocols.
 
 ## Consequences

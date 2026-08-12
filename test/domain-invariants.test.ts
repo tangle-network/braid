@@ -196,6 +196,14 @@ test('connection state accepts transport metadata but rejects provider-native op
       }),
     /credential material|URL credentials/u,
   )
+  assert.throws(
+    () =>
+      assertConnectionRecord({
+        ...connection,
+        providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
+      }),
+    /only for tangle-sandbox/u,
+  )
 })
 
 test('unknown interaction kinds remain renderable through the canonical answer specification', () => {

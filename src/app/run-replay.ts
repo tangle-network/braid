@@ -5,9 +5,13 @@ import type { ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
 import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
 
+interface RecoveryReconnectInput extends ReconnectInput {
+  readonly priorFailureDetail?: string
+}
+
 export async function reconnectRun(
   context: ReplayPort,
-  input: ReconnectInput,
+  input: RecoveryReconnectInput,
 ): Promise<BraidState> {
   const run = context.findRun(input.runId)
   if (context.isTerminal(run.status) && run.status !== 'unknown')
@@ -43,7 +47,13 @@ export async function reconnectRun(
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
     }
     if (!sawTerminal && !context.isTerminal(context.findRun(run.id).status))
-      await reconcileRun(context, { runId: run.id, operationId: input.operationId })
+      await reconcileRun(context, {
+        runId: run.id,
+        operationId: input.operationId,
+        ...(input.priorFailureDetail === undefined
+          ? {}
+          : { priorFailureDetail: input.priorFailureDetail }),
+      })
   } catch (error) {
     if (!context.isTerminal(context.findRun(run.id).status))
       await context.commitAndWait({
@@ -60,7 +70,7 @@ export async function reconnectRun(
 
 export async function reconcileRun(
   context: ReplayPort,
-  input: ReconnectInput,
+  input: RecoveryReconnectInput,
 ): Promise<BraidState> {
   const run = context.findRun(input.runId)
   if (!run.capabilities.controls.status || !context.execution.status) {
@@ -68,7 +78,7 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: 'The execution path cannot reconcile provider state',
+        detail: input.priorFailureDetail ?? 'The execution path cannot reconcile provider state',
       })
     return structuredClone(context.currentState())
   }
@@ -96,7 +106,7 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: 'The provider returned no run record',
+        detail: input.priorFailureDetail ?? 'The provider returned no run record',
       })
     return structuredClone(context.currentState())
   }

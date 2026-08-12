@@ -59,6 +59,8 @@ test('first-run discovery offers CLI Bridge, Tangle inference, and Tangle sandbo
   )
   assert.equal(setup.connections[1]?.endpoint, 'https://router.tangle.tools')
   assert.equal(setup.connections[2]?.endpoint, 'https://sandbox.tangle.tools')
+  assert.equal(setup.connections[2]?.providerOptions.lifecycle, undefined)
+  assert.equal(setup.connections[2]?.providerOptions.idleTtlSeconds, undefined)
   assert.equal(
     setup.connections.every((connection) => connection.credentialRef === undefined),
     true,

@@ -200,6 +200,12 @@ interface ConnectionRecord {
   updatedAt: string
   lastHealth?: ConnectionHealth
 }
+
+interface ConnectionTransportOptions {
+  transport?: 'http' | 'https' | 'sse'
+  lifecycle?: 'ephemeral' | 'retained'
+  idleTtlSeconds?: number
+}
 ```
 
 This record is a Braid storage type, not a replacement for provider configuration types.
@@ -264,7 +270,29 @@ The setup preview shows repository, ref, image or environment, CPU, memory, disk
 
 Connection health proves authentication and provider reachability but does not create a sandbox.
 
-A separate one-environment smoke proves create, prompt, replay, workspace operations, checkpoint, fork, and destroy in release verification.
+New setup records default to ephemeral lifecycle.
+
+A connection configuration can set retained lifecycle with an idle limit from 60 through 604,800 seconds.
+
+An idle limit is rejected for an ephemeral connection, and a retained connection without one is rejected.
+
+The ephemeral path deletes its environment after one turn.
+
+The retained resolver performs no create operation.
+
+It rejects the connection before resource creation unless exact control and provider-backed dispatch lookup are both available.
+
+After that check passes, the first admitted turn creates one environment with a deterministic Braid name, metadata owner, provider session, and retry key.
+
+Braid records the exact provider run reference before replay, continuation, cancellation, or cleanup can claim the environment.
+
+A fresh Braid process can discover, replay, and cancel that exact run before or after the reference commits.
+
+Native follow-up turns remain unavailable until the provider proves a matching context boundary.
+
+The retained release stress requires create, active-process disconnect, fresh-process replay, hidden workspace continuity, retry-safe cancellation, exact destroy, and zero account-level active-resource delta.
+
+Checkpoint, environment fork, and interaction response remain disabled until their provider methods and live checks pass.
 
 Attestation status is displayed only after cryptographic verification through the current confidential-execution contract.
 

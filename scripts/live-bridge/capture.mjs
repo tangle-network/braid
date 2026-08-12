@@ -3,7 +3,7 @@ import { redactString } from './redaction.mjs'
 const defaultHoldChars = 512
 const maxPendingChars = 8_192
 const sensitiveBoundaryPattern =
-  /(?:bearer\s+[A-Za-z0-9._~+/=-]*|(?:token|access[-_]?token|refresh[-_]?token|api[-_]?key|secret|client[-_]?secret|password|authorization|credential)\s*[:=]\s*[^,\s;&#]*|https?:\/\/[^/\s@]*|\b(?:sk|pk|rk)-[A-Za-z0-9_-]*|\bgh[pousr]_[A-Za-z0-9_]*)$/iu
+  /(?:bearer\s+[A-Za-z0-9._~+/=-]*|(?:token|access[-_ ]*token|refresh[-_ ]*token|api[-_ ]*key|secret|client[-_ ]*secret|password|authorization|credential)\s*[:=]\s*[^,\s;&#]*|https?:\/\/[^/\s@]*|\b(?:sk|pk|rk)-[A-Za-z0-9_-]*|\bgh[pousr]_[A-Za-z0-9_]*)$/iu
 const sensitiveMarkers = Object.freeze([
   'http://',
   'https://',

@@ -421,9 +421,9 @@ Conflicting rules fail closed and require user response.
 | CF-05 | Branch, clone, full fork, cross-runner handoff, retry, checkpoint, and environment fork each produce the specified identifiers and graph edges. |
 | CF-06 | A real cloud workspace fork proves source checkpoint, destination environment, independent file mutation, and unchanged source workspace. |
 | CF-07 | Pending interactions, queued future turns, opaque provider state, and unselected analyses never enter inherited context. |
-| CF-08 | Restart during each external fork step reconciles by idempotency key and request digest without duplicate branch, checkpoint, environment, session, or context transfer, and confirms cleanup of recovered remote resources. |
+| CF-08 | Restart during each external step reconciles by idempotency key and request digest without duplicate work, including dispatch before exact-reference commit, and confirms cleanup of recovered resources. |
 | CF-09 | Export and import preserve graph checksum, receipts, citations, completeness, and redaction while leaving external controls disabled until reconciliation. |
-| CF-10 | A missing provider session produces a fresh-session handoff or honest unavailable state and never a false native resume label. |
+| CF-10 | A missing provider session or exact control reference produces a fresh-session handoff or honest unavailable state and never a false resume label. |
 | AN-01 | `/ask` freezes one immutable source digest and late events cannot change the running or completed analysis. |
 | AN-02 | `/ask` creates no message or context mutation in the source branch before explicit promotion. |
 | AN-03 | Every cited finding resolves to the frozen event or span range and an invalid citation is deterministically rejected. |

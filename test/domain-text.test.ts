@@ -65,3 +65,16 @@ test('known bare credential formats are removed across every stream boundary', (
     expected,
   )
 })
+
+test('phrase-form credential assignments are removed across stream boundaries', () => {
+  const source = 'Provider rejected API key: sk-live-sentinel-1234567890'
+  const expected = 'Provider rejected [redacted secret]'
+  assert.equal(redactSensitiveText(source), expected)
+  for (let boundary = 0; boundary <= source.length; boundary += 1) {
+    assert.equal(
+      sanitizeTextChunks([source.slice(0, boundary), source.slice(boundary)]),
+      expected,
+      `split at ${boundary}`,
+    )
+  }
+})

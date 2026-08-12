@@ -1135,6 +1135,8 @@ test('retrying the same create operation is idempotent across config, catalog, c
     const created = fixture.app
       .state()
       .connections.find((record) => record.id === first.connection.id)
+    assert.equal(created?.providerOptions.lifecycle, undefined)
+    assert.equal(created?.providerOptions.idleTtlSeconds, undefined)
     assert.ok(created?.credentialRef)
     if (created?.credentialRef === undefined) throw new Error('retry record has no credential ref')
     const stored = await fixture.credentials.resolve(portCredentialRef(created.credentialRef))

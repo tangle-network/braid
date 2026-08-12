@@ -141,6 +141,10 @@ export interface ConnectionRecord {
   readonly lastModelVerification?: ConnectionModelVerification
 }
 
+export const DEFAULT_RETAINED_IDLE_TTL_SECONDS = 1_800
+export const MIN_RETAINED_IDLE_TTL_SECONDS = 60
+export const MAX_RETAINED_IDLE_TTL_SECONDS = 604_800
+
 /**
  * Braid stores only transport metadata and capability hints here.
  * Provider-native configuration belongs to the provider package and is never
@@ -152,6 +156,10 @@ export interface ConnectionTransportOptions {
   readonly region?: string
   readonly account?: string
   readonly capabilityHints?: readonly string[]
+  /** Cloud environment ownership policy. Omitted connections remain ephemeral. */
+  readonly lifecycle?: 'ephemeral' | 'retained'
+  /** Idle expiry for a retained cloud environment. */
+  readonly idleTtlSeconds?: number
 }
 
 export interface RetentionPolicy {

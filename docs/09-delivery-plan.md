@@ -181,6 +181,7 @@ Closing a Braid interface and explicitly cancelling a run must produce different
 
 - Carry canonical interaction requests in sandbox session events and accept idempotent typed responses.
 - Preserve interaction state and replay across Braid disconnect and reconnect.
+- Recover an exact retained dispatch by deterministic keys after caller death and before local reference commit.
 - Expose run cancellation separately from environment destruction.
 - Validate inline profiles and return effective capability, placement, session, usage, and confidentiality evidence.
 - Prove workspace read, write, exec, Git, upload, download, checkpoint, and fork methods against current deployment support.

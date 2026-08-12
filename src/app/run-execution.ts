@@ -64,10 +64,7 @@ export async function executeRun(
     if (!terminalSeen) await finishWithoutTerminal(context, input, admission, abort)
   } catch (error) {
     if (context.ledger.isDetached(admission.runId)) return
-    const message = safeRuntimeDiagnostic(
-      error instanceof Error ? error.message : String(error),
-      'RUNTIME_EXECUTION_ERROR',
-    )
+    const message = safeRuntimeDiagnostic(error, 'RUNTIME_EXECUTION_ERROR')
     if (terminalSeen) throw error
     if (!terminalSeen) await finishAfterError(context, input, admission, abort, message)
   } finally {
@@ -157,6 +154,7 @@ async function finishAfterError(
     await reconnectRun(context, {
       operationId: `${input.operationId}:reconnect`,
       runId: admission.runId,
+      priorFailureDetail: message,
     })
     return
   }

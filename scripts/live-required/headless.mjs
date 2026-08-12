@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { RpcSession } from '../live-bridge/process.mjs'
@@ -62,6 +62,30 @@ function liveDataDirectory(root, platform = process.platform) {
   return join(root, '.xdg-data', 'braid')
 }
 
+function combineFailures(failures, message) {
+  const present = failures.filter((failure) => failure !== undefined)
+  if (present.length === 0) return undefined
+  if (present.length === 1) return present[0]
+  return new AggregateError(present, message)
+}
+
+function cleanupEvidence(credentialRemoved, temporaryRootRemoved) {
+  return Object.freeze({ credentialRemoved, temporaryRootRemoved })
+}
+
+function withCleanupEvidence(error, evidence) {
+  if (error !== null && (typeof error === 'object' || typeof error === 'function')) {
+    try {
+      Object.defineProperty(error, 'cleanupEvidence', {
+        configurable: true,
+        enumerable: false,
+        value: evidence,
+      })
+    } catch {}
+  }
+  return error
+}
+
 async function installGeneratedCredential({
   repository,
   workspace,
@@ -74,10 +98,17 @@ async function installGeneratedCredential({
   createCredentialContext,
 }) {
   let context
+  let contextFactory
   const portRef = `cred:v1:${credentialId}`
   const secret = Buffer.from(value)
+  const contextOptions = {
+    workspace,
+    configPath,
+    databaseKeyFile,
+    dataDirectory,
+  }
   try {
-    const contextFactory =
+    contextFactory =
       createCredentialContext ??
       (
         await import(
@@ -86,42 +117,91 @@ async function installGeneratedCredential({
           ).href
         )
       ).createProductionCredentialContext
-    context = contextFactory({
-      workspace,
-      configPath,
-      databaseKeyFile,
-      dataDirectory,
-    })
-    if (context === undefined) throw new Error('The protected credential context was not created')
+
+    const createContext = () => {
+      const candidate = contextFactory(contextOptions)
+      if (candidate === undefined)
+        throw new Error('The protected credential context was not created')
+      return candidate
+    }
+
+    context = createContext()
     await context.store.store({
       ref: portRef,
       value: secret,
       label: `Braid live ${kind} release check`,
     })
     let removed = false
+    let removalPromise
     return {
       credentialId,
       remove: async () => {
-        if (removed) return
-        try {
-          await context.store.remove(portRef)
-          context.dispose()
-          removed = true
-        } catch (error) {
-          throw protectedUnavailable(
-            'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
-            `The temporary ${kind} credential could not be removed`,
-            error,
+        if (removed) return { credentialRemoved: true }
+        if (removalPromise !== undefined) return removalPromise
+        removalPromise = (async () => {
+          let current
+          let removalError
+          let disposeError
+          try {
+            current = context ?? createContext()
+            context = undefined
+            await current.store.remove(portRef)
+            removed = true
+          } catch (error) {
+            removalError = protectedUnavailable(
+              'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
+              `The temporary ${kind} credential could not be removed`,
+              error,
+            )
+          } finally {
+            try {
+              current?.dispose()
+            } catch (error) {
+              disposeError = protectedUnavailable(
+                'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
+                `The temporary ${kind} credential context could not be disposed`,
+                error,
+              )
+            }
+          }
+          const failure = combineFailures(
+            [removalError, disposeError],
+            `The temporary ${kind} credential cleanup failed`,
           )
+          if (failure !== undefined) {
+            if (removalError !== undefined && disposeError !== undefined) {
+              throw protectedUnavailable(
+                'PROTECTED_CREDENTIAL_CLEANUP_FAILED',
+                `The temporary ${kind} credential cleanup failed`,
+                failure,
+              )
+            }
+            throw failure
+          }
+          return { credentialRemoved: true }
+        })()
+        try {
+          return await removalPromise
+        } finally {
+          removalPromise = undefined
         }
       },
     }
   } catch (error) {
-    context?.dispose()
+    let disposeError
+    try {
+      context?.dispose()
+    } catch (cleanupError) {
+      disposeError = cleanupError
+    }
+    const failure = combineFailures(
+      [error, disposeError],
+      `The supplied ${kind} credential could not be installed in Braid's protected workspace credential store`,
+    )
     throw protectedUnavailable(
       'PROTECTED_CREDENTIAL_STORE_UNAVAILABLE',
       `The supplied ${kind} credential could not be installed in Braid's protected workspace credential store`,
-      error,
+      failure,
     )
   } finally {
     secret.fill(0)
@@ -168,41 +248,43 @@ export async function prepareProductionWorkspace({
   runner,
   provider,
   connectionName,
+  providerOptions = {},
   credentialRef,
   credentialValue,
   credentialContextFactory,
+  removeTemporaryRoot = (path) => rm(path, { recursive: true, force: true }),
 }) {
   const root = await mkdtemp(join(tmpdir(), 'braid-live-required-'))
-  const kindId = kind.replace(/[^A-Za-z0-9._~-]/gu, '-')
-  const workspace = join(root, 'workspace')
-  const configDirectory = join(workspace, '.braid')
-  const profileDirectory = join(configDirectory, 'profiles')
-  const databaseKeyFile = join(root, 'database.key')
-  const configPath = join(configDirectory, 'config.json')
-  const dataDirectory = liveDataDirectory(root)
-  const generatedCredentialId =
-    credentialValue === undefined
-      ? undefined
-      : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
-  const selectedCredentialId = generatedCredentialId ?? credentialRef
-  if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
-  const profile = profileFor({ kind, model, runner, provider })
-  const profileFile = `profile-${kindId}.json`
-  const profilePath = join(profileDirectory, profileFile)
-  const now = timestamp()
-  const connection = {
-    id: `connection-live-${kindId}`,
-    kind,
-    name: connectionName ?? `Live ${kind}`,
-    endpoint,
-    ...(selectedCredentialId === undefined ? {} : { credentialRef: selectedCredentialId }),
-    providerOptions: { transport: 'https' },
-    createdAt: now,
-    updatedAt: now,
-    lastHealth: { status: 'unknown' },
-  }
   let generatedCredential
   try {
+    const kindId = kind.replace(/[^A-Za-z0-9._~-]/gu, '-')
+    const workspace = join(root, 'workspace')
+    const configDirectory = join(workspace, '.braid')
+    const profileDirectory = join(configDirectory, 'profiles')
+    const databaseKeyFile = join(root, 'database.key')
+    const configPath = join(configDirectory, 'config.json')
+    const dataDirectory = liveDataDirectory(root)
+    const generatedCredentialId =
+      credentialValue === undefined
+        ? undefined
+        : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
+    const selectedCredentialId = generatedCredentialId ?? credentialRef
+    if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
+    const profile = profileFor({ kind, model, runner, provider })
+    const profileFile = `profile-${kindId}.json`
+    const profilePath = join(profileDirectory, profileFile)
+    const now = timestamp()
+    const connection = {
+      id: `connection-live-${kindId}`,
+      kind,
+      name: connectionName ?? `Live ${kind}`,
+      endpoint,
+      ...(selectedCredentialId === undefined ? {} : { credentialRef: selectedCredentialId }),
+      providerOptions: { ...providerOptions, transport: 'https' },
+      createdAt: now,
+      updatedAt: now,
+      lastHealth: { status: 'unknown' },
+    }
     await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
     await writeFile(databaseKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
     await writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 })
@@ -235,7 +317,9 @@ export async function prepareProductionWorkspace({
             kind,
             createCredentialContext: credentialContextFactory,
           })
-    let cleaned = false
+    let temporaryRootRemoved = false
+    let cleanupPromise
+    let lastCleanupEvidence = cleanupEvidence(generatedCredential === undefined, false)
     return {
       root,
       workspace,
@@ -249,23 +333,63 @@ export async function prepareProductionWorkspace({
       credentialConfigured: selectedCredentialId !== undefined,
       environment: childEnvironment(environment, root, join(root, 'state.sqlite')),
       cleanup: async () => {
-        if (cleaned) return
-        await generatedCredential?.remove()
-        await rm(root, { recursive: true, force: true })
-        cleaned = true
+        if (temporaryRootRemoved) return lastCleanupEvidence
+        if (cleanupPromise !== undefined) return cleanupPromise
+        cleanupPromise = (async () => {
+          let credentialResult = {
+            credentialRemoved: generatedCredential === undefined,
+          }
+          let credentialError
+          let workspaceError
+          try {
+            if (generatedCredential !== undefined)
+              credentialResult = await generatedCredential.remove()
+          } catch (error) {
+            credentialError = error
+          } finally {
+            try {
+              await removeTemporaryRoot(root)
+              temporaryRootRemoved = true
+            } catch (error) {
+              workspaceError = error
+            }
+          }
+          lastCleanupEvidence = cleanupEvidence(
+            credentialResult.credentialRemoved === true,
+            temporaryRootRemoved,
+          )
+          const failure = combineFailures(
+            [credentialError, workspaceError],
+            'The live workspace cleanup failed',
+          )
+          if (failure !== undefined) throw withCleanupEvidence(failure, lastCleanupEvidence)
+          return lastCleanupEvidence
+        })()
+        try {
+          return await cleanupPromise
+        } finally {
+          cleanupPromise = undefined
+        }
       },
     }
   } catch (error) {
+    const failures = [error]
     try {
       await generatedCredential?.remove()
-      await rm(root, { recursive: true, force: true })
     } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        'The live workspace failed during setup and could not be cleaned up',
-      )
+      failures.push(cleanupError)
     }
-    throw error
+    try {
+      await removeTemporaryRoot(root)
+    } catch (cleanupError) {
+      failures.push(cleanupError)
+    }
+    throw (
+      combineFailures(
+        failures,
+        'The live workspace failed during setup and could not be cleaned up',
+      ) ?? error
+    )
   }
 }
 
@@ -430,6 +554,7 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
 }
 
 export function configEvidence(config) {
+  const providerOptions = config.connection.providerOptions ?? {}
   return {
     endpoint: config.endpoint,
     connectionId: config.connection.id,
@@ -437,6 +562,10 @@ export function configEvidence(config) {
     credentialConfigured: config.credentialConfigured,
     model: config.profile.model.default,
     runner: config.profile.harness,
+    ...(providerOptions.lifecycle === undefined ? {} : { lifecycle: providerOptions.lifecycle }),
+    ...(providerOptions.idleTtlSeconds === undefined
+      ? {}
+      : { idleTtlSeconds: providerOptions.idleTtlSeconds }),
   }
 }
 

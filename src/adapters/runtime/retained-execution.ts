@@ -72,6 +72,7 @@ export class RetainedExecutionPort implements ExecutionPort {
     } finally {
       this.#state.clearStartingHandle(input.runId, starting)
     }
+    if (this.#state.isDetached(input.runId)) return
     this.#state.markDetached(input.runId, false)
     yield* streamRetainedExecution({
       runId: input.runId,
@@ -124,12 +125,12 @@ export class RetainedExecutionPort implements ExecutionPort {
     readonly signal?: AbortSignal
   }): Promise<ControlAcknowledgement> {
     this.#validateKnownControl(input.runId, input.providerSessionId, input.controlRef)
-    const reader = this.#state.reader(input.runId)
-    this.#state.markDetached(input.runId, true)
-    if (!reader) {
+    if (this.#state.isDetached(input.runId)) {
       return { operationId: input.operationId, outcome: 'already-applied', detail: 'detached' }
     }
-    reader.abort(new DOMException('Braid detached from the retained run', 'AbortError'))
+    const reader = this.#state.reader(input.runId)
+    this.#state.markDetached(input.runId, true)
+    reader?.abort(new DOMException('Braid detached from the retained run', 'AbortError'))
     return { operationId: input.operationId, outcome: 'accepted', detail: 'detached' }
   }
 
@@ -187,6 +188,9 @@ export class RetainedExecutionPort implements ExecutionPort {
     }
     let effect = result.effect
     if (effect === 'unknown' || effect === 'not_live') {
+      if (resolved.plan.exactStatus === false) {
+        return { operationId: input.operationId, outcome: 'unknown', detail: result.effect }
+      }
       const reconciled = await this.#reconcileCancelled(resolved, input)
       if (!reconciled) {
         return { operationId: input.operationId, outcome: 'unknown', detail: result.effect }
@@ -218,6 +222,7 @@ export class RetainedExecutionPort implements ExecutionPort {
       input.signal,
     )
     if (!resolved) return null
+    if (resolved.plan.exactStatus === false) return null
     const snapshot = await resolved.handle.status({
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     })
@@ -281,7 +286,6 @@ export class RetainedExecutionPort implements ExecutionPort {
     }
     if (activePlan !== undefined) {
       if (this.#state.isCancellationRequested(runId)) return null
-      throw new Error('Retained run state is incomplete')
     }
     const recoverySessionId = this.#recoverySessionId(providerSessionId, supplied)
     const plan = await this.#planFor(runId, recoverySessionId, supplied)

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid retained Tangle Sandbox lifecycle, stress proof, and public evidence",
+  "files": 65,
+  "base": "8f066cc20c750579015bf47589d3d742d6bb0bc5",
+  "head": "8f066cc20c750579015bf47589d3d742d6bb0bc5",
+  "workingTree": true,
+  "diffSha256": "2389bc43d72a13cf9bbd348d57d8f7a9955b2673d844a3953d5856f3c4c9b067",
+  "projectType": "Node.js ESM package",
+  "reviewers": [
+    "A: retained lifecycle correctness, identity, cleanup, credentials, and races",
+    "B: runtime boundaries, module ownership, replay, and failure handling",
+    "C: callsites, documentation accuracy, dependency hygiene, and real-system proof"
+  ],
+  "mode": "current working-tree review with serial local checks",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 2,
+    "medium": 4,
+    "low": 1,
+    "resolved": 7,
+    "unresolved": 0,
+    "dropped": 0
+  }
+}

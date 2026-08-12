@@ -9,6 +9,7 @@ import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { safeRuntimeDiagnostic } from '../src/app/provider-values.js'
 import { createProfileRecord } from '../src/app/profiles.js'
 import { runEffectRequest } from '../src/app/run-admission.js'
 import { buildAppView } from '../src/app/view-model.js'
@@ -811,6 +812,19 @@ test('provider diagnostics and model metadata cannot persist credential material
   assert.equal(state.runs[0]?.model, 'fixture/deterministic')
   assert.equal(state.runs[0]?.inputTokens, 0)
   assert.equal(state.runs[0]?.outputTokens, 0)
+})
+
+test('provider diagnostic getters cannot break execution failure handling', () => {
+  const hostile = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('hostile provider getter')
+      },
+    },
+  )
+
+  assert.equal(safeRuntimeDiagnostic(hostile, 'RUNTIME_EXECUTION_ERROR'), 'RUNTIME_EXECUTION_ERROR')
 })
 
 test('subscriber failures cannot alter a completed run', async () => {

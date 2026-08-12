@@ -44,7 +44,9 @@ They need fast streaming, readable tools and reasoning, precise cancellation, pr
 
 ### Tangle cloud user
 
-The cloud user wants the same profile and conversation experience in an isolated Tangle sandbox, with reconnect, workspace operations, checkpoints, environment forks, and placement visibility.
+The cloud user wants the same profile and conversation experience in an isolated Tangle sandbox.
+
+Reconnect, workspace operations, checkpoints, environment forks, and placement appear only when the provider proves them.
 
 They need to know what persisted, what moved to the cloud, and the exact state a fork copied.
 
@@ -92,9 +94,10 @@ They need analyses to remain separate from the conversation they analyze unless 
 1. The user opens the connection picker and chooses a Tangle sandbox connection.
 2. Braid validates the profile against reported cloud capabilities.
 3. The user confirms workspace source, placement, resource policy, confidentiality, and estimated execution context.
-4. The Tangle provider creates or resumes the environment and the runtime starts the run.
-5. Braid can detach, reconnect, inspect the workspace, checkpoint it, and create an environment fork when capabilities permit.
-6. The branch graph records which environment and checkpoint back each branch.
+4. The Tangle provider creates one ephemeral environment by default and the runtime starts the run.
+5. An explicit retained connection can recover an environment only when exact control and provider-backed lookup are available.
+6. Braid can detach, reconnect, inspect the workspace, checkpoint it, and create an environment fork when capabilities permit.
+7. The branch graph records which environment and checkpoint back each branch.
 
 ### Change runner without changing agent
 
@@ -243,14 +246,14 @@ The interface never calls a connection an agent, never calls a runner a model, a
 | ID | Required outcome |
 | --- | --- |
 | PR-01 | A new user completes one real CLI Bridge turn from an existing profile without editing a configuration file. |
-| PR-02 | The same profile completes one real Tangle sandbox turn and the interface explains the changed placement. |
+| PR-02 | The same profile completes one real ephemeral Tangle sandbox turn, explains placement, and confirms environment deletion. |
 | PR-03 | The user changes runner for a new branch without changing the stored profile and can inspect both run snapshots. |
-| PR-04 | A disconnected durable run resumes from its cursor with no missing or duplicated displayed event. |
+| PR-04 | A provider-reported durable run resumes from its cursor with no missing or duplicated displayed event. |
 | PR-05 | A permission request reaches the terminal, receives a scoped response, and the waiting run continues through the shared contract. |
 | PR-06 | Conversation-only and environment forks display different, accurate copy semantics before confirmation. |
 | PR-07 | `/ask` creates a separate cited analysis node and does not add a message to the analyzed branch. |
 | PR-08 | A live runtime worker can be inspected, steered, and cancelled through a runtime API that confirms the effect. |
-| PR-09 | Restarting Braid reconstructs the same conversation graph, interaction decisions, and run bindings from the local journal. |
+| PR-09 | Restarting Braid reconstructs the local graph, decisions, and saved bindings without claiming unavailable remote control. |
 | PR-10 | A keyboard-only user completes every primary journey at 80×24 and a narrow 40×12 terminal exposes no unreachable action. |
 | PR-11 | Headless commands reproduce the same state transitions and validation results as the terminal interface. |
 | PR-12 | One release manifest proves all required deterministic, terminal, live, visual, semantic, security, install, and performance checks against one immutable Braid build. |

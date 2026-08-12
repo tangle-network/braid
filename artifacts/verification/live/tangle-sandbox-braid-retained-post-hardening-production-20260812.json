@@ -1,0 +1,214 @@
+{
+  "schemaVersion": "braid.tangle-sandbox-braid-soak.v1",
+  "status": "failed",
+  "startedAt": "2026-08-12T16:19:56.757Z",
+  "completedAt": "2026-08-12T16:20:01.454Z",
+  "requestedRuns": 1,
+  "attemptedRuns": 1,
+  "concurrency": 1,
+  "stoppedAfterCanary": true,
+  "failures": [
+    "run 1 did not pass exact proof",
+    "run 1: status was not passed",
+    "cloud environment identity was missing",
+    "Braid binary digest was missing"
+  ],
+  "cleanup": {
+    "exactProofs": 1,
+    "exactResourcesRemaining": 0,
+    "resourceProofsUnavailable": 0,
+    "activeResourceDelta": 0,
+    "activeResourceDeltas": [
+      0
+    ]
+  },
+  "accountUsage": {
+    "complete": true,
+    "before": {
+      "computeMinutes": 1038,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "gpuProviderCostUsd": 0,
+      "activeSandboxes": 4,
+      "totalSandboxes": 9241,
+      "periodStart": "2026-08-12T00:00:00.000Z",
+      "periodEnd": "2026-08-13T00:00:00.000Z"
+    },
+    "after": {
+      "computeMinutes": 1038,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "gpuProviderCostUsd": 0,
+      "activeSandboxes": 4,
+      "totalSandboxes": 9241,
+      "periodStart": "2026-08-12T00:00:00.000Z",
+      "periodEnd": "2026-08-13T00:00:00.000Z"
+    },
+    "delta": {
+      "activeSandboxes": 0,
+      "totalSandboxes": 0,
+      "computeMinutes": 0,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "unknownFields": []
+    }
+  },
+  "latency": {
+    "totalMs": {
+      "n": 1,
+      "min": 4695.301084,
+      "median": 4695.301084,
+      "p90": 4695.301084,
+      "max": 4695.301084
+    },
+    "phases": {}
+  },
+  "sessionSpend": {
+    "scope": "every unique local run in every cloud proof",
+    "rows": [],
+    "tokens": {
+      "observedRuns": 0,
+      "unavailableRuns": 0,
+      "missingRuns": 0,
+      "input": 0,
+      "output": 0
+    },
+    "cost": {
+      "observedRuns": 0,
+      "unavailableRuns": 0,
+      "missingRuns": 0,
+      "usd": 0
+    }
+  },
+  "attempts": [
+    {
+      "index": 0,
+      "completionSequence": 0,
+      "startedAt": "2026-08-12T16:19:56.757Z",
+      "completedAt": "2026-08-12T16:20:01.453Z",
+      "requireZeroActiveResourceDelta": true,
+      "proof": {
+        "schemaVersion": "braid.tangle-sandbox-braid-stress.v1",
+        "proofId": "braid-cloud-stress-1786551596758-1578834-b3d20f0d",
+        "config": {
+          "endpoint": "https://sandbox.tangle.tools",
+          "connectionId": "connection-live-tangle-sandbox",
+          "connectionKind": "tangle-sandbox",
+          "credentialConfigured": true,
+          "model": "tangle-router/glm-5.2",
+          "runner": "opencode",
+          "lifecycle": "retained",
+          "idleTtlSeconds": 180
+        },
+        "timing": {
+          "totalMs": 4695.301084
+        },
+        "status": "failed",
+        "cleanup": {
+          "exactResource": true,
+          "mode": "exact-owned-resource-set",
+          "identity": {
+            "confirmed": true,
+            "mode": "exact-owned-resource-set",
+            "matchedCount": 0,
+            "removedIds": [],
+            "deletions": [],
+            "remainingIds": []
+          },
+          "activeResourceDelta": 0,
+          "activeResourceDeltaRequired": true,
+          "usageObservationComplete": true,
+          "usageDelta": {
+            "activeSandboxes": 0,
+            "totalSandboxes": 0,
+            "computeMinutes": 0,
+            "gpuSeconds": 0,
+            "gpuCostUsd": 0,
+            "unknownFields": []
+          }
+        },
+        "usage": [
+          {
+            "phase": "before",
+            "status": "observed",
+            "value": {
+              "computeMinutes": 1038,
+              "gpuSeconds": 0,
+              "gpuCostUsd": 0,
+              "gpuProviderCostUsd": 0,
+              "activeSandboxes": 4,
+              "totalSandboxes": 9241,
+              "periodStart": "2026-08-12T00:00:00.000Z",
+              "periodEnd": "2026-08-13T00:00:00.000Z"
+            }
+          },
+          {
+            "phase": "after",
+            "status": "observed",
+            "value": {
+              "computeMinutes": 1038,
+              "gpuSeconds": 0,
+              "gpuCostUsd": 0,
+              "gpuProviderCostUsd": 0,
+              "activeSandboxes": 4,
+              "totalSandboxes": 9241,
+              "periodStart": "2026-08-12T00:00:00.000Z",
+              "periodEnd": "2026-08-13T00:00:00.000Z"
+            }
+          }
+        ],
+        "accountIdentities": [
+          {
+            "phase": "before",
+            "status": "observed",
+            "value": {
+              "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46",
+              "billingDelegationAuthorized": false
+            }
+          },
+          {
+            "phase": "after",
+            "status": "observed",
+            "value": {
+              "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46",
+              "billingDelegationAuthorized": false
+            }
+          }
+        ],
+        "accountIdentityConsistency": {
+          "stable": true,
+          "identityDigest": "46505ff5225e7d5c46dcafdfa3142412c4746e7b317b166f6bafa7f443923c46"
+        },
+        "workspaceVerification": null,
+        "progress": {},
+        "failure": {
+          "name": "Error",
+          "message": "send failed: CONNECTION_UNSUPPORTED: Retained Tangle execution requires provider-backed lookup after an unacknowledged dispatch"
+        },
+        "diagnostics": {
+          "firstProcess": {
+            "responseCount": 3,
+            "errors": [
+              {
+                "requestId": "braid-live-send-fdfb17a8-0796-47a0-8395-612cab7445fe",
+                "code": "CONNECTION_UNSUPPORTED",
+                "message": "Retained Tangle execution requires provider-backed lookup after an unacknowledged dispatch"
+              }
+            ]
+          }
+        },
+        "cleanupFailure": {
+          "name": "MissingIntegrationError",
+          "message": "The live run did not prove the exact retained Braid Sandbox resource identity",
+          "code": "BRAID_LIVE_INTEGRATION_MISSING",
+          "details": {
+            "proofId": "braid-cloud-stress-1786551596758-1578834-b3d20f0d"
+          }
+        },
+        "unresolvedIntegrationNeeds": [
+          "The live run did not prove the exact retained Braid Sandbox resource identity"
+        ]
+      }
+    }
+  ]
+}

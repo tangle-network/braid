@@ -27,6 +27,8 @@ export {
   type ProductionConnectionOptions,
   type SandboxClientFactory,
   type SandboxClientFactoryInput,
+  type TangleRetainedControlLookup,
+  type TangleRetainedControlLookupInput,
 } from './production-connection-types.js'
 
 export function createProductionConnectionAdapter(
