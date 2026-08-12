@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "32f19ba707aa659f776a604fe241111fe2bfb68928ac6f005014d81bd924182c"
+    "tarball": "tangle-network-braid-0.1.1.tgz",
+    "tarballSha256": "9bbd7b5b9f78b3d202dbb09d4375970edfd4965ffc5ad94b04bd7fa6ce01c4c7"
   },
   "dimensions": {
     "columns": 80,
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-release-ux-final-wt",
+      "workspace": "/home/drew/code/braid-transcript-first-wt",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -113,7 +113,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-release-ux-final-wt",
+      "workspace": "/home/drew/code/braid-transcript-first-wt",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -421,12 +421,12 @@
         "run.reconnect": {
           "available": false,
           "source": "provider",
-          "reason": "There is no active run"
+          "reason": "There is no detached run to reconnect"
         },
         "run.reconcile": {
           "available": false,
           "source": "provider",
-          "reason": "There is no active run"
+          "reason": "There is no detached run to reconcile"
         }
       },
       "draft": "",
@@ -446,7 +446,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-release-ux-final-wt"
+            "workspace": "/home/drew/code/braid-transcript-first-wt"
           }
         }
       }

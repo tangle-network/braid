@@ -1,6 +1,4 @@
-braid  cwd  braid-release-ux-final-wt  ·  session  New conversation
-AgentProfile Braid starter · pi / deterministic            deterministic fixture
- W6 failure state
+ › W6 failure state
 
  error · unknown
  RUNTIME_BACKEND_ERROR
@@ -16,9 +14,11 @@ AgentProfile Braid starter · pi / deterministic            deterministic fixtur
 
 
 
-──────────────────────────────────── › send ────────────────────────────────────
+
+
+
+
 ›
 
 
-────────────────────────── alt+enter newline · paste ───────────────────────────
-outcome failed · operation op-terminal-000002   /export preserve · /new continue
+profile Braid starter · pi / deterministic     failed · /activity details · /new

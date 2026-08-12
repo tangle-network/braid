@@ -39,7 +39,7 @@ function visibleText(terminal) {
 }
 
 function hasVisibleFrame(terminal) {
-  return visibleText(terminal).some((line) => line.includes('braid'))
+  return visibleText(terminal).some((line) => line.includes('Braid starter'))
 }
 
 function hasStartupError(output) {
@@ -265,8 +265,7 @@ export async function openPackedTui(options) {
       if (exited) return exitValue
       session.write('\u0003')
       await waitFor(
-        () =>
-          output.includes('press ctrl+c again to quit') || output.includes('ctrl+c again to quit'),
+        () => output.toLowerCase().includes('ctrl+c again to quit'),
         'packed TUI safe-exit prompt',
         5_000,
       )

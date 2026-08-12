@@ -1,6 +1,4 @@
-braid  cwd  braid-release-ux-final-wt  ·  session  New conversation
-AgentProfile Braid starter · pi / deterministic    not connected · thinking none
- W6 active streaming
+ › W6 active streaming
 
  working…
 
@@ -16,9 +14,11 @@ AgentProfile Braid starter · pi / deterministic    not connected · thinking no
 
 
 
-─────────────────────────────── › queue next #1 ────────────────────────────────
-›
 
 
-────────────────────────── alt+enter newline · paste ───────────────────────────
-streaming · Ctrl+C cancel                                     Enter queues input
+
+
+› queue #1
+
+
+profile Braid starter                     working · Ctrl+C cancel · Enter queues

@@ -1,12 +1,6 @@
 import { matchesKey } from '@earendil-works/pi-tui'
 import { effectiveElapsedMs, formatDuration } from '../shared/duration.js'
-import type {
-  BraidViewModel,
-  EntityDetailView,
-  RunView,
-  UsageMeasurementStatus,
-  UsageTotalsView,
-} from '../shared/models.js'
+import type { BraidViewModel, EntityDetailView, RunView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { projectActivityDocument, type ActivityDocumentItem } from './activity-document.js'
 import { executionTargetFor } from './execution-target.js'
@@ -15,6 +9,7 @@ import {
   type EntityBrowserDocument,
   type EntityBrowserRow,
 } from './entity-browser.js'
+import { metricsFor } from './terminal-usage.js'
 import type { BraidTheme } from './theme.js'
 
 export type ActivityBrowserScope = 'all' | 'runs' | 'analyses' | 'workers'
@@ -82,9 +77,10 @@ export function activityDocument(
     .slice()
     .reverse()
   const target = executionTargetFor(view)
+  const usage = metricsFor(view)
   return {
     title: scope === 'all' ? 'activity' : `activity · ${scope}`,
-    context: `${target.profileName} · ${target.runner} · ${target.model} · ${sessionUsageLabel(view)}`,
+    context: [target.profileName, target.runner, target.model, ...usage].join(' · '),
     filterHint: `tab filter: ${scope}`,
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
@@ -145,15 +141,12 @@ function runContext(
   const usage = item.usage
   const tokenPrefix = usage?.tokenStatus === 'complete' ? '' : '≥'
   const noObservedTokens = (usage?.input ?? 0) === 0 && (usage?.output ?? 0) === 0
-  const tokenUsageUnknown = usage?.tokenStatus !== 'complete' && noObservedTokens
+  const hideTokens = usage?.tokenStatus !== 'complete' && noObservedTokens
   const cost = costLabel(usage)
   const cached = Object.values(usage?.promptCache ?? {}).reduce((total, value) => total + value, 0)
   const metrics = [
-    ...(tokenUsageUnknown ? ['tokens unknown'] : []),
-    ...(usage?.input === undefined || tokenUsageUnknown ? [] : [`${tokenPrefix}${usage.input} in`]),
-    ...(usage?.output === undefined || tokenUsageUnknown
-      ? []
-      : [`${tokenPrefix}${usage.output} out`]),
+    ...(usage?.input === undefined || hideTokens ? [] : [`${tokenPrefix}${usage.input} in`]),
+    ...(usage?.output === undefined || hideTokens ? [] : [`${tokenPrefix}${usage.output} out`]),
     ...(usage?.reasoning === undefined ? [] : [`${usage.reasoning} reasoning`]),
     ...(cached === 0 ? [] : [`${cached} cached`]),
     ...(cost === undefined ? [] : [cost]),
@@ -182,21 +175,33 @@ function runContext(
       ? []
       : [`max output tokens: ${target.maxOutputTokens}`]),
     ...(metrics.length === 0 ? [] : [`usage: ${metrics.join(' · ')}`]),
-    ...(usage === undefined
-      ? []
-      : [`model calls: ${usage.llmCalls === undefined ? 'unknown' : usage.llmCalls}`]),
-    ...(usage === undefined
-      ? []
-      : [
-          `model latency: ${
-            usage.llmLatencyMs === undefined ? 'unknown' : `${Math.round(usage.llmLatencyMs)}ms`
-          }`,
-        ]),
-    ...(usage?.tokenStatus === undefined ? [] : [`token measurement: ${usage.tokenStatus}`]),
-    ...(usage?.costStatus === undefined ? [] : [`cost measurement: ${usage.costStatus}`]),
+    ...measurementValue('model calls', usage?.llmCalls, usage !== undefined),
+    ...measurementValue(
+      'model latency',
+      usage?.llmLatencyMs,
+      usage !== undefined,
+      (value) => `${Math.round(value)}ms`,
+    ),
+    ...measurementStatus('token measurement', usage?.tokenStatus),
+    ...measurementStatus('cost measurement', usage?.costStatus),
     `history: ${sanitizeTerminalText(run.completeness)}`,
     ...(run.error === undefined ? [] : [`! ${sanitizeTerminalText(run.error)}`]),
   ]
+}
+
+function measurementValue(
+  label: string,
+  value: number | undefined,
+  measurementExists: boolean,
+  format: (value: number) => string = (measured) => String(measured),
+): readonly string[] {
+  if (value !== undefined) return [`${label}: ${format(value)}`]
+  return measurementExists ? [`${label}: not reported`] : []
+}
+
+function measurementStatus(label: string, status: string | undefined): readonly string[] {
+  if (status === undefined) return []
+  return [`${label}: ${status === 'unknown' ? 'not reported' : status}`]
 }
 
 function costLabel(usage: RunView['usage']): string | undefined {
@@ -205,121 +210,15 @@ function costLabel(usage: RunView['usage']): string | undefined {
     return `$${usage.costUsd.toFixed(4)}`
   }
   if (usage.costStatus === 'observed-floor' && usage.costUsd !== undefined) {
-    return usage.costUsd > 0 ? `≥$${usage.costUsd.toFixed(4)}` : 'cost unknown'
+    return usage.costUsd > 0 ? `≥$${usage.costUsd.toFixed(4)}` : undefined
   }
-  if (usage.estimatedCostUsd !== undefined && usage.estimatedCostUsd > 0)
+  if (
+    usage.costStatus === 'estimated' &&
+    usage.estimatedCostUsd !== undefined &&
+    usage.estimatedCostUsd >= 0
+  )
     return `~$${usage.estimatedCostUsd.toFixed(4)}`
-  return usage.costStatus === 'unknown' ? 'cost unknown' : undefined
-}
-
-function sessionUsageLabel(view: BraidViewModel): string {
-  const turns = view.sessionUsage.turns
-  if (hasMeasurementTelemetry(view.sessionUsage)) {
-    return [
-      usageGroup('turns', turns, true),
-      usageGroup('analysis', view.sessionUsage.analyses, false),
-      usageGroup('workers', view.sessionUsage.delegated, false),
-    ]
-      .filter((value): value is string => value !== undefined)
-      .join(' · ')
-  }
-  const prefix = turns.tokenStatus === 'complete' ? '' : '≥'
-  const tokens =
-    turns.tokenStatus !== 'complete' && (turns.input ?? 0) === 0 && (turns.output ?? 0) === 0
-      ? 'tokens unknown'
-      : `${prefix}${turns.input ?? 0}/${prefix}${turns.output ?? 0} tok`
-  const directCost = costLabel(turns)
-  const delegated = view.sessionUsage.delegated
-  const delegatedCost = costLabel(delegated)
-  const analyses = view.sessionUsage.analyses
-  const analysisCost = costLabel(analyses)
-  return [
-    tokens,
-    ...(directCost === undefined ? [] : [directCost]),
-    ...((turns.llmCalls ?? 0) === 0 ? [] : [`${turns.llmCalls} calls`]),
-    ...((turns.llmLatencyMs ?? 0) === 0 ? [] : [`${Math.round(turns.llmLatencyMs ?? 0)}ms model`]),
-    ...(delegated.sourceCount === 0 ? [] : [`workers ${delegatedCost ?? 'cost unknown'}`]),
-    ...(analyses.sourceCount === 0 ? [] : [`analysis ${analysisCost ?? 'cost unknown'}`]),
-  ].join(' · ')
-}
-
-function hasMeasurementTelemetry(view: BraidViewModel['sessionUsage']): boolean {
-  return [view.turns, view.analyses, view.delegated].some(hasMeasurementFields)
-}
-
-function hasMeasurementFields(usage: UsageTotalsView): boolean {
-  return (
-    usage.callStatus !== undefined ||
-    usage.latencyStatus !== undefined ||
-    usage.unknownCallSources !== undefined ||
-    usage.unknownLatencySources !== undefined
-  )
-}
-
-function usageGroup(
-  label: string,
-  usage: UsageTotalsView,
-  includeEmpty: boolean,
-): string | undefined {
-  if (!includeEmpty && usage.sourceCount === 0) return undefined
-  const metrics = tokenMetrics(usage)
-  const cost = costLabel(usage)
-  if (cost !== undefined) metrics.push(cost)
-  const calls = measurementMetric(
-    'calls',
-    usage.llmCalls,
-    usage.callStatus,
-    usage.unknownCallSources,
-    usage.sourceCount,
-    (value) => String(Math.round(value)),
-  )
-  const latency = measurementMetric(
-    'latency',
-    usage.llmLatencyMs,
-    usage.latencyStatus,
-    usage.unknownLatencySources,
-    usage.sourceCount,
-    (value) => `${Math.round(value)}ms`,
-  )
-  if (calls !== undefined) metrics.push(calls)
-  if (latency !== undefined) metrics.push(latency)
-  return metrics.length === 0 ? undefined : `${label} ${metrics.join(' · ')}`
-}
-
-function tokenMetrics(usage: UsageTotalsView): string[] {
-  const tokenPrefix = usage.tokenStatus === 'complete' ? '' : '≥'
-  const noObservedTokens = (usage.input ?? 0) === 0 && (usage.output ?? 0) === 0
-  const tokenUsageUnknown = usage.tokenStatus !== 'complete' && noObservedTokens
-  if (tokenUsageUnknown) return ['usage unknown']
-  return [
-    ...(usage.input === undefined ? [] : [`in ${tokenPrefix}${compactNumber(usage.input)}`]),
-    ...(usage.output === undefined ? [] : [`out ${tokenPrefix}${compactNumber(usage.output)}`]),
-  ]
-}
-
-function measurementMetric(
-  label: string,
-  value: number | undefined,
-  status: UsageMeasurementStatus | undefined,
-  unknownSources: number | undefined,
-  sourceCount: number,
-  format: (value: number) => string,
-): string | undefined {
-  if (status === undefined && value === undefined && unknownSources === undefined) return undefined
-  if (sourceCount === 0 && value === undefined && (unknownSources ?? 0) === 0) return undefined
-  const missing = Math.max(0, unknownSources ?? (value === undefined ? 1 : 0))
-  if (value === undefined || status === 'unknown') {
-    return `${label} unknown${missing > 0 ? ` (${missing} missing)` : ''}`
-  }
-  const prefix = status === 'partial' ? '≥' : ''
-  const suffix = status === 'partial' && missing > 0 ? ` (+${missing} missing)` : ''
-  return `${label} ${prefix}${format(value)}${suffix}`
-}
-
-function compactNumber(value: number): string {
-  if (value < 1_000) return String(Math.round(value))
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`
-  return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}m`
+  return undefined
 }
 
 function activityContext(

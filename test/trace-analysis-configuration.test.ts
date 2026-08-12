@@ -258,6 +258,9 @@ test('configures the published DSPy RLM engine and model-backed analyst registry
   assert.equal(result.engine.executionConfig.model, 'pi/tangle-router/glm-5.2')
   assert.equal(result.engine.executionConfig.control_adapter, 'tolerant')
   assert.deepEqual(result.engine.executionConfig.pricing, PRICING)
+  assert.equal(result.engine.executionConfig.max_output_tokens, 16_384)
+  assert.equal(result.engine.executionConfig.max_reasoning_tokens, 65_536)
+  assert.equal(result.engine.executionConfig.max_cost_usd, 1.16384)
   assert.equal('base_url' in result.engine.executionConfig, false)
   assert.equal('api_key_provided' in result.engine.executionConfig, false)
   assert.deepEqual(result.modelExecutions(), [])
@@ -277,6 +280,23 @@ test('configures the published DSPy RLM engine and model-backed analyst registry
   assert.ok(analystIds.includes(BRAID_QUESTION_ANALYST_ID))
   const askIds = new AgentEvalAnalystAdapter(result.registry).resolveAnalystIds({ recipe: 'ask' })
   assert.deepEqual(askIds, [BRAID_QUESTION_ANALYST_ID])
+})
+
+test('analysis cost capacity admits the configured output and reasoning limits', async () => {
+  const selected = connection('cli-bridge', 'cost-capacity', 'http://127.0.0.1:4010')
+  const result = await createTraceAnalysisAdapter(
+    baseOptions(selected, {
+      profile: { harness: 'claude-code', model: { default: 'opus' } },
+      pricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+      maxOutputTokens: 32_768,
+    }),
+  )
+
+  assert.equal(result.status, 'engine-configured')
+  if (result.status !== 'engine-configured') return
+  assert.equal(result.engine.executionConfig.max_output_tokens, 32_768)
+  assert.equal(result.engine.executionConfig.max_reasoning_tokens, 131_072)
+  assert.equal(result.engine.executionConfig.max_cost_usd, 15.36)
 })
 
 test('defines a bounded cited-answer analyst for /ask', () => {
@@ -586,6 +606,13 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     expectedBearer: 'credential-never-recorded',
     responseText: '{"answer":"bridge ok"}',
     estimatedCostUsd: 0,
+    usage: {
+      promptTokens: 2,
+      completionTokens: 3,
+      cacheReadInputTokens: 5,
+      cacheCreationInputTokens: 7,
+      reasoningTokens: 1,
+    },
   })
   try {
     const selected = connection('cli-bridge', 'runtime-bridge-owner', bridge.endpoint)
@@ -610,15 +637,27 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(result.succeeded, true)
     if (!result.succeeded) return
     assert.equal(result.response.content, '{"answer":"bridge ok"}')
+    assert.deepEqual(result.response.usage, {
+      promptTokens: 7,
+      completionTokens: 3,
+      totalTokens: 10,
+      captured: true,
+      cachedPromptTokens: 5,
+      reasoningTokens: 1,
+    })
     assert.deepEqual(result.receipt.customTokenPricing, PRICING)
+    assert.equal(result.receipt.inputTokens, 2)
+    assert.equal(result.receipt.cachedTokens, 5)
+    assert.equal(result.receipt.cacheWriteTokens, 7)
+    assert.equal(result.receipt.reasoningTokens, 1)
     assert.deepEqual((result.execution as { readonly billing?: unknown }).billing, {
       status: 'estimated',
-      usd: 0.000008,
+      usd: 0.00002,
     })
     assert.equal(bridge.requests.length, 1)
     const body = bridge.requests[0]?.body
     assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
-    assert.equal(body?.max_tokens, 64)
+    assert.equal(body?.max_tokens, undefined)
     const executionProfile = body?.agent_profile as AgentProfile
     assert.equal(executionProfile.harness, 'pi')
     assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
@@ -627,17 +666,20 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(executionProfile.model?.metadata?.maxTokens, 64)
     assert.equal(executionProfile.model?.metadata?.retry, undefined)
     assert.match(executionProfile.prompt?.systemPrompt ?? '', /text-generation endpoint/u)
+    assert.match(executionProfile.prompt?.systemPrompt ?? '', /messages array/u)
+    assert.match(executionProfile.prompt?.systemPrompt ?? '', /machine format/u)
+    assert.match(executionProfile.prompt?.systemPrompt ?? '', /exact identifier/u)
     assert.match(executionProfile.prompt?.systemPrompt ?? '', /Do not inspect files/u)
     assert.deepEqual(executionProfile.tools, {
+      bash: false,
       edit: false,
       read: false,
-      shell: false,
       write: false,
     })
     assert.deepEqual(executionProfile.permissions, {
+      bash: 'deny',
       edit: 'deny',
       read: 'deny',
-      shell: 'deny',
       write: 'deny',
     })
     assert.deepEqual(executionProfile.extensions, { pi: { load: [] } })
@@ -647,8 +689,107 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.deepEqual(JSON.parse(messages[0]?.content ?? '{}'), {
       messages: optimizerRequest().request.messages,
     })
+    assert.equal(
+      (result.execution as { readonly runtime?: { readonly operation?: string } }).runtime
+        ?.operation,
+      'startRetainedRun',
+    )
     assert.doesNotMatch(JSON.stringify(result.execution), /private analyst instruction/u)
     assert.doesNotMatch(JSON.stringify(result.execution), /private trace question/u)
+  } finally {
+    await bridge.close()
+  }
+})
+
+test('runtime-owned CLI Bridge analysis cancels a detached run when result retrieval fails', async () => {
+  const bridge = await startRuntimeBridgeServer({
+    expectedBearer: 'credential-never-recorded',
+    statusFailureStatus: 503,
+  })
+  try {
+    const selected = connection('cli-bridge', 'runtime-bridge-failure', bridge.endpoint)
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        name: 'Product engineer',
+        harness: 'pi',
+        model: { default: 'tangle-router/glm-5.2', provider: 'tangle-router' },
+      },
+      connection: selected,
+      baseUrl: bridge.endpoint,
+      credential: 'credential-never-recorded',
+      model: 'pi/tangle-router/glm-5.2',
+      pricing: PRICING,
+    })
+
+    const result = await owner.call(optimizerRequest())
+    assert.equal(result.succeeded, false)
+    if (result.succeeded) return
+    assert.equal(bridge.requests.length, 1)
+    assert.equal(bridge.cancellations.length, 1)
+    assert.equal(
+      typeof (result.execution as { readonly retained?: { readonly runId?: unknown } }).retained
+        ?.runId,
+      'string',
+    )
+    assert.equal((result.execution as { readonly dispatched?: unknown }).dispatched, true)
+    assert.equal(result.receipt.usageUnknown, true)
+    assert.equal(result.receipt.costUnknown, true)
+  } finally {
+    await bridge.close()
+  }
+})
+
+test('runtime-owned Claude analysis accepts a runner alias with exact tool isolation', async () => {
+  const bridge = await startRuntimeBridgeServer({
+    expectedBearer: 'credential-never-recorded',
+    responseText: '{"answer":"bridge ok"}',
+    estimatedCostUsd: 0,
+  })
+  try {
+    const selected = connection('cli-bridge', 'runtime-claude-owner', bridge.endpoint)
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        name: 'Product engineer',
+        harness: 'claude-code',
+        model: { default: 'opus', reasoningEffort: 'high' },
+      },
+      connection: selected,
+      baseUrl: bridge.endpoint,
+      credential: 'credential-never-recorded',
+      model: 'claude-code/opus',
+      pricing: PRICING,
+    })
+
+    const result = await owner.call(
+      optimizerRequest({ model: 'claude-code/opus', thinking: 'disabled' }),
+    )
+    assert.equal(result.succeeded, true)
+    if (!result.succeeded) return
+    assert.equal(result.response.content, '{"answer":"bridge ok"}')
+    assert.equal(bridge.requests.length, 1)
+    const body = bridge.requests[0]?.body
+    assert.equal(body?.model, 'claude-code/opus')
+    const executionProfile = body?.agent_profile as AgentProfile
+    assert.equal(executionProfile.harness, 'claude-code')
+    assert.equal(executionProfile.model?.default, 'opus')
+    assert.equal(executionProfile.model?.provider, undefined)
+    assert.deepEqual(executionProfile.tools, {
+      bash: false,
+      edit: false,
+      read: false,
+      write: false,
+    })
+    assert.deepEqual(executionProfile.permissions, {
+      bash: 'deny',
+      edit: 'deny',
+      read: 'deny',
+      write: 'deny',
+    })
+    assert.equal(
+      (result.execution as { readonly runtime?: { readonly operation?: string } }).runtime
+        ?.operation,
+      'startRetainedRun',
+    )
   } finally {
     await bridge.close()
   }

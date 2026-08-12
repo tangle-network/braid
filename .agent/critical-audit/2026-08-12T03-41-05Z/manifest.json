@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "scope": "provider-neutral retained execution lifecycle and provider-owned identity binding",
+  "files": 11,
+  "base": "8cce4c6e8aade3b1fc51f558d65a823ac12a5e1a",
+  "head": "8cce4c6e8aade3b1fc51f558d65a823ac12a5e1a",
+  "workingTree": true,
+  "diffSha256": "f62722d6b99529f797363a13035430b5a2307e29e1a771b5c34764f46dc21006",
+  "projectType": "Node.js ESM package",
+  "reviewers": [
+    "A: lifecycle correctness, exact identity, cancellation, and resource cleanup",
+    "B: provider-neutral contract, module boundaries, and recovery architecture",
+    "C: independent callsite, fixture, and restart coverage review"
+  ],
+  "mode": "current working-tree review with serial local checks",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "resolved": 0,
+    "unresolved": 0,
+    "dropped": 0
+  }
+}

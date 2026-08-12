@@ -2,6 +2,7 @@ import {
   Container,
   CURSOR_MARKER,
   type Editor,
+  stripTerminalSequences,
   truncateToWidth,
   visibleWidth,
 } from '@earendil-works/pi-tui'
@@ -10,6 +11,8 @@ import type { BraidTheme } from './theme.js'
 
 const MIN_USABLE_ROWS = 3
 const COMPOSER_FRACTION = 0.4
+
+export type ComposerMode = 'queue' | 'steer'
 
 type ComposerSourceView = Pick<
   BraidViewModel,
@@ -30,7 +33,10 @@ export interface ComposerViewOptions {
 }
 
 /** Projects the existing controller view into composer-only display state. */
-export function composerProjectionFor(view: ComposerSourceView): ComposerProjection {
+export function composerProjectionFor(
+  view: ComposerSourceView,
+  preferredMode: ComposerMode = 'queue',
+): ComposerProjection {
   const active = view.activeRunId !== undefined
   if (!active) {
     const send = view.capabilities['run.send']?.available === true
@@ -43,18 +49,23 @@ export function composerProjectionFor(view: ComposerSourceView): ComposerProject
 
   const queue = view.capabilities['run.queue']?.available === true
   const steer = view.capabilities['run.steer']?.available === true
+  const action =
+    preferredMode === 'steer' && steer ? 'steer' : queue ? 'queue' : steer ? 'steer' : 'unavailable'
   const queuePosition = queue ? nextQueuePosition(view) : undefined
   const queueLabel = queuePosition === undefined ? 'queue' : `queue next #${String(queuePosition)}`
-  const actionLabel = queue
-    ? steer
-      ? `${queueLabel} · steer /steer`
-      : queueLabel
-    : steer
-      ? 'steer /steer'
-      : 'queue unavailable'
+  const actionLabel =
+    action === 'steer'
+      ? queue
+        ? 'steer now · Alt+S queue'
+        : 'steer now'
+      : action === 'queue'
+        ? steer
+          ? `${queueLabel} · Alt+S steer`
+          : queueLabel
+        : 'input unavailable'
 
   return {
-    action: queue ? 'queue' : steer ? 'steer' : 'unavailable',
+    action,
     actionLabel,
     ...(queuePosition === undefined ? {} : { queuePosition }),
     hint: 'alt+enter newline · paste',
@@ -80,6 +91,7 @@ export class ComposerView extends Container {
     actionLabel: 'send',
     hint: 'alt+enter newline · paste',
   }
+  #mode: ComposerMode = 'queue'
 
   constructor(options: ComposerViewOptions) {
     super()
@@ -93,34 +105,36 @@ export class ComposerView extends Container {
     return this.#editor
   }
 
+  setMode(mode: ComposerMode): void {
+    this.#mode = mode
+  }
+
   setView(view: ComposerSourceView): void {
-    this.#projection = composerProjectionFor(view)
+    this.#projection = composerProjectionFor(view, this.#mode)
     this.invalidate()
   }
 
   override render(width: number): string[] {
-    const lines = boundedEditorLines(this.#editor.render(width), this.#rows())
-    if (lines.length === 0) return lines
-    const last = lines.length - 1
-    lines[0] = composerBorderLine(width, `› ${this.#projection.actionLabel}`, this.#theme)
-    if (last > 1) lines[1] = promptBodyLine(lines[1], this.#theme)
-    if (last > 0) lines[last] = composerBorderLine(width, this.#projection.hint, this.#theme)
-    return lines
+    const lines = this.#editor.render(width)
+    if (lines.length === 0) return []
+    const bottomBorder = editorBottomBorder(lines, width)
+    const body = boundedEditorBody(lines.slice(1, bottomBorder), this.#rows(), width)
+    if (body.length > 0) {
+      body[0] = promptBodyLine(body[0], this.#theme, promptActionLabel(this.#projection))
+    }
+    const autocomplete = lines.slice(bottomBorder + 1)
+    if (autocomplete.length === 0) return body
+    return [...body, composerBorderLine(width, this.#projection.hint, this.#theme), ...autocomplete]
   }
 }
 
-function boundedEditorLines(lines: readonly string[], terminalRows: number): string[] {
-  if (lines.length === 0) return []
-  const budget = composerRowBudget(terminalRows)
-  const top = lines[0] ?? ''
-  const bottom = lines.at(-1) ?? ''
-  const body = lines.slice(1, -1)
-  const bodyBudget = Math.max(1, budget - 2)
+function boundedEditorBody(body: readonly string[], terminalRows: number, width: number): string[] {
+  const bodyBudget = Math.max(MIN_USABLE_ROWS, composerRowBudget(terminalRows) - 2)
   const minimumBodyRows = Math.min(MIN_USABLE_ROWS, bodyBudget)
   const visibleBodyRows = Math.min(bodyBudget, Math.max(minimumBodyRows, body.length))
-  const bodyWidth = visibleWidth(body[0] ?? '')
+  const bodyWidth = Math.max(1, visibleWidth(body[0] ?? ''), width)
 
-  if (body.length === visibleBodyRows) return [...lines]
+  if (body.length === visibleBodyRows) return [...body]
 
   const cursorIndex = body.findIndex((line) => line.includes(CURSOR_MARKER))
   const lastStart = Math.max(0, body.length - visibleBodyRows)
@@ -133,7 +147,18 @@ function boundedEditorLines(lines: readonly string[], terminalRows: number): str
       ' '.repeat(bodyWidth),
     ),
   ]
-  return [top, ...paddedBody, bottom]
+  return paddedBody
+}
+
+function editorBottomBorder(lines: readonly string[], width: number): number {
+  const index = lines.findIndex((line, lineIndex) => lineIndex > 0 && isEditorBorder(line, width))
+  return index < 0 ? lines.length - 1 : index
+}
+
+function isEditorBorder(line: string, width: number): boolean {
+  const plain = stripTerminalSequences(line)
+  if (visibleWidth(plain) !== Math.max(1, width)) return false
+  return /^─+$/u.test(plain) || /^─── [↓↑] \d+ more /u.test(plain)
 }
 
 export function composerRowBudget(terminalRows: number): number {
@@ -151,7 +176,21 @@ export function composerBorderLine(width: number, label: string, theme: BraidThe
   return `${theme.editor.borderColor('─'.repeat(left))}${theme.accent(padded)}${theme.editor.borderColor('─'.repeat(right))}`
 }
 
-function promptBodyLine(line: string | undefined, theme: BraidTheme): string {
+function promptActionLabel(projection: ComposerProjection): string | undefined {
+  if (projection.action === 'send') return undefined
+  if (projection.action === 'queue') {
+    return projection.queuePosition === undefined ? 'queue' : `queue #${projection.queuePosition}`
+  }
+  if (projection.action === 'steer') return 'steer'
+  return projection.actionLabel
+}
+
+function promptBodyLine(line: string | undefined, theme: BraidTheme, action?: string): string {
   if (line === undefined || !line.startsWith(' ')) return line ?? ''
-  return `${theme.accent('›')}${line.slice(1)}`
+  const prefix = action === undefined ? theme.accent('›') : theme.warning(`› ${action}`)
+  return truncateToWidth(
+    `${prefix}${action === undefined ? '' : ' '}${line.slice(1)}`,
+    visibleWidth(line),
+    '',
+  )
 }

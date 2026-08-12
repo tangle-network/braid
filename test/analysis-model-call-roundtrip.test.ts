@@ -178,7 +178,7 @@ test('analysis model calls survive event replay and appear as concise detail lin
   assert.equal(
     modelCallField?.value,
     '#1 openai/gpt-5.6-luna · tokens 120 in / 45 out · cost $0.0123 · latency 88ms\n' +
-      '#2 provider unknown/glm-5.2 · tokens unknown · cost unknown · latency unknown',
+      '#2 glm-5.2 · tokens unknown · cost unknown · latency unknown',
   )
   assert.deepEqual(details.data.usage, {
     input: 165,

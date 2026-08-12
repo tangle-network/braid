@@ -434,7 +434,7 @@ test('the terminal opens saved ask and comparison results instead of reducing th
 
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /AgentProfile Braid starter/u)
+  assert.match(terminal.getViewport().join('\n'), /Analysis complete:/u)
   terminal.sendInput(`/compare ${baselineRunId} ${candidateRunId}`)
   terminal.sendInput('\r')
   await waitUntil(() => app.state().analyses.length === 2)
@@ -454,10 +454,10 @@ test('the terminal opens saved ask and comparison results instead of reducing th
   assert.match(terminal.getViewport().join('\n'), /\/ask · frozen question/u)
   terminal.sendInput('\u001b[D')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /AgentProfile Braid starter/u)
+  assert.match(terminal.getViewport().join('\n'), /(?:Analysis|Comparison) complete:/u)
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /AgentProfile Braid starter/u)
+  assert.match(terminal.getViewport().join('\n'), /(?:Analysis|Comparison) complete:/u)
 
   view.stop()
   await done
@@ -534,6 +534,7 @@ test('saved analysis results present status-aware next actions', () => {
     recipe: 'ask',
     findings: [],
     citations: [],
+    citationSupport: { status: 'passed', supportedFindings: 0 },
     footer: [],
   } as const
 

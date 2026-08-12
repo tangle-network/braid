@@ -15,6 +15,7 @@ import type { BraidViewModel } from '../shared/models.js'
 import { executionTargetFor } from './execution-target.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
+import type { ComposerMode } from './composer-view.js'
 
 export interface TerminalCommandControllerOptions {
   readonly controller: BraidUiController
@@ -25,6 +26,7 @@ export interface TerminalCommandControllerOptions {
   readonly dispatch: (intent: BraidIntent, restoreText?: string) => Promise<UiDispatchResult>
   readonly isStopped: () => boolean
   readonly stop: () => void
+  readonly composerMode: () => ComposerMode
 }
 
 /** Owns prompt parsing and command routing; it never owns terminal layout. */
@@ -37,6 +39,7 @@ export class TerminalCommandController {
   readonly #dispatch: TerminalCommandControllerOptions['dispatch']
   readonly #isStopped: () => boolean
   readonly #stop: () => void
+  readonly #composerMode: () => ComposerMode
 
   constructor(options: TerminalCommandControllerOptions) {
     this.#controller = options.controller
@@ -47,6 +50,7 @@ export class TerminalCommandController {
     this.#dispatch = options.dispatch
     this.#isStopped = options.isStopped
     this.#stop = options.stop
+    this.#composerMode = options.composerMode
   }
 
   submit(rawText: string): void {
@@ -81,15 +85,17 @@ export class TerminalCommandController {
     const queueCapability = view.capabilities['run.queue']
     const steerCapability = view.capabilities['run.steer']
     const queueAvailable = active && queueCapability?.available === true
+    const steerAvailable = active && steerCapability?.available === true
+    const steerSelected = steerAvailable && (!queueAvailable || this.#composerMode() === 'steer')
     const capability = active
-      ? queueAvailable
-        ? queueCapability
-        : steerCapability
+      ? steerSelected
+        ? steerCapability
+        : queueCapability
       : view.capabilities['run.send']
     if (!capability?.available) {
       this.#editor.setText(rawText)
       this.#overlays.openUnavailable(
-        active && !queueAvailable
+        active && this.#composerMode() === 'steer'
           ? 'Steering unavailable'
           : active
             ? 'Queue unavailable'
@@ -104,9 +110,9 @@ export class TerminalCommandController {
     const operationId = this.#nextOperationId()
     const intent: BraidIntent = !active
       ? { type: 'send', operationId, text: parsed.text }
-      : queueAvailable
-        ? { type: 'queue', operationId, text: parsed.text }
-        : steerIntent(operationId, parsed.text)
+      : steerSelected
+        ? steerIntent(operationId, parsed.text)
+        : { type: 'queue', operationId, text: parsed.text }
     void this.#dispatch(intent, rawText)
   }
 

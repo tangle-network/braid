@@ -1,34 +1,26 @@
 import type { TokenUsage } from '@tangle-network/agent-interface'
-import type { AgentTurnResult } from '@tangle-network/agent-interface/environment-provider'
-import { canonicalDigest } from '../../domain/canonical.js'
+import type {
+  AgentEnvironmentCapabilities,
+  AgentTurnResult,
+} from '@tangle-network/agent-interface/environment-provider'
 import type { TurnUsage } from '../../domain/entities.js'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RunStatus } from '../../domain/state.js'
-import type { ExecuteTurnInput, RunCapabilities } from '../../ports/execution.js'
-import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
-import type { PreparedCliBridgeConnection } from './production-cli-bridge-backend.js'
+import type { RunCapabilities } from '../../ports/execution.js'
 
-export function retainedExecutionKey(input: ExecuteTurnInput): string {
-  return canonicalDigest({
-    runId: input.runId,
-    operationId: input.operationId,
-    text: input.text,
-    profile: canonicalAgentProfileDigestHex(input.profile),
-    connectionId: input.connectionId ?? null,
-    workspaceRoot: input.workspaceRoot ?? null,
-    sessionId: input.sessionId ?? null,
-    contextBoundary: input.contextBoundary ?? null,
-  })
-}
-
-export function retainedCapabilities(prepared: PreparedCliBridgeConnection): RunCapabilities {
+export function retainedCapabilities(environment: AgentEnvironmentCapabilities): RunCapabilities {
   return Object.freeze({
-    streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
-    sessions: { continue: prepared.capabilities.sessions.continue, messages: false },
+    streaming: {
+      live: environment.streaming.live,
+      replay: environment.streaming.replay,
+      detach: environment.streaming.detach,
+      turnIdempotency: environment.streaming.turnIdempotency,
+    },
+    sessions: { continue: environment.sessions.continue, messages: false },
     controls: { cancel: true, steer: false, queue: true, status: true, recreate: true },
     events: { stableIdentity: true, sequence: true, cursor: true },
-    usage: true,
-    environment: prepared.capabilities,
+    usage: environment.usage,
+    environment,
   })
 }
 
@@ -81,6 +73,7 @@ export function finalRetainedEnvelope(
   sequence: number,
   model: string,
   result: AgentTurnResult,
+  intent: string,
 ): RuntimeEventEnvelope {
   const timestamp = new Date().toISOString()
   const usage = retainedTurnUsage(result.usage, model, modelRequestsFromResult(result))
@@ -91,9 +84,9 @@ export function finalRetainedEnvelope(
     receivedAt: timestamp,
     event: {
       type: 'final',
-      task: { id: runId, intent: 'Execute the retained CLI Bridge turn' },
+      task: { id: runId, intent },
       status: result.success ? 'completed' : 'failed',
-      reason: result.success ? 'completed' : (result.error ?? 'CLI Bridge run failed'),
+      reason: result.success ? 'completed' : (result.error ?? 'Retained run failed'),
       text: result.text,
       metadata: {
         model,
@@ -109,9 +102,7 @@ export function finalRetainedEnvelope(
       },
       ...(result.success || result.error === undefined
         ? {}
-        : {
-            error: { kind: 'backend', message: result.error },
-          }),
+        : { error: { kind: 'backend', message: result.error } }),
       timestamp,
     },
   }

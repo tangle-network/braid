@@ -86,7 +86,10 @@ export async function runPackedFirstRun(binary, repository) {
     })
     let completed = false
     try {
-      await waitFor(() => output.includes('braid'), 'packed TUI header')
+      await waitFor(
+        () => output.includes('braid setup') || output.includes('Braid starter'),
+        'packed TUI startup surface',
+      )
       if (expectSetup) {
         await waitFor(() => output.includes('braid setup'), 'packed first-run setup')
         session.write('\r')
@@ -125,10 +128,7 @@ export async function runPackedFirstRun(binary, repository) {
             const replyOffset = output.indexOf(expectedResponse, responseOffset)
             if (replyOffset < 0) return false
             const completedOutput = output.slice(replyOffset + expectedResponse.length)
-            return (
-              completedOutput.includes('completed') ||
-              completedOutput.includes('ready for a message')
-            )
+            return completedOutput.includes('Ctrl+E') || completedOutput.includes('Ctrl+P')
           },
           'packed real response',
           120_000,
@@ -137,11 +137,7 @@ export async function runPackedFirstRun(binary, repository) {
         throw new Error(`packed response missing ${expectedResponse}\n${output}`, { cause: error })
       }
       session.write('\u0003')
-      await waitFor(
-        () =>
-          output.includes('press ctrl+c again to quit') || output.includes('ctrl+c again to quit'),
-        'packed safe exit',
-      )
+      await waitFor(() => output.toLowerCase().includes('ctrl+c again to quit'), 'packed safe exit')
       session.write('\u0003')
       const exit = await Promise.race([
         exited,

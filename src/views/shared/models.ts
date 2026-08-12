@@ -301,6 +301,7 @@ export interface InteractionView {
   readonly responseScopes: readonly import('../../domain/entities-interactions.js').AutomationRuleScope[]
   readonly remainingMs?: number
   readonly queuePosition: number
+  readonly queueTotal: number
   readonly secret: boolean
   readonly providerSession?: string
 }
@@ -391,6 +392,8 @@ export interface EntityDetailView {
   readonly status: string
   readonly lines: readonly string[]
   readonly analysisFindingCount?: number
+  readonly analysisSupportedFindingCount?: number
+  readonly analysisCitationSupport?: 'passed' | 'failed' | 'unavailable'
   readonly analysisExecution?: AnalysisExecutionView
 }
 
@@ -467,6 +470,10 @@ export interface AnalysisView {
     readonly eventId: string
     readonly text: string
   }[]
+  readonly citationSupport: {
+    readonly status: 'passed' | 'failed' | 'unavailable'
+    readonly supportedFindings: number
+  }
   readonly execution?: AnalysisExecutionView
   readonly footer: readonly { readonly label: string; readonly value: string }[]
   readonly error?: string

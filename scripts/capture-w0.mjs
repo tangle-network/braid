@@ -76,7 +76,7 @@ async function capture(columns, rows) {
   }
   const normalizedScreen = () => screen.replace(/\s+/gu, ' ').trim()
 
-  await waitFor(() => screen.includes('braid'), `${columns}x${rows} header`)
+  await waitFor(() => screen.includes('Braid starter'), `${columns}x${rows} conversation shell`)
   input('\u0010')
   await waitFor(() => screen.includes('Commands') && screen.includes('/help'), 'command overlay')
   input('q')
@@ -87,15 +87,14 @@ async function capture(columns, rows) {
   input('\r')
   await waitFor(
     () =>
-      normalizedScreen().includes("Fixture response through pi: Show Braid's first working turn") &&
-      normalizedScreen().includes('ready'),
+      normalizedScreen().includes("Fixture response through pi: Show Braid's first working turn"),
     `${columns}x${rows} response`,
   )
 
   const finalScreen = `${screen.replace(/[ \t]+$/gmu, '').replace(/\n+$/u, '')}\n`
   captureOutput = false
   session.write('\u0003')
-  await waitFor(() => screen.includes('press ctrl+c again to quit'), 'armed capture exit')
+  await waitFor(() => screen.toLowerCase().includes('ctrl+c again to quit'), 'armed capture exit')
   session.write('\u0003')
   const timeout = setTimeout(() => session.kill(), 5_000)
   const exit = await exited.finally(() => clearTimeout(timeout))

@@ -1,10 +1,10 @@
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
-import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionCatalog, ConnectionSelectionInput } from '../../app/connections.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
+import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
 import type { ProductionConnectionOptions } from '../connections/production-connection-types.js'
 
 export interface ProductionExecutionSelection {
@@ -27,6 +27,7 @@ export async function exactExecutionProfile(
   source: Readonly<AgentProfile>,
   selection: ProductionExecutionSelection,
   connectionId: ConnectionId,
+  options: { readonly requireProvider?: boolean } = {},
 ): Promise<AgentProfile> {
   const profile = snapshotAgentProfile(source)
   const model = requiredProfileModel(profile, connectionId)
@@ -47,7 +48,7 @@ export async function exactExecutionProfile(
       { connectionId },
     )
   }
-  if (!profile.model?.provider?.trim()) {
+  if (options.requireProvider !== false && !profile.model?.provider?.trim()) {
     throw new ConnectionError(
       'CONNECTION_MODEL_REQUIRED',
       'AgentProfile.model.provider must identify the model provider before execution',

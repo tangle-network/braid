@@ -13,15 +13,15 @@ export class ActivityView extends Container {
   }
 
   setView(view: BraidViewModel): void {
-    const document = projectActivityDocument(view)
+    const items = projectActivityDocument(view).items.filter(isLiveWork)
     this.clear()
-    this.addChild(new Text(this.#theme.brand('activity'), 1, 0))
-    if (document.items.length === 0) {
+    this.addChild(new Text(this.#theme.brand('live work'), 1, 0))
+    if (items.length === 0) {
       this.addChild(new Spacer(1))
-      this.addChild(new Text(this.#theme.muted('No recorded activity.'), 1, 0))
+      this.addChild(new Text(this.#theme.muted('No live work.'), 1, 0))
     } else {
       this.addChild(new Spacer(1))
-      for (const item of document.items) this.addChild(this.#item(item))
+      for (const item of items) this.addChild(this.#item(item))
     }
     this.invalidate()
   }
@@ -30,23 +30,25 @@ export class ActivityView extends Container {
     const status = sanitizeTerminalText(item.status)
     const detail = item.summary !== item.title ? ` · ${sanitizeTerminalText(item.summary)}` : ''
     const title = sanitizeTerminalText(item.title)
-    const color =
-      item.status === 'failed' || item.status === 'storage-failure'
-        ? this.#theme.danger
-        : item.status === 'running'
-          ? this.#theme.warning
-          : item.status === 'complete' || item.status === 'completed'
-            ? this.#theme.success
-            : this.#theme.muted
-    const symbol =
-      item.status === 'failed' || item.status === 'storage-failure'
-        ? 'x'
-        : item.status === 'running'
-          ? '>'
-          : item.status === 'complete' || item.status === 'completed'
-            ? 'ok'
-            : '·'
+    const active = item.status === 'running' || item.status === 'streaming'
+    const color = active ? this.#theme.warning : this.#theme.muted
+    const symbol = active ? '>' : '·'
     const elapsed = item.durationMs === undefined ? '' : ` ${Math.round(item.durationMs)}ms`
     return new TruncatedText(`${color(`${symbol} ${status}`)} ${title}${elapsed}${detail}`, 1, 0)
   }
+}
+
+const LIVE_WORK_STATUSES = new Set([
+  'loading',
+  'starting',
+  'streaming',
+  'running',
+  'waiting',
+  'detached',
+  'reconnecting',
+  'cancelling',
+])
+
+function isLiveWork(item: ActivityDocumentItem): boolean {
+  return LIVE_WORK_STATUSES.has(item.status)
 }

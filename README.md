@@ -7,45 +7,52 @@
   </p>
 </div>
 
-Braid is a terminal client over [`agent-runtime`](https://github.com/tangle-network/agent-runtime).
+Braid is one durable terminal for coding agents.
 
-It lets one portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) drive different coding runners through local CLI Bridge connections, Tangle inference, or Tangle sandboxes.
+A portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) selects the runner, model, instructions, tools, and permissions.
 
-Braid owns the conversation, transcript, branches, approvals, activity, graph, and trace-analysis experience.
+Braid sends every turn through [`agent-runtime`](https://github.com/tangle-network/agent-runtime), then keeps the transcript, branches, approvals, activity, graph, and trace analysis together.
 
-The selected runner owns its native process and session, while `agent-runtime` owns admission, lifecycle, normalized events, and runtime control.
+![Braid sending a Product engineer AgentProfile through agent-runtime, Local CLI Bridge, Claude Code, and Opus, then asking a cited question about the retained run](artifacts/demo/braid-live.gif)
 
-![Braid using a GLM reviewer AgentProfile through agent-runtime, Local CLI Bridge, Pi, and GLM-5.2, then opening the exact retained-run activity](artifacts/demo/braid-live-cli-bridge.gif)
+This recording uses a packed Braid artifact and a real `Product engineer` AgentProfile.
 
-This 13-second recording comes from a clean install of a freshly packed `@tangle-network/braid@0.1.0` artifact.
+It routes one coding task through Local CLI Bridge to Claude Code and `opus`.
 
-The installed artifact resolves `agent-runtime@0.132.0` and the CLI Bridge provider at `0.6.0` from npm.
+It verifies the edited workspace, then switches to a `Trace analyst` AgentProfile on `sonnet`.
 
-It restores the `Braid live GLM reviewer` AgentProfile and its retained Pi session through Local CLI Bridge.
+It runs `/ask` over the frozen trace and renders cited findings, model calls, tokens, cost provenance, and latency.
 
-The user asks Braid to make a generated JavaScript CLI independent of an incompatible parent package configuration.
+The [capture manifest](artifacts/demo/braid-live.json) records the package hash, route, profile, limits, usage, latency, workspace proof, analysis evidence, and artifact hashes.
 
-Braid fixes the project, runs `node --test`, and reports 11 tests passed with zero failures.
+## Install
 
-The user then types `/activity` and opens the retained run receipt.
+Braid requires Node.js 22.19 or newer.
 
-The receipt shows the AgentProfile, Pi runner, Local CLI Bridge connection, execution environment, provider session, exact GLM-5.2 route, thinking level, tokens, model calls, and measurement completeness.
+Current validated release targets are Linux x64 and macOS arm64.
 
-The run used 28,949 input tokens, 1,943 output tokens, and five model calls.
+The package rejects Windows installation until encrypted state meets the required path-race boundary there.
 
-Cost and model latency remain `unknown` because this route did not report them.
+```bash
+npm install --global @tangle-network/braid
+braid
+```
 
-An independent Node process reran all 11 tests successfully.
+The first-run flow selects an AgentProfile and a connection.
 
-A fresh Braid process then restored the same run and transcript from encrypted state and exited with code zero.
+No runner-specific Braid configuration is required.
 
-The [capture summary](artifacts/demo/braid-live-cli-bridge.json) records the package hash, route, retained identifiers, independent test output, restart result, and artifact hashes.
+For an offline terminal walkthrough, use the deterministic fixture.
 
-The [Pi and `/ask` recording](artifacts/demo/braid-live-pi.gif) shows a second real route followed by cited trace analysis.
+```bash
+braid --fixture deterministic
+```
 
-Its [capture manifest](artifacts/demo/braid-live-pi.json) records the exact route, profile, limits, usage, cost, latency, workspace checks, and artifact hashes.
+The fixture proves rendering and state transitions only.
 
-## Product path
+It does not prove a live runner, model, connection, inference route, or sandbox.
+
+## How it works
 
 The core path is deliberately small.
 
@@ -66,45 +73,9 @@ AgentProfile + user turn
 normalized events, receipts, activity, and final output
 ```
 
-Braid does not implement another agent loop, spawn runner processes directly, parse private runner output, or invent a second profile format.
+Braid does not implement an agent loop, spawn runner processes directly, parse private runner output, or invent another profile format.
 
 A concrete local route is `AgentProfile` with `harness: 'pi'` → Braid admission → `agent-runtime` → a CLI Bridge connection → Pi → normalized events back to Braid.
-
-## Install
-
-Braid requires Node.js 22.19 or newer.
-
-Current validated release targets are Linux x64 and macOS arm64.
-
-npm rejects Windows installation because encrypted state cannot yet meet Braid's path-race boundary there.
-
-```bash
-npm install --global @tangle-network/braid
-braid
-```
-
-To build Braid from source, use pnpm 11.18.
-
-```bash
-git clone https://github.com/tangle-network/braid.git
-cd braid
-corepack enable
-pnpm install --frozen-lockfile
-pnpm build
-pnpm exec braid
-```
-
-The first-run flow selects an `AgentProfile` and a connection without requiring a hand-written runner configuration file.
-
-For an offline deterministic terminal walkthrough, use the explicit fixture mode.
-
-```bash
-braid --fixture deterministic
-```
-
-The fixture proves Braid rendering and state transitions only.
-
-It does not prove a live runner, model, CLI Bridge, inference, or sandbox integration.
 
 ## AgentProfile is the configuration unit
 
@@ -256,7 +227,17 @@ A Tangle sandbox connection can provide an isolated remote workspace, environmen
 
 Braid shows those capabilities and their receipts through the same activity and graph surfaces.
 
+The current published Tangle path runs one isolated cloud turn and deletes its environment after the turn.
+
+Cloud restart, retained-session continuation, checkpoint, and fork remain unavailable until the shared provider reports exact recovery support.
+
 The user can inspect the requested and verified execution location, but provider-private machine details remain unavailable when they are not reported.
+
+The latest production stress proof completed 20 of 20 Braid turns through OpenCode, GLM 5.2, and Tangle Sandbox at four-way concurrency.
+
+All 20 remote environments were unique and confirmed deleted, while the account's active Sandbox count returned from four to four.
+
+See the [secret-free proof artifact](artifacts/verification/live/tangle-sandbox-braid-execution-stress-production-20260812.json) for every run, token receipt, latency, environment observation, and cleanup result.
 
 ## Commands users reach for first
 

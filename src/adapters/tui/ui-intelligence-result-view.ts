@@ -53,6 +53,8 @@ export function withIntelligenceResult(
         status: analysis.status,
         lines: rendered.slice(1),
         analysisFindingCount: analysisView.findings.length,
+        analysisSupportedFindingCount: analysisView.citationSupport.supportedFindings,
+        analysisCitationSupport: analysisView.citationSupport.status,
         ...(analysisView.execution === undefined
           ? {}
           : { analysisExecution: analysisView.execution }),

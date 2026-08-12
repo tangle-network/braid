@@ -7,6 +7,7 @@ export type GlobalKeyAction =
   | 'graph'
   | 'switcher'
   | 'activity'
+  | 'toggleSteer'
   | 'toggleDetails'
   | 'help'
   | 'previousBranch'
@@ -39,6 +40,8 @@ const ACTION_ALIASES: Readonly<Record<string, GlobalKeyAction>> = Object.freeze(
   graph: 'graph',
   switcher: 'switcher',
   activity: 'activity',
+  toggleSteer: 'toggleSteer',
+  'toggle-steer': 'toggleSteer',
   toggleDetails: 'toggleDetails',
   'toggle-details': 'toggleDetails',
   help: 'help',
@@ -58,6 +61,7 @@ const DEFAULT_KEYMAP: BraidKeymap = Object.freeze({
   graph: Object.freeze(['ctrl+g'] as KeyId[]),
   switcher: Object.freeze(['ctrl+k'] as KeyId[]),
   activity: Object.freeze(['f2'] as KeyId[]),
+  toggleSteer: Object.freeze(['alt+s'] as KeyId[]),
   toggleDetails: Object.freeze(['ctrl+e'] as KeyId[]),
   help: Object.freeze(['?'] as KeyId[]),
   previousBranch: Object.freeze(['alt+up'] as KeyId[]),

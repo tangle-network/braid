@@ -16,6 +16,8 @@ import {
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
 import { ProductionAnalysisAnalyst } from '../src/adapters/analysis/production-analysis-analyst.js'
+import { mapAnalystFinding } from '../src/adapters/analysis/citations.js'
+import { buildAnalysisTraceStore } from '../src/adapters/analysis/trace-store.js'
 import { AnalysisComparisonService } from '../src/app/analysis-comparison.js'
 import type { AnalysisAnalyst } from '../src/app/analysis-execution-session.js'
 import { snapshotAnalysisExecutionTarget } from '../src/app/analysis-execution-target.js'
@@ -403,6 +405,47 @@ test('analysis source does not cross the state revision while persisted events l
   assert.equal(prepared.evidence.run?.complete, false)
   assert.equal(prepared.evidence.source.complete, false)
   assert.notEqual(prepared.evidence.events.at(-1)?.event.kind, 'run.finished')
+})
+
+test('trace citations validate exact scalar text without JSON escaping', () => {
+  const exact = 'Separator class [^\\p{L}\\p{N}] is wider than "punctuation and spaces".'
+  const history = runHistory('run-analysis-scalar', 'turn-analysis-scalar').map((envelope) =>
+    envelope.event.kind === 'run.finished'
+      ? { ...envelope, event: { ...envelope.event, finalText: exact } }
+      : envelope,
+  )
+  const host = new MemoryHost(history)
+  const evidence = freezeAnalysisSource({
+    state: host.state,
+    events: host.eventHistory(),
+    runId: 'run-analysis-scalar',
+  })
+  const trace = buildAnalysisTraceStore(evidence)
+  const terminalEvent = evidence.events.find((event) => event.event.kind === 'run.finished')
+  assert.ok(terminalEvent)
+  const span = trace.spans.find((candidate) =>
+    candidate.eventIds.includes(String(terminalEvent.id)),
+  )
+  assert.ok(span)
+  const mapped = mapAnalystFinding(evidence, trace, {
+    schema_version: '1.0.0',
+    finding_id: 'finding-exact-scalar',
+    analyst_id: 'efficiency-behavioral',
+    produced_at: NOW,
+    severity: 'info',
+    area: 'tool-use',
+    claim: exact,
+    confidence: 0.95,
+    evidence_refs: [
+      {
+        kind: 'span',
+        uri: `trace://${encodeURIComponent(trace.traceId)}/span/${encodeURIComponent(span.spanId)}`,
+        excerpt: exact,
+      },
+    ],
+  })
+  assert.equal(mapped.supported, true)
+  assert.equal(mapped.citations[0]?.quote, exact)
 })
 
 test('stable operation identity replays exactly and rejects digest conflicts', async () => {

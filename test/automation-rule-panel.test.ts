@@ -20,6 +20,7 @@ const interaction: InteractionView = {
   allowedOutcomes: ['accept', 'once', 'session', 'persistent', 'cancel'],
   responseScopes: ['once', 'session', 'persistent'],
   queuePosition: 0,
+  queueTotal: 1,
   secret: false,
 }
 

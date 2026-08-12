@@ -27,6 +27,9 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
     })),
   )
   const costFooter = analysisCostFooter(record)
+  const citationCheck = (record.checks ?? record.provenance?.checks ?? []).find(
+    (check) => check.id === 'citation-support',
+  )
   return {
     source: String(record.source.digest),
     ...(record.question === undefined ? {} : { question: sanitizeTerminalText(record.question) }),
@@ -42,6 +45,12 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
       citationIds: finding.citations.map((citation) => String(citation.id)),
     })),
     citations,
+    citationSupport: {
+      status: citationCheck?.status ?? 'unavailable',
+      supportedFindings: record.findings.filter(
+        (finding) => finding.supported && finding.citations.length > 0,
+      ).length,
+    },
     execution: analysisExecutionView(record),
     footer: [
       { label: 'source complete', value: record.source.complete ? 'yes' : 'no' },

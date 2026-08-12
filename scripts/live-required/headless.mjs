@@ -167,6 +167,7 @@ export async function prepareProductionWorkspace({
   model,
   runner,
   provider,
+  connectionName,
   credentialRef,
   credentialValue,
   credentialContextFactory,
@@ -192,7 +193,7 @@ export async function prepareProductionWorkspace({
   const connection = {
     id: `connection-live-${kindId}`,
     kind,
-    name: `Live ${kind}`,
+    name: connectionName ?? `Live ${kind}`,
     endpoint,
     ...(selectedCredentialId === undefined ? {} : { credentialRef: selectedCredentialId }),
     providerOptions: { transport: 'https' },

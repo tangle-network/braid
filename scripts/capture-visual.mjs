@@ -138,6 +138,10 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
     events.push([Number(((performance.now() - startedAt) / 1_000).toFixed(6)), 'i', data])
     session.write(data)
   }
+  const resize = (nextColumns, nextRows) => {
+    emulator.resize(nextColumns, nextRows)
+    session.resize(nextColumns, nextRows)
+  }
   const snapshot = () => ({
     screen: `${screen.replace(/[ \t]+$/gmu, '').replace(/\n+$/u, '')}\n`,
     output,
@@ -152,13 +156,16 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
     // A captured state may contain nested screens (for example the profile
     // selector inside the profile editor). Escape each possible layer before
     // exercising the shell's normal two-step Ctrl+C exit.
-    for (let layer = 0; layer < 3; layer += 1) {
+    for (let layer = 0; layer < 4; layer += 1) {
       input('\u001b')
-      await sleep(75)
+      // A bare Escape is decoded after a short ambiguity window. Keep each
+      // layer separate so a busy process cannot combine them into one sequence.
+      await sleep(250)
+      await waitForStable(`${name} escape layer ${layer + 1}`)
     }
     input('\u0003')
     await waitFor(
-      () => normalized(screen).includes('ctrl+c again to quit'),
+      () => normalized(screen).toLowerCase().includes('ctrl+c again to quit'),
       `${name} safe exit prompt`,
     )
     input('\u0003')
@@ -213,6 +220,7 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
     rows,
     events,
     input,
+    resize,
     output: () => output,
     screen: () => screen,
     snapshot,
@@ -311,7 +319,7 @@ async function baselineCapture(columns, rows) {
   const terminal = await spawnTerminal(`baseline-${columns}x${rows}`, columns, rows)
   try {
     await terminal.waitForInterface()
-    await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
+    await terminal.waitFor(() => terminal.screen().includes('Braid starter'), 'profile context')
     terminal.input('W6 visual proof')
     terminal.input('\r')
     await terminal.waitFor(
@@ -320,8 +328,8 @@ async function baselineCapture(columns, rows) {
     )
     await terminal.waitFor(
       () =>
-        normalized(terminal.screen()).includes('completed') ||
-        normalized(terminal.screen()).includes('ready for a message'),
+        normalized(terminal.screen()).includes('Braid starter') &&
+        !normalized(terminal.screen()).includes('working'),
       'final state',
     )
     await terminal.waitForStable('baseline final frame')
@@ -351,7 +359,7 @@ async function transcriptKeyboardCapture() {
   )
   try {
     await terminal.waitForInterface()
-    await terminal.waitFor(() => terminal.screen().includes('braid'), 'header')
+    await terminal.waitFor(() => terminal.screen().includes('Braid starter'), 'profile context')
     for (const prompt of prompts) {
       terminal.input(prompt)
       terminal.input('\r')
@@ -432,8 +440,8 @@ try {
       if (definition.name === 'active-streaming') {
         if (result.record.view?.status !== 'running')
           throw new Error('active-streaming frame and semantic state disagree')
-        if (!normalized(result.point.screen).includes('streaming'))
-          throw new Error('active-streaming frame is not streaming')
+        if (!normalized(result.point.screen).includes('working'))
+          throw new Error('active-streaming frame does not show active work')
       }
       if (
         result.record.capturePhase !== 'atomic-signal-frame' ||

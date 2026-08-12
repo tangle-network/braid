@@ -23,6 +23,9 @@ export class ForkPreviewPanel extends Container implements Focusable {
   #focused = false
   #submitted = false
   #canConfirm = false
+  #scrollOffset = 0
+  #lastBodyRows = 1
+  #lastBodyLength = 0
 
   constructor(theme: BraidTheme, options: ForkPreviewPanelOptions = {}) {
     super()
@@ -44,6 +47,7 @@ export class ForkPreviewPanel extends Container implements Focusable {
     this.clear()
     this.#submitted = false
     this.#canConfirm = false
+    this.#scrollOffset = 0
     this.#error.setText('')
     const preview = view.forkPreview
     if (!preview) {
@@ -78,18 +82,14 @@ export class ForkPreviewPanel extends Container implements Focusable {
             : this.#theme.warning('boundary: not reported by the fork plan'),
         ),
       )
-      const fields = preview.fields.filter(
-        (field) => field !== boundaryField && !isExecutionField(field.label),
-      )
-      for (const field of fields.slice(0, 3)) {
+      const fields = preview.fields.filter((field) => field !== boundaryField)
+      for (const field of fields) {
         this.addChild(
           this.#line(
             `${sanitizeTerminalText(field.label)}: ${sanitizeTerminalText(field.source)} → ${sanitizeTerminalText(field.destination)}`,
           ),
         )
       }
-      if (fields.length > 3)
-        this.addChild(this.#line(this.#theme.muted(`+${fields.length - 3} fields not shown`)))
       this.addChild(this.#error)
       if (!this.#canConfirm) {
         this.addChild(
@@ -122,6 +122,7 @@ export class ForkPreviewPanel extends Container implements Focusable {
       this.#onCancel?.()
       return
     }
+    if (this.#handleNavigation(data)) return
     if (this.#submitted || !this.#canConfirm || this.#onConfirm === undefined) return
     if (matchesKey(data, 'enter') || matchesKey(data, 'y')) {
       this.#submitted = true
@@ -130,15 +131,49 @@ export class ForkPreviewPanel extends Container implements Focusable {
   }
 
   override render(width: number): string[] {
+    const rows = Math.max(4, Math.floor(this.#rows()))
+    const bodyRows = Math.max(1, rows - 4)
+    const body = super.render(width)
+    this.#lastBodyRows = bodyRows
+    this.#lastBodyLength = body.length
+    const maximum = Math.max(0, body.length - bodyRows)
+    this.#scrollOffset = Math.max(0, Math.min(this.#scrollOffset, maximum))
+    const visible = body.slice(this.#scrollOffset, this.#scrollOffset + bodyRows)
+    const position =
+      body.length > bodyRows
+        ? `↑/↓ inspect ${this.#scrollOffset + 1}-${this.#scrollOffset + visible.length}/${body.length}`
+        : undefined
+    const footer =
+      position !== undefined && width < 60
+        ? this.#canConfirm
+          ? '↑/↓ inspect · enter/y create · ←/esc'
+          : '↑/↓ inspect · ←/esc cancel'
+        : [this.#footer, position].filter(Boolean).join(' · ')
     return focusedSurfaceLines({
       theme: this.#theme,
       title: this.#title,
       ...(this.#context === undefined ? {} : { context: this.#context }),
-      body: super.render(width),
-      footer: this.#footer,
+      body: visible,
+      footer,
       width,
-      rows: this.#rows(),
+      rows,
     })
+  }
+
+  #handleNavigation(data: string): boolean {
+    const maximum = Math.max(0, this.#lastBodyLength - this.#lastBodyRows)
+    const page = Math.max(1, this.#lastBodyRows - 1)
+    const previous = this.#scrollOffset
+    if (matchesKey(data, 'up')) this.#scrollOffset -= 1
+    else if (matchesKey(data, 'down')) this.#scrollOffset += 1
+    else if (matchesKey(data, 'pageUp')) this.#scrollOffset -= page
+    else if (matchesKey(data, 'pageDown')) this.#scrollOffset += page
+    else if (matchesKey(data, 'home')) this.#scrollOffset = 0
+    else if (matchesKey(data, 'end')) this.#scrollOffset = maximum
+    else return false
+    this.#scrollOffset = Math.max(0, Math.min(this.#scrollOffset, maximum))
+    if (this.#scrollOffset !== previous) this.invalidate()
+    return true
   }
 
   #line(value: string): TruncatedText {
@@ -148,8 +183,4 @@ export class ForkPreviewPanel extends Container implements Focusable {
 
 function isBoundaryField(label: string): boolean {
   return /boundary|context|through|message|turn/iu.test(sanitizeTerminalText(label))
-}
-
-function isExecutionField(label: string): boolean {
-  return label === 'operation id' || label === 'plan digest'
 }

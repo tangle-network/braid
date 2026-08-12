@@ -292,12 +292,16 @@ A repository search and dependency test must prove no Braid-owned runner/model m
 - Record one secret-free execution environment for local CLI Bridge, direct inference, and sandbox paths.
 - Implement shutdown behavior that distinguishes detachable and non-detachable runs.
 - Run the packed Braid binary against CLI Bridge, Tangle inference, and Tangle sandbox.
+- Run one Tangle Sandbox canary before a bounded three-proof durability cohort.
+- Record exact cleanup, account identity, latency distributions, tokens, costs, placement, and resource observations for every cloud proof.
 
 ### Done when
 
 `PR-04`, `UX-04`, `UX-09`, `AR-04`, `AR-05`, `LIVE-01`, `LIVE-02`, `LIVE-04`, `LIVE-06`, `LIVE-07`, and every replay, cancel, and terminal-state reliability row pass.
 
 The event ledger must show zero duplicate displayed part and zero lost committed event across forced disconnect and restart cases.
+
+The Tangle Sandbox cohort must leave zero resources owned by its exact operation identities.
 
 ## W9: Interactions and automation
 

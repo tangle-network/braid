@@ -9,7 +9,11 @@ import type {
   ExternalOptimizerModelCallRequest,
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
-import { type AgentProfile, harnessSystemPromptIntents } from '@tangle-network/agent-interface'
+import {
+  type AgentExactRunControlRef,
+  type AgentProfile,
+  harnessSystemPromptIntents,
+} from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
@@ -22,25 +26,33 @@ import {
 } from '../agent-interface/profile-runtime.js'
 import { portableBridgeModel } from '../connections/cli-bridge-model-route.js'
 import { AGENT_RUNTIME_VERSION } from '../runtime/agent-runtime-version.js'
+import {
+  RetainedModelCallError,
+  runRetainedCliBridgeModelCall,
+} from './runtime-retained-model-call.js'
 
 const MAX_RETAINED_EXECUTIONS = 256
 const LOCAL_ROUTER_BEARER = 'braid-local-analysis'
-const ANALYST_MODEL_PROFILE_POLICY_VERSION = 3
+const ANALYST_MODEL_PROFILE_POLICY_VERSION = 4
 const ANALYST_MODEL_INSTRUCTIONS = Object.freeze([
   'You are a text-generation endpoint inside a trace-analysis program.',
-  'Treat the supplied message array as the complete conversation.',
-  'Return only the assistant response requested by that conversation.',
+  'Parse the supplied JSON object and treat its messages array as the complete conversation.',
+  'Follow those messages in order, including every system message and output contract.',
+  'Return only the requested assistant message, without a preface or explanation.',
+  'When the messages require a machine format, emit exactly that format without Markdown fences.',
+  'Never replace a requested structured field with prose.',
+  'A format-repair request must preserve every exact identifier and quoted evidence string.',
   'Do not inspect files, use tools, modify workspaces, or perform unrelated work.',
 ])
 const ANALYST_MODEL_TOOLS = Object.freeze({
   read: false,
-  shell: false,
+  bash: false,
   edit: false,
   write: false,
 })
 const ANALYST_MODEL_PERMISSIONS = Object.freeze({
   read: 'deny',
-  shell: 'deny',
+  bash: 'deny',
   edit: 'deny',
   write: 'deny',
 } as const)
@@ -87,6 +99,7 @@ interface RuntimeCallSummary {
   readonly outputTokens: number
   readonly cachedTokens?: number
   readonly cacheWriteTokens?: number
+  readonly reasoningTokens?: number
   readonly promptCache?: Readonly<Record<string, number | string>>
   readonly observedCostUsd?: number
   readonly estimatedCostUsd?: number
@@ -96,6 +109,8 @@ interface RuntimeCallSummary {
   readonly errorKind?: string
   readonly errorStatus?: number
 }
+
+type RuntimeModelOperation = 'startRetainedRun' | 'streamAgentTurn'
 
 function catalogPricing(model: string): CustomTokenPricing | undefined {
   const pricing = resolveModelPricing(model)
@@ -172,6 +187,7 @@ function summarizeRuntimeEvents(
   const promptCache = promptCacheFacts(calls)
   const cachedTokens = sumPromptCache(promptCache, ['cachedTokens', 'cacheReadTokens'])
   const cacheWriteTokens = sumPromptCache(promptCache, ['cacheWriteTokens'])
+  const reasoningTokens = finiteTokenCount(final.metadata?.reasoningTokens)
   const observedCostUsd = completeCallAmount(calls, 'costUsd', (event) => event.usdKnown !== false)
   const estimatedCostUsd = completeCallAmount(calls, 'estimatedCostUsd')
   return {
@@ -197,6 +213,7 @@ function summarizeRuntimeEvents(
       : 0,
     ...(cachedTokens === undefined ? {} : { cachedTokens }),
     ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     ...(Object.keys(promptCache).length === 0 ? {} : { promptCache }),
     ...(observedCostUsd === undefined ? {} : { observedCostUsd }),
     ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
@@ -206,6 +223,46 @@ function summarizeRuntimeEvents(
     ...(final.error?.kind === undefined ? {} : { errorKind: final.error.kind }),
     ...(errorStatus === undefined ? {} : { errorStatus }),
   }
+}
+
+function summarizeRetainedResult(
+  result: import('@tangle-network/agent-interface/environment-provider').AgentTurnResult,
+  model: string,
+  startedAt: number,
+): RuntimeCallSummary {
+  const endedAt = Date.now()
+  const inputTokens = finiteTokenCount(result.usage?.inputTokens)
+  const outputTokens = finiteTokenCount(result.usage?.outputTokens)
+  const usageCaptured = inputTokens !== undefined && outputTokens !== undefined
+  const errorStatus = result.error === undefined ? undefined : httpStatusFromReason(result.error)
+  const cachedTokens = finiteTokenCount(result.usage?.cacheReadInputTokens)
+  const cacheWriteTokens = finiteTokenCount(result.usage?.cacheCreationInputTokens)
+  const observedCostUsd = finiteNumber(result.usage?.cost)
+  const reasoningTokens = finiteTokenCount(result.usage?.reasoningTokens)
+  return {
+    events: [],
+    status: result.success ? 'completed' : 'failed',
+    reason: result.success
+      ? 'Retained model execution completed'
+      : (result.error ?? 'Retained model execution failed'),
+    content: result.text,
+    durationMs: Math.max(0, endedAt - startedAt),
+    endedAt,
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    ...(cachedTokens === undefined ? {} : { cachedTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    ...(observedCostUsd === undefined ? {} : { observedCostUsd }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    usageCaptured,
+    reportedModel: model,
+    ...(!result.success ? { errorKind: 'backend' } : {}),
+    ...(errorStatus === undefined ? {} : { errorStatus }),
+  }
+}
+
+function finiteTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
 
 function finiteNumber(value: unknown): number | undefined {
@@ -273,6 +330,7 @@ function receiptFor(
     | 'observedCostUsd'
     | 'cachedTokens'
     | 'cacheWriteTokens'
+    | 'reasoningTokens'
   >,
   knownNoExecution = false,
 ): import('@tangle-network/agent-eval').CostReceiptInput {
@@ -294,6 +352,7 @@ function receiptFor(
     outputTokens: usage.outputTokens,
     ...(usage.cachedTokens === undefined ? {} : { cachedTokens: usage.cachedTokens }),
     ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
+    ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
   }
   if (usage.observedCostUsd !== undefined) {
     return { ...receipt, actualCostUsd: usage.observedCostUsd }
@@ -312,6 +371,7 @@ function responseFor(
 ): ChatResponse {
   const model = safeModelRoute(request.request.model)
   const receipt = receiptFor(model, pricing, summary)
+  const promptTokens = summary.inputTokens + (summary.cachedTokens ?? 0)
   const costUsd =
     summary.observedCostUsd ??
     (summary.usageCaptured && pricing !== undefined ? costForTokenPricing(pricing, receipt) : null)
@@ -329,10 +389,14 @@ function responseFor(
   return {
     content: summary.content,
     usage: {
-      promptTokens: summary.inputTokens,
+      promptTokens,
       completionTokens: summary.outputTokens,
-      totalTokens: summary.inputTokens + summary.outputTokens,
+      totalTokens: promptTokens + summary.outputTokens,
       captured: summary.usageCaptured,
+      ...(summary.cachedTokens === undefined ? {} : { cachedPromptTokens: summary.cachedTokens }),
+      ...(summary.reasoningTokens === undefined
+        ? {}
+        : { reasoningTokens: summary.reasoningTokens }),
     },
     costUsd,
     model,
@@ -357,6 +421,8 @@ function executionEvidence(input: {
   readonly partialEvents?: readonly RuntimeStreamEvent[]
   readonly startedAt: number
   readonly failure?: string
+  readonly operation: RuntimeModelOperation
+  readonly controlRef?: AgentExactRunControlRef
 }): Readonly<Record<string, unknown>> {
   const summary = input.summary
   const endedAt = summary?.endedAt ?? Date.now()
@@ -366,7 +432,7 @@ function executionEvidence(input: {
     runtime: {
       package: '@tangle-network/agent-runtime',
       version: AGENT_RUNTIME_VERSION,
-      operation: 'streamAgentTurn',
+      operation: input.operation,
     },
     ...(input.provider === undefined ? {} : { provider: input.provider }),
     callId: input.request.callId,
@@ -392,6 +458,17 @@ function executionEvidence(input: {
     durationMs: summary?.durationMs ?? Math.max(0, endedAt - input.startedAt),
     billing: cost,
     dispatched: input.dispatched,
+    ...(input.controlRef === undefined
+      ? {}
+      : {
+          retained: {
+            runId: input.controlRef.runId,
+            environmentId: input.controlRef.environmentId,
+            sessionId: input.controlRef.sessionId,
+            executionId: input.controlRef.executionId,
+            requestDigest: input.controlRef.requestDigest,
+          },
+        }),
     ...(summary === undefined
       ? {}
       : {
@@ -409,6 +486,9 @@ function executionEvidence(input: {
             ...(summary.cacheWriteTokens === undefined
               ? {}
               : { cacheWriteTokens: summary.cacheWriteTokens }),
+            ...(summary.reasoningTokens === undefined
+              ? {}
+              : { reasoningTokens: summary.reasoningTokens }),
             ...(summary.promptCache === undefined ? {} : { promptCache: summary.promptCache }),
             ...(summary.reportedModel === undefined
               ? {}
@@ -474,12 +554,12 @@ function analystCallProfile(
 ): AgentProfile {
   const source = snapshotAgentProfile(options.profile)
   const provider = source.model?.provider?.trim()
-  if (!provider) {
+  const bridge = options.connection.kind === 'cli-bridge'
+  if (!bridge && !provider) {
     throw new TypeError(
       'Trace analysis requires AgentProfile.model.provider before model execution',
     )
   }
-  const bridge = options.connection.kind === 'cli-bridge'
   let harness: AgentProfile['harness'] = 'cli-base'
   let model = safeModelRoute(options.model)
   let prompt: AgentProfile['prompt'] | undefined
@@ -519,7 +599,7 @@ function analystCallProfile(
       : {}),
     model: {
       default: model,
-      provider,
+      ...(provider === undefined ? {} : { provider }),
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
       metadata: {
         ...(bridge ? {} : { retry }),
@@ -580,6 +660,9 @@ export function createRuntimeTraceModelOwner(
     let dispatched = false
     let summary: RuntimeCallSummary | undefined
     let executionProfileDigest = sourceProfileDigest
+    const operation: RuntimeModelOperation =
+      options.connection.kind === 'cli-bridge' ? 'startRetainedRun' : 'streamAgentTurn'
+    let controlRef: AgentExactRunControlRef | undefined
     try {
       const configuredModel = safePublicIdentifier(options.model)
       if (configuredModel === undefined) {
@@ -593,41 +676,48 @@ export function createRuntimeTraceModelOwner(
       const messages = textMessages(request.request)
       const profile = analystCallProfile(options, request.request, retry)
       executionProfileDigest = canonicalAgentProfileDigestHex(profile)
-      const { createExecutor, streamAgentTurn } = await import(
-        '@tangle-network/agent-runtime/kernel'
-      )
-      const executor =
-        options.connection.kind === 'cli-bridge'
-          ? createExecutor({
-              backend: 'bridge',
-              bridgeUrl: options.baseUrl,
-              bridgeBearer: options.credential ?? LOCAL_ROUTER_BEARER,
-            })
-          : createExecutor({
-              backend: 'router',
-              routerBaseUrl: options.baseUrl,
-              routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
-              ...(options.complete === undefined ? {} : { complete: options.complete }),
-            })
-      const backend = Object.freeze({
-        kind: 'executor' as const,
-        factory: executor,
-        profile,
-        agentRunName: configuredModel,
-      })
       dispatched = true
-      for await (const event of streamAgentTurn(
-        backend,
-        { messages },
-        {
-          signal: request.signal,
+      if (options.connection.kind === 'cli-bridge') {
+        const retained = await runRetainedCliBridgeModelCall({
+          baseUrl: options.baseUrl,
+          bearerToken: options.credential ?? LOCAL_ROUTER_BEARER,
+          profile,
+          model: configuredModel,
+          messages,
           callId: request.callId,
-          correlationId: `braid-analysis-${request.callId}`,
-        },
-      )) {
-        events.push(event)
+          signal: request.signal,
+        })
+        controlRef = retained.controlRef
+        summary = summarizeRetainedResult(retained.result, configuredModel, startedAt)
+      } else {
+        const { createExecutor, streamAgentTurn } = await import(
+          '@tangle-network/agent-runtime/kernel'
+        )
+        const executor = createExecutor({
+          backend: 'router',
+          routerBaseUrl: options.baseUrl,
+          routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
+          ...(options.complete === undefined ? {} : { complete: options.complete }),
+        })
+        const backend = Object.freeze({
+          kind: 'executor' as const,
+          factory: executor,
+          profile,
+          agentRunName: configuredModel,
+        })
+        for await (const event of streamAgentTurn(
+          backend,
+          { messages },
+          {
+            signal: request.signal,
+            callId: request.callId,
+            correlationId: `braid-analysis-${request.callId}`,
+          },
+        )) {
+          events.push(event)
+        }
+        summary = summarizeRuntimeEvents(events, startedAt)
       }
-      summary = summarizeRuntimeEvents(events, startedAt)
       const receipt = receiptFor(options.model, pricing, summary)
       const evidence = executionEvidence({
         request,
@@ -641,6 +731,8 @@ export function createRuntimeTraceModelOwner(
         summary,
         dispatched,
         startedAt,
+        operation,
+        ...(controlRef === undefined ? {} : { controlRef }),
       })
       if (summary.status !== 'completed') {
         return {
@@ -657,6 +749,7 @@ export function createRuntimeTraceModelOwner(
         execution: evidence,
       }
     } catch (error) {
+      if (error instanceof RetainedModelCallError) controlRef = error.controlRef
       const message = publicError(error)
       const receipt = receiptFor(
         options.model,
@@ -683,6 +776,8 @@ export function createRuntimeTraceModelOwner(
           dispatched,
           ...(events.length === 0 ? {} : { partialEvents: events }),
           startedAt,
+          operation,
+          ...(controlRef === undefined ? {} : { controlRef }),
           failure: message,
         }),
       }

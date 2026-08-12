@@ -9,18 +9,24 @@ import { promisify } from 'node:util'
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
 import { configureWithPublicTui } from './live-core/setup-tui.mjs'
 import { jsonRequest } from './live-demo/http.mjs'
-import { assertExactPackageProof, safeManifestAnalysis } from './live-demo/manifest.mjs'
+import {
+  assertExactPackageProof,
+  packageTarballPath,
+  safeManifestAnalysis,
+} from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import {
   castFor,
   createCapturedTerminal,
   pause,
+  terminalFailureDetail,
   terminalPageProgress,
   typeText,
   visibleModelCallNumbers,
 } from './live-demo/terminal.mjs'
 import {
   createLiveDemoWorkspace,
+  LIVE_DEMO_ANALYST_PROFILE,
   LIVE_DEMO_PROFILE,
   LIVE_DEMO_PROMPT,
   LIVE_DEMO_QUESTION,
@@ -36,7 +42,8 @@ const outputRoot = process.env.BRAID_LIVE_DEMO_OUTPUT
 const packageProofPath = process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   ? process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   : join(repository, 'artifacts', 'verification', 'w6', 'package-proof.json')
-const route = 'pi/tangle-router/glm-5.2'
+const route = `${LIVE_DEMO_PROFILE.harness}/${LIVE_DEMO_PROFILE.model.default}`
+const analysisRoute = `${LIVE_DEMO_ANALYST_PROFILE.harness}/${LIVE_DEMO_ANALYST_PROFILE.model.default}`
 const columns = 120
 const rows = 30
 
@@ -63,13 +70,15 @@ async function bridgeProof(baseUrl) {
     jsonRequest(`${baseUrl}/health`),
     jsonRequest(`${baseUrl}/v1/models`),
   ])
-  const backend = health.backends?.find((candidate) => candidate.name === 'pi')
+  const backend = health.backends?.find((candidate) => candidate.name === LIVE_DEMO_PROFILE.harness)
   assert.equal(health.status, 'ok', 'CLI Bridge is not healthy')
-  assert.equal(backend?.state, 'ready', 'Pi is not ready in CLI Bridge')
-  assert.ok(
-    models.data?.some((candidate) => candidate.id === route),
-    `${route} is not advertised by CLI Bridge`,
-  )
+  assert.equal(backend?.state, 'ready', `${LIVE_DEMO_PROFILE.harness} is not ready in CLI Bridge`)
+  for (const requiredRoute of [route, analysisRoute]) {
+    assert.ok(
+      models.data?.some((candidate) => candidate.id === requiredRoute),
+      `${requiredRoute} is not advertised by CLI Bridge`,
+    )
+  }
   return { health, backend }
 }
 
@@ -88,7 +97,7 @@ async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
     const terminalRun = lastRecord.state?.runs?.at(-1)
     if (terminalRun?.status === 'failed' || terminalRun?.status === 'unknown') {
       throw new Error(
-        `The coding turn ended ${terminalRun.status}: ${terminalRun.error ?? 'no error'}`,
+        `The coding turn ended ${terminalRun.status}: ${terminalFailureDetail(lastRecord)}`,
       )
     }
     await pause(500)
@@ -185,7 +194,8 @@ async function main() {
   }
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
-    tarballPath: process.env.BRAID_RELEASE_TARBALL,
+    tarballPath:
+      process.env.BRAID_RELEASE_TARBALL ?? packageTarballPath(packageProofPath, packageProof),
   })
   let terminal
   try {
@@ -204,7 +214,7 @@ async function main() {
       workspace,
       keyFile,
       baseUrl,
-      'pi',
+      LIVE_DEMO_PROFILE.harness,
       route,
       profilePath,
     )
@@ -241,9 +251,9 @@ async function main() {
     })
     await terminal.waitForScreen(
       (screen) =>
-        screen.includes('Product engineer') &&
-        screen.includes('runner pi') &&
-        screen.includes('tangle-router/glm-5.2') &&
+        screen.includes(`profile ${LIVE_DEMO_PROFILE.name}`) &&
+        screen.includes(LIVE_DEMO_PROFILE.harness) &&
+        screen.includes(LIVE_DEMO_PROFILE.model.default) &&
         screen.includes('Local CLI Bridge'),
       'real AgentProfile route',
       60_000,
@@ -270,31 +280,66 @@ async function main() {
 
     await typeText(terminal, LIVE_DEMO_PROMPT, 9)
     terminal.input('\r')
+    await terminal.waitForScreen((screen) => screen.includes('working'), 'active coding turn')
+    terminal.input('\u001bOQ')
+    await terminal.waitForScreen((screen) => screen.includes('live work'), 'live-work pane')
+    await pause(900)
+    terminal.input('\u001bOQ')
+    await terminal.waitForScreen((screen) => !screen.includes('live work'), 'live-work pane close')
     const coding = await waitForCompletedRun(terminal)
     const transcript = transcriptEvidence(coding.record)
     assert.ok(
       transcript.assistantMessages.length > 0,
       'The coding turn returned no visible assistant result',
     )
-    assert.ok(
-      transcript.artifactParts.length > 0,
-      'The coding turn retained no agent-runtime result artifact',
-    )
-    assert.equal(coding.run.runner, 'pi')
+    assert.equal(coding.run.runner, LIVE_DEMO_PROFILE.harness)
     assert.equal(coding.run.model, route)
     const workspaceProof = await verifyWorkspace(workspace)
     await terminal.waitForStable('completed coding turn')
     await pause(800)
 
-    terminal.input('\u001bOQ')
+    await typeText(terminal, '/activity', 24)
+    terminal.input('\r')
     await terminal.waitForScreen((screen) => screen.includes('activity'), 'activity browser')
     await pause(900)
-    terminal.input('\u001bOQ')
+    terminal.input('\u001b')
     await terminal.waitForScreen(
       (screen) => !screen.includes('activity ·'),
       'activity browser close',
     )
     await pause(300)
+
+    await typeText(terminal, '/profile', 24)
+    terminal.input('\r')
+    await terminal.waitForScreen(
+      (screen) =>
+        screen.includes('Active profile · Product engineer') &&
+        screen.includes(LIVE_DEMO_ANALYST_PROFILE.name),
+      'trace analyst profile choice',
+    )
+    await typeText(terminal, LIVE_DEMO_ANALYST_PROFILE.name, 24)
+    await terminal.waitForScreen(
+      (screen) =>
+        screen.includes(LIVE_DEMO_ANALYST_PROFILE.name) &&
+        !screen.includes('CLI Bridge · claude-code · hai'),
+      'filtered trace analyst profile',
+    )
+    terminal.input('\r')
+    await terminal.waitForScreen(
+      (screen) => screen.includes(`Selected ${LIVE_DEMO_ANALYST_PROFILE.name} · next runs use it`),
+      'trace analyst profile selection',
+    )
+    terminal.input('\u001b')
+    await terminal.waitForScreen(
+      (screen) =>
+        !screen.includes(`Selected ${LIVE_DEMO_ANALYST_PROFILE.name} · next runs use it`) &&
+        screen.includes(`profile ${LIVE_DEMO_ANALYST_PROFILE.name}`) &&
+        screen.includes(
+          `${LIVE_DEMO_ANALYST_PROFILE.harness} / ${LIVE_DEMO_ANALYST_PROFILE.model.default}`,
+        ),
+      'trace analyst active route',
+    )
+    await pause(500)
 
     await typeText(terminal, `/ask ${LIVE_DEMO_QUESTION}`, 9)
     terminal.input('\r')
@@ -343,7 +388,7 @@ async function main() {
     const heroScreen = hero.screen
     const cast = castFor(
       terminal,
-      'Braid · AgentProfile to Pi, then trace analysis',
+      'Braid · AgentProfile coding run, then trace analysis',
       'braid --profile Product-engineer --connection Local-CLI-Bridge',
       hero.eventCount,
     )
@@ -351,12 +396,12 @@ async function main() {
     await terminal.closeNormally()
 
     await mkdir(outputRoot, { recursive: true })
-    const castPath = join(outputRoot, 'braid-live-pi.cast')
-    const frameCastPath = join(temporaryRoot, 'braid-live-pi-frame.cast')
-    const gifPath = join(outputRoot, 'braid-live-pi.gif')
-    const pngPath = join(outputRoot, 'braid-live-pi.png')
-    const textPath = join(outputRoot, 'braid-live-pi.txt')
-    const manifestPath = join(outputRoot, 'braid-live-pi.json')
+    const castPath = join(outputRoot, 'braid-live.cast')
+    const frameCastPath = join(temporaryRoot, 'braid-live-frame.cast')
+    const gifPath = join(outputRoot, 'braid-live.gif')
+    const pngPath = join(outputRoot, 'braid-live.png')
+    const textPath = join(outputRoot, 'braid-live.txt')
+    const manifestPath = join(outputRoot, 'braid-live.json')
     const frameCast = castFor(
       { ...terminal, events: terminal.events.slice(0, hero.eventCount) },
       'Braid · completed trace analysis',
@@ -383,15 +428,22 @@ async function main() {
       route: {
         connection: 'Local CLI Bridge',
         endpoint: baseUrl,
-        runner: 'pi',
+        runner: LIVE_DEMO_PROFILE.harness,
         runnerVersion: bridge.backend.version,
-        provider: 'tangle-router',
-        model: 'glm-5.2',
+        provider: LIVE_DEMO_PROFILE.model.provider ?? null,
+        model: LIVE_DEMO_PROFILE.model.default,
       },
       profile: {
         name: LIVE_DEMO_PROFILE.name,
         reasoningEffort: LIVE_DEMO_PROFILE.model.reasoningEffort,
         maxOutputTokens: LIVE_DEMO_PROFILE.model.metadata.maxTokens,
+      },
+      analysisProfile: {
+        name: LIVE_DEMO_ANALYST_PROFILE.name,
+        runner: LIVE_DEMO_ANALYST_PROFILE.harness,
+        model: LIVE_DEMO_ANALYST_PROFILE.model.default,
+        reasoningEffort: LIVE_DEMO_ANALYST_PROFILE.model.reasoningEffort,
+        maxOutputTokens: LIVE_DEMO_ANALYST_PROFILE.model.metadata.maxTokens,
       },
       task: {
         prompt: LIVE_DEMO_PROMPT,

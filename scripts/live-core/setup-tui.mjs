@@ -129,7 +129,12 @@ export async function configureWithPublicTui(
     session.write('\r')
     await sleep(250)
     session.write('\u0003')
-    await waitFor(() => output.value, 'ctrl+c again to quit', 'safe exit prompt', 15_000)
+    await waitFor(
+      () => output.value.toLowerCase(),
+      'ctrl+c again to quit',
+      'safe exit prompt',
+      15_000,
+    )
     session.write('\u0003')
     const result = await Promise.race([
       exit,

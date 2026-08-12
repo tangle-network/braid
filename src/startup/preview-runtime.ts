@@ -5,9 +5,8 @@ import { TuiMainScreen } from '@earendil-works/pi-tui/dist/tui-main-screen.js'
 import { Text } from '@earendil-works/pi-tui/dist/components/text.js'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { boundVisibleText } from '../views/shared/sanitize.js'
-import { composerBorderLine } from '../views/tui/composer-view.js'
 import { installTerminalOutputPolicy } from '../views/tui/terminal-compatibility.js'
-import { fitTerminalColumns, renderTerminalIdentity } from '../views/tui/terminal-identity.js'
+import { renderTerminalContext } from '../views/tui/terminal-identity.js'
 import { createBraidTheme, type BraidTheme } from '../views/tui/theme.js'
 import { createTerminalSignalLatch, type TerminalSignalExitCode } from './terminal-signal-latch.js'
 
@@ -65,7 +64,7 @@ export interface StartupPreviewHandoff {
 }
 
 class StartupFrame implements Component {
-  readonly #identity: Parameters<typeof renderTerminalIdentity>[1]
+  readonly #identity: Parameters<typeof renderTerminalContext>[1]
   readonly #transcript: Text
   readonly #theme: BraidTheme
   readonly #rows: () => number
@@ -106,7 +105,7 @@ class StartupFrame implements Component {
     }
     this.#theme = theme
     this.#rows = rows
-    this.#status = status === 'ready' ? 'ready for a message' : status
+    this.#status = status
     const messages = state.messages
       .filter((message) => message.branchId === state.branchId && message.status !== 'redacted')
       .slice(-MAX_PREVIEW_MESSAGES)
@@ -115,8 +114,7 @@ class StartupFrame implements Component {
       )
       .join('\n\n')
     this.#transcript = new Text(
-      messages ||
-        `Send a task to ${state.profile.name ?? 'this AgentProfile'}, or press Ctrl+P for commands.`,
+      messages || `Ask ${state.profile.name ?? 'this AgentProfile'} anything.`,
       1,
       1,
     )
@@ -148,26 +146,20 @@ class StartupFrame implements Component {
 
   render(width: number): string[] {
     const rows = Math.max(1, Math.floor(this.#rows()))
-    const top = renderTerminalIdentity(this.#theme, this.#identity, width)
-    const footer = fitTerminalColumns(
-      [this.#theme.success(this.#status)],
-      [this.#theme.text('Ctrl+P commands')],
+    const footer = renderTerminalContext(
+      this.#theme,
+      this.#identity,
+      [this.#theme.success(this.#status), this.#theme.text('Ctrl+P commands')],
       width,
     )
-    const composer = [
-      composerBorderLine(width, '› send', this.#theme),
-      `${this.#theme.accent('›')}${CURSOR_MARKER}`,
-      '',
-      '',
-      composerBorderLine(width, 'alt+enter newline · paste', this.#theme),
-    ]
-    const contentRows = Math.max(0, rows - top.length - composer.length - 1)
+    const composer = [`${this.#theme.accent('›')}${CURSOR_MARKER}`, '', '']
+    const contentRows = Math.max(0, rows - composer.length - 1)
     const transcript = contentRows === 0 ? [] : this.#transcript.render(width).slice(-contentRows)
     const content = [
       ...transcript,
       ...Array.from({ length: Math.max(0, contentRows - transcript.length) }, () => ''),
     ]
-    return [...top, ...content, ...composer, footer].slice(-rows)
+    return [...content, ...composer, footer].slice(-rows)
   }
 }
 

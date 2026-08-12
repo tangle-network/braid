@@ -53,7 +53,6 @@ export function assertRunRecord(record: RunRecord): void {
   if (record.controlRef !== undefined) {
     const parsed = AgentExactRunControlRefSchema.safeParse(record.controlRef)
     if (!parsed.success) fail('run.controlRef is invalid')
-    if (record.controlRef.runId !== record.id) fail('run.controlRef.runId must match run.id')
     if (
       record.providerSessionId !== undefined &&
       record.controlRef.sessionId !== record.providerSessionId

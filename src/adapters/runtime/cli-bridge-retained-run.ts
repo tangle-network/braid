@@ -1,20 +1,34 @@
 import {
-  AgentExactRunControlRefSchema,
   type AgentExactRunControlRef,
+  AgentExactRunControlRefSchema,
 } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentProvider } from '@tangle-network/agent-interface/environment-provider'
 import {
+  type RetainedRunHandle,
   reconnectRetainedRun,
   startRetainedRun,
-  type RetainedRunHandle,
 } from '@tangle-network/agent-runtime/kernel'
+import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
+import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { safeExecutionId } from './production-backend-common.js'
 import type { PreparedCliBridgeConnection } from './production-cli-bridge-backend.js'
+import type {
+  RetainedExecutionPlan,
+  RetainedResultProjection,
+} from './retained-execution-contract.js'
+import {
+  finalRetainedEnvelope,
+  isTerminalRetainedStatus,
+  modelRequestsFromResult,
+  retainedCapabilities,
+  retainedStatus,
+  retainedTurnUsage,
+} from './retained-execution-projection.js'
 
 const MAX_STATUS_BYTES = 64 * 1024
 
-export interface CliBridgeRetainedPlan {
+export interface CliBridgeRetainedPlan extends RetainedExecutionPlan {
   readonly prepared: PreparedCliBridgeConnection
   readonly provider: AgentEnvironmentProvider
   readonly environmentId: string
@@ -24,19 +38,57 @@ export interface CliBridgeRetainedPlan {
 export async function createCliBridgeRetainedPlan(
   prepared: PreparedCliBridgeConnection,
   runId: string,
+  controlRef?: AgentExactRunControlRef,
 ): Promise<CliBridgeRetainedPlan> {
   const { createCliBridgeProvider } = await import('@tangle-network/agent-provider-cli-bridge')
-  return Object.freeze({
-    prepared,
-    provider: createCliBridgeProvider({
-      baseUrl: prepared.bridgeUrl,
-      bearerToken: prepared.bearerToken,
-      defaultModel: prepared.route,
-      ...(prepared.fetch === undefined ? {} : { fetch: prepared.fetch }),
-    }),
-    environmentId: retainedEnvironmentId(runId),
-    executionId: safeExecutionId(runId),
+  const provider = createCliBridgeProvider({
+    baseUrl: prepared.bridgeUrl,
+    bearerToken: prepared.bearerToken,
+    defaultModel: prepared.route,
+    ...(prepared.fetch === undefined ? {} : { fetch: prepared.fetch }),
   })
+  const environmentId = controlRef?.environmentId ?? retainedEnvironmentId(runId)
+  const executionId = controlRef?.executionId ?? safeExecutionId(runId)
+  const providerName = provider.name
+  const capabilities = retainedCapabilities(prepared.capabilities)
+  const materializationReceipt = publicMaterializationReceipt({
+    ...prepared.materializationReceipt,
+    backend: 'environment-provider',
+    environmentId,
+    providerRunId: controlRef?.runId ?? executionId,
+    retainedControl: 'exact-after-dispatch',
+  })
+  const plan: CliBridgeRetainedPlan = {
+    prepared,
+    provider,
+    environmentId,
+    executionId,
+    providerName,
+    providerSessionId: controlRef?.sessionId ?? prepared.providerSessionId,
+    model: prepared.route,
+    capabilities,
+    materializationReceipt,
+    start: (input) => startCliBridgeRetainedRun(plan, input),
+    reconnect: (controlRef) => reconnectCliBridgeRetainedRun(plan, controlRef),
+    discover: (braidRunId, signal) => discoverCliBridgeControlRef(plan, braidRunId, signal),
+    observe: () => prepared.observation.snapshot(),
+    projectStatus: ({ status, detached }) => retainedStatus(status, detached),
+    isTerminalStatus: isTerminalRetainedStatus,
+    projectResult: (result): RetainedResultProjection => ({
+      text: result.text,
+      usage: retainedTurnUsage(result.usage, prepared.route, modelRequestsFromResult(result)),
+      ...(result.error === undefined ? {} : { error: result.error }),
+    }),
+    projectFinal: ({ runId: braidRunId, sequence, result }): RuntimeEventEnvelope =>
+      finalRetainedEnvelope(
+        braidRunId,
+        sequence,
+        prepared.route,
+        result,
+        'Execute the retained CLI Bridge turn',
+      ),
+  }
+  return Object.freeze(plan)
 }
 
 export async function startCliBridgeRetainedRun(
@@ -73,11 +125,12 @@ export async function reconnectCliBridgeRetainedRun(
 /** Recover the exact server-issued digest after a client crashed during dispatch. */
 export async function discoverCliBridgeControlRef(
   plan: CliBridgeRetainedPlan,
-  runId: string,
+  _braidRunId: string,
   signal?: AbortSignal,
 ): Promise<AgentExactRunControlRef | null> {
+  const providerRunId = plan.executionId
   const response = await (plan.prepared.fetch ?? globalThis.fetch)(
-    `${plan.prepared.bridgeUrl}/v1/runs/${encodeURIComponent(runId)}`,
+    `${plan.prepared.bridgeUrl}/v1/runs/${encodeURIComponent(providerRunId)}`,
     {
       method: 'GET',
       headers: { authorization: `Bearer ${plan.prepared.bearerToken}` },
@@ -99,14 +152,14 @@ export async function discoverCliBridgeControlRef(
     throw new Error('cli-bridge run discovery returned an invalid run snapshot')
   }
   const snapshot = value as Record<string, unknown>
-  if (snapshot.id !== runId) {
-    throw new Error('cli-bridge run discovery returned another run')
+  if (snapshot.id !== providerRunId) {
+    throw new Error('cli-bridge run discovery returned another run identity')
   }
   return AgentExactRunControlRefSchema.parse({
-    runId,
+    runId: snapshot.id,
     provider: plan.provider.name,
     environmentId: plan.environmentId,
-    sessionId: plan.prepared.providerSessionId,
+    sessionId: plan.providerSessionId,
     executionId: plan.executionId,
     requestDigest: snapshot.requestDigest,
   })

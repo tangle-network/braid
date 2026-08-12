@@ -30,6 +30,20 @@ export function visibleModelCallNumbers(screen) {
   ].sort((left, right) => left - right)
 }
 
+export function terminalFailureDetail(record) {
+  const run = record.state?.runs?.at(-1)
+  const errorPart = record.state?.messages
+    ?.findLast((message) => message.runId === run?.id)
+    ?.parts?.findLast((part) => part.kind === 'error' && part.text)
+  return (
+    run?.error ??
+    record.state?.lastError ??
+    run?.terminalReason ??
+    errorPart?.text ??
+    'no public error detail'
+  )
+}
+
 export function pause(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }

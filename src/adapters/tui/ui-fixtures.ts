@@ -33,6 +33,7 @@ export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   allowedOutcomes: Object.freeze(['accept', 'reject', 'cancel'] as const),
   responseScopes: Object.freeze(['once', 'session'] as const),
   queuePosition: 0,
+  queueTotal: 1,
   secret: false,
 })
 

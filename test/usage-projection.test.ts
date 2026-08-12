@@ -377,6 +377,20 @@ test('empty totals are explicitly unknown without inventing sources', () => {
   assert.equal(usage.unknownLatencySources, 0)
 })
 
+test('unchanged application state reuses one immutable session usage projection', () => {
+  const state = stateFor({
+    runs: [runFor({ llmCalls: 1 })],
+    supervisors: [{ id: 'supervisor-usage', rootRunId: 'run-usage' }],
+    workers: [{ supervisorId: 'supervisor-usage', inputTokens: 4, outputTokens: 2 }],
+  })
+  const usage = sessionUsageFor(state)
+
+  assert.equal(sessionUsageFor(state), usage)
+  assert.equal(Object.isFrozen(usage), true)
+  assert.equal(Object.isFrozen(usage.delegated), true)
+  assert.notEqual(sessionUsageFor({ ...state }), usage)
+})
+
 function stateFor(input: {
   readonly runs?: readonly Record<string, unknown>[]
   readonly analyses?: readonly Record<string, unknown>[]

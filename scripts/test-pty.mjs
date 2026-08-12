@@ -82,7 +82,7 @@ async function run(columns, rows, options = {}) {
         query = ''
       }
     })
-    await waitFor(() => output.includes('braid'), `${columns}x${rows} header`)
+    await waitFor(() => output.includes('Braid starter'), `${columns}x${rows} conversation shell`)
     if (kitty) session.write('\u001b[112;5u')
     else if (keymap === undefined) session.write('\u0010')
     else session.write('\u0011')
@@ -108,8 +108,7 @@ async function run(columns, rows, options = {}) {
     )
     session.write('\u0003')
     await waitFor(
-      () =>
-        output.includes('press ctrl+c again to quit') || output.includes('ctrl+c again to quit'),
+      () => output.toLowerCase().includes('ctrl+c again to quit'),
       `${columns}x${rows} safe exit`,
     )
     session.write('\u0003')
@@ -176,7 +175,10 @@ async function runAutocompleteRace() {
     })
   })
   try {
-    await waitFor(() => normalizeScreen(screen).includes('braid'), 'autocomplete race header')
+    await waitFor(
+      () => normalizeScreen(screen).includes('Braid starter'),
+      'autocomplete race conversation shell',
+    )
     session.write('/')
     await waitFor(
       () => normalizeScreen(screen).includes('Create an empty conversation'),
@@ -199,7 +201,7 @@ async function runAutocompleteRace() {
     await sleep(50)
     session.write('\u0003')
     await waitFor(
-      () => normalizeScreen(screen).includes('ctrl+c again to quit'),
+      () => normalizeScreen(screen).toLowerCase().includes('ctrl+c again to quit'),
       'autocomplete race safe exit',
     )
     session.write('\u0003')

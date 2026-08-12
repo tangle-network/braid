@@ -1,4 +1,4 @@
-import { Box, type Component, Container, matchesKey, Spacer, Text } from '@earendil-works/pi-tui'
+import { type Component, Container, matchesKey, Spacer, Text } from '@earendil-works/pi-tui'
 import type { BraidViewModel, MessageView, TranscriptPartView } from '../shared/models.js'
 import { sanitizeDiff, sanitizeMarkdown, sanitizeTerminalText } from '../shared/sanitize.js'
 import { SafeMarkdown } from './safe-markdown.js'
@@ -47,9 +47,7 @@ export class TranscriptView extends Container {
       this.addChild(new Spacer(1))
       this.addChild(
         new Text(
-          this.#theme.muted(
-            `Send a task to ${sanitizeTerminalText(view.profileName)}, or press Ctrl+P for commands.`,
-          ),
+          this.#theme.muted(`Ask ${sanitizeTerminalText(view.profileName)} anything.`),
           1,
           0,
         ),
@@ -194,19 +192,13 @@ export class TranscriptView extends Container {
     if (this.#theme.highContrast)
       container.addChild(new Text(this.#theme.accent(`${message.role}:`), 1, 0))
     if (message.role === 'user') {
-      const box = new Box(1, 0, this.#theme.userBackground)
-      box.addChild(
-        new SafeMarkdown(
-          sanitizeMarkdown(message.text),
+      container.addChild(
+        new Text(
+          `${this.#theme.highContrast ? '' : this.#theme.accent('› ')}${sanitizeTerminalText(message.text)}`,
+          1,
           0,
-          0,
-          this.#theme.markdown,
-          undefined,
-          undefined,
-          { allowHyperlinks: this.#theme.terminalMetadata },
         ),
       )
-      container.addChild(box)
       return container
     }
 

@@ -1,7 +1,7 @@
-braid  cwd  braid-release-ux-final-wt  ·  session  New conversation
-AgentProfile Braid starter · pi / deterministic            deterministic fixture
 
- Send a task to Braid starter, or press Ctrl+P for commands.
+ Ask Braid starter anything.
+
+
 
 
       Active profile · Braid starter
@@ -21,4 +21,4 @@ AgentProfile Braid starter · pi / deterministic            deterministic fixtur
 
 
 
-ready for a message                                              Ctrl+P commands
+profile Braid starter · pi / deterministic                       Ctrl+P commands

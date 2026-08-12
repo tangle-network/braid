@@ -6,6 +6,7 @@ export {
 } from './production-setup-credentials.js'
 export {
   DEFAULT_CLI_BRIDGE_ENDPOINT,
+  loadProductionProfileCatalog,
   loadProductionSetup,
 } from './production-setup-discovery.js'
 export type { ProductionStartupPersistence } from './production-setup-persistence.js'

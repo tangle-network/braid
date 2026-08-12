@@ -39,6 +39,8 @@ const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
 const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { renderVerificationReport } = await import('../scripts/release/verification-report.mjs')
+// @ts-expect-error The visual definitions are an executable JavaScript release helper.
+const { createStateDefinitions } = await import('../scripts/capture-visual-definitions.mjs')
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -65,6 +67,43 @@ test('W5 exposes stable checks for every requested release surface', () => {
     'check:release',
   ]
   for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
+})
+
+test('active streaming capture waits for a terminal run state before exiting', async () => {
+  let screen = 'working'
+  let cancelled = false
+  let closed = false
+  const definition = createStateDefinitions((value: string) => value).find(
+    (candidate: { readonly name: string }) => candidate.name === 'active-streaming',
+  )
+  assert.ok(definition)
+
+  await definition.run({
+    input(data: string) {
+      if (data === '\r' && cancelled) screen = 'stopping'
+      if (data === '/cancel') cancelled = true
+    },
+    screen: () => screen,
+    async waitFor(predicate: () => boolean, label: string) {
+      if (label === 'active work') {
+        assert.equal(predicate(), true)
+        return
+      }
+      assert.equal(label, 'cancellation')
+      assert.equal(predicate(), false, 'stopping is not a terminal run state')
+      screen = 'cancelled'
+      assert.equal(predicate(), true)
+    },
+    async captureState() {
+      return { point: { screen: 'working' }, record: { view: { status: 'running' } } }
+    },
+    async closeNormally() {
+      assert.equal(screen, 'cancelled')
+      closed = true
+    },
+  })
+
+  assert.equal(closed, true)
 })
 
 test('the scoped test runner rejects an unregistered scope instead of silently running the wrong suite', async () => {

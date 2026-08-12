@@ -80,6 +80,8 @@ function analysisDetail(record: AnalysisRecord | undefined): EntityDetailView | 
     status: record.status,
     lines: bounded(rendered.slice(1)),
     analysisFindingCount: analysis.findings.length,
+    analysisSupportedFindingCount: analysis.citationSupport.supportedFindings,
+    analysisCitationSupport: analysis.citationSupport.status,
     ...(analysis.execution === undefined ? {} : { analysisExecution: analysis.execution }),
   }
 }

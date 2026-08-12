@@ -215,7 +215,7 @@ export async function runTerminal(binary, cwd, options) {
   })
   const normalizedScreen = () => screen.replace(/\s+/gu, ' ').trim()
 
-  await waitFor(() => screen.includes('braid'), 'terminal header')
+  await waitFor(() => screen.includes('Braid starter'), 'terminal conversation shell')
   if (!options.inline) {
     session.write('\u0010')
     await waitFor(
@@ -243,9 +243,7 @@ export async function runTerminal(binary, cwd, options) {
     session.resize(options.columns, options.rows)
   }
   await waitFor(
-    () =>
-      normalizedScreen().includes('Fixture response through pi: hello from package proof') &&
-      normalizedScreen().includes('completed'),
+    () => normalizedScreen().includes('Fixture response through pi: hello from package proof'),
     'completed fixture response',
   )
   const screenBeforeExit = screen
@@ -255,7 +253,7 @@ export async function runTerminal(binary, cwd, options) {
   await sleep(30)
   session.write('hello from package proof')
   session.write('\r')
-  await waitFor(() => normalizedScreen().includes('streaming'), 'terminal retry start')
+  await waitFor(() => normalizedScreen().includes('working'), 'terminal retry start')
   // Deterministic execution intentionally does not advertise live steering.
   session.write('/steer deterministic package proof')
   session.write('\r')
@@ -268,21 +266,17 @@ export async function runTerminal(binary, cwd, options) {
   await waitFor(
     () =>
       normalizedScreen().includes('Fixture response through pi: hello from package proof') &&
-      normalizedScreen().includes('completed') &&
-      !normalizedScreen().includes('streaming'),
+      !normalizedScreen().includes('working'),
     'terminal retry completion',
   )
   session.write('cancel terminal proof')
   session.write('\r')
-  await waitFor(() => normalizedScreen().includes('streaming'), 'terminal cancellation start')
+  await waitFor(() => normalizedScreen().includes('working'), 'terminal cancellation start')
   session.write('/cancel')
   session.write('\r')
   await waitFor(() => normalizedScreen().includes('cancelled'), 'terminal cancellation')
   session.write('\u0003')
-  await waitFor(
-    () => screen.includes('press ctrl+c again to quit') || screen.includes('ctrl+c again to quit'),
-    'armed terminal exit',
-  )
+  await waitFor(() => screen.toLowerCase().includes('ctrl+c again to quit'), 'armed terminal exit')
   session.write('\u0003')
   let timeout
   const timedOut = new Promise((_, reject) => {
@@ -325,7 +319,7 @@ export async function runSignalTerminal(binary, cwd) {
   session.onData((chunk) => {
     output += chunk
   })
-  await waitFor(() => output.includes('braid'), 'signal terminal header')
+  await waitFor(() => output.includes('Braid starter'), 'signal terminal conversation shell')
   process.kill(session.pid, 'SIGINT')
   let timeout
   const timedOut = new Promise((_, reject) => {
