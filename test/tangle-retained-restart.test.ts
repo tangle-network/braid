@@ -76,6 +76,7 @@ test('one retained cloud run survives a Braid restart without claiming native co
       ids: new RandomIds(),
     })
     first.app.initialize(root)
+    await first.app.whenDurable()
 
     const turn = first.app.send({
       operationId: 'operation-tangle-retained-turn',
