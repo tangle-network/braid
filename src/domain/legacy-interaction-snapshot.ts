@@ -10,7 +10,7 @@ import { MAX_RUN_INTERACTIONS, withPendingInteractionIndex } from './reducer-sup
 import type { BraidInteraction } from './runtime-projection.js'
 import type { BraidState } from './state.js'
 import { isCanonicalIsoDateTime } from './text.js'
-import type { MaterializedState } from './materialized-state-snapshot.js'
+import type { MaterializedState } from './materialized-state.js'
 
 interface LegacyInteractionRecord {
   readonly id?: unknown
@@ -50,9 +50,7 @@ export function migrateLegacyInteractions(state: LegacyMaterializedState): Mater
       continue
     }
     if (run.pendingInteractionIds?.includes(id)) {
-      throw new Error(
-        `Legacy snapshot interaction ${id} conflicts with canonical pending identity`,
-      )
+      throw new Error(`Legacy snapshot interaction ${id} conflicts with canonical pending identity`)
     }
     const migrated = migrateLegacyInteraction(legacy, run, id)
     const allInteractions = [...run.interactions, migrated]
