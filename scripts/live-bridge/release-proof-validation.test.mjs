@@ -9,6 +9,7 @@ import {
   assertRetainedRestartProof,
   assertTargetRunIdentity,
   assertUniqueRunIds,
+  terminalReceipts,
 } from './release-proof-validation.mjs'
 import { assertTargetSemantics } from './target-actions.mjs'
 
@@ -107,7 +108,7 @@ test('usage, replay, and cancellation unavailable states cannot pass strict conf
   )
 })
 
-test('restart proof requires active detach, cursor replay, retained identity, and one completion', () => {
+test('restart proof rejects process, timing, reconnect, replay, and terminal false positives', () => {
   const identity = {
     id: 'run-1',
     providerSessionId: 'session-1',
@@ -122,6 +123,13 @@ test('restart proof requires active detach, cursor replay, retained identity, an
       requestDigest: 'sha256:request',
     },
   }
+  const oldProcess = { instanceId: 'process-old', pid: 1001, startedAt: 100 }
+  const newProcess = { instanceId: 'process-new', pid: 1002, startedAt: 200 }
+  const reconnectRequest = {
+    requestId: 'reconnect-request',
+    operationId: 'op-reconnect',
+    command: 'reconnect',
+  }
   const proof = {
     runId: 'run-1',
     savedCursor: '1:0',
@@ -130,41 +138,251 @@ test('restart proof requires active detach, cursor replay, retained identity, an
     detached: { ...identity, status: 'detached' },
     reopened: { ...identity, status: 'detached' },
     final: { ...identity, status: 'completed', complete: true },
-    reconnectResponse: { type: 'ack' },
+    oldProcess,
+    newProcess,
+    forcedProcess: {
+      processIdentity: oldProcess,
+      termination: {
+        initialExited: false,
+        initialTree: { supported: true, gone: false },
+        termSent: true,
+        killSent: false,
+        exited: true,
+        descendantsExited: true,
+        descendantsVerified: true,
+        cleanupStatus: 'term',
+      },
+      exit: { code: 0, signal: 'SIGTERM' },
+    },
+    activeModel: {
+      admission: {
+        runId: 'run-1',
+        requestId: 'send-request',
+        operationId: 'op-send',
+        responseIndex: 1,
+        revision: 5,
+      },
+      state: {
+        runId: 'run-1',
+        activeRunId: 'run-1',
+        status: 'streaming',
+        responseIndex: 3,
+        revision: 6,
+      },
+      progress: {
+        runId: 'run-1',
+        kind: 'run.text.delta',
+        responseIndex: 4,
+        sequence: 7,
+        revision: 7,
+        providerSequence: 2,
+        cursor: '2:0',
+      },
+    },
+    reopenedRevision: 12,
+    reconnectRequest,
+    reconnectResponse: {
+      type: 'ack',
+      requestId: reconnectRequest.requestId,
+      operationId: reconnectRequest.operationId,
+      command: 'reconnect',
+      revision: 16,
+    },
+    reconnectBoundary: {
+      runId: 'run-1',
+      kind: 'run.reconnecting',
+      responseIndex: 20,
+      sequence: 13,
+      revision: 13,
+      savedCursor: '1:0',
+    },
     replayEvent: {
-      type: 'event',
+      kind: 'run.text.delta',
+      responseIndex: 21,
+      sequence: 14,
+      revision: 14,
       event: {
         kind: 'run.text.delta',
         runId: 'run-1',
         provider: { providerSequence: 2, cursor: '2:0' },
       },
     },
-    terminalEvents: 1,
+    terminalReceipts: [
+      {
+        session: newProcess.instanceId,
+        responseIndex: 30,
+        runId: 'run-1',
+        sequence: 15,
+        revision: 15,
+        status: 'completed',
+        providerEventId: 'provider-finished',
+        providerSequence: 3,
+        cursor: '3:0',
+      },
+    ],
+    finalState: {
+      revision: 16,
+      state: {
+        revision: 16,
+        runs: [{ id: 'run-1', status: 'completed', complete: true }],
+      },
+    },
+    terminalSession: newProcess.instanceId,
   }
-  assert.equal(assertRetainedRestartProof(proof).terminalEvents, 1)
-  for (const broken of [
-    { ...proof, savedCursor: undefined },
-    { ...proof, detached: { ...proof.detached, status: 'unknown' } },
-    { ...proof, reopened: { ...proof.reopened, providerSessionId: 'other-session' } },
-    { ...proof, reopened: { ...proof.reopened, lastCursor: '0:0' } },
+  assert.equal(assertRetainedRestartProof(proof).terminal.deliveryCount, 1)
+
+  const adversarial = [
     {
-      ...proof,
-      replayEvent: {
-        ...proof.replayEvent,
-        event: {
-          ...proof.replayEvent.event,
-          provider: { providerSequence: 1, cursor: '1:0' },
+      name: 'already exited process',
+      proof: {
+        ...proof,
+        forcedProcess: {
+          ...proof.forcedProcess,
+          termination: { ...proof.forcedProcess.termination, initialExited: true },
         },
       },
     },
-    { ...proof, terminalEvents: 2 },
-    { ...proof, final: { ...proof.final, status: 'failed' } },
-  ]) {
-    assert.throws(
-      () => assertRetainedRestartProof(broken),
-      /restart|cursor|replay|completion|reconnect|retained/u,
-    )
+    {
+      name: 'no termination signal',
+      proof: {
+        ...proof,
+        forcedProcess: {
+          ...proof.forcedProcess,
+          termination: {
+            ...proof.forcedProcess.termination,
+            termSent: false,
+            killSent: false,
+            cleanupStatus: 'already-exited',
+          },
+        },
+      },
+    },
+    {
+      name: 'same process identity',
+      proof: { ...proof, newProcess: { ...proof.newProcess, pid: proof.oldProcess.pid } },
+    },
+    {
+      name: 'stale active run id',
+      proof: {
+        ...proof,
+        activeModel: {
+          ...proof.activeModel,
+          state: { ...proof.activeModel.state, activeRunId: 'other-run' },
+        },
+      },
+    },
+    {
+      name: 'pre-admission progress',
+      proof: {
+        ...proof,
+        activeModel: {
+          ...proof.activeModel,
+          progress: { ...proof.activeModel.progress, responseIndex: 1 },
+        },
+      },
+    },
+    {
+      name: 'non-progress event',
+      proof: {
+        ...proof,
+        activeModel: {
+          ...proof.activeModel,
+          progress: { ...proof.activeModel.progress, kind: 'run.usage' },
+        },
+      },
+    },
+    {
+      name: 'rejected reconnect acknowledgement',
+      proof: {
+        ...proof,
+        reconnectResponse: { ...proof.reconnectResponse, outcome: 'rejected' },
+      },
+    },
+    {
+      name: 'replay before reconnect boundary',
+      proof: {
+        ...proof,
+        replayEvent: { ...proof.replayEvent, responseIndex: proof.reconnectBoundary.responseIndex },
+      },
+    },
+    {
+      name: 'reconnect boundary uses a different saved cursor',
+      proof: {
+        ...proof,
+        reconnectBoundary: { ...proof.reconnectBoundary, savedCursor: '0:0' },
+      },
+    },
+    {
+      name: 'replay sequence gap after saved cursor',
+      proof: {
+        ...proof,
+        replayEvent: {
+          ...proof.replayEvent,
+          event: {
+            ...proof.replayEvent.event,
+            provider: { providerSequence: 99, cursor: '99:0' },
+          },
+        },
+      },
+    },
+    {
+      name: 'duplicate terminal across sessions',
+      proof: {
+        ...proof,
+        terminalReceipts: [
+          ...proof.terminalReceipts,
+          { ...proof.terminalReceipts[0], session: 'old-session' },
+        ],
+      },
+    },
+    {
+      name: 'terminal delivered only by old session',
+      proof: {
+        ...proof,
+        terminalReceipts: [{ ...proof.terminalReceipts[0], session: proof.oldProcess.instanceId }],
+      },
+    },
+    {
+      name: 'terminal not durable',
+      proof: { ...proof, finalState: { revision: 14, state: { revision: 14 } } },
+    },
+    {
+      name: 'terminal completion missing',
+      proof: { ...proof, terminalReceipts: [] },
+    },
+    {
+      name: 'retained run not completed',
+      proof: { ...proof, final: { ...proof.final, status: 'failed' } },
+    },
+  ]
+  for (const { name, proof: broken } of adversarial) {
+    assert.throws(() => assertRetainedRestartProof(broken), name)
   }
+
+  const terminalResponse = {
+    type: 'event',
+    sequence: 4,
+    revision: 4,
+    event: {
+      kind: 'run.finished',
+      runId: 'run-1',
+      status: 'completed',
+      provider: { eventId: 'provider-finished', providerSequence: 3, cursor: '3:0' },
+    },
+  }
+  assert.deepEqual(terminalReceipts([terminalResponse], 'restarted-session', 'run-1'), [
+    {
+      session: 'restarted-session',
+      responseIndex: 0,
+      runId: 'run-1',
+      sequence: 4,
+      revision: 4,
+      status: 'completed',
+      providerEventId: 'provider-finished',
+      providerSequence: 3,
+      cursor: '3:0',
+    },
+  ])
 })
 
 test('interaction proof requires durable declined or resolved state', () => {

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 
 import { StreamingRedactor } from './capture.mjs'
 import { exitCodes } from './constants.mjs'
@@ -57,6 +58,8 @@ function terminationResult(child, values) {
     termSent: values.termSent,
     killSent: values.killSent,
     forcedKill: values.killSent,
+    initialExited: values.initialExited,
+    initialTree: values.initialTree,
     exited: values.exited,
     descendantsExited: tree.supported && tree.gone,
     descendantsVerified: tree.supported && tree.gone,
@@ -71,6 +74,8 @@ export async function observeNaturalExit(
   child,
   { naturalExitTimeoutMs = defaultNaturalExitTimeoutMs, treeTimeoutMs = defaultTermTimeoutMs } = {},
 ) {
+  const initialTree = processTreeStatus(child)
+  const initialExited = hasExited(child)
   const exited = await waitForExit(child, naturalExitTimeoutMs)
   if (!exited)
     return terminationResult(child, {
@@ -79,6 +84,8 @@ export async function observeNaturalExit(
       killTimeoutMs: 0,
       termSent: false,
       killSent: false,
+      initialExited,
+      initialTree,
       exited: false,
       cleanupStatus: 'still-running',
     })
@@ -89,6 +96,8 @@ export async function observeNaturalExit(
     killTimeoutMs: treeTimeoutMs,
     termSent: false,
     killSent: false,
+    initialExited,
+    initialTree,
     exited: true,
     cleanupStatus: tree.supported && tree.gone ? 'natural-exit' : 'unsupported',
     tree,
@@ -147,6 +156,8 @@ export async function terminateProcess(
     killTimeoutMs,
     termSent,
     killSent,
+    initialExited,
+    initialTree,
     exited,
     cleanupStatus,
     termSignal,
@@ -184,11 +195,17 @@ export class RpcSession {
   }
 
   async #start() {
+    const startedAt = Date.now()
     this.child = await managedSpawn(process.execPath, [this.binary, 'rpc'], {
       cwd: this.workspace,
       env: this.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
+    this.processIdentity = {
+      instanceId: randomUUID(),
+      pid: this.child.pid,
+      startedAt,
+    }
     this.exit = new Promise((resolveExit, rejectExit) => {
       this.child.once('error', rejectExit)
       this.child.once('close', (code, signal) => {
@@ -267,7 +284,7 @@ export class RpcSession {
         })),
         defaultKillTimeoutMs,
       )
-      return { termination, natural, exit }
+      return { processIdentity: this.processIdentity, termination, natural, exit }
     })()
     return this.closePromise
   }
@@ -285,6 +302,7 @@ export class RpcSession {
         defaultKillTimeoutMs,
       )
       return {
+        processIdentity: this.processIdentity,
         termination,
         natural: {
           cleanupStatus: 'forced-exit',
