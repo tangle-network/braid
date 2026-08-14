@@ -12,6 +12,7 @@ import {
 } from '../src/adapters/runtime/retained-execution.js'
 import { finalRetainedEnvelope } from '../src/adapters/runtime/retained-execution-projection.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import {
   createDurableBraidApplication,
   type DurableBraidApplication,
@@ -22,7 +23,7 @@ import {
 } from '../src/app/production-composition.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
-import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import { isFinalRuntimeEvent, isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
   type RetainedRunAdmissionRecord,
@@ -50,15 +51,21 @@ test('retained CLI Bridge cancellation stays cancelled in the final projection',
     'Execute the retained CLI Bridge turn',
   )
 
-  const final = envelope.event as {
-    readonly type: 'final'
-    readonly status: string
-    readonly reason: string
+  if (!isRuntimeEventEnvelope(envelope) || !isFinalRuntimeEvent(envelope.event)) {
+    throw new Error('Retained cancellation did not produce a final runtime event')
   }
+  const final = envelope.event
   assert.deepEqual(
     { type: final.type, status: final.status, reason: final.reason },
     { type: 'final', status: 'cancelled', reason: 'cli-bridge run ended cancelled' },
   )
+  const mapped = providerEventFor('retained-cancel', final, {
+    eventId: 'retained-cancel:final',
+    providerSequence: 1,
+    receivedAt: now,
+  })
+  if (mapped.kind !== 'run.finished') throw new Error('Retained final event was not terminal')
+  assert.equal(mapped.status, 'cancelled')
 })
 
 function recordAdmissions(target: RetainedRunAdmissionRecord[]) {

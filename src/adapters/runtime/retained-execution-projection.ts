@@ -4,7 +4,7 @@ import type {
   AgentTurnResult,
 } from '@tangle-network/agent-interface/environment-provider'
 import type { TurnUsage } from '../../domain/entities.js'
-import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../../domain/runtime-events.js'
+import type { BraidFinalRuntimeEvent, RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RunStatus } from '../../domain/state.js'
 import type { RunCapabilities } from '../../ports/execution.js'
 
@@ -98,37 +98,37 @@ export function finalRetainedEnvelope(
     : cancelled
       ? 'cancelled'
       : 'failed'
+  const event: BraidFinalRuntimeEvent = {
+    type: 'final',
+    task: { id: runId, intent },
+    status,
+    reason: result.success
+      ? 'completed'
+      : (result.error ?? (cancelled ? 'Retained run cancelled' : 'Retained run failed')),
+    text: result.text,
+    metadata: {
+      model,
+      tokenUsage: {
+        input: usage.input,
+        output: usage.output,
+        ...(usage.reasoning === undefined ? {} : { reasoningTokens: usage.reasoning }),
+      },
+      ...(usage.tokensKnown === false ? { tokensKnown: false } : {}),
+      ...(usage.costUsd === undefined ? {} : { costUsd: usage.costUsd }),
+      ...(usage.usdKnown === false ? { usdKnown: false } : {}),
+      ...(usage.calls === undefined ? {} : { llmCalls: usage.calls }),
+    },
+    ...(result.success || result.error === undefined
+      ? {}
+      : { error: { kind: 'backend', message: result.error } }),
+    timestamp,
+  }
   return {
     runId,
     eventId: `${runId}:final`,
     sequence,
     receivedAt: timestamp,
-    event: {
-      type: 'final',
-      task: { id: runId, intent },
-      status,
-      reason: result.success
-        ? 'completed'
-        : (result.error ?? (cancelled ? 'Retained run cancelled' : 'Retained run failed')),
-      text: result.text,
-      metadata: {
-        model,
-        tokenUsage: {
-          input: usage.input,
-          output: usage.output,
-          ...(usage.reasoning === undefined ? {} : { reasoningTokens: usage.reasoning }),
-        },
-        ...(usage.tokensKnown === false ? { tokensKnown: false } : {}),
-        ...(usage.costUsd === undefined ? {} : { costUsd: usage.costUsd }),
-        ...(usage.usdKnown === false ? { usdKnown: false } : {}),
-        ...(usage.calls === undefined ? {} : { llmCalls: usage.calls }),
-      },
-      ...(result.success || result.error === undefined
-        ? {}
-        : { error: { kind: 'backend', message: result.error } }),
-      timestamp,
-      // The installed runtime type predates the SDK's canonical cancellation status.
-    } as Extract<BraidRuntimeEvent, { readonly type: 'final' }>,
+    event,
   }
 }
 

@@ -6,8 +6,16 @@ import type {
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { ExecutionEnvironmentObservation } from './execution-observation.js'
 
+type RuntimeFinalEvent = Extract<RuntimeStreamEvent, { readonly type: 'final' }>
+
+/** Braid's retained adapters also project provider-confirmed cancellation. */
+export type BraidFinalRuntimeEvent = Omit<RuntimeFinalEvent, 'status'> & {
+  readonly status: RuntimeFinalEvent['status'] | 'cancelled'
+}
+
 export type BraidRuntimeEvent =
-  | RuntimeStreamEvent
+  | Exclude<RuntimeStreamEvent, RuntimeFinalEvent>
+  | BraidFinalRuntimeEvent
   | StreamEvent
   | {
       readonly type: 'braid.execution.observed'
@@ -58,9 +66,7 @@ export function isInteractionEvent(
   return event.type === 'interaction' && 'request' in event
 }
 
-export function isFinalRuntimeEvent(
-  event: BraidRuntimeEvent,
-): event is Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+export function isFinalRuntimeEvent(event: BraidRuntimeEvent): event is BraidFinalRuntimeEvent {
   return event.type === 'final'
 }
 
