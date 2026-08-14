@@ -1067,6 +1067,108 @@ test('conversation deletion blocks on a pending interaction retained by a termin
   )
 })
 
+test('conversation deletion retains pending identity after 257-entry interaction eviction', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      for (let index = 0; index < 257; index += 1) {
+        const interactionId = `interaction-delete-evicted-${index}`
+        yield {
+          type: 'interaction',
+          request: createInteractionRequest({
+            id: interactionId,
+            kind: 'question',
+            title: `Confirm eviction ${index}`,
+            answerSpec: {
+              fields: [{ type: 'boolean', name: 'confirm', label: 'Confirm', required: true }],
+            },
+            binding: {
+              runId: input.runId,
+              provider: 'fixture',
+              environmentId: 'environment-delete-eviction',
+              sessionId: 'session-delete-eviction',
+              executionId: input.runId,
+              interactionId,
+            },
+          }),
+        }
+      }
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'complete',
+        text: 'finished after interaction eviction',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-delete-eviction', intent: 'deletion eviction test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-01T00:00:00.000Z'),
+  })
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-delete-eviction-send', text: 'finish after eviction' })
+    .completion
+
+  const run = app.state().runs[0]
+  assert.ok(run)
+  assert.equal(run.complete, true)
+  assert.equal(run.interactions.length, 256)
+  assert.equal(
+    run.interactions.some((item) => item.request.id === 'interaction-delete-evicted-0'),
+    false,
+  )
+  assert.equal(run.pendingInteractionIds?.length, 257)
+  assert.equal(run.pendingInteractionIds?.includes('interaction-delete-evicted-0'), true)
+
+  await assert.rejects(
+    () =>
+      app.conversations.lifecycle.delete({
+        operationId: 'op-delete-eviction-blocked',
+        conversationId: app.state().conversationId,
+      }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'DELETE_BLOCKED' &&
+      error.message.includes('interaction-delete-evicted-0'),
+  )
+
+  const state = app.state()
+  const withoutPendingIndex = state.runs.map((candidate) => {
+    if (candidate.id !== run.id) return candidate
+    const { pendingInteractionIds: _pendingInteractionIds, ...legacyRun } = candidate
+    return legacyRun
+  })
+  const restoredJournal = Object.assign(
+    new MemoryJournal(new FixedClock('2026-08-01T00:00:00.000Z')),
+    {
+      initialState: () => ({ ...state, runs: withoutPendingIndex }),
+    },
+  )
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    journal: restoredJournal,
+    execution: {
+      capabilities: () => DEFAULT_RUN_CAPABILITIES,
+      async *streamTurn(): AsyncIterable<never> {},
+    },
+  })
+  await assert.rejects(
+    () =>
+      restarted.conversations.lifecycle.delete({
+        operationId: 'op-delete-eviction-legacy-blocked',
+        conversationId: state.conversationId,
+      }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'DELETE_BLOCKED' &&
+      error.message.includes('pending state is not provable'),
+  )
+})
+
 test('deletion refuses to break a cloned conversation ancestry link', async () => {
   const app = await initializedApp()
   const sourceId = app.state().conversationId

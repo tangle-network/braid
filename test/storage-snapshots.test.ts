@@ -36,6 +36,7 @@ import {
   createMaterializedStateSnapshot,
   restoreMaterializedState,
 } from '../src/domain/materialized-state-snapshot.js'
+import { canonicalProjectionChecksum } from '../src/domain/projection-checksum.js'
 import { reduceEvent, replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { type CredentialRef, credentialRef } from '../src/ports/credentials.js'
@@ -116,7 +117,7 @@ function fixture(): SnapshotFixture {
   return { events, snapshots }
 }
 
-test('restores a prior snapshot with the removed top-level interaction projection', () => {
+test('migrates legacy interactions, rejects snapshot conflicts, and recomputes the projection checksum', () => {
   const interactionId = createInteractionId('interaction-snapshot')
   const runId = createRunId('run-snapshot-interaction')
   const request = createInteractionRequest({
@@ -213,6 +214,85 @@ test('restores a prior snapshot with the removed top-level interaction projectio
     restored.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
     [interactionId],
   )
+  assert.equal(restored.projectionChecksum, canonicalProjectionChecksum(restored))
+
+  const topLevelOnlyState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) =>
+      run.id === runId ? { ...run, interactions: [], pendingInteractionIds: [] } : run,
+    ),
+    interactions: legacyState.interactions,
+  }
+  const topLevelOnly = restoreMaterializedState({
+    ...snapshot,
+    state: topLevelOnlyState,
+    stateChecksum: canonicalDigest(topLevelOnlyState),
+  })
+  assert.deepEqual(
+    topLevelOnly.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
+    [interactionId],
+  )
+  assert.equal(topLevelOnly.projectionChecksum, canonicalProjectionChecksum(topLevelOnly))
+
+  const hiddenPendingState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) =>
+      run.id === runId
+        ? {
+            ...run,
+            interactions: [],
+            interactionsTruncated: true,
+            pendingInteractionIds: [interactionId],
+          }
+        : run,
+    ),
+    interactions: legacyState.interactions,
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: hiddenPendingState,
+        stateChecksum: canonicalDigest(hiddenPendingState),
+      }),
+    /conflicts with canonical pending identity/u,
+  )
+
+  const divergentState = {
+    ...snapshot.state,
+    interactions: [
+      {
+        ...legacyState.interactions[0],
+        request: {
+          ...legacyState.interactions[0]?.request,
+          title: 'Different title from the canonical run',
+        },
+      },
+    ],
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: divergentState,
+        stateChecksum: canonicalDigest(divergentState),
+      }),
+    /conflicts with canonical run state/u,
+  )
+
+  const conflictingState = {
+    ...snapshot.state,
+    interactions: [{ ...legacyState.interactions[0], status: 'resolved' }],
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: conflictingState,
+        stateChecksum: canonicalDigest(conflictingState),
+      }),
+    /status conflicts with canonical run state/u,
+  )
 
   const malformedSourceState = {
     ...snapshot.state,
@@ -234,40 +314,42 @@ test('restores a prior snapshot with the removed top-level interaction projectio
     /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
   )
 
-  const malformedRule = {
-    id: createRuleId('rule-snapshot-interaction-invalid'),
-    enabled: true,
-    matcher: { interactionKind: 'question' },
-    answer: { password: 'must-not-persist' },
-    responseScope: 'once' as const,
-    createdAt: at,
-    uses: 0,
-  }
-  const malformedRuleState = {
-    ...snapshot.state,
-    runs: snapshot.state.runs.map((run) => ({
-      ...run,
-      interactions: run.interactions.map((item) => ({
-        ...item,
-        status: 'responding' as const,
-        responseOperation: {
-          operationId: createOperationId('operation-snapshot-interaction-response'),
-          outcome: 'accepted' as const,
-          containsSecret: false,
-          automationRule: malformedRule,
-        },
+  for (const field of ['key', 'privateKey', 'secretHandle']) {
+    const malformedRule = {
+      id: createRuleId(`rule-snapshot-interaction-invalid-${field}`),
+      enabled: true,
+      matcher: { interactionKind: 'question' },
+      answer: { [field]: 'must-not-persist' },
+      responseScope: 'once' as const,
+      createdAt: at,
+      uses: 0,
+    }
+    const malformedRuleState = {
+      ...snapshot.state,
+      runs: snapshot.state.runs.map((run) => ({
+        ...run,
+        interactions: run.interactions.map((item) => ({
+          ...item,
+          status: 'responding' as const,
+          responseOperation: {
+            operationId: createOperationId(`operation-snapshot-interaction-response-${field}`),
+            outcome: 'accepted' as const,
+            containsSecret: false,
+            automationRule: malformedRule,
+          },
+        })),
       })),
-    })),
+    }
+    assert.throws(
+      () =>
+        restoreMaterializedState({
+          ...snapshot,
+          state: malformedRuleState,
+          stateChecksum: canonicalDigest(malformedRuleState),
+        }),
+      new RegExp(`rule\\.answer\\.${field} is secret-designated and cannot be retained`, 'u'),
+    )
   }
-  assert.throws(
-    () =>
-      restoreMaterializedState({
-        ...snapshot,
-        state: malformedRuleState,
-        stateChecksum: canonicalDigest(malformedRuleState),
-      }),
-    /rule\.answer\.password is secret-designated and cannot be retained/u,
-  )
 })
 
 async function withRawDatabase<T>(

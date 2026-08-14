@@ -1,4 +1,3 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
 import type {
   AnalysisAttachmentRecord,
@@ -29,7 +28,10 @@ import type {
   WorkerRecord,
   WorkspaceRecord,
 } from './entities.js'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { BranchId, ConversationId, EventId, RunId, WorkspaceId } from './ids.js'
+import { migrateLegacyInteractions } from './legacy-interaction-snapshot.js'
+import { canonicalProjectionChecksum } from './projection-checksum.js'
 import { assertBraidState } from './invariants.js'
 import { withHealth } from './reducer-helpers.js'
 import { type BraidState, initialState } from './state.js'
@@ -204,9 +206,9 @@ export function restoreMaterializedState(value: unknown): BraidState {
     conversationId: snapshot.state.conversationId,
     branchId: snapshot.state.branchId,
   })
-  const stateFields = { ...snapshot.state } as MaterializedState & { interactions?: unknown }
-  // Older snapshots included this unused projection field. Do not materialize it.
-  delete stateFields.interactions
+  const stateFields = migrateLegacyInteractions({ ...snapshot.state } as MaterializedState & {
+    interactions?: unknown
+  })
   const restored: BraidState = {
     ...base,
     ...stateFields,
@@ -225,8 +227,7 @@ export function restoreMaterializedState(value: unknown): BraidState {
   const healthy = withHealth(restored)
   const finalized: BraidState = {
     ...healthy,
-    // MaterializedState is exactly the canonical projection field set.
-    projectionChecksum: snapshot.stateChecksum,
+    projectionChecksum: canonicalProjectionChecksum(healthy),
   }
   assertBraidState(finalized)
   return finalized

@@ -100,6 +100,33 @@ function assertRunInteractions(record: RunRecord): void {
     assertBraidInteraction(interaction, record.id, index),
   )
   assertUniqueIds(requestIds, 'run.interactions.request')
+  if (record.pendingInteractionIds === undefined) return
+  const pendingIds = record.pendingInteractionIds.map((interactionId, index) => {
+    assertEntityId('interaction', interactionId, `run.pendingInteractionIds[${index}]`)
+    return interactionId
+  })
+  assertUniqueIds(pendingIds, 'run.pendingInteractionIds')
+  const pending = new Set(pendingIds)
+  for (const interaction of record.interactions) {
+    const interactionId = interaction.request.id
+    if (interaction.status === 'pending' && !pending.has(interactionId)) {
+      fail(`run.pendingInteractionIds must include visible pending interaction ${interactionId}`)
+    }
+    if (interaction.status !== 'pending' && pending.has(interactionId)) {
+      fail(`run.pendingInteractionIds cannot include non-pending interaction ${interactionId}`)
+    }
+  }
+  if (!record.interactionsTruncated) {
+    const visiblePending = record.interactions
+      .filter((interaction) => interaction.status === 'pending')
+      .map((interaction) => interaction.request.id)
+    if (
+      visiblePending.length !== pendingIds.length ||
+      visiblePending.some((interactionId) => !pending.has(interactionId))
+    ) {
+      fail('run.pendingInteractionIds must match all interactions when history is complete')
+    }
+  }
 }
 
 function assertBraidInteraction(value: unknown, runId: string, index: number): string {
@@ -166,11 +193,26 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
   if (
     responseOperation.outcome !== 'accepted' &&
     responseOperation.outcome !== 'declined' &&
-    responseOperation.outcome !== 'cancelled'
+    responseOperation.outcome !== 'cancelled' &&
+    responseOperation.outcome !== 'unknown'
   )
     fail(`${label}.responseOperation.outcome is invalid`)
-  if (value.status !== 'responding') fail(`${label}.responseOperation requires responding status`)
+  const expectedStatus =
+    responseOperation.outcome === 'accepted'
+      ? 'resolved'
+      : responseOperation.outcome === 'declined'
+        ? 'declined'
+        : responseOperation.outcome === 'cancelled'
+          ? 'cancelled'
+          : 'unknown'
+  if (value.status !== 'responding' && value.status !== expectedStatus) {
+    fail(`${label}.responseOperation status does not match its outcome`)
+  }
+  if (value.status === 'responding' && responseOperation.outcome === 'unknown') {
+    fail(`${label}.responding responseOperation cannot have unknown outcome`)
+  }
   if (
+    responseOperation.outcome !== 'unknown' &&
     request.allowedOutcomes !== undefined &&
     !request.allowedOutcomes.includes(responseOperation.outcome)
   )

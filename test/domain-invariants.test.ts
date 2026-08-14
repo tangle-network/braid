@@ -444,8 +444,8 @@ test('canonical run interaction response operations preserve status and secrecy 
     /secret responseOperation cannot retain dataDigest/u,
   )
   assert.throws(
-    () => assertRunRecord({ ...run, interactions: [{ ...responding, status: 'resolved' }] }),
-    /responseOperation requires responding status/u,
+    () => assertRunRecord({ ...run, interactions: [{ ...responding, status: 'declined' }] }),
+    /responseOperation status does not match its outcome/u,
   )
   assert.throws(
     () =>

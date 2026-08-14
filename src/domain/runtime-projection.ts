@@ -4,7 +4,7 @@ import type {
   InteractionRequest,
 } from '@tangle-network/agent-interface'
 import type { AutomationRuleRecord } from './entities-runtime.js'
-import type { Digest, OperationId } from './ids.js'
+import type { Digest, InteractionId, OperationId } from './ids.js'
 import type {
   RetainedRunAdmissionRecord,
   RunAdmissionReceipt,
@@ -63,7 +63,7 @@ export interface BraidInteraction {
   readonly status: 'pending' | 'responding' | 'declined' | 'cancelled' | 'resolved' | 'unknown'
   readonly responseOperation?: {
     readonly operationId: OperationId
-    readonly outcome: 'accepted' | 'declined' | 'cancelled'
+    readonly outcome: 'accepted' | 'declined' | 'cancelled' | 'unknown'
     readonly dataDigest?: Digest
     readonly containsSecret: boolean
     readonly automationRule?: AutomationRuleRecord
@@ -102,6 +102,11 @@ export interface RuntimeRunFields {
   readonly interactions: readonly BraidInteraction[]
   readonly activity: readonly BraidActivity[]
   readonly eventDetails: readonly RuntimeEventSummary[]
+  /**
+   * Durable pending identities remain complete when the visible interaction
+   * history is bounded and older records are evicted.
+   */
+  readonly pendingInteractionIds?: readonly InteractionId[]
   readonly activityTruncated?: boolean
   readonly eventDetailsTruncated?: boolean
   readonly interactionsTruncated?: boolean

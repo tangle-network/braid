@@ -3,6 +3,7 @@ import test from 'node:test'
 import { STARTER_PROFILE } from '../src/app/composition.js'
 import {
   createInteractionRequest,
+  interactionRequestMaterial,
   interactionResponseBinding,
 } from '../src/app/interaction-request.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -24,7 +25,10 @@ import {
   replayEvents,
   SequenceGapError,
 } from '../src/domain/reducer.js'
+import { MAX_RUN_INTERACTIONS } from '../src/domain/reducer-support.js'
 import { initialState } from '../src/domain/state.js'
+
+const at = '2026-08-02T00:00:00.000Z'
 
 function envelope(
   event: BraidEvent,
@@ -125,34 +129,245 @@ test('replay rejects malformed persisted interaction sources and automation rule
     /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
   )
 
-  const invalidRule = {
-    id: createRuleId('rule-replay-interaction-invalid'),
-    enabled: true,
-    matcher: { interactionKind: 'question' },
-    answer: { password: 'must-not-persist' },
-    responseScope: 'once' as const,
-    createdAt: '2026-08-02T00:00:00.000Z',
-    uses: 0,
+  for (const field of ['key', 'privateKey', 'secretHandle']) {
+    const invalidRule = {
+      id: createRuleId(`rule-replay-interaction-invalid-${field}`),
+      enabled: true,
+      matcher: { interactionKind: 'question' },
+      answer: { [field]: 'must-not-persist' },
+      responseScope: 'once' as const,
+      createdAt: '2026-08-02T00:00:00.000Z',
+      uses: 0,
+    }
+    assert.throws(
+      () =>
+        replayEvents(initialState(STARTER_PROFILE), [
+          ...prefix,
+          interaction(1),
+          envelope(
+            {
+              kind: 'run.interaction.response.requested',
+              runId,
+              interactionId,
+              operationId: createOperationId(`operation-replay-interaction-response-${field}`),
+              outcome: 'accepted',
+              containsSecret: false,
+              automationRule: invalidRule,
+            },
+            4,
+          ),
+        ]),
+      new RegExp(`rule\\.answer\\.${field} is secret-designated and cannot be retained`, 'u'),
+    )
   }
+})
+
+test('interaction transitions reject reorder, unknown, conflicting, terminal, and evicted events', () => {
+  const runId = createRunId('run-interaction-transition-contract')
+  const interactionId = createInteractionId('interaction-transition-contract')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-transition-contract',
+      sessionId: 'session-transition-contract',
+      executionId: 'execution-transition-contract',
+      interactionId,
+    },
+  })
+  const prefix: readonly JournalEventEnvelope[] = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-transition-contract'),
+        runId,
+        turnId: createTurnId('turn-transition-contract'),
+        userMessageId: createMessageId('message-transition-contract-user'),
+        assistantMessageId: createMessageId('message-transition-contract-assistant'),
+        text: 'wait for an answer',
+      },
+      2,
+    ),
+  ]
+  const interactionEvent = (
+    sequence: number,
+    id = interactionId,
+    providerSequence = sequence - 2,
+    providerEventId = `provider-transition-${sequence}`,
+    requestOverride?: typeof request,
+  ): JournalEventEnvelope => {
+    const eventRequest =
+      requestOverride ??
+      (id === interactionId
+        ? request
+        : createInteractionRequest({
+            id,
+            kind: 'question',
+            title: `Question ${id}`,
+            answerSpec: {
+              fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+            },
+            binding: {
+              ...request.binding,
+              interactionId: id,
+            },
+          }))
+    return envelope(
+      {
+        kind: 'run.interaction',
+        runId,
+        request: eventRequest,
+        responseBinding: interactionResponseBinding(eventRequest),
+        provider: {
+          eventId: providerEventId,
+          providerSequence,
+          occurredAt: at,
+        },
+      },
+      sequence,
+      createEventId(`event-transition-${sequence}`),
+    )
+  }
+  const responseRequested = (sequence: number, operation = 'operation-transition-response') =>
+    envelope(
+      {
+        kind: 'run.interaction.response.requested',
+        runId,
+        interactionId,
+        operationId: createOperationId(operation),
+        outcome: 'accepted',
+        containsSecret: false,
+      },
+      sequence,
+      createEventId(`event-transition-response-requested-${sequence}`),
+    )
+  const responded = (
+    sequence: number,
+    operation = 'operation-transition-response',
+    outcome: 'accepted' | 'unknown' = 'accepted',
+  ) =>
+    envelope(
+      {
+        kind: 'run.interaction.responded',
+        runId,
+        interactionId,
+        operationId: createOperationId(operation),
+        outcome,
+        containsSecret: false,
+      },
+      sequence,
+      createEventId(`event-transition-responded-${sequence}`),
+    )
+
+  const beforeInteraction = replayEvents(initialState(STARTER_PROFILE), prefix)
+  assert.throws(() => reduceEvent(beforeInteraction, responded(3)), /Interaction .* is unknown/u)
+  assert.throws(
+    () => reduceEvent(beforeInteraction, responseRequested(3)),
+    /Interaction .* is unknown/u,
+  )
+
+  const afterInteraction = reduceEvent(beforeInteraction, interactionEvent(3))
+  assert.throws(
+    () => reduceEvent(afterInteraction, responded(4)),
+    /cannot be resolved from pending/u,
+  )
+  const conflictingRequest = createInteractionRequest({
+    ...interactionRequestMaterial(request),
+    title: 'Different request data',
+  })
   assert.throws(
     () =>
-      replayEvents(initialState(STARTER_PROFILE), [
-        ...prefix,
-        interaction(1),
+      reduceEvent(
+        afterInteraction,
+        interactionEvent(4, interactionId, 1, 'provider-transition-3', conflictingRequest),
+      ),
+    /was requested with different data/u,
+  )
+  const duplicateInteraction = reduceEvent(
+    afterInteraction,
+    interactionEvent(4, interactionId, 1, 'provider-transition-3'),
+  )
+  assert.equal(duplicateInteraction.runs[0]?.interactions.length, 1)
+  const afterResponseRequested = reduceEvent(duplicateInteraction, responseRequested(5))
+  const duplicateResponseRequested = reduceEvent(afterResponseRequested, responseRequested(6))
+  assert.equal(duplicateResponseRequested.runs[0]?.interactions[0]?.status, 'responding')
+  const afterResponded = reduceEvent(duplicateResponseRequested, responded(7))
+  const duplicateResponded = reduceEvent(afterResponded, responded(8))
+  assert.equal(duplicateResponded.runs[0]?.interactions[0]?.status, 'resolved')
+  assert.throws(
+    () => reduceEvent(duplicateResponded, responseRequested(9)),
+    /cannot transition from resolved to responding/u,
+  )
+  assert.throws(
+    () => reduceEvent(afterResponded, responded(8, 'operation-transition-other-response')),
+    /different response result/u,
+  )
+  assert.throws(
+    () =>
+      reduceEvent(
+        duplicateResponded,
         envelope(
           {
-            kind: 'run.interaction.response.requested',
+            kind: 'run.interaction.cancelled',
             runId,
             interactionId,
-            operationId: createOperationId('operation-replay-interaction-response'),
-            outcome: 'accepted',
-            containsSecret: false,
-            automationRule: invalidRule,
+            provider: {
+              eventId: 'provider-transition-cancelled',
+              providerSequence: 7,
+              occurredAt: at,
+            },
           },
-          4,
+          9,
+          createEventId('event-transition-cancelled'),
         ),
-      ]),
-    /rule\.answer\.password is secret-designated and cannot be retained/u,
+      ),
+    /cannot transition from resolved to cancelled/u,
+  )
+
+  let evicted = beforeInteraction
+  for (let index = 0; index < 257; index += 1) {
+    evicted = reduceEvent(
+      evicted,
+      interactionEvent(index + 3, createInteractionId(`interaction-evicted-${index}`)),
+    )
+  }
+  const evictedRun = evicted.runs[0]
+  assert.ok(evictedRun)
+  assert.equal(evictedRun.interactions.length, MAX_RUN_INTERACTIONS)
+  assert.equal(
+    evictedRun.interactions.some(
+      (interaction) => interaction.request.id === 'interaction-evicted-0',
+    ),
+    false,
+  )
+  assert.equal(evictedRun.pendingInteractionIds?.includes('interaction-evicted-0'), true)
+  assert.throws(
+    () =>
+      reduceEvent(
+        evicted,
+        envelope(
+          {
+            kind: 'run.interaction.cancelled',
+            runId,
+            interactionId: 'interaction-evicted-0',
+            provider: {
+              eventId: 'provider-transition-evicted-cancelled',
+              providerSequence: 258,
+              occurredAt: at,
+            },
+          },
+          260,
+          createEventId('event-transition-evicted-cancelled'),
+        ),
+      ),
+    /Interaction interaction-evicted-0 is unknown/u,
   )
 })
 
