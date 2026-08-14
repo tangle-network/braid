@@ -4,7 +4,7 @@ import type {
   AgentTurnResult,
 } from '@tangle-network/agent-interface/environment-provider'
 import type { TurnUsage } from '../../domain/entities.js'
-import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
+import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RunStatus } from '../../domain/state.js'
 import type { RunCapabilities } from '../../ports/execution.js'
 
@@ -92,6 +92,12 @@ export function finalRetainedEnvelope(
 ): RuntimeEventEnvelope {
   const timestamp = new Date().toISOString()
   const usage = retainedTurnUsage(result.usage, model, modelRequestsFromResult(result))
+  const cancelled = !result.success && result.metadata?.status === 'cancelled'
+  const status: Extract<RunStatus, 'completed' | 'cancelled' | 'failed'> = result.success
+    ? 'completed'
+    : cancelled
+      ? 'cancelled'
+      : 'failed'
   return {
     runId,
     eventId: `${runId}:final`,
@@ -100,8 +106,10 @@ export function finalRetainedEnvelope(
     event: {
       type: 'final',
       task: { id: runId, intent },
-      status: result.success ? 'completed' : 'failed',
-      reason: result.success ? 'completed' : (result.error ?? 'Retained run failed'),
+      status,
+      reason: result.success
+        ? 'completed'
+        : (result.error ?? (cancelled ? 'Retained run cancelled' : 'Retained run failed')),
       text: result.text,
       metadata: {
         model,
@@ -119,7 +127,8 @@ export function finalRetainedEnvelope(
         ? {}
         : { error: { kind: 'backend', message: result.error } }),
       timestamp,
-    },
+      // The installed runtime type predates the SDK's canonical cancellation status.
+    } as Extract<BraidRuntimeEvent, { readonly type: 'final' }>,
   }
 }
 

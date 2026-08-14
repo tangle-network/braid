@@ -10,6 +10,7 @@ import {
   type RetainedExecutionPlan,
   RetainedExecutionPort,
 } from '../src/adapters/runtime/retained-execution.js'
+import { finalRetainedEnvelope } from '../src/adapters/runtime/retained-execution-projection.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createDurableBraidApplication,
@@ -30,6 +31,35 @@ import { RandomIds } from '../src/ports/ids.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
+
+test('retained CLI Bridge cancellation stays cancelled in the final projection', () => {
+  const envelope = finalRetainedEnvelope(
+    'retained-cancel',
+    1,
+    'openai/gpt-5',
+    {
+      text: '',
+      success: false,
+      error: 'cli-bridge run ended cancelled',
+      metadata: {
+        runId: 'retained-cancel',
+        executionId: 'retained-cancel',
+        status: 'cancelled',
+      },
+    },
+    'Execute the retained CLI Bridge turn',
+  )
+
+  const final = envelope.event as {
+    readonly type: 'final'
+    readonly status: string
+    readonly reason: string
+  }
+  assert.deepEqual(
+    { type: final.type, status: final.status, reason: final.reason },
+    { type: 'final', status: 'cancelled', reason: 'cli-bridge run ended cancelled' },
+  )
+})
 
 function recordAdmissions(target: RetainedRunAdmissionRecord[]) {
   return async (admission: RetainedRunAdmissionRecord): Promise<void> => {
