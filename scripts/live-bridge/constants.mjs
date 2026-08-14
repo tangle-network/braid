@@ -47,7 +47,7 @@ export const targetDefinitions = Object.freeze([
   {
     key: 'luna-max',
     label: 'Luna Max',
-    modelId: 'pi/openai-codex/gpt-5.6-luna',
+    modelId: 'pi/tangle-router/openai/gpt-5.6-luna',
     backend: 'pi',
   },
 ])

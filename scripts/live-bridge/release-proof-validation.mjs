@@ -24,9 +24,11 @@ function text(value) {
 function routeParts(route) {
   if (!text(route)) return undefined
   const parts = route.split('/')
-  return parts.length === 3 && parts.every((part) => part.length > 0)
-    ? { runner: parts[0], provider: parts[1], model: parts[2] }
-    : undefined
+  if (parts.length < 2 || parts.some((part) => part.length === 0)) return undefined
+  const runner = parts.shift()
+  const provider = parts.length > 1 ? parts.shift() : undefined
+  const model = parts.join('/')
+  return { runner, provider, model }
 }
 
 function same(value, expected, label, details) {

@@ -49,15 +49,6 @@ function bridgeModelIdForDefinition(definition) {
   return definition.bridgeModelId ?? definition.modelId
 }
 
-function canonicalTargetModelId(backend, bridgeModelId) {
-  const prefix = `${backend}/`
-  if (!bridgeModelId.startsWith(prefix)) return bridgeModelId
-  const route = bridgeModelId.slice(prefix.length)
-  const parts = route.split('/')
-  if (parts.length !== 1 || parts[0].length === 0) return bridgeModelId
-  return `${backend}/${backend}/${parts[0]}`
-}
-
 function targetKeyFor(backend, modelId) {
   const suffix = modelId
     .replace(`${backend}/`, '')
@@ -68,15 +59,16 @@ function targetKeyFor(backend, modelId) {
 }
 
 function targetDefinitionForAdvertisedModel(backend, bridgeModelId) {
-  const modelId = canonicalTargetModelId(backend, bridgeModelId)
+  const modelId = bridgeModelId
   const route = modelId.slice(`${backend}/`.length)
-  const separator = route.indexOf('/')
-  const provider = separator > 0 ? route.slice(0, separator) : backend
-  const model = separator > 0 ? route.slice(separator + 1) : route
-  if (provider.length === 0 || model.length === 0) return undefined
+  const parts = route.split('/')
+  const provider = parts.length > 1 ? parts.shift() : undefined
+  const model = parts.join('/')
+  if (provider === '' || model.length === 0 || parts.some((part) => part.length === 0))
+    return undefined
   return {
     key: targetKeyFor(backend, modelId),
-    label: `${backend} ${provider}/${model}`,
+    label: provider === undefined ? `${backend} ${model}` : `${backend} ${provider}/${model}`,
     modelId,
     bridgeModelId,
     backend,
@@ -86,8 +78,8 @@ function targetDefinitionForAdvertisedModel(backend, bridgeModelId) {
 /**
  * Selects one canonical target for every ready runner represented by the bridge catalog.
  *
- * Bridge-only routes such as `codex/default` become `codex/codex/default` in the
- * profile receipt while `bridgeModelId` keeps the exact route sent to discovery.
+ * Runner-only routes such as `codex/default` remain unqualified. Braid must not
+ * invent a model provider that the bridge catalog did not advertise.
  */
 export function releaseTargetDefinitions(definitions, modelsResponse, healthResponse) {
   const advertised = modelIds(modelsResponse)

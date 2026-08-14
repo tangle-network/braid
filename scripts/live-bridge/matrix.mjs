@@ -183,7 +183,7 @@ async function runTargetPolicyMatrix() {
   const releaseDefinitions = releaseTargetDefinitions(both, releaseModels, releaseHealth)
   assert.deepEqual(
     releaseDefinitions.map(({ modelId }) => modelId),
-    [exactGlm, exactLuna, 'codex/codex/default'],
+    [exactGlm, exactLuna, 'codex/default'],
   )
   assert.equal(releaseDefinitions[2].bridgeModelId, 'codex/default')
   const releaseEvidence = {}
@@ -198,7 +198,7 @@ async function runTargetPolicyMatrix() {
     [
       { modelId: exactGlm, bridgeModelId: exactGlm },
       { modelId: exactLuna, bridgeModelId: exactLuna },
-      { modelId: 'codex/codex/default', bridgeModelId: 'codex/default' },
+      { modelId: 'codex/default', bridgeModelId: 'codex/default' },
     ],
   )
 }
@@ -217,8 +217,27 @@ async function runConfigurationMatrix() {
     description: 'Opt-in packed CLI Bridge smoke profile',
     version: '0.1.0',
     harness: 'pi',
-    model: { provider: 'openai-codex', default: 'gpt-5.6-luna', reasoningEffort: 'none' },
+    model: {
+      provider: 'tangle-router',
+      default: 'openai/gpt-5.6-luna',
+      reasoningEffort: 'none',
+    },
   })
+  assert.deepEqual(
+    profileForBridgeTarget({
+      key: 'codex-default',
+      label: 'codex default',
+      modelId: 'codex/default',
+      backend: 'codex',
+    }),
+    {
+      name: 'Braid live codex/default',
+      description: 'Opt-in packed CLI Bridge smoke profile',
+      version: '0.1.0',
+      harness: 'codex',
+      model: { default: 'default', reasoningEffort: 'none' },
+    },
+  )
   assert.throws(
     () => profileForBridgeTarget({ ...luna, backend: 'codex' }),
     (error) => error.code === 'TARGET_MODEL_ROUTE_INVALID' && error.exitCode === 2,
@@ -260,8 +279,8 @@ async function runConfigurationMatrix() {
   try {
     const written = await writeTargetConfig(root, endpoint, luna, undefined)
     assert.deepEqual(JSON.parse(await readFile(written.profilePath, 'utf8')), written.profile)
-    assert.equal(written.profile.model.default, 'gpt-5.6-luna')
-    assert.equal(written.profile.model.provider, 'openai-codex')
+    assert.equal(written.profile.model.default, 'openai/gpt-5.6-luna')
+    assert.equal(written.profile.model.provider, 'tangle-router')
     const credential = await writeTargetConfig(root, endpoint, glm, {
       recordRef: createLiveCredentialId('11111111-1111-1111-1111-111111111111'),
     })

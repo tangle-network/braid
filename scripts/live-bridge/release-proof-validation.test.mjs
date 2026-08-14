@@ -87,6 +87,59 @@ test('identity validation rejects configured-label false positives', () => {
   }
 })
 
+test('identity validation retains nested and runner-only model routes', () => {
+  const nestedTarget = {
+    key: 'pi-nested',
+    modelId: 'pi/tangle-router/openai/gpt-5.6-luna',
+    definition: { backend: 'pi' },
+  }
+  const nestedRun = run({
+    model: 'openai/gpt-5.6-luna',
+    receipt: {
+      ...run().receipt,
+      requested: {
+        runner: 'pi',
+        model: 'openai/gpt-5.6-luna',
+        profile: {
+          harness: 'pi',
+          model: { provider: 'tangle-router', default: 'openai/gpt-5.6-luna' },
+        },
+      },
+      materializationReceipt: {
+        provider: 'cli-bridge',
+        runner: 'pi',
+        model: 'openai/gpt-5.6-luna',
+        route: nestedTarget.modelId,
+      },
+    },
+  })
+  assert.deepEqual(assertTargetRunIdentity(nestedRun, nestedTarget).provider, 'tangle-router')
+
+  const defaultTarget = {
+    key: 'codex-default',
+    modelId: 'codex/default',
+    definition: { backend: 'codex' },
+  }
+  const defaultRun = run({
+    model: 'default',
+    receipt: {
+      ...run().receipt,
+      requested: {
+        runner: 'codex',
+        model: 'default',
+        profile: { harness: 'codex', model: { default: 'default' } },
+      },
+      materializationReceipt: {
+        provider: 'cli-bridge',
+        runner: 'codex',
+        model: 'default',
+        route: defaultTarget.modelId,
+      },
+    },
+  })
+  assert.equal(assertTargetRunIdentity(defaultRun, defaultTarget).provider, undefined)
+})
+
 test('usage, replay, and cancellation unavailable states cannot pass strict conformance', () => {
   assert.throws(() => assertObservedUsage(run({ tokensKnown: false })), /known token usage/u)
   assert.throws(() => assertObservedUsage(run({ llmCalls: 0 })), /model-call usage/u)

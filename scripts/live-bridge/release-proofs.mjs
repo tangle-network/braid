@@ -31,11 +31,16 @@ function proofTarget(target, operationResult) {
     proof?.key !== target.key ||
     proof?.route !== target.modelId ||
     typeof proof?.harness !== 'string' ||
-    typeof proof?.provider !== 'string' ||
+    (proof?.provider !== undefined && typeof proof.provider !== 'string') ||
     typeof proof?.model !== 'string'
   )
     return undefined
-  return { key: target.key, harness: proof.harness, model: proof.model }
+  return {
+    key: target.key,
+    harness: proof.harness,
+    ...(proof.provider === undefined ? {} : { provider: proof.provider }),
+    model: proof.model,
+  }
 }
 
 function targetRecordMatches(targetRecord, target, descriptor) {
@@ -45,7 +50,7 @@ function targetRecordMatches(targetRecord, target, descriptor) {
     proof?.key === target.key &&
     proof?.route === target.modelId &&
     proof?.harness === descriptor.harness &&
-    proof?.provider === target.modelId.split('/')[1] &&
+    proof?.provider === descriptor.provider &&
     proof?.model === descriptor.model
   )
 }

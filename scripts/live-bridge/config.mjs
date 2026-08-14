@@ -11,18 +11,17 @@ import { evidenceValue } from './redaction.mjs'
 export function profileForBridgeTarget(target) {
   const parts = target.modelId.split('/')
   const harness = parts.shift()
-  const provider = parts.shift()
+  const provider = parts.length > 1 ? parts.shift() : undefined
   const model = parts.join('/')
   if (
     harness !== target.backend ||
-    provider === undefined ||
-    provider.length === 0 ||
+    provider === '' ||
     model.length === 0 ||
     parts.some((part) => part.length === 0)
   ) {
     throw new LiveBridgeError(
       'TARGET_MODEL_ROUTE_INVALID',
-      `CLI Bridge target ${target.modelId} must be <runner>/<provider>/<model> and agree with backend ${target.backend}`,
+      `CLI Bridge target ${target.modelId} must be <runner>/<model> or <runner>/<provider>/<model> and agree with backend ${target.backend}`,
       exitCodes.unavailable,
       { target: target.modelId, backend: target.backend },
     )
@@ -32,7 +31,11 @@ export function profileForBridgeTarget(target) {
     description: 'Opt-in packed CLI Bridge smoke profile',
     version: '0.1.0',
     harness,
-    model: { provider, default: model, reasoningEffort: 'none' },
+    model: {
+      ...(provider === undefined ? {} : { provider }),
+      default: model,
+      reasoningEffort: 'none',
+    },
   }
 }
 

@@ -16,16 +16,20 @@ export function bridgeRunnerSupportsModel(runner: HarnessType, model: string): b
 
 /** Combine split AgentProfile provider/model hints without adding a Bridge runner prefix. */
 export function qualifyBridgeProfileModel(model: string, provider?: string): string {
-  return provider === undefined || model.includes('/') ? model : `${provider}/${model}`
+  const selectedProvider = provider?.trim()
+  if (selectedProvider === undefined || selectedProvider.length === 0) return model
+  return model === selectedProvider || model.startsWith(`${selectedProvider}/`)
+    ? model
+    : `${selectedProvider}/${model}`
 }
 
 /** Accept a pre-portability Bridge route without preserving its transport-only runner prefix. */
 export function portableBridgeModel(runner: HarnessType, model: string, provider?: string): string {
-  const qualified = qualifyBridgeProfileModel(model, provider)
-  return bridgeRouteRunner(qualified) === runner ? qualified.slice(runner.length + 1) : qualified
+  const portable = bridgeRouteRunner(model) === runner ? model.slice(runner.length + 1) : model
+  return qualifyBridgeProfileModel(portable, provider)
 }
 
-/** Materialize the same `<runner>/<provider>/<model>` route used by the CLI Bridge provider. */
+/** Materialize the Bridge `<runner>/<model>` or `<runner>/<provider>/<model>` route. */
 export function materializeBridgeModelRoute(
   runner: HarnessType,
   model: string,
