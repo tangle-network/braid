@@ -33,6 +33,30 @@ import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
 
+test('canonical cancellation status remains cancelled in the Braid projection', () => {
+  const mapped = providerEventFor(
+    'canonical-cancel',
+    { type: 'status', status: 'cancelled', detail: 'USER_CANCELLED' },
+    {
+      eventId: 'canonical-cancel:status',
+      providerSequence: 1,
+      receivedAt: now,
+    },
+  )
+
+  assert.deepEqual(mapped, {
+    kind: 'run.status.changed',
+    runId: 'canonical-cancel',
+    status: 'cancelled',
+    detail: 'USER_CANCELLED',
+    provider: {
+      eventId: 'canonical-cancel:status',
+      providerSequence: 1,
+      receivedAt: now,
+    },
+  })
+})
+
 test('retained CLI Bridge cancellation stays cancelled in the final projection', () => {
   const envelope = finalRetainedEnvelope(
     'retained-cancel',

@@ -39,7 +39,7 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.7.0. */
+/** Stateful double for the exact Tangle SDK surface used by provider 0.10.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -120,6 +120,14 @@ export class FakeTangleRetainedSandbox {
       ...(box.name === undefined ? {} : { name: box.name }),
       ...(box.metadata === undefined ? {} : { metadata: box.metadata }),
       status: box.deleted ? 'stopped' : 'running',
+      async capabilities() {
+        return {
+          schema: 1,
+          dispatch: { runControlRef: true, executionIdOnAdmission: true },
+          cancel: { canonicalRunCancellation: true, digestBound: true, idempotent: true },
+          runs: { executionScopedStatus: true, eventReplay: true },
+        }
+      },
       async refresh() {},
       async delete() {
         if (sandbox.failDelete) throw new Error('Injected Tangle delete failure')

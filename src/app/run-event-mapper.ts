@@ -313,6 +313,8 @@ function statusFromCanonical(
       return 'running'
     case 'failed':
       return 'failed'
+    case 'cancelled':
+      return 'cancelled'
     default: {
       const exhaustive: never = status
       return exhaustive

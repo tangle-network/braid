@@ -71,6 +71,14 @@ const SECRET_KEY =
   /(secret|password|passphrase|token|bearer|authorization|credential|private(?:[_-]?key)?|api[-_]?key)/iu
 const SAFE_REFERENCE_SUFFIX = /(ref|name|kind)$/iu
 
+function isSafeInteractionCapabilityFlag(path: string, key: string, value: JsonValue): boolean {
+  return (
+    path.endsWith('.capabilities.environment.interactions') &&
+    key === 'secretAnswers' &&
+    typeof value === 'boolean'
+  )
+}
+
 function secretFieldNames(value: JsonValue): readonly string[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return []
   const fields = (value as Readonly<Record<string, JsonValue>>).fields
@@ -186,11 +194,13 @@ export function assertPersistablePayload(value: JsonValue): void {
         (isSafeNumericTelemetryField(key, child) ||
           isSafeBooleanTelemetryField(key, child) ||
           isSafeTokenUsageRecord(key, child))
+      const isSafeCapability = !containsSecret && isSafeInteractionCapabilityFlag(path, key, child)
       if (
         SECRET_KEY.test(key) &&
         !SAFE_REFERENCE_SUFFIX.test(key) &&
         !isSecretMarker &&
-        !isSafeTelemetry
+        !isSafeTelemetry &&
+        !isSafeCapability
       ) {
         throw new StorageError(
           'SECRET_PAYLOAD_REJECTED',
