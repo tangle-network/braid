@@ -359,6 +359,10 @@ The published package is downloaded from the registry after publication and its 
 
 ## Required live matrix
 
+The CLI Bridge gate uses GLM 5.2 through OpenCode and Pi with Tangle Router, plus the configured Codex default.
+
+Model discovery does not make every advertised model a release gate.
+
 | ID | Path | Real proof |
 | --- | --- | --- |
 | LIVE-01 | CLI Bridge with Pi | Exact profile materialization, text, reasoning, tool, usage, native session continuation, event replay, explicit cancel, and terminal receipt |
