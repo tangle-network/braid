@@ -8,7 +8,7 @@ import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { createPortableContextPlan } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import type { BraidState } from '../src/domain/state.js'
+import { type BraidState, initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
@@ -628,20 +628,11 @@ for (const count of [10_000, 100_000]) {
       parts: [{ id: `part-${index}`, kind: 'text' as const, text: `message ${index}` }],
     }))
     const state: BraidState = {
-      ...({} as BraidState),
+      ...initialState(DETERMINISTIC_PROFILE),
       revision: count,
       sequence: count,
-      schemaVersion: 2,
       workspace: '/workspace',
-      conversationId: 'conv-1',
-      branchId: 'branch-1',
-      profile: DETERMINISTIC_PROFILE,
-      draft: '',
       messages: messages as unknown as BraidState['messages'],
-      runs: [],
-      activeRunId: null,
-      queuedInputs: [],
-      lastError: null,
     }
     const view = buildBraidViewModel(state)
     assert.equal(view.messages.length, 200)
