@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "scope": "Runtime-owned trace analysis accounting and execution evidence",
+  "files": 2,
+  "base": "822fe309a412598b57aed87bfcd5578387ebb869",
+  "head": "822fe309a412598b57aed87bfcd5578387ebb869",
+  "workingTree": true,
+  "diffSha256": "4c05aaff9f6399bc0eb01502b45dffa166458c7eba3999fff746ff3887f60ba4",
+  "projectType": "Node.js ESM package",
+  "reviewers": [
+    "A: Runtime delegation correctness, credentials, cost, usage, latency, and failure paths",
+    "B: public API ownership, adapter boundaries, retained control, and duplication",
+    "C: three call paths, dependency version, tests, and real integration coverage"
+  ],
+  "mode": "current working-tree review with serial local checks",
+  "verdict": "APPROVE",
+  "counts": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "resolved": 0,
+    "unresolved": 0,
+    "dropped": 0
+  }
+}

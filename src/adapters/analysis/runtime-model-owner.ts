@@ -7,6 +7,7 @@ import {
 import type {
   ExternalOptimizerModelCall,
   ExternalOptimizerModelCallRequest,
+  ExternalOptimizerModelCallResult,
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
 import {
@@ -14,7 +15,7 @@ import {
   type AgentProfile,
   harnessSystemPromptIntents,
 } from '@tangle-network/agent-interface'
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { profileOptimizerModelCall } from '@tangle-network/agent-runtime/kernel'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
@@ -93,10 +94,8 @@ export interface RuntimeTraceModelOwner {
   readonly executions: () => readonly ExternalOptimizerModelExecutionObservation[]
 }
 
-interface RuntimeCallSummary {
-  readonly events: readonly RuntimeStreamEvent[]
+interface RetainedCallSummary {
   readonly status: 'completed' | 'failed' | 'aborted' | 'blocked'
-  readonly reason: string
   readonly content: string
   readonly durationMs: number
   readonly endedAt: number
@@ -105,17 +104,14 @@ interface RuntimeCallSummary {
   readonly cachedTokens?: number
   readonly cacheWriteTokens?: number
   readonly reasoningTokens?: number
-  readonly promptCache?: Readonly<Record<string, number | string>>
   readonly observedCostUsd?: number
-  readonly estimatedCostUsd?: number
   readonly usageCaptured: boolean
   readonly reportedModel?: string
-  readonly finishReason?: string
   readonly errorKind?: string
   readonly errorStatus?: number
 }
 
-type RuntimeModelOperation = 'startRetainedRun' | 'streamAgentTurn'
+type RuntimeModelOperation = 'startRetainedRun' | 'profileOptimizerModelCall'
 
 function catalogPricing(model: string): CustomTokenPricing | undefined {
   const pricing = resolveModelPricing(model)
@@ -155,78 +151,62 @@ function textMessages(
   })
 }
 
-function eventFacts(events: readonly RuntimeStreamEvent[]): Readonly<Record<string, number>> {
+function eventFacts(eventTypes: readonly string[]): Readonly<Record<string, number>> {
   const counts = new Map<string, number>()
-  for (const event of events) counts.set(event.type, (counts.get(event.type) ?? 0) + 1)
+  for (const type of eventTypes) counts.set(type, (counts.get(type) ?? 0) + 1)
   return Object.freeze(
     Object.fromEntries([...counts].sort(([left], [right]) => left.localeCompare(right))),
   )
 }
 
-function summarizeRuntimeEvents(
-  events: readonly RuntimeStreamEvent[],
-  startedAt: number,
-): RuntimeCallSummary {
-  const final = events.at(-1)
-  if (final?.type !== 'final') {
-    throw new Error(
-      `agent-runtime model call ended without a final event (last: ${final?.type ?? 'none'})`,
-    )
-  }
-  const calls = events.filter(
-    (event): event is Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }> =>
-      event.type === 'llm_call',
+function runtimeExecutionRecord(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined
+}
+
+function runtimeExecutionWasDispatched(value: unknown): boolean {
+  return runtimeExecutionRecord(value)?.executed === true
+}
+
+function runtimeEventTypes(value: unknown): readonly string[] {
+  const eventTypes = runtimeExecutionRecord(value)?.eventTypes
+  return Array.isArray(eventTypes)
+    ? eventTypes.filter((eventType): eventType is string => typeof eventType === 'string')
+    : []
+}
+
+function runtimePromptCache(
+  response: ChatResponse | undefined,
+): Readonly<Record<string, number | string>> | undefined {
+  const value = response?.raw.promptCache
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value).filter(
+    ([, entry]) =>
+      typeof entry === 'string' || (typeof entry === 'number' && Number.isFinite(entry)),
   )
-  const usageCaptured =
-    calls.length > 0 &&
-    calls.every(
-      (event) =>
-        Number.isSafeInteger(event.tokensIn) &&
-        (event.tokensIn ?? -1) >= 0 &&
-        Number.isSafeInteger(event.tokensOut) &&
-        (event.tokensOut ?? -1) >= 0,
-    )
-  const lastCall = calls.at(-1)
-  const errorStatus = final.error?.status ?? httpStatusFromReason(final.reason)
-  const endedAt = Date.now()
-  const promptCache = promptCacheFacts(calls)
-  const cachedTokens = sumPromptCache(promptCache, ['cachedTokens', 'cacheReadTokens'])
-  const cacheWriteTokens = sumPromptCache(promptCache, ['cacheWriteTokens'])
-  const reasoningTokens = finiteTokenCount(final.metadata?.reasoningTokens)
-  const observedCostUsd = completeCallAmount(calls, 'costUsd', (event) => event.usdKnown !== false)
-  const estimatedCostUsd = completeCallAmount(calls, 'estimatedCostUsd')
+  return entries.length === 0 ? undefined : Object.freeze(Object.fromEntries(entries))
+}
+
+function runtimeUsageFacts(
+  response: ChatResponse | undefined,
+  receipt: import('@tangle-network/agent-eval').CostReceiptInput,
+): Readonly<Record<string, unknown>> {
+  const usageUnknown = receipt.usageUnknown === true
+  const promptCache = runtimePromptCache(response)
+  const cachedTokens = receipt.cachedTokens ?? response?.usage.cachedPromptTokens
+  const reasoningTokens = receipt.reasoningTokens ?? response?.usage.reasoningTokens
   return {
-    events,
-    status: final.status,
-    reason: final.reason,
-    content:
-      final.text ??
-      events
-        .filter(
-          (event): event is Extract<RuntimeStreamEvent, { readonly type: 'text_delta' }> =>
-            event.type === 'text_delta',
-        )
-        .map((event) => event.text)
-        .join(''),
-    durationMs: Math.max(0, endedAt - startedAt),
-    endedAt,
-    inputTokens: usageCaptured
-      ? calls.reduce((total, event) => total + (event.tokensIn ?? 0), 0)
-      : 0,
-    outputTokens: usageCaptured
-      ? calls.reduce((total, event) => total + (event.tokensOut ?? 0), 0)
-      : 0,
+    captured: !usageUnknown,
+    inputTokens: usageUnknown ? 0 : receipt.inputTokens,
+    outputTokens: usageUnknown ? 0 : receipt.outputTokens,
     ...(cachedTokens === undefined ? {} : { cachedTokens }),
-    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    ...(receipt.cacheWriteTokens === undefined
+      ? {}
+      : { cacheWriteTokens: receipt.cacheWriteTokens }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
-    ...(Object.keys(promptCache).length === 0 ? {} : { promptCache }),
-    ...(observedCostUsd === undefined ? {} : { observedCostUsd }),
-    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
-    usageCaptured,
-    ...(lastCall?.model === undefined ? {} : { reportedModel: lastCall.model }),
-    ...(lastCall?.finishReason === undefined ? {} : { finishReason: lastCall.finishReason }),
-    ...(final.error?.kind === undefined ? {} : { errorKind: final.error.kind }),
-    ...(errorStatus === undefined ? {} : { errorStatus }),
+    ...(promptCache === undefined ? {} : { promptCache }),
+    ...(receipt.model === undefined ? {} : { reportedModel: safeModelRoute(receipt.model) }),
   }
 }
 
@@ -234,7 +214,7 @@ function summarizeRetainedResult(
   result: import('@tangle-network/agent-interface/environment-provider').AgentTurnResult,
   model: string,
   startedAt: number,
-): RuntimeCallSummary {
+): RetainedCallSummary {
   const endedAt = Date.now()
   const inputTokens = finiteTokenCount(result.usage?.inputTokens)
   const outputTokens = finiteTokenCount(result.usage?.outputTokens)
@@ -245,11 +225,7 @@ function summarizeRetainedResult(
   const observedCostUsd = finiteNumber(result.usage?.cost)
   const reasoningTokens = finiteTokenCount(result.usage?.reasoningTokens)
   return {
-    events: [],
     status: result.success ? 'completed' : 'failed',
-    reason: result.success
-      ? 'Retained model execution completed'
-      : (result.error ?? 'Retained model execution failed'),
     content: result.text,
     durationMs: Math.max(0, endedAt - startedAt),
     endedAt,
@@ -274,45 +250,6 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
-function completeCallAmount(
-  calls: readonly Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }>[],
-  field: 'costUsd' | 'estimatedCostUsd',
-  accepts: (event: Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }>) => boolean = () =>
-    true,
-): number | undefined {
-  if (
-    calls.length === 0 ||
-    !calls.every((event) => accepts(event) && finiteNumber(event[field]) !== undefined)
-  ) {
-    return undefined
-  }
-  return calls.reduce((total, event) => total + (finiteNumber(event[field]) ?? 0), 0)
-}
-
-function promptCacheFacts(
-  calls: readonly Extract<RuntimeStreamEvent, { readonly type: 'llm_call' }>[],
-): Readonly<Record<string, number | string>> {
-  const values = new Map<string, number | string>()
-  for (const call of calls) {
-    for (const [key, value] of Object.entries(call.promptCache ?? {})) {
-      if (typeof value !== 'number' && typeof value !== 'string') continue
-      if (typeof value === 'number' && !Number.isFinite(value)) continue
-      values.set(key, value)
-    }
-  }
-  return Object.freeze(Object.fromEntries(values))
-}
-
-function sumPromptCache(
-  facts: Readonly<Record<string, number | string>>,
-  keys: readonly string[],
-): number | undefined {
-  const values = keys
-    .map((key) => finiteNumber(facts[key]))
-    .filter((value): value is number => value !== undefined)
-  return values.length === 0 ? undefined : values.reduce((total, value) => total + value, 0)
-}
-
 function httpStatusFromReason(reason: string): number | undefined {
   const match = /(?:^|\b)HTTP\s+([1-5][0-9]{2})(?:\b|$)/iu.exec(reason)
   if (match?.[1] === undefined) return undefined
@@ -328,7 +265,7 @@ function receiptFor(
   model: string,
   pricing: CustomTokenPricing | undefined,
   usage: Pick<
-    RuntimeCallSummary,
+    RetainedCallSummary,
     | 'inputTokens'
     | 'outputTokens'
     | 'usageCaptured'
@@ -371,7 +308,7 @@ function receiptFor(
 
 function responseFor(
   request: ExternalOptimizerModelCallRequest,
-  summary: RuntimeCallSummary,
+  summary: RetainedCallSummary,
   pricing: CustomTokenPricing | undefined,
 ): ChatResponse {
   const model = safeModelRoute(request.request.model)
@@ -385,7 +322,7 @@ function responseFor(
     version: AGENT_RUNTIME_VERSION,
     eventDigest: String(
       canonicalDigest({
-        types: eventFacts(summary.events),
+        types: eventFacts([]),
         status: summary.status,
         output: String(canonicalDigest(summary.content)),
       }),
@@ -406,7 +343,6 @@ function responseFor(
     costUsd,
     model,
     durationMs: summary.durationMs,
-    ...(summary.finishReason === undefined ? {} : { finishReason: summary.finishReason }),
     contentEmpty: summary.content.trim().length === 0,
     raw,
   }
@@ -421,23 +357,81 @@ function executionEvidence(input: {
   readonly provider?: string
   readonly pricing?: CustomTokenPricing
   readonly receipt?: import('@tangle-network/agent-eval').CostReceiptInput
-  readonly summary?: RuntimeCallSummary
+  readonly summary?: RetainedCallSummary
+  readonly runtimeResult?: ExternalOptimizerModelCallResult
   readonly dispatched: boolean
-  readonly partialEvents?: readonly RuntimeStreamEvent[]
+  readonly eventTypes?: readonly string[]
   readonly startedAt: number
+  readonly endedAt?: number
+  readonly durationMs?: number
   readonly failure?: string
   readonly operation: RuntimeModelOperation
   readonly controlRef?: AgentExactRunControlRef
 }): Readonly<Record<string, unknown>> {
   const summary = input.summary
-  const endedAt = summary?.endedAt ?? Date.now()
+  const runtimeExecution = runtimeExecutionRecord(input.runtimeResult?.execution)
+  const runtimeResponse =
+    input.runtimeResult?.succeeded === true ? input.runtimeResult.response : undefined
+  const runtimeWasExecuted = runtimeExecutionWasDispatched(input.runtimeResult?.execution)
+  const eventTypes = input.eventTypes ?? runtimeEventTypes(input.runtimeResult?.execution)
+  const endedAt = input.endedAt ?? summary?.endedAt ?? Date.now()
+  const durationMs =
+    input.durationMs ??
+    runtimeResponse?.durationMs ??
+    summary?.durationMs ??
+    Math.max(0, endedAt - input.startedAt)
   const cost = costFacts(input.receipt, input.pricing, summary, input.dispatched)
+  const terminal =
+    summary === undefined
+      ? runtimeWasExecuted
+        ? {
+            status:
+              typeof runtimeExecution?.status === 'string'
+                ? runtimeExecution.status
+                : runtimeResponse === undefined
+                  ? 'failed'
+                  : 'completed',
+            reason:
+              input.failure ??
+              (runtimeResponse === undefined
+                ? 'Agent Runtime model execution failed'
+                : 'Agent Runtime model execution completed'),
+          }
+        : undefined
+      : {
+          status: summary.status,
+          reason: summaryFailure(summary),
+          ...(summary.errorKind === undefined ? {} : { errorKind: summary.errorKind }),
+          ...(summary.errorStatus === undefined ? {} : { errorStatus: summary.errorStatus }),
+        }
+  const usage =
+    summary === undefined
+      ? runtimeWasExecuted && input.receipt !== undefined
+        ? runtimeUsageFacts(runtimeResponse, input.receipt)
+        : undefined
+      : {
+          captured: summary.usageCaptured,
+          inputTokens: summary.inputTokens,
+          outputTokens: summary.outputTokens,
+          ...(summary.cachedTokens === undefined ? {} : { cachedTokens: summary.cachedTokens }),
+          ...(summary.cacheWriteTokens === undefined
+            ? {}
+            : { cacheWriteTokens: summary.cacheWriteTokens }),
+          ...(summary.reasoningTokens === undefined
+            ? {}
+            : { reasoningTokens: summary.reasoningTokens }),
+          ...(summary.reportedModel === undefined
+            ? {}
+            : { reportedModel: safeModelRoute(summary.reportedModel) }),
+        }
+  const output = summary?.content ?? runtimeResponse?.content
   return Object.freeze({
     schema: 'braid.runtime-model-execution.v1',
     runtime: {
       package: '@tangle-network/agent-runtime',
       version: AGENT_RUNTIME_VERSION,
       operation: input.operation,
+      ...(input.runtimeResult === undefined ? {} : { execution: input.runtimeResult.execution }),
     },
     ...(input.provider === undefined ? {} : { provider: input.provider }),
     callId: input.request.callId,
@@ -460,7 +454,7 @@ function executionEvidence(input: {
     requestDigest: String(canonicalDigest(input.request.request)),
     startedAt: new Date(input.startedAt).toISOString(),
     endedAt: new Date(endedAt).toISOString(),
-    durationMs: summary?.durationMs ?? Math.max(0, endedAt - input.startedAt),
+    durationMs,
     billing: cost,
     dispatched: input.dispatched,
     ...(input.controlRef === undefined
@@ -474,37 +468,10 @@ function executionEvidence(input: {
             requestDigest: input.controlRef.requestDigest,
           },
         }),
-    ...(summary === undefined
-      ? {}
-      : {
-          terminal: {
-            status: summary.status,
-            reason: summaryFailure(summary),
-            ...(summary.errorKind === undefined ? {} : { errorKind: summary.errorKind }),
-            ...(summary.errorStatus === undefined ? {} : { errorStatus: summary.errorStatus }),
-          },
-          usage: {
-            captured: summary.usageCaptured,
-            inputTokens: summary.inputTokens,
-            outputTokens: summary.outputTokens,
-            ...(summary.cachedTokens === undefined ? {} : { cachedTokens: summary.cachedTokens }),
-            ...(summary.cacheWriteTokens === undefined
-              ? {}
-              : { cacheWriteTokens: summary.cacheWriteTokens }),
-            ...(summary.reasoningTokens === undefined
-              ? {}
-              : { reasoningTokens: summary.reasoningTokens }),
-            ...(summary.promptCache === undefined ? {} : { promptCache: summary.promptCache }),
-            ...(summary.reportedModel === undefined
-              ? {}
-              : { reportedModel: safeModelRoute(summary.reportedModel) }),
-          },
-          events: eventFacts(summary.events),
-          outputDigest: String(canonicalDigest(summary.content)),
-        }),
-    ...(summary !== undefined || input.partialEvents === undefined
-      ? {}
-      : { events: eventFacts(input.partialEvents) }),
+    ...(terminal === undefined ? {} : { terminal }),
+    ...(usage === undefined ? {} : { usage }),
+    ...(summary !== undefined || runtimeWasExecuted ? { events: eventFacts(eventTypes) } : {}),
+    ...(output === undefined ? {} : { outputDigest: String(canonicalDigest(output)) }),
     ...(input.failure === undefined ? {} : { failure: input.failure }),
   })
 }
@@ -512,7 +479,7 @@ function executionEvidence(input: {
 function costFacts(
   receipt: import('@tangle-network/agent-eval').CostReceiptInput | undefined,
   pricing: CustomTokenPricing | undefined,
-  summary: RuntimeCallSummary | undefined,
+  summary: RetainedCallSummary | undefined,
   dispatched: boolean,
 ): Readonly<Record<string, number | string>> {
   if (!dispatched || receipt === undefined) return { status: 'unknown' }
@@ -533,13 +500,13 @@ function costFacts(
     const estimated = costForTokenPricing(pricing, receipt)
     return { status: 'estimated', usd: estimated }
   }
-  if (summary?.estimatedCostUsd !== undefined) {
-    return { status: 'estimated', usd: summary.estimatedCostUsd }
+  if (receipt.customTokenPricing !== undefined && receipt.usageUnknown !== true) {
+    return { status: 'estimated', usd: costForTokenPricing(receipt.customTokenPricing, receipt) }
   }
   return { status: 'unknown' }
 }
 
-function summaryFailure(summary: RuntimeCallSummary): string {
+function summaryFailure(summary: RetainedCallSummary): string {
   if (summary.status === 'completed') return 'Agent Runtime model execution completed'
   if (summary.errorStatus !== undefined) {
     return `Agent Runtime model execution failed with HTTP ${summary.errorStatus}`
@@ -549,7 +516,9 @@ function summaryFailure(summary: RuntimeCallSummary): string {
 }
 
 function publicError(value: unknown): string {
-  return redactProviderError(value instanceof Error ? value.message : String(value))
+  const message = value instanceof Error ? value.message : String(value)
+  const status = httpStatusFromReason(message)
+  return status === undefined ? redactProviderError(message) : `HTTP ${status}`
 }
 
 function analystCallProfile(
@@ -581,7 +550,8 @@ function analystCallProfile(
     model = portableBridgeModel(bridgeHarness, authoredModel)
     prompt = analystModelPrompt(bridgeHarness)
   }
-  const format = responseFormat(request)
+  // Runtime's profile adapter owns response-format materialization for direct calls.
+  const format = bridge ? responseFormat(request) : undefined
   const sourceReasoning = source.model?.reasoningEffort
   const reasoningEffort =
     request.thinking === 'disabled'
@@ -661,12 +631,12 @@ export function createRuntimeTraceModelOwner(
 
   const call: ExternalOptimizerModelCall = async (request) => {
     const startedAt = Date.now()
-    const events: RuntimeStreamEvent[] = []
     let dispatched = false
-    let summary: RuntimeCallSummary | undefined
+    let summary: RetainedCallSummary | undefined
+    let runtimeResult: ExternalOptimizerModelCallResult | undefined
     let executionProfileDigest = sourceProfileDigest
     const operation: RuntimeModelOperation =
-      options.connection.kind === 'cli-bridge' ? 'startRetainedRun' : 'streamAgentTurn'
+      options.connection.kind === 'cli-bridge' ? 'startRetainedRun' : 'profileOptimizerModelCall'
     let controlRef: AgentExactRunControlRef | undefined
     try {
       const configuredModel = safePublicIdentifier(options.model)
@@ -700,34 +670,47 @@ export function createRuntimeTraceModelOwner(
         controlRef = retained.controlRef
         summary = summarizeRetainedResult(retained.result, configuredModel, startedAt)
       } else {
-        dispatched = true
-        const { createExecutor, streamAgentTurn } = await import(
-          '@tangle-network/agent-runtime/kernel'
-        )
-        const executor = createExecutor({
-          backend: 'router',
-          routerBaseUrl: options.baseUrl,
-          routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
-          ...(options.complete === undefined ? {} : { complete: options.complete }),
-        })
-        const backend = Object.freeze({
-          kind: 'executor' as const,
-          factory: executor,
+        runtimeResult = await profileOptimizerModelCall({
           profile,
-          agentRunName: configuredModel,
-        })
-        for await (const event of streamAgentTurn(
-          backend,
-          { messages },
-          {
-            signal: request.signal,
-            callId: request.callId,
-            correlationId: `braid-analysis-${request.callId}`,
+          context: 'Braid trace analysis',
+          executor: {
+            backend: 'router',
+            routerBaseUrl: options.baseUrl,
+            routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
+            ...(options.complete === undefined ? {} : { complete: options.complete }),
           },
-        )) {
-          events.push(event)
+          ...(pricing === undefined ? {} : { pricing }),
+        })(request)
+        dispatched = runtimeExecutionWasDispatched(runtimeResult.execution)
+        const receipt = runtimeResult.receipt
+        const error = runtimeResult.succeeded ? undefined : publicError(runtimeResult.error)
+        const evidence = executionEvidence({
+          request,
+          callRef,
+          profileDigest: executionProfileDigest,
+          connection: options.connection,
+          retry,
+          ...(profile.model?.provider === undefined ? {} : { provider: profile.model.provider }),
+          ...(pricing === undefined ? {} : { pricing }),
+          receipt,
+          runtimeResult,
+          dispatched,
+          eventTypes: runtimeEventTypes(runtimeResult.execution),
+          startedAt,
+          endedAt: Date.now(),
+          ...(runtimeResult.succeeded ? { durationMs: runtimeResult.response.durationMs } : {}),
+          operation,
+          ...(error === undefined ? {} : { failure: error }),
+        })
+        if (error !== undefined) {
+          return {
+            succeeded: false,
+            error,
+            receipt,
+            execution: evidence,
+          }
         }
-        summary = summarizeRuntimeEvents(events, startedAt)
+        return { ...runtimeResult, execution: evidence }
       }
       const receipt = receiptFor(options.model, pricing, summary)
       const evidence = executionEvidence({
@@ -741,7 +724,10 @@ export function createRuntimeTraceModelOwner(
         receipt,
         summary,
         dispatched,
+        eventTypes: [],
         startedAt,
+        endedAt: summary.endedAt,
+        durationMs: summary.durationMs,
         operation,
         ...(controlRef === undefined ? {} : { controlRef }),
       })
@@ -762,12 +748,18 @@ export function createRuntimeTraceModelOwner(
     } catch (error) {
       if (error instanceof RetainedModelCallError) controlRef = error.controlRef
       const message = publicError(error)
-      const receipt = receiptFor(
-        options.model,
-        pricing,
-        summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
-        !dispatched,
-      )
+      const receipt =
+        runtimeResult?.receipt ??
+        receiptFor(
+          options.model,
+          pricing,
+          summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
+          !dispatched,
+        )
+      const runtimeDispatched =
+        runtimeResult === undefined
+          ? dispatched
+          : runtimeExecutionWasDispatched(runtimeResult.execution)
       return {
         succeeded: false,
         error: message,
@@ -784,9 +776,14 @@ export function createRuntimeTraceModelOwner(
           ...(pricing === undefined ? {} : { pricing }),
           receipt,
           ...(summary === undefined ? {} : { summary }),
-          dispatched,
-          ...(events.length === 0 ? {} : { partialEvents: events }),
+          ...(runtimeResult === undefined ? {} : { runtimeResult }),
+          dispatched: runtimeDispatched,
+          ...(runtimeResult === undefined
+            ? { eventTypes: [] }
+            : { eventTypes: runtimeEventTypes(runtimeResult.execution) }),
           startedAt,
+          endedAt: Date.now(),
+          ...(runtimeResult?.succeeded ? { durationMs: runtimeResult.response.durationMs } : {}),
           operation,
           ...(controlRef === undefined ? {} : { controlRef }),
           failure: message,

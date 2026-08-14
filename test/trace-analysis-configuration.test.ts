@@ -567,7 +567,14 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
     return {
       model: 'pi/tangle-router/glm-5.2',
       choices: [{ message: { content: '{"answer":"ok"}' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      usage: {
+        prompt_tokens: 12,
+        completion_tokens: 3,
+        total_tokens: 15,
+        prompt_tokens_details: { cached_tokens: 5 },
+        prompt_cache: { write_tokens: 2 },
+        completion_tokens_details: { reasoning_tokens: 1 },
+      },
     }
   })
 
@@ -586,7 +593,6 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
     json_schema: {
       name: 'analysis_result',
       schema: { type: 'object', properties: { answer: { type: 'string' } } },
-      strict: true,
     },
   })
   assert.equal(result.response.content, '{"answer":"ok"}')
@@ -594,17 +600,22 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
     promptTokens: 12,
     completionTokens: 3,
     totalTokens: 15,
-    captured: true,
+    cachedPromptTokens: 5,
+    reasoningTokens: 1,
   })
-  assert.equal(result.response.costUsd, 0.000018)
-  assert.equal(result.receipt.inputTokens, 12)
+  assert.equal(result.response.costUsd, 0.0000138)
+  assert.equal(result.receipt.inputTokens, 5)
   assert.equal(result.receipt.outputTokens, 3)
-  assert.deepEqual(result.receipt.customTokenPricing, PRICING)
+  assert.equal(result.receipt.cachedTokens, 5)
+  assert.equal(result.receipt.cacheWriteTokens, 2)
+  assert.equal(result.receipt.reasoningTokens, 1)
+  assert.equal(result.receipt.estimatedCostUsd, 0.0000138)
   const execution = JSON.stringify(result.execution)
   assert.doesNotMatch(execution, /credential-never-recorded/u)
   assert.doesNotMatch(execution, /private analyst instruction/u)
   assert.doesNotMatch(execution, /private trace question/u)
-  assert.match(execution, /streamAgentTurn/u)
+  assert.match(execution, /profileOptimizerModelCall/u)
+  assert.match(execution, /agent-runtime-profile-model-call/u)
   assert.match(execution, /"maxAttempts":1/u)
 })
 
@@ -829,6 +840,44 @@ test('runtime-owned trace model preserves observed cost when token usage is unkn
     status: 'observed',
     usd: 0.123,
   })
+})
+
+test('runtime-owned trace model preserves partial usage as unknown', async () => {
+  const owner = runtimeOwner(async () => ({
+    model: 'pi/tangle-router/glm-5.2',
+    choices: [{ message: { content: 'partial' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 12 },
+  }))
+
+  const result = await owner.call(optimizerRequest())
+  assert.equal(result.succeeded, true)
+  if (!result.succeeded) return
+  assert.deepEqual(result.response.usage, {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    captured: false,
+  })
+  assert.equal(result.response.costUsd, null)
+  assert.equal(result.receipt.usageUnknown, true)
+  assert.equal(result.receipt.costUnknown, true)
+  const execution = result.execution as {
+    readonly billing?: unknown
+    readonly dispatched?: unknown
+    readonly events?: Readonly<Record<string, number>>
+    readonly runtime?: { readonly execution?: { readonly executed?: unknown } }
+    readonly usage?: unknown
+  }
+  assert.deepEqual(execution.usage, {
+    captured: false,
+    inputTokens: 0,
+    outputTokens: 0,
+    reportedModel: 'pi/tangle-router/glm-5.2',
+  })
+  assert.deepEqual(execution.billing, { status: 'unknown' })
+  assert.equal(execution.dispatched, true)
+  assert.equal(execution.runtime?.execution?.executed, true)
+  assert.equal(execution.events?.llm_call, 1)
 })
 
 test('runtime model route errors never expose invalid model material', async () => {
