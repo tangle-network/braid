@@ -1,20 +1,24 @@
-import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
+import {
+  AgentExactRunControlRefSchema,
+  InteractionBindingSchema,
+  InteractionRequestSchema,
+} from '@tangle-network/agent-interface'
 import type {
   AnalysisAttachmentRecord,
   AnalysisModelCallRecord,
   AnalysisRecord,
-  InteractionRecord,
   RunRecord,
 } from './entities.js'
 import { isReplayCursor } from './ids.js'
+import { isSensitiveFieldName } from './bounded-structured.js'
 import {
   assertDate,
   assertDigest,
   assertEntityId,
   assertJsonValue,
   assertPublicReference,
+  assertUniqueIds,
   fail,
-  failUnsupported,
   finiteNonNegative,
   finiteRatio,
   nonEmpty,
@@ -67,6 +71,7 @@ export function assertRunRecord(record: RunRecord): void {
     }
   }
   assertRetainedRunAdmission(record)
+  assertRunInteractions(record)
   if (record.bindingId !== undefined) assertEntityId('binding', record.bindingId, 'run.bindingId')
   if (record.receiptId !== undefined) assertEntityId('receipt', record.receiptId, 'run.receiptId')
   if (record.replayCursor !== undefined && !isReplayCursor(record.replayCursor))
@@ -87,58 +92,82 @@ export function assertRunRecord(record: RunRecord): void {
     fail('complete runs must have a terminal status')
 }
 
-export function assertInteractionRecord(record: InteractionRecord): void {
-  assertEntityId('interaction', record.id, 'interaction.id')
-  assertEntityId('run', record.runId, 'interaction.runId')
-  if (record.providerSessionId !== undefined)
-    assertEntityId('providerSession', record.providerSessionId, 'interaction.providerSessionId')
-  if (record.request.id !== record.id) fail('interaction.request.id must match interaction.id')
-  nonEmpty(record.request.kind, 'interaction.request.kind')
-  nonEmpty(record.request.title, 'interaction.request.title')
-  if (!Array.isArray(record.request.answerSpec.fields))
-    fail('interaction.answerSpec.fields must be an array')
-  const fieldNames = new Set<string>()
-  for (const field of record.request.answerSpec.fields) {
-    objectValue(field, 'interaction.answerSpec.field')
-    nonEmpty(field.name, 'interaction.answerSpec.field.name')
-    nonEmpty(field.label, 'interaction.answerSpec.field.label')
-    if (fieldNames.has(field.name))
-      fail(`interaction.answerSpec contains duplicate field ${field.name}`)
-    fieldNames.add(field.name)
-    if (field.type === 'secret' && 'default' in field)
-      fail('secret interaction fields cannot have defaults')
+function assertRunInteractions(record: RunRecord): void {
+  if (!Array.isArray(record.interactions)) fail('run.interactions must be an array')
+  const requestIds = record.interactions.map((interaction, index) =>
+    assertBraidInteraction(interaction, record.id, index),
+  )
+  assertUniqueIds(requestIds, 'run.interactions.request')
+}
+
+function assertBraidInteraction(value: unknown, runId: string, index: number): string {
+  const label = `run.interactions[${index}]`
+  objectValue(value, label)
+
+  const requestResult = InteractionRequestSchema.safeParse(value.request)
+  if (!requestResult.success) fail(`${label}.request is invalid`)
+  const request = requestResult.data
+
+  const responseBindingResult = InteractionBindingSchema.safeParse(value.responseBinding)
+  if (!responseBindingResult.success) fail(`${label}.responseBinding is invalid`)
+  const responseBinding = responseBindingResult.data
+
+  assertEntityId('run', value.runId, `${label}.runId`)
+  if (value.runId !== runId) fail(`${label}.runId must match run.id`)
+  if (request.binding.runId !== runId) fail(`${label}.request.binding.runId must match run.id`)
+  if (responseBinding.runId !== runId) fail(`${label}.responseBinding.runId must match run.id`)
+  // Redaction recomputes the display request digest but preserves the response binding digest.
+  if (responseBinding.interactionId !== request.id)
+    fail(`${label}.responseBinding.interactionId must match request.id`)
+  for (const key of ['provider', 'environmentId', 'sessionId', 'executionId'] as const) {
+    if (responseBinding[key] !== request.binding[key])
+      fail(`${label}.responseBinding.${key} must match request.binding.${key}`)
   }
-  if (record.request.subject !== undefined) {
-    switch (record.request.subject.type) {
-      case 'tool':
-        nonEmpty(record.request.subject.toolName, 'interaction.subject.toolName')
-        break
-      case 'command':
-        nonEmpty(record.request.subject.command, 'interaction.subject.command')
-        break
-      case 'file':
-        nonEmpty(record.request.subject.path, 'interaction.subject.path')
-        break
-      case 'resource':
-        nonEmpty(record.request.subject.uri, 'interaction.subject.uri')
-        break
-      default:
-        failUnsupported(record.request.subject, 'interaction subject type')
-    }
+
+  const statuses = ['pending', 'responding', 'declined', 'cancelled', 'resolved', 'unknown']
+  if (typeof value.status !== 'string' || !statuses.includes(value.status))
+    fail(`${label}.status is invalid`)
+
+  if (value.responseOperation === undefined) {
+    if (value.status === 'responding')
+      fail(`${label}.responding interactions require responseOperation`)
+    return request.id
   }
-  if (record.request.timeoutMs !== undefined)
-    finiteNonNegative(record.request.timeoutMs, 'interaction.request.timeoutMs')
-  if (record.resolution !== undefined) {
-    assertEntityId('operation', record.resolution.operationId, 'interaction.resolution.operationId')
-    if (record.resolution.containsSecret && record.resolution.publicData !== undefined) {
-      fail('secret interaction resolution cannot contain publicData')
-    }
-    if (record.resolution.dataDigest !== undefined)
-      assertDigest(record.resolution.dataDigest, 'interaction.resolution.dataDigest')
+
+  objectValue(value.responseOperation, `${label}.responseOperation`)
+  const responseOperation = value.responseOperation
+  assertEntityId(
+    'operation',
+    responseOperation.operationId,
+    `${label}.responseOperation.operationId`,
+  )
+  if (responseOperation.dataDigest !== undefined)
+    assertDigest(responseOperation.dataDigest, `${label}.responseOperation.dataDigest`)
+  if (typeof responseOperation.containsSecret !== 'boolean')
+    fail(`${label}.responseOperation.containsSecret must be boolean`)
+  if (
+    responseOperation.outcome !== 'accepted' &&
+    responseOperation.outcome !== 'declined' &&
+    responseOperation.outcome !== 'cancelled'
+  )
+    fail(`${label}.responseOperation.outcome is invalid`)
+  if (value.status !== 'responding') fail(`${label}.responseOperation requires responding status`)
+  if (
+    request.allowedOutcomes !== undefined &&
+    !request.allowedOutcomes.includes(responseOperation.outcome)
+  )
+    fail(`${label}.responseOperation.outcome is not allowed by request`)
+  if (responseOperation.containsSecret && responseOperation.dataDigest !== undefined)
+    fail(`${label}.secret responseOperation cannot retain dataDigest`)
+  if (
+    !responseOperation.containsSecret &&
+    request.answerSpec.fields.some(
+      (field) => field.type === 'secret' || isSensitiveFieldName(field.name),
+    )
+  ) {
+    fail(`${label}.responseOperation must mark secret request data`)
   }
-  assertNoSecretInteractionData(record)
-  assertDate(record.createdAt, 'interaction.createdAt')
-  assertDate(record.updatedAt, 'interaction.updatedAt')
+  return request.id
 }
 
 export function assertAnalysisRecord(record: AnalysisRecord): void {
@@ -312,36 +341,5 @@ function assertAnalysisCitation(
   if (citation.end !== undefined) finiteNonNegative(citation.end, 'analysis.citation.end')
   if (citation.start !== undefined && citation.end !== undefined && citation.end < citation.start) {
     fail('analysis.citation.end must not precede start')
-  }
-}
-
-export function assertNoSecretInteractionData(record: InteractionRecord): void {
-  const hasSecretField = record.request.answerSpec.fields.some((field) => field.type === 'secret')
-  const publicData = record.resolution?.publicData
-  if (publicData !== undefined) {
-    objectValue(publicData, 'interaction.resolution.publicData')
-    for (const [key, value] of Object.entries(publicData)) {
-      if (
-        /(secret|password|passphrase|token|bearer|authorization|credential|private(?:[_-]?key)?|api[-_]?key)/iu.test(
-          key,
-        )
-      ) {
-        fail(`interaction.resolution.publicData.${key} is secret-designated and cannot be retained`)
-      }
-      if (
-        typeof value !== 'string' &&
-        typeof value !== 'boolean' &&
-        !(typeof value === 'number' && Number.isFinite(value)) &&
-        !(Array.isArray(value) && value.every((entry) => typeof entry === 'string'))
-      ) {
-        fail(`interaction.resolution.publicData.${key} contains an unsupported value`)
-      }
-    }
-  }
-  if (hasSecretField && publicData !== undefined) {
-    fail('secret interaction data cannot be retained in the domain state')
-  }
-  if (record.resolution?.containsSecret && publicData !== undefined) {
-    fail('secret interaction data cannot be retained in the domain state')
   }
 }

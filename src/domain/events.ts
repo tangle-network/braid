@@ -15,7 +15,6 @@ import type {
   FeedbackDecisionRecord,
   GraphEdgeRecord,
   GraphNodeRecord,
-  InteractionRecord,
   MessagePartRecord,
   MessageRecord,
   MissingHistoryRange,
@@ -49,7 +48,6 @@ import type {
   FeedbackDecisionId,
   GraphEdgeId,
   GraphNodeId,
-  InteractionId,
   MessageId,
   MessagePartId,
   OperationId,
@@ -71,15 +69,6 @@ export type {
   ProviderEventMeta,
   RunTerminalStatus,
 } from './events-legacy.js'
-
-export interface InteractionResponseRequested {
-  readonly interactionId: InteractionId
-  readonly operationId: OperationId
-  readonly outcome: 'accepted' | 'declined' | 'cancelled'
-  readonly publicData?: Readonly<Record<string, string | number | boolean | readonly string[]>>
-  readonly dataDigest?: Digest
-  readonly containsSecret: boolean
-}
 
 interface RunReconciledPayload {
   readonly runId: RunId
@@ -203,17 +192,6 @@ export interface DomainBraidEventMap {
     readonly provider: ProviderEventMeta
   }
   readonly 'history.missing': { readonly range: MissingHistoryRange }
-  readonly 'interaction.requested': { readonly interaction: InteractionRecord }
-  readonly 'interaction.response.requested': { readonly response: InteractionResponseRequested }
-  readonly 'interaction.resolved': {
-    readonly interactionId: InteractionId
-    readonly resolution: InteractionRecord['resolution']
-  }
-  readonly 'interaction.cancelled': {
-    readonly interactionId: InteractionId
-    readonly operationId: OperationId
-  }
-  readonly 'interaction.expired': { readonly interactionId: InteractionId }
   readonly 'analysis.created': { readonly analysis: AnalysisRecord }
   readonly 'analysis.updated': { readonly analysis: AnalysisRecord }
   readonly 'analysis.completed': { readonly analysis: AnalysisRecord }
@@ -341,11 +319,6 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'turn.updated':
     case 'message.created':
     case 'message.part.updated':
-    case 'interaction.requested':
-    case 'interaction.response.requested':
-    case 'interaction.resolved':
-    case 'interaction.cancelled':
-    case 'interaction.expired':
       return undefined
     case 'interaction.automation.audited':
       return event.audit.runId

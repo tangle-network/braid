@@ -18,7 +18,6 @@ import type {
   FeedbackDecisionRecord,
   GraphEdgeRecord,
   GraphNodeRecord,
-  InteractionRecord,
   MessagePartRecord,
   MissingHistoryRange,
   OperationRecord,
@@ -91,7 +90,6 @@ export interface BraidState {
   readonly conversations: readonly ConversationRecord[]
   readonly branches: readonly BranchRecord[]
   readonly turns: readonly TurnRecord[]
-  readonly interactions: readonly InteractionRecord[]
   readonly analyses: readonly AnalysisRecord[]
   readonly analysisAttachments: readonly AnalysisAttachmentRecord[]
   readonly environments: readonly EnvironmentRecord[]
@@ -147,7 +145,6 @@ export function initialState(
     conversations: [],
     branches: [],
     turns: [],
-    interactions: [],
     analyses: [],
     analysisAttachments: [],
     environments: [],

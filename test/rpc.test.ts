@@ -1663,7 +1663,6 @@ test('semantic queries enforce scope, redact details, preserve ordering, and sur
     branches: [...state.branches].reverse(),
     turns: [...state.turns].reverse(),
     runs: [...state.runs].reverse(),
-    interactions: [...state.interactions].reverse(),
     analyses: [...state.analyses].reverse(),
     environments: [...state.environments].reverse(),
     checkpoints: [...state.checkpoints].reverse(),

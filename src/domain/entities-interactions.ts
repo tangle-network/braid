@@ -1,10 +1,4 @@
-import type { InteractionRequest } from '@tangle-network/agent-interface'
-import type {
-  IsoDateTime,
-  JsonValue,
-  MissingHistoryRange,
-  NonSecretInteractionData,
-} from './entities-base.js'
+import type { IsoDateTime, JsonValue, MissingHistoryRange } from './entities-base.js'
 
 export type {
   NonSecretInteractionData,
@@ -28,63 +22,10 @@ import type {
   MessagePartId,
   OperationId,
   ProfileId,
-  ProviderSessionId,
   RuleId,
   RunId,
   TraceId,
 } from './ids.js'
-
-export type BraidInteractionSubject =
-  | { readonly type: 'tool'; readonly toolName: string }
-  | { readonly type: 'command'; readonly command: string }
-  | { readonly type: 'file'; readonly path: string; readonly preview?: string }
-  | { readonly type: 'resource'; readonly uri: string }
-
-/**
- * The durable interaction request keeps the canonical answer specification and
- * public subject summary, but deliberately drops provider-owned subject input
- * and default answer values that could contain secrets.
- */
-export interface BraidInteractionRequest {
-  readonly id: InteractionId
-  readonly kind: string
-  readonly title: string
-  readonly body?: string
-  readonly subject?: BraidInteractionSubject
-  readonly answerSpec: InteractionRequest['answerSpec']
-  readonly timeoutMs?: number
-  readonly onTimeout?: 'default' | 'fail' | 'wait'
-}
-
-export type InteractionStatus =
-  | 'pending'
-  | 'responding'
-  | 'resolved'
-  | 'declined'
-  | 'cancelled'
-  | 'expired'
-  | 'unknown'
-  | 'conflict'
-
-export interface InteractionResolutionRecord {
-  readonly outcome: 'accepted' | 'declined' | 'cancelled'
-  readonly operationId: OperationId
-  readonly publicData?: NonSecretInteractionData
-  readonly dataDigest?: Digest
-  readonly containsSecret: boolean
-  readonly resolvedAt: IsoDateTime
-}
-
-export interface InteractionRecord {
-  readonly id: InteractionId
-  readonly runId: RunId
-  readonly providerSessionId?: ProviderSessionId
-  readonly request: BraidInteractionRequest
-  readonly status: InteractionStatus
-  readonly resolution?: InteractionResolutionRecord
-  readonly createdAt: IsoDateTime
-  readonly updatedAt: IsoDateTime
-}
 
 export type AutomationRuleScope = 'once' | 'session' | 'persistent'
 

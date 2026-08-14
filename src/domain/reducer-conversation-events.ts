@@ -233,7 +233,6 @@ function applyConversationDeletion(
     messages: state.messages.filter((message) => !messageIds.has(message.id)),
     messageParts: state.messageParts.filter((part) => !messageIds.has(part.messageId)),
     runs: state.runs.filter((run) => !runIds.has(run.id)),
-    interactions: state.interactions.filter((interaction) => !runIds.has(interaction.runId)),
     analyses: state.analyses.filter((analysis) => !analysisIds.has(analysis.id)),
     analysisAttachments: state.analysisAttachments.filter(
       (attachment) => !analysisAttachmentIds.has(attachment.id),

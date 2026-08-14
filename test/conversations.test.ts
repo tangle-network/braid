@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, stat, symlink, unlink, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { AppError } from '../src/app/application.js'
 import { createBraidApplication } from '../src/app/composition.js'
@@ -11,6 +12,7 @@ import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import { assertBraidState } from '../src/domain/invariants.js'
 import { FixedClock } from '../src/ports/clock.js'
+import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 
 async function initializedApp() {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -1004,6 +1006,65 @@ test('conversation deletion purges owned data and retains an honest tombstone', 
   )
   assert.equal(JSON.stringify(state).includes('private target text'), false)
   assertBraidState(state)
+})
+
+test('conversation deletion blocks on a pending interaction retained by a terminal run', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      const request = createInteractionRequest({
+        id: 'interaction-delete-pending',
+        kind: 'question',
+        title: 'Confirm deletion',
+        answerSpec: {
+          fields: [{ type: 'boolean', name: 'confirm', label: 'Confirm', required: true }],
+        },
+        binding: {
+          runId: input.runId,
+          provider: 'fixture',
+          environmentId: 'environment-delete-test',
+          sessionId: 'session-delete-test',
+          executionId: input.runId,
+          interactionId: 'interaction-delete-pending',
+        },
+      })
+      yield { type: 'interaction', request }
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'complete',
+        text: 'finished before the interaction was observed',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-delete-interaction', intent: 'deletion test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-01T00:00:00.000Z'),
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-delete-interaction-send', text: 'finish first' })
+  await send.completion
+
+  const run = app.state().runs[0]
+  assert.ok(run)
+  assert.equal(run.complete, true)
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'pending')
+
+  await assert.rejects(
+    () =>
+      app.conversations.lifecycle.delete({
+        operationId: 'op-delete-interaction-blocked',
+        conversationId: app.state().conversationId,
+      }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'DELETE_BLOCKED' &&
+      error.message.includes('interaction-delete-pending'),
+  )
 })
 
 test('deletion refuses to break a cloned conversation ancestry link', async () => {

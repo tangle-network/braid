@@ -54,11 +54,7 @@ function includeRun(
   return (runId === undefined || run.id === runId) && isInScope(state, 'run', run.id, scope)
 }
 
-function activityForRun(
-  state: BraidState,
-  run: BraidState['runs'][number],
-  output: SemanticActivityItem[],
-): void {
+function activityForRun(run: BraidState['runs'][number], output: SemanticActivityItem[]): void {
   const runElapsedMs = elapsedMs(run.startedAt, run.terminalAt)
   add(output, {
     id: `run:${run.id}`,
@@ -107,25 +103,8 @@ function activityForRun(
     })
   }
 
-  const seenInteractionIds = new Set<string>()
-  for (const interaction of state.interactions) {
-    if (interaction.runId !== run.id) continue
-    seenInteractionIds.add(interaction.id)
-    add(output, {
-      id: `interaction:${interaction.id}`,
-      kind: 'interaction',
-      title: safeTitle(interaction.request.title),
-      status: interaction.status,
-      occurredAt: interaction.createdAt,
-      ...(interaction.request.body === undefined ? {} : { detail: safe(interaction.request.body) }),
-      runId: run.id,
-      entityType: 'run',
-      entityId: run.id,
-    })
-  }
   for (const interaction of run.interactions) {
     const id = interaction.request.id
-    if (seenInteractionIds.has(id)) continue
     add(output, {
       id: `interaction:${id}`,
       kind: 'interaction',
@@ -237,7 +216,7 @@ export function queryActivity(
   if (input.runId !== undefined) assertRunScope(state, input.runId, scope)
   const output: SemanticActivityItem[] = []
   for (const run of state.runs) {
-    if (includeRun(state, run, scope, input.runId)) activityForRun(state, run, output)
+    if (includeRun(state, run, scope, input.runId)) activityForRun(run, output)
   }
   for (const analysis of state.analyses) {
     if (

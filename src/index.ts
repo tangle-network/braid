@@ -64,7 +64,6 @@ export {
   assertBraidState,
   assertIdKind,
   assertJsonValue,
-  assertNoSecretInteractionData,
   DomainInvariantError,
 } from './domain/invariants.js'
 export type {

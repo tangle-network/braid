@@ -17,7 +17,6 @@ import type {
   FeedbackDecisionRecord,
   GraphEdgeRecord,
   GraphNodeRecord,
-  InteractionRecord,
   MessagePartRecord,
   OperationRecord,
   ProfileRecord,
@@ -68,7 +67,6 @@ export interface MaterializedState {
   readonly conversations: readonly ConversationRecord[]
   readonly branches: readonly BranchRecord[]
   readonly turns: readonly TurnRecord[]
-  readonly interactions: readonly InteractionRecord[]
   readonly analyses: readonly AnalysisRecord[]
   readonly analysisAttachments: readonly AnalysisAttachmentRecord[]
   readonly environments: readonly EnvironmentRecord[]
@@ -126,7 +124,6 @@ function materializedState(state: BraidState): MaterializedState {
     conversations: state.conversations,
     branches: state.branches,
     turns: state.turns,
-    interactions: state.interactions,
     analyses: state.analyses,
     analysisAttachments: state.analysisAttachments,
     environments: state.environments,
@@ -207,9 +204,12 @@ export function restoreMaterializedState(value: unknown): BraidState {
     conversationId: snapshot.state.conversationId,
     branchId: snapshot.state.branchId,
   })
+  const stateFields = { ...snapshot.state } as MaterializedState & { interactions?: unknown }
+  // Older snapshots included this unused projection field. Do not materialize it.
+  delete stateFields.interactions
   const restored: BraidState = {
     ...base,
-    ...snapshot.state,
+    ...stateFields,
     revision: snapshot.revision,
     sequence: snapshot.sequence,
     appliedEvents: [],

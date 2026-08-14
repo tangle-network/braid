@@ -396,16 +396,14 @@ function conversationForOperation(
 }
 
 function deleteBlockers(state: BraidState, conversationId: ConversationId): void {
+  const pending = state.runs
+    .filter((run) => run.conversationId === conversationId)
+    .flatMap((run) => run.interactions)
+    .find((interaction) => interaction.status === 'pending')
+  if (pending)
+    throw new AppError('DELETE_BLOCKED', `Interaction ${pending.request.id} is still pending`)
   const active = state.runs.find((run) => run.conversationId === conversationId && !run.complete)
   if (active) throw new AppError('DELETE_BLOCKED', `Run ${active.id} is not terminal`)
-  const pending = state.interactions.find(
-    (interaction) =>
-      interaction.status === 'pending' &&
-      state.runs.some(
-        (run) => run.id === interaction.runId && run.conversationId === conversationId,
-      ),
-  )
-  if (pending) throw new AppError('DELETE_BLOCKED', `Interaction ${pending.id} is still pending`)
   const descendant = state.branches.find(
     (branch) =>
       branch.conversationId !== conversationId && branch.source?.conversationId === conversationId,

@@ -13,6 +13,10 @@ import {
 } from '../src/adapters/storage/sqlite-driver.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
 import { STARTER_PROFILE } from '../src/app/composition.js'
+import {
+  createInteractionRequest,
+  interactionResponseBinding,
+} from '../src/app/interaction-request.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { toJson } from '../src/app/storage-journal-support.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -20,12 +24,18 @@ import type { BraidEventEnvelope } from '../src/domain/events.js'
 import {
   createConversationId,
   createEventId,
+  createInteractionId,
+  createMessageId,
   createOperationId,
   createRunId,
+  createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
-import { createMaterializedStateSnapshot } from '../src/domain/materialized-state-snapshot.js'
-import { reduceEvent } from '../src/domain/reducer.js'
+import {
+  createMaterializedStateSnapshot,
+  restoreMaterializedState,
+} from '../src/domain/materialized-state-snapshot.js'
+import { reduceEvent, replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { type CredentialRef, credentialRef } from '../src/ports/credentials.js'
 import type { JournalEvent } from '../src/ports/storage.js'
@@ -104,6 +114,105 @@ function fixture(): SnapshotFixture {
   }
   return { events, snapshots }
 }
+
+test('restores a prior snapshot with the removed top-level interaction projection', () => {
+  const interactionId = createInteractionId('interaction-snapshot')
+  const runId = createRunId('run-snapshot-interaction')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue after restart?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-snapshot-interaction',
+      sessionId: 'session-snapshot-interaction',
+      executionId: 'execution-snapshot-interaction',
+      interactionId,
+    },
+  })
+  const at = '2026-08-03T00:00:00.000Z'
+  const state = replayEvents(initialState(STARTER_PROFILE, { conversationId }), [
+    {
+      eventId: createEventId('event-snapshot-interaction-workspace'),
+      sequence: 1,
+      revision: 1,
+      occurredAt: at,
+      event: { kind: 'workspace.opened', workspace: '/workspace' },
+    },
+    {
+      eventId: createEventId('event-snapshot-interaction-requested'),
+      sequence: 2,
+      revision: 2,
+      occurredAt: at,
+      event: {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-snapshot-interaction'),
+        runId,
+        turnId: createTurnId('turn-snapshot-interaction'),
+        userMessageId: createMessageId('message-snapshot-interaction-user'),
+        assistantMessageId: createMessageId('message-snapshot-interaction-assistant'),
+        text: 'wait for the answer',
+      },
+    },
+    {
+      eventId: createEventId('event-snapshot-interaction'),
+      sequence: 3,
+      revision: 3,
+      occurredAt: at,
+      event: {
+        kind: 'run.interaction',
+        runId,
+        request,
+        responseBinding: interactionResponseBinding(request),
+        provider: {
+          eventId: 'provider-snapshot-interaction',
+          providerSequence: 1,
+          occurredAt: at,
+        },
+      },
+    },
+  ])
+  const snapshot = createMaterializedStateSnapshot({
+    scopeId: 'snapshot-legacy-interaction',
+    generation: state.sequence,
+    eventId: createEventId('event-snapshot-interaction'),
+    state,
+  })
+  assert.equal(Object.hasOwn(snapshot.state, 'interactions'), false)
+
+  const legacyState = {
+    ...snapshot.state,
+    interactions: [
+      {
+        id: interactionId,
+        runId,
+        request: {
+          id: interactionId,
+          kind: request.kind,
+          title: request.title,
+          answerSpec: request.answerSpec,
+        },
+        status: 'pending',
+        createdAt: at,
+        updatedAt: at,
+      },
+    ],
+  }
+  const restored = restoreMaterializedState({
+    ...snapshot,
+    state: legacyState,
+    stateChecksum: canonicalDigest(legacyState),
+  })
+  assert.equal(Object.hasOwn(restored, 'interactions'), false)
+  assert.deepEqual(
+    restored.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
+    [interactionId],
+  )
+})
 
 async function withRawDatabase<T>(
   root: string,
