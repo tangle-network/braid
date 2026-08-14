@@ -213,3 +213,152 @@ export function assertUniqueRunIds(
   }
   return runIds
 }
+
+function providerSessionId(run) {
+  return run?.providerSessionId ?? run?.receipt?.providerSessionId
+}
+
+function canonicalValue(value) {
+  if (Array.isArray(value)) return value.map((item) => canonicalValue(item))
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalValue(item)]),
+    )
+  return value
+}
+
+function assertRecoveryIdentity(before, after, label) {
+  if (!text(before?.id) || !text(after?.id) || before.id !== after.id)
+    fail('LIVE_RELEASE_RESTART_IDENTITY_CHANGED', `${label} changed the local run identity`, {
+      before,
+      after,
+    })
+  const beforeSession = providerSessionId(before)
+  const afterSession = providerSessionId(after)
+  if (!text(beforeSession) || beforeSession !== afterSession)
+    fail('LIVE_RELEASE_RESTART_SESSION_CHANGED', `${label} changed the provider session identity`, {
+      before,
+      after,
+    })
+  if (
+    before.controlRef === undefined ||
+    after.controlRef === undefined ||
+    JSON.stringify(canonicalValue(before.controlRef)) !==
+      JSON.stringify(canonicalValue(after.controlRef))
+  )
+    fail('LIVE_RELEASE_RESTART_CONTROL_CHANGED', `${label} changed the retained control identity`, {
+      before,
+      after,
+    })
+}
+
+function assertSavedCursor(run, cursor, providerSequence, label) {
+  if (run?.lastCursor !== cursor || run?.lastProviderSequence !== providerSequence)
+    fail(
+      'LIVE_RELEASE_RESTART_CURSOR_CHANGED',
+      `${label} did not retain the saved provider cursor`,
+      { cursor, providerSequence, run },
+    )
+}
+
+export function assertRetainedRestartProof({
+  runId,
+  savedCursor,
+  savedProviderSequence,
+  beforeDetach,
+  detached,
+  reopened,
+  final,
+  reconnectResponse,
+  replayEvent,
+  terminalEvents,
+}) {
+  if (!text(runId) || beforeDetach?.id !== runId || detached?.id !== runId)
+    fail(
+      'LIVE_RELEASE_RESTART_RUN_ID_MISSING',
+      'The restart proof lost the retained run identity',
+      {
+        runId,
+        beforeDetach,
+        detached,
+      },
+    )
+  if (
+    !text(savedCursor) ||
+    !Number.isSafeInteger(savedProviderSequence) ||
+    savedProviderSequence < 1
+  )
+    fail(
+      'LIVE_RELEASE_RESTART_CURSOR_MISSING',
+      'The restart proof did not save a provider cursor from an active stream',
+      { savedCursor, savedProviderSequence, beforeDetach },
+    )
+  if (
+    beforeDetach?.status === undefined ||
+    !['running', 'waiting', 'streaming'].includes(beforeDetach.status)
+  )
+    fail('LIVE_RELEASE_RESTART_NOT_ACTIVE', 'The restart proof did not detach an active run', {
+      beforeDetach,
+    })
+  if (detached?.status !== 'detached')
+    fail('LIVE_RELEASE_RESTART_NOT_DETACHED', 'The restart proof did not persist a detached run', {
+      detached,
+    })
+  if (reopened?.status !== 'detached')
+    fail('LIVE_RELEASE_RESTART_NOT_REOPENED', 'The restart proof did not reopen the detached run', {
+      reopened,
+    })
+  if (reconnectResponse?.type !== 'ack')
+    fail('LIVE_RELEASE_RECONNECT_FAILED', 'The restart proof did not acknowledge reconnection', {
+      reconnectResponse,
+    })
+  assertRecoveryIdentity(beforeDetach, detached, 'detach')
+  assertRecoveryIdentity(beforeDetach, reopened, 'restart')
+  assertRecoveryIdentity(beforeDetach, final, 'reconnect')
+  assertSavedCursor(beforeDetach, savedCursor, savedProviderSequence, 'active stream')
+  assertSavedCursor(detached, savedCursor, savedProviderSequence, 'detached state')
+  assertSavedCursor(reopened, savedCursor, savedProviderSequence, 'reopened state')
+  const replay = replayEvent?.event
+  const provider = replay?.provider
+  if (
+    replay?.runId !== runId ||
+    !text(provider?.cursor) ||
+    provider.cursor === savedCursor ||
+    !Number.isSafeInteger(provider.providerSequence) ||
+    provider.providerSequence <= savedProviderSequence
+  )
+    fail(
+      'LIVE_RELEASE_REPLAY_MISSING',
+      'The restart proof did not replay a provider event after the saved cursor',
+      { savedCursor, savedProviderSequence, replayEvent },
+    )
+  if (final?.status !== 'completed' || final.complete !== true)
+    fail(
+      'LIVE_RELEASE_RESTART_NOT_COMPLETED',
+      'The retained run did not complete after reconnect',
+      {
+        final,
+      },
+    )
+  if (terminalEvents !== 1)
+    fail(
+      'LIVE_RELEASE_RESTART_COMPLETION_DUPLICATED',
+      'The retained run did not emit exactly one terminal completion',
+      { terminalEvents },
+    )
+  return {
+    runId,
+    savedCursor,
+    savedProviderSequence,
+    providerSessionId: providerSessionId(final),
+    controlRef: final.controlRef,
+    replay: {
+      kind: replay.kind,
+      cursor: provider.cursor,
+      providerSequence: provider.providerSequence,
+    },
+    terminalEvents,
+  }
+}

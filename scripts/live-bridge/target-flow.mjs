@@ -30,7 +30,6 @@ import {
   runNormalTurn,
   verifyCancel,
   verifyInteraction,
-  verifyReconnect,
 } from './target-actions.mjs'
 
 export async function executeTarget(
@@ -95,9 +94,6 @@ export async function executeTarget(
     const { finalRun, runId, terminal } = await runNormalTurn(session, result, target, timeoutMs, {
       operationPrefix,
     })
-    await verifyReconnect(session, result, runId, finalRun, providerCapabilities, {
-      operationPrefix,
-    })
     await verifyCancel(session, result, target, finalRun, providerCapabilities, {
       operationPrefix,
       timeoutMs,
@@ -123,7 +119,6 @@ export async function executeTarget(
     await finishTarget(session, result, { operationPrefix })
     result.operationEvidence = evidenceValue({
       normal: result.normal,
-      reconnect: result.reconnect,
       cancel: result.cancel,
       interaction: result.interaction,
       targetProof: result.targetProof,

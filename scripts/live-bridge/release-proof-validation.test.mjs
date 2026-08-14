@@ -6,6 +6,7 @@ import {
   assertContextTransfer,
   assertObservedUsage,
   assertRetainedInteraction,
+  assertRetainedRestartProof,
   assertTargetRunIdentity,
   assertUniqueRunIds,
 } from './release-proof-validation.mjs'
@@ -89,11 +90,81 @@ test('usage, replay, and cancellation unavailable states cannot pass strict conf
   assert.throws(() => assertObservedUsage(run({ tokensKnown: false })), /known token usage/u)
   assert.throws(() => assertObservedUsage(run({ llmCalls: 0 })), /model-call usage/u)
   const unavailable = {
-    reconnect: { status: 'reported-unavailable', advertised: false },
     cancel: { status: 'reported-unavailable', advertised: false },
     interaction: { status: 'reported-unavailable', advertised: false },
   }
   assert.throws(() => assertTargetSemantics(unavailable, { strict: true }), /verified live proof/u)
+  assert.throws(
+    () =>
+      assertTargetSemantics(
+        {
+          cancel: { status: 'advertised-but-not-active', advertised: true },
+          interaction: { status: 'reported-unavailable', advertised: false },
+        },
+        { strict: true },
+      ),
+    /cancel/u,
+  )
+})
+
+test('restart proof requires active detach, cursor replay, retained identity, and one completion', () => {
+  const identity = {
+    id: 'run-1',
+    providerSessionId: 'session-1',
+    lastCursor: '1:0',
+    lastProviderSequence: 1,
+    controlRef: {
+      runId: 'provider-run-1',
+      provider: 'cli-bridge',
+      environmentId: 'environment-1',
+      sessionId: 'session-1',
+      executionId: 'execution-1',
+      requestDigest: 'sha256:request',
+    },
+  }
+  const proof = {
+    runId: 'run-1',
+    savedCursor: '1:0',
+    savedProviderSequence: 1,
+    beforeDetach: { ...identity, status: 'streaming' },
+    detached: { ...identity, status: 'detached' },
+    reopened: { ...identity, status: 'detached' },
+    final: { ...identity, status: 'completed', complete: true },
+    reconnectResponse: { type: 'ack' },
+    replayEvent: {
+      type: 'event',
+      event: {
+        kind: 'run.text.delta',
+        runId: 'run-1',
+        provider: { providerSequence: 2, cursor: '2:0' },
+      },
+    },
+    terminalEvents: 1,
+  }
+  assert.equal(assertRetainedRestartProof(proof).terminalEvents, 1)
+  for (const broken of [
+    { ...proof, savedCursor: undefined },
+    { ...proof, detached: { ...proof.detached, status: 'unknown' } },
+    { ...proof, reopened: { ...proof.reopened, providerSessionId: 'other-session' } },
+    { ...proof, reopened: { ...proof.reopened, lastCursor: '0:0' } },
+    {
+      ...proof,
+      replayEvent: {
+        ...proof.replayEvent,
+        event: {
+          ...proof.replayEvent.event,
+          provider: { providerSequence: 1, cursor: '1:0' },
+        },
+      },
+    },
+    { ...proof, terminalEvents: 2 },
+    { ...proof, final: { ...proof.final, status: 'failed' } },
+  ]) {
+    assert.throws(
+      () => assertRetainedRestartProof(broken),
+      /restart|cursor|replay|completion|reconnect|retained/u,
+    )
+  }
 })
 
 test('interaction proof requires durable declined or resolved state', () => {

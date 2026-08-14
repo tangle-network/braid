@@ -382,6 +382,11 @@ async function runSemanticMatrix() {
     },
     {
       version: 1,
+      type: 'state',
+      state: { runs: [{ id: 'run-cancel-live', status: 'streaming' }] },
+    },
+    {
+      version: 1,
       type: 'ack',
       requestId: 'cancel-glm-5.2',
     },

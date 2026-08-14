@@ -9,7 +9,7 @@ export const liveProofScope = Object.freeze({
   claims: Object.freeze([
     'packed startup',
     'exact marker response for each required target',
-    'advertised reconnect, cancel, and interaction semantics',
+    'advertised cancel and interaction semantics',
     'bounded process cleanup',
   ]),
   excludes: Object.freeze(['LIVE-01..05 full interactive runner conformance']),
