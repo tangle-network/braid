@@ -1,8 +1,5 @@
 import {
-  finiteNonNegativeNumber,
-  optionalFiniteNonNegativeNumber,
   safeProviderDiagnostic,
-  safePublicIdentifier,
 } from '../domain/provider-values.js'
 
 export {
