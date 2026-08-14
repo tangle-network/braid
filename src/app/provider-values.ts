@@ -1,5 +1,3 @@
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
-import type { TurnUsage } from '../domain/events.js'
 import {
   finiteNonNegativeNumber,
   optionalFiniteNonNegativeNumber,
@@ -50,20 +48,4 @@ export function safeRuntimeDiagnostic(value: unknown, fallback: string): string 
     }
   }
   return safeProviderDiagnostic(value, fallback)
-}
-
-export function usageFromFinal(event: Extract<RuntimeStreamEvent, { type: 'final' }>): TurnUsage {
-  const metadata = event.metadata ?? {}
-  const tokenUsage =
-    metadata.tokenUsage && typeof metadata.tokenUsage === 'object'
-      ? (metadata.tokenUsage as Record<string, unknown>)
-      : {}
-  const costUsd = optionalFiniteNonNegativeNumber(metadata.costUsd)
-  const model = safePublicIdentifier(metadata.model)
-  return {
-    input: finiteNonNegativeNumber(tokenUsage.input),
-    output: finiteNonNegativeNumber(tokenUsage.output),
-    ...(costUsd === undefined ? {} : { costUsd }),
-    ...(model === undefined ? {} : { model }),
-  }
 }
