@@ -1,4 +1,5 @@
 import type { BraidEvent } from './events.js'
+import { DomainInvariantError } from './invariants-base.js'
 import { find, upsert } from './reducer-helpers.js'
 import type { BraidState } from './state.js'
 
@@ -103,8 +104,23 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
           : { operations: upsert(state.operations, event.operation) }),
         draft: event.draft?.text ?? '',
       }
-    case 'branch.updated':
-      return { ...state, branches: upsert(state.branches, event.branch) }
+    case 'branch.updated': {
+      if (
+        event.operation.kind !== 'run-override' ||
+        event.operation.status !== 'acknowledged' ||
+        event.operation.target?.kind !== 'branch' ||
+        event.operation.target.id !== event.branch.id
+      ) {
+        throw new DomainInvariantError(
+          `Run override operation ${event.operation.id} does not acknowledge ${event.branch.id}`,
+        )
+      }
+      return {
+        ...state,
+        branches: upsert(state.branches, event.branch),
+        operations: upsert(state.operations, event.operation),
+      }
+    }
     case 'branch.selected':
       find(state.branches, event.branchId, 'Branch')
       return {

@@ -12,6 +12,7 @@ import {
   assertDigest,
   assertEntityId,
   assertJsonValue,
+  assertPublicReference,
   fail,
   failUnsupported,
   finiteNonNegative,
@@ -20,6 +21,7 @@ import {
   objectValue,
 } from './invariants-base.js'
 import { safePublicIdentifier } from './provider-values.js'
+import { assertRetainedRunAdmission } from './invariants-retained-admission.js'
 
 export function assertRunRecord(record: RunRecord): void {
   assertEntityId('run', record.id, 'run.id')
@@ -48,6 +50,10 @@ export function assertRunRecord(record: RunRecord): void {
     assertEntityId('connection', record.connectionId, 'run.connectionId')
   if (record.providerSessionId !== undefined)
     assertEntityId('providerSession', record.providerSessionId, 'run.providerSessionId')
+  if (record.harnessSessionId !== undefined) {
+    nonEmpty(record.harnessSessionId, 'run.harnessSessionId')
+    assertPublicReference(record.harnessSessionId, 'run.harnessSessionId')
+  }
   if (record.environmentId !== undefined)
     assertEntityId('environment', record.environmentId, 'run.environmentId')
   if (record.controlRef !== undefined) {
@@ -60,6 +66,7 @@ export function assertRunRecord(record: RunRecord): void {
       fail('run.controlRef.sessionId must match run.providerSessionId')
     }
   }
+  assertRetainedRunAdmission(record)
   if (record.bindingId !== undefined) assertEntityId('binding', record.bindingId, 'run.bindingId')
   if (record.receiptId !== undefined) assertEntityId('receipt', record.receiptId, 'run.receiptId')
   if (record.replayCursor !== undefined && !isReplayCursor(record.replayCursor))

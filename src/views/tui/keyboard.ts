@@ -55,7 +55,7 @@ const ACTION_ALIASES: Readonly<Record<string, GlobalKeyAction>> = Object.freeze(
 })
 
 const DEFAULT_KEYMAP: BraidKeymap = Object.freeze({
-  closeOverlay: Object.freeze(['escape'] as KeyId[]),
+  closeOverlay: Object.freeze(['escape', 'left'] as KeyId[]),
   commandPalette: Object.freeze(['ctrl+p'] as KeyId[]),
   conversationSelector: Object.freeze(['ctrl+o'] as KeyId[]),
   graph: Object.freeze(['ctrl+g'] as KeyId[]),

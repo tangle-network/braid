@@ -17,6 +17,7 @@ import type {
   ConnectionRuntimeCapabilities,
   ProductionConnectionOptions,
 } from './production-connection-types.js'
+import { supportsTangleRetainedControlLookup } from './tangle-retained-control-lookup.js'
 
 export async function createTangleSandboxClient(
   record: ConnectionRecord,
@@ -73,7 +74,9 @@ export async function capabilitiesForConnection(
       const environment = tangleConnectionCapabilities(
         record,
         reported,
-        options.tangleRetainedControlLookup !== undefined,
+        options.tangleRetainedControlLookup !== undefined ||
+          options.sandboxClient === undefined ||
+          supportsTangleRetainedControlLookup(options.sandboxClient),
       )
       const client = options.sandboxClient
       return capabilityReport(record, 'executor', environment, {

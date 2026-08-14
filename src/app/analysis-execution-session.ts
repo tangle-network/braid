@@ -2,6 +2,7 @@ import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-networ
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalystDescriptor, EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
 import type { AnalysisIdentity } from './analysis-operation.js'
+import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
 import type {
   AnalysisExecutionTarget,
   AnalysisRequest,
@@ -60,6 +61,10 @@ export class AnalysisExecutionSession {
     readonly request: AnalysisRequest
     readonly analystIds: readonly string[]
     readonly executionTarget: AnalysisExecutionTarget
+    readonly onRetainedAdmission: (
+      callId: string,
+      admission: RetainedRunAdmissionRecord,
+    ) => Promise<void>
   }): AsyncGenerator<AnalysisExecutionEvent, void, void> {
     const controller = new AbortController()
     this.#active.set(String(input.identity.analysisId), controller)
@@ -78,6 +83,7 @@ export class AnalysisExecutionSession {
         ? {}
         : { totalTimeoutMs: input.request.totalTimeoutMs }),
       signal: controller.signal,
+      onRetainedAdmission: input.onRetainedAdmission,
     }
     try {
       for await (const item of this.#analyst.stream(request)) yield item

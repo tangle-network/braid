@@ -1,11 +1,16 @@
 import type { InteractionResponse } from '@tangle-network/agent-interface'
-import type { BraidEventEnvelope } from '../domain/events.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { FeedbackDecisionRecord } from '../domain/entities-graph.js'
 import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
+import type { BraidEventEnvelope } from '../domain/events.js'
 import { createFeedbackDecisionId } from '../domain/ids.js'
-import { effectRequestDigest } from './effect-coordinator.js'
+import { interactionRemainingMs } from '../domain/interaction-timeout.js'
+import type { ExecutionPort } from '../ports/execution.js'
+import type { JournalWriter, StateReader } from './application-ports.js'
+import type { InteractionReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
+import { effectRequestDigest } from './effect-coordinator.js'
+import { AppError } from './errors.js'
 import { executeInteractionEffect, type InteractionEffectRequest } from './interaction-effects.js'
 import {
   checkInteractionResponse,
@@ -18,12 +23,8 @@ import {
   recordedInteractionOperation,
   recordedInteractionOwner,
 } from './interaction-response-replay.js'
-import type { InteractionReceipt } from './application-types.js'
-import type { JournalWriter, StateReader } from './application-ports.js'
 import type { RunLedger } from './run-ledger.js'
 import { findRun } from './run-status.js'
-import type { ExecutionPort } from '../ports/execution.js'
-import { AppError } from './errors.js'
 
 export interface InteractionControllerInput {
   readonly operationId: string
@@ -231,11 +232,8 @@ export function isInteractionExpired(
 ): boolean {
   const timeoutMs = interaction.request.timeoutMs
   if (timeoutMs === undefined) return false
-  const startedAt = interaction.source.occurredAt ?? run.startedAt
   const now = input.now?.() ?? new Date().toISOString()
-  const start = Date.parse(startedAt)
-  const current = Date.parse(now)
-  return Number.isFinite(start) && Number.isFinite(current) && current >= start + timeoutMs
+  return interactionRemainingMs(timeoutMs, interaction.source.occurredAt, run.startedAt, now) === 0
 }
 
 function currentInteractionExpired(

@@ -116,6 +116,8 @@ export class AnalysisService {
         request,
         analystIds,
         executionTarget: prepared.executionTarget,
+        onRetainedAdmission: (callId, admission) =>
+          this.#lifecycle.recordRetainedAdmission(prepared.identity, callId, admission),
       })) {
         if (item.result !== undefined) exactResult = item.result
         yield {

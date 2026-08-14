@@ -10,6 +10,7 @@ import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import type { AnalysisCapabilityIssue } from '../../app/analysis-types.js'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionKind, ConnectionRecord } from '../../domain/entities.js'
+import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
 import {
   bridgeRunnerSupportsModel,
   materializeBridgeModelRoute,
@@ -76,6 +77,10 @@ export interface TraceAnalysisAdapterOptions extends ProductionConnectionOptions
   readonly maxReasoningTokens?: number
   readonly timeoutMs?: number
   readonly recordExecution?: (observation: ExternalOptimizerModelExecutionObservation) => void
+  readonly onRetainedAdmission?: (
+    callId: string,
+    admission: RetainedRunAdmissionRecord,
+  ) => Promise<void>
 }
 
 export interface TraceAnalysisAdapterUnavailable {
@@ -353,6 +358,9 @@ export async function createTraceAnalysisAdapter(
         modelExecutionScope.record(observation)
         options.recordExecution?.(observation)
       },
+      ...(options.onRetainedAdmission === undefined
+        ? {}
+        : { onRetainedAdmission: options.onRetainedAdmission }),
     })
     const maxOutputTokens = options.maxOutputTokens ?? DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS
     const maxReasoningTokens =

@@ -16,6 +16,7 @@ import type { ObservableSandboxClient } from '../src/adapters/runtime/sandbox-ob
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
+import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import {
   FakeTangleRetainedSandbox,
   prepareFakeTangleRetainedConnection,
@@ -52,6 +53,7 @@ function setup(sandbox: FakeTangleRetainedSandbox, providerSessionId?: string) {
     select: () => ({ connection: { connectionId: connection.id } }),
     sandboxClient: sandbox.client(),
   }
+  const admissions: RetainedRunAdmissionRecord[] = []
   const input = {
     operationId: 'operation-tangle-retained',
     runId: 'run/tangle-retained',
@@ -59,10 +61,13 @@ function setup(sandbox: FakeTangleRetainedSandbox, providerSessionId?: string) {
     profile,
     connectionId: connection.id,
     signal: new AbortController().signal,
+    onRetainedAdmission: async (admission: RetainedRunAdmissionRecord) => {
+      admissions.push(structuredClone(admission))
+    },
     ...(providerSessionId === undefined ? {} : { sessionId: providerSessionId }),
   }
   const selection = { connection: { connectionId: connection.id } }
-  return { connection, options, input, selection }
+  return { admissions, connection, options, input, selection }
 }
 
 test('retained lifecycle configuration is explicit and bounded', () => {
@@ -173,15 +178,28 @@ test('retained policy preserves account observation methods from the Sandbox cli
   assert.deepEqual(await retained.usage?.(), usage)
 })
 
-test('retained capability and resolution fail closed without provider-backed lookup', async () => {
+test('retained capability and resolution fail closed without exact lookup methods', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
-  const { connection, options, input, selection } = setup(sandbox)
+  const configured = setup(sandbox)
+  const source = configured.options.sandboxClient
+  if (source.fetch === undefined || source.get === undefined) {
+    throw new Error('Fake retained client requires fetch and get')
+  }
+  const options = {
+    ...configured.options,
+    sandboxClient: {
+      create: source.create,
+      fetch: source.fetch,
+      get: source.get,
+    },
+  }
+  const { connection, input, selection } = configured
   const report = await capabilitiesForConnection(connection, options)
   assert.equal(report.runtime.streaming.live, false)
   assert.equal(report.actions.stream, false)
   await assert.rejects(
     resolveTangleSandboxRetainedConnection(options, input, selection, connection.id),
-    /requires provider-backed lookup/u,
+    /requires Sandbox list and get/u,
   )
 
   assert.equal(sandbox.createCalls.length, 0)
@@ -191,24 +209,44 @@ test('retained capability and resolution fail closed without provider-backed loo
   )
 })
 
-test('retained resolution still requires exact control after lookup is configured', async () => {
+test('published Sandbox methods recover the exact retained dispatch without an injected lookup', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
   const { connection, options, input, selection } = setup(sandbox)
-  await assert.rejects(
-    resolveTangleSandboxRetainedConnection(
-      { ...options, tangleRetainedControlLookup: async () => null },
-      input,
-      selection,
-      connection.id,
-    ),
-    /did not report exact retained-run control/u,
+  const report = await capabilitiesForConnection(connection, options)
+  assert.equal(report.runtime.streaming.live, true)
+  assert.equal(report.actions.stream, true)
+
+  const prepared = await resolveTangleSandboxRetainedConnection(
+    options,
+    input,
+    selection,
+    connection.id,
   )
+  assert.equal(await prepared.discoverControlRef(input.runId), null)
+  const handle = await startTangleRetainedRun(
+    createTangleRetainedPlan(prepared, input.runId),
+    input,
+  )
+  assert.deepEqual(await prepared.discoverControlRef(input.runId), handle.controlRef)
+})
+
+test('retained resolution admits exact control when provider lookup is configured', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const { connection, options, input, selection } = setup(sandbox)
+  const prepared = await resolveTangleSandboxRetainedConnection(
+    { ...options, tangleRetainedControlLookup: async () => null },
+    input,
+    selection,
+    connection.id,
+  )
+  assert.equal(prepared.capabilities.retainedControl?.exactRunIdentity, true)
+  assert.equal(prepared.capabilities.streaming.detach, true)
   assert.equal(sandbox.createCalls.length, 0)
 })
 
 test('one retained plan uses exact tags, bounded idle expiry, replay, and result identity', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
-  const { input } = setup(sandbox)
+  const { admissions, input } = setup(sandbox)
   const prepared = await prepareFakeTangleRetainedConnection({
     sandbox,
     profile,
@@ -224,11 +262,20 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.name, prepared.environmentName)
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
-  assert.deepEqual(sandbox.createCalls[0]?.metadata, prepared.environmentMetadata)
+  assert.deepEqual(sandbox.createCalls[0]?.metadata, {
+    ...prepared.environmentMetadata,
+    retainedIdempotencyKey: prepared.environmentIdempotencyKey,
+    sessionId: prepared.providerSessionId,
+    executionId: 'run-tangle-retained',
+  })
   assert.equal(handle.controlRef.environmentId, sandbox.boxes[0]?.id)
   assert.equal(handle.controlRef.sessionId, prepared.providerSessionId)
   assert.equal(handle.controlRef.executionId, 'run-tangle-retained')
   assert.match(handle.controlRef.requestDigest, /^sha256:[0-9a-f]{64}$/u)
+  assert.deepEqual(
+    admissions.map((admission) => admission.phase),
+    ['environment', 'dispatched'],
+  )
 
   sandbox.complete(handle.controlRef.executionId, 'RETAINED_OK')
   const events = []

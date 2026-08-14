@@ -2,7 +2,7 @@
 
 ## Decision
 
-Braid depends on the published Pi TUI library, builds its own application core, selectively adapts presentation and interaction code from Pi and Kimi Code, and treats OpenCode and Hermes Agent as design references.
+Braid depends on the published Pi TUI library, builds its own application core, selectively adapts presentation and interaction code from Pi and Kimi Code, and treats OpenCode, Codex, Hermes Agent, and DeepSeek Harness as design references.
 
 Braid imports the runtime-owned supervisor read and control surface instead of copying the runtime monitor.
 
@@ -13,6 +13,8 @@ This is a source-reuse plan, not a whole-application fork.
 The initial comparison used source, package metadata, licenses, application instructions, architecture documents, interaction code, and tests on 2026-08-01.
 
 The core terminal references were refreshed from their live default branches on 2026-08-10 before and during the production UX pass.
+
+DeepSeek Harness and Cordis were inspected at their live default branches on 2026-08-13.
 
 The Pi repository head was `cd6852a`, with no newer change below `packages/tui` after `87142a8`.
 
@@ -37,6 +39,8 @@ The deciding question was how much source can be reused while preserving `AgentP
 | [OpenCode terminal packages](https://github.com/anomalyco/opencode/tree/dev/packages/tui) | `3a90639cb57619a21e59f544b3e8d23ffed56f48`; npm `1.18.16` | MIT | 50,341 lines across the TUI and run command | OpenTUI alternative and workflow reference |
 | [Codex terminal application](https://github.com/openai/codex/tree/main/codex-rs/tui) | repository `2cc9dbb`; TUI `9742cc8ed5def37a4575263733f70a01ca22047b`; CLI `0.147.0` | Apache-2.0 | 244,714 Rust lines | Composer, worker navigation, status, and snapshot-test reference |
 | [Hermes Agent terminal app](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | `697f2896bf948731eb6fcb93caa7264478590843` | MIT | No size claim used | Client/runtime and workflow reference |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `47f943859bef60e4160492346772ded9b24f765a`; root `0.1.0-rc.5` | MIT | No size claim used | Web, headless, subagent, job, workflow, and event-log reference |
+| [Cordis](https://github.com/cordiverse/cordis) | `8cc9e33fab69e2d0476d126baaf2acb24e6a6ab4`; core `4.0.0-rc.8` | MIT | No size claim used | Rejected application-framework candidate |
 | [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | repository `9c18cb48`; npm `0.132.11` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
 
 The count commands selected the named TypeScript or Rust files from sparse clones and used `wc -l`.
@@ -163,6 +167,36 @@ Its React 19, Ink fork, nanostore, and Python JSON-RPC architecture would add a 
 
 Braid uses Hermes as a workflow comparison and does not port its runtime protocol or application stack.
 
+## DeepSeek Harness and Cordis
+
+DeepSeek Harness addresses several of the same user workflows as Braid.
+
+It provides durable session events, forks, approvals, questions, jobs, subagents, workflows, timing, headless execution, JSON-RPC, ACP, and a browser application.
+
+Its browser views are useful references for stable child identity, completed child review, nested workflow disclosure, background work, and event-derived timing.
+
+DeepSeek Harness is also a complete harness rather than a shell over external harnesses.
+
+It owns its model adapters, tool registry, session log, agent loop, provider contracts, and application composition.
+
+Cordis is the framework beneath that ownership model.
+
+It provides named services on a shared context, declared dependencies, typed event dispatch, scoped service isolation, reversible registrations, configuration composition, and hot reload.
+
+Cordis does not provide terminal rendering, `AgentProfile`, `agent-runtime` execution, retained cloud sessions, or cross-harness control.
+
+Adopting Cordis would add a second application framework and make Braid responsible for dynamic plugin lifecycle semantics that `agent-runtime` does not require.
+
+It would not remove any required Braid terminal, persistence, connection, or runtime adapter work.
+
+Braid therefore adapts DeepSeek's observable user behaviors but does not depend on Cordis or DeepSeek Harness packages.
+
+The rejection test is one representative child-workflow view.
+
+If Braid can render stable child state, nested progress, completion, timing, and replay from canonical runtime events, Cordis adds no required capability.
+
+The current Braid event journal, activity graph, and immutable view models satisfy that ownership test without a second plugin tree.
+
 ## Runtime monitor
 
 `agent-runtime` package version `0.132.12` exports a diagnostic terminal module and `agent-runtime-top` binary.
@@ -192,6 +226,7 @@ The current monitor's unread cancellation request is treated as an upstream defe
 | Interaction queue and modal arbitration | Kimi Code | Behavioral adaptation and tests | No Kimi session controller |
 | Searchable selector and narrow-layout edge cases | Pi and Kimi Code | Reuse library primitive and port behavior tests | No duplicate selector systems |
 | Permission and question workflow comparison | OpenCode and Hermes Agent | Design review only | No source copy or runtime protocol |
+| Child work, background jobs, workflows, and timing | DeepSeek Harness | Behavioral reference only | No Cordis plugin tree, DeepSeek loop, session log, or protocol |
 | Runtime activity and worker tree | `agent-runtime` | Stable data and control import | No supervisor file parsing |
 | Conversation, branch, run, analysis, and environment graph | Braid | New domain component | No runner-native graph as canonical state |
 | Profiles, connections, context transfer, replay, and persistence | Tangle packages and Braid core | Canonical contract integration | No upstream terminal application's product model |
@@ -273,6 +308,7 @@ Visual parity with a reference is insufficient when the Braid profile, capabilit
 | Hidden auto-approval copied from a runner | Shared interaction contract and live denial checks |
 | Whole-app fork temptation | ADR 001 and measured decoupling killer test before reversal |
 | Runtime monitor state leakage | Stable runtime imports and repository check forbidding file-layout access |
+| Dynamic plugin framework duplicates application ownership | Keep Cordis and DeepSeek packages out of production dependencies and render canonical runtime events |
 
 ## Upstream-strategy acceptance
 

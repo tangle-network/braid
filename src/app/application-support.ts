@@ -1,11 +1,11 @@
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { providerEventKey } from '../domain/events.js'
+import type { RunId } from '../domain/ids.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import { redactBraidEvent } from '../domain/redaction.js'
 import { reduceEvent } from '../domain/reducer.js'
 import { usageSnapshotForRun } from '../domain/run-usage.js'
-import type { RunId } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort } from '../ports/effect-storage.js'
@@ -216,6 +216,7 @@ export function reconcileRestartRun(context: RestartPort): Promise<void> {
   const run = context.currentState().runs.find((candidate) => candidate.id === runId)
   if (!run || isProvenTerminalStatus(run.status)) return Promise.resolve()
   if (!context.execution.status) {
+    if (canReplayAfterRestart(context, run)) return markRestartReconnecting(context, runId)
     const unknown = context.commitAndWait({
       kind: 'run.finished',
       runId,
@@ -241,13 +242,8 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
     })
   } catch {
-    await commitRequired(context, {
-      kind: 'run.reconnecting',
-      runId,
-      ...(context.findRun(runId).lastCursor === undefined
-        ? {}
-        : { after: context.findRun(runId).lastCursor }),
-    })
+    await markRestartReconnecting(context, runId)
+    if (canReplayAfterRestart(context, context.findRun(runId))) return
     await commitRequired(context, {
       kind: 'run.unknown',
       runId,
@@ -261,11 +257,8 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
     snapshot.runId !== runId ||
     (current.providerSessionId !== undefined && snapshot.sessionId !== current.providerSessionId)
   ) {
-    await commitRequired(context, {
-      kind: 'run.reconnecting',
-      runId,
-      ...(current.lastCursor === undefined ? {} : { after: current.lastCursor }),
-    })
+    await markRestartReconnecting(context, runId)
+    if (canReplayAfterRestart(context, current)) return
     await commitRequired(context, {
       kind: 'run.unknown',
       runId,
@@ -273,11 +266,7 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
     })
     return
   }
-  await commitRequired(context, {
-    kind: 'run.reconnecting',
-    runId,
-    ...(current.lastCursor === undefined ? {} : { after: current.lastCursor }),
-  })
+  await markRestartReconnecting(context, runId)
   await reconcileSnapshot(context, runId, snapshot)
 }
 
@@ -288,6 +277,7 @@ async function reconcileSnapshot(
 ): Promise<void> {
   const current = context.currentState().runs.find((candidate) => candidate.id === runId)
   if (!current) return
+  if (snapshot.status === 'unknown' && canReplayAfterRestart(context, current)) return
   const evidence = canonicalDigest({
     runId,
     sessionId: snapshot.sessionId ?? null,
@@ -319,6 +309,24 @@ async function reconcileSnapshot(
         : { reason: safeProviderDiagnostic(snapshot.detail, 'RUNTIME_RECONCILIATION_STATUS') }),
     })
   }
+}
+
+function canReplayAfterRestart(context: RestartPort, run: BraidState['runs'][number]): boolean {
+  return Boolean(
+    run.capabilities.streaming.replay &&
+      run.capabilities.events.cursor &&
+      context.execution.reconnect,
+  )
+}
+
+async function markRestartReconnecting(context: RestartPort, runId: string): Promise<void> {
+  const run = context.findRun(runId)
+  if (run.status === 'reconnecting') return
+  await commitRequired(context, {
+    kind: 'run.reconnecting',
+    runId,
+    ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
+  })
 }
 
 async function commitRequired(context: JournalWriter, event: BraidEvent): Promise<void> {

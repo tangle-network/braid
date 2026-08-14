@@ -33,7 +33,11 @@ export function projectSemanticEvent(
 ): Readonly<Record<string, unknown>> {
   const event = envelope.event
   const source = sourceOf(event)
-  const base = source === undefined ? {} : { source: safe(source) }
+  const runId = 'runId' in event && typeof event.runId === 'string' ? event.runId : undefined
+  const base = {
+    ...(runId === undefined ? {} : { runId }),
+    ...(source === undefined ? {} : { source: safe(source) }),
+  }
   switch (event.kind) {
     case 'run.text.delta': {
       const value = text(event.text) ?? ''
@@ -160,7 +164,16 @@ export function projectSemanticEvent(
         interaction: safe({ id: event.interactionId, status: 'cancelled', reason: event.reason }),
       })
     case 'run.provider.event':
-      return withSource(event, { ...base, unknown: safe(event.envelope.event) })
+      return event.envelope.event.type === 'session.updated'
+        ? withSource(event, {
+            ...base,
+            harnessSession: safe({
+              id: event.envelope.event.sessionId,
+              title: event.envelope.event.title,
+              time: event.envelope.event.time,
+            }),
+          })
+        : withSource(event, { ...base, unknown: safe(event.envelope.event) })
     case 'run.queue.added':
       return {
         ...base,

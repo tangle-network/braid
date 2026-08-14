@@ -1,6 +1,7 @@
 import type {
   AgentProfile,
   AgentProfileValidationIssue,
+  HarnessType,
   ReasoningEffort,
 } from '@tangle-network/agent-interface'
 import type {
@@ -191,7 +192,7 @@ export interface BranchBoundary {
 }
 
 export interface RunOverrides {
-  readonly runner?: string
+  readonly runner?: HarnessType
   readonly model?: string
   readonly effort?: ReasoningEffort
   readonly mode?: string

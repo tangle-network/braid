@@ -395,6 +395,8 @@ The retained adapter composes Runtime `startRetainedRun`, `reconnectRetainedRun`
 
 Its saved control reference contains provider, environment, session, execution, provider run, and request-digest identity.
 
+Headless run state exposes that secret-free reference so a fresh controller can inspect the exact recovered execution without replaying old events.
+
 Native follow-up turns remain disabled because the current provider does not prove a matching context boundary.
 
 An ambiguous retained start failure does not destroy its environment because an idempotent create can return a pre-existing workspace.

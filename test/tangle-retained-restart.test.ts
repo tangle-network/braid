@@ -11,6 +11,7 @@ import {
   type DurableBraidApplication,
 } from '../src/app/composition.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
 import {
   FakeTangleRetainedSandbox,
@@ -155,6 +156,7 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
   sandbox.providerRunId = providerRunId
   const providerSessionId = 'session-braid-existing-conversation'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const first = retainedExecution(sandbox)
     if (first.admit === undefined) throw new Error('Retained admission is unavailable')
@@ -166,6 +168,9 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
       workspaceRoot: root,
       sessionId: providerSessionId,
       signal: abort.signal,
+      onRetainedAdmission: async (admission: RetainedRunAdmissionRecord) => {
+        admissions.push(structuredClone(admission))
+      },
     }
     const admission = await first.admit(input)
     assert.equal(admission.providerSessionId, providerSessionId)
@@ -182,6 +187,10 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
     const controlRef = event?.type === 'braid.execution.observed' ? event.controlRef : undefined
     assert.equal(controlRef?.sessionId, providerSessionId)
     assert.equal(controlRef?.runId, providerRunId)
+    assert.deepEqual(
+      admissions.map((admission) => admission.phase),
+      ['environment', 'dispatched'],
+    )
     await stream.return?.(undefined)
 
     const restarted = retainedExecution(sandbox)

@@ -18,6 +18,7 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
+import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
 import { safePublicIdentifier } from '../../domain/provider-values.js'
 import { redactProviderError } from '../../domain/redaction.js'
 import {
@@ -78,6 +79,10 @@ export interface RuntimeTraceModelOwnerOptions {
   readonly complete?: RouterTransportConfig['complete']
   readonly retry?: RuntimeRouterRetryPolicy
   readonly recordExecution?: ModelExecutionRecorder
+  readonly onRetainedAdmission?: (
+    callId: string,
+    admission: RetainedRunAdmissionRecord,
+  ) => Promise<void>
 }
 
 export interface RuntimeTraceModelOwner {
@@ -676,8 +681,12 @@ export function createRuntimeTraceModelOwner(
       const messages = textMessages(request.request)
       const profile = analystCallProfile(options, request.request, retry)
       executionProfileDigest = canonicalAgentProfileDigestHex(profile)
-      dispatched = true
       if (options.connection.kind === 'cli-bridge') {
+        const onRetainedAdmission = options.onRetainedAdmission
+        if (onRetainedAdmission === undefined) {
+          throw new TypeError('CLI Bridge trace analysis requires durable admission storage')
+        }
+        dispatched = true
         const retained = await runRetainedCliBridgeModelCall({
           baseUrl: options.baseUrl,
           bearerToken: options.credential ?? LOCAL_ROUTER_BEARER,
@@ -686,10 +695,12 @@ export function createRuntimeTraceModelOwner(
           messages,
           callId: request.callId,
           signal: request.signal,
+          onAdmission: (admission) => onRetainedAdmission(request.callId, admission),
         })
         controlRef = retained.controlRef
         summary = summarizeRetainedResult(retained.result, configuredModel, startedAt)
       } else {
+        dispatched = true
         const { createExecutor, streamAgentTurn } = await import(
           '@tangle-network/agent-runtime/kernel'
         )

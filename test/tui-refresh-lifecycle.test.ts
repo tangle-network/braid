@@ -13,9 +13,10 @@ import {
   createRunId,
 } from '../src/domain/ids.js'
 import type { BraidUiController, UiDispatchResult } from '../src/views/shared/intents.js'
-import type { BraidViewModel, HeadlessState } from '../src/views/shared/models.js'
+import type { BraidViewModel, HeadlessState, InteractionView } from '../src/views/shared/models.js'
 import type { ModalCoordinator, ModalOptions } from '../src/views/tui/modal-coordinator.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
+import { TerminalInteractionController } from '../src/views/tui/terminal-interaction-controller.js'
 import { TerminalSurfaceOverlays } from '../src/views/tui/terminal-surface-overlays.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -221,6 +222,58 @@ test('late live refreshes cannot affect a closed surface and reopening starts a 
   } finally {
     surfaces.dispose()
   }
+})
+
+test('one interaction shell refreshes its countdown and disposal stops the timer', async () => {
+  const interaction: InteractionView = {
+    runId: 'run-countdown',
+    interactionId: 'interaction-countdown',
+    profileName: 'Review profile',
+    runner: 'pi',
+    kind: 'permission',
+    prompt: 'Allow this read?',
+    answerSpec: { kind: 'boolean', required: true },
+    allowedOutcomes: ['accept', 'reject', 'cancel'],
+    responseScopes: ['once'],
+    remainingMs: 5_000,
+    queuePosition: 0,
+    queueTotal: 1,
+    secret: false,
+  }
+  let current = { ...viewModel(), interactions: [interaction] }
+  let renders = 0
+  const spy = modalSpy()
+  const controller = new TerminalInteractionController({
+    theme: createBraidTheme(false),
+    modals: spy.modals,
+    nextOperationId: () => 'operation-countdown',
+    dispatch: async () => ({ kind: 'accepted', revision: current.revision }),
+    currentView: () => current,
+    isStopped: () => false,
+    requestRender: () => {
+      renders += 1
+    },
+    rows: () => 12,
+    openAutomation: () => {},
+  })
+
+  controller.sync(current)
+  const shell = spy.current()
+  assert.match(shell?.render(80).join('\n') ?? '', /5s left/u)
+  current = {
+    ...current,
+    interactions: [{ ...interaction, remainingMs: 900 }],
+  }
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(spy.current(), shell)
+  assert.match(shell?.render(80).join('\n') ?? '', /1s left/u)
+  assert.ok(renders > 0)
+
+  controller.dispose()
+  const rendersAfterDispose = renders
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(renders, rendersAfterDispose)
+  spy.closeTop()
 })
 
 test('analysis surfaces stay frozen and TerminalApp.stop disposes live refreshes', async () => {

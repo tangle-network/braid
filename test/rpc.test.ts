@@ -361,6 +361,153 @@ test('JSONL drives the complete canonical conversation lifecycle', async () => {
   )
 })
 
+test('JSONL run configuration is replay safe, visible, and reaches Runtime', async () => {
+  let streamedProfile: unknown
+  const execution: ExecutionPort = {
+    admit: () => ({}),
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      streamedProfile = structuredClone(input.profile)
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'JSONL run configuration completed',
+        text: 'configured JSONL run completed',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'rpc-run-configuration', intent: 'JSONL run configuration' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  const responses: BraidResponse[] = []
+  async function* input(): AsyncGenerator<string> {
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-init',
+      command: 'initialize',
+      params: { workspace: '/workspace' },
+    })}\n`
+    const override = {
+      version: 1,
+      operationId: 'op-rpc-run-configuration',
+      command: 'set_run_override',
+      params: {
+        runner: 'codex',
+        model: 'openai/gpt-5.6',
+        effort: 'xhigh',
+        mode: 'interactive',
+      },
+    }
+    yield `${JSON.stringify({ ...override, requestId: 'run-configuration-set' })}\n`
+    yield `${JSON.stringify({ ...override, requestId: 'run-configuration-replay' })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-send',
+      operationId: 'op-rpc-run-configuration-send',
+      command: 'send',
+      params: { text: 'use the JSONL branch configuration' },
+    })}\n`
+    await app.waitForIdle()
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-state',
+      command: 'get_state',
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-clear',
+      operationId: 'op-rpc-run-configuration-clear',
+      command: 'set_run_override',
+      params: { clear: true },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-cleared-state',
+      command: 'get_state',
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-stop',
+      operationId: 'op-rpc-run-configuration-stop',
+      command: 'shutdown',
+    })}\n`
+  }
+
+  const code = await runRpc(controllerFor(app), input(), {
+    write: responseWriter(responses),
+  })
+  const configured = resultFor<{ readonly overrides: Readonly<Record<string, string>> }>(
+    responses,
+    'run-configuration-set',
+  )
+  const replayed = resultFor<{ readonly overrides: Readonly<Record<string, string>> }>(
+    responses,
+    'run-configuration-replay',
+  )
+  const cleared = resultFor<{ readonly overrides: Readonly<Record<string, string>> }>(
+    responses,
+    'run-configuration-clear',
+  )
+  const configuredState = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'run-configuration-state',
+  )
+  const clearedState = responses.find(
+    (response) =>
+      response.type === 'state' && response.requestId === 'run-configuration-cleared-state',
+  )
+
+  assert.equal(code, 0)
+  assert.deepEqual(configured.overrides, {
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+    mode: 'interactive',
+  })
+  assert.deepEqual(replayed, configured)
+  assert.deepEqual(cleared.overrides, {})
+  assert.deepEqual(streamedProfile, {
+    ...DETERMINISTIC_PROFILE,
+    harness: 'codex',
+    model: {
+      ...DETERMINISTIC_PROFILE.model,
+      default: 'openai/gpt-5.6',
+      reasoningEffort: 'xhigh',
+    },
+  })
+  assert(configuredState?.type === 'state' && configuredState.projection === 'full')
+  assert.deepEqual(configuredState.state.runConfiguration, {
+    profileName: DETERMINISTIC_PROFILE.name,
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+    mode: 'interactive',
+    overrides: {
+      runner: 'codex',
+      model: 'openai/gpt-5.6',
+      effort: 'xhigh',
+      mode: 'interactive',
+    },
+  })
+  assert(clearedState?.type === 'state' && clearedState.projection === 'full')
+  assert.equal(clearedState.state.runConfiguration.runner, DETERMINISTIC_PROFILE.harness)
+  assert.equal(clearedState.state.runConfiguration.model, DETERMINISTIC_PROFILE.model?.default)
+  assert.deepEqual(clearedState.state.runConfiguration.overrides, {})
+  assert.equal(
+    app
+      .events()
+      .filter(
+        (entry) =>
+          entry.event.kind === 'branch.updated' &&
+          entry.event.operation.id === 'op-rpc-run-configuration',
+      ).length,
+    1,
+  )
+  assert.equal(
+    responses.some((response) => response.type === 'error'),
+    false,
+  )
+})
+
 test('JSONL accepts a valid inline conversation import larger than one MiB', async () => {
   const source = createBraidApplication({ fixture: 'deterministic' })
   source.initialize('/workspace')

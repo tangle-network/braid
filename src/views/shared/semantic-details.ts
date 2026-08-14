@@ -173,6 +173,9 @@ function dataFor(
         ...(run.providerSessionId === undefined
           ? {}
           : { providerSessionId: run.providerSessionId }),
+        ...(run.harnessSessionId === undefined
+          ? {}
+          : { harnessSessionId: safe(run.harnessSessionId) }),
         ...(run.environmentId === undefined ? {} : { environmentId: run.environmentId }),
         ...(run.bindingId === undefined ? {} : { bindingId: run.bindingId }),
         ...(run.receiptId === undefined ? {} : { receiptId: run.receiptId }),

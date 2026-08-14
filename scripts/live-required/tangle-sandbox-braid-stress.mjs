@@ -33,7 +33,8 @@ import {
   terminalStatus,
   waitForControlIdentity,
   waitForTerminal,
-  waitForVisibleEvents,
+  waitForWorkspaceToolEvents,
+  workspaceToolEvents,
 } from './tangle-sandbox-braid-stress-support.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -113,6 +114,14 @@ function continuityResponsePath(coordinates) {
   return `/workspace/.braid-live/${coordinates.proofId}/continuity-response.txt`
 }
 
+export function sandboxWorkspaceRelativePath(path) {
+  const prefix = '/workspace/'
+  if (!path.startsWith(prefix) || path.length === prefix.length) {
+    throw new Error(`Sandbox workspace path must be below ${prefix}`)
+  }
+  return path.slice(prefix.length)
+}
+
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
@@ -172,8 +181,8 @@ async function prepareContinuityChallenge(client, controlRef, coordinates) {
   const bytes = `${challenge}\n`
   const path = continuityChallengePath(coordinates)
   const responsePath = continuityResponsePath(coordinates)
-  await box.write(path, bytes)
-  const readBack = await box.read(path)
+  await box.write(sandboxWorkspaceRelativePath(path), bytes)
+  const readBack = await box.read(sandboxWorkspaceRelativePath(path))
   assert.equal(readBack, bytes, 'continuity challenge did not persist before the follow-up')
   return {
     path,
@@ -207,8 +216,8 @@ async function verifyRetainedWorkspace(client, controlRef, coordinates, continui
   const markerPath = workspaceMarkerPath(coordinates)
   const expectedMarker = `${coordinates.marker}\n`
   const [readValue, continuityResponse] = await Promise.all([
-    box.read(markerPath),
-    box.read(continuity.responsePath),
+    box.read(sandboxWorkspaceRelativePath(markerPath)),
+    box.read(sandboxWorkspaceRelativePath(continuity.responsePath)),
   ])
   const git = await box.exec(
     `set -eu; test "$(cat -- ${shellQuote(markerPath)})" = ${shellQuote(coordinates.marker)}; test "$(cat -- ${shellQuote(continuity.responsePath)})" = ${shellQuote(continuity.expectedDigest)}; test "$(git -C /workspace rev-parse --is-inside-work-tree)" = true; git -C /workspace status --short --untracked-files=no`,
@@ -310,14 +319,23 @@ export function cloudFailureEventTimeline(responses, runId) {
         event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
           ? event.payload
           : event
-      const eventRunId = typeof payload.runId === 'string' ? payload.runId : undefined
+      const value =
+        payload.value && typeof payload.value === 'object' && !Array.isArray(payload.value)
+          ? payload.value
+          : undefined
+      const eventRunId =
+        typeof payload.runId === 'string'
+          ? payload.runId
+          : typeof value?.runId === 'string'
+            ? value.runId
+            : undefined
       if (eventRunId !== undefined && eventRunId !== runId) return []
       const kind = diagnosticText(event.kind)
       if (kind === undefined) return []
       const fields = Object.fromEntries(
         ['status', 'detail', 'error', 'reason', 'code'].flatMap((name) => {
-          const value = diagnosticText(payload[name])
-          return value === undefined ? [] : [[name, value]]
+          const field = diagnosticText(payload[name] ?? value?.[name])
+          return field === undefined ? [] : [[name, field]]
         }),
       )
       return [
@@ -661,13 +679,7 @@ function assertSameAccount(state, run, directIdentity) {
 }
 
 function toolEvidence(observation, label) {
-  const events = observation.events.filter(
-    (event) =>
-      event.kind === 'run.tool.call' ||
-      event.kind === 'run.tool.result' ||
-      (event.kind === 'run.part.updated' &&
-        (event.partKind === 'tool-call' || event.partKind === 'tool-result')),
-  )
+  const events = workspaceToolEvents(observation)
   if (events.length === 0) {
     throw new MissingIntegrationError(`${label} exposed no provider-bound workspace tool event`, {
       required: ['run.tool.call', 'run.tool.result', 'run.part.updated:tool'],
@@ -1012,7 +1024,7 @@ export async function runBraidSandboxStress({
   environment = process.env,
   repository: suppliedRepository = repository,
   binary: suppliedBinary,
-  requireZeroActiveResourceDelta = true,
+  requireZeroActiveResourceDelta = false,
 } = {}) {
   const startedAt = performance.now()
   const coordinates = proofCoordinates()
@@ -1155,29 +1167,25 @@ export async function runBraidSandboxStress({
     assertNonTerminalRun(firstRunBeforeVisible, 'first Braid run')
     assert.equal(localRunCount(firstStateBeforeVisible.state, firstRunId), 1)
     await phase('firstProcess.waitVisible', () =>
-      waitForVisibleEvents(firstSession, firstRunId, timeoutMs, 'first process'),
+      waitForWorkspaceToolEvents(firstSession, firstRunId, timeoutMs, 'first process'),
     )
     const firstState = await stateRoundTrip(firstSession)
     const firstRun = firstState.state.runs?.find((run) => run.id === firstRunId)
     assertNonTerminalRun(firstRun, 'first Braid run')
     assert.equal(localRunCount(firstState.state, firstRunId), 1)
-    const persistedCursor = firstRun?.lastCursor
-    const persistedCursorRecord = firstState.state.replayCursors?.find(
-      (record) => record.runId === firstRunId,
-    )
+    const persistedCursor = firstRun?.cursor
     resumeFromCursor = persistedCursor
     if (
       resumeFromCursor === undefined ||
-      persistedCursorRecord?.cursor !== resumeFromCursor ||
-      !Number.isSafeInteger(persistedCursorRecord.committedSequence) ||
-      persistedCursorRecord.committedSequence < 1 ||
-      persistedCursorRecord.committedSequence > firstState.state.sequence
+      !Number.isSafeInteger(firstRun?.cursorCommittedSequence) ||
+      firstRun.cursorCommittedSequence < 1 ||
+      firstRun.cursorCommittedSequence > firstState.state.sequence
     ) {
       throw new MissingIntegrationError(
         'The pre-kill Braid process did not persist one acknowledged provider resume cursor',
         {
           runId: firstRunId,
-          required: ['run.lastCursor', 'state.replayCursors', 'committed journal sequence'],
+          required: ['run.cursor', 'run.cursorCommittedSequence'],
         },
       )
     }
@@ -1238,7 +1246,7 @@ export async function runBraidSandboxStress({
     )
     finalCursor =
       latestCursorFromResponses(freshSession.responses, firstRunId) ??
-      freshRun?.lastCursor ??
+      freshRun?.cursor ??
       freshObservation.cursor
     freshVisible = assertUniqueVisibleEvents(freshSession.responses, firstRunId, 'fresh process')
     assertNonVacuousVisibleEvents(freshVisible, 'fresh-process replay')
@@ -1710,6 +1718,10 @@ export async function runBraidSandboxStress({
       identity: cleanupIdentity,
       activeResourceDelta: usageDelta.activeSandboxes,
       activeResourceDeltaRequired: requireZeroActiveResourceDelta,
+      accountUsageScope: 'account-wide',
+      accountUsageAttribution: requireZeroActiveResourceDelta
+        ? 'exclusive-proof-window'
+        : 'unattributed-shared-usage',
       usageObservationComplete,
       usageDelta,
     },

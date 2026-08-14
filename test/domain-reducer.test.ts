@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { STARTER_PROFILE } from '../src/app/composition.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
 import { createEventId, createReplayCursor, createWorkspaceId } from '../src/domain/ids.js'
 import {
@@ -73,6 +74,134 @@ test('incremental reduction and full replay produce the same complete projection
   assert.equal(incremental.runs[0]?.complete, true)
   assert.equal(incremental.operations[0]?.status, 'terminal')
   assert.equal(incremental.health.status, 'healthy')
+})
+
+test('retained admission survives the pre-dispatch crash window and binds one exact run', () => {
+  const environmentAdmission = {
+    phase: 'environment' as const,
+    provider: 'cli-bridge',
+    environmentId: 'environment-retained-admission',
+    idempotencyKey: 'environment-retained-admission',
+    turnId: 'turn-retained-admission',
+    sessionId: 'session-retained-admission',
+    executionId: 'execution-retained-admission',
+  }
+  const dispatchedAdmission = {
+    phase: 'dispatched' as const,
+    idempotencyKey: environmentAdmission.idempotencyKey,
+    turnId: environmentAdmission.turnId,
+    controlRef: {
+      provider: environmentAdmission.provider,
+      environmentId: environmentAdmission.environmentId,
+      sessionId: environmentAdmission.sessionId,
+      executionId: environmentAdmission.executionId,
+      runId: 'provider-run-retained-admission',
+      requestDigest: `sha256:${'d'.repeat(64)}` as const,
+    },
+  }
+  const initialEvents = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-retained-admission',
+        runId: 'run-retained-admission',
+        turnId: environmentAdmission.turnId,
+        userMessageId: 'message-user-retained-admission',
+        assistantMessageId: 'message-assistant-retained-admission',
+        text: 'retain this run',
+      },
+      2,
+    ),
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: environmentAdmission,
+      },
+      3,
+    ),
+  ] as const
+
+  const interrupted = replayEvents(initialState(STARTER_PROFILE), initialEvents)
+  assert.deepEqual(interrupted.runs[0]?.retainedAdmission, environmentAdmission)
+  assert.equal(interrupted.runs[0]?.controlRef, undefined)
+
+  const dispatched = reduceEvent(
+    interrupted,
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: dispatchedAdmission,
+      },
+      4,
+    ),
+  )
+  assert.deepEqual(dispatched.runs[0]?.retainedAdmission, dispatchedAdmission)
+  assert.deepEqual(dispatched.runs[0]?.controlRef, dispatchedAdmission.controlRef)
+  assert.equal(dispatched.runs[0]?.providerSessionId, environmentAdmission.sessionId)
+
+  const harnessSession = reduceEvent(
+    dispatched,
+    envelope(
+      {
+        kind: 'run.provider.event',
+        runId: 'run-retained-admission',
+        envelope: {
+          runId: 'run-retained-admission',
+          eventId: 'provider-event-native-session',
+          sequence: 5,
+          cursor: 'provider-cursor-5',
+          receivedAt: '2026-08-02T00:00:05.000Z',
+          event: { type: 'session.updated', sessionId: 'ses_native_harness' },
+        },
+        provider: {
+          eventId: 'provider-event-native-session',
+          providerSequence: 5,
+          cursor: 'provider-cursor-5',
+          receivedAt: '2026-08-02T00:00:05.000Z',
+        },
+      },
+      5,
+    ),
+  )
+  assert.equal(harnessSession.runs[0]?.providerSessionId, environmentAdmission.sessionId)
+  assert.equal(harnessSession.runs[0]?.harnessSessionId, 'ses_native_harness')
+  assert.deepEqual(harnessSession.runs[0]?.controlRef, dispatchedAdmission.controlRef)
+  assert.equal(harnessSession.runs[0]?.lastCursor, 'provider-cursor-5')
+
+  const retriedEnvironment = reduceEvent(
+    harnessSession,
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: environmentAdmission,
+      },
+      6,
+    ),
+  )
+  assert.deepEqual(retriedEnvironment.runs[0]?.retainedAdmission, dispatchedAdmission)
+
+  assert.throws(
+    () =>
+      reduceEvent(
+        retriedEnvironment,
+        envelope(
+          {
+            kind: 'run.retained.admitted',
+            runId: 'run-retained-admission',
+            admission: {
+              ...environmentAdmission,
+              environmentId: 'environment-retained-conflict',
+            },
+          },
+          7,
+        ),
+      ),
+    /conflicts with its environment admission/u,
+  )
 })
 
 test('a cancellation request that loses the terminal race preserves the proven result', () => {
@@ -512,5 +641,92 @@ test('legacy event payloads still reject cross-domain identifiers at the reducer
         ),
       ),
     /Invalid run identifier/u,
+  )
+})
+
+test('branch updates require one acknowledged run-override operation for the exact branch', () => {
+  const opened = reduceEvent(
+    initialState(STARTER_PROFILE),
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+  )
+  const branch = opened.branches[0]
+  assert(branch)
+  const updated = {
+    ...branch,
+    overrides: { runner: 'codex' as const },
+    updatedAt: '2026-08-02T00:00:00.001Z',
+  }
+  const operation = {
+    id: 'op-domain-run-override',
+    kind: 'run-override' as const,
+    requestDigest: canonicalDigest({ runner: 'codex' }),
+    status: 'acknowledged' as const,
+    target: { kind: 'branch' as const, id: branch.id },
+    createdAt: '2026-08-02T00:00:00.001Z',
+    updatedAt: '2026-08-02T00:00:00.001Z',
+    acknowledgedAt: '2026-08-02T00:00:00.001Z',
+  }
+
+  const accepted = reduceEvent(
+    opened,
+    envelope({ kind: 'branch.updated', branch: updated, operation }, 2),
+  )
+  assert.equal(accepted.branches[0]?.overrides.runner, 'codex')
+  assert.equal(accepted.operations[0]?.kind, 'run-override')
+
+  assert.throws(
+    () =>
+      reduceEvent(
+        opened,
+        envelope(
+          {
+            kind: 'branch.updated',
+            branch: updated,
+            operation: {
+              ...operation,
+              target: { kind: 'branch', id: 'branch-other' },
+            },
+          },
+          2,
+        ),
+      ),
+    /does not acknowledge/u,
+  )
+})
+
+test('branch updates reject unsupported override values during replay', () => {
+  const opened = reduceEvent(
+    initialState(STARTER_PROFILE),
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+  )
+  const branch = opened.branches[0]
+  assert(branch)
+  assert.throws(
+    () =>
+      reduceEvent(
+        opened,
+        envelope(
+          {
+            kind: 'branch.updated',
+            branch: {
+              ...branch,
+              overrides: { runner: 'not-a-runner' },
+              updatedAt: '2026-08-02T00:00:00.001Z',
+            } as unknown as typeof branch,
+            operation: {
+              id: 'op-domain-invalid-run-override',
+              kind: 'run-override',
+              requestDigest: canonicalDigest({ runner: 'not-a-runner' }),
+              status: 'acknowledged',
+              target: { kind: 'branch', id: branch.id },
+              createdAt: '2026-08-02T00:00:00.001Z',
+              updatedAt: '2026-08-02T00:00:00.001Z',
+              acknowledgedAt: '2026-08-02T00:00:00.001Z',
+            },
+          },
+          2,
+        ),
+      ),
+    /branch\.overrides\.runner is not supported/u,
   )
 })

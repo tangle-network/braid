@@ -15,6 +15,7 @@ import {
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
+import { STARTER_PROFILE } from '../src/app/composition.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import {
   createConversationId,
@@ -24,6 +25,7 @@ import {
   createWorkspaceId,
 } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
+import { initialState } from '../src/domain/state.js'
 import type { CredentialPort } from '../src/ports/credentials.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { JournalEvent, JsonValue, StoragePort } from '../src/ports/storage.js'
@@ -319,6 +321,43 @@ test('MemoryStorage remains behind StoragePort for deterministic duplicate and g
         operation: missingRedaction,
       }),
     (error: unknown) => error instanceof StorageError && error.code === 'OPERATION_FAILED_REPLAY',
+  )
+})
+
+test('storage journal materializes provider replay identity for restart and deduplication', async () => {
+  const storage = new MemoryStorage()
+  const clock = new FixedClock('2026-08-02T00:00:00.000Z')
+  const journal = await StorageJournal.fromStorage(storage, clock)
+  const state = initialState(STARTER_PROFILE)
+  const provider = {
+    eventId: 'provider-event-cursor-7',
+    providerSequence: 7,
+    cursor: 'cursor-7',
+    receivedAt: '2026-08-02T00:00:01.000Z',
+  }
+  const envelope = journal.envelope(state, {
+    kind: 'run.provider.event',
+    runId: 'run-storage-provider-cursor',
+    envelope: {
+      runId: 'run-storage-provider-cursor',
+      eventId: provider.eventId,
+      sequence: provider.providerSequence,
+      cursor: provider.cursor,
+      receivedAt: provider.receivedAt,
+      event: { type: 'session.updated', sessionId: 'ses_storage_cursor' },
+    },
+    provider,
+  })
+
+  assert.equal(envelope.cursor, provider.cursor)
+  assert.equal((await journal.append(envelope)).appended, true)
+  const stored = (await storage.events())[0]
+  assert.equal(stored?.cursor, provider.cursor)
+  assert.equal(stored?.providerEventId, provider.eventId)
+  assert.equal(stored?.receivedAt, provider.receivedAt)
+  assert.equal(
+    (await storage.replay({ runId: createRunId('run-storage-provider-cursor') })).lastCursor,
+    provider.cursor,
   )
 })
 

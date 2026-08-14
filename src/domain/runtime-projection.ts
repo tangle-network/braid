@@ -5,7 +5,11 @@ import type {
 } from '@tangle-network/agent-interface'
 import type { AutomationRuleRecord } from './entities-runtime.js'
 import type { Digest, OperationId } from './ids.js'
-import type { RunAdmissionReceipt, RunCapabilities } from './run-contracts.js'
+import type {
+  RetainedRunAdmissionRecord,
+  RunAdmissionReceipt,
+  RunCapabilities,
+} from './run-contracts.js'
 import type { RuntimeEventSummary } from './runtime-events.js'
 
 export interface MessagePartSource {
@@ -86,6 +90,7 @@ export interface RuntimeRunFields {
   readonly receipt: RunAdmissionReceipt
   readonly capabilities: RunCapabilities
   readonly controlRef?: AgentExactRunControlRef
+  readonly retainedAdmission?: RetainedRunAdmissionRecord
   readonly reasoningTokens?: number
   readonly terminalReason?: string
   readonly lastCursor?: string

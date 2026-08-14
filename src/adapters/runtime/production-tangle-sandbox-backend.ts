@@ -27,6 +27,10 @@ import {
   safeExecutionId,
 } from './production-backend-common.js'
 import { observeSandboxClient } from './sandbox-observation.js'
+import {
+  createTangleRetainedControlLookup,
+  supportsTangleRetainedControlLookup,
+} from '../connections/tangle-retained-control-lookup.js'
 import { withSandboxResultProjection } from './sandbox-result-projection.js'
 import {
   retainedSandboxIdentity,
@@ -162,20 +166,22 @@ export async function resolveTangleSandboxRetainedConnection(
     )
   }
   const identity = retainedSandboxIdentity(providerSessionId)
-  const retainedControlLookup = options.tangleRetainedControlLookup
-  if (retainedControlLookup === undefined) {
-    throw new ConnectionError(
-      'CONNECTION_UNSUPPORTED',
-      'Retained Tangle execution requires provider-backed lookup after an unacknowledged dispatch',
-      { connectionId },
-    )
-  }
   const lifecycle = retainedSandboxLifecycle(idleTtlSeconds)
   const [{ createTangleSandboxClient }, { createTangleProvider }] = await Promise.all([
     import('../connections/production-connection-providers.js'),
     import('@tangle-network/agent-provider-tangle'),
   ])
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
+  if (
+    options.tangleRetainedControlLookup === undefined &&
+    !supportsTangleRetainedControlLookup(rawClient)
+  ) {
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'Retained Tangle execution requires Sandbox list and get for exact dispatch lookup',
+      { connectionId },
+    )
+  }
   if (rawClient.get === undefined) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
@@ -185,6 +191,8 @@ export async function resolveTangleSandboxRetainedConnection(
   }
   const boundedClient = withRetainedSandboxPolicy(rawClient, idleTtlSeconds)
   const observedClient = observeSandboxClient(boundedClient, lifecycle)
+  const retainedControlLookup =
+    options.tangleRetainedControlLookup ?? createTangleRetainedControlLookup(observedClient.client)
   const provider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,

@@ -3,8 +3,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, extname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { comparePairedArms } from '@tangle-network/agent-eval'
 import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
+import { comparePairedArms } from '@tangle-network/agent-eval'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-contracts.js'
 import { createBraidApplication } from '../src/app/composition.js'
@@ -12,9 +12,9 @@ import type { BraidViewModel, InteractionView } from '../src/views/shared/models
 import { ActivityBrowserPanel } from '../src/views/tui/activity-browser.js'
 import { AnalysisViewPanel } from '../src/views/tui/analysis.js'
 import {
+  ComparisonViewPanel,
   comparisonLines,
   comparisonViewForResult,
-  ComparisonViewPanel,
 } from '../src/views/tui/comparison.js'
 import { ConversationConfirmation } from '../src/views/tui/conversation-dialogs.js'
 import { ForkPreviewPanel } from '../src/views/tui/fork-preview.js'
@@ -124,6 +124,7 @@ function graphView(): BraidViewModel {
         status: 'completed',
         depth: 1,
         edgeLabel: 'continued',
+        parentIds: ['conversation:conversation-1'],
       },
       {
         id: 'analysis-1',
@@ -132,6 +133,7 @@ function graphView(): BraidViewModel {
         status: 'completed',
         depth: 2,
         edgeLabel: 'analyzed',
+        parentIds: ['branch:branch-current'],
       },
       {
         id: 'comparison-1',
@@ -140,6 +142,7 @@ function graphView(): BraidViewModel {
         status: 'completed',
         depth: 2,
         edgeLabel: 'compared_left',
+        parentIds: ['branch:branch-current'],
       },
     ],
   }
@@ -227,6 +230,68 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
     }
     assert.match(graphScreen.join('\n'), /esc close/u)
   }
+})
+
+test('graph collapse and waiting navigation keep the selected run identity visible', () => {
+  const waitingRun = {
+    id: 'run-waiting',
+    turnId: 'turn-waiting',
+    conversationId: 'conversation-1',
+    branchId: 'branch-current',
+    status: 'waiting' as const,
+    profileName: 'cloud reviewer',
+    runner: 'claude-code',
+    model: 'claude-opus-5',
+    connection: 'Tangle Sandbox',
+    completeness: 'streaming' as const,
+  }
+  const view: BraidViewModel = {
+    ...graphView(),
+    graphQuery: 'status:waiting',
+    runs: [waitingRun],
+    interactions: [{ ...permission, runId: waitingRun.id }],
+    graph: [
+      ...graphView().graph.slice(0, 2),
+      {
+        id: waitingRun.id,
+        type: 'run',
+        title: 'Review the deployment',
+        status: 'waiting',
+        depth: 2,
+        parentIds: ['branch:branch-current'],
+      },
+      {
+        id: 'analysis-child',
+        type: 'analysis',
+        title: 'deployment analysis',
+        status: 'running',
+        depth: 3,
+        parentIds: [`run:${waitingRun.id}`],
+      },
+    ],
+  }
+  const graph = new GraphView(theme)
+  graph.setView(view)
+
+  graph.handleInput(' ')
+  assert.doesNotMatch(graph.render(80).join('\n'), /Review the deployment/u)
+  graph.handleInput(' ')
+  assert.match(graph.render(80).join('\n'), /Review the deployment/u)
+
+  graph.handleInput('w')
+  assert.equal(graph.selectedId, `run:${waitingRun.id}`)
+  const selected = graph.render(140).join('\n')
+  assert.match(selected, /cloud reviewer · claude-code · claude-opus-5/u)
+  assert.match(selected, /filter: status:waiting/u)
+
+  const filtered = new GraphView(theme)
+  filtered.setView({
+    ...view,
+    graphQuery: 'type:analysis',
+    graph: view.graph.filter((node) => node.type === 'analysis'),
+  })
+  filtered.handleInput('w')
+  assert.match(filtered.render(80).join('\n'), /hidden by the current graph query/u)
 })
 
 test('long workflow state preserves the closing key instead of pushing it below 40x12', async () => {
@@ -673,6 +738,24 @@ test('approval actions are navigable and secret responses never render values', 
   arrowShell.handleInput('\r')
   assert.deepEqual(arrowResponses, [{ outcome: 'reject' }])
 
+  const leftResponses: unknown[] = []
+  const leftShell = new InteractionShell(permission, theme, (response) =>
+    leftResponses.push(response),
+  )
+  leftShell.handleInput('\u001b[D')
+  assert.deepEqual(leftResponses, [{ outcome: 'cancel' }])
+
+  const countdownShell = new InteractionShell(
+    { ...permission, remainingMs: 5_000 },
+    theme,
+    () => {},
+    undefined,
+    () => 24,
+  )
+  assert.match(countdownShell.render(40).join('\n'), /5s left/u)
+  countdownShell.setInteraction({ ...permission, remainingMs: 1_000 })
+  assert.match(countdownShell.render(40).join('\n'), /1s left/u)
+
   const secret = 'do-not-render'
   const secretInteraction: InteractionView = {
     ...permission,
@@ -784,9 +867,11 @@ test('digit-leading text, secret, and number answers stay editable', () => {
     theme,
     (response) => textResponse.push(response),
   )
-  textShell.handleInput('1text-value')
+  textShell.handleInput('ab')
+  textShell.handleInput('\u001b[D')
+  textShell.handleInput('c')
   textShell.handleInput('\r')
-  assert.deepEqual(textResponse, [{ outcome: 'accept', value: '1text-value' }])
+  assert.deepEqual(textResponse, [{ outcome: 'accept', value: 'acb' }])
 
   const numberResponse: unknown[] = []
   const numberShell = new InteractionShell(

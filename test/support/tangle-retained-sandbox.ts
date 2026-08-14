@@ -39,7 +39,7 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.6.3. */
+/** Stateful double for the exact Tangle SDK surface used by provider 0.7.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -64,6 +64,9 @@ export class FakeTangleRetainedSandbox {
 
   client(): SandboxClientLike {
     return {
+      async fetch() {
+        throw new Error('The lazy capability probe must not call the Sandbox transport')
+      },
       create: async (options) => {
         const create = structuredClone(options ?? {})
         this.createCalls.push(create)
@@ -206,7 +209,17 @@ export class FakeTangleRetainedSandbox {
             const execution = [...sandbox.#executions.values()]
               .filter((candidate) => candidate.sessionId === sessionId)
               .at(-1)
-            return { status: execution?.status ?? 'running' }
+            return {
+              status: execution?.status ?? 'running',
+              ...(execution === undefined
+                ? {}
+                : {
+                    activeExecutionId:
+                      execution.status === 'running' ? execution.executionId : undefined,
+                    latestExecutionId: execution.executionId,
+                    runControlRef: execution.controlRef,
+                  }),
+            }
           },
           async *events() {},
           async result(options) {

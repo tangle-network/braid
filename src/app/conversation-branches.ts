@@ -35,6 +35,7 @@ import type {
   CreateBranchInput,
   ForkPlan,
   ForkPlanInput,
+  SetRunOverridesInput,
 } from './conversation-types.js'
 import { AppError } from './errors.js'
 
@@ -49,6 +50,65 @@ export class ConversationBranches {
 
   constructor(host: ConversationHost) {
     this.#host = host
+  }
+
+  async setRunOverrides(input: SetRunOverridesInput): Promise<BranchRecord> {
+    return coordinateConversationOperation(this.#host, 'set_run_override', input, () =>
+      this.#setRunOverrides(input),
+    )
+  }
+
+  async #setRunOverrides(input: SetRunOverridesInput): Promise<BranchRecord> {
+    const state = this.#host.state()
+    requireIdle(state, 'Changing run configuration')
+    const source = resolveBranch(state, input)
+    const operationId = parseOperation(input.operationId, 'set_run_override')
+    const hasOverride = [input.runner, input.model, input.effort, input.mode].some(
+      (value) => value !== undefined,
+    )
+    if (input.clear === true && hasOverride)
+      throw new AppError(
+        'INVALID_RUN_OVERRIDE',
+        'Clear cannot be combined with a run override value',
+      )
+    if (input.clear !== true && !hasOverride)
+      throw new AppError('INVALID_RUN_OVERRIDE', 'Set at least one run override or clear all')
+    const selected = runOverrides({
+      ...(input.runner === undefined ? {} : { runner: input.runner }),
+      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.effort === undefined ? {} : { effort: input.effort }),
+      ...(input.mode === undefined ? {} : { mode: input.mode }),
+    })
+    const normalized = {
+      conversationId: source.conversation.id,
+      branchId: source.branch.id,
+      clear: input.clear === true,
+      runner: selected.runner ?? null,
+      model: selected.model ?? null,
+      effort: selected.effort ?? null,
+      mode: selected.mode ?? null,
+    }
+    const digest = requestDigest('set_run_override', normalized)
+    const replay = operationReplay(state, operationId, 'run-override', digest)
+    if (replay) return branchForOperation(state, replay)
+    const at = this.#host.now()
+    const branch: BranchRecord = {
+      ...source.branch,
+      overrides: input.clear === true ? {} : { ...source.branch.overrides, ...selected },
+      updatedAt: at,
+    }
+    await this.#host.commit({
+      kind: 'branch.updated',
+      branch,
+      operation: acknowledgedOperation({
+        id: operationId,
+        kind: 'run-override',
+        digest,
+        at,
+        target: { kind: 'branch', id: branch.id },
+      }),
+    })
+    return branch
   }
 
   async create(input: CreateBranchInput): Promise<BranchRecord> {
@@ -89,6 +149,7 @@ export class ConversationBranches {
         ...(input.runner === undefined ? {} : { runner: input.runner }),
         ...(input.model === undefined ? {} : { model: input.model }),
         ...(input.effort === undefined ? {} : { effort: input.effort }),
+        ...(input.mode === undefined ? {} : { mode: input.mode }),
       }),
       ...(source.branch.environmentId === undefined
         ? {}
@@ -272,6 +333,26 @@ function resolveSource(
   state: BraidState,
   input: Pick<CreateBranchInput, 'conversationId' | 'branchId' | 'throughMessageId'>,
 ): ResolvedSource {
+  const { conversation, branch } = resolveBranch(state, input)
+  const visible = messagesVisibleOnBranch(state, branch.id)
+  const boundaryId = input.throughMessageId ?? branch.tipMessageId ?? visible.at(-1)?.id
+  const through =
+    boundaryId === undefined
+      ? undefined
+      : visible.find((message) => message.id === parseMessageId(boundaryId))
+  if (boundaryId !== undefined && through === undefined) {
+    throw new AppError(
+      'UNKNOWN_MESSAGE_BOUNDARY',
+      `Message ${boundaryId} is not visible on ${branch.id}`,
+    )
+  }
+  return { conversation, branch, ...(through === undefined ? {} : { through }) }
+}
+
+function resolveBranch(
+  state: BraidState,
+  input: Pick<CreateBranchInput, 'conversationId' | 'branchId'>,
+): Pick<ResolvedSource, 'conversation' | 'branch'> {
   const conversationId = parseConversationId(input.conversationId ?? state.conversationId)
   const conversation = state.conversations.find(
     (candidate) => candidate.id === conversationId && candidate.deletedAt === undefined,
@@ -284,19 +365,7 @@ function resolveSource(
   )
   if (!branch)
     throw new AppError('UNKNOWN_BRANCH', `Branch ${branchId} does not belong to ${conversationId}`)
-  const visible = messagesVisibleOnBranch(state, branchId)
-  const boundaryId = input.throughMessageId ?? branch.tipMessageId ?? visible.at(-1)?.id
-  const through =
-    boundaryId === undefined
-      ? undefined
-      : visible.find((message) => message.id === parseMessageId(boundaryId))
-  if (boundaryId !== undefined && through === undefined) {
-    throw new AppError(
-      'UNKNOWN_MESSAGE_BOUNDARY',
-      `Message ${boundaryId} is not visible on ${branchId}`,
-    )
-  }
-  return { conversation, branch, ...(through === undefined ? {} : { through }) }
+  return { conversation, branch }
 }
 
 function branchRequest(source: ResolvedSource, input: CreateBranchInput) {
@@ -308,6 +377,7 @@ function branchRequest(source: ResolvedSource, input: CreateBranchInput) {
     runner: input.runner ?? source.branch.overrides.runner ?? null,
     model: input.model ?? source.branch.overrides.model ?? null,
     effort: input.effort ?? source.branch.overrides.effort ?? null,
+    mode: input.mode ?? source.branch.overrides.mode ?? null,
   }
 }
 

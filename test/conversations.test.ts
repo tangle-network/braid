@@ -7,8 +7,10 @@ import { createApplicationUiController } from '../src/adapters/tui/application-u
 import { AppError } from '../src/app/application.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { messagesVisibleOnBranch } from '../src/app/conversation-context.js'
+import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import { assertBraidState } from '../src/domain/invariants.js'
+import { FixedClock } from '../src/ports/clock.js'
 
 async function initializedApp() {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -278,6 +280,165 @@ test('branch, clone, context, and fork use one canonical conversation graph', as
   assert.equal(workspacePlan.allowed, false)
   assert.equal(workspacePlan.environment, 'unavailable')
   assertBraidState(app.state())
+})
+
+test('branch run configuration merges, replays, rejects conflicts, and clears atomically', async () => {
+  const app = await initializedApp()
+  const conversationId = app.state().conversationId
+  const branchId = app.state().branchId
+  const first = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-first',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'high',
+    mode: 'interactive',
+  })
+  const replay = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-first',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'high',
+    mode: 'interactive',
+  })
+
+  assert.deepEqual(replay, first)
+  assert.deepEqual(first.overrides, {
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'high',
+    mode: 'interactive',
+  })
+  assert.equal(
+    app
+      .events()
+      .filter(
+        (entry) =>
+          entry.event.kind === 'branch.updated' &&
+          entry.event.operation.id === 'op-run-override-first',
+      ).length,
+    1,
+  )
+
+  const merged = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-merge',
+    model: 'anthropic/claude-opus-5',
+  })
+  assert.deepEqual(merged.overrides, {
+    runner: 'codex',
+    model: 'anthropic/claude-opus-5',
+    effort: 'high',
+    mode: 'interactive',
+  })
+
+  const beforeFailures = app.state()
+  const eventCount = app.events().length
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-first',
+        runner: 'pi',
+        model: 'openai/gpt-5.6',
+        effort: 'high',
+        mode: 'interactive',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'OPERATION_ID_CONFLICT',
+  )
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-invalid-runner',
+        runner: 'not-a-runner',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_RUNNER',
+  )
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-invalid-effort',
+        effort: 'maximum-ish',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_EFFORT',
+  )
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-invalid-clear',
+        clear: true,
+        runner: 'pi',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_RUN_OVERRIDE',
+  )
+  assert.deepEqual(app.state(), beforeFailures)
+  assert.equal(app.events().length, eventCount)
+
+  const child = await app.conversations.branches.create({
+    operationId: 'op-run-override-child',
+    conversationId,
+    branchId,
+  })
+  assert.deepEqual(child.overrides, merged.overrides)
+  const changedChild = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-child-change',
+    conversationId,
+    branchId: child.id,
+    runner: 'pi',
+  })
+  assert.equal(changedChild.overrides.runner, 'pi')
+  assert.equal(
+    app.state().branches.find((branch) => branch.id === branchId)?.overrides.runner,
+    'codex',
+  )
+
+  const cleared = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-clear',
+    conversationId,
+    branchId: child.id,
+    clear: true,
+  })
+  assert.deepEqual(cleared.overrides, {})
+  assertBraidState(app.state())
+})
+
+test('branch run configuration survives journal replay and cannot change during a run', async () => {
+  const journal = new MemoryJournal(new FixedClock())
+  const first = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
+  first.initialize('/workspace')
+  await first.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-durable',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+  })
+  await first.whenDurable()
+
+  const restarted = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
+  await restarted.whenDurable()
+  assert.deepEqual(
+    restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)
+      ?.overrides,
+    { runner: 'codex', model: 'openai/gpt-5.6', effort: 'xhigh' },
+  )
+
+  const active = restarted.send({
+    operationId: 'op-run-override-active-send',
+    text: 'keep configuration stable while this runs',
+  })
+  await active.admissionReady
+  await assert.rejects(
+    () =>
+      restarted.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-active-change',
+        runner: 'pi',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'RUN_ACTIVE',
+  )
+  await active.completion
+  assert.equal(
+    restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)?.overrides
+      .runner,
+    'codex',
+  )
+  assertBraidState(restarted.state())
 })
 
 test('conversation exports are redacted, bounded, and never overwrite a path', async () => {

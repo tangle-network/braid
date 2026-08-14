@@ -1,6 +1,17 @@
 import { canonicalDigest } from '../domain/canonical.js'
-import { type BraidEvent, type BraidEventEnvelope, eventRunId } from '../domain/events.js'
-import { type ConversationId, createEventId, type RunId, type WorkspaceId } from '../domain/ids.js'
+import {
+  type BraidEvent,
+  type BraidEventEnvelope,
+  eventRunId,
+  providerMetaForEvent,
+} from '../domain/events.js'
+import {
+  type ConversationId,
+  createEventId,
+  parseReplayCursor,
+  type RunId,
+  type WorkspaceId,
+} from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectRecord, EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
@@ -126,11 +137,13 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     const eventId = createEventId(
       `event-${workspaceId.slice('workspace-'.length)}-${state.sequence + 1}-${canonicalDigest(event).slice(0, 16)}`,
     )
+    const provider = providerMetaForEvent(event)
     const envelope: BraidEventEnvelope = {
       eventId,
       sequence: state.sequence + 1,
       revision: state.revision + 1,
       occurredAt: this.#clock.now(),
+      ...(provider?.cursor === undefined ? {} : { cursor: parseReplayCursor(provider.cursor) }),
       event,
     }
     this.#contexts.set(eventId, {
@@ -173,6 +186,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     const runId =
       eventRunId(envelope.event) ?? syntheticRunId(context.workspaceId, context.conversationId)
     const operationId = runOperationId(envelope.event)
+    const provider = providerMetaForEvent(envelope.event)
     const sequence = (this.#runSequences.get(runId) ?? 0) + 1
     const payload: PersistedEnvelope = {
       __braidEvent: envelope.event,
@@ -193,6 +207,9 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
       kind: envelope.event.kind,
       payload: toJson(payload),
       occurredAt: envelope.occurredAt,
+      ...(envelope.cursor === undefined ? {} : { cursor: envelope.cursor }),
+      ...(provider === undefined ? {} : { providerEventId: provider.eventId }),
+      ...(provider?.receivedAt === undefined ? {} : { receivedAt: provider.receivedAt }),
       ...(operationId === undefined ? {} : { operationId }),
       terminal: envelope.event.kind === 'run.finished',
     }

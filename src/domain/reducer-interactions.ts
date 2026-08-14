@@ -2,6 +2,7 @@ import type { BraidEvent } from './events.js'
 import { reserveText } from './content-budget.js'
 import type { BraidInteraction, BraidState } from './state.js'
 import { createOperationId } from './ids.js'
+import { safePublicIdentifier } from './provider-values.js'
 import { finalizeRunUsage } from './run-usage.js'
 import {
   activity,
@@ -161,7 +162,10 @@ export function reduceInteractionEvent(
         runs: updateRun(state, event.runId, (run) => ({
           ...withProviderProgress(run, event.provider),
           ...(event.envelope.event.type === 'session.updated'
-            ? { providerSessionId: event.envelope.event.sessionId }
+            ? {
+                harnessSessionId:
+                  safePublicIdentifier(event.envelope.event.sessionId) ?? run.harnessSessionId,
+              }
             : {}),
           eventDetails: [
             ...run.eventDetails,

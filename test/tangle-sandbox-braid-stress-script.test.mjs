@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   cloudFailureEventTimeline,
   runIdForOperation,
+  sandboxWorkspaceRelativePath,
   spendDisclosure,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 
@@ -20,12 +21,14 @@ import {
   latestCursorFromResponses,
   MissingIntegrationError,
   observationFromResponses,
+  providerEventsForRun,
   resourceDelta,
   runObservations,
   stateRoundTrip,
   visibleEventKeys,
   waitForControlIdentity,
   waitForVisibleEvents,
+  waitForWorkspaceToolEvents,
 } from '../scripts/live-required/tangle-sandbox-braid-stress-support.mjs'
 
 const controlRef = {
@@ -38,7 +41,14 @@ const controlRef = {
 }
 
 function event(kind, payload) {
-  return { type: 'event', event: { kind, payload } }
+  const { provider, ...rest } = payload
+  return {
+    type: 'event',
+    event: {
+      kind,
+      payload: { ...rest, ...(provider === undefined ? {} : { source: provider }) },
+    },
+  }
 }
 
 test('get_state waits for the state response instead of an acknowledgement', async () => {
@@ -83,13 +93,32 @@ test('cleanup recovers exactly one durable run after a lost send acknowledgement
   )
 })
 
+test('uses the Sandbox file API relative to its declared workspace root', () => {
+  assert.equal(
+    sandboxWorkspaceRelativePath('/workspace/.braid-live/proof/challenge.txt'),
+    '.braid-live/proof/challenge.txt',
+  )
+  assert.throws(() => sandboxWorkspaceRelativePath('/tmp/challenge.txt'), /below \/workspace\//u)
+  assert.throws(() => sandboxWorkspaceRelativePath('/workspace/'), /below \/workspace\//u)
+})
+
 test('extracts exact control identity and an explicit provider cursor', () => {
   const responses = [
-    event('run.environment.observed', {
-      runId: 'local-run-1',
-      controlRef,
-      provider: { eventId: 'environment-event-1', providerSequence: 1 },
-    }),
+    {
+      type: 'event',
+      event: {
+        kind: 'run.environment.observed',
+        payload: {
+          runId: 'local-run-1',
+          value: {
+            kind: 'run.environment.observed',
+            runId: 'local-run-1',
+            controlRef,
+            provider: { eventId: 'environment-event-1', providerSequence: 1 },
+          },
+        },
+      },
+    },
     event('run.text.delta', {
       runId: 'local-run-1',
       provider: {
@@ -106,6 +135,46 @@ test('extracts exact control identity and an explicit provider cursor', () => {
     event: responses[0],
   })
   assert.equal(latestCursorFromResponses(responses, 'local-run-1'), 'cursor-7')
+})
+
+test('recovers durable control identity without replaying a pre-cursor observation event', async () => {
+  const responses = [
+    {
+      type: 'state',
+      state: {
+        runs: [{ id: 'local-run-1', status: 'completed', controlRef }],
+      },
+    },
+    event('run.text.delta', {
+      runId: 'local-run-1',
+      provider: {
+        cursor: 'cursor-after-restart',
+        eventId: 'provider-event-after-restart',
+        providerSequence: 8,
+        runId: controlRef.runId,
+        executionId: controlRef.executionId,
+      },
+    }),
+  ]
+  const session = { responses }
+
+  assert.deepEqual(await waitForControlIdentity(session, 'local-run-1', 100), {
+    controlRef,
+    cursor: 'cursor-after-restart',
+    event: responses[1],
+  })
+  assert.deepEqual(assertUniqueVisibleEvents(responses, 'local-run-1', 'restart'), {
+    count: 1,
+    keys: ['provider-event-after-restart'],
+    events: [
+      {
+        kind: 'run.text.delta',
+        eventId: 'provider-event-after-restart',
+        providerSequence: 8,
+        cursor: 'cursor-after-restart',
+      },
+    ],
+  })
 })
 
 test('rejects visible events without stable provider identity and catches duplicates', () => {
@@ -125,6 +194,19 @@ test('rejects visible events without stable provider identity and catches duplic
     }),
   ]
   assert.throws(() => assertUniqueVisibleEvents(responses, 'run-1', 'test'), /duplicate visible/iu)
+})
+
+test('ignores attributable local lifecycle events without weakening visible event checks', () => {
+  const local = event('run.requested', { runId: 'run-1', status: 'admitted' })
+  assert.deepEqual(providerEventsForRun([local], 'run-1'), [])
+  assert.throws(
+    () =>
+      providerEventsForRun(
+        [local, event('run.text.delta', { runId: 'run-1', text: 'provider output' })],
+        'run-1',
+      ),
+    /without provider metadata/iu,
+  )
 })
 
 test('rejects foreign provider run and execution identities in visible events', () => {
@@ -478,6 +560,38 @@ test('waits for the first stable visible event before allowing a restart snapsho
       },
     ],
   })
+})
+
+test('waits for workspace tool evidence instead of stopping on session metadata', async () => {
+  const session = {
+    responses: [
+      event('run.provider.event', {
+        runId: 'run-1',
+        provider: {
+          eventId: 'provider-session-1',
+          providerSequence: 1,
+          cursor: 'cursor-1',
+        },
+      }),
+    ],
+  }
+  setTimeout(() => {
+    session.responses.push(
+      event('run.part.updated', {
+        runId: 'run-1',
+        part: { kind: 'tool' },
+        provider: {
+          eventId: 'provider-tool-2',
+          providerSequence: 2,
+          cursor: 'cursor-2',
+        },
+      }),
+    )
+  }, 15)
+
+  const visible = await waitForWorkspaceToolEvents(session, 'run-1', 200, 'first process')
+  assert.equal(visible.count, 2)
+  assert.equal(visible.events[1]?.partKind, 'tool')
 })
 
 test('stops pre-kill waits as soon as the run becomes terminal', async () => {

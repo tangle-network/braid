@@ -32,7 +32,7 @@ export interface EntityBrowserDocument {
 }
 
 export interface EntityBrowserOptions {
-  readonly document: () => EntityBrowserDocument
+  readonly document: (selectedId?: string) => EntityBrowserDocument
   readonly rows: () => number
   readonly onClose: () => void
   readonly selectedId?: string
@@ -44,7 +44,7 @@ type BrowserMode = 'list' | 'detail'
 /** One keyboard model for activity, analyses, workers, and graph entities. */
 export class EntityBrowser extends Container implements Focusable, ModalBackTarget {
   readonly #theme: BraidTheme
-  readonly #document: () => EntityBrowserDocument
+  readonly #document: (selectedId?: string) => EntityBrowserDocument
   readonly #terminalRows: () => number
   readonly #onClose: () => void
   #selectedId: string | undefined
@@ -176,7 +176,8 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
   }
 
   #resolveDocument(): EntityBrowserDocument {
-    const document = this.#document()
+    const previousSelectedId = this.#selectedId
+    let document = this.#document(previousSelectedId)
     if (document.rows.length === 0) {
       this.#selectedId = undefined
       this.#selectedIndex = 0
@@ -195,6 +196,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     this.#selectedIndex =
       selected >= 0 ? selected : Math.min(this.#selectedIndex, document.rows.length - 1)
     this.#selectedId = document.rows[this.#selectedIndex]?.id
+    if (this.#selectedId !== previousSelectedId) document = this.#document(this.#selectedId)
     return document
   }
 

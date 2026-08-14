@@ -133,6 +133,7 @@ export function runOperationId(event: BraidEvent): OperationId | undefined {
     case 'conversation.updated':
     case 'conversation.selected':
     case 'branch.created':
+    case 'branch.updated':
     case 'branch.selected':
       return event.operation?.id
     case 'conversation.deleted':

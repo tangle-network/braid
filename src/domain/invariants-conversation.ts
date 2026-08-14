@@ -1,3 +1,4 @@
+import { harnessTypeSchema, reasoningEffortSchema } from '@tangle-network/agent-interface'
 import type {
   BranchRecord,
   ConversationRecord,
@@ -10,11 +11,13 @@ import {
   assertEntityId,
   assertJsonValue,
   assertMissingHistory,
+  assertPublicReference,
   assertUniqueIds,
   fail,
   failUnsupported,
   finiteNonNegative,
   nonEmpty,
+  objectValue,
 } from './invariants-base.js'
 
 export function assertConversationRecord(record: ConversationRecord): void {
@@ -57,6 +60,23 @@ export function assertBranchRecord(record: BranchRecord): void {
     assertEntityId('environment', record.environmentId, 'branch.environmentId')
   if (record.tipMessageId !== undefined)
     assertEntityId('message', record.tipMessageId, 'branch.tipMessageId')
+  const overrides: unknown = record.overrides
+  objectValue(overrides, 'branch.overrides')
+  const overrideKeys = Object.keys(overrides)
+  if (overrideKeys.some((key) => !['runner', 'model', 'effort', 'mode'].includes(key)))
+    fail('branch.overrides contains an unsupported field')
+  if (overrides.runner !== undefined && !harnessTypeSchema.safeParse(overrides.runner).success)
+    fail('branch.overrides.runner is not supported')
+  if (overrides.effort !== undefined && !reasoningEffortSchema.safeParse(overrides.effort).success)
+    fail('branch.overrides.effort is not supported')
+  if (overrides.model !== undefined) {
+    if (typeof overrides.model !== 'string') fail('branch.overrides.model must be text')
+    assertPublicReference(overrides.model, 'branch.overrides.model')
+  }
+  if (overrides.mode !== undefined) {
+    if (typeof overrides.mode !== 'string') fail('branch.overrides.mode must be text')
+    assertPublicReference(overrides.mode, 'branch.overrides.mode')
+  }
   assertDate(record.createdAt, 'branch.createdAt')
   assertDate(record.updatedAt, 'branch.updatedAt')
 }

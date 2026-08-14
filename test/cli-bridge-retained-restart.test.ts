@@ -22,11 +22,20 @@ import {
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
+import {
+  DEFAULT_RUN_CAPABILITIES,
+  type RetainedRunAdmissionRecord,
+} from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
+
+function recordAdmissions(target: RetainedRunAdmissionRecord[]) {
+  return async (admission: RetainedRunAdmissionRecord): Promise<void> => {
+    target.push(structuredClone(admission))
+  }
+}
 
 function production(endpoint: string): ProductionCompositionConfig {
   const connection: ConnectionRecord = {
@@ -260,6 +269,7 @@ test('restart discovery preserves a continued provider session before the contro
   const runId = 'run/retained-crash-window'
   const providerSessionId = 'session-existing-conversation'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const first = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (first.execution.admit === undefined) throw new Error('Retained admission is unavailable')
@@ -272,6 +282,7 @@ test('restart discovery preserves a continued provider session before the contro
       workspaceRoot: root,
       sessionId: providerSessionId,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     const admission = await first.execution.admit(input)
     assert.equal(admission.providerSessionId, providerSessionId)
@@ -286,6 +297,10 @@ test('restart discovery preserves a continued provider session before the contro
       'braid.execution.observed',
     )
     assert.equal(bridge.requests[0]?.sessionId, providerSessionId)
+    assert.deepEqual(
+      admissions.map((entry) => entry.phase),
+      ['environment', 'dispatched'],
+    )
     await stream.return?.()
 
     const restarted = createProductionComposition({ ...configuration, workspaceRoot: root })
@@ -321,6 +336,7 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
   const configuration = production(bridge.endpoint)
   const runId = 'run/retained-foreign-identity'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const first = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (first.execution.admit === undefined) throw new Error('Retained admission is unavailable')
@@ -332,6 +348,7 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
       connectionId: configuration.connectionId,
       workspaceRoot: root,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await first.execution.admit(input)
     const stream = first.execution.streamTurn(input)[Symbol.asyncIterator]()
@@ -357,6 +374,7 @@ test('detach during execution-observation persistence stops the retained reader'
   const bridge = await startRuntimeBridgeServer({ holdStreams: true })
   const configuration = production(bridge.endpoint)
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const composition = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (
@@ -373,6 +391,7 @@ test('detach during execution-observation persistence stops the retained reader'
       connectionId: configuration.connectionId,
       workspaceRoot: root,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await composition.execution.admit(input)
 
@@ -410,6 +429,7 @@ test('retained control keeps provider-owned identity separate from the Braid run
   const runId = 'run/provider-owned-identity'
   const providerSessionId = 'session-provider-owned-identity'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const composition = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (composition.execution.admit === undefined) {
@@ -424,6 +444,7 @@ test('retained control keeps provider-owned identity separate from the Braid run
       workspaceRoot: root,
       sessionId: providerSessionId,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await composition.execution.admit(input)
     const stream = composition.execution.streamTurn(input)[Symbol.asyncIterator]()
@@ -475,6 +496,7 @@ test('cancel_requested remains an unconfirmed Braid outcome', async () => {
   })
   const configuration = production(bridge.endpoint)
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const composition = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (
@@ -491,6 +513,7 @@ test('cancel_requested remains an unconfirmed Braid outcome', async () => {
       connectionId: configuration.connectionId,
       workspaceRoot: root,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await composition.execution.admit(input)
     const stream = composition.execution.streamTurn(input)[Symbol.asyncIterator]()

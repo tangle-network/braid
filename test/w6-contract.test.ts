@@ -140,6 +140,11 @@ test('the command registry owns typed intents for local and headless command pat
     surface: 'help',
     query: 'keys',
   })
+  assert.deepEqual(commandIntent('graph', ['type:run', 'status:waiting']), {
+    type: 'open-surface',
+    surface: 'graph',
+    query: 'type:run status:waiting',
+  })
   assert.deepEqual(commandIntent('profile', ['reviewer'], 'op-profile'), {
     type: 'run-command',
     command: 'profile',

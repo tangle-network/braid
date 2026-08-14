@@ -3,6 +3,7 @@ import type { BraidEvent, DomainBraidEventMap } from './events.js'
 import { DomainInvariantError } from './invariants.js'
 import { applyConversationEvent } from './reducer-conversation-events.js'
 import { applyExecutionObservation } from './reducer-execution-observation.js'
+import { applyRetainedAdmission } from './reducer-retained-admission.js'
 
 import { find, updateRun, upsert, upsertBy } from './reducer-helpers.js'
 import { isCancellationConfirmedReconciliation } from './reducer-support.js'
@@ -95,6 +96,8 @@ export function applyDomainEvent(
         runs: upsert(state.runs, { ...run, bindingId: event.bindingId, updatedAt: at }),
       }
     }
+    case 'run.retained.admitted':
+      return applyRetainedAdmission(state, event, at)
     case 'run.status.changed': {
       const run = find(state.runs, event.runId, 'Run')
       return updateRun(

@@ -64,7 +64,10 @@ export async function dispatchCoreIntent(
       }
     }
     case 'open-surface':
-      context.setSelectedSurface(intent.surface === 'settings' ? 'details' : intent.surface)
+      context.setSelectedSurface(
+        intent.surface === 'settings' ? 'details' : intent.surface,
+        intent.query,
+      )
       context.notify()
       return { kind: 'accepted', revision: context.app.state().revision }
     case 'shutdown': {

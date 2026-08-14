@@ -96,6 +96,7 @@ export function observeSandboxClient(
             return box === null || box === undefined ? null : observeBox(box)
           },
         }),
+    ...(source.fetch === undefined ? {} : { fetch: source.fetch.bind(source) }),
     ...(source.list === undefined
       ? {}
       : {

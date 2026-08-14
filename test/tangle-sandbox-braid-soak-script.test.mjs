@@ -203,7 +203,9 @@ function passedProof(index, overrides = {}) {
         exactResource: true,
         mode: 'exact-owned-resource-set',
         activeResourceDelta: 0,
-        activeResourceDeltaRequired: true,
+        activeResourceDeltaRequired: false,
+        accountUsageScope: 'account-wide',
+        accountUsageAttribution: 'unattributed-shared-usage',
         usageObservationComplete: true,
         usageDelta: {
           activeSandboxes: 0,
@@ -364,7 +366,7 @@ test('sandbox soak stops after a failed canary before spending on more runs', as
     stressRunner: async ({ attemptIndex, requireZeroActiveResourceDelta }) => {
       calls += 1
       assert.equal(attemptIndex, 0)
-      assert.equal(requireZeroActiveResourceDelta, true)
+      assert.equal(requireZeroActiveResourceDelta, false)
       return passedProof(0, { status: 'failed' })
     },
   })
@@ -428,7 +430,7 @@ test('sandbox soak runs one canary then a bounded parallel cohort with full summ
   assert.equal(result.status, 'passed')
   assert.equal(result.attemptedRuns, 5)
   assert.equal(maximumActive, 2)
-  assert.deepEqual(strictness, [true, false, false, false, false])
+  assert.deepEqual(strictness, [false, false, false, false, false])
   assert.deepEqual(result.latency.totalMs, {
     n: 5,
     min: 100,
@@ -467,7 +469,7 @@ test('sandbox soak rejects a passed proof with missing durable retained fields',
   assert.ok(result.failures.some((failure) => /replay\.resumeFromCursor/u.test(failure)))
 })
 
-test('sandbox soak rejects per-run active leaks hidden by an aggregate zero', async () => {
+test('sandbox soak does not attribute shared account churn to exact owned resources', async () => {
   const result = await runBraidSandboxSoak({
     runs: 3,
     concurrency: 2,
@@ -482,18 +484,9 @@ test('sandbox soak rejects per-run active leaks hidden by an aggregate zero', as
     },
   })
 
-  assert.equal(result.status, 'failed')
+  assert.equal(result.status, 'passed')
   assert.equal(result.cleanup.activeResourceDelta, 0)
-  assert.ok(
-    result.failures.some((failure) =>
-      /run 2: proof account active-resource delta was 1/u.test(failure),
-    ),
-  )
-  assert.ok(
-    result.failures.some((failure) =>
-      /run 3: proof account active-resource delta was -1/u.test(failure),
-    ),
-  )
+  assert.equal(result.cleanup.exactResourcesRemaining, 0)
 })
 
 test('sandbox soak rejects unknown account deltas instead of treating them as zero', async () => {
@@ -507,18 +500,31 @@ test('sandbox soak rejects unknown account deltas instead of treating them as ze
   assert.ok(result.failures.some((failure) => /unknown fields.*computeMinutes/u.test(failure)))
 })
 
-test('sandbox soak rejects arbitrary cumulative account increases', async () => {
+test('sandbox soak reports shared cumulative account increases without claiming ownership', async () => {
   const result = await runBraidSandboxSoak({
     runs: 1,
     stressRunner: async () => proofWithUsage(0, { totalSandboxes: 0 }, { totalSandboxes: 99 }),
   })
 
-  assert.equal(result.status, 'failed')
-  assert.ok(
-    result.failures.some((failure) =>
-      /totalSandboxes delta 99 exceeded retained-resource-creation bound 1/u.test(failure),
-    ),
-  )
+  assert.equal(result.status, 'passed')
+  assert.equal(result.accountUsage.delta.totalSandboxes, 99)
+})
+
+test('sandbox soak enforces account deltas only for an explicit exclusive window', async () => {
+  const proof = proofWithUsage(0, { activeSandboxes: 0 }, { activeSandboxes: 1 })
+  const exclusive = await runBraidSandboxSoak({
+    runs: 1,
+    stressRunner: async () => ({
+      ...proof,
+      cleanup: {
+        ...proof.cleanup,
+        activeResourceDeltaRequired: true,
+        accountUsageAttribution: 'exclusive-proof-window',
+      },
+    }),
+  })
+  assert.equal(exclusive.status, 'failed')
+  assert.ok(exclusive.failures.some((failure) => /active-resource delta was 1/u.test(failure)))
 })
 
 test('sandbox soak rejects reused cloud identity despite individually passing proofs', async () => {

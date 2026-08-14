@@ -75,6 +75,7 @@ function activityForRun(
   })
 
   for (const item of run.activity) {
+    if (item.type === 'session.updated') continue
     const occurredAt = item.source?.occurredAt ?? run.updatedAt
     add(output, {
       id: `activity:${item.id}`,
@@ -91,6 +92,7 @@ function activityForRun(
   }
 
   for (const event of run.eventDetails) {
+    if (event.type === 'session.updated') continue
     add(output, {
       id: `event:${run.id}:${event.eventId}`,
       kind: 'system',

@@ -381,6 +381,10 @@ A run follows the following transition table.
 
 An ordinary provider final event therefore moves directly from `starting`, `running`, `waiting`, `detached`, or `reconnecting` to its terminal result without passing through cancellation.
 
+After process restart, an inconclusive status check cannot terminalize a run that supports cursor replay through the active execution path.
+
+Braid keeps that run `reconnecting` until replay supplies a provider outcome or replay itself fails without conclusive status evidence.
+
 Terminal states never transition back to running under the same run identifier.
 
 A retry is a new run linked to the source run through a retry edge.

@@ -144,6 +144,7 @@ export class BraidTerminalApp {
       dispatch: (intent) => this.#dispatch(intent),
       currentView: () => this.#controller.view(),
       isStopped: () => this.#stopped,
+      requestRender: () => this.#tui.requestRender(),
       rows: () => this.#tui.terminal.rows,
       openAutomation: (input) => this.#overlays.openAutomation(input),
     })
@@ -211,6 +212,7 @@ export class BraidTerminalApp {
     if (this.#stopped) return
     this.#stopped = true
     this.#overlays.dispose()
+    this.#interactions.dispose()
     this.#input.close()
     this.#drafts.close()
     this.#modals.closeAll()

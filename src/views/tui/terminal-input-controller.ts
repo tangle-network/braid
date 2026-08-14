@@ -1,13 +1,13 @@
-import type { TUI } from '@earendil-works/pi-tui'
+import { matchesKey, type TUI } from '@earendil-works/pi-tui'
 import { commandAvailability } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
+import type { ComposerMode } from './composer-view.js'
 import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
 import type { BraidShell } from './terminal-shell.js'
-import type { ComposerMode } from './composer-view.js'
 
 export interface TerminalInputControllerOptions {
   readonly tui: TUI
@@ -93,6 +93,10 @@ export class TerminalInputController {
     if (isTextInputSequence(data)) return undefined
     if (matchesKeyAction(data, this.#keymap, 'closeOverlay') && this.#tui.hasOverlay()) {
       if (this.#interactionOpen()) return undefined
+      if (matchesKey(data, 'left')) {
+        if (!this.#modals.backOrCloseIfPassive()) return undefined
+        return { consume: true }
+      }
       this.#modals.backOrClose()
       return { consume: true }
     }
@@ -128,11 +132,13 @@ export class TerminalInputController {
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'graph')) {
-      this.#overlays.openSurface('graph')
+      void this.#dispatch({ type: 'open-surface', surface: 'graph', query: '' }).then((result) => {
+        if (result.kind === 'accepted') this.#overlays.openSurface('graph')
+      })
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'switcher')) {
-      this.#overlays.openSelector('profile')
+      this.#overlays.openSwitcher()
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'activity')) {

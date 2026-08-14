@@ -9,13 +9,14 @@ import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
 import { MemoryJournal } from '../src/app/journal.js'
-import { safeRuntimeDiagnostic } from '../src/app/provider-values.js'
 import { createProfileRecord } from '../src/app/profiles.js'
+import { safeRuntimeDiagnostic } from '../src/app/provider-values.js'
 import { runEffectRequest } from '../src/app/run-admission.js'
 import { buildAppView } from '../src/app/view-model.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId } from '../src/domain/ids.js'
+import { assertBraidState } from '../src/domain/invariants.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { JournalPort } from '../src/ports/effect-storage.js'
 import type {
@@ -225,6 +226,62 @@ test('admission snapshots profile and connection before a blocked dispatch', asy
       effectRequestDigest({ effectKind: 'run.execute', request }),
     )
   }
+})
+
+test('branch run configuration changes the immutable AgentProfile admitted to Runtime', async () => {
+  const authored = defineAgentProfile({
+    name: 'authored profile',
+    harness: 'pi',
+    model: { default: 'fixture/authored', reasoningEffort: 'medium' },
+  })
+  let streamedProfile: Readonly<AgentProfile> | undefined
+  const execution: ExecutionPort = {
+    admit: () => ({}),
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      streamedProfile = structuredClone(input.profile)
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'effective profile test completed',
+        text: 'effective profile reached Runtime',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'effective-profile', intent: 'effective profile admission' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: authored,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  await app.conversations.branches.setRunOverrides({
+    operationId: 'op-effective-profile-override',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+  })
+
+  const send = app.send({
+    operationId: 'op-effective-profile-send',
+    text: 'use the branch configuration',
+  })
+  assert.equal(send.admission.requested.profile.harness, 'codex')
+  assert.equal(send.admission.requested.profile.model?.default, 'openai/gpt-5.6')
+  assert.equal(send.admission.requested.profile.model?.reasoningEffort, 'xhigh')
+  await send.completion
+
+  assert.deepEqual(streamedProfile, send.admission.requested.profile)
+  assert.deepEqual(app.runtimeSelection.profile(), authored)
+  assert.deepEqual(app.state().profile, authored)
+  assert.equal(app.state().runs[0]?.receipt.requested.runner, 'codex')
+  assert.equal(app.state().runs[0]?.model, 'openai/gpt-5.6')
+  assertBraidState(app.state())
 })
 
 test('post-startup profile and connection selection reaches the next real resolver run', async () => {
@@ -928,6 +985,29 @@ test('application replacement presents the new profile to frame subscribers', as
     .completion
   await new Promise((resolve) => setTimeout(resolve, 20))
   assert.equal(profiles.length, deliveriesAfterUnsubscribe)
+  await Promise.all([oldApp.close(), nextApp.close()])
+})
+
+test('application replacement clears transient notices and fork previews', async () => {
+  const oldApp = createBraidApplication({ fixture: 'deterministic' })
+  const nextApp = createBraidApplication({ fixture: 'deterministic' })
+  oldApp.initialize('/old-workspace')
+  const controller = createApplicationUiController(oldApp)
+  const preview = await controller.dispatch({
+    type: 'run-command',
+    command: 'fork',
+    args: [],
+    operationId: 'op-preview-before-replacement',
+  })
+
+  assert.equal(preview.kind, 'accepted')
+  assert.ok(controller.view().notice)
+  assert.ok(controller.view().forkPreview)
+
+  await controller.replaceApplication(nextApp, '/new-workspace')
+
+  assert.equal(controller.view().notice, undefined)
+  assert.equal(controller.view().forkPreview, undefined)
   await Promise.all([oldApp.close(), nextApp.close()])
 })
 

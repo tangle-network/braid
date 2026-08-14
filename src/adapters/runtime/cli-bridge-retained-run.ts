@@ -95,6 +95,9 @@ export async function startCliBridgeRetainedRun(
   plan: CliBridgeRetainedPlan,
   input: ExecuteTurnInput,
 ): Promise<RetainedRunHandle> {
+  if (input.onRetainedAdmission === undefined) {
+    throw new Error('Retained CLI Bridge execution requires a durable admission recorder')
+  }
   return startRetainedRun({
     provider: plan.provider,
     environment: {
@@ -112,6 +115,7 @@ export async function startCliBridgeRetainedRun(
       sessionId: plan.prepared.providerSessionId,
       executionId: plan.executionId,
     },
+    onAdmission: input.onRetainedAdmission,
   })
 }
 

@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
+import {
+  type Component,
+  type OverlayHandle,
+  type OverlayOptions,
+  type TUI,
+  TuiMainScreen,
+  visibleWidth,
+} from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import type { BraidViewModel } from '../src/views/shared/models.js'
 import { composerProjectionFor, composerRowBudget } from '../src/views/tui/composer-view.js'
 import { layoutFor } from '../src/views/tui/layout.js'
+import { ModalCoordinator } from '../src/views/tui/modal-coordinator.js'
 import { TerminalChrome } from '../src/views/tui/terminal-chrome.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -193,6 +201,31 @@ test('layout breakpoints preserve transcript room and short-terminal overlays', 
   assert.equal(wide.gap, 1)
   assert.ok(wide.transcriptWidth >= 72)
   assert.equal(layoutFor(200, 60).mode, 'wide')
+})
+
+test('modal coordination honors the row breakpoint at standard and wide widths', () => {
+  const shown: OverlayOptions[] = []
+  const handle = {
+    hide() {},
+    focus() {},
+    isHidden: () => false,
+  } as unknown as OverlayHandle
+  const tui = {
+    terminal: { columns: 120, rows: 12 },
+    showOverlay: (_component: Component, options: OverlayOptions) => {
+      shown.push(options)
+      return handle
+    },
+  } as unknown as TUI
+  const component = { render: () => [], invalidate() {} } as Component
+
+  new ModalCoordinator(tui).open(component, {
+    anchor: 'center',
+    width: '80%',
+    maxHeight: '80%',
+  })
+
+  assert.deepEqual(shown, [{ anchor: 'top-left', width: '100%', maxHeight: '100%', margin: 0 }])
 })
 
 test('published Pi virtual terminals keep the composer and valid cells at all sizes', async () => {

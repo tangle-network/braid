@@ -51,6 +51,18 @@ export interface CreateBranchInput {
   readonly runner?: string
   readonly model?: string
   readonly effort?: string
+  readonly mode?: string
+}
+
+export interface SetRunOverridesInput {
+  readonly operationId: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly runner?: string
+  readonly model?: string
+  readonly effort?: string
+  readonly mode?: string
+  readonly clear?: boolean
 }
 
 export interface CloneConversationInput {

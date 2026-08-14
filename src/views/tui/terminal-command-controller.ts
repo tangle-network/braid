@@ -130,6 +130,13 @@ export class TerminalCommandController {
       return
     }
     if (
+      (command === 'runner' || command === 'model' || command === 'effort') &&
+      args.length === 0
+    ) {
+      this.#overlays.openSelector(command)
+      return
+    }
+    if (
       command === 'automate' &&
       (args.length === 0 || (args.length === 1 && args[0] === 'list'))
     ) {

@@ -49,6 +49,7 @@ export function withRetainedSandboxPolicy(
   const observable = source as ObservableSandboxClient
   const get = source.get?.bind(source)
   const list = source.list?.bind(source)
+  const fetch = source.fetch?.bind(source)
   const describePlacement = source.describePlacement?.bind(source)
   const getIdentity = observable.getIdentity?.bind(source)
   const usage = observable.usage?.bind(source)
@@ -73,6 +74,7 @@ export function withRetainedSandboxPolicy(
             return box
           },
         }),
+    ...(fetch === undefined ? {} : { fetch }),
     ...(list === undefined
       ? {}
       : {

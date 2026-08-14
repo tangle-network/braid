@@ -52,5 +52,6 @@ export type {
   ForkPlanInput,
   OpenConversationInput,
   PlanContextInput,
+  SetRunOverridesInput,
   UpdateConversationInput,
 } from './conversation-types.js'

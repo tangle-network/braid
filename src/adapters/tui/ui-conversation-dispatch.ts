@@ -81,6 +81,23 @@ export async function dispatchConversationRunCommand(
         plan.allowed ? 'Review the fork before creating it' : (plan.reason ?? 'Fork unavailable'),
       )
     }
+    case 'runner':
+    case 'model':
+    case 'effort': {
+      if (intent.args.length !== 1) throw new Error(`/${intent.command} requires exactly one value`)
+      const value = intent.args[0]
+      if (value === undefined) throw new Error(`/${intent.command} requires a value`)
+      const branch = await context.app.conversations.branches.setRunOverrides({
+        operationId,
+        [intent.command]: value,
+      })
+      return accepted(
+        context,
+        operationId,
+        branch,
+        `${overrideLabel(intent.command)} set for this branch`,
+      )
+    }
     case 'export': {
       const format = exportFormat(intent.args[0])
       const result = await context.app.conversations.exports.export({ operationId, format })
@@ -109,6 +126,19 @@ export async function dispatchConversationHeadlessCommand(
 ): Promise<UiDispatchResult | undefined> {
   const params = intent.params
   switch (intent.command) {
+    case 'set_run_override': {
+      const operationId = requiredOperationId(intent.operationId, intent.command)
+      const clear = optionalBoolean(params, 'clear')
+      const branch = await context.app.conversations.branches.setRunOverrides({
+        operationId,
+        ...optionalString(params, 'runner'),
+        ...optionalString(params, 'model'),
+        ...optionalString(params, 'effort'),
+        ...optionalString(params, 'mode'),
+        ...(clear === undefined ? {} : { clear }),
+      })
+      return accepted(context, operationId, branch, 'Run configuration updated')
+    }
     case 'new_conversation': {
       const operationId = requiredOperationId(intent.operationId, intent.command)
       const conversation = await context.app.conversations.lifecycle.create({
@@ -338,6 +368,22 @@ function renamedOptionalString(
 
 function optionalStringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function optionalBoolean(
+  params: Readonly<Record<string, unknown>>,
+  key: string,
+): boolean | undefined {
+  const value = params[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'boolean') throw new Error(`${key} must be a boolean`)
+  return value
+}
+
+function overrideLabel(command: 'runner' | 'model' | 'effort'): string {
+  return command === 'effort'
+    ? 'Thinking effort'
+    : `${command[0]?.toUpperCase()}${command.slice(1)}`
 }
 
 function optionalStatus(value: unknown): 'active' | 'archived' | 'all' | undefined {

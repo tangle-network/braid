@@ -12,6 +12,7 @@ export const OPERATION_KINDS = new Set([
   'conversation-archive',
   'conversation-delete',
   'branch-create',
+  'run-override',
   'conversation-clone',
   'conversation-fork',
   'context-plan',

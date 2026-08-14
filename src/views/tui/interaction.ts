@@ -9,10 +9,9 @@ import {
 } from '@earendil-works/pi-tui'
 import type { InteractionResponseValue } from '../shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../shared/models.js'
-import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { focusedSurfaceLines } from './focused-surface.js'
 import { automationResponseFor } from './interaction-automation-response.js'
 import { booleanDecisionResponse, InteractionDecisionList } from './interaction-decisions.js'
-import { focusedSurfaceLines } from './focused-surface.js'
 import { interactionInputResponse } from './interaction-input-response.js'
 import {
   answerHelp,
@@ -20,6 +19,7 @@ import {
   cancellationOutcome,
   interactionFooter,
   interactionHeading,
+  interactionPrompt,
   interactionSubjectComponents,
   isPositiveOutcome,
   isSecretInteraction,
@@ -33,7 +33,7 @@ import type { BraidTheme } from './theme.js'
 
 export class InteractionShell extends Container implements Focusable {
   readonly #theme: BraidTheme
-  readonly #interaction: InteractionView
+  #interaction: InteractionView
   readonly #onRespond: (response: InteractionResponseValue) => void
   readonly #onAutomate: ((response: InteractionResponseValue) => void) | undefined
   readonly #input: Input
@@ -72,13 +72,7 @@ export class InteractionShell extends Container implements Focusable {
     this.#input.onEscape = () => this.#cancel()
 
     const compactSelector = interaction.answerSpec.kind === 'select'
-    this.addChild(
-      this.#line(
-        isSecretInteraction(interaction)
-          ? 'Secret response requested; value stays hidden.'
-          : sanitizeTerminalText(interaction.prompt),
-      ),
-    )
+    this.addChild(interactionPrompt(interaction))
     for (const child of interactionSubjectComponents(interaction, theme, compactSelector))
       this.addChild(child)
     if (interaction.answerSpec.kind === 'boolean') {
@@ -117,7 +111,7 @@ export class InteractionShell extends Container implements Focusable {
           new OutcomeKeys(interaction.allowedOutcomes, theme, () => this.#selectedOutcome),
         )
     } else {
-      this.addChild(this.#line(answerHelp(interaction)))
+      this.addChild(new TruncatedText(answerHelp(interaction), 1, 0))
       this.addChild(this.#input)
       if (interaction.allowedOutcomes.length > 0)
         this.addChild(
@@ -134,6 +128,11 @@ export class InteractionShell extends Container implements Focusable {
     this.#focused = value
     this.#input.focused = value && !this.#selector && !this.#decisions
     if (this.#selector) this.#selector.focused = value
+  }
+
+  setInteraction(interaction: InteractionView): void {
+    this.#interaction = interaction
+    this.invalidate()
   }
 
   handleInput(data: string): void {
@@ -156,7 +155,11 @@ export class InteractionShell extends Container implements Focusable {
       this.#onAutomate(response)
       return
     }
-    if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c')) {
+    if (
+      matchesKey(data, 'escape') ||
+      matchesKey(data, 'ctrl+c') ||
+      (matchesKey(data, 'left') && this.#decisions)
+    ) {
       this.#cancel()
       return
     }
@@ -239,9 +242,5 @@ export class InteractionShell extends Container implements Focusable {
       return
     }
     this.#respond({ outcome })
-  }
-
-  #line(value: string): TruncatedText {
-    return new TruncatedText(value, 1, 0)
   }
 }

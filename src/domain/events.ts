@@ -62,6 +62,7 @@ import type {
   WorkerId,
 } from './ids.js'
 import type { RunStatus } from './state.js'
+import type { RetainedRunAdmissionRecord } from './run-contracts.js'
 
 export type { TurnUsage } from './entities.js'
 export type {
@@ -165,7 +166,10 @@ export interface DomainBraidEventMap {
     readonly graphEdges?: readonly GraphEdgeRecord[]
     readonly operation?: OperationRecord
   }
-  readonly 'branch.updated': { readonly branch: BranchRecord }
+  readonly 'branch.updated': {
+    readonly branch: BranchRecord
+    readonly operation: OperationRecord
+  }
   readonly 'branch.selected': {
     readonly conversationId: ConversationId
     readonly branchId: BranchId
@@ -176,6 +180,10 @@ export interface DomainBraidEventMap {
   readonly 'message.created': { readonly message: MessageRecord }
   readonly 'message.part.updated': { readonly part: MessagePartRecord }
   readonly 'run.bound': { readonly runId: RunId; readonly bindingId: BindingId }
+  readonly 'run.retained.admitted': {
+    readonly runId: RunId
+    readonly admission: RetainedRunAdmissionRecord
+  }
   readonly 'run.status.changed': {
     readonly runId: RunId
     readonly status: RunStatus
@@ -301,6 +309,7 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'run.reconnecting':
     case 'run.unknown':
     case 'run.bound':
+    case 'run.retained.admitted':
     case 'run.status.changed':
     case 'run.reconciled':
     case 'run.environment.observed':
@@ -390,6 +399,11 @@ export type {
 }
 
 export function providerEventKey(event: BraidEvent): string | undefined {
-  if (!('provider' in event) || !event.provider) return undefined
-  return `${event.runId}:${event.provider.eventId}`
+  const provider = providerMetaForEvent(event)
+  if (provider === undefined || !('runId' in event)) return undefined
+  return `${event.runId}:${provider.eventId}`
+}
+
+export function providerMetaForEvent(event: BraidEvent): ProviderEventMeta | undefined {
+  return 'provider' in event && event.provider ? event.provider : undefined
 }
