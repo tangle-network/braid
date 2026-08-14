@@ -10,11 +10,6 @@ import type { RetainedExecutionPlan } from './retained-execution-contract.js'
 
 const MAX_RETAINED_CLIENTS = 128
 
-interface PreparedRetainedRun {
-  readonly key: string
-  readonly plan: RetainedExecutionPlan
-}
-
 export function retainedExecutionKey(input: ExecuteTurnInput): string {
   return canonicalDigest({
     runId: input.runId,
@@ -28,30 +23,28 @@ export function retainedExecutionKey(input: ExecuteTurnInput): string {
   })
 }
 
-/** Process-local handles and exact provider bindings for one Braid run. */
+/** Process-local coordination around one Braid retained run. */
 export class RetainedExecutionState {
-  readonly #prepared = new Map<string, PreparedRetainedRun>()
+  readonly #prepared = new Map<string, string>()
   readonly #startingHandles = new Map<string, Promise<RetainedRunHandle>>()
   readonly #handles = new Map<string, RetainedRunHandle>()
   readonly #plans = new Map<string, RetainedExecutionPlan>()
-  readonly #controlRefs = new Map<string, AgentExactRunControlRef>()
   readonly #readers = new Map<string, AbortController>()
   readonly #cancellationRequested = new Set<string>()
   readonly #detached = new Set<string>()
-  readonly #lastCursors = new Map<string, string>()
   readonly #retainedOrder: string[] = []
 
   rememberPrepared(runId: string, key: string, plan: RetainedExecutionPlan): void {
     this.#assertAdmissionCapacity(runId)
-    this.#prepared.set(runId, { key, plan })
+    this.#prepared.set(runId, key)
     this.rememberPlan(runId, plan)
   }
 
   takePrepared(runId: string, key: string): RetainedExecutionPlan | undefined {
-    const prepared = this.#prepared.get(runId)
-    if (prepared === undefined || prepared.key !== key) return undefined
+    const preparedKey = this.#prepared.get(runId)
+    if (preparedKey === undefined || preparedKey !== key) return undefined
     this.#prepared.delete(runId)
-    return prepared.plan
+    return this.#plans.get(runId)
   }
 
   hasPrepared(runId: string): boolean {
@@ -101,38 +94,15 @@ export class RetainedExecutionState {
   }
 
   rememberHandle(runId: string, plan: RetainedExecutionPlan, handle: RetainedRunHandle): void {
-    const exact = this.validateControlRef(runId, plan, handle.controlRef)
-    const saved = this.#controlRefs.get(runId)
-    if (saved !== undefined) this.assertSameControlRef(saved, exact)
+    this.validateControlRef(plan, handle.controlRef)
     this.#handles.set(runId, handle)
-    this.rememberControlRef(runId, plan, exact)
     this.rememberPlan(runId, plan)
   }
 
-  controlRef(runId: string): AgentExactRunControlRef | undefined {
-    const controlRef = this.#controlRefs.get(runId)
-    return controlRef === undefined ? undefined : structuredClone(controlRef)
-  }
-
-  rememberControlRef(
-    runId: string,
-    plan: RetainedExecutionPlan,
-    controlRef: AgentExactRunControlRef,
-  ): AgentExactRunControlRef {
-    const exact = this.validateControlRef(runId, plan, controlRef)
-    const saved = this.#controlRefs.get(runId)
-    if (saved !== undefined) this.assertSameControlRef(saved, exact)
-    this.#controlRefs.set(runId, structuredClone(exact))
-    this.#touch(runId)
-    return exact
-  }
-
   validateControlRef(
-    _runId: string,
     plan: RetainedExecutionPlan,
     controlRef: AgentExactRunControlRef,
   ): AgentExactRunControlRef {
-    // The map key is Braid's local ID. The provider owns controlRef.runId.
     const exact = AgentExactRunControlRefSchema.parse(controlRef)
     if (exact.provider !== plan.providerName) {
       throw new Error('retained control reference names another provider')
@@ -185,14 +155,6 @@ export class RetainedExecutionState {
     return this.#detached.has(runId)
   }
 
-  lastCursor(runId: string): string | undefined {
-    return this.#lastCursors.get(runId)
-  }
-
-  rememberCursor(runId: string, cursor: string): void {
-    this.#lastCursors.set(runId, cursor)
-  }
-
   #touch(runId: string): void {
     const index = this.#retainedOrder.indexOf(runId)
     if (index >= 0) this.#retainedOrder.splice(index, 1)
@@ -211,9 +173,7 @@ export class RetainedExecutionState {
       this.#startingHandles.delete(evicted)
       this.#handles.delete(evicted)
       this.#plans.delete(evicted)
-      this.#controlRefs.delete(evicted)
       this.#cancellationRequested.delete(evicted)
-      this.#lastCursors.delete(evicted)
       this.#detached.delete(evicted)
     }
   }

@@ -226,22 +226,16 @@ export class RetainedExecutionPort implements ExecutionPort {
     const snapshot = await resolved.handle.status({
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     })
-    const snapshotControlRef = this.#state.validateControlRef(
-      input.runId,
-      resolved.plan,
-      snapshot.controlRef,
-    )
+    const snapshotControlRef = this.#state.validateControlRef(resolved.plan, snapshot.controlRef)
     this.#state.assertSameControlRef(resolved.handle.controlRef, snapshotControlRef)
     const status = resolved.plan.projectStatus({
       status: snapshot.status,
       detached: this.#state.isDetached(input.runId),
     })
-    const cursor = this.#state.lastCursor(input.runId)
     const base: ProviderRunSnapshot = {
       runId: input.runId,
       status,
       sessionId: resolved.handle.controlRef.sessionId,
-      ...(cursor === undefined ? {} : { cursor }),
     }
     if (!resolved.plan.isTerminalStatus(status)) return base
     if (status === 'cancelled' || status === 'expired') return base
@@ -279,7 +273,7 @@ export class RetainedExecutionPort implements ExecutionPort {
         handle = await starting
       }
       if (supplied !== undefined) {
-        const exact = this.#state.validateControlRef(runId, activePlan, supplied)
+        const exact = this.#state.validateControlRef(activePlan, supplied)
         this.#state.assertSameControlRef(handle.controlRef, exact)
       }
       return { handle, plan: activePlan, wasStarting: starting !== undefined }
@@ -305,7 +299,7 @@ export class RetainedExecutionPort implements ExecutionPort {
       const snapshot = await resolved.handle.status({
         ...(signal === undefined ? {} : { signal }),
       })
-      const exact = this.#state.validateControlRef(input.runId, resolved.plan, snapshot.controlRef)
+      const exact = this.#state.validateControlRef(resolved.plan, snapshot.controlRef)
       this.#state.assertSameControlRef(resolved.handle.controlRef, exact)
       return snapshot.status === 'cancelled'
     } catch {
@@ -319,12 +313,10 @@ export class RetainedExecutionPort implements ExecutionPort {
     supplied: AgentExactRunControlRef | undefined,
     signal: AbortSignal | undefined,
   ): Promise<AgentExactRunControlRef | null> {
-    if (supplied !== undefined) return this.#state.rememberControlRef(runId, plan, supplied)
-    const cached = this.#state.controlRef(runId)
-    if (cached !== undefined) return this.#state.rememberControlRef(runId, plan, cached)
+    if (supplied !== undefined) return this.#state.validateControlRef(plan, supplied)
     const discovered = await plan.discover(runId, signal)
     if (discovered === null) return null
-    return this.#state.rememberControlRef(runId, plan, discovered)
+    return this.#state.validateControlRef(plan, discovered)
   }
 
   async #planFor(
@@ -370,8 +362,8 @@ export class RetainedExecutionPort implements ExecutionPort {
     if (plan === undefined) return
     this.#state.assertProviderSession(plan, providerSessionId)
     if (controlRef === undefined) return
-    const exact = this.#state.validateControlRef(runId, plan, controlRef)
-    const saved = this.#state.controlRef(runId)
-    if (saved !== undefined) this.#state.assertSameControlRef(saved, exact)
+    const exact = this.#state.validateControlRef(plan, controlRef)
+    const active = this.#state.handle(runId)
+    if (active !== undefined) this.#state.assertSameControlRef(active.controlRef, exact)
   }
 }

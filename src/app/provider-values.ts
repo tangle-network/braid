@@ -1,6 +1,4 @@
-import {
-  safeProviderDiagnostic,
-} from '../domain/provider-values.js'
+import { safeProviderDiagnostic } from '../domain/provider-values.js'
 
 export {
   finiteNonNegativeNumber,

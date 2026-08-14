@@ -177,6 +177,7 @@ test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job 
       ids: new RandomIds(),
     })
     first.app.initialize(root)
+    await first.app.whenDurable()
     const send = first.app.send({
       operationId: 'operation-retained-restart-send',
       text: 'Keep working while Braid restarts.',
