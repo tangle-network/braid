@@ -19,6 +19,7 @@ import {
   createInteractionId,
   createOperationId,
   createProviderSessionId,
+  createRuleId,
   createRunId,
   createTurnId,
   createWorkspaceId,
@@ -307,6 +308,22 @@ test('canonical run interactions accept future kinds and reject duplicate reques
 
   assert.doesNotThrow(() => assertRunRecord({ ...run, interactions: [interaction] }))
   assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [{ ...interaction, source: { sequence: 0 } }],
+      }),
+    /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [{ ...interaction, source: { eventId: 'password=not-persisted' } }],
+      }),
+    /run\.interactions\[0\]\.source\.eventId must be a safe public identifier/u,
+  )
+  assert.throws(
     () => assertRunRecord({ ...run, interactions: [interaction, interaction] }),
     /run\.interactions\.request contains duplicate identifier/u,
   )
@@ -377,6 +394,42 @@ test('canonical run interaction response operations preserve status and secrecy 
   }
 
   assert.doesNotThrow(() => assertRunRecord({ ...run, interactions: [responding] }))
+  const automationRule = {
+    id: createRuleId('rule-interaction-response-invariant'),
+    enabled: true,
+    matcher: { interactionKind: 'provider.future.interaction' },
+    answer: { answer: 'approved' },
+    responseScope: 'once' as const,
+    createdAt: at,
+    uses: 0,
+  }
+  assert.doesNotThrow(() =>
+    assertRunRecord({
+      ...run,
+      interactions: [
+        {
+          ...responding,
+          responseOperation: { ...responding.responseOperation, automationRule },
+        },
+      ],
+    }),
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [
+          {
+            ...responding,
+            responseOperation: {
+              ...responding.responseOperation,
+              automationRule: { ...automationRule, answer: { password: 'must-not-persist' } },
+            },
+          },
+        ],
+      }),
+    /rule\.answer\.password is secret-designated and cannot be retained/u,
+  )
   assert.throws(
     () =>
       assertRunRecord({

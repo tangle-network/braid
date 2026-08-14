@@ -27,6 +27,7 @@ import {
   createInteractionId,
   createMessageId,
   createOperationId,
+  createRuleId,
   createRunId,
   createTurnId,
   createWorkspaceId,
@@ -211,6 +212,61 @@ test('restores a prior snapshot with the removed top-level interaction projectio
   assert.deepEqual(
     restored.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
     [interactionId],
+  )
+
+  const malformedSourceState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) => ({
+      ...run,
+      interactions: run.interactions.map((item) => ({
+        ...item,
+        source: { ...item.source, sequence: 0 },
+      })),
+    })),
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: malformedSourceState,
+        stateChecksum: canonicalDigest(malformedSourceState),
+      }),
+    /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
+  )
+
+  const malformedRule = {
+    id: createRuleId('rule-snapshot-interaction-invalid'),
+    enabled: true,
+    matcher: { interactionKind: 'question' },
+    answer: { password: 'must-not-persist' },
+    responseScope: 'once' as const,
+    createdAt: at,
+    uses: 0,
+  }
+  const malformedRuleState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) => ({
+      ...run,
+      interactions: run.interactions.map((item) => ({
+        ...item,
+        status: 'responding' as const,
+        responseOperation: {
+          operationId: createOperationId('operation-snapshot-interaction-response'),
+          outcome: 'accepted' as const,
+          containsSecret: false,
+          automationRule: malformedRule,
+        },
+      })),
+    })),
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: malformedRuleState,
+        stateChecksum: canonicalDigest(malformedRuleState),
+      }),
+    /rule\.answer\.password is secret-designated and cannot be retained/u,
   )
 })
 

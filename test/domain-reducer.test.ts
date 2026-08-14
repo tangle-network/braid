@@ -1,9 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { STARTER_PROFILE } from '../src/app/composition.js'
+import {
+  createInteractionRequest,
+  interactionResponseBinding,
+} from '../src/app/interaction-request.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
-import { createEventId, createReplayCursor, createWorkspaceId } from '../src/domain/ids.js'
+import {
+  createEventId,
+  createInteractionId,
+  createMessageId,
+  createOperationId,
+  createReplayCursor,
+  createRuleId,
+  createRunId,
+  createTurnId,
+  createWorkspaceId,
+} from '../src/domain/ids.js'
 import {
   DuplicateEventConflictError,
   reduceEvent,
@@ -55,6 +69,92 @@ function verticalSliceEvents(): readonly JournalEventEnvelope[] {
     ),
   ]
 }
+
+test('replay rejects malformed persisted interaction sources and automation rules', () => {
+  const runId = createRunId('run-replay-interaction-invariants')
+  const interactionId = createInteractionId('interaction-replay-invariants')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue after replay?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-replay-interaction',
+      sessionId: 'session-replay-interaction',
+      executionId: 'execution-replay-interaction',
+      interactionId,
+    },
+  })
+  const prefix: readonly JournalEventEnvelope[] = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-replay-interaction'),
+        runId,
+        turnId: createTurnId('turn-replay-interaction'),
+        userMessageId: createMessageId('message-replay-interaction-user'),
+        assistantMessageId: createMessageId('message-replay-interaction-assistant'),
+        text: 'wait for replay',
+      },
+      2,
+    ),
+  ]
+  const interaction = (providerSequence: number): JournalEventEnvelope =>
+    envelope(
+      {
+        kind: 'run.interaction',
+        runId,
+        request,
+        responseBinding: interactionResponseBinding(request),
+        provider: {
+          eventId: 'provider-replay-interaction',
+          providerSequence,
+          occurredAt: '2026-08-02T00:00:00.000Z',
+        },
+      },
+      3,
+    )
+
+  assert.throws(
+    () => replayEvents(initialState(STARTER_PROFILE), [...prefix, interaction(0)]),
+    /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
+  )
+
+  const invalidRule = {
+    id: createRuleId('rule-replay-interaction-invalid'),
+    enabled: true,
+    matcher: { interactionKind: 'question' },
+    answer: { password: 'must-not-persist' },
+    responseScope: 'once' as const,
+    createdAt: '2026-08-02T00:00:00.000Z',
+    uses: 0,
+  }
+  assert.throws(
+    () =>
+      replayEvents(initialState(STARTER_PROFILE), [
+        ...prefix,
+        interaction(1),
+        envelope(
+          {
+            kind: 'run.interaction.response.requested',
+            runId,
+            interactionId,
+            operationId: createOperationId('operation-replay-interaction-response'),
+            outcome: 'accepted',
+            containsSecret: false,
+            automationRule: invalidRule,
+          },
+          4,
+        ),
+      ]),
+    /rule\.answer\.password is secret-designated and cannot be retained/u,
+  )
+})
 
 test('incremental reduction and full replay produce the same complete projection', () => {
   const events = verticalSliceEvents()

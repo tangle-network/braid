@@ -9,6 +9,7 @@ import type {
   AnalysisRecord,
   RunRecord,
 } from './entities.js'
+import type { AutomationRuleRecord } from './entities-runtime.js'
 import { isReplayCursor } from './ids.js'
 import { isSensitiveFieldName } from './bounded-structured.js'
 import {
@@ -26,6 +27,7 @@ import {
 } from './invariants-base.js'
 import { safePublicIdentifier } from './provider-values.js'
 import { assertRetainedRunAdmission } from './invariants-retained-admission.js'
+import { assertAutomationRuleRecord } from './invariants-runtime.js'
 
 export function assertRunRecord(record: RunRecord): void {
   assertEntityId('run', record.id, 'run.id')
@@ -112,6 +114,22 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
   if (!responseBindingResult.success) fail(`${label}.responseBinding is invalid`)
   const responseBinding = responseBindingResult.data
 
+  objectValue(value.source, `${label}.source`)
+  if (value.source.eventId !== undefined)
+    assertPublicIdentifier(value.source.eventId, `${label}.source.eventId`)
+  if (
+    value.source.sequence !== undefined &&
+    (typeof value.source.sequence !== 'number' ||
+      !Number.isSafeInteger(value.source.sequence) ||
+      value.source.sequence <= 0)
+  ) {
+    fail(`${label}.source.sequence must be a positive safe integer`)
+  }
+  if (value.source.cursor !== undefined)
+    assertPublicIdentifier(value.source.cursor, `${label}.source.cursor`)
+  if (value.source.occurredAt !== undefined)
+    assertDate(value.source.occurredAt, `${label}.source.occurredAt`)
+
   assertEntityId('run', value.runId, `${label}.runId`)
   if (value.runId !== runId) fail(`${label}.runId must match run.id`)
   if (request.binding.runId !== runId) fail(`${label}.request.binding.runId must match run.id`)
@@ -166,6 +184,9 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
     )
   ) {
     fail(`${label}.responseOperation must mark secret request data`)
+  }
+  if (responseOperation.automationRule !== undefined) {
+    assertAutomationRuleRecord(responseOperation.automationRule as AutomationRuleRecord)
   }
   return request.id
 }
@@ -283,7 +304,7 @@ function assertAnalysisModelCall(record: AnalysisModelCallRecord): void {
   }
 }
 
-function assertPublicIdentifier(value: string, label: string): void {
+function assertPublicIdentifier(value: unknown, label: string): void {
   if (safePublicIdentifier(value) !== value) fail(`${label} must be a safe public identifier`)
 }
 
