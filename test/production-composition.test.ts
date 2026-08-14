@@ -307,6 +307,7 @@ test('durable composition uses the configured backend on the normal startup path
     })
     try {
       app.initialize(root)
+      await app.whenDurable()
       const state = await app.send({
         operationId: 'op-durable-production-turn',
         text: 'run durable production',
@@ -1041,9 +1042,18 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.match(String(secondBody.run_id), /^run-/u)
     assert.notEqual(secondBody.run_id, firstBody.run_id)
     assert.notEqual(secondBody.session_id, firstBody.session_id)
+    for (const body of [firstBody, secondBody]) {
+      const runId = String(body.run_id)
+      assert.deepEqual(body.metadata, {
+        retainedIdempotencyKey: `environment-braid-${runId}`,
+        sessionId: `session-braid-${runId}`,
+        executionId: runId,
+      })
+    }
     const stableBody = ({
       run_id: _runId,
       session_id: _sessionId,
+      metadata: _metadata,
       ...body
     }: Record<string, unknown>) => body
     assert.deepEqual(stableBody(secondBody), stableBody(firstBody))
