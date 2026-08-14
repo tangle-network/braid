@@ -111,13 +111,26 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   const firstRunEvent = responses.findIndex(
     (response) => response.type === 'event' && response.event.kind === 'run.requested',
   )
-  const finalState = responses.find(
+  const sendStates = responses.filter(
     (response) => response.type === 'state' && response.requestId === 'req-send',
   )
+  const admissionState = sendStates.find(
+    (response) =>
+      response.type === 'state' && response.projection === 'full' && response.state.activeRunId,
+  )
+  const finalState = sendStates.at(-1)
 
   assert.equal(code, 0)
   assert.ok(sendAck >= 0)
   assert.ok(firstRunEvent > sendAck)
+  const sendResponse = responses[sendAck]
+  assert.equal(sendResponse?.type, 'ack')
+  if (sendResponse?.type !== 'ack') assert.fail('missing send acknowledgement')
+  assert.equal(admissionState?.type, 'state')
+  if (admissionState?.type !== 'state') assert.fail('missing admission state')
+  assert.equal(admissionState.projection, 'full')
+  if (admissionState.projection !== 'full') assert.fail('expected full admission state')
+  assert.equal(admissionState.state.activeRunId, sendResponse.runId)
   assert.equal(finalState?.type, 'state')
   if (finalState?.type !== 'state') assert.fail('missing final state')
   assert.equal(finalState.projection, 'full')
@@ -1312,12 +1325,14 @@ test('JSONL operation replay returns current state after later sends', async () 
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line) as BraidResponse)
-    .find((response) => response.type === 'state' && response.requestId === 'req-a-replay')
+    .filter((response) => response.type === 'state' && response.requestId === 'req-a-replay')
+    .at(-1)
   const stateAfterSecondSend = output
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line) as BraidResponse)
-    .find((response) => response.type === 'state' && response.requestId === 'req-b')
+    .filter((response) => response.type === 'state' && response.requestId === 'req-b')
+    .at(-1)
 
   assert.equal(replayState?.type, 'state')
   if (replayState?.type !== 'state') assert.fail('missing replay state')

@@ -574,6 +574,8 @@ The headless server is an interface adapter over the same application instance.
 
 It receives one versioned JSON command per line and emits versioned acknowledgement, event, error, and state records.
 
+Each accepted send exposes the admitted active run before it later exposes the terminal state.
+
 Every headless request carries a connection-local client request identifier.
 
 Every side-effecting headless command also carries a caller-created, globally stable operation identifier that survives reconnect and process restart.

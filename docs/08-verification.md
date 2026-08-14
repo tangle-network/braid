@@ -77,6 +77,8 @@ Acknowledgement means Braid accepted and journaled the operation, not that an ex
 
 External effect results arrive as events and state transitions.
 
+An accepted send emits its admission state before completion and its terminal state after completion.
+
 Errors use stable machine codes plus concise human text and never include secrets.
 
 ### Required commands
