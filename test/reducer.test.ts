@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { STARTER_PROFILE } from '../src/app/composition.js'
-import { buildAppView } from '../src/app/view-model.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
-import { MAX_RENDERED_TEXT_CHARS } from '../src/views/shared/sanitize.js'
 
 function envelopes(events: readonly BraidEvent[]): BraidEventEnvelope[] {
   return events.map((event, index) => ({
@@ -46,21 +45,13 @@ test('10,000 streamed events replay without duplication or event loss', () => {
   ]
 
   const state = replayEvents(initialState(STARTER_PROFILE), envelopes(events))
-  const view = buildAppView(state)
+  const view = buildBraidViewModel(state)
   assert.equal(state.sequence, deltaCount + 4)
   assert.equal(state.messages[1]?.text.length, delta.length * deltaCount)
   assert.equal(state.messages[1]?.text, response)
   assert.equal(view.messages.length, 2)
-  assert.equal(view.messages[1]?.text.length, MAX_RENDERED_TEXT_CHARS)
-  assert.equal(view.messages[1]?.text.startsWith('…\n'), true)
-  assert.equal(
-    view.messages[1]?.text.endsWith(
-      Array.from(response)
-        .slice(-(MAX_RENDERED_TEXT_CHARS - 2))
-        .join(''),
-    ),
-    true,
-  )
+  assert.equal(view.messages[1]?.text.length, response.length)
+  assert.equal(view.messages[1]?.text, response)
 })
 
 test('replay rejects a sequence gap', () => {

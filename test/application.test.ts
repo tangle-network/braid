@@ -5,6 +5,7 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createUiSubscriberDelivery } from '../src/adapters/tui/ui-subscriber-delivery.js'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
@@ -12,7 +13,6 @@ import { MemoryJournal } from '../src/app/journal.js'
 import { createProfileRecord } from '../src/app/profiles.js'
 import { safeRuntimeDiagnostic } from '../src/app/provider-values.js'
 import { runEffectRequest } from '../src/app/run-admission.js'
-import { buildAppView } from '../src/app/view-model.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId } from '../src/domain/ids.js'
@@ -658,7 +658,7 @@ test('cancellation remains distinct from failure', async () => {
   assert.equal(state.runs[0]?.status, 'aborted')
   assert.match(state.runs[0]?.terminalReason ?? '', /abort|cancel/iu)
   assert.equal(state.lastError, null)
-  assert.equal(buildAppView(state).status, 'aborted')
+  assert.equal(buildBraidViewModel(state).status, 'cancelled')
 })
 
 test('blocked and unconfigured states remain explicit', async () => {
@@ -686,9 +686,9 @@ test('blocked and unconfigured states remain explicit', async () => {
   })
   blocked.initialize('/workspace')
   const blockedState = await blocked.send({ operationId: 'op-blocked', text: 'wait' }).completion
-  assert.equal(buildAppView(blockedState).status, 'blocked')
+  assert.equal(buildBraidViewModel(blockedState).status, 'waiting')
 
-  const unconfigured = buildAppView(createBraidApplication().state())
+  const unconfigured = buildBraidViewModel(createBraidApplication().state())
   assert.equal(unconfigured.connection, 'not connected')
   assert.equal(unconfigured.model, 'automatic')
 })

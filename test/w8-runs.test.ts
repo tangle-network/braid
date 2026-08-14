@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
-import { buildAppView } from '../src/app/view-model.js'
 import { createPortableContextPlan } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import type { BraidState } from '../src/domain/state.js'
@@ -643,7 +643,7 @@ for (const count of [10_000, 100_000]) {
       queuedInputs: [],
       lastError: null,
     }
-    const view = buildAppView(state)
+    const view = buildBraidViewModel(state)
     assert.equal(view.messages.length, 200)
     assert.equal(view.hiddenMessageCount, count - 200)
     assert.equal(view.messages[0]?.id, `message-${count - 200}`)
