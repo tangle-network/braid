@@ -63,5 +63,5 @@ export const livePrompts = Object.freeze({
   interactive: (key) =>
     `Ask one user-visible permission question before completing LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_INTERACTIVE_OK.`,
   restart: (key) =>
-    `Keep LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_RESTART active until the client explicitly reconciles it.`,
+    `For LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_RESTART, produce a numbered list from 1 to 1000 with one short word per line.`,
 })

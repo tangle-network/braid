@@ -21,8 +21,8 @@ import {
   interactionFromResponse,
   semanticCommandStatus,
 } from './protocol.mjs'
-import { verifyCancel } from './target-actions.mjs'
 import { executeReleaseProofs } from './release-proofs.mjs'
+import { verifyCancel } from './target-actions.mjs'
 import { defaultTargetPolicy, readTargetPolicy, targetPolicyEvidence } from './target-policy.mjs'
 
 async function withFakeBridge(
