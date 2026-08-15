@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile, type AgentExactRunControlRef } from '@tangle-network/agent-interface'
+import {
+  type AgentExactRunControlRef,
+  defineAgentProfile,
+  type InteractionResponseCommand,
+} from '@tangle-network/agent-interface'
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import {
   type RetainedExecutionPlan,
@@ -43,6 +47,7 @@ function handle(
   exact: AgentExactRunControlRef,
   options: {
     readonly cancel?: (input: CancelOptions) => Promise<CancelResult>
+    readonly respondToInteraction?: RetainedRunHandle['respondToInteraction']
     readonly status?: RetainedRunHandle['status']
   } = {},
 ): RetainedRunHandle {
@@ -61,9 +66,11 @@ function handle(
     async result() {
       return { text: '', success: true }
     },
-    async respondToInteraction() {
-      throw new Error('interaction is not part of this test')
-    },
+    respondToInteraction:
+      options.respondToInteraction ??
+      (async () => {
+        throw new Error('interaction is not part of this test')
+      }),
     async contextBoundary() {
       return null
     },
@@ -343,6 +350,65 @@ test('a reconciled cancelled snapshot confirms an ambiguous cancellation', async
     detail: 'cancelled',
   })
   assert.equal(statusCalls, 1)
+})
+
+test('interaction response recovers the retained handle and preserves retry acknowledgement', async () => {
+  const exact = controlRef('interaction')
+  let responses = 0
+  const retainedHandle = handle(exact, {
+    respondToInteraction: async (command) => {
+      responses += 1
+      return {
+        operationId: command.operationId,
+        binding: command.binding,
+        commandDigest: command.commandDigest,
+        status: responses === 1 ? 'accepted' : 'already_resolved_same',
+      }
+    },
+  })
+  const recoveredPlan: RetainedExecutionPlan = {
+    ...plan(exact, async () => retainedHandle, retainedHandle),
+    discover: async (runId) => {
+      assert.equal(runId, 'run-interaction')
+      return exact
+    },
+  }
+  const execution = new RetainedExecutionPort({
+    resolve: async () => {
+      throw new Error('a recovered interaction must not resolve a new run')
+    },
+    recover: async ({ runId, providerSessionId }) => {
+      assert.equal(runId, 'run-interaction')
+      assert.equal(providerSessionId, exact.sessionId)
+      return recoveredPlan
+    },
+  })
+  const command: InteractionResponseCommand = {
+    operationId: 'operation-interaction-response',
+    binding: {
+      requestDigest: `sha256:${'b'.repeat(64)}`,
+      runId: 'run-interaction',
+      provider: exact.provider,
+      environmentId: exact.environmentId,
+      sessionId: exact.sessionId,
+      executionId: exact.executionId,
+      interactionId: 'interaction-retained',
+    },
+    commandDigest: `sha256:${'c'.repeat(64)}`,
+    response: { id: 'interaction-retained', outcome: 'accepted' },
+  }
+
+  assert.deepEqual(await execution.respondInteraction({ command }), {
+    operationId: command.operationId,
+    outcome: 'accepted',
+    detail: 'INTERACTION_RESPONSE_ACCEPTED',
+  })
+  assert.deepEqual(await execution.respondInteraction({ command }), {
+    operationId: command.operationId,
+    outcome: 'already-applied',
+    detail: 'INTERACTION_RESPONSE_REPLAYED',
+  })
+  assert.equal(responses, 2)
 })
 
 test('admission rejects at capacity instead of evicting a prepared plan', async () => {

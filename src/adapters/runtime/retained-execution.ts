@@ -1,4 +1,8 @@
-import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  InteractionAcknowledgementStatus,
+  InteractionResponseCommand,
+} from '@tangle-network/agent-interface'
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
@@ -255,6 +259,54 @@ export class RetainedExecutionPort implements ExecutionPort {
     }
   }
 
+  async respondInteraction(input: {
+    readonly command: InteractionResponseCommand
+    readonly signal?: AbortSignal
+  }): Promise<ControlAcknowledgement> {
+    const { binding } = input.command
+    const resolved = await this.#handleFor(
+      binding.runId,
+      binding.sessionId,
+      undefined,
+      input.signal,
+    )
+    if (!resolved) {
+      return {
+        operationId: input.command.operationId,
+        outcome: 'unknown',
+        detail: 'INTERACTION_RESPONSE_RUN_UNKNOWN',
+      }
+    }
+    const exact = resolved.handle.controlRef
+    if (
+      binding.provider !== exact.provider ||
+      binding.environmentId !== exact.environmentId ||
+      binding.sessionId !== exact.sessionId ||
+      binding.executionId !== exact.executionId
+    ) {
+      return {
+        operationId: input.command.operationId,
+        outcome: 'rejected',
+        detail: 'INTERACTION_BINDING_MISMATCH',
+      }
+    }
+    const acknowledgement = await resolved.handle.respondToInteraction(input.command, {
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    })
+    if (
+      acknowledgement.operationId !== input.command.operationId ||
+      acknowledgement.commandDigest !== input.command.commandDigest ||
+      canonicalDigest(acknowledgement.binding) !== canonicalDigest(input.command.binding)
+    ) {
+      return {
+        operationId: input.command.operationId,
+        outcome: 'rejected',
+        detail: 'INTERACTION_ACKNOWLEDGEMENT_MISMATCH',
+      }
+    }
+    return interactionAcknowledgement(input.command.operationId, acknowledgement.status)
+  }
+
   async #handleFor(
     runId: string,
     providerSessionId: string | undefined,
@@ -365,5 +417,27 @@ export class RetainedExecutionPort implements ExecutionPort {
     const exact = this.#state.validateControlRef(plan, controlRef)
     const active = this.#state.handle(runId)
     if (active !== undefined) this.#state.assertSameControlRef(active.controlRef, exact)
+  }
+}
+
+function interactionAcknowledgement(
+  operationId: string,
+  status: InteractionAcknowledgementStatus,
+): ControlAcknowledgement {
+  switch (status) {
+    case 'accepted':
+      return { operationId, outcome: 'accepted', detail: 'INTERACTION_RESPONSE_ACCEPTED' }
+    case 'already_resolved_same':
+      return { operationId, outcome: 'already-applied', detail: 'INTERACTION_RESPONSE_REPLAYED' }
+    case 'already_resolved_different':
+    case 'binding_mismatch':
+    case 'cancelled':
+    case 'expired':
+    case 'invalid_response':
+      return { operationId, outcome: 'rejected', detail: `INTERACTION_${status.toUpperCase()}` }
+    case 'transport_failure':
+    case 'unknown_interaction':
+    case 'unknown_run':
+      return { operationId, outcome: 'unknown', detail: `INTERACTION_${status.toUpperCase()}` }
   }
 }
