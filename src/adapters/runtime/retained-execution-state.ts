@@ -17,6 +17,7 @@ export function retainedExecutionKey(input: ExecuteTurnInput): string {
     text: input.text,
     profile: canonicalAgentProfileDigestHex(input.profile),
     connectionId: input.connectionId ?? null,
+    mode: input.mode ?? null,
     workspaceRoot: input.workspaceRoot ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,

@@ -12,6 +12,7 @@ import type {
   PortableAnalysisAttachment,
   PortableContextMessage,
   PortableContextPlan,
+  RequestedInteractions,
   RunAdmissionReceipt,
   RunCapabilities,
 } from './run-contracts.js'
@@ -23,6 +24,7 @@ export type {
   PortableContextMessage,
   PortableContextPart,
   PortableContextPlan,
+  RequestedInteractions,
   RunAdmissionReceipt,
   RunCapabilities,
   RunControlCapabilities,
@@ -120,6 +122,8 @@ export function createAdmissionReceipt(input: {
   readonly admittedAt: string
   readonly profile: Readonly<AgentProfile>
   readonly connectionId?: string
+  readonly mode?: string
+  readonly interactions?: RequestedInteractions
   readonly text: string
   readonly sessionId?: string
   readonly capabilities: RunCapabilities
@@ -153,6 +157,8 @@ export function createAdmissionReceipt(input: {
     text,
     profile: structuredClone(profile),
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
+    ...(input.interactions === undefined ? {} : { interactions: input.interactions }),
     ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
     ...(profile.harness === undefined ? {} : { runner: profile.harness }),
     ...(contextPlanDigest === undefined ? {} : { contextPlanDigest }),
@@ -166,6 +172,8 @@ export function createAdmissionReceipt(input: {
     text,
     profileDigest,
     connectionId: input.connectionId ?? null,
+    mode: input.mode ?? null,
+    interactions: input.interactions ?? {},
     contextPlanDigest: contextPlanDigest ?? null,
   })
   const capabilitiesDigest = canonicalDigest(capabilities)

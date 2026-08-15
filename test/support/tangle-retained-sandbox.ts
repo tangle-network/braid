@@ -1,8 +1,9 @@
 import type {
-  AgentRunCancellationAcknowledgement,
-  AgentRunCancellationRequest,
   AgentExactRunControlRef,
   AgentProfile,
+  AgentRunCancellationAcknowledgement,
+  AgentRunCancellationRequest,
+  RequestedInteractions,
 } from '@tangle-network/agent-interface'
 import {
   createTangleProvider,
@@ -11,8 +12,8 @@ import {
   type SandboxInstanceLike,
 } from '@tangle-network/agent-provider-tangle'
 import type { CreateSandboxOptions, SandboxEvent } from '@tangle-network/sandbox'
-import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import { safeExecutionId } from '../../src/adapters/runtime/production-backend-common.js'
+import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import { observeSandboxClient } from '../../src/adapters/runtime/sandbox-observation.js'
 import {
   retainedSandboxIdentity,
@@ -39,7 +40,7 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.10.0. */
+/** Stateful double for the exact Tangle SDK surface used by provider 0.11.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -47,6 +48,7 @@ export class FakeTangleRetainedSandbox {
     readonly sessionId: string
     readonly executionId: string
     readonly prompt: string
+    readonly interactions?: RequestedInteractions
   }> = []
   readonly cancellations: AgentRunCancellationRequest[] = []
   failDispatch = false
@@ -177,6 +179,9 @@ export class FakeTangleRetainedSandbox {
           sessionId,
           executionId,
           prompt: typeof message === 'string' ? message : JSON.stringify(message),
+          ...(options?.backend?.interactions === undefined
+            ? {}
+            : { interactions: structuredClone(options.backend.interactions) }),
         })
         return {
           sessionId,

@@ -1,14 +1,13 @@
-import { createAdmissionReceipt } from '../domain/receipts.js'
 import type {
   ContextTransferReceipt,
   NativeContextBoundaryProof,
   PortableContextPlan,
   RunAdmissionReceipt,
 } from '../domain/receipts.js'
+import { createAdmissionReceipt } from '../domain/receipts.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import { UNKNOWN_RUN_CAPABILITIES } from '../ports/execution.js'
 import type { AdmissionPort, AsyncAdmissionPort } from './application-ports.js'
-import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { exactAdmissionRequestDigest } from './run-admission-request.js'
 import {
   admissionProfileDigest,
@@ -20,6 +19,8 @@ import {
   validateExecutionContext,
   validateProfile,
 } from './run-admission-validation.js'
+import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
+import { requestedInteractionsForRun } from './run-interactions.js'
 
 export function admitRun(
   context: AdmissionPort,
@@ -37,6 +38,7 @@ export function admitRun(
   const resolved = rawAdmission ?? {}
   validateExecutionContext(context.currentState(), input, resolved)
   const capabilities = resolved.capabilities ?? resolveSyncCapabilities(context, input)
+  const interactions = requestedInteractionsForRun(input.mode, capabilities)
   const receipt = createAdmissionReceipt({
     runId: input.runId,
     turnId: turnId ?? context.ids.next('receipt'),
@@ -46,6 +48,8 @@ export function admitRun(
     admittedAt: context.clock.now(),
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
+    interactions,
     text: input.text,
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     capabilities,
@@ -86,6 +90,7 @@ export async function admitRunAsync(
   const resolved = await resolveAsyncAdmission(context, input)
   validateExecutionContext(context.currentState(), input, resolved)
   const capabilities = resolved?.capabilities ?? (await resolveAsyncCapabilities(context, input))
+  const interactions = requestedInteractionsForRun(input.mode, capabilities)
   const receipt = createAdmissionReceipt({
     runId: input.runId,
     turnId: turnId ?? context.ids.next('receipt'),
@@ -95,6 +100,8 @@ export async function admitRunAsync(
     admittedAt: context.clock.now(),
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
+    interactions,
     text: input.text,
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     capabilities,
@@ -135,6 +142,8 @@ export function pendingAdmissionReceipt(
     admittedAt: new Date(0).toISOString(),
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
+    interactions: {},
     text: input.text,
     capabilities: UNKNOWN_RUN_CAPABILITIES,
     admissionStatus: 'pending',

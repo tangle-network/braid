@@ -249,6 +249,7 @@ function importReceipt(
     branchId: input.branchId,
     admittedAt: canonicalDateTime(receipt.admittedAt, `${input.label}.admittedAt`),
     profile,
+    ...(typeof requested.mode === 'string' ? { mode: requested.mode } : {}),
     text: stringValue(requested.text, `${input.label}.requested.text`),
     capabilities: UNKNOWN_RUN_CAPABILITIES,
     warnings: ['IMPORTED_OFFLINE'],

@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { capabilitiesForConnection } from '../src/adapters/connections/production-connection-providers.js'
 import {
   resolveTangleSandboxBackend,
   resolveTangleSandboxRetainedConnection,
 } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
-import { capabilitiesForConnection } from '../src/adapters/connections/production-connection-providers.js'
+import type { ObservableSandboxClient } from '../src/adapters/runtime/sandbox-observation-types.js'
 import {
   createTangleRetainedPlan,
   startTangleRetainedRun,
 } from '../src/adapters/runtime/tangle-retained-run.js'
 import { withRetainedSandboxPolicy } from '../src/adapters/runtime/tangle-sandbox-retention.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
-import type { ObservableSandboxClient } from '../src/adapters/runtime/sandbox-observation-types.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
@@ -302,6 +302,24 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
     replayed.map((event) => event.cursor),
     [events[1]?.cursor],
   )
+})
+
+test('retained Tangle dispatch receives the exact requested interaction map', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const { input } = setup(sandbox)
+  const prepared = await prepareFakeTangleRetainedConnection({
+    sandbox,
+    profile,
+    runId: input.runId,
+  })
+  const interactions = { permission: true, question: false, plan: true } as const
+
+  await startTangleRetainedRun(createTangleRetainedPlan(prepared, input.runId), {
+    ...input,
+    interactions,
+  })
+
+  assert.deepEqual(sandbox.dispatches[0]?.interactions, interactions)
 })
 
 test('ambiguous dispatch failure never deletes the retained environment', async () => {

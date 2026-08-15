@@ -2,7 +2,10 @@ import type {
   AgentEnvironmentCapabilities,
   AgentExactRunControlRef,
   AgentProfile,
+  RequestedInteractions,
 } from '@tangle-network/agent-interface'
+
+export type { RequestedInteractions } from '@tangle-network/agent-interface'
 
 export interface RetainedRunEnvironmentAdmissionRecord {
   readonly phase: 'environment'
@@ -152,6 +155,8 @@ export interface RunAdmissionReceipt {
     readonly text: string
     readonly profile: Readonly<AgentProfile>
     readonly connectionId?: string
+    readonly mode?: string
+    readonly interactions?: RequestedInteractions
     readonly model?: string
     readonly runner?: string
     readonly contextPlanDigest?: string

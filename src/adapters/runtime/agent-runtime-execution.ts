@@ -360,6 +360,7 @@ function admissionKey(input: ExecuteTurnInput, profileDigest: string): string {
     text: input.text,
     profileDigest,
     connectionId: input.connectionId ?? null,
+    mode: input.mode ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
   })

@@ -109,6 +109,7 @@ export async function startCliBridgeRetainedRun(
     turn: {
       prompt: input.text,
       turnId: safeExecutionId(input.operationId),
+      interactions: input.interactions ?? {},
       signal: input.signal,
     },
     identity: {

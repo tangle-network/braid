@@ -393,6 +393,7 @@ export class BraidApplication {
       this.#state,
       configuration.profile,
       configuration.connectionId,
+      configuration.mode,
     )
     validateNativeProof(this.#portViews.admission, snapshot)
     if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {

@@ -164,6 +164,12 @@ export function restoreApplicationOperations(
               text: event.text,
               profile: event.receipt.requested.profile,
               connectionId: event.receipt.requested.connectionId ?? null,
+              ...(event.receipt.requested.mode === undefined
+                ? {}
+                : { mode: event.receipt.requested.mode }),
+              ...(event.receipt.requested.interactions === undefined
+                ? {}
+                : { interactions: event.receipt.requested.interactions }),
             }),
           runId: run.id,
           admission: event.receipt,

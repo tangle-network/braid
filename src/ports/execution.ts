@@ -6,6 +6,7 @@ import type {
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
 import type {
+  RequestedInteractions,
   RetainedRunAdmissionRecord,
   RetainedRunAdmissionRecorder,
   RunCapabilities,
@@ -13,13 +14,17 @@ import type {
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
 import type { RunStatus } from '../domain/state.js'
 
-export type { RunCapabilities } from '../domain/receipts.js'
+export type { RequestedInteractions, RunCapabilities } from '../domain/receipts.js'
 
 export interface ExecuteTurnInput {
   readonly operationId: string
   readonly runId: string
   readonly text: string
   readonly profile: Readonly<AgentProfile>
+  /** Selected branch mode captured before admission. */
+  readonly mode?: string
+  /** Exact per-turn interaction posture derived from admitted capabilities. */
+  readonly interactions?: RequestedInteractions
   readonly connectionId?: string
   readonly workspaceRoot?: string
   readonly signal: AbortSignal

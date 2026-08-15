@@ -130,6 +130,7 @@ export {
   createPortableContextPlan,
   type NativeContextBoundaryProof,
   type PortableContextPlan,
+  type RequestedInteractions,
   type RunAdmissionReceipt,
   type RunCapabilities,
 } from './domain/receipts.js'
