@@ -5,7 +5,6 @@ import type {
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import type { RetainedRunAdmissionRecord } from '../src/domain/run-contracts.js'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
   MANAGED_AGENT_EVAL_RPC_VERSION,
@@ -33,6 +32,7 @@ import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { AnalysisCapabilityError } from '../src/app/analysis-types.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
+import type { RetainedRunAdmissionRecord } from '../src/domain/run-contracts.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
@@ -301,19 +301,25 @@ test('analysis cost capacity admits the configured output and reasoning limits',
 })
 
 test('defines a bounded cited-answer analyst for /ask', () => {
+  const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.5.0')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
   assert.equal(typeof BRAID_QUESTION_ANALYST_DEFINITION.prepareContext, 'function')
+  assert.deepEqual(instructions.slice(0, 3), [
+    'OUTPUT CONTRACT:',
+    'Omit subject from every finding.',
+    'Return one to five findings.',
+  ])
   assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /direct answer/u)
   assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Do not invent/u)
   assert.match(
     BRAID_QUESTION_ANALYST_DEFINITION.instructions,
     /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u,
   )
-  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /exact string value/u)
-  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Every citation must copy/u)
+  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Copy each excerpt verbatim/u)
 })
 
 test('resolves the selected connection credential in memory and never exposes it in configuration', async () => {

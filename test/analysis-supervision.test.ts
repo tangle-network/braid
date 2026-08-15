@@ -316,9 +316,15 @@ test('trace analysis keeps run identity, outcome, usage, and merged tools in one
   const trace = buildAnalysisTraceStore(evidence)
   const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext(trace.store)
   assert.match(prepared, /Exact trace id: "run-analysis-trace-projection"/u)
-  assert.match(prepared, /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u)
-  assert.doesNotMatch(prepared, /SUBMIT\(answer, json\.dumps\(findings\)\)/u)
-  assert.match(prepared, /Omit subject from every finding/u)
+  assert.doesNotMatch(prepared, /OUTPUT CONTRACT|SUBMIT|Omit subject/u)
+  assert.match(
+    BRAID_QUESTION_ANALYST_DEFINITION.instructions,
+    /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u,
+  )
+  assert.doesNotMatch(
+    BRAID_QUESTION_ANALYST_DEFINITION.instructions,
+    /SUBMIT\(answer, json\.dumps\(findings\)\)/u,
+  )
   const view = await trace.store.viewTrace({ trace_id: trace.traceId })
   assert.equal('spans' in view, true)
   if (!('spans' in view)) return

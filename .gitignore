@@ -16,3 +16,4 @@ artifacts/verification/**/*.ansi
 artifacts/verification/**/*.gif
 !artifacts/verification/w0/*.gif
 artifacts/verification/**/*.mp4
+artifacts/verification/performance/raw.json
