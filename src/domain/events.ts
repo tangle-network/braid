@@ -15,7 +15,6 @@ import type {
   FeedbackDecisionRecord,
   GraphEdgeRecord,
   GraphNodeRecord,
-  InteractionRecord,
   MessagePartRecord,
   MessageRecord,
   MissingHistoryRange,
@@ -49,7 +48,6 @@ import type {
   FeedbackDecisionId,
   GraphEdgeId,
   GraphNodeId,
-  InteractionId,
   MessageId,
   MessagePartId,
   OperationId,
@@ -62,6 +60,7 @@ import type {
   WorkerId,
 } from './ids.js'
 import type { RunStatus } from './state.js'
+import type { RetainedRunAdmissionRecord } from './run-contracts.js'
 
 export type { TurnUsage } from './entities.js'
 export type {
@@ -70,15 +69,6 @@ export type {
   ProviderEventMeta,
   RunTerminalStatus,
 } from './events-legacy.js'
-
-export interface InteractionResponseRequested {
-  readonly interactionId: InteractionId
-  readonly operationId: OperationId
-  readonly outcome: 'accepted' | 'declined' | 'cancelled'
-  readonly publicData?: Readonly<Record<string, string | number | boolean | readonly string[]>>
-  readonly dataDigest?: Digest
-  readonly containsSecret: boolean
-}
 
 interface RunReconciledPayload {
   readonly runId: RunId
@@ -165,7 +155,10 @@ export interface DomainBraidEventMap {
     readonly graphEdges?: readonly GraphEdgeRecord[]
     readonly operation?: OperationRecord
   }
-  readonly 'branch.updated': { readonly branch: BranchRecord }
+  readonly 'branch.updated': {
+    readonly branch: BranchRecord
+    readonly operation: OperationRecord
+  }
   readonly 'branch.selected': {
     readonly conversationId: ConversationId
     readonly branchId: BranchId
@@ -176,6 +169,10 @@ export interface DomainBraidEventMap {
   readonly 'message.created': { readonly message: MessageRecord }
   readonly 'message.part.updated': { readonly part: MessagePartRecord }
   readonly 'run.bound': { readonly runId: RunId; readonly bindingId: BindingId }
+  readonly 'run.retained.admitted': {
+    readonly runId: RunId
+    readonly admission: RetainedRunAdmissionRecord
+  }
   readonly 'run.status.changed': {
     readonly runId: RunId
     readonly status: RunStatus
@@ -195,17 +192,6 @@ export interface DomainBraidEventMap {
     readonly provider: ProviderEventMeta
   }
   readonly 'history.missing': { readonly range: MissingHistoryRange }
-  readonly 'interaction.requested': { readonly interaction: InteractionRecord }
-  readonly 'interaction.response.requested': { readonly response: InteractionResponseRequested }
-  readonly 'interaction.resolved': {
-    readonly interactionId: InteractionId
-    readonly resolution: InteractionRecord['resolution']
-  }
-  readonly 'interaction.cancelled': {
-    readonly interactionId: InteractionId
-    readonly operationId: OperationId
-  }
-  readonly 'interaction.expired': { readonly interactionId: InteractionId }
   readonly 'analysis.created': { readonly analysis: AnalysisRecord }
   readonly 'analysis.updated': { readonly analysis: AnalysisRecord }
   readonly 'analysis.completed': { readonly analysis: AnalysisRecord }
@@ -301,6 +287,7 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'run.reconnecting':
     case 'run.unknown':
     case 'run.bound':
+    case 'run.retained.admitted':
     case 'run.status.changed':
     case 'run.reconciled':
     case 'run.environment.observed':
@@ -332,11 +319,6 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'turn.updated':
     case 'message.created':
     case 'message.part.updated':
-    case 'interaction.requested':
-    case 'interaction.response.requested':
-    case 'interaction.resolved':
-    case 'interaction.cancelled':
-    case 'interaction.expired':
       return undefined
     case 'interaction.automation.audited':
       return event.audit.runId
@@ -390,6 +372,11 @@ export type {
 }
 
 export function providerEventKey(event: BraidEvent): string | undefined {
-  if (!('provider' in event) || !event.provider) return undefined
-  return `${event.runId}:${event.provider.eventId}`
+  const provider = providerMetaForEvent(event)
+  if (provider === undefined || !('runId' in event)) return undefined
+  return `${event.runId}:${provider.eventId}`
+}
+
+export function providerMetaForEvent(event: BraidEvent): ProviderEventMeta | undefined {
+  return 'provider' in event && event.provider ? event.provider : undefined
 }

@@ -1,15 +1,34 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { STARTER_PROFILE } from '../src/app/composition.js'
+import {
+  createInteractionRequest,
+  interactionRequestMaterial,
+  interactionResponseBinding,
+} from '../src/app/interaction-request.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
-import { createEventId, createReplayCursor, createWorkspaceId } from '../src/domain/ids.js'
+import {
+  createEventId,
+  createInteractionId,
+  createMessageId,
+  createOperationId,
+  createReplayCursor,
+  createRuleId,
+  createRunId,
+  createTurnId,
+  createWorkspaceId,
+} from '../src/domain/ids.js'
 import {
   DuplicateEventConflictError,
   reduceEvent,
   replayEvents,
   SequenceGapError,
 } from '../src/domain/reducer.js'
+import { MAX_RUN_INTERACTIONS } from '../src/domain/reducer-support.js'
 import { initialState } from '../src/domain/state.js'
+
+const at = '2026-08-02T00:00:00.000Z'
 
 function envelope(
   event: BraidEvent,
@@ -55,6 +74,303 @@ function verticalSliceEvents(): readonly JournalEventEnvelope[] {
   ]
 }
 
+test('replay rejects malformed persisted interaction sources and automation rules', () => {
+  const runId = createRunId('run-replay-interaction-invariants')
+  const interactionId = createInteractionId('interaction-replay-invariants')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue after replay?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-replay-interaction',
+      sessionId: 'session-replay-interaction',
+      executionId: 'execution-replay-interaction',
+      interactionId,
+    },
+  })
+  const prefix: readonly JournalEventEnvelope[] = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-replay-interaction'),
+        runId,
+        turnId: createTurnId('turn-replay-interaction'),
+        userMessageId: createMessageId('message-replay-interaction-user'),
+        assistantMessageId: createMessageId('message-replay-interaction-assistant'),
+        text: 'wait for replay',
+      },
+      2,
+    ),
+  ]
+  const interaction = (providerSequence: number): JournalEventEnvelope =>
+    envelope(
+      {
+        kind: 'run.interaction',
+        runId,
+        request,
+        responseBinding: interactionResponseBinding(request),
+        provider: {
+          eventId: 'provider-replay-interaction',
+          providerSequence,
+          occurredAt: '2026-08-02T00:00:00.000Z',
+        },
+      },
+      3,
+    )
+
+  assert.throws(
+    () => replayEvents(initialState(STARTER_PROFILE), [...prefix, interaction(0)]),
+    /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
+  )
+
+  for (const field of ['key', 'privateKey', 'secretHandle']) {
+    const invalidRule = {
+      id: createRuleId(`rule-replay-interaction-invalid-${field}`),
+      enabled: true,
+      matcher: { interactionKind: 'question' },
+      answer: { [field]: 'must-not-persist' },
+      responseScope: 'once' as const,
+      createdAt: '2026-08-02T00:00:00.000Z',
+      uses: 0,
+    }
+    assert.throws(
+      () =>
+        replayEvents(initialState(STARTER_PROFILE), [
+          ...prefix,
+          interaction(1),
+          envelope(
+            {
+              kind: 'run.interaction.response.requested',
+              runId,
+              interactionId,
+              operationId: createOperationId(`operation-replay-interaction-response-${field}`),
+              outcome: 'accepted',
+              containsSecret: false,
+              automationRule: invalidRule,
+            },
+            4,
+          ),
+        ]),
+      new RegExp(`rule\\.answer\\.${field} is secret-designated and cannot be retained`, 'u'),
+    )
+  }
+})
+
+test('interaction transitions reject reorder, unknown, conflicting, terminal, and evicted events', () => {
+  const runId = createRunId('run-interaction-transition-contract')
+  const interactionId = createInteractionId('interaction-transition-contract')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-transition-contract',
+      sessionId: 'session-transition-contract',
+      executionId: 'execution-transition-contract',
+      interactionId,
+    },
+  })
+  const prefix: readonly JournalEventEnvelope[] = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-transition-contract'),
+        runId,
+        turnId: createTurnId('turn-transition-contract'),
+        userMessageId: createMessageId('message-transition-contract-user'),
+        assistantMessageId: createMessageId('message-transition-contract-assistant'),
+        text: 'wait for an answer',
+      },
+      2,
+    ),
+  ]
+  const interactionEvent = (
+    sequence: number,
+    id = interactionId,
+    providerSequence = sequence - 2,
+    providerEventId = `provider-transition-${sequence}`,
+    requestOverride?: typeof request,
+  ): JournalEventEnvelope => {
+    const eventRequest =
+      requestOverride ??
+      (id === interactionId
+        ? request
+        : createInteractionRequest({
+            id,
+            kind: 'question',
+            title: `Question ${id}`,
+            answerSpec: {
+              fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+            },
+            binding: {
+              ...request.binding,
+              interactionId: id,
+            },
+          }))
+    return envelope(
+      {
+        kind: 'run.interaction',
+        runId,
+        request: eventRequest,
+        responseBinding: interactionResponseBinding(eventRequest),
+        provider: {
+          eventId: providerEventId,
+          providerSequence,
+          occurredAt: at,
+        },
+      },
+      sequence,
+      createEventId(`event-transition-${sequence}`),
+    )
+  }
+  const responseRequested = (sequence: number, operation = 'operation-transition-response') =>
+    envelope(
+      {
+        kind: 'run.interaction.response.requested',
+        runId,
+        interactionId,
+        operationId: createOperationId(operation),
+        outcome: 'accepted',
+        containsSecret: false,
+      },
+      sequence,
+      createEventId(`event-transition-response-requested-${sequence}`),
+    )
+  const responded = (
+    sequence: number,
+    operation = 'operation-transition-response',
+    outcome: 'accepted' | 'unknown' = 'accepted',
+  ) =>
+    envelope(
+      {
+        kind: 'run.interaction.responded',
+        runId,
+        interactionId,
+        operationId: createOperationId(operation),
+        outcome,
+        containsSecret: false,
+      },
+      sequence,
+      createEventId(`event-transition-responded-${sequence}`),
+    )
+
+  const beforeInteraction = replayEvents(initialState(STARTER_PROFILE), prefix)
+  assert.throws(() => reduceEvent(beforeInteraction, responded(3)), /Interaction .* is unknown/u)
+  assert.throws(
+    () => reduceEvent(beforeInteraction, responseRequested(3)),
+    /Interaction .* is unknown/u,
+  )
+
+  const afterInteraction = reduceEvent(beforeInteraction, interactionEvent(3))
+  assert.throws(
+    () => reduceEvent(afterInteraction, responded(4)),
+    /cannot be resolved from pending/u,
+  )
+  const conflictingRequest = createInteractionRequest({
+    ...interactionRequestMaterial(request),
+    title: 'Different request data',
+  })
+  assert.throws(
+    () =>
+      reduceEvent(
+        afterInteraction,
+        interactionEvent(4, interactionId, 1, 'provider-transition-3', conflictingRequest),
+      ),
+    /was requested with different data/u,
+  )
+  const duplicateInteraction = reduceEvent(
+    afterInteraction,
+    interactionEvent(4, interactionId, 1, 'provider-transition-3'),
+  )
+  assert.equal(duplicateInteraction.runs[0]?.interactions.length, 1)
+  const afterResponseRequested = reduceEvent(duplicateInteraction, responseRequested(5))
+  const duplicateResponseRequested = reduceEvent(afterResponseRequested, responseRequested(6))
+  assert.equal(duplicateResponseRequested.runs[0]?.interactions[0]?.status, 'responding')
+  const afterResponded = reduceEvent(duplicateResponseRequested, responded(7))
+  const duplicateResponded = reduceEvent(afterResponded, responded(8))
+  assert.equal(duplicateResponded.runs[0]?.interactions[0]?.status, 'resolved')
+  assert.throws(
+    () => reduceEvent(duplicateResponded, responseRequested(9)),
+    /cannot transition from resolved to responding/u,
+  )
+  assert.throws(
+    () => reduceEvent(afterResponded, responded(8, 'operation-transition-other-response')),
+    /different response result/u,
+  )
+  assert.throws(
+    () =>
+      reduceEvent(
+        duplicateResponded,
+        envelope(
+          {
+            kind: 'run.interaction.cancelled',
+            runId,
+            interactionId,
+            provider: {
+              eventId: 'provider-transition-cancelled',
+              providerSequence: 7,
+              occurredAt: at,
+            },
+          },
+          9,
+          createEventId('event-transition-cancelled'),
+        ),
+      ),
+    /cannot transition from resolved to cancelled/u,
+  )
+
+  let evicted = beforeInteraction
+  for (let index = 0; index < 257; index += 1) {
+    evicted = reduceEvent(
+      evicted,
+      interactionEvent(index + 3, createInteractionId(`interaction-evicted-${index}`)),
+    )
+  }
+  const evictedRun = evicted.runs[0]
+  assert.ok(evictedRun)
+  assert.equal(evictedRun.interactions.length, MAX_RUN_INTERACTIONS)
+  assert.equal(
+    evictedRun.interactions.some(
+      (interaction) => interaction.request.id === 'interaction-evicted-0',
+    ),
+    false,
+  )
+  assert.equal(evictedRun.pendingInteractionIds?.includes('interaction-evicted-0'), true)
+  assert.throws(
+    () =>
+      reduceEvent(
+        evicted,
+        envelope(
+          {
+            kind: 'run.interaction.cancelled',
+            runId,
+            interactionId: 'interaction-evicted-0',
+            provider: {
+              eventId: 'provider-transition-evicted-cancelled',
+              providerSequence: 258,
+              occurredAt: at,
+            },
+          },
+          260,
+          createEventId('event-transition-evicted-cancelled'),
+        ),
+      ),
+    /Interaction interaction-evicted-0 is unknown/u,
+  )
+})
+
 test('incremental reduction and full replay produce the same complete projection', () => {
   const events = verticalSliceEvents()
   const initial = initialState(STARTER_PROFILE)
@@ -73,6 +389,134 @@ test('incremental reduction and full replay produce the same complete projection
   assert.equal(incremental.runs[0]?.complete, true)
   assert.equal(incremental.operations[0]?.status, 'terminal')
   assert.equal(incremental.health.status, 'healthy')
+})
+
+test('retained admission survives the pre-dispatch crash window and binds one exact run', () => {
+  const environmentAdmission = {
+    phase: 'environment' as const,
+    provider: 'cli-bridge',
+    environmentId: 'environment-retained-admission',
+    idempotencyKey: 'environment-retained-admission',
+    turnId: 'turn-retained-admission',
+    sessionId: 'session-retained-admission',
+    executionId: 'execution-retained-admission',
+  }
+  const dispatchedAdmission = {
+    phase: 'dispatched' as const,
+    idempotencyKey: environmentAdmission.idempotencyKey,
+    turnId: environmentAdmission.turnId,
+    controlRef: {
+      provider: environmentAdmission.provider,
+      environmentId: environmentAdmission.environmentId,
+      sessionId: environmentAdmission.sessionId,
+      executionId: environmentAdmission.executionId,
+      runId: 'provider-run-retained-admission',
+      requestDigest: `sha256:${'d'.repeat(64)}` as const,
+    },
+  }
+  const initialEvents = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-retained-admission',
+        runId: 'run-retained-admission',
+        turnId: environmentAdmission.turnId,
+        userMessageId: 'message-user-retained-admission',
+        assistantMessageId: 'message-assistant-retained-admission',
+        text: 'retain this run',
+      },
+      2,
+    ),
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: environmentAdmission,
+      },
+      3,
+    ),
+  ] as const
+
+  const interrupted = replayEvents(initialState(STARTER_PROFILE), initialEvents)
+  assert.deepEqual(interrupted.runs[0]?.retainedAdmission, environmentAdmission)
+  assert.equal(interrupted.runs[0]?.controlRef, undefined)
+
+  const dispatched = reduceEvent(
+    interrupted,
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: dispatchedAdmission,
+      },
+      4,
+    ),
+  )
+  assert.deepEqual(dispatched.runs[0]?.retainedAdmission, dispatchedAdmission)
+  assert.deepEqual(dispatched.runs[0]?.controlRef, dispatchedAdmission.controlRef)
+  assert.equal(dispatched.runs[0]?.providerSessionId, environmentAdmission.sessionId)
+
+  const harnessSession = reduceEvent(
+    dispatched,
+    envelope(
+      {
+        kind: 'run.provider.event',
+        runId: 'run-retained-admission',
+        envelope: {
+          runId: 'run-retained-admission',
+          eventId: 'provider-event-native-session',
+          sequence: 5,
+          cursor: 'provider-cursor-5',
+          receivedAt: '2026-08-02T00:00:05.000Z',
+          event: { type: 'session.updated', sessionId: 'ses_native_harness' },
+        },
+        provider: {
+          eventId: 'provider-event-native-session',
+          providerSequence: 5,
+          cursor: 'provider-cursor-5',
+          receivedAt: '2026-08-02T00:00:05.000Z',
+        },
+      },
+      5,
+    ),
+  )
+  assert.equal(harnessSession.runs[0]?.providerSessionId, environmentAdmission.sessionId)
+  assert.equal(harnessSession.runs[0]?.harnessSessionId, 'ses_native_harness')
+  assert.deepEqual(harnessSession.runs[0]?.controlRef, dispatchedAdmission.controlRef)
+  assert.equal(harnessSession.runs[0]?.lastCursor, 'provider-cursor-5')
+
+  const retriedEnvironment = reduceEvent(
+    harnessSession,
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: environmentAdmission,
+      },
+      6,
+    ),
+  )
+  assert.deepEqual(retriedEnvironment.runs[0]?.retainedAdmission, dispatchedAdmission)
+
+  assert.throws(
+    () =>
+      reduceEvent(
+        retriedEnvironment,
+        envelope(
+          {
+            kind: 'run.retained.admitted',
+            runId: 'run-retained-admission',
+            admission: {
+              ...environmentAdmission,
+              environmentId: 'environment-retained-conflict',
+            },
+          },
+          7,
+        ),
+      ),
+    /conflicts with its environment admission/u,
+  )
 })
 
 test('a cancellation request that loses the terminal race preserves the proven result', () => {
@@ -512,5 +956,92 @@ test('legacy event payloads still reject cross-domain identifiers at the reducer
         ),
       ),
     /Invalid run identifier/u,
+  )
+})
+
+test('branch updates require one acknowledged run-override operation for the exact branch', () => {
+  const opened = reduceEvent(
+    initialState(STARTER_PROFILE),
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+  )
+  const branch = opened.branches[0]
+  assert(branch)
+  const updated = {
+    ...branch,
+    overrides: { runner: 'codex' as const },
+    updatedAt: '2026-08-02T00:00:00.001Z',
+  }
+  const operation = {
+    id: 'op-domain-run-override',
+    kind: 'run-override' as const,
+    requestDigest: canonicalDigest({ runner: 'codex' }),
+    status: 'acknowledged' as const,
+    target: { kind: 'branch' as const, id: branch.id },
+    createdAt: '2026-08-02T00:00:00.001Z',
+    updatedAt: '2026-08-02T00:00:00.001Z',
+    acknowledgedAt: '2026-08-02T00:00:00.001Z',
+  }
+
+  const accepted = reduceEvent(
+    opened,
+    envelope({ kind: 'branch.updated', branch: updated, operation }, 2),
+  )
+  assert.equal(accepted.branches[0]?.overrides.runner, 'codex')
+  assert.equal(accepted.operations[0]?.kind, 'run-override')
+
+  assert.throws(
+    () =>
+      reduceEvent(
+        opened,
+        envelope(
+          {
+            kind: 'branch.updated',
+            branch: updated,
+            operation: {
+              ...operation,
+              target: { kind: 'branch', id: 'branch-other' },
+            },
+          },
+          2,
+        ),
+      ),
+    /does not acknowledge/u,
+  )
+})
+
+test('branch updates reject unsupported override values during replay', () => {
+  const opened = reduceEvent(
+    initialState(STARTER_PROFILE),
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+  )
+  const branch = opened.branches[0]
+  assert(branch)
+  assert.throws(
+    () =>
+      reduceEvent(
+        opened,
+        envelope(
+          {
+            kind: 'branch.updated',
+            branch: {
+              ...branch,
+              overrides: { runner: 'not-a-runner' },
+              updatedAt: '2026-08-02T00:00:00.001Z',
+            } as unknown as typeof branch,
+            operation: {
+              id: 'op-domain-invalid-run-override',
+              kind: 'run-override',
+              requestDigest: canonicalDigest({ runner: 'not-a-runner' }),
+              status: 'acknowledged',
+              target: { kind: 'branch', id: branch.id },
+              createdAt: '2026-08-02T00:00:00.001Z',
+              updatedAt: '2026-08-02T00:00:00.001Z',
+              acknowledgedAt: '2026-08-02T00:00:00.001Z',
+            },
+          },
+          2,
+        ),
+      ),
+    /branch\.overrides\.runner is not supported/u,
   )
 })

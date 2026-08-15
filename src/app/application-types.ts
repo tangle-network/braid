@@ -44,6 +44,7 @@ export interface ControlReceipt {
   readonly operationId: string
   readonly runId: string
   readonly control: BraidControlKind
+  readonly replayed: boolean
   readonly acknowledgement: ControlAcknowledgement
   readonly status: RunStatus
   readonly completion: Promise<BraidState>

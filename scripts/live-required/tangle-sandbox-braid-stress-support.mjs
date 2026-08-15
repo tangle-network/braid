@@ -20,19 +20,19 @@ const TERMINAL_STATUSES = new Set([
   'blocked',
   'unknown',
 ])
-const NON_VISIBLE_KINDS = new Set([
-  'run.admitted',
-  'run.started',
-  'run.environment.observed',
-  'run.reconnecting',
-  'run.reconciled',
-  'run.finished',
-  'run.cancel.requested',
-  'run.cancelled',
-  'run.aborted',
-  'run.failed',
-  'run.status.changed',
-  'replay.cursor.advanced',
+const VISIBLE_PROVIDER_KINDS = new Set([
+  'run.text.delta',
+  'run.reasoning.delta',
+  'run.part.updated',
+  'run.tool.call',
+  'run.tool.result',
+  'run.artifact',
+  'run.proposal',
+  'run.warning',
+  'run.error',
+  'run.interaction',
+  'run.interaction.cancelled',
+  'run.provider.event',
 ])
 
 export class MissingIntegrationError extends Error {
@@ -65,7 +65,8 @@ function eventParts(response) {
 
 function eventRunId(response) {
   const parts = eventParts(response)
-  return nonEmptyString(parts?.payload.runId)
+  const value = record(parts?.payload.value)
+  return nonEmptyString(parts?.payload.runId) ?? nonEmptyString(value?.runId)
 }
 
 function rawControlRef(parts) {
@@ -75,8 +76,7 @@ function rawControlRef(parts) {
     record(record(parts?.payload.observation)?.controlRef) ??
     record(value?.controlRef) ??
     record(parts?.event.controlRef) ??
-    record(record(parts?.payload.source)?.controlRef) ??
-    record(record(parts?.payload.provider)?.controlRef)
+    record(record(parts?.payload.source)?.controlRef)
   )
 }
 
@@ -107,12 +107,11 @@ export function controlRefFromEvent(response) {
 }
 
 export function eventCursorFromEvent(response) {
-  const parts = eventParts(response)
-  return scalarCursor(record(parts?.payload.provider)?.cursor)
+  return scalarCursor(providerEventMetadata(response)?.cursor)
 }
 
 export function observationFromResponses(responses, runId) {
-  let controlRef
+  let controlRef = localControlRefFromResponses(responses, runId)
   let cursor
   let observationEvent
   for (const response of responses) {
@@ -173,6 +172,33 @@ export async function waitForVisibleEvents(session, runId, timeoutMs, phase) {
   }
 }
 
+export async function waitForWorkspaceToolEvents(session, runId, timeoutMs, phase) {
+  const deadline = performance.now() + timeoutMs
+  for (;;) {
+    const visible = assertUniqueVisibleEvents(session.responses, runId, phase)
+    const tools = workspaceToolEvents(visible)
+    if (tools.length > 0) return visible
+    throwIfRunTerminated(session.responses, runId, 'emitting a provider-bound workspace tool event')
+    if (performance.now() >= deadline) {
+      throw new MissingIntegrationError(
+        `Braid RPC did not expose a provider-bound workspace tool event for run ${runId}`,
+        { runId, required: ['run.tool.call', 'run.tool.result', 'run.part.updated:tool'] },
+      )
+    }
+    await sleep(Math.min(100, Math.max(10, deadline - performance.now())))
+  }
+}
+
+export function workspaceToolEvents(observation) {
+  return observation.events.filter(
+    (event) =>
+      event.kind === 'run.tool.call' ||
+      event.kind === 'run.tool.result' ||
+      (event.kind === 'run.part.updated' &&
+        ['tool', 'result', 'tool-call', 'tool-result'].includes(event.partKind)),
+  )
+}
+
 function throwIfRunTerminated(responses, runId, pendingProof) {
   for (let index = responses.length - 1; index >= 0; index -= 1) {
     const response = responses[index]
@@ -208,6 +234,19 @@ export async function stateRoundTrip(session, projection = 'full') {
   return { ...result, state: response.state }
 }
 
+export async function waitForRequestState(session, requestId, runId, timeoutMs) {
+  const response = await session.waitFor(
+    `completion state for ${requestId}`,
+    stateForRequest(requestId),
+    timeoutMs,
+  )
+  const run = runFromState(response.state, runId)
+  if (run === undefined) {
+    throw new Error(`completion state for ${requestId} omitted run ${runId}`)
+  }
+  return { response, run }
+}
+
 export async function waitForTerminal(session, runId, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
@@ -228,7 +267,8 @@ export async function waitForTerminal(session, runId, timeoutMs) {
 
 function providerEventMetadata(response) {
   const parts = eventParts(response)
-  return record(parts?.payload.provider)
+  const value = record(parts?.payload.value)
+  return record(parts?.payload.source) ?? record(value?.provider)
 }
 
 function belongsToRun(response, runId) {
@@ -244,17 +284,25 @@ function localControlRefFromResponses(responses, runId) {
     const controlRef = controlRefFromEvent(response)
     if (controlRef !== undefined) return controlRef
   }
+  for (let index = responses.length - 1; index >= 0; index -= 1) {
+    const response = responses[index]
+    if (response?.type !== 'state') continue
+    const controlRef = exactControlRef(runFromState(response.state, runId)?.controlRef)
+    if (controlRef !== undefined) return controlRef
+  }
   return undefined
 }
 
 function providerIdentityFromEvent(response, kind, eventId) {
   const parts = eventParts(response)
   const payload = parts?.payload
-  const provider = record(payload?.provider)
+  const provider = providerEventMetadata(response)
+  const value = record(payload?.value)
   const sources = [
-    ['provider', provider, ['runId', 'providerRunId', 'executionId', 'providerExecutionId']],
-    ['provider.controlRef', record(provider?.controlRef), ['runId', 'executionId']],
+    ['source', provider, ['runId', 'providerRunId', 'executionId', 'providerExecutionId']],
+    ['source.controlRef', record(provider?.controlRef), ['runId', 'executionId']],
     ['payload.controlRef', record(payload?.controlRef), ['runId', 'executionId']],
+    ['payload.value.controlRef', record(value?.controlRef), ['runId', 'executionId']],
     ['payload.providerControlRef', record(payload?.providerControlRef), ['runId', 'executionId']],
     ['payload', payload, ['executionId', 'providerRunId', 'providerExecutionId']],
   ]
@@ -328,7 +376,7 @@ export function providerEventsForRun(responses, runId) {
     if (typeof kind !== 'string') continue
     const provider = providerEventMetadata(response)
     if (!provider) {
-      if (!NON_VISIBLE_KINDS.has(kind)) {
+      if (VISIBLE_PROVIDER_KINDS.has(kind)) {
         throw new MissingIntegrationError(
           `Braid emitted visible ${kind} without provider metadata`,
           { runId, kind },
@@ -351,7 +399,7 @@ export function providerEventsForRun(responses, runId) {
         { runId, kind, eventId },
       )
     }
-    if (!NON_VISIBLE_KINDS.has(kind)) {
+    if (VISIBLE_PROVIDER_KINDS.has(kind)) {
       assertProviderIdentity(response, runId, kind, eventId, expectedControlRef)
     }
     const payload = eventParts(response)?.payload
@@ -370,7 +418,7 @@ export function providerEventsForRun(responses, runId) {
 
 export function visibleProviderEvents(responses, runId) {
   return providerEventsForRun(responses, runId)
-    .filter((event) => !NON_VISIBLE_KINDS.has(event.kind))
+    .filter((event) => VISIBLE_PROVIDER_KINDS.has(event.kind))
     .map((event) => {
       if (!event.cursor) {
         throw new MissingIntegrationError(

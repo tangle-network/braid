@@ -12,7 +12,7 @@ export interface UiDispatchContext {
   readonly notify: () => void
   readonly interactionResolved: () => boolean
   markInteractionResolved(): void
-  setSelectedSurface(surface: BraidViewModel['selectedSurface']): void
+  setSelectedSurface(surface: BraidViewModel['selectedSurface'], query?: string): void
   setNotice(notice: string): void
   setForkPreview(preview: NonNullable<BraidViewModel['forkPreview']>): void
 }

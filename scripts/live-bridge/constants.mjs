@@ -9,7 +9,7 @@ export const liveProofScope = Object.freeze({
   claims: Object.freeze([
     'packed startup',
     'exact marker response for each required target',
-    'advertised reconnect, cancel, and interaction semantics',
+    'advertised cancel and interaction semantics',
     'bounded process cleanup',
   ]),
   excludes: Object.freeze(['LIVE-01..05 full interactive runner conformance']),
@@ -45,9 +45,9 @@ export const targetDefinitions = Object.freeze([
     backend: 'opencode',
   },
   {
-    key: 'luna-max',
-    label: 'Luna Max',
-    modelId: 'pi/openai-codex/gpt-5.6-luna',
+    key: 'pi-glm-5.2',
+    label: 'GLM 5.2 through Pi',
+    modelId: 'pi/tangle-router/glm-5.2',
     backend: 'pi',
   },
 ])
@@ -63,5 +63,5 @@ export const livePrompts = Object.freeze({
   interactive: (key) =>
     `Ask one user-visible permission question before completing LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_INTERACTIVE_OK.`,
   restart: (key) =>
-    `Keep LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_RESTART active until the client explicitly reconciles it.`,
+    `For LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_RESTART, produce a numbered list from 1 to 1000 with one short word per line.`,
 })

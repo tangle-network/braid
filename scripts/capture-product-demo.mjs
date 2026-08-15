@@ -118,7 +118,7 @@ export async function captureProductDemo({ spawnTerminal, normalized, castFor })
       'retained activity',
     )
     await pause(900)
-    terminal.input('\u001b')
+    terminal.input('\u001b[D')
     await pause(350)
 
     await typeText(terminal, '/ask What should this agent improve next?', 18)

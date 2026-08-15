@@ -48,7 +48,6 @@ export async function* streamRetainedExecution(input: {
       signal,
     })) {
       sequence = envelope.sequence + 1
-      if (envelope.cursor !== undefined) input.state.rememberCursor(input.runId, envelope.cursor)
       yield { ...envelope, runId: input.runId, sequence }
     }
     const result = await input.handle.result()

@@ -33,7 +33,6 @@ import { assertStateRelations } from './invariants-relations.js'
 import {
   assertAnalysisAttachment,
   assertAnalysisRecord,
-  assertInteractionRecord,
   assertRunRecord,
 } from './invariants-run.js'
 import {
@@ -113,10 +112,6 @@ export function assertBraidState(state: BraidState): void {
   assertUniqueIds(
     state.runs.map((record) => record.id),
     'state.runs',
-  )
-  assertUniqueIds(
-    state.interactions.map((record) => record.id),
-    'state.interactions',
   )
   assertUniqueIds(
     state.analyses.map((record) => record.id),
@@ -204,7 +199,6 @@ export function assertBraidState(state: BraidState): void {
   for (const record of state.messages) assertMessageRecord(record)
   for (const record of state.messageParts) assertMessagePartRecord(record)
   for (const record of state.runs) assertRunRecord(record)
-  for (const record of state.interactions) assertInteractionRecord(record)
   for (const record of state.analyses) assertAnalysisRecord(record)
   for (const record of state.analysisAttachments) assertAnalysisAttachment(record)
   for (const record of state.environments) assertEnvironmentRecord(record)

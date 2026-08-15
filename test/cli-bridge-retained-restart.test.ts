@@ -10,7 +10,9 @@ import {
   type RetainedExecutionPlan,
   RetainedExecutionPort,
 } from '../src/adapters/runtime/retained-execution.js'
+import { finalRetainedEnvelope } from '../src/adapters/runtime/retained-execution-projection.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import {
   createDurableBraidApplication,
   type DurableBraidApplication,
@@ -21,12 +23,80 @@ import {
 } from '../src/app/production-composition.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
-import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
+import { isFinalRuntimeEvent, isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import {
+  DEFAULT_RUN_CAPABILITIES,
+  type RetainedRunAdmissionRecord,
+} from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
+
+test('canonical cancellation status remains cancelled in the Braid projection', () => {
+  const mapped = providerEventFor(
+    'canonical-cancel',
+    { type: 'status', status: 'cancelled', detail: 'USER_CANCELLED' },
+    {
+      eventId: 'canonical-cancel:status',
+      providerSequence: 1,
+      receivedAt: now,
+    },
+  )
+
+  assert.deepEqual(mapped, {
+    kind: 'run.status.changed',
+    runId: 'canonical-cancel',
+    status: 'cancelled',
+    detail: 'USER_CANCELLED',
+    provider: {
+      eventId: 'canonical-cancel:status',
+      providerSequence: 1,
+      receivedAt: now,
+    },
+  })
+})
+
+test('retained CLI Bridge cancellation stays cancelled in the final projection', () => {
+  const envelope = finalRetainedEnvelope(
+    'retained-cancel',
+    1,
+    'openai/gpt-5',
+    {
+      text: '',
+      success: false,
+      error: 'cli-bridge run ended cancelled',
+      metadata: {
+        runId: 'retained-cancel',
+        executionId: 'retained-cancel',
+        status: 'cancelled',
+      },
+    },
+    'Execute the retained CLI Bridge turn',
+  )
+
+  if (!isRuntimeEventEnvelope(envelope) || !isFinalRuntimeEvent(envelope.event)) {
+    throw new Error('Retained cancellation did not produce a final runtime event')
+  }
+  const final = envelope.event
+  assert.deepEqual(
+    { type: final.type, status: final.status, reason: final.reason },
+    { type: 'final', status: 'cancelled', reason: 'cli-bridge run ended cancelled' },
+  )
+  const mapped = providerEventFor('retained-cancel', final, {
+    eventId: 'retained-cancel:final',
+    providerSequence: 1,
+    receivedAt: now,
+  })
+  if (mapped.kind !== 'run.finished') throw new Error('Retained final event was not terminal')
+  assert.equal(mapped.status, 'cancelled')
+})
+
+function recordAdmissions(target: RetainedRunAdmissionRecord[]) {
+  return async (admission: RetainedRunAdmissionRecord): Promise<void> => {
+    target.push(structuredClone(admission))
+  }
+}
 
 function production(endpoint: string): ProductionCompositionConfig {
   const connection: ConnectionRecord = {
@@ -168,6 +238,7 @@ test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job 
       ids: new RandomIds(),
     })
     first.app.initialize(root)
+    await first.app.whenDurable()
     const send = first.app.send({
       operationId: 'operation-retained-restart-send',
       text: 'Keep working while Braid restarts.',
@@ -260,6 +331,7 @@ test('restart discovery preserves a continued provider session before the contro
   const runId = 'run/retained-crash-window'
   const providerSessionId = 'session-existing-conversation'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const first = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (first.execution.admit === undefined) throw new Error('Retained admission is unavailable')
@@ -272,6 +344,7 @@ test('restart discovery preserves a continued provider session before the contro
       workspaceRoot: root,
       sessionId: providerSessionId,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     const admission = await first.execution.admit(input)
     assert.equal(admission.providerSessionId, providerSessionId)
@@ -286,6 +359,10 @@ test('restart discovery preserves a continued provider session before the contro
       'braid.execution.observed',
     )
     assert.equal(bridge.requests[0]?.sessionId, providerSessionId)
+    assert.deepEqual(
+      admissions.map((entry) => entry.phase),
+      ['environment', 'dispatched'],
+    )
     await stream.return?.()
 
     const restarted = createProductionComposition({ ...configuration, workspaceRoot: root })
@@ -321,6 +398,7 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
   const configuration = production(bridge.endpoint)
   const runId = 'run/retained-foreign-identity'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const first = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (first.execution.admit === undefined) throw new Error('Retained admission is unavailable')
@@ -332,6 +410,7 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
       connectionId: configuration.connectionId,
       workspaceRoot: root,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await first.execution.admit(input)
     const stream = first.execution.streamTurn(input)[Symbol.asyncIterator]()
@@ -357,6 +436,7 @@ test('detach during execution-observation persistence stops the retained reader'
   const bridge = await startRuntimeBridgeServer({ holdStreams: true })
   const configuration = production(bridge.endpoint)
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const composition = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (
@@ -373,6 +453,7 @@ test('detach during execution-observation persistence stops the retained reader'
       connectionId: configuration.connectionId,
       workspaceRoot: root,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await composition.execution.admit(input)
 
@@ -410,6 +491,7 @@ test('retained control keeps provider-owned identity separate from the Braid run
   const runId = 'run/provider-owned-identity'
   const providerSessionId = 'session-provider-owned-identity'
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const composition = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (composition.execution.admit === undefined) {
@@ -424,6 +506,7 @@ test('retained control keeps provider-owned identity separate from the Braid run
       workspaceRoot: root,
       sessionId: providerSessionId,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await composition.execution.admit(input)
     const stream = composition.execution.streamTurn(input)[Symbol.asyncIterator]()
@@ -475,6 +558,7 @@ test('cancel_requested remains an unconfirmed Braid outcome', async () => {
   })
   const configuration = production(bridge.endpoint)
   const abort = new AbortController()
+  const admissions: RetainedRunAdmissionRecord[] = []
   try {
     const composition = createProductionComposition({ ...configuration, workspaceRoot: root })
     if (
@@ -491,6 +575,7 @@ test('cancel_requested remains an unconfirmed Braid outcome', async () => {
       connectionId: configuration.connectionId,
       workspaceRoot: root,
       signal: abort.signal,
+      onRetainedAdmission: recordAdmissions(admissions),
     }
     await composition.execution.admit(input)
     const stream = composition.execution.streamTurn(input)[Symbol.asyncIterator]()

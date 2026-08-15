@@ -14,7 +14,9 @@ import {
   assertContextTransfer,
   assertObservedUsage,
   assertRetainedInteraction,
+  assertRetainedRestartProof,
   assertTargetRunIdentity,
+  terminalReceipts as collectTerminalReceipts,
 } from './release-proof-validation.mjs'
 import { initializeTarget, runNormalTurn } from './target-actions.mjs'
 import {
@@ -450,8 +452,9 @@ export async function executeRestartReconciliation(
         timeoutMs,
       )
       const activeRun = runFromState(activeState.state, started.runId)
+      const admissionResponseIndex = getSession().responses.indexOf(started.response)
       if (
-        activeState.state?.activeRunId !== started.runId &&
+        activeState.state?.activeRunId !== started.runId ||
         !['running', 'waiting', 'streaming'].includes(activeRun?.status)
       ) {
         throw new LiveBridgeError(
@@ -461,24 +464,110 @@ export async function executeRestartReconciliation(
           { run: activeRun, state: activeState },
         )
       }
-      const oldSession = getSession()
-      const forcedProcess = await oldSession.forceStop()
+      const activeStream = await getSession().waitFor(
+        'restart operation streamed active run event',
+        (response) =>
+          response.type === 'event' &&
+          response.event?.runId === started.runId &&
+          getSession().responses.indexOf(response) > admissionResponseIndex &&
+          [
+            'run.text.delta',
+            'run.part.updated',
+            'run.reasoning.delta',
+            'run.tool.call',
+            'run.tool.result',
+            'run.artifact',
+            'run.proposal',
+            'run.interaction',
+          ].includes(response.event.kind) &&
+          Number.isSafeInteger(response.event?.provider?.providerSequence) &&
+          response.event.provider.providerSequence > 0,
+        timeoutMs,
+      )
+      const streamedState = await operationState(
+        getSession(),
+        result,
+        operationPrefix,
+        'streamed',
+        timeoutMs,
+      )
+      const streamedRun = runFromState(streamedState.state, started.runId)
+      const activeStateResponseIndex = getSession().responses.indexOf(activeState)
+      const activeStreamResponseIndex = getSession().responses.indexOf(activeStream)
+      const activeModel = {
+        admission: {
+          runId: started.runId,
+          requestId: started.send.requestId,
+          operationId: started.send.operationId,
+          responseIndex: admissionResponseIndex,
+          revision: started.response.revision,
+        },
+        state: {
+          runId: started.runId,
+          activeRunId: activeState.state?.activeRunId ?? null,
+          status: activeRun?.status ?? null,
+          responseIndex: activeStateResponseIndex,
+          revision: activeState.revision,
+        },
+        progress: {
+          runId: started.runId,
+          kind: activeStream.event.kind,
+          responseIndex: activeStreamResponseIndex,
+          sequence: activeStream.sequence,
+          revision: activeStream.revision,
+          providerSequence: activeStream.event.provider.providerSequence,
+          cursor: activeStream.event.provider.cursor ?? null,
+        },
+      }
+      const savedCursor = streamedRun?.lastCursor
+      const savedProviderSequence = streamedRun?.lastProviderSequence
+      const detachRequest = operationRequest(result, operationPrefix, 'detach', 'detach', {
+        runId: started.runId,
+      })
+      const detachResponse = await sendOperationRequest(
+        getSession(),
+        result,
+        detachRequest,
+        'restart operation detach acknowledgement',
+        timeoutMs,
+      )
       if (
-        forcedProcess.termination?.exited !== true ||
-        forcedProcess.termination?.descendantsExited !== true ||
-        forcedProcess.termination?.descendantsVerified !== true
+        detachResponse.type !== 'ack' ||
+        !['accepted', 'already-applied'].includes(detachResponse.outcome)
       ) {
         throw new LiveBridgeError(
-          'LIVE_RELEASE_RESTART_CONTAINMENT_FAILED',
-          'The forced restart did not prove termination of the packed process tree',
+          'LIVE_RELEASE_RESTART_DETACH_FAILED',
+          'The restart operation did not acknowledge detaching the active run',
           exitCodes.failed,
-          { process: forcedProcess },
+          { response: detachResponse },
         )
       }
+      const detachedEvent = await getSession().waitFor(
+        'restart operation detached event',
+        (response) =>
+          response.type === 'event' &&
+          response.event?.kind === 'run.detached' &&
+          response.event?.runId === started.runId,
+        timeoutMs,
+      )
+      const detachedState = await operationState(
+        getSession(),
+        result,
+        operationPrefix,
+        'detached',
+        timeoutMs,
+      )
+      const detachedRun = runFromState(detachedState.state, started.runId)
+      const conversationId = result.conversationId
+      const branchId = result.branchId
+      const oldSession = getSession()
+      const oldProcess = oldSession.processIdentity
+      const forcedProcess = await oldSession.forceStop()
       const requestCountBeforeRestart = result.requests.length
       setSession(undefined)
       const restarted = await RpcSession.create(binary, config.workspace, env, timeoutMs)
       setSession(restarted)
+      const newProcess = restarted.processIdentity
       await initializeTarget(restarted, result, classifyPackedStartup, {
         operationPrefix: `${operationPrefix}-reopened`,
       })
@@ -497,26 +586,62 @@ export async function executeRestartReconciliation(
           { runId: started.runId, state: reopenedState },
         )
       }
-      const reconcileRequest = operationRequest(result, operationPrefix, 'reconcile', 'reconcile', {
-        runId: started.runId,
-      })
-      const reconcileResponse = await sendOperationRequest(
-        restarted,
-        result,
-        reconcileRequest,
-        'restart reconciliation acknowledgement',
-        timeoutMs,
-      )
-      if (reconcileResponse.type !== 'ack') {
+      if (result.conversationId !== conversationId || result.branchId !== branchId) {
         throw new LiveBridgeError(
-          'LIVE_RELEASE_RECONCILIATION_FAILED',
-          'The forced restart did not acknowledge explicit run reconciliation',
-          reconcileResponse.code === 'CAPABILITY_UNAVAILABLE'
-            ? exitCodes.unavailable
-            : exitCodes.failed,
-          { response: reconcileResponse },
+          'LIVE_RELEASE_RESTART_STATE_CHANGED',
+          'The forced restart reopened a different Braid conversation or branch',
+          exitCodes.failed,
+          {
+            before: { conversationId, branchId },
+            after: { conversationId: result.conversationId, branchId: result.branchId },
+          },
         )
       }
+      const reopenedRun = runFromState(reopenedState.state, started.runId)
+      const responseCountBeforeReconnect = restarted.responses.length
+      const reconnectRequest = operationRequest(result, operationPrefix, 'reconnect', 'reconnect', {
+        runId: started.runId,
+      })
+      const reconnectResponse = await sendOperationRequest(
+        restarted,
+        result,
+        reconnectRequest,
+        'restart reconnection acknowledgement',
+        timeoutMs,
+      )
+      const reconnectBoundaryResponse = await restarted.waitFor(
+        'restart reconnecting boundary',
+        (response) =>
+          restarted.responses.indexOf(response) >= responseCountBeforeReconnect &&
+          response.type === 'event' &&
+          response.event?.kind === 'run.reconnecting' &&
+          response.event?.runId === started.runId &&
+          Number.isSafeInteger(response.sequence) &&
+          response.sequence > 0 &&
+          Number.isSafeInteger(response.revision) &&
+          response.revision > 0,
+        timeoutMs,
+      )
+      const reconnectBoundaryResponseIndex = restarted.responses.indexOf(reconnectBoundaryResponse)
+      const replayEvent = await restarted.waitFor(
+        'restart replayed post-cursor event',
+        (response) =>
+          restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
+          response.type === 'event' &&
+          response.event?.runId === started.runId &&
+          response.event?.kind !== 'run.reconnecting' &&
+          Number.isSafeInteger(response.sequence) &&
+          response.sequence > reconnectBoundaryResponse.sequence &&
+          Number.isSafeInteger(response.revision) &&
+          response.revision > reconnectBoundaryResponse.revision &&
+          Number.isSafeInteger(response.event?.provider?.providerSequence) &&
+          Number.isSafeInteger(savedProviderSequence) &&
+          savedProviderSequence > 0 &&
+          response.event.provider.providerSequence === savedProviderSequence + 1 &&
+          response.sequence <= reconnectResponse.revision &&
+          response.revision <= reconnectResponse.revision,
+        timeoutMs,
+      )
       const terminal = await terminalOperationState(
         restarted,
         result,
@@ -533,15 +658,46 @@ export async function executeRestartReconciliation(
           { requests: postRestartRequests },
         )
       }
-      if (terminal.run.status === 'cancelled') {
-        throw new LiveBridgeError(
-          'LIVE_RELEASE_RESTART_CANCEL_LABEL_UNSAFE',
-          'The restart operation could not prove that the original run was not cancelled',
-          exitCodes.failed,
-          { run: terminal.run },
-        )
-      }
+      const terminalReceipts = [
+        ...collectTerminalReceipts(oldSession.responses, oldProcess.instanceId, started.runId),
+        ...collectTerminalReceipts(restarted.responses, newProcess.instanceId, started.runId),
+      ]
+      const restartProof = assertRetainedRestartProof({
+        runId: started.runId,
+        savedCursor,
+        savedProviderSequence,
+        beforeDetach: streamedRun,
+        detached: detachedRun,
+        reopened: reopenedRun,
+        final: terminal.run,
+        oldProcess,
+        newProcess,
+        forcedProcess,
+        activeModel,
+        reopenedRevision: reopenedState.revision,
+        reconnectRequest,
+        reconnectResponse,
+        reconnectBoundary: {
+          runId: reconnectBoundaryResponse.event.runId,
+          kind: reconnectBoundaryResponse.event.kind,
+          responseIndex: reconnectBoundaryResponseIndex,
+          sequence: reconnectBoundaryResponse.sequence,
+          revision: reconnectBoundaryResponse.revision,
+          savedCursor: reconnectBoundaryResponse.event.after ?? null,
+        },
+        replayEvent: {
+          event: replayEvent.event,
+          kind: replayEvent.event.kind,
+          responseIndex: restarted.responses.indexOf(replayEvent),
+          sequence: replayEvent.sequence,
+          revision: replayEvent.revision,
+        },
+        terminalReceipts,
+        finalState: terminal.response,
+        terminalSession: newProcess.instanceId,
+      })
       const targetProof = assertTargetRunIdentity(terminal.run, target)
+      const usage = assertObservedUsage(terminal.run)
       return {
         runId: started.runId,
         runIds: [started.runId],
@@ -549,10 +705,26 @@ export async function executeRestartReconciliation(
         evidence: {
           runId: started.runId,
           forcedProcess: evidenceValue(forcedProcess),
-          reconciledStatus: terminal.run.status,
+          oldProcess: evidenceValue(oldProcess),
+          newProcess: evidenceValue(newProcess),
+          activeModel: evidenceValue(activeModel),
+          activeStream: evidenceValue(activeStream),
+          streamedState: evidenceValue(streamedState),
+          detachedEvent: evidenceValue(detachedEvent),
+          detachedState: evidenceValue(detachedState),
+          savedCursor,
+          savedProviderSequence,
           reopenedState: evidenceValue(reopenedState),
-          reconciliation: evidenceValue(reconcileResponse),
+          detach: evidenceValue(detachResponse),
+          reconnect: evidenceValue(reconnectResponse),
+          reconnectBoundary: evidenceValue(reconnectBoundaryResponse),
+          replayEvent: evidenceValue(replayEvent),
+          terminalReceipts: evidenceValue(terminalReceipts),
           finalState: evidenceValue(terminal.response),
+          restartProof: evidenceValue(restartProof),
+          usage,
+          statePath: env.BRAID_STATE_PATH,
+          endpoint: result.connection.endpoint,
           resubmitted: false,
         },
       }

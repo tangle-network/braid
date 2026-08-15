@@ -89,9 +89,9 @@ export async function runDeterministicRpcProof(binary, repository) {
     if (!normalized.trim()) throw new Error(`packed RPC produced no stdout; stderr=${stderr}`)
     const lines = normalized.trim().split('\n')
     const responses = lines.map((line) => JSON.parse(line))
-    const state = responses.find(
-      (response) => response.type === 'state' && response.requestId === 'req-send',
-    )
+    const state = responses
+      .filter((response) => response.type === 'state' && response.requestId === 'req-send')
+      .at(-1)
     if (state?.state.messages.at(-1)?.text !== 'Fixture response through pi: packed rpc proof')
       throw new Error(`packed RPC semantic proof failed\n${stdout}`)
     if (lines.some((line) => !line.startsWith('{')))

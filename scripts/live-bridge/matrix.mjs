@@ -21,8 +21,8 @@ import {
   interactionFromResponse,
   semanticCommandStatus,
 } from './protocol.mjs'
-import { verifyCancel } from './target-actions.mjs'
 import { executeReleaseProofs } from './release-proofs.mjs'
+import { verifyCancel } from './target-actions.mjs'
 import { defaultTargetPolicy, readTargetPolicy, targetPolicyEvidence } from './target-policy.mjs'
 
 async function withFakeBridge(
@@ -72,18 +72,18 @@ async function withFakeBridge(
 async function runTargetPolicyMatrix() {
   const both = defaultTargetPolicy.definitions
   const exactGlm = both[0].modelId
-  const exactLuna = both[1].modelId
+  const exactPiGlm = both[1].modelId
   const readyBackends = [
     { name: 'opencode', state: 'ready' },
     { name: 'pi', state: 'ready' },
     { name: 'claude-code', state: 'starting' },
   ]
-  await withFakeBridge([exactGlm, exactLuna], readyBackends, async (endpoint) => {
+  await withFakeBridge([exactGlm, exactPiGlm], readyBackends, async (endpoint) => {
     const evidence = {}
     const result = await discoverBridge(endpoint, undefined, evidence, process.cwd(), both)
     assert.deepEqual(
       result.selected.map(({ modelId }) => modelId),
-      [exactGlm, exactLuna],
+      [exactGlm, exactPiGlm],
     )
   })
   await withFakeBridge([exactGlm], readyBackends, async (endpoint) => {
@@ -94,7 +94,7 @@ async function runTargetPolicyMatrix() {
     )
     assert.deepEqual(
       evidence.missingTargets.map(({ modelId }) => modelId),
-      [exactLuna],
+      [exactPiGlm],
     )
   })
   await withFakeBridge(
@@ -110,7 +110,7 @@ async function runTargetPolicyMatrix() {
     { modelsStatus: 503 },
   )
   await withFakeBridge(
-    [exactGlm, exactLuna],
+    [exactGlm, exactPiGlm],
     readyBackends,
     async (endpoint) => {
       const evidence = {}
@@ -121,7 +121,7 @@ async function runTargetPolicyMatrix() {
     },
     { capabilities: {} },
   )
-  await withFakeBridge([exactLuna], readyBackends, async (endpoint) => {
+  await withFakeBridge([exactPiGlm], readyBackends, async (endpoint) => {
     const evidence = {}
     await assert.rejects(
       discoverBridge(endpoint, undefined, evidence, process.cwd(), both),
@@ -133,7 +133,7 @@ async function runTargetPolicyMatrix() {
     )
   })
   await withFakeBridge(
-    [exactGlm, exactLuna],
+    [exactGlm, exactPiGlm],
     [{ name: 'opencode', state: 'ready' }],
     async (endpoint) => {
       const evidence = {}
@@ -177,13 +177,13 @@ async function runTargetPolicyMatrix() {
   const releaseModels = {
     ok: true,
     body: {
-      data: [{ id: exactGlm }, { id: exactLuna }, { id: 'codex/default' }],
+      data: [{ id: exactGlm }, { id: exactPiGlm }, { id: 'codex/default' }],
     },
   }
   const releaseDefinitions = releaseTargetDefinitions(both, releaseModels, releaseHealth)
   assert.deepEqual(
     releaseDefinitions.map(({ modelId }) => modelId),
-    [exactGlm, exactLuna, 'codex/codex/default'],
+    [exactGlm, exactPiGlm, 'codex/default'],
   )
   assert.equal(releaseDefinitions[2].bridgeModelId, 'codex/default')
   const releaseEvidence = {}
@@ -197,14 +197,14 @@ async function runTargetPolicyMatrix() {
     releaseTargets.map(({ modelId, bridgeModelId }) => ({ modelId, bridgeModelId })),
     [
       { modelId: exactGlm, bridgeModelId: exactGlm },
-      { modelId: exactLuna, bridgeModelId: exactLuna },
-      { modelId: 'codex/codex/default', bridgeModelId: 'codex/default' },
+      { modelId: exactPiGlm, bridgeModelId: exactPiGlm },
+      { modelId: 'codex/default', bridgeModelId: 'codex/default' },
     ],
   )
 }
 
 async function runConfigurationMatrix() {
-  const [glm, luna] = defaultTargetPolicy.definitions
+  const [glm, piGlm] = defaultTargetPolicy.definitions
   assert.deepEqual(profileForBridgeTarget(glm), {
     name: `Braid live ${glm.modelId}`,
     description: 'Opt-in packed CLI Bridge smoke profile',
@@ -212,21 +212,40 @@ async function runConfigurationMatrix() {
     harness: 'opencode',
     model: { provider: 'zai-coding-plan', default: 'glm-5.2', reasoningEffort: 'none' },
   })
-  assert.deepEqual(profileForBridgeTarget(luna), {
-    name: `Braid live ${luna.modelId}`,
+  assert.deepEqual(profileForBridgeTarget(piGlm), {
+    name: `Braid live ${piGlm.modelId}`,
     description: 'Opt-in packed CLI Bridge smoke profile',
     version: '0.1.0',
     harness: 'pi',
-    model: { provider: 'openai-codex', default: 'gpt-5.6-luna', reasoningEffort: 'none' },
+    model: {
+      provider: 'tangle-router',
+      default: 'glm-5.2',
+      reasoningEffort: 'none',
+    },
   })
+  assert.deepEqual(
+    profileForBridgeTarget({
+      key: 'codex-default',
+      label: 'codex default',
+      modelId: 'codex/default',
+      backend: 'codex',
+    }),
+    {
+      name: 'Braid live codex/default',
+      description: 'Opt-in packed CLI Bridge smoke profile',
+      version: '0.1.0',
+      harness: 'codex',
+      model: { default: 'default', reasoningEffort: 'none' },
+    },
+  )
   assert.throws(
-    () => profileForBridgeTarget({ ...luna, backend: 'codex' }),
+    () => profileForBridgeTarget({ ...piGlm, backend: 'codex' }),
     (error) => error.code === 'TARGET_MODEL_ROUTE_INVALID' && error.exitCode === 2,
   )
   assert.match(createLiveCredentialId('00000000-0000-0000-0000-000000000000'), /^credential-/u)
 
   const endpoint = 'http://127.0.0.1:4567'
-  const linuxEnvironment = bridgeLaunchEnvironment([luna], endpoint, {
+  const linuxEnvironment = bridgeLaunchEnvironment([piGlm], endpoint, {
     environment: { PATH: '/usr/bin' },
     platform: 'linux',
   })
@@ -234,14 +253,14 @@ async function runConfigurationMatrix() {
   assert.equal(linuxEnvironment.BRIDGE_JAIL_MODE, 'fs-jail')
   assert.equal(linuxEnvironment.BRIDGE_PORT, '4567')
   assert.equal(
-    bridgeLaunchEnvironment([luna], endpoint, {
+    bridgeLaunchEnvironment([piGlm], endpoint, {
       environment: { BRIDGE_JAIL_MODE: 'off' },
       platform: 'linux',
     }).BRIDGE_JAIL_MODE,
     'off',
   )
   assert.equal(
-    bridgeLaunchEnvironment([luna], endpoint, {
+    bridgeLaunchEnvironment([piGlm], endpoint, {
       environment: {},
       platform: 'darwin',
     }).BRIDGE_JAIL_MODE,
@@ -258,10 +277,10 @@ async function runConfigurationMatrix() {
 
   const root = await mkdtemp(join(tmpdir(), 'braid-live-config-matrix-'))
   try {
-    const written = await writeTargetConfig(root, endpoint, luna, undefined)
+    const written = await writeTargetConfig(root, endpoint, piGlm, undefined)
     assert.deepEqual(JSON.parse(await readFile(written.profilePath, 'utf8')), written.profile)
-    assert.equal(written.profile.model.default, 'gpt-5.6-luna')
-    assert.equal(written.profile.model.provider, 'openai-codex')
+    assert.equal(written.profile.model.default, 'glm-5.2')
+    assert.equal(written.profile.model.provider, 'tangle-router')
     const credential = await writeTargetConfig(root, endpoint, glm, {
       recordRef: createLiveCredentialId('11111111-1111-1111-1111-111111111111'),
     })
@@ -379,6 +398,11 @@ async function runSemanticMatrix() {
       requestId: 'cancel-send-glm-5.2',
       runId: 'run-cancel-live',
       admission: { capabilities: { controls: { cancel: true } } },
+    },
+    {
+      version: 1,
+      type: 'state',
+      state: { runs: [{ id: 'run-cancel-live', status: 'streaming' }] },
     },
     {
       version: 1,

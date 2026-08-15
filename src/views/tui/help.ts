@@ -57,7 +57,7 @@ export class HelpViewPanel extends Container {
     this.addChild(
       new Text(
         this.#theme.muted(
-          'Ctrl+P commands · Ctrl+O conversations · Ctrl+K profiles · Ctrl+G graph',
+          'Ctrl+P commands · Ctrl+O conversations · Ctrl+K run setup · Ctrl+G graph',
         ),
         1,
         0,

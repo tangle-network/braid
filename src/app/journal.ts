@@ -1,7 +1,8 @@
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { eventRunId } from '../domain/events.js'
 import type { RunId } from '../domain/ids.js'
-import { providerEventKey } from '../domain/events.js'
+import { providerEventKey, providerMetaForEvent } from '../domain/events.js'
+import { parseReplayCursor } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectRecord, EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
@@ -23,10 +24,12 @@ export class MemoryJournal implements JournalPort, EffectStoragePort {
   }
 
   envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope {
+    const provider = providerMetaForEvent(event)
     return {
       sequence: state.sequence + 1,
       revision: state.revision + 1,
       occurredAt: this.#clock.now(),
+      ...(provider?.cursor === undefined ? {} : { cursor: parseReplayCursor(provider.cursor) }),
       event,
     }
   }

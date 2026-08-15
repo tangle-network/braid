@@ -45,7 +45,7 @@ export function createTangleRetainedPlan(
     providerSessionId: controlRef?.sessionId ?? prepared.providerSessionId,
     model: prepared.model,
     capabilities: retainedCapabilities(prepared.capabilities, {
-      sessionContinuation: false,
+      sessionContinuation: prepared.capabilities.sessions.continue,
       exactStatus: false,
     }),
     materializationReceipt: publicMaterializationReceipt({
@@ -87,6 +87,9 @@ export async function startTangleRetainedRun(
   plan: TangleRetainedPlan,
   input: ExecuteTurnInput,
 ): Promise<RetainedRunHandle> {
+  if (input.onRetainedAdmission === undefined) {
+    throw new Error('Retained Tangle execution requires a durable admission recorder')
+  }
   // A retained create may return an existing environment for the same key.
   // Do not destroy it after an ambiguous dispatch failure without a provider-issued creation receipt.
   return startRetainedRun({
@@ -107,5 +110,6 @@ export async function startTangleRetainedRun(
       sessionId: plan.prepared.providerSessionId,
       executionId: plan.executionId,
     },
+    onAdmission: input.onRetainedAdmission,
   })
 }

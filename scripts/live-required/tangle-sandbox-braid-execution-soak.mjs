@@ -187,10 +187,10 @@ async function runAttempt({ index, proofId, client, binary, values, environment 
       marker,
       prompt: [
         'Use shell tools in the sandbox.',
-        `Create /workspace/${connectionName}.txt containing exactly ${marker} followed by a newline.`,
-        `Read /workspace/${connectionName}.txt and verify its exact contents.`,
-        'Run git -C /workspace init if needed.',
-        'Verify git -C /workspace rev-parse --is-inside-work-tree prints true.',
+        `Create ./${connectionName}.txt in the current working directory containing exactly ${marker} followed by a newline.`,
+        `Read ./${connectionName}.txt and verify its exact contents.`,
+        'Run git -C . init if needed.',
+        'Verify git -C . rev-parse --is-inside-work-tree prints true.',
         `Reply with exactly ${marker}.`,
       ].join(' '),
     })

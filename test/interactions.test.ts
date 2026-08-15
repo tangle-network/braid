@@ -8,6 +8,7 @@ import {
   permissionAnswerSpec,
 } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { interactionViews } from '../src/adapters/tui/ui-projection.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import type { InteractionReceipt } from '../src/app/application-types.js'
 import { evaluateAutomation } from '../src/app/automation-matching.js'
@@ -22,7 +23,6 @@ import {
   dryRunAutomation,
 } from '../src/app/automation-rules.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
-import { checkInteractionResponse } from '../src/app/interaction-response.js'
 import {
   createInteractionRequest,
   interactionRequestMaterial,
@@ -30,8 +30,10 @@ import {
   parseInteractionRequest,
   rebindInteractionRequest,
 } from '../src/app/interaction-request.js'
+import { checkInteractionResponse } from '../src/app/interaction-response.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
+import { interactionRemainingMs } from '../src/domain/interaction-timeout.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
 import type { BraidInteraction } from '../src/domain/runtime-projection.js'
@@ -539,6 +541,24 @@ test('stale and expired interactions are rejected before provider dispatch', asy
   )
   assert.equal(provider.responses(), 0)
   provider.release()
+})
+
+test('interaction presentation and response validation share the remaining timeout', async () => {
+  const request = questionRequest('interaction-countdown', {
+    timeoutMs: 10_000,
+    onTimeout: 'fail',
+  })
+  const provider = interactionExecution(request)
+  const app = applicationFor(provider.execution)
+  const receipt = app.send({ operationId: 'operation-send-countdown', text: 'count down' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+
+  assert.equal(interactionRemainingMs(10_000, NOW, undefined, Date.parse(NOW) + 2_500), 7_500)
+  assert.equal(interactionViews(app.state(), Date.parse(NOW) + 2_500)[0]?.remainingMs, 7_500)
+  assert.equal(interactionViews(app.state(), Date.parse(NOW) + 12_000)[0]?.remainingMs, 0)
+
+  provider.release()
+  await receipt.completion
 })
 
 test('automation rules persist scopes, audit outcomes, limits, and mutations through one journal', async () => {

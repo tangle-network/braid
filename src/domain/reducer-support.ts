@@ -14,6 +14,7 @@ import type {
   MessageStatus,
   RunStatus,
 } from './state.js'
+import type { BraidInteraction } from './runtime-projection.js'
 
 export const TERMINAL_RUN_STATES: readonly RunStatus[] = [
   'completed',
@@ -199,6 +200,35 @@ export function addActivity(run: BraidRun, item: BraidActivity): BraidRun {
     activity: activity.slice(-MAX_RUN_ACTIVITY_ITEMS),
     ...(activity.length > MAX_RUN_ACTIVITY_ITEMS ? { activityTruncated: true } : {}),
   }
+}
+
+/**
+ * Keep pending interaction identity separate from the bounded display list.
+ * An absent index on a truncated legacy run means pending state is unknown.
+ */
+export function withPendingInteractionIndex(
+  run: BraidRun,
+  interactions: readonly BraidInteraction[],
+): BraidRun {
+  const pending = pendingInteractionIds(run, interactions)
+  return {
+    ...run,
+    interactions,
+    ...(pending === undefined ? {} : { pendingInteractionIds: pending }),
+  }
+}
+
+function pendingInteractionIds(
+  run: BraidRun,
+  interactions: readonly BraidInteraction[],
+): readonly string[] | undefined {
+  if (run.pendingInteractionIds === undefined && run.interactionsTruncated) return undefined
+  const values = new Set(run.pendingInteractionIds ?? [])
+  for (const interaction of interactions) {
+    if (interaction.status === 'pending') values.add(interaction.request.id)
+    else values.delete(interaction.request.id)
+  }
+  return [...values]
 }
 
 export function assertTerminalTransition(current: RunStatus, next: RunStatus): void {

@@ -276,7 +276,7 @@ test('first-run review keeps exact effective values and credential boundaries le
   assert.match(wizard.render(80).join('\n'), /selection applied/u)
 })
 
-test('profile editor uses canonical summaries, validates by keyboard, and refuses unsafe saves', async () => {
+test('profile editor uses canonical summaries and validates without advertising a fake save', async () => {
   const calls: BraidIntent[] = []
   const panel = new ProfileEditorViewPanel(theme, {
     controller: controllerFor(calls),
@@ -291,7 +291,8 @@ test('profile editor uses canonical summaries, validates by keyboard, and refuse
   assert.doesNotMatch(initial, /secret-canary|secret-profile\.json/u)
   const narrow = panel.render(40)
   assert.ok(narrow.length <= 12)
-  assert.match(narrow.join('\n'), /enter · \^V valid · \^S save · esc/u)
+  assert.match(narrow.join('\n'), /enter select · \^V validate · esc close/u)
+  assert.doesNotMatch(narrow.join('\n'), /save/iu)
 
   panel.handleInput('\u0016')
   await settle()
@@ -302,18 +303,10 @@ test('profile editor uses canonical summaries, validates by keyboard, and refuse
     'validate_profile',
   )
   assert.match(panel.render(80).join('\n'), /Profile valid/u)
-
-  panel.handleInput('\u0013')
-  await settle()
-  const save = [...calls].reverse().find((intent) => intent.type === 'run-command')
-  assert.equal(save?.type, 'run-command')
-  assert.deepEqual(save?.type === 'run-command' ? save.args : [], ['save', 'profile-reviewer'])
-  assert.equal(save?.type === 'run-command' ? save.operationId : undefined, 'profile-ui-test')
-
-  panel.handleInput('\u001b[B')
-  panel.handleInput('\u0013')
-  await settle()
-  assert.match(panel.render(80).join('\n'), /Select the exact profile before saving it/u)
+  assert.equal(
+    calls.some((intent) => intent.type === 'run-command'),
+    false,
+  )
 })
 
 test('connection setup shows health and capabilities without endpoints or credentials, then applies exact keyboard actions', async () => {
@@ -392,7 +385,7 @@ test('connection setup shows health and capabilities without endpoints or creden
   assert.equal(cancelled, true)
 })
 
-test('profile save requires an exact id when display names collide', async () => {
+test('profile selection uses the exact id when display names collide', async () => {
   const calls: BraidIntent[] = []
   const panel = new ProfileEditorViewPanel(theme, {
     controller: controllerFor(calls, { duplicateProfileName: true }),
@@ -401,17 +394,17 @@ test('profile save requires an exact id when display names collide', async () =>
   panel.focused = true
   await settle()
 
-  panel.handleInput('\u0013')
-  await settle()
-  assert.match(panel.render(80).join('\n'), /Select the exact profile before saving it/u)
-  assert.doesNotMatch(calls.map((intent) => intent.type).join(','), /run-command/u)
-
   panel.handleInput('\r')
   await settle()
-  panel.handleInput('\u0013')
-  await settle()
-  const save = [...calls].reverse().find((intent) => intent.type === 'run-command')
-  assert.deepEqual(save?.type === 'run-command' ? save.args : [], ['save', 'profile-reviewer'])
+  const selected = [...calls]
+    .reverse()
+    .find((intent) => intent.type === 'headless-command' && intent.command === 'select_profile')
+  assert.equal(selected?.type, 'headless-command')
+  assert.equal(
+    selected?.type === 'headless-command' ? selected.params.ref : undefined,
+    'profile-reviewer',
+  )
+  assert.doesNotMatch(calls.map((intent) => intent.type).join(','), /run-command/u)
 })
 
 test('static profile and connection views mask secret-designated fields and keep narrow rows bounded', () => {

@@ -1,0 +1,24 @@
+ permission                              Braid starter @ pi · run fixture-run-1
+────────────────────────────────────────────────────────────────────────────────
+ Allow the fixture tool to inspect the selected file?
+ src/app/application.ts · read-only
+ The fixture requests a bounded read for a real interaction preview.
+ export class BraidApplication {
+
+ › 1. Approve
+      Continue this request
+   2. Reject
+   3. Cancel
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ move · enter confirm · 1-3 quick select · esc cancel · alt+a automate

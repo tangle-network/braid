@@ -95,26 +95,34 @@ export function isSecretInteraction(interaction: InteractionView): boolean {
   )
 }
 
+export function interactionPrompt(interaction: InteractionView): TruncatedText {
+  return new TruncatedText(
+    isSecretInteraction(interaction)
+      ? 'Secret response requested; value stays hidden.'
+      : sanitizeTerminalText(interaction.prompt),
+    1,
+    0,
+  )
+}
+
 export function interactionHeading(interaction: InteractionView): string {
   const kind = sanitizeTerminalText(interaction.kind).toLocaleLowerCase() || 'interaction'
-  const heading = kind === 'plan' ? 'plan review' : kind
-  return interaction.queueTotal > 1
-    ? `${heading} · request ${interaction.queuePosition + 1}/${interaction.queueTotal}`
-    : heading
+  const label = kind === 'plan' ? 'plan review' : kind
+  const heading =
+    interaction.queueTotal > 1
+      ? `${label} · request ${interaction.queuePosition + 1}/${interaction.queueTotal}`
+      : label
+  return interaction.remainingMs === undefined
+    ? heading
+    : `${heading} · ${Math.max(0, Math.ceil(interaction.remainingMs / 1_000))}s left`
 }
 
 export function runContext(interaction: InteractionView): string {
-  const timeout =
-    interaction.remainingMs === undefined
-      ? 'timeout unknown'
-      : `timeout ${Math.max(0, Math.ceil(interaction.remainingMs / 1_000))}s`
   const requester = [interaction.profileName, interaction.runner]
     .map((value) => (value === undefined ? '' : sanitizeTerminalText(value)))
     .filter((value) => value.length > 0)
     .join(' @ ')
-  return [requester, `run ${shortIdentifier(interaction.runId)}`, timeout]
-    .filter(Boolean)
-    .join(' · ')
+  return [requester, `run ${shortIdentifier(interaction.runId)}`].filter(Boolean).join(' · ')
 }
 
 export function interactionSubjectComponents(

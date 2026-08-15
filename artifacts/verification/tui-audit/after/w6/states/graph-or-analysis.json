@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 2,
+  "state": "graph-or-analysis",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "tarball": "tangle-network-braid-0.1.1.tgz",
+    "tarballSha256": "b2c0571a7f7d0d6e847d493667dfed6ff11b52eefb5e5f43cb13470eea3562c7"
+  },
+  "dimensions": {
+    "columns": 80,
+    "rows": 24
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.2",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.13.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 1,
+  "frame": " conversation graph · 2               Braid starter · pi · fixture/deterministic\n────────────────────────────────────────────────────────────────────────────────\n   ✓ ▾ New conversation · conversation · complete · ─attached→\n ›   └ ✓ Main · branch · complete · current · ─attached→\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ move · enter/→ open · ←/esc close · space collapse · w waiting\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 1,
+      "sequence": 1,
+      "workspace": "/home/drew/code/braid-goal-latest-wt",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "profile": {
+        "name": "Braid starter",
+        "description": "A portable starter profile for the Braid terminal",
+        "harness": "pi",
+        "model": {
+          "default": "fixture/deterministic",
+          "provider": "fixture",
+          "reasoningEffort": "none"
+        }
+      },
+      "runConfiguration": {
+        "profileName": "Braid starter",
+        "runner": "pi",
+        "model": "fixture/deterministic",
+        "effort": "none",
+        "overrides": {}
+      },
+      "draft": "",
+      "messages": [],
+      "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
+      "interactions": [],
+      "queue": [],
+      "activeRunId": null,
+      "lastError": null
+    },
+    "view": {
+      "revision": 1,
+      "workspace": "/home/drew/code/braid-goal-latest-wt",
+      "profileName": "Braid starter",
+      "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "runOverrides": {},
+      "connection": "deterministic fixture",
+      "conversationId": "conv-1",
+      "conversationTitle": "New conversation",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "active": true,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "branch": "branch-1",
+      "status": "empty",
+      "statusText": "ready for a message",
+      "queueCount": 0,
+      "queue": [],
+      "messages": [],
+      "hiddenMessageCount": 0,
+      "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
+      "interactions": [],
+      "activity": [],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "New conversation",
+          "status": "complete",
+          "depth": 0,
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "Main",
+          "status": "complete",
+          "depth": 1,
+          "edgeLabel": "attached",
+          "parentIds": [
+            "conversation:conv-1"
+          ],
+          "startedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "graphQuery": "",
+      "entityDetails": [],
+      "capabilities": {
+        "conversation.create": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.open": {
+          "available": true,
+          "source": "application"
+        },
+        "run.runner": {
+          "available": true,
+          "source": "application"
+        },
+        "run.model": {
+          "available": true,
+          "source": "application"
+        },
+        "run.effort": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.branch": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.clone": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.fork": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.ask": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.recipe": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.compare": {
+          "available": false,
+          "source": "application",
+          "reason": "Two completed or failed runs are required for comparison"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "runtime",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "export.create": {
+          "available": true,
+          "source": "application"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "profile.select": {
+          "available": true,
+          "source": "application"
+        },
+        "connection.select": {
+          "available": true,
+          "source": "application"
+        },
+        "settings.open": {
+          "available": true,
+          "source": "application"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "draft.write": {
+          "available": true,
+          "source": "application"
+        },
+        "run.send": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no active run to cancel"
+        },
+        "run.queue": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.detach": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconnect": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no detached run to reconnect"
+        },
+        "run.reconcile": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no detached run to reconcile"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "graph",
+      "appearance": {
+        "color": "256",
+        "highContrast": false,
+        "reducedMotion": false
+      }
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "value": {
+            "kind": "workspace.opened",
+            "workspace": "/home/drew/code/braid-goal-latest-wt"
+          }
+        }
+      }
+    ]
+  }
+}

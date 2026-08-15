@@ -396,16 +396,21 @@ function conversationForOperation(
 }
 
 function deleteBlockers(state: BraidState, conversationId: ConversationId): void {
+  for (const run of state.runs.filter((candidate) => candidate.conversationId === conversationId)) {
+    if (run.interactionsTruncated && run.pendingInteractionIds === undefined) {
+      throw new AppError(
+        'DELETE_BLOCKED',
+        `Interaction history for run ${run.id} is truncated; pending state is not provable`,
+      )
+    }
+    const pendingId =
+      run.pendingInteractionIds?.[0] ??
+      run.interactions.find((interaction) => interaction.status === 'pending')?.request.id
+    if (pendingId !== undefined)
+      throw new AppError('DELETE_BLOCKED', `Interaction ${pendingId} is still pending`)
+  }
   const active = state.runs.find((run) => run.conversationId === conversationId && !run.complete)
   if (active) throw new AppError('DELETE_BLOCKED', `Run ${active.id} is not terminal`)
-  const pending = state.interactions.find(
-    (interaction) =>
-      interaction.status === 'pending' &&
-      state.runs.some(
-        (run) => run.id === interaction.runId && run.conversationId === conversationId,
-      ),
-  )
-  if (pending) throw new AppError('DELETE_BLOCKED', `Interaction ${pending.id} is still pending`)
   const descendant = state.branches.find(
     (branch) =>
       branch.conversationId !== conversationId && branch.source?.conversationId === conversationId,

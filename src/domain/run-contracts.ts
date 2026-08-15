@@ -1,4 +1,32 @@
-import type { AgentEnvironmentCapabilities, AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AgentEnvironmentCapabilities,
+  AgentExactRunControlRef,
+  AgentProfile,
+} from '@tangle-network/agent-interface'
+
+export interface RetainedRunEnvironmentAdmissionRecord {
+  readonly phase: 'environment'
+  readonly provider: string
+  readonly environmentId: string
+  readonly idempotencyKey: string
+  readonly turnId: string
+  readonly sessionId: string
+  readonly executionId: string
+}
+
+export interface RetainedRunDispatchedAdmissionRecord {
+  readonly phase: 'dispatched'
+  readonly controlRef: AgentExactRunControlRef
+  readonly idempotencyKey: string
+  readonly turnId: string
+}
+
+/** Product-owned recovery data that Runtime requires Braid to persist before proceeding. */
+export type RetainedRunAdmissionRecord =
+  | RetainedRunEnvironmentAdmissionRecord
+  | RetainedRunDispatchedAdmissionRecord
+
+export type RetainedRunAdmissionRecorder = (admission: RetainedRunAdmissionRecord) => Promise<void>
 
 export interface RunControlCapabilities {
   readonly cancel: boolean

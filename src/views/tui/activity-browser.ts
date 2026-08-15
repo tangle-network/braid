@@ -2,13 +2,13 @@ import { matchesKey } from '@earendil-works/pi-tui'
 import { effectiveElapsedMs, formatDuration } from '../shared/duration.js'
 import type { BraidViewModel, EntityDetailView, RunView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { projectActivityDocument, type ActivityDocumentItem } from './activity-document.js'
-import { executionTargetFor } from './execution-target.js'
+import { type ActivityDocumentItem, projectActivityDocument } from './activity-document.js'
 import {
   EntityBrowser,
   type EntityBrowserDocument,
   type EntityBrowserRow,
 } from './entity-browser.js'
+import { executionTargetFor, executionTargetForEntity } from './execution-target.js'
 import { metricsFor } from './terminal-usage.js'
 import type { BraidTheme } from './theme.js'
 
@@ -34,13 +34,14 @@ export class ActivityBrowserPanel extends EntityBrowser {
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
     super(theme, {
-      document: () =>
+      document: (selectedId) =>
         activityDocument(
           options.view(),
           scopeState.scope,
           options.notice?.(),
           options.emptyMessage,
           options.pinned,
+          selectedId,
         ),
       rows: options.rows,
       onClose: options.onClose,
@@ -67,6 +68,7 @@ export function activityDocument(
   notice?: string,
   emptyMessage?: string,
   pinned?: string,
+  selectedId?: string,
 ): EntityBrowserDocument {
   const details = new Map(
     (view.entityDetails ?? []).map((detail) => [detailKey(detail), detail] as const),
@@ -76,10 +78,16 @@ export function activityDocument(
     .items.filter((item) => included(item, scope))
     .slice()
     .reverse()
-  const target = executionTargetFor(view)
+  const selected = items.find((item) => item.id === selectedId)
+  const target =
+    selected?.runId !== undefined
+      ? executionTargetFor(view, selected.runId)
+      : selected?.source?.entityType !== undefined && selected.source.entityId !== undefined
+        ? executionTargetForEntity(view, selected.source.entityType, selected.source.entityId)
+        : executionTargetFor(view)
   const usage = metricsFor(view)
   return {
-    title: scope === 'all' ? 'activity' : `activity · ${scope}`,
+    title: scope === 'all' ? 'activity' : scope,
     context: [target.profileName, target.runner, target.model, ...usage].join(' · '),
     filterHint: `tab filter: ${scope}`,
     ...(pinned === undefined ? {} : { pinned }),
@@ -166,9 +174,6 @@ function runContext(
     ...(run.environmentId === undefined
       ? []
       : [`execution environment: ${sanitizeTerminalText(run.environmentId)}`]),
-    ...(run.providerSessionId === undefined
-      ? []
-      : [`provider session: ${sanitizeTerminalText(run.providerSessionId)}`]),
     `model: ${sanitizeTerminalText(target.model)}`,
     ...(target.effort === undefined ? [] : [`thinking: ${sanitizeTerminalText(target.effort)}`]),
     ...(target.maxOutputTokens === undefined

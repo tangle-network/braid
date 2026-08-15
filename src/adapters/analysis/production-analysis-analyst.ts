@@ -17,7 +17,7 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
   readonly #bootstrap: AnalysisAnalyst
   readonly #create: (
     target: AnalysisExecutionTarget,
-    request: Pick<EvalAnalystRequest, 'signal' | 'totalTimeoutMs'>,
+    request: Pick<EvalAnalystRequest, 'onRetainedAdmission' | 'signal' | 'totalTimeoutMs'>,
   ) => Promise<AnalysisAnalyst>
   readonly #completed = new Map<string, readonly ExternalOptimizerModelExecutionObservation[]>()
 
@@ -26,7 +26,7 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
     readonly connectionOptions?: ProductionConnectionOptions
     readonly create?: (
       target: AnalysisExecutionTarget,
-      request: Pick<EvalAnalystRequest, 'signal' | 'totalTimeoutMs'>,
+      request: Pick<EvalAnalystRequest, 'onRetainedAdmission' | 'signal' | 'totalTimeoutMs'>,
     ) => Promise<AnalysisAnalyst>
   }) {
     this.#bootstrap = input.bootstrap
@@ -49,6 +49,9 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
               : { maxOutputTokens: modelSettings.maxOutputTokens }),
             ...connectionOptions,
             managedRuntimeReadiness: 'complete',
+            ...(request.onRetainedAdmission === undefined
+              ? {}
+              : { onRetainedAdmission: request.onRetainedAdmission }),
             ...(request.signal === undefined ? {} : { signal: request.signal }),
             ...(request.totalTimeoutMs === undefined
               ? {}
@@ -81,6 +84,9 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
             'The analysis request has no captured execution route.',
           )
         : await this.#create(target, {
+            ...(request.onRetainedAdmission === undefined
+              ? {}
+              : { onRetainedAdmission: request.onRetainedAdmission }),
             ...(request.signal === undefined ? {} : { signal: request.signal }),
             ...(request.totalTimeoutMs === undefined
               ? {}

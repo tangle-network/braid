@@ -328,6 +328,9 @@ export async function runRpc(
               await respond(errorResponse(result, request.requestId))
               break
             }
+            const admissionState = result.completion
+              ? stateResponse(controller, request.requestId)
+              : undefined
             await respond({
               version: BRAID_PROTOCOL_VERSION,
               type: 'ack',
@@ -342,6 +345,7 @@ export async function runRpc(
             })
             for (const event of bufferedEvents) await respond(eventResponse(event))
             bufferedEvents = undefined
+            if (admissionState) await respond(admissionState)
             if (result.completion) {
               let tracked: Promise<void>
               tracked = result.completion.finally(() => pendingCompletions.delete(tracked))

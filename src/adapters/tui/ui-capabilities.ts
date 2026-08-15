@@ -124,6 +124,21 @@ export function capabilityMap(
               ? 'Initialize a workspace before sending'
               : 'Configure a connection before sending',
         }
+  const runConfigurationAvailable =
+    state.workspace !== null && !active && (deterministicFixture || configuredConnection)
+  for (const capability of ['run.runner', 'run.model', 'run.effort']) {
+    capabilities[capability] = runConfigurationAvailable
+      ? { available: true, source: 'application' }
+      : {
+          available: false,
+          source: 'application',
+          reason: active
+            ? 'Finish or cancel the active run first'
+            : state.workspace === null
+              ? 'Initialize a workspace first'
+              : 'Configure a connection before changing run settings',
+        }
+  }
   capabilities['run.cancel'] =
     active && canCancel
       ? { available: true, source: 'runtime' }

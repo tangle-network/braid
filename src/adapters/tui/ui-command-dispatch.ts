@@ -4,8 +4,8 @@ import type { InteractionOutcome, InteractionView } from '../../views/shared/mod
 import { dispatchAutomationCommand } from './ui-automation-command.js'
 import { dispatchConversationRunCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
-import { dispatchHeadlessCommand } from './ui-headless-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
+import { dispatchHeadlessCommand } from './ui-headless-dispatch.js'
 
 type RunCommandIntent = Extract<BraidIntent, { readonly type: 'run-command' }>
 
@@ -74,7 +74,16 @@ export async function dispatchCommandIntent(
     )
   }
   if (intent.command === 'graph' || intent.command === 'activity') {
-    return dispatchCoreIntent({ type: 'open-surface', surface: intent.command }, context)
+    return dispatchCoreIntent(
+      {
+        type: 'open-surface',
+        surface: intent.command,
+        ...(intent.command === 'graph' && intent.args.length > 0
+          ? { query: intent.args.join(' ') }
+          : {}),
+      },
+      context,
+    )
   }
   if (intent.command === 'fork' && context.fixture === 'fork') {
     return dispatchCoreIntent({ type: 'open-surface', surface: 'fork' }, context)

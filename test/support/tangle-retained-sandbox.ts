@@ -39,7 +39,7 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.6.3. */
+/** Stateful double for the exact Tangle SDK surface used by provider 0.10.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -64,6 +64,9 @@ export class FakeTangleRetainedSandbox {
 
   client(): SandboxClientLike {
     return {
+      async fetch() {
+        throw new Error('The lazy capability probe must not call the Sandbox transport')
+      },
       create: async (options) => {
         const create = structuredClone(options ?? {})
         this.createCalls.push(create)
@@ -117,6 +120,14 @@ export class FakeTangleRetainedSandbox {
       ...(box.name === undefined ? {} : { name: box.name }),
       ...(box.metadata === undefined ? {} : { metadata: box.metadata }),
       status: box.deleted ? 'stopped' : 'running',
+      async capabilities() {
+        return {
+          schema: 1,
+          dispatch: { runControlRef: true, executionIdOnAdmission: true },
+          cancel: { canonicalRunCancellation: true, digestBound: true, idempotent: true },
+          runs: { executionScopedStatus: true, eventReplay: true },
+        }
+      },
       async refresh() {},
       async delete() {
         if (sandbox.failDelete) throw new Error('Injected Tangle delete failure')
@@ -206,7 +217,17 @@ export class FakeTangleRetainedSandbox {
             const execution = [...sandbox.#executions.values()]
               .filter((candidate) => candidate.sessionId === sessionId)
               .at(-1)
-            return { status: execution?.status ?? 'running' }
+            return {
+              status: execution?.status ?? 'running',
+              ...(execution === undefined
+                ? {}
+                : {
+                    activeExecutionId:
+                      execution.status === 'running' ? execution.executionId : undefined,
+                    latestExecutionId: execution.executionId,
+                    runControlRef: execution.controlRef,
+                  }),
+            }
           },
           async *events() {},
           async result(options) {
@@ -348,11 +369,7 @@ export async function prepareFakeTangleRetainedConnection(input: {
     name: 'tangle-sandbox',
     capabilities: declared,
   })
-  const reported = await provider.capabilities()
-  const capabilities = Object.freeze({
-    ...reported,
-    sessions: Object.freeze({ ...reported.sessions, continue: false }),
-  })
+  const capabilities = await provider.capabilities()
   return Object.freeze({
     profile: input.profile,
     model,
@@ -372,7 +389,7 @@ export async function prepareFakeTangleRetainedConnection(input: {
       backend: 'environment-provider',
       lifecycle: 'retained',
       cleanup: 'explicit',
-      continuity: 'unavailable',
+      continuity: 'session',
       portableContext: 'unavailable',
       model,
       runner,

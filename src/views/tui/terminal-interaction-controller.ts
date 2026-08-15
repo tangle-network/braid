@@ -11,6 +11,7 @@ export interface TerminalInteractionControllerOptions {
   readonly dispatch: (intent: BraidIntent) => Promise<UiDispatchResult>
   readonly currentView: () => BraidViewModel
   readonly isStopped: () => boolean
+  readonly requestRender: () => void
   readonly rows: () => number
   readonly openAutomation: (input: {
     readonly interaction: InteractionView
@@ -27,11 +28,14 @@ export class TerminalInteractionController {
   readonly #dispatch: TerminalInteractionControllerOptions['dispatch']
   readonly #currentView: () => BraidViewModel
   readonly #isStopped: () => boolean
+  readonly #requestRender: () => void
   readonly #rows: () => number
   readonly #openAutomation: TerminalInteractionControllerOptions['openAutomation']
   #open = false
   #interactionKey: string | undefined
   #pendingInteractionKey: string | undefined
+  #shell: InteractionShell | undefined
+  #refresh: ReturnType<typeof setInterval> | undefined
 
   constructor(options: TerminalInteractionControllerOptions) {
     this.#theme = options.theme
@@ -40,6 +44,7 @@ export class TerminalInteractionController {
     this.#dispatch = options.dispatch
     this.#currentView = options.currentView
     this.#isStopped = options.isStopped
+    this.#requestRender = options.requestRender
     this.#rows = options.rows
     this.#openAutomation = options.openAutomation
   }
@@ -53,11 +58,18 @@ export class TerminalInteractionController {
     const interactionKey = interaction ? keyFor(interaction) : undefined
     if (!interaction) {
       this.#pendingInteractionKey = undefined
+      this.#stopRefresh()
       if (this.#open) {
         this.#open = false
         this.#interactionKey = undefined
+        this.#shell = undefined
         this.#modals.closeTop()
       }
+      return
+    }
+    if (this.#open && interactionKey === this.#interactionKey) {
+      this.#shell?.setInteraction(interaction)
+      this.#syncRefresh(interaction)
       return
     }
     if (
@@ -78,6 +90,8 @@ export class TerminalInteractionController {
         this.#open = false
         this.#pendingInteractionKey = this.#interactionKey
         this.#interactionKey = undefined
+        this.#shell = undefined
+        this.#stopRefresh()
         this.#modals.closeTop()
         const pendingKey = this.#pendingInteractionKey
         void this.#dispatch({
@@ -103,12 +117,14 @@ export class TerminalInteractionController {
         }),
       this.#rows,
     )
+    this.#shell = shell
     this.#modals.open(shell, {
       anchor: 'top-left',
       width: '100%',
       maxHeight: '100%',
       margin: 0,
     })
+    this.#syncRefresh(interaction)
   }
 
   #resumeInteraction(previous: InteractionView): void {
@@ -116,9 +132,38 @@ export class TerminalInteractionController {
     this.#open = false
     this.#interactionKey = undefined
     this.#pendingInteractionKey = undefined
+    this.#shell = undefined
+    this.#stopRefresh()
     const current = this.#currentView().interactions[0]
     if (current !== undefined && keyFor(current) === keyFor(previous))
       this.#openInteraction(current)
+  }
+
+  dispose(): void {
+    this.#stopRefresh()
+    this.#shell = undefined
+  }
+
+  #syncRefresh(interaction: InteractionView): void {
+    if (interaction.remainingMs === undefined || interaction.remainingMs <= 0) {
+      this.#stopRefresh()
+      return
+    }
+    if (this.#refresh !== undefined) return
+    this.#refresh = setInterval(() => {
+      if (this.#isStopped()) {
+        this.#stopRefresh()
+        return
+      }
+      this.sync(this.#currentView())
+      this.#requestRender()
+    }, 250)
+    this.#refresh.unref?.()
+  }
+
+  #stopRefresh(): void {
+    if (this.#refresh !== undefined) clearInterval(this.#refresh)
+    this.#refresh = undefined
   }
 }
 

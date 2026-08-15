@@ -1,3 +1,4 @@
+import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
 import type { ForkPlan } from '../../app/conversation-types.js'
 
 export type ViewStatus =
@@ -192,6 +193,8 @@ export interface EnvironmentView {
 export interface RunView {
   readonly id: string
   readonly turnId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
   readonly status: ViewStatus
   readonly operationId?: string
   readonly profileName?: string
@@ -203,6 +206,7 @@ export interface RunView {
   readonly error?: string
   readonly cursor?: string
   readonly providerSessionId?: string
+  readonly harnessSessionId?: string
   readonly requestedSessionId?: string
   readonly environmentId?: string
   readonly runner?: string
@@ -373,6 +377,7 @@ export interface GraphNodeView {
   readonly status: ViewStatus | 'complete'
   readonly depth: number
   readonly edgeLabel?: string
+  readonly parentIds?: readonly string[]
   readonly runner?: string
   readonly elapsedMs?: number
   readonly startedAt?: string
@@ -535,6 +540,12 @@ export interface BraidViewModel {
   readonly runner: string
   readonly model: string
   readonly effort?: string
+  readonly runOverrides?: {
+    readonly runner?: string
+    readonly model?: string
+    readonly effort?: string
+    readonly mode?: string
+  }
   readonly maxOutputTokens?: number
   readonly connection: string
   readonly conversationId: string
@@ -561,6 +572,7 @@ export interface BraidViewModel {
   readonly interactions: readonly InteractionView[]
   readonly activity: readonly ActivityItemView[]
   readonly graph: readonly GraphNodeView[]
+  readonly graphQuery?: string
   readonly hiddenGraphNodeCount?: number
   readonly entityDetails?: readonly EntityDetailView[]
   readonly details?: DetailsView
@@ -611,6 +623,20 @@ export interface HeadlessState {
     readonly updatedAt: string
   }[]
   readonly profile: Readonly<Record<string, unknown>>
+  readonly runConfiguration: {
+    readonly profileName: string
+    readonly runner: string
+    readonly model: string
+    readonly effort?: string
+    readonly mode?: string
+    readonly connectionId?: string
+    readonly overrides: {
+      readonly runner?: string
+      readonly model?: string
+      readonly effort?: string
+      readonly mode?: string
+    }
+  }
   readonly draft: string
   readonly messages: readonly {
     readonly id: string
@@ -626,8 +652,14 @@ export interface HeadlessState {
     readonly turnId: string
     readonly operationId: string
     readonly status: string
+    readonly startedAt: string
+    readonly updatedAt: string
+    readonly terminalAt?: string
+    readonly durationMs?: number
     readonly inputTokens: number
     readonly outputTokens: number
+    readonly tokensKnown: boolean
+    readonly usdKnown: boolean
     readonly tokenStatus: NonNullable<UsageView['tokenStatus']>
     readonly reasoningTokens?: number
     readonly costUsd?: number
@@ -644,9 +676,12 @@ export interface HeadlessState {
     readonly error?: string
     readonly completeness: RunView['completeness']
     readonly providerSessionId?: string
+    readonly harnessSessionId?: string
     readonly environmentId?: string
+    readonly controlRef?: AgentExactRunControlRef
     readonly materializationDigest?: string
     readonly cursor?: string
+    readonly cursorCommittedSequence?: number
     readonly contentBytes?: number
     readonly contentTruncated?: boolean
     readonly activityTruncated?: boolean

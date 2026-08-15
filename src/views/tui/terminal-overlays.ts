@@ -195,6 +195,52 @@ export class TerminalOverlayController {
     this.#modals.open(palette, { anchor: 'center', width: '70%', minWidth: 32, maxHeight: 14 })
   }
 
+  openSwitcher(): void {
+    const view = this.#controller.view()
+    const items: SelectItem[] = [
+      {
+        value: 'profile',
+        label: 'Profile',
+        description: `${view.profileName} · selected agent`,
+      },
+      {
+        value: 'connection',
+        label: 'Connection',
+        description: `${view.connection} · execution route`,
+      },
+      {
+        value: 'runner',
+        label: 'Runner',
+        description: `${view.runner} · ${view.runOverrides?.runner === undefined ? 'from profile' : 'branch override'}`,
+      },
+      {
+        value: 'model',
+        label: 'Model',
+        description: `${view.model} · ${view.runOverrides?.model === undefined ? 'from profile' : 'branch override'}`,
+      },
+      {
+        value: 'effort',
+        label: 'Thinking',
+        description: `${view.effort ?? 'runner default'} · ${view.runOverrides?.effort === undefined ? 'from profile' : 'branch override'}`,
+      },
+    ]
+    const selector = new SearchableSelector({
+      title: 'Run configuration',
+      items,
+      maxVisible: 5,
+      theme: this.#theme,
+      footer: 'enter to change · esc to close',
+      onSelect: (item) => {
+        this.#modals.closeTop()
+        if (item.value === 'profile') this.openProfile()
+        else if (item.value === 'connection') this.openConnection()
+        else this.#startOverrideEntry(item.value as 'runner' | 'model' | 'effort')
+      },
+      onCancel: () => this.#modals.closeTop(),
+    })
+    this.#modals.open(selector, { anchor: 'center', width: '72%', minWidth: 34, maxHeight: 14 })
+  }
+
   openAnalysisSource(question: readonly string[], sources: readonly ActivityItemView[]): void {
     const view = this.#controller.view()
     const selector = new SearchableSelector({
@@ -277,23 +323,15 @@ export class TerminalOverlayController {
       this.#conversations.openBranchSelector()
       return
     }
+    if (kind === 'runner' || kind === 'model' || kind === 'effort') {
+      this.#startOverrideEntry(kind)
+      return
+    }
     const view = this.#controller.view()
     const items: SelectItem[] =
       kind === 'graph'
         ? view.graph.map((node) => ({ value: node.id, label: node.title, description: node.type }))
-        : kind === 'runner'
-          ? [{ value: view.runner, label: view.runner, description: 'active runner' }]
-          : kind === 'model'
-            ? [{ value: view.model, label: view.model, description: 'active model' }]
-            : kind === 'effort'
-              ? [
-                  {
-                    value: view.effort ?? 'default',
-                    label: view.effort ?? 'default',
-                    description: 'active effort',
-                  },
-                ]
-              : commandItems(view.capabilities)
+        : commandItems(view.capabilities)
     const selector = new SearchableSelector({
       title: kind,
       items,
@@ -302,12 +340,15 @@ export class TerminalOverlayController {
         this.#modals.closeTop()
         if (kind === 'graph') this.openSurface('graph')
         else if (kind === 'help') this.openHelp(item.value)
-        else if (kind === 'runner' || kind === 'model' || kind === 'effort')
-          this.#dispatchCommand(kind, [item.value])
       },
       onCancel: () => this.#modals.closeTop(),
     })
     this.#modals.open(selector, { anchor: 'center', width: '70%', minWidth: 32, maxHeight: 14 })
+  }
+
+  #startOverrideEntry(kind: 'runner' | 'model' | 'effort'): void {
+    this.#editor.setText(`/${kind} `)
+    this.#requestRender()
   }
 
   openConversationSelector(query = ''): void {

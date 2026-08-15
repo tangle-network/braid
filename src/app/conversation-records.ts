@@ -1,4 +1,8 @@
 import type { ReasoningEffort } from '@tangle-network/agent-interface'
+import {
+  harnessTypeSchema,
+  reasoningEffortSchema,
+} from '../adapters/agent-interface/harness-runtime.js'
 import type {
   BranchBoundary,
   BranchRecord,
@@ -22,38 +26,61 @@ import type {
   WorkspaceId,
 } from '../domain/ids.js'
 import { redactSensitiveText } from '../domain/redaction.js'
+import { containsUnsafeControlCharacter } from '../domain/text.js'
 import type { BuiltConversation } from './conversation-types.js'
 import { AppError } from './errors.js'
-
-const EFFORTS = new Set<ReasoningEffort>([
-  'none',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'ultracode',
-])
 
 export function runOverrides(input: {
   readonly runner?: string
   readonly model?: string
   readonly effort?: string
+  readonly mode?: string
   readonly inherited?: RunOverrides
 }): RunOverrides {
+  const runner = parseRunner(input.runner)
   let effort: ReasoningEffort | undefined
   if (input.effort !== undefined) {
-    if (!EFFORTS.has(input.effort as ReasoningEffort)) {
-      throw new AppError('INVALID_EFFORT', `Unknown reasoning effort ${input.effort}`)
-    }
-    effort = input.effort as ReasoningEffort
+    const parsed = reasoningEffortSchema.safeParse(input.effort.trim())
+    if (!parsed.success) throw new AppError('INVALID_EFFORT', 'Reasoning effort is not supported')
+    effort = parsed.data
   }
+  const model = parsePublicOverride(input.model, 'model', 512)
+  const mode = parsePublicOverride(input.mode, 'mode', 256)
   return {
     ...(input.inherited ?? {}),
-    ...(input.runner === undefined ? {} : { runner: redactSensitiveText(input.runner, 256) }),
-    ...(input.model === undefined ? {} : { model: redactSensitiveText(input.model, 512) }),
+    ...(runner === undefined ? {} : { runner }),
+    ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
+    ...(mode === undefined ? {} : { mode }),
   }
+}
+
+function parseRunner(value: string | undefined): RunOverrides['runner'] {
+  if (value === undefined) return undefined
+  const parsed = harnessTypeSchema.safeParse(value.trim())
+  if (!parsed.success) throw new AppError('INVALID_RUNNER', 'Runner is not supported')
+  return parsed.data
+}
+
+function parsePublicOverride(
+  value: string | undefined,
+  label: 'model' | 'mode',
+  maxBytes: number,
+): string | undefined {
+  if (value === undefined) return undefined
+  const normalized = value.trim()
+  if (
+    normalized.length === 0 ||
+    Buffer.byteLength(normalized, 'utf8') > maxBytes ||
+    containsUnsafeControlCharacter(normalized) ||
+    redactSensitiveText(normalized) !== normalized
+  ) {
+    throw new AppError(
+      label === 'model' ? 'INVALID_MODEL' : 'INVALID_MODE',
+      `${label === 'model' ? 'Model' : 'Mode'} must be a public identifier`,
+    )
+  }
+  return normalized
 }
 
 export function draftRecord(id: DraftId, branchId: BranchId, at: string, text = ''): DraftRecord {

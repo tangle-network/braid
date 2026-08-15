@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
 import { STARTER_PROFILE } from '../src/app/composition.js'
-import type { ConnectionRecord, InteractionRecord, RunRecord } from '../src/domain/entities.js'
+import {
+  createInteractionRequest,
+  interactionResponseBinding,
+} from '../src/app/interaction-request.js'
+import type { ConnectionRecord, RunRecord } from '../src/domain/entities.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
 import {
   createBranchId,
@@ -15,19 +19,18 @@ import {
   createInteractionId,
   createOperationId,
   createProviderSessionId,
+  createRuleId,
   createRunId,
   createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
-import {
-  assertConnectionRecord,
-  assertInteractionRecord,
-  assertRunRecord,
-} from '../src/domain/invariants.js'
+import { assertConnectionRecord, assertRunRecord } from '../src/domain/invariants.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import { reduceEvent } from '../src/domain/reducer.js'
+import type { BraidInteraction } from '../src/domain/runtime-projection.js'
 import { initialState } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
+import type { Digest } from '../src/domain/ids.js'
 
 const at = '2026-08-02T00:00:00.000Z'
 
@@ -206,45 +209,6 @@ test('connection state accepts transport metadata but rejects provider-native op
   )
 })
 
-test('unknown interaction kinds remain renderable through the canonical answer specification', () => {
-  const interactionId = createInteractionId('interaction-future')
-  const base: InteractionRecord = {
-    id: interactionId,
-    runId: createRunId('run-interaction'),
-    request: {
-      id: interactionId,
-      kind: 'provider.future.interaction',
-      title: 'A future provider question',
-      answerSpec: { fields: [{ type: 'text', name: 'answer', label: 'Answer', required: true }] },
-    },
-    status: 'pending',
-    createdAt: at,
-    updatedAt: at,
-  }
-  assert.doesNotThrow(() => assertInteractionRecord(base))
-  assert.throws(
-    () =>
-      assertInteractionRecord({
-        ...base,
-        request: {
-          ...base.request,
-          answerSpec: {
-            fields: [{ type: 'secret', name: 'password', label: 'Password', required: true }],
-          },
-        },
-        status: 'resolved',
-        resolution: {
-          outcome: 'accepted',
-          operationId: createOperationId('op-interaction-secret'),
-          publicData: { password: 'must-not-persist' },
-          containsSecret: false,
-          resolvedAt: at,
-        },
-      }),
-    /secret-designated|secret interaction/u,
-  )
-})
-
 function providerOwnedRun(): RunRecord {
   const runId = createRunId('run-local-identity')
   const conversationId = createConversationId('conversation-run-identity')
@@ -300,6 +264,232 @@ function providerOwnedRun(): RunRecord {
     eventDetails: [],
   }
 }
+
+function canonicalRunInteraction(
+  run: RunRecord,
+  options: {
+    readonly idSuffix?: string
+    readonly kind?: string
+    readonly bindingRunId?: string
+  } = {},
+): BraidInteraction {
+  const interactionId = createInteractionId(
+    `interaction-run-invariant-${options.idSuffix ?? 'future'}`,
+  )
+  const controlRef = run.controlRef
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: options.kind ?? 'provider.future.interaction',
+    title: 'A future provider question',
+    answerSpec: {
+      fields: [{ type: 'text', name: 'answer', label: 'Answer', required: true }],
+    },
+    binding: {
+      runId: options.bindingRunId ?? run.id,
+      provider: controlRef?.provider ?? 'test-provider',
+      environmentId: controlRef?.environmentId ?? 'environment-run-invariant',
+      sessionId: controlRef?.sessionId ?? 'session-run-invariant',
+      executionId: controlRef?.executionId ?? 'execution-run-invariant',
+      interactionId,
+    },
+  })
+  return {
+    request,
+    responseBinding: interactionResponseBinding(request),
+    runId: run.id,
+    source: { occurredAt: at },
+    status: 'pending',
+  }
+}
+
+test('canonical run interactions accept future kinds and reject duplicate request IDs', () => {
+  const run = providerOwnedRun()
+  const interaction = canonicalRunInteraction(run)
+
+  assert.doesNotThrow(() => assertRunRecord({ ...run, interactions: [interaction] }))
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [{ ...interaction, source: { sequence: 0 } }],
+      }),
+    /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [{ ...interaction, source: { eventId: 'password=not-persisted' } }],
+      }),
+    /run\.interactions\[0\]\.source\.eventId must be a safe public identifier/u,
+  )
+  assert.throws(
+    () => assertRunRecord({ ...run, interactions: [interaction, interaction] }),
+    /run\.interactions\.request contains duplicate identifier/u,
+  )
+})
+
+test('canonical run interactions reject malformed secret requests and mismatched bindings', () => {
+  const run = providerOwnedRun()
+  const interaction = canonicalRunInteraction(run, { idSuffix: 'invalid' })
+  const secretDefault = {
+    ...interaction,
+    request: {
+      ...interaction.request,
+      answerSpec: {
+        fields: [{ type: 'secret' as const, name: 'password', label: 'Password', required: true }],
+      },
+      default: { outcome: 'accepted' as const, data: { password: 'must-not-persist' } },
+    },
+  }
+
+  assert.throws(
+    () => assertRunRecord({ ...run, interactions: [secretDefault] }),
+    /run\.interactions\[0\]\.request is invalid/u,
+  )
+
+  const mismatchedRequestBinding = canonicalRunInteraction(run, {
+    idSuffix: 'request-binding',
+    bindingRunId: createRunId('run-not-containing'),
+  })
+  assert.throws(
+    () => assertRunRecord({ ...run, interactions: [mismatchedRequestBinding] }),
+    /request\.binding\.runId must match run\.id/u,
+  )
+
+  const mismatchedResponseBinding = {
+    ...interaction,
+    responseBinding: {
+      ...interaction.responseBinding,
+      executionId: 'tangle-execution-not-matching',
+    },
+  }
+  assert.throws(
+    () => assertRunRecord({ ...run, interactions: [mismatchedResponseBinding] }),
+    /responseBinding\.executionId must match request\.binding\.executionId/u,
+  )
+
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [{ ...interaction, runId: createRunId('run-not-containing') }],
+      }),
+    /runId must match run\.id/u,
+  )
+})
+
+test('canonical run interaction response operations preserve status and secrecy invariants', () => {
+  const run = providerOwnedRun()
+  const interaction = canonicalRunInteraction(run, { idSuffix: 'response-operation' })
+  const responding = {
+    ...interaction,
+    status: 'responding' as const,
+    responseOperation: {
+      operationId: createOperationId('operation-interaction-response-invariant'),
+      outcome: 'accepted' as const,
+      dataDigest: 'b'.repeat(64) as Digest,
+      containsSecret: false,
+    },
+  }
+
+  assert.doesNotThrow(() => assertRunRecord({ ...run, interactions: [responding] }))
+  const automationRule = {
+    id: createRuleId('rule-interaction-response-invariant'),
+    enabled: true,
+    matcher: { interactionKind: 'provider.future.interaction' },
+    answer: { answer: 'approved' },
+    responseScope: 'once' as const,
+    createdAt: at,
+    uses: 0,
+  }
+  assert.doesNotThrow(() =>
+    assertRunRecord({
+      ...run,
+      interactions: [
+        {
+          ...responding,
+          responseOperation: { ...responding.responseOperation, automationRule },
+        },
+      ],
+    }),
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [
+          {
+            ...responding,
+            responseOperation: {
+              ...responding.responseOperation,
+              automationRule: { ...automationRule, answer: { password: 'must-not-persist' } },
+            },
+          },
+        ],
+      }),
+    /rule\.answer\.password is secret-designated and cannot be retained/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [
+          {
+            ...responding,
+            responseOperation: { ...responding.responseOperation, containsSecret: true },
+          },
+        ],
+      }),
+    /secret responseOperation cannot retain dataDigest/u,
+  )
+  assert.throws(
+    () => assertRunRecord({ ...run, interactions: [{ ...responding, status: 'declined' }] }),
+    /responseOperation status does not match its outcome/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [
+          {
+            ...responding,
+            responseOperation: { ...responding.responseOperation, operationId: 'not-an-operation' },
+          },
+        ],
+      }),
+    /responseOperation\.operationId is not a valid operation identifier/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [
+          {
+            ...responding,
+            responseOperation: { ...responding.responseOperation, dataDigest: 'not-a-digest' },
+          },
+        ],
+      }),
+    /responseOperation\.dataDigest is not a SHA-256 digest/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [
+          {
+            ...responding,
+            responseOperation: {
+              ...responding.responseOperation,
+              containsSecret: 'false' as unknown as boolean,
+            },
+          },
+        ],
+      }),
+    /responseOperation\.containsSecret must be boolean/u,
+  )
+})
 
 test('run identity keeps local run IDs separate from provider-owned control references', () => {
   const run = providerOwnedRun()

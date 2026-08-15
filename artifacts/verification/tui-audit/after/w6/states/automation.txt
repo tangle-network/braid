@@ -1,0 +1,24 @@
+
+ Ask Braid starter anything.
+
+
+
+
+
+
+
+      automation rules
+     ──────────────────────────────────────────────────────────────────────
+       No saved automation rules
+     ──────────────────────────────────────────────────────────────────────
+      create from a pending request with Alt+A · esc close
+
+
+
+
+
+
+
+
+
+No automation rules

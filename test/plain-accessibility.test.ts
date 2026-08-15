@@ -51,6 +51,7 @@ test('semantic projection keeps detached state and only public interaction reque
     }),
   )
   assert.deepEqual(detached, {
+    runId: 'run-plain',
     status: 'detached',
     completeness: 'streaming',
     cursor: 'cursor-plain',

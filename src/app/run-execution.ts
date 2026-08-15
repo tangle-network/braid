@@ -29,6 +29,14 @@ export async function executeRun(
       ...(currentRun?.lastCursor === undefined ? {} : { after: currentRun.lastCursor }),
       ...(currentRun === undefined ? {} : { afterSequence: currentRun.lastProviderSequence }),
       ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      onRetainedAdmission: async (retainedAdmission) => {
+        const committed = context.commitAndWait({
+          kind: 'run.retained.admitted',
+          runId: admission.runId,
+          admission: retainedAdmission,
+        })
+        if (committed !== undefined) await committed
+      },
     }
     if (context.ledger.isDetached(admission.runId)) return
     for await (const runtimeEvent of context.execution.streamTurn(runtimeInput)) {

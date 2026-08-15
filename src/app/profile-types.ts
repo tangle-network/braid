@@ -164,7 +164,7 @@ export interface ProfileRunOverrides {
 }
 
 export interface EffectiveProfileInput {
-  readonly profile: ProfileRecord
+  readonly profile: Pick<ProfileRecord, 'profile'>
   readonly branchOverrides?: ProfileRunOverrides
   readonly nextRunOverrides?: ProfileRunOverrides
   readonly workspaceTrusted?: boolean

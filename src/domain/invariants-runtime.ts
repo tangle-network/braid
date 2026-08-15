@@ -27,6 +27,7 @@ import {
   OPERATION_KINDS,
   OPERATION_STATUSES,
 } from './invariants-base.js'
+import { isSensitiveFieldName } from './bounded-structured.js'
 
 export function assertEnvironmentRecord(record: EnvironmentRecord): void {
   assertEntityId('environment', record.id, 'environment.id')
@@ -309,11 +310,7 @@ export function assertAutomationRuleRecord(record: AutomationRuleRecord): void {
   if (record.matcher.workspaceId !== undefined)
     assertEntityId('workspace', record.matcher.workspaceId, 'rule.matcher.workspaceId')
   for (const [name, value] of Object.entries(record.answer)) {
-    if (
-      /(secret|password|passphrase|token|bearer|authorization|credential|private(?:[_-]?key)?|api[-_]?key)/iu.test(
-        name,
-      )
-    ) {
+    if (isSensitiveFieldName(name)) {
       fail(`rule.answer.${name} is secret-designated and cannot be retained`)
     }
     if (

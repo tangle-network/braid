@@ -19,7 +19,6 @@ import {
   profileItemName,
   readProfileCompatibility,
   readValidationReport,
-  saveProfileIntent,
   selectProfileIntent,
   validateProfileIntent,
 } from './profile-editor-actions.js'
@@ -96,13 +95,12 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
       items: [],
       query,
       maxVisible: 5,
-      footer: 'enter · ^V valid · ^S save · esc',
+      footer: 'enter select · ^V validate · esc close',
       theme: this.#theme,
       onSelect: (item) => void this.#select(item),
       onAction: (key, item) => {
         if (item === null || this.#busy) return
         if (key === 'validate') void this.#validate(item)
-        if (key === 'save') void this.#save(item)
       },
       onCancel: () => this.#onCancel?.(),
     })
@@ -223,31 +221,6 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
       )
     } catch (error) {
       this.#setStatus(profileErrorMessage(error, 'Profile validation failed'))
-    } finally {
-      this.#busy = false
-    }
-  }
-
-  async #save(item: SelectItem): Promise<void> {
-    if (this.#busy) return
-    const profile = this.#profiles.find((candidate) => candidate.id === item.value)
-    if (profile === undefined || profile.id !== this.#activeProfileId) {
-      this.#setStatus('Select the exact profile before saving it')
-      return
-    }
-    if (!profile.source.writable) {
-      this.#setStatus('This profile source is read-only')
-      return
-    }
-    this.#busy = true
-    this.#setStatus(`Saving ${safe(profile.name)}…`)
-    try {
-      const result = await this.#dispatch(saveProfileIntent(item, this.#operationId()))
-      this.#setStatus(actionMessage(result, 'Profile saved'))
-      if (result.kind === 'accepted')
-        await this.#refresh('Profile saved · active selection preserved')
-    } catch (error) {
-      this.#setStatus(profileErrorMessage(error, 'Profile save failed'))
     } finally {
       this.#busy = false
     }

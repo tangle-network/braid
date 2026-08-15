@@ -21,6 +21,11 @@ import {
 } from '@tangle-network/agent-interface'
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import {
+  materializeBridgeModelRoute,
+  portableBridgeModel,
+  qualifyBridgeProfileModel,
+} from '../src/adapters/connections/cli-bridge-model-route.js'
 import { resolveProductionBackend } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
@@ -221,7 +226,7 @@ test('production composition persists acknowledged CLI Bridge cancellation', asy
     app.initialize('/workspace')
     const send = app.send({ operationId: 'op-production-cancel', text: 'cancel production' })
     await send.admissionReady
-    await waitForCondition(() => bridge.requests.length === 1)
+    await waitForCondition(() => app.state().runs[0]?.controlRef !== undefined, 5_000)
 
     const cancellation = app.cancel({
       operationId: 'op-production-cancel-request',
@@ -307,6 +312,7 @@ test('durable composition uses the configured backend on the normal startup path
     })
     try {
       app.initialize(root)
+      await app.whenDurable()
       const state = await app.send({
         operationId: 'op-durable-production-turn',
         text: 'run durable production',
@@ -501,6 +507,18 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
     assert.equal(resolved.materializationReceipt.model, candidate.model, candidate.name)
     assert.equal(resolved.materializationReceipt.route, candidate.route, candidate.name)
   }
+})
+
+test('CLI Bridge routes preserve nested model ids below the selected provider', () => {
+  const model = 'openai/gpt-5.6-luna'
+  const qualified = 'tangle-router/openai/gpt-5.6-luna'
+  const routed = `pi/${qualified}`
+
+  assert.equal(qualifyBridgeProfileModel(model, 'tangle-router'), qualified)
+  assert.equal(qualifyBridgeProfileModel(qualified, 'tangle-router'), qualified)
+  assert.equal(portableBridgeModel('pi', routed, 'tangle-router'), qualified)
+  assert.equal(materializeBridgeModelRoute('pi', model, 'tangle-router'), routed)
+  assert.equal(materializeBridgeModelRoute('codex', 'codex/default', 'codex'), 'codex/default')
 })
 
 test('schema-v1 CLI Bridge profiles load as portable models and dispatch one runner prefix', async () => {
@@ -1041,9 +1059,18 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.match(String(secondBody.run_id), /^run-/u)
     assert.notEqual(secondBody.run_id, firstBody.run_id)
     assert.notEqual(secondBody.session_id, firstBody.session_id)
+    for (const body of [firstBody, secondBody]) {
+      const runId = String(body.run_id)
+      assert.deepEqual(body.metadata, {
+        retainedIdempotencyKey: `environment-braid-${runId}`,
+        sessionId: `session-braid-${runId}`,
+        executionId: runId,
+      })
+    }
     const stableBody = ({
       run_id: _runId,
       session_id: _sessionId,
+      metadata: _metadata,
       ...body
     }: Record<string, unknown>) => body
     assert.deepEqual(stableBody(secondBody), stableBody(firstBody))

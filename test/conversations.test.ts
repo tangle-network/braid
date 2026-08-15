@@ -3,12 +3,16 @@ import { chmod, mkdtemp, readFile, stat, symlink, unlink, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { AppError } from '../src/app/application.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { messagesVisibleOnBranch } from '../src/app/conversation-context.js'
+import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import { assertBraidState } from '../src/domain/invariants.js'
+import { FixedClock } from '../src/ports/clock.js'
+import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 
 async function initializedApp() {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -278,6 +282,165 @@ test('branch, clone, context, and fork use one canonical conversation graph', as
   assert.equal(workspacePlan.allowed, false)
   assert.equal(workspacePlan.environment, 'unavailable')
   assertBraidState(app.state())
+})
+
+test('branch run configuration merges, replays, rejects conflicts, and clears atomically', async () => {
+  const app = await initializedApp()
+  const conversationId = app.state().conversationId
+  const branchId = app.state().branchId
+  const first = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-first',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'high',
+    mode: 'interactive',
+  })
+  const replay = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-first',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'high',
+    mode: 'interactive',
+  })
+
+  assert.deepEqual(replay, first)
+  assert.deepEqual(first.overrides, {
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'high',
+    mode: 'interactive',
+  })
+  assert.equal(
+    app
+      .events()
+      .filter(
+        (entry) =>
+          entry.event.kind === 'branch.updated' &&
+          entry.event.operation.id === 'op-run-override-first',
+      ).length,
+    1,
+  )
+
+  const merged = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-merge',
+    model: 'anthropic/claude-opus-5',
+  })
+  assert.deepEqual(merged.overrides, {
+    runner: 'codex',
+    model: 'anthropic/claude-opus-5',
+    effort: 'high',
+    mode: 'interactive',
+  })
+
+  const beforeFailures = app.state()
+  const eventCount = app.events().length
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-first',
+        runner: 'pi',
+        model: 'openai/gpt-5.6',
+        effort: 'high',
+        mode: 'interactive',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'OPERATION_ID_CONFLICT',
+  )
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-invalid-runner',
+        runner: 'not-a-runner',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_RUNNER',
+  )
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-invalid-effort',
+        effort: 'maximum-ish',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_EFFORT',
+  )
+  await assert.rejects(
+    () =>
+      app.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-invalid-clear',
+        clear: true,
+        runner: 'pi',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_RUN_OVERRIDE',
+  )
+  assert.deepEqual(app.state(), beforeFailures)
+  assert.equal(app.events().length, eventCount)
+
+  const child = await app.conversations.branches.create({
+    operationId: 'op-run-override-child',
+    conversationId,
+    branchId,
+  })
+  assert.deepEqual(child.overrides, merged.overrides)
+  const changedChild = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-child-change',
+    conversationId,
+    branchId: child.id,
+    runner: 'pi',
+  })
+  assert.equal(changedChild.overrides.runner, 'pi')
+  assert.equal(
+    app.state().branches.find((branch) => branch.id === branchId)?.overrides.runner,
+    'codex',
+  )
+
+  const cleared = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-clear',
+    conversationId,
+    branchId: child.id,
+    clear: true,
+  })
+  assert.deepEqual(cleared.overrides, {})
+  assertBraidState(app.state())
+})
+
+test('branch run configuration survives journal replay and cannot change during a run', async () => {
+  const journal = new MemoryJournal(new FixedClock())
+  const first = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
+  first.initialize('/workspace')
+  await first.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-durable',
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+  })
+  await first.whenDurable()
+
+  const restarted = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
+  await restarted.whenDurable()
+  assert.deepEqual(
+    restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)
+      ?.overrides,
+    { runner: 'codex', model: 'openai/gpt-5.6', effort: 'xhigh' },
+  )
+
+  const active = restarted.send({
+    operationId: 'op-run-override-active-send',
+    text: 'keep configuration stable while this runs',
+  })
+  await active.admissionReady
+  await assert.rejects(
+    () =>
+      restarted.conversations.branches.setRunOverrides({
+        operationId: 'op-run-override-active-change',
+        runner: 'pi',
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'RUN_ACTIVE',
+  )
+  await active.completion
+  assert.equal(
+    restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)?.overrides
+      .runner,
+    'codex',
+  )
+  assertBraidState(restarted.state())
 })
 
 test('conversation exports are redacted, bounded, and never overwrite a path', async () => {
@@ -843,6 +1006,167 @@ test('conversation deletion purges owned data and retains an honest tombstone', 
   )
   assert.equal(JSON.stringify(state).includes('private target text'), false)
   assertBraidState(state)
+})
+
+test('conversation deletion blocks on a pending interaction retained by a terminal run', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      const request = createInteractionRequest({
+        id: 'interaction-delete-pending',
+        kind: 'question',
+        title: 'Confirm deletion',
+        answerSpec: {
+          fields: [{ type: 'boolean', name: 'confirm', label: 'Confirm', required: true }],
+        },
+        binding: {
+          runId: input.runId,
+          provider: 'fixture',
+          environmentId: 'environment-delete-test',
+          sessionId: 'session-delete-test',
+          executionId: input.runId,
+          interactionId: 'interaction-delete-pending',
+        },
+      })
+      yield { type: 'interaction', request }
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'complete',
+        text: 'finished before the interaction was observed',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-delete-interaction', intent: 'deletion test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-01T00:00:00.000Z'),
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-delete-interaction-send', text: 'finish first' })
+  await send.completion
+
+  const run = app.state().runs[0]
+  assert.ok(run)
+  assert.equal(run.complete, true)
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'pending')
+
+  await assert.rejects(
+    () =>
+      app.conversations.lifecycle.delete({
+        operationId: 'op-delete-interaction-blocked',
+        conversationId: app.state().conversationId,
+      }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'DELETE_BLOCKED' &&
+      error.message.includes('interaction-delete-pending'),
+  )
+})
+
+test('conversation deletion retains pending identity after 257-entry interaction eviction', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      for (let index = 0; index < 257; index += 1) {
+        const interactionId = `interaction-delete-evicted-${index}`
+        yield {
+          type: 'interaction',
+          request: createInteractionRequest({
+            id: interactionId,
+            kind: 'question',
+            title: `Confirm eviction ${index}`,
+            answerSpec: {
+              fields: [{ type: 'boolean', name: 'confirm', label: 'Confirm', required: true }],
+            },
+            binding: {
+              runId: input.runId,
+              provider: 'fixture',
+              environmentId: 'environment-delete-eviction',
+              sessionId: 'session-delete-eviction',
+              executionId: input.runId,
+              interactionId,
+            },
+          }),
+        }
+      }
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'complete',
+        text: 'finished after interaction eviction',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-delete-eviction', intent: 'deletion eviction test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-01T00:00:00.000Z'),
+  })
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-delete-eviction-send', text: 'finish after eviction' })
+    .completion
+
+  const run = app.state().runs[0]
+  assert.ok(run)
+  assert.equal(run.complete, true)
+  assert.equal(run.interactions.length, 256)
+  assert.equal(
+    run.interactions.some((item) => item.request.id === 'interaction-delete-evicted-0'),
+    false,
+  )
+  assert.equal(run.pendingInteractionIds?.length, 257)
+  assert.equal(run.pendingInteractionIds?.includes('interaction-delete-evicted-0'), true)
+
+  await assert.rejects(
+    () =>
+      app.conversations.lifecycle.delete({
+        operationId: 'op-delete-eviction-blocked',
+        conversationId: app.state().conversationId,
+      }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'DELETE_BLOCKED' &&
+      error.message.includes('interaction-delete-evicted-0'),
+  )
+
+  const state = app.state()
+  const withoutPendingIndex = state.runs.map((candidate) => {
+    if (candidate.id !== run.id) return candidate
+    const { pendingInteractionIds: _pendingInteractionIds, ...legacyRun } = candidate
+    return legacyRun
+  })
+  const restoredJournal = Object.assign(
+    new MemoryJournal(new FixedClock('2026-08-01T00:00:00.000Z')),
+    {
+      initialState: () => ({ ...state, runs: withoutPendingIndex }),
+    },
+  )
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    journal: restoredJournal,
+    execution: {
+      capabilities: () => DEFAULT_RUN_CAPABILITIES,
+      async *streamTurn(): AsyncIterable<never> {},
+    },
+  })
+  await assert.rejects(
+    () =>
+      restarted.conversations.lifecycle.delete({
+        operationId: 'op-delete-eviction-legacy-blocked',
+        conversationId: state.conversationId,
+      }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'DELETE_BLOCKED' &&
+      error.message.includes('pending state is not provable'),
+  )
 })
 
 test('deletion refuses to break a cloned conversation ancestry link', async () => {

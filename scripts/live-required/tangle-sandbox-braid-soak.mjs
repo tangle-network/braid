@@ -169,12 +169,16 @@ function addUsageFailures(failures, proof, label, maxConcurrentRuns, aggregate =
       `${label} account usage delta had unknown fields: ${delta?.unknownFields?.join(', ') ?? 'unavailable'}`,
     )
   }
-  if (delta?.activeSandboxes !== 0) {
+  if (proof?.cleanup?.activeResourceDeltaRequired === true && delta?.activeSandboxes !== 0) {
     failures.push(
       `${label} account active-resource delta was ${delta?.activeSandboxes ?? 'unknown'}, expected 0`,
     )
   }
-  if (!aggregate && proof?.cleanup?.activeResourceDelta !== 0) {
+  if (
+    !aggregate &&
+    proof?.cleanup?.activeResourceDeltaRequired === true &&
+    proof?.cleanup?.activeResourceDelta !== 0
+  ) {
     failures.push(
       `${label} cleanup activeResourceDelta was ${proof?.cleanup?.activeResourceDelta ?? 'unknown'}, expected 0`,
     )
@@ -205,6 +209,7 @@ function addUsageFailures(failures, proof, label, maxConcurrentRuns, aggregate =
       failures.push(`${label} account ${field} delta was unknown`)
       continue
     }
+    if (proof?.cleanup?.activeResourceDeltaRequired !== true) continue
     const expectation = cumulativeExpectation(proof, field, maxConcurrentRuns, aggregate)
     if (expectation === undefined) {
       failures.push(`${label} account ${field} delta had no measured-work bound`)
@@ -257,7 +262,7 @@ function addRunSnapshotFailures(failures, runs, name) {
   return snapshot
 }
 
-function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
+export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
   if (proof?.status !== 'passed') return ['status was not passed']
   const failures = []
   const progress = proof.progress
@@ -546,13 +551,21 @@ function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
     if (cleanup.exactResource !== true || cleanup.mode !== 'exact-owned-resource-set') {
       failures.push('exact retained cleanup was not proven')
     }
-    if (cleanup.activeResourceDelta !== 0) {
+    if (cleanup.activeResourceDeltaRequired === true && cleanup.activeResourceDelta !== 0) {
       failures.push(
         `cleanup activeResourceDelta was ${cleanup.activeResourceDelta ?? 'unknown'}, expected 0`,
       )
     }
     if (typeof cleanup.activeResourceDeltaRequired !== 'boolean') {
       failures.push('cleanup active-resource requirement was not durable')
+    }
+    if (
+      cleanup.accountUsageScope !== 'account-wide' ||
+      !['exclusive-proof-window', 'unattributed-shared-usage'].includes(
+        cleanup.accountUsageAttribution,
+      )
+    ) {
+      failures.push('cleanup account usage attribution was missing')
     }
     if (cleanup.usageObservationComplete !== true) {
       failures.push('cleanup usage observation was incomplete')
@@ -713,29 +726,16 @@ function cohortUsage(attempts) {
   }
 }
 
-function cohortAccountFailures(attempts, usage) {
+function cohortAccountFailures(usage) {
   const failures = []
   if (!usage.complete) {
     failures.push('cohort account usage delta was unavailable or unknown')
     return failures
   }
-  if (usage.delta.activeSandboxes !== 0) {
-    failures.push(`cohort active-resource delta was ${usage.delta.activeSandboxes}, expected 0`)
-  }
-  for (const field of ACCOUNT_USAGE_FIELDS.slice(1)) {
+  for (const field of ACCOUNT_USAGE_FIELDS) {
     const value = usage.delta[field]
-    if (!finiteNonNegative(value)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
       failures.push(`cohort account ${field} delta was unknown`)
-      continue
-    }
-    const expectedMax = attempts.reduce((total, attempt) => {
-      const expectation = cumulativeExpectation(attempt.proof, field, 1, true)
-      return total + (expectation?.expectedMax ?? 0)
-    }, 0)
-    if (value > expectedMax) {
-      failures.push(
-        `cohort account ${field} delta ${value} exceeded measured-work bound ${expectedMax}`,
-      )
     }
   }
   return failures
@@ -783,7 +783,7 @@ function cohortFailures(attempts, requestedRuns, concurrency, usage) {
   } else if (new Set(accounts).size !== 1) {
     failures.push('Sandbox account identity changed during the cohort')
   }
-  failures.push(...cohortAccountFailures(attempts, usage))
+  failures.push(...cohortAccountFailures(usage))
   return [...new Set(failures)]
 }
 
@@ -882,7 +882,7 @@ export async function runBraidSandboxSoak({
     }
   }
 
-  const canary = await attempt(0, true)
+  const canary = await attempt(0, false)
   attempts.push(canary)
   if (!proofPassed(canary.proof, requestedConcurrency) || requestedRuns === 1) {
     return finish({

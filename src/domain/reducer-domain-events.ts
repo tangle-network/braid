@@ -3,6 +3,7 @@ import type { BraidEvent, DomainBraidEventMap } from './events.js'
 import { DomainInvariantError } from './invariants.js'
 import { applyConversationEvent } from './reducer-conversation-events.js'
 import { applyExecutionObservation } from './reducer-execution-observation.js'
+import { applyRetainedAdmission } from './reducer-retained-admission.js'
 
 import { find, updateRun, upsert, upsertBy } from './reducer-helpers.js'
 import { isCancellationConfirmedReconciliation } from './reducer-support.js'
@@ -95,6 +96,8 @@ export function applyDomainEvent(
         runs: upsert(state.runs, { ...run, bindingId: event.bindingId, updatedAt: at }),
       }
     }
+    case 'run.retained.admitted':
+      return applyRetainedAdmission(state, event, at)
     case 'run.status.changed': {
       const run = find(state.runs, event.runId, 'Run')
       return updateRun(
@@ -137,58 +140,6 @@ export function applyDomainEvent(
         runs: upsert(state.runs, { ...run, complete: false, updatedAt: at }),
         messages,
         missingHistory: [...state.missingHistory, event.range],
-      }
-    }
-    case 'interaction.requested':
-      return { ...state, interactions: upsert(state.interactions, event.interaction) }
-    case 'interaction.response.requested': {
-      const interaction = find(state.interactions, event.response.interactionId, 'Interaction')
-      if (interaction.status !== 'pending' && interaction.status !== 'responding')
-        throw new DomainInvariantError(`Interaction ${interaction.id} is not pending`)
-      return {
-        ...state,
-        interactions: upsert(state.interactions, {
-          ...interaction,
-          status: 'responding',
-          updatedAt: at,
-        }),
-      }
-    }
-    case 'interaction.resolved': {
-      const interaction = find(state.interactions, event.interactionId, 'Interaction')
-      if (event.resolution === undefined)
-        throw new DomainInvariantError(`Interaction ${interaction.id} has no resolution`)
-      const status = event.resolution.outcome === 'accepted' ? 'resolved' : event.resolution.outcome
-      return {
-        ...state,
-        interactions: upsert(state.interactions, {
-          ...interaction,
-          resolution: event.resolution,
-          status,
-          updatedAt: at,
-        }),
-      }
-    }
-    case 'interaction.cancelled': {
-      const interaction = find(state.interactions, event.interactionId, 'Interaction')
-      return {
-        ...state,
-        interactions: upsert(state.interactions, {
-          ...interaction,
-          status: 'cancelled',
-          updatedAt: at,
-        }),
-      }
-    }
-    case 'interaction.expired': {
-      const interaction = find(state.interactions, event.interactionId, 'Interaction')
-      return {
-        ...state,
-        interactions: upsert(state.interactions, {
-          ...interaction,
-          status: 'expired',
-          updatedAt: at,
-        }),
       }
     }
     case 'analysis.created':

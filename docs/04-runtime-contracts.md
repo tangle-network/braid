@@ -10,26 +10,26 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were queried from npm and their installed declarations were inspected directly on 2026-08-12.
+The following published versions were queried from npm and their installed declarations were inspected directly on 2026-08-14.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.47.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.132.12` | Sole execution layer; exact executor, retained-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.145.3` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `0.6.0` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.6.3` | Tangle environment adapter over the sandbox client |
-| `@tangle-network/sandbox` | `0.21.1` | Tangle cloud client used by the provider |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.52.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.134.4` | Sole execution layer; exact executor, retained-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.145.11` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `0.7.1` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, retained control, and explicit cancel |
+| `@tangle-network/agent-provider-tangle` | `0.10.0` | Tangle environment adapter over the sandbox client |
+| `@tangle-network/sandbox` | `0.26.1` | Tangle cloud client used by the provider |
 
-The installed runtime publishes `agent-eval >=0.145.2 <0.146.0`, `agent-interface >=0.47.0 <0.48.0`, and `sandbox >=0.21.1 <0.22.0` as peer ranges.
+The installed runtime publishes `agent-eval >=0.145.11 <0.146.0`, `agent-interface >=0.52.0 <0.53.0`, and `sandbox >=0.26.1 <0.27.0` as peer ranges.
 
-Braid exercises runtime `0.132.12` with interface `0.47.0`, eval `0.145.3`, CLI Bridge adapter `0.6.0`, Tangle adapter `0.6.3`, and sandbox `0.21.1`.
+Braid exercises runtime `0.134.4` with interface `0.52.0`, eval `0.145.11`, CLI Bridge adapter `0.7.1`, Tangle adapter `0.10.0`, and sandbox `0.26.1`.
 
 The lockfile pins the registry integrity for every installed package.
 
 `pnpm peers check` reports no peer dependency issues for this package graph.
 
-The workspace override resolves every transitive `agent-interface` dependency to `0.47.0` and prevents duplicate contract graphs.
+The dependency graph resolves one `agent-interface` `0.52.0` instance without a workspace override.
 
 [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
 
@@ -394,6 +394,8 @@ The resolver rejects retained execution before resource creation unless exact co
 The retained adapter composes Runtime `startRetainedRun`, `reconnectRetainedRun`, and exact native cancellation after that check passes.
 
 Its saved control reference contains provider, environment, session, execution, provider run, and request-digest identity.
+
+Headless run state exposes that secret-free reference so a fresh controller can inspect the exact recovered execution without replaying old events.
 
 Native follow-up turns remain disabled because the current provider does not prove a matching context boundary.
 

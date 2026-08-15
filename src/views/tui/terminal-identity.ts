@@ -43,7 +43,9 @@ export function renderTerminalContext(
   const route = terminalValuePart(theme, `${identity.runner} / ${model}`)
   const connection = terminalValuePart(
     theme,
-    mode === 'narrow' ? compactConnectionName(identity.connection) : identity.connection,
+    mode === 'wide' || mode === 'narrow'
+      ? identity.connection
+      : compactConnectionName(identity.connection),
   )
   const effortValue = cleanTerminalField(identity.effort)
   const effort =

@@ -13,6 +13,10 @@ import {
 } from '../src/adapters/storage/sqlite-driver.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
 import { STARTER_PROFILE } from '../src/app/composition.js'
+import {
+  createInteractionRequest,
+  interactionResponseBinding,
+} from '../src/app/interaction-request.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { toJson } from '../src/app/storage-journal-support.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -20,12 +24,20 @@ import type { BraidEventEnvelope } from '../src/domain/events.js'
 import {
   createConversationId,
   createEventId,
+  createInteractionId,
+  createMessageId,
   createOperationId,
+  createRuleId,
   createRunId,
+  createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
-import { createMaterializedStateSnapshot } from '../src/domain/materialized-state-snapshot.js'
-import { reduceEvent } from '../src/domain/reducer.js'
+import {
+  createMaterializedStateSnapshot,
+  restoreMaterializedState,
+} from '../src/domain/materialized-state-snapshot.js'
+import { canonicalProjectionChecksum } from '../src/domain/projection-checksum.js'
+import { reduceEvent, replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { type CredentialRef, credentialRef } from '../src/ports/credentials.js'
 import type { JournalEvent } from '../src/ports/storage.js'
@@ -104,6 +116,241 @@ function fixture(): SnapshotFixture {
   }
   return { events, snapshots }
 }
+
+test('migrates legacy interactions, rejects snapshot conflicts, and recomputes the projection checksum', () => {
+  const interactionId = createInteractionId('interaction-snapshot')
+  const runId = createRunId('run-snapshot-interaction')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue after restart?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-snapshot-interaction',
+      sessionId: 'session-snapshot-interaction',
+      executionId: 'execution-snapshot-interaction',
+      interactionId,
+    },
+  })
+  const at = '2026-08-03T00:00:00.000Z'
+  const state = replayEvents(initialState(STARTER_PROFILE, { conversationId }), [
+    {
+      eventId: createEventId('event-snapshot-interaction-workspace'),
+      sequence: 1,
+      revision: 1,
+      occurredAt: at,
+      event: { kind: 'workspace.opened', workspace: '/workspace' },
+    },
+    {
+      eventId: createEventId('event-snapshot-interaction-requested'),
+      sequence: 2,
+      revision: 2,
+      occurredAt: at,
+      event: {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-snapshot-interaction'),
+        runId,
+        turnId: createTurnId('turn-snapshot-interaction'),
+        userMessageId: createMessageId('message-snapshot-interaction-user'),
+        assistantMessageId: createMessageId('message-snapshot-interaction-assistant'),
+        text: 'wait for the answer',
+      },
+    },
+    {
+      eventId: createEventId('event-snapshot-interaction'),
+      sequence: 3,
+      revision: 3,
+      occurredAt: at,
+      event: {
+        kind: 'run.interaction',
+        runId,
+        request,
+        responseBinding: interactionResponseBinding(request),
+        provider: {
+          eventId: 'provider-snapshot-interaction',
+          providerSequence: 1,
+          occurredAt: at,
+        },
+      },
+    },
+  ])
+  const snapshot = createMaterializedStateSnapshot({
+    scopeId: 'snapshot-legacy-interaction',
+    generation: state.sequence,
+    eventId: createEventId('event-snapshot-interaction'),
+    state,
+  })
+  assert.equal(Object.hasOwn(snapshot.state, 'interactions'), false)
+
+  const legacyState = {
+    ...snapshot.state,
+    interactions: [
+      {
+        id: interactionId,
+        runId,
+        request: {
+          id: interactionId,
+          kind: request.kind,
+          title: request.title,
+          answerSpec: request.answerSpec,
+        },
+        status: 'pending',
+        createdAt: at,
+        updatedAt: at,
+      },
+    ],
+  }
+  const restored = restoreMaterializedState({
+    ...snapshot,
+    state: legacyState,
+    stateChecksum: canonicalDigest(legacyState),
+  })
+  assert.equal(Object.hasOwn(restored, 'interactions'), false)
+  assert.deepEqual(
+    restored.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
+    [interactionId],
+  )
+  assert.equal(restored.projectionChecksum, canonicalProjectionChecksum(restored))
+
+  const topLevelOnlyState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) =>
+      run.id === runId ? { ...run, interactions: [], pendingInteractionIds: [] } : run,
+    ),
+    interactions: legacyState.interactions,
+  }
+  const topLevelOnly = restoreMaterializedState({
+    ...snapshot,
+    state: topLevelOnlyState,
+    stateChecksum: canonicalDigest(topLevelOnlyState),
+  })
+  assert.deepEqual(
+    topLevelOnly.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
+    [interactionId],
+  )
+  assert.equal(topLevelOnly.projectionChecksum, canonicalProjectionChecksum(topLevelOnly))
+
+  const hiddenPendingState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) =>
+      run.id === runId
+        ? {
+            ...run,
+            interactions: [],
+            interactionsTruncated: true,
+            pendingInteractionIds: [interactionId],
+          }
+        : run,
+    ),
+    interactions: legacyState.interactions,
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: hiddenPendingState,
+        stateChecksum: canonicalDigest(hiddenPendingState),
+      }),
+    /conflicts with canonical pending identity/u,
+  )
+
+  const divergentState = {
+    ...snapshot.state,
+    interactions: [
+      {
+        ...legacyState.interactions[0],
+        request: {
+          ...legacyState.interactions[0]?.request,
+          title: 'Different title from the canonical run',
+        },
+      },
+    ],
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: divergentState,
+        stateChecksum: canonicalDigest(divergentState),
+      }),
+    /conflicts with canonical run state/u,
+  )
+
+  const conflictingState = {
+    ...snapshot.state,
+    interactions: [{ ...legacyState.interactions[0], status: 'resolved' }],
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: conflictingState,
+        stateChecksum: canonicalDigest(conflictingState),
+      }),
+    /status conflicts with canonical run state/u,
+  )
+
+  const malformedSourceState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) => ({
+      ...run,
+      interactions: run.interactions.map((item) => ({
+        ...item,
+        source: { ...item.source, sequence: 0 },
+      })),
+    })),
+  }
+  assert.throws(
+    () =>
+      restoreMaterializedState({
+        ...snapshot,
+        state: malformedSourceState,
+        stateChecksum: canonicalDigest(malformedSourceState),
+      }),
+    /run\.interactions\[0\]\.source\.sequence must be a positive safe integer/u,
+  )
+
+  for (const field of ['key', 'privateKey', 'secretHandle']) {
+    const malformedRule = {
+      id: createRuleId(`rule-snapshot-interaction-invalid-${field}`),
+      enabled: true,
+      matcher: { interactionKind: 'question' },
+      answer: { [field]: 'must-not-persist' },
+      responseScope: 'once' as const,
+      createdAt: at,
+      uses: 0,
+    }
+    const malformedRuleState = {
+      ...snapshot.state,
+      runs: snapshot.state.runs.map((run) => ({
+        ...run,
+        interactions: run.interactions.map((item) => ({
+          ...item,
+          status: 'responding' as const,
+          responseOperation: {
+            operationId: createOperationId(`operation-snapshot-interaction-response-${field}`),
+            outcome: 'accepted' as const,
+            containsSecret: false,
+            automationRule: malformedRule,
+          },
+        })),
+      })),
+    }
+    assert.throws(
+      () =>
+        restoreMaterializedState({
+          ...snapshot,
+          state: malformedRuleState,
+          stateChecksum: canonicalDigest(malformedRuleState),
+        }),
+      new RegExp(`rule\\.answer\\.${field} is secret-designated and cannot be retained`, 'u'),
+    )
+  }
+})
 
 async function withRawDatabase<T>(
   root: string,

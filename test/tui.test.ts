@@ -438,6 +438,55 @@ test('the searchable command overlay restores editor focus after close', async (
   await done
 })
 
+test('Ctrl+K exposes one five-row run switcher and updates the branch runner', async () => {
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TuiMainScreen(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-run-switcher-${++operation}`,
+  })
+  const done = view.start()
+
+  terminal.sendInput('\u000b')
+  await terminal.waitForRender()
+  const switcher = terminal.getViewport().join('\n')
+  assert.match(switcher, /Run configuration/u)
+  for (const label of ['Profile', 'Connection', 'Runner', 'Model', 'Thinking']) {
+    assert.match(switcher, new RegExp(`\\b${label}\\b`, 'u'))
+  }
+  assert.match(switcher, /enter to change · esc to close/u)
+
+  terminal.sendInput('\u001b[B')
+  terminal.sendInput('\u001b[B')
+  terminal.sendInput('\r')
+  await terminal.waitForRender()
+  assert.equal(view.editor.getText(), '/runner ')
+  terminal.sendInput('codex')
+  terminal.sendInput('\r')
+  await waitUntil(
+    () =>
+      app.state().branches.find((branch) => branch.id === app.state().branchId)?.overrides
+        .runner === 'codex',
+  )
+  assert.equal(controller.view().runner, 'codex')
+  assert.equal(controller.view().runOverrides?.runner, 'codex')
+
+  terminal.sendInput('\u000b')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /codex · branch override/u)
+  terminal.sendInput('\u001b')
+
+  view.stop()
+  await done
+})
+
 test('global shortcuts cannot replace an open overlay or discard its query', async () => {
   const terminal = new VirtualTerminal(80, 24)
   const tui = new TuiMainScreen(terminal)

@@ -13,6 +13,9 @@ import { operationId } from './application-guards.js'
 import { InteractionAutomationCoordinator } from './interaction-automation-coordinator.js'
 import { respondInteraction as respondInteractionController } from './interaction-controller.js'
 import type { RunLedger } from './run-ledger.js'
+import { assertAutomationRuleRecord } from '../domain/invariants-runtime.js'
+import { DomainInvariantError } from '../domain/invariants-base.js'
+import { AppError } from './errors.js'
 
 const DEFAULT_INTERACTION_RESPONSE_TIMEOUT_MS = 5_000
 
@@ -82,6 +85,7 @@ export class ApplicationInteractionActions {
 
   respond(input: ApplicationInteractionResponseInput): Promise<InteractionReceipt> {
     return this.#responses.run(`${input.runId}\u0000${input.interactionId}`, () => {
+      if (input.automationRule !== undefined) assertAutomationRule(input.automationRule)
       const ports = this.#options.ports()
       return respondInteractionController({
         operationId: operationId(input.operationId, 'respond-interaction'),
@@ -110,5 +114,20 @@ export class ApplicationInteractionActions {
   async whenIdle(): Promise<void> {
     await this.#coordinator.whenIdle()
     await this.#responses.whenIdle()
+  }
+}
+
+function assertAutomationRule(rule: AutomationRuleRecord): void {
+  try {
+    assertAutomationRuleRecord(rule)
+  } catch (error) {
+    if (error instanceof DomainInvariantError) {
+      const secret = /secret|credential|unsupported/iu.test(error.message)
+      throw new AppError(
+        secret ? 'AUTOMATION_SECRET_FORBIDDEN' : 'INVALID_AUTOMATION_RULE',
+        error.message,
+      )
+    }
+    throw error
   }
 }

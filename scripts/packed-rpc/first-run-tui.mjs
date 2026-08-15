@@ -9,10 +9,13 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
-async function waitFor(predicate, label, timeoutMs = 15_000) {
+async function waitFor(predicate, label, timeoutMs = 15_000, diagnostic) {
   const deadline = Date.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
+    if (Date.now() >= deadline) {
+      const detail = diagnostic?.()
+      throw new Error(`Timed out waiting for ${label}${detail ? `\n${detail}` : ''}`)
+    }
     await sleep(20)
   }
 }
@@ -87,8 +90,10 @@ export async function runPackedFirstRun(binary, repository) {
     let completed = false
     try {
       await waitFor(
-        () => output.includes('braid setup') || output.includes('Braid starter'),
+        () => (expectSetup ? output.includes('braid setup') : output.includes('Ctrl+P commands')),
         'packed TUI startup surface',
+        15_000,
+        () => output,
       )
       if (expectSetup) {
         await waitFor(() => output.includes('braid setup'), 'packed first-run setup')

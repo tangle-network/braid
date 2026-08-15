@@ -17,7 +17,6 @@ export {
   STARTER_PROFILE,
 } from './app/composition.js'
 export { MemoryJournal } from './app/journal.js'
-export { buildAppView, type AppView, type MessageView } from './app/view-model.js'
 export {
   EffectCoordinator,
   EffectCoordinatorError,
@@ -65,7 +64,6 @@ export {
   assertBraidState,
   assertIdKind,
   assertJsonValue,
-  assertNoSecretInteractionData,
   DomainInvariantError,
 } from './domain/invariants.js'
 export type {

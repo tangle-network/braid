@@ -111,19 +111,38 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   const firstRunEvent = responses.findIndex(
     (response) => response.type === 'event' && response.event.kind === 'run.requested',
   )
-  const finalState = responses.find(
+  const sendStates = responses.filter(
     (response) => response.type === 'state' && response.requestId === 'req-send',
   )
+  const admissionState = sendStates.find(
+    (response) =>
+      response.type === 'state' && response.projection === 'full' && response.state.activeRunId,
+  )
+  const finalState = sendStates.at(-1)
 
   assert.equal(code, 0)
   assert.ok(sendAck >= 0)
   assert.ok(firstRunEvent > sendAck)
+  const sendResponse = responses[sendAck]
+  assert.equal(sendResponse?.type, 'ack')
+  if (sendResponse?.type !== 'ack') assert.fail('missing send acknowledgement')
+  assert.equal(admissionState?.type, 'state')
+  if (admissionState?.type !== 'state') assert.fail('missing admission state')
+  assert.equal(admissionState.projection, 'full')
+  if (admissionState.projection !== 'full') assert.fail('expected full admission state')
+  assert.equal(admissionState.state.activeRunId, sendResponse.runId)
   assert.equal(finalState?.type, 'state')
   if (finalState?.type !== 'state') assert.fail('missing final state')
   assert.equal(finalState.projection, 'full')
   if (finalState.projection !== 'full') assert.fail('expected full state')
   assert.equal(finalState.state.messages[1]?.text, 'Fixture response through pi: hello Braid')
   assert.equal(finalState.state.runs[0]?.status, 'completed')
+  assert.equal(typeof finalState.state.runs[0]?.startedAt, 'string')
+  assert.equal(typeof finalState.state.runs[0]?.updatedAt, 'string')
+  assert.equal(typeof finalState.state.runs[0]?.terminalAt, 'string')
+  assert.equal(typeof finalState.state.runs[0]?.durationMs, 'number')
+  assert.equal(typeof finalState.state.runs[0]?.tokensKnown, 'boolean')
+  assert.equal(typeof finalState.state.runs[0]?.usdKnown, 'boolean')
 })
 
 test('JSONL drives the complete canonical conversation lifecycle', async () => {
@@ -361,6 +380,153 @@ test('JSONL drives the complete canonical conversation lifecycle', async () => {
   )
 })
 
+test('JSONL run configuration is replay safe, visible, and reaches Runtime', async () => {
+  let streamedProfile: unknown
+  const execution: ExecutionPort = {
+    admit: () => ({}),
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      streamedProfile = structuredClone(input.profile)
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'JSONL run configuration completed',
+        text: 'configured JSONL run completed',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'rpc-run-configuration', intent: 'JSONL run configuration' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  const responses: BraidResponse[] = []
+  async function* input(): AsyncGenerator<string> {
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-init',
+      command: 'initialize',
+      params: { workspace: '/workspace' },
+    })}\n`
+    const override = {
+      version: 1,
+      operationId: 'op-rpc-run-configuration',
+      command: 'set_run_override',
+      params: {
+        runner: 'codex',
+        model: 'openai/gpt-5.6',
+        effort: 'xhigh',
+        mode: 'interactive',
+      },
+    }
+    yield `${JSON.stringify({ ...override, requestId: 'run-configuration-set' })}\n`
+    yield `${JSON.stringify({ ...override, requestId: 'run-configuration-replay' })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-send',
+      operationId: 'op-rpc-run-configuration-send',
+      command: 'send',
+      params: { text: 'use the JSONL branch configuration' },
+    })}\n`
+    await app.waitForIdle()
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-state',
+      command: 'get_state',
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-clear',
+      operationId: 'op-rpc-run-configuration-clear',
+      command: 'set_run_override',
+      params: { clear: true },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-cleared-state',
+      command: 'get_state',
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'run-configuration-stop',
+      operationId: 'op-rpc-run-configuration-stop',
+      command: 'shutdown',
+    })}\n`
+  }
+
+  const code = await runRpc(controllerFor(app), input(), {
+    write: responseWriter(responses),
+  })
+  const configured = resultFor<{ readonly overrides: Readonly<Record<string, string>> }>(
+    responses,
+    'run-configuration-set',
+  )
+  const replayed = resultFor<{ readonly overrides: Readonly<Record<string, string>> }>(
+    responses,
+    'run-configuration-replay',
+  )
+  const cleared = resultFor<{ readonly overrides: Readonly<Record<string, string>> }>(
+    responses,
+    'run-configuration-clear',
+  )
+  const configuredState = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'run-configuration-state',
+  )
+  const clearedState = responses.find(
+    (response) =>
+      response.type === 'state' && response.requestId === 'run-configuration-cleared-state',
+  )
+
+  assert.equal(code, 0)
+  assert.deepEqual(configured.overrides, {
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+    mode: 'interactive',
+  })
+  assert.deepEqual(replayed, configured)
+  assert.deepEqual(cleared.overrides, {})
+  assert.deepEqual(streamedProfile, {
+    ...DETERMINISTIC_PROFILE,
+    harness: 'codex',
+    model: {
+      ...DETERMINISTIC_PROFILE.model,
+      default: 'openai/gpt-5.6',
+      reasoningEffort: 'xhigh',
+    },
+  })
+  assert(configuredState?.type === 'state' && configuredState.projection === 'full')
+  assert.deepEqual(configuredState.state.runConfiguration, {
+    profileName: DETERMINISTIC_PROFILE.name,
+    runner: 'codex',
+    model: 'openai/gpt-5.6',
+    effort: 'xhigh',
+    mode: 'interactive',
+    overrides: {
+      runner: 'codex',
+      model: 'openai/gpt-5.6',
+      effort: 'xhigh',
+      mode: 'interactive',
+    },
+  })
+  assert(clearedState?.type === 'state' && clearedState.projection === 'full')
+  assert.equal(clearedState.state.runConfiguration.runner, DETERMINISTIC_PROFILE.harness)
+  assert.equal(clearedState.state.runConfiguration.model, DETERMINISTIC_PROFILE.model?.default)
+  assert.deepEqual(clearedState.state.runConfiguration.overrides, {})
+  assert.equal(
+    app
+      .events()
+      .filter(
+        (entry) =>
+          entry.event.kind === 'branch.updated' &&
+          entry.event.operation.id === 'op-rpc-run-configuration',
+      ).length,
+    1,
+  )
+  assert.equal(
+    responses.some((response) => response.type === 'error'),
+    false,
+  )
+})
+
 test('JSONL accepts a valid inline conversation import larger than one MiB', async () => {
   const source = createBraidApplication({ fixture: 'deterministic' })
   source.initialize('/workspace')
@@ -467,6 +633,13 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
       },
       {
         version: 1,
+        requestId: 'req-cancel-replay',
+        operationId: 'op-cancel-active',
+        command: 'cancel_run',
+        params: { runId: 'run-000001', reason: requestedReason },
+      },
+      {
+        version: 1,
         requestId: 'req-stop',
         operationId: 'op-stop-cancel',
         command: 'shutdown',
@@ -510,6 +683,13 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
   if (cancelState?.type !== 'state') assert.fail('missing cancellation state')
   if (cancelState.projection !== 'full') assert.fail('expected full cancellation state')
   assert.equal(cancelState.state.runs[0]?.status, 'aborted')
+  const cancelReplay = responses.find(
+    (response) => response.type === 'ack' && response.requestId === 'req-cancel-replay',
+  )
+  assert.equal(cancelReplay?.type, 'ack')
+  if (cancelReplay?.type !== 'ack') assert.fail('missing cancellation replay acknowledgement')
+  assert.equal(cancelReplay.replayed, true)
+  assert.equal(cancelReplay.outcome, 'accepted')
 })
 
 test('RPC and plain shutdown exit at the drain deadline for a never-ending iterator', async () => {
@@ -1165,12 +1345,14 @@ test('JSONL operation replay returns current state after later sends', async () 
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line) as BraidResponse)
-    .find((response) => response.type === 'state' && response.requestId === 'req-a-replay')
+    .filter((response) => response.type === 'state' && response.requestId === 'req-a-replay')
+    .at(-1)
   const stateAfterSecondSend = output
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line) as BraidResponse)
-    .find((response) => response.type === 'state' && response.requestId === 'req-b')
+    .filter((response) => response.type === 'state' && response.requestId === 'req-b')
+    .at(-1)
 
   assert.equal(replayState?.type, 'state')
   if (replayState?.type !== 'state') assert.fail('missing replay state')
@@ -1516,7 +1698,6 @@ test('semantic queries enforce scope, redact details, preserve ordering, and sur
     branches: [...state.branches].reverse(),
     turns: [...state.turns].reverse(),
     runs: [...state.runs].reverse(),
-    interactions: [...state.interactions].reverse(),
     analyses: [...state.analyses].reverse(),
     environments: [...state.environments].reverse(),
     checkpoints: [...state.checkpoints].reverse(),

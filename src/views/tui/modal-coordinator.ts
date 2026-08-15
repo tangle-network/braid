@@ -34,7 +34,7 @@ export class ModalCoordinator {
     const layout = layoutFor(this.#tui.terminal.columns, this.#tui.terminal.rows)
     const handle = this.#tui.showOverlay(component, {
       ...overlayOptions,
-      ...(layout.columns < fullScreenBelow
+      ...(layout.overlayFullScreen || layout.columns < fullScreenBelow
         ? { width: '100%', maxHeight: '100%', anchor: 'top-left' as const, margin: 0 }
         : {}),
     })
@@ -58,6 +58,13 @@ export class ModalCoordinator {
       return
     }
     this.closeTop()
+  }
+
+  backOrCloseIfPassive(): boolean {
+    const entry = this.#top()
+    if (entry === undefined || entry.component.handleInput !== undefined) return false
+    this.backOrClose()
+    return true
   }
 
   closeAll(): void {

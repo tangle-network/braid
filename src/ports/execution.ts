@@ -4,7 +4,11 @@ import type {
   AgentProfile,
   InteractionResponseCommand,
 } from '@tangle-network/agent-interface'
-import type { RunCapabilities } from '../domain/receipts.js'
+import type {
+  RetainedRunAdmissionRecord,
+  RetainedRunAdmissionRecorder,
+  RunCapabilities,
+} from '../domain/run-contracts.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
 import type { TurnUsage } from '../domain/entities.js'
 import type { RunStatus } from '../domain/state.js'
@@ -23,7 +27,10 @@ export interface ExecuteTurnInput {
   readonly after?: string
   readonly afterSequence?: number
   readonly contextBoundary?: string
+  readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
 }
+
+export type { RetainedRunAdmissionRecord, RetainedRunAdmissionRecorder }
 
 export interface ExecutionAdmission {
   readonly capabilities?: RunCapabilities

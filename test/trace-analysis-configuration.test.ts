@@ -5,6 +5,7 @@ import type {
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { RetainedRunAdmissionRecord } from '../src/domain/run-contracts.js'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
   MANAGED_AGENT_EVAL_RPC_VERSION,
@@ -551,6 +552,12 @@ function runtimeOwner(
   })
 }
 
+function retainAnalysisAdmissions(target: RetainedRunAdmissionRecord[] = []) {
+  return async (_callId: string, admission: RetainedRunAdmissionRecord): Promise<void> => {
+    target.push(structuredClone(admission))
+  }
+}
+
 test('runtime-owned trace model call preserves canonical messages, limits, usage, and safe evidence', async () => {
   let receivedAuthorization = ''
   let receivedBody: Record<string, unknown> | undefined
@@ -615,6 +622,7 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     },
   })
   try {
+    const admissions: RetainedRunAdmissionRecord[] = []
     const selected = connection('cli-bridge', 'runtime-bridge-owner', bridge.endpoint)
     const owner = createRuntimeTraceModelOwner({
       profile: {
@@ -631,6 +639,7 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       credential: 'credential-never-recorded',
       model: 'pi/tangle-router/glm-5.2',
       pricing: PRICING,
+      onRetainedAdmission: retainAnalysisAdmissions(admissions),
     })
 
     const result = await owner.call(optimizerRequest({ thinking: 'disabled' }))
@@ -655,6 +664,10 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       usd: 0.00002,
     })
     assert.equal(bridge.requests.length, 1)
+    assert.deepEqual(
+      admissions.map((admission) => admission.phase),
+      ['environment', 'dispatched'],
+    )
     const body = bridge.requests[0]?.body
     assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
     assert.equal(body?.max_tokens, undefined)
@@ -719,6 +732,7 @@ test('runtime-owned CLI Bridge analysis cancels a detached run when result retri
       credential: 'credential-never-recorded',
       model: 'pi/tangle-router/glm-5.2',
       pricing: PRICING,
+      onRetainedAdmission: retainAnalysisAdmissions(),
     })
 
     const result = await owner.call(optimizerRequest())
@@ -758,6 +772,7 @@ test('runtime-owned Claude analysis accepts a runner alias with exact tool isola
       credential: 'credential-never-recorded',
       model: 'claude-code/opus',
       pricing: PRICING,
+      onRetainedAdmission: retainAnalysisAdmissions(),
     })
 
     const result = await owner.call(

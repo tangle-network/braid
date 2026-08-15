@@ -159,6 +159,8 @@ export interface RunRecord extends RuntimeRunFields {
   readonly profileSnapshotId?: ProfileSnapshotId
   readonly connectionId?: ConnectionId
   readonly providerSessionId?: ProviderSessionId
+  /** Session identifier reported by the harness inside a retained provider run. */
+  readonly harnessSessionId?: string
   readonly environmentId?: EnvironmentId
   readonly bindingId?: BindingId
   readonly receiptId?: ReceiptId

@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
-import { buildAppView } from '../src/app/view-model.js'
 import { createPortableContextPlan } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import type { BraidState } from '../src/domain/state.js'
+import { type BraidState, initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
@@ -481,6 +481,104 @@ test('detach stops the iterator and reconnect resumes the same run', async () =>
   assert.equal(reconnected.messages[1]?.text, 'reconnected')
 })
 
+test('restart keeps a replayable run reconnecting until replay proves its outcome', async () => {
+  let markStreamStarted!: () => void
+  const streamStarted = new Promise<void>((resolve) => {
+    markStreamStarted = resolve
+  })
+  let releaseStream!: () => void
+  const heldStream = new Promise<void>((resolve) => {
+    releaseStream = resolve
+  })
+  const sourceJournal = new MemoryJournal(new FixedClock())
+  const first = appFor(
+    {
+      capabilities: () => REPLAY_CAPABILITIES,
+      admit: () => ({
+        capabilities: REPLAY_CAPABILITIES,
+        providerSessionId: 'session-restart-replay',
+      }),
+      async *streamTurn(input): AsyncIterable<RuntimeStreamEvent | RuntimeEventEnvelope> {
+        yield {
+          runId: input.runId,
+          eventId: 'event-before-restart',
+          sequence: 1,
+          cursor: 'cursor-before-restart',
+          receivedAt: '2026-08-01T00:00:00.000Z',
+          event: { type: 'text_delta', text: 'before restart' },
+        }
+        markStreamStarted()
+        await heldStream
+      },
+    },
+    sourceJournal,
+  )
+  const send = first.send({ operationId: 'op-restart-replay', text: 'survive restart' })
+  await send.admissionReady
+  await streamStarted
+
+  const restartedJournal = new MemoryJournal(new FixedClock())
+  for (const envelope of sourceJournal.all()) restartedJournal.append(envelope)
+  let statusCalls = 0
+  let reconnectCalls = 0
+  const restarted = appFor(
+    {
+      capabilities: () => REPLAY_CAPABILITIES,
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {},
+      async status(input) {
+        statusCalls += 1
+        return {
+          runId: input.runId,
+          sessionId: 'session-restart-replay',
+          status: 'unknown',
+          detail: 'The retained execution has not produced an attributable status yet',
+        }
+      },
+      reconnect: (input) => ({
+        async *[Symbol.asyncIterator](): AsyncIterator<RuntimeEventEnvelope> {
+          reconnectCalls += 1
+          yield {
+            runId: input.runId,
+            eventId: 'event-restart-replay-final',
+            sequence: 2,
+            cursor: 'cursor-restart-replay-final',
+            receivedAt: '2026-08-01T00:00:00.000Z',
+            event: finalEvent('survived restart replay'),
+          }
+        },
+      }),
+    },
+    restartedJournal,
+  )
+
+  await restarted.whenDurable()
+  assert.equal(statusCalls, 1)
+  assert.equal(restarted.state().runs[0]?.status, 'reconnecting')
+  assert.equal(
+    restarted
+      .events()
+      .some((entry) => entry.event.kind === 'run.finished' && entry.event.status === 'unknown'),
+    false,
+  )
+  assert.equal(
+    restarted.events().some((entry) => entry.event.kind === 'run.unknown'),
+    false,
+  )
+
+  const recovered = await restarted.reconnectRun({
+    operationId: 'op-restart-replay-reconnect',
+    runId: send.runId,
+  })
+  assert.equal(reconnectCalls, 1)
+  assert.equal(recovered.runs[0]?.status, 'completed')
+  assert.equal(recovered.messages[1]?.text, 'survived restart replay')
+
+  releaseStream()
+  await send.completion
+  await first.close()
+  await restarted.close()
+})
+
 test('reconnect leaves a proven terminal run immutable', async () => {
   let reconnectCalls = 0
   const execution: ExecutionPort = {
@@ -530,22 +628,13 @@ for (const count of [10_000, 100_000]) {
       parts: [{ id: `part-${index}`, kind: 'text' as const, text: `message ${index}` }],
     }))
     const state: BraidState = {
-      ...({} as BraidState),
+      ...initialState(DETERMINISTIC_PROFILE),
       revision: count,
       sequence: count,
-      schemaVersion: 2,
       workspace: '/workspace',
-      conversationId: 'conv-1',
-      branchId: 'branch-1',
-      profile: DETERMINISTIC_PROFILE,
-      draft: '',
       messages: messages as unknown as BraidState['messages'],
-      runs: [],
-      activeRunId: null,
-      queuedInputs: [],
-      lastError: null,
     }
-    const view = buildAppView(state)
+    const view = buildBraidViewModel(state)
     assert.equal(view.messages.length, 200)
     assert.equal(view.hiddenMessageCount, count - 200)
     assert.equal(view.messages[0]?.id, `message-${count - 200}`)

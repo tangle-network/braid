@@ -1,4 +1,4 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import { selectedRunConfiguration } from '../../app/effective-run-configuration.js'
 import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { BraidState } from '../../domain/state.js'
@@ -35,21 +35,24 @@ interface SemanticViewProjection {
   readonly hiddenGraphNodeCount: number
 }
 
-const semanticViewCache = new WeakMap<BraidState, SemanticViewProjection>()
+const semanticViewCache = new WeakMap<
+  BraidState,
+  { readonly graphQuery: string; readonly projection: SemanticViewProjection }
+>()
 
-function semanticViewFor(state: BraidState): SemanticViewProjection {
+function semanticViewFor(state: BraidState, graphQuery: string): SemanticViewProjection {
   const cached = semanticViewCache.get(state)
-  if (cached !== undefined) return cached
+  if (cached?.graphQuery === graphQuery) return cached.projection
   const activity = Object.freeze(activityFor(state))
   const bounded = uiSemanticState(state)
-  const semanticGraph = queryGraph(bounded.state)
+  const semanticGraph = queryGraph(bounded.state, { query: graphQuery })
   const projection = Object.freeze({
     activity,
     graph: Object.freeze(graphFor(bounded.state, semanticGraph)),
     entityDetails: Object.freeze(entityDetailsFor(state, activity)),
     hiddenGraphNodeCount: bounded.hiddenNodeCount,
   })
-  semanticViewCache.set(state, projection)
+  semanticViewCache.set(state, { graphQuery, projection })
   return projection
 }
 
@@ -61,19 +64,23 @@ export function buildBraidViewModel(
   storageFailure?: string,
   cleanupUncertain?: string,
   canRespond = false,
+  graphQuery = '',
 ): BraidViewModel {
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
-  const profile = state.profile as Readonly<AgentProfile>
+  const latestUsage = latest === undefined ? undefined : usageForRun(latest)
+  const configuration = selectedRunConfiguration(state, state.profile)
+  const profile = configuration.profile
   const modelSettings = profileModelSettings(profile)
   const fixture = profile.model?.default === 'fixture/deterministic'
   const profileDigest = canonicalDigest(profile)
   const selectedConnection = state.connections.find(
-    (connection) => connection.id === state.selectedConnectionId,
+    (connection) => String(connection.id) === configuration.connectionId,
   )
   const selectedConversation = state.conversations.find(
     (conversation) => conversation.id === state.conversationId,
   )
+  const selectedBranch = state.branches.find((branch) => branch.id === state.branchId)
   const statusText = storageFailure
     ? `storage failure: ${sanitizeTerminalText(storageFailure)}`
     : cleanupUncertain
@@ -92,7 +99,7 @@ export function buildBraidViewModel(
   const model = profile.model?.default ?? 'automatic'
   const color =
     appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
-  const semantic = semanticViewFor(state)
+  const semantic = semanticViewFor(state, graphQuery)
   return freezeView({
     revision: state.revision,
     workspace: state.workspace ? sanitizeTerminalText(state.workspace) : null,
@@ -103,6 +110,20 @@ export function buildBraidViewModel(
     ...(profile.model?.reasoningEffort
       ? { effort: sanitizeTerminalText(profile.model.reasoningEffort) }
       : {}),
+    runOverrides: Object.freeze({
+      ...(selectedBranch?.overrides.runner === undefined
+        ? {}
+        : { runner: sanitizeTerminalText(selectedBranch.overrides.runner) }),
+      ...(selectedBranch?.overrides.model === undefined
+        ? {}
+        : { model: sanitizeTerminalText(selectedBranch.overrides.model) }),
+      ...(selectedBranch?.overrides.effort === undefined
+        ? {}
+        : { effort: sanitizeTerminalText(selectedBranch.overrides.effort) }),
+      ...(selectedBranch?.overrides.mode === undefined
+        ? {}
+        : { mode: sanitizeTerminalText(selectedBranch.overrides.mode) }),
+    }),
     ...(modelSettings.maxOutputTokens === undefined
       ? {}
       : { maxOutputTokens: modelSettings.maxOutputTokens }),
@@ -143,6 +164,7 @@ export function buildBraidViewModel(
     interactions: Object.freeze(interactionViews(state)),
     activity: semantic.activity,
     graph: semantic.graph,
+    graphQuery,
     entityDetails: semantic.entityDetails,
     ...(semantic.hiddenGraphNodeCount === 0
       ? {}
@@ -155,14 +177,12 @@ export function buildBraidViewModel(
               { label: 'status', value: latest.status },
               { label: 'input tokens', value: String(latest.inputTokens) },
               { label: 'output tokens', value: String(latest.outputTokens) },
-              {
-                label: 'token measurement',
-                value: usageForRun(latest).tokenStatus ?? 'unknown',
-              },
-              {
-                label: 'cost measurement',
-                value: usageForRun(latest).costStatus ?? 'unknown',
-              },
+              ...(latestUsage?.tokenStatus === undefined || latestUsage.tokenStatus === 'unknown'
+                ? []
+                : [{ label: 'token measurement', value: latestUsage.tokenStatus }]),
+              ...(latestUsage?.costStatus === undefined || latestUsage.costStatus === 'unknown'
+                ? []
+                : [{ label: 'cost measurement', value: latestUsage.costStatus }]),
               ...(latest.model
                 ? [{ label: 'model', value: sanitizeTerminalText(latest.model) }]
                 : []),

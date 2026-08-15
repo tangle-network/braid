@@ -99,9 +99,9 @@ export async function runRpc(binary, cwd) {
       .map((line) => JSON.parse(line))
   if (stderr) throw new Error(`packed RPC wrote stderr: ${stderr}`)
   const allResponses = responses()
-  const firstState = allResponses.find(
-    (response) => response.type === 'state' && response.requestId === 'req-send',
-  )?.state
+  const firstState = allResponses
+    .filter((response) => response.type === 'state' && response.requestId === 'req-send')
+    .at(-1)?.state
   if (!firstState) throw new Error('packed RPC did not return send state')
   const state = allResponses.find(
     (response) => response.type === 'state' && response.requestId === 'req-cancel',

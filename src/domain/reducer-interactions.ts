@@ -1,8 +1,12 @@
 import type { BraidEvent } from './events.js'
 import { reserveText } from './content-budget.js'
+import { canonicalDigest } from './canonical.js'
+import { DomainInvariantError } from './invariants-base.js'
 import type { BraidInteraction, BraidState } from './state.js'
 import { createOperationId } from './ids.js'
+import { safePublicIdentifier } from './provider-values.js'
 import { finalizeRunUsage } from './run-usage.js'
+import { assertAutomationRuleRecord } from './invariants-runtime.js'
 import {
   activity,
   addActivity,
@@ -15,6 +19,7 @@ import {
   updateRun,
   upsertPart,
   withProviderProgress,
+  withPendingInteractionIndex,
   MAX_RUN_EVENT_DETAILS,
   MAX_RUN_INTERACTIONS,
   TERMINAL_RUN_STATES,
@@ -42,7 +47,26 @@ export function reduceInteractionEvent(
 ): BraidState {
   switch (event.kind) {
     case 'run.interaction': {
+      const run = findRun(state, event.runId)
       const source = sourceFromProvider(event.provider) ?? {}
+      const existing = run.interactions.find((item) => item.request.id === event.request.id)
+      if (existing !== undefined) {
+        if (!sameInteractionEvent(existing, event.request, event.responseBinding, source)) {
+          throw interactionInvariant(
+            `Interaction ${event.request.id} was requested with different data`,
+          )
+        }
+        return {
+          ...state,
+          ...base,
+          runs: updateRun(state, event.runId, (candidate) =>
+            withProviderProgress(candidate, event.provider),
+          ),
+        }
+      }
+      if (run.pendingInteractionIds?.includes(event.request.id)) {
+        throw interactionInvariant(`Interaction ${event.request.id} is not available`)
+      }
       const interaction: BraidInteraction = {
         request: event.request,
         responseBinding: event.responseBinding,
@@ -50,67 +74,123 @@ export function reduceInteractionEvent(
         source,
         status: 'pending',
       }
-      const interactions = [
-        ...(state.runs.find((run) => run.id === event.runId)?.interactions ?? []),
-        interaction,
-      ]
+      const interactions = [...run.interactions, interaction]
+      const visibleInteractions = interactions.slice(-MAX_RUN_INTERACTIONS)
       return {
         ...state,
         ...base,
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             {
-              ...withProviderProgress(run, event.provider),
-              status: 'waiting',
-              interactions: interactions.slice(-MAX_RUN_INTERACTIONS),
-              ...(interactions.length > MAX_RUN_INTERACTIONS
-                ? { interactionsTruncated: true }
-                : {}),
+              ...withPendingInteractionIndex(
+                {
+                  ...withProviderProgress(run, event.provider),
+                  status: 'waiting',
+                  ...(interactions.length > MAX_RUN_INTERACTIONS
+                    ? { interactionsTruncated: true }
+                    : {}),
+                },
+                interactions,
+              ),
+              interactions: visibleInteractions,
             },
             activity(event, 'interaction', event.request.kind, event.request.title, source),
           ),
         ),
       }
     }
-    case 'run.interaction.cancelled':
+    case 'run.interaction.cancelled': {
+      const run = findRun(state, event.runId)
+      const current = interactionFor(run, event.interactionId)
+      if (current.status === 'cancelled') {
+        return providerProgress(state, run, event.provider, base)
+      }
+      if (current.status !== 'pending' && current.status !== 'responding') {
+        throw interactionInvariant(
+          `Interaction ${event.interactionId} cannot transition from ${current.status} to cancelled`,
+        )
+      }
+      const next = withoutResponseOperation(current, 'cancelled')
       return {
         ...state,
         ...base,
-        runs: updateRun(state, event.runId, (run) => ({
-          ...withProviderProgress(run, event.provider),
-          interactions: run.interactions.map((item) =>
-            item.request.id === event.interactionId
-              ? withoutResponseOperation(item, 'cancelled')
-              : item,
+        runs: updateRun(state, event.runId, (candidate) =>
+          withPendingInteractionIndex(
+            withProviderProgress(candidate, event.provider),
+            replaceInteraction(candidate, event.interactionId, next),
           ),
-        })),
+        ),
       }
-    case 'run.interaction.response.requested':
+    }
+    case 'run.interaction.response.requested': {
+      const run = findRun(state, event.runId)
+      const current = interactionFor(run, event.interactionId)
+      if (event.automationRule !== undefined) assertAutomationRuleRecord(event.automationRule)
+      if (current.status === 'responding') {
+        if (sameResponseRequest(current, event)) return { ...state, ...base }
+        throw interactionInvariant(
+          `Interaction ${event.interactionId} has a different response operation`,
+        )
+      }
+      if (current.status !== 'pending') {
+        throw interactionInvariant(
+          `Interaction ${event.interactionId} cannot transition from ${current.status} to responding`,
+        )
+      }
+      const next: BraidInteraction = {
+        ...current,
+        status: 'responding',
+        responseOperation: {
+          operationId: createOperationId(event.operationId),
+          outcome: event.outcome,
+          ...(event.dataDigest === undefined ? {} : { dataDigest: event.dataDigest }),
+          containsSecret: event.containsSecret,
+          ...(event.automationRule === undefined ? {} : { automationRule: event.automationRule }),
+        },
+      }
       return {
         ...state,
         ...base,
         runs: updateRun(state, event.runId, (run) => ({
           ...run,
-          interactions: run.interactions.map((item) =>
-            item.request.id === event.interactionId
-              ? {
-                  ...item,
-                  status: 'responding' as const,
-                  responseOperation: {
-                    operationId: createOperationId(event.operationId),
-                    outcome: event.outcome,
-                    ...(event.dataDigest === undefined ? {} : { dataDigest: event.dataDigest }),
-                    containsSecret: event.containsSecret,
-                    ...(event.automationRule === undefined
-                      ? {}
-                      : { automationRule: event.automationRule }),
-                  },
-                }
-              : item,
-          ),
+          ...withPendingInteractionIndex(run, replaceInteraction(run, event.interactionId, next)),
         })),
       }
-    case 'run.interaction.responded':
+    }
+    case 'run.interaction.responded': {
+      const run = findRun(state, event.runId)
+      const current = interactionFor(run, event.interactionId)
+      if (current.status !== 'responding') {
+        if (isTerminalInteraction(current.status)) {
+          if (sameResponseResult(current, event)) {
+            return {
+              ...state,
+              ...base,
+              ...(event.outcome === 'unknown'
+                ? { lastError: event.detail ?? 'Interaction response is unknown' }
+                : {}),
+            }
+          }
+          throw interactionInvariant(
+            `Interaction ${event.interactionId} has a different response result`,
+          )
+        }
+        throw interactionInvariant(
+          `Interaction ${event.interactionId} cannot be resolved from ${current.status}`,
+        )
+      }
+      const responseOperation = current.responseOperation
+      if (responseOperation === undefined)
+        throw interactionInvariant(
+          `Interaction ${event.interactionId} has no response operation to resolve`,
+        )
+      assertResponseMatches(responseOperation, event)
+      const nextStatus = interactionStatusForOutcome(event.outcome)
+      const next: BraidInteraction = {
+        ...current,
+        status: nextStatus,
+        responseOperation: responseOperationForResult(responseOperation, event),
+      }
       return {
         ...state,
         ...base,
@@ -120,20 +200,10 @@ export function reduceInteractionEvent(
             : state.lastError,
         runs: updateRun(state, event.runId, (run) => ({
           ...run,
-          interactions: run.interactions.map((item) =>
-            item.request.id === event.interactionId
-              ? withoutResponseOperation(
-                  item,
-                  event.outcome === 'accepted'
-                    ? 'resolved'
-                    : event.outcome === 'unknown'
-                      ? 'unknown'
-                      : event.outcome,
-                )
-              : item,
-          ),
+          ...withPendingInteractionIndex(run, replaceInteraction(run, event.interactionId, next)),
         })),
       }
+    }
     case 'run.status.changed': {
       const current = findRun(state, event.runId)
       assertTerminalTransition(current.status, event.status)
@@ -161,7 +231,10 @@ export function reduceInteractionEvent(
         runs: updateRun(state, event.runId, (run) => ({
           ...withProviderProgress(run, event.provider),
           ...(event.envelope.event.type === 'session.updated'
-            ? { providerSessionId: event.envelope.event.sessionId }
+            ? {
+                harnessSessionId:
+                  safePublicIdentifier(event.envelope.event.sessionId) ?? run.harnessSessionId,
+              }
             : {}),
           eventDetails: [
             ...run.eventDetails,
@@ -195,6 +268,132 @@ function withoutResponseOperation(
 ): BraidInteraction {
   const { responseOperation: _responseOperation, ...rest } = interaction
   return { ...rest, status }
+}
+
+function interactionFor(run: BraidState['runs'][number], interactionId: string): BraidInteraction {
+  const interaction = run.interactions.find((item) => item.request.id === interactionId)
+  if (interaction === undefined)
+    throw interactionInvariant(`Interaction ${interactionId} is unknown`)
+  return interaction
+}
+
+function replaceInteraction(
+  run: BraidState['runs'][number],
+  interactionId: string,
+  replacement: BraidInteraction,
+): readonly BraidInteraction[] {
+  return run.interactions.map((item) => (item.request.id === interactionId ? replacement : item))
+}
+
+function sameInteractionEvent(
+  current: BraidInteraction,
+  request: BraidInteraction['request'],
+  responseBinding: BraidInteraction['responseBinding'],
+  source: BraidInteraction['source'],
+): boolean {
+  return (
+    canonicalDigest(current.request) === canonicalDigest(request) &&
+    canonicalDigest(current.responseBinding) === canonicalDigest(responseBinding) &&
+    canonicalDigest(current.source) === canonicalDigest(source)
+  )
+}
+
+function sameResponseRequest(
+  current: BraidInteraction,
+  event: Extract<BraidEvent, { kind: 'run.interaction.response.requested' }>,
+): boolean {
+  const response = current.responseOperation
+  return (
+    response !== undefined &&
+    response.operationId === createOperationId(event.operationId) &&
+    response.outcome === event.outcome &&
+    (response.dataDigest ?? undefined) === (event.dataDigest ?? undefined) &&
+    response.containsSecret === event.containsSecret &&
+    canonicalDigest(response.automationRule ?? null) ===
+      canonicalDigest(event.automationRule ?? null)
+  )
+}
+
+function sameResponseResult(
+  current: BraidInteraction,
+  event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
+): boolean {
+  const response = current.responseOperation
+  return (
+    response !== undefined &&
+    response.operationId === createOperationId(event.operationId) &&
+    response.outcome === event.outcome &&
+    (response.dataDigest ?? undefined) === (event.dataDigest ?? undefined) &&
+    response.containsSecret === event.containsSecret &&
+    interactionStatusForOutcome(event.outcome) === current.status
+  )
+}
+
+function assertResponseMatches(
+  response: NonNullable<BraidInteraction['responseOperation']>,
+  event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
+): void {
+  if (
+    response.operationId !== createOperationId(event.operationId) ||
+    (event.outcome !== 'unknown' && response.outcome !== event.outcome) ||
+    (response.dataDigest ?? undefined) !== (event.dataDigest ?? undefined) ||
+    response.containsSecret !== event.containsSecret
+  ) {
+    throw interactionInvariant(`Interaction ${event.interactionId} has a different response result`)
+  }
+}
+
+function responseOperationForResult(
+  response: NonNullable<BraidInteraction['responseOperation']>,
+  event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
+): NonNullable<BraidInteraction['responseOperation']> {
+  const { dataDigest: _dataDigest, ...withoutDataDigest } = response
+  return {
+    ...withoutDataDigest,
+    outcome: event.outcome,
+    ...(event.dataDigest === undefined ? {} : { dataDigest: event.dataDigest }),
+    containsSecret: event.containsSecret,
+  }
+}
+
+function interactionStatusForOutcome(
+  outcome: Extract<BraidEvent, { kind: 'run.interaction.responded' }>['outcome'],
+): BraidInteraction['status'] {
+  switch (outcome) {
+    case 'accepted':
+      return 'resolved'
+    case 'declined':
+      return 'declined'
+    case 'cancelled':
+      return 'cancelled'
+    case 'unknown':
+      return 'unknown'
+    default: {
+      const exhaustive: never = outcome
+      return exhaustive
+    }
+  }
+}
+
+function isTerminalInteraction(status: BraidInteraction['status']): boolean {
+  return status !== 'pending' && status !== 'responding'
+}
+
+function providerProgress(
+  state: BraidState,
+  run: BraidState['runs'][number],
+  provider: Extract<BraidEvent, { kind: 'run.interaction.cancelled' }>['provider'],
+  base: ReducerBase,
+): BraidState {
+  return {
+    ...state,
+    ...base,
+    runs: updateRun(state, run.id, (candidate) => withProviderProgress(candidate, provider)),
+  }
+}
+
+function interactionInvariant(message: string): DomainInvariantError {
+  return new DomainInvariantError(message)
 }
 
 function reduceFinishedEvent(

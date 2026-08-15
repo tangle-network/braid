@@ -58,6 +58,7 @@ export class ApplicationUiController implements BraidUiController {
   #intentDispatcher: Promise<typeof import('./ui-dispatch.js').dispatchIntent> | undefined
   readonly #profileConnectionOptions: ProfileConnectionDispatchOptions
   #selectedSurface: BraidViewModel['selectedSurface'] = 'transcript'
+  #graphQuery = ''
   #interactionResolved = false
   #notice: string | undefined
   #forkPreview: BraidViewModel['forkPreview'] | undefined
@@ -99,6 +100,7 @@ export class ApplicationUiController implements BraidUiController {
         app.storageFailure(),
         app.cleanupUncertain(),
         app.canRespondToInteractions(),
+        this.#graphQuery,
       ),
       state,
     )
@@ -194,6 +196,10 @@ export class ApplicationUiController implements BraidUiController {
     this.#profileConnections = undefined
     this.#viewStateCache = undefined
     this.#selectedIntelligenceData = undefined
+    this.#graphQuery = ''
+    this.#interactionResolved = false
+    this.#notice = undefined
+    this.#forkPreview = undefined
     for (const [subscriber, subscription] of nextSubscriptions) {
       const registration = this.#subscriptions.get(subscriber)
       if (registration !== undefined) registration.active = subscription
@@ -237,8 +243,9 @@ export class ApplicationUiController implements BraidUiController {
         markInteractionResolved: () => {
           this.#interactionResolved = true
         },
-        setSelectedSurface: (surface) => {
+        setSelectedSurface: (surface, query) => {
           this.#selectedSurface = surface
+          if (surface === 'graph' && query !== undefined) this.#graphQuery = query
         },
         setNotice: (notice) => {
           this.#notice = notice

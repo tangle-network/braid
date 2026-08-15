@@ -1,4 +1,6 @@
 import type { AnalysisRecord } from '../domain/entities.js'
+import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
+import { recordAnalysisRetainedAdmission } from './analysis-retained-admission.js'
 import {
   type AnalysisIdentity,
   type AnalysisOperationReservation,
@@ -57,6 +59,14 @@ export class AnalysisLifecycle {
     return running
   }
 
+  async recordRetainedAdmission(
+    identity: AnalysisIdentity,
+    callId: string,
+    admission: RetainedRunAdmissionRecord,
+  ): Promise<void> {
+    await recordAnalysisRetainedAdmission(this.#host, identity, callId, admission)
+  }
+
   async completed(record: AnalysisRecord): Promise<void> {
     await commitAnalysisEvent(this.#host, { kind: 'analysis.completed', analysis: record })
   }
@@ -78,11 +88,14 @@ export class AnalysisLifecycle {
         terminalOutcome: cancelled ? 'cancelled' : 'failed',
         failureCode: cancelled ? 'ANALYSIS_CANCELLED' : 'ANALYSIS_FAILED',
         failureMessage: error.message,
-        result: operationResult({
-          analysisId: String(failed.id),
-          sourceDigest: String(failed.source.digest),
-          status: failed.status,
-        }),
+        result: {
+          ...(operation.result ?? {}),
+          ...operationResult({
+            analysisId: String(failed.id),
+            sourceDigest: String(failed.source.digest),
+            status: failed.status,
+          }),
+        },
       })
     }
     return failed
@@ -101,11 +114,14 @@ export class AnalysisLifecycle {
           : record.status === 'cancelled'
             ? 'cancelled'
             : 'failed',
-      result: operationResult({
-        analysisId: String(record.id),
-        sourceDigest: String(record.source.digest),
-        status: record.status,
-      }),
+      result: {
+        ...(operation.result ?? {}),
+        ...operationResult({
+          analysisId: String(record.id),
+          sourceDigest: String(record.source.digest),
+          status: record.status,
+        }),
+      },
     })
   }
 

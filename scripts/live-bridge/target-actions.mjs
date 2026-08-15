@@ -161,66 +161,6 @@ export async function runNormalTurn(
   return { finalRun, runId, terminal }
 }
 
-export async function verifyReconnect(
-  session,
-  result,
-  runId,
-  finalRun,
-  providerCapabilities,
-  { operationPrefix = 'live' } = {},
-) {
-  const reconnect = {
-    ...requestBase(
-      requestIdFor(operationPrefix, 'reconnect', result.targetKey),
-      'reconnect',
-      operationIdFor(operationPrefix, 'reconnect', result.targetKey),
-    ),
-    params: { runId },
-  }
-  result.requests.push(evidenceValue(reconnect))
-  const responseCount = session.responses?.length ?? 0
-  session.send(reconnect)
-  const reconnectResponse = await session.waitFor(
-    'reconnect result',
-    responseForRequest(reconnect.requestId),
-    30_000,
-  )
-  const advertisedByRun = Boolean(
-    finalRun?.capabilities?.streaming?.replay && finalRun?.capabilities?.events?.cursor,
-  )
-  const availability = capabilityAvailability(
-    providerCapabilities.streaming?.replay,
-    advertisedByRun,
-  )
-  const replayEvent = await session
-    .waitFor(
-      'replayed run event',
-      (response) =>
-        (session.responses?.indexOf(response) ?? responseCount) >= responseCount &&
-        response.type === 'event' &&
-        ['run.reconnecting', 'run.reconciled', 'run.finished', 'run.unknown'].includes(
-          response.event?.kind,
-        ) &&
-        response.event?.runId === runId,
-      15_000,
-    )
-    .catch(() => undefined)
-  const replayObserved = replayEvent !== undefined
-  result.reconnect = {
-    advertisedByProvider: availability.advertisedByProvider,
-    advertisedByRun,
-    advertised: availability.advertised,
-    response: evidenceValue(reconnectResponse),
-    replayEvent: evidenceValue(replayEvent),
-    replayObserved,
-    status:
-      semanticCommandStatus(reconnectResponse, availability.advertised) === 'verified' &&
-      !replayObserved
-        ? 'replay-missing'
-        : semanticCommandStatus(reconnectResponse, availability.advertised),
-  }
-}
-
 export async function verifyCancel(
   session,
   result,
@@ -302,6 +242,24 @@ export async function verifyCancel(
   result.cancel.advertisedByRun = advertisedByRun
   result.cancel.advertised = availability.advertised
   result.cancel.runId = cancelSendResponse.runId
+  const activeStateResponse = await session
+    .waitFor(
+      'active cancel test state',
+      (response) => {
+        if (response.type !== 'state') return false
+        const run = runFromState(response.state, cancelSendResponse.runId)
+        return ['running', 'waiting', 'streaming'].includes(run?.status)
+      },
+      timeoutMs,
+    )
+    .catch(() => undefined)
+  const activeCancelRun = runFromState(activeStateResponse?.state, cancelSendResponse.runId)
+  result.cancel.activeRun = evidenceValue(activeCancelRun)
+  if (availability.advertised && activeCancelRun === undefined) {
+    result.cancel.attemptedRun = true
+    result.cancel.status = 'advertised-but-not-active'
+    return
+  }
   await sleep(25)
   const cancel = {
     ...requestBase(
@@ -398,7 +356,6 @@ export async function verifyInteraction(
 
 export function assertTargetSemantics(result, { strict = false } = {}) {
   for (const [name, capability] of [
-    ['reconnect', result.reconnect],
     ['cancel', result.cancel],
     ['interaction', result.interaction],
   ]) {
@@ -411,15 +368,7 @@ export function assertTargetSemantics(result, { strict = false } = {}) {
         { capability },
       )
   }
-  if (strict && result.reconnect.replayObserved !== true)
-    throw new LiveBridgeError(
-      'LIVE_RELEASE_REPLAY_MISSING',
-      'The reconnect operation did not retain a replay event for the requested run',
-      exitCodes.failed,
-      { reconnect: result.reconnect },
-    )
   result.semanticAssertions = {
-    reconnect: result.reconnect.status,
     cancel: result.cancel.status,
     interaction: result.interaction.status,
   }

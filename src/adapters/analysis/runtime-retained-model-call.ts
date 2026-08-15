@@ -3,6 +3,7 @@ import type { AgentTurnResult } from '@tangle-network/agent-interface/environmen
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import { startRetainedRun } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
+import type { RetainedRunAdmissionRecorder } from '../../domain/run-contracts.js'
 
 export interface RetainedModelCallInput {
   readonly baseUrl: string
@@ -12,6 +13,7 @@ export interface RetainedModelCallInput {
   readonly messages: ReadonlyArray<Readonly<{ role: string; content: string }>>
   readonly callId: string
   readonly signal: AbortSignal
+  readonly onAdmission: RetainedRunAdmissionRecorder
 }
 
 export interface RetainedModelCallResult {
@@ -66,6 +68,7 @@ export async function runRetainedCliBridgeModelCall(
       sessionId: `analysis-session-${digest}`,
       executionId: `analysis-${digest}`,
     },
+    onAdmission: input.onAdmission,
   })
   try {
     return {

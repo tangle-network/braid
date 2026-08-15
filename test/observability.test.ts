@@ -296,6 +296,14 @@ test('one run projects honest session usage and a linked execution environment',
     observedAt: at,
     unavailable: ['machine-ip:not-exposed-by-provider'],
   }
+  const controlRef = {
+    provider: 'tangle-sandbox',
+    environmentId: 'sandbox-observed',
+    sessionId: 'session-observed',
+    executionId: 'execution-observed',
+    runId: 'provider-run-observed',
+    requestDigest: `sha256:${'a'.repeat(64)}`,
+  } as const
   const execution: ExecutionPort = {
     admit: () => ({
       provider: 'tangle-sandbox',
@@ -314,7 +322,7 @@ test('one run projects honest session usage and a linked execution environment',
         latencyMs: 240,
         timestamp: at,
       }
-      yield { type: 'braid.execution.observed', observation, timestamp: at }
+      yield { type: 'braid.execution.observed', observation, controlRef, timestamp: at }
       yield {
         type: 'final',
         status: 'completed',
@@ -373,6 +381,7 @@ test('one run projects honest session usage and a linked execution environment',
   assert.equal(headless.sessionUsage.turns.costStatus, 'observed-floor')
   assert.equal(headless.sessionUsage.turns.estimatedCostUsd, 0.15)
   assert.equal(headless.environments[0]?.cleanup, 'delete-after-turn')
+  assert.deepEqual(headless.runs.at(-1)?.controlRef, controlRef)
   assert.equal(headless.environments[0]?.resourceSample?.cgroupVersion, 2)
   assert.equal(headless.environments[0]?.accountUsage?.maximumStorageGB, 200)
   assert.equal(controller.view().environments[0]?.runtimeEndpointHost, 'runtime.example')

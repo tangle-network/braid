@@ -43,6 +43,7 @@ import {
 import { replayEvents } from '../src/domain/reducer.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
+import type { RetainedRunAdmissionRecord } from '../src/domain/run-contracts.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const PROFILE = {} as Readonly<AgentProfile>
@@ -374,6 +375,65 @@ function registry(
 
 function singleHost(): MemoryHost {
   return new MemoryHost(runHistory('run-analysis', 'turn-analysis'))
+}
+
+function retainedAdmissionAnalyst(
+  input: { readonly afterEnvironment?: () => void } = {},
+): AnalysisAnalyst {
+  return {
+    list: () => [
+      {
+        id: 'retained-admission',
+        description: 'records retained model-call admission',
+        version: '1.0.0',
+        cost: { kind: 'model' },
+      },
+    ],
+    resolveAnalystIds: () => ['retained-admission'],
+    stream: async function* (request) {
+      const record = request.onRetainedAdmission
+      if (record === undefined) throw new Error('analysis retained admission callback is missing')
+      const environment: RetainedRunAdmissionRecord = {
+        phase: 'environment',
+        provider: 'cli-bridge',
+        environmentId: 'analysis-environment-durable',
+        idempotencyKey: 'analysis-environment-durable',
+        turnId: 'analysis-turn-durable',
+        sessionId: 'analysis-session-durable',
+        executionId: 'analysis-execution-durable',
+      }
+      await record('call-analysis-durable', environment)
+      input.afterEnvironment?.()
+      await record('call-analysis-durable', {
+        phase: 'dispatched',
+        idempotencyKey: environment.idempotencyKey,
+        turnId: environment.turnId,
+        controlRef: {
+          provider: environment.provider,
+          environmentId: environment.environmentId,
+          sessionId: environment.sessionId,
+          executionId: environment.executionId,
+          runId: 'analysis-provider-run-durable',
+          requestDigest: `sha256:${'e'.repeat(64)}`,
+        },
+      })
+      const result = {
+        run_id: request.runId,
+        correlation_id: 'correlation-retained-admission',
+        started_at: NOW,
+        ended_at: NOW,
+        findings: [],
+        per_analyst: [],
+        total_cost_usd: 0,
+        execution_plan: {},
+        completion: { status: 'complete' },
+      } as unknown as ExactAnalystRunResult
+      yield {
+        event: { type: 'run-completed', result } as unknown as ExactAnalystRunEvent,
+        result,
+      }
+    },
+  }
 }
 
 function combinedHost(): MemoryHost {
@@ -716,6 +776,75 @@ test('a reservation crash leaves no external call and retries once after restart
   ).run({ runId: 'run-analysis', recipe: 'cost', operationId: 'operation-reservation-crash' })
   assert.equal(result.status, 'completed')
   assert.equal(calls.count, 1)
+})
+
+test('analysis persists both retained admissions and preserves them in its terminal operation', async () => {
+  const host = singleHost()
+  const result = await new AnalysisService(host, retainedAdmissionAnalyst()).run({
+    runId: 'run-analysis',
+    recipe: 'cost',
+    operationId: 'operation-analysis-retained-admission',
+  })
+
+  assert.equal(result.status, 'completed')
+  const operation = host.state.operations.find(
+    (candidate) => candidate.id === 'operation-analysis-retained-admission',
+  )
+  assert.equal(operation?.status, 'terminal')
+  assert.equal(operation?.result?.status, 'completed')
+  const admissions = operation?.result?.retainedAdmissions
+  assert.ok(Array.isArray(admissions))
+  assert.equal(admissions.length, 2)
+  assert.deepEqual(
+    admissions.map((entry) =>
+      entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+        ? entry.admission
+        : undefined,
+    ),
+    [
+      {
+        phase: 'environment',
+        provider: 'cli-bridge',
+        environmentId: 'analysis-environment-durable',
+        idempotencyKey: 'analysis-environment-durable',
+        turnId: 'analysis-turn-durable',
+        sessionId: 'analysis-session-durable',
+        executionId: 'analysis-execution-durable',
+      },
+      {
+        phase: 'dispatched',
+        idempotencyKey: 'analysis-environment-durable',
+        turnId: 'analysis-turn-durable',
+        controlRef: {
+          provider: 'cli-bridge',
+          environmentId: 'analysis-environment-durable',
+          sessionId: 'analysis-session-durable',
+          executionId: 'analysis-execution-durable',
+          runId: 'analysis-provider-run-durable',
+          requestDigest: `sha256:${'e'.repeat(64)}`,
+        },
+      },
+    ],
+  )
+})
+
+test('analysis cannot proceed past retained admission when its durable write fails', async () => {
+  const host = singleHost()
+  let proceeded = false
+  host.failNext('operation.updated')
+  await assert.rejects(
+    () =>
+      new AnalysisService(
+        host,
+        retainedAdmissionAnalyst({ afterEnvironment: () => (proceeded = true) }),
+      ).run({
+        runId: 'run-analysis',
+        recipe: 'cost',
+        operationId: 'operation-analysis-retained-write-failure',
+      }),
+    AnalysisPersistenceError,
+  )
+  assert.equal(proceeded, false)
 })
 
 test('result commit crash reconciles to a safe replay without rerunning the analyst', async () => {

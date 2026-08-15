@@ -1,0 +1,24 @@
+ analyses › /compare · frozen runs    Braid starter · pi · fixture/deterministic
+────────────────────────────────────────────────────────────────────────────────
+ saved result: replayed from the local journal
+ baseline run: run-route-serial
+ baseline source: 9ee7d219c8b0092…8c519924
+ baseline outcome: completed · cost: 0.014 · source: frozen run field
+ run.cost_usd
+ candidate run: run-route-parallel
+ candidate source: 0328e6889082b14…86b0ff3d
+ candidate outcome: completed · cost: 0.009 · source: frozen run field
+ run.cost_usd
+ sample: 1 paired · 0 baseline-only · 0 candidate-only
+ ! One pair is descriptive; it cannot support a reliable general conclusion.
+ captured fields · baseline | candidate | availability
+ run.status: completed | completed | none
+ run.cost_usd: 0.014 | 0.009 | none
+ run.wall_time_ms: 18200 | 12100 | none
+ run.input_tokens: 7420 | 6910 | none
+ paired measurements · candidate minus baseline where applicable
+ paired.correctness.b01: 0
+ paired.correctness.b10: 0
+ paired.correctness.mcnemar.b: 0
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab filter: analys…

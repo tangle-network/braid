@@ -39,32 +39,28 @@ export async function dispatchCoreIntent(
       }
     }
     case 'cancel-run': {
-      if (!context.app.canCancel()) {
-        return {
-          kind: 'unavailable',
-          code: 'CAPABILITY_UNAVAILABLE',
-          reason: 'The current runtime does not acknowledge provider cancellation',
-        }
-      }
       const receipt = await context.app.cancelRun({
         operationId: intent.operationId,
         ...(intent.runId ? { runId: intent.runId } : {}),
         ...(intent.reason === undefined ? {} : { reason: intent.reason }),
         terminalStatus: 'aborted',
-        legacy: true,
       })
       return {
         kind: 'accepted',
         operationId: receipt.operationId,
         runId: receipt.runId,
         control: 'cancel',
+        replayed: receipt.replayed,
         outcome: receipt.acknowledgement.outcome,
         revision: context.app.state().revision,
         completion: receipt.completion.then(() => undefined),
       }
     }
     case 'open-surface':
-      context.setSelectedSurface(intent.surface === 'settings' ? 'details' : intent.surface)
+      context.setSelectedSurface(
+        intent.surface === 'settings' ? 'details' : intent.surface,
+        intent.query,
+      )
       context.notify()
       return { kind: 'accepted', revision: context.app.state().revision }
     case 'shutdown': {
@@ -137,6 +133,7 @@ export async function dispatchCoreIntent(
         operationId: receipt.operationId,
         runId: receipt.runId,
         control: 'steer',
+        replayed: receipt.replayed,
         outcome: receipt.acknowledgement.outcome,
         revision: context.app.state().revision,
         completion: receipt.completion.then(() => undefined),

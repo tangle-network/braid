@@ -44,6 +44,7 @@ import { ConversationOperationCoordinator } from './conversation-operation-coord
 import type { ConversationActions } from './conversations.js'
 import { createDurableSender } from './durable-send.js'
 import { SerializedEffectCoordinator } from './effect-coordinator.js'
+import { effectiveRunConfiguration } from './effective-run-configuration.js'
 import { projectEffectRecord } from './effect-projection.js'
 import { AppError } from './errors.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
@@ -382,11 +383,16 @@ export class BraidApplication {
     if (Buffer.byteLength(input.text, 'utf8') > MAX_MESSAGE_BYTES)
       throw new AppError('MESSAGE_TOO_LARGE', 'Message must not exceed 1 MiB')
     if (!input.text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
+    const configuration = effectiveRunConfiguration(
+      this.#state,
+      this.runtimeSelection.profile(),
+      input,
+    )
     const snapshot = snapshotRunExecution(
       input,
       this.#state,
-      this.runtimeSelection.profile(),
-      this.#state.selectedConnectionId ?? undefined,
+      configuration.profile,
+      configuration.connectionId,
     )
     validateNativeProof(this.#portViews.admission, snapshot)
     if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {
