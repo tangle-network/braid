@@ -7,6 +7,7 @@ import type { BraidViewModel } from '../src/views/shared/models.js'
 import { ActivityView } from '../src/views/tui/activity.js'
 import { activityDocument } from '../src/views/tui/activity-browser.js'
 import { projectActivityDocument } from '../src/views/tui/activity-document.js'
+import { omitUnreportedCostAndLatency } from '../src/views/tui/measurement-display.js'
 import { activityVisibleFor } from '../src/views/tui/terminal-input-controller.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -102,10 +103,12 @@ test('one activity document preserves event status, tree identity, duration, usa
 })
 
 test('the wide live-work rail uses a divider and remains explicitly opt-in', async () => {
-  assert.equal(activityVisibleFor({ activeRunId: 'run-1' }, 'auto'), false)
-  assert.equal(activityVisibleFor({}, 'auto'), false)
-  assert.equal(activityVisibleFor({}, 'visible'), true)
-  assert.equal(activityVisibleFor({ activeRunId: 'run-1' }, 'hidden'), false)
+  const live = activityView()
+  const idle = { ...live, activity: [], messages: [] }
+  assert.equal(activityVisibleFor({ ...idle, activeRunId: 'run-1' }, 'auto'), false)
+  assert.equal(activityVisibleFor(idle, 'visible'), false)
+  assert.equal(activityVisibleFor(live, 'visible'), true)
+  assert.equal(activityVisibleFor({ ...idle, activeRunId: 'run-1' }, 'hidden'), false)
 
   const view = activityView()
   const terminal = new VirtualTerminal(120, 30)
@@ -117,6 +120,9 @@ test('the wide live-work rail uses a divider and remains explicitly opt-in', asy
     () => {},
     () => {},
   )
+  shell.setView(idle, false)
+  shell.setActivityVisible(true)
+  assert.doesNotMatch(shell.render(120).join('\n'), /│/u)
   shell.setView(view, false)
   shell.setActivityVisible(true)
   tui.addChild(shell)
@@ -125,6 +131,21 @@ test('the wide live-work rail uses a divider and remains explicitly opt-in', asy
 
   assert.match(terminal.getViewport().join('\n'), /│/u)
   tui.stop()
+})
+
+test('the TUI omits unreported cost and latency fragments without inventing values', () => {
+  assert.deepEqual(
+    omitUnreportedCostAndLatency([
+      '#2 glm-5.2 · tokens unknown · cost unknown · latency unknown',
+      '5 calls · tokens ≥8 in / ≥12 out (+4 unknown) · cost unknown (+4 unknown) · latency unknown (+4 unknown)',
+      'model call · cost $0.02 · latency 50ms',
+    ]),
+    [
+      '#2 glm-5.2 · tokens unknown',
+      '5 calls · tokens ≥8 in / ≥12 out (+4 unknown)',
+      'model call · cost $0.02 · latency 50ms',
+    ],
+  )
 })
 
 function activityView(): BraidViewModel {

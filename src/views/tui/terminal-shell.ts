@@ -8,7 +8,7 @@ import {
 } from '@earendil-works/pi-tui'
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { ActivityView } from './activity.js'
+import { ActivityView, hasLiveWork } from './activity.js'
 import { type ComposerMode, ComposerView } from './composer-view.js'
 import { layoutFor } from './layout.js'
 import { TerminalChrome } from './terminal-chrome.js'
@@ -121,7 +121,8 @@ export class BraidShell extends Container {
   override render(width: number): string[] {
     const view = this.#view
     if (!view) return super.render(width)
-    const layout = layoutFor(width, this.#rows(), this.#showActivity)
+    const showActivity = this.#showActivity && hasLiveWork(view)
+    const layout = layoutFor(width, this.#rows(), showActivity)
     const editorLines = this.#modalVisible ? [] : this.#composer.render(width)
     const topChrome = this.#chrome.renderTop(width)
     const bottomChrome = this.#chrome.renderBottom(width)
@@ -131,7 +132,7 @@ export class BraidShell extends Container {
     const transcriptLines = this.#transcript.render(layout.transcriptWidth)
     this.#refreshChrome()
     const activityLines =
-      layout.mode === 'wide' && this.#showActivity
+      layout.mode === 'wide' && showActivity
         ? tail(this.#activity.render(layout.activityWidth), contentRows)
         : []
     const content: string[] = []
@@ -158,7 +159,7 @@ export class BraidShell extends Container {
     this.#chrome.setState({
       view,
       quitArmed: this.#quitArmed,
-      activityVisible: this.#showActivity,
+      activityVisible: this.#showActivity && hasLiveWork(view),
       navigationHint: this.#transcript.navigationHint(),
       composerMode: this.#composerMode,
     })

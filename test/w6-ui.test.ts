@@ -11,6 +11,7 @@ import { ActivityView } from '../src/views/tui/activity.js'
 import { AnalysisViewPanel } from '../src/views/tui/analysis.js'
 import { ConnectionSetupViewPanel } from '../src/views/tui/connection-setup.js'
 import { DetailsViewPanel } from '../src/views/tui/details.js'
+import { DynamicAutocompleteProvider } from '../src/views/tui/dynamic-autocomplete.js'
 import { ForkPreviewPanel } from '../src/views/tui/fork-preview.js'
 import { GraphView } from '../src/views/tui/graph.js'
 import { HelpViewPanel } from '../src/views/tui/help.js'
@@ -20,10 +21,9 @@ import { ProfileEditorViewPanel } from '../src/views/tui/profile-editor.js'
 import { SearchableSelector } from '../src/views/tui/selector.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { TerminalChrome } from '../src/views/tui/terminal-chrome.js'
-import { metricsFor } from '../src/views/tui/terminal-usage.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
+import { metricsFor } from '../src/views/tui/terminal-usage.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { DynamicAutocompleteProvider } from '../src/views/tui/dynamic-autocomplete.js'
 import {
   STREAMING_TAIL_BYTES,
   streamingTailText,
@@ -316,7 +316,8 @@ test('stable chrome keeps identity and status outside transcript history', () =>
   const standard = chrome.render(80)
   assert.equal(standard.length, 1)
   assert.match(standard[0] ?? '', /reviewer.*pi \/ deterministic/u)
-  assert.match(standard[0] ?? '', /deterministic fixture/u)
+  assert.match(standard[0] ?? '', /fixture/u)
+  assert.doesNotMatch(standard[0] ?? '', /deterministic fixture/u)
   assert.match(standard[0] ?? '', /Ctrl\+P commands/u)
   for (const line of standard) assert.ok(visibleWidth(line) <= 80)
 })

@@ -7,12 +7,13 @@ import {
   comparisonLines,
   comparisonViewForResult,
 } from '../../views/shared/comparison-presentation.js'
-import type { ActivityItemView, EntityDetailView } from '../../views/shared/models.js'
-import { sanitizeTerminalText } from '../../views/shared/sanitize.js'
 import {
   environmentDetailLines,
   environmentView,
 } from '../../views/shared/environment-presentation.js'
+import type { ActivityItemView, EntityDetailView } from '../../views/shared/models.js'
+import { sanitizeTerminalText } from '../../views/shared/sanitize.js'
+import { omitUnreportedCostAndLatency } from '../../views/tui/measurement-display.js'
 
 const MAX_DETAIL_LINES = 256
 
@@ -73,12 +74,13 @@ function analysisDetail(record: AnalysisRecord | undefined): EntityDetailView | 
     record.kind === 'comparison' && record.comparison !== undefined
       ? comparisonLines(comparisonViewForResult(resultFromComparisonRecord(record)))
       : analysisLines(analysis)
+  const visible = omitUnreportedCostAndLatency(rendered)
   return {
     entityType: 'analysis',
     entityId: String(record.id),
-    title: rendered[0] ?? `analysis ${record.id}`,
+    title: visible[0] ?? `analysis ${record.id}`,
     status: record.status,
-    lines: bounded(rendered.slice(1)),
+    lines: bounded(visible.slice(1)),
     analysisFindingCount: analysis.findings.length,
     analysisSupportedFindingCount: analysis.citationSupport.supportedFindings,
     analysisCitationSupport: analysis.citationSupport.status,
@@ -104,7 +106,7 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
         ? []
         : [
             `tree usage: ${usageLine(record.totalUsage.inputTokens, record.totalUsage.outputTokens, record.totalUsage.spendUsd, record.totalUsage.completeness)}`,
-            `tree latency: ${record.totalUsage.latencyMs}ms · workers ${record.workerCount ?? 'unknown'}`,
+            `tree latency: ${record.totalUsage.latencyMs}ms${record.workerCount === undefined ? '' : ` · workers ${record.workerCount}`}`,
           ]),
       ...(record.driverUsage === undefined
         ? []
@@ -172,7 +174,8 @@ function usageLine(
   completeness: 'complete' | 'observed-floor' | 'unknown',
 ): string {
   const prefix = completeness === 'observed-floor' ? '≥' : completeness === 'unknown' ? '?' : ''
-  return `${prefix}${input} in · ${prefix}${output} out · ${prefix}$${spendUsd.toFixed(4)} · ${completeness}`
+  const cost = completeness === 'unknown' ? 'cost not reported' : `${prefix}$${spendUsd.toFixed(4)}`
+  return `${prefix}${input} in · ${prefix}${output} out · ${cost} · ${completeness}`
 }
 
 function bounded(lines: readonly string[]): readonly string[] {

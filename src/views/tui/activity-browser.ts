@@ -87,7 +87,7 @@ export function activityDocument(
         : executionTargetFor(view)
   const usage = metricsFor(view)
   return {
-    title: scope === 'all' ? 'activity' : `activity · ${scope}`,
+    title: scope === 'all' ? 'activity' : scope,
     context: [target.profileName, target.runner, target.model, ...usage].join(' · '),
     filterHint: `tab filter: ${scope}`,
     ...(pinned === undefined ? {} : { pinned }),

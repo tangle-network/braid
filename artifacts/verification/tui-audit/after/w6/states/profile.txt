@@ -1,0 +1,24 @@
+
+ Ask Braid starter anything.
+
+
+
+
+      Active profile · Braid starter
+      source Braid starter · trusted · read-only
+      runner pi · model fixture/deterministic
+      thinking none · max output provider default
+      digest sha256:44ed91c9…8cfa0a14
+      profiles
+     ──────────────────────────────────────────────────────────────────────
+     >
+     → ✓ Braid starter                 trusted · read-only · Braid starte
+     ──────────────────────────────────────────────────────────────────────
+      enter select · ^V validate · esc close
+
+
+
+
+
+
+profile Braid starter · pi / deterministic · fixture             Ctrl+P commands

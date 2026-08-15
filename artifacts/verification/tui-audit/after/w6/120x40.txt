@@ -1,0 +1,40 @@
+ › W6 visual proof
+
+ · run result · Ctrl+E details
+ Fixture response through pi: W6 visual proof
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+›
+
+
+profile Braid starter · pi / fixture/deterministic · deterministic fixture          in 8 · out 12 · calls 1 · model 50ms

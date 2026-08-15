@@ -2,6 +2,7 @@ import { matchesKey, type TUI } from '@earendil-works/pi-tui'
 import { commandAvailability } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
+import { hasLiveWork } from './activity.js'
 import type { ComposerMode } from './composer-view.js'
 import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
@@ -26,11 +27,9 @@ export interface TerminalInputControllerOptions {
 
 export type ActivityVisibility = 'auto' | 'hidden' | 'visible'
 
-export function activityVisibleFor(
-  _view: Pick<BraidViewModel, 'activeRunId'>,
-  visibility: ActivityVisibility,
-): boolean {
-  return visibility === 'visible'
+export function activityVisibleFor(view: BraidViewModel, visibility: ActivityVisibility): boolean {
+  if (visibility !== 'visible') return false
+  return hasLiveWork(view)
 }
 
 /** Routes non-text terminal keys and owns the short-lived quit/activity state. */

@@ -446,6 +446,7 @@ test('analysis progress opens immediately, follows live state, and respects dism
     },
   })
   assert.match(spy.current()?.render(80).join('\n') ?? '', /analyses › \/ask · frozen question/u)
+  assert.doesNotMatch(spy.current()?.render(80).join('\n') ?? '', /complete · 1\/1/u)
 
   spy.closeTop()
   const dismissed = surfaces.openIntelligenceProgress('analyze')

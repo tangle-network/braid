@@ -68,6 +68,7 @@ export function buildBraidViewModel(
 ): BraidViewModel {
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
+  const latestUsage = latest === undefined ? undefined : usageForRun(latest)
   const configuration = selectedRunConfiguration(state, state.profile)
   const profile = configuration.profile
   const modelSettings = profileModelSettings(profile)
@@ -176,14 +177,12 @@ export function buildBraidViewModel(
               { label: 'status', value: latest.status },
               { label: 'input tokens', value: String(latest.inputTokens) },
               { label: 'output tokens', value: String(latest.outputTokens) },
-              {
-                label: 'token measurement',
-                value: usageForRun(latest).tokenStatus ?? 'unknown',
-              },
-              {
-                label: 'cost measurement',
-                value: usageForRun(latest).costStatus ?? 'unknown',
-              },
+              ...(latestUsage?.tokenStatus === undefined || latestUsage.tokenStatus === 'unknown'
+                ? []
+                : [{ label: 'token measurement', value: latestUsage.tokenStatus }]),
+              ...(latestUsage?.costStatus === undefined || latestUsage.costStatus === 'unknown'
+                ? []
+                : [{ label: 'cost measurement', value: latestUsage.costStatus }]),
               ...(latest.model
                 ? [{ label: 'model', value: sanitizeTerminalText(latest.model) }]
                 : []),

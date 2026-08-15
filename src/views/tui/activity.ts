@@ -1,7 +1,7 @@
-import { Container, Spacer, Text, TruncatedText } from '@earendil-works/pi-tui'
+import { Container, Text, TruncatedText } from '@earendil-works/pi-tui'
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { projectActivityDocument, type ActivityDocumentItem } from './activity-document.js'
+import { type ActivityDocumentItem, projectActivityDocument } from './activity-document.js'
 import type { BraidTheme } from './theme.js'
 
 export class ActivityView extends Container {
@@ -16,13 +16,7 @@ export class ActivityView extends Container {
     const items = projectActivityDocument(view).items.filter(isLiveWork)
     this.clear()
     this.addChild(new Text(this.#theme.brand('live work'), 1, 0))
-    if (items.length === 0) {
-      this.addChild(new Spacer(1))
-      this.addChild(new Text(this.#theme.muted('No live work.'), 1, 0))
-    } else {
-      this.addChild(new Spacer(1))
-      for (const item of items) this.addChild(this.#item(item))
-    }
+    for (const item of items) this.addChild(this.#item(item))
     this.invalidate()
   }
 
@@ -36,6 +30,13 @@ export class ActivityView extends Container {
     const elapsed = item.durationMs === undefined ? '' : ` ${Math.round(item.durationMs)}ms`
     return new TruncatedText(`${color(`${symbol} ${status}`)} ${title}${elapsed}${detail}`, 1, 0)
   }
+}
+
+export function hasLiveWork(view: BraidViewModel): boolean {
+  return (
+    view.activeRunId !== undefined ||
+    projectActivityDocument(view).items.some((item) => isLiveWork(item))
+  )
 }
 
 const LIVE_WORK_STATUSES = new Set([

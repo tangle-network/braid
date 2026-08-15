@@ -7,6 +7,7 @@ import {
   wrapTextWithAnsi,
 } from '@earendil-works/pi-tui'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { omitUnreportedCostAndLatency } from './measurement-display.js'
 import type { ModalBackTarget } from './modal-coordinator.js'
 import type { BraidTheme } from './theme.js'
 
@@ -280,7 +281,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     const primary =
       (!detailVisible && this.#mode === 'list') || selected === undefined
         ? this.#theme.brand(`${title} · ${document.rows.length}`)
-        : `${this.#theme.brand(title)} ${this.#theme.muted('›')} ${this.#theme.accent(sanitizeTerminalText(selected.title))} ${this.#theme.muted(`· ${selected.status} · ${this.#selectedIndex + 1}/${document.rows.length}`)}`
+        : `${this.#theme.brand(title)} ${this.#theme.muted('›')} ${this.#theme.accent(sanitizeTerminalText(selected.title))}`
     const context =
       document.context === undefined
         ? undefined
@@ -351,7 +352,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
 
   #detailVisualLines(selected: EntityBrowserRow, width: number): string[] {
     const lineWidth = Math.max(1, width - 1)
-    return selected.detailLines.flatMap((value) => {
+    return omitUnreportedCostAndLatency(selected.detailLines).flatMap((value) => {
       const safe = sanitizeTerminalText(value)
       const styled = safe.startsWith('── ')
         ? this.#theme.accent(safe)

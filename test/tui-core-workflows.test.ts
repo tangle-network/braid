@@ -549,7 +549,7 @@ test('wide activity keeps the list and details together and tabs through bounded
   browser.handleInput('\u001b[B')
   assert.match(browser.render(120).join('\n'), /first detail remains visible/u)
   browser.handleInput('\t')
-  assert.match(browser.render(120).join('\n'), /activity · workers · 0/u)
+  assert.match(browser.render(120).join('\n'), /workers · 0/u)
   browser.handleInput('\t')
   assert.match(browser.render(120).join('\n'), /tab filter: all/u)
   browser.handleInput('\u001b[D')

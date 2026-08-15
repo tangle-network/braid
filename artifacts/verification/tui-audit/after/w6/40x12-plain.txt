@@ -1,0 +1,17 @@
+Braid ready — /home/drew/code/braid-goal-latest-wt
+status: ready for a message
+conversation: New conversation; branch: branch-1
+profile: Braid starter; runner: pi; connection: deterministic fixture
+appearance: none; high contrast off; reduced motion off
+event 2: draft.changed; status: ready for a message
+event 3: run.requested; status: admitted: W6 plain proof
+event 4: effect.upserted; status: streaming
+event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-a87a8819-9685-42df-8e1f-11690d0a4e83","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:f75eb08b6c6a3120e5297421baed1e5e2553899395ec5981e0fda4c9ce725300"}}},"session":{"id":"1c480acb-01f2-4964-86f6-fe0900712ee0","backend":"executor","status":"active","createdAt":"2026-08-15T00:50:34.906Z","updatedAt":"2026-08-15T00:50:34.906Z","metadata":"[unavailable]"},"
+event 6: application.shutdown.requested; status: streaming
+event 7: run.control.requested; status: cancelling: requested
+event 8: run.cancel.requested; status: cancelling: requested
+event 9: effect.upserted; status: cancelling
+event 10: effect.upserted; status: cancelling
+event 11: run.control.acknowledged; status: cancelling: CONTROL_ACKNOWLEDGED
+event 12: run.finished; status: aborted
+event 13: effect.upserted; status: cancelled
