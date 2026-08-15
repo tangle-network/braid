@@ -341,7 +341,7 @@ export async function validateCheckpoint(checkpoint, { artifactRoot, identity, p
     assert(referencedEnvironmentIds.has(id), `Checkpoint has an unreferenced environment ${id}`)
   const mappings = normalizeRequirementBindings(
     checkpoint.envelope.requirements,
-    identity.requirementIds,
+    Object.keys(plan.requirements),
     plan.checkIds,
   )
   for (const [id, binding] of mappings) {

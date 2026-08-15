@@ -60,7 +60,9 @@ function git(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
 }
 
-async function makeRepo() {
+async function makeRepo({
+  requirementDocument = '## Product acceptance\n\n| PR-01 | local proof |\n',
+} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'braid-release-repo-'))
   const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-release-artifacts-'))
   await mkdir(join(root, 'docs'), { recursive: true })
@@ -74,10 +76,7 @@ async function makeRepo() {
     })}\n`,
   )
   await writeFile(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
-  await writeFile(
-    join(root, 'docs', 'requirements.md'),
-    '## Product acceptance\n\n| PR-01 | local proof |\n',
-  )
+  await writeFile(join(root, 'docs', 'requirements.md'), requirementDocument)
   git(root, 'init', '-q')
   git(root, 'config', 'core.hooksPath', '/dev/null')
   git(root, 'config', 'user.email', 'release-test@example.invalid')
@@ -110,8 +109,8 @@ async function makeRepo() {
   return { root, artifactRoot, tarballPath, tarballBytes, proof }
 }
 
-async function withRepo(action) {
-  const fixture = await makeRepo()
+async function withRepo(action, options) {
+  const fixture = await makeRepo(options)
   try {
     return await action(fixture)
   } finally {
@@ -809,6 +808,51 @@ test('one local catalog check produces redacted artifacts and an immutable colle
       await rm(bin, { recursive: true, force: true })
     }
   })
+})
+
+test('a selected check reports only requirements covered by that check', async () => {
+  await withRepo(
+    async ({ root, artifactRoot, tarballPath, proof }) => {
+      const result = await collectReleaseEvidence({
+        repository: root,
+        artifactRoot,
+        tarballPath,
+        packageProof: proof,
+        requirementBindings: {
+          'AN-01': { checks: ['unit'] },
+          'PR-01': { checks: ['live-bridge'] },
+          'VR-01': { checks: ['release'] },
+        },
+        checkIds: ['release'],
+        environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+        runCheck: async ({ checkId }) => {
+          const processResult = await executeArgv({
+            file: process.execPath,
+            args: ['-e', 'process.stdout.write("passed")'],
+            cwd: root,
+            environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+          })
+          return {
+            checkId,
+            category: 'release',
+            command: 'pnpm check:release',
+            argv: ['pnpm', 'check:release'],
+            ...processResult,
+          }
+        },
+      })
+
+      assert.equal(result.result, 'passed')
+      assert.deepEqual(Object.keys(result.envelope.requirements), ['VR-01'])
+      assert.deepEqual(result.manifest.requirementIds, ['VR-01'])
+    },
+    {
+      requirementDocument:
+        '## Analysis acceptance\n\n| AN-01 | analysis proof |\n\n' +
+        '## Product acceptance\n\n| PR-01 | product proof |\n\n' +
+        '## Release acceptance\n\n| VR-01 | release proof |\n',
+    },
+  )
 })
 
 test('a restored failed check is retried with a new recorded attempt', async () => {

@@ -69,6 +69,17 @@ export function normalizeRequirementCheckBindings(input, requirementIds, checkId
   return bindings
 }
 
+export function selectRequirementCheckBindings(bindings, checkIds) {
+  assert(bindings instanceof Map, 'Requirement check bindings must be a map')
+  const selected = new Set(checkIds)
+  return new Map(
+    [...bindings.entries()].flatMap(([id, binding]) => {
+      const checks = binding.checks.filter((checkId) => selected.has(checkId))
+      return checks.length === 0 ? [] : [[id, { checks }]]
+    }),
+  )
+}
+
 export function materializeRequirementBindings(
   checkBindings,
   { artifactsByCheck = new Map(), additionalArtifacts = [] } = {},

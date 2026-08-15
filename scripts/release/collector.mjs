@@ -10,6 +10,7 @@ import {
   materializeRequirementBindings,
   normalizeRequirementCheckBindings,
   requirementsObject,
+  selectRequirementCheckBindings,
 } from './bindings.mjs'
 import { readBuildIdentity, readRequirementIds } from './build-identity.mjs'
 import { registerCheckArtifacts } from './check-artifacts.mjs'
@@ -191,11 +192,15 @@ export async function collectReleaseEvidence({
     'Build identity requirement list differs from docs',
   )
   const selected = selectedChecks(checkIds, identity.requirementIds)
-  const checkBindings = normalizeRequirementCheckBindings(
+  const knownCheckIds = [
+    ...new Set([...requiredEvidenceCheckIds(identity.requirementIds), ...selected]),
+  ]
+  const allCheckBindings = normalizeRequirementCheckBindings(
     requirementBindings,
     identity.requirementIds,
-    selected,
+    knownCheckIds,
   )
+  const checkBindings = selectRequirementCheckBindings(allCheckBindings, selected)
   for (const id of selected)
     assert(
       requirementIdsForPlan({ requirements: Object.fromEntries(checkBindings) }, id).length > 0,
@@ -431,7 +436,7 @@ export async function collectReleaseEvidence({
     packageIntegrity: identity.packageIntegrity,
     packageFileManifestDigest: identity.packageFileManifestDigest,
     dependencyDigest: identity.dependencyDigest,
-    requirementIds: identity.requirementIds,
+    requirementIds: Object.keys(plan.requirements).sort(),
     checkIds: selected,
     checkCount: checks.size,
     result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
