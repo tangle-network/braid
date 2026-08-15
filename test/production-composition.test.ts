@@ -226,7 +226,7 @@ test('production composition persists acknowledged CLI Bridge cancellation', asy
     app.initialize('/workspace')
     const send = app.send({ operationId: 'op-production-cancel', text: 'cancel production' })
     await send.admissionReady
-    await waitForCondition(() => bridge.requests.length === 1)
+    await waitForCondition(() => app.state().runs[0]?.controlRef !== undefined, 5_000)
 
     const cancellation = app.cancel({
       operationId: 'op-production-cancel-request',

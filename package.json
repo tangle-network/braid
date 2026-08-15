@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/braid",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A universal terminal interface for portable agent profiles",
   "type": "module",
   "bin": {
@@ -84,7 +84,7 @@
     "test:upstream": "node scripts/release/verify-upstream.mjs",
     "test:package": "pnpm run build && node scripts/verify-package.mjs",
     "pack:check": "pnpm pack --pack-destination .tmp",
-    "check:release": "node scripts/check-release.mjs",
+    "check:release": "node --test scripts/release/registry-collision.test.mjs && node scripts/check-release.mjs",
     "release:check": "pnpm run check:release",
     "release:prepare": "node scripts/release/prepare-candidate.mjs",
     "release:collect": "node scripts/release/collect-release-evidence.mjs",

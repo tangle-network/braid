@@ -761,6 +761,11 @@ test('release keys stay isolated while publication uses the installed product', 
     /name: Build and use one immutable candidate[\s\S]*?run: pnpm release:prepare/u,
   )
 
+  const publish = job('publish', 'post-publish-smoke')
+  assert.doesNotMatch(publish, /already exists; checking|if npm view/iu)
+  assert.match(publish, /node scripts\/release\/check-registry-collision\.mjs/u)
+  assert.match(publish, /if: steps\.registry\.outputs\.status == 'available'/u)
+
   const candidateSmoke = job('platform-smoke', 'publish')
   const registrySmoke = job('post-publish-smoke', 'finalize')
   const packageSmoke = await readFile('scripts/release/smoke-package.mjs', 'utf8')

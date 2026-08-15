@@ -233,9 +233,7 @@ Retained lifecycle is an explicit connection configuration option with a bounded
 
 Before retained execution creates a sandbox, Braid requires exact control plus provider-backed lookup for an unacknowledged dispatch.
 
-The current published provider does not report that complete contract or lookup, so Braid rejects retained mode without creating a resource.
-
-When the provider reports both, a fresh Braid process can recover before or after the six-field reference commits.
+The current provider reports both, so a fresh Braid process can recover before or after the six-field reference commits.
 
 Native follow-up turns remain disabled until the provider also proves that its context boundary matches Braid's recorded boundary.
 
@@ -243,19 +241,25 @@ Checkpoint, environment fork, and interaction response remain unavailable until 
 
 The user can inspect the requested and verified execution location, but provider-private machine details remain unavailable when they are not reported.
 
-The latest passing production stress proof completed 20 of 20 ephemeral Braid turns through OpenCode, GLM 5.2, and Tangle Sandbox at four-way concurrency.
+On 2026-08-15, the default retained production cohort passed 3 of 3 Braid runs through OpenCode, GLM 5.2, and Tangle Sandbox at two-way concurrency.
+
+Each proof killed the first Braid process, reconnected once, continued in the same provider session, cancelled a later turn, replayed the same cancellation, and rejected changed input.
+
+All three exact sandboxes were confirmed deleted, and the account's active Sandbox count returned to its starting value.
+
+Individual proof duration was 82.3 seconds minimum, 89.0 seconds median, and 96.2 seconds maximum.
+
+Six completed turns reported 9,231 input tokens, 1,992 output tokens, and $0 provider cost; token and cost data were unavailable for three cancelled turns.
+
+The provider exposed cgroup v2 memory samples with a 2,048 MB limit and 630–633 MB peak use.
+
+Machine identity, IP address, effective CPU and storage, placement, region, and per-sandbox cost remained unavailable because the provider did not report them.
+
+The earlier ephemeral stress proof completed 20 of 20 Braid turns at four-way concurrency.
 
 All 20 remote environments were unique and confirmed deleted, while the account's active Sandbox count returned from four to four.
 
-See the [secret-free proof artifact](artifacts/verification/live/tangle-sandbox-braid-execution-stress-production-20260812.json) for every run, token receipt, latency, environment observation, and cleanup result.
-
-A later canary found a current platform regression before environment allocation.
-
-Fresh credentials authenticated Sandbox and Router, but the internal model-key step rejected the Sandbox service with HTTP 403.
-
-Braid left zero owned environments, while [ADC issue 5277](https://github.com/tangle-network/agent-dev-container/issues/5277) tracks the platform failure.
-
-[Runtime issue 808](https://github.com/tangle-network/agent-runtime/issues/808) tracks the separate ten-minute retry of that permanent rejection.
+See the [ephemeral proof artifact](artifacts/verification/live/tangle-sandbox-braid-execution-stress-production-20260812.json) for every earlier run, token receipt, latency, environment observation, and cleanup result.
 
 The [verification record](docs/08-verification.md#current-core-path-observations) keeps the full results, limits, and tracked platform work.
 

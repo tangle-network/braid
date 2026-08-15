@@ -231,18 +231,30 @@ jobs:
           INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
           grep -Fx "index_sha256=$INDEX_SHA256" "$ENDORSEMENT/statement.txt"
 
-      - name: Publish the approved tarball
+      - name: Install the pinned npm client
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = 11.18.0
+
+      - name: Check the registry version
+        id: registry
         env:
           ARCHIVE: ${{ needs.candidate.outputs.archive }}
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
-          npm install --global npm@11.18.0
-          test "$(npm --version)" = 11.18.0
-          if npm view "@tangle-network/braid@$VERSION" version >/dev/null 2>&1; then
-            echo "@tangle-network/braid@$VERSION already exists; checking it instead of republishing"
-          else
-            npm publish "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" --provenance --access public
-          fi
+          RESULT="$(node scripts/release/check-registry-collision.mjs \
+            --package "@tangle-network/braid@$VERSION" \
+            --tarball "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" \
+            --json)"
+          printf '%s\n' "$RESULT"
+          STATUS="$(RESULT="$RESULT" node -e "process.stdout.write(JSON.parse(process.env.RESULT).status)")"
+          printf 'status=%s\n' "$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the approved tarball
+        if: steps.registry.outputs.status == 'available'
+        env:
+          ARCHIVE: ${{ needs.candidate.outputs.archive }}
+        run: npm publish "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" --provenance --access public
 
       - name: Verify and retain npm provenance
         env:
