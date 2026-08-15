@@ -369,11 +369,7 @@ export async function prepareFakeTangleRetainedConnection(input: {
     name: 'tangle-sandbox',
     capabilities: declared,
   })
-  const reported = await provider.capabilities()
-  const capabilities = Object.freeze({
-    ...reported,
-    sessions: Object.freeze({ ...reported.sessions, continue: false }),
-  })
+  const capabilities = await provider.capabilities()
   return Object.freeze({
     profile: input.profile,
     model,
@@ -393,7 +389,7 @@ export async function prepareFakeTangleRetainedConnection(input: {
       backend: 'environment-provider',
       lifecycle: 'retained',
       cleanup: 'explicit',
-      continuity: 'unavailable',
+      continuity: 'session',
       portableContext: 'unavailable',
       model,
       runner,

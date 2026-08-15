@@ -652,8 +652,14 @@ export interface HeadlessState {
     readonly turnId: string
     readonly operationId: string
     readonly status: string
+    readonly startedAt: string
+    readonly updatedAt: string
+    readonly terminalAt?: string
+    readonly durationMs?: number
     readonly inputTokens: number
     readonly outputTokens: number
+    readonly tokensKnown: boolean
+    readonly usdKnown: boolean
     readonly tokenStatus: NonNullable<UsageView['tokenStatus']>
     readonly reasoningTokens?: number
     readonly costUsd?: number

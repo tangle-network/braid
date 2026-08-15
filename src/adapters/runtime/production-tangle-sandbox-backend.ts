@@ -215,7 +215,7 @@ export async function resolveTangleSandboxRetainedConnection(
       { connectionId },
     )
   }
-  const capabilities = withoutNativeTangleContinuation(reportedCapabilities)
+  const capabilities = reportedCapabilities
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-retained-environment-request',
     idempotencyKey: identity.environmentIdempotencyKey,
@@ -257,17 +257,6 @@ export async function resolveTangleSandboxRetainedConnection(
       model,
       runner,
     },
-  })
-}
-
-function withoutNativeTangleContinuation(
-  reported: AgentEnvironmentCapabilities,
-): AgentEnvironmentCapabilities {
-  const capabilities = { ...reported }
-  delete capabilities.nativeContinuation
-  return Object.freeze({
-    ...capabilities,
-    sessions: Object.freeze({ ...reported.sessions, continue: false }),
   })
 }
 

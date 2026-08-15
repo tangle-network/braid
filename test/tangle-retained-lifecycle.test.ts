@@ -253,7 +253,7 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
     runId: input.runId,
   })
   const plan = createTangleRetainedPlan(prepared, input.runId)
-  assert.equal(plan.capabilities.sessions.continue, false)
+  assert.equal(plan.capabilities.sessions.continue, true)
   assert.equal(plan.capabilities.controls.status, false)
   const handle = await startTangleRetainedRun(plan, input)
 

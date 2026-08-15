@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   cloudFailureEventTimeline,
+  hasSingleMarkerLine,
   runIdForOperation,
   sandboxWorkspaceRelativePath,
   spendDisclosure,
@@ -27,6 +28,7 @@ import {
   stateRoundTrip,
   visibleEventKeys,
   waitForControlIdentity,
+  waitForRequestState,
   waitForVisibleEvents,
   waitForWorkspaceToolEvents,
 } from '../scripts/live-required/tangle-sandbox-braid-stress-support.mjs'
@@ -67,6 +69,39 @@ test('get_state waits for the state response instead of an acknowledgement', asy
 
   const result = await stateRoundTrip(session)
   assert.deepEqual(result.state, { runs: [] })
+})
+
+test('model proof permits prose but requires exactly one isolated nonce line', () => {
+  assert.equal(hasSingleMarkerLine('MARKER', 'MARKER'), true)
+  assert.equal(hasSingleMarkerLine('Task complete.\n\nMARKER\n', 'MARKER'), true)
+  assert.equal(hasSingleMarkerLine('Task complete: MARKER', 'MARKER'), false)
+  assert.equal(hasSingleMarkerLine('MARKER\nMARKER', 'MARKER'), false)
+})
+
+test('control completion waits for its correlated state after transient terminal output', async () => {
+  const transient = {
+    type: 'state',
+    requestId: 'provider-event',
+    state: { runs: [{ id: 'run-cancel', status: 'failed' }] },
+  }
+  const completed = {
+    type: 'state',
+    requestId: 'cancel-request',
+    state: { runs: [{ id: 'run-cancel', status: 'cancelled' }] },
+  }
+  const session = {
+    responses: [transient],
+    async waitFor(_label, predicate) {
+      assert.equal(predicate(transient), false)
+      assert.equal(predicate(completed), true)
+      return completed
+    },
+  }
+
+  assert.deepEqual(await waitForRequestState(session, 'cancel-request', 'run-cancel', 100), {
+    response: completed,
+    run: completed.state.runs[0],
+  })
 })
 
 test('cleanup recovers exactly one durable run after a lost send acknowledgement', () => {

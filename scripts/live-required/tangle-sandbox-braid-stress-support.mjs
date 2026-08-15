@@ -234,6 +234,19 @@ export async function stateRoundTrip(session, projection = 'full') {
   return { ...result, state: response.state }
 }
 
+export async function waitForRequestState(session, requestId, runId, timeoutMs) {
+  const response = await session.waitFor(
+    `completion state for ${requestId}`,
+    stateForRequest(requestId),
+    timeoutMs,
+  )
+  const run = runFromState(response.state, runId)
+  if (run === undefined) {
+    throw new Error(`completion state for ${requestId} omitted run ${runId}`)
+  }
+  return { response, run }
+}
+
 export async function waitForTerminal(session, runId, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {

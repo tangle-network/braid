@@ -262,7 +262,7 @@ function addRunSnapshotFailures(failures, runs, name) {
   return snapshot
 }
 
-function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
+export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
   if (proof?.status !== 'passed') return ['status was not passed']
   const failures = []
   const progress = proof.progress

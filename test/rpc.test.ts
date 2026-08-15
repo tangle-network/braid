@@ -137,6 +137,12 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   if (finalState.projection !== 'full') assert.fail('expected full state')
   assert.equal(finalState.state.messages[1]?.text, 'Fixture response through pi: hello Braid')
   assert.equal(finalState.state.runs[0]?.status, 'completed')
+  assert.equal(typeof finalState.state.runs[0]?.startedAt, 'string')
+  assert.equal(typeof finalState.state.runs[0]?.updatedAt, 'string')
+  assert.equal(typeof finalState.state.runs[0]?.terminalAt, 'string')
+  assert.equal(typeof finalState.state.runs[0]?.durationMs, 'number')
+  assert.equal(typeof finalState.state.runs[0]?.tokensKnown, 'boolean')
+  assert.equal(typeof finalState.state.runs[0]?.usdKnown, 'boolean')
 })
 
 test('JSONL drives the complete canonical conversation lifecycle', async () => {
@@ -627,6 +633,13 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
       },
       {
         version: 1,
+        requestId: 'req-cancel-replay',
+        operationId: 'op-cancel-active',
+        command: 'cancel_run',
+        params: { runId: 'run-000001', reason: requestedReason },
+      },
+      {
+        version: 1,
         requestId: 'req-stop',
         operationId: 'op-stop-cancel',
         command: 'shutdown',
@@ -670,6 +683,13 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
   if (cancelState?.type !== 'state') assert.fail('missing cancellation state')
   if (cancelState.projection !== 'full') assert.fail('expected full cancellation state')
   assert.equal(cancelState.state.runs[0]?.status, 'aborted')
+  const cancelReplay = responses.find(
+    (response) => response.type === 'ack' && response.requestId === 'req-cancel-replay',
+  )
+  assert.equal(cancelReplay?.type, 'ack')
+  if (cancelReplay?.type !== 'ack') assert.fail('missing cancellation replay acknowledgement')
+  assert.equal(cancelReplay.replayed, true)
+  assert.equal(cancelReplay.outcome, 'accepted')
 })
 
 test('RPC and plain shutdown exit at the drain deadline for a never-ending iterator', async () => {

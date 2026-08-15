@@ -176,10 +176,7 @@ function messagesFor(
 
 export function runViews(state: BraidState): RunView[] {
   return state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
-    const elapsed =
-      run.terminalAt === undefined
-        ? undefined
-        : Date.parse(run.terminalAt) - Date.parse(run.startedAt)
+    const elapsed = completedRunDurationMs(run)
     const profile = run.receipt.requested.profile
     const modelSettings = profileModelSettings(profile)
     const runner = run.receipt.requested.runner ?? run.receipt.provider
@@ -595,13 +592,20 @@ export function toHeadlessState(
     messages,
     runs: state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
       const replayCursor = replayCursorByRun.get(run.id)
+      const durationMs = completedRunDurationMs(run)
       return {
         id: run.id,
         turnId: run.turnId,
         operationId: run.operationId,
         status: run.status,
+        startedAt: run.startedAt,
+        updatedAt: run.updatedAt,
+        ...(run.terminalAt === undefined ? {} : { terminalAt: run.terminalAt }),
+        ...(durationMs === undefined ? {} : { durationMs }),
         inputTokens: run.inputTokens,
         outputTokens: run.outputTokens,
+        tokensKnown: run.tokensKnown !== false,
+        usdKnown: run.usdKnown !== false,
         tokenStatus: usageForRun(run).tokenStatus ?? 'unknown',
         ...(run.reasoningTokens === undefined ? {} : { reasoningTokens: run.reasoningTokens }),
         ...(run.costUsd === undefined ? {} : { costUsd: run.costUsd }),
@@ -656,6 +660,12 @@ export function toHeadlessState(
       ? {}
       : { cleanupUncertain: sanitizeTerminalText(cleanupUncertain) }),
   })
+}
+
+function completedRunDurationMs(run: BraidState['runs'][number]): number | undefined {
+  if (run.terminalAt === undefined) return undefined
+  const duration = Date.parse(run.terminalAt) - Date.parse(run.startedAt)
+  return Number.isFinite(duration) && duration >= 0 ? duration : undefined
 }
 
 export function toEvent(envelope: BraidEventEnvelope): UiEvent {

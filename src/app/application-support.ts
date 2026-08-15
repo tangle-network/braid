@@ -117,6 +117,38 @@ export function restoreApplicationOperations(
   target: RestoreOperationsTarget,
 ): void {
   const acknowledgements = new Map<string, ControlAcknowledgement>()
+  for (const operation of target.state().operations) {
+    if (operation.kind !== 'cancel-run' || operation.target?.kind !== 'run') continue
+    const run = target.state().runs.find((candidate) => candidate.id === operation.target?.id)
+    if (run === undefined) continue
+    const storedOutcome = operation.result?.outcome
+    const outcome =
+      storedOutcome === 'accepted' ||
+      storedOutcome === 'already-applied' ||
+      storedOutcome === 'rejected' ||
+      storedOutcome === 'unknown'
+        ? storedOutcome
+        : operation.status === 'terminal'
+          ? 'already-applied'
+          : operation.status === 'acknowledged'
+            ? 'accepted'
+            : operation.status === 'failed'
+              ? 'rejected'
+              : 'unknown'
+    const detail = operation.result?.detail
+    target.ledger.setControl(operation.id, {
+      digest: operation.requestDigest,
+      runId: run.id,
+      control: 'cancel',
+      acknowledgement: Promise.resolve({
+        operationId: operation.id,
+        outcome,
+        ...(typeof detail === 'string' ? { detail } : {}),
+      }),
+      completion: Promise.resolve(target.state()),
+      ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    })
+  }
   for (const envelope of events) {
     const event = envelope.event
     if (event.kind === 'run.requested' && event.receipt) {

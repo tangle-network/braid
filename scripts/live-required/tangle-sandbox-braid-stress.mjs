@@ -32,6 +32,7 @@ import {
   stateRoundTrip,
   terminalStatus,
   waitForControlIdentity,
+  waitForRequestState,
   waitForTerminal,
   waitForWorkspaceToolEvents,
   workspaceToolEvents,
@@ -766,6 +767,13 @@ async function verifyRemoteCancellation(client, controlRef, marker, timeoutMs) {
 }
 
 function durationMs(run) {
+  if (
+    typeof run?.durationMs === 'number' &&
+    Number.isFinite(run.durationMs) &&
+    run.durationMs >= 0
+  ) {
+    return run.durationMs
+  }
   const start = Date.parse(run?.startedAt ?? '')
   const end = Date.parse(run?.terminalAt ?? run?.updatedAt ?? '')
   return Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : undefined
@@ -1003,6 +1011,11 @@ function assistantMarker(state, runId) {
     .find((message) => message.runId === runId && message.role === 'assistant')?.text
 }
 
+export function hasSingleMarkerLine(value, marker) {
+  if (typeof value !== 'string' || typeof marker !== 'string' || marker.length === 0) return false
+  return value.split(/\r?\n/u).filter((line) => line.trim() === marker).length === 1
+}
+
 export function runIdForOperation(state, operationId) {
   const matches = (state?.runs ?? []).filter((run) => run.operationId === operationId)
   if (matches.length > 1) {
@@ -1238,7 +1251,14 @@ export async function runBraidSandboxStress({
       'completed',
       `reconnected run ended ${freshRun?.status ?? 'missing'}`,
     )
-    assert.equal(assistantMarker(freshTerminal.response.state, firstRunId), coordinates.marker)
+    assert.equal(
+      hasSingleMarkerLine(
+        assistantMarker(freshTerminal.response.state, firstRunId),
+        coordinates.marker,
+      ),
+      true,
+      'reconnected response did not contain one exact marker line',
+    )
     assert.equal(localRunCount(freshTerminal.response.state, firstRunId), 1)
     freshObservation = await phase('freshProcess.observeControl', () =>
       waitForControlIdentity(freshSession, firstRunId, timeoutMs),
@@ -1292,8 +1312,12 @@ export async function runBraidSandboxStress({
     )
     assert.equal(followUpTerminal.run?.status, 'completed')
     assert.equal(
-      assistantMarker(followUpTerminal.response.state, followUpRunId),
-      continuity.expectedDigest,
+      hasSingleMarkerLine(
+        assistantMarker(followUpTerminal.response.state, followUpRunId),
+        continuity.expectedDigest,
+      ),
+      true,
+      'follow-up response did not contain one exact digest line',
     )
     const followUpObservation = await phase('followUp.observeControl', () =>
       waitForControlIdentity(freshSession, followUpRunId, timeoutMs),
@@ -1376,8 +1400,8 @@ export async function runBraidSandboxStress({
     )
     const cancelAck = assertAck(cancel, 'cancel_run')
     assert.equal(cancelAck.runId, cancelRunId)
-    const cancelled = await phase('cancel.waitTerminal', () =>
-      waitForTerminal(freshSession, cancelRunId, timeoutMs),
+    const cancelled = await phase('cancel.waitCompletion', () =>
+      waitForRequestState(freshSession, cancel.request.requestId, cancelRunId, timeoutMs),
     )
     assert.ok(
       ['aborted', 'cancelled'].includes(cancelled.run?.status),
@@ -1497,8 +1521,8 @@ export async function runBraidSandboxStress({
       config: configEvidence(config),
       processes: {
         first: killed,
-        cancelled: cancelledProcessCleanup,
-        retry: retryProcessCleanup,
+        cancelled: { cleanup: cancelledProcessCleanup },
+        retry: { cleanup: retryProcessCleanup },
         localRunCountAfterReconnect: firstRunCountAfterReplay,
         binarySha256,
       },

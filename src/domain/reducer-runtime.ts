@@ -1,6 +1,6 @@
 import type { BraidEvent, BraidEventEnvelope } from './events.js'
-import { applyExecutionObservation } from './reducer-execution-observation.js'
 import { reduceContentEvent } from './reducer-content.js'
+import { applyExecutionObservation } from './reducer-execution-observation.js'
 import { reduceInteractionEvent } from './reducer-interactions.js'
 import { reduceLifecycleEvent } from './reducer-lifecycle.js'
 import type { BraidState } from './state.js'
@@ -83,10 +83,11 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
       }
     }
   })()
-  if (!('provider' in event) || !event.provider) return reduced
+  const timed = withRunTiming(reduced, event.runId, envelope.occurredAt)
+  if (!('provider' in event) || !event.provider) return timed
   const runId = event.runId
   const sequence = event.provider.providerSequence
-  const missingHistory = reduced.missingHistory.flatMap((range) => {
+  const missingHistory = timed.missingHistory.flatMap((range) => {
     const toSequence = range.toSequence ?? range.fromSequence
     if (range.runId !== runId || sequence < range.fromSequence) return [range]
     if (sequence > toSequence) return [range]
@@ -99,9 +100,7 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
     ]
   })
   const next =
-    missingHistory.length === reduced.missingHistory.length
-      ? reduced
-      : { ...reduced, missingHistory }
+    missingHistory.length === timed.missingHistory.length ? timed : { ...timed, missingHistory }
   const incompleteRuns = new Set(missingHistory.map((range) => range.runId))
   const completedRunIds = new Set(
     next.runs
@@ -135,6 +134,32 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
     ),
     runs: next.runs.map((candidate) =>
       completedRunIds.has(candidate.id) ? { ...candidate, complete: true } : candidate,
+    ),
+  }
+}
+
+function withRunTiming(state: BraidState, runId: string, occurredAt: string): BraidState {
+  const run = state.runs.find((candidate) => candidate.id === runId)
+  if (run === undefined) return state
+  const terminal = [
+    'completed',
+    'failed',
+    'aborted',
+    'cancelled',
+    'blocked',
+    'expired',
+    'unknown',
+  ].includes(run.status)
+  return {
+    ...state,
+    runs: state.runs.map((candidate) =>
+      candidate.id === runId
+        ? {
+            ...candidate,
+            updatedAt: occurredAt,
+            ...(terminal && candidate.terminalAt === undefined ? { terminalAt: occurredAt } : {}),
+          }
+        : candidate,
     ),
   }
 }

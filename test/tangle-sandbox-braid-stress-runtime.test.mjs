@@ -163,6 +163,28 @@ test('every telemetry field is observed, unavailable, provider-default, or expli
   assert.equal(complete.fields.tokens.status, 'observed')
   assert.equal(complete.fields.endToEndDuration.status, 'observed')
 
+  const {
+    costUsd: _costUsd,
+    startedAt: _startedAt,
+    terminalAt: _terminalAt,
+    ...headlessRun
+  } = terminalRun()
+  const unavailable = telemetryDisclosure(
+    {
+      ...headlessRun,
+      tokensKnown: false,
+      usdKnown: false,
+      durationMs: 1_000,
+    },
+    state,
+    workspaceVerification,
+    account,
+  )
+  assert.equal(unavailable.completeDisclosure, true)
+  assert.equal(unavailable.fields.tokens.status, 'unavailable')
+  assert.equal(unavailable.fields.cost.status, 'unavailable')
+  assert.equal(unavailable.fields.endToEndDuration.status, 'observed')
+
   const inFlight = telemetryDisclosure(
     {
       id: 'run-runtime-proof',

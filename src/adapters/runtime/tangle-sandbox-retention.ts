@@ -35,9 +35,8 @@ export function retainedSandboxLifecycle(idleTtlSeconds: number): SandboxLifecyc
   return Object.freeze({
     mode: 'retained',
     cleanup: 'explicit',
-    continuity: 'unavailable',
+    continuity: 'session',
     idleTtlSeconds,
-    reason: 'The deployed provider has not proved retry-safe native session continuation',
   })
 }
 

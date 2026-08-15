@@ -1855,6 +1855,8 @@ test('concurrent cancellation coalesces one provider call and one durable reques
   assert.equal(providerCancellationCalls, 1)
   assert.equal(first.acknowledgement.outcome, 'accepted')
   assert.equal(second.acknowledgement.outcome, 'accepted')
+  assert.equal(first.replayed, false)
+  assert.equal(second.replayed, true)
   assert.equal(
     journal.all().filter((entry) => entry.event.kind === 'run.control.requested').length,
     1,
@@ -2156,6 +2158,7 @@ test('restart reconciles an in-flight cancellation to honest unknown and replays
     reason: 'user requested cancellation',
     legacy: true,
   })
+  assert.equal(restoredControl.replayed, true)
   assert.equal(restoredControl.acknowledgement.outcome, 'unknown')
   assert.equal(
     restoredControl.acknowledgement.detail,

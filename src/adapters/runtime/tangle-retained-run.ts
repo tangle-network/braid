@@ -45,7 +45,7 @@ export function createTangleRetainedPlan(
     providerSessionId: controlRef?.sessionId ?? prepared.providerSessionId,
     model: prepared.model,
     capabilities: retainedCapabilities(prepared.capabilities, {
-      sessionContinuation: false,
+      sessionContinuation: prepared.capabilities.sessions.continue,
       exactStatus: false,
     }),
     materializationReceipt: publicMaterializationReceipt({

@@ -1,6 +1,12 @@
 import type { RunRecord, TurnRecord } from './entities.js'
 import type { BraidEvent } from './events.js'
-import { parseMessageId, parseRunId, parseTurnId } from './ids.js'
+import {
+  parseDigestValue,
+  parseMessageId,
+  parseOperationId,
+  parseRunId,
+  parseTurnId,
+} from './ids.js'
 import { createAdmissionReceipt } from './receipts.js'
 import { legacyMessage, legacyTextPart, upsert } from './reducer-helpers.js'
 import { attachRequestedRunToConversation } from './reducer-run-graph.js'
@@ -44,11 +50,26 @@ export function reduceLifecycleEvent(
   switch (event.kind) {
     case 'run.requested':
       return reduceRequestedRun(state, event, base, occurredAt)
-    case 'run.control.requested':
-      findRun(state, event.runId)
+    case 'run.control.requested': {
+      const runId = parseRunId(event.runId)
+      findRun(state, runId)
+      const operationId = parseOperationId(event.operationId)
+      const existing = state.operations.find((operation) => operation.id === operationId)
+      const operation =
+        existing ??
+        ({
+          id: operationId,
+          kind: event.control === 'cancel' ? 'cancel-run' : 'custom',
+          requestDigest: parseDigestValue(event.digest),
+          status: 'pending',
+          target: { kind: 'run', id: runId },
+          createdAt: occurredAt,
+          updatedAt: occurredAt,
+        } as const)
       return {
         ...state,
         ...base,
+        operations: upsert(state.operations, operation),
         runs: updateRun(state, event.runId, (candidate) =>
           addActivity(
             {
@@ -62,15 +83,44 @@ export function reduceLifecycleEvent(
           ),
         ),
       }
-    case 'run.control.acknowledged':
+    }
+    case 'run.control.acknowledged': {
       findRun(state, event.runId)
+      const operationId = parseOperationId(event.operationId)
+      const operation = state.operations.find((candidate) => candidate.id === operationId)
+      const status =
+        event.outcome === 'accepted'
+          ? 'acknowledged'
+          : event.outcome === 'already-applied'
+            ? 'terminal'
+            : event.outcome === 'rejected'
+              ? 'failed'
+              : 'unknown'
       return {
         ...state,
         ...base,
+        ...(operation === undefined
+          ? {}
+          : {
+              operations: upsert(state.operations, {
+                ...operation,
+                status,
+                result: {
+                  control: event.control,
+                  outcome: event.outcome,
+                  ...(event.detail === undefined ? {} : { detail: event.detail }),
+                },
+                updatedAt: occurredAt,
+                ...(event.outcome === 'accepted' || event.outcome === 'already-applied'
+                  ? { acknowledgedAt: occurredAt }
+                  : {}),
+              }),
+            }),
         runs: updateRun(state, event.runId, (run) =>
           addActivity(run, activity(event, 'control.ack', event.control, event.outcome)),
         ),
       }
+    }
     case 'run.queue.added':
       return {
         ...state,
