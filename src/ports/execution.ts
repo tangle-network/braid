@@ -1,16 +1,16 @@
 import type {
-  AgentExactRunControlRef,
   AgentEnvironmentCapabilities,
+  AgentExactRunControlRef,
   AgentProfile,
   InteractionResponseCommand,
 } from '@tangle-network/agent-interface'
+import type { TurnUsage } from '../domain/entities.js'
 import type {
   RetainedRunAdmissionRecord,
   RetainedRunAdmissionRecorder,
   RunCapabilities,
 } from '../domain/run-contracts.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
-import type { TurnUsage } from '../domain/entities.js'
 import type { RunStatus } from '../domain/state.js'
 
 export type { RunCapabilities } from '../domain/receipts.js'
@@ -149,6 +149,11 @@ export const UNKNOWN_RUN_CAPABILITIES: RunCapabilities = Object.freeze({
   events: { stableIdentity: false, sequence: false, cursor: false },
   usage: false,
 })
+
+/** Treat a published environment capability document as authoritative. */
+export function supportsInteractionResponse(capabilities: RunCapabilities): boolean {
+  return capabilities.environment?.interactions?.responseIdempotency === true
+}
 
 export function capabilitiesFromEnvironment(
   capabilities: AgentEnvironmentCapabilities,

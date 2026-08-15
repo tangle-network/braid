@@ -11,13 +11,14 @@ import {
   rebindInteractionRequest,
 } from '../src/app/interaction-request.js'
 import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
-import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
+import type { ExecutionPort } from '../src/ports/execution.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 import { parseRequest } from '../src/views/headless/rpc-parser.js'
 import type { InteractionView } from '../src/views/shared/models.js'
 import { InteractionShell } from '../src/views/tui/interaction.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 function request(id: string, runId = 'run-request'): InteractionRequest {
   const material: InteractionRequestMaterial = {
@@ -47,7 +48,7 @@ function interactionExecution(source: InteractionRequest): {
   let release: (() => void) | undefined
   let responses = 0
   const execution: ExecutionPort = {
-    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    capabilities: () => interactionResponseRunCapabilities(),
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
       yield {
         type: 'interaction',

@@ -177,6 +177,13 @@ export async function dispatchHeadlessCommand(
         retryable: false,
       }
     }
+    if (!context.app.canRespondToInteractions(runId)) {
+      return {
+        kind: 'unavailable',
+        code: 'CAPABILITY_UNAVAILABLE',
+        reason: 'The current runtime cannot acknowledge interaction responses',
+      }
+    }
     const receipt = await context.app.respondInteraction({
       operationId: intent.operationId ?? '',
       runId,

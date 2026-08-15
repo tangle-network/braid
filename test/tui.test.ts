@@ -17,6 +17,7 @@ import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const SIZES = [
@@ -132,7 +133,7 @@ function automationInteractionExecution(): {
   let release: (() => void) | undefined
   return {
     execution: {
-      capabilities: () => DEFAULT_RUN_CAPABILITIES,
+      capabilities: () => interactionResponseRunCapabilities(),
       async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
         yield {
           type: 'interaction',

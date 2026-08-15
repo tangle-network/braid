@@ -150,7 +150,7 @@ async function dispatchInteractionAutomation(
   intent: Extract<BraidIntent, { readonly type: 'create-interaction-automation' }>,
   context: UiDispatchContext,
 ): Promise<UiDispatchResult> {
-  if (!context.app.canRespondToInteractions()) {
+  if (!context.app.canRespondToInteractions(intent.runId)) {
     return {
       kind: 'unavailable',
       code: 'CAPABILITY_UNAVAILABLE',
@@ -225,7 +225,7 @@ async function dispatchInteractionResponse(
     }
   }
 
-  if (!context.app.canRespondToInteractions()) {
+  if (!context.app.canRespondToInteractions(intent.runId)) {
     return {
       kind: 'unavailable',
       code: 'CAPABILITY_UNAVAILABLE',

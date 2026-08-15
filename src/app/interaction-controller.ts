@@ -5,7 +5,7 @@ import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEventEnvelope } from '../domain/events.js'
 import { createFeedbackDecisionId } from '../domain/ids.js'
 import { interactionRemainingMs } from '../domain/interaction-timeout.js'
-import type { ExecutionPort } from '../ports/execution.js'
+import { type ExecutionPort, supportsInteractionResponse } from '../ports/execution.js'
 import type { JournalWriter, StateReader } from './application-ports.js'
 import type { InteractionReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
@@ -114,6 +114,11 @@ export async function respondInteraction(
       completion,
     }
   }
+  if (!supportsInteractionResponse(run.receipt.capabilities))
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'The current runtime cannot acknowledge interaction responses',
+    )
   if (input.execution.respondInteraction === undefined)
     throw new AppError(
       'CAPABILITY_UNAVAILABLE',

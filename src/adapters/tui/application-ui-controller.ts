@@ -19,7 +19,7 @@ import { capabilityMap } from './ui-capabilities.js'
 import { errorResult } from './ui-dispatch-error.js'
 import { FIXTURE_FORK, FIXTURE_INTERACTION, type UiFixture } from './ui-fixtures.js'
 import { withIntelligenceResult } from './ui-intelligence-result-view.js'
-import { toEvent, toHeadlessState } from './ui-projection.js'
+import { interactionViews, toEvent, toHeadlessState } from './ui-projection.js'
 import { createUiSubscriberDelivery, type UiSubscriberDelivery } from './ui-subscriber-delivery.js'
 import { buildBraidViewModel, type UiAppearanceOptions } from './ui-view-model.js'
 
@@ -91,6 +91,7 @@ export class ApplicationUiController implements BraidUiController {
   }
 
   #project(state: BraidState, app: BraidApplication): BraidViewModel {
+    const canRespond = app.canRespondToInteractions(interactionViews(state)[0]?.runId)
     const view = withRunUsage(
       buildBraidViewModel(
         state,
@@ -99,7 +100,7 @@ export class ApplicationUiController implements BraidUiController {
         app.canCancel(),
         app.storageFailure(),
         app.cleanupUncertain(),
-        app.canRespondToInteractions(),
+        canRespond,
         this.#graphQuery,
       ),
       state,
@@ -114,12 +115,7 @@ export class ApplicationUiController implements BraidUiController {
         ? decorated
         : freezeView({
             ...decorated,
-            capabilities: capabilityMap(
-              state,
-              app.canCancel(),
-              this.#fixture,
-              app.canRespondToInteractions(),
-            ),
+            capabilities: capabilityMap(state, app.canCancel(), this.#fixture, canRespond),
           })
     const intelligenceDecorated =
       this.#selectedIntelligenceData === undefined

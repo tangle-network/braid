@@ -44,8 +44,8 @@ import { ConversationOperationCoordinator } from './conversation-operation-coord
 import type { ConversationActions } from './conversations.js'
 import { createDurableSender } from './durable-send.js'
 import { SerializedEffectCoordinator } from './effect-coordinator.js'
-import { effectiveRunConfiguration } from './effective-run-configuration.js'
 import { projectEffectRecord } from './effect-projection.js'
+import { effectiveRunConfiguration } from './effective-run-configuration.js'
 import { AppError } from './errors.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
 import { createIntelligenceActions, type IntelligenceActions } from './intelligence-actions.js'
@@ -486,8 +486,8 @@ export class BraidApplication {
     )
   }
 
-  canRespondToInteractions(): boolean {
-    return this.#interactions.canRespond()
+  canRespondToInteractions(runId?: string): boolean {
+    return this.#interactions.canRespond(runId)
   }
 
   async detachRun(input: {

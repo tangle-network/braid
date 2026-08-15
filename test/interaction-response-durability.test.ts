@@ -8,12 +8,20 @@ import type {
   InteractionRequestMaterial,
 } from '@tangle-network/agent-interface'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import type { SqliteStorage } from '../src/adapters/storage/sqlite.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
+import type { StoredAutomationRule } from '../src/app/automation-matching.js'
+import { ruleUseReservationId } from '../src/app/automation-rule-persistence.js'
+import { automationOperationRecord } from '../src/app/automation-rule-store.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { InteractionAutomationCoordinator } from '../src/app/interaction-automation-coordinator.js'
-import { automationOperationRecord } from '../src/app/automation-rule-store.js'
-import { ruleUseReservationId } from '../src/app/automation-rule-persistence.js'
+import {
+  createInteractionRequest,
+  interactionResponseBinding,
+  rebindInteractionRequest,
+} from '../src/app/interaction-request.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
+import { toJson } from '../src/app/storage-journal-support.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import {
@@ -31,16 +39,8 @@ import { createMaterializedStateSnapshot } from '../src/domain/materialized-stat
 import { replayEvents } from '../src/domain/reducer.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
 import type { ExecutionPort } from '../src/ports/execution.js'
-import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
 import type { JournalEvent } from '../src/ports/storage.js'
-import { toJson } from '../src/app/storage-journal-support.js'
-import {
-  createInteractionRequest,
-  interactionResponseBinding,
-  rebindInteractionRequest,
-} from '../src/app/interaction-request.js'
-import type { StoredAutomationRule } from '../src/app/automation-matching.js'
-import type { SqliteStorage } from '../src/adapters/storage/sqlite.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 const NOW = '2026-08-09T00:00:00.000Z'
 const RESPONSE_TIMEOUT_MS = 25
@@ -117,7 +117,7 @@ test('a hung provider response cannot strand manual response, rule mutation, or 
   let responseCalls = 0
   let receivedSignal: AbortSignal | undefined
   const execution: ExecutionPort = {
-    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    capabilities: () => interactionResponseRunCapabilities(),
     async *streamTurn(input): AsyncIterable<{
       readonly type: 'interaction'
       readonly request: InteractionRequest
