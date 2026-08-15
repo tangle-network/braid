@@ -16,10 +16,13 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
-async function waitFor(predicate, label) {
+async function waitFor(predicate, label, diagnostic) {
   const deadline = Date.now() + 5_000
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
+    if (Date.now() >= deadline) {
+      const detail = diagnostic?.()
+      throw new Error(`Timed out waiting for ${label}${detail ? `\n${detail}` : ''}`)
+    }
     await sleep(20)
   }
 }
@@ -62,6 +65,12 @@ async function run(columns, rows, options = {}) {
   else environment.BRAID_KEYMAP = keymap
   const args = [binary, '--fixture', 'deterministic']
   if (noColor) args.push('--no-color')
+  const emulator = new XtermTerminal({
+    cols: columns,
+    rows,
+    disableStdin: true,
+    allowProposedApi: true,
+  })
   try {
     const session = pty.spawn(process.execPath, args, {
       name: term,
@@ -72,9 +81,13 @@ async function run(columns, rows, options = {}) {
     })
     let output = ''
     let query = ''
+    let screen = ''
     const exited = new Promise((resolve) => session.onExit(resolve))
     session.onData((chunk) => {
       output += chunk
+      emulator.write(chunk, () => {
+        screen = screenFrom(emulator, rows)
+      })
       if (!kitty) return
       query = `${query}${chunk}`.slice(-64)
       if (query.includes('\u001b[>7u')) {
@@ -82,33 +95,49 @@ async function run(columns, rows, options = {}) {
         query = ''
       }
     })
-    await waitFor(() => output.includes('Braid starter'), `${columns}x${rows} conversation shell`)
+    await waitFor(
+      () => normalizeScreen(screen).includes('Braid starter'),
+      `${columns}x${rows} conversation shell`,
+    )
     if (kitty) session.write('\u001b[112;5u')
     else if (keymap === undefined) session.write('\u0010')
     else session.write('\u0011')
-    await waitFor(() => output.includes('Commands'), `${columns}x${rows} command overlay`)
+    await waitFor(
+      () => normalizeScreen(screen).includes('Commands'),
+      `${columns}x${rows} command overlay`,
+    )
     if (kitty) session.write('\u001b[112;5:3u')
     session.write('\u001b')
-    await sleep(100)
+    await waitFor(
+      () => !normalizeScreen(screen).includes('Commands'),
+      `${columns}x${rows} command overlay close`,
+      () => screen,
+    )
     if (helpDiagnostic) {
       session.write('/help\r')
       await waitFor(
-        () => output.includes('Kitty protocol unavailable'),
+        () => normalizeScreen(screen).includes('Kitty protocol unavailable'),
         `${columns}x${rows} keyboard fallback diagnostic`,
       )
       session.write('\u001b')
-      await sleep(100)
+      await waitFor(
+        () => !normalizeScreen(screen).includes('Kitty protocol unavailable'),
+        `${columns}x${rows} help close`,
+        () => screen,
+      )
     }
     if (bracketedPaste) session.write(`\u001b[200~${prompt}\u001b[201~`)
     else session.write(prompt)
     session.write('\r')
+    const expectedResult = normalizeScreen(`Fixture response through pi: ${prompt}`)
     await waitFor(
-      () => output.includes(`Fixture response through pi: ${prompt}`),
+      () => normalizeScreen(screen).includes(expectedResult),
       `${columns}x${rows} result`,
+      () => screen,
     )
     session.write('\u0003')
     await waitFor(
-      () => output.toLowerCase().includes('ctrl+c again to quit'),
+      () => normalizeScreen(screen).toLowerCase().includes('ctrl+c again to quit'),
       `${columns}x${rows} safe exit`,
     )
     session.write('\u0003')
@@ -133,6 +162,7 @@ async function run(columns, rows, options = {}) {
     if (expectNoMetadata) assertAccessibleTerminalOutput(output)
     return output
   } finally {
+    emulator.dispose()
     await rm(journalPath, { force: true })
   }
 }
@@ -198,11 +228,16 @@ async function runAutocompleteRace() {
       throw new Error('stale slash completion changed /profile before submit')
 
     session.write('\u001b')
-    await sleep(50)
+    await waitFor(
+      () => !normalizeScreen(screen).includes('^V valid'),
+      'autocomplete race profile close',
+      () => screen,
+    )
     session.write('\u0003')
     await waitFor(
       () => normalizeScreen(screen).toLowerCase().includes('ctrl+c again to quit'),
       'autocomplete race safe exit',
+      () => screen,
     )
     session.write('\u0003')
     const exit = await Promise.race([
