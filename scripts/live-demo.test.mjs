@@ -326,6 +326,53 @@ test('public capture rejects the credential patterns mirrored from the sanitizer
   assert.doesNotThrow(() => assertPublicCapture('public demo output with no credentials'))
 })
 
+test('normal PTY shutdown waits for the visible safe-quit prompt', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-live-demo-test-'))
+  const childPath = join(root, 'delayed-safe-quit.mjs')
+  let terminal
+  let closed = false
+  await writeFile(
+    childPath,
+    [
+      'process.stdin.setRawMode?.(true)',
+      'process.stdin.resume()',
+      'let armed = false',
+      'let arming = false',
+      "process.stdin.on('data', (data) => {",
+      '  for (const byte of data) {',
+      '    if (byte !== 3) continue',
+      '    if (armed) process.exit(0)',
+      '    if (arming) continue',
+      '    arming = true',
+      '    setTimeout(() => {',
+      '      armed = true',
+      "      process.stdout.write('Ctrl+C again to quit\\n')",
+      '    }, 400)',
+      '  }',
+      '})',
+      "process.stdout.write('ready\\n')",
+      '',
+    ].join('\n'),
+  )
+  try {
+    terminal = await createCapturedTerminal({
+      binary: childPath,
+      args: [],
+      cwd: root,
+      columns: 80,
+      rows: 24,
+      recordPath: join(root, 'frame.json'),
+      environment: {},
+    })
+    await terminal.waitForScreen((screen) => screen.includes('ready'), 'safe-quit test child')
+    await terminal.closeNormally()
+    closed = true
+  } finally {
+    if (!closed) await terminal?.dispose().catch(() => {})
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
 test('PTY disposal escalates after SIGTERM and waits for the child exit event', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-live-demo-test-'))
   const childPath = join(root, 'ignore-termination.mjs')

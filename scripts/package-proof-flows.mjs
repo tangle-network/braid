@@ -250,10 +250,15 @@ export async function runTerminal(binary, cwd, options) {
   session.write('\u0007')
   await waitFor(() => normalizedScreen().includes('conversation graph'), 'terminal graph')
   session.write('\u001b')
-  await sleep(30)
-  session.write('hello from package proof')
+  await waitFor(() => !normalizedScreen().includes('conversation graph'), 'closed terminal graph')
+  const retryPrompt = 'retry from package proof'
+  const retryResponse = `Fixture response through pi: ${retryPrompt}`
+  session.write(retryPrompt)
   session.write('\r')
-  await waitFor(() => normalizedScreen().includes('working'), 'terminal retry start')
+  await waitFor(
+    () => normalizedScreen().includes('working') || normalizedScreen().includes(retryResponse),
+    'terminal retry start',
+  )
   // Deterministic execution intentionally does not advertise live steering.
   session.write('/steer deterministic package proof')
   session.write('\r')
@@ -264,9 +269,7 @@ export async function runTerminal(binary, cwd, options) {
   session.write('\u001b')
   await sleep(30)
   await waitFor(
-    () =>
-      normalizedScreen().includes('Fixture response through pi: hello from package proof') &&
-      !normalizedScreen().includes('working'),
+    () => normalizedScreen().includes(retryResponse) && !normalizedScreen().includes('working'),
     'terminal retry completion',
   )
   session.write('cancel terminal proof')

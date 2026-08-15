@@ -170,12 +170,17 @@ export async function createCapturedTerminal(options) {
   }
   const closeNormally = async () => {
     if (exited) return
-    input('\u001b')
-    await pause(100)
-    input('\u001b')
-    await pause(100)
+    for (let layer = 0; layer < 4; layer += 1) {
+      input('\u001b')
+      await pause(250)
+      await waitForStable(`safe quit escape layer ${layer + 1}`)
+    }
     input('\u0003')
-    await pause(100)
+    await waitFor(
+      () => normalizeTerminal(screen).toLowerCase().includes('ctrl+c again to quit'),
+      'safe quit prompt',
+      10_000,
+    )
     input('\u0003')
     const result = await Promise.race([
       exitPromise,
