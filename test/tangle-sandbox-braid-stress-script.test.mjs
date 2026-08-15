@@ -95,11 +95,19 @@ test('cleanup recovers exactly one durable run after a lost send acknowledgement
 
 test('uses the Sandbox file API relative to its declared workspace root', () => {
   assert.equal(
-    sandboxWorkspaceRelativePath('/workspace/.braid-live/proof/challenge.txt'),
+    sandboxWorkspaceRelativePath('./.braid-live/proof/challenge.txt'),
     '.braid-live/proof/challenge.txt',
   )
-  assert.throws(() => sandboxWorkspaceRelativePath('/tmp/challenge.txt'), /below \/workspace\//u)
-  assert.throws(() => sandboxWorkspaceRelativePath('/workspace/'), /below \/workspace\//u)
+  assert.equal(
+    sandboxWorkspaceRelativePath('.braid-live/proof/challenge.txt'),
+    '.braid-live/proof/challenge.txt',
+  )
+  assert.throws(
+    () => sandboxWorkspaceRelativePath('/workspace/challenge.txt'),
+    /contained relative path/u,
+  )
+  assert.throws(() => sandboxWorkspaceRelativePath('../challenge.txt'), /contained relative path/u)
+  assert.throws(() => sandboxWorkspaceRelativePath(''), /contained relative path/u)
 })
 
 test('extracts exact control identity and an explicit provider cursor', () => {

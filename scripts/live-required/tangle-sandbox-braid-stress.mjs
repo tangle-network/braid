@@ -103,23 +103,29 @@ function sandboxConfiguration(environment) {
 }
 
 function workspaceMarkerPath(coordinates) {
-  return `/workspace/.braid-live/${coordinates.proofId}/marker.txt`
+  return `.braid-live/${coordinates.proofId}/marker.txt`
 }
 
 function continuityChallengePath(coordinates) {
-  return `/workspace/.braid-live/${coordinates.proofId}/continuity-challenge.txt`
+  return `.braid-live/${coordinates.proofId}/continuity-challenge.txt`
 }
 
 function continuityResponsePath(coordinates) {
-  return `/workspace/.braid-live/${coordinates.proofId}/continuity-response.txt`
+  return `.braid-live/${coordinates.proofId}/continuity-response.txt`
 }
 
 export function sandboxWorkspaceRelativePath(path) {
-  const prefix = '/workspace/'
-  if (!path.startsWith(prefix) || path.length === prefix.length) {
-    throw new Error(`Sandbox workspace path must be below ${prefix}`)
+  const normalized = path.startsWith('./') ? path.slice(2) : path
+  const segments = normalized.split('/')
+  if (
+    normalized.length === 0 ||
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error('Sandbox workspace path must be a contained relative path')
   }
-  return path.slice(prefix.length)
+  return normalized
 }
 
 function sha256(value) {
@@ -137,11 +143,11 @@ function proofPrompts(coordinates, holdMs) {
   const holdSeconds = Math.max(5, Math.ceil(holdMs / 1000))
   return {
     first: [
-      'Use the Tangle Sandbox workspace for every command in this turn.',
+      'Use the current Tangle Sandbox working directory for every command in this turn.',
       `Create ${path} and write exactly ${coordinates.marker} followed by a newline.`,
       `Read ${path}, print its contents, and prove the workspace is usable with a shell command.`,
-      'Run git -C /workspace rev-parse --is-inside-work-tree. If it fails, run git -C /workspace init.',
-      'Then run git -C /workspace rev-parse --is-inside-work-tree again and print its result.',
+      'Run git -C . rev-parse --is-inside-work-tree. If it fails, run git -C . init.',
+      'Then run git -C . rev-parse --is-inside-work-tree again and print its result.',
       `Execute the shell command sleep ${holdSeconds} before the final response to keep the run active.`,
       `Reply with exactly ${coordinates.marker}.`,
     ].join(' '),
@@ -220,7 +226,7 @@ async function verifyRetainedWorkspace(client, controlRef, coordinates, continui
     box.read(sandboxWorkspaceRelativePath(continuity.responsePath)),
   ])
   const git = await box.exec(
-    `set -eu; test "$(cat -- ${shellQuote(markerPath)})" = ${shellQuote(coordinates.marker)}; test "$(cat -- ${shellQuote(continuity.responsePath)})" = ${shellQuote(continuity.expectedDigest)}; test "$(git -C /workspace rev-parse --is-inside-work-tree)" = true; git -C /workspace status --short --untracked-files=no`,
+    `set -eu; test "$(cat -- ${shellQuote(markerPath)})" = ${shellQuote(coordinates.marker)}; test "$(cat -- ${shellQuote(continuity.responsePath)})" = ${shellQuote(continuity.expectedDigest)}; test "$(git -C . rev-parse --is-inside-work-tree)" = true; git -C . status --short --untracked-files=no`,
   )
   const gitExitCode = Number.isInteger(git?.exitCode)
     ? git.exitCode
