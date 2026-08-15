@@ -518,6 +518,7 @@ test('CLI Bridge routes preserve nested model ids below the selected provider', 
   assert.equal(qualifyBridgeProfileModel(qualified, 'tangle-router'), qualified)
   assert.equal(portableBridgeModel('pi', routed, 'tangle-router'), qualified)
   assert.equal(materializeBridgeModelRoute('pi', model, 'tangle-router'), routed)
+  assert.equal(materializeBridgeModelRoute('codex', 'codex/default', 'codex'), 'codex/default')
 })
 
 test('schema-v1 CLI Bridge profiles load as portable models and dispatch one runner prefix', async () => {

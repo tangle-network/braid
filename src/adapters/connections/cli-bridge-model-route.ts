@@ -35,7 +35,8 @@ export function materializeBridgeModelRoute(
   model: string,
   provider?: string,
 ): string {
-  return `${runner}/${portableBridgeModel(runner, model, provider)}`
+  const portable = portableBridgeModel(runner, model, provider)
+  return bridgeRouteRunner(portable) === runner ? portable : `${runner}/${portable}`
 }
 
 export interface BridgeCatalogTarget {
