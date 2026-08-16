@@ -1,7 +1,7 @@
 import type { BraidApplication } from '../app/application.js'
 import type { StartupPreview } from '../startup/preview-runtime.js'
-import type { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import type { BraidUiController } from '../views/shared/intents.js'
+import type { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 
 interface InterfaceSignalLifecycleInput {
@@ -16,6 +16,8 @@ interface InterfaceSignalLifecycleInput {
 export interface InterfaceSignalLifecycle {
   readonly interrupted: () => boolean
   readonly settle: () => Promise<void>
+  /** Temporarily route termination signals to a native terminal attachment. */
+  readonly takeOver: (handler: (exitCode: number) => void) => () => void
   readonly dispose: () => void
   readonly exitCode: () => number
 }
@@ -28,6 +30,8 @@ export function createInterfaceSignalLifecycle(
   let frameSnapshot = Promise.resolve()
   let signalCleanup: Promise<void> | undefined
   let disposed = false
+  let signalHandler: (exitCode: number) => void
+  let signalTakeoverActive = false
   const shutdownMode =
     process.env.BRAID_SHUTDOWN_MODE === 'detach' ? ('detach' as const) : ('cancel' as const)
   const configuredDeadline = Number(process.env.BRAID_SHUTDOWN_DEADLINE_MS ?? 5_000)
@@ -66,16 +70,19 @@ export function createInterfaceSignalLifecycle(
       }
     })()
   }
+  signalHandler = stopFromSignal
   const onFrameSnapshot = () => {
     if (input.recordState)
       frameSnapshot = frameSnapshot.then(() =>
         recordInterfaceState(`${input.recordState}.frame`, input.controller, 'atomic-signal-frame'),
       )
   }
-  const onInterrupt = () => stopFromSignal(130)
-  const onTerminate = () => stopFromSignal(143)
-  const onHangup = () => stopFromSignal(129)
-  const releaseTerminationSignals = input.startupPreview?.takeSignalOwnership(stopFromSignal)
+  const onInterrupt = () => signalHandler(130)
+  const onTerminate = () => signalHandler(143)
+  const onHangup = () => signalHandler(129)
+  const releaseTerminationSignals = input.startupPreview?.takeSignalOwnership((exitCode) =>
+    signalHandler(exitCode),
+  )
   if (releaseTerminationSignals === undefined) {
     process.once('SIGINT', onInterrupt)
     process.once('SIGTERM', onTerminate)
@@ -89,6 +96,25 @@ export function createInterfaceSignalLifecycle(
       await signalCleanup
       await signalSnapshot
       await frameSnapshot
+    },
+    takeOver: (handler: (exitCode: number) => void) => {
+      if (disposed) throw new Error('Termination signal lifecycle is closed')
+      if (signalTakeoverActive) throw new Error('Termination signals already have an active owner')
+      signalTakeoverActive = true
+      let pendingExitCode: number | undefined
+      let released = false
+      signalHandler = (exitCode) => {
+        if (pendingExitCode !== undefined) return
+        pendingExitCode = exitCode
+        handler(exitCode)
+      }
+      return () => {
+        if (released) return
+        released = true
+        signalTakeoverActive = false
+        signalHandler = stopFromSignal
+        if (pendingExitCode !== undefined) stopFromSignal(pendingExitCode)
+      }
     },
     dispose: () => {
       if (disposed) return

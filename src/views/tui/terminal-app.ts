@@ -57,6 +57,7 @@ export class BraidTerminalApp {
   #removeInputListener: (() => void) | undefined
   #stopped = false
   #started = false
+  #suspended = false
   #openConfigurationOnStart = false
   readonly #restoreTerminalOutputPolicy: () => void
   readonly #tuiStarted: boolean
@@ -209,9 +210,31 @@ export class BraidTerminalApp {
     return this.#done
   }
 
+  /** Release the local terminal while keeping application state and subscriptions alive. */
+  suspend(): void {
+    if (this.#stopped || !this.#started || this.#suspended) return
+    this.#suspended = true
+    this.#removeInputListener?.()
+    this.#removeInputListener = undefined
+    this.#tui.stop({ preserveScreen: true })
+  }
+
+  /** Reclaim the local terminal and redraw the same Braid application state. */
+  resume(): void {
+    if (this.#stopped || !this.#started || !this.#suspended) return
+    this.#suspended = false
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
+    this.#tui.start()
+    if (this.#modals.hasOpen()) this.#modals.focusTop()
+    else this.#tui.setFocus(this.#shell.editor)
+    this.#render(this.#controller.view())
+    this.#tui.requestRender(true)
+  }
+
   stop(): void {
     if (this.#stopped) return
     this.#stopped = true
+    this.#suspended = false
     this.#overlays.dispose()
     this.#interactions.dispose()
     this.#input.close()

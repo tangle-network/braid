@@ -260,6 +260,39 @@ test('the real Braid root renders and sends at all four reference sizes', async 
   }
 })
 
+test('terminal suspension releases input and resumes the same composer state', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'operation-terminal-suspend',
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('before attach')
+    assert.equal(view.editor.getText(), 'before attach')
+
+    view.suspend()
+    terminal.sendInput(' ignored')
+    assert.equal(view.editor.getText(), 'before attach')
+
+    view.resume()
+    terminal.sendInput(' after')
+    assert.equal(view.editor.getText(), 'before attach after')
+    await terminal.waitForRender()
+    assert.match(terminal.getViewport().join('\n'), /before attach after/u)
+  } finally {
+    view.stop()
+    await done
+    await app.close()
+  }
+})
+
 test('composer fallback steers exactly once without queueing or sending', async () => {
   const harness = await startSteeringTerminal()
   try {
