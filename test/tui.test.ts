@@ -431,7 +431,9 @@ test('the searchable command overlay restores editor focus after close', async (
   assert.doesNotMatch(overlay, /alt\+enter newline/u)
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /profile Braid starter.*\/ commands/u)
+  const restored = terminal.getViewport().join('\n')
+  assert.match(restored, /profile Braid starter/u)
+  assert.match(restored, /type \/ for commands/u)
   terminal.sendInput('focus restored')
   assert.equal(view.editor.getText(), 'focus restored')
 

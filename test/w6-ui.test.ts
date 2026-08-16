@@ -320,7 +320,7 @@ test('stable chrome keeps identity and status outside transcript history', () =>
   assert.match(standard[0] ?? '', /reviewer.*pi/u)
   assert.match(standard[0] ?? '', /via local/u)
   assert.doesNotMatch(standard[0] ?? '', /fixture|deterministic fixture/u)
-  assert.match(standard[0] ?? '', /\/ commands/u)
+  assert.doesNotMatch(standard[0] ?? '', /\/ commands/u)
   assert.doesNotMatch(standard[0] ?? '', /Ctrl\+P/u)
   const wide = chrome.render(120).join('\n')
   assert.match(wide, /reviewer · pi · local/u)
