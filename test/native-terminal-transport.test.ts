@@ -169,8 +169,31 @@ class FakeSession implements AgentTerminalSession {
   }
 }
 
-function fixture() {
-  const session = new FakeSession()
+class HungInputSession extends FakeSession {
+  inputStarted: (() => void) | undefined
+  inputSignal: AbortSignal | undefined
+
+  override input(input: TerminalInput, options?: { signal?: AbortSignal }): Promise<void> {
+    this.inputs.push(input)
+    this.inputSignal = options?.signal
+    this.inputStarted?.()
+    return new Promise<void>(() => {})
+  }
+}
+
+class HungResizeSession extends FakeSession {
+  resizeStarted: (() => void) | undefined
+  resizeSignal: AbortSignal | undefined
+
+  override resize(resize: TerminalResize, options?: { signal?: AbortSignal }): Promise<void> {
+    this.resizes.push(resize)
+    this.resizeSignal = options?.signal
+    this.resizeStarted?.()
+    return new Promise<void>(() => {})
+  }
+}
+
+function fixture(session: FakeSession = new FakeSession()) {
   const terminal = new FakeTerminal()
   const signals = new FakeSignals()
   const transport = createNativeTerminalTransport({ session, terminal, signals })
@@ -183,6 +206,23 @@ async function started(terminal: FakeTerminal): Promise<void> {
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
   assert.fail('transport did not start the local terminal')
+}
+
+async function settlesWithin<T>(promise: Promise<T>, timeoutMs = 250): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`promise did not settle within ${timeoutMs}ms`)),
+          timeoutMs,
+        )
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
 }
 
 test('forwards output and restores terminal and signal state', async () => {
@@ -246,6 +286,49 @@ test('detaches on Ctrl+] and leaves the remote process running', async () => {
   assert.equal(session.detachCount, 1)
   assert.equal(session.closeCount, 0)
   assert.equal(terminal.stopCount, 1)
+})
+
+test('detaches promptly when an in-flight input never settles', async () => {
+  const session = new HungInputSession()
+  const inputStarted = new Promise<void>((resolve) => {
+    session.inputStarted = resolve
+  })
+  const { terminal, transport } = fixture(session)
+  const running = transport.run()
+  await started(terminal)
+  terminal.input('before detach')
+  await inputStarted
+  terminal.input('\u001d')
+
+  const result = await settlesWithin(running)
+  assert.deepEqual(result.outcome, { kind: 'detached', sessionId, trigger: 'user' })
+  assert.equal(result.cleanup.remote, 'detached')
+  assert.equal(terminal.stopCount, 1)
+  assert.equal(session.detachCount, 1)
+  assert.equal(session.inputSignal?.aborted, true)
+})
+
+test('stops promptly and cancels queued resizes when one resize never settles', async () => {
+  const session = new HungResizeSession()
+  const resizeStarted = new Promise<void>((resolve) => {
+    session.resizeStarted = resolve
+  })
+  const { terminal, transport } = fixture(session)
+  const controller = new AbortController()
+  const running = transport.run({ signal: controller.signal })
+  await started(terminal)
+  terminal.resize(132, 43)
+  await resizeStarted
+  terminal.resize(160, 50)
+  controller.abort()
+
+  const result = await settlesWithin(running)
+  assert.deepEqual(result.outcome, { kind: 'aborted', sessionId, source: 'caller' })
+  assert.equal(result.cleanup.remote, 'detached')
+  assert.equal(terminal.stopCount, 1)
+  assert.equal(session.detachCount, 1)
+  assert.deepEqual(session.resizes, [{ cols: 132, rows: 43 }])
+  assert.equal(session.resizeSignal?.aborted, true)
 })
 
 test('reports a remote exit without detaching or closing it', async () => {

@@ -57,7 +57,7 @@ test('numeric token telemetry survives redaction while string tokens never do', 
     totalTokens: 34,
     cachedPromptTokens: 5,
     cacheWriteTokens: 3,
-    model: { maxVisibleOutputTokens: 4096 },
+    model: { maxVisibleOutputTokens: 4096, maxTotalOutputTokens: 8192 },
     tokenUsage: { input: 21, output: 13 },
     accessToken: 'secret-canary',
     poisoned: { inputTokens: 'secret-canary' },
@@ -70,7 +70,7 @@ test('numeric token telemetry survives redaction while string tokens never do', 
   assert.equal(redacted.totalTokens, 34)
   assert.equal(redacted.cachedPromptTokens, 5)
   assert.equal(redacted.cacheWriteTokens, 3)
-  assert.deepEqual(redacted.model, { maxVisibleOutputTokens: 4096 })
+  assert.deepEqual(redacted.model, { maxVisibleOutputTokens: 4096, maxTotalOutputTokens: 8192 })
   assert.deepEqual(redacted.tokenUsage, { input: 21, output: 13 })
   assert.equal(redacted.accessToken, '[redacted]')
   assert.deepEqual(redacted.poisoned, { inputTokens: '[redacted]' })
@@ -159,7 +159,7 @@ test('plain structured redaction preserves only the exact aggregate token counte
   )
 })
 
-test('profile redaction keeps first-class limits and hides model metadata', () => {
+test('profile redaction preserves maxVisibleOutputTokens and maxTotalOutputTokens', () => {
   const redacted = redactProfile({
     name: 'Public model settings',
     model: {

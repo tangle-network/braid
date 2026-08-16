@@ -44,7 +44,8 @@ async function runTransport(
   let terminalStartAttempted = false
   let outcome: NativeTerminalTransportOutcome | undefined
   let signalRelease: (() => void) | undefined
-  let operationTail = Promise.resolve()
+  let forwardingBusy = false
+  let forwardingTail = Promise.resolve()
   let detachRequested = false
   let settleOutcome: (value: NativeTerminalTransportOutcome) => void = () => {}
   const outcomeReady = new Promise<NativeTerminalTransportOutcome>((resolve) => {
@@ -61,17 +62,24 @@ async function runTransport(
     phase: Extract<NativeTerminalTransportPhase, 'input' | 'resize'>,
     operation: () => Promise<void>,
   ): void => {
-    operationTail = operationTail
-      .then(() => (finished ? undefined : operation()))
-      .catch((error) => finish(transportError(sessionId, phase, error)))
+    const run = async (): Promise<void> => {
+      if (finished) return
+      forwardingBusy = true
+      try {
+        await operation()
+      } catch (error) {
+        finish(transportError(sessionId, phase, error))
+      } finally {
+        forwardingBusy = false
+      }
+    }
+    forwardingTail = forwardingBusy ? forwardingTail.then(run) : run()
   }
   const requestDetach = (): void => {
     if (detachRequested || finished) return
     detachRequested = true
-    const precedingOperations = operationTail
-    void precedingOperations.then(() => {
-      if (!finished) finish({ kind: 'detached', sessionId, trigger: 'user' })
-    })
+    // Finish immediately so the lifecycle aborts in-flight forwarding and skips queued operations.
+    finish({ kind: 'detached', sessionId, trigger: 'user' })
   }
   const onInput = (data: string): void => {
     if (finished) return
