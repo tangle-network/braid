@@ -17,6 +17,8 @@ interface BrokerEntry {
   opened: boolean
 }
 
+export type NativeInteractiveRunSettlement = 'settled' | 'absent' | 'already-settled'
+
 export interface NativeInteractiveRunLease {
   publish(handle: RetainedInteractiveRunHandle): void
   outcome(options?: { readonly signal?: AbortSignal }): Promise<NativeInteractiveRunOutcome>
@@ -61,15 +63,12 @@ export class NativeInteractiveRunBroker implements NativeInteractiveExecutionCon
     return abortable(this.#entry(runId).handle.promise, options?.signal)
   }
 
-  settle(runId: string, outcome: NativeInteractiveRunOutcome): void {
+  settle(runId: string, outcome: NativeInteractiveRunOutcome): NativeInteractiveRunSettlement {
     const entry = this.#entries.get(runId)
-    if (entry === undefined || !entry.opened) {
-      throw new Error(`Interactive run ${runId} has no active execution`)
-    }
-    if (entry.outcome.settled) {
-      throw new Error(`Interactive run ${runId} already has a terminal outcome`)
-    }
+    if (entry === undefined || !entry.opened) return 'absent'
+    if (entry.outcome.settled) return 'already-settled'
     entry.outcome.resolve(structuredClone(outcome))
+    return 'settled'
   }
 
   #entry(runId: string): BrokerEntry {
