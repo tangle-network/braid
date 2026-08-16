@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
-import { captureProductDemo } from './capture-product-demo.mjs'
 import { createStateDefinitions } from './capture-visual-definitions.mjs'
 import {
   captureProvenance,
@@ -212,9 +211,10 @@ async function spawnTerminal(
   }
   const waitForStable = (label = 'settled terminal frame') =>
     waitFor(() => pendingWrites === 0 && performance.now() - lastOutputAt >= 75, `${name} ${label}`)
+  const fullInterfaceMarker = uiFixture === 'interaction' ? '↑↓ move' : 'type / for commands'
   const waitForInterface = () =>
     waitFor(
-      () => output.includes('\u001b[?1049h') && output.includes('›'),
+      () => output.includes('\u001b[?1049h') && output.includes(fullInterfaceMarker),
       `${name} full interface handoff`,
       15_000,
     )
@@ -578,26 +578,6 @@ try {
   await writeCastGif(join(rawRoot, 'automation-frame.cast'), automationGif)
   artifacts.push(await artifactFor(automationGif, 'automation-flow', 80, 24, 'automation'))
 
-  const productDemo = await captureProductDemo({ spawnTerminal, normalized, castFor })
-  const productDemoCast = join(rawRoot, 'braid-demo.cast')
-  const productFrameCast = join(rawRoot, 'braid-demo-frame.cast')
-  const productText = join(outputRoot, 'braid.txt')
-  const productPng = join(outputRoot, 'braid.png')
-  const productGif = join(outputRoot, 'braid.gif')
-  const productRasterGif = join(rawRoot, 'braid-demo-frame.gif')
-  await writeFile(productDemoCast, productDemo.demoCast)
-  await writeFile(productFrameCast, productDemo.frameCast)
-  await writeFile(productText, productDemo.finalScreen)
-  await writeRaster(productFrameCast, productPng, productRasterGif)
-  await writeCastGif(productDemoCast, productGif, { loop: true })
-  const productArtifacts = [
-    await artifactFor(productDemoCast, 'product-asciicast', productDemo.columns, productDemo.rows),
-    await artifactFor(productText, 'product-frame', productDemo.columns, productDemo.rows),
-    await artifactFor(productPng, 'product-png', productDemo.columns, productDemo.rows),
-    await artifactFor(productGif, 'product-flow', productDemo.columns, productDemo.rows),
-  ]
-  artifacts.push(...productArtifacts)
-
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
   const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
@@ -623,17 +603,13 @@ try {
         tarball: packed.tarballName,
         tarballSha256: packed.tarballSha256,
         stateFixture: 'deterministic',
-        productDemoSource: 'live Pi through CLI Bridge',
+        liveDemoCommand: 'pnpm capture:demo:live',
         terminal: 'node-pty/xterm-256color',
         node: process.version,
         provenance,
         keyboardFlow: {
           steps: keyboardFlow.steps,
           artifacts: keyboardArtifacts.map((artifact) => artifact.path),
-        },
-        productDemo: {
-          steps: productDemo.steps,
-          artifacts: productArtifacts.map((artifact) => artifact.path),
         },
         states: stateManifests,
         artifacts,

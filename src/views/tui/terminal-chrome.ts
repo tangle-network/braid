@@ -53,13 +53,15 @@ export class TerminalChrome implements Component {
     const mode = terminalContextModeForColumns(safeWidth)
     const target = executionTargetFor(view)
     const transientNotice = state.quitArmed ? undefined : transientNoticeFor(view)
-    if (transientNotice !== undefined) {
+    if (mode === 'narrow' && transientNotice !== undefined) {
       return [fitTerminalAtomic(statusText(this.#theme, view, transientNotice), safeWidth)]
     }
-    const statusValue = conciseStatus(view, state.quitArmed, mode)
+    const statusValue = transientNotice ?? conciseStatus(view, state.quitArmed, mode)
     const status = statusText(this.#theme, view, statusValue)
     const navigation =
-      mode === 'narrow' ? '' : navigationHint(view, state.navigationHint, state.composerMode, mode)
+      mode === 'narrow' || transientNotice !== undefined
+        ? ''
+        : navigationHint(view, state.navigationHint, state.composerMode, mode)
     const hint = terminalValuePart(this.#theme, navigation)
     const executionFacts = executionFactsFor(target)
     const measured =
@@ -86,6 +88,8 @@ export class TerminalChrome implements Component {
         ? {}
         : { maxTotalOutputTokens: target.maxTotalOutputTokens }),
     } as const
+    const noticeRow =
+      transientNotice === undefined ? undefined : fitTerminalAtomic(status, safeWidth)
     const measuredOnRow1 =
       mode === 'wide' &&
       measured.length > 0 &&
@@ -104,16 +108,18 @@ export class TerminalChrome implements Component {
     const row1 = renderTerminalContext(
       this.#theme,
       identity,
-      right,
+      noticeRow === undefined ? right : [],
       safeWidth,
       mode === 'narrow' || state.quitArmed ? 'right' : 'left',
     )
-    if (mode !== 'wide') return [row1]
+    if (mode !== 'wide') return noticeRow === undefined ? [row1] : [row1, noticeRow]
     const row2Facts = executionFacts.map((fact) => terminalValuePart(this.#theme, fact))
     const row2Measured = measuredOnRow1 ? [] : measured
-    if (row2Facts.length === 0 && row2Measured.length === 0) return [row1]
+    if (row2Facts.length === 0 && row2Measured.length === 0) {
+      return noticeRow === undefined ? [row1] : [row1, noticeRow]
+    }
     const row2 = fitTerminalColumns(row2Facts, row2Measured, safeWidth, 'right')
-    return row2.length === 0 ? [row1] : [row1, row2]
+    return [row1, ...(noticeRow === undefined ? [] : [noticeRow]), ...(row2 ? [row2] : [])]
   }
 }
 
@@ -181,7 +187,7 @@ function finiteNonNegative(value: number | undefined): number | undefined {
 
 function statusText(theme: BraidTheme, view: BraidViewModel, value: string): string {
   const safe = sanitizeNotification(value)
-  if (value === 'outcome unknown') return theme.warning(safe)
+  if (value === 'outcome unverified') return theme.warning(safe)
   if (view.status === 'failed' || view.status === 'storage-failure') return theme.danger(safe)
   if (view.status === 'running' || view.status === 'waiting' || view.status === 'cancelling')
     return theme.warning(safe)
@@ -195,7 +201,7 @@ function conciseStatus(
   mode: ReturnType<typeof terminalContextModeForColumns>,
 ): string {
   if (quitArmed) return 'Ctrl+C again to quit'
-  if (terminalOutcomeIsUnknown(view)) return 'outcome unknown'
+  if (terminalOutcomeIsUnknown(view)) return 'outcome unverified'
   const status = view.status
   if (status === 'starting')
     return mode === 'narrow' ? 'starting · Ctrl+C stop' : 'starting · Ctrl+C cancel'

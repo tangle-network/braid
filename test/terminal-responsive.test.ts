@@ -301,8 +301,37 @@ test('chrome exposes active-run controls and failure recovery without hiding out
   })
   const uncertain = chrome.render(80).join('\n')
   assert.match(uncertain, /profile Release engineer · pi \/ gpt-5\.6-luna/u)
-  assert.match(uncertain, /outcome unknown/u)
+  assert.match(uncertain, /outcome unverified/u)
   assert.doesNotMatch(uncertain, /failed|\/new/u)
+})
+
+test('completed notices preserve the persistent route and measured context', () => {
+  const base = viewForChrome()
+  const chrome = new TerminalChrome(theme)
+  chrome.setState({
+    view: {
+      ...base,
+      notice: 'Prepared markdown export',
+      statusText: 'Prepared markdown export',
+    },
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: '/ commands · Ctrl+P',
+    composerMode: 'queue',
+  })
+
+  const standard = chrome.render(80).join('\n')
+  assert.match(standard, /profile Release engineer · pi \/ gpt-5\.6-luna/u)
+  assert.match(standard, /via Local CLI Bridge/u)
+  assert.match(standard, /Prepared markdown export/u)
+  assert.doesNotMatch(standard, /\/ commands|Ctrl\+P/u)
+
+  const wide = chrome.render(120).join('\n')
+  assert.match(wide, /profile Release engineer · pi \/ openai-codex\/gpt-5\.6-luna/u)
+  assert.match(wide, /Local CLI Bridge/u)
+  assert.match(wide, /Prepared markdown export/u)
+  assert.match(wide, /in 1\.2k/u)
+  assert.match(wide, /out 567/u)
 })
 
 test('layout breakpoints preserve transcript room and short-terminal overlays', () => {

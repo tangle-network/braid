@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "state": "analysis",
+  "state": "command-palette-40",
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
@@ -8,8 +8,8 @@
     "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
   },
   "dimensions": {
-    "columns": 80,
-    "rows": 24
+    "columns": 40,
+    "rows": 12
   },
   "terminal": "node-pty/xterm-256color",
   "provenance": {
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " analyses › /ask · frozen question   Braid starter · pi · fixture/deterministic\n────────────────────────────────────────────────────────────────────────────────\n source: da8ae2345b2c17a…7c9190eb · frozen\n analyst: profile-trace-reviewer · completed\n ── question\n Where did this run waste time, and what should change?\n ── findings\n 1. [1] Profile inspection and route resolution ran serially although their\n inputs were independent. · medium · confidence 0.94\n ↳ [1] profile.inspect completed before runtime.route started · event\n event-runtime-r…te-start\n 2. [2] The answer claimed success before the packaged terminal check completed.\n · high · confidence 0.88\n ↳ [2] package check started; no terminal result was recorded · event\n event-package-c…ck-start\n ── next\n next: ask a narrower question, or use /compare <left> <right> against another\n frozen run\n ── run receipt\n source complete: yes\n findings: 2\n analysis cost: $0.0048\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2 · tab: analyses\n",
+  "frame": " Commands\n────────────────────────────────────────\n>\n→ /new\n  /open\n  /profile\n  /connection\n  /runner\n  /model\n  (1/29)\n────────────────────────────────────────\n enter choose · ←/esc close\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -142,7 +142,7 @@
       ],
       "branch": "branch-1",
       "status": "empty",
-      "statusText": "Analysis complete: 2 cited findings",
+      "statusText": "ready for a message",
       "queueCount": 0,
       "queue": [],
       "messages": [],
@@ -192,19 +192,7 @@
       },
       "environments": [],
       "interactions": [],
-      "activity": [
-        {
-          "id": "analysis:analysis-fixture-1",
-          "kind": "analysis",
-          "title": "/ask · frozen question",
-          "status": "complete",
-          "detail": "Where did this run waste time, and what should change?",
-          "occurredAt": "2026-08-04T04:00:01.240Z",
-          "runId": "run-cli-bridge-reconnect",
-          "entityType": "analysis",
-          "entityId": "analysis-fixture-1"
-        }
-      ],
+      "activity": [],
       "graph": [
         {
           "id": "conv-1",
@@ -229,39 +217,7 @@
         }
       ],
       "graphQuery": "",
-      "entityDetails": [
-        {
-          "entityType": "analysis",
-          "entityId": "analysis-fixture-1",
-          "title": "/ask · frozen question",
-          "status": "completed",
-          "lines": [
-            "source: da8ae2345b2c17a…7c9190eb · frozen",
-            "analyst: profile-trace-reviewer · completed",
-            "── question",
-            "Where did this run waste time, and what should change?",
-            "── findings",
-            "1. [1] Profile inspection and route resolution ran serially although their inputs were independent. · medium · confidence 0.94",
-            "↳ [1] profile.inspect completed before runtime.route started · event event-runtime-r…te-start",
-            "2. [2] The answer claimed success before the packaged terminal check completed. · high · confidence 0.88",
-            "↳ [2] package check started; no terminal result was recorded · event event-package-c…ck-start",
-            "── next",
-            "next: ask a narrower question, or use /compare <left> <right> against another frozen run",
-            "── run receipt",
-            "source complete: yes",
-            "findings: 2",
-            "analysis cost: $0.0048",
-            "analysis time: 1240ms"
-          ],
-          "analysisFindingCount": 2,
-          "analysisSupportedFindingCount": 2,
-          "analysisCitationSupport": "unavailable",
-          "analysisExecution": {
-            "observedModels": [],
-            "wallTimeMs": 1240
-          }
-        }
-      ],
+      "entityDetails": [],
       "capabilities": {
         "conversation.create": {
           "available": true,
@@ -296,8 +252,9 @@
           "source": "application"
         },
         "analysis.ask": {
-          "available": true,
-          "source": "application"
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
         },
         "analysis.recipe": {
           "available": false,
@@ -400,8 +357,7 @@
         "color": "256",
         "highContrast": false,
         "reducedMotion": false
-      },
-      "notice": "Analysis complete: 2 cited findings"
+      }
     },
     "events": [
       {

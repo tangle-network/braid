@@ -1,6 +1,6 @@
- conversation graph · 2               Braid starter · pi · fixture/deterministic
+ conversation graph · 2              Braid starter · pi · fixture/deterministic
 ────────────────────────────────────────────────────────────────────────────────
-   ✓ New conversation · conversation · complete · ─attached→
+   ✓ ▾ New conversation · conversation · complete · ─attached→
  ›   └ ✓ Main · branch · complete · current · ─attached→
 
 
@@ -21,4 +21,4 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────
- ↑↓ move · enter/→ open · ←/esc close
+ ↑↓ move · enter/→ open · ←/esc close · space collapse · w waiting

@@ -1,12 +1,12 @@
 
+
+
+
  Ask Braid starter anything.
 
+────────────────────────────────────────
+› new message
 
 
-
-
-
-›
-
-
-Braid starter            Ctrl+P commands
+ type / for commands · Alt+Enter newlin…
+Braid starter

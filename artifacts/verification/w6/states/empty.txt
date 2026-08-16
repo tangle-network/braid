@@ -1,24 +1,24 @@
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
  Ask Braid starter anything.
 
+────────────────────────────────────────────────────────────────────────────────
+› new message
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-›
-
-
-profile Braid starter · pi / deterministic                       Ctrl+P commands
+─────────────── type / for commands · Alt+Enter newline · paste ────────────────
+profile Braid starter · pi · via local

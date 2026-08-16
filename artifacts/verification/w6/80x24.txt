@@ -16,9 +16,9 @@
 
 
 
+────────────────────────────────────────────────────────────────────────────────
+› new message
 
 
-›
-
-
-profile Braid starter · pi / deterministic                         Ctrl+E detail
+─────────────── type / for commands · Alt+Enter newline · paste ────────────────
+profile Braid starter · pi · via local                            Ctrl+E details

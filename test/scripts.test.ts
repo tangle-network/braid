@@ -69,6 +69,31 @@ test('W5 exposes stable checks for every requested release surface', () => {
   for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
 })
 
+test('deterministic visual capture stays separate from the explicit live demo', async () => {
+  const [visualSource, liveDemoSource] = await Promise.all([
+    readFile(new URL('../../scripts/capture-visual.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../scripts/live-demo.mjs', import.meta.url), 'utf8'),
+  ])
+
+  assert.equal(
+    packageJson.scripts['capture:visual'],
+    'pnpm run build && node scripts/capture-visual.mjs',
+  )
+  assert.equal(
+    packageJson.scripts['capture:demo:live'],
+    'pnpm run build && node scripts/live-demo.mjs',
+  )
+  assert.match(visualSource, /--fixture', 'deterministic'/u)
+  assert.match(visualSource, /fullInterfaceMarker = uiFixture === 'interaction'\s*\? '↑↓ move'/u)
+  assert.match(visualSource, /output\.includes\(fullInterfaceMarker\)/u)
+  assert.doesNotMatch(visualSource, /output\.includes\('›'\)/u)
+  assert.match(visualSource, /stateFixture: 'deterministic'/u)
+  assert.match(visualSource, /liveDemoCommand: 'pnpm capture:demo:live'/u)
+  assert.doesNotMatch(visualSource, /capture-product-demo|productDemo/u)
+  assert.match(liveDemoSource, /BRAID_LIVE_DEMO_ENDPOINT/u)
+  assert.match(liveDemoSource, /assertPublicCapture/u)
+})
+
 test('active streaming capture waits for a terminal run state before exiting', async () => {
   let screen = 'working'
   let cancelled = false
