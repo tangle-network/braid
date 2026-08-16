@@ -5,6 +5,7 @@ import type {
   InteractionResponseCommand,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
+import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import type {
   RequestedInteractions,
   RetainedRunAdmissionRecord,
@@ -61,6 +62,13 @@ export interface ProviderRunSnapshot {
   readonly detail?: string
 }
 
+/** Durable public data needed to reconstruct one retained execution after restart. */
+export interface RetainedExecutionRecoveryContext {
+  readonly retainedAdmission?: RetainedRunAdmissionRecord
+  readonly receipt?: RunAdmissionReceipt
+  readonly workspaceRoot?: string
+}
+
 export interface ControlAcknowledgement {
   readonly operationId: string
   readonly outcome: 'accepted' | 'already-applied' | 'rejected' | 'unknown'
@@ -114,7 +122,7 @@ export interface ExecutionPort {
     readonly providerSessionId?: string
     readonly controlRef?: AgentExactRunControlRef
     readonly signal?: AbortSignal
-  }): Promise<ProviderRunSnapshot | null>
+  } & RetainedExecutionRecoveryContext): Promise<ProviderRunSnapshot | null>
   respondInteraction?(input: {
     readonly command: InteractionResponseCommand
     readonly signal?: AbortSignal
@@ -126,7 +134,8 @@ export interface ExecutionPort {
     readonly providerSessionId?: string
     readonly controlRef?: AgentExactRunControlRef
     readonly signal: AbortSignal
-  }): AsyncIterable<RuntimeEventEnvelope>
+    readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
+  } & RetainedExecutionRecoveryContext): AsyncIterable<RuntimeEventEnvelope>
   nativeBoundary?(input: {
     readonly runId: string
     readonly sessionId: string

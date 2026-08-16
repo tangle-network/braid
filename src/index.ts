@@ -3,6 +3,16 @@ export {
   type AgentTurnBackendResolver,
 } from './adapters/runtime/agent-runtime-execution.js'
 export { createNativeTerminalTransport } from './adapters/tui/native-terminal-transport.js'
+export type {
+  NativeInteractiveAvailability,
+  NativeInteractiveCommand,
+  NativeInteractiveCommandResult,
+  NativeInteractiveUiActions,
+} from './ports/native-interactive-ui.js'
+export type {
+  NativeInteractiveExecutionControl,
+  NativeInteractiveRunOutcome,
+} from './ports/native-interactive-execution.js'
 export {
   AppError,
   BraidApplication,

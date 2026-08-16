@@ -16,6 +16,8 @@ export const UNSUPPORTED = Object.freeze({
   'analysis.compare': 'Comparisons require the current agent-eval adapter',
   'interaction.respond': 'Interaction response is not exposed by the current runtime adapter',
   'interaction.automation': 'Interaction automation requires the shared response contract',
+  'run.interactive': 'Native terminal mode requires an interactive TUI and a supported provider',
+  'run.attach': 'Native terminal attachment requires an interactive TUI and a retained session',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
 } satisfies Readonly<Record<string, string>>)
 

@@ -12,6 +12,7 @@ import {
 } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
+import type { NativeInteractiveUiActions } from '../../ports/native-interactive-ui.js'
 import { executionTargetFor } from './execution-target.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
@@ -27,6 +28,7 @@ export interface TerminalCommandControllerOptions {
   readonly isStopped: () => boolean
   readonly stop: () => void
   readonly composerMode: () => ComposerMode
+  readonly nativeInteractive?: NativeInteractiveUiActions
 }
 
 /** Owns prompt parsing and command routing; it never owns terminal layout. */
@@ -40,6 +42,7 @@ export class TerminalCommandController {
   readonly #isStopped: () => boolean
   readonly #stop: () => void
   readonly #composerMode: () => ComposerMode
+  readonly #nativeInteractive: NativeInteractiveUiActions | undefined
 
   constructor(options: TerminalCommandControllerOptions) {
     this.#controller = options.controller
@@ -51,6 +54,7 @@ export class TerminalCommandController {
     this.#isStopped = options.isStopped
     this.#stop = options.stop
     this.#composerMode = options.composerMode
+    this.#nativeInteractive = options.nativeInteractive
   }
 
   submit(rawText: string): void {
@@ -117,6 +121,10 @@ export class TerminalCommandController {
   }
 
   async #dispatchCommandValue(command: CommandName, args: readonly string[]): Promise<void> {
+    if (command === 'interactive' || command === 'attach') {
+      await this.#runNativeInteractive(command, args)
+      return
+    }
     if (command === 'profile' && args.length === 0) {
       this.#overlays.openProfile()
       return
@@ -208,6 +216,45 @@ export class TerminalCommandController {
         intelligenceProgress?.complete(result.data)
       }
     })
+  }
+
+  async #runNativeInteractive(
+    command: 'interactive' | 'attach',
+    args: readonly string[],
+  ): Promise<void> {
+    const action = command === 'interactive' ? 'start' : 'attach'
+    const actions = this.#nativeInteractive
+    const availability = actions?.availability(action) ?? {
+      available: false,
+      reason: 'Native terminal mode is unavailable in this interface',
+    }
+    if (!availability.available) {
+      this.#overlays.openUnavailable(`/${command}`, availability.reason ?? 'Unavailable')
+      return
+    }
+    await this.#drafts.flush()
+    let result: Awaited<ReturnType<NativeInteractiveUiActions['run']>>
+    try {
+      result = await actions!.run(
+        command === 'interactive'
+          ? {
+              action: 'start',
+              ...(args.length === 0 ? {} : { initialPrompt: args.join(' ') }),
+            }
+          : { action: 'attach', ...(args[0] === undefined ? {} : { runId: args[0] }) },
+      )
+    } catch (error) {
+      this.#overlays.openUnavailable(
+        `/${command}`,
+        error instanceof Error ? error.message : 'Native terminal operation failed',
+      )
+      return
+    }
+    if (result.kind === 'unavailable') {
+      this.#overlays.openUnavailable(`/${command}`, result.reason)
+    } else if (result.kind === 'error') {
+      this.#overlays.openUnavailable(`/${command}`, result.message)
+    }
   }
 }
 

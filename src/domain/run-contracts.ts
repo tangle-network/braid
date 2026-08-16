@@ -4,30 +4,15 @@ import type {
   AgentProfile,
   RequestedInteractions,
 } from '@tangle-network/agent-interface'
+import type {
+  RetainedInteractiveAdmission,
+  RetainedRunAdmission,
+} from '@tangle-network/agent-runtime/kernel'
 
 export type { RequestedInteractions } from '@tangle-network/agent-interface'
 
-export interface RetainedRunEnvironmentAdmissionRecord {
-  readonly phase: 'environment'
-  readonly provider: string
-  readonly environmentId: string
-  readonly idempotencyKey: string
-  readonly turnId: string
-  readonly sessionId: string
-  readonly executionId: string
-}
-
-export interface RetainedRunDispatchedAdmissionRecord {
-  readonly phase: 'dispatched'
-  readonly controlRef: AgentExactRunControlRef
-  readonly idempotencyKey: string
-  readonly turnId: string
-}
-
-/** Product-owned recovery data that Runtime requires Braid to persist before proceeding. */
-export type RetainedRunAdmissionRecord =
-  | RetainedRunEnvironmentAdmissionRecord
-  | RetainedRunDispatchedAdmissionRecord
+/** Canonical Runtime recovery data that Braid persists before Runtime may proceed. */
+export type RetainedRunAdmissionRecord = RetainedRunAdmission | RetainedInteractiveAdmission
 
 export type RetainedRunAdmissionRecorder = (admission: RetainedRunAdmissionRecord) => Promise<void>
 

@@ -22,6 +22,7 @@ import { TerminalInteractionController } from './terminal-interaction-controller
 import { TerminalOverlayController } from './terminal-overlays.js'
 import { BraidShell } from './terminal-shell.js'
 import type { BraidTheme } from './theme.js'
+import type { NativeInteractiveUiActions } from '../../ports/native-interactive-ui.js'
 
 export interface BraidTerminalOptions {
   readonly controller: BraidUiController
@@ -36,6 +37,7 @@ export interface BraidTerminalOptions {
   readonly onFrameTiming?: (timing: UiFrameTiming) => void
   readonly tuiStarted?: boolean
   readonly preinstalledOutputPolicyCleanup?: () => void
+  readonly nativeInteractive?: NativeInteractiveUiActions
 }
 
 export class BraidTerminalApp {
@@ -96,7 +98,21 @@ export class BraidTerminalApp {
     const autocomplete = new GuardedAutocompleteProvider(
       new DynamicAutocompleteProvider({
         commands: () =>
-          commandItems(this.#controller.view().capabilities).map((item) => ({
+          commandItems({
+            ...this.#controller.view().capabilities,
+            ...(options.nativeInteractive === undefined
+              ? {}
+              : {
+                  'run.interactive': {
+                    ...options.nativeInteractive.availability('start'),
+                    source: 'runtime' as const,
+                  },
+                  'run.attach': {
+                    ...options.nativeInteractive.availability('attach'),
+                    source: 'runtime' as const,
+                  },
+                }),
+          }).map((item) => ({
             name: item.value,
             description: item.description ?? '',
           })),
@@ -174,6 +190,9 @@ export class BraidTerminalApp {
       isStopped: () => this.#stopped,
       stop: () => this.stop(),
       composerMode: () => this.#input.composerMode,
+      ...(options.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: options.nativeInteractive }),
     })
     this.#shell.editor.setAutocompleteProvider(autocomplete)
     options.tui.addChild(this.#shell)

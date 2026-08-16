@@ -37,7 +37,7 @@ export function selectedRunConfiguration(
 export function effectiveRunConfiguration(
   state: BraidState,
   authoredProfile: Readonly<AgentProfile>,
-  input: Pick<SendInput, 'conversationId' | 'branchId'>,
+  input: Pick<SendInput, 'conversationId' | 'branchId' | 'mode'>,
 ): EffectiveRunConfiguration {
   const conversationId = parseConversationId(input.conversationId ?? state.conversationId)
   const conversation = state.conversations.find(
@@ -53,6 +53,7 @@ export function effectiveRunConfiguration(
     throw new AppError('UNKNOWN_BRANCH', 'The requested branch is unavailable')
   const resolved = resolveEffectiveProfile({
     profile: { profile: authoredProfile },
+    ...(input.mode === undefined ? {} : { nextRunOverrides: { mode: input.mode } }),
     branchOverrides: {
       ...(branch.overrides.runner === undefined ? {} : { harness: branch.overrides.runner }),
       ...(branch.overrides.model === undefined ? {} : { model: branch.overrides.model }),

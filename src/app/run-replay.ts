@@ -4,6 +4,7 @@ import type { ProviderRunSnapshot } from '../ports/execution.js'
 import type { ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
 import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 interface RecoveryReconnectInput extends ReconnectInput {
   readonly priorFailureDetail?: string
@@ -41,6 +42,15 @@ export async function reconnectRun(
       afterSequence: run.lastProviderSequence,
       ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+      ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
+      onRetainedAdmission: async (admission) => {
+        const committed = context.commitAndWait({
+          kind: 'run.retained.admitted',
+          runId: run.id,
+          admission,
+        })
+        if (committed !== undefined) await committed
+      },
       signal: abort.signal,
     })) {
       const result = await context.ingestRuntimeEvent(envelope)
@@ -88,6 +98,7 @@ export async function reconcileRun(
       runId: run.id,
       ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+      ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
     })
   } catch (error) {
     if (!context.isTerminal(run.status))

@@ -392,6 +392,17 @@ test('incremental reduction and full replay produce the same complete projection
 })
 
 test('retained admission survives the pre-dispatch crash window and binds one exact run', () => {
+  const intentAdmission = {
+    phase: 'intent' as const,
+    provider: 'cli-bridge',
+    idempotencyKey: 'environment-retained-admission',
+    turnId: 'turn-retained-admission',
+    sessionId: 'session-retained-admission',
+    executionId: 'execution-retained-admission',
+    runId: 'retained-intent-run',
+    requestedProfileDigest: `sha256:${'a'.repeat(64)}` as const,
+    requestDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
   const environmentAdmission = {
     phase: 'environment' as const,
     provider: 'cli-bridge',
@@ -432,9 +443,17 @@ test('retained admission survives the pre-dispatch crash window and binds one ex
       {
         kind: 'run.retained.admitted',
         runId: 'run-retained-admission',
-        admission: environmentAdmission,
+        admission: intentAdmission,
       },
       3,
+    ),
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-admission',
+        admission: environmentAdmission,
+      },
+      4,
     ),
   ] as const
 
@@ -450,7 +469,7 @@ test('retained admission survives the pre-dispatch crash window and binds one ex
         runId: 'run-retained-admission',
         admission: dispatchedAdmission,
       },
-      4,
+      5,
     ),
   )
   assert.deepEqual(dispatched.runs[0]?.retainedAdmission, dispatchedAdmission)
@@ -478,7 +497,7 @@ test('retained admission survives the pre-dispatch crash window and binds one ex
           receivedAt: '2026-08-02T00:00:05.000Z',
         },
       },
-      5,
+      6,
     ),
   )
   assert.equal(harnessSession.runs[0]?.providerSessionId, environmentAdmission.sessionId)
@@ -494,7 +513,7 @@ test('retained admission survives the pre-dispatch crash window and binds one ex
         runId: 'run-retained-admission',
         admission: environmentAdmission,
       },
-      6,
+      7,
     ),
   )
   assert.deepEqual(retriedEnvironment.runs[0]?.retainedAdmission, dispatchedAdmission)
@@ -512,7 +531,7 @@ test('retained admission survives the pre-dispatch crash window and binds one ex
               environmentId: 'environment-retained-conflict',
             },
           },
-          7,
+          8,
         ),
       ),
     /conflicts with its environment admission/u,
