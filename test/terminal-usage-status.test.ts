@@ -260,8 +260,8 @@ test('the wide rail shows only observed sandbox facts and measured usage', () =>
   assert.match(rendered, /host 10\.0\.0\.7/u)
   assert.match(rendered, /machine machine-a10/u)
   assert.match(rendered, /region us-central/u)
-  assert.match(rendered, /sample mem 512MB/u)
-  assert.match(rendered, /requested 2cpu · 4GB · 20GB/u)
+  assert.match(rendered, /mem 512MB/u)
+  assert.match(rendered, /size 2cpu · 4GB · 20GB/u)
   assert.match(rendered, /gpu 1× A10 \$0\.0123/u)
   assert.match(rendered, /think high · caps vis 16k · reas 8\.2k · total 25k/u)
   assert.doesNotMatch(rendered, /fixture\/deterministic|thinking none|unknown|not reported/u)
@@ -304,10 +304,7 @@ test('the wide rail shows only observed sandbox facts and measured usage', () =>
       assert.match(medium, /pi \/ gpt-5\.6-luna/u)
       assert.match(medium, /via Sandbox/u)
     }
-    assert.doesNotMatch(
-      medium,
-      /host |machine |region |sample |requested |gpu |\bin |\bout |\$|latency /u,
-    )
+    assert.doesNotMatch(medium, /host |machine |region |mem |size |gpu |\bin |\bout |\$|latency /u)
     assert.doesNotMatch(medium, /unknown|not reported|…/u)
   }
   for (const width of [40, 60, 80, 99, 100, 120, 160, 200]) {

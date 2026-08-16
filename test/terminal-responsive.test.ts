@@ -11,7 +11,11 @@ import {
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import type { BraidViewModel, EnvironmentView } from '../src/views/shared/models.js'
-import { composerProjectionFor, composerRowBudget } from '../src/views/tui/composer-view.js'
+import {
+  composerBorderLine,
+  composerProjectionFor,
+  composerRowBudget,
+} from '../src/views/tui/composer-view.js'
 import { layoutFor } from '../src/views/tui/layout.js'
 import { ModalCoordinator } from '../src/views/tui/modal-coordinator.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
@@ -66,6 +70,8 @@ function viewForChrome(): BraidViewModel {
         tokenStatus: 'complete',
         costUsd: 0.0312,
         costStatus: 'reported',
+        llmLatencyMs: 842,
+        latencyStatus: 'complete',
         unknownTokenSources: 0,
         unknownCostSources: 0,
       },
@@ -104,7 +110,8 @@ test('chrome uses complete responsive groups at every reference width', () => {
   assert.doesNotMatch(standard, /braid|cwd|New conversation|branch-1|in 1\.2k|out 567|\$0\.0312/u)
   assert.doesNotMatch(standard, /…/u)
 
-  const wide = plainLines(chrome, 120).join('\n')
+  const wideLines = plainLines(chrome, 120)
+  const wide = wideLines.join('\n')
   assert.match(wide, /Release engineer/u)
   assert.match(wide, /profile Release engineer · pi \/ openai-codex\/gpt-5\.6-luna/u)
   assert.match(wide, /Local CLI Bridge/u)
@@ -113,15 +120,42 @@ test('chrome uses complete responsive groups at every reference width', () => {
   assert.match(wide, /in 1\.2k/u)
   assert.match(wide, /out 567/u)
   assert.match(wide, /\$0\.0312/u)
+  assert.match(wide, /latency 842ms/u)
   assert.doesNotMatch(
     wide,
     /braid|cwd|New conversation|branch-1|output ≤|\/home\/drew|\.worktrees|…/u,
   )
-  assert.equal(plainLines(chrome, 120).length, 1)
+  assert.equal(wideLines.length, 2)
+
+  const spaciousLines = plainLines(chrome, 200)
+  assert.equal(spaciousLines.length, 2)
+  assert.match(spaciousLines[0] ?? '', /^profile Release engineer/u)
+  assert.match(spaciousLines[1] ?? '', /^in 1\.2k · out 567 · \$0\.0312 · latency 842ms$/u)
+  assert.doesNotMatch(spaciousLines.join('\n'), /(?:^|\n)rofile\b/u)
 
   for (const width of [1, 2, 10, 40, 80, 120, 200]) {
-    for (const line of plainLines(chrome, width)) assert.ok(visibleWidth(line) <= width)
+    for (const line of plainLines(chrome, width)) {
+      assert.ok(visibleWidth(line) <= width)
+      assert.doesNotMatch(line, /[\r\n]/u)
+    }
   }
+})
+
+test('composer hint chooses a complete slash affordance before narrow truncation', () => {
+  const label = 'type / for commands · Alt+Enter newline · paste'
+  const narrow = composerBorderLine(40, label, theme)
+  assert.match(narrow, /type \/ for commands · Alt\+Enter/u)
+  assert.doesNotMatch(narrow, /newline|…/u)
+
+  const standard = composerBorderLine(80, label, theme)
+  assert.match(standard, /type \/ for commands · Alt\+Enter · paste/u)
+  assert.doesNotMatch(standard, /…/u)
+
+  const wide = composerBorderLine(120, label, theme)
+  assert.match(wide, /type \/ for commands · Alt\+Enter newline · paste/u)
+  assert.ok(visibleWidth(narrow) <= 40)
+  assert.ok(visibleWidth(standard) <= 80)
+  assert.ok(visibleWidth(wide) <= 120)
 })
 
 test('command palette stays isolated and keeps close controls at narrow and wide sizes', async () => {
@@ -216,15 +250,15 @@ test('wide chrome keeps measured sandbox facts as independent context items', ()
   assert.doesNotMatch(wideReference, /unknown|not reported/u)
 
   const mediumWide = chrome.render(160).join('\n')
-  assert.match(mediumWide, /sample mem 512MB/u)
+  assert.match(mediumWide, /mem 512MB/u)
   assert.doesNotMatch(mediumWide, /unknown|not reported/u)
 
   const wide = chrome.render(200).join('\n')
   assert.match(wide, /host sandbox\.example\.test/u)
   assert.match(wide, /machine machine-a10/u)
   assert.match(wide, /region us-central/u)
-  assert.match(wide, /sample mem 512MB/u)
-  assert.match(wide, /requested 4cpu · 8GB · 80GB/u)
+  assert.match(wide, /mem 512MB/u)
+  assert.match(wide, /size 4cpu · 8GB · 80GB/u)
   assert.match(wide, /gpu 1× A10 \$0\.1234/u)
   assert.match(wide, /in 1\.2k|out 567|\$0\.0312/u)
   for (const width of [40, 80, 120, 200]) {
@@ -424,13 +458,21 @@ test('published Pi virtual terminals keep the composer and valid cells at all si
     assert.doesNotMatch(viewport.join('\n'), /braid|completed/u)
     const prompt = viewport.findIndex((line) => line.includes('›'))
     assert.ok(prompt >= 0, `${columns}x${rows} composer prompt`)
-    assert.equal(rows - prompt, 5, `${columns}x${rows} composer and context rows`)
+    const contextRows = columns >= 100 ? 6 : 5
+    assert.equal(rows - prompt, contextRows, `${columns}x${rows} composer and context rows`)
     assert.match(viewport[prompt - 1] ?? '', /─{8,}/u)
     assert.match(viewport[prompt] ?? '', /› new message/u)
     assert.match(viewport[prompt + 3] ?? '', /type \/ for commands/u)
     const context = viewport.slice(prompt + 4)
     assert.ok(context.some((line) => line.includes('Release engineer')))
     if (columns >= 100) assert.match(context.at(-1) ?? '', /in 1\.2k|out 567|\$0\.0312/u)
+    if (columns === 200) {
+      const identityRow = context.find((line) => line.includes('Release engineer'))
+      const usageRow = context.find((line) => line.includes('latency 842ms'))
+      assert.match(identityRow ?? '', /^profile Release engineer/u)
+      assert.match(usageRow ?? '', /^in 1\.2k · out 567 · \$0\.0312 · latency 842ms$/u)
+      assert.doesNotMatch(context.join('\n'), /(?:^|\n)rofile\b/u)
+    }
     assert.doesNotMatch(viewport.join('\n'), /\/home\/drew|\.worktrees/u)
 
     tui.stop()

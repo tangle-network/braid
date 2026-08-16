@@ -54,7 +54,7 @@ export class TerminalChrome implements Component {
     const target = executionTargetFor(view)
     const transientNotice = state.quitArmed ? undefined : transientNoticeFor(view)
     if (mode === 'narrow' && transientNotice !== undefined) {
-      return [fitTerminalAtomic(statusText(this.#theme, view, transientNotice), safeWidth)]
+      return boundedTerminalRows([statusText(this.#theme, view, transientNotice)], safeWidth)
     }
     const statusValue = transientNotice ?? conciseStatus(view, state.quitArmed, mode)
     const status = statusText(this.#theme, view, statusValue)
@@ -90,37 +90,34 @@ export class TerminalChrome implements Component {
     } as const
     const noticeRow =
       transientNotice === undefined ? undefined : fitTerminalAtomic(status, safeWidth)
-    const measuredOnRow1 =
-      mode === 'wide' &&
-      measured.length > 0 &&
-      view.activeRunId === undefined &&
-      status.length === 0
     const idleHint = navigation.startsWith('/ commands') ? [] : [hint]
     const right = state.quitArmed
       ? [status]
-      : measuredOnRow1
-        ? measured
-        : mode === 'standard' && view.activeRunId !== undefined
-          ? [status]
-          : view.activeRunId !== undefined || status.length > 0
-            ? [status, hint]
-            : idleHint
-    const row1 = renderTerminalContext(
+      : mode === 'standard' && view.activeRunId !== undefined
+        ? [status]
+        : view.activeRunId !== undefined || status.length > 0
+          ? [status, hint]
+          : idleHint
+    const identityRow = renderTerminalContext(
       this.#theme,
       identity,
       noticeRow === undefined ? right : [],
       safeWidth,
       mode === 'narrow' || state.quitArmed ? 'right' : 'left',
     )
-    if (mode !== 'wide') return noticeRow === undefined ? [row1] : [row1, noticeRow]
-    const row2Facts = executionFacts.map((fact) => terminalValuePart(this.#theme, fact))
-    const row2Measured = measuredOnRow1 ? [] : measured
-    if (row2Facts.length === 0 && row2Measured.length === 0) {
-      return noticeRow === undefined ? [row1] : [row1, noticeRow]
+    const identityRows = noticeRow === undefined ? [identityRow] : [identityRow, noticeRow]
+    if (mode !== 'wide') return boundedTerminalRows(identityRows, safeWidth)
+    const detailFacts = executionFacts.map((fact) => terminalValuePart(this.#theme, fact))
+    if (detailFacts.length === 0 && measured.length === 0) {
+      return boundedTerminalRows(identityRows, safeWidth)
     }
-    const row2 = fitTerminalColumns(row2Facts, row2Measured, safeWidth, 'right')
-    return [row1, ...(noticeRow === undefined ? [] : [noticeRow]), ...(row2 ? [row2] : [])]
+    const detailRow = fitTerminalColumns(detailFacts, measured, safeWidth, 'right')
+    return boundedTerminalRows([...identityRows, ...(detailRow ? [detailRow] : [])], safeWidth)
   }
+}
+
+function boundedTerminalRows(rows: readonly string[], width: number): string[] {
+  return rows.map((row) => fitTerminalAtomic(row, width))
 }
 
 function executionFactsFor(target: ExecutionTargetView): readonly string[] {
@@ -134,11 +131,11 @@ function executionFactsFor(target: ExecutionTargetView): readonly string[] {
   const sample = environment.resourceSample
   if (sample !== undefined) {
     const currentMemory = finiteNonNegative(sample.memoryCurrentMb)
-    if (currentMemory !== undefined) facts.push(`sample mem ${currentMemory}MB`)
+    if (currentMemory !== undefined) facts.push(`mem ${currentMemory}MB`)
     const peakMemory = finiteNonNegative(sample.memoryPeakMb)
     if (peakMemory !== undefined) facts.push(`peak ${peakMemory}MB`)
     const memoryLimit = finiteNonNegative(sample.memoryLimitMb)
-    if (memoryLimit !== undefined) facts.push(`sample limit ${memoryLimit}MB`)
+    if (memoryLimit !== undefined) facts.push(`limit ${memoryLimit}MB`)
     const cpuUsec = finiteNonNegative(sample.cpuUsageUsec)
     if (cpuUsec !== undefined) facts.push(`cpu ${Math.round(cpuUsec / 1_000)}ms`)
   }
@@ -167,7 +164,7 @@ function requestedResourceLabel(environment: EnvironmentView): string | undefine
       ? undefined
       : `${resources.accelerator.count}×${resources.accelerator.kind}`,
   ].filter((value): value is string => value !== undefined)
-  return parts.length === 0 ? undefined : `requested ${parts.join(' · ')}`
+  return parts.length === 0 ? undefined : `size ${parts.join(' · ')}`
 }
 
 function memoryLabel(value: number | undefined): string | undefined {

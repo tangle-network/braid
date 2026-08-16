@@ -175,12 +175,18 @@ export function composerRowBudget(terminalRows: number): number {
 
 export function composerBorderLine(width: number, label: string, theme: BraidTheme): string {
   const safeWidth = Math.max(1, Math.floor(width))
-  const padded = truncateToWidth(` ${label} `, safeWidth, '…')
+  const padded = truncateToWidth(` ${composerHintForWidth(label, safeWidth)} `, safeWidth, '…')
   const labelWidth = visibleWidth(padded)
   const remaining = Math.max(0, safeWidth - labelWidth)
   const left = Math.floor(remaining / 2)
   const right = remaining - left
   return `${theme.editor.borderColor('─'.repeat(left))}${theme.accent(padded)}${theme.editor.borderColor('─'.repeat(right))}`
+}
+
+function composerHintForWidth(label: string, width: number): string {
+  if (width < 60) return 'type / for commands · Alt+Enter'
+  if (width < 100) return 'type / for commands · Alt+Enter · paste'
+  return label
 }
 
 function promptActionLabel(projection: ComposerProjection): string | undefined {
