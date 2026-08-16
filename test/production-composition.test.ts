@@ -19,13 +19,13 @@ import {
   canonicalCandidateJson,
   defineAgentProfile,
 } from '@tangle-network/agent-interface'
-import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
-import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import {
   materializeBridgeModelRoute,
   portableBridgeModel,
   qualifyBridgeProfileModel,
 } from '../src/adapters/connections/cli-bridge-model-route.js'
+import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
+import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveProductionBackend } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
@@ -204,6 +204,43 @@ test('normal composition streams a configured CLI Bridge turn through agent-runt
     assert.equal(result.state.environments[0]?.placement.provider, 'cli-bridge')
     assert.equal(result.state.environments[0]?.continuity, 'session')
     assert.equal(result.state.runs[0]?.environmentId, result.state.environments[0]?.id)
+  } finally {
+    await bridge.close()
+  }
+})
+
+test('retained CLI Bridge turns forward request-scoped model credentials only on the model call', async () => {
+  const bridge = await startRuntimeBridgeServer()
+  const seen: { token?: string | null; baseUrl?: string | null } = {}
+  try {
+    const record = connection('cli-bridge', 'scoped-model', bridge.endpoint)
+    const result = await runProductionTurn(
+      composition(record, {
+        bridgeModelCredential: {
+          key: 'BRAID_TEST_MODEL_TOKEN',
+          baseUrlKey: 'BRAID_TEST_MODEL_BASE_URL',
+          provider: {
+            get: async (key: string) =>
+              key === 'BRAID_TEST_MODEL_TOKEN'
+                ? 'test-model-token'
+                : key === 'BRAID_TEST_MODEL_BASE_URL'
+                  ? 'https://chatgpt.com/backend-api'
+                  : undefined,
+          },
+        },
+        fetch: async (input, init) => {
+          if (new URL(String(input)).pathname === '/v1/chat/completions') {
+            seen.token = requestHeader(init, 'x-cli-bridge-model-credential')
+            seen.baseUrl = requestHeader(init, 'x-cli-bridge-model-base-url')
+          }
+          return fetch(input, init)
+        },
+      }),
+    )
+
+    assert.equal(result.state.runs[0]?.status, 'completed')
+    assert.equal(seen.token, 'test-model-token')
+    assert.equal(seen.baseUrl, 'https://chatgpt.com/backend-api')
   } finally {
     await bridge.close()
   }
@@ -1946,6 +1983,8 @@ test('first-run model validation authorizes its token limit in a separate AgentP
       readonly default?: unknown
       readonly provider?: unknown
       readonly reasoningEffort?: unknown
+      readonly maxVisibleOutputTokens?: unknown
+      readonly maxTotalOutputTokens?: unknown
       readonly metadata?: Record<string, unknown>
     }
   }
@@ -1953,7 +1992,9 @@ test('first-run model validation authorizes its token limit in a separate AgentP
   assert.equal(validationProfile.model?.default, 'tangle-router/glm-5.2')
   assert.equal(validationProfile.model?.provider, 'tangle-router')
   assert.equal(validationProfile.model?.reasoningEffort, 'high')
-  assert.equal(validationProfile.model?.metadata?.maxTokens, 1)
+  assert.equal(validationProfile.model?.maxVisibleOutputTokens, 1)
+  assert.equal(validationProfile.model?.maxTotalOutputTokens, 1)
+  assert.equal(validationProfile.model?.metadata, undefined)
   assert.equal('effort' in (body ?? {}), false)
 })
 

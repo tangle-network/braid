@@ -201,7 +201,9 @@ export interface RunView {
   readonly profileDigest?: string
   readonly model?: string
   readonly effort?: string
-  readonly maxOutputTokens?: number
+  readonly maxVisibleOutputTokens?: number
+  readonly maxReasoningTokens?: number
+  readonly maxTotalOutputTokens?: number
   readonly usage?: UsageView
   readonly error?: string
   readonly cursor?: string
@@ -546,7 +548,9 @@ export interface BraidViewModel {
     readonly effort?: string
     readonly mode?: string
   }
-  readonly maxOutputTokens?: number
+  readonly maxVisibleOutputTokens?: number
+  readonly maxReasoningTokens?: number
+  readonly maxTotalOutputTokens?: number
   readonly connection: string
   readonly conversationId: string
   readonly conversationTitle: string

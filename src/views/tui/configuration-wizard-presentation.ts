@@ -42,8 +42,8 @@ export function configurationExplanation(state: ConfigurationSessionState): stri
 
 export function configurationFooter(state: ConfigurationSessionState, busy: boolean): string {
   if (busy) return 'waiting for the selected connection'
-  if (state.step === 'confirm') return 'enter apply · arrows · esc cancel'
-  return 'filter · enter choose · esc cancel'
+  if (state.step === 'confirm') return 'enter apply · arrows · ←/esc cancel'
+  return 'filter · enter choose · ←/esc cancel'
 }
 
 export function configurationItems(
@@ -54,7 +54,11 @@ export function configurationItems(
   if (state.step === 'profile') {
     if (state.profiles.length === 0) {
       return [
-        { value: CANCEL_CONFIGURATION, label: 'No profiles available', description: 'esc close' },
+        {
+          value: CANCEL_CONFIGURATION,
+          label: 'No profiles available',
+          description: '←/esc close',
+        },
       ]
     }
     return state.profiles.map((profile) => ({
@@ -86,7 +90,7 @@ export function configurationItems(
   }
   if (state.step === 'confirm' || state.step === 'complete') {
     if (state.step === 'complete' && !busy && commitError === undefined) {
-      return [{ value: CANCEL_CONFIGURATION, label: 'Close', description: 'esc close' }]
+      return [{ value: CANCEL_CONFIGURATION, label: 'Close', description: '←/esc close' }]
     }
     return [
       {
@@ -111,7 +115,7 @@ export function configurationItems(
       },
     ]
   }
-  return [{ value: CANCEL_CONFIGURATION, label: 'Close', description: 'esc close' }]
+  return [{ value: CANCEL_CONFIGURATION, label: 'Close', description: '←/esc close' }]
 }
 
 export function reviewSummary(

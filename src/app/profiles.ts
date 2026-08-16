@@ -91,7 +91,9 @@ export interface ProfileSummary {
   readonly runner?: string
   readonly model?: string
   readonly reasoningEffort?: string
-  readonly maxOutputTokens?: number
+  readonly maxVisibleOutputTokens?: number
+  readonly maxReasoningTokens?: number
+  readonly maxTotalOutputTokens?: number
   readonly tools: readonly string[]
   readonly skills: readonly string[]
   readonly connections: readonly string[]

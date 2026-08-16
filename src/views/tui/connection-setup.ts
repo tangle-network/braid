@@ -101,8 +101,8 @@ export class ConnectionSetupViewPanel extends Container implements Focusable {
       maxVisible: 5,
       footer:
         this.#onCreate === undefined
-          ? 'enter select · ^T test · esc close'
-          : 'enter select · ^N new · ^T test · ^D remove · esc close',
+          ? 'enter select · ^T test · ←/esc close'
+          : 'enter select · ^N new · ^T test · ^D remove · ←/esc close',
       theme: this.#theme,
       onSelect: (item) => void this.#select(item),
       onAction: (key, item) => {

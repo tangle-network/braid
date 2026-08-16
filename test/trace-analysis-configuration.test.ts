@@ -585,7 +585,7 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
     { role: 'system', content: 'private analyst instruction' },
     { role: 'user', content: 'private trace question' },
   ])
-  assert.equal(receivedBody?.max_tokens, 64)
+  assert.equal(receivedBody?.max_tokens, undefined)
   assert.equal(receivedBody?.temperature, 0.2)
   assert.deepEqual(receivedBody?.response_format, {
     type: 'json_schema',
@@ -638,6 +638,9 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
           default: 'tangle-router/glm-5.2',
           provider: 'tangle-router',
           reasoningEffort: 'high',
+          maxVisibleOutputTokens: 128,
+          maxReasoningTokens: 256,
+          maxTotalOutputTokens: 384,
         },
       },
       connection: selected,
@@ -682,7 +685,10 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
     assert.equal(executionProfile.model?.provider, 'tangle-router')
     assert.equal(executionProfile.model?.reasoningEffort, 'none')
-    assert.equal(executionProfile.model?.metadata?.maxTokens, 64)
+    assert.equal(executionProfile.model?.maxVisibleOutputTokens, 64)
+    assert.equal(executionProfile.model?.maxReasoningTokens, 256)
+    assert.equal(executionProfile.model?.maxTotalOutputTokens, 384)
+    assert.equal(Object.hasOwn(executionProfile.model?.metadata ?? {}, 'maxTokens'), false)
     assert.equal(executionProfile.model?.metadata?.retry, undefined)
     assert.match(executionProfile.prompt?.systemPrompt ?? '', /text-generation endpoint/u)
     assert.match(executionProfile.prompt?.systemPrompt ?? '', /messages array/u)

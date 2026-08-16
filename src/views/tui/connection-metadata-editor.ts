@@ -1,4 +1,10 @@
-import { Container, type Focusable, type Input, SelectList } from '@earendil-works/pi-tui'
+import {
+  Container,
+  type Focusable,
+  type Input,
+  matchesKey,
+  SelectList,
+} from '@earendil-works/pi-tui'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import {
   APPLY_DRAFT,
@@ -89,10 +95,18 @@ export class ConnectionMetadataEditor extends Container implements Focusable {
   handleInput(data: string): void {
     if (this.#closed || this.#busy) return
     if (this.#stage === 'kind') {
+      if (matchesKey(data, 'left')) {
+        this.#cancel()
+        return
+      }
       this.#kindList.handleInput(data)
       return
     }
     if (this.#stage === 'review') {
+      if (matchesKey(data, 'left')) {
+        this.#cancel()
+        return
+      }
       this.#reviewList?.handleInput(data)
       return
     }

@@ -10,7 +10,7 @@ Configuration, event detail, graphs, and supervision appear only when requested 
 
 No screen uses decorative cards, repeated labels, or explanatory copy that restates visible controls.
 
-When a run is active or selected, its immutable execution receipt is the source for displayed runner, model, reasoning, output limit, connection, and environment values.
+When a run is active or selected, its immutable execution receipt is the source for displayed runner, model, reasoning, visible, reasoning, and total output limits, connection, and environment values.
 
 The pending profile is shown only when no run receipt exists for the focused context.
 
@@ -86,14 +86,17 @@ If a connection is unavailable, the conversation opens offline and retains full 
  › _
 
 
- profile Release engineer · pi / glm-5.2 · Local CLI Bridge      Ctrl+P commands
+ profile Release engineer · pi / glm-5.2 · backend CLI Bridge       / commands
+ in 1.2k · out 567 · $0.0312 · latency 120ms
 ```
 
 The main shell has no persistent header.
 
 The transcript begins at the top of the viewport and remains visually primary.
 
-One quiet line below the composer identifies the profile, runner, model, and connection.
+The calm context rail uses one identity/status row from 60 through 99 columns.
+
+At 100 columns and above, it uses a second row only for known sandbox facts and measured token, cost, or latency values.
 
 Remote or sandbox execution appears there only when location changes the user's mental model.
 
@@ -103,13 +106,15 @@ Autocomplete adds one divider between input and results.
 
 The composer grows to at most 40% of terminal height, then scrolls internally.
 
-During work, the context line gives priority to state, cancel, queue, and steer controls.
+During work, the context rail gives priority to state, cancel, queue, and steer controls.
 
 At rest, it gives priority to execution identity and measured usage.
 
 Transient confirmations temporarily replace the context line so they remain visible at 40 columns.
 
-The context line omits unavailable values instead of displaying placeholders.
+The context rail omits unavailable values instead of displaying placeholders.
+
+At widths below 60, it keeps only the profile and status.
 
 The activity view keeps direct turn totals, analysis totals, and worker-tree totals separate.
 
@@ -117,7 +122,7 @@ Each visible total identifies reported values, estimates, or observed minimums w
 
 ### Usage and execution inspector
 
-The wide context line shows direct conversation tokens and cost when measured values exist.
+The wide context rail shows sandbox host, machine, verified region, complete resource groups, and direct token, cost, or latency measurements when known.
 
 It labels estimates and observed minimums explicitly.
 
@@ -544,7 +549,7 @@ The browser defaults to all activity and uses `Tab` to cycle through runs, analy
 
 It lists an explicit root run binding, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
 
-Each activity row retains its source kind, profile digest, runner, model, reasoning effort, output limit, connection, provider session, and environment when the record reports them.
+Each activity row retains its source kind, profile digest, runner, model, reasoning effort, visible, reasoning, and total output limits, connection, provider session, and environment when the record reports them.
 
 Direct turns, analyses, and workers keep their own usage totals and are never merged into a single spend number.
 

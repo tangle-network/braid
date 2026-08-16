@@ -3,6 +3,7 @@ import type {
   AgentProfile,
   HarnessType,
 } from '@tangle-network/agent-interface'
+import type { BridgeModelCredential } from '@tangle-network/agent-runtime/kernel'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
@@ -37,6 +38,7 @@ export interface PreparedCliBridgeConnection {
   readonly workspace: string
   readonly bridgeUrl: string
   readonly bearerToken: string
+  readonly bridgeModelCredential?: BridgeModelCredential
   readonly fetch?: typeof fetch
   readonly providerSessionId: string
   readonly capabilities: AgentEnvironmentCapabilities
@@ -65,6 +67,9 @@ export async function resolveCliBridgeBackend(
       backend: 'bridge',
       bridgeUrl: prepared.bridgeUrl,
       bridgeBearer: prepared.bearerToken,
+      ...(options.bridgeModelCredential === undefined
+        ? {}
+        : { modelCredential: options.bridgeModelCredential }),
       cwd: prepared.workspace,
       sessionId: prepared.providerSessionId,
     }),
@@ -124,6 +129,9 @@ export async function prepareCliBridgeConnection(
     workspace,
     bridgeUrl,
     bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     capabilities: defaultCliBridgeCapabilities(runner),
     providerSessionId,

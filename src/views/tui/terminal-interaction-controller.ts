@@ -123,6 +123,7 @@ export class TerminalInteractionController {
       width: '100%',
       maxHeight: '100%',
       margin: 0,
+      fullScreenBelow: Number.MAX_SAFE_INTEGER,
     })
     this.#syncRefresh(interaction)
   }

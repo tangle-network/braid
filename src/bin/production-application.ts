@@ -44,6 +44,9 @@ export function productionConfigForSelection(
     ...(options.credentialRefResolver === undefined
       ? {}
       : { credentialRefResolver: options.credentialRefResolver }),
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
   }
   return {
     profile: selection.profile.profile,
@@ -104,9 +107,15 @@ async function productionIntelligence(production: ProductionCompositionConfig): 
   const analysis = await createTraceAnalysisAdapter({
     profile: selected.profile,
     connection: selected.connection,
-    ...(modelSettings.maxOutputTokens === undefined
+    ...(modelSettings.maxVisibleOutputTokens === undefined
       ? {}
-      : { maxOutputTokens: modelSettings.maxOutputTokens }),
+      : { maxOutputTokens: modelSettings.maxVisibleOutputTokens }),
+    ...(modelSettings.maxReasoningTokens === undefined
+      ? {}
+      : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
+    ...(modelSettings.maxTotalOutputTokens === undefined
+      ? {}
+      : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
     ...(production.connectionOptions ?? {}),
   })
   return {

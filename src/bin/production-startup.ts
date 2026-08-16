@@ -415,6 +415,9 @@ export async function loadProductionStartup(
           credentialRefResolver:
             options.credentialRefResolver ?? defaultProductionCredentialRefResolver,
         }),
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
   }
   return {
     profile,

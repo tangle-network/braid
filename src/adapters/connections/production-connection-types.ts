@@ -1,7 +1,10 @@
 import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
-import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
+import type {
+  BridgeModelCredential,
+  RouterTransportConfig,
+} from '@tangle-network/agent-runtime/kernel'
 import type {
   ConnectionHealth,
   ConnectionKind,
@@ -91,6 +94,8 @@ export interface ProductionConnectionOptions {
   readonly credentials?: CredentialPort
   /** Map Braid's durable credential id to the credential-port's opaque ref. */
   readonly credentialRefResolver?: (ref: CredentialRefId) => CredentialRef | Promise<CredentialRef>
+  /** Request-scoped model credential for a loopback CLI Bridge. */
+  readonly bridgeModelCredential?: BridgeModelCredential
   readonly fetch?: typeof fetch
   /** Injectable Runtime Router transport for tests and embedded deployments. */
   readonly routerComplete?: RouterTransportConfig['complete']

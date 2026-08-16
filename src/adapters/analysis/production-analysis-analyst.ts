@@ -44,9 +44,15 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
           await createTraceAnalysisAdapter({
             profile: target.profile,
             connection: target.connection,
-            ...(modelSettings.maxOutputTokens === undefined
+            ...(modelSettings.maxVisibleOutputTokens === undefined
               ? {}
-              : { maxOutputTokens: modelSettings.maxOutputTokens }),
+              : { maxOutputTokens: modelSettings.maxVisibleOutputTokens }),
+            ...(modelSettings.maxReasoningTokens === undefined
+              ? {}
+              : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
+            ...(modelSettings.maxTotalOutputTokens === undefined
+              ? {}
+              : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
             ...connectionOptions,
             managedRuntimeReadiness: 'complete',
             ...(request.onRetainedAdmission === undefined

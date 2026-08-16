@@ -176,17 +176,18 @@ function runContext(
       : [`execution environment: ${sanitizeTerminalText(run.environmentId)}`]),
     `model: ${sanitizeTerminalText(target.model)}`,
     ...(target.effort === undefined ? [] : [`thinking: ${sanitizeTerminalText(target.effort)}`]),
-    ...(target.maxOutputTokens === undefined
+    ...(target.maxVisibleOutputTokens === undefined
       ? []
-      : [`max output tokens: ${target.maxOutputTokens}`]),
+      : [`max visible output tokens: ${target.maxVisibleOutputTokens}`]),
+    ...(target.maxReasoningTokens === undefined
+      ? []
+      : [`max reasoning tokens: ${target.maxReasoningTokens}`]),
+    ...(target.maxTotalOutputTokens === undefined
+      ? []
+      : [`max total output tokens: ${target.maxTotalOutputTokens}`]),
     ...(metrics.length === 0 ? [] : [`usage: ${metrics.join(' · ')}`]),
-    ...measurementValue('model calls', usage?.llmCalls, usage !== undefined),
-    ...measurementValue(
-      'model latency',
-      usage?.llmLatencyMs,
-      usage !== undefined,
-      (value) => `${Math.round(value)}ms`,
-    ),
+    ...measurementValue('model calls', usage?.llmCalls),
+    ...measurementValue('model latency', usage?.llmLatencyMs, (value) => `${Math.round(value)}ms`),
     ...measurementStatus('token measurement', usage?.tokenStatus),
     ...measurementStatus('cost measurement', usage?.costStatus),
     `history: ${sanitizeTerminalText(run.completeness)}`,
@@ -197,16 +198,14 @@ function runContext(
 function measurementValue(
   label: string,
   value: number | undefined,
-  measurementExists: boolean,
   format: (value: number) => string = (measured) => String(measured),
 ): readonly string[] {
-  if (value !== undefined) return [`${label}: ${format(value)}`]
-  return measurementExists ? [`${label}: not reported`] : []
+  return value === undefined ? [] : [`${label}: ${format(value)}`]
 }
 
 function measurementStatus(label: string, status: string | undefined): readonly string[] {
-  if (status === undefined) return []
-  return [`${label}: ${status === 'unknown' ? 'not reported' : status}`]
+  if (status === undefined || status === 'unknown') return []
+  return [`${label}: ${status}`]
 }
 
 function costLabel(usage: RunView['usage']): string | undefined {

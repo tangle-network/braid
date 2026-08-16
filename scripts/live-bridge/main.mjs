@@ -118,11 +118,14 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
     }
     const bridgeEvidence = {}
     evidence.bridge = bridgeEvidence
-    const launchDefinitions = requireCompleteReleaseProof
+    const discoverFromHealth = policy.source === 'default' || requireCompleteReleaseProof
+    const launchDefinitions = discoverFromHealth
       ? [
           ...policy.definitions,
           { key: 'release-pi', label: 'release Pi runner', backend: 'pi' },
-          { key: 'release-codex', label: 'release Codex runner', backend: 'codex' },
+          ...(requireCompleteReleaseProof
+            ? [{ key: 'release-codex', label: 'release Codex runner', backend: 'codex' }]
+            : []),
         ]
       : policy.definitions
     const bridge = await discoverBridge(
@@ -130,15 +133,15 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
       token,
       bridgeEvidence,
       repository,
-      requireCompleteReleaseProof ? [] : policy.definitions,
+      discoverFromHealth ? [] : policy.definitions,
       {
         launchDefinitions,
-        requireDefinitions: !requireCompleteReleaseProof,
+        requireDefinitions: !discoverFromHealth,
       },
     )
     bridgeCleanup = bridge.cleanup
     let selected = bridge.selected
-    if (requireCompleteReleaseProof) {
+    if (discoverFromHealth) {
       const releaseDefinitions = releaseTargetDefinitions(
         policy.definitions,
         bridgeEvidence.models,
@@ -160,7 +163,7 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
       )
       evidence.targetPolicy = targetPolicyEvidence({
         ...policy,
-        source: `${policy.source}:release-runners`,
+        source: `${policy.source}:${requireCompleteReleaseProof ? 'release-runners' : 'health-discovered'}`,
         definitions: releaseDefinitions,
       })
     }

@@ -199,9 +199,15 @@ export function runViews(state: BraidState): RunView[] {
       ...(modelSettings.reasoningEffort === undefined
         ? {}
         : { effort: sanitizeTerminalText(modelSettings.reasoningEffort) }),
-      ...(modelSettings.maxOutputTokens === undefined
+      ...(modelSettings.maxVisibleOutputTokens === undefined
         ? {}
-        : { maxOutputTokens: modelSettings.maxOutputTokens }),
+        : { maxVisibleOutputTokens: modelSettings.maxVisibleOutputTokens }),
+      ...(modelSettings.maxReasoningTokens === undefined
+        ? {}
+        : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
+      ...(modelSettings.maxTotalOutputTokens === undefined
+        ? {}
+        : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
       ...(run.error ? { error: sanitizeTerminalText(run.error) } : {}),
       ...(run.lastCursor ? { cursor: sanitizeTerminalText(run.lastCursor) } : {}),
       ...(run.providerSessionId
@@ -567,6 +573,15 @@ export function toHeadlessState(
       ...(modelSettings.reasoningEffort === undefined
         ? {}
         : { effort: sanitizeTerminalText(modelSettings.reasoningEffort) }),
+      ...(modelSettings.maxVisibleOutputTokens === undefined
+        ? {}
+        : { maxVisibleOutputTokens: modelSettings.maxVisibleOutputTokens }),
+      ...(modelSettings.maxReasoningTokens === undefined
+        ? {}
+        : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
+      ...(modelSettings.maxTotalOutputTokens === undefined
+        ? {}
+        : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
       ...(configuration.mode === undefined
         ? {}
         : { mode: sanitizeTerminalText(configuration.mode) }),

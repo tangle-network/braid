@@ -35,6 +35,7 @@ export interface TerminalOverlayOptions {
   readonly connectionLifecycle?: UiConnectionLifecycle
   readonly dispatchCommand: (command: CommandName, args: readonly string[]) => void
   readonly requestRender: () => void
+  readonly columns: () => number
   readonly rows: () => number
 }
 
@@ -44,9 +45,11 @@ export class TerminalOverlayController {
   readonly #modals: ModalCoordinator
   readonly #editor: Editor
   readonly #nextOperationId: () => string
+  readonly #rows: () => number
   readonly #dispatchCommand: TerminalOverlayOptions['dispatchCommand']
   readonly #configuration: TerminalOverlayOptions['configuration']
   readonly #requestRender: TerminalOverlayOptions['requestRender']
+  readonly #columns: () => number
   readonly #conversations: ConversationOverlayController
   readonly #connectionWorkflow: ConnectionOverlayWorkflow | undefined
   readonly #surfaces: TerminalSurfaceOverlays
@@ -58,6 +61,8 @@ export class TerminalOverlayController {
     this.#modals = options.modals
     this.#editor = options.editor
     this.#nextOperationId = options.nextOperationId
+    this.#rows = options.rows
+    this.#columns = options.columns
     this.#conversations = new ConversationOverlayController({
       theme: this.#theme,
       controller: this.#controller,
@@ -186,13 +191,24 @@ export class TerminalOverlayController {
       title: 'Commands',
       items: commandItems(view.capabilities),
       theme: this.#theme,
+      maxVisible: Math.max(1, Math.min(8, this.#rows() - 6)),
+      footer:
+        this.#columns() < 60
+          ? 'enter choose · ←/esc close'
+          : 'type to filter · enter to choose · ←/esc close',
       onSelect: (item) => {
         this.#modals.closeTop()
         this.#dispatchCommand(item.value as CommandName, [])
       },
       onCancel: () => this.#modals.closeTop(),
     })
-    this.#modals.open(palette, { anchor: 'center', width: '70%', minWidth: 32, maxHeight: 14 })
+    this.#modals.open(palette, {
+      anchor: 'top-left',
+      width: '100%',
+      maxHeight: '100%',
+      margin: 0,
+      fullScreenBelow: Number.MAX_SAFE_INTEGER,
+    })
   }
 
   openSwitcher(): void {
@@ -229,7 +245,7 @@ export class TerminalOverlayController {
       items,
       maxVisible: 5,
       theme: this.#theme,
-      footer: 'enter to change · esc to close',
+      footer: 'enter to change · ←/esc close',
       onSelect: (item) => {
         this.#modals.closeTop()
         if (item.value === 'profile') this.openProfile()

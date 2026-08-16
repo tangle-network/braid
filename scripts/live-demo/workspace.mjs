@@ -2,13 +2,16 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export const LIVE_DEMO_PROFILE = Object.freeze({
-  name: 'Product engineer',
+  name: 'Release engineer',
   description: 'Implements one bounded change and proves it with tests.',
-  harness: 'claude-code',
+  harness: 'pi',
   model: {
-    default: 'opus',
+    default: 'openai-codex/gpt-5.6-luna',
+    provider: 'openai-codex',
     reasoningEffort: 'high',
-    metadata: { maxTokens: 32768 },
+    maxVisibleOutputTokens: 32768,
+    maxReasoningTokens: 65536,
+    maxTotalOutputTokens: 98304,
   },
   prompt: {
     instructions: [
@@ -22,11 +25,14 @@ export const LIVE_DEMO_PROFILE = Object.freeze({
 export const LIVE_DEMO_ANALYST_PROFILE = Object.freeze({
   name: 'Trace analyst',
   description: 'Reviews a completed run and cites the retained execution evidence.',
-  harness: 'claude-code',
+  harness: 'pi',
   model: {
-    default: 'sonnet',
+    default: 'openai-codex/gpt-5.6-luna',
+    provider: 'openai-codex',
     reasoningEffort: 'high',
-    metadata: { maxTokens: 16384 },
+    maxVisibleOutputTokens: 16384,
+    maxReasoningTokens: 32768,
+    maxTotalOutputTokens: 49152,
   },
   prompt: {
     instructions: [
@@ -42,7 +48,33 @@ export const LIVE_DEMO_PROMPT =
 
 export const LIVE_DEMO_QUESTION = 'What changed, what was verified, and what should I review?'
 
-export async function createLiveDemoWorkspace(root) {
+/** Build the public demo profile from the route the live bridge actually advertises. */
+export function liveDemoProfileForRoute(route, baseProfile = LIVE_DEMO_PROFILE) {
+  const parts = route.split('/')
+  const runner = parts.shift()
+  if (
+    runner !== baseProfile.harness ||
+    parts.length === 0 ||
+    parts.some((part) => part.length === 0)
+  )
+    throw new Error(`Live demo route must start with ${baseProfile.harness}/: ${route}`)
+  const provider = parts.length > 1 ? parts.shift() : undefined
+  const model = parts.join('/')
+  if (model.length === 0) throw new Error(`Live demo route has no model: ${route}`)
+  return Object.freeze({
+    ...baseProfile,
+    model: Object.freeze({
+      ...baseProfile.model,
+      default: model,
+      ...(provider === undefined ? { provider: undefined } : { provider }),
+    }),
+  })
+}
+
+export async function createLiveDemoWorkspace(
+  root,
+  { profile = LIVE_DEMO_PROFILE, analystProfile = LIVE_DEMO_ANALYST_PROFILE } = {},
+) {
   const workspace = join(root, 'braid-demo')
   const sourceRoot = join(workspace, 'src')
   const testRoot = join(workspace, 'test')
@@ -92,12 +124,10 @@ export async function createLiveDemoWorkspace(root) {
       ].join('\n'),
       { mode: 0o600 },
     ),
-    writeFile(profilePath, `${JSON.stringify(LIVE_DEMO_PROFILE, null, 2)}\n`, { mode: 0o600 }),
-    writeFile(
-      join(profileRoot, 'profile.json'),
-      `${JSON.stringify(LIVE_DEMO_ANALYST_PROFILE, null, 2)}\n`,
-      { mode: 0o600 },
-    ),
+    writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(profileRoot, 'profile.json'), `${JSON.stringify(analystProfile, null, 2)}\n`, {
+      mode: 0o600,
+    }),
   ])
   return { workspace, profilePath }
 }

@@ -21,7 +21,11 @@ import {
   terminalPageProgress,
   visibleModelCallNumbers,
 } from './live-demo/terminal.mjs'
-import { LIVE_DEMO_ANALYST_PROFILE, LIVE_DEMO_PROFILE } from './live-demo/workspace.mjs'
+import {
+  liveDemoProfileForRoute,
+  LIVE_DEMO_ANALYST_PROFILE,
+  LIVE_DEMO_PROFILE,
+} from './live-demo/workspace.mjs'
 
 function isAlive(pid) {
   try {
@@ -75,7 +79,7 @@ test('analysis pagination reaches real page bounds and records visible calls', (
 test('live demo timeline starts on the configured screen and preserves captured bytes', () => {
   const events = [
     [0.4, 'o', '\u001b[2J'],
-    [0.8, 'o', 'Product engineer · runner pi'],
+    [0.8, 'o', 'Release engineer · runner pi'],
     [1.5, 'i', '/'],
     [1.51, 'o', '/'],
   ]
@@ -92,7 +96,7 @@ test('live demo timeline starts on the configured screen and preserves captured 
   const cast = castFor(
     { columns: 120, rows: 30, events },
     'Braid live demo',
-    'braid --profile Product-engineer',
+    'braid --profile Release-engineer',
   )
   const [headerLine, ...eventLines] = cast.trim().split('\n')
   const header = JSON.parse(headerLine)
@@ -109,14 +113,24 @@ test('live demo timeline starts on the configured screen and preserves captured 
 })
 
 test('live demo profile leaves native tool policy with the selected harness', () => {
-  assert.equal(LIVE_DEMO_PROFILE.harness, 'claude-code')
-  assert.equal(LIVE_DEMO_PROFILE.model.default, 'opus')
+  assert.equal(LIVE_DEMO_PROFILE.harness, 'pi')
+  assert.equal(LIVE_DEMO_PROFILE.model.default, 'openai-codex/gpt-5.6-luna')
+  assert.equal(LIVE_DEMO_PROFILE.model.provider, 'openai-codex')
   assert.equal('tools' in LIVE_DEMO_PROFILE, false)
   assert.equal('permissions' in LIVE_DEMO_PROFILE, false)
-  assert.equal(LIVE_DEMO_ANALYST_PROFILE.harness, 'claude-code')
-  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.default, 'sonnet')
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.harness, 'pi')
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.default, 'openai-codex/gpt-5.6-luna')
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.provider, 'openai-codex')
   assert.equal('tools' in LIVE_DEMO_ANALYST_PROFILE, false)
   assert.equal('permissions' in LIVE_DEMO_ANALYST_PROFILE, false)
+})
+
+test('live demo profiles follow the advertised Pi route without a model fallback', () => {
+  const profile = liveDemoProfileForRoute('pi/deepseek/deepseek-v4-flash')
+  assert.equal(profile.harness, 'pi')
+  assert.equal(profile.model.provider, 'deepseek')
+  assert.equal(profile.model.default, 'deepseek-v4-flash')
+  assert.throws(() => liveDemoProfileForRoute('codex/default'), /must start with pi\//u)
 })
 
 test('live demo failures preserve the sanitized Braid diagnostic', () => {
@@ -321,6 +335,22 @@ test('public capture rejects the credential patterns mirrored from the sanitizer
     await t.test(`Slack xox${variant} token`, () => {
       const value = `xox${variant}-${filler.slice(0, 20)}`
       assert.throws(() => assertPublicCapture(value), /Public capture contains/iu)
+    })
+  }
+  for (const value of ['fixture/deterministic', 'backend fixture', 'deterministic state capture']) {
+    await t.test(`offline marker ${value}`, () => {
+      assert.throws(
+        () => assertPublicCapture(value),
+        /Public capture contains|expected to not match/iu,
+      )
+    })
+  }
+  for (const value of ['unknown', 'latency unknown', 'Model calls were not reported']) {
+    await t.test(`unmeasured marker ${value}`, () => {
+      assert.throws(
+        () => assertPublicCapture(value),
+        /Public capture contains|expected to not match/iu,
+      )
     })
   }
   assert.doesNotThrow(() => assertPublicCapture('public demo output with no credentials'))

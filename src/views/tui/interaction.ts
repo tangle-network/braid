@@ -155,11 +155,7 @@ export class InteractionShell extends Container implements Focusable {
       this.#onAutomate(response)
       return
     }
-    if (
-      matchesKey(data, 'escape') ||
-      matchesKey(data, 'ctrl+c') ||
-      (matchesKey(data, 'left') && this.#decisions)
-    ) {
+    if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c') || matchesKey(data, 'left')) {
       this.#cancel()
       return
     }

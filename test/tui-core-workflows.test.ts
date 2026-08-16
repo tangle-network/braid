@@ -712,6 +712,81 @@ test('comparison view leads with both outcomes and pages through every captured 
   assert.match(panel.render(80).join('\n'), /run\.cost_usd/u)
 })
 
+test('left and escape return from every full-screen secondary browser', () => {
+  const comparison = {
+    baseline: {
+      label: 'baseline' as const,
+      runId: 'run-baseline',
+      sourceDigest: 'digest-baseline',
+      outcome: 'completed',
+      cost: '$0.02',
+      costProvenance: 'measured',
+    },
+    candidate: {
+      label: 'candidate' as const,
+      runId: 'run-candidate',
+      sourceDigest: 'digest-candidate',
+      outcome: 'completed',
+      cost: '$0.01',
+      costProvenance: 'measured',
+    },
+    pairCount: 1,
+    unpairedBaseline: 0,
+    unpairedCandidate: 0,
+    sampleLimit: 'one pair',
+    fields: [],
+    pairedFacts: [],
+    semantic: { status: 'unavailable', reason: 'not run' },
+    replayed: false,
+  }
+
+  for (const key of ['\u001b[D', '\u001b']) {
+    const analysis = new AnalysisViewPanel(theme)
+    analysis.setView(analysisView('failure'))
+    analysis.render(40)
+    analysis.handleInput(key)
+    assert.equal(analysis.mode, 'list', `analysis ${JSON.stringify(key)}`)
+
+    const comparisonPanel = new ComparisonViewPanel(theme)
+    comparisonPanel.setView(comparison)
+    comparisonPanel.render(40)
+    comparisonPanel.handleInput(key)
+    assert.equal(comparisonPanel.mode, 'list', `comparison ${JSON.stringify(key)}`)
+  }
+
+  for (const key of ['\u001b[D', '\u001b']) {
+    let graphCloses = 0
+    const graph = new GraphView(theme, { onClose: () => (graphCloses += 1) })
+    graph.setView(graphView())
+    graph.render(40)
+    graph.handleInput(key)
+    assert.equal(graphCloses, 1, `graph ${JSON.stringify(key)}`)
+
+    let workerCloses = 0
+    const workers = new ActivityBrowserPanel(theme, {
+      view: () => ({
+        ...baseView(),
+        activity: [
+          {
+            id: 'worker:worker-1',
+            kind: 'worker',
+            title: 'worker one',
+            status: 'completed',
+            entityType: 'worker',
+            entityId: 'worker-1',
+          },
+        ],
+      }),
+      rows: () => 12,
+      onClose: () => (workerCloses += 1),
+      scope: 'workers',
+    })
+    workers.render(40)
+    workers.handleInput(key)
+    assert.equal(workerCloses, 1, `worker ${JSON.stringify(key)}`)
+  }
+})
+
 test('approval actions are navigable and secret responses never render values', async () => {
   const responses: unknown[] = []
   const shell = new InteractionShell({ ...permission, queueTotal: 3 }, theme, (response) =>
@@ -831,10 +906,10 @@ test('fork and confirmation dialogs expose only short, actionable keys', () => {
   const lines = dialog.render(40)
   assertFits(lines, 40)
   assert.match(lines.join('\n'), /will delete permanently/u)
-  assert.match(lines.join('\n'), /enter\/y confirm · n\/esc cancel/u)
+  assert.match(lines.join('\n'), /enter\/y confirm · n\/←\/esc cancel/u)
 })
 
-test('digit-leading text, secret, and number answers stay editable', () => {
+test('digit-leading answers stay editable and left cancels full-screen text input', () => {
   const secretResponse: unknown[] = []
   const secretShell = new InteractionShell(
     {
@@ -869,9 +944,27 @@ test('digit-leading text, secret, and number answers stay editable', () => {
   )
   textShell.handleInput('ab')
   textShell.handleInput('\u001b[D')
+  assert.deepEqual(textResponse, [{ outcome: 'cancel' }])
   textShell.handleInput('c')
   textShell.handleInput('\r')
-  assert.deepEqual(textResponse, [{ outcome: 'accept', value: 'acb' }])
+  assert.deepEqual(textResponse, [{ outcome: 'cancel' }])
+
+  const plainTextResponse: unknown[] = []
+  const plainTextShell = new InteractionShell(
+    {
+      ...permission,
+      interactionId: 'interaction-plain-text',
+      kind: 'question',
+      answerSpec: { kind: 'text', required: true, secret: false },
+      allowedOutcomes: ['accept', 'reject', 'cancel'],
+      secret: false,
+    },
+    theme,
+    (response) => plainTextResponse.push(response),
+  )
+  plainTextShell.handleInput('abc')
+  plainTextShell.handleInput('\r')
+  assert.deepEqual(plainTextResponse, [{ outcome: 'accept', value: 'abc' }])
 
   const numberResponse: unknown[] = []
   const numberShell = new InteractionShell(
@@ -922,7 +1015,7 @@ test('short interaction surfaces keep validation failures visible', () => {
   assert.match(screen, /Enter a number in the allowed range\./u)
   assert.match(screen, /alt\+1 approve · alt\+2 reject/u)
   assert.match(screen, /alt\+3 cancel/u)
-  assert.match(screen, /enter submit · esc cancel/u)
+  assert.match(screen, /enter submit · ←\/esc cancel/u)
 })
 
 test('alt-digit keys reach every allowed outcome without taking editable digits', () => {

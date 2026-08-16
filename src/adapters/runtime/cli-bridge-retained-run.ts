@@ -3,6 +3,7 @@ import {
   AgentExactRunControlRefSchema,
 } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentProvider } from '@tangle-network/agent-interface/environment-provider'
+import type { BridgeModelCredential } from '@tangle-network/agent-runtime/kernel'
 import {
   type RetainedRunHandle,
   reconnectRetainedRun,
@@ -11,6 +12,7 @@ import {
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
+import { isLoopbackEndpoint } from '../connections/production-connection-endpoints.js'
 import { safeExecutionId } from './production-backend-common.js'
 import type { PreparedCliBridgeConnection } from './production-cli-bridge-backend.js'
 import type {
@@ -45,7 +47,11 @@ export async function createCliBridgeRetainedPlan(
     baseUrl: prepared.bridgeUrl,
     bearerToken: prepared.bearerToken,
     defaultModel: prepared.route,
+    capabilities: prepared.capabilities,
     ...(prepared.fetch === undefined ? {} : { fetch: prepared.fetch }),
+    ...(prepared.bridgeModelCredential === undefined
+      ? {}
+      : { fetch: bridgeCredentialFetch(prepared) }),
   })
   const environmentId = controlRef?.environmentId ?? retainedEnvironmentId(runId)
   const executionId = controlRef?.executionId ?? safeExecutionId(runId)
@@ -89,6 +95,58 @@ export async function createCliBridgeRetainedPlan(
       ),
   }
   return Object.freeze(plan)
+}
+
+function bridgeCredentialFetch(prepared: PreparedCliBridgeConnection): typeof fetch {
+  const credential = prepared.bridgeModelCredential
+  if (credential === undefined) return prepared.fetch ?? globalThis.fetch
+  if (!isLoopbackEndpoint(prepared.bridgeUrl)) {
+    throw new Error('A request-scoped CLI Bridge model credential requires a loopback endpoint')
+  }
+  const fetcher = prepared.fetch ?? globalThis.fetch
+  return async (input, init) => {
+    const url = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url,
+    )
+    if (url.pathname !== '/v1/chat/completions') return fetcher(input, init)
+    const [token, baseUrl] = await Promise.all([
+      credentialValue(credential, credential.key),
+      credentialValue(credential, credential.baseUrlKey),
+    ])
+    const upstream = safeModelBaseUrl(baseUrl)
+    const headers = new Headers(init?.headers)
+    headers.set('x-cli-bridge-model-credential', token)
+    headers.set('x-cli-bridge-model-base-url', upstream)
+    return fetcher(input, { ...init, headers })
+  }
+}
+
+async function credentialValue(credential: BridgeModelCredential, key: string): Promise<string> {
+  let value: string | undefined
+  try {
+    value = await credential.provider.get(key)
+  } catch {
+    throw new Error(`The CLI Bridge model credential provider failed for ${key}`)
+  }
+  if (typeof value !== 'string' || value.length === 0 || /[\r\n\0]/u.test(value)) {
+    throw new Error(`The CLI Bridge model credential provider has no usable value for ${key}`)
+  }
+  return value
+}
+
+function safeModelBaseUrl(value: string): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('The CLI Bridge model credential base URL is invalid')
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error(
+      'The CLI Bridge model credential base URL must be an HTTPS URL without credentials',
+    )
+  }
+  return url.toString().replace(/\/$/u, '')
 }
 
 export async function startCliBridgeRetainedRun(

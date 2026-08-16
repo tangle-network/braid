@@ -19,6 +19,8 @@ export interface ProductionStartupLoadOptions {
   readonly cliBridgeEndpoint?: string
   /** Optional in-memory bridge authorization; never persisted in startup config. */
   readonly bridgeAuth?: string
+  /** Optional request-scoped model credential; key names only, never persisted in startup config. */
+  readonly bridgeModelCredential?: ProductionConnectionOptions['bridgeModelCredential']
   /** Optional in-memory Tangle authorization; never persisted in startup config. */
   readonly tangleAuth?: string
   /** Discovery timeout for /health and /v1/models. */

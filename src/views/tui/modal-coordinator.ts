@@ -14,6 +14,7 @@ export interface ModalBackTarget {
 interface ModalEntry {
   readonly component: Component
   readonly handle: OverlayHandle
+  readonly fullScreen: boolean
   readonly onClose?: () => void
 }
 
@@ -32,13 +33,19 @@ export class ModalCoordinator {
     if (preempt) this.closeTop()
     const { fullScreenBelow = 80, onClose, ...overlayOptions } = options
     const layout = layoutFor(this.#tui.terminal.columns, this.#tui.terminal.rows)
+    const fullScreen = layout.overlayFullScreen || layout.columns < fullScreenBelow
     const handle = this.#tui.showOverlay(component, {
       ...overlayOptions,
-      ...(layout.overlayFullScreen || layout.columns < fullScreenBelow
+      ...(fullScreen
         ? { width: '100%', maxHeight: '100%', anchor: 'top-left' as const, margin: 0 }
         : {}),
     })
-    this.#entries.push({ component, handle, ...(onClose === undefined ? {} : { onClose }) })
+    this.#entries.push({
+      component,
+      handle,
+      fullScreen,
+      ...(onClose === undefined ? {} : { onClose }),
+    })
     this.#notifyVisibility()
     return handle
   }
@@ -63,6 +70,13 @@ export class ModalCoordinator {
   backOrCloseIfPassive(): boolean {
     const entry = this.#top()
     if (entry === undefined || entry.component.handleInput !== undefined) return false
+    this.backOrClose()
+    return true
+  }
+
+  backOrCloseIfFullScreen(): boolean {
+    const entry = this.#top()
+    if (entry === undefined || !entry.fullScreen) return false
     this.backOrClose()
     return true
   }

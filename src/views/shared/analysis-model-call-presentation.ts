@@ -42,6 +42,48 @@ export function analysisModelCallLine(call: AnalysisModelCallView): string {
   return `#${call.sequence} ${route} · ${tokens(call)} · ${cost(call)} · ${latency}`
 }
 
+/** Renders only measured model-call facts for compact terminal surfaces. */
+export function analysisMeasuredModelCallLine(call: AnalysisModelCallView): string {
+  const route =
+    call.model === 'unknown-model'
+      ? `#${call.sequence}`
+      : `#${call.sequence} ${call.provider === undefined ? call.model : `${call.provider}/${call.model}`}`
+  const measured = [measuredTokens(call), measuredCost(call), measuredLatency(call)].filter(
+    (value): value is string => value !== undefined,
+  )
+  return [route, ...measured].join(' · ')
+}
+
+/** Summarizes only measured model-call facts without filling gaps with labels. */
+export function analysisMeasuredModelCallSummary(calls: readonly AnalysisModelCallView[]): string {
+  const parts = [`${calls.length} ${calls.length === 1 ? 'call' : 'calls'}`]
+  const input = calls.filter((call) => call.inputTokens !== undefined)
+  const output = calls.filter((call) => call.outputTokens !== undefined)
+  if (input.length > 0 || output.length > 0) {
+    parts.push(
+      `tokens ${input.length === calls.length ? '' : '≥'}${sum(input.map((call) => call.inputTokens))} in / ${output.length === calls.length ? '' : '≥'}${sum(output.map((call) => call.outputTokens))} out`,
+    )
+  }
+  const knownCost = calls.filter(
+    (call) => call.costUsd !== undefined && call.costStatus !== 'unknown',
+  )
+  if (knownCost.length > 0) {
+    const estimated = knownCost.some((call) => call.costStatus === 'estimated')
+    parts.push(
+      `cost ${estimated ? '~' : ''}$${sum(knownCost.map((call) => call.costUsd)).toFixed(4)}`,
+    )
+  }
+  const latency = calls.filter((call) => call.latencyMs !== undefined)
+  if (latency.length > 0) {
+    parts.push(
+      `latency ${latency.length === calls.length ? '' : '≥'}${sum(latency.map((call) => call.latencyMs))}ms`,
+    )
+  }
+  const failures = calls.filter((call) => call.outcome === 'failed').length
+  if (failures > 0) parts.push(`${failures} failed`)
+  return parts.join(' · ')
+}
+
 export function analysisModelCallSummary(calls: readonly AnalysisModelCallView[]): string {
   if (calls.length === 0) return '0 model calls reported.'
   const input = calls.reduce((sum, call) => sum + (call.inputTokens ?? 0), 0)
@@ -65,7 +107,7 @@ export function analysisModelCallSummary(calls: readonly AnalysisModelCallView[]
       : `cost ${costPrefix(estimatedCosts, costGaps)}$${cost.toFixed(4)}${gap(costGaps)}`,
     latency === 0 && latencyGaps > 0
       ? `latency unknown${gap(latencyGaps)}`
-      : `model ${latencyGaps === 0 ? '' : '≥'}${latency}ms${gap(latencyGaps)}`,
+      : `latency ${latencyGaps === 0 ? '' : '≥'}${latency}ms${gap(latencyGaps)}`,
     ...(failures === 0 ? [] : [`${failures} failed`]),
   ].join(' · ')
 }
@@ -99,6 +141,27 @@ function cost(call: AnalysisModelCallView): string {
 
 function usd(value: number): string {
   return `$${value.toFixed(6).replace(/0+$/u, '').replace(/\.$/u, '')}`
+}
+
+function measuredTokens(call: AnalysisModelCallView): string | undefined {
+  if (call.inputTokens === undefined && call.outputTokens === undefined) return undefined
+  const prefix = call.tokensKnown ? '' : '≥'
+  const input = call.inputTokens === undefined ? undefined : `${prefix}${call.inputTokens} in`
+  const output = call.outputTokens === undefined ? undefined : `${prefix}${call.outputTokens} out`
+  return ['tokens', input, output].filter((value): value is string => value !== undefined).join(' ')
+}
+
+function measuredCost(call: AnalysisModelCallView): string | undefined {
+  if (call.costUsd === undefined || call.costStatus === 'unknown') return undefined
+  return `cost ${call.costStatus === 'estimated' ? '~' : ''}${usd(call.costUsd)}`
+}
+
+function measuredLatency(call: AnalysisModelCallView): string | undefined {
+  return call.latencyMs === undefined ? undefined : `latency ${call.latencyMs}ms`
+}
+
+function sum(values: readonly (number | undefined)[]): number {
+  return values.reduce<number>((total, value) => total + (value ?? 0), 0)
 }
 
 function safeModel(value: string | undefined): string | undefined {
