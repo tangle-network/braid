@@ -203,10 +203,14 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
       const { streamAgentTurn } = await import('@tangle-network/agent-runtime/kernel')
       try {
         let terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> | undefined
-        for await (const event of streamAgentTurn(runtimeBackend, input.text, {
-          signal: localAbort.signal,
-          preserveToolParts: true,
-        })) {
+        for await (const event of streamAgentTurn(
+          runtimeBackend,
+          { prompt: input.text },
+          {
+            signal: localAbort.signal,
+            preserveToolParts: true,
+          },
+        )) {
           if (event.type === 'final') terminal = event
           else yield event
         }

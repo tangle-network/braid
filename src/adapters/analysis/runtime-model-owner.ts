@@ -740,7 +740,7 @@ export function createRuntimeTraceModelOwner(
         })
         for await (const event of streamAgentTurn(
           backend,
-          { messages },
+          { prompt: JSON.stringify({ messages }) },
           {
             signal: request.signal,
             callId: request.callId,

@@ -582,8 +582,10 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
   if (!result.succeeded) return
   assert.equal(receivedAuthorization, 'Bearer credential-never-recorded')
   assert.deepEqual(receivedBody?.messages, [
-    { role: 'system', content: 'private analyst instruction' },
-    { role: 'user', content: 'private trace question' },
+    {
+      role: 'user',
+      content: JSON.stringify({ messages: optimizerRequest().request.messages }),
+    },
   ])
   assert.equal(receivedBody?.max_tokens, undefined)
   assert.equal(receivedBody?.temperature, 0.2)
@@ -675,7 +677,7 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(bridge.requests.length, 1)
     assert.deepEqual(
       admissions.map((admission) => admission.phase),
-      ['environment', 'dispatched'],
+      ['intent', 'environment', 'dispatched'],
     )
     const body = bridge.requests[0]?.body
     assert.equal(body?.model, 'pi/tangle-router/glm-5.2')

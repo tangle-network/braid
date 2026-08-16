@@ -29,6 +29,7 @@ import {
   type RetainedRunAdmissionRecord,
 } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
+import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -131,6 +132,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
 function recoveryPlan(controlRef: AgentExactRunControlRef): RetainedExecutionPlan {
   const handle: RetainedRunHandle = {
     controlRef,
+    capabilities: RETAINED_RUN_HANDLE_CAPABILITIES,
     async status() {
       return {
         runId: controlRef.runId,

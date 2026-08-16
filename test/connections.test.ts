@@ -312,7 +312,8 @@ test('production resolver routes chat connections through agent-runtime', async 
   )
   assert.equal(backend.kind, 'prepared-execution')
   const events = []
-  for await (const event of streamAgentTurn(backend.backend, 'hello')) events.push(event)
+  for await (const event of streamAgentTurn(backend.backend, { prompt: 'hello' }))
+    events.push(event)
   assert.equal(events.at(-1)?.type, 'final')
   assert.equal(calls[0]?.model, 'openai/gpt-5')
 })
@@ -373,7 +374,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   )
   assert.deepEqual(sandboxBackend.backend.profile, profile())
   const sandboxEvents = []
-  for await (const event of streamAgentTurn(sandboxBackend.backend, 'say hello')) {
+  for await (const event of streamAgentTurn(sandboxBackend.backend, { prompt: 'say hello' })) {
     sandboxEvents.push(event)
   }
   const sandboxTerminal = sandboxEvents.at(-1)

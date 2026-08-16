@@ -11,8 +11,10 @@ import {
   RetainedExecutionPort,
 } from '../src/adapters/runtime/retained-execution.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecuteTurnInput } from '../src/ports/execution.js'
+import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 
 const now = '2026-08-12T12:00:00.000Z'
+
 const profile = defineAgentProfile({
   name: 'Retained lifecycle test',
   harness: 'pi',
@@ -53,6 +55,7 @@ function handle(
 ): RetainedRunHandle {
   return {
     controlRef: exact,
+    capabilities: RETAINED_RUN_HANDLE_CAPABILITIES,
     status:
       options.status ??
       (async () => ({
