@@ -26,13 +26,10 @@ export function profileItems(
       (activeId === undefined && matchingNames.length === 1 && profile.name === activeName)
         ? `✓ ${safe(profile.name)}`
         : safe(profile.name),
-    description: [
+    description: `· ${[
       profile.source.trusted ? 'trusted' : 'untrusted source',
       profile.source.writable ? 'writable' : 'read-only',
-      safe(profile.source.label),
-      profile.runner === undefined ? 'runner default' : safe(profile.runner),
-      profile.model === undefined ? 'model default' : safe(profile.model),
-    ].join(' · '),
+    ].join(' · ')}`,
   }))
 }
 
@@ -64,8 +61,9 @@ export function connectionItems(
 
 export function profileDetailLines(profile: ProfileSummary | undefined): string[] {
   if (profile === undefined) return ['No profile details loaded.']
+  const source = profileSourceDetail(profile)
   return [
-    `source ${safe(profile.source.label)} · ${profile.source.trusted ? 'trusted' : 'untrusted'} · ${profile.source.writable ? 'writable' : 'read-only'}`,
+    `${source === undefined ? '' : `${source} · `}${profile.source.trusted ? 'trusted' : 'untrusted'} · ${profile.source.writable ? 'writable' : 'read-only'}`,
     `runner ${safe(profile.runner ?? 'provider default')} · model ${safe(profile.model ?? 'provider default')}`,
     profileModelControls(profile),
     `digest ${shortDigest(profile.digest)}`,
@@ -74,14 +72,26 @@ export function profileDetailLines(profile: ProfileSummary | undefined): string[
 
 export function profileCompactDetail(profile: ProfileSummary | undefined): string {
   if (profile === undefined) return 'No profile details loaded.'
+  const source = profileSourceDetail(profile)
   return [
     `runner ${safe(profile.runner ?? 'provider default')}`,
     `model ${safe(profile.model ?? 'provider default')}`,
     profileModelControls(profile),
+    ...(source === undefined ? [] : [source]),
     profile.source.trusted ? 'trusted' : 'untrusted source',
     profile.source.writable ? 'writable' : 'read-only',
     `digest ${shortDigest(profile.digest)}`,
   ].join(' · ')
+}
+
+function profileSourceDetail(profile: ProfileSummary): string | undefined {
+  if (
+    profile.source.kind === 'inline' &&
+    profile.source.reference === 'braid:active' &&
+    profile.source.label === profile.name
+  )
+    return undefined
+  return `source ${safe(profile.source.label)}`
 }
 
 export function connectionDetailLines(connection: ConnectionSummary | undefined): string[] {
@@ -173,6 +183,12 @@ export function actionMessage(
 
 export const REFRESH_TIMEOUT = Symbol('refresh-timeout')
 
+const tokenLimitKeys = [
+  'maxVisibleOutputTokens',
+  'maxReasoningTokens',
+  'maxTotalOutputTokens',
+] as const
+
 export async function within<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -202,10 +218,11 @@ function isProfileSummary(value: unknown): value is ProfileSummary {
     (value.runner !== undefined && typeof value.runner !== 'string') ||
     (value.model !== undefined && typeof value.model !== 'string') ||
     (value.reasoningEffort !== undefined && typeof value.reasoningEffort !== 'string') ||
-    (value.maxOutputTokens !== undefined &&
-      (typeof value.maxOutputTokens !== 'number' ||
-        !Number.isSafeInteger(value.maxOutputTokens) ||
-        value.maxOutputTokens <= 0))
+    tokenLimitKeys.some(
+      (key) =>
+        value[key] !== undefined &&
+        (typeof value[key] !== 'number' || !Number.isSafeInteger(value[key]) || value[key] <= 0),
+    )
   )
     return false
   const source = value.source
@@ -219,11 +236,21 @@ function isProfileSummary(value: unknown): value is ProfileSummary {
 
 function profileModelControls(profile: ProfileSummary): string {
   const effort = safe(profile.reasoningEffort ?? 'provider default')
-  const output =
-    profile.maxOutputTokens === undefined
-      ? 'provider default'
-      : `${profile.maxOutputTokens.toLocaleString('en-US')} tokens`
-  return `thinking ${effort} · max output ${output}`
+  const limits = [
+    profile.maxVisibleOutputTokens === undefined
+      ? undefined
+      : `visible ${profile.maxVisibleOutputTokens.toLocaleString('en-US')}`,
+    profile.maxReasoningTokens === undefined
+      ? undefined
+      : `reasoning ${profile.maxReasoningTokens.toLocaleString('en-US')}`,
+    profile.maxTotalOutputTokens === undefined
+      ? undefined
+      : `total ${profile.maxTotalOutputTokens.toLocaleString('en-US')}`,
+  ].filter((value): value is string => value !== undefined)
+  return [
+    `thinking ${effort}`,
+    ...(limits.length === 0 ? ['limits provider default'] : [`limits ${limits.join(' · ')}`]),
+  ].join(' · ')
 }
 
 function isConnectionSummary(value: unknown): value is ConnectionSummary {

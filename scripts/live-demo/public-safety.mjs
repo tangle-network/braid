@@ -18,5 +18,7 @@ export function assertPublicCapture(value) {
   for (const [label, pattern] of PUBLIC_CREDENTIAL_PATTERNS) {
     assert.doesNotMatch(value, pattern, `Public capture contains a ${label}`)
   }
-  assert.doesNotMatch(value, /fixture\/deterministic|repeatable demo data/iu)
+  assert.doesNotMatch(value, /\b(?:fixture|deterministic)\b/iu)
+  assert.doesNotMatch(value, /backend\s+fixture/iu)
+  assert.doesNotMatch(value, /\b(?:unknown|not reported)\b/iu)
 }

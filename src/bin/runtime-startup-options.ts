@@ -1,3 +1,4 @@
+import { envKeyProvider } from '@tangle-network/agent-runtime/kernel'
 import type { CliOptions } from './args.js'
 import {
   createProductionCredentialContext,
@@ -10,12 +11,24 @@ export interface RuntimeStartupOptions {
   readonly credentialContext?: ProductionCredentialContext
 }
 
+const BRIDGE_MODEL_TOKEN_KEY = 'BRAID_CLI_BRIDGE_MODEL_TOKEN'
+const BRIDGE_MODEL_BASE_URL_KEY = 'BRAID_CLI_BRIDGE_MODEL_BASE_URL'
+
 export function createRuntimeStartupOptions(
   options: CliOptions,
   workspace: string,
 ): RuntimeStartupOptions {
   const discoveryTimeoutMs = optionalMilliseconds('BRAID_DISCOVERY_TIMEOUT_MS')
   const modelValidationTimeoutMs = optionalMilliseconds('BRAID_MODEL_VALIDATION_TIMEOUT_MS')
+  const bridgeModelToken = process.env[BRIDGE_MODEL_TOKEN_KEY]?.trim()
+  const bridgeModelCredential =
+    bridgeModelToken === undefined || bridgeModelToken.length === 0
+      ? undefined
+      : {
+          key: BRIDGE_MODEL_TOKEN_KEY,
+          baseUrlKey: BRIDGE_MODEL_BASE_URL_KEY,
+          provider: envKeyProvider(),
+        }
   const base: ProductionStartupLoadOptions = {
     workspace,
     ...(options.config === undefined ? {} : { configPath: options.config }),
@@ -31,6 +44,7 @@ export function createRuntimeStartupOptions(
     ...(process.env.BRAID_CLI_BRIDGE_AUTH === undefined
       ? {}
       : { bridgeAuth: process.env.BRAID_CLI_BRIDGE_AUTH }),
+    ...(bridgeModelCredential === undefined ? {} : { bridgeModelCredential }),
     ...(process.env.BRAID_TANGLE_AUTH === undefined
       ? process.env.TANGLE_INTELLIGENCE_API_KEY === undefined
         ? {}

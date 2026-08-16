@@ -52,7 +52,7 @@ export class ConversationConfirmation extends Container implements Focusable {
     this.addChild(this.#detail)
     this.addChild(this.#error)
     this.addChild(new Spacer(1))
-    this.addChild(new TruncatedText(this.#theme.muted('enter/y confirm · n/esc cancel'), 1, 0))
+    this.addChild(new TruncatedText(this.#theme.muted('enter/y confirm · n/←/esc cancel'), 1, 0))
   }
 
   get focused(): boolean {
@@ -71,7 +71,12 @@ export class ConversationConfirmation extends Container implements Focusable {
 
   handleInput(data: string): void {
     if (this.#submitted) return
-    if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c') || matchesKey(data, 'n')) {
+    if (
+      matchesKey(data, 'escape') ||
+      matchesKey(data, 'ctrl+c') ||
+      matchesKey(data, 'left') ||
+      matchesKey(data, 'n')
+    ) {
       this.#onCancel()
       return
     }

@@ -20,7 +20,7 @@ export function createConnectionMetadataReviewList(
   options: ConnectionMetadataReviewListOptions,
 ): SelectList {
   const items: readonly SelectItem[] = options.applied
-    ? [{ value: CLOSE_EDITOR, label: 'Close', description: 'esc close' }]
+    ? [{ value: CLOSE_EDITOR, label: 'Close', description: '←/esc close' }]
     : [
         {
           value: APPLY_DRAFT,

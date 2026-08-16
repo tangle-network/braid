@@ -43,7 +43,7 @@ export function composerProjectionFor(
     return {
       action: send ? 'send' : 'unavailable',
       actionLabel: send ? 'send' : 'send unavailable',
-      hint: 'alt+enter newline · paste',
+      hint: 'type / for commands · Alt+Enter newline · paste',
     }
   }
 
@@ -68,7 +68,7 @@ export function composerProjectionFor(
     action,
     actionLabel,
     ...(queuePosition === undefined ? {} : { queuePosition }),
-    hint: 'alt+enter newline · paste',
+    hint: 'type / for commands · Alt+Enter newline · paste',
   }
 }
 
@@ -89,7 +89,7 @@ export class ComposerView extends Container {
   #projection: ComposerProjection = {
     action: 'send',
     actionLabel: 'send',
-    hint: 'alt+enter newline · paste',
+    hint: 'type / for commands · Alt+Enter newline · paste',
   }
   #mode: ComposerMode = 'queue'
 
@@ -123,9 +123,20 @@ export class ComposerView extends Container {
       body[0] = promptBodyLine(body[0], this.#theme, promptActionLabel(this.#projection))
     }
     const autocomplete = lines.slice(bottomBorder + 1)
-    if (autocomplete.length === 0) return body
-    return [...body, composerBorderLine(width, this.#projection.hint, this.#theme), ...autocomplete]
+    const topRule = composerTopRule(width, this.#editor.borderColor)
+    if (autocomplete.length === 0) return [topRule, ...body]
+    return [
+      topRule,
+      ...body,
+      composerBorderLine(width, this.#projection.hint, this.#theme),
+      ...autocomplete,
+    ]
   }
+}
+
+function composerTopRule(width: number, borderColor: (text: string) => string): string {
+  const safeWidth = Math.max(1, Math.floor(width))
+  return borderColor('─'.repeat(safeWidth))
 }
 
 function boundedEditorBody(body: readonly string[], terminalRows: number, width: number): string[] {

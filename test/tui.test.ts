@@ -264,7 +264,7 @@ test('composer fallback steers exactly once without queueing or sending', async 
   const harness = await startSteeringTerminal()
   try {
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /Enter steers/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /› steer/u)
     harness.terminal.sendInput('correct course')
     harness.terminal.sendInput('\r')
     await waitUntil(() => harness.calls.steer === 1)
@@ -302,10 +302,10 @@ test('Alt+S changes an active composer from queue to steer', async () => {
   const harness = await startSteeringTerminal(true)
   try {
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /Enter queues · Alt\+S steer/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /› queue #1/u)
     harness.terminal.sendInput('\u001bs')
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /Enter steers · Alt\+S queue/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /› steer/u)
 
     harness.terminal.sendInput('change direction')
     harness.terminal.sendInput('\r')
@@ -431,7 +431,7 @@ test('the searchable command overlay restores editor focus after close', async (
   assert.doesNotMatch(overlay, /alt\+enter newline/u)
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /profile Braid starter.*Ctrl\+P commands/u)
+  assert.match(terminal.getViewport().join('\n'), /profile Braid starter.*\/ commands/u)
   terminal.sendInput('focus restored')
   assert.equal(view.editor.getText(), 'focus restored')
 
@@ -462,7 +462,7 @@ test('Ctrl+K exposes one five-row run switcher and updates the branch runner', a
   for (const label of ['Profile', 'Connection', 'Runner', 'Model', 'Thinking']) {
     assert.match(switcher, new RegExp(`\\b${label}\\b`, 'u'))
   }
-  assert.match(switcher, /enter to change · esc to close/u)
+  assert.match(switcher, /enter to change · ←\/esc close/u)
 
   terminal.sendInput('\u001b[B')
   terminal.sendInput('\u001b[B')

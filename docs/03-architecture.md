@@ -12,7 +12,7 @@ The presentation layer uses one immutable execution-target projection for the fo
 
 That projection reads the exact run receipt when a run exists and falls back to the pending profile only before admission.
 
-This keeps profile identity, run identity, connection, environment, and output limits coherent without a shared god object or duplicated formatting logic.
+This keeps profile identity, run identity, connection, environment, and visible, reasoning, and total output limits coherent without a shared god object or duplicated formatting logic.
 
 ## System context
 
@@ -329,7 +329,7 @@ A sequence gap pauses reduction for that run and requests replay from the last c
 
 If the provider cannot fill the gap, the run becomes incomplete with an explicit missing range and the transcript is never presented as complete.
 
-The run receipt is projected independently from the event document so the terminal and headless views can identify the exact profile, runner, model, effort, output limit, connection, and environment for each run.
+The run receipt is projected independently from the event document so the terminal and headless views can identify the exact profile, runner, model, effort, visible, reasoning, and total output limits, connection, and environment for each run.
 
 Analysis events retain their own analysis run identity and source digest, while runtime worker events retain their supervisor and parent-worker identities.
 

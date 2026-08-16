@@ -44,12 +44,12 @@ export class ConversationOverlayActions {
     conversationId: string | undefined,
   ): void {
     if (conversationId === undefined) {
-      selector.setFooter('select a conversation first · esc close')
+      selector.setFooter('select a conversation first · ←/esc close')
       return
     }
     const conversation = this.#conversation(conversationId)
     if (conversation === undefined) {
-      selector.setFooter('selected conversation disappeared · refresh with esc and ctrl+o')
+      selector.setFooter('selected conversation disappeared · refresh with ←/esc and ctrl+o')
       return
     }
     if (action === 'rename') this.#openRename(selector, conversation)
@@ -60,7 +60,7 @@ export class ConversationOverlayActions {
   async openConversation(selector: SearchableSelector, conversationId: string): Promise<void> {
     const conversation = this.#conversation(conversationId)
     if (conversation === undefined) {
-      selector.setFooter('conversation is no longer available · esc close')
+      selector.setFooter('conversation is no longer available · ←/esc close')
       return
     }
     selector.setFooter('opening conversation…')
@@ -70,7 +70,7 @@ export class ConversationOverlayActions {
     })
     if (result.kind === 'accepted') this.#modals.closeTop()
     else {
-      selector.setFooter('open failed · query and selection preserved · esc close')
+      selector.setFooter('open failed · query and selection preserved · ←/esc close')
       this.#showResultError('Open failed', result, false)
     }
   }

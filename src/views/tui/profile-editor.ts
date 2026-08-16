@@ -1,4 +1,4 @@
-import { Container, type Focusable, type SelectItem } from '@earendil-works/pi-tui'
+import { Container, type Focusable, matchesKey, type SelectItem } from '@earendil-works/pi-tui'
 import type { ProfileSummary } from '../../app/profiles.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
@@ -14,6 +14,7 @@ import {
   within,
 } from './configuration-presenters.js'
 import { ResponsiveText } from './configuration-responsive-text.js'
+import { profileCompatibilityTextLines } from './profile-compatibility.js'
 import {
   profileErrorMessage,
   profileItemName,
@@ -23,7 +24,6 @@ import {
   validateProfileIntent,
 } from './profile-editor-actions.js'
 import { profileEditorChildren } from './profile-editor-rendering.js'
-import { profileCompatibilityTextLines } from './profile-compatibility.js'
 import { SearchableSelector } from './selector.js'
 import type { BraidTheme } from './theme.js'
 
@@ -43,6 +43,7 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
   readonly #onCancel: (() => void) | undefined
   readonly #status = new ResponsiveText('', 1, 0)
   readonly #detail = new ResponsiveText('', 1, 0)
+  readonly #footer = new ResponsiveText('', 1, 0)
   #selector: SearchableSelector | undefined
   #profiles: readonly ProfileSummary[] = []
   #focused = false
@@ -78,6 +79,10 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
   }
 
   handleInput(data: string): void {
+    if (matchesKey(data, 'escape') || matchesKey(data, 'left')) {
+      this.#onCancel?.()
+      return
+    }
     this.#selector?.handleInput(data)
   }
 
@@ -91,11 +96,11 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
   #buildSelector(query: string): void {
     if (this.#controller === undefined) return
     this.#selector = new SearchableSelector({
-      title: 'profiles',
+      title: 'switch profile',
       items: [],
       query,
       maxVisible: 5,
-      footer: 'enter select · ^V validate · esc close',
+      footer: 'enter select · ^V validate · ←/esc close',
       theme: this.#theme,
       onSelect: (item) => void this.#select(item),
       onAction: (key, item) => {
@@ -149,7 +154,7 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
           ? 'No profiles found'
           : active === undefined
             ? 'Profiles ready · choose one'
-            : `Active profile · ${safe(active.name)}`),
+            : safe(active.name)),
     )
   }
 
@@ -247,7 +252,11 @@ export class ProfileEditorViewPanel extends Container implements Focusable {
     this.clear()
     this.addChild(this.#status)
     this.addChild(this.#detail)
-    if (this.#selector) this.addChild(this.#selector)
+    if (this.#selector && this.#profiles.length !== 1) this.addChild(this.#selector)
+    if (this.#profiles.length === 1) {
+      this.#footer.setText(this.#theme.muted('←/esc close'))
+      this.addChild(this.#footer)
+    }
     this.invalidate()
   }
 

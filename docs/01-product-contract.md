@@ -14,7 +14,7 @@ The runner defines which coding program executes one run.
 
 Braid defines how the user sees, directs, forks, analyzes, approves, and audits that work.
 
-The `AgentProfile` is portable intent, while an admitted run stores an immutable receipt for the effective runner, model, reasoning effort, maximum output, connection, and execution environment.
+The `AgentProfile` is portable intent, while an admitted run stores an immutable receipt for the effective runner, model, reasoning effort, visible, reasoning, and total output limits, connection, and execution environment.
 
 Changing the selected profile for a future run never rewrites the receipt or identity of an existing run.
 
@@ -84,7 +84,7 @@ They need analyses to remain separate from the conversation they analyze unless 
 1. The user starts Braid in a project directory.
 2. Braid discovers or prompts for a CLI Bridge connection.
 3. The user selects an existing profile.
-4. Braid shows the effective runner, model, reasoning effort, maximum output, connection, execution location, and any unsupported profile dimensions before sending.
+4. Braid shows the effective runner, model, reasoning effort, configured visible, reasoning, and total output limits, connection, execution location, and any unsupported profile dimensions before sending.
 5. CLI Bridge materializes the exact profile and starts the selected local runner.
 6. Braid streams normalized events, records the materialization receipt, and reconnects from the last event identifier after a transport loss.
 7. Explicit cancellation waits for a terminal cancellation result instead of treating a closed stream as success.
@@ -157,7 +157,9 @@ Activity also keeps direct turn usage, analysis usage, and runtime-worker usage 
 
 ### Fast default, full depth on demand
 
-The default composer keeps profile, connection, runner, model, effort, branch, run state, and cost visible without occupying the transcript.
+The default composer keeps profile, runner, model, backend, effort, run state, and measured cost visible without occupying the transcript.
+
+Wide terminals add configured output limits and measured sandbox facts only when complete atomic groups fit.
 
 Advanced profile fields, event details, receipts, traces, and environment operations live behind focused overlays.
 

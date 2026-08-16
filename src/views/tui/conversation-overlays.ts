@@ -33,8 +33,7 @@ export class ConversationOverlayController {
       items: conversationItems(view),
       theme: this.#actions.theme,
       maxVisible: 8,
-      footer:
-        'type to filter · enter to choose · esc to close · ^R rename · ^A archive · ^D delete',
+      footer: 'type to filter · enter to choose · ←/esc close · ^R rename · ^A archive · ^D delete',
       onSelect: (item) => void this.#actions.openConversation(selector, item.value),
       onAction: (key, item) => this.#actions.conversationAction(selector, key, item?.value),
       onCancel: () => this.#modals.closeTop(),
@@ -55,7 +54,7 @@ export class ConversationOverlayController {
       items,
       theme: this.#actions.theme,
       maxVisible: 8,
-      footer: 'filter · enter switch branch · esc close',
+      footer: 'filter · enter switch branch · ←/esc close',
       onSelect: (item) => void this.#actions.openBranch(selector, item.value),
       onCancel: () => this.#modals.closeTop(),
     })

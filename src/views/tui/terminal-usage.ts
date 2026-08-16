@@ -10,6 +10,32 @@ export function metricsFor(view: BraidViewModel): string[] {
   ].filter((value): value is string => value !== undefined)
 }
 
+/** Returns only compact direct-run measurements suitable for the persistent footer. */
+export function footerMetricsFor(view: BraidViewModel): string[] {
+  const usage = view.sessionUsage.turns
+  return [
+    ...tokenMetrics(usage),
+    measuredCostMetric(usage),
+    measurementMetric(
+      'latency',
+      usage.llmLatencyMs,
+      usage.latencyStatus,
+      (value) => `${Math.round(value)}ms`,
+    ),
+  ].filter((value): value is string => value !== undefined)
+}
+
+function measuredCostMetric(usage: UsageTotalsView): string | undefined {
+  const reported = finiteNonNegative(usage.costUsd)
+  if (usage.costStatus === 'reported' && reported !== undefined) {
+    return `$${reported.toFixed(4)}`
+  }
+  if (usage.costStatus === 'observed-floor' && reported !== undefined && reported > 0) {
+    return `≥$${reported.toFixed(4)}`
+  }
+  return undefined
+}
+
 function usageGroup(label: string, usage: UsageTotalsView): string | undefined {
   if (usage.sourceCount === 0) return undefined
   const metrics = usageMetrics(usage)
@@ -26,7 +52,7 @@ function usageMetrics(usage: UsageTotalsView): string[] {
       String(Math.round(value)),
     ),
     measurementMetric(
-      'model',
+      'latency',
       usage.llmLatencyMs,
       usage.latencyStatus,
       (value) => `${Math.round(value)}ms`,

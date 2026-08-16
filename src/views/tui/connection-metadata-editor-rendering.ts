@@ -57,7 +57,7 @@ function kindChildren(state: ConnectionMetadataEditorRenderState): readonly Comp
     new Text(state.theme.accent('connection kind'), 1, 0),
     state.kindList,
     new Spacer(1),
-    new Text(state.theme.muted('↑↓ choose · enter next · esc cancel'), 1, 0),
+    new Text(state.theme.muted('↑↓ choose · enter next · ←/esc cancel'), 1, 0),
   ]
 }
 
@@ -97,10 +97,10 @@ function reviewChildren(state: ConnectionMetadataEditorRenderState): readonly Co
     new Text(
       state.theme.muted(
         state.applied
-          ? 'enter close · esc close'
+          ? 'enter close · ←/esc close'
           : state.busy
             ? 'saving…'
-            : '↑↓ choose · enter continue / back · esc cancel',
+            : '↑↓ choose · enter continue / back · ←/esc cancel',
       ),
       1,
       0,

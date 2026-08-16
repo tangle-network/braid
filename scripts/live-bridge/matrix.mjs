@@ -70,20 +70,56 @@ async function withFakeBridge(
 }
 
 async function runTargetPolicyMatrix() {
-  const both = defaultTargetPolicy.definitions
-  const exactGlm = both[0].modelId
-  const exactPiGlm = both[1].modelId
+  const opencode = defaultTargetPolicy.definitions[0]
+  const piFlash = {
+    key: 'pi-deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash through Pi',
+    modelId: 'pi/deepseek/deepseek-v4-flash',
+    backend: 'pi',
+  }
+  const piPro = {
+    key: 'pi-deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro through Pi',
+    modelId: 'pi/deepseek/deepseek-v4-pro',
+    backend: 'pi',
+  }
+  const both = [opencode, piFlash]
+  const exactGlm = opencode.modelId
+  const exactPiModel = piFlash.modelId
   const readyBackends = [
     { name: 'opencode', state: 'ready' },
     { name: 'pi', state: 'ready' },
     { name: 'claude-code', state: 'starting' },
   ]
-  await withFakeBridge([exactGlm, exactPiGlm], readyBackends, async (endpoint) => {
+  const dynamicHealth = {
+    ok: true,
+    status: 200,
+    body: { status: 'ok', backends: readyBackends },
+  }
+  const dynamicModels = {
+    ok: true,
+    body: { data: [{ id: exactGlm }, { id: piFlash.modelId }, { id: piPro.modelId }] },
+  }
+  assert.deepEqual(
+    releaseTargetDefinitions(defaultTargetPolicy.definitions, dynamicModels, dynamicHealth).map(
+      ({ modelId }) => modelId,
+    ),
+    [exactGlm, piFlash.modelId],
+  )
+  assert.deepEqual(
+    releaseTargetDefinitions(
+      defaultTargetPolicy.definitions,
+      { ...dynamicModels, body: { data: [{ id: piPro.modelId }, { id: piFlash.modelId }] } },
+      { ...dynamicHealth, body: { status: 'ok', backends: [{ name: 'pi', state: 'ready' }] } },
+    ).map(({ modelId }) => modelId),
+    [piPro.modelId],
+  )
+  await withFakeBridge([exactGlm, exactPiModel], readyBackends, async (endpoint) => {
     const evidence = {}
     const result = await discoverBridge(endpoint, undefined, evidence, process.cwd(), both)
     assert.deepEqual(
       result.selected.map(({ modelId }) => modelId),
-      [exactGlm, exactPiGlm],
+      [exactGlm, exactPiModel],
     )
   })
   await withFakeBridge([exactGlm], readyBackends, async (endpoint) => {
@@ -94,7 +130,7 @@ async function runTargetPolicyMatrix() {
     )
     assert.deepEqual(
       evidence.missingTargets.map(({ modelId }) => modelId),
-      [exactPiGlm],
+      [exactPiModel],
     )
   })
   await withFakeBridge(
@@ -110,7 +146,7 @@ async function runTargetPolicyMatrix() {
     { modelsStatus: 503 },
   )
   await withFakeBridge(
-    [exactGlm, exactPiGlm],
+    [exactGlm, exactPiModel],
     readyBackends,
     async (endpoint) => {
       const evidence = {}
@@ -121,7 +157,7 @@ async function runTargetPolicyMatrix() {
     },
     { capabilities: {} },
   )
-  await withFakeBridge([exactPiGlm], readyBackends, async (endpoint) => {
+  await withFakeBridge([exactPiModel], readyBackends, async (endpoint) => {
     const evidence = {}
     await assert.rejects(
       discoverBridge(endpoint, undefined, evidence, process.cwd(), both),
@@ -133,7 +169,7 @@ async function runTargetPolicyMatrix() {
     )
   })
   await withFakeBridge(
-    [exactGlm, exactPiGlm],
+    [exactGlm, exactPiModel],
     [{ name: 'opencode', state: 'ready' }],
     async (endpoint) => {
       const evidence = {}
@@ -177,13 +213,13 @@ async function runTargetPolicyMatrix() {
   const releaseModels = {
     ok: true,
     body: {
-      data: [{ id: exactGlm }, { id: exactPiGlm }, { id: 'codex/default' }],
+      data: [{ id: exactGlm }, { id: exactPiModel }, { id: 'codex/default' }],
     },
   }
   const releaseDefinitions = releaseTargetDefinitions(both, releaseModels, releaseHealth)
   assert.deepEqual(
     releaseDefinitions.map(({ modelId }) => modelId),
-    [exactGlm, exactPiGlm, 'codex/default'],
+    [exactGlm, exactPiModel, 'codex/default'],
   )
   assert.equal(releaseDefinitions[2].bridgeModelId, 'codex/default')
   const releaseEvidence = {}
@@ -197,14 +233,20 @@ async function runTargetPolicyMatrix() {
     releaseTargets.map(({ modelId, bridgeModelId }) => ({ modelId, bridgeModelId })),
     [
       { modelId: exactGlm, bridgeModelId: exactGlm },
-      { modelId: exactPiGlm, bridgeModelId: exactPiGlm },
+      { modelId: exactPiModel, bridgeModelId: exactPiModel },
       { modelId: 'codex/default', bridgeModelId: 'codex/default' },
     ],
   )
 }
 
 async function runConfigurationMatrix() {
-  const [glm, piGlm] = defaultTargetPolicy.definitions
+  const glm = defaultTargetPolicy.definitions[0]
+  const piGlm = {
+    key: 'pi-deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash through Pi',
+    modelId: 'pi/deepseek/deepseek-v4-flash',
+    backend: 'pi',
+  }
   assert.deepEqual(profileForBridgeTarget(glm), {
     name: `Braid live ${glm.modelId}`,
     description: 'Opt-in packed CLI Bridge smoke profile',
@@ -218,8 +260,8 @@ async function runConfigurationMatrix() {
     version: '0.1.0',
     harness: 'pi',
     model: {
-      provider: 'tangle-router',
-      default: 'glm-5.2',
+      provider: 'deepseek',
+      default: 'deepseek-v4-flash',
       reasoningEffort: 'none',
     },
   })
@@ -279,8 +321,8 @@ async function runConfigurationMatrix() {
   try {
     const written = await writeTargetConfig(root, endpoint, piGlm, undefined)
     assert.deepEqual(JSON.parse(await readFile(written.profilePath, 'utf8')), written.profile)
-    assert.equal(written.profile.model.default, 'glm-5.2')
-    assert.equal(written.profile.model.provider, 'tangle-router')
+    assert.equal(written.profile.model.default, 'deepseek-v4-flash')
+    assert.equal(written.profile.model.provider, 'deepseek')
     const credential = await writeTargetConfig(root, endpoint, glm, {
       recordRef: createLiveCredentialId('11111111-1111-1111-1111-111111111111'),
     })

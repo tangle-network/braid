@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict'
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:3344'
-const PI_PREFERENCES = [
-  'pi/tangle-router/glm-5.2',
-  'pi/openai-codex/gpt-5.6-luna',
-  'pi/openai-codex/gpt-5.6-sol',
-  'pi/openai-codex/gpt-5.5',
-]
 const CODEX_PREFERENCES = ['codex/default', 'codex/gpt-5.6', 'codex/gpt-5.5']
 const KNOWN_UNAVAILABLE_MODELS = new Map([
   [
@@ -68,9 +62,9 @@ export function chooseRunnerTargets(health, catalog) {
     : []
   const backends = [...new Set(models.map((model) => model.backend))].sort()
   const preferred = []
-  const pi = modelFor(models, 'pi', PI_PREFERENCES)
+  const pi = modelFor(models, 'pi', [])
   const codex = modelFor(models, 'codex', CODEX_PREFERENCES)
-  if (pi) preferred.push({ runner: 'pi', model: pi.id, selection: 'preferred-pi' })
+  if (pi) preferred.push({ runner: 'pi', model: pi.id, selection: 'health-discovered-pi' })
   if (codex) preferred.push({ runner: 'codex', model: codex.id, selection: 'preferred-codex' })
 
   const selected =

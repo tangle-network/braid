@@ -86,9 +86,9 @@ export class TranscriptView extends Container {
         : detailCount
       return `Ctrl+E next detail (${current}/${detailCount})`
     }
-    if (detailCount === 1) return 'Ctrl+E detail'
+    if (detailCount === 1) return 'Ctrl+E details'
     if (this.canScroll) return 'PgUp/PgDn history'
-    return 'Ctrl+P commands'
+    return '/ commands · Ctrl+P'
   }
 
   hasCollapsibleDetails(): boolean {
@@ -146,6 +146,13 @@ export class TranscriptView extends Container {
   override render(width: number): string[] {
     const allLines = super.render(Math.max(1, Math.floor(width)))
     this.#lastLines = allLines
+    if (this.#view?.messages.length === 0 && (this.#view.queue?.length ?? 0) === 0) {
+      const prompt = allLines.at(-1) ?? ''
+      const promptRow = Math.max(0, this.#viewportRows - 1)
+      return [...Array.from({ length: Math.max(0, promptRow - 1) }, () => ''), prompt].slice(
+        -this.#viewportRows,
+      )
+    }
     const max = Math.max(0, allLines.length - this.#viewportRows)
     if (this.#pendingHistoryPosition === 'start') {
       this.#scrollTop = 0

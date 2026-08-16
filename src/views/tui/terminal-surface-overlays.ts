@@ -294,7 +294,7 @@ export class TerminalSurfaceOverlays {
         },
       ],
       theme: this.#options.theme,
-      footer: 'enter open · esc close',
+      footer: 'enter open · ←/esc close',
       onSelect: (item) => {
         this.#options.modals.closeTop()
         if (item.value === 'profile') this.#options.openProfile()

@@ -109,7 +109,7 @@ const DEFINITIONS: readonly CommandDefinition[] = [
   [
     'connection',
     [],
-    'Inspect, create, test, select, or remove a connection',
+    'Inspect and manage connections',
     '/connection [list|create|test|select|remove] [id]',
     'connection.select',
     'explicit',

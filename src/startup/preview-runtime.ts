@@ -37,7 +37,9 @@ export interface StartupFrameState {
     readonly model?: {
       readonly default?: string
       readonly reasoningEffort?: string
-      readonly maxOutputTokens?: number
+      readonly maxVisibleOutputTokens?: number
+      readonly maxReasoningTokens?: number
+      readonly maxTotalOutputTokens?: number
     }
   }
   readonly selectedConnectionId: string | null
@@ -99,9 +101,15 @@ class StartupFrame implements Component {
       ...(state.profile.model?.reasoningEffort === undefined
         ? {}
         : { effort: state.profile.model.reasoningEffort }),
-      ...(state.profile.model?.maxOutputTokens === undefined
+      ...(state.profile.model?.maxVisibleOutputTokens === undefined
         ? {}
-        : { maxOutputTokens: state.profile.model.maxOutputTokens }),
+        : { maxVisibleOutputTokens: state.profile.model.maxVisibleOutputTokens }),
+      ...(state.profile.model?.maxReasoningTokens === undefined
+        ? {}
+        : { maxReasoningTokens: state.profile.model.maxReasoningTokens }),
+      ...(state.profile.model?.maxTotalOutputTokens === undefined
+        ? {}
+        : { maxTotalOutputTokens: state.profile.model.maxTotalOutputTokens }),
     }
     this.#theme = theme
     this.#rows = rows

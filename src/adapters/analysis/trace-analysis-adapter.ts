@@ -75,6 +75,7 @@ export interface TraceAnalysisAdapterOptions extends ProductionConnectionOptions
   readonly maxCostUsd?: number
   readonly maxOutputTokens?: number
   readonly maxReasoningTokens?: number
+  readonly maxTotalOutputTokens?: number
   readonly timeoutMs?: number
   readonly recordExecution?: (observation: ExternalOptimizerModelExecutionObservation) => void
   readonly onRetainedAdmission?: (
@@ -234,6 +235,39 @@ function defaultModelCostCeiling(
   )
 }
 
+interface AnalysisTokenLimits {
+  readonly maxOutputTokens: number
+  readonly maxReasoningTokens: number
+  readonly maxTotalOutputTokens?: number
+}
+
+function analysisTokenLimits(options: TraceAnalysisAdapterOptions): AnalysisTokenLimits {
+  const model = options.profile.model
+  const total = options.maxTotalOutputTokens ?? model?.maxTotalOutputTokens
+  const visible =
+    options.maxOutputTokens ??
+    model?.maxVisibleOutputTokens ??
+    (total === undefined ? DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS : total)
+  const reasoning =
+    options.maxReasoningTokens ??
+    model?.maxReasoningTokens ??
+    (total === undefined ? visible * DEFAULT_ANALYSIS_REASONING_MULTIPLIER : total - visible)
+  if (
+    visible <= 0 ||
+    reasoning < 0 ||
+    (total !== undefined && (visible > total || visible + reasoning > total))
+  ) {
+    throw new RangeError(
+      'Trace analysis visible and reasoning token limits exceed maxTotalOutputTokens',
+    )
+  }
+  return {
+    maxOutputTokens: visible,
+    maxReasoningTokens: reasoning,
+    ...(total === undefined ? {} : { maxTotalOutputTokens: total }),
+  }
+}
+
 /**
  * Configure the model-backed trace analysts for one exact profile/connection pair.
  *
@@ -343,6 +377,7 @@ export async function createTraceAnalysisAdapter(
       ? normalizeCliBridgeProviderBaseUrl(endpoint, connection.id)
       : normalizeTangleInferenceRuntimeBaseUrl(endpoint, connection.id)
   try {
+    const limits = analysisTokenLimits(options)
     const modelExecutionScope = new ModelExecutionScope()
     const owner = createRuntimeTraceModelOwner({
       profile,
@@ -351,6 +386,10 @@ export async function createTraceAnalysisAdapter(
       ...(credential === undefined ? {} : { credential }),
       model,
       ...(options.pricing === undefined ? {} : { pricing: { ...options.pricing } }),
+      ...(limits.maxReasoningTokens > 0 ? { maxReasoningTokens: limits.maxReasoningTokens } : {}),
+      ...(limits.maxTotalOutputTokens === undefined
+        ? {}
+        : { maxTotalOutputTokens: limits.maxTotalOutputTokens }),
       ...(connection.kind !== 'tangle-inference' || options.routerComplete === undefined
         ? {}
         : { complete: options.routerComplete }),
@@ -362,9 +401,7 @@ export async function createTraceAnalysisAdapter(
         ? {}
         : { onRetainedAdmission: options.onRetainedAdmission }),
     })
-    const maxOutputTokens = options.maxOutputTokens ?? DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS
-    const maxReasoningTokens =
-      options.maxReasoningTokens ?? maxOutputTokens * DEFAULT_ANALYSIS_REASONING_MULTIPLIER
+    const { maxOutputTokens, maxReasoningTokens } = limits
     const maxCostUsd =
       options.maxCostUsd ??
       (owner.pricing === undefined

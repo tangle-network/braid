@@ -118,11 +118,10 @@ export function interactionHeading(interaction: InteractionView): string {
 }
 
 export function runContext(interaction: InteractionView): string {
-  const requester = [interaction.profileName, interaction.runner]
+  return [interaction.profileName, interaction.runner]
     .map((value) => (value === undefined ? '' : sanitizeTerminalText(value)))
     .filter((value) => value.length > 0)
-    .join(' @ ')
-  return [requester, `run ${shortIdentifier(interaction.runId)}`].filter(Boolean).join(' · ')
+    .join(' · ')
 }
 
 export function interactionSubjectComponents(
@@ -171,7 +170,7 @@ export function answerHelp(interaction: InteractionView): string {
     if (hasApproval && rejection) return 'answer: y approve · n reject'
     if (hasApproval) return 'answer: y yes'
     if (rejection) return 'answer: n reject'
-    return 'answer: esc cancel'
+    return 'answer: ←/esc cancel'
   }
   if (spec.kind === 'unknown') return `answer: ${sanitizeTerminalText(spec.label)}`
   if (spec.kind === 'form') return `answer: JSON · ${spec.fields.length} field(s)`
@@ -192,7 +191,7 @@ export function interactionFooter(interaction: InteractionView, canAutomate: boo
       : interaction.answerSpec.kind === 'select'
         ? ['↑↓ move', 'enter choose']
         : ['enter submit']
-  if (cancellationOutcome(interaction) !== undefined) parts.push('esc cancel')
+  if (cancellationOutcome(interaction) !== undefined) parts.push('←/esc cancel')
   if (canAutomate && !isSecretInteraction(interaction)) parts.push('alt+a automate')
   return parts.join(' · ')
 }
@@ -206,9 +205,4 @@ function outcomeKeyLabel(outcome: InteractionOutcome): string {
   if (outcome === 'deny') return 'deny'
   if (outcome === 'revise') return 'revise'
   return 'cancel'
-}
-
-function shortIdentifier(value: string): string {
-  const safe = sanitizeTerminalText(value)
-  return safe.length <= 20 ? safe : `${safe.slice(0, 12)}…${safe.slice(-6)}`
 }

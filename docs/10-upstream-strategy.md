@@ -41,7 +41,7 @@ The deciding question was how much source can be reused while preserving `AgentP
 | [Hermes Agent terminal app](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | `697f2896bf948731eb6fcb93caa7264478590843` | MIT | No size claim used | Client/runtime and workflow reference |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `47f943859bef60e4160492346772ded9b24f765a`; root `0.1.0-rc.5` | MIT | No size claim used | Web, headless, subagent, job, workflow, and event-log reference |
 | [Cordis](https://github.com/cordiverse/cordis) | `8cc9e33fab69e2d0476d126baaf2acb24e6a6ab4`; core `4.0.0-rc.8` | MIT | No size claim used | Rejected application-framework candidate |
-| [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | repository `9c18cb48`; npm `0.132.11` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
+| [`agent-runtime` terminal monitor](https://github.com/tangle-network/agent-runtime/tree/main/src/tui) | Historical snapshot: repository `9c18cb48`; npm `0.132.11` | Project license | No refreshed size claim | Runtime-owned supervisor source, not app base |
 
 The count commands selected the named TypeScript or Rust files from sparse clones and used `wc -l`.
 
@@ -199,7 +199,7 @@ The current Braid event journal, activity graph, and immutable view models satis
 
 ## Runtime monitor
 
-`agent-runtime` package version `0.132.12` exports a diagnostic terminal module and `agent-runtime-top` binary.
+Historical snapshot: `agent-runtime` package version `0.132.12` exported a diagnostic terminal module and `agent-runtime-top` binary.
 
 The module understands runtime-owned supervisor files and shows worker state, spend, tokens, latency, logs, steering, shell action, and cancellation controls.
 

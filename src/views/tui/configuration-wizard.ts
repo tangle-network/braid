@@ -7,14 +7,14 @@ import {
   type ConfigurationSessionState,
 } from '../../app/configuration-session.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { ConfigurationReview } from './configuration-review.js'
 import {
-  ConfigurationCredential,
   type ConfigurationCommit,
+  ConfigurationCredential,
   configurationNeedsCredential,
   mountConfigurationCredential,
   PreparedCredential,
 } from './configuration-credential.js'
+import { ConfigurationReview } from './configuration-review.js'
 import {
   APPLY_SELECTION,
   BACK_TO_CONNECTION,
@@ -134,7 +134,7 @@ export class ConfigurationWizard extends Container implements Focusable {
           : configurationTitle(state, this.#busy, this.#commitError),
         ...(this.#commitError === undefined ? {} : { error: this.#commitError }),
         items: applied
-          ? [{ value: CANCEL_CONFIGURATION, label: 'Close', description: 'esc close' }]
+          ? [{ value: CANCEL_CONFIGURATION, label: 'Close', description: '←/esc close' }]
           : configurationItems(state, this.#busy, this.#commitError),
         onSelect: (item) => this.#select(item.value),
         onCancel: () => this.#cancel(),
@@ -179,8 +179,8 @@ export class ConfigurationWizard extends Container implements Focusable {
       if (state.profiles.length === 0 || state.connections.length === 0) {
         this.#commitError =
           state.profiles.length === 0
-            ? 'No AgentProfiles are available. Press esc to leave setup.'
-            : 'No connections are available. Press esc to leave setup.'
+            ? 'No AgentProfiles are available. Press ←/esc to leave setup.'
+            : 'No connections are available. Press ←/esc to leave setup.'
         this.#renderStage(state)
         return
       }

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { importAnalysisModelCalls } from '../src/app/conversation-import-analyses.js'
 import { MemoryJournal } from '../src/app/journal.js'
-import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { AnalysisRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
@@ -11,7 +11,11 @@ import { createAnalysisId, createEventId } from '../src/domain/ids.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
-import { analysisModelCallSummary } from '../src/views/shared/analysis-model-call-presentation.js'
+import {
+  analysisMeasuredModelCallLine,
+  analysisMeasuredModelCallSummary,
+  analysisModelCallSummary,
+} from '../src/views/shared/analysis-model-call-presentation.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 
 const startedAt = '2026-08-10T00:00:00.000Z'
@@ -235,7 +239,7 @@ test('analysis model-call summary keeps partial telemetry explicit', () => {
         outcome: 'failed',
       },
     ]),
-    '2 calls · tokens ≥120 in / ≥45 out (+1 unknown) · cost ≥$0.0123 (+1 unknown) · model ≥88ms (+1 unknown) · 1 failed',
+    '2 calls · tokens ≥120 in / ≥45 out (+1 unknown) · cost ≥$0.0123 (+1 unknown) · latency ≥88ms (+1 unknown) · 1 failed',
   )
 })
 
@@ -254,7 +258,36 @@ test('analysis model-call summary distinguishes estimates from exact charges', (
         outcome: 'succeeded',
       },
     ]),
-    '1 call · tokens 20 in / 8 out · cost ~$0.0042 · model 40ms',
+    '1 call · tokens 20 in / 8 out · cost ~$0.0042 · latency 40ms',
+  )
+})
+
+test('compact analysis surfaces omit unmeasured usage and latency', () => {
+  const partial = {
+    sequence: 2,
+    model: 'glm-5.2',
+    tokensKnown: false,
+    costStatus: 'unknown' as const,
+    outcome: 'failed' as const,
+  }
+  assert.equal(analysisMeasuredModelCallLine(partial), '#2 glm-5.2')
+  assert.equal(
+    analysisMeasuredModelCallSummary([
+      {
+        sequence: 1,
+        provider: 'openai',
+        model: 'gpt-5.6-luna',
+        inputTokens: 120,
+        outputTokens: 45,
+        tokensKnown: true,
+        costUsd: 0.0123,
+        costStatus: 'observed',
+        latencyMs: 88,
+        outcome: 'succeeded',
+      },
+      partial,
+    ]),
+    '2 calls · tokens ≥120 in / ≥45 out · cost $0.0123 · latency ≥88ms · 1 failed',
   )
 })
 

@@ -135,6 +135,7 @@ export class BraidTerminalApp {
         : { connectionLifecycle: options.connectionLifecycle }),
       dispatchCommand: (command, args) => this.#commands.dispatchCommand(command, args),
       requestRender: () => this.#tui.requestRender(),
+      columns: () => this.#tui.terminal.columns,
       rows: () => this.#tui.terminal.rows,
     })
     this.#interactions = new TerminalInteractionController({
@@ -227,7 +228,6 @@ export class BraidTerminalApp {
   #render(view: BraidViewModel): void {
     this.#drafts.restore(view)
     this.#shell.setView(view, this.#input.quitArmed)
-    this.#shell.setActivityVisible(this.#input.activityVisible)
     this.#interactions.sync(view)
     this.#tui.requestRender()
   }

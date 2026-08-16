@@ -1,8 +1,6 @@
 import { matchesKey, type TUI } from '@earendil-works/pi-tui'
 import { commandAvailability } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
-import type { BraidViewModel } from '../shared/models.js'
-import { hasLiveWork } from './activity.js'
 import type { ComposerMode } from './composer-view.js'
 import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
@@ -25,13 +23,6 @@ export interface TerminalInputControllerOptions {
   readonly stateChanged: () => void
 }
 
-export type ActivityVisibility = 'auto' | 'hidden' | 'visible'
-
-export function activityVisibleFor(view: BraidViewModel, visibility: ActivityVisibility): boolean {
-  if (visibility !== 'visible') return false
-  return hasLiveWork(view)
-}
-
 /** Routes non-text terminal keys and owns the short-lived quit/activity state. */
 export class TerminalInputController {
   readonly #tui: TUI
@@ -48,7 +39,6 @@ export class TerminalInputController {
   readonly #stateChanged: () => void
   #quitTimer: ReturnType<typeof setTimeout> | undefined
   #quitArmed = false
-  #activityVisibility: ActivityVisibility = 'auto'
   #composerMode: ComposerMode = 'queue'
 
   constructor(options: TerminalInputControllerOptions) {
@@ -70,10 +60,6 @@ export class TerminalInputController {
     return this.#quitArmed
   }
 
-  get activityVisible(): boolean {
-    return activityVisibleFor(this.#controller.view(), this.#activityVisibility)
-  }
-
   get composerMode(): ComposerMode {
     return this.#composerMode
   }
@@ -91,6 +77,13 @@ export class TerminalInputController {
     }
     if (isTextInputSequence(data)) return undefined
     if (matchesKeyAction(data, this.#keymap, 'closeOverlay') && this.#tui.hasOverlay()) {
+      if (
+        matchesKey(data, 'left') &&
+        !this.#interactionOpen() &&
+        this.#modals.backOrCloseIfFullScreen()
+      ) {
+        return { consume: true }
+      }
       if (this.#interactionOpen()) return undefined
       if (matchesKey(data, 'left')) {
         if (!this.#modals.backOrCloseIfPassive()) return undefined
@@ -141,8 +134,7 @@ export class TerminalInputController {
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'activity')) {
-      this.#activityVisibility = this.activityVisible ? 'hidden' : 'visible'
-      this.#stateChanged()
+      this.#overlays.openSurface('activity')
       return { consume: true }
     }
     if (

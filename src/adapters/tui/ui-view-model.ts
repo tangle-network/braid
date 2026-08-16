@@ -124,9 +124,15 @@ export function buildBraidViewModel(
         ? {}
         : { mode: sanitizeTerminalText(selectedBranch.overrides.mode) }),
     }),
-    ...(modelSettings.maxOutputTokens === undefined
+    ...(modelSettings.maxVisibleOutputTokens === undefined
       ? {}
-      : { maxOutputTokens: modelSettings.maxOutputTokens }),
+      : { maxVisibleOutputTokens: modelSettings.maxVisibleOutputTokens }),
+    ...(modelSettings.maxReasoningTokens === undefined
+      ? {}
+      : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
+    ...(modelSettings.maxTotalOutputTokens === undefined
+      ? {}
+      : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
     connection: fixture
       ? 'deterministic fixture'
       : sanitizeTerminalText(selectedConnection?.name ?? 'not connected'),

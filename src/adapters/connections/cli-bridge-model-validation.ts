@@ -37,7 +37,8 @@ export function cliBridgeModelValidationRequest(profile: Readonly<AgentProfile>)
         ...(profile.model?.reasoningEffort === undefined
           ? {}
           : { reasoningEffort: profile.model.reasoningEffort }),
-        metadata: { maxTokens: CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS },
+        maxVisibleOutputTokens: CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS,
+        maxTotalOutputTokens: CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS,
       },
     },
   }

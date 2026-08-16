@@ -7,8 +7,11 @@ export interface ExecutionTargetView {
   readonly profileDigest?: string
   readonly runner: string
   readonly model: string
+  readonly backend?: string
   readonly effort?: string
-  readonly maxOutputTokens?: number
+  readonly maxVisibleOutputTokens?: number
+  readonly maxReasoningTokens?: number
+  readonly maxTotalOutputTokens?: number
   readonly connection: string
   readonly connectionId?: string
   readonly environment?: EnvironmentView
@@ -98,7 +101,15 @@ function profileTarget(view: BraidViewModel): ExecutionTargetView {
     runner: view.runner,
     model: view.model,
     ...(view.effort === undefined ? {} : { effort: view.effort }),
-    ...(view.maxOutputTokens === undefined ? {} : { maxOutputTokens: view.maxOutputTokens }),
+    ...(view.maxVisibleOutputTokens === undefined
+      ? {}
+      : { maxVisibleOutputTokens: view.maxVisibleOutputTokens }),
+    ...(view.maxReasoningTokens === undefined
+      ? {}
+      : { maxReasoningTokens: view.maxReasoningTokens }),
+    ...(view.maxTotalOutputTokens === undefined
+      ? {}
+      : { maxTotalOutputTokens: view.maxTotalOutputTokens }),
     connection: view.connection,
   })
 }
@@ -108,6 +119,7 @@ function runTarget(view: BraidViewModel, run: RunView): ExecutionTargetView {
     run.environmentId === undefined
       ? undefined
       : view.environments.find((candidate) => candidate.id === run.environmentId)
+  const backend = run.provider ?? environment?.provider
   return Object.freeze({
     source: 'run',
     runId: run.id,
@@ -115,8 +127,15 @@ function runTarget(view: BraidViewModel, run: RunView): ExecutionTargetView {
     ...(run.profileDigest === undefined ? {} : { profileDigest: run.profileDigest }),
     runner: run.runner ?? view.runner,
     model: run.model ?? run.usage?.model ?? view.model,
+    ...(backend === undefined ? {} : { backend }),
     ...(run.effort === undefined ? {} : { effort: run.effort }),
-    ...(run.maxOutputTokens === undefined ? {} : { maxOutputTokens: run.maxOutputTokens }),
+    ...(run.maxVisibleOutputTokens === undefined
+      ? {}
+      : { maxVisibleOutputTokens: run.maxVisibleOutputTokens }),
+    ...(run.maxReasoningTokens === undefined ? {} : { maxReasoningTokens: run.maxReasoningTokens }),
+    ...(run.maxTotalOutputTokens === undefined
+      ? {}
+      : { maxTotalOutputTokens: run.maxTotalOutputTokens }),
     connection: run.connection ?? run.connectionId ?? 'not connected',
     ...(run.connectionId === undefined ? {} : { connectionId: run.connectionId }),
     ...(environment === undefined ? {} : { environment }),

@@ -72,7 +72,7 @@ export class SearchableSelector extends Container implements Focusable {
     this.#title = new Text(options.theme.brand(sanitizeTerminalText(options.title)), 1, 0)
     this.#footer = new Text(
       options.theme.muted(
-        sanitizeTerminalText(options.footer ?? 'type to filter · enter to choose · esc to close'),
+        sanitizeTerminalText(options.footer ?? 'type to filter · enter to choose · ←/esc close'),
       ),
       1,
       0,
@@ -150,7 +150,7 @@ export class SearchableSelector extends Container implements Focusable {
       this.#list.handleInput(data)
       return
     }
-    if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c')) {
+    if (matchesKey(data, 'escape') || matchesKey(data, 'ctrl+c') || matchesKey(data, 'left')) {
       this.#onCancel()
       return
     }
