@@ -124,13 +124,9 @@ export class ComposerView extends Container {
     }
     const autocomplete = lines.slice(bottomBorder + 1)
     const topRule = composerTopRule(width, this.#editor.borderColor)
-    if (autocomplete.length === 0) return [topRule, ...body]
-    return [
-      topRule,
-      ...body,
-      composerBorderLine(width, this.#projection.hint, this.#theme),
-      ...autocomplete,
-    ]
+    const bottomRule = composerBorderLine(width, this.#projection.hint, this.#theme)
+    if (autocomplete.length === 0) return [topRule, ...body, bottomRule]
+    return [topRule, ...body, bottomRule, ...autocomplete]
   }
 }
 
@@ -188,7 +184,7 @@ export function composerBorderLine(width: number, label: string, theme: BraidThe
 }
 
 function promptActionLabel(projection: ComposerProjection): string | undefined {
-  if (projection.action === 'send') return undefined
+  if (projection.action === 'send') return 'new message'
   if (projection.action === 'queue') {
     return projection.queuePosition === undefined ? 'queue' : `queue #${projection.queuePosition}`
   }

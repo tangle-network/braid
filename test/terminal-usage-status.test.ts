@@ -263,7 +263,7 @@ test('the wide rail shows only observed sandbox facts and measured usage', () =>
   assert.match(rendered, /sample mem 512MB/u)
   assert.match(rendered, /requested 2cpu · 4GB · 20GB/u)
   assert.match(rendered, /gpu 1× A10 \$0\.0123/u)
-  assert.match(rendered, /high · caps vis 16k · reas 8\.2k · total 25k/u)
+  assert.match(rendered, /think high · caps vis 16k · reas 8\.2k · total 25k/u)
   assert.doesNotMatch(rendered, /fixture\/deterministic|thinking none|unknown|not reported/u)
   assert.match(rendered, /in 10|out 20|≥\$0\.0100|latency ≥120ms/u)
   assert.doesNotMatch(rendered, /physical-ip|unknown/u)

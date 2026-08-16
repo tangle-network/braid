@@ -68,7 +68,8 @@ export function renderTerminalContext(
       : executionConnectionLabel(identity.backend, identity.connection),
   )
   const effortValue = synthetic ? '' : cleanTerminalField(identity.effort)
-  const effort = mode === 'wide' && effortValue ? terminalValuePart(theme, effortValue) : ''
+  const effort =
+    mode === 'wide' && effortValue ? terminalValuePart(theme, `think ${effortValue}`) : ''
   const configuredLimits = synthetic
     ? ''
     : mode === 'wide'

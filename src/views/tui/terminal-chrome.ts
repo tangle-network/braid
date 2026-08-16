@@ -58,10 +58,9 @@ export class TerminalChrome implements Component {
     }
     const statusValue = conciseStatus(view, state.quitArmed, mode)
     const status = statusText(this.#theme, view, statusValue)
-    const hint = terminalValuePart(
-      this.#theme,
-      mode === 'narrow' ? '' : navigationHint(view, state.navigationHint, state.composerMode, mode),
-    )
+    const navigation =
+      mode === 'narrow' ? '' : navigationHint(view, state.navigationHint, state.composerMode, mode)
+    const hint = terminalValuePart(this.#theme, navigation)
     const executionFacts = executionFactsFor(target)
     const measured =
       mode === 'wide' && !isSyntheticFixture(target.model)
@@ -92,6 +91,7 @@ export class TerminalChrome implements Component {
       measured.length > 0 &&
       view.activeRunId === undefined &&
       status.length === 0
+    const idleHint = navigation.startsWith('/ commands') ? [] : [hint]
     const right = state.quitArmed
       ? [status]
       : measuredOnRow1
@@ -100,7 +100,7 @@ export class TerminalChrome implements Component {
           ? [status]
           : view.activeRunId !== undefined || status.length > 0
             ? [status, hint]
-            : [hint]
+            : idleHint
     const row1 = renderTerminalContext(
       this.#theme,
       identity,
