@@ -2,6 +2,7 @@ export {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from './adapters/runtime/agent-runtime-execution.js'
+export { createNativeTerminalTransport } from './adapters/tui/native-terminal-transport.js'
 export {
   AppError,
   BraidApplication,
@@ -152,6 +153,18 @@ export type {
   ExecutionPort,
   ProviderRunSnapshot,
 } from './ports/execution.js'
+export type {
+  NativeTerminalCleanup,
+  NativeTerminalCleanupIssue,
+  NativeTerminalCleanupPhase,
+  NativeTerminalHost,
+  NativeTerminalSignalPort,
+  NativeTerminalTransport,
+  NativeTerminalTransportInput,
+  NativeTerminalTransportOutcome,
+  NativeTerminalTransportPhase,
+  NativeTerminalTransportResult,
+} from './ports/native-terminal-transport.js'
 export {
   capabilitiesFromEnvironment,
   DEFAULT_RUN_CAPABILITIES,
