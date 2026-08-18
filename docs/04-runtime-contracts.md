@@ -313,7 +313,7 @@ These behaviors may be suitable for isolated benchmark automation under an expli
 
 ## Existing CLI Bridge provider contract
 
-The published `@tangle-network/agent-provider-cli-bridge@0.6.0` resolves the bridge model from a turn override, provider default, or profile harness and model.
+The published `@tangle-network/agent-provider-cli-bridge@0.7.1` resolves the bridge model from a turn override, provider default, or profile harness and model.
 
 It sends stable `executionId` values as bridge run identifiers when they satisfy the bridge identifier rules.
 
@@ -331,29 +331,37 @@ Explicit exact cancellation remains separate from reader detach and binds to the
 
 It exposes no generalized interaction response.
 
+Its entire client surface has no interaction-response wire operation and no `interactions` capability key: the wire calls only `/v1/chat/completions`, `/v1/runs/:id/events`, and `/v1/runs/:id/cancel`, and its default capability document omits `interactions`, which the interface defines as meaning interactions are unsupported.
+
+This remains true through the newest published provider `0.7.7`.
+
+The Local CLI Bridge server already implements and advertises the durable operation the provider omits: `POST /v1/runs/:runId/interactions/:interactionId/respond`, an `AgentEnvironmentCapabilities` endpoint that requires `interactions.replay` and `interactions.responseIdempotency`, and a Pi backend interaction advertisement.
+
+[Agent SDK issue 204](https://github.com/tangle-network/agent-sdk/issues/204) owns teaching the provider to consume that server operation and to derive its capability claim from the server advertisement.
+
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.6.3` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.10.0` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
 
 Its default document is an upper bound, not a claim about one client or deployment.
 
 Its default capability document reports canonical profile dimensions, live and replay streaming, detach, turn idempotency, workspace read/write/exec/upload/download, and optional placement.
 
-Its default document reports native continuation, session listing, session messages, workspace git, checkpoint, fork, usage, and confidentiality as unavailable.
+Its default capability document declares supported interactions with the `question`, `permission`, and `plan` kinds, replay, and response idempotency, and the adapter offers the environment and session response operations only where the narrowed claim survives the concrete client methods and the deployment's dedupe evidence.
 
-Version `0.6.3` accepts an explicit capability declaration and narrows it against the concrete client and environment methods.
+The default document reports native continuation, session listing, session messages, workspace git, checkpoint, fork, usage, and confidentiality as unavailable.
+
+Version `0.10.0` accepts an explicit capability declaration and narrows it against the concrete client and environment methods, deleting the interaction claim when the deployment or client does not prove it.
 
 Braid does not inject positive retained capabilities into the provider.
 
 It requires client `get`, exact control, replay, detach, turn idempotency, retry-safe cancellation, and provider-backed dispatch lookup.
 
-The current default provider report and methods do not satisfy that requirement.
-
 The adapter exposes environment stream and dispatch, provider sessions, workspace methods, refresh, and destroy only when the sandbox instance implements them.
 
 It requires an inline profile rather than a profile reference.
 
-It currently exposes no generalized interaction response through the environment or session adapter.
+The typed interaction-response operations exist in the pinned interface, runtime, and this provider, but a declaration is not a deployment proof, so Braid keeps the response action disabled until the live interaction row is satisfied.
 
 Its capability claims must still be proven against a real current Tangle deployment because a TypeScript adapter cannot prove server support or deployment policy.
 
@@ -407,6 +415,10 @@ If either Tangle path requests approval, an answer, or a plan decision, Braid fa
 
 Braid does not display a resumable interaction until the provider exposes a durable response operation.
 
+At the pinned `agent-runtime 0.134.5` and `agent-interface 0.52.0`, the typed operation exists and the runtime fails closed unless the provider both advertises `interactions.responseIdempotency` and implements the environment or session operation.
+
+The pinned `agent-provider-cli-bridge 0.7.1` does neither, so generalized interaction responses remain capability-disabled on the local path even though the Local CLI Bridge server already exposes the durable respond endpoint.
+
 Braid does not admit retained Tangle execution without lookup for the crash window before its exact reference commits.
 
 The local retained test proves that lookup recovers and cancels a run after a simulated process loss in that window.
@@ -415,6 +427,8 @@ The observation record never contains API keys, bearer tokens, SSH credentials, 
 
 The following upstream issues own missing shared contracts:
 
+- [Agent SDK issue 204](https://github.com/tangle-network/agent-sdk/issues/204) requires the CLI Bridge provider to consume the server's durable interaction-response endpoint and derive its interaction capability from the server advertisement.
+- [Runtime issue 735](https://github.com/tangle-network/agent-runtime/issues/735) requires an acknowledged response dispatch with a release-level contract test that pauses a real run, answers once, resumes it, and rejects a duplicate stale response.
 - [Runtime issue 799](https://github.com/tangle-network/agent-runtime/issues/799) requires a creation receipt and exact cleanup when retained dispatch fails.
 - [Runtime issue 800](https://github.com/tangle-network/agent-runtime/issues/800) requires crash-safe exact run admission or deterministic discovery.
 - [Agent SDK issue 146](https://github.com/tangle-network/agent-sdk/issues/146) requires retained Tangle control, recovery, interactions, and workspace branching.

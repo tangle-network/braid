@@ -476,6 +476,20 @@ This cohort satisfies the retained create, process-loss recovery, replay, cancel
 
 The August 12 failure artifacts remain diagnostic history and are superseded by this passing cohort.
 
+On 2026-08-18, a static-and-local-bridge probe pinned the exact reason `LIVE-03` and `LIVE-08` remain unattempted at the toolchain versions of commit `3d7b79f`.
+
+The probe read the installed `agent-interface 0.52.0`, `agent-runtime 0.134.5`, `agent-provider-cli-bridge 0.7.1`, and `agent-provider-tangle 0.10.0` packages, started the Local CLI Bridge server from a sibling `drewstone/cli-bridge` checkout at `d21273e`, and quoted its live advertisements.
+
+The interface and runtime carry the full typed response contract, and the runtime handle fails closed unless the provider advertises `interactions.responseIdempotency` and implements the operation.
+
+The CLI Bridge server advertised `POST /v1/runs/:runId/interactions/:interactionId/respond` in its live endpoint list, requires interaction replay and response idempotency in its capability endpoint, and answered a probe of that route with its own structured acknowledgement.
+
+The pinned CLI Bridge provider client `0.7.1` has no interaction-response wire operation and no `interactions` capability key, verified unchanged through the newest published `0.7.7`, so the local response path is disabled by the provider package rather than by the server or the runtime.
+
+The Tangle provider `0.10.0` statically declares the interaction kinds, replay, and response idempotency and narrows the claim per deployment, but no live Tangle proof was attempted in this probe, so `LIVE-08` remains the required proof.
+
+[Agent SDK issue 204](https://github.com/tangle-network/agent-sdk/issues/204) and [Runtime issue 735](https://github.com/tangle-network/agent-runtime/issues/735) own the missing provider consumption and the release-level response-dispatch contract test.
+
 ## Runner conformance
 
 CLI Bridge may advertise a runner as interactive only after the following real flow passes at its pinned minimum version.
