@@ -25,7 +25,7 @@ import {
   requiredProfileModel,
   requiredProfileRunner,
   requiredWorkspaceCwd,
-  safeExecutionId,
+  stableProviderId,
 } from './production-backend-common.js'
 
 const LOCAL_BRIDGE_BEARER = 'braid-local-cli-bridge'
@@ -114,7 +114,7 @@ export async function prepareCliBridgeConnection(
 
   const record = connectionRecord(connectionId, options)
   const credential = await readConnectionCredential(record, options, endpoint)
-  const providerSessionId = input.sessionId ?? `session-braid-${safeExecutionId(input.runId)}`
+  const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
   const route = materializeBridgeModelRoute(runner, model, profile.model?.provider)
   const workspace = requiredWorkspaceCwd(input.workspaceRoot, options.workspaceCwd)
   const bridgeUrl = normalizeCliBridgeProviderBaseUrl(endpoint, connectionId)

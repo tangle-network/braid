@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Sandbox } from '@tangle-network/sandbox'
 import { sleep } from '../live-bridge/process.mjs'
 import { connectionConfiguration } from './configuration.mjs'
+import { safeJson } from './contracts.mjs'
 import {
   closeSession,
   configEvidence,
@@ -1801,22 +1802,20 @@ export async function runBraidSandboxStress({
 
 async function writeOutput(path, value) {
   await mkdir(dirname(resolve(path)), { recursive: true })
-  await writeFile(resolve(path), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(resolve(path), `${safeJson(value)}\n`, { mode: 0o600 })
 }
 
 async function main() {
   const proof = await runBraidSandboxStress()
   const outputPath = argument('output')
   if (outputPath) await writeOutput(outputPath, proof)
-  process.stdout.write(`${JSON.stringify(proof, null, 2)}\n`)
+  process.stdout.write(`${safeJson(proof)}\n`)
   if (proof.status !== 'passed') process.exitCode = 1
 }
 
 if (resolve(process.argv[1] ?? '') === scriptPath) {
   main().catch((error) => {
-    process.stdout.write(
-      `${JSON.stringify({ status: 'failed', failure: errorDetails(error) }, null, 2)}\n`,
-    )
+    process.stdout.write(`${safeJson({ status: 'failed', failure: errorDetails(error) })}\n`)
     process.exitCode = 1
   })
 }

@@ -1,17 +1,11 @@
-import type {
-  AgentExactRunControlRef,
-  AgentInteractiveSessionStatus,
-  AgentProfile,
-} from '@tangle-network/agent-interface'
+import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
 import {
   agentInteractiveSessionStopRequestDigest,
   canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
 import type {
   RetainedInteractiveAdmission,
-  RetainedInteractiveAdmissionHook,
   RetainedInteractiveRunHandle,
-  RetainedInteractiveStartedAdmission,
 } from '@tangle-network/agent-runtime/kernel'
 import {
   claimRetainedInteractiveControl,
@@ -20,9 +14,7 @@ import {
   startRetainedInteractiveRun,
 } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
-import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
-import type { RunAdmissionReceipt } from '../../domain/receipts.js'
 import type {
   CancelRunInput,
   ControlAcknowledgement,
@@ -32,27 +24,46 @@ import type {
   ProviderRunSnapshot,
   RunCapabilities,
 } from '../../ports/execution.js'
-import type { NativeInteractiveRunOutcome } from '../../ports/native-interactive-execution.js'
-import type { NativeInteractiveRunBroker } from './native-interactive-run-broker.js'
 import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
+import type { NativeInteractiveRunBroker } from './native-interactive-run-broker.js'
 import { safeExecutionId } from './production-backend-common.js'
 import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
-
-type StatusInput = Parameters<NonNullable<ExecutionPort['status']>>[0]
-type RecoveryInput = Omit<StatusInput, 'retainedAdmission'> & {
-  readonly after?: string
-  readonly afterSequence?: number
-  readonly retainedAdmission?: unknown
-  readonly receipt?: RunAdmissionReceipt
-  readonly workspaceRoot?: string
-  readonly onRetainedAdmission?: unknown
-}
+import { retainedExecutionKey } from './retained-execution-state.js'
+import {
+  assertExactControl,
+  assertInteractiveAdmissionMatchesInput,
+  assertInteractiveProvider,
+  assertStartedAdmissionMatchesInput,
+  interactiveAdmissionOrUndefined,
+  interactiveEnvironment,
+  interactiveIdempotencyKey,
+  interactiveMaterializationReceipt,
+  interactiveRunCapabilities,
+  requireAdmissionRecorder,
+  requireInteractiveAdmission,
+  requireRecoveryReceipt,
+  type TangleInteractiveRecoveryInput,
+} from './tangle-retained-interactive-contract.js'
+import {
+  interactiveStatus,
+  interactiveStatusDetail,
+  observedEnvelope,
+  partialInteractiveStatus,
+  replayBoundary,
+  terminalEnvelope,
+  terminalOutcome,
+} from './tangle-retained-interactive-projection.js'
 
 export interface TangleRetainedInteractiveExecutionOptions {
   readonly resolve: (input: ExecuteTurnInput) => Promise<PreparedTangleRetainedConnection>
   readonly recover?: (input: ExecuteTurnInput) => Promise<PreparedTangleRetainedConnection>
   readonly broker: Pick<NativeInteractiveRunBroker, 'open' | 'settle'>
   readonly holderId?: string
+}
+
+interface PreparedInteractiveConnection {
+  readonly key: string
+  readonly prepared: PreparedTangleRetainedConnection
 }
 
 /** Runs one exact Tangle coding-agent TUI through Runtime's durable APIs. */
@@ -62,7 +73,8 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #recover: TangleRetainedInteractiveExecutionOptions['recover']
   readonly #broker: Pick<NativeInteractiveRunBroker, 'open' | 'settle'>
   readonly #holderId: string
-  readonly #prepared = new Map<string, PreparedTangleRetainedConnection>()
+  readonly #prepared = new Map<string, PreparedInteractiveConnection>()
+  readonly #starting = new Map<string, Promise<RetainedInteractiveRunHandle>>()
   readonly #handles = new Map<string, RetainedInteractiveRunHandle>()
   readonly #activeRuns = new Set<string>()
   readonly #detachRequested = new Set<string>()
@@ -76,12 +88,10 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   }
 
   capabilities = (input: ExecuteTurnInput): RunCapabilities | Promise<RunCapabilities> =>
-    this.#resolve(input).then((prepared) => interactiveRunCapabilities(prepared))
+    this.#prepare(input).then((prepared) => interactiveRunCapabilities(prepared))
 
   async admit(input: ExecuteTurnInput): Promise<ExecutionAdmission> {
-    const prepared = await this.#resolve(input)
-    assertInteractiveProvider(prepared)
-    this.#prepared.set(input.runId, prepared)
+    const prepared = await this.#prepare(input)
     const capabilities = interactiveRunCapabilities(prepared)
     const materializationReceipt = interactiveMaterializationReceipt(prepared)
     return {
@@ -95,13 +105,14 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   }
 
   async *streamTurn(input: ExecuteTurnInput): AsyncIterable<RuntimeEventEnvelope> {
-    const prepared = this.#prepared.get(input.runId) ?? (await this.#resolve(input))
-    assertInteractiveProvider(prepared)
+    if (this.#cancelledRuns.has(input.runId)) return
+    const prepared = await this.#prepare(input)
+    if (this.#cancelledRuns.has(input.runId)) return
     const lease = this.#broker.open(input.runId)
     this.#activeRuns.add(input.runId)
     let terminal = false
     try {
-      const handle = this.#handles.get(input.runId) ?? (await this.#start(prepared, input))
+      const handle = this.#handles.get(input.runId) ?? (await this.#startOnce(prepared, input))
       this.#rememberHandle(input.runId, handle)
       lease.publish(handle)
       if (this.#detachRequested.has(input.runId)) this.#settleDetached(input.runId)
@@ -142,8 +153,9 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
   }
 
-  async *reconnect(input: RecoveryInput): AsyncIterable<RuntimeEventEnvelope> {
+  async *reconnect(input: TangleInteractiveRecoveryInput): AsyncIterable<RuntimeEventEnvelope> {
     const admission = requireInteractiveAdmission(input.retainedAdmission)
+    assertInteractiveAdmissionMatchesInput(admission, input)
     const prepared = await this.#resolveRecovery(input, admission)
     assertInteractiveProvider(prepared)
     const lease = this.#broker.open(input.runId)
@@ -199,8 +211,9 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
   }
 
-  async status(input: RecoveryInput): Promise<ProviderRunSnapshot | null> {
+  async status(input: TangleInteractiveRecoveryInput): Promise<ProviderRunSnapshot | null> {
     const partial = interactiveAdmissionOrUndefined(input.retainedAdmission)
+    if (partial !== undefined) assertInteractiveAdmissionMatchesInput(partial, input)
     if (
       this.#handles.get(input.runId) === undefined &&
       partial !== undefined &&
@@ -224,15 +237,35 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
   }
 
-  async detachRun(input: {
-    readonly runId: string
-    readonly operationId: string
-    readonly providerSessionId?: string
-    readonly controlRef?: AgentExactRunControlRef
-    readonly cursor?: string
-    readonly signal?: AbortSignal
-  }): Promise<ControlAcknowledgement> {
-    this.#assertControl(input.runId, input.providerSessionId, input.controlRef)
+  async detachRun(
+    input: {
+      readonly runId: string
+      readonly operationId: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly cursor?: string
+      readonly signal?: AbortSignal
+    } & TangleInteractiveRecoveryInput,
+  ): Promise<ControlAcknowledgement> {
+    const admission = interactiveAdmissionOrUndefined(input.retainedAdmission)
+    if (admission !== undefined) assertInteractiveAdmissionMatchesInput(admission, input)
+    let handle = this.#handles.get(input.runId)
+    if (
+      handle === undefined &&
+      !this.#prepared.has(input.runId) &&
+      !this.#starting.has(input.runId) &&
+      admission !== undefined &&
+      admission.phase !== 'interactive_started'
+    ) {
+      this.#detachRequested.add(input.runId)
+      return { operationId: input.operationId, outcome: 'accepted', detail: 'detached' }
+    }
+    if (handle === undefined && !this.#prepared.has(input.runId)) {
+      handle = (await this.#handleFor(input)) ?? undefined
+    } else if (handle === undefined && this.#starting.has(input.runId)) {
+      handle = (await this.#handleFor(input)) ?? undefined
+    }
+    this.#assertControl(input.runId, input.providerSessionId, input.controlRef, handle?.ref.run)
     if (this.#detachRequested.has(input.runId)) {
       return { operationId: input.operationId, outcome: 'already-applied', detail: 'detached' }
     }
@@ -244,7 +277,85 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   async cancelRun(
     input: CancelRunInput & { readonly signal?: AbortSignal },
   ): Promise<ControlAcknowledgement> {
-    const handle = this.#handles.get(input.runId)
+    if (this.#cancelledRuns.has(input.runId) && !this.#activeRuns.has(input.runId)) {
+      return { operationId: input.operationId, outcome: 'already-applied', detail: 'cancelled' }
+    }
+    const startInFlight = this.#starting.has(input.runId)
+    const controlSignal = startInFlight || input.signal?.aborted ? undefined : input.signal
+    const { signal: _foregroundSignal, ...recoveryInputBase } = input
+    const recoveryInput = {
+      ...recoveryInputBase,
+      ...(controlSignal === undefined ? {} : { signal: controlSignal }),
+    }
+    let handle = this.#handles.get(input.runId)
+    const admissionPhase = input.retainedAdmission?.phase
+    const interactiveIntent =
+      input.retainedAdmission?.phase === 'interactive_intent' ? input.retainedAdmission : undefined
+    if (
+      handle === undefined &&
+      !this.#starting.has(input.runId) &&
+      interactiveIntent !== undefined &&
+      input.controlRef === undefined
+    ) {
+      if (
+        input.providerSessionId !== undefined &&
+        input.providerSessionId !== interactiveIntent.sessionId
+      ) {
+        return {
+          operationId: input.operationId,
+          outcome: 'rejected',
+          detail: 'interactive-intent-provider-session-mismatch',
+        }
+      }
+      this.#cancelledRuns.add(input.runId)
+      this.#prepared.delete(input.runId)
+      this.#settleCancelled(input.runId)
+      return {
+        operationId: input.operationId,
+        outcome: 'accepted',
+        detail: 'cancelled-before-start',
+      }
+    }
+    if (
+      handle === undefined &&
+      this.#prepared.has(input.runId) &&
+      !this.#starting.has(input.runId) &&
+      input.providerSessionId === undefined &&
+      input.controlRef === undefined &&
+      admissionPhase !== 'interactive_started'
+    ) {
+      this.#cancelledRuns.add(input.runId)
+      this.#prepared.delete(input.runId)
+      this.#settleCancelled(input.runId)
+      return {
+        operationId: input.operationId,
+        outcome: 'accepted',
+        detail: 'cancelled-before-start',
+      }
+    }
+    if (handle === undefined && this.#starting.has(input.runId)) {
+      this.#cancelledRuns.add(input.runId)
+      try {
+        handle = (await this.#handleFor(recoveryInput)) ?? undefined
+      } catch {
+        return {
+          operationId: input.operationId,
+          outcome: 'unknown',
+          detail: 'interactive-start-could-not-be-cancelled',
+        }
+      }
+    }
+    if (handle === undefined) {
+      try {
+        handle = (await this.#handleFor(recoveryInput)) ?? undefined
+      } catch {
+        return {
+          operationId: input.operationId,
+          outcome: 'unknown',
+          detail: 'interactive-run-missing',
+        }
+      }
+    }
     if (handle === undefined) {
       return {
         operationId: input.operationId,
@@ -256,12 +367,12 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     const control = await claimRetainedInteractiveControl({
       handle,
       holderId: this.#holderId,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      ...(controlSignal === undefined ? {} : { signal: controlSignal }),
     })
     const material = { operationId: input.operationId, ref: handle.ref, control }
     const acknowledgement = await handle.stop(
       { ...material, requestDigest: agentInteractiveSessionStopRequestDigest(material) },
-      input.signal === undefined ? undefined : { signal: input.signal },
+      controlSignal === undefined ? undefined : { signal: controlSignal },
     )
     if (acknowledgement.status === 'accepted' || acknowledgement.status === 'replayed') {
       this.#cancelledRuns.add(input.runId)
@@ -301,9 +412,43 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     })
   }
 
+  async #startOnce(
+    prepared: PreparedTangleRetainedConnection,
+    input: ExecuteTurnInput,
+  ): Promise<RetainedInteractiveRunHandle> {
+    const current = this.#starting.get(input.runId)
+    if (current !== undefined) return current
+    const starting = this.#start(prepared, input)
+    this.#starting.set(input.runId, starting)
+    starting.then(
+      () => this.#clearStarting(input.runId, starting),
+      () => this.#clearStarting(input.runId, starting),
+    )
+    return starting
+  }
+
+  async #prepare(input: ExecuteTurnInput): Promise<PreparedTangleRetainedConnection> {
+    const current = this.#prepared.get(input.runId)
+    if (current !== undefined) {
+      if (
+        current.key !== retainedExecutionKey(input, interactiveRunCapabilities(current.prepared))
+      ) {
+        throw new Error('Interactive run admission received a different request')
+      }
+      return current.prepared
+    }
+    const prepared = await this.#resolve(input)
+    assertInteractiveProvider(prepared)
+    this.#prepared.set(input.runId, {
+      key: retainedExecutionKey(input, interactiveRunCapabilities(prepared)),
+      prepared,
+    })
+    return prepared
+  }
+
   async #recoverHandle(
     prepared: PreparedTangleRetainedConnection,
-    input: RecoveryInput,
+    input: TangleInteractiveRecoveryInput,
     admission: RetainedInteractiveAdmission,
   ): Promise<RetainedInteractiveRunHandle | null> {
     if (admission.phase === 'interactive_started') {
@@ -344,11 +489,24 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     })
   }
 
-  async #handleFor(input: RecoveryInput): Promise<RetainedInteractiveRunHandle | null> {
+  async #handleFor(
+    input: TangleInteractiveRecoveryInput,
+  ): Promise<RetainedInteractiveRunHandle | null> {
+    const admissionForInput = interactiveAdmissionOrUndefined(input.retainedAdmission)
+    if (admissionForInput !== undefined) {
+      assertInteractiveAdmissionMatchesInput(admissionForInput, input)
+    }
     const active = this.#handles.get(input.runId)
     if (active !== undefined) {
       this.#assertControl(input.runId, input.providerSessionId, input.controlRef, active.ref.run)
       return active
+    }
+    const starting = this.#starting.get(input.runId)
+    if (starting !== undefined) {
+      const handle = await starting
+      this.#rememberHandle(input.runId, handle)
+      this.#assertControl(input.runId, input.providerSessionId, input.controlRef, handle.ref.run)
+      return handle
     }
     const admission = requireInteractiveAdmission(input.retainedAdmission)
     const prepared = await this.#resolveRecovery(input, admission)
@@ -359,7 +517,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   }
 
   async #resolveRecovery(
-    input: RecoveryInput,
+    input: TangleInteractiveRecoveryInput,
     admission: RetainedInteractiveAdmission,
   ): Promise<PreparedTangleRetainedConnection> {
     const receipt = input.receipt
@@ -401,6 +559,10 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     this.#handles.set(runId, handle)
   }
 
+  #clearStarting(runId: string, starting: Promise<RetainedInteractiveRunHandle>): void {
+    if (this.#starting.get(runId) === starting) this.#starting.delete(runId)
+  }
+
   #assertControl(
     runId: string,
     providerSessionId?: string,
@@ -408,20 +570,13 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     expected?: AgentExactRunControlRef,
   ): void {
     const actual = expected ?? this.#handles.get(runId)?.ref.run
-    if (
-      providerSessionId !== undefined &&
-      actual !== undefined &&
-      providerSessionId !== actual.sessionId
-    ) {
-      throw new Error('Interactive provider session conflicts with the saved run')
-    }
-    if (
-      controlRef !== undefined &&
-      actual !== undefined &&
-      canonicalDigest(controlRef) !== canonicalDigest(actual)
-    ) {
-      throw new Error('Interactive control reference conflicts with the saved run')
-    }
+    assertExactControl(
+      {
+        ...(providerSessionId === undefined ? {} : { providerSessionId }),
+        ...(controlRef === undefined ? {} : { controlRef }),
+      },
+      actual,
+    )
   }
 
   #settleDetached(runId: string): void {
@@ -446,272 +601,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
 
   #forgetHandle(runId: string): void {
     this.#handles.delete(runId)
+    this.#prepared.delete(runId)
     if (!this.#activeRuns.has(runId)) this.#cancelledRuns.delete(runId)
   }
-}
-
-function assertInteractiveProvider(prepared: PreparedTangleRetainedConnection): void {
-  const interactive = prepared.capabilities.interactiveAgent
-  if (
-    interactive?.start !== true ||
-    interactive.control !== true ||
-    interactive.status !== true ||
-    interactive.attach !== true ||
-    interactive.reattach !== true ||
-    interactive.stop !== true
-  ) {
-    throw new Error('Tangle retained connection does not support exact interactive agents')
-  }
-}
-
-function interactiveRunCapabilities(prepared: PreparedTangleRetainedConnection): RunCapabilities {
-  return Object.freeze({
-    streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
-    sessions: { continue: true, messages: false },
-    controls: { cancel: true, steer: false, queue: false, status: true, recreate: true },
-    events: { stableIdentity: true, sequence: true, cursor: true },
-    usage: false,
-    environment: prepared.capabilities,
-  })
-}
-
-function interactiveMaterializationReceipt(
-  prepared: PreparedTangleRetainedConnection,
-): Readonly<Record<string, unknown>> {
-  return publicMaterializationReceipt({
-    provider: prepared.provider.name,
-    backend: 'environment-provider',
-    surface: 'interactive-agent',
-    lifecycle: 'retained',
-    execution: 'agent-runtime-retained-interactive',
-    cleanup: 'explicit',
-    continuity: 'session',
-    idleTtlSeconds: prepared.idleTtlSeconds,
-    model: prepared.model,
-    runner: prepared.runner,
-  })
-}
-
-function interactiveEnvironment(
-  prepared: PreparedTangleRetainedConnection,
-  _runId: string,
-  idempotencyKey = interactiveEnvironmentIdempotencyKey(_runId),
-  profile = prepared.profile,
-) {
-  return {
-    profile,
-    backend: prepared.runner,
-    name: `braid-interactive-${safeExecutionId(_runId)}`,
-    metadata: {
-      owner: 'braid',
-      lifecycle: 'retained',
-      surface: 'interactive-agent',
-    },
-    idempotencyKey,
-  }
-}
-
-function interactiveIdempotencyKey(runId: string): string {
-  return `interactive-braid-${safeExecutionId(runId)}`.slice(0, 128)
-}
-
-function interactiveEnvironmentIdempotencyKey(runId: string): string {
-  return `env-braid-interactive-${safeExecutionId(runId)}`.slice(0, 128)
-}
-
-function requireAdmissionRecorder(recorder: unknown): RetainedInteractiveAdmissionHook {
-  if (typeof recorder !== 'function') {
-    throw new Error('Retained Tangle interactive execution requires a durable admission recorder')
-  }
-  return (admission) =>
-    (recorder as (value: RetainedInteractiveAdmission) => Promise<void>)(admission)
-}
-
-function requireRecoveryReceipt(input: RunAdmissionReceipt | undefined): RunAdmissionReceipt {
-  if (input === undefined)
-    throw new Error('Interactive intent recovery requires the original run receipt')
-  return input
-}
-
-function requireInteractiveAdmission(value: unknown): RetainedInteractiveAdmission {
-  if (value === undefined || typeof value !== 'object' || value === null || !('phase' in value)) {
-    throw new Error('Interactive recovery requires a canonical interactive admission')
-  }
-  const phase = (value as { readonly phase?: unknown }).phase
-  if (typeof phase !== 'string' || !phase.startsWith('interactive_')) {
-    throw new Error('Interactive recovery requires a canonical interactive admission')
-  }
-  return value as RetainedInteractiveAdmission
-}
-
-function interactiveAdmissionOrUndefined(value: unknown): RetainedInteractiveAdmission | undefined {
-  if (value === undefined) return undefined
-  return requireInteractiveAdmission(value)
-}
-
-function partialInteractiveStatus(
-  runId: string,
-  admission: Exclude<RetainedInteractiveAdmission, RetainedInteractiveStartedAdmission>,
-): ProviderRunSnapshot {
-  const sessionId = interactiveSessionId(admission)
-  return sessionId === undefined
-    ? { runId, status: 'unknown', detail: `replayable:${admission.phase}` }
-    : { runId, status: 'unknown', sessionId, detail: `replayable:${admission.phase}` }
-}
-
-function interactiveStatusDetail(status: AgentInteractiveSessionStatus): string {
-  if (status.state === 'unknown') return status.message
-  if (!('reason' in status)) return 'interactive session running'
-  return !('exitCode' in status) || status.exitCode === undefined
-    ? `interactive session ${status.reason}`
-    : `interactive session ${status.reason} with code ${status.exitCode}`
-}
-
-function interactiveSessionId(admission: RetainedInteractiveAdmission): string | undefined {
-  if (admission.phase === 'interactive_intent') return admission.sessionId
-  return admission.phase === 'interactive_environment'
-    ? admission.request.run.sessionId
-    : admission.ref.run.sessionId
-}
-
-function assertStartedAdmissionMatchesInput(
-  admission: RetainedInteractiveStartedAdmission,
-  input: RecoveryInput,
-): void {
-  if (
-    input.providerSessionId !== undefined &&
-    input.providerSessionId !== admission.ref.run.sessionId
-  ) {
-    throw new Error('Interactive provider session conflicts with the saved process reference')
-  }
-  if (
-    input.controlRef !== undefined &&
-    canonicalDigest(input.controlRef) !== canonicalDigest(admission.ref.run)
-  ) {
-    throw new Error('Interactive control reference conflicts with the saved process reference')
-  }
-}
-
-function interactiveStatus(
-  status: AgentInteractiveSessionStatus,
-  detached: boolean,
-): ProviderRunSnapshot['status'] {
-  if (detached && status.state === 'running') return 'detached'
-  if (status.state === 'running') return 'streaming'
-  if (status.state === 'exited' && status.reason !== 'lost') return 'completed'
-  return 'unknown'
-}
-
-async function terminalOutcome(
-  handle: RetainedInteractiveRunHandle,
-  signal?: AbortSignal,
-): Promise<Extract<NativeInteractiveRunOutcome, { readonly kind: 'exited' }> | undefined> {
-  const status = await handle.status(signal === undefined ? undefined : { signal })
-  if (status.state !== 'exited') return undefined
-  return {
-    kind: 'exited',
-    ...(status.exitCode === undefined ? {} : { exitCode: status.exitCode }),
-    ...(status.exitSignal === undefined ? {} : { exitSignal: status.exitSignal }),
-  }
-}
-
-function replayBoundary(
-  input: RecoveryInput,
-  runId: string,
-  handle: RetainedInteractiveRunHandle,
-): number {
-  const cursorSequence =
-    input.after === undefined
-      ? undefined
-      : sequenceFromCursor(input.after, runId, handle.ref.incarnationId)
-  if (
-    cursorSequence !== undefined &&
-    input.afterSequence !== undefined &&
-    cursorSequence !== input.afterSequence
-  ) {
-    throw new Error('Interactive replay cursor conflicts with the saved sequence')
-  }
-  return input.afterSequence ?? cursorSequence ?? 0
-}
-
-function sequenceFromCursor(cursor: string, runId: string, incarnationId: string): number {
-  const prefix = `${runId}:interactive:${incarnationId}:`
-  if (!cursor.startsWith(prefix)) {
-    throw new Error('Interactive replay cursor belongs to another process')
-  }
-  const sequence = Number(cursor.slice(prefix.length))
-  if (!Number.isSafeInteger(sequence) || sequence < 0) {
-    throw new Error('Interactive replay cursor is malformed')
-  }
-  return sequence
-}
-
-async function observedEnvelope(
-  runId: string,
-  handle: RetainedInteractiveRunHandle,
-  prepared: PreparedTangleRetainedConnection,
-  sequence: number,
-): Promise<RuntimeEventEnvelope> {
-  const observation = await prepared.observation.snapshot()
-  if (observation === undefined) throw new Error('Tangle interactive observation is unavailable')
-  const receivedAt = new Date().toISOString()
-  return {
-    runId,
-    eventId: `${runId}:interactive:${handle.ref.incarnationId}:observed`,
-    sequence,
-    cursor: interactiveCursor(runId, handle, sequence),
-    occurredAt: receivedAt,
-    receivedAt,
-    event: {
-      type: 'braid.execution.observed',
-      observation,
-      controlRef: handle.ref.run,
-      timestamp: receivedAt,
-    },
-  }
-}
-
-function terminalEnvelope(
-  runId: string,
-  handle: RetainedInteractiveRunHandle,
-  prepared: PreparedTangleRetainedConnection,
-  outcome: Exclude<NativeInteractiveRunOutcome, { readonly kind: 'detached' }>,
-  sequence: number,
-  cancelled: boolean,
-): RuntimeEventEnvelope {
-  const timestamp = new Date().toISOString()
-  const failed = outcome.kind === 'failed'
-  const reason = cancelled
-    ? 'Interactive agent stopped'
-    : failed
-      ? outcome.message
-      : outcome.exitCode === undefined
-        ? 'Interactive agent exited'
-        : `Interactive agent exited with code ${outcome.exitCode}`
-  return {
-    runId,
-    eventId: `${runId}:interactive:${handle.ref.incarnationId}:final`,
-    sequence,
-    cursor: interactiveCursor(runId, handle, sequence),
-    occurredAt: timestamp,
-    receivedAt: timestamp,
-    event: {
-      type: 'final',
-      task: { id: runId, intent: 'Run the retained Tangle interactive agent' },
-      status: cancelled ? 'cancelled' : failed ? 'failed' : 'completed',
-      reason,
-      text: '',
-      metadata: { model: prepared.model, tokensKnown: false, usdKnown: false },
-      ...(failed ? { error: { kind: 'backend', message: outcome.message } } : {}),
-      timestamp,
-    },
-  }
-}
-
-function interactiveCursor(
-  runId: string,
-  handle: RetainedInteractiveRunHandle,
-  sequence: number,
-): string {
-  return `${runId}:interactive:${handle.ref.incarnationId}:${sequence}`
 }

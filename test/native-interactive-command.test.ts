@@ -6,7 +6,7 @@ import { createBraidApplication } from '../src/app/composition.js'
 import type {
   NativeInteractiveCommand,
   NativeInteractiveUiActions,
-} from '../src/ports/native-interactive-ui.js'
+} from '../src/views/shared/native-interactive-actions.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'

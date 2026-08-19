@@ -1,6 +1,7 @@
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionCatalog, ConnectionSelectionInput } from '../../app/connections.js'
+import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
@@ -103,7 +104,18 @@ export function requiredWorkspaceCwd(
 
 export function safeExecutionId(value: string): string {
   const safe = value.replace(/[^A-Za-z0-9._:-]/gu, '-')
-  return safe.slice(0, 128) || 'run'
+  if (value.length > 0 && safe === value && value.length <= 128) return value
+  const readable = safe || 'run'
+  const suffix = canonicalDigest(value).slice('sha256:'.length, 'sha256:'.length + 32)
+  return `${readable.slice(0, 95)}-${suffix}`
+}
+
+/** Build a readable provider key without collisions or overlong truncation. */
+export function stableProviderId(prefix: string, value: string): string {
+  const readable = `${prefix}${safeExecutionId(value)}`
+  if (readable.length <= 128) return readable
+  const suffix = canonicalDigest({ prefix, value }).slice('sha256:'.length, 'sha256:'.length + 32)
+  return `${readable.slice(0, 95)}-${suffix}`
 }
 
 export function freezeExecution<T>(value: T): T {

@@ -292,6 +292,8 @@ test('profile editor uses canonical summaries and validates without advertising 
   panel.focused = true
   await settle()
   const initial = panel.render(80).join('\n')
+  assert.match(initial, /profile/u)
+  assert.match(initial, /─{20,}/u)
   assert.match(initial, /Reviewer/u)
   assert.doesNotMatch(initial, /Active profile/u)
   assert.match(initial, /pi/u)
@@ -299,7 +301,7 @@ test('profile editor uses canonical summaries and validates without advertising 
   assert.doesNotMatch(initial, /secret-canary|secret-profile\.json/u)
   const narrow = panel.render(40)
   assert.ok(narrow.length <= 12)
-  assert.match(narrow.join('\n'), /enter select · \^V validate · ←\/esc/u)
+  assert.match(narrow.join('\n'), /enter · \^V validate · ←\/esc close/u)
   assert.match(narrow.join('\n'), /close/u)
   assert.doesNotMatch(narrow.join('\n'), /save/iu)
 
@@ -325,6 +327,8 @@ test('one profile renders a focused summary without a redundant switch list', as
   panel.focused = true
   await settle()
   const rendered = panel.render(80).join('\n')
+  assert.match(rendered, /^ profile/mu)
+  assert.match(rendered, /─{20,}/u)
   assert.match(rendered, /Reviewer/u)
   assert.match(rendered, /runner pi · model provider\/reviewer/u)
   assert.doesNotMatch(rendered, /switch profile|profiles/u)

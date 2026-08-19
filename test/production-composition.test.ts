@@ -72,6 +72,7 @@ import { FixedClock } from '../src/ports/clock.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
+import { FakeTangleRetainedSandbox } from './support/tangle-retained-sandbox.js'
 
 const at = '2026-08-03T12:00:00.000Z'
 
@@ -426,6 +427,80 @@ test('production rejects remote cleartext endpoints unless an explicit policy ac
     }),
   )
   assert.equal(accepted.connection.id, remote.id)
+})
+
+test('retained Tangle composition exposes one native control through durable startup', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-native-control-'))
+  const record: ConnectionRecord = {
+    ...connection('tangle-sandbox', 'native-control', 'https://sandbox.tangle.tools'),
+    providerOptions: {
+      transport: 'https',
+      lifecycle: 'retained',
+      idleTtlSeconds: 1_800,
+    },
+  }
+  const selected = composition(
+    record,
+    {},
+    defineAgentProfile({
+      name: 'native production profile',
+      harness: 'opencode',
+      model: { default: 'openai/gpt-5', provider: 'openai' },
+    }),
+  )
+  const composed = createProductionComposition(selected)
+  assert.notEqual(composed.nativeInteractive, undefined)
+
+  const durable = await createDurableBraidApplication({
+    path: join(root, 'braid.db'),
+    workspaceRoot: root,
+    credentialStore: new MemoryCredentialStore(),
+    production: selected,
+  })
+  try {
+    assert.notEqual(durable.nativeInteractive, undefined)
+  } finally {
+    await durable.app.close()
+    await durable.storage.close()
+  }
+})
+
+test('retained Tangle composition routes interactive admission without creating a sandbox', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const record: ConnectionRecord = {
+    ...connection('tangle-sandbox', 'interactive-routing', 'https://sandbox.tangle.tools', true),
+    providerOptions: {
+      transport: 'https',
+      lifecycle: 'retained',
+      idleTtlSeconds: 1_800,
+    },
+  }
+  const credentials = new MemoryCredentialStore()
+  await credentials.store({
+    ref: credentialRef('cred:v1:credential-interactive-routing'),
+    value: Buffer.from('test-only-sandbox-key'),
+  })
+  const selectedProfile = defineAgentProfile({
+    name: 'interactive routing profile',
+    harness: 'opencode',
+    model: { default: 'openai/gpt-5', provider: 'openai' },
+  })
+  const composed = createProductionComposition(
+    composition(record, { credentials, sandboxClient: sandbox.client() }, selectedProfile),
+  )
+  const admission = await composed.execution.admit?.({
+    operationId: 'operation-interactive-routing',
+    runId: 'run-interactive-routing',
+    text: 'Inspect this workspace.',
+    profile: selectedProfile,
+    mode: 'interactive',
+    connectionId: record.id,
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(admission?.materializationReceipt?.surface, 'interactive-agent')
+  assert.equal(admission?.capabilities?.streaming.replay, true)
+  assert.equal(sandbox.createCalls.length, 0)
 })
 
 test('bin startup loads a canonical profile and exact connection from a bounded config file', async () => {
@@ -1098,8 +1173,13 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.notEqual(secondBody.session_id, firstBody.session_id)
     for (const body of [firstBody, secondBody]) {
       const runId = String(body.run_id)
-      assert.deepEqual(body.metadata, {
+      const metadata = body.metadata as Record<string, unknown>
+      const retainedIntentDigest = String(metadata.retainedIntentDigest)
+      assert.match(retainedIntentDigest, /^sha256:[0-9a-f]{64}$/u)
+      assert.deepEqual(metadata, {
         retainedIdempotencyKey: `environment-braid-${runId}`,
+        retainedIntentDigest,
+        retainedRunId: `retained-intent-run:${retainedIntentDigest.slice('sha256:'.length)}`,
         sessionId: `session-braid-${runId}`,
         executionId: runId,
       })

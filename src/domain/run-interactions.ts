@@ -1,11 +1,6 @@
-import type { RequestedInteractions, RunCapabilities } from '../domain/run-contracts.js'
+import type { RequestedInteractions, RunCapabilities } from './run-contracts.js'
 
-/**
- * Select the interaction posture for one admitted turn.
- *
- * The provider capability document is the only authority.  A response is
- * enabled only when the provider records idempotent responses for retries.
- */
+/** Select the interaction posture for one admitted turn from provider capabilities. */
 export function requestedInteractionsForRun(
   mode: string | undefined,
   capabilities: Pick<RunCapabilities, 'environment'>,

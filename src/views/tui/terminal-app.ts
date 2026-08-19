@@ -8,6 +8,7 @@ import type {
   UiFrameTiming,
 } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
+import type { NativeInteractiveUiActions } from '../shared/native-interactive-actions.js'
 import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
@@ -22,7 +23,6 @@ import { TerminalInteractionController } from './terminal-interaction-controller
 import { TerminalOverlayController } from './terminal-overlays.js'
 import { BraidShell } from './terminal-shell.js'
 import type { BraidTheme } from './theme.js'
-import type { NativeInteractiveUiActions } from '../../ports/native-interactive-ui.js'
 
 export interface BraidTerminalOptions {
   readonly controller: BraidUiController

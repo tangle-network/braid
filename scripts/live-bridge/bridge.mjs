@@ -11,7 +11,7 @@ import {
 } from './endpoint.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { managedSpawn, sleep, terminateProcess } from './process.mjs'
-import { redactString } from './redaction.mjs'
+import { redactString, withoutBraidLiveSecrets } from './redaction.mjs'
 
 const requiredRuntimeCapabilities = Object.freeze({
   profileMaterialization: 'cli-bridge.profile-materialization.v2',
@@ -27,7 +27,7 @@ export function bridgeLaunchEnvironment(
   endpoint,
   { environment = process.env, platform = process.platform } = {},
 ) {
-  const childEnv = { ...environment }
+  const childEnv = withoutBraidLiveSecrets(environment)
   if (childEnv.BRIDGE_BACKENDS === undefined) {
     childEnv.BRIDGE_BACKENDS = [...new Set(definitions.map(({ backend }) => backend))].join(',')
   }

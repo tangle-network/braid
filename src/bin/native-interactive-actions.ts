@@ -5,16 +5,16 @@ import type { BraidApplication } from '../app/application.js'
 import type { BraidRun } from '../domain/state.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import type {
-  NativeInteractiveAvailability,
-  NativeInteractiveCommand,
-  NativeInteractiveCommandResult,
-  NativeInteractiveUiActions,
-} from '../ports/native-interactive-ui.js'
-import type {
   NativeTerminalHost,
   NativeTerminalSignalPort,
   NativeTerminalTransportResult,
 } from '../ports/native-terminal-transport.js'
+import type {
+  NativeInteractiveAvailability,
+  NativeInteractiveCommand,
+  NativeInteractiveCommandResult,
+  NativeInteractiveUiActions,
+} from '../views/shared/native-interactive-actions.js'
 
 interface InteractiveApplicationHandle {
   readonly app: Pick<BraidApplication, 'detachRun' | 'reconnectRun' | 'send' | 'state'>

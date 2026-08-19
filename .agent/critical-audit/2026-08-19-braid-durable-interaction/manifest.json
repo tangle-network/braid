@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid current uncommitted durable-interaction and TUI architecture",
+  "files": 70,
+  "base": "e3ed3d16f178839560ae4809c8c4df2914bab32e",
+  "head": "e3ed3d16f178839560ae4809c8c4df2914bab32e",
+  "workingTree": true,
+  "diffSha256": "b7eb2ad86f91f334caa6e5d916d36198f3683ed351ae4ff4884c99caeba24d74",
+  "projectType": "Node.js ESM package",
+  "reviewers": [
+    "primary: retained lifecycle, identity, cancellation, replay, and TUI boundaries",
+    "independent pass attempted; no usable report returned"
+  ],
+  "mode": "current working-tree adversarial review with focused local checks",
+  "verdict": "REQUEST_CHANGES",
+  "counts": {
+    "critical": 0,
+    "high": 7,
+    "medium": 1,
+    "low": 0,
+    "resolved": 6,
+    "unresolved": 2,
+    "dropped": 0
+  }
+}

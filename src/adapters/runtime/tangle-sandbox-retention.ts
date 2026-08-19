@@ -5,7 +5,7 @@ import {
   MIN_RETAINED_IDLE_TTL_SECONDS,
 } from '../../domain/entities-core.js'
 import type { SandboxLifecyclePolicy } from './prepared-execution.js'
-import { safeExecutionId } from './production-backend-common.js'
+import { stableProviderId } from './production-backend-common.js'
 import type { ObservableSandboxClient } from './sandbox-observation-types.js'
 
 export { MAX_RETAINED_IDLE_TTL_SECONDS, MIN_RETAINED_IDLE_TTL_SECONDS }
@@ -22,11 +22,10 @@ export interface RetainedSandboxIdentity {
 }
 
 export function retainedSandboxIdentity(providerSessionId: string): RetainedSandboxIdentity {
-  const suffix = safeExecutionId(providerSessionId)
   return Object.freeze({
     providerSessionId,
-    environmentIdempotencyKey: `env-braid-${suffix}`,
-    name: `braid-${suffix}`,
+    environmentIdempotencyKey: stableProviderId('env-braid-', providerSessionId),
+    name: stableProviderId('braid-', providerSessionId),
     metadata: Object.freeze({ owner: 'braid', lifecycle: 'retained', providerSessionId }),
   })
 }

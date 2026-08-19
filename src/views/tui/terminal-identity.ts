@@ -54,43 +54,49 @@ export function renderTerminalContext(
     theme,
     mode === 'narrow' ? identity.profileName : `profile ${identity.profileName}`,
   )
-  const route =
-    mode === 'wide'
-      ? terminalValuePart(
-          theme,
-          [identity.runner, model].filter((part) => part.length > 0).join(' / '),
-        )
-      : terminalValuePart(theme, model ? `${identity.runner} / ${model}` : identity.runner)
-  const connection = terminalValuePart(
+  if (mode === 'narrow') return fitTerminalColumns([profile], right, safeWidth, priority)
+
+  const compactRoute = terminalValuePart(
     theme,
-    mode === 'standard'
-      ? `via ${executionConnectionLabel(identity.backend, identity.connection)}`
-      : executionConnectionLabel(identity.backend, identity.connection),
+    model ? `${identity.runner} / ${model}` : identity.runner,
   )
-  const effortValue = synthetic ? '' : cleanTerminalField(identity.effort)
-  const effort =
-    mode === 'wide' && effortValue ? terminalValuePart(theme, `think ${effortValue}`) : ''
-  const configuredLimits = synthetic
-    ? ''
-    : mode === 'wide'
-      ? configuredLimitGroup(theme, identity)
+  if (mode === 'standard') {
+    return fitTerminalColumns(
+      [
+        profile,
+        compactRoute,
+        terminalValuePart(
+          theme,
+          `via ${executionConnectionLabel(identity.backend, identity.connection)}`,
+        ),
+      ],
+      right,
+      safeWidth,
+      priority,
+    )
+  }
+
+  const route = terminalValuePart(theme, `harness ${identity.runner}`)
+  const modelPart = model ? terminalValuePart(theme, `model ${model}`) : ''
+  const backendLabel = executionBackendLabel(identity.backend, identity.connection)
+  const backend = terminalValuePart(theme, `backend ${backendLabel}`)
+  const connectionValue = cleanTerminalField(identity.connection)
+  const connection =
+    !synthetic &&
+    connectionValue &&
+    connectionValue.toLocaleLowerCase() !== backendLabel.toLocaleLowerCase()
+      ? terminalValuePart(theme, `connection ${connectionValue}`)
       : ''
-  const execution = terminalValuePart(theme, identity.execution ?? '')
-  const executionFacts =
-    mode === 'wide'
-      ? (identity.executionFacts ?? []).map((fact) => terminalValuePart(theme, fact))
-      : []
+  const effortValue = synthetic ? '' : cleanTerminalField(identity.effort)
+  const effort = effortValue ? terminalValuePart(theme, `think ${effortValue}`) : ''
+  const configuredLimits = synthetic ? '' : configuredLimitGroup(theme, identity)
   const branchValue = cleanTerminalField(identity.branch)
   const branch =
-    mode === 'wide' && branchValue && branchValue !== 'main' && branchValue !== 'branch-1'
+    branchValue && branchValue !== 'main' && branchValue !== 'branch-1'
       ? terminalValuePart(theme, branchValue)
       : ''
   return fitTerminalColumns(
-    mode === 'wide'
-      ? [profile, route, connection, effort, configuredLimits, execution, ...executionFacts, branch]
-      : mode === 'narrow'
-        ? [profile]
-        : [profile, route, connection, effort, execution, branch],
+    [profile, route, modelPart, backend, connection, effort, configuredLimits, branch],
     right,
     safeWidth,
     priority,
@@ -122,6 +128,24 @@ function compactModelName(value: string): string {
   return segments.at(-1) ?? safe
 }
 
+function executionBackendLabel(backend: string | undefined, connection: string): string {
+  const provider = cleanTerminalField(backend).toLocaleLowerCase()
+  const human = cleanTerminalField(connection)
+  const normalizedHuman = human.toLocaleLowerCase()
+  if (
+    provider === 'fixture' ||
+    provider === 'deterministic' ||
+    provider === 'deterministic fixture' ||
+    normalizedHuman === 'deterministic fixture'
+  )
+    return 'local'
+  if (provider === 'cli-bridge') return 'CLI Bridge'
+  if (/cli bridge/iu.test(human)) return human || 'CLI Bridge'
+  if (provider === 'tangle-sandbox' || /tangle sandbox/iu.test(human)) return 'Sandbox'
+  if (provider === 'tangle-inference' || /tangle inference/iu.test(human)) return 'Tangle inference'
+  return human || cleanTerminalField(backend) || 'local'
+}
+
 function executionConnectionLabel(backend: string | undefined, connection: string): string {
   const provider = cleanTerminalField(backend).toLocaleLowerCase()
   const human = cleanTerminalField(connection)
@@ -135,8 +159,10 @@ function executionConnectionLabel(backend: string | undefined, connection: strin
     return 'local'
   if (provider === 'cli-bridge' || /cli bridge/iu.test(human)) return human || 'CLI Bridge'
   if (provider === 'tangle-sandbox' || /tangle sandbox/iu.test(human)) return 'Sandbox'
-  if (provider === 'tangle-inference' || /tangle inference/iu.test(human)) return 'Tangle inference'
-  return human || cleanTerminalField(backend) || 'local'
+  if (provider === 'tangle-inference' || /tangle inference/iu.test(human)) {
+    return 'Tangle inference'
+  }
+  return human || executionBackendLabel(backend, connection)
 }
 
 export function cleanTerminalField(value: string | null | undefined): string {

@@ -7,6 +7,9 @@ import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type {
   ExecuteTurnInput,
   ProviderRunSnapshot,
+  RetainedExecutionRecoveryContext,
+  RetainedRunAdmissionRecord,
+  RetainedRunAdmissionRecorder,
   RunCapabilities,
 } from '../../ports/execution.js'
 
@@ -32,6 +35,14 @@ export interface RetainedExecutionPlan {
     controlRef: AgentExactRunControlRef,
     signal?: AbortSignal,
   ) => Promise<RetainedRunHandle | null>
+  /** Recover a persisted intent or pre-dispatch admission with Runtime. */
+  readonly recover?: (
+    input: RetainedExecutionRecoveryContext & {
+      readonly admission: RetainedRunAdmissionRecord
+      readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
+      readonly signal?: AbortSignal
+    },
+  ) => Promise<RetainedRunHandle | null>
   readonly discover: (
     braidRunId: string,
     signal?: AbortSignal,
@@ -52,9 +63,12 @@ export interface RetainedExecutionPlan {
 
 export interface RetainedExecutionDriver {
   readonly resolve: (input: ExecuteTurnInput) => Promise<RetainedExecutionPlan>
-  readonly recover: (input: {
-    readonly runId: string
-    readonly providerSessionId?: string
-    readonly controlRef?: AgentExactRunControlRef
-  }) => Promise<RetainedExecutionPlan>
+  readonly recover: (
+    input: {
+      readonly runId: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & RetainedExecutionRecoveryContext,
+  ) => Promise<RetainedExecutionPlan>
 }

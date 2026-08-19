@@ -5,6 +5,7 @@ import type {
   RunAdmissionReceipt,
 } from '../domain/receipts.js'
 import { createAdmissionReceipt } from '../domain/receipts.js'
+import { requestedInteractionsForRun } from '../domain/run-interactions.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import { UNKNOWN_RUN_CAPABILITIES } from '../ports/execution.js'
 import type { AdmissionPort, AsyncAdmissionPort } from './application-ports.js'
@@ -20,7 +21,6 @@ import {
   validateProfile,
 } from './run-admission-validation.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
-import { requestedInteractionsForRun } from './run-interactions.js'
 
 export function admitRun(
   context: AdmissionPort,

@@ -12,11 +12,11 @@ import {
 } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
-import type { NativeInteractiveUiActions } from '../../ports/native-interactive-ui.js'
+import type { NativeInteractiveUiActions } from '../shared/native-interactive-actions.js'
+import type { ComposerMode } from './composer-view.js'
 import { executionTargetFor } from './execution-target.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
-import type { ComposerMode } from './composer-view.js'
 
 export interface TerminalCommandControllerOptions {
   readonly controller: BraidUiController
@@ -224,10 +224,14 @@ export class TerminalCommandController {
   ): Promise<void> {
     const action = command === 'interactive' ? 'start' : 'attach'
     const actions = this.#nativeInteractive
-    const availability = actions?.availability(action) ?? {
-      available: false,
-      reason: 'Native terminal mode is unavailable in this interface',
+    if (actions === undefined) {
+      this.#overlays.openUnavailable(
+        `/${command}`,
+        'Native terminal mode is unavailable in this interface',
+      )
+      return
     }
+    const availability = actions.availability(action)
     if (!availability.available) {
       this.#overlays.openUnavailable(`/${command}`, availability.reason ?? 'Unavailable')
       return
@@ -235,7 +239,7 @@ export class TerminalCommandController {
     await this.#drafts.flush()
     let result: Awaited<ReturnType<NativeInteractiveUiActions['run']>>
     try {
-      result = await actions!.run(
+      result = await actions.run(
         command === 'interactive'
           ? {
               action: 'start',

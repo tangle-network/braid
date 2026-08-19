@@ -217,7 +217,7 @@ test('the installed canonical profile schema round-trips every field and extensi
   assert.equal(canonicalCandidateJson(imported.profile), json)
   assert.deepEqual(imported.profile.extensions, fullProfile.extensions)
   assert.deepEqual(imported.profile.resources, fullProfile.resources)
-  assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, '0.52.0')
+  assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, '1.0.0')
 })
 
 test('unknown canonical fields fail closed while namespaced extensions remain opaque', () => {

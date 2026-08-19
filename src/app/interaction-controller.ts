@@ -24,6 +24,7 @@ import {
   recordedInteractionOwner,
 } from './interaction-response-replay.js'
 import type { RunLedger } from './run-ledger.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import { findRun } from './run-status.js'
 
 export interface InteractionControllerInput {
@@ -159,6 +160,7 @@ export async function respondInteraction(
     owner: input.owner,
     timeoutMs: input.responseTimeoutMs,
     whenDurable: input.whenDurable,
+    recovery: retainedExecutionRecoveryContext(run, input.state.currentState().workspace),
   })
   const completion = effectCompletion.then(async (result) => {
     await input.commitAndWait({

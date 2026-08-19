@@ -11,6 +11,10 @@ import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
+import {
+  createTangleRetainedControlLookup,
+  supportsTangleRetainedControlLookup,
+} from '../connections/tangle-retained-control-lookup.js'
 import type {
   ExecutionObservationSource,
   PreparedExecution,
@@ -25,12 +29,9 @@ import {
   requiredProfileModel,
   requiredProfileRunner,
   safeExecutionId,
+  stableProviderId,
 } from './production-backend-common.js'
 import { observeSandboxClient } from './sandbox-observation.js'
-import {
-  createTangleRetainedControlLookup,
-  supportsTangleRetainedControlLookup,
-} from '../connections/tangle-retained-control-lookup.js'
 import { withSandboxResultProjection } from './sandbox-result-projection.js'
 import {
   retainedSandboxIdentity,
@@ -68,7 +69,7 @@ export async function resolveTangleSandboxBackend(
       import('@tangle-network/agent-runtime/kernel'),
     ])
   const lifecycle = sandboxLifecycle()
-  const idempotencyKey = `env-braid-${safeExecutionId(input.runId)}`
+  const idempotencyKey = stableProviderId('env-braid-', input.runId)
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-sandbox-environment-request',
     idempotencyKey,
@@ -157,7 +158,7 @@ export async function resolveTangleSandboxRetainedConnection(
     )
   }
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
-  const providerSessionId = input.sessionId ?? `session-braid-${safeExecutionId(input.runId)}`
+  const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
   if (!providerSessionId.startsWith('session-braid-')) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
@@ -306,7 +307,7 @@ function providerSessionFor(
   capabilities: AgentEnvironmentCapabilities,
 ): string | undefined {
   if (!capabilities.sessions.continue) return undefined
-  return input.sessionId ?? `session-braid-${safeExecutionId(input.runId)}`
+  return input.sessionId ?? stableProviderId('session-braid-', input.runId)
 }
 
 async function tangleExecutionIdentity(

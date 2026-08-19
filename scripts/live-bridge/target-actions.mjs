@@ -7,6 +7,7 @@ import {
   capabilityAdvertised,
   capabilityAvailability,
   exactMarker,
+  interactionFromResponse,
   requestBase,
   responseForRequest,
   runFromState,
@@ -304,9 +305,9 @@ export async function verifyInteraction(
   result,
   providerCapabilities,
   terminal,
-  { operationPrefix = 'live' } = {},
+  { operationPrefix = 'live', runId } = {},
 ) {
-  const interaction = terminal.view?.interactions?.[0]
+  const interaction = interactionFromResponse(terminal, runId)
   const interactionCapability = terminal.view?.capabilities?.['interaction.respond']
   const advertisedByBraid = capabilityAdvertised(interactionCapability)
   const availability = capabilityAvailability(providerCapabilities.interactions, advertisedByBraid)

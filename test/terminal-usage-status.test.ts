@@ -25,10 +25,7 @@ test('terminal usage keeps direct, analysis, and worker measurements separate an
     'workers in 0 · out 0 · $0.0000 · calls 0 · latency 0ms',
   ])
 
-  const context = activityDocument(view).context ?? ''
-  assert.match(context, /in ≥10.*calls ≥2.*latency ≥120ms/u)
-  assert.doesNotMatch(context, /analysis|unknown|missing/u)
-  assert.match(context, /workers .*calls 0.*latency 0ms/u)
+  assert.equal(activityDocument(view).context, undefined)
   assert.deepEqual(footerMetricsFor(view), ['in ≥10', 'out ≥20', '≥$0.0100', 'latency ≥120ms'])
 })
 
@@ -168,14 +165,17 @@ test('execution identity comes from one active run receipt instead of current pr
   })
   const rendered = chrome.render(120).join('\n')
   assert.match(rendered, /Exact run profile/u)
-  assert.match(rendered, /pi \/ tangle-router\/glm-5\.2/u)
+  assert.match(rendered, /harness pi · model tangle-router\/glm-5\.2/u)
   assert.match(rendered, /CLI Bridge/u)
   assert.doesNotMatch(rendered, /backend cli-bridge|pi · tangle-router/u)
   assert.doesNotMatch(rendered, /exec local CLI|active/u)
   assert.doesNotMatch(rendered, /Next profile|openai\/gpt-next|Next connection/u)
 
+  const spacious = chrome.render(200).join('\n')
+  assert.match(spacious, /backend CLI Bridge · connection Local CLI Bridge/u)
+
   const activity = activityDocument(view)
-  assert.match(activity.context ?? '', /Exact run profile · pi · tangle-router\/glm-5\.2/u)
+  assert.equal(activity.context, undefined)
   const detail = activity.rows[0]?.detailLines.join('\n') ?? ''
   assert.match(detail, /profile digest: digest-run/u)
   assert.match(detail, /max visible output tokens: 16384/u)

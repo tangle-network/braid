@@ -3,6 +3,7 @@ import type {
   ExecuteTurnInput,
   ExecutionPort,
   NormalizedExecutionEvent,
+  RetainedExecutionRecoveryContext,
   RunCapabilities,
 } from '../../ports/execution.js'
 import { UNKNOWN_RUN_CAPABILITIES } from '../../ports/execution.js'
@@ -65,7 +66,7 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   }
 
   async cancelRun(input: CancelInput) {
-    const port = this.#portForRun(input.runId, input.controlRef)
+    const port = this.#portForInput(input)
     if (port.cancelRun === undefined) {
       throw new Error('The selected execution port does not support cancellation')
     }
@@ -73,7 +74,7 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   }
 
   async detachRun(input: DetachInput) {
-    const port = this.#portForRun(input.runId, input.controlRef)
+    const port = this.#portForInput(input)
     if (port.detachRun === undefined) {
       throw new Error('The selected execution port does not support detachment')
     }
@@ -99,8 +100,15 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   async respondInteraction(input: {
     readonly command: InteractionResponseCommand
     readonly signal?: AbortSignal
+    readonly recovery?: RetainedExecutionRecoveryContext
   }) {
-    const port = this.#portForRun(input.command.binding.runId)
+    const port = this.#portForInput({
+      runId: input.command.binding.runId,
+      ...(input.recovery?.retainedAdmission === undefined
+        ? {}
+        : { retainedAdmission: input.recovery.retainedAdmission }),
+      ...(input.recovery?.receipt === undefined ? {} : { receipt: input.recovery.receipt }),
+    })
     if (port.respondInteraction === undefined) {
       throw new Error('The selected execution port does not support interaction responses')
     }

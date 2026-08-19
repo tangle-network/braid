@@ -4,13 +4,18 @@ import {
 } from '@tangle-network/agent-interface'
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
+import type { RunCapabilities } from '../../domain/run-contracts.js'
+import { requestedInteractionsForRun } from '../../domain/run-interactions.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
 import type { RetainedExecutionPlan } from './retained-execution-contract.js'
 
 const MAX_RETAINED_CLIENTS = 128
 
-export function retainedExecutionKey(input: ExecuteTurnInput): string {
+export function retainedExecutionKey(
+  input: ExecuteTurnInput,
+  capabilities?: Pick<RunCapabilities, 'environment'>,
+): string {
   return canonicalDigest({
     runId: input.runId,
     operationId: input.operationId,
@@ -18,6 +23,9 @@ export function retainedExecutionKey(input: ExecuteTurnInput): string {
     profile: canonicalAgentProfileDigestHex(input.profile),
     connectionId: input.connectionId ?? null,
     mode: input.mode ?? null,
+    interactions:
+      input.interactions ??
+      (capabilities === undefined ? {} : requestedInteractionsForRun(input.mode, capabilities)),
     workspaceRoot: input.workspaceRoot ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
@@ -58,6 +66,10 @@ export class RetainedExecutionState {
 
   plan(runId: string): RetainedExecutionPlan | undefined {
     return this.#plans.get(runId)
+  }
+
+  preparedPlan(runId: string): RetainedExecutionPlan | undefined {
+    return this.#prepared.has(runId) ? this.#plans.get(runId) : undefined
   }
 
   rememberPlan(runId: string, plan: RetainedExecutionPlan): void {

@@ -113,10 +113,12 @@ test('chrome uses complete responsive groups at every reference width', () => {
   const wideLines = plainLines(chrome, 120)
   const wide = wideLines.join('\n')
   assert.match(wide, /Release engineer/u)
-  assert.match(wide, /profile Release engineer · pi \/ openai-codex\/gpt-5\.6-luna/u)
-  assert.match(wide, /Local CLI Bridge/u)
+  assert.match(
+    wide,
+    /profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
+  )
   assert.match(wide, / · think high/u)
-  assert.doesNotMatch(wide, /backend CLI Bridge|caps/u)
+  assert.doesNotMatch(wide, /caps/u)
   assert.match(wide, /in 1\.2k/u)
   assert.match(wide, /out 567/u)
   assert.match(wide, /\$0\.0312/u)
@@ -129,7 +131,10 @@ test('chrome uses complete responsive groups at every reference width', () => {
 
   const spaciousLines = plainLines(chrome, 200)
   assert.equal(spaciousLines.length, 2)
-  assert.match(spaciousLines[0] ?? '', /^profile Release engineer/u)
+  assert.match(
+    spaciousLines[0] ?? '',
+    /^profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge · think high · caps vis 8\.2k · reas 4\.1k · total 12k$/u,
+  )
   assert.match(spaciousLines[1] ?? '', /^in 1\.2k · out 567 · \$0\.0312 · latency 842ms$/u)
   assert.doesNotMatch(spaciousLines.join('\n'), /(?:^|\n)rofile\b/u)
 
@@ -361,8 +366,10 @@ test('completed notices preserve the persistent route and measured context', () 
   assert.doesNotMatch(standard, /\/ commands|Ctrl\+P/u)
 
   const wide = chrome.render(120).join('\n')
-  assert.match(wide, /profile Release engineer · pi \/ openai-codex\/gpt-5\.6-luna/u)
-  assert.match(wide, /Local CLI Bridge/u)
+  assert.match(
+    wide,
+    /profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
+  )
   assert.match(wide, /Prepared markdown export/u)
   assert.match(wide, /in 1\.2k/u)
   assert.match(wide, /out 567/u)

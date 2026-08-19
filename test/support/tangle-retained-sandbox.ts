@@ -3,6 +3,7 @@ import type {
   AgentProfile,
   AgentRunCancellationAcknowledgement,
   AgentRunCancellationRequest,
+  InteractionResponseCommand,
   RequestedInteractions,
 } from '@tangle-network/agent-interface'
 import {
@@ -128,6 +129,7 @@ export class FakeTangleRetainedSandbox {
           dispatch: { runControlRef: true, executionIdOnAdmission: true },
           cancel: { canonicalRunCancellation: true, digestBound: true, idempotent: true },
           runs: { executionScopedStatus: true, eventReplay: true },
+          interactions: { responseDedupe: true },
         }
       },
       async refresh() {},
@@ -256,6 +258,16 @@ export class FakeTangleRetainedSandbox {
           },
           async prompt() {
             throw new Error('Fake Tangle prompt is not used by retained dispatch')
+          },
+          async respondToInteraction(command: InteractionResponseCommand) {
+            return {
+              acknowledgement: {
+                operationId: command.operationId,
+                binding: command.binding,
+                commandDigest: command.commandDigest,
+                status: 'accepted',
+              },
+            }
           },
           async interrupt(options) {
             const executionId = options?.executionId

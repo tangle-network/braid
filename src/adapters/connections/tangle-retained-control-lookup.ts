@@ -1,5 +1,6 @@
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
+import { stableProviderId } from '../runtime/production-backend-common.js'
 import type {
   TangleRetainedControlLookup,
   TangleRetainedControlLookupInput,
@@ -18,17 +19,13 @@ type RetainedList = (options?: {
   readonly signal?: AbortSignal
 }) => Promise<SandboxInstanceLike[]>
 
-function safeIdentity(value: string): string {
-  return value.replace(/[^A-Za-z0-9._:-]/gu, '-').slice(0, 128) || 'run'
-}
-
 function matchesRetainedEnvironment(
   box: SandboxInstanceLike,
   input: TangleRetainedControlLookupInput,
 ): boolean {
   const metadata = box.metadata
   return (
-    box.name === `braid-${safeIdentity(input.providerSessionId)}` &&
+    box.name === stableProviderId('braid-', input.providerSessionId) &&
     metadata?.owner === 'braid' &&
     metadata.lifecycle === 'retained' &&
     metadata.providerSessionId === input.providerSessionId &&

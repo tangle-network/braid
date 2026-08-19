@@ -10,7 +10,11 @@ import {
   type RetainedExecutionPlan,
   RetainedExecutionPort,
 } from '../src/adapters/runtime/retained-execution.js'
-import { DEFAULT_RUN_CAPABILITIES, type ExecuteTurnInput } from '../src/ports/execution.js'
+import {
+  DEFAULT_RUN_CAPABILITIES,
+  type ExecuteTurnInput,
+  type RetainedRunAdmissionRecord,
+} from '../src/ports/execution.js'
 import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 
 const now = '2026-08-12T12:00:00.000Z'
@@ -164,6 +168,119 @@ test('pre-start cancellation prevents the retained plan from starting', async ()
     runId: runInput.runId,
   })
   assert.equal(replayed.outcome, 'already-applied')
+})
+
+test('restart cancellation of a persisted retained intent does not recover provider work', async () => {
+  const exact = controlRef('restart-intent')
+  const execution = new RetainedExecutionPort({
+    resolve: async () => {
+      throw new Error('a cancelled intent must not resolve a new plan')
+    },
+    recover: async () => {
+      throw new Error('a cancelled intent must not recover provider work')
+    },
+  })
+  const admission: RetainedRunAdmissionRecord = {
+    phase: 'intent',
+    provider: exact.provider,
+    idempotencyKey: 'environment-restart-intent',
+    turnId: 'turn-restart-intent',
+    sessionId: exact.sessionId,
+    executionId: exact.executionId,
+    runId: 'runtime-restart-intent',
+    requestedProfileDigest: `sha256:${'1'.repeat(64)}`,
+    requestDigest: `sha256:${'2'.repeat(64)}`,
+  }
+
+  const acknowledgement = await execution.cancelRun({
+    operationId: 'operation-restart-intent-cancel',
+    runId: 'run-restart-intent',
+    providerSessionId: exact.sessionId,
+    retainedAdmission: admission,
+  })
+
+  assert.deepEqual(acknowledgement, {
+    operationId: 'operation-restart-intent-cancel',
+    outcome: 'accepted',
+    detail: 'cancelled-before-start',
+  })
+})
+
+test('restart detach validates the persisted retained control reference', async () => {
+  const exact = controlRef('restart-detach')
+  let recoveries = 0
+  const recoveredPlan = plan(exact, async () => handle(exact))
+  const admission: RetainedRunAdmissionRecord = {
+    phase: 'dispatched',
+    idempotencyKey: 'environment-restart-detach',
+    turnId: 'turn-restart-detach',
+    controlRef: exact,
+  }
+  const execution = new RetainedExecutionPort({
+    resolve: async () => {
+      throw new Error('restart detach must not resolve a fresh run')
+    },
+    recover: async ({ controlRef }) => {
+      recoveries += 1
+      assert.deepEqual(controlRef, exact)
+      return recoveredPlan
+    },
+  })
+
+  await assert.rejects(
+    execution.detachRun({
+      operationId: 'operation-restart-detach-conflict',
+      runId: 'run-restart-detach',
+      providerSessionId: exact.sessionId,
+      controlRef: { ...exact, requestDigest: `sha256:${'3'.repeat(64)}` },
+      retainedAdmission: admission,
+    }),
+    /conflicts with the persisted run/u,
+  )
+  const detached = await execution.detachRun({
+    operationId: 'operation-restart-detach',
+    runId: 'run-restart-detach',
+    providerSessionId: exact.sessionId,
+    retainedAdmission: admission,
+  })
+  assert.equal(detached.outcome, 'accepted')
+  assert.equal(recoveries, 1)
+})
+
+test('restart controls reject a process reference against a pre-dispatch admission', async () => {
+  const exact = controlRef('pre-dispatch-control')
+  const conflicting = { ...exact, environmentId: 'environment-other' }
+  const admission: RetainedRunAdmissionRecord = {
+    phase: 'environment',
+    provider: exact.provider,
+    environmentId: exact.environmentId,
+    idempotencyKey: 'environment-pre-dispatch-control',
+    turnId: 'turn-pre-dispatch-control',
+    sessionId: exact.sessionId,
+    executionId: exact.executionId,
+  }
+  let recoveries = 0
+  const execution = new RetainedExecutionPort({
+    resolve: async () => {
+      throw new Error('pre-dispatch control must not resolve a fresh run')
+    },
+    recover: async () => {
+      recoveries += 1
+      return plan(exact, async () => handle(exact))
+    },
+  })
+
+  await assert.rejects(
+    execution.detachRun({
+      operationId: 'operation-pre-dispatch-control',
+      runId: 'run-pre-dispatch-control',
+      providerSessionId: exact.sessionId,
+      controlRef: conflicting,
+      retainedAdmission: admission,
+    }),
+    /pre-dispatch admission/u,
+  )
+  assert.equal(recoveries, 0)
 })
 
 test('in-flight start cancellation omits an expired foreground signal', async () => {
@@ -358,6 +475,7 @@ test('a reconciled cancelled snapshot confirms an ambiguous cancellation', async
 test('interaction response recovers the retained handle and preserves retry acknowledgement', async () => {
   const exact = controlRef('interaction')
   let responses = 0
+  let recoverySignal: AbortSignal | undefined
   const retainedHandle = handle(exact, {
     respondToInteraction: async (command) => {
       responses += 1
@@ -380,9 +498,10 @@ test('interaction response recovers the retained handle and preserves retry ackn
     resolve: async () => {
       throw new Error('a recovered interaction must not resolve a new run')
     },
-    recover: async ({ runId, providerSessionId }) => {
+    recover: async ({ runId, providerSessionId, signal }) => {
       assert.equal(runId, 'run-interaction')
       assert.equal(providerSessionId, exact.sessionId)
+      recoverySignal = signal
       return recoveredPlan
     },
   })
@@ -401,11 +520,13 @@ test('interaction response recovers the retained handle and preserves retry ackn
     response: { id: 'interaction-retained', outcome: 'accepted' },
   }
 
-  assert.deepEqual(await execution.respondInteraction({ command }), {
+  const signal = new AbortController().signal
+  assert.deepEqual(await execution.respondInteraction({ command, signal }), {
     operationId: command.operationId,
     outcome: 'accepted',
     detail: 'INTERACTION_RESPONSE_ACCEPTED',
   })
+  assert.equal(recoverySignal, signal)
   assert.deepEqual(await execution.respondInteraction({ command }), {
     operationId: command.operationId,
     outcome: 'already-applied',

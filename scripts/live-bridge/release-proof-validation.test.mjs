@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { bridgeLaunchEnvironment } from './bridge.mjs'
 import { StreamingRedactor } from './capture.mjs'
-import { evidenceValue, withoutBridgeSecrets } from './redaction.mjs'
+import {
+  evidenceValue,
+  secretValues,
+  withoutBraidLiveSecrets,
+  withoutBridgeSecrets,
+} from './redaction.mjs'
 import {
   assertContextTransfer,
   assertObservedUsage,
@@ -11,7 +17,7 @@ import {
   assertUniqueRunIds,
   terminalReceipts,
 } from './release-proof-validation.mjs'
-import { assertTargetSemantics } from './target-actions.mjs'
+import { assertTargetSemantics, verifyInteraction } from './target-actions.mjs'
 
 const target = {
   key: 'pi-test',
@@ -159,6 +165,36 @@ test('usage, replay, and cancellation unavailable states cannot pass strict conf
       ),
     /cancel/u,
   )
+})
+
+test('interaction conformance ignores a pending interaction from another run', async () => {
+  const result = { targetKey: 'pi-test', requests: [] }
+  const session = {
+    send() {
+      assert.fail('foreign interaction must not be answered')
+    },
+  }
+  await verifyInteraction(
+    session,
+    result,
+    { interactions: { available: true } },
+    {
+      type: 'state',
+      view: {
+        capabilities: { 'interaction.respond': true },
+        interactions: [
+          {
+            runId: 'foreign-run',
+            interactionId: 'foreign-interaction',
+          },
+        ],
+      },
+      state: { runs: [] },
+    },
+    { runId: 'target-run' },
+  )
+  assert.equal(result.interaction.status, 'advertised-but-not-emitted')
+  assert.equal(result.requests.length, 0)
 })
 
 test('restart proof rejects process, timing, reconnect, replay, and terminal false positives', () => {
@@ -539,4 +575,61 @@ test('release operations reject reused run IDs and redact bridge bearers', () =>
     new RegExp(secret, 'u'),
   )
   assert.equal(withoutBridgeSecrets({ BRIDGE_BEARER: secret }).BRIDGE_BEARER, undefined)
+})
+
+test('started CLI Bridge keeps local subscription settings but strips Braid live credentials', () => {
+  const environment = {
+    PATH: '/usr/bin',
+    TANGLE_API_KEY: 'tangle-secret-canary',
+    BRAID_TANGLE_SANDBOX_API_KEY: 'sandbox-secret-canary',
+    BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY: 'cleanup-secret-canary',
+    BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-canary',
+    BRAID_CLI_BRIDGE_AUTH: 'braid-bridge-secret-canary',
+    BRIDGE_BEARER: 'bridge-server-secret-canary',
+    OPENAI_API_KEY: 'local-subscription-canary',
+    PI_CODING_AGENT_DIR: '/tmp/pi-agent',
+  }
+  const child = bridgeLaunchEnvironment([{ backend: 'pi' }], 'http://127.0.0.1:3344', {
+    environment,
+    platform: 'linux',
+  })
+
+  for (const key of [
+    'TANGLE_API_KEY',
+    'BRAID_TANGLE_SANDBOX_API_KEY',
+    'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
+    'BRAID_TANGLE_CREDENTIAL_REF',
+    'BRAID_CLI_BRIDGE_AUTH',
+  ]) {
+    assert.equal(child[key], undefined, `${key} must not enter the Bridge process`)
+  }
+  assert.equal(child.BRIDGE_BEARER, environment.BRIDGE_BEARER)
+  assert.equal(child.OPENAI_API_KEY, environment.OPENAI_API_KEY)
+  assert.equal(child.PI_CODING_AGENT_DIR, environment.PI_CODING_AGENT_DIR)
+  assert.equal(child.BRIDGE_BACKENDS, 'pi')
+  assert.equal(child.BRIDGE_JAIL_MODE, 'fs-jail')
+})
+
+test('Braid live credential filtering does not remove local CLI subscription settings', () => {
+  const child = withoutBraidLiveSecrets({
+    TANGLE_API_KEY: 'tangle-secret-canary',
+    BRAID_TANGLE_API_KEY: 'tangle-secret-canary',
+    ANTHROPIC_API_KEY: 'local-subscription-canary',
+    CODEX_HOME: '/tmp/codex',
+  })
+  assert.equal(child.TANGLE_API_KEY, undefined)
+  assert.equal(child.BRAID_TANGLE_API_KEY, undefined)
+  assert.equal(child.ANTHROPIC_API_KEY, 'local-subscription-canary')
+  assert.equal(child.CODEX_HOME, '/tmp/codex')
+})
+
+test('captured Bridge evidence redacts preserved local subscription credentials', () => {
+  const secret = 'local-subscription-secret-canary'
+  const evidence = evidenceValue(
+    { stderr: `provider startup printed ${secret}` },
+    '',
+    0,
+    secretValues({ OPENAI_API_KEY: secret }),
+  )
+  assert.doesNotMatch(JSON.stringify(evidence), new RegExp(secret, 'u'))
 })

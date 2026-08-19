@@ -75,7 +75,7 @@ export interface ControlAcknowledgement {
   readonly detail?: string
 }
 
-export interface CancelRunInput {
+export interface CancelRunInput extends RetainedExecutionRecoveryContext {
   readonly operationId: string
   readonly runId: string
   readonly providerSessionId?: string
@@ -103,39 +103,46 @@ export interface ExecutionPort {
   cancelRun?(
     input: CancelRunInput & { readonly reason?: string; readonly signal?: AbortSignal },
   ): Promise<ControlAcknowledgement | CancelRunResult>
-  detachRun?(input: {
-    readonly runId: string
-    readonly operationId: string
-    readonly providerSessionId?: string
-    readonly controlRef?: AgentExactRunControlRef
-    readonly cursor?: string
-    readonly signal?: AbortSignal
-  }): Promise<ControlAcknowledgement>
+  detachRun?(
+    input: {
+      readonly runId: string
+      readonly operationId: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly cursor?: string
+      readonly signal?: AbortSignal
+    } & RetainedExecutionRecoveryContext,
+  ): Promise<ControlAcknowledgement>
   steerRun?(input: {
     readonly runId: string
     readonly operationId: string
     readonly text: string
     readonly signal?: AbortSignal
   }): Promise<ControlAcknowledgement>
-  status?(input: {
-    readonly runId: string
-    readonly providerSessionId?: string
-    readonly controlRef?: AgentExactRunControlRef
-    readonly signal?: AbortSignal
-  } & RetainedExecutionRecoveryContext): Promise<ProviderRunSnapshot | null>
+  status?(
+    input: {
+      readonly runId: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & RetainedExecutionRecoveryContext,
+  ): Promise<ProviderRunSnapshot | null>
   respondInteraction?(input: {
     readonly command: InteractionResponseCommand
     readonly signal?: AbortSignal
+    readonly recovery?: RetainedExecutionRecoveryContext
   }): Promise<ControlAcknowledgement>
-  reconnect?(input: {
-    readonly runId: string
-    readonly after?: string
-    readonly afterSequence?: number
-    readonly providerSessionId?: string
-    readonly controlRef?: AgentExactRunControlRef
-    readonly signal: AbortSignal
-    readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
-  } & RetainedExecutionRecoveryContext): AsyncIterable<RuntimeEventEnvelope>
+  reconnect?(
+    input: {
+      readonly runId: string
+      readonly after?: string
+      readonly afterSequence?: number
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal: AbortSignal
+      readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
+    } & RetainedExecutionRecoveryContext,
+  ): AsyncIterable<RuntimeEventEnvelope>
   nativeBoundary?(input: {
     readonly runId: string
     readonly sessionId: string

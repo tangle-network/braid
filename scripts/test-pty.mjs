@@ -220,8 +220,10 @@ async function runAutocompleteRace() {
     session.write('profile\r')
     await waitFor(
       () =>
-        normalizeScreen(screen).includes('profiles') &&
-        normalizeScreen(screen).includes('^V valid'),
+        normalizeScreen(screen).includes('profile') &&
+        normalizeScreen(screen).includes('Braid starter') &&
+        normalizeScreen(screen).includes('runner pi · model fixture/deterministic') &&
+        normalizeScreen(screen).includes('←/esc close'),
       'exact /profile overlay',
     )
     if (/unknown command \/profil(?:new|enew)/iu.test(output))
@@ -229,7 +231,7 @@ async function runAutocompleteRace() {
 
     session.write('\u001b')
     await waitFor(
-      () => !normalizeScreen(screen).includes('^V valid'),
+      () => !normalizeScreen(screen).includes('runner pi · model fixture/deterministic'),
       'autocomplete race profile close',
       () => screen,
     )

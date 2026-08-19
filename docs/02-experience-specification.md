@@ -72,7 +72,7 @@ If a connection is unavailable, the conversation opens offline and retains full 
 
 ## Main shell
 
-### Standard layout from 80 to 119 columns
+### Standard layout from 60 to 99 columns
 
 ```text
  user   Explain the failing integration test.
@@ -86,7 +86,7 @@ If a connection is unavailable, the conversation opens offline and retains full 
  › _
 
 
- profile Release engineer · pi / glm-5.2 · backend CLI Bridge       / commands
+ profile Release engineer · pi / glm-5.2 · via Local CLI Bridge
  in 1.2k · out 567 · $0.0312 · latency 120ms
 ```
 
@@ -94,15 +94,17 @@ The main shell has no persistent header.
 
 The transcript begins at the top of the viewport and remains visually primary.
 
-The calm context rail uses one identity/status row from 60 through 99 columns.
+The calm context rail uses one compact identity/status row from 60 through 99 columns.
 
-At 100 columns and above, it uses a second row only for known sandbox facts and measured token, cost, or latency values.
+At 100 columns and above, the first row labels the profile, harness, model, and backend.
+
+It adds a distinct connection, configured reasoning and caps, known sandbox facts, and measured values when they fit.
 
 Remote or sandbox execution appears there only when location changes the user's mental model.
 
-The composer has no border during normal input and keeps at least three usable rows.
+The composer has separators above and below normal input and keeps at least three usable rows.
 
-Autocomplete adds one divider between input and results.
+Autocomplete appears below the composer separator without adding another outer panel.
 
 The composer grows to at most 40% of terminal height, then scrolls internally.
 
@@ -150,7 +152,7 @@ The physical machine IP, effective resource allocation, and per-sandbox CPU, RAM
 
 Headless state retains complete measurement status, including unavailable fields, for automation and audit.
 
-### Wide layout at 120 columns and above
+### Wide layout at 100 columns and above
 
 ```text
  user   Fix the replay race and run the focused tests.          │ live work
@@ -161,18 +163,19 @@ Headless state retains complete measurement status, including unavailable fields
  › _
 
 
- profile reviewer · codex / openai/gpt-5.6 · sandbox · xhigh   working · Ctrl+C cancel
+ profile reviewer · harness codex · model openai/gpt-5.6 · backend Sandbox · think xhigh
+ working · Ctrl+C cancel
 ```
 
-The right pane is hidden by default, including while a run is active.
+The main shell has no activity pane, including while a run is active.
 
-F2 toggles one live-work pane that contains only active, waiting, detached, or reconnecting work.
+F2 opens the focused activity browser for active and historical work.
 
-Completed history remains available through `/activity` instead of accumulating in the pane.
+The activity browser uses one list/detail surface and keeps direct turns, analyses, and workers distinct.
 
 Graph, details, and workspace views use focused overlays.
 
-The pane never reduces the transcript below 72 columns; below that boundary it becomes an overlay.
+No secondary surface reduces the transcript below its minimum width because secondary surfaces replace the shell.
 
 ### Narrow layout below 80 columns
 
@@ -317,7 +320,7 @@ Destructive or externally consequential commands show the resolved target before
 | `PageUp` / `PageDown` | Scroll the focused transcript or list by one viewport |
 | `Home` / `End` | Move within the editor or to list boundaries according to focus |
 | `Alt+Up` / `Alt+Down` | Navigate adjacent branches or graph nodes |
-| `F2` | Toggle the wide activity pane |
+| `F2` | Open the focused activity browser |
 | `?` | Open contextual help outside the composer, or type a question mark inside it |
 
 Keybindings are remappable from named actions rather than raw handler code.

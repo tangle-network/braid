@@ -1,6 +1,5 @@
 import type {
   AgentEnvironmentCapabilities,
-  AgentExactRunControlRef,
   AgentProfile,
   RequestedInteractions,
 } from '@tangle-network/agent-interface'

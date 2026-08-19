@@ -1,23 +1,28 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type {
-  AgentEnvironment,
-  AgentEnvironmentCapabilities,
-  AgentEnvironmentProvider,
-} from '@tangle-network/agent-interface/environment-provider'
 import type { AgentInteractiveSessionRef, AgentProfile } from '@tangle-network/agent-interface'
 import {
   AgentInteractiveSessionRefSchema,
   canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
-import { NativeInteractiveRunBroker } from '../src/adapters/runtime/native-interactive-run-broker.js'
-import { ModeRoutingExecutionPort } from '../src/adapters/runtime/mode-routing-execution.js'
-import type { PreparedTangleRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
-import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
-import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
-import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import type {
+  AgentEnvironment,
+  AgentEnvironmentCapabilities,
+  AgentEnvironmentProvider,
+} from '@tangle-network/agent-interface/environment-provider'
 import type { RetainedInteractiveAdmission } from '@tangle-network/agent-runtime/kernel'
+import { ModeRoutingExecutionPort } from '../src/adapters/runtime/mode-routing-execution.js'
+import { NativeInteractiveRunBroker } from '../src/adapters/runtime/native-interactive-run-broker.js'
+import {
+  safeExecutionId,
+  stableProviderId,
+} from '../src/adapters/runtime/production-backend-common.js'
+import type { PreparedTangleRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
+import { assertInteractiveProvider } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
+import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
 
 const PROFILE: AgentProfile = {
   name: 'Braid interactive test',
@@ -47,9 +52,19 @@ test('mode routing is async when either branch is async and honors canonical int
     runId: 'run/recovered',
     retainedAdmission: { phase: 'interactive_intent' },
   } as never)
+  await router.cancelRun({
+    runId: 'run/recovered-control',
+    operationId: 'operation-recovered-control',
+    retainedAdmission: { phase: 'interactive_started' },
+  } as never)
   await collect(router.streamTurn(input('run/headless', { mode: 'headless' })))
 
-  assert.deepEqual(calls, ['interactive:stream', 'interactive:status', 'headless:stream'])
+  assert.deepEqual(calls, [
+    'interactive:stream',
+    'interactive:status',
+    'interactive:cancel',
+    'headless:stream',
+  ])
   await assert.rejects(
     () =>
       collect(
@@ -81,6 +96,7 @@ test('starts one native process, records Runtime identity, and emits replayable 
 
   assert.equal(fixture.stats.dispatchCalls, 0)
   assert.equal(fixture.stats.processStarts, 1)
+  assert.equal(fixture.resolveInputs.length, 1)
   assert.deepEqual(
     admissions.map((entry) => entry.phase),
     ['interactive_intent', 'interactive_environment', 'interactive_started'],
@@ -188,6 +204,16 @@ test('partial intent and environment admissions report replayable status without
     )
     const partial = admissions.find((admission) => admission.phase === phase)
     assert.ok(partial)
+    await assert.rejects(
+      () =>
+        port.status({
+          runId: input.runId,
+          providerSessionId: 'wrong-native-session',
+          retainedAdmission: partial,
+          receipt: receiptFor(input),
+        } as Parameters<typeof port.status>[0]),
+      /conflicts with the saved admission/u,
+    )
     const before = { ...fixture.stats }
     const status = await port.status({
       runId: input.runId,
@@ -298,6 +324,221 @@ test('a second foreground execution cannot duplicate an active native process', 
   assert.equal((await first.next()).done, true)
 })
 
+test('cancellation between admission and start cannot create a native process', async () => {
+  const fixture = interactiveFixture()
+  const port = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const input = executionInput('run/cancel-before-start', async () => {})
+  await port.admit(input)
+  const iterator = port.streamTurn(input)[Symbol.asyncIterator]()
+  const nextResult = iterator.next()
+  const cancelled = await port.cancelRun({
+    operationId: 'cancel-before-native-start',
+    runId: input.runId,
+  })
+
+  assert.equal(cancelled.outcome, 'accepted')
+  assert.deepEqual(await nextResult, { done: true, value: undefined })
+  assert.equal(fixture.stats.processStarts, 0)
+})
+
+test('cancelling a persisted interactive intent after restart does not materialize it', async () => {
+  const fixture = interactiveFixture()
+  const first = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const admissions: RetainedInteractiveAdmission[] = []
+  const input = executionInput('run/cancel-intent', async (admission) => {
+    admissions.push(admission)
+    if (admission.phase === 'interactive_intent') throw new Error('simulated intent loss')
+  })
+  const initial = first.streamTurn(input)[Symbol.asyncIterator]()
+  await assert.rejects(
+    () => initial.next(),
+    (error: unknown) => causedBy(error, 'simulated intent loss'),
+  )
+  const intent = admissions.find((admission) => admission.phase === 'interactive_intent')
+  assert.ok(intent?.phase === 'interactive_intent')
+
+  const restarted = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const cancelled = await restarted.cancelRun({
+    operationId: 'cancel-persisted-interactive-intent',
+    runId: input.runId,
+    providerSessionId: intent.sessionId,
+    retainedAdmission: intent,
+    receipt: receiptFor(input),
+  })
+
+  assert.deepEqual(cancelled, {
+    operationId: 'cancel-persisted-interactive-intent',
+    outcome: 'accepted',
+    detail: 'cancelled-before-start',
+  })
+  assert.equal(fixture.stats.createCalls, 0)
+  assert.equal(fixture.stats.processStarts, 0)
+  assert.equal(fixture.stats.stopCalls, 0)
+})
+
+test('detaching a persisted interactive intent does not materialize it', async () => {
+  const fixture = interactiveFixture()
+  const first = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const admissions: RetainedInteractiveAdmission[] = []
+  const input = executionInput('run/detach-intent', async (admission) => {
+    admissions.push(admission)
+    if (admission.phase === 'interactive_intent') throw new Error('simulated detach intent loss')
+  })
+  const initial = first.streamTurn(input)[Symbol.asyncIterator]()
+  await assert.rejects(
+    () => initial.next(),
+    (error: unknown) => causedBy(error, 'simulated detach intent loss'),
+  )
+  const intent = admissions.find((admission) => admission.phase === 'interactive_intent')
+  assert.ok(intent?.phase === 'interactive_intent')
+
+  const restarted = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const detached = await restarted.detachRun({
+    operationId: 'detach-persisted-interactive-intent',
+    runId: input.runId,
+    providerSessionId: intent.sessionId,
+    retainedAdmission: intent,
+    receipt: receiptFor(input),
+  })
+
+  assert.deepEqual(detached, {
+    operationId: 'detach-persisted-interactive-intent',
+    outcome: 'accepted',
+    detail: 'detached',
+  })
+  assert.equal(fixture.stats.createCalls, 0)
+  assert.equal(fixture.stats.processStarts, 0)
+  assert.equal(fixture.stats.stopCalls, 0)
+})
+
+test('cancellation recovers the exact native process after a process restart', async () => {
+  const fixture = interactiveFixture()
+  const firstBroker = new NativeInteractiveRunBroker()
+  const first = interactivePort(fixture, firstBroker)
+  const admissions: RetainedInteractiveAdmission[] = []
+  const input = executionInput('run/restart-cancel', async (admission) => {
+    admissions.push(admission)
+  })
+  const iterator = first.streamTurn(input)[Symbol.asyncIterator]()
+  await next(iterator)
+  const handle = await firstBroker.waitForHandle(input.runId)
+  await first.detachRun({
+    runId: input.runId,
+    operationId: 'detach-before-restart-cancel',
+    providerSessionId: handle.ref.run.sessionId,
+    controlRef: handle.ref.run,
+  })
+  assert.equal((await iterator.next()).done, true)
+  const started = admissions.find((entry) => entry.phase === 'interactive_started')
+  assert.ok(started?.phase === 'interactive_started')
+
+  const restarted = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const cancelled = await restarted.cancelRun({
+    operationId: 'cancel-after-restart',
+    runId: input.runId,
+    providerSessionId: started.ref.run.sessionId,
+    controlRef: started.ref.run,
+    retainedAdmission: started,
+    receipt: receiptFor(input),
+    workspaceRoot: '/workspace',
+  })
+
+  assert.equal(cancelled.outcome, 'accepted')
+  assert.equal(fixture.stats.processStarts, 1)
+  assert.equal(fixture.stats.stopCalls, 1)
+})
+
+test('native cancellation omits an expired foreground signal from provider stop', async () => {
+  const fixture = interactiveFixture()
+  const broker = new NativeInteractiveRunBroker()
+  const port = interactivePort(fixture, broker)
+  const input = executionInput('run/expired-cancel', async () => {})
+  const iterator = port.streamTurn(input)[Symbol.asyncIterator]()
+  await next(iterator)
+  const handle = await broker.waitForHandle(input.runId)
+  const controller = new AbortController()
+  controller.abort(new Error('foreground deadline elapsed'))
+
+  const cancelled = await port.cancelRun({
+    operationId: 'cancel-expired-foreground',
+    runId: input.runId,
+    providerSessionId: handle.ref.run.sessionId,
+    controlRef: handle.ref.run,
+    signal: controller.signal,
+  })
+
+  assert.equal(cancelled.outcome, 'accepted')
+  assert.equal(fixture.stats.stopSignals.at(-1), undefined)
+  const final = await next(iterator)
+  assert.equal(final.sequence, 2)
+  assert.equal((await iterator.next()).done, true)
+})
+
+test('interactive admission rejects a changed request for the same run identity', async () => {
+  const fixture = interactiveFixture()
+  const port = interactivePort(fixture, new NativeInteractiveRunBroker())
+  const input = executionInput('run/request-integrity', async () => {})
+  await port.admit(input)
+
+  await assert.rejects(
+    () => collect(port.streamTurn({ ...input, text: 'Use a different prompt.' })),
+    /different request/u,
+  )
+  assert.equal(fixture.stats.processStarts, 0)
+})
+
+test('provider identity keys preserve uniqueness after normalization and truncation', () => {
+  assert.notEqual(safeExecutionId('run/a'), safeExecutionId('run-a'))
+  const first = 'x'.repeat(140)
+  const second = `${'x'.repeat(139)}y`
+  assert.notEqual(stableProviderId('env-braid-', first), stableProviderId('env-braid-', second))
+  assert.ok(stableProviderId('env-braid-', first).length <= 128)
+})
+
+test('interactive provider admission requires terminal and prompt capabilities', () => {
+  const fixture = interactiveFixture()
+  const incomplete = {
+    ...fixture.prepared,
+    capabilities: {
+      ...fixture.prepared.capabilities,
+      interactiveAgent: {
+        ...fixture.prepared.capabilities.interactiveAgent,
+        input: false,
+      },
+    },
+  } as PreparedTangleRetainedConnection
+  assert.throws(() => assertInteractiveProvider(incomplete), /exact interactive agents/u)
+})
+
+test('native interactive admission does not advertise structured responses it cannot route', async () => {
+  const fixture = interactiveFixture()
+  const port = new TangleRetainedInteractiveExecutionPort({
+    broker: new NativeInteractiveRunBroker(),
+    resolve: async (input) => ({
+      ...fixture.prepared,
+      profile: input.profile,
+      capabilities: {
+        ...fixture.prepared.capabilities,
+        interactions: {
+          kinds: ['question'],
+          answerFieldTypes: ['text'],
+          responseScopes: ['interaction'],
+          secretAnswers: false,
+          concurrentRequests: false,
+          replay: true,
+          responseIdempotency: true,
+        },
+      },
+    }),
+  })
+
+  const admission = await port.admit(
+    executionInput('run/native-interaction-capability', async () => {}),
+  )
+
+  assert.equal(admission.capabilities?.environment?.interactions, undefined)
+})
+
 interface InteractiveFixture {
   readonly provider: AgentEnvironmentProvider
   readonly prepared: PreparedTangleRetainedConnection
@@ -309,6 +550,8 @@ interface InteractiveFixture {
     startCalls: number
     processStarts: number
     dispatchCalls: number
+    stopCalls: number
+    stopSignals: (AbortSignal | undefined)[]
   }
   readonly lastCreateMetadata: Readonly<Record<string, unknown>> | undefined
 }
@@ -316,7 +559,15 @@ interface InteractiveFixture {
 function interactiveFixture(): InteractiveFixture {
   const profile = PROFILE
   const resolveInputs: ExecuteTurnInput[] = []
-  const stats = { createCalls: 0, getCalls: 0, startCalls: 0, processStarts: 0, dispatchCalls: 0 }
+  const stats = {
+    createCalls: 0,
+    getCalls: 0,
+    startCalls: 0,
+    processStarts: 0,
+    dispatchCalls: 0,
+    stopCalls: 0,
+    stopSignals: [],
+  }
   const state: {
     ref?: AgentInteractiveSessionRef
     lastCreateMetadata: Readonly<Record<string, unknown>> | undefined
@@ -339,7 +590,7 @@ function interactiveFixture(): InteractiveFixture {
       }
       return state.ref
     },
-    interactive: (ref) => interactiveSession(ref) as never,
+    interactive: (ref) => interactiveSession(ref, stats) as never,
   }
   const provider: AgentEnvironmentProvider = {
     name: 'test-provider',
@@ -492,6 +743,10 @@ function routingPort(
       calls.push(`${label}:status`)
       return null
     },
+    cancelRun: async (control) => {
+      calls.push(`${label}:cancel`)
+      return { operationId: control.operationId, outcome: 'accepted' }
+    },
   }
 }
 
@@ -595,13 +850,13 @@ function interactiveRef(
   })
 }
 
-function interactiveSession(ref: AgentInteractiveSessionRef) {
+function interactiveSession(ref: AgentInteractiveSessionRef, stats: InteractiveFixture['stats']) {
   const control = (holderId: string) => ({
     refDigest: canonicalCandidateDigest(ref),
     generation: 1,
     leaseId: 'interactive-lease-test',
     holderId,
-    expiresAt: '2026-08-17T00:00:00.000Z',
+    expiresAt: '2099-01-01T00:00:00.000Z',
   })
   return {
     ref,
@@ -652,14 +907,21 @@ function interactiveSession(ref: AgentInteractiveSessionRef) {
       control: command.control,
       status: 'accepted' as const,
     }),
-    stop: async (command: { operationId: string; requestDigest: string; control: unknown }) => ({
-      operationId: command.operationId,
-      requestDigest: command.requestDigest,
-      ref,
-      control: command.control,
-      status: 'accepted' as const,
-      effect: 'stopped' as const,
-    }),
+    stop: async (
+      command: { operationId: string; requestDigest: string; control: unknown },
+      options?: { signal?: AbortSignal },
+    ) => {
+      stats.stopCalls += 1
+      stats.stopSignals.push(options?.signal)
+      return {
+        operationId: command.operationId,
+        requestDigest: command.requestDigest,
+        ref,
+        control: command.control,
+        status: 'accepted' as const,
+        effect: 'stopped' as const,
+      }
+    },
   }
 }
 

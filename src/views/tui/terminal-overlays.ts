@@ -121,8 +121,15 @@ export class TerminalOverlayController {
       nextOperationId: this.#nextOperationId,
       query,
       onCancel: () => this.#modals.closeTop(),
+      rows: this.#rows,
     })
-    this.#modals.open(panel, { anchor: 'center', width: '88%', minWidth: 44, maxHeight: '90%' })
+    this.#modals.open(panel, {
+      anchor: 'top-left',
+      width: '100%',
+      maxHeight: '100%',
+      margin: 0,
+      fullScreenBelow: Number.MAX_SAFE_INTEGER,
+    })
   }
 
   openConnectionEditor(): void {

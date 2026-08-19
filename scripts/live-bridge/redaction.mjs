@@ -1,3 +1,5 @@
+import { collectCredentialSecrets } from '../release/redaction.mjs'
+
 const secretKeys = new Set([
   'authorization',
   'bearer',
@@ -19,24 +21,47 @@ const bridgeSecretEnvironmentKeys = Object.freeze([
   'BRIDGE_BEARER',
 ])
 
+const braidLiveSecretEnvironmentKeys = Object.freeze([
+  'BRAID_ANALYSIS_AUTH',
+  'BRAID_ANALYSIS_API_KEY',
+  'BRAID_ANALYSIS_BEARER',
+  'BRAID_CLI_BRIDGE_AUTH',
+  'BRAID_CLI_BRIDGE_API_KEY',
+  'BRAID_CLI_BRIDGE_BEARER',
+  'BRAID_TANGLE_AUTH',
+  'BRAID_TANGLE_API_KEY',
+  'BRAID_TANGLE_BEARER',
+  'BRAID_TANGLE_CREDENTIAL_REF',
+  'BRAID_TANGLE_SANDBOX_AUTH',
+  'BRAID_TANGLE_SANDBOX_API_KEY',
+  'BRAID_TANGLE_SANDBOX_BEARER',
+  'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
+  'BRAID_TANGLE_SANDBOX_CREDENTIAL_REF',
+  'BRAID_TANGLE_SANDBOX_MODEL_API_KEY',
+  'TANGLE_API_KEY',
+])
+
 function isSecretKey(key) {
   const normalized = key.replaceAll(/[-_]/gu, '').toLowerCase()
   return secretKeys.has(normalized)
 }
 
 export function secretValues(environment = process.env) {
-  return [
-    ...new Set(
-      bridgeSecretEnvironmentKeys
-        .map((key) => environment?.[key])
-        .filter((value) => typeof value === 'string' && value.length > 0),
-    ),
-  ]
+  const explicitSecrets = [...bridgeSecretEnvironmentKeys, ...braidLiveSecretEnvironmentKeys]
+    .map((key) => environment?.[key])
+    .filter((value) => typeof value === 'string' && value.length > 0)
+  return collectCredentialSecrets(environment, explicitSecrets)
 }
 
 export function withoutBridgeSecrets(environment = process.env) {
   const childEnvironment = { ...environment }
   for (const key of bridgeSecretEnvironmentKeys) delete childEnvironment[key]
+  return childEnvironment
+}
+
+export function withoutBraidLiveSecrets(environment = process.env) {
+  const childEnvironment = { ...environment }
+  for (const key of braidLiveSecretEnvironmentKeys) delete childEnvironment[key]
   return childEnvironment
 }
 
