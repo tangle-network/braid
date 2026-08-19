@@ -489,7 +489,7 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
     }
     await assert.rejects(
       restarted.execution.status({ runId, retainedAdmission: environmentAdmission }),
-      /another run identity/u,
+      /another (?:retained )?run identity/u,
     )
     assert.equal(bridge.requests.length, 1)
   } finally {
