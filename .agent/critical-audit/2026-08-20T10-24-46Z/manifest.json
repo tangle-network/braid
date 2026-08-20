@@ -1,0 +1,39 @@
+{
+  "skill": "critical-audit",
+  "scope": [
+    "scripts/live-required/tangle-sandbox-braid-soak.mjs",
+    "scripts/live-required/tangle-sandbox-braid-interactive.mjs",
+    "scripts/live-required/contracts.mjs",
+    "scripts/live-required/headless.mjs",
+    "scripts/live-required/tangle-sandbox-braid-stress.mjs",
+    "scripts/live-required/tangle-sandbox-braid-stress-support.mjs",
+    "scripts/live-bridge/process.mjs",
+    "scripts/live-bridge/process-tree.mjs",
+    "scripts/live-bridge/protocol.mjs",
+    "scripts/packed-binary.mjs",
+    "scripts/live-required/configuration.mjs",
+    "test/tangle-live07-wiring.test.mjs",
+    "test/tangle-sandbox-braid-soak-script.test.mjs",
+    "test/tangle-sandbox-braid-stress-script.test.mjs",
+    "test/tangle-sandbox-braid-stress-runtime.test.mjs",
+    "scripts/live-bridge/process.test.mjs",
+    "scripts/live-required.test.mjs"
+  ],
+  "base": "3d7b79f6f4f3270821b1b2fcbd777fb411f1ded9",
+  "head": "7e19843217b9d1c9233fb1c5cdc93f54aa8552ff",
+  "workingTree": "dirty; audit includes uncommitted Braid changes",
+  "reviewers": ["operator", "codex-gpt-5.6-luna"],
+  "liveBoundary": {
+    "status": "unavailable",
+    "reason": "Sandbox endpoint/profile and protected credential environment variables were absent"
+  },
+  "checks": [
+    "node --check scripts/live-required/tangle-sandbox-braid-interactive.mjs scripts/live-required/tangle-sandbox-braid-soak.mjs scripts/live-required/contracts.mjs scripts/live-required/headless.mjs",
+    "pnpm exec biome check on the five changed proof files",
+    "node --test scripts/live-required.test.mjs test/tangle-live07-wiring.test.mjs -> 28/28",
+    "node --test test/tangle-sandbox-braid-soak-script.test.mjs test/tangle-sandbox-braid-stress-script.test.mjs test/tangle-sandbox-braid-stress-runtime.test.mjs scripts/live-bridge/process.test.mjs -> 41/41",
+    "node scripts/live-required/tangle-sandbox-braid-interactive.mjs -> unavailable, exit 2",
+    "node scripts/live-required/tangle-sandbox-braid-soak.mjs -> unavailable, exit 2",
+    "PTY process-tree smoke -> supported:true, gone:true"
+  ]
+}

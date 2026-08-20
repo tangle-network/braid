@@ -449,12 +449,14 @@ export async function initializedSession(binary, config, fixture) {
 }
 
 export async function closeSession(session) {
+  let closed
   try {
     if (!session.closed)
       await rpcRequest(session, 'shutdown', {}, `op-live-required-shutdown-${randomUUID()}`)
   } finally {
-    await session.close().catch(() => undefined)
+    closed = await session.close().catch(() => undefined)
   }
+  return closed
 }
 
 export async function rpcState(session, projection = 'full') {
