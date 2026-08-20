@@ -8,7 +8,6 @@ import type {
 import {
   type PreparedCliBridgeConnection,
   prepareCliBridgeConnection,
-  resolveCliBridgeBackend,
 } from './production-cli-bridge-backend.js'
 import { resolveTangleInferenceBackend } from './production-tangle-inference-backend.js'
 import {
@@ -43,16 +42,11 @@ export async function resolveProductionBackend(
   selection: ProductionExecutionSelection,
 ): Promise<PreparedExecution> {
   const record = options.connections.select(selection.connection).record
+  if (record.kind === 'cli-bridge') {
+    throw new Error('CLI Bridge execution is owned by CliBridgeRetainedExecutionPort')
+  }
 
   switch (record.kind) {
-    case 'cli-bridge':
-      return resolveCliBridgeBackend(
-        options,
-        input,
-        selection,
-        record.id,
-        connectionEndpoint(record, options),
-      )
     case 'tangle-inference':
       return resolveTangleInferenceBackend(
         options,

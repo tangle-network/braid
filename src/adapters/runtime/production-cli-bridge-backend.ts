@@ -97,6 +97,14 @@ export async function prepareCliBridgeConnection(
     baseUrl: bridgeUrl,
     bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
     defaultModel: route,
+    ...(runner === 'pi'
+      ? {
+          defaultExecution: {
+            kind: 'host' as const,
+            jail: { mode: 'fs-jail' as const },
+          },
+        }
+      : {}),
     ...(providerFetch === undefined ? {} : { fetch: providerFetch }),
   }
   const provider = createCliBridgeProvider(providerOptions)
