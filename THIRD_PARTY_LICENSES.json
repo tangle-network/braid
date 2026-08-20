@@ -78,6 +78,14 @@
       "name": "@tangle-network/sandbox"
     },
     {
+      "license": "MIT",
+      "name": "@types/proper-lockfile"
+    },
+    {
+      "license": "MIT",
+      "name": "@types/retry"
+    },
+    {
       "license": "Apache-2.0",
       "name": "b4a"
     },
