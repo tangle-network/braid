@@ -183,9 +183,10 @@ test('semantic judge execution is one exact AgentProfile owned by Runtime', asyn
       provider: 'tangle-router',
       default: DEFAULT_EVAL_MODEL,
       reasoningEffort: 'none',
+      maxVisibleOutputTokens: EVAL_TOTAL_COMPLETION_TOKENS,
+      maxTotalOutputTokens: EVAL_TOTAL_COMPLETION_TOKENS,
       metadata: {
         temperature: 0,
-        maxTokens: EVAL_TOTAL_COMPLETION_TOKENS,
         retry: {
           maxAttempts: 3,
           initialBackoffMs: 1_000,
@@ -194,7 +195,6 @@ test('semantic judge execution is one exact AgentProfile owned by Runtime', asyn
           requestTimeoutMs: 120_000,
         },
         extraBody: {
-          max_completion_tokens: EVAL_TOTAL_COMPLETION_TOKENS,
           thinking: { type: 'disabled' },
         },
       },
@@ -261,9 +261,9 @@ test('semantic judge execution is one exact AgentProfile owned by Runtime', asyn
   })
 
   const nonGlm = evalJudgeProfile({ ...config, model: 'openai-codex/gpt-5.6-luna' })
-  assert.deepEqual(nonGlm.model?.metadata?.extraBody, {
-    max_completion_tokens: EVAL_TOTAL_COMPLETION_TOKENS,
-  })
+  assert.deepEqual(nonGlm.model?.metadata?.extraBody, {})
+  assert.equal(nonGlm.model?.maxVisibleOutputTokens, EVAL_TOTAL_COMPLETION_TOKENS)
+  assert.equal(nonGlm.model?.maxTotalOutputTokens, EVAL_TOTAL_COMPLETION_TOKENS)
 })
 
 test('semantic judge retries transient Router failures with the same operation identity', async (context) => {
@@ -494,7 +494,7 @@ test('semantic judge refuses an ambiguous smaller request cap before provider sp
       messages: [{ role: 'user', content: 'candidate' }],
       maxTokens: 320,
     }),
-    /request maxTokens conflicts with AgentProfile model metadata/u,
+    /request maxTokens 320 conflicts with AgentProfile\.model\.maxVisibleOutputTokens 2048/u,
   )
   assert.equal(calls, 0)
 })
