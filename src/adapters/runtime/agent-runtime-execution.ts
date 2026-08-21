@@ -2,8 +2,14 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
-import { redactSensitiveText } from '../../domain/redaction.js'
-import { BRAID_SANDBOX_CLEANUP_UNCONFIRMED } from '../../domain/runtime-diagnostics.js'
+import {
+  redactSensitiveText,
+  redactStructuredValueWithNumericTelemetry,
+} from '../../domain/redaction.js'
+import {
+  BRAID_SANDBOX_CLEANUP_UNCONFIRMED,
+  BRAID_SANDBOX_INTERACTION_UNSUPPORTED,
+} from '../../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../../domain/runtime-events.js'
 import type {
   CancelRunInput,
@@ -26,7 +32,6 @@ import {
   type PreparedExecution,
   type RuntimeCancellationCapability,
 } from './prepared-execution.js'
-import { sandboxTerminalOutcomeFromExecutorOutput } from './sandbox-result-projection.js'
 
 export type AgentTurnBackendResolver = (
   input: ExecuteTurnInput,
@@ -218,7 +223,9 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         const observed = observation === undefined ? undefined : await observationEvent(observation)
         if (observed !== undefined) yield observed
         if (terminal !== undefined) {
-          yield redactedTerminal(terminalAfterCleanup(terminalAfterSandboxOutcome(terminal), observed))
+          yield redactedTerminal(
+            terminalAfterCleanup(terminalAfterInteractionRequest(terminal), observed),
+          )
         }
       } catch (error) {
         if (observation !== undefined) {
@@ -264,38 +271,44 @@ function redactedTerminal(
 ): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
   const reason = terminal.reason === undefined ? undefined : redactSensitiveText(terminal.reason)
   const message =
-    terminal.error?.message === undefined
+    terminal.error?.message === undefined ? undefined : redactSensitiveText(terminal.error.message)
+  // The runtime carries the provider's own terminal payload, including its raw
+  // events, so the metadata takes the same structured rules that guard every
+  // other provider value Braid keeps.
+  const metadata =
+    terminal.metadata === undefined
       ? undefined
-      : redactSensitiveText(terminal.error.message)
-  if (reason === terminal.reason && message === terminal.error?.message) return terminal
+      : (redactStructuredValueWithNumericTelemetry(terminal.metadata, undefined, {
+          maxDepth: 8,
+          maxItems: 256,
+          maxBytes: 64 * 1024,
+        }) as Record<string, unknown>)
   return {
     ...terminal,
     ...(reason === undefined ? {} : { reason }),
+    ...(metadata === undefined ? {} : { metadata }),
     ...(terminal.error === undefined || message === undefined
       ? {}
       : { error: { ...terminal.error, message } }),
   }
 }
 
-function terminalAfterSandboxOutcome(
+/**
+ * Refuse a turn that ends waiting for a user response on this route.
+ *
+ * Runtime reports a blocked turn when the agent asks for a permission, a
+ * question, or a plan decision. This route deletes its environment after the
+ * turn, so no response can reach the agent and the run fails closed.
+ */
+function terminalAfterInteractionRequest(
   terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
 ): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
-  if (terminal.status !== 'completed') return terminal
-  const result = terminal.metadata?.result
-  const output =
-    result !== null && typeof result === 'object' && !Array.isArray(result)
-      ? (result as { readonly output?: unknown }).output
-      : undefined
-  const outcome = sandboxTerminalOutcomeFromExecutorOutput(output)
-  if (outcome === undefined || outcome.status === 'completed') return terminal
-  const reason = outcome.reason ?? `Sandbox agent reported a ${outcome.status} turn`
+  if (terminal.status !== 'blocked') return terminal
   return {
     ...terminal,
-    status: outcome.status,
-    reason,
-    ...(outcome.status === 'failed'
-      ? { error: { kind: 'backend' as const, message: reason } }
-      : {}),
+    status: 'failed',
+    reason: BRAID_SANDBOX_INTERACTION_UNSUPPORTED,
+    error: { kind: 'backend', message: BRAID_SANDBOX_INTERACTION_UNSUPPORTED },
   }
 }
 

@@ -21,8 +21,8 @@ import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
-import { runPlain } from './plain.js'
 import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
+import { runPlain } from './plain.js'
 import {
   activateProductionConnection,
   productionConfigForSelection,

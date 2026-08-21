@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
-import { createTangleProvider } from '@tangle-network/agent-provider-tangle'
 import { streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
 import { normalizeTangleInferenceRuntimeBaseUrl } from '../src/adapters/connections/production-connection-endpoints.js'
 import {
@@ -19,14 +18,15 @@ import {
 } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry, mergeConnectionTelemetry } from '../src/app/connections.js'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { providerEventFor } from '../src/app/run-event-mapper.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { BRAID_SANDBOX_INTERACTION_UNSUPPORTED } from '../src/domain/runtime-diagnostics.js'
 import { credentialRef } from '../src/ports/credentials.js'
-import { environmentSupportsInteractionResponse } from '../src/ports/execution.js'
 import type { ExecuteTurnInput } from '../src/ports/execution.js'
+import { environmentSupportsInteractionResponse } from '../src/ports/execution.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const at = '2026-08-03T12:00:00.000Z'
@@ -58,6 +58,27 @@ function profile(
   const provider =
     (segments[0] === harness ? (segments[1] ?? segments[0]) : segments[0]) ?? 'fixture'
   return { model: { default: model, provider }, harness }
+}
+
+/** The exact interaction request a sandbox publishes when it asks a question. */
+function questionRequest(runId = 'run-connection-test') {
+  const interactionId = 'question-1'
+  return createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue the operation?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'tangle-sandbox',
+      environmentId: 'sandbox-awaiting_question',
+      sessionId: 'session-connection-test',
+      executionId: runId,
+      interactionId,
+    },
+  })
 }
 
 function turnInput(profileValue: AgentProfile): ExecuteTurnInput {
@@ -354,8 +375,16 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       return {
         id: 'sandbox-test',
         async *streamPrompt() {
-          yield { type: 'text', data: { text: 'hello from sandbox' } }
-          yield { type: 'result', data: { text: 'hello from sandbox' } }
+          yield { type: 'token', data: { delta: 'hello from sandbox' } }
+          yield {
+            type: 'done',
+            data: {
+              outcome: { type: 'completed' },
+              status: 'success',
+              success: true,
+              finalText: 'hello from sandbox',
+            },
+          }
         },
         async delete() {},
       }
@@ -457,6 +486,7 @@ test('sandbox success=false fails closed despite a conflicting success status', 
           yield {
             type: 'done',
             data: {
+              outcome: { type: 'completed' },
               status: 'success',
               success: false,
               error: 'provider rejected token=do-not-persist',
@@ -481,11 +511,15 @@ test('sandbox success=false fails closed despite a conflicting success status', 
   assert.equal(terminal.status, 'failed')
   assert.match(terminal.reason, /\[redacted secret\]/u)
   assert.doesNotMatch(terminal.reason, /do-not-persist/u)
+  // The runtime carries the provider's raw terminal payload, so the whole
+  // event, not only its reason, must be free of the provider secret.
   assert.doesNotMatch(JSON.stringify(terminal), /do-not-persist/u)
-  // Runtime 0.142 fails the turn inside its executor and reports no usage for
-  // that turn, so Braid keeps the totals unknown instead of reporting zero.
-  assert.equal(terminal.metadata?.tokensKnown, false)
-  assert.equal(terminal.metadata?.usdKnown, false)
+  const tokenUsage = terminal.metadata?.tokenUsage as
+    | { readonly input?: unknown; readonly output?: unknown }
+    | undefined
+  assert.equal(tokenUsage?.input, 17)
+  assert.equal(tokenUsage?.output, 3)
+  assert.equal(terminal.metadata?.costUsd, 0.004)
   assert.equal(deleted, 1)
 })
 
@@ -516,36 +550,46 @@ test('ephemeral sandboxes reject interactions that cannot survive cleanup', asyn
             async *streamPrompt() {
               if (status === 'blocked_on_approval') {
                 yield {
-                  type: 'result',
+                  type: 'done',
                   data: {
+                    outcome: { type: 'completed' },
+                    status: 'blocked_on_approval',
                     success: false,
                     toolInvocations: [
                       {
                         toolName: 'github_create_issue',
                         isError: true,
-                        result: { error: { code: 'HUB_APPROVAL_REQUIRED' } },
+                        result: {
+                          code: 'HUB_APPROVAL_REQUIRED',
+                          message: 'Hub action requires approval',
+                        },
                       },
                     ],
                   },
                 }
               } else if (status === 'awaiting_question') {
+                yield { type: 'interaction', data: { request: questionRequest() } }
                 yield {
-                  type: 'interaction',
+                  type: 'done',
                   data: {
-                    request: { id: 'question-1', kind: 'question', answerSpec: { fields: [] } },
+                    outcome: { type: 'completed' },
+                    finalText: '',
+                    status: 'awaiting_question',
                   },
                 }
-                yield { type: 'result', data: { finalText: '' } }
               } else {
+                const plan = {
+                  id: 'plan-1',
+                  revision: 1,
+                  body: 'Inspect the workspace',
+                  submittedAt: at,
+                }
                 yield {
-                  type: 'result',
+                  type: 'done',
                   data: {
-                    plan: {
-                      id: 'plan-1',
-                      revision: 1,
-                      body: 'Inspect the workspace',
-                      submittedAt: at,
-                    },
+                    outcome: { type: 'awaiting_plan_decision', plan },
+                    status: 'awaiting_plan_decision',
+                    plan,
                   },
                 }
               }
@@ -566,26 +610,18 @@ test('ephemeral sandboxes reject interactions that cannot survive cleanup', asyn
       assert.equal(terminal?.type, 'final')
       if (terminal?.type !== 'final') assert.fail('missing terminal event')
       assert.equal(terminal.status, 'failed')
+      assert.equal(terminal.reason, BRAID_SANDBOX_INTERACTION_UNSUPPORTED)
       const projected = providerEventFor(input.runId, terminal, {
         eventId: `event-${status}`,
         providerSequence: 1,
       })
       assert.equal(projected.kind, 'run.finished')
       if (projected.kind !== 'run.finished') assert.fail('missing projected terminal event')
-      if (status === 'blocked_on_approval') {
-        // Runtime 0.142 fails a sandbox result that reports success=false inside
-        // its executor, so the tool-approval signal never reaches Braid's
-        // projection. The route still refuses the turn and deletes the sandbox.
-        // Runtime 0.143 returns the outcome and restores the exact diagnostic.
-        assert.equal(projected.status, 'failed')
-      } else {
-        assert.equal(terminal.reason, BRAID_SANDBOX_INTERACTION_UNSUPPORTED)
-        assert.equal(
-          projected.reason,
-          'Sandbox requested user interaction, but this ephemeral route cannot retain and resume the environment',
-        )
-        assert.equal(projected.error, BRAID_SANDBOX_INTERACTION_UNSUPPORTED)
-      }
+      assert.equal(
+        projected.reason,
+        'Sandbox requested user interaction, but this ephemeral route cannot retain and resume the environment',
+      )
+      assert.equal(projected.error, BRAID_SANDBOX_INTERACTION_UNSUPPORTED)
       assert.equal(deleted, 1)
     })
   }

@@ -3,6 +3,7 @@ import {
   InteractionBindingSchema,
   InteractionRequestSchema,
 } from '@tangle-network/agent-interface'
+import { isSensitiveFieldName } from './bounded-structured.js'
 import type {
   AnalysisAttachmentRecord,
   AnalysisModelCallRecord,
@@ -11,7 +12,6 @@ import type {
 } from './entities.js'
 import type { AutomationRuleRecord } from './entities-runtime.js'
 import { isReplayCursor } from './ids.js'
-import { isSensitiveFieldName } from './bounded-structured.js'
 import {
   assertDate,
   assertDigest,
@@ -25,9 +25,9 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
-import { safePublicIdentifier } from './provider-values.js'
 import { assertRetainedRunAdmission } from './invariants-retained-admission.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
+import { safePublicIdentifier } from './provider-values.js'
 
 export function assertRunRecord(record: RunRecord): void {
   assertEntityId('run', record.id, 'run.id')

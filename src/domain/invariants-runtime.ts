@@ -1,3 +1,4 @@
+import { isSensitiveFieldName } from './bounded-structured.js'
 import type {
   AutomationRuleRecord,
   BindingRecord,
@@ -27,7 +28,6 @@ import {
   OPERATION_KINDS,
   OPERATION_STATUSES,
 } from './invariants-base.js'
-import { isSensitiveFieldName } from './bounded-structured.js'
 
 export function assertEnvironmentRecord(record: EnvironmentRecord): void {
   assertEntityId('environment', record.id, 'environment.id')

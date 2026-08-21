@@ -1,7 +1,6 @@
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
-import { eventRunId } from '../domain/events.js'
+import { eventRunId, providerEventKey, providerMetaForEvent } from '../domain/events.js'
 import type { RunId } from '../domain/ids.js'
-import { providerEventKey, providerMetaForEvent } from '../domain/events.js'
 import { parseReplayCursor } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'

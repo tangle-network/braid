@@ -1,8 +1,8 @@
-import { AnalysisCapabilityError } from './analysis-types.js'
+import { AGENT_EVAL_VERSION } from '../adapters/analysis/agent-eval-version.js'
+import type { EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
 import type { AnalysisAnalyst, AnalysisExecutionEvent } from './analysis-execution-session.js'
 import type { AnalysisRequest } from './analysis-types.js'
-import type { EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
-import { AGENT_EVAL_VERSION } from '../adapters/analysis/agent-eval-version.js'
+import { AnalysisCapabilityError } from './analysis-types.js'
 
 const ISSUE = {
   capability: 'trace-analysis',

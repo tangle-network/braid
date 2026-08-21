@@ -13,8 +13,8 @@ import {
 import type { RetainedInteractiveRunHandle } from '@tangle-network/agent-runtime/kernel'
 import type { BraidApplication } from '../src/app/application.js'
 import { createNativeInteractiveUiActions } from '../src/bin/native-interactive-actions.js'
-import type { NativeInteractiveExecutionControl } from '../src/ports/native-interactive-execution.js'
 import type { NativeTerminalHost, NativeTerminalSignalPort } from '../src/index.js'
+import type { NativeInteractiveExecutionControl } from '../src/ports/native-interactive-execution.js'
 
 class ExitTerminalSession implements AgentInteractiveTerminalSession {
   readonly ref = {

@@ -8,9 +8,9 @@ import {
 } from '@tangle-network/agent-eval'
 import type { AnalysisExecutionTarget, AnalysisRecipe } from '../../app/analysis-types.js'
 import { AnalysisCapabilityError, type AnalysisCapabilityIssue } from '../../app/analysis-types.js'
+import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
 import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 import type { ModelExecutionScope } from './model-execution-scope.js'
-import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
 import { BRAID_QUESTION_ANALYST_ID } from './question-analyst.js'
 import type { AnalysisTraceBundle } from './trace-store.js'
 

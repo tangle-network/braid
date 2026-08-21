@@ -234,10 +234,7 @@ test('retained CLI Bridge turns forward request-scoped model credentials only on
         },
         fetch: async (input, init) => {
           const path = new URL(String(input)).pathname
-          if (
-            path === '/v1/chat/completions' ||
-            /^\/v1\/sessions\/[^/]+\/turns$/u.test(path)
-          ) {
+          if (path === '/v1/chat/completions' || /^\/v1\/sessions\/[^/]+\/turns$/u.test(path)) {
             seen.token = requestHeader(init, 'x-cli-bridge-model-credential')
             seen.baseUrl = requestHeader(init, 'x-cli-bridge-model-base-url')
           }
@@ -590,53 +587,53 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
 
   const bridge = await startRuntimeBridgeServer()
   try {
-   for (const candidate of cases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-production-routing-${candidate.name}-`))
-    const configPath = join(root, 'config.json')
-    const record = connection(
-      'cli-bridge',
-      `routing-${candidate.name.replaceAll(' ', '-')}`,
-      bridge.endpoint,
-    )
-    await writeFile(
-      configPath,
-      `${JSON.stringify({
-        format: 'braid-startup-config',
-        schemaVersion: 2,
-        profile: profile(),
-        connectionId: record.id,
-        connections: [record],
-      })}\n`,
-      { mode: 0o600 },
-    )
+    for (const candidate of cases) {
+      const root = await mkdtemp(join(tmpdir(), `braid-production-routing-${candidate.name}-`))
+      const configPath = join(root, 'config.json')
+      const record = connection(
+        'cli-bridge',
+        `routing-${candidate.name.replaceAll(' ', '-')}`,
+        bridge.endpoint,
+      )
+      await writeFile(
+        configPath,
+        `${JSON.stringify({
+          format: 'braid-startup-config',
+          schemaVersion: 2,
+          profile: profile(),
+          connectionId: record.id,
+          connections: [record],
+        })}\n`,
+        { mode: 0o600 },
+      )
 
-    const startup = await loadProductionStartup({
-      workspace: root,
-      configPath,
-      ...candidate.options,
-    })
-    assert.equal(startup.profile.name, 'production test profile', candidate.name)
-    assert.equal(startup.profile.harness, candidate.runner, candidate.name)
-    assert.equal(startup.profile.model?.default, candidate.model, candidate.name)
-    assert.equal(startup.profile.model?.provider, 'openai', candidate.name)
+      const startup = await loadProductionStartup({
+        workspace: root,
+        configPath,
+        ...candidate.options,
+      })
+      assert.equal(startup.profile.name, 'production test profile', candidate.name)
+      assert.equal(startup.profile.harness, candidate.runner, candidate.name)
+      assert.equal(startup.profile.model?.default, candidate.model, candidate.name)
+      assert.equal(startup.profile.model?.provider, 'openai', candidate.name)
 
-    const composition = createProductionComposition({
-      ...startup,
-      workspaceRoot: root,
-    })
-    // CLI Bridge routing is proved on the retained port, which owns Bridge execution.
-    const admission = await composition.execution.admit?.({
-      operationId: `operation-routing-${candidate.name}`,
-      runId: `run-routing-${candidate.name}`,
-      text: 'verify routing override',
-      profile: composition.profile,
-      workspaceRoot: root,
-      signal: new AbortController().signal,
-    })
-    assert.equal(admission?.materializationReceipt?.runner, candidate.runner, candidate.name)
-    assert.equal(admission?.materializationReceipt?.model, candidate.model, candidate.name)
-    assert.equal(admission?.materializationReceipt?.route, candidate.route, candidate.name)
-   }
+      const composition = createProductionComposition({
+        ...startup,
+        workspaceRoot: root,
+      })
+      // CLI Bridge routing is proved on the retained port, which owns Bridge execution.
+      const admission = await composition.execution.admit?.({
+        operationId: `operation-routing-${candidate.name}`,
+        runId: `run-routing-${candidate.name}`,
+        text: 'verify routing override',
+        profile: composition.profile,
+        workspaceRoot: root,
+        signal: new AbortController().signal,
+      })
+      assert.equal(admission?.materializationReceipt?.runner, candidate.runner, candidate.name)
+      assert.equal(admission?.materializationReceipt?.model, candidate.model, candidate.name)
+      assert.equal(admission?.materializationReceipt?.route, candidate.route, candidate.name)
+    }
   } finally {
     await bridge.close()
   }
@@ -665,48 +662,48 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
   ]
   const bridge = await startRuntimeBridgeServer()
   try {
-   for (const candidate of cases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
-    const configPath = join(root, 'config.json')
-    const record = connection('cli-bridge', `v1-${candidate.runner}`, bridge.endpoint)
-    await writeFile(
-      configPath,
-      `${JSON.stringify({
-        format: 'braid-startup-config',
-        schemaVersion: 1,
-        profile: {
-          name: `prior ${candidate.runner} profile`,
-          harness: candidate.runner,
-          model: {
-            default: candidate.routed,
-            provider: candidate.runner === 'pi' ? 'tangle-router' : 'codex',
+    for (const candidate of cases) {
+      const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
+      const configPath = join(root, 'config.json')
+      const record = connection('cli-bridge', `v1-${candidate.runner}`, bridge.endpoint)
+      await writeFile(
+        configPath,
+        `${JSON.stringify({
+          format: 'braid-startup-config',
+          schemaVersion: 1,
+          profile: {
+            name: `prior ${candidate.runner} profile`,
+            harness: candidate.runner,
+            model: {
+              default: candidate.routed,
+              provider: candidate.runner === 'pi' ? 'tangle-router' : 'codex',
+            },
           },
-        },
-        connectionId: record.id,
-        connections: [record],
-      })}\n`,
-      { mode: 0o600 },
-    )
+          connectionId: record.id,
+          connections: [record],
+        })}\n`,
+        { mode: 0o600 },
+      )
 
-    const startup = await loadProductionStartup({ workspace: root, configPath })
-    assert.equal(startup.profile.model?.default, candidate.portable)
-    const prepared = await resolveProductionCliBridgeConnection(
-      {
-        connections: new ConnectionRegistry([record]),
-        workspaceCwd: root,
-        select: () => ({ connection: { connectionId: record.id } }),
-      },
-      {
-        operationId: `operation-v1-${candidate.runner}`,
-        runId: `run-v1-${candidate.runner}`,
-        text: 'verify prior profile',
-        profile: startup.profile,
-        signal: new AbortController().signal,
-      },
-    )
-    assert.equal(prepared.profile.model?.default, candidate.portable)
-    assert.equal(prepared.materializationReceipt.route, candidate.routed)
-   }
+      const startup = await loadProductionStartup({ workspace: root, configPath })
+      assert.equal(startup.profile.model?.default, candidate.portable)
+      const prepared = await resolveProductionCliBridgeConnection(
+        {
+          connections: new ConnectionRegistry([record]),
+          workspaceCwd: root,
+          select: () => ({ connection: { connectionId: record.id } }),
+        },
+        {
+          operationId: `operation-v1-${candidate.runner}`,
+          runId: `run-v1-${candidate.runner}`,
+          text: 'verify prior profile',
+          profile: startup.profile,
+          signal: new AbortController().signal,
+        },
+      )
+      assert.equal(prepared.profile.model?.default, candidate.portable)
+      assert.equal(prepared.materializationReceipt.route, candidate.routed)
+    }
   } finally {
     await bridge.close()
   }

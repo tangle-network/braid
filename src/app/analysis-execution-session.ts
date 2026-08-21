@@ -1,8 +1,8 @@
 import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalystDescriptor, EvalAnalystRequest } from '../adapters/analysis/eval-analyst.js'
-import type { AnalysisIdentity } from './analysis-operation.js'
 import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
+import type { AnalysisIdentity } from './analysis-operation.js'
 import type {
   AnalysisExecutionTarget,
   AnalysisRequest,

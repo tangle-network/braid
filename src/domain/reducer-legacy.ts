@@ -3,9 +3,6 @@ import type { OperationRecord, RunRecord, TurnRecord } from './entities.js'
 import type { BraidEvent, BraidEventEnvelope } from './events.js'
 import { parseMessageId, parseOperationId, parseRunId, parseTurnId } from './ids.js'
 import { DomainInvariantError } from './invariants.js'
-import type { BraidState } from './state.js'
-import { finalizeRunUsage } from './run-usage.js'
-
 import {
   dateAt,
   ensureWorkspaceGraph,
@@ -22,6 +19,8 @@ import {
 } from './reducer-helpers.js'
 import { attachRequestedRunToConversation } from './reducer-run-graph.js'
 import { terminalPartStatus } from './reducer-support.js'
+import { finalizeRunUsage } from './run-usage.js'
+import type { BraidState } from './state.js'
 
 function legacyOperation(
   state: BraidState,

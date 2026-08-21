@@ -1,13 +1,13 @@
-import { ProcessTerminal } from '@earendil-works/pi-tui/dist/terminal.js'
-import type { Terminal } from '@earendil-works/pi-tui/dist/terminal.js'
-import { CURSOR_MARKER, type Component, type TUI } from '@earendil-works/pi-tui/dist/tui.js'
-import { TuiMainScreen } from '@earendil-works/pi-tui/dist/tui-main-screen.js'
 import { Text } from '@earendil-works/pi-tui/dist/components/text.js'
+import type { Terminal } from '@earendil-works/pi-tui/dist/terminal.js'
+import { ProcessTerminal } from '@earendil-works/pi-tui/dist/terminal.js'
+import { type Component, CURSOR_MARKER, type TUI } from '@earendil-works/pi-tui/dist/tui.js'
+import { TuiMainScreen } from '@earendil-works/pi-tui/dist/tui-main-screen.js'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { boundVisibleText } from '../views/shared/sanitize.js'
 import { installTerminalOutputPolicy } from '../views/tui/terminal-compatibility.js'
 import { renderTerminalContext } from '../views/tui/terminal-identity.js'
-import { createBraidTheme, type BraidTheme } from '../views/tui/theme.js'
+import { type BraidTheme, createBraidTheme } from '../views/tui/theme.js'
 import { createTerminalSignalLatch, type TerminalSignalExitCode } from './terminal-signal-latch.js'
 
 const MAX_PREVIEW_MESSAGES = 4

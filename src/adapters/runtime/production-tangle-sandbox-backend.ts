@@ -4,7 +4,7 @@ import type {
   AgentEnvironmentProvider,
 } from '@tangle-network/agent-interface/environment-provider'
 import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
-import type { SandboxClient } from '@tangle-network/agent-runtime/kernel'
+import type { ExecutorFactory, SandboxClient } from '@tangle-network/agent-runtime/kernel'
 import type { BackendType, CreateSandboxOptions, SandboxInstance } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import { canonicalDigest } from '../../domain/canonical.js'
@@ -32,7 +32,6 @@ import {
   stableProviderId,
 } from './production-backend-common.js'
 import { observeSandboxClient } from './sandbox-observation.js'
-import { withSandboxResultProjection } from './sandbox-result-projection.js'
 import {
   retainedSandboxIdentity,
   retainedSandboxLifecycle,
@@ -85,7 +84,7 @@ export async function resolveTangleSandboxBackend(
   const providerSessionId = providerSessionFor(input, capabilities)
   const backend = Object.freeze({
     kind: 'executor' as const,
-    factory: withSandboxResultProjection((spec, context) =>
+    factory: ((spec, context) =>
       createExecutor({
         backend: 'sandbox',
         sandboxClient: runtimeSandboxClient(
@@ -95,8 +94,7 @@ export async function resolveTangleSandboxBackend(
           context.signal,
         ),
         maxIterations: 1,
-      })(spec, context),
-    ),
+      })(spec, context)) satisfies ExecutorFactory<unknown>,
     profile,
     agentRunName: model,
   })

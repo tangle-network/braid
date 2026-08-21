@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import test from 'node:test'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
+import test from 'node:test'
 import { AGENT_EVAL_VERSION } from '../src/adapters/analysis/agent-eval-version.js'
 import { AGENT_RUNTIME_VERSION } from '../src/adapters/runtime/agent-runtime-version.js'
 

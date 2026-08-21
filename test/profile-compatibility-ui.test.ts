@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
+import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { createProfileRecord } from '../src/app/profiles.js'

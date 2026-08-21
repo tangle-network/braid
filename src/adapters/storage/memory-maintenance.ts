@@ -6,11 +6,10 @@ import type {
   RestoreReport,
 } from '../../ports/storage.js'
 import { PROJECTION_SCHEMA_VERSION } from '../../ports/storage.js'
+import { jsonValue } from './memory-base.js'
+import { MemoryOperationStorage } from './memory-operations.js'
 import { StorageError } from './sqlite-errors.js'
 import { assertOperationRequestDigest } from './storage-validation.js'
-import { jsonValue } from './memory-base.js'
-
-import { MemoryOperationStorage } from './memory-operations.js'
 
 export class MemoryMaintenanceStorage extends MemoryOperationStorage {
   async migrate(operation: OperationIntent): Promise<MigrationReport> {

@@ -1,7 +1,7 @@
+import { canonicalDigest } from '../domain/canonical.js'
 import type { ConnectionRecord, OperationRecord, ProfileRecord } from '../domain/entities.js'
 import type { BraidEvent } from '../domain/events.js'
 import type { BraidState } from '../domain/state.js'
-import { canonicalDigest } from '../domain/canonical.js'
 import { commitEventsAndWaitAtRevision, type TransitionHost } from './application-transition.js'
 
 export type ConfigurationOperation = OperationRecord & {

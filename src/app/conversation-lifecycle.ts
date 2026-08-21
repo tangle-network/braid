@@ -1,10 +1,10 @@
 import type { ConversationRecord, OperationRecord } from '../domain/entities.js'
 import { graphNode } from '../domain/graph-records.js'
 import {
-  parseBranchId,
-  parseConversationId,
   type ConversationId,
   type OperationId,
+  parseBranchId,
+  parseConversationId,
 } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import { conversationBundle } from './conversation-records.js'

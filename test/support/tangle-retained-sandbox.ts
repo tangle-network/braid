@@ -57,11 +57,7 @@ function backendRegistryEntry(type: string) {
       mcp: true,
       sessions: true,
       configurable: true,
-      interactions: ['question', 'permission', 'plan'] as (
-        | 'permission'
-        | 'question'
-        | 'plan'
-      )[],
+      interactions: ['question', 'permission', 'plan'] as ('permission' | 'question' | 'plan')[],
     },
   }
 }

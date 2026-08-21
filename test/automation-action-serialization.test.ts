@@ -11,7 +11,7 @@ import {
 } from '../src/app/interaction-request.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import type { BraidInteraction } from '../src/domain/runtime-projection.js'
-import { initialState, type BraidState } from '../src/domain/state.js'
+import { type BraidState, initialState } from '../src/domain/state.js'
 
 const NOW = '2026-08-09T00:00:00.000Z'
 

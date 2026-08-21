@@ -7,7 +7,7 @@
     },
     {
       "license": "MIT",
-      "name": "@dataiku/uv-linux-x64"
+      "name": "@dataiku/uv-darwin-arm64"
     },
     {
       "license": "MIT",
@@ -23,11 +23,11 @@
     },
     {
       "license": "MIT",
-      "name": "@koromix/koffi-linux-x64"
+      "name": "@koromix/koffi-darwin-arm64"
     },
     {
       "license": "MIT",
-      "name": "@napi-rs/keyring-linux-x64-gnu"
+      "name": "@napi-rs/keyring-darwin-arm64"
     },
     {
       "license": "MIT",

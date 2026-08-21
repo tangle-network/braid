@@ -333,10 +333,7 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   const intent = admissions[0]
   if (intent?.phase !== 'intent') throw new Error('The first admission must record the intent')
   assert.match(intent.requestDigest, /^sha256:[0-9a-f]{64}$/u)
-  assert.equal(
-    intent.runId,
-    `retained-intent-run:${intent.requestDigest.slice('sha256:'.length)}`,
-  )
+  assert.equal(intent.runId, `retained-intent-run:${intent.requestDigest.slice('sha256:'.length)}`)
   assert.equal(handle.controlRef.environmentId, sandbox.boxes[0]?.id)
   assert.equal(handle.controlRef.sessionId, prepared.providerSessionId)
   assert.equal(handle.controlRef.executionId, safeExecutionId('run/tangle-retained'))

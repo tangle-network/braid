@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { ConnectionRecord, IsoDateTime } from '../domain/entities.js'
-import { createConnectionId, type CredentialRefId } from '../domain/ids.js'
+import { type CredentialRefId, createConnectionId } from '../domain/ids.js'
 import { ConnectionRegistry } from './connections.js'
 
 export interface ConnectionMetadataInput {

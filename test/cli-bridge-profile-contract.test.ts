@@ -10,10 +10,7 @@ import {
 import { ConnectionRegistry } from '../src/app/connections.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
-import type {
-  ExecuteTurnInput,
-  RetainedRunAdmissionRecord,
-} from '../src/ports/execution.js'
+import type { ExecuteTurnInput, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const at = '2026-08-03T12:00:00.000Z'

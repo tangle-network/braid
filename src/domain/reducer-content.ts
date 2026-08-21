@@ -1,18 +1,18 @@
-import type { BraidEvent } from './events.js'
 import { reserveText, reserveValue } from './content-budget.js'
-import type { BraidMessagePart, BraidState } from './state.js'
-import { addRunUsage } from './run-usage.js'
+import type { BraidEvent } from './events.js'
 import {
   activity,
   addActivity,
   findRun,
+  type ReducerBase,
   sourceFromProvider,
   updateMessage,
   updateRun,
   upsertPart,
   withProviderProgress,
-  type ReducerBase,
 } from './reducer-support.js'
+import { addRunUsage } from './run-usage.js'
+import type { BraidMessagePart, BraidState } from './state.js'
 
 type ContentEvent = Extract<
   BraidEvent,

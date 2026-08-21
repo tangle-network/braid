@@ -1,6 +1,5 @@
 import { join } from 'node:path'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
-import { snapshotForStorage } from './support/storage-snapshot-fixture.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import {
   createConversationId,
@@ -18,6 +17,7 @@ import {
 } from '../src/ports/credentials.js'
 import type { EffectRecord } from '../src/ports/effect-storage.js'
 import { FileCredentialStore } from './support/file-credentials.js'
+import { snapshotForStorage } from './support/storage-snapshot-fixture.js'
 
 const root = required('CRASH_ROOT')
 const databasePath = required('CRASH_DATABASE')

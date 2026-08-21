@@ -1,5 +1,5 @@
-import type { BraidState } from './state.js'
 import { fail } from './invariants-base.js'
+import type { BraidState } from './state.js'
 
 export function assertStateRelations(state: BraidState): void {
   if (state.conversations.length === 0) return

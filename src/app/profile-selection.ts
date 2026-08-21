@@ -1,3 +1,4 @@
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import {
   harnessHonorsEffort,
   harnessHonorsModel,
@@ -13,16 +14,15 @@ import {
   mergeAgentProfiles,
   snapshotAgentProfile,
 } from '../adapters/agent-interface/profile-runtime.js'
-import type { AgentProfile } from '@tangle-network/agent-interface'
 import type {
   EffectiveProfileInput,
   EffectiveProfileResult,
   ProfileCompatibility,
+  ProfileRecord,
   ProfileRunOverrides,
   ProfileSelectionCandidates,
   ProfileSelectionReason,
   ProfileSelectionResult,
-  ProfileRecord,
 } from './profile-types.js'
 
 export function selectBaseProfile(

@@ -1,11 +1,11 @@
 import type { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import type { RuntimeSupervisorWatcher } from '../adapters/runtime/supervisor-watch.js'
 import { AnalysisComparisonService } from './analysis-comparison.js'
+import type { AnalysisAnalyst } from './analysis-execution-session.js'
 import { AnalysisPromotionService } from './analysis-promotion.js'
 import { AnalysisService } from './analysis-service.js'
 import type { AnalysisApplicationHost } from './analysis-types.js'
 import { SupervisorService } from './supervisor-service.js'
-import type { AnalysisAnalyst } from './analysis-execution-session.js'
 
 /**
  * Product-owned composition for analysis and supervisor actions.

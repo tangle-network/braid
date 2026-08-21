@@ -285,7 +285,10 @@ test('low-entropy control values stay redacted without corrupting structured rel
   assert(!secrets.includes('1'))
   assert(!secrets.includes('short'))
   assert(secrets.includes('long-enough-canary'))
-  assert.equal(redactText('rows LIVE-01 through LIVE-10 short', secrets), 'rows LIVE-01 through LIVE-10 short')
+  assert.equal(
+    redactText('rows LIVE-01 through LIVE-10 short', secrets),
+    'rows LIVE-01 through LIVE-10 short',
+  )
   assert.equal(redactText('TOKEN=short', secrets), 'TOKEN=[REDACTED]')
   const output =
     'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +

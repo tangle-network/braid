@@ -1,7 +1,7 @@
-import { HEADLESS_COMMAND_NAMES, type HeadlessCommandName } from '../shared/headless-commands.js'
-import type { BraidViewModel, HeadlessState, HeadlessSummary } from '../shared/models.js'
-import type { UiEvent } from '../shared/intents.js'
 import type { RunAdmissionReceipt } from '../../domain/receipts.js'
+import { HEADLESS_COMMAND_NAMES, type HeadlessCommandName } from '../shared/headless-commands.js'
+import type { UiEvent } from '../shared/intents.js'
+import type { BraidViewModel, HeadlessState, HeadlessSummary } from '../shared/models.js'
 
 export const BRAID_PROTOCOL_VERSION = 1 as const
 export type StateProjection = 'full' | 'summary'

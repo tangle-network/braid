@@ -3,9 +3,8 @@ import type { BraidEvent, DomainBraidEventMap } from './events.js'
 import { DomainInvariantError } from './invariants.js'
 import { applyConversationEvent } from './reducer-conversation-events.js'
 import { applyExecutionObservation } from './reducer-execution-observation.js'
-import { applyRetainedAdmission } from './reducer-retained-admission.js'
-
 import { find, updateRun, upsert, upsertBy } from './reducer-helpers.js'
+import { applyRetainedAdmission } from './reducer-retained-admission.js'
 import { isCancellationConfirmedReconciliation } from './reducer-support.js'
 import type { BraidState } from './state.js'
 

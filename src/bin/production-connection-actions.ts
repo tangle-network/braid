@@ -29,17 +29,13 @@ import type {
   ConnectionRemovalPreview,
 } from '../ports/connection-lifecycle.js'
 import {
-  type ProductionConnectionActionsOptions,
-  resolveProductionConnectionOptions,
-} from './production-connection-action-options.js'
-import {
   type ProductionConfigMutationLock,
   withProductionConfigMutationLock,
 } from './production-config-mutation-lock.js'
 import {
-  productionCredentialMapping,
-  type ProductionCredentialMapping,
-} from './production-credential-reference.js'
+  type ProductionConnectionActionsOptions,
+  resolveProductionConnectionOptions,
+} from './production-connection-action-options.js'
 import {
   activeConnectionSelection,
   assertConnectionRevision,
@@ -53,6 +49,10 @@ import {
   connectionRecordForOperation,
   hasDurableOperation,
 } from './production-connection-replay.js'
+import {
+  type ProductionCredentialMapping,
+  productionCredentialMapping,
+} from './production-credential-reference.js'
 import { prepareProductionSelection } from './production-setup-credentials.js'
 
 export type { ProductionConnectionActionsOptions } from './production-connection-action-options.js'

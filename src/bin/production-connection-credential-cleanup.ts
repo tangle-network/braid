@@ -14,17 +14,17 @@ import type { ConnectionRecord } from '../domain/entities.js'
 import type { CredentialPort } from '../ports/credentials.js'
 import { credentialRef } from '../ports/credentials.js'
 import {
+  assertProductionConfigMutationLock,
+  type ProductionConfigMutationLock,
+  withProductionConfigMutationLock,
+} from './production-config-mutation-lock.js'
+import {
   MAX_PENDING_REMOVAL_BYTES,
   parsePendingCredentialRemoval,
   pendingCredentialRemovalBytes,
   pendingCredentialRemovalPath,
   savedConfigReferencesPendingCredential,
 } from './production-connection-credential-removal-record.js'
-import {
-  assertProductionConfigMutationLock,
-  type ProductionConfigMutationLock,
-  withProductionConfigMutationLock,
-} from './production-config-mutation-lock.js'
 import type { ProductionCredentialContext } from './production-credential-context.js'
 import {
   defaultProductionCredentialRefResolver,

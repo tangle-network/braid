@@ -4,11 +4,12 @@ import {
   stripCliBridgeVersion,
 } from '../adapters/connections/production-connection-endpoints.js'
 import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from '../adapters/connections/production-connection-types.js'
-import { discoverProfiles } from '../app/profiles.js'
-import type { ProfileRecord } from '../app/profile-types.js'
 import type { ProductionCompositionConfig } from '../app/production-composition.js'
+import type { ProfileRecord } from '../app/profile-types.js'
+import { discoverProfiles } from '../app/profiles.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { createConnectionId } from '../domain/ids.js'
+import { productionActiveProfile } from './production-active-profile.js'
 import {
   normalizeBridgeEndpoint,
   ProductionBridgeRequestError,
@@ -16,7 +17,6 @@ import {
 import { discoverBridge } from './production-bridge-discovery.js'
 import { recoverPendingConnectionCredentialRemoval } from './production-connection-credential-cleanup.js'
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
-import { productionActiveProfile } from './production-active-profile.js'
 import { projectSetupProfiles, trustedProfileSources } from './production-profile-projection.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupSetup } from './production-setup-types.js'

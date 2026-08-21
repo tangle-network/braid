@@ -9,8 +9,8 @@ import {
   OPENINFERENCE_SPAN_KIND,
   OUTPUT_VALUE,
 } from '@tangle-network/agent-eval/trace-attributes'
-import { profileModelSettings } from '../../app/profile-model-settings.js'
 import type { FrozenAnalysisEvent } from '../../app/analysis-types.js'
+import { profileModelSettings } from '../../app/profile-model-settings.js'
 import type { TurnUsage } from '../../domain/entities.js'
 import type { BraidEvent } from '../../domain/events.js'
 import { redactSensitiveText, redactStructuredValue } from '../../domain/redaction.js'

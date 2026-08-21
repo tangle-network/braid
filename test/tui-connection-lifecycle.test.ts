@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TuiMainScreen } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
-import type { ConnectionUpsertResult } from '../src/app/connection-action-types.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import type { ConnectionUpsertResult } from '../src/app/connection-action-types.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import type {
   ConnectionCreationInput,

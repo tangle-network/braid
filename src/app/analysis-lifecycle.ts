@@ -1,6 +1,5 @@
 import type { AnalysisRecord } from '../domain/entities.js'
 import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
-import { recordAnalysisRetainedAdmission } from './analysis-retained-admission.js'
 import {
   type AnalysisIdentity,
   type AnalysisOperationReservation,
@@ -10,6 +9,7 @@ import {
   updateAnalysisOperation,
 } from './analysis-operation.js'
 import { commitAnalysisEvent } from './analysis-persistence.js'
+import { recordAnalysisRetainedAdmission } from './analysis-retained-admission.js'
 import type {
   AnalysisApplicationHost,
   AnalysisProgress,

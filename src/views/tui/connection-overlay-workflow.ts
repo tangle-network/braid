@@ -3,13 +3,13 @@ import type {
   UiConnectionLifecycle,
   UiConnectionRemovalPreview,
 } from '../shared/connection-lifecycle.js'
-import { ConversationConfirmation } from './conversation-dialogs.js'
 import { ConfigurationCredential } from './configuration-credential.js'
 import {
   ConnectionMetadataEditor,
   type ConnectionMetadataEditorOptions,
 } from './connection-metadata-editor.js'
 import type { ConnectionMetadataDraft } from './connection-metadata-editor-model.js'
+import { ConversationConfirmation } from './conversation-dialogs.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import type { BraidTheme } from './theme.js'
 

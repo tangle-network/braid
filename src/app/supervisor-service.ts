@@ -120,10 +120,10 @@ export class SupervisorService {
   }
 }
 
-export type { SupervisorCancelResult, SupervisorWorkerCancelResult, SupervisorWorkerSteerResult }
 export type {
   SupervisorProjection,
   SupervisorRunBinding,
   SupervisorSnapshotRequest,
   SupervisorWatchRequest,
 } from './supervisor-projection.js'
+export type { SupervisorCancelResult, SupervisorWorkerCancelResult, SupervisorWorkerSteerResult }

@@ -708,7 +708,10 @@ export async function startRuntimeBridgeServer(
       }
       if (capabilityDocument(model, options.advertisedModels) === undefined) {
         writeJson(response, 404, {
-          error: { message: `no backend matches model ${JSON.stringify(model)}`, type: 'not_found_error' },
+          error: {
+            message: `no backend matches model ${JSON.stringify(model)}`,
+            type: 'not_found_error',
+          },
         })
         return
       }
@@ -791,7 +794,11 @@ export async function startRuntimeBridgeServer(
       runs.set(runId, run)
       response.writeHead(202, { 'content-type': 'application/json', ...coordinateHeaders(run) })
       response.end(
-        JSON.stringify({ session: sessionView(session), run: runView(run), context_boundary: null }),
+        JSON.stringify({
+          session: sessionView(session),
+          run: runView(run),
+          context_boundary: null,
+        }),
       )
       return
     }

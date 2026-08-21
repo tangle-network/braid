@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
 import { mkdtemp } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'

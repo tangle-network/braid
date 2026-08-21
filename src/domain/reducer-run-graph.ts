@@ -1,7 +1,7 @@
 import type { MessageRecord, RunRecord, TurnRecord } from './entities.js'
 import { graphEdge, graphNode } from './graph-records.js'
-import type { BraidState } from './state.js'
 import { find, upsert } from './reducer-helpers.js'
+import type { BraidState } from './state.js'
 
 export function attachRequestedRunToConversation(
   state: BraidState,

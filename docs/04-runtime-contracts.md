@@ -14,24 +14,22 @@ The following published versions were queried from npm and their installed decla
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `0.53.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.135.3` | Sole execution layer; exact executor, retained-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.145.15` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `0.7.3` | CLI Bridge environment adapter with live streaming, replay, retry-safe turns, retained control, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.11.2` | Tangle environment adapter over the sandbox client |
-| `@tangle-network/sandbox` | `0.27.0` | Tangle cloud client used by the provider |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `1.3.0` | Canonical profile, capabilities, environment, stream, portable context, and interaction contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.143.0` | Sole execution layer; exact executor, retained-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.149.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `0.9.4` | CLI Bridge environment adapter with capability discovery, native retained sessions, live streaming, replay, retry-safe turns, retained control, durable interaction response, and explicit cancel |
+| `@tangle-network/agent-provider-tangle` | `0.13.0` | Tangle environment adapter over the sandbox client |
+| `@tangle-network/sandbox` | `0.31.0` | Tangle cloud client used by the provider |
 
-The installed runtime publishes `agent-eval >=0.145.15 <0.146.0`, `agent-interface >=0.53.0 <0.54.0`, and `sandbox >=0.27.0 <0.28.0` as peer ranges.
+The installed runtime publishes `agent-eval >=0.149.0 <0.150.0`, `agent-interface ^1.3.0`, and `sandbox >=0.31.0 <0.32.0` as peer ranges.
 
-Braid exercises runtime `0.135.3` with interface `0.53.0`, eval `0.145.15`, CLI Bridge adapter `0.7.3`, Tangle adapter `0.11.2`, and sandbox `0.27.0`.
+Braid exercises runtime `0.143.0` with interface `1.3.0`, eval `0.149.0`, CLI Bridge adapter `0.9.4`, Tangle adapter `0.13.0`, and sandbox `0.31.0`.
 
 The lockfile pins the registry integrity for every installed package.
 
 `pnpm peers check` reports no peer dependency issues for this installed set.
 
-The Braid root and Runtime peer cohort resolve `agent-interface` `0.53.0` without a workspace override.
-
-The current provider packages retain nested `agent-interface` `0.54.0` copies for their own peer cohort.
+The Braid root and Runtime peer cohort resolve `agent-interface` `1.3.0` without a workspace override.
 
 Historical snapshot: [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
 
@@ -49,7 +47,7 @@ Braid composes the current provider packages through `agent-runtime` and keeps a
 
 The CLI Bridge and Tangle providers remain transport implementations rather than alternate application shells.
 
-Interface `0.53.0` adds the requested interaction map to `AgentTurnInput` and the retained environment input.
+Interface `1.3.0` carries the requested interaction map on `AgentTurnInput` and the retained environment input.
 
 The map is not a capability declaration.
 
@@ -325,7 +323,7 @@ These behaviors may be suitable for isolated benchmark automation under an expli
 
 ## Existing CLI Bridge provider contract
 
-The published `@tangle-network/agent-provider-cli-bridge@0.7.3` resolves the bridge model from a turn override, provider default, or profile harness and model.
+The published `@tangle-network/agent-provider-cli-bridge@0.9.4` resolves the bridge model from a turn override, provider default, or profile harness and model.
 
 It sends stable `executionId` values as bridge run identifiers when they satisfy the bridge identifier rules.
 
@@ -341,17 +339,19 @@ Stopping a retained stream reader detaches the reader without cancelling the bri
 
 Explicit exact cancellation remains separate from reader detach and binds to the server-issued request digest.
 
-Its public turn type accepts requested interactions through Interface `0.53.0`.
+Its public turn type accepts requested interactions through Interface `1.3.0`, and its retained turn body carries them to the Bridge.
 
-Its published `toChatCompletionsBody` implementation does not copy `turn.interactions` into the bridge request.
+It reads the exact capability document for one model route from `GET /v1/capabilities?model=…` before it admits a run.
 
-The Braid retained CLI Bridge boundary test catches this loss at the HTTP provider boundary.
+Its Pi route publishes native retained sessions and permission interactions; every other route publishes the durable one-shot run contract without them.
 
-It exposes no generalized interaction response.
+It answers an interaction through `POST /v1/runs/:runId/interactions/:interactionId/respond` on the retained environment and session, and advertises `interactions.responseIdempotency` for the routes that record every acknowledgement.
+
+The Braid retained CLI Bridge boundary test catches an interaction posture the route never advertised.
 
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.11.2` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.13.0` wraps `@tangle-network/sandbox` as an `AgentEnvironmentProvider`.
 
 Its default document is an upper bound, not a claim about one client or deployment.
 
@@ -371,11 +371,11 @@ The adapter exposes environment stream and dispatch, provider sessions, workspac
 
 It requires an inline profile rather than a profile reference.
 
-It currently exposes no generalized interaction response through the environment or session adapter.
+It narrows its declared interaction kinds to the backend catalog the Sandbox client serves, and answers an interaction through the session when the deployment records its own response.
 
 The Braid retained Tangle adapter supplies the requested map to Runtime's retained turn input.
 
-Historical snapshot: Runtime `0.135.0` dropped that field in its retained-turn copier before the Tangle provider received it.
+Historical snapshot: Runtime `0.135.0` dropped that field in its retained-turn copier before the Tangle provider received it. Runtime `0.143.0` preserves it.
 
 The Braid retained Tangle boundary test catches this loss at the provider dispatch boundary.
 
@@ -452,11 +452,11 @@ The following upstream issues own missing shared contracts:
 - [Agent SDK issue 136](https://github.com/tangle-network/agent-sdk/issues/136) requests normalized provider observations and account usage.
 - [Sandbox issue 5076](https://github.com/tangle-network/agent-dev-container/issues/5076) requests resolved placement, effective resources, and per-sandbox billing.
 
-The current interaction work has three additional published-package blockers.
+The published cohort now carries the interaction contract end to end.
 
-- Runtime `0.135.3` must preserve `AgentTurnInput.interactions` in its retained-turn copier.
-- CLI Bridge `0.7.3` must forward `turn.interactions` into its chat-completions request.
-- The Runtime, Knowledge, and Profile Materialize peer cohort must accept Interface `0.53.0`.
+- Runtime `0.143.0` preserves `AgentTurnInput.interactions` and gates a response on `interactions.responseIdempotency`.
+- CLI Bridge `0.9.4` forwards the requested map and implements the durable response operation ([Agent SDK issue 204](https://github.com/tangle-network/agent-sdk/issues/204)).
+- Tangle provider `0.13.0` narrows interaction kinds to the backend catalog the deployment serves.
 
 Braid does not cast around these gaps or duplicate provider dispatch.
 
@@ -470,7 +470,7 @@ Paired comparisons retain outcomes and costs across two frozen candidates.
 
 The current DSPy RLM engine accepts a caller-owned model function, stable public call reference, and execution recorder instead of a provider URL or credential.
 Braid invokes this engine through its bundled `uv` binary and an isolated managed Python 3.12 runtime.
-The invocation pins `agent-eval-rpc[dspy]` to `0.145.15` and fixes the dependency resolution cutoff.
+The invocation pins `agent-eval-rpc[dspy]` to `0.149.0` and fixes the dependency resolution cutoff.
 Braid never sends model credentials to the managed Python process.
 Braid gives each analyst invocation one explicit runtime transport attempt by default so its recorded usage and cost cannot hide additional paid retries.
 

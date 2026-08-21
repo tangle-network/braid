@@ -391,6 +391,74 @@ test('incremental reduction and full replay produce the same complete projection
   assert.equal(incremental.health.status, 'healthy')
 })
 
+test('a journal written before the intent phase still restores its retained run', () => {
+  // Braid 0.1.3 recorded only the environment and dispatched phases. A journal
+  // from that release must replay without the intent record this branch adds.
+  const environmentAdmission = {
+    phase: 'environment' as const,
+    provider: 'cli-bridge',
+    environmentId: 'environment-retained-migration',
+    idempotencyKey: 'environment-retained-migration',
+    turnId: 'turn-retained-migration',
+    sessionId: 'session-retained-migration',
+    executionId: 'execution-retained-migration',
+  }
+  const dispatchedAdmission = {
+    phase: 'dispatched' as const,
+    idempotencyKey: environmentAdmission.idempotencyKey,
+    turnId: environmentAdmission.turnId,
+    controlRef: {
+      provider: environmentAdmission.provider,
+      environmentId: environmentAdmission.environmentId,
+      sessionId: environmentAdmission.sessionId,
+      executionId: environmentAdmission.executionId,
+      runId: 'provider-run-retained-migration',
+      requestDigest: `sha256:${'e'.repeat(64)}` as const,
+    },
+  }
+  const legacyJournal = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-retained-migration',
+        runId: 'run-retained-migration',
+        turnId: environmentAdmission.turnId,
+        userMessageId: 'message-user-retained-migration',
+        assistantMessageId: 'message-assistant-retained-migration',
+        text: 'restore this run',
+      },
+      2,
+    ),
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-migration',
+        admission: environmentAdmission,
+      },
+      3,
+    ),
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-retained-migration',
+        admission: dispatchedAdmission,
+      },
+      4,
+    ),
+  ] as const
+
+  const restored = replayEvents(initialState(STARTER_PROFILE), legacyJournal)
+  assert.deepEqual(restored.runs[0]?.retainedAdmission, dispatchedAdmission)
+  assert.deepEqual(restored.runs[0]?.controlRef, dispatchedAdmission.controlRef)
+  assert.equal(restored.runs[0]?.providerSessionId, environmentAdmission.sessionId)
+
+  // Replaying the same journal twice is identical, which is what a restart does.
+  const replayedAgain = replayEvents(initialState(STARTER_PROFILE), legacyJournal)
+  assert.deepEqual(replayedAgain, restored)
+  assert.equal(replayedAgain.projectionChecksum, restored.projectionChecksum)
+})
+
 test('retained admission survives the pre-dispatch crash window and binds one exact run', () => {
   const intentAdmission = {
     phase: 'intent' as const,

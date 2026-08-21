@@ -1,6 +1,6 @@
 export * from './invariants-base.js'
-export * from './invariants-profile.js'
 export * from './invariants-conversation.js'
+export * from './invariants-profile.js'
 export * from './invariants-run.js'
 export * from './invariants-runtime.js'
 export * from './invariants-state.js'
