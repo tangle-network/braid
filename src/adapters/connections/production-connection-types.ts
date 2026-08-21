@@ -53,7 +53,6 @@ export interface ConnectionProviderMethods {
   readonly create: boolean
   readonly get: boolean | 'unknown'
   readonly list: boolean | 'unknown'
-  readonly respondToInteraction: boolean | 'unknown'
 }
 
 export interface ConnectionCapabilityReport {

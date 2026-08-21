@@ -172,8 +172,18 @@ export const UNKNOWN_RUN_CAPABILITIES: RunCapabilities = Object.freeze({
 })
 
 /** Treat a published environment capability document as authoritative. */
+/**
+ * The runtime executes a response only when the environment document records
+ * every acknowledgement, which is the same fact the runtime handle gates on.
+ */
+export function environmentSupportsInteractionResponse(
+  environment: AgentEnvironmentCapabilities | undefined,
+): boolean {
+  return environment?.interactions?.responseIdempotency === true
+}
+
 export function supportsInteractionResponse(capabilities: RunCapabilities): boolean {
-  return capabilities.environment?.interactions?.responseIdempotency === true
+  return environmentSupportsInteractionResponse(capabilities.environment)
 }
 
 export function capabilitiesFromEnvironment(

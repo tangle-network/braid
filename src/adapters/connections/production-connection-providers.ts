@@ -8,6 +8,7 @@ import {
 import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
+import { environmentSupportsInteractionResponse } from '../../ports/execution.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
 import type {
@@ -56,7 +57,6 @@ export async function capabilitiesForConnection(
         create: typeof provider.create === 'function',
         get: typeof provider.get === 'function',
         list: typeof provider.list === 'function',
-        respondToInteraction: 'respondToInteraction' in provider,
       })
     }
     case 'tangle-inference':
@@ -65,7 +65,6 @@ export async function capabilitiesForConnection(
         create: true,
         get: false,
         list: false,
-        respondToInteraction: false,
       })
     case 'tangle-sandbox': {
       const reported = options.sandboxClient
@@ -83,7 +82,6 @@ export async function capabilitiesForConnection(
         create: true,
         get: client === undefined ? 'unknown' : typeof client.get === 'function',
         list: client === undefined ? 'unknown' : typeof client.list === 'function',
-        respondToInteraction: environment.interactions === undefined ? false : 'unknown',
       })
     }
   }
@@ -147,8 +145,7 @@ function capabilityReport(
     sessions,
     interactions: {
       originate: environment?.interactions !== undefined,
-      respond:
-        environment?.interactions !== undefined && providerMethods.respondToInteraction === true,
+      respond: environmentSupportsInteractionResponse(environment),
     },
   }
   const actions: Record<ConnectionCapabilityAction, boolean> = {

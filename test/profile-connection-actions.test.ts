@@ -41,7 +41,7 @@ function capabilities(connectionId: ConnectionRecord['id']): ConnectionCapabilit
       sessions: { continue: true, list: false, messages: false },
       interactions: { originate: false, respond: false },
     },
-    providerMethods: { create: true, get: false, list: false, respondToInteraction: false },
+    providerMethods: { create: true, get: false, list: false },
     actions: {
       stream: true,
       replay: true,

@@ -25,6 +25,7 @@ import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { BRAID_SANDBOX_INTERACTION_UNSUPPORTED } from '../src/domain/runtime-diagnostics.js'
 import { credentialRef } from '../src/ports/credentials.js'
+import { environmentSupportsInteractionResponse } from '../src/ports/execution.js'
 import type { ExecuteTurnInput } from '../src/ports/execution.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
@@ -261,7 +262,6 @@ test('capability reports combine published provider capabilities with runtime me
   assert.equal(cliCapabilities.actions.usage, publishedEnvironment.usage)
   assert.equal(cliCapabilities.actions.replay, publishedEnvironment.streaming.replay)
   assert.equal(cliCapabilities.actions['continue-session'], publishedEnvironment.sessions.continue)
-  assert.equal(cliCapabilities.providerMethods.respondToInteraction, false)
   assert.equal(cliCapabilities.actions['respond-interaction'], false)
   assert.equal(cliCapabilities.runtime.backend, 'chat')
 
@@ -274,18 +274,38 @@ test('capability reports combine published provider capabilities with runtime me
   assert.equal(sandboxCapabilities.runtime.backend, 'executor')
 })
 
-test('upstream reproduction: published providers expose no interaction response channel', async () => {
-  const cli = createCliBridgeProvider({ baseUrl: 'http://127.0.0.1:4010' })
-  const cliEnvironment = await cli.create({ profile: {} })
-  assert.equal('respondToInteraction' in cliEnvironment, false)
+test('the capability document decides whether a route can answer an interaction', async () => {
+  const bridgeServer = await startRuntimeBridgeServer()
+  try {
+    // The Bridge publishes native interactions only for its Pi route, and the
+    // runtime executes a response only when the document records every
+    // acknowledgement. Braid reads the same fact.
+    const pi = createCliBridgeProvider({
+      baseUrl: bridgeServer.endpoint,
+      defaultModel: 'pi/openai/gpt-5',
+    })
+    const piDocument = await pi.capabilities()
+    assert.deepEqual(piDocument.interactions?.kinds, ['permission'])
+    assert.equal(environmentSupportsInteractionResponse(piDocument), true)
 
-  const tangle = createTangleProvider({
-    client: {
-      create: async () => ({ id: 'sandbox-test', streamPrompt: async function* () {} }),
-    },
-  })
-  const tangleEnvironment = await tangle.create({ profile: {} })
-  assert.equal('respondToInteraction' in tangleEnvironment, false)
+    const generic = createCliBridgeProvider({
+      baseUrl: bridgeServer.endpoint,
+      defaultModel: 'opencode/zai-coding-plan/glm-5.2',
+    })
+    const genericDocument = await generic.capabilities()
+    assert.equal(genericDocument.interactions, undefined)
+    assert.equal(environmentSupportsInteractionResponse(genericDocument), false)
+
+    const report = await createProductionConnectionAdapter(
+      connection('cli-bridge', 'respond-capability', bridgeServer.endpoint),
+    ).capabilities()
+    assert.equal(
+      report.actions['respond-interaction'],
+      environmentSupportsInteractionResponse(report.environment),
+    )
+  } finally {
+    await bridgeServer.close()
+  }
 })
 
 test('production resolver routes chat connections through agent-runtime', async () => {
