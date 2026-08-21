@@ -114,14 +114,14 @@ export class AutomationRulePanel extends Container implements Focusable {
       this.#interaction !== undefined && ruleCreationReason(this.#interaction) === undefined
     if (this.#rules.length === 0 && !canCreate)
       return this.#interaction === undefined
-        ? 'create from a pending request with Alt+A · esc close'
-        : 'this request stays manual · esc close'
+        ? 'create from a pending request with Alt+A · ←/esc close'
+        : 'this request stays manual · ←/esc close'
     return [
       'type to filter',
       ...(this.#onSelect === undefined ? [] : ['enter select']),
       ...(canCreate ? ['ctrl+n new'] : []),
       ...(this.#rules.length === 0 ? [] : ['ctrl+a off', 'ctrl+d del']),
-      'esc close',
+      '←/esc close',
     ].join(' · ')
   }
 
@@ -168,7 +168,7 @@ export class AutomationRulePanel extends Container implements Focusable {
       items: scopes.map(scopeItem),
       theme: this.#theme,
       maxVisible: 3,
-      footer: 'type to filter · enter choose · esc back',
+      footer: 'type to filter · enter choose · ←/esc back',
       onSelect: (item) => {
         const scope = parseScope(item.value)
         if (scope === undefined) return

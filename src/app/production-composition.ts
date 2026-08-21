@@ -6,6 +6,8 @@ import {
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
+import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
+import { NativeInteractiveRunBroker } from '../adapters/runtime/native-interactive-run-broker.js'
 import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
@@ -13,8 +15,15 @@ import {
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
+import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
 import type { ConnectionRecord } from '../domain/entities.js'
-import type { ExecutionPort } from '../ports/execution.js'
+import type {
+  ExecuteTurnInput,
+  ExecutionPort,
+  RetainedExecutionRecoveryContext,
+  RetainedRunAdmissionRecord,
+} from '../ports/execution.js'
+import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import { ConnectionError } from './connection-errors.js'
 import { ConnectionRegistry } from './connections.js'
 import { assertValidProfile } from './profile-validation.js'
@@ -58,6 +67,7 @@ export interface ProductionComposition {
   readonly connections: ConnectionRegistry
   readonly connection: ConnectionRecord
   readonly execution: ExecutionPort
+  readonly nativeInteractive?: NativeInteractiveExecutionControl
   readonly backendResolver: AgentTurnBackendResolver
 }
 
@@ -179,24 +189,38 @@ export function createProductionComposition(
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
-  const recoveryInput = (runId: string, providerSessionId?: string) => ({
-    operationId: `recover-${runId}`,
-    runId,
-    text: '',
-    profile,
-    connectionId: connection.id,
-    ...(providerSessionId === undefined ? {} : { sessionId: providerSessionId }),
-    ...(config.workspaceRoot === undefined ? {} : { workspaceRoot: config.workspaceRoot }),
-    signal: new AbortController().signal,
-  })
+  const recoveryInput = (
+    runId: string,
+    providerSessionId: string | undefined,
+    recovery: RetainedExecutionRecoveryContext,
+    signal?: AbortSignal,
+  ): ExecuteTurnInput => {
+    const requested = recovery.receipt?.requested
+    const admissionSessionId = retainedAdmissionSessionId(recovery.retainedAdmission)
+    const sessionId = providerSessionId ?? admissionSessionId
+    const workspaceRoot = recovery.workspaceRoot ?? config.workspaceRoot
+    return {
+      operationId: recovery.receipt?.operationId ?? `recover-${runId}`,
+      runId,
+      text: requested?.text ?? '',
+      profile: requested?.profile ?? profile,
+      ...(requested?.mode === undefined ? {} : { mode: requested.mode }),
+      ...(requested?.interactions === undefined ? {} : { interactions: requested.interactions }),
+      connectionId: requested?.connectionId ?? connection.id,
+      ...(sessionId === undefined ? {} : { sessionId }),
+      ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+      signal: signal ?? new AbortController().signal,
+    }
+  }
+  let nativeInteractive: NativeInteractiveExecutionControl | undefined
   const execution = (() => {
     if (connection.kind === 'cli-bridge') {
       return new CliBridgeRetainedExecutionPort({
         resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
-        recover: ({ runId, providerSessionId }) =>
+        recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionCliBridgeConnection(
             resolverOptions,
-            recoveryInput(runId, providerSessionId),
+            recoveryInput(runId, providerSessionId, recovery, signal),
           ),
       })
     }
@@ -204,14 +228,22 @@ export function createProductionComposition(
       connection.kind === 'tangle-sandbox' &&
       connection.providerOptions.lifecycle === 'retained'
     ) {
-      return new TangleRetainedExecutionPort({
+      const headless = new TangleRetainedExecutionPort({
         resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
-        recover: ({ runId, providerSessionId }) =>
+        recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionTangleRetainedConnection(
             resolverOptions,
-            recoveryInput(runId, providerSessionId),
+            recoveryInput(runId, providerSessionId, recovery, signal),
           ),
       })
+      const broker = new NativeInteractiveRunBroker()
+      const interactive = new TangleRetainedInteractiveExecutionPort({
+        resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        recover: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        broker,
+      })
+      nativeInteractive = broker
+      return new ModeRoutingExecutionPort({ headless, interactive })
     }
     return new AgentRuntimeExecutionPort(backendResolver)
   })()
@@ -221,6 +253,26 @@ export function createProductionComposition(
     connections,
     connection,
     execution,
+    ...(nativeInteractive === undefined ? {} : { nativeInteractive }),
     backendResolver,
   })
+}
+
+function retainedAdmissionSessionId(
+  admission: RetainedRunAdmissionRecord | undefined,
+): string | undefined {
+  switch (admission?.phase) {
+    case 'intent':
+    case 'environment':
+    case 'interactive_intent':
+      return admission.sessionId
+    case 'dispatched':
+      return admission.controlRef.sessionId
+    case 'interactive_environment':
+      return admission.request.run.sessionId
+    case 'interactive_started':
+      return admission.ref.run.sessionId
+    default:
+      return undefined
+  }
 }

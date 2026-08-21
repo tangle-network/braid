@@ -10,7 +10,7 @@ Configuration, event detail, graphs, and supervision appear only when requested 
 
 No screen uses decorative cards, repeated labels, or explanatory copy that restates visible controls.
 
-When a run is active or selected, its immutable execution receipt is the source for displayed runner, model, reasoning, output limit, connection, and environment values.
+When a run is active or selected, its immutable execution receipt is the source for displayed runner, model, reasoning, visible, reasoning, and total output limits, connection, and environment values.
 
 The pending profile is shown only when no run receipt exists for the focused context.
 
@@ -72,7 +72,7 @@ If a connection is unavailable, the conversation opens offline and retains full 
 
 ## Main shell
 
-### Standard layout from 80 to 119 columns
+### Standard layout from 60 to 99 columns
 
 ```text
  user   Explain the failing integration test.
@@ -86,30 +86,37 @@ If a connection is unavailable, the conversation opens offline and retains full 
  › _
 
 
- profile Release engineer · pi / glm-5.2 · Local CLI Bridge      Ctrl+P commands
+ profile Release engineer · pi / glm-5.2 · via Local CLI Bridge
+ in 1.2k · out 567 · $0.0312 · latency 120ms
 ```
 
 The main shell has no persistent header.
 
 The transcript begins at the top of the viewport and remains visually primary.
 
-One quiet line below the composer identifies the profile, runner, model, and connection.
+The calm context rail uses one compact identity/status row from 60 through 99 columns.
+
+At 100 columns and above, the first row labels the profile, harness, model, and backend.
+
+It adds a distinct connection, configured reasoning and caps, known sandbox facts, and measured values when they fit.
 
 Remote or sandbox execution appears there only when location changes the user's mental model.
 
-The composer has no border during normal input and keeps at least three usable rows.
+The composer has separators above and below normal input and keeps at least three usable rows.
 
-Autocomplete adds one divider between input and results.
+Autocomplete appears below the composer separator without adding another outer panel.
 
 The composer grows to at most 40% of terminal height, then scrolls internally.
 
-During work, the context line gives priority to state, cancel, queue, and steer controls.
+During work, the context rail gives priority to state, cancel, queue, and steer controls.
 
 At rest, it gives priority to execution identity and measured usage.
 
 Transient confirmations temporarily replace the context line so they remain visible at 40 columns.
 
-The context line omits unavailable values instead of displaying placeholders.
+The context rail omits unavailable values instead of displaying placeholders.
+
+At widths below 60, it keeps only the profile and status.
 
 The activity view keeps direct turn totals, analysis totals, and worker-tree totals separate.
 
@@ -117,7 +124,7 @@ Each visible total identifies reported values, estimates, or observed minimums w
 
 ### Usage and execution inspector
 
-The wide context line shows direct conversation tokens and cost when measured values exist.
+The wide context rail shows sandbox host, machine, verified region, complete resource groups, and direct token, cost, or latency measurements when known.
 
 It labels estimates and observed minimums explicitly.
 
@@ -145,7 +152,7 @@ The physical machine IP, effective resource allocation, and per-sandbox CPU, RAM
 
 Headless state retains complete measurement status, including unavailable fields, for automation and audit.
 
-### Wide layout at 120 columns and above
+### Wide layout at 100 columns and above
 
 ```text
  user   Fix the replay race and run the focused tests.          │ live work
@@ -156,18 +163,19 @@ Headless state retains complete measurement status, including unavailable fields
  › _
 
 
- profile reviewer · codex / openai/gpt-5.6 · sandbox · xhigh   working · Ctrl+C cancel
+ profile reviewer · harness codex · model openai/gpt-5.6 · backend Sandbox · think xhigh
+ working · Ctrl+C cancel
 ```
 
-The right pane is hidden by default, including while a run is active.
+The main shell has no activity pane, including while a run is active.
 
-F2 toggles one live-work pane that contains only active, waiting, detached, or reconnecting work.
+F2 opens the focused activity browser for active and historical work.
 
-Completed history remains available through `/activity` instead of accumulating in the pane.
+The activity browser uses one list/detail surface and keeps direct turns, analyses, and workers distinct.
 
 Graph, details, and workspace views use focused overlays.
 
-The pane never reduces the transcript below 72 columns; below that boundary it becomes an overlay.
+No secondary surface reduces the transcript below its minimum width because secondary surfaces replace the shell.
 
 ### Narrow layout below 80 columns
 
@@ -312,7 +320,7 @@ Destructive or externally consequential commands show the resolved target before
 | `PageUp` / `PageDown` | Scroll the focused transcript or list by one viewport |
 | `Home` / `End` | Move within the editor or to list boundaries according to focus |
 | `Alt+Up` / `Alt+Down` | Navigate adjacent branches or graph nodes |
-| `F2` | Toggle the wide activity pane |
+| `F2` | Open the focused activity browser |
 | `?` | Open contextual help outside the composer, or type a question mark inside it |
 
 Keybindings are remappable from named actions rather than raw handler code.
@@ -544,7 +552,7 @@ The browser defaults to all activity and uses `Tab` to cycle through runs, analy
 
 It lists an explicit root run binding, workers, status, current action, elapsed time, token use, cost, latency, last event, and log tail when reported.
 
-Each activity row retains its source kind, profile digest, runner, model, reasoning effort, output limit, connection, provider session, and environment when the record reports them.
+Each activity row retains its source kind, profile digest, runner, model, reasoning effort, visible, reasoning, and total output limits, connection, provider session, and environment when the record reports them.
 
 Direct turns, analyses, and workers keep their own usage totals and are never merged into a single spend number.
 

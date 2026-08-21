@@ -12,7 +12,6 @@ import {
 } from '../src/adapters/runtime/retained-execution.js'
 import { finalRetainedEnvelope } from '../src/adapters/runtime/retained-execution-projection.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
-import { providerEventFor } from '../src/app/run-event-mapper.js'
 import {
   createDurableBraidApplication,
   type DurableBraidApplication,
@@ -21,6 +20,7 @@ import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../src/app/production-composition.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { isFinalRuntimeEvent, isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
@@ -29,6 +29,7 @@ import {
   type RetainedRunAdmissionRecord,
 } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
+import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -131,6 +132,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
 function recoveryPlan(controlRef: AgentExactRunControlRef): RetainedExecutionPlan {
   const handle: RetainedRunHandle = {
     controlRef,
+    capabilities: RETAINED_RUN_HANDLE_CAPABILITIES,
     async status() {
       return {
         runId: controlRef.runId,
@@ -216,6 +218,57 @@ test('retained recovery passes the exact provider reference into plan constructi
   assert.equal(recoveredEnvironmentId, controlRef.environmentId)
   assert.equal(snapshot?.runId, localRunId)
   assert.equal(snapshot?.sessionId, controlRef.sessionId)
+})
+
+test('retained recovery carries the persisted opaque environment identity through discovery', async () => {
+  const runId = 'braid/opaque-environment-recovery'
+  const retainedAdmission: RetainedRunAdmissionRecord = {
+    phase: 'environment',
+    provider: 'cloud-provider',
+    environmentId: 'cb1.persisted-opaque-environment',
+    idempotencyKey: 'environment-braid-opaque-environment-recovery',
+    turnId: 'turn-opaque-environment-recovery',
+    sessionId: 'session-opaque-environment-recovery',
+    executionId: 'execution-opaque-environment-recovery',
+  }
+  const exact: AgentExactRunControlRef = {
+    runId: 'cloud-provider-run-opaque-environment-recovery',
+    provider: retainedAdmission.provider,
+    environmentId: retainedAdmission.environmentId,
+    sessionId: retainedAdmission.sessionId,
+    executionId: retainedAdmission.executionId,
+    requestDigest: `sha256:${'e'.repeat(64)}`,
+  }
+  let receivedAdmission: RetainedRunAdmissionRecord | undefined
+  let receivedControlRef: AgentExactRunControlRef | undefined
+  const execution = new RetainedExecutionPort({
+    resolve: async () => {
+      throw new Error('fresh admission is not part of this recovery test')
+    },
+    recover: async ({ retainedAdmission: admission }) => {
+      receivedAdmission = admission
+      if (admission?.phase !== 'environment') {
+        throw new Error('recovery lost the retained environment admission')
+      }
+      return {
+        ...recoveryPlan(exact),
+        reconnect: async (controlRef) => {
+          receivedControlRef = controlRef
+          return recoveryPlan(exact).reconnect(controlRef)
+        },
+      }
+    },
+  })
+
+  const snapshot = await execution.status({
+    runId,
+    providerSessionId: retainedAdmission.sessionId,
+    retainedAdmission,
+  })
+  assert.deepEqual(receivedAdmission, retainedAdmission)
+  assert.deepEqual(receivedControlRef, exact)
+  assert.equal(snapshot?.runId, runId)
+  assert.equal(snapshot?.sessionId, retainedAdmission.sessionId)
 })
 
 test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job exactly once', async () => {
@@ -361,7 +414,7 @@ test('restart discovery preserves a continued provider session before the contro
     assert.equal(bridge.requests[0]?.sessionId, providerSessionId)
     assert.deepEqual(
       admissions.map((entry) => entry.phase),
-      ['environment', 'dispatched'],
+      ['intent', 'environment', 'dispatched'],
     )
     await stream.return?.()
 
@@ -369,7 +422,15 @@ test('restart discovery preserves a continued provider session before the contro
     if (restarted.execution.status === undefined || restarted.execution.cancelRun === undefined) {
       throw new Error('Retained recovery controls are unavailable')
     }
-    const snapshot = await restarted.execution.status({ runId, providerSessionId })
+    const environmentAdmission = admissions.find((entry) => entry.phase === 'environment')
+    if (environmentAdmission === undefined) {
+      throw new Error('The environment admission was not retained')
+    }
+    const snapshot = await restarted.execution.status({
+      runId,
+      providerSessionId,
+      retainedAdmission: environmentAdmission,
+    })
     assert.equal(snapshot?.runId, runId)
     assert.equal(snapshot?.sessionId, providerSessionId)
     assert.equal(snapshot?.status, 'streaming')
@@ -378,6 +439,7 @@ test('restart discovery preserves a continued provider session before the contro
       operationId: 'operation-retained-crash-window-cancel',
       runId,
       providerSessionId,
+      retainedAdmission: environmentAdmission,
     })
     assert.equal('outcome' in cancellation ? cancellation.outcome : cancellation.status, 'accepted')
     assert.equal(bridge.cancellations.length, 1)
@@ -421,7 +483,14 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
     if (restarted.execution.status === undefined) {
       throw new Error('Retained recovery controls are unavailable')
     }
-    await assert.rejects(restarted.execution.status({ runId }), /another run identity/u)
+    const environmentAdmission = admissions.find((entry) => entry.phase === 'environment')
+    if (environmentAdmission === undefined) {
+      throw new Error('The environment admission was not retained')
+    }
+    await assert.rejects(
+      restarted.execution.status({ runId, retainedAdmission: environmentAdmission }),
+      /another (?:retained )?run identity/u,
+    )
     assert.equal(bridge.requests.length, 1)
   } finally {
     bridge.complete()

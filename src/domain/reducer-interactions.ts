@@ -1,30 +1,30 @@
-import type { BraidEvent } from './events.js'
-import { reserveText } from './content-budget.js'
 import { canonicalDigest } from './canonical.js'
-import { DomainInvariantError } from './invariants-base.js'
-import type { BraidInteraction, BraidState } from './state.js'
+import { reserveText } from './content-budget.js'
+import type { BraidEvent } from './events.js'
 import { createOperationId } from './ids.js'
-import { safePublicIdentifier } from './provider-values.js'
-import { finalizeRunUsage } from './run-usage.js'
+import { DomainInvariantError } from './invariants-base.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
+import { safePublicIdentifier } from './provider-values.js'
 import {
   activity,
   addActivity,
   assertTerminalTransition,
   findRun,
+  MAX_RUN_EVENT_DETAILS,
+  MAX_RUN_INTERACTIONS,
+  type ReducerBase,
   sourceFromProvider,
+  TERMINAL_RUN_STATES,
   terminalMessageStatus,
   terminalPartStatus,
   updateMessage,
   updateRun,
   upsertPart,
-  withProviderProgress,
   withPendingInteractionIndex,
-  MAX_RUN_EVENT_DETAILS,
-  MAX_RUN_INTERACTIONS,
-  TERMINAL_RUN_STATES,
-  type ReducerBase,
+  withProviderProgress,
 } from './reducer-support.js'
+import { finalizeRunUsage } from './run-usage.js'
+import type { BraidInteraction, BraidState } from './state.js'
 
 type InteractionEvent = Extract<
   BraidEvent,

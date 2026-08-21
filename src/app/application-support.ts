@@ -29,6 +29,7 @@ import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission.js'
 import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import type { RunLedger } from './run-ledger.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 export interface ApplicationJournal {
   readonly all: () => readonly BraidEventEnvelope[]
@@ -164,6 +165,12 @@ export function restoreApplicationOperations(
               text: event.text,
               profile: event.receipt.requested.profile,
               connectionId: event.receipt.requested.connectionId ?? null,
+              ...(event.receipt.requested.mode === undefined
+                ? {}
+                : { mode: event.receipt.requested.mode }),
+              ...(event.receipt.requested.interactions === undefined
+                ? {}
+                : { interactions: event.receipt.requested.interactions }),
             }),
           runId: run.id,
           admission: event.receipt,
@@ -272,6 +279,7 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
       runId,
       ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+      ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
     })
   } catch {
     await markRestartReconnecting(context, runId)

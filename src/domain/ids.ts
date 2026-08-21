@@ -1,8 +1,8 @@
 export type * from './ids-types.js'
 export * from './ids-values.js'
 
-import type { IdForKind, IdKind } from './ids-types.js'
 import { assertPrefixedId, isPrefixedId, parsePrefixedId } from './ids-core.js'
+import type { IdForKind, IdKind } from './ids-types.js'
 
 export function parseId<K extends IdKind>(kind: K, value: unknown): IdForKind<K> {
   return parsePrefixedId(kind, value)

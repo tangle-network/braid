@@ -4,11 +4,13 @@ import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import type { ProfileSummary } from '../src/app/profiles.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { BraidUiController } from '../src/views/shared/intents.js'
 import type { BraidViewModel, InteractionView, ViewStatus } from '../src/views/shared/models.js'
 import { ActivityView } from '../src/views/tui/activity.js'
 import { AnalysisViewPanel } from '../src/views/tui/analysis.js'
+import { profileItems } from '../src/views/tui/configuration-presenters.js'
 import { ConnectionSetupViewPanel } from '../src/views/tui/connection-setup.js'
 import { DetailsViewPanel } from '../src/views/tui/details.js'
 import { DynamicAutocompleteProvider } from '../src/views/tui/dynamic-autocomplete.js'
@@ -303,23 +305,39 @@ test('stable chrome keeps identity and status outside transcript history', () =>
     view: viewFor('completed'),
     quitArmed: false,
     activityVisible: false,
-    navigationHint: 'Ctrl+P commands',
+    navigationHint: '/ commands · Ctrl+P',
     composerMode: 'queue',
   })
   const lines = chrome.render(40)
   const firstLine = lines[0] ?? ''
   assert.equal(lines.length, 1)
-  assert.match(firstLine, /reviewer.*Ctrl\+P commands/u)
+  assert.equal(firstLine, 'reviewer')
   assert.doesNotMatch(firstLine, /fixture|deterministic/u)
   assert.ok(visibleWidth(firstLine) <= 40)
 
   const standard = chrome.render(80)
   assert.equal(standard.length, 1)
-  assert.match(standard[0] ?? '', /reviewer.*pi \/ deterministic/u)
-  assert.match(standard[0] ?? '', /fixture/u)
-  assert.doesNotMatch(standard[0] ?? '', /deterministic fixture/u)
-  assert.match(standard[0] ?? '', /Ctrl\+P commands/u)
+  assert.match(standard[0] ?? '', /reviewer.*pi/u)
+  assert.match(standard[0] ?? '', /via local/u)
+  assert.doesNotMatch(standard[0] ?? '', /fixture|deterministic fixture/u)
+  assert.doesNotMatch(standard[0] ?? '', /\/ commands/u)
+  assert.doesNotMatch(standard[0] ?? '', /Ctrl\+P/u)
+  const wide = chrome.render(120).join('\n')
+  assert.match(wide, /profile reviewer · harness pi · backend local/u)
+  assert.doesNotMatch(wide, /fixture|deterministic|50ms|in 6|out 12/u)
   for (const line of standard) assert.ok(visibleWidth(line) <= 80)
+})
+
+test('empty transcript keeps its starter hint beside the composer', () => {
+  const transcript = new TranscriptView(theme)
+  transcript.setViewportRows(8)
+  transcript.setView({
+    ...viewFor('empty'),
+    messages: [],
+    runs: [],
+  })
+  const lines = transcript.render(80)
+  assert.equal(lines.at(-1)?.trimEnd(), ' Ask reviewer anything.')
 })
 
 test('terminal chrome aggregates known conversation metrics without filling gaps', () => {
@@ -558,7 +576,7 @@ test('terminal presentation translates runtime result labels without changing de
 
 test('one searchable selector preserves query and supports keyboard selection', () => {
   let selected = ''
-  let cancelled = false
+  let cancellations = 0
   const selector = new SearchableSelector({
     title: 'items',
     items: [
@@ -570,14 +588,50 @@ test('one searchable selector preserves query and supports keyboard selection', 
       selected = item.value
     },
     onCancel: () => {
-      cancelled = true
+      cancellations += 1
     },
   })
   selector.setQuery('quit')
   selector.handleInput('\r')
   assert.equal(selected, 'quit')
   selector.handleInput('\u001b')
-  assert.equal(cancelled, true)
+  selector.handleInput('\u001b[D')
+  assert.equal(cancellations, 2)
+})
+
+test('profile selector rows keep the profile identity intact at responsive widths', () => {
+  const profile = {
+    id: 'profile-braid-starter',
+    name: 'Braid starter',
+    tags: [],
+    source: {
+      kind: 'inline',
+      reference: 'workspace',
+      label: 'Braid starter',
+      writable: false,
+      trusted: true,
+    },
+    digest: 'digest',
+    runner: 'pi',
+    model: 'openai-codex/gpt-5.6-luna',
+    tools: [],
+    skills: [],
+    connections: [],
+  } satisfies ProfileSummary
+  const [item] = profileItems([profile], profile.name, profile.id)
+  assert(item)
+  assert.doesNotMatch(item.description ?? '', /Braid starter/u)
+
+  const selector = new SearchableSelector({
+    title: 'profiles',
+    items: [item],
+    theme,
+    onSelect: () => {},
+    onCancel: () => {},
+  })
+  for (const width of [40, 80, 120]) {
+    for (const line of selector.render(width)) assert.ok(visibleWidth(line) <= width)
+  }
 })
 
 test('searching a selector resets stale navigation to the best match', () => {
@@ -619,6 +673,8 @@ test('slash command autocomplete refreshes descriptions after capabilities chang
 const interaction: InteractionView = {
   runId: 'run-1',
   interactionId: 'interaction-1',
+  profileName: 'Product engineer',
+  runner: 'pi',
   kind: 'permission',
   prompt: 'Allow the tool?',
   subject: { type: 'file', title: 'secret.txt', preview: ['read-only preview'] },
@@ -638,6 +694,8 @@ test('interaction shell masks secret answers and accepts alt-digit outcomes', ()
   shell.handleInput('TOPSECRET')
   const rendered = shell.render(80).join('\n')
   assert.equal(rendered.includes('TOPSECRET'), false)
+  assert.match(rendered, /Product engineer · pi/u)
+  assert.doesNotMatch(rendered, /run-1/u)
   shell.handleInput('\u001b1')
   shell.handleInput('\r')
   assert.deepEqual(response, { outcome: 'once', value: 'TOPSECRET' })
@@ -873,7 +931,7 @@ test('conversation shortcut opens the searchable conversation picker', async () 
   const screen = terminal.getViewport().join('\n')
   assert.match(screen, /conversation/u)
   assert.match(screen, /New conversation/u)
-  assert.match(screen, /type to filter · enter to choose · esc to close/u)
+  assert.match(screen, /type to filter · enter to choose · ←\/esc close/u)
   view.stop()
   await done
 })

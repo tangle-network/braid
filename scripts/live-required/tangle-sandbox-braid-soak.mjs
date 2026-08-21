@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { safeJson, safeMessage } from './contracts.mjs'
 import { runBraidSandboxStress } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
 
@@ -923,7 +924,7 @@ export async function runBraidSandboxSoak({
 async function writeOutput(path, value) {
   const resolved = resolve(path)
   await mkdir(dirname(resolved), { recursive: true, mode: 0o700 })
-  await writeFile(resolved, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(resolved, `${safeJson(value)}\n`, { mode: 0o600 })
 }
 
 async function main() {
@@ -938,13 +939,13 @@ async function main() {
   })
   const output = argument('output')
   if (output) await writeOutput(output, result)
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+  process.stdout.write(`${safeJson(result)}\n`)
   if (result.status !== 'passed') process.exitCode = 1
 }
 
 if (resolve(process.argv[1] ?? '') === scriptPath) {
   main().catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.stderr.write(`${safeMessage(error)}\n`)
     process.exitCode = 1
   })
 }

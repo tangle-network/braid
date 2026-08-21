@@ -27,7 +27,7 @@ export async function executeControlEffect(input: {
       operationId: request.operationId,
       effectKind: `run.control.${request.control}`,
       request: {
-        ...request,
+        ...durableControlRequest(request),
         providerSessionId: request.providerSessionId ?? null,
         reason: request.reason ?? null,
         text: request.text ?? null,
@@ -91,6 +91,7 @@ async function dispatchControl(
             ? {}
             : { providerSessionId: request.providerSessionId }),
           ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
+          ...(request.recovery ?? {}),
           signal,
           ...(request.reason === undefined ? {} : { reason: request.reason }),
         }),
@@ -113,6 +114,7 @@ async function dispatchControl(
         ? {}
         : { providerSessionId: request.providerSessionId }),
       ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
+      ...(request.recovery ?? {}),
       signal,
       ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
     })
@@ -134,6 +136,7 @@ async function reconcileControl(
         ? {}
         : { providerSessionId: request.providerSessionId }),
       ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
+      ...(request.recovery ?? {}),
     })
   } catch {
     return undefined
@@ -149,6 +152,13 @@ async function reconcileControl(
   if (request.control === 'detach' && snapshot.status !== 'detached') return undefined
   if (!providerTerminal(snapshot.status)) return undefined
   return { status: 'terminal', detail: 'CONTROL_RECONCILED_TERMINAL' }
+}
+
+function durableControlRequest(
+  request: ControlEffectRequest,
+): Omit<ControlEffectRequest, 'recovery'> {
+  const { recovery: _recovery, ...durable } = request
+  return durable
 }
 
 function effectResult(value: ControlAcknowledgement) {

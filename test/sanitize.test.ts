@@ -57,7 +57,7 @@ test('numeric token telemetry survives redaction while string tokens never do', 
     totalTokens: 34,
     cachedPromptTokens: 5,
     cacheWriteTokens: 3,
-    model: { maxTokens: 4096 },
+    model: { maxVisibleOutputTokens: 4096, maxTotalOutputTokens: 8192 },
     tokenUsage: { input: 21, output: 13 },
     accessToken: 'secret-canary',
     poisoned: { inputTokens: 'secret-canary' },
@@ -70,7 +70,7 @@ test('numeric token telemetry survives redaction while string tokens never do', 
   assert.equal(redacted.totalTokens, 34)
   assert.equal(redacted.cachedPromptTokens, 5)
   assert.equal(redacted.cacheWriteTokens, 3)
-  assert.deepEqual(redacted.model, { maxTokens: 4096 })
+  assert.deepEqual(redacted.model, { maxVisibleOutputTokens: 4096, maxTotalOutputTokens: 8192 })
   assert.deepEqual(redacted.tokenUsage, { input: 21, output: 13 })
   assert.equal(redacted.accessToken, '[redacted]')
   assert.deepEqual(redacted.poisoned, { inputTokens: '[redacted]' })
@@ -159,29 +159,35 @@ test('plain structured redaction preserves only the exact aggregate token counte
   )
 })
 
-test('profile redaction exposes only the public output-token limit from model metadata', () => {
+test('profile redaction preserves maxVisibleOutputTokens and maxTotalOutputTokens', () => {
   const redacted = redactProfile({
     name: 'Public model settings',
     model: {
       default: 'tangle-router/glm-5.2',
+      maxVisibleOutputTokens: 8192,
+      maxReasoningTokens: 16_384,
+      maxTotalOutputTokens: 24_576,
       metadata: {
-        maxTokens: 8192,
         route: 'private-route-canary',
         apiKey: 'private-key-canary',
       },
     },
-    metadata: { maxTokens: 65_536, owner: 'private-owner-canary' },
+    metadata: { owner: 'private-owner-canary' },
     modes: {
-      fast: { metadata: { maxTokens: 4096, note: 'private-mode-canary' } },
+      fast: { metadata: { note: 'private-mode-canary' } },
     },
   })
 
-  assert.deepEqual(redacted.model?.metadata, { maxTokens: 8192, redacted: '[redacted]' })
+  assert.equal(redacted.model?.maxVisibleOutputTokens, 8192)
+  assert.equal(redacted.model?.maxReasoningTokens, 16_384)
+  assert.equal(redacted.model?.maxTotalOutputTokens, 24_576)
+  assert.deepEqual(redacted.model?.metadata, { redacted: '[redacted]' })
   assert.deepEqual(redacted.metadata, { redacted: '[redacted]' })
   assert.deepEqual(redacted.modes?.fast?.metadata, { redacted: '[redacted]' })
   assert.doesNotMatch(JSON.stringify(redacted), /private-(?:route|key|owner|mode)-canary/u)
   assert.deepEqual(
-    redactProfile({ model: { metadata: { maxTokens: 'private-token-canary' } } }).model?.metadata,
+    redactProfile({ model: { metadata: { legacyOutputLimit: 'private-token-canary' } } }).model
+      ?.metadata,
     { redacted: '[redacted]' },
   )
 })

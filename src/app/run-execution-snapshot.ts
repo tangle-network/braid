@@ -21,6 +21,7 @@ export interface RunExecutionSnapshot {
   readonly conversationId: string
   readonly branchId: string
   readonly profile: Readonly<AgentProfile>
+  readonly mode?: string
   readonly connectionId?: string
   readonly workspaceRoot?: string
   readonly sessionId?: string
@@ -36,6 +37,7 @@ export function snapshotRunExecution(
   state: BraidState,
   profile: Readonly<AgentProfile>,
   connectionId: string | undefined,
+  mode?: string,
 ): RunExecutionSnapshot {
   const snapshot = {
     operationId: input.operationId,
@@ -43,6 +45,7 @@ export function snapshotRunExecution(
     conversationId: input.conversationId ?? state.conversationId,
     branchId: input.branchId ?? state.branchId,
     profile: snapshotAgentProfile(profile),
+    ...(mode === undefined ? {} : { mode }),
     ...(connectionId === undefined ? {} : { connectionId }),
     ...(state.workspace === null ? {} : { workspaceRoot: state.workspace }),
     ...(input.sessionId === undefined

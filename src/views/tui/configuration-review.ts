@@ -2,6 +2,7 @@ import {
   type Component,
   Container,
   type Focusable,
+  matchesKey,
   type SelectItem,
   SelectList,
   Text,
@@ -27,6 +28,7 @@ export interface ConfigurationReviewOptions {
  */
 export class ConfigurationReview extends Container implements Focusable {
   readonly #list: SelectList
+  readonly #onCancel: () => void
   #focused = false
 
   constructor(options: ConfigurationReviewOptions) {
@@ -34,13 +36,14 @@ export class ConfigurationReview extends Container implements Focusable {
     this.#list = new SelectList([...options.items], 4, options.theme.select)
     this.#list.onSelect = options.onSelect
     this.#list.onCancel = options.onCancel
+    this.#onCancel = options.onCancel
     this.addChild(new Text(options.theme.brand(options.title ?? 'review and start'), 1, 0))
     if (options.error !== undefined) {
       this.addChild(new Text(options.theme.danger(sanitizeTerminalText(options.error)), 1, 0))
     }
     this.addChild(new ReviewSummary(options.theme, options.summary, options.compactSummary))
     this.addChild(this.#list)
-    this.addChild(new Text(options.theme.muted('enter choose · ↑↓ move · esc cancel'), 1, 0))
+    this.addChild(new Text(options.theme.muted('enter choose · ↑↓ move · ←/esc cancel'), 1, 0))
   }
 
   get focused(): boolean {
@@ -52,6 +55,10 @@ export class ConfigurationReview extends Container implements Focusable {
   }
 
   handleInput(data: string): void {
+    if (matchesKey(data, 'left')) {
+      this.#onCancel()
+      return
+    }
     this.#list.handleInput(data)
   }
 }

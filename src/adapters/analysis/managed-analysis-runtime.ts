@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 
-const AGENT_EVAL_RPC_VERSION = '0.144.11'
+const AGENT_EVAL_RPC_VERSION = '0.145.15'
 const PYTHON_VERSION = '3.12'
 const RESOLUTION_CUTOFF = '2026-08-11T05:00:00Z'
 const RUNTIME_PROBE = [

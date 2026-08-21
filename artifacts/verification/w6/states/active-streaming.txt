@@ -16,9 +16,9 @@
 
 
 
-
-
+────────────────────────────────────────────────────────────────────────────────
 › queue #1
 
 
-profile Braid starter                     working · Ctrl+C cancel · Enter queues
+─────────────── type / for commands · Alt+Enter newline · paste ────────────────
+profile Braid starter · pi · via not connected                     Ctrl+C cancel

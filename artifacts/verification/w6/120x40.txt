@@ -32,9 +32,9 @@
 
 
 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+› new message
 
 
-›
-
-
-profile Braid starter · pi / fixture/deterministic · deterministic fixture          in 8 · out 12 · calls 1 · model 50ms
+─────────────────────────────────── type / for commands · Alt+Enter newline · paste ────────────────────────────────────
+profile Braid starter · pi · local                                                                        Ctrl+E details

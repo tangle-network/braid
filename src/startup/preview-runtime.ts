@@ -1,13 +1,13 @@
-import { ProcessTerminal } from '@earendil-works/pi-tui/dist/terminal.js'
-import type { Terminal } from '@earendil-works/pi-tui/dist/terminal.js'
-import { CURSOR_MARKER, type Component, type TUI } from '@earendil-works/pi-tui/dist/tui.js'
-import { TuiMainScreen } from '@earendil-works/pi-tui/dist/tui-main-screen.js'
 import { Text } from '@earendil-works/pi-tui/dist/components/text.js'
+import type { Terminal } from '@earendil-works/pi-tui/dist/terminal.js'
+import { ProcessTerminal } from '@earendil-works/pi-tui/dist/terminal.js'
+import { type Component, CURSOR_MARKER, type TUI } from '@earendil-works/pi-tui/dist/tui.js'
+import { TuiMainScreen } from '@earendil-works/pi-tui/dist/tui-main-screen.js'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { boundVisibleText } from '../views/shared/sanitize.js'
 import { installTerminalOutputPolicy } from '../views/tui/terminal-compatibility.js'
 import { renderTerminalContext } from '../views/tui/terminal-identity.js'
-import { createBraidTheme, type BraidTheme } from '../views/tui/theme.js'
+import { type BraidTheme, createBraidTheme } from '../views/tui/theme.js'
 import { createTerminalSignalLatch, type TerminalSignalExitCode } from './terminal-signal-latch.js'
 
 const MAX_PREVIEW_MESSAGES = 4
@@ -37,7 +37,9 @@ export interface StartupFrameState {
     readonly model?: {
       readonly default?: string
       readonly reasoningEffort?: string
-      readonly maxOutputTokens?: number
+      readonly maxVisibleOutputTokens?: number
+      readonly maxReasoningTokens?: number
+      readonly maxTotalOutputTokens?: number
     }
   }
   readonly selectedConnectionId: string | null
@@ -99,9 +101,15 @@ class StartupFrame implements Component {
       ...(state.profile.model?.reasoningEffort === undefined
         ? {}
         : { effort: state.profile.model.reasoningEffort }),
-      ...(state.profile.model?.maxOutputTokens === undefined
+      ...(state.profile.model?.maxVisibleOutputTokens === undefined
         ? {}
-        : { maxOutputTokens: state.profile.model.maxOutputTokens }),
+        : { maxVisibleOutputTokens: state.profile.model.maxVisibleOutputTokens }),
+      ...(state.profile.model?.maxReasoningTokens === undefined
+        ? {}
+        : { maxReasoningTokens: state.profile.model.maxReasoningTokens }),
+      ...(state.profile.model?.maxTotalOutputTokens === undefined
+        ? {}
+        : { maxTotalOutputTokens: state.profile.model.maxTotalOutputTokens }),
     }
     this.#theme = theme
     this.#rows = rows

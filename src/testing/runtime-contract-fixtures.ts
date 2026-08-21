@@ -1,5 +1,5 @@
-import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
 import { createInteractionRequest } from '../app/interaction-request.js'
+import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../domain/runtime-events.js'
 
 const RECEIVED_AT = '2026-08-01T00:00:00.000Z'
 

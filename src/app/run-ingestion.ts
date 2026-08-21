@@ -1,10 +1,10 @@
 import type { ProviderEventMeta } from '../domain/events.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
-import type { IngestionPort, RuntimeEventIngestionResult } from './application-ports.js'
-import { providerEventFor, safeProviderMeta } from './run-event-mapper.js'
-import { AppError } from './errors.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
+import type { IngestionPort, RuntimeEventIngestionResult } from './application-ports.js'
+import { AppError } from './errors.js'
 import { safePublicIdentifier } from './provider-values.js'
+import { providerEventFor, safeProviderMeta } from './run-event-mapper.js'
 
 export function ingestRuntimeEvent(
   context: IngestionPort,

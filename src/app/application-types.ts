@@ -13,6 +13,8 @@ export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) =>
 export interface SendInput {
   readonly operationId: string
   readonly text: string
+  /** One-run execution mode override. It does not mutate the branch selection. */
+  readonly mode?: string
   readonly conversationId?: string
   readonly branchId?: string
   readonly sessionId?: string

@@ -10,12 +10,11 @@ import type {
   ProjectionSnapshot,
 } from '../../ports/storage.js'
 import { PROJECTION_SCHEMA_VERSION } from '../../ports/storage.js'
+import { clone, jsonValue, projectionOf } from './memory-base.js'
+import { MemoryJournalStorage } from './memory-journal.js'
 import { assertPersistablePayload } from './sqlite-crypto.js'
 import { StorageError } from './sqlite-errors.js'
 import { assertOperationIntentInput, assertOperationRequestDigest } from './storage-validation.js'
-import { clone, jsonValue, projectionOf } from './memory-base.js'
-
-import { MemoryJournalStorage } from './memory-journal.js'
 
 export class MemoryOperationStorage extends MemoryJournalStorage {
   async rebuild(operation: OperationIntent): Promise<ProjectionSnapshot> {

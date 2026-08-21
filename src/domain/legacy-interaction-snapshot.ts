@@ -1,16 +1,16 @@
 import {
-  InteractionRequestSchema,
-  interactionRequestDigest,
   type InteractionRequest,
   type InteractionRequestBinding,
   type InteractionRequestMaterial,
+  InteractionRequestSchema,
+  interactionRequestDigest,
 } from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
+import type { MaterializedState } from './materialized-state.js'
 import { MAX_RUN_INTERACTIONS, withPendingInteractionIndex } from './reducer-support.js'
 import type { BraidInteraction } from './runtime-projection.js'
 import type { BraidState } from './state.js'
 import { isCanonicalIsoDateTime } from './text.js'
-import type { MaterializedState } from './materialized-state.js'
 
 interface LegacyInteractionRecord {
   readonly id?: unknown

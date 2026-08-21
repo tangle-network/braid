@@ -41,6 +41,7 @@ import { type BraidState, initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 const NOW = '2026-08-01T00:00:00.000Z'
 
@@ -149,7 +150,7 @@ function interactionExecution(request: InteractionRequest): {
   let lastCommand: InteractionResponseCommand | undefined
   let releaseStream: (() => void) | undefined
   const execution: ExecutionPort = {
-    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    capabilities: () => interactionResponseRunCapabilities(),
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
       yield {
         type: 'interaction',
@@ -480,7 +481,7 @@ test('the terminal API never reports an unconfirmed interaction response as acce
   const request = questionRequest('interaction-unconfirmed')
   let releaseStream: (() => void) | undefined
   const execution: ExecutionPort = {
-    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    capabilities: () => interactionResponseRunCapabilities(),
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
       yield {
         type: 'interaction',

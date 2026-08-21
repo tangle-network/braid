@@ -22,6 +22,8 @@ export async function executeRun(
       runId: admission.runId,
       text: input.text,
       profile: input.profile,
+      ...(input.mode === undefined ? {} : { mode: input.mode }),
+      interactions: admission.requested.interactions ?? {},
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
       signal: abort.signal,

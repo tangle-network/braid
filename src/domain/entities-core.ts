@@ -4,9 +4,10 @@ import type {
   HarnessType,
   ReasoningEffort,
 } from '@tangle-network/agent-interface'
+import type { IsoDateTime, MissingHistoryRange } from './entities-base.js'
 import type {
-  BranchId,
   BindingId,
+  BranchId,
   ConnectionId,
   ConversationId,
   CredentialRefId,
@@ -23,7 +24,6 @@ import type {
   TurnId,
   WorkspaceId,
 } from './ids.js'
-import type { IsoDateTime, MissingHistoryRange } from './entities-base.js'
 import type { RuntimeMessageFields } from './runtime-projection.js'
 
 export interface TurnUsage {

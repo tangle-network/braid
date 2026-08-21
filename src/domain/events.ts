@@ -59,8 +59,8 @@ import type {
   TurnId,
   WorkerId,
 } from './ids.js'
-import type { RunStatus } from './state.js'
 import type { RetainedRunAdmissionRecord } from './run-contracts.js'
+import type { RunStatus } from './state.js'
 
 export type { TurnUsage } from './entities.js'
 export type {

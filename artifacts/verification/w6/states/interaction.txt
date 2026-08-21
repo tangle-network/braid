@@ -1,4 +1,4 @@
- permission            Braid starter @ pi · run fixture-run-1 · timeout unknown
+ permission                                                  Braid starter · pi
 ────────────────────────────────────────────────────────────────────────────────
  Allow the fixture tool to inspect the selected file?
  src/app/application.ts · read-only
@@ -21,4 +21,4 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────
- ↑↓ move · enter confirm · 1-3 quick select · esc cancel · alt+a automate
+ ↑↓ move · enter confirm · 1-3 quick select · ←/esc cancel · alt+a automate

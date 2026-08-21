@@ -9,8 +9,8 @@ import {
   OPENINFERENCE_SPAN_KIND,
   OUTPUT_VALUE,
 } from '@tangle-network/agent-eval/trace-attributes'
-import { profileModelSettings } from '../../app/profile-model-settings.js'
 import type { FrozenAnalysisEvent } from '../../app/analysis-types.js'
+import { profileModelSettings } from '../../app/profile-model-settings.js'
 import type { TurnUsage } from '../../domain/entities.js'
 import type { BraidEvent } from '../../domain/events.js'
 import { redactSensitiveText, redactStructuredValue } from '../../domain/redaction.js'
@@ -112,8 +112,12 @@ function addRequestedRun(attributes: Record<string, unknown>, event: BraidEvent)
     attributes['braid.provider_session_id'] = safeAnalysisText(receipt.providerSessionId)
   if (settings.reasoningEffort !== undefined)
     attributes['braid.reasoning_effort'] = safeAnalysisText(settings.reasoningEffort)
-  if (settings.maxOutputTokens !== undefined)
-    attributes['braid.max_output_tokens'] = settings.maxOutputTokens
+  if (settings.maxVisibleOutputTokens !== undefined)
+    attributes['braid.max_visible_output_tokens'] = settings.maxVisibleOutputTokens
+  if (settings.maxReasoningTokens !== undefined)
+    attributes['braid.max_reasoning_tokens'] = settings.maxReasoningTokens
+  if (settings.maxTotalOutputTokens !== undefined)
+    attributes['braid.max_total_output_tokens'] = settings.maxTotalOutputTokens
   attributes['braid.admission_status'] = receipt.admissionStatus ?? 'admitted'
   attributes['braid.capabilities'] = safeAnalysisValue(receipt.capabilities)
 }

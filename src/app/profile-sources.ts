@@ -2,12 +2,7 @@ import { basename, resolve } from 'node:path'
 import type { AgentProfile, AgentProfileRef } from '@tangle-network/agent-interface'
 import { canonicalCandidateDigest } from '../adapters/agent-interface/profile-runtime.js'
 import { redactSensitiveText } from '../domain/secret-sanitizer.js'
-import { readProfileFile, ProfilePersistenceError } from './profile-persistence.js'
-import {
-  AGENT_INTERFACE_PACKAGE_VERSION,
-  validateProfileShape,
-  ProfileValidationError,
-} from './profile-validation.js'
+import { ProfilePersistenceError, readProfileFile } from './profile-persistence.js'
 import type {
   ProfileDiscoveryInput,
   ProfileDiscoveryIssue,
@@ -15,11 +10,16 @@ import type {
   ProfileIssue,
   ProfileRecord,
   ProfileSourceDescriptor,
+  ProfileSourceKind,
   ProfileSourceResolution,
   ProfileSourceResolverContext,
   ProfileSourceSpec,
-  ProfileSourceKind,
 } from './profile-types.js'
+import {
+  AGENT_INTERFACE_PACKAGE_VERSION,
+  ProfileValidationError,
+  validateProfileShape,
+} from './profile-validation.js'
 
 function sourceLabel(spec: ProfileSourceSpec): string {
   if (spec.label !== undefined && spec.label.length > 0) return spec.label

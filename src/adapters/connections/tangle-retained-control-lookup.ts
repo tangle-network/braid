@@ -1,5 +1,6 @@
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
+import { stableProviderId } from '../runtime/production-backend-common.js'
 import type {
   TangleRetainedControlLookup,
   TangleRetainedControlLookupInput,
@@ -18,23 +19,24 @@ type RetainedList = (options?: {
   readonly signal?: AbortSignal
 }) => Promise<SandboxInstanceLike[]>
 
-function safeIdentity(value: string): string {
-  return value.replace(/[^A-Za-z0-9._:-]/gu, '-').slice(0, 128) || 'run'
-}
-
+/**
+ * Match the environment by its ownership marker alone.
+ *
+ * Runtime writes only `retainedIdempotencyKey` into provider metadata. Turn and
+ * process identity live in the durable admission and in the session's own run
+ * control reference, which this lookup reads before it returns anything.
+ */
 function matchesRetainedEnvironment(
   box: SandboxInstanceLike,
   input: TangleRetainedControlLookupInput,
 ): boolean {
   const metadata = box.metadata
   return (
-    box.name === `braid-${safeIdentity(input.providerSessionId)}` &&
+    box.name === stableProviderId('braid-', input.providerSessionId) &&
     metadata?.owner === 'braid' &&
     metadata.lifecycle === 'retained' &&
     metadata.providerSessionId === input.providerSessionId &&
-    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey &&
-    metadata.sessionId === input.providerSessionId &&
-    metadata.executionId === input.executionId
+    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey
   )
 }
 

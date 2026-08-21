@@ -69,6 +69,31 @@ test('W5 exposes stable checks for every requested release surface', () => {
   for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
 })
 
+test('deterministic visual capture stays separate from the explicit live demo', async () => {
+  const [visualSource, liveDemoSource] = await Promise.all([
+    readFile(new URL('../../scripts/capture-visual.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../scripts/live-demo.mjs', import.meta.url), 'utf8'),
+  ])
+
+  assert.equal(
+    packageJson.scripts['capture:visual'],
+    'pnpm run build && node scripts/capture-visual.mjs',
+  )
+  assert.equal(
+    packageJson.scripts['capture:demo:live'],
+    'pnpm run build && node scripts/live-demo.mjs',
+  )
+  assert.match(visualSource, /--fixture', 'deterministic'/u)
+  assert.match(visualSource, /fullInterfaceMarker = uiFixture === 'interaction'\s*\? '↑↓ move'/u)
+  assert.match(visualSource, /output\.includes\(fullInterfaceMarker\)/u)
+  assert.doesNotMatch(visualSource, /output\.includes\('›'\)/u)
+  assert.match(visualSource, /stateFixture: 'deterministic'/u)
+  assert.match(visualSource, /liveDemoCommand: 'pnpm capture:demo:live'/u)
+  assert.doesNotMatch(visualSource, /capture-product-demo|productDemo/u)
+  assert.match(liveDemoSource, /BRAID_LIVE_DEMO_ENDPOINT/u)
+  assert.match(liveDemoSource, /assertPublicCapture/u)
+})
+
 test('active streaming capture waits for a terminal run state before exiting', async () => {
   let screen = 'working'
   let cancelled = false
@@ -189,6 +214,8 @@ test('every scoped package alias forwards its declared file set', () => {
       'domain-reducer.test.js',
       'domain-text.test.js',
       'eval.test.js',
+      'native-interactive-actions.test.js',
+      'native-interactive-run-broker.test.js',
       'observability.test.js',
       'plain-accessibility.test.js',
       'property.test.js',
@@ -204,6 +231,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'analysis-model-call-observability.test.js',
       'analysis-model-call-roundtrip.test.js',
       'application.test.js',
+      'cli-bridge-interactions.test.js',
       'cli-bridge-profile-contract.test.js',
       'cli-bridge-retained-restart.test.js',
       'conversations.test.js',
@@ -213,15 +241,19 @@ test('every scoped package alias forwards its declared file set', () => {
       'observability.test.js',
       'reducer.test.js',
       'scripts.test.js',
+      'tangle-retained-lifecycle.test.js',
       'usage-projection.test.js',
       'w6-contract.test.js',
     ],
     'test:coordination': [
       'analysis-durable.test.js',
+      'cli-bridge-interactions.test.js',
       'cli-bridge-retained-restart.test.js',
       'coordination.test.js',
       'effect-admission.test.js',
       'run-admission-architecture.test.js',
+      'run-interactions.test.js',
+      'tangle-retained-lifecycle.test.js',
     ],
     'test:rpc': [
       'automation-interaction-commands.test.js',
@@ -234,6 +266,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'configuration-product-flow.test.js',
       'intelligence-dispatch.test.js',
       'keyboard.test.js',
+      'native-interactive-command.test.js',
       'terminal-responsive.test.js',
       'terminal-usage-status.test.js',
       'tui-autocomplete.test.js',

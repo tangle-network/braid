@@ -17,6 +17,7 @@ import {
 import { profileModelSettings } from '../app/profile-model-settings.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { CredentialPort } from '../ports/credentials.js'
+import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import { createDurableBraidApplication } from '../startup/durable-runtime.js'
 import {
   createProductionCredentialContext,
@@ -44,6 +45,9 @@ export function productionConfigForSelection(
     ...(options.credentialRefResolver === undefined
       ? {}
       : { credentialRefResolver: options.credentialRefResolver }),
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
   }
   return {
     profile: selection.profile.profile,
@@ -104,9 +108,15 @@ async function productionIntelligence(production: ProductionCompositionConfig): 
   const analysis = await createTraceAnalysisAdapter({
     profile: selected.profile,
     connection: selected.connection,
-    ...(modelSettings.maxOutputTokens === undefined
+    ...(modelSettings.maxVisibleOutputTokens === undefined
       ? {}
-      : { maxOutputTokens: modelSettings.maxOutputTokens }),
+      : { maxOutputTokens: modelSettings.maxVisibleOutputTokens }),
+    ...(modelSettings.maxReasoningTokens === undefined
+      ? {}
+      : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
+    ...(modelSettings.maxTotalOutputTokens === undefined
+      ? {}
+      : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
     ...(production.connectionOptions ?? {}),
   })
   return {
@@ -148,6 +158,7 @@ export async function openProductionApplication(
 ): Promise<{
   readonly app: BraidApplication
   readonly connections: ConnectionRegistry
+  readonly nativeInteractive?: NativeInteractiveExecutionControl
   readonly close: () => Promise<void>
 }> {
   const keyFile = options.startupOptions.databaseKeyFile ?? options.production.databaseKeyFile
@@ -168,7 +179,7 @@ export async function openProductionApplication(
   const connections = new ConnectionRegistry(prepared.production.connections)
   try {
     const intelligence = await productionIntelligence(prepared.production)
-    const { app, storage } = await createDurableBraidApplication({
+    const { app, storage, nativeInteractive } = await createDurableBraidApplication({
       path: options.statePath,
       storageRoot: dirname(resolve(options.statePath)),
       workspaceRoot: resolve(options.workspace),
@@ -191,6 +202,7 @@ export async function openProductionApplication(
     return {
       app,
       connections,
+      ...(nativeInteractive === undefined ? {} : { nativeInteractive }),
       close: async () => {
         try {
           await app.close()

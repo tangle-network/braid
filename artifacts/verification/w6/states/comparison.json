@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.1.1.tgz",
-    "tarballSha256": "9bbd7b5b9f78b3d202dbb09d4375970edfd4965ffc5ad94b04bd7fa6ce01c4c7"
+    "tarball": "tangle-network-braid-0.2.0.tgz",
+    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.1",
+      "package": "@earendil-works/pi-tui@0.84.2",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.13.0",
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " activity · analyses › /compare · frozen runs · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n saved result: replayed from the local journal\n baseline run: run-route-serial\n baseline source: 9ee7d219c8b0092…8c519924\n baseline outcome: completed · cost: 0.014 · source: frozen run field\n run.cost_usd\n candidate run: run-route-parallel\n candidate source: 0328e6889082b14…86b0ff3d\n candidate outcome: completed · cost: 0.009 · source: frozen run field\n run.cost_usd\n sample: 1 paired · 0 baseline-only · 0 candidate-only\n ! One pair is descriptive; it cannot support a reliable general conclusion.\n captured fields · baseline | candidate | availability\n run.status: completed | completed | none\n run.cost_usd: 0.014 | 0.009 | none\n run.wall_time_ms: 18200 | 12100 | none\n run.input_tokens: 7420 | 6910 | none\n paired measurements · candidate minus baseline where applicable\n paired.correctness.b01: 0\n paired.correctness.b10: 0\n paired.correctness.mcnemar.b: 0\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab filter: analys…\n",
+  "frame": " analyses › /compare · frozen runs   Braid starter · pi · fixture/deterministic\n────────────────────────────────────────────────────────────────────────────────\n saved result: replayed from the local journal\n baseline run: run-route-serial\n baseline source: 9ee7d219c8b0092…8c519924\n baseline outcome: completed · cost: 0.014 · source: frozen run field\n run.cost_usd\n candidate run: run-route-parallel\n candidate source: 0328e6889082b14…86b0ff3d\n candidate outcome: completed · cost: 0.009 · source: frozen run field\n run.cost_usd\n sample: 1 paired · 0 baseline-only · 0 candidate-only\n ! One pair is descriptive; it cannot support a reliable general conclusion.\n captured fields · baseline | candidate | availability\n run.status: completed | completed | none\n run.cost_usd: 0.014 | 0.009 | none\n run.wall_time_ms: 18200 | 12100 | none\n run.input_tokens: 7420 | 6910 | none\n paired measurements · candidate minus baseline where applicable\n paired.correctness.b01: 0\n paired.correctness.b10: 0\n paired.correctness.mcnemar.b: 0\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab: analyses\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-transcript-first-wt",
+      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -59,6 +59,13 @@
           "provider": "fixture",
           "reasoningEffort": "none"
         }
+      },
+      "runConfiguration": {
+        "profileName": "Braid starter",
+        "runner": "pi",
+        "model": "fixture/deterministic",
+        "effort": "none",
+        "overrides": {}
       },
       "draft": "",
       "messages": [],
@@ -113,12 +120,13 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-transcript-first-wt",
+      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
       "model": "fixture/deterministic",
       "effort": "none",
+      "runOverrides": {},
       "connection": "deterministic fixture",
       "conversationId": "conv-1",
       "conversationTitle": "New conversation",
@@ -211,9 +219,13 @@
           "status": "complete",
           "depth": 1,
           "edgeLabel": "attached",
+          "parentIds": [
+            "conversation:conv-1"
+          ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
+      "graphQuery": "",
       "entityDetails": [
         {
           "entityType": "analysis",
@@ -304,19 +316,16 @@
           "source": "application"
         },
         "run.runner": {
-          "available": false,
-          "source": "application",
-          "reason": "Runner overrides require the current profile compatibility helpers"
+          "available": true,
+          "source": "application"
         },
         "run.model": {
-          "available": false,
-          "source": "application",
-          "reason": "Model overrides require provider capabilities from the current connection"
+          "available": true,
+          "source": "application"
         },
         "run.effort": {
-          "available": false,
-          "source": "application",
-          "reason": "Effort overrides require provider capabilities from the current connection"
+          "available": true,
+          "source": "application"
         },
         "conversation.branch": {
           "available": true,
@@ -446,7 +455,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-transcript-first-wt"
+            "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
           }
         }
       }

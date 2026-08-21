@@ -11,12 +11,12 @@ import {
   canonicalAgentProfileDigestHex,
   defineAgentProfile,
 } from '../src/adapters/agent-interface/profile-runtime.js'
+import { mapAnalystFinding } from '../src/adapters/analysis/citations.js'
 import {
   AgentEvalAnalystAdapter,
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
 import { ProductionAnalysisAnalyst } from '../src/adapters/analysis/production-analysis-analyst.js'
-import { mapAnalystFinding } from '../src/adapters/analysis/citations.js'
 import { buildAnalysisTraceStore } from '../src/adapters/analysis/trace-store.js'
 import { AnalysisComparisonService } from '../src/app/analysis-comparison.js'
 import type { AnalysisAnalyst } from '../src/app/analysis-execution-session.js'
@@ -41,9 +41,9 @@ import {
   createEventId,
 } from '../src/domain/ids-values.js'
 import { replayEvents } from '../src/domain/reducer.js'
+import type { RetainedRunAdmissionRecord } from '../src/domain/run-contracts.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
-import type { RetainedRunAdmissionRecord } from '../src/domain/run-contracts.js'
 
 const NOW = '2026-08-03T20:00:00.000Z'
 const PROFILE = {} as Readonly<AgentProfile>

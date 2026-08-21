@@ -1,4 +1,4 @@
-import { type Component, Spacer, Text } from '@earendil-works/pi-tui'
+import { type Component, Text } from '@earendil-works/pi-tui'
 import type { BraidViewModel } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { safeFieldValue } from './configuration-presenters.js'
@@ -8,7 +8,7 @@ export function profileEditorChildren(
   theme: BraidTheme,
   view: BraidViewModel,
 ): readonly Component[] {
-  const children: Component[] = [new Text(theme.brand('profile'), 1, 0), new Spacer(1)]
+  const children: Component[] = []
   const editor = view.profileEditor
   if (editor === undefined) {
     children.push(new Text(theme.muted('No profile details loaded.'), 1, 0))

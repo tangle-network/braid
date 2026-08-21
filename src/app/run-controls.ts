@@ -5,6 +5,7 @@ import type { ControlAcknowledgement } from '../ports/execution.js'
 import type { ControlEffectRequest, ControlPort, QueuePort } from './application-ports.js'
 import type { ControlOperationRecord, ControlReceipt, QueueReceipt } from './application-types.js'
 import { AppError } from './errors.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import { isTerminal } from './run-status.js'
 
 export function queueRunInput(
@@ -89,6 +90,7 @@ export async function cancelRun(
     control: 'cancel',
     ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
     ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+    recovery: retainedExecutionRecoveryContext(run, context.currentState().workspace),
     ...(input.reason === undefined ? {} : { reason: input.reason }),
   }
   const receipt = await control(context, request, 'cancel', input.terminalStatus ?? 'cancelled')
@@ -113,6 +115,7 @@ export async function detachRun(
     ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
     ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
     ...(run.lastCursor === undefined ? {} : { cursor: run.lastCursor }),
+    recovery: retainedExecutionRecoveryContext(run, context.currentState().workspace),
   }
   return control(context, request, 'detach')
 }

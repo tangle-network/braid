@@ -270,7 +270,7 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
     assert.equal(controlRef?.runId, providerRunId)
     assert.deepEqual(
       admissions.map((admission) => admission.phase),
-      ['environment', 'dispatched'],
+      ['intent', 'environment', 'dispatched'],
     )
     await stream.return?.(undefined)
 

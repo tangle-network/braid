@@ -1,10 +1,10 @@
 import { appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
+import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { SerializedEffectCoordinator } from '../src/app/effect-coordinator.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { credentialRef } from '../src/ports/credentials.js'
-import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { FileCredentialStore } from './support/file-credentials.js'
 
 const root = required('EFFECT_ROOT')

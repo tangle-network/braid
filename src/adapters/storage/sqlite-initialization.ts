@@ -1,5 +1,5 @@
-import { constants } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { constants } from 'node:fs'
 import { open as openFile, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { canonicalJson } from '../../domain/canonical.js'

@@ -1,7 +1,6 @@
-import { assertEffectRecordInput } from './storage-validation.js'
 import { clone } from './memory-base.js'
-
 import { MemoryRetentionStorage } from './memory-retention.js'
+import { assertEffectRecordInput } from './storage-validation.js'
 
 export class MemoryEffectsStorage extends MemoryRetentionStorage {
   reserveEffect(record: import('../../ports/effect-storage.js').EffectRecord): {

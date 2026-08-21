@@ -1,8 +1,10 @@
 import type {
-  AgentRunCancellationAcknowledgement,
-  AgentRunCancellationRequest,
   AgentExactRunControlRef,
   AgentProfile,
+  AgentRunCancellationAcknowledgement,
+  AgentRunCancellationRequest,
+  InteractionResponseCommand,
+  RequestedInteractions,
 } from '@tangle-network/agent-interface'
 import {
   createTangleProvider,
@@ -11,8 +13,8 @@ import {
   type SandboxInstanceLike,
 } from '@tangle-network/agent-provider-tangle'
 import type { CreateSandboxOptions, SandboxEvent } from '@tangle-network/sandbox'
-import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import { safeExecutionId } from '../../src/adapters/runtime/production-backend-common.js'
+import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import { observeSandboxClient } from '../../src/adapters/runtime/sandbox-observation.js'
 import {
   retainedSandboxIdentity,
@@ -39,7 +41,28 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.10.0. */
+/** The catalog entry provider 0.13.0 reads to narrow interaction kinds per backend. */
+function backendRegistryEntry(type: string) {
+  return {
+    type,
+    name: type,
+    description: `Fake ${type} backend`,
+    capabilities: {
+      streaming: true,
+      toolUse: true,
+      reasoning: true,
+      multimodal: false,
+      imageInput: false,
+      contextWindow: 200_000,
+      mcp: true,
+      sessions: true,
+      configurable: true,
+      interactions: ['question', 'permission', 'plan'] as ('permission' | 'question' | 'plan')[],
+    },
+  }
+}
+
+/** Stateful double for the exact Tangle SDK surface used by provider 0.13.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -47,6 +70,7 @@ export class FakeTangleRetainedSandbox {
     readonly sessionId: string
     readonly executionId: string
     readonly prompt: string
+    readonly interactions?: RequestedInteractions
   }> = []
   readonly cancellations: AgentRunCancellationRequest[] = []
   failDispatch = false
@@ -67,6 +91,12 @@ export class FakeTangleRetainedSandbox {
       async fetch() {
         throw new Error('The lazy capability probe must not call the Sandbox transport')
       },
+      listBackends: async () => ({
+        backends: [backendRegistryEntry('opencode')],
+        timestamp: new Date(0).toISOString(),
+      }),
+      getBackend: async (type: string) =>
+        type === 'opencode' ? backendRegistryEntry(type) : undefined,
       create: async (options) => {
         const create = structuredClone(options ?? {})
         this.createCalls.push(create)
@@ -126,6 +156,7 @@ export class FakeTangleRetainedSandbox {
           dispatch: { runControlRef: true, executionIdOnAdmission: true },
           cancel: { canonicalRunCancellation: true, digestBound: true, idempotent: true },
           runs: { executionScopedStatus: true, eventReplay: true },
+          interactions: { responseDedupe: true },
         }
       },
       async refresh() {},
@@ -177,6 +208,9 @@ export class FakeTangleRetainedSandbox {
           sessionId,
           executionId,
           prompt: typeof message === 'string' ? message : JSON.stringify(message),
+          ...(options?.backend?.interactions === undefined
+            ? {}
+            : { interactions: structuredClone(options.backend.interactions) }),
         })
         return {
           sessionId,
@@ -251,6 +285,16 @@ export class FakeTangleRetainedSandbox {
           },
           async prompt() {
             throw new Error('Fake Tangle prompt is not used by retained dispatch')
+          },
+          async respondToInteraction(command: InteractionResponseCommand) {
+            return {
+              acknowledgement: {
+                operationId: command.operationId,
+                binding: command.binding,
+                commandDigest: command.commandDigest,
+                status: 'accepted',
+              },
+            }
           },
           async interrupt(options) {
             const executionId = options?.executionId

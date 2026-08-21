@@ -97,6 +97,11 @@ export function observeSandboxClient(
           },
         }),
     ...(source.fetch === undefined ? {} : { fetch: source.fetch.bind(source) }),
+    // The backend catalog decides which interaction kinds the provider may claim.
+    ...(source.listBackends === undefined
+      ? {}
+      : { listBackends: source.listBackends.bind(source) }),
+    ...(source.getBackend === undefined ? {} : { getBackend: source.getBackend.bind(source) }),
     ...(source.list === undefined
       ? {}
       : {

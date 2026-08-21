@@ -7,7 +7,7 @@ import type { BraidViewModel } from '../src/views/shared/models.js'
 import { activityDocument } from '../src/views/tui/activity-browser.js'
 import { executionTargetFor } from '../src/views/tui/execution-target.js'
 import { TerminalChrome } from '../src/views/tui/terminal-chrome.js'
-import { metricsFor } from '../src/views/tui/terminal-usage.js'
+import { footerMetricsFor, metricsFor } from '../src/views/tui/terminal-usage.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 
 const theme = createBraidTheme({ colors: false, highContrast: true, reducedMotion: true })
@@ -21,14 +21,12 @@ test('terminal usage keeps direct, analysis, and worker measurements separate an
     'out ≥20',
     '≥$0.0100',
     'calls ≥2',
-    'model ≥120ms',
-    'workers in 0 · out 0 · $0.0000 · calls 0 · model 0ms',
+    'latency ≥120ms',
+    'workers in 0 · out 0 · $0.0000 · calls 0 · latency 0ms',
   ])
 
-  const context = activityDocument(view).context ?? ''
-  assert.match(context, /in ≥10.*calls ≥2.*model ≥120ms/u)
-  assert.doesNotMatch(context, /analysis|unknown|missing/u)
-  assert.match(context, /workers .*calls 0.*model 0ms/u)
+  assert.equal(activityDocument(view).context, undefined)
+  assert.deepEqual(footerMetricsFor(view), ['in ≥10', 'out ≥20', '≥$0.0100', 'latency ≥120ms'])
 })
 
 test('terminal chrome keeps telemetry out of narrow layouts', () => {
@@ -37,7 +35,7 @@ test('terminal chrome keeps telemetry out of narrow layouts', () => {
     view: usageView(),
     quitArmed: false,
     activityVisible: false,
-    navigationHint: 'Ctrl+P commands',
+    navigationHint: '/ commands · Ctrl+P',
     composerMode: 'queue',
   })
 
@@ -65,6 +63,7 @@ test('terminal usage presents a complete estimate instead of an observed-cost fl
 
   assert.match(metricsFor(estimated).join(' · '), /~\$0\.1500/u)
   assert.doesNotMatch(metricsFor(estimated).join(' · '), /≥\$0\.1000/u)
+  assert.doesNotMatch(footerMetricsFor(estimated).join(' · '), /\$/u)
 
   const freeEstimate = {
     ...estimated,
@@ -89,7 +88,9 @@ test('execution identity comes from one active run receipt instead of current pr
     runner: 'codex',
     model: 'openai/gpt-next',
     effort: 'medium',
-    maxOutputTokens: 4096,
+    maxVisibleOutputTokens: 4096,
+    maxReasoningTokens: 2048,
+    maxTotalOutputTokens: 6144,
     connection: 'Next connection',
     status: 'running',
     statusText: 'streaming',
@@ -103,7 +104,9 @@ test('execution identity comes from one active run receipt instead of current pr
         runner: 'pi',
         model: 'tangle-router/glm-5.2',
         effort: 'high',
-        maxOutputTokens: 16_384,
+        maxVisibleOutputTokens: 16_384,
+        maxReasoningTokens: 8_192,
+        maxTotalOutputTokens: 24_576,
         connection: 'Local CLI Bridge',
         connectionId: 'connection-run',
         environmentId: 'environment-run',
@@ -142,8 +145,11 @@ test('execution identity comes from one active run receipt instead of current pr
     profileDigest: 'digest-run',
     runner: 'pi',
     model: 'tangle-router/glm-5.2',
+    backend: 'cli-bridge',
     effort: 'high',
-    maxOutputTokens: 16_384,
+    maxVisibleOutputTokens: 16_384,
+    maxReasoningTokens: 8_192,
+    maxTotalOutputTokens: 24_576,
     connection: 'Local CLI Bridge',
     connectionId: 'connection-run',
     environment: view.environments[0],
@@ -154,21 +160,25 @@ test('execution identity comes from one active run receipt instead of current pr
     view,
     quitArmed: false,
     activityVisible: true,
-    navigationHint: 'Ctrl+P commands',
+    navigationHint: '/ commands · Ctrl+P',
     composerMode: 'queue',
   })
   const rendered = chrome.render(120).join('\n')
-  assert.match(rendered, /profile Exact run profile/u)
-  assert.match(rendered, /pi \/ tangle-router\/glm-5\.2/u)
-  assert.match(rendered, /Local CLI Bridge/u)
+  assert.match(rendered, /Exact run profile/u)
+  assert.match(rendered, /harness pi · model tangle-router\/glm-5\.2/u)
+  assert.match(rendered, /CLI Bridge/u)
+  assert.doesNotMatch(rendered, /backend cli-bridge|pi · tangle-router/u)
   assert.doesNotMatch(rendered, /exec local CLI|active/u)
   assert.doesNotMatch(rendered, /Next profile|openai\/gpt-next|Next connection/u)
 
+  const spacious = chrome.render(200).join('\n')
+  assert.match(spacious, /backend CLI Bridge · connection Local CLI Bridge/u)
+
   const activity = activityDocument(view)
-  assert.match(activity.context ?? '', /Exact run profile · pi · tangle-router\/glm-5\.2/u)
+  assert.equal(activity.context, undefined)
   const detail = activity.rows[0]?.detailLines.join('\n') ?? ''
   assert.match(detail, /profile digest: digest-run/u)
-  assert.match(detail, /max output tokens: 16384/u)
+  assert.match(detail, /max visible output tokens: 16384/u)
 
   const { activeRunId: _activeRunId, ...idleView } = view
   const idleTarget = executionTargetFor({ ...idleView, status: 'completed' })
@@ -178,12 +188,143 @@ test('execution identity comes from one active run receipt instead of current pr
   assert.equal(idleTarget.environment, undefined)
 })
 
+test('the wide rail shows only observed sandbox facts and measured usage', () => {
+  const base = usageView()
+  const view: BraidViewModel = {
+    ...base,
+    status: 'running',
+    statusText: 'streaming',
+    activeRunId: 'sandbox-run',
+    runs: [
+      {
+        id: 'sandbox-run',
+        status: 'running',
+        completeness: 'streaming',
+        profileName: base.profileName,
+        runner: base.runner,
+        model: base.model,
+        effort: 'high',
+        maxVisibleOutputTokens: 16_384,
+        maxReasoningTokens: 8_192,
+        maxTotalOutputTokens: 24_576,
+        provider: 'tangle-sandbox',
+        connection: 'Tangle Sandbox',
+        environmentId: 'sandbox-1',
+        usage: { model: base.model },
+      },
+    ],
+    environments: [
+      {
+        id: 'sandbox-1',
+        connectionId: 'sandbox-connection',
+        kind: 'sandbox',
+        provider: 'tangle-sandbox',
+        lifecycle: 'ready',
+        location: 'remote',
+        runtimeEndpointHost: '10.0.0.7',
+        machineId: 'machine-a10',
+        verifiedRegion: 'us-central',
+        requestedResources: { cpuCores: 2, memoryMB: 4_096, diskGB: 20 },
+        resourceSample: {
+          cgroupVersion: 2,
+          memoryCurrentMb: 512,
+          memoryPeakMb: 768,
+          cpuUsageUsec: 2_500,
+          sampledAt: '2026-08-15T00:00:01.000Z',
+        },
+        gpu: {
+          provider: 'tangle',
+          accelerator: 'A10',
+          count: 1,
+          status: 'allocated',
+          billedCustomerCostUsd: 0.0123,
+        },
+        unavailableTelemetry: ['physical-ip'],
+        createdAt: '2026-08-15T00:00:00.000Z',
+        updatedAt: '2026-08-15T00:00:01.000Z',
+      },
+    ],
+  }
+  const chrome = new TerminalChrome(theme)
+  chrome.setState({
+    view,
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: '/ commands · Ctrl+P',
+    composerMode: 'queue',
+  })
+
+  const rendered = chrome.render(200).join('\n')
+  assert.match(rendered, /Sandbox/u)
+  assert.doesNotMatch(rendered, /backend tangle-sandbox/u)
+  assert.match(rendered, /host 10\.0\.0\.7/u)
+  assert.match(rendered, /machine machine-a10/u)
+  assert.match(rendered, /region us-central/u)
+  assert.match(rendered, /mem 512MB/u)
+  assert.match(rendered, /size 2cpu · 4GB · 20GB/u)
+  assert.match(rendered, /gpu 1× A10 \$0\.0123/u)
+  assert.match(rendered, /think high · caps vis 16k · reas 8\.2k · total 25k/u)
+  assert.doesNotMatch(rendered, /fixture\/deterministic|thinking none|unknown|not reported/u)
+  assert.match(rendered, /in 10|out 20|≥\$0\.0100|latency ≥120ms/u)
+  assert.doesNotMatch(rendered, /physical-ip|unknown/u)
+  const estimatedGpuView: BraidViewModel = {
+    ...view,
+    environments: view.environments.map((environment) => ({
+      ...environment,
+      ...(environment.gpu === undefined
+        ? {}
+        : (() => {
+            const { billedCustomerCostUsd: _billedCustomerCostUsd, ...gpu } = environment.gpu
+            return { gpu: { ...gpu, estimatedCustomerCostUsd: 0.42 } }
+          })()),
+    })),
+  }
+  chrome.setState({
+    view: estimatedGpuView,
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: '/ commands · Ctrl+P',
+    composerMode: 'queue',
+  })
+  const estimatedGpuFooter = chrome.render(200).join('\n')
+  assert.match(estimatedGpuFooter, /gpu 1× A10/u)
+  assert.doesNotMatch(estimatedGpuFooter, /\$0\.4200/u)
+  chrome.setState({
+    view,
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: '/ commands · Ctrl+P',
+    composerMode: 'queue',
+  })
+  for (const width of [60, 80, 99]) {
+    const medium = chrome.render(width).join('\n')
+    assert.match(medium, /profile Release engineer/u)
+    assert.match(medium, /Ctrl\+C cancel/u)
+    if (width >= 80) {
+      assert.match(medium, /pi \/ gpt-5\.6-luna/u)
+      assert.match(medium, /via Sandbox/u)
+    }
+    assert.doesNotMatch(medium, /host |machine |region |mem |size |gpu |\bin |\bout |\$|latency /u)
+    assert.doesNotMatch(medium, /unknown|not reported|…/u)
+  }
+  for (const width of [40, 60, 80, 99, 100, 120, 160, 200]) {
+    for (const line of chrome.render(width)) assert.ok(visibleWidth(line) <= width)
+  }
+})
+
 function usageView(): BraidViewModel {
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const base = createApplicationUiController(app).view()
   return {
     ...base,
+    profileName: 'Release engineer',
+    runner: 'pi',
+    model: 'openai-codex/gpt-5.6-luna',
+    effort: 'high',
+    maxVisibleOutputTokens: 16_384,
+    maxReasoningTokens: 8_192,
+    maxTotalOutputTokens: 24_576,
     sessionUsage: {
       turns: {
         sourceCount: 2,

@@ -13,6 +13,7 @@ export const PUBLIC_EVIDENCE_SCHEMA = 'braid.live-required.evidence.v1'
 export const PROOF_OPERATIONS = Object.freeze({
   tangleInference: 'tangle.inference.turn',
   tangleSandbox: 'tangle.sandbox.turn',
+  tangleSandboxInteractive: 'tangle.sandbox.interactive',
   traceAnalysis: 'trace.analysis.ask-promote',
   supervisor: 'supervisor.snapshot-reconnect-steer',
 })
@@ -32,6 +33,22 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'follow-up-session',
     'cancel-retry-conflict',
     'exact-resource-cleanup',
+  ]),
+  [PROOF_OPERATIONS.tangleSandboxInteractive]: Object.freeze([
+    'packed-binary',
+    'interactive-command',
+    'input',
+    'detach',
+    'reconnect',
+    'terminal-resize',
+    'same-local-run',
+    'same-provider-control-ref',
+    'sandbox-observed-before-stop',
+    'stop-through-braid',
+    'sandbox-observed-stopped',
+    'exact-resource-cleanup',
+    'process-exited-before-cleanup',
+    'process-group-exited-before-cleanup',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'source-frozen',
@@ -54,6 +71,16 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'cloudControl',
     'exactResource',
     'activeResourceDelta',
+  ]),
+  [PROOF_OPERATIONS.tangleSandboxInteractive]: Object.freeze([
+    'environmentId',
+    'localRunId',
+    'stoppedStatus',
+    'cloudControl',
+    'exactResource',
+    'processExitedBeforeWorkspaceCleanup',
+    'terminalResize',
+    'processGroupExitedBeforeWorkspaceCleanup',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'analysisId',
@@ -268,6 +295,10 @@ function validRequiredString(value, label) {
     throw new Error(`${label} must be a non-empty string`)
 }
 
+function record(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function validateCloudControl(value) {
   if (value === null) return
   if (typeof value !== 'object' || Array.isArray(value))
@@ -336,7 +367,13 @@ function validateProofFacts(operation, status, facts) {
         throw new Error('Live proof usage costUsd must be a non-negative finite number')
       continue
     }
-    if (key === 'promoted' || key === 'cancellationAvailable') {
+    if (
+      key === 'promoted' ||
+      key === 'cancellationAvailable' ||
+      key === 'processExitedBeforeWorkspaceCleanup' ||
+      key === 'terminalResize' ||
+      key === 'processGroupExitedBeforeWorkspaceCleanup'
+    ) {
       if (typeof value !== 'boolean') throw new Error(`Live proof ${key} must be boolean`)
       continue
     }
@@ -412,6 +449,59 @@ function validatePassedTangleSandboxReceipt(receipt) {
     throw new Error('Passed Tangle Sandbox proof requires redacted observations')
 }
 
+function validatePassedTangleSandboxInteractiveReceipt(receipt) {
+  if (receipt.run.ids.length !== 1)
+    throw new Error('Passed Tangle interactive proof requires one local run ID')
+  validRequiredString(receipt.run.environmentId, 'Passed Tangle interactive local environmentId')
+
+  const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
+  for (const field of requiredConnectionFields)
+    validRequiredString(receipt.connection[field], `Passed Tangle interactive connection.${field}`)
+  if (receipt.connection.connectionKind !== 'tangle-sandbox')
+    throw new Error('Passed Tangle interactive proof requires a tangle-sandbox connection')
+  if (receipt.connection.runner !== 'pi')
+    throw new Error('Passed Tangle interactive proof requires the native Pi harness')
+  if (receipt.connection.credentialConfigured !== true)
+    throw new Error('Passed Tangle interactive proof requires configured credentials')
+
+  if (receipt.facts.localRunId !== receipt.run.ids[0])
+    throw new Error('Passed Tangle interactive local run identity is inconsistent')
+  if (receipt.facts.environmentId !== receipt.run.environmentId)
+    throw new Error('Passed Tangle interactive environment identity is inconsistent')
+  if (!['aborted', 'cancelled'].includes(receipt.facts.stoppedStatus))
+    throw new Error('Passed Tangle interactive proof requires a terminal stopped status')
+  const cloudControl = receipt.facts.cloudControl
+  if (cloudControl === null)
+    throw new Error('Passed Tangle interactive proof requires exact cloud control identity')
+  for (const field of CLOUD_CONTROL_KEYS)
+    validRequiredString(cloudControl[field], `Passed Tangle interactive cloudControl.${field}`)
+  if (cloudControl.provider !== 'tangle-sandbox')
+    throw new Error('Passed Tangle interactive cloud control identity has the wrong provider')
+  if (!/^sha256:[0-9a-f]{64}$/u.test(cloudControl.requestDigest))
+    throw new Error('Passed Tangle interactive cloud control requestDigest is not a SHA-256 digest')
+  if (receipt.facts.exactResource !== true)
+    throw new Error('Passed Tangle interactive proof requires exact resource cleanup')
+  if (receipt.facts.processExitedBeforeWorkspaceCleanup !== true)
+    throw new Error('Passed Tangle interactive proof requires process exit before cleanup')
+  if (receipt.facts.terminalResize !== true)
+    throw new Error('Passed Tangle interactive proof requires terminal resize evidence')
+  if (receipt.facts.processGroupExitedBeforeWorkspaceCleanup !== true)
+    throw new Error('Passed Tangle interactive proof requires process-group exit before cleanup')
+  if (!record(receipt.observations) || Object.keys(receipt.observations).length === 0)
+    throw new Error('Passed Tangle interactive proof requires redacted observations')
+  for (const field of [
+    'checks',
+    'configuration',
+    'run',
+    'sandbox',
+    'identityContinuity',
+    'processCleanup',
+  ]) {
+    if (!record(receipt.observations[field]))
+      throw new Error(`Passed Tangle interactive proof requires observations.${field}`)
+  }
+}
+
 export function proofInvocation(scope) {
   if (typeof scope !== 'string' || scope.trim().length === 0)
     throw new Error('Live proof scope must be a non-empty string')
@@ -479,6 +569,11 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     throw new Error('Passed live proof must include every check for the named operation')
   if (receipt.operation === PROOF_OPERATIONS.tangleSandbox && receipt.status === 'passed')
     validatePassedTangleSandboxReceipt(receipt)
+  if (
+    receipt.operation === PROOF_OPERATIONS.tangleSandboxInteractive &&
+    receipt.status === 'passed'
+  )
+    validatePassedTangleSandboxInteractiveReceipt(receipt)
   return receipt
 }
 

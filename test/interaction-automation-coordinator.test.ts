@@ -4,22 +4,22 @@ import type {
   InteractionRequest,
   InteractionRequestMaterial,
 } from '@tangle-network/agent-interface'
+import { ruleUseReservationId } from '../src/app/automation-rule-persistence.js'
+import { automationOperationRecord } from '../src/app/automation-rule-store.js'
 import {
   automationPolicyDigest,
   InteractionAutomationCoordinator,
   type InteractionAutomationTarget,
   interactionAutomationOperationId,
 } from '../src/app/interaction-automation-coordinator.js'
-import { ruleUseReservationId } from '../src/app/automation-rule-persistence.js'
-import { automationOperationRecord } from '../src/app/automation-rule-store.js'
 import {
   createInteractionRequest,
   interactionResponseBinding,
 } from '../src/app/interaction-request.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
+import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createOperationId } from '../src/domain/ids.js'
 import type { BraidState } from '../src/domain/state.js'
-import type { BraidEventEnvelope } from '../src/domain/events.js'
 
 const NOW = '2026-08-09T00:00:00.000Z'
 

@@ -1,5 +1,5 @@
-import type { SemanticEvalArtifact, SemanticEvalCase, SemanticEvalScenario } from './types.js'
 import { SEMANTIC_CALIBRATION_FIXTURES, SEMANTIC_RELEASE_FIXTURES } from './fixtures.js'
+import type { SemanticEvalArtifact, SemanticEvalCase, SemanticEvalScenario } from './types.js'
 import {
   type CalibrationLabel,
   SEMANTIC_EVAL_CATEGORIES,

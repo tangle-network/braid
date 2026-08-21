@@ -34,6 +34,9 @@ export async function runBraid(options: CliOptions): Promise<number> {
       app: opened.app,
       close: opened.close,
       ...(opened.connections === undefined ? {} : { connections: opened.connections }),
+      ...(opened.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: opened.nativeInteractive }),
     },
   }
   let startupPreview: StartupPreview | undefined
@@ -76,6 +79,7 @@ async function openApplication(
   readonly app: BraidApplication
   readonly close: () => Promise<void>
   readonly connections?: ConnectionRegistry
+  readonly nativeInteractive?: import('../ports/native-interactive-execution.js').NativeInteractiveExecutionControl
   readonly setup?: ProductionStartupSetup
   readonly startupOptions?: ProductionStartupLoadOptions
   readonly profileConnectionOptions?: ProfileConnectionDispatchOptions
@@ -177,11 +181,7 @@ async function openApplication(
 async function openConfiguredApplication(
   startupOptions: ProductionStartupLoadOptions,
   production?: import('../app/production-composition.js').ProductionCompositionConfig,
-): Promise<{
-  readonly app: BraidApplication
-  readonly connections: ConnectionRegistry
-  readonly close: () => Promise<void>
-}> {
+): ReturnType<typeof openProductionApplication> {
   const configured = production ?? (await loadProductionStartup(startupOptions))
   const effectiveStartupOptions =
     startupOptions.databaseKeyFile === undefined && configured.databaseKeyFile !== undefined

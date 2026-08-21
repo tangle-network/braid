@@ -10,6 +10,7 @@ import type {
   RunRecord,
 } from './entities.js'
 import type { BraidEvent, BraidEventEnvelope } from './events.js'
+import { graphEdge, graphNode } from './graph-records.js'
 import {
   type BranchId,
   createDraftId,
@@ -24,10 +25,9 @@ import {
   type RunId,
 } from './ids.js'
 import { DomainInvariantError } from './invariants.js'
-import type { BraidMessagePart, BraidState } from './state.js'
 import { createAdmissionReceipt } from './receipts.js'
 import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
-import { graphEdge, graphNode } from './graph-records.js'
+import type { BraidMessagePart, BraidState } from './state.js'
 
 export class SequenceGapError extends Error {
   readonly code = 'SEQUENCE_GAP'

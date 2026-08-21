@@ -8,8 +8,7 @@ import {
   type EntityBrowserDocument,
   type EntityBrowserRow,
 } from './entity-browser.js'
-import { executionTargetFor, executionTargetForEntity } from './execution-target.js'
-import { metricsFor } from './terminal-usage.js'
+import { executionTargetFor } from './execution-target.js'
 import type { BraidTheme } from './theme.js'
 
 export type ActivityBrowserScope = 'all' | 'runs' | 'analyses' | 'workers'
@@ -34,14 +33,13 @@ export class ActivityBrowserPanel extends EntityBrowser {
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
     super(theme, {
-      document: (selectedId) =>
+      document: () =>
         activityDocument(
           options.view(),
           scopeState.scope,
           options.notice?.(),
           options.emptyMessage,
           options.pinned,
-          selectedId,
         ),
       rows: options.rows,
       onClose: options.onClose,
@@ -68,7 +66,6 @@ export function activityDocument(
   notice?: string,
   emptyMessage?: string,
   pinned?: string,
-  selectedId?: string,
 ): EntityBrowserDocument {
   const details = new Map(
     (view.entityDetails ?? []).map((detail) => [detailKey(detail), detail] as const),
@@ -78,17 +75,8 @@ export function activityDocument(
     .items.filter((item) => included(item, scope))
     .slice()
     .reverse()
-  const selected = items.find((item) => item.id === selectedId)
-  const target =
-    selected?.runId !== undefined
-      ? executionTargetFor(view, selected.runId)
-      : selected?.source?.entityType !== undefined && selected.source.entityId !== undefined
-        ? executionTargetForEntity(view, selected.source.entityType, selected.source.entityId)
-        : executionTargetFor(view)
-  const usage = metricsFor(view)
   return {
     title: scope === 'all' ? 'activity' : scope,
-    context: [target.profileName, target.runner, target.model, ...usage].join(' · '),
     filterHint: `tab filter: ${scope}`,
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
@@ -176,17 +164,18 @@ function runContext(
       : [`execution environment: ${sanitizeTerminalText(run.environmentId)}`]),
     `model: ${sanitizeTerminalText(target.model)}`,
     ...(target.effort === undefined ? [] : [`thinking: ${sanitizeTerminalText(target.effort)}`]),
-    ...(target.maxOutputTokens === undefined
+    ...(target.maxVisibleOutputTokens === undefined
       ? []
-      : [`max output tokens: ${target.maxOutputTokens}`]),
+      : [`max visible output tokens: ${target.maxVisibleOutputTokens}`]),
+    ...(target.maxReasoningTokens === undefined
+      ? []
+      : [`max reasoning tokens: ${target.maxReasoningTokens}`]),
+    ...(target.maxTotalOutputTokens === undefined
+      ? []
+      : [`max total output tokens: ${target.maxTotalOutputTokens}`]),
     ...(metrics.length === 0 ? [] : [`usage: ${metrics.join(' · ')}`]),
-    ...measurementValue('model calls', usage?.llmCalls, usage !== undefined),
-    ...measurementValue(
-      'model latency',
-      usage?.llmLatencyMs,
-      usage !== undefined,
-      (value) => `${Math.round(value)}ms`,
-    ),
+    ...measurementValue('model calls', usage?.llmCalls),
+    ...measurementValue('model latency', usage?.llmLatencyMs, (value) => `${Math.round(value)}ms`),
     ...measurementStatus('token measurement', usage?.tokenStatus),
     ...measurementStatus('cost measurement', usage?.costStatus),
     `history: ${sanitizeTerminalText(run.completeness)}`,
@@ -197,16 +186,14 @@ function runContext(
 function measurementValue(
   label: string,
   value: number | undefined,
-  measurementExists: boolean,
   format: (value: number) => string = (measured) => String(measured),
 ): readonly string[] {
-  if (value !== undefined) return [`${label}: ${format(value)}`]
-  return measurementExists ? [`${label}: not reported`] : []
+  return value === undefined ? [] : [`${label}: ${format(value)}`]
 }
 
 function measurementStatus(label: string, status: string | undefined): readonly string[] {
-  if (status === undefined) return []
-  return [`${label}: ${status === 'unknown' ? 'not reported' : status}`]
+  if (status === undefined || status === 'unknown') return []
+  return [`${label}: ${status}`]
 }
 
 function costLabel(usage: RunView['usage']): string | undefined {

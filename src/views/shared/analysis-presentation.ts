@@ -1,8 +1,8 @@
 import type { AnalysisRecord } from '../../domain/entities.js'
 import {
   analysisExecutionView,
-  analysisModelCallLine,
-  analysisModelCallSummary,
+  analysisMeasuredModelCallLine,
+  analysisMeasuredModelCallSummary,
 } from './analysis-model-call-presentation.js'
 import type { AnalysisView } from './models.js'
 import { sanitizeTerminalText } from './sanitize.js'
@@ -169,17 +169,13 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
     details.push(`next: ${nextAction}`)
   }
 
-  details.push(section('model use'))
   const execution = analysis.execution
   const route = analysisRouteLine(execution)
-  if (execution?.modelCalls === undefined) {
-    details.push('Model calls were not reported.')
-  } else if (execution.modelCalls.length === 0) {
-    details.push('0 model calls reported.')
-  } else {
-    details.push(analysisModelCallSummary(execution.modelCalls))
+  if (execution?.modelCalls !== undefined && execution.modelCalls.length > 0) {
+    details.push(section('model use'))
+    details.push(analysisMeasuredModelCallSummary(execution.modelCalls))
     for (const call of execution.modelCalls)
-      details.push(`model call ${analysisModelCallLine(call)}`)
+      details.push(`model call ${analysisMeasuredModelCallLine(call)}`)
   }
 
   if (analysis.error) details.push(`! ${sanitizeTerminalText(analysis.error)}`)

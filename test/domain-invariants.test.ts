@@ -8,6 +8,7 @@ import {
 } from '../src/app/interaction-request.js'
 import type { ConnectionRecord, RunRecord } from '../src/domain/entities.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
+import type { Digest } from '../src/domain/ids.js'
 import {
   createBranchId,
   createConnectionId,
@@ -30,7 +31,6 @@ import { reduceEvent } from '../src/domain/reducer.js'
 import type { BraidInteraction } from '../src/domain/runtime-projection.js'
 import { initialState } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
-import type { Digest } from '../src/domain/ids.js'
 
 const at = '2026-08-02T00:00:00.000Z'
 

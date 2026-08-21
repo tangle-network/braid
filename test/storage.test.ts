@@ -14,8 +14,8 @@ import {
 } from '../src/adapters/storage/sqlite-driver.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
-import { StorageJournal } from '../src/app/storage-journal.js'
 import { STARTER_PROFILE } from '../src/app/composition.js'
+import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import {
   createConversationId,
@@ -24,8 +24,8 @@ import {
   createRunId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
-import { FixedClock } from '../src/ports/clock.js'
 import { initialState } from '../src/domain/state.js'
+import { FixedClock } from '../src/ports/clock.js'
 import type { CredentialPort } from '../src/ports/credentials.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { JournalEvent, JsonValue, StoragePort } from '../src/ports/storage.js'

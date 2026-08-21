@@ -21,8 +21,8 @@ import {
 import { redactBraidEvent } from '../domain/redaction.js'
 import type { BraidState } from '../domain/state.js'
 import {
-  AnalysisSourceError,
   type AnalysisApplicationHost,
+  AnalysisSourceError,
   type AnalysisSourceRequest,
   type FrozenAnalysisEvent,
   type FrozenAnalysisEvidence,

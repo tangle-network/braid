@@ -7,8 +7,8 @@ import type { AutomationRuleMatcher, AutomationRuleRecord } from '../domain/enti
 import type { BraidEventEnvelope } from '../domain/events.js'
 import type { BraidInteraction } from '../domain/runtime-projection.js'
 import type { BraidState } from '../domain/state.js'
-import type { AutomationRuleMetadata } from './automation-matching.js'
 import { SerializedActionQueue } from './action-serialization.js'
+import type { AutomationRuleMetadata } from './automation-matching.js'
 import type {
   ApplyAutomationReceipt,
   AutomationContext,
@@ -103,7 +103,7 @@ export function createAutomationActions(options: {
     readonly automationRule?: AutomationRuleRecord
   }) => Promise<import('./application-types.js').InteractionReceipt>
   readonly reconcilePending?: () => Promise<void>
-  readonly canRespond: () => boolean
+  readonly canRespond: (runId?: string) => boolean
 }): AutomationActions {
   const queue = new SerializedActionQueue()
   const store = (): AutomationStoreInput => ({
@@ -117,6 +117,7 @@ export function createAutomationActions(options: {
     create: async (input) => {
       const receipt = await queue.run(async () => {
         const target = targetFor(options.state(), input.runId, input.interactionId)
+        assertCanRespond(options, target)
         const request = requestFor(target, input.request)
         return createAutomationRule({
           ...store(),
@@ -131,6 +132,7 @@ export function createAutomationActions(options: {
     update: async (input) => {
       const receipt = await queue.run(async () => {
         const target = targetFor(options.state(), input.runId, input.interactionId)
+        assertCanRespond(options, target)
         const request = input.request ?? target?.request
         return updateAutomationRule({
           ...store(),
@@ -148,6 +150,7 @@ export function createAutomationActions(options: {
         const target = targetFor(state, input.runId, input.interactionId)
         if (target === undefined)
           throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+        assertCanRespond(options, target)
         return dryRunAutomation({
           ...store(),
           operationId: input.operationId,
@@ -157,15 +160,11 @@ export function createAutomationActions(options: {
       }),
     apply: (input) =>
       queue.run(async () => {
-        if (!options.canRespond())
-          throw new AppError(
-            'CAPABILITY_UNAVAILABLE',
-            'The current runtime cannot acknowledge interaction responses',
-          )
         const state = options.state()
         const target = targetFor(state, input.runId, input.interactionId)
         if (target === undefined)
           throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+        assertCanRespond(options, target)
         return applyAutomation({
           ...store(),
           operationId: input.operationId,
@@ -193,6 +192,17 @@ export function createAutomationActions(options: {
     },
     list: () => structuredClone(options.state().rules) as readonly StoredAutomationRule[],
   }
+}
+
+function assertCanRespond(
+  options: { readonly canRespond: (runId?: string) => boolean },
+  target: BraidInteraction | undefined,
+): void {
+  if (target === undefined || options.canRespond(target.runId)) return
+  throw new AppError(
+    'CAPABILITY_UNAVAILABLE',
+    'The current runtime cannot acknowledge interaction responses',
+  )
 }
 
 function targetFor(

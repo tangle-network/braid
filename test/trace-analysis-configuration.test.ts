@@ -582,10 +582,12 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
   if (!result.succeeded) return
   assert.equal(receivedAuthorization, 'Bearer credential-never-recorded')
   assert.deepEqual(receivedBody?.messages, [
-    { role: 'system', content: 'private analyst instruction' },
-    { role: 'user', content: 'private trace question' },
+    {
+      role: 'user',
+      content: JSON.stringify({ messages: optimizerRequest().request.messages }),
+    },
   ])
-  assert.equal(receivedBody?.max_tokens, 64)
+  assert.equal(receivedBody?.max_tokens, undefined)
   assert.equal(receivedBody?.temperature, 0.2)
   assert.deepEqual(receivedBody?.response_format, {
     type: 'json_schema',
@@ -638,6 +640,9 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
           default: 'tangle-router/glm-5.2',
           provider: 'tangle-router',
           reasoningEffort: 'high',
+          maxVisibleOutputTokens: 128,
+          maxReasoningTokens: 256,
+          maxTotalOutputTokens: 384,
         },
       },
       connection: selected,
@@ -672,17 +677,22 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(bridge.requests.length, 1)
     assert.deepEqual(
       admissions.map((admission) => admission.phase),
-      ['environment', 'dispatched'],
+      ['intent', 'environment', 'dispatched'],
     )
-    const body = bridge.requests[0]?.body
-    assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
-    assert.equal(body?.max_tokens, undefined)
-    const executionProfile = body?.agent_profile as AgentProfile
+    const request = bridge.requests[0]
+    const session = request?.session
+    assert.equal(session?.model, 'pi/tangle-router/glm-5.2')
+    assert.equal(request?.body.max_tokens, undefined)
+    assert.equal(session?.body.max_tokens, undefined)
+    const executionProfile = session?.body.agent_profile as AgentProfile
     assert.equal(executionProfile.harness, 'pi')
     assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
     assert.equal(executionProfile.model?.provider, 'tangle-router')
     assert.equal(executionProfile.model?.reasoningEffort, 'none')
-    assert.equal(executionProfile.model?.metadata?.maxTokens, 64)
+    assert.equal(executionProfile.model?.maxVisibleOutputTokens, 64)
+    assert.equal(executionProfile.model?.maxReasoningTokens, 256)
+    assert.equal(executionProfile.model?.maxTotalOutputTokens, 384)
+    assert.equal(Object.hasOwn(executionProfile.model?.metadata ?? {}, 'maxTokens'), false)
     assert.equal(executionProfile.model?.metadata?.retry, undefined)
     assert.match(executionProfile.prompt?.systemPrompt ?? '', /text-generation endpoint/u)
     assert.match(executionProfile.prompt?.systemPrompt ?? '', /messages array/u)
@@ -702,10 +712,9 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       write: 'deny',
     })
     assert.deepEqual(executionProfile.extensions, { pi: { load: [] } })
-    const messages = body?.messages as Array<{ readonly role?: string; readonly content?: string }>
-    assert.equal(messages.length, 1)
-    assert.equal(messages[0]?.role, 'user')
-    assert.deepEqual(JSON.parse(messages[0]?.content ?? '{}'), {
+    const message = request?.body.message
+    assert.equal(typeof message, 'string')
+    assert.deepEqual(JSON.parse(typeof message === 'string' ? message : '{}'), {
       messages: optimizerRequest().request.messages,
     })
     assert.equal(

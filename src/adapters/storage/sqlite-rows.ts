@@ -7,8 +7,8 @@ import {
   parseRunId,
 } from '../../domain/ids.js'
 import { isCanonicalIsoDateTime } from '../../domain/text.js'
-import { CredentialError, credentialRef } from '../../ports/credentials.js'
 import type { CredentialRef } from '../../ports/credentials.js'
+import { CredentialError, credentialRef } from '../../ports/credentials.js'
 import type { EffectRecord } from '../../ports/effect-storage.js'
 import type {
   JsonValue,
@@ -18,9 +18,9 @@ import type {
   ProjectionSnapshot,
 } from '../../ports/storage.js'
 import { isJsonValue, PROJECTION_SCHEMA_VERSION } from '../../ports/storage.js'
-import { assertEffectRecordInput } from './storage-validation.js'
 import { StorageError } from './sqlite-errors.js'
 import type { CursorRow, OperationRow, SqliteEventRow } from './sqlite-types.js'
+import { assertEffectRecordInput } from './storage-validation.js'
 
 export function now(): string {
   return new Date().toISOString()

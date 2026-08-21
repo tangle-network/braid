@@ -17,7 +17,12 @@ import {
   runFromState,
   stateForRun,
 } from './protocol.mjs'
-import { evidenceValue, redactString, withoutBridgeSecrets } from './redaction.mjs'
+import {
+  evidenceValue,
+  redactString,
+  withoutBraidLiveSecrets,
+  withoutBridgeSecrets,
+} from './redaction.mjs'
 import {
   assertObservedUsage,
   assertTargetRunIdentity,
@@ -47,7 +52,7 @@ export async function executeTarget(
   const config = await writeTargetConfig(root, endpoint, target, credential)
   const statePath = join(config.workspace, 'braid.sqlite')
   const env = {
-    ...withoutBridgeSecrets(),
+    ...withoutBridgeSecrets(withoutBraidLiveSecrets()),
     NO_COLOR: '1',
     NODE_NO_WARNINGS: '1',
     BRAID_STATE_PATH: statePath,
@@ -98,7 +103,10 @@ export async function executeTarget(
       operationPrefix,
       timeoutMs,
     })
-    await verifyInteraction(session, result, providerCapabilities, terminal, { operationPrefix })
+    await verifyInteraction(session, result, providerCapabilities, terminal, {
+      operationPrefix,
+      runId,
+    })
     assertTargetSemantics(result, { strict })
     if (strict) {
       const targetProof = assertTargetRunIdentity(finalRun, target)
@@ -232,7 +240,7 @@ function targetResult(config, target, providerCapabilities, credential, operatio
 
 function operationEnvironment(config) {
   return {
-    ...withoutBridgeSecrets(),
+    ...withoutBridgeSecrets(withoutBraidLiveSecrets()),
     NO_COLOR: '1',
     NODE_NO_WARNINGS: '1',
     BRAID_STATE_PATH: join(config.workspace, 'braid.sqlite'),

@@ -1,18 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { type AgentExactRunControlRef, defineAgentProfile } from '@tangle-network/agent-interface'
+import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
+import { capabilitiesForConnection } from '../src/adapters/connections/production-connection-providers.js'
+import { createTangleRetainedControlLookup } from '../src/adapters/connections/tangle-retained-control-lookup.js'
+import { safeExecutionId } from '../src/adapters/runtime/production-backend-common.js'
 import {
   resolveTangleSandboxBackend,
   resolveTangleSandboxRetainedConnection,
 } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
-import { capabilitiesForConnection } from '../src/adapters/connections/production-connection-providers.js'
+import type { ObservableSandboxClient } from '../src/adapters/runtime/sandbox-observation-types.js'
 import {
   createTangleRetainedPlan,
   startTangleRetainedRun,
 } from '../src/adapters/runtime/tangle-retained-run.js'
-import { withRetainedSandboxPolicy } from '../src/adapters/runtime/tangle-sandbox-retention.js'
+import {
+  retainedSandboxIdentity,
+  withRetainedSandboxPolicy,
+} from '../src/adapters/runtime/tangle-sandbox-retention.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
-import type { ObservableSandboxClient } from '../src/adapters/runtime/sandbox-observation-types.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
@@ -230,6 +236,62 @@ test('published Sandbox methods recover the exact retained dispatch without an i
   assert.deepEqual(await prepared.discoverControlRef(input.runId), handle.controlRef)
 })
 
+test('retained control lookup uses the hashed identity for long provider sessions', async () => {
+  const providerSessionId = `session-${'x'.repeat(220)}`
+  const executionId = safeExecutionId('run/long-provider-session')
+  const identity = retainedSandboxIdentity(providerSessionId)
+  const controlRef: AgentExactRunControlRef = {
+    runId: 'provider-run-long-session',
+    provider: 'tangle-sandbox',
+    environmentId: 'sandbox-long-provider-session',
+    sessionId: providerSessionId,
+    executionId,
+    requestDigest: `sha256:${'a'.repeat(64)}`,
+  }
+  const box = {
+    id: controlRef.environmentId,
+    name: identity.name,
+    metadata: {
+      ...identity.metadata,
+      retainedIdempotencyKey: identity.environmentIdempotencyKey,
+      sessionId: providerSessionId,
+      executionId,
+    },
+    async *streamPrompt() {},
+    session(sessionId: string) {
+      assert.equal(sessionId, providerSessionId)
+      return {
+        async status() {
+          return { runControlRef: controlRef }
+        },
+      } as never
+    },
+  } as unknown as SandboxInstanceLike
+  const client = {
+    async create() {
+      return box
+    },
+    async list() {
+      return [box]
+    },
+    async get(id: string) {
+      assert.equal(id, box.id)
+      return box
+    },
+  } as SandboxClientLike
+
+  const lookup = createTangleRetainedControlLookup(client)
+  const recovered = await lookup({
+    connectionId: createConnectionId('connection-tangle-long-session'),
+    braidRunId: 'run/long-provider-session',
+    providerSessionId,
+    executionId,
+    environmentIdempotencyKey: identity.environmentIdempotencyKey,
+  })
+
+  assert.deepEqual(recovered, controlRef)
+})
+
 test('retained resolution admits exact control when provider lookup is configured', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
   const { connection, options, input, selection } = setup(sandbox)
@@ -262,19 +324,23 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.name, prepared.environmentName)
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
+  // Runtime writes the ownership key only. Turn and process identity stay in the
+  // durable admission and in the session's own run control reference.
   assert.deepEqual(sandbox.createCalls[0]?.metadata, {
     ...prepared.environmentMetadata,
     retainedIdempotencyKey: prepared.environmentIdempotencyKey,
-    sessionId: prepared.providerSessionId,
-    executionId: 'run-tangle-retained',
   })
+  const intent = admissions[0]
+  if (intent?.phase !== 'intent') throw new Error('The first admission must record the intent')
+  assert.match(intent.requestDigest, /^sha256:[0-9a-f]{64}$/u)
+  assert.equal(intent.runId, `retained-intent-run:${intent.requestDigest.slice('sha256:'.length)}`)
   assert.equal(handle.controlRef.environmentId, sandbox.boxes[0]?.id)
   assert.equal(handle.controlRef.sessionId, prepared.providerSessionId)
-  assert.equal(handle.controlRef.executionId, 'run-tangle-retained')
+  assert.equal(handle.controlRef.executionId, safeExecutionId('run/tangle-retained'))
   assert.match(handle.controlRef.requestDigest, /^sha256:[0-9a-f]{64}$/u)
   assert.deepEqual(
     admissions.map((admission) => admission.phase),
-    ['environment', 'dispatched'],
+    ['intent', 'environment', 'dispatched'],
   )
 
   sandbox.complete(handle.controlRef.executionId, 'RETAINED_OK')
@@ -302,6 +368,24 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
     replayed.map((event) => event.cursor),
     [events[1]?.cursor],
   )
+})
+
+test('retained Tangle dispatch receives the exact requested interaction map', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const { input } = setup(sandbox)
+  const prepared = await prepareFakeTangleRetainedConnection({
+    sandbox,
+    profile,
+    runId: input.runId,
+  })
+  const interactions = { permission: true, question: false, plan: true } as const
+
+  await startTangleRetainedRun(createTangleRetainedPlan(prepared, input.runId), {
+    ...input,
+    interactions,
+  })
+
+  assert.deepEqual(sandbox.dispatches[0]?.interactions, interactions)
 })
 
 test('ambiguous dispatch failure never deletes the retained environment', async () => {

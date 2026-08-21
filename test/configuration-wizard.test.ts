@@ -310,7 +310,7 @@ test('mounted first-run setup preserves choices and fits keyboard guidance at na
       }
 
       assert.match(frame('profile'), /choose an AgentProfile/u)
-      assert.match(frame('profile'), /filter · enter choose · esc cancel/u)
+      assert.match(frame('profile'), /filter · enter choose · ←\/esc cancel/u)
       terminal.sendInput('\u001b[B')
       terminal.sendInput('\r')
       await terminal.waitForRender()

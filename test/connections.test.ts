@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
-import { createTangleProvider } from '@tangle-network/agent-provider-tangle'
 import { streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
 import { normalizeTangleInferenceRuntimeBaseUrl } from '../src/adapters/connections/production-connection-endpoints.js'
 import {
@@ -15,9 +14,11 @@ import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
   resolveProductionBackend,
+  resolveProductionCliBridgeConnection,
 } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry, mergeConnectionTelemetry } from '../src/app/connections.js'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { providerEventFor } from '../src/app/run-event-mapper.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
@@ -25,6 +26,8 @@ import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { BRAID_SANDBOX_INTERACTION_UNSUPPORTED } from '../src/domain/runtime-diagnostics.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { ExecuteTurnInput } from '../src/ports/execution.js'
+import { environmentSupportsInteractionResponse } from '../src/ports/execution.js'
+import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const at = '2026-08-03T12:00:00.000Z'
 
@@ -55,6 +58,27 @@ function profile(
   const provider =
     (segments[0] === harness ? (segments[1] ?? segments[0]) : segments[0]) ?? 'fixture'
   return { model: { default: model, provider }, harness }
+}
+
+/** The exact interaction request a sandbox publishes when it asks a question. */
+function questionRequest(runId = 'run-connection-test') {
+  const interactionId = 'question-1'
+  return createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue the operation?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'tangle-sandbox',
+      environmentId: 'sandbox-awaiting_question',
+      sessionId: 'session-connection-test',
+      executionId: runId,
+      interactionId,
+    },
+  })
 }
 
 function turnInput(profileValue: AgentProfile): ExecuteTurnInput {
@@ -259,7 +283,6 @@ test('capability reports combine published provider capabilities with runtime me
   assert.equal(cliCapabilities.actions.usage, publishedEnvironment.usage)
   assert.equal(cliCapabilities.actions.replay, publishedEnvironment.streaming.replay)
   assert.equal(cliCapabilities.actions['continue-session'], publishedEnvironment.sessions.continue)
-  assert.equal(cliCapabilities.providerMethods.respondToInteraction, false)
   assert.equal(cliCapabilities.actions['respond-interaction'], false)
   assert.equal(cliCapabilities.runtime.backend, 'chat')
 
@@ -272,18 +295,38 @@ test('capability reports combine published provider capabilities with runtime me
   assert.equal(sandboxCapabilities.runtime.backend, 'executor')
 })
 
-test('upstream reproduction: published providers expose no interaction response channel', async () => {
-  const cli = createCliBridgeProvider({ baseUrl: 'http://127.0.0.1:4010' })
-  const cliEnvironment = await cli.create({ profile: {} })
-  assert.equal('respondToInteraction' in cliEnvironment, false)
+test('the capability document decides whether a route can answer an interaction', async () => {
+  const bridgeServer = await startRuntimeBridgeServer()
+  try {
+    // The Bridge publishes native interactions only for its Pi route, and the
+    // runtime executes a response only when the document records every
+    // acknowledgement. Braid reads the same fact.
+    const pi = createCliBridgeProvider({
+      baseUrl: bridgeServer.endpoint,
+      defaultModel: 'pi/openai/gpt-5',
+    })
+    const piDocument = await pi.capabilities()
+    assert.deepEqual(piDocument.interactions?.kinds, ['permission'])
+    assert.equal(environmentSupportsInteractionResponse(piDocument), true)
 
-  const tangle = createTangleProvider({
-    client: {
-      create: async () => ({ id: 'sandbox-test', streamPrompt: async function* () {} }),
-    },
-  })
-  const tangleEnvironment = await tangle.create({ profile: {} })
-  assert.equal('respondToInteraction' in tangleEnvironment, false)
+    const generic = createCliBridgeProvider({
+      baseUrl: bridgeServer.endpoint,
+      defaultModel: 'opencode/zai-coding-plan/glm-5.2',
+    })
+    const genericDocument = await generic.capabilities()
+    assert.equal(genericDocument.interactions, undefined)
+    assert.equal(environmentSupportsInteractionResponse(genericDocument), false)
+
+    const report = await createProductionConnectionAdapter(
+      connection('cli-bridge', 'respond-capability', bridgeServer.endpoint),
+    ).capabilities()
+    assert.equal(
+      report.actions['respond-interaction'],
+      environmentSupportsInteractionResponse(report.environment),
+    )
+  } finally {
+    await bridgeServer.close()
+  }
 })
 
 test('production resolver routes chat connections through agent-runtime', async () => {
@@ -312,13 +355,15 @@ test('production resolver routes chat connections through agent-runtime', async 
   )
   assert.equal(backend.kind, 'prepared-execution')
   const events = []
-  for await (const event of streamAgentTurn(backend.backend, 'hello')) events.push(event)
+  for await (const event of streamAgentTurn(backend.backend, { prompt: 'hello' }))
+    events.push(event)
   assert.equal(events.at(-1)?.type, 'final')
   assert.equal(calls[0]?.model, 'openai/gpt-5')
 })
 
 test('CLI Bridge and sandbox resolvers expose only supported runtime backend shapes', async () => {
-  const bridge = connection('cli-bridge', 'bridge', 'http://127.0.0.1:4010')
+  const bridgeServer = await startRuntimeBridgeServer()
+  const bridge = connection('cli-bridge', 'bridge', bridgeServer.endpoint)
   const sandbox = connection('tangle-sandbox', 'sandbox', 'https://sandbox.test', true)
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox')
@@ -330,8 +375,16 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       return {
         id: 'sandbox-test',
         async *streamPrompt() {
-          yield { type: 'text', data: { text: 'hello from sandbox' } }
-          yield { type: 'result', data: { text: 'hello from sandbox' } }
+          yield { type: 'token', data: { delta: 'hello from sandbox' } }
+          yield {
+            type: 'done',
+            data: {
+              outcome: { type: 'completed' },
+              status: 'success',
+              success: true,
+              finalText: 'hello from sandbox',
+            },
+          }
         },
         async delete() {},
       }
@@ -345,17 +398,22 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
     workspaceCwd: '/tmp/braid-connection-test',
     select: () => ({ connection: { connectionId: bridge.id } }),
   }
-  const cliBackend = await resolveProductionBackend(
-    options,
-    turnInput(profile('openai/gpt-5', 'pi')),
-    {
-      connection: { connectionId: bridge.id },
-    },
+  // CLI Bridge execution belongs to the retained port; the ephemeral resolver refuses it.
+  await assert.rejects(
+    () =>
+      resolveProductionBackend(options, turnInput(profile('openai/gpt-5', 'pi')), {
+        connection: { connectionId: bridge.id },
+      }),
+    /owned by CliBridgeRetainedExecutionPort/u,
   )
-  assert.equal(cliBackend.kind, 'prepared-execution')
+  const cliBackend = await resolveProductionCliBridgeConnection(options, {
+    ...turnInput(profile('openai/gpt-5', 'pi')),
+    connectionId: bridge.id,
+  })
   assert.equal(cliBackend.materializationReceipt.runner, 'pi')
   assert.equal(cliBackend.materializationReceipt.model, 'openai/gpt-5')
-  assert.deepEqual(cliBackend.backend.profile, profile('openai/gpt-5', 'pi'))
+  assert.equal(cliBackend.materializationReceipt.route, 'pi/openai/gpt-5')
+  assert.deepEqual(cliBackend.profile, profile('openai/gpt-5', 'pi'))
 
   const sandboxBackend = await resolveProductionBackend(options, turnInput(profile()), {
     connection: { connectionId: sandbox.id },
@@ -373,7 +431,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   )
   assert.deepEqual(sandboxBackend.backend.profile, profile())
   const sandboxEvents = []
-  for await (const event of streamAgentTurn(sandboxBackend.backend, 'say hello')) {
+  for await (const event of streamAgentTurn(sandboxBackend.backend, { prompt: 'say hello' })) {
     sandboxEvents.push(event)
   }
   const sandboxTerminal = sandboxEvents.at(-1)
@@ -404,6 +462,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
       /harness=claude-code.*model=openai\/gpt-4o.*not changed/iu.test(error.message),
   )
+  await bridgeServer.close()
 })
 
 test('sandbox success=false fails closed despite a conflicting success status', async () => {
@@ -427,6 +486,7 @@ test('sandbox success=false fails closed despite a conflicting success status', 
           yield {
             type: 'done',
             data: {
+              outcome: { type: 'completed' },
               status: 'success',
               success: false,
               error: 'provider rejected token=do-not-persist',
@@ -451,6 +511,9 @@ test('sandbox success=false fails closed despite a conflicting success status', 
   assert.equal(terminal.status, 'failed')
   assert.match(terminal.reason, /\[redacted secret\]/u)
   assert.doesNotMatch(terminal.reason, /do-not-persist/u)
+  // The runtime carries the provider's raw terminal payload, so the whole
+  // event, not only its reason, must be free of the provider secret.
+  assert.doesNotMatch(JSON.stringify(terminal), /do-not-persist/u)
   const tokenUsage = terminal.metadata?.tokenUsage as
     | { readonly input?: unknown; readonly output?: unknown }
     | undefined
@@ -487,36 +550,46 @@ test('ephemeral sandboxes reject interactions that cannot survive cleanup', asyn
             async *streamPrompt() {
               if (status === 'blocked_on_approval') {
                 yield {
-                  type: 'result',
+                  type: 'done',
                   data: {
+                    outcome: { type: 'completed' },
+                    status: 'blocked_on_approval',
                     success: false,
                     toolInvocations: [
                       {
                         toolName: 'github_create_issue',
                         isError: true,
-                        result: { error: { code: 'HUB_APPROVAL_REQUIRED' } },
+                        result: {
+                          code: 'HUB_APPROVAL_REQUIRED',
+                          message: 'Hub action requires approval',
+                        },
                       },
                     ],
                   },
                 }
               } else if (status === 'awaiting_question') {
+                yield { type: 'interaction', data: { request: questionRequest() } }
                 yield {
-                  type: 'interaction',
+                  type: 'done',
                   data: {
-                    request: { id: 'question-1', kind: 'question', answerSpec: { fields: [] } },
+                    outcome: { type: 'completed' },
+                    finalText: '',
+                    status: 'awaiting_question',
                   },
                 }
-                yield { type: 'result', data: { finalText: '' } }
               } else {
+                const plan = {
+                  id: 'plan-1',
+                  revision: 1,
+                  body: 'Inspect the workspace',
+                  submittedAt: at,
+                }
                 yield {
-                  type: 'result',
+                  type: 'done',
                   data: {
-                    plan: {
-                      id: 'plan-1',
-                      revision: 1,
-                      body: 'Inspect the workspace',
-                      submittedAt: at,
-                    },
+                    outcome: { type: 'awaiting_plan_decision', plan },
+                    status: 'awaiting_plan_decision',
+                    plan,
                   },
                 }
               }
@@ -600,55 +673,59 @@ test('sandbox creation receives the Runtime abort signal', { timeout: 2_000 }, a
 })
 
 test('CLI Bridge materializes portable models into routes and rejects incompatible runners', async () => {
-  const bridge = connection('cli-bridge', 'route', 'http://127.0.0.1:4010')
-  const options: ProductionBackendResolverOptions = {
+  const bridgeServer = await startRuntimeBridgeServer()
+  const bridge = connection('cli-bridge', 'route', bridgeServer.endpoint)
+  const bridgeOptions = (
+    selection: { readonly runner?: 'pi' | 'codex'; readonly model?: string } = {},
+  ): ProductionBackendResolverOptions => ({
     connections: new ConnectionRegistry([bridge]),
     workspaceCwd: '/tmp/braid-bridge-route',
-    select: () => ({ connection: { connectionId: bridge.id } }),
+    select: () => ({ connection: { connectionId: bridge.id }, ...selection }),
+  })
+  try {
+    const prepared = await resolveProductionCliBridgeConnection(
+      bridgeOptions({ runner: 'codex', model: 'default' }),
+      turnInput(profile('default', 'codex')),
+    )
+    assert.equal(prepared.materializationReceipt.runner, 'codex')
+    assert.equal(prepared.materializationReceipt.model, 'default')
+    assert.equal(prepared.route, 'codex/default')
+    const priorPiProfile = profile('pi/tangle-router/glm-5.2', 'pi')
+    const priorPi = await resolveProductionCliBridgeConnection(
+      bridgeOptions(),
+      turnInput(priorPiProfile),
+    )
+    assert.deepEqual(priorPi.profile, priorPiProfile)
+    assert.equal(priorPi.materializationReceipt.model, 'pi/tangle-router/glm-5.2')
+    const priorCodexProfile = profile('codex/default', 'codex')
+    const priorCodex = await resolveProductionCliBridgeConnection(
+      bridgeOptions(),
+      turnInput(priorCodexProfile),
+    )
+    assert.deepEqual(priorCodex.profile, priorCodexProfile)
+    assert.equal(priorCodex.materializationReceipt.model, 'codex/default')
+    await assert.rejects(
+      () =>
+        resolveProductionCliBridgeConnection(
+          bridgeOptions({ runner: 'codex', model: 'codex/default' }),
+          turnInput(profile('default', 'codex')),
+        ),
+      /conflicts with AgentProfile\.model\.default/u,
+    )
+    await assert.rejects(
+      () =>
+        resolveProductionCliBridgeConnection(
+          bridgeOptions({ runner: 'codex', model: 'zai-coding-plan/glm-5.2' }),
+          turnInput(profile('zai-coding-plan/glm-5.2', 'codex')),
+        ),
+      (error: unknown) =>
+        error instanceof ConnectionError &&
+        error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
+        /runner=codex.*model=zai-coding-plan\/glm-5\.2.*not changed.*runner=opencode/iu.test(
+          error.message,
+        ),
+    )
+  } finally {
+    await bridgeServer.close()
   }
-  const prepared = await resolveProductionBackend(options, turnInput(profile('default', 'codex')), {
-    connection: { connectionId: bridge.id },
-    runner: 'codex',
-    model: 'default',
-  })
-  assert.equal(prepared.kind, 'prepared-execution')
-  assert.equal(prepared.materializationReceipt.runner, 'codex')
-  assert.equal(prepared.materializationReceipt.model, 'default')
-  const priorPiProfile = profile('pi/tangle-router/glm-5.2', 'pi')
-  const priorPi = await resolveProductionBackend(options, turnInput(priorPiProfile), {
-    connection: { connectionId: bridge.id },
-  })
-  assert.equal(priorPi.kind, 'prepared-execution')
-  assert.deepEqual(priorPi.backend.profile, priorPiProfile)
-  assert.equal(priorPi.materializationReceipt.model, 'pi/tangle-router/glm-5.2')
-  const priorCodexProfile = profile('codex/default', 'codex')
-  const priorCodex = await resolveProductionBackend(options, turnInput(priorCodexProfile), {
-    connection: { connectionId: bridge.id },
-  })
-  assert.equal(priorCodex.kind, 'prepared-execution')
-  assert.deepEqual(priorCodex.backend.profile, priorCodexProfile)
-  assert.equal(priorCodex.materializationReceipt.model, 'codex/default')
-  await assert.rejects(
-    () =>
-      resolveProductionBackend(options, turnInput(profile('default', 'codex')), {
-        connection: { connectionId: bridge.id },
-        runner: 'codex',
-        model: 'codex/default',
-      }),
-    /conflicts with AgentProfile\.model\.default/u,
-  )
-  await assert.rejects(
-    () =>
-      resolveProductionBackend(options, turnInput(profile('zai-coding-plan/glm-5.2', 'codex')), {
-        connection: { connectionId: bridge.id },
-        runner: 'codex',
-        model: 'zai-coding-plan/glm-5.2',
-      }),
-    (error: unknown) =>
-      error instanceof ConnectionError &&
-      error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
-      /runner=codex.*model=zai-coding-plan\/glm-5\.2.*not changed.*runner=opencode/iu.test(
-        error.message,
-      ),
-  )
 })

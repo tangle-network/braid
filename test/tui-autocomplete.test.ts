@@ -243,7 +243,7 @@ test('the production terminal does not turn a fast profile command into unknown 
     await waitUntil(() => view.editor.isShowingAutocomplete())
     terminal.sendInput('profile')
     terminal.sendInput('\r')
-    await waitUntil(() => terminal.getViewport().join('\n').includes('profiles'))
+    await waitUntil(() => terminal.getViewport().join('\n').includes('Braid starter'))
     const screen = terminal.getViewport().join('\n')
     assert.doesNotMatch(screen, /unknown command \/profilnew/iu)
     assert.doesNotMatch(screen, /unknown command \/profilenew/iu)

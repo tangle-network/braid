@@ -30,6 +30,10 @@ import {
 import { runMatrixAdapter, runSandbox } from './live-required/tangle.mjs'
 import { executionLatencyDistribution } from './live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
+  errorDetails,
+  MissingIntegrationError,
+} from './live-required/tangle-sandbox-braid-stress-support.mjs'
+import {
   assertExactResumeEvidence,
   cancellationReplayDetected,
   cleanupProof,
@@ -645,6 +649,19 @@ test('nested credential fields and error text are redacted before public output'
   )
   assert.doesNotMatch(nestedMessage, new RegExp(nestedSecret, 'u'))
   assert.match(nestedMessage, /\[REDACTED\]/u)
+})
+
+test('retained Sandbox error details are safe for direct proof output', () => {
+  const secret = 'retained-sandbox-error-secret-canary-4f8c'
+  const rawDetails = errorDetails(
+    new MissingIntegrationError('provider rejected the request', {
+      authorization: secret,
+      nested: { token: secret },
+    }),
+  )
+  const output = safeJson({ status: 'failed', failure: rawDetails }, { TANGLE_API_KEY: secret })
+  assert.doesNotMatch(output, new RegExp(secret, 'u'))
+  assert.match(output, /\[REDACTED\]/u)
 })
 
 test('configured supervisor failures stay unavailable and redact environment credentials', async () => {

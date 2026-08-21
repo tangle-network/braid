@@ -18,9 +18,9 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
-import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
 import { safePublicIdentifier } from '../../domain/provider-values.js'
 import { redactProviderError } from '../../domain/redaction.js'
+import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
 import {
   canonicalAgentProfileDigestHex,
   snapshotAgentProfile,
@@ -76,6 +76,9 @@ export interface RuntimeTraceModelOwnerOptions {
   readonly credential?: string
   readonly model: string
   readonly pricing?: CustomTokenPricing
+  /** Hidden reasoning budget for one analyst call. */
+  readonly maxReasoningTokens?: number
+  readonly maxTotalOutputTokens?: number
   readonly complete?: RouterTransportConfig['complete']
   readonly retry?: RuntimeRouterRetryPolicy
   readonly recordExecution?: ModelExecutionRecorder
@@ -590,6 +593,21 @@ function analystCallProfile(
           (sourceReasoning === undefined || sourceReasoning === 'none')
         ? 'minimal'
         : sourceReasoning
+  const maxVisibleOutputTokens = request.maxTokens ?? source.model?.maxVisibleOutputTokens
+  const maxReasoningTokens = options.maxReasoningTokens ?? source.model?.maxReasoningTokens
+  const maxTotalOutputTokens = options.maxTotalOutputTokens ?? source.model?.maxTotalOutputTokens
+  if (
+    maxTotalOutputTokens !== undefined &&
+    ((maxVisibleOutputTokens !== undefined && maxVisibleOutputTokens > maxTotalOutputTokens) ||
+      (maxReasoningTokens !== undefined && maxReasoningTokens > maxTotalOutputTokens) ||
+      (maxVisibleOutputTokens !== undefined &&
+        maxReasoningTokens !== undefined &&
+        maxVisibleOutputTokens + maxReasoningTokens > maxTotalOutputTokens))
+  ) {
+    throw new RangeError(
+      'Trace analysis execution limits exceed AgentProfile.model.maxTotalOutputTokens',
+    )
+  }
   return snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
@@ -606,9 +624,13 @@ function analystCallProfile(
       default: model,
       ...(provider === undefined ? {} : { provider }),
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      ...(maxVisibleOutputTokens === undefined ? {} : { maxVisibleOutputTokens }),
+      ...(maxReasoningTokens === undefined || maxReasoningTokens <= 0
+        ? {}
+        : { maxReasoningTokens }),
+      ...(maxTotalOutputTokens === undefined ? {} : { maxTotalOutputTokens }),
       metadata: {
         ...(bridge ? {} : { retry }),
-        ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
         ...(format === undefined ? {} : { extraBody: { response_format: format } }),
       },
@@ -718,7 +740,7 @@ export function createRuntimeTraceModelOwner(
         })
         for await (const event of streamAgentTurn(
           backend,
-          { messages },
+          { prompt: JSON.stringify({ messages }) },
           {
             signal: request.signal,
             callId: request.callId,

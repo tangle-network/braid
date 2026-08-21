@@ -4,6 +4,7 @@ import type {
   AgentTurnResult,
 } from '@tangle-network/agent-interface/environment-provider'
 import type { TurnUsage } from '../../domain/entities.js'
+import { redactSensitiveText } from '../../domain/redaction.js'
 import type { BraidFinalRuntimeEvent, RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RunStatus } from '../../domain/state.js'
 import type { RunCapabilities } from '../../ports/execution.js'
@@ -102,9 +103,13 @@ export function finalRetainedEnvelope(
     type: 'final',
     task: { id: runId, intent },
     status,
+    // Provider failure text can carry a credential, so it is redacted here,
+    // where runtime text first enters Braid.
     reason: result.success
       ? 'completed'
-      : (result.error ?? (cancelled ? 'Retained run cancelled' : 'Retained run failed')),
+      : redactSensitiveText(
+          result.error ?? (cancelled ? 'Retained run cancelled' : 'Retained run failed'),
+        ),
     text: result.text,
     metadata: {
       model,

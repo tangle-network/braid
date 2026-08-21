@@ -13,17 +13,13 @@ A portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/mai
 
 Braid sends every turn through [`agent-runtime`](https://github.com/tangle-network/agent-runtime), then keeps the transcript, branches, approvals, activity, graph, and trace analysis together.
 
-![Braid sending a Product engineer AgentProfile through agent-runtime, Local CLI Bridge, Claude Code, and Opus, then asking a cited question about the retained run](artifacts/demo/braid-live.gif)
+![Historical Braid recording through Local CLI Bridge and Claude Code](artifacts/demo/braid-live.gif)
 
-This recording uses a packed Braid artifact and a real `Product engineer` AgentProfile.
+The checked-in recording and [capture manifest](artifacts/demo/braid-live.json) are historical Braid `0.1.3` evidence from Local CLI Bridge and Claude Code `opus`.
 
-It routes one coding task through Local CLI Bridge to Claude Code and `opus`.
+They are not the current `0.2.0` Pi release claim.
 
-It verifies the edited workspace, then switches to a `Trace analyst` AgentProfile on `sonnet`.
-
-It runs `/ask` over the frozen trace and renders cited findings, model calls, tokens, cost provenance, and latency.
-
-The [capture manifest](artifacts/demo/braid-live.json) records the package hash, route, profile, limits, usage, latency, workspace proof, analysis evidence, and artifact hashes.
+A fresh public recording requires a packed `0.2.0` Braid binary, a ready Pi backend, and measured usage from the exact run.
 
 ## Install
 
@@ -42,15 +38,15 @@ The first-run flow selects an AgentProfile and a connection.
 
 No runner-specific Braid configuration is required.
 
-For an offline terminal walkthrough, use the deterministic fixture.
+For a live terminal walkthrough, run the local CLI Bridge capture.
 
 ```bash
-braid --fixture deterministic
+pnpm capture:demo:live
 ```
 
-The fixture proves rendering and state transitions only.
+The capture routes a human prompt through Pi and records the measured result.
 
-It does not prove a live runner, model, connection, inference route, or sandbox.
+It requires a configured local CLI Bridge and a real provider credential.
 
 ## How it works
 
@@ -97,6 +93,9 @@ const profile: AgentProfile = {
     provider: 'tangle-router',
     default: 'tangle-router/glm-5.2',
     reasoningEffort: 'high',
+    maxVisibleOutputTokens: 16_384,
+    maxReasoningTokens: 32_768,
+    maxTotalOutputTokens: 49_152,
   },
   prompt: {
     instructions: [
@@ -111,11 +110,13 @@ const profile: AgentProfile = {
 
 A connection supplies transport and credential references.
 
-The run binds the exact profile snapshot, selected connection, effective runner, model, reasoning effort, output limit, and execution environment before dispatch.
+The run binds the exact profile snapshot, selected connection, effective runner, model, reasoning effort, three configured output limits, and execution environment before dispatch.
 
-Reasoning effort and maximum output are separate dimensions.
+Visible output, reasoning output, and total output limits are separate configured dimensions.
 
-Reasoning effort controls the requested thinking tier when the selected route supports it, while maximum output limits emitted tokens independently.
+Reasoning effort controls the requested thinking tier when the selected route supports it.
+
+Configured limits never stand in for measured usage.
 
 ### Example effective run receipt
 
@@ -129,7 +130,9 @@ The following values illustrate the shape of one receipt and are not a live run 
 | Runner | `pi` |
 | Model | `tangle-router/glm-5.2` |
 | Reasoning | `high` |
-| Max output | `16,384 tokens` |
+| Max visible output | `16,384 tokens` |
+| Max reasoning output | `32,768 tokens` |
+| Max total output | `49,152 tokens` |
 | Connection | `Local CLI Bridge` |
 | Execution location | `local workspace through CLI Bridge` |
 | Environment | `local process; sandbox fields not applicable` |
@@ -172,7 +175,7 @@ Each analysis has its own run identity, source digest, analyst profile, model, b
 
 The standard Braid install includes `uv` for `/ask`.
 
-On first use, `uv` downloads a managed Python 3.12 runtime and runs `agent-eval-rpc[dspy]==0.144.11` in an isolated cached environment.
+On first use, `uv` downloads a managed Python 3.12 runtime and runs `agent-eval-rpc[dspy]==0.145.15` in an isolated cached environment.
 
 Set `BRAID_PYTHON` only when an operator must use a preinstalled compatible environment instead.
 
@@ -180,7 +183,7 @@ Findings remain separate until the user explicitly sends selected findings to a 
 
 ## Interactive and headless modes
 
-Interactive mode is the full-screen terminal experience with a multiline composer, streaming transcript, activity pane, selectors, and focused overlays.
+Interactive mode is the full-screen terminal experience with a multiline composer, streaming transcript, selectors, and focused overlays.
 
 Use inline mode when preserving normal terminal scrollback matters.
 
@@ -301,13 +304,13 @@ pnpm check
 pnpm capture:visual
 ```
 
-`pnpm check` covers formatting, linting, types, dependency boundaries, attribution, licenses, deterministic tests, live checks, and release checks configured by the repository.
+`pnpm check` covers formatting, linting, types, dependency boundaries, attribution, licenses, automated tests, live checks, and release checks configured by the repository.
 
-`pnpm capture:visual` drives the built CLI through a pseudo-terminal and records the deterministic terminal evidence required by the verification plan.
+When a ready Pi backend is configured, `pnpm capture:visual` drives the packed CLI through a pseudo-terminal and records terminal state evidence plus a live Pi and CLI Bridge product capture.
 
-The checked-in W6 captures prove deterministic rendering and keyboard paths.
+The checked-in W6 state captures prove rendering and keyboard paths.
 
-They are not evidence of a live Pi, CLI Bridge, Tangle inference, or Tangle sandbox run.
+A successful product capture is the evidence for the live Pi, CLI Bridge, inference route, and sandbox run.
 
 The [verification plan](docs/08-verification.md) defines the required live, headless, terminal, security, installation, and release evidence.
 

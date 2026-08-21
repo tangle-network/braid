@@ -1,5 +1,5 @@
-import type { ConnectionHealth, ConnectionKind, ConnectionRecord } from '../domain/entities.js'
 import { compareCodeUnits } from '../domain/code-unit-order.js'
+import type { ConnectionHealth, ConnectionKind, ConnectionRecord } from '../domain/entities.js'
 import type { Digest } from '../domain/ids.js'
 import { ConnectionRegistry } from './connections.js'
 import type { ProfileRecord } from './profile-types.js'

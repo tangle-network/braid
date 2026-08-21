@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.1.1.tgz",
-    "tarballSha256": "9bbd7b5b9f78b3d202dbb09d4375970edfd4965ffc5ad94b04bd7fa6ce01c4c7"
+    "tarball": "tangle-network-braid-0.2.0.tgz",
+    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.1",
+      "package": "@earendil-works/pi-tui@0.84.2",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.13.0",
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " activity · analyses › /ask · frozen question · complete · 1/1\n────────────────────────────────────────────────────────────────────────────────\n source: da8ae2345b2c17a…7c9190eb · frozen\n analyst: profile-trace-reviewer · completed\n ── question\n Where did this run waste time, and what should change?\n ── findings\n 1. [1] Profile inspection and route resolution ran serially although their\n inputs were independent. · medium · confidence 0.94\n ↳ [1] profile.inspect completed before runtime.route started · event\n event-runtime-r…te-start\n 2. [2] The answer claimed success before the packaged terminal check completed.\n · high · confidence 0.88\n ↳ [2] package check started; no terminal result was recorded · event\n event-package-c…ck-start\n ── next\n next: ask a narrower question, or use /compare <left> <right> against another\n frozen run\n ── model use\n Model calls were not reported.\n ── run receipt\n source complete: yes\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2 · tab filter: analys…\n",
+  "frame": " analyses › /ask · frozen question   Braid starter · pi · fixture/deterministic\n────────────────────────────────────────────────────────────────────────────────\n source: da8ae2345b2c17a…7c9190eb · frozen\n analyst: profile-trace-reviewer · completed\n ── question\n Where did this run waste time, and what should change?\n ── findings\n 1. [1] Profile inspection and route resolution ran serially although their\n inputs were independent. · medium · confidence 0.94\n ↳ [1] profile.inspect completed before runtime.route started · event\n event-runtime-r…te-start\n 2. [2] The answer claimed success before the packaged terminal check completed.\n · high · confidence 0.88\n ↳ [2] package check started; no terminal result was recorded · event\n event-package-c…ck-start\n ── next\n next: ask a narrower question, or use /compare <left> <right> against another\n frozen run\n ── run receipt\n source complete: yes\n findings: 2\n analysis cost: $0.0048\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2 · tab: analyses\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-transcript-first-wt",
+      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -59,6 +59,13 @@
           "provider": "fixture",
           "reasoningEffort": "none"
         }
+      },
+      "runConfiguration": {
+        "profileName": "Braid starter",
+        "runner": "pi",
+        "model": "fixture/deterministic",
+        "effort": "none",
+        "overrides": {}
       },
       "draft": "",
       "messages": [],
@@ -113,12 +120,13 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-transcript-first-wt",
+      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
       "model": "fixture/deterministic",
       "effort": "none",
+      "runOverrides": {},
       "connection": "deterministic fixture",
       "conversationId": "conv-1",
       "conversationTitle": "New conversation",
@@ -214,9 +222,13 @@
           "status": "complete",
           "depth": 1,
           "edgeLabel": "attached",
+          "parentIds": [
+            "conversation:conv-1"
+          ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
+      "graphQuery": "",
       "entityDetails": [
         {
           "entityType": "analysis",
@@ -235,8 +247,6 @@
             "↳ [2] package check started; no terminal result was recorded · event event-package-c…ck-start",
             "── next",
             "next: ask a narrower question, or use /compare <left> <right> against another frozen run",
-            "── model use",
-            "Model calls were not reported.",
             "── run receipt",
             "source complete: yes",
             "findings: 2",
@@ -262,19 +272,16 @@
           "source": "application"
         },
         "run.runner": {
-          "available": false,
-          "source": "application",
-          "reason": "Runner overrides require the current profile compatibility helpers"
+          "available": true,
+          "source": "application"
         },
         "run.model": {
-          "available": false,
-          "source": "application",
-          "reason": "Model overrides require provider capabilities from the current connection"
+          "available": true,
+          "source": "application"
         },
         "run.effort": {
-          "available": false,
-          "source": "application",
-          "reason": "Effort overrides require provider capabilities from the current connection"
+          "available": true,
+          "source": "application"
         },
         "conversation.branch": {
           "available": true,
@@ -404,7 +411,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-transcript-first-wt"
+            "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
           }
         }
       }

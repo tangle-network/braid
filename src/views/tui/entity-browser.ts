@@ -7,6 +7,7 @@ import {
   wrapTextWithAnsi,
 } from '@earendil-works/pi-tui'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { entityBrowserFooter } from './entity-browser-layout.js'
 import { omitUnreportedCostAndLatency } from './measurement-display.js'
 import type { ModalBackTarget } from './modal-coordinator.js'
 import type { BraidTheme } from './theme.js'
@@ -283,48 +284,34 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
         ? this.#theme.brand(`${title} · ${document.rows.length}`)
         : `${this.#theme.brand(title)} ${this.#theme.muted('›')} ${this.#theme.accent(sanitizeTerminalText(selected.title))}`
     const context =
-      document.context === undefined
-        ? undefined
-        : this.#theme.muted(sanitizeTerminalText(document.context))
+      document.context === undefined ? undefined : sanitizeTerminalText(document.context)
     return this.#line(this.#withContext(primary, context, width), width)
   }
 
   #footer(document: EntityBrowserDocument, width: number): string {
-    const filter =
-      document.filterHint === undefined ? '' : ` · ${sanitizeTerminalText(document.filterHint)}`
-    if (this.#usesWideBrowser(document, width)) {
-      const pages = this.#detailPageCount(document, width)
-      const page = pages > 1 ? ` · page ${this.#page + 1}/${pages}` : ''
-      const keys =
-        document.rows.length === 1
-          ? 'PgUp/PgDn detail · ←/esc close'
-          : width < 120
-            ? '↑↓ select · PgUp/PgDn detail · ←/esc close'
-            : '↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close'
-      return this.#line(this.#theme.muted(`${keys}${page}${filter}`), width)
-    }
-    if (this.#mode === 'list') {
-      const suffix =
-        document.rows.length > this.#bodyRows()
-          ? ` · ${this.#selectedIndex + 1}/${document.rows.length}`
-          : ''
-      const keys =
-        width < 52 ? '↑↓ move · → open · ←/esc close' : '↑↓ move · enter/→ open · ←/esc close'
-      return this.#line(this.#theme.muted(`${keys}${suffix}${filter}`), width)
-    }
     const pages = this.#detailPageCount(document, width)
-    const page = `page ${this.#page + 1}/${pages}`
-    const keys =
-      width < 52
-        ? pages > 1
-          ? `${page} · Pg · ↑↓ item · ←/esc back`
-          : '↑↓ item · ←/esc back'
-        : width < 64
-          ? pages > 1
-            ? `${page} · PgUp/PgDn · ↑↓ item · ←/esc back`
-            : '↑↓ previous/next · ←/esc back'
-          : `↑↓ previous/next · PgUp/PgDn page · ←/esc back${pages > 1 ? ` · ${page}` : ''}`
-    return this.#line(this.#theme.muted(`${keys}${filter}`), width)
+    const mode = this.#usesWideBrowser(document, width)
+      ? 'wide'
+      : this.#mode === 'list'
+        ? 'list'
+        : 'detail'
+    return this.#line(
+      this.#theme.muted(
+        entityBrowserFooter({
+          mode,
+          width,
+          rowCount: document.rows.length,
+          bodyRows: this.#bodyRows(),
+          selectedIndex: this.#selectedIndex,
+          pages,
+          page: this.#page,
+          ...(document.filterHint === undefined
+            ? {}
+            : { filterHint: sanitizeTerminalText(document.filterHint) }),
+        }),
+      ),
+      width,
+    )
   }
 
   #bodyRows(): number {
@@ -381,9 +368,14 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
 
   #withContext(primary: string, context: string | undefined, width: number): string {
     if (context === undefined) return primary
-    const available = Math.max(1, width - 1)
-    const gap = available - visibleWidth(primary) - visibleWidth(context)
-    return gap >= 3 ? `${primary}${' '.repeat(gap)}${context}` : primary
+    const available = Math.max(1, width - 2)
+    const parts = context.split(' · ').filter((part) => part.length > 0)
+    for (let count = parts.length; count > 0; count -= 1) {
+      const candidate = this.#theme.muted(parts.slice(0, count).join(' · '))
+      const gap = available - visibleWidth(primary) - visibleWidth(candidate)
+      if (gap >= 3) return `${primary}${' '.repeat(gap)}${candidate}`
+    }
+    return primary
   }
 
   #usesSplitView(width: number): boolean {

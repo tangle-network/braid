@@ -43,7 +43,7 @@ export function composerProjectionFor(
     return {
       action: send ? 'send' : 'unavailable',
       actionLabel: send ? 'send' : 'send unavailable',
-      hint: 'alt+enter newline · paste',
+      hint: 'type / for commands · Alt+Enter newline · paste',
     }
   }
 
@@ -68,7 +68,7 @@ export function composerProjectionFor(
     action,
     actionLabel,
     ...(queuePosition === undefined ? {} : { queuePosition }),
-    hint: 'alt+enter newline · paste',
+    hint: 'type / for commands · Alt+Enter newline · paste',
   }
 }
 
@@ -89,7 +89,7 @@ export class ComposerView extends Container {
   #projection: ComposerProjection = {
     action: 'send',
     actionLabel: 'send',
-    hint: 'alt+enter newline · paste',
+    hint: 'type / for commands · Alt+Enter newline · paste',
   }
   #mode: ComposerMode = 'queue'
 
@@ -123,9 +123,16 @@ export class ComposerView extends Container {
       body[0] = promptBodyLine(body[0], this.#theme, promptActionLabel(this.#projection))
     }
     const autocomplete = lines.slice(bottomBorder + 1)
-    if (autocomplete.length === 0) return body
-    return [...body, composerBorderLine(width, this.#projection.hint, this.#theme), ...autocomplete]
+    const topRule = composerTopRule(width, this.#editor.borderColor)
+    const bottomRule = composerBorderLine(width, this.#projection.hint, this.#theme)
+    if (autocomplete.length === 0) return [topRule, ...body, bottomRule]
+    return [topRule, ...body, bottomRule, ...autocomplete]
   }
+}
+
+function composerTopRule(width: number, borderColor: (text: string) => string): string {
+  const safeWidth = Math.max(1, Math.floor(width))
+  return borderColor('─'.repeat(safeWidth))
 }
 
 function boundedEditorBody(body: readonly string[], terminalRows: number, width: number): string[] {
@@ -168,7 +175,7 @@ export function composerRowBudget(terminalRows: number): number {
 
 export function composerBorderLine(width: number, label: string, theme: BraidTheme): string {
   const safeWidth = Math.max(1, Math.floor(width))
-  const padded = truncateToWidth(` ${label} `, safeWidth, '…')
+  const padded = truncateToWidth(` ${composerHintForWidth(label, safeWidth)} `, safeWidth, '…')
   const labelWidth = visibleWidth(padded)
   const remaining = Math.max(0, safeWidth - labelWidth)
   const left = Math.floor(remaining / 2)
@@ -176,8 +183,14 @@ export function composerBorderLine(width: number, label: string, theme: BraidThe
   return `${theme.editor.borderColor('─'.repeat(left))}${theme.accent(padded)}${theme.editor.borderColor('─'.repeat(right))}`
 }
 
+function composerHintForWidth(label: string, width: number): string {
+  if (width < 60) return 'type / for commands · Alt+Enter'
+  if (width < 100) return 'type / for commands · Alt+Enter · paste'
+  return label
+}
+
 function promptActionLabel(projection: ComposerProjection): string | undefined {
-  if (projection.action === 'send') return undefined
+  if (projection.action === 'send') return 'new message'
   if (projection.action === 'queue') {
     return projection.queuePosition === undefined ? 'queue' : `queue #${projection.queuePosition}`
   }

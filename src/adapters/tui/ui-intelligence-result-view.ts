@@ -1,5 +1,5 @@
-import type { AnalysisRecord } from '../../domain/entities.js'
 import { resultFromComparisonRecord } from '../../app/analysis-comparison-record.js'
+import type { AnalysisRecord } from '../../domain/entities.js'
 import { analysisLines, analysisViewForRecord } from '../../views/shared/analysis-presentation.js'
 import {
   comparisonLines,

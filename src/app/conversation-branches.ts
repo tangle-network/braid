@@ -2,12 +2,12 @@ import { canonicalDigest } from '../domain/canonical.js'
 import type { BranchRecord, ConversationRecord, MessageRecord } from '../domain/entities.js'
 import { graphEdge, graphNode } from '../domain/graph-records.js'
 import {
-  parseBranchId,
-  parseConversationId,
-  parseMessageId,
   type BranchId,
   type ConversationId,
   type OperationId,
+  parseBranchId,
+  parseConversationId,
+  parseMessageId,
 } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import { messagesVisibleOnBranch, portablePlanForState } from './conversation-context.js'

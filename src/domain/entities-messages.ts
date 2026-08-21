@@ -1,11 +1,13 @@
+import type { IsoDateTime, JsonObject, JsonValue } from './entities-base.js'
+import type { MessageRecord, RunOverrides } from './entities-core.js'
 import type {
   ArtifactId,
+  BindingId,
   BranchId,
   ConnectionId,
   ConversationId,
   Digest,
   EnvironmentId,
-  BindingId,
   MessageId,
   MessagePartId,
   OperationId,
@@ -16,8 +18,6 @@ import type {
   RunId,
   TurnId,
 } from './ids.js'
-import type { IsoDateTime, JsonObject, JsonValue } from './entities-base.js'
-import type { MessageRecord, RunOverrides } from './entities-core.js'
 import type { RuntimeRunFields } from './runtime-projection.js'
 
 interface MessagePartBase {

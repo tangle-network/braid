@@ -1,9 +1,9 @@
 import { Container, type Focusable, Text } from '@earendil-works/pi-tui'
-import { sanitizeTerminalText } from '../shared/sanitize.js'
 import type {
   ConfigurationSelection,
   ConfigurationSession,
 } from '../../app/configuration-session.js'
+import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { MaskedSecretInput, type OwnedSecretBytes } from './secret-input.js'
 import type { BraidTheme } from './theme.js'
 

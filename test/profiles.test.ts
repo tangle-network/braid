@@ -205,7 +205,7 @@ function source(
   )
 }
 
-test('the installed canonical profile schema round-trips every field and extensions', () => {
+test('the installed canonical profile schema round-trips every field and extensions', async () => {
   const shape = validateProfileShape(fullProfile)
   assert.equal(shape.ok, true)
   assert.ok(shape.profile)
@@ -217,7 +217,13 @@ test('the installed canonical profile schema round-trips every field and extensi
   assert.equal(canonicalCandidateJson(imported.profile), json)
   assert.deepEqual(imported.profile.extensions, fullProfile.extensions)
   assert.deepEqual(imported.profile.resources, fullProfile.resources)
-  assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, '0.52.0')
+  // The resolved package must be the exact cohort this repository pins.
+  const pinned = (
+    JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      readonly dependencies: Readonly<Record<string, string>>
+    }
+  ).dependencies['@tangle-network/agent-interface']
+  assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, pinned)
 })
 
 test('unknown canonical fields fail closed while namespaced extensions remain opaque', () => {

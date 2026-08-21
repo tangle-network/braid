@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.1.1.tgz",
-    "tarballSha256": "9bbd7b5b9f78b3d202dbb09d4375970edfd4965ffc5ad94b04bd7fa6ce01c4c7"
+    "tarball": "tangle-network-braid-0.2.0.tgz",
+    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.1",
+      "package": "@earendil-works/pi-tui@0.84.2",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.13.0",
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " permission            Braid starter @ pi · run fixture-run-1 · timeout unknown\n────────────────────────────────────────────────────────────────────────────────\n Allow the fixture tool to inspect the selected file?\n src/app/application.ts · read-only\n The fixture requests a bounded read for a real interaction preview.\n export class BraidApplication {\n\n › 1. Approve\n      Continue this request\n   2. Reject\n   3. Cancel\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ move · enter confirm · 1-3 quick select · esc cancel · alt+a automate\n",
+  "frame": " permission                                                  Braid starter · pi\n────────────────────────────────────────────────────────────────────────────────\n Allow the fixture tool to inspect the selected file?\n src/app/application.ts · read-only\n The fixture requests a bounded read for a real interaction preview.\n export class BraidApplication {\n\n › 1. Approve\n      Continue this request\n   2. Reject\n   3. Cancel\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n ↑↓ move · enter confirm · 1-3 quick select · ←/esc cancel · alt+a automate\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/braid-transcript-first-wt",
+      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -59,6 +59,13 @@
           "provider": "fixture",
           "reasoningEffort": "none"
         }
+      },
+      "runConfiguration": {
+        "profileName": "Braid starter",
+        "runner": "pi",
+        "model": "fixture/deterministic",
+        "effort": "none",
+        "overrides": {}
       },
       "draft": "",
       "messages": [],
@@ -113,12 +120,13 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/braid-transcript-first-wt",
+      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
       "model": "fixture/deterministic",
       "effort": "none",
+      "runOverrides": {},
       "connection": "deterministic fixture",
       "conversationId": "conv-1",
       "conversationTitle": "New conversation",
@@ -238,9 +246,13 @@
           "status": "complete",
           "depth": 1,
           "edgeLabel": "attached",
+          "parentIds": [
+            "conversation:conv-1"
+          ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
+      "graphQuery": "",
       "entityDetails": [],
       "capabilities": {
         "conversation.create": {
@@ -252,19 +264,16 @@
           "source": "application"
         },
         "run.runner": {
-          "available": false,
-          "source": "application",
-          "reason": "Runner overrides require the current profile compatibility helpers"
+          "available": true,
+          "source": "application"
         },
         "run.model": {
-          "available": false,
-          "source": "application",
-          "reason": "Model overrides require provider capabilities from the current connection"
+          "available": true,
+          "source": "application"
         },
         "run.effort": {
-          "available": false,
-          "source": "application",
-          "reason": "Effort overrides require provider capabilities from the current connection"
+          "available": true,
+          "source": "application"
         },
         "conversation.branch": {
           "available": true,
@@ -393,7 +402,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/braid-transcript-first-wt"
+            "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
           }
         }
       }

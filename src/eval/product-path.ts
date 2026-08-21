@@ -3,16 +3,16 @@ import { pathToFileURL } from 'node:url'
 import type { AnalysisComparisonResult } from '../app/analysis-comparison-contracts.js'
 import type { ForkPlan } from '../app/conversation-types.js'
 import { interactionResponseBinding, parseInteractionRequest } from '../app/interaction-request.js'
+import { canonicalDigest } from '../domain/canonical.js'
 import type { AnalysisRecord } from '../domain/entities.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
-import { canonicalDigest } from '../domain/canonical.js'
+import type { UiEvent } from '../views/shared/intents.js'
 import type {
   AnalysisView,
   BraidViewModel,
   ComparisonView,
   ForkPreviewView,
 } from '../views/shared/models.js'
-import type { UiEvent } from '../views/shared/intents.js'
 import type { ProductOutput, SemanticEvalCaseId } from './types.js'
 
 type ProductTheme = ReturnType<typeof import('../views/tui/theme.js')['createBraidTheme']>

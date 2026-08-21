@@ -1,6 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import {
-  redactStructuredValue,
   redactStructuredValueWithNumericTelemetry,
   STRUCTURED_REDACTION_MARKER,
 } from './bounded-structured.js'
@@ -19,7 +18,7 @@ export { redactSensitiveText, redactSensitiveUrls } from './secret-sanitizer.js'
 export function redactProfile(profile: Readonly<AgentProfile>): Readonly<AgentProfile> {
   const modelMetadata = publicModelMetadata(profile.model?.metadata)
   return removeProfileMetadata(
-    redactStructuredValue(profile, undefined, { maxBytes: MAX_PROFILE_BYTES }),
+    redactStructuredValueWithNumericTelemetry(profile, undefined, { maxBytes: MAX_PROFILE_BYTES }),
     [],
     modelMetadata,
   ) as Readonly<AgentProfile>

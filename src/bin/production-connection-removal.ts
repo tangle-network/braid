@@ -11,7 +11,6 @@ import { ConnectionRegistry } from '../app/connections.js'
 import { connectionRemovalBlockers } from '../domain/connection-removal.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import type { ProductionConfigMutationLock } from './production-config-mutation-lock.js'
-import type { ProductionCredentialMapping } from './production-credential-reference.js'
 import {
   activeConnectionSelection,
   assertConnectionRevision,
@@ -22,6 +21,7 @@ import {
   removeUnsharedConnectionCredential,
 } from './production-connection-credential-cleanup.js'
 import { hasDurableOperation, historicalConnectionRecord } from './production-connection-replay.js'
+import type { ProductionCredentialMapping } from './production-credential-reference.js'
 
 export interface ProductionConnectionRemovalContext {
   readonly app: BraidApplication

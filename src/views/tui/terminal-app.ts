@@ -8,6 +8,7 @@ import type {
   UiFrameTiming,
 } from '../shared/intents.js'
 import type { BraidViewModel } from '../shared/models.js'
+import type { NativeInteractiveUiActions } from '../shared/native-interactive-actions.js'
 import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard.js'
@@ -36,6 +37,7 @@ export interface BraidTerminalOptions {
   readonly onFrameTiming?: (timing: UiFrameTiming) => void
   readonly tuiStarted?: boolean
   readonly preinstalledOutputPolicyCleanup?: () => void
+  readonly nativeInteractive?: NativeInteractiveUiActions
 }
 
 export class BraidTerminalApp {
@@ -57,6 +59,7 @@ export class BraidTerminalApp {
   #removeInputListener: (() => void) | undefined
   #stopped = false
   #started = false
+  #suspended = false
   #openConfigurationOnStart = false
   readonly #restoreTerminalOutputPolicy: () => void
   readonly #tuiStarted: boolean
@@ -95,7 +98,21 @@ export class BraidTerminalApp {
     const autocomplete = new GuardedAutocompleteProvider(
       new DynamicAutocompleteProvider({
         commands: () =>
-          commandItems(this.#controller.view().capabilities).map((item) => ({
+          commandItems({
+            ...this.#controller.view().capabilities,
+            ...(options.nativeInteractive === undefined
+              ? {}
+              : {
+                  'run.interactive': {
+                    ...options.nativeInteractive.availability('start'),
+                    source: 'runtime' as const,
+                  },
+                  'run.attach': {
+                    ...options.nativeInteractive.availability('attach'),
+                    source: 'runtime' as const,
+                  },
+                }),
+          }).map((item) => ({
             name: item.value,
             description: item.description ?? '',
           })),
@@ -135,6 +152,7 @@ export class BraidTerminalApp {
         : { connectionLifecycle: options.connectionLifecycle }),
       dispatchCommand: (command, args) => this.#commands.dispatchCommand(command, args),
       requestRender: () => this.#tui.requestRender(),
+      columns: () => this.#tui.terminal.columns,
       rows: () => this.#tui.terminal.rows,
     })
     this.#interactions = new TerminalInteractionController({
@@ -172,6 +190,9 @@ export class BraidTerminalApp {
       isStopped: () => this.#stopped,
       stop: () => this.stop(),
       composerMode: () => this.#input.composerMode,
+      ...(options.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: options.nativeInteractive }),
     })
     this.#shell.editor.setAutocompleteProvider(autocomplete)
     options.tui.addChild(this.#shell)
@@ -208,9 +229,31 @@ export class BraidTerminalApp {
     return this.#done
   }
 
+  /** Release the local terminal while keeping application state and subscriptions alive. */
+  suspend(): void {
+    if (this.#stopped || !this.#started || this.#suspended) return
+    this.#suspended = true
+    this.#removeInputListener?.()
+    this.#removeInputListener = undefined
+    this.#tui.stop({ preserveScreen: true })
+  }
+
+  /** Reclaim the local terminal and redraw the same Braid application state. */
+  resume(): void {
+    if (this.#stopped || !this.#started || !this.#suspended) return
+    this.#suspended = false
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
+    this.#tui.start()
+    if (this.#modals.hasOpen()) this.#modals.focusTop()
+    else this.#tui.setFocus(this.#shell.editor)
+    this.#render(this.#controller.view())
+    this.#tui.requestRender(true)
+  }
+
   stop(): void {
     if (this.#stopped) return
     this.#stopped = true
+    this.#suspended = false
     this.#overlays.dispose()
     this.#interactions.dispose()
     this.#input.close()
@@ -227,7 +270,6 @@ export class BraidTerminalApp {
   #render(view: BraidViewModel): void {
     this.#drafts.restore(view)
     this.#shell.setView(view, this.#input.quitArmed)
-    this.#shell.setActivityVisible(this.#input.activityVisible)
     this.#interactions.sync(view)
     this.#tui.requestRender()
   }

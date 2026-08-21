@@ -158,6 +158,47 @@ test('verification signals capture more than one atomic semantic frame', async (
   }
 })
 
+test('native terminal signal ownership returns to Braid before shutdown', async () => {
+  let routedSignal: ((exitCode: number) => void) | undefined
+  let nativeExitCode: number | undefined
+  let shutdowns = 0
+  let stopped = 0
+  const lifecycle = createInterfaceSignalLifecycle({
+    controller: {
+      dispatch: async () => {
+        shutdowns += 1
+        return { kind: 'accepted', revision: 1, completion: Promise.resolve() }
+      },
+    } as unknown as BraidUiController,
+    view: { stop: () => (stopped += 1) },
+    application: { markCleanupUncertain: () => {} },
+    nextOperationId: () => 'operation-native-signal',
+    startupPreview: {
+      takeSignalOwnership: (handler: (exitCode: number) => void) => {
+        routedSignal = handler
+        return () => {}
+      },
+    } as unknown as import('../src/startup/preview-runtime.js').StartupPreview,
+  })
+  try {
+    const release = lifecycle.takeOver((exitCode) => {
+      nativeExitCode = exitCode
+    })
+    assert.ok(routedSignal)
+    routedSignal(130)
+    assert.equal(nativeExitCode, 130)
+    assert.equal(shutdowns, 0)
+
+    release()
+    await lifecycle.settle()
+    assert.equal(shutdowns, 1)
+    assert.equal(stopped, 1)
+    assert.equal(lifecycle.exitCode(), 130)
+  } finally {
+    lifecycle.dispose()
+  }
+})
+
 test('startup preview renders real route context and replays early input once', async () => {
   const writes: string[] = []
   class RecordingTerminal extends VirtualTerminal {

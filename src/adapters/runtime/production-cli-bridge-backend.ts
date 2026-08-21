@@ -3,6 +3,8 @@ import type {
   AgentProfile,
   HarnessType,
 } from '@tangle-network/agent-interface'
+import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
+import type { BridgeModelCredential } from '@tangle-network/agent-runtime/kernel'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
@@ -12,7 +14,10 @@ import {
   materializeBridgeModelRoute,
 } from '../connections/cli-bridge-model-route.js'
 import { readConnectionCredential } from '../connections/production-connection-credentials.js'
-import { normalizeCliBridgeProviderBaseUrl } from '../connections/production-connection-endpoints.js'
+import {
+  isLoopbackEndpoint,
+  normalizeCliBridgeProviderBaseUrl,
+} from '../connections/production-connection-endpoints.js'
 import { endpointLocation, staticExecutionObservation } from './execution-observation-source.js'
 import type { PreparedExecution } from './prepared-execution.js'
 import {
@@ -24,7 +29,7 @@ import {
   requiredProfileModel,
   requiredProfileRunner,
   requiredWorkspaceCwd,
-  safeExecutionId,
+  stableProviderId,
 } from './production-backend-common.js'
 
 const LOCAL_BRIDGE_BEARER = 'braid-local-cli-bridge'
@@ -37,49 +42,13 @@ export interface PreparedCliBridgeConnection {
   readonly workspace: string
   readonly bridgeUrl: string
   readonly bearerToken: string
+  readonly bridgeModelCredential?: BridgeModelCredential
   readonly fetch?: typeof fetch
   readonly providerSessionId: string
+  readonly provider: CliBridgeProvider
   readonly capabilities: AgentEnvironmentCapabilities
   readonly observation: NonNullable<PreparedExecution['observation']>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
-}
-
-export async function resolveCliBridgeBackend(
-  options: ProductionBackendResolverOptions,
-  input: ExecuteTurnInput,
-  selection: ProductionExecutionSelection,
-  connectionId: ConnectionId,
-  endpoint: string,
-): Promise<PreparedExecution> {
-  const prepared = await prepareCliBridgeConnection(
-    options,
-    input,
-    selection,
-    connectionId,
-    endpoint,
-  )
-  const { createExecutor } = await import('@tangle-network/agent-runtime/kernel')
-  const backend = Object.freeze({
-    kind: 'executor' as const,
-    factory: createExecutor({
-      backend: 'bridge',
-      bridgeUrl: prepared.bridgeUrl,
-      bridgeBearer: prepared.bearerToken,
-      cwd: prepared.workspace,
-      sessionId: prepared.providerSessionId,
-    }),
-    profile: prepared.profile,
-    agentRunName: prepared.route,
-  })
-  return freezeExecution({
-    kind: 'prepared-execution' as const,
-    backend,
-    capabilities: prepared.capabilities,
-    providerSessionId: prepared.providerSessionId,
-    cancellation: { kind: 'runtime-executor-teardown' },
-    observation: prepared.observation,
-    materializationReceipt: prepared.materializationReceipt,
-  })
 }
 
 export async function prepareCliBridgeConnection(
@@ -109,13 +78,37 @@ export async function prepareCliBridgeConnection(
 
   const record = connectionRecord(connectionId, options)
   const credential = await readConnectionCredential(record, options, endpoint)
-  const providerSessionId = input.sessionId ?? `session-braid-${safeExecutionId(input.runId)}`
+  const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
   const route = materializeBridgeModelRoute(runner, model, profile.model?.provider)
   const workspace = requiredWorkspaceCwd(input.workspaceRoot, options.workspaceCwd)
   const bridgeUrl = normalizeCliBridgeProviderBaseUrl(endpoint, connectionId)
   const bridgeLocation = endpointLocation(bridgeUrl)
   const createdAt = new Date().toISOString()
-  const { defaultCliBridgeCapabilities } = await import('@tangle-network/agent-provider-cli-bridge')
+  const { createCliBridgeProvider } = await import('@tangle-network/agent-provider-cli-bridge')
+  const providerFetch =
+    options.bridgeModelCredential === undefined
+      ? options.fetch
+      : bridgeCredentialFetch(
+          bridgeUrl,
+          options.bridgeModelCredential,
+          options.fetch ?? globalThis.fetch,
+        )
+  const providerOptions = {
+    baseUrl: bridgeUrl,
+    bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
+    defaultModel: route,
+    ...(runner === 'pi'
+      ? {
+          defaultExecution: {
+            kind: 'host' as const,
+            jail: { mode: 'fs-jail' as const },
+          },
+        }
+      : {}),
+    ...(providerFetch === undefined ? {} : { fetch: providerFetch }),
+  }
+  const provider = createCliBridgeProvider(providerOptions)
+  const capabilities = await provider.capabilities()
   return freezeExecution({
     profile,
     model,
@@ -124,8 +117,12 @@ export async function prepareCliBridgeConnection(
     workspace,
     bridgeUrl,
     bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    capabilities: defaultCliBridgeCapabilities(runner),
+    provider,
+    capabilities,
     providerSessionId,
     observation: staticExecutionObservation({
       kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',
@@ -157,4 +154,67 @@ export async function prepareCliBridgeConnection(
       runner,
     },
   })
+}
+
+function bridgeCredentialFetch(
+  bridgeUrl: string,
+  credential: BridgeModelCredential,
+  fetcher: typeof fetch,
+): typeof fetch {
+  if (!isLoopbackEndpoint(bridgeUrl)) {
+    throw new Error('A request-scoped CLI Bridge model credential requires a loopback endpoint')
+  }
+  return async (input, init) => {
+    const url = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url,
+    )
+    if (!usesBridgeModelCredential(url, init)) return fetcher(input, init)
+    const [token, baseUrl] = await Promise.all([
+      credentialValue(credential, credential.key),
+      credentialValue(credential, credential.baseUrlKey),
+    ])
+    const upstream = safeModelBaseUrl(baseUrl)
+    const headers = new Headers(init?.headers)
+    headers.set('x-cli-bridge-model-credential', token)
+    headers.set('x-cli-bridge-model-base-url', upstream)
+    return fetcher(input, { ...init, headers })
+  }
+}
+
+function usesBridgeModelCredential(url: URL, init?: RequestInit): boolean {
+  const method = init?.method?.toUpperCase() ?? 'GET'
+  if (method !== 'POST') return false
+  return (
+    url.pathname === '/v1/chat/completions' ||
+    url.pathname === '/v1/sessions' ||
+    /^\/v1\/sessions\/[^/]+\/(?:turns|continue)$/u.test(url.pathname)
+  )
+}
+
+async function credentialValue(credential: BridgeModelCredential, key: string): Promise<string> {
+  let value: string | undefined
+  try {
+    value = await credential.provider.get(key)
+  } catch {
+    throw new Error(`The CLI Bridge model credential provider failed for ${key}`)
+  }
+  if (typeof value !== 'string' || value.length === 0 || /[\r\n\0]/u.test(value)) {
+    throw new Error(`The CLI Bridge model credential provider has no usable value for ${key}`)
+  }
+  return value
+}
+
+function safeModelBaseUrl(value: string): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('The CLI Bridge model credential base URL is invalid')
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error(
+      'The CLI Bridge model credential base URL must be an HTTPS URL without credentials',
+    )
+  }
+  return url.toString().replace(/\/$/u, '')
 }

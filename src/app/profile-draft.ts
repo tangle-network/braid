@@ -5,8 +5,8 @@ import {
   snapshotAgentProfile,
 } from '../adapters/agent-interface/profile-runtime.js'
 import { redactSensitiveText } from '../domain/secret-sanitizer.js'
-import { validateProfileShape, ProfileValidationError } from './profile-validation.js'
 import type { ProfileDraftValidation } from './profile-types.js'
+import { ProfileValidationError, validateProfileShape } from './profile-validation.js'
 
 function cloneCandidate(value: unknown): unknown {
   try {

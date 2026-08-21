@@ -476,6 +476,14 @@ This cohort satisfies the retained create, process-loss recovery, replay, cancel
 
 The August 12 failure artifacts remain diagnostic history and are superseded by this passing cohort.
 
+On 2026-08-21, this branch upgraded the provider cohort to interface `1.3.0`, runtime `0.143.0`, eval `0.149.0`, CLI Bridge adapter `0.9.4`, Tangle adapter `0.13.0`, and sandbox `0.31.0`.
+
+The automated suite passed 782 of 782 tests on Linux, and the release self-check passed 32 of 32 tests, both with the deleted second sandbox parser and the published Sandbox run outcome as the only terminal result source.
+
+`LIVE-03` and `LIVE-08` were attempted through their built-in checks: both emit `unavailable` because this environment holds no CLI Bridge interaction credential and no Tangle Sandbox credential, and the built-in check refuses to claim a row it cannot execute.
+
+`LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` remain unavailable in this environment for the same reason, and no live claim in this record comes from a simulated provider.
+
 ## Runner conformance
 
 CLI Bridge may advertise a runner as interactive only after the following real flow passes at its pinned minimum version.

@@ -21,6 +21,7 @@ import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
+import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
 import { runPlain } from './plain.js'
 import {
   activateProductionConnection,
@@ -205,6 +206,23 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
       })
     }
   }
+  const nativeLifecycle: {
+    view?: BraidTerminalApp
+    signals?: ReturnType<typeof createInterfaceSignalLifecycle>
+  } = {}
+  const nativeInteractive = createNativeInteractiveUiActions({
+    current: () => active.current,
+    terminal: tui.terminal,
+    signals: () => {
+      if (nativeLifecycle.signals === undefined)
+        throw new Error('Terminal signal ownership is not initialized')
+      return nativeLifecycle.signals
+    },
+    suspend: () => nativeLifecycle.view?.suspend(),
+    resume: () => nativeLifecycle.view?.resume(),
+    nextOperationId,
+    holderId: `braid-terminal-${randomUUID()}`,
+  })
   const view = new BraidTerminalApp({
     controller,
     tui,
@@ -222,7 +240,9 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     ...(input.startupPreview?.outputPolicyCleanup === undefined
       ? {}
       : { preinstalledOutputPolicyCleanup: input.startupPreview.outputPolicyCleanup }),
+    nativeInteractive,
   })
+  nativeLifecycle.view = view
   const signals = createInterfaceSignalLifecycle({
     controller,
     view,
@@ -231,6 +251,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     ...(options.recordState === undefined ? {} : { recordState: options.recordState }),
     ...(input.startupPreview === undefined ? {} : { startupPreview: input.startupPreview }),
   })
+  nativeLifecycle.signals = signals
   try {
     if (!signals.interrupted()) {
       const startupInput = input.startupPreview?.adopt().input ?? []

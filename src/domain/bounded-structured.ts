@@ -26,6 +26,8 @@ const SAFE_NUMERIC_FIELDS = new Set([
   'maxcompletiontokens',
   'maxoutputtokens',
   'maxreasoningtokens',
+  'maxvisibleoutputtokens',
+  'maxtotaloutputtokens',
   'mintokens',
   'tokencount',
   'tokenestimate',

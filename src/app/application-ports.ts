@@ -4,7 +4,11 @@ import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import type { BraidRun, BraidState, RunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectRecord } from '../ports/effect-storage.js'
-import type { ControlAcknowledgement, ExecutionPort } from '../ports/execution.js'
+import type {
+  ControlAcknowledgement,
+  ExecutionPort,
+  RetainedExecutionRecoveryContext,
+} from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import type { SendInput, SendReceipt } from './application-types.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
@@ -157,6 +161,7 @@ export interface ControlEffectRequest {
   readonly reason?: string
   readonly text?: string
   readonly cursor?: string
+  readonly recovery?: RetainedExecutionRecoveryContext
 }
 
 export type RuntimeEventEnvelopeLike = import('../domain/runtime-events.js').RuntimeEventEnvelope

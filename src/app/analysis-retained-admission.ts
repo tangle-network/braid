@@ -1,4 +1,4 @@
-import { canonicalDigest } from '../domain/canonical.js'
+import { canonicalDigest, canonicalJson } from '../domain/canonical.js'
 import type { JsonValue } from '../domain/entities-base.js'
 import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
 import {
@@ -16,30 +16,7 @@ function isJsonObject(value: unknown): value is Readonly<Record<string, JsonValu
 }
 
 function admissionValue(admission: RetainedRunAdmissionRecord): JsonValue {
-  if (admission.phase === 'environment') {
-    return {
-      phase: admission.phase,
-      provider: admission.provider,
-      environmentId: admission.environmentId,
-      idempotencyKey: admission.idempotencyKey,
-      turnId: admission.turnId,
-      sessionId: admission.sessionId,
-      executionId: admission.executionId,
-    }
-  }
-  return {
-    phase: admission.phase,
-    idempotencyKey: admission.idempotencyKey,
-    turnId: admission.turnId,
-    controlRef: {
-      provider: admission.controlRef.provider,
-      environmentId: admission.controlRef.environmentId,
-      sessionId: admission.controlRef.sessionId,
-      executionId: admission.controlRef.executionId,
-      runId: admission.controlRef.runId,
-      requestDigest: admission.controlRef.requestDigest,
-    },
-  }
+  return JSON.parse(canonicalJson(admission)) as JsonValue
 }
 
 function entryIdentity(

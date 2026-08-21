@@ -10,12 +10,11 @@ import type {
 } from '../../ports/storage.js'
 import { assertPersistablePayload } from './sqlite-crypto.js'
 import { StorageError } from './sqlite-errors.js'
-import { assertOperationIntentInput } from './storage-validation.js'
-
 import { SqliteJournalStorage } from './sqlite-journal.js'
-import type { OperationRow } from './sqlite-types.js'
-import { asString, cloneJson, now, operationRecordFromRow } from './sqlite-rows.js'
 import { classifySqliteError } from './sqlite-paths.js'
+import { asString, cloneJson, now, operationRecordFromRow } from './sqlite-rows.js'
+import type { OperationRow } from './sqlite-types.js'
+import { assertOperationIntentInput } from './storage-validation.js'
 
 export abstract class SqliteOperationStorage extends SqliteJournalStorage {
   async reserveOperation(intent: OperationIntent): Promise<OperationReservation> {

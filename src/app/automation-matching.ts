@@ -1,8 +1,8 @@
 import type { InteractionRequest } from '@tangle-network/agent-interface'
 import { canonicalDigest } from '../domain/canonical.js'
+import type { AutomationRuleScope } from '../domain/entities-interactions.js'
 import type { AutomationRuleMatcher, AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidInteraction } from '../domain/runtime-projection.js'
-import type { AutomationRuleScope } from '../domain/entities-interactions.js'
 import { interactionHasSecretField } from './interaction-response.js'
 
 /**

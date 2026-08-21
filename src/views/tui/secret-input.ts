@@ -1,9 +1,9 @@
 import {
+  type Component,
   CURSOR_MARKER,
   decodeKittyPrintable,
-  getKeybindings,
-  type Component,
   type Focusable,
+  getKeybindings,
   visibleWidth,
 } from '@earendil-works/pi-tui'
 

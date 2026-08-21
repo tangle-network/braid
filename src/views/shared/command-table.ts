@@ -162,6 +162,18 @@ export const SHARED_COMMAND_TABLE = [
     mutatingHeadlessCommands: ['reconcile'],
   },
   {
+    name: 'interactive',
+    requiresOperationId: false,
+    headlessCommands: [],
+    mutatingHeadlessCommands: [],
+  },
+  {
+    name: 'attach',
+    requiresOperationId: false,
+    headlessCommands: [],
+    mutatingHeadlessCommands: [],
+  },
+  {
     name: 'activity',
     requiresOperationId: false,
     headlessCommands: ['get_activity'],

@@ -5,7 +5,7 @@ import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEventEnvelope } from '../domain/events.js'
 import { createFeedbackDecisionId } from '../domain/ids.js'
 import { interactionRemainingMs } from '../domain/interaction-timeout.js'
-import type { ExecutionPort } from '../ports/execution.js'
+import { type ExecutionPort, supportsInteractionResponse } from '../ports/execution.js'
 import type { JournalWriter, StateReader } from './application-ports.js'
 import type { InteractionReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
@@ -24,6 +24,7 @@ import {
   recordedInteractionOwner,
 } from './interaction-response-replay.js'
 import type { RunLedger } from './run-ledger.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import { findRun } from './run-status.js'
 
 export interface InteractionControllerInput {
@@ -114,6 +115,11 @@ export async function respondInteraction(
       completion,
     }
   }
+  if (!supportsInteractionResponse(run.receipt.capabilities))
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'The current runtime cannot acknowledge interaction responses',
+    )
   if (input.execution.respondInteraction === undefined)
     throw new AppError(
       'CAPABILITY_UNAVAILABLE',
@@ -154,6 +160,7 @@ export async function respondInteraction(
     owner: input.owner,
     timeoutMs: input.responseTimeoutMs,
     whenDurable: input.whenDurable,
+    recovery: retainedExecutionRecoveryContext(run, input.state.currentState().workspace),
   })
   const completion = effectCompletion.then(async (result) => {
     await input.commitAndWait({

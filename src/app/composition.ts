@@ -1,5 +1,5 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
 import { performance } from 'node:perf_hooks'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import { defineAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import type { HeadlessKeySource } from '../adapters/credentials/headless-key.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
@@ -18,8 +18,10 @@ import { type CredentialPort, credentialRef } from '../ports/credentials.js'
 import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import { type IdSource, RandomIds, SequenceIds } from '../ports/ids.js'
+import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import { deterministicBackend } from '../testing/deterministic-backend.js'
 import { BraidApplication } from './application.js'
+import type { ConnectionRegistry } from './connections.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
 import type { IntelligenceActionsOptions } from './intelligence-actions.js'
@@ -29,7 +31,6 @@ import {
   type ProductionCompositionConfig,
   ProductionCompositionError,
 } from './production-composition.js'
-import type { ConnectionRegistry } from './connections.js'
 import { StorageJournal } from './storage-journal.js'
 import { UnavailableAnalyst } from './unavailable-analyst.js'
 
@@ -97,6 +98,7 @@ export interface DurableStartupStage {
 export interface DurableBraidApplication {
   readonly app: BraidApplication
   readonly storage: SqliteStorage
+  readonly nativeInteractive?: NativeInteractiveExecutionControl
 }
 
 export type ProductionBraidApplicationOptions = Omit<CompositionOptions, 'fixture'>
@@ -277,7 +279,13 @@ export async function createDurableBraidApplication(
         : { interactionResponseTimeoutMs: options.interactionResponseTimeoutMs }),
     })
     reportStartupStage(options.startupObserver, 'application-create', stageStarted)
-    return { app, storage }
+    return {
+      app,
+      storage,
+      ...(production?.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: production.nativeInteractive }),
+    }
   } catch (error) {
     await storage.close().catch(() => undefined)
     throw error

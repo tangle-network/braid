@@ -30,9 +30,9 @@ import {
   DEFAULT_MAX_EVENTS,
   DEFAULT_MAX_PAYLOAD_BYTES,
   DEFAULT_MAX_QUEUED_TRANSACTIONS,
+  type SqliteStartupStage,
   type SqliteStorageInput,
   type SqliteStorageOptions,
-  type SqliteStartupStage,
 } from './sqlite-types.js'
 
 export type {

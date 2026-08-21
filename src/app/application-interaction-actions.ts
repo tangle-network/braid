@@ -1,21 +1,21 @@
 import type { InteractionResponse } from '@tangle-network/agent-interface'
 import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import { DomainInvariantError } from '../domain/invariants-base.js'
+import { assertAutomationRuleRecord } from '../domain/invariants-runtime.js'
 import type { BraidState } from '../domain/state.js'
-import type { ExecutionPort } from '../ports/execution.js'
+import { type ExecutionPort, supportsInteractionResponse } from '../ports/execution.js'
 import { KeyedActionQueue } from './action-serialization.js'
+import { operationId } from './application-guards.js'
 import type { PortViews } from './application-port-builder.js'
 import type { RuntimeEventEnvelopeLike, RuntimeEventIngestionResult } from './application-ports.js'
 import type { InteractionReceipt } from './application-types.js'
 import { type AutomationActions, createAutomationActions } from './automation-actions.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
-import { operationId } from './application-guards.js'
+import { AppError } from './errors.js'
 import { InteractionAutomationCoordinator } from './interaction-automation-coordinator.js'
 import { respondInteraction as respondInteractionController } from './interaction-controller.js'
 import type { RunLedger } from './run-ledger.js'
-import { assertAutomationRuleRecord } from '../domain/invariants-runtime.js'
-import { DomainInvariantError } from '../domain/invariants-base.js'
-import { AppError } from './errors.js'
 
 const DEFAULT_INTERACTION_RESPONSE_TIMEOUT_MS = 5_000
 
@@ -57,7 +57,7 @@ export class ApplicationInteractionActions {
       now: options.now,
       respond: (input) => this.respond(input),
       reconcilePending: () => this.reconcile(),
-      canRespond: () => this.canRespond(),
+      canRespond: (runId) => this.canRespond(runId),
     })
     this.#coordinator = new InteractionAutomationCoordinator({
       state: options.state,
@@ -66,15 +66,23 @@ export class ApplicationInteractionActions {
     })
   }
 
-  canRespond(): boolean {
-    return this.#options.execution.respondInteraction !== undefined
+  canRespond(runId?: string): boolean {
+    if (runId === undefined || this.#options.execution.respondInteraction === undefined)
+      return false
+    const run = this.#options.state().runs.find((candidate) => candidate.id === runId)
+    return run !== undefined && supportsInteractionResponse(run.receipt.capabilities)
   }
 
   acceptRuntimeEvent(
     envelope: RuntimeEventEnvelopeLike,
     result: RuntimeEventIngestionResult,
   ): void {
-    if (!result.accepted || envelope.event.type !== 'interaction' || !this.canRespond()) return
+    if (
+      !result.accepted ||
+      envelope.event.type !== 'interaction' ||
+      !this.canRespond(envelope.runId)
+    )
+      return
     const interactionId = envelope.event.request.id
     const target = this.#options
       .state()
@@ -108,7 +116,7 @@ export class ApplicationInteractionActions {
   }
 
   reconcile(): Promise<void> {
-    return this.canRespond() ? this.#coordinator.reconcile() : Promise.resolve()
+    return this.#coordinator.reconcile()
   }
 
   async whenIdle(): Promise<void> {

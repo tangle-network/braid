@@ -1,5 +1,9 @@
 import type { InteractionResponseCommand } from '@tangle-network/agent-interface'
-import type { ControlAcknowledgement, ExecutionPort } from '../ports/execution.js'
+import type {
+  ControlAcknowledgement,
+  ExecutionPort,
+  RetainedExecutionRecoveryContext,
+} from '../ports/execution.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 
 export type InteractionEffectRequest = InteractionResponseCommand
@@ -11,6 +15,7 @@ export async function executeInteractionEffect(input: {
   readonly owner: string
   readonly timeoutMs: number
   readonly whenDurable: () => Promise<void>
+  readonly recovery?: RetainedExecutionRecoveryContext
 }): Promise<ControlAcknowledgement> {
   const { request } = input
   const effect = input.effects.start(
@@ -27,9 +32,10 @@ export async function executeInteractionEffect(input: {
     },
     {
       dispatch: async () => {
-        return dispatchResponse(input.execution, request, input.timeoutMs)
+        return dispatchResponse(input.execution, request, input.timeoutMs, input.recovery)
       },
-      reconcile: async () => dispatchResponse(input.execution, request, input.timeoutMs),
+      reconcile: async () =>
+        dispatchResponse(input.execution, request, input.timeoutMs, input.recovery),
     },
   )
   const record = await effect.completion
@@ -59,6 +65,7 @@ async function dispatchResponse(
   execution: ExecutionPort,
   request: InteractionEffectRequest,
   timeoutMs: number,
+  recovery?: RetainedExecutionRecoveryContext,
 ): Promise<{
   readonly status: 'acknowledged' | 'failed' | 'unknown'
   readonly detail: string
@@ -68,7 +75,11 @@ async function dispatchResponse(
   try {
     const controller = new AbortController()
     const result = await interactionResponseDeadline(
-      execution.respondInteraction({ command: request, signal: controller.signal }),
+      execution.respondInteraction({
+        command: request,
+        signal: controller.signal,
+        ...(recovery === undefined ? {} : { recovery }),
+      }),
       controller,
       request.operationId,
       timeoutMs,

@@ -8,28 +8,27 @@ import type {
   RestoreReport,
 } from '../../ports/storage.js'
 import type { SqliteDatabase } from './sqlite-driver.js'
+import { SqliteEffectsStorage } from './sqlite-effects.js'
 import { StorageError } from './sqlite-errors.js'
+import {
+  assertApprovedPath,
+  classifySqliteError,
+  copyProtectedFile,
+  secureArtifact,
+  syncDirectory,
+  validatePath,
+} from './sqlite-paths.js'
+import type { RestoreManifest } from './sqlite-recovery.js'
+import { restoreManifestPath, writeRestoreManifest } from './sqlite-recovery.js'
+import { jsonValue } from './sqlite-rows.js'
 import {
   applyConnectionPragmas,
   migrateSchema,
   pragmaNumber,
   SQLITE_SCHEMA_VERSION,
 } from './sqlite-schema.js'
-import { assertOperationRequestDigest } from './storage-validation.js'
-
-import { SqliteEffectsStorage } from './sqlite-effects.js'
-import type { RestoreManifest } from './sqlite-recovery.js'
-import { jsonValue } from './sqlite-rows.js'
-import { classifySqliteError } from './sqlite-paths.js'
 import { RESTORE_MANIFEST_VERSION } from './sqlite-types.js'
-import {
-  assertApprovedPath,
-  copyProtectedFile,
-  secureArtifact,
-  syncDirectory,
-  validatePath,
-} from './sqlite-paths.js'
-import { restoreManifestPath, writeRestoreManifest } from './sqlite-recovery.js'
+import { assertOperationRequestDigest } from './storage-validation.js'
 
 export abstract class SqliteMaintenanceStorage extends SqliteEffectsStorage {
   async migrate(operation: OperationIntent): Promise<MigrationReport> {

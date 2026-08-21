@@ -8,8 +8,8 @@ import {
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
-import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 import { safeExecutionId } from './production-backend-common.js'
+import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 import type {
   RetainedExecutionPlan,
   RetainedResultProjection,
@@ -92,6 +92,12 @@ export async function startTangleRetainedRun(
   }
   // A retained create may return an existing environment for the same key.
   // Do not destroy it after an ambiguous dispatch failure without a provider-issued creation receipt.
+  const turn = {
+    prompt: input.text,
+    turnId: safeExecutionId(input.operationId),
+    interactions: input.interactions ?? {},
+    signal: input.signal,
+  }
   return startRetainedRun({
     provider: plan.provider,
     environment: {
@@ -101,11 +107,7 @@ export async function startTangleRetainedRun(
       metadata: plan.prepared.environmentMetadata,
       idempotencyKey: plan.prepared.environmentIdempotencyKey,
     },
-    turn: {
-      prompt: input.text,
-      turnId: safeExecutionId(input.operationId),
-      signal: input.signal,
-    },
+    turn,
     identity: {
       sessionId: plan.prepared.providerSessionId,
       executionId: plan.executionId,

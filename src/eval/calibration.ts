@@ -7,8 +7,8 @@ import {
   llmJudge,
   runCampaign,
 } from '@tangle-network/agent-eval/contract'
-import { EVAL_TOTAL_COMPLETION_TOKENS } from './execution.js'
 import { artifactForScenario, scenariosForCalibration } from './cases.js'
+import { EVAL_TOTAL_COMPLETION_TOKENS } from './execution.js'
 import type {
   CalibrationCategoryOutcome,
   CalibrationCellRecord,

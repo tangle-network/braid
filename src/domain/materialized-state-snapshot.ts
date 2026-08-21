@@ -1,9 +1,9 @@
 import { canonicalDigest } from './canonical.js'
 import type { EventId } from './ids.js'
+import { assertBraidState } from './invariants.js'
 import { migrateLegacyInteractions } from './legacy-interaction-snapshot.js'
 import type { MaterializedState } from './materialized-state.js'
 import { canonicalProjectionChecksum } from './projection-checksum.js'
-import { assertBraidState } from './invariants.js'
 import { withHealth } from './reducer-helpers.js'
 import { type BraidState, initialState } from './state.js'
 

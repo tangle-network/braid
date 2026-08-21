@@ -1,4 +1,4 @@
- activity · analyses › /ask · frozen question · complete · 1/1
+ analyses › /ask · frozen question   Braid starter · pi · fixture/deterministic
 ────────────────────────────────────────────────────────────────────────────────
  source: da8ae2345b2c17a…7c9190eb · frozen
  analyst: profile-trace-reviewer · completed
@@ -16,9 +16,9 @@
  ── next
  next: ask a narrower question, or use /compare <left> <right> against another
  frozen run
- ── model use
- Model calls were not reported.
  ── run receipt
  source complete: yes
+ findings: 2
+ analysis cost: $0.0048
 ────────────────────────────────────────────────────────────────────────────────
- ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2 · tab filter: analys…
+ ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/2 · tab: analyses

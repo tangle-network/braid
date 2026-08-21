@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ConnectionCapabilityReport } from '../src/adapters/connections/production-connection-types.js'
+import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { ConnectionActionService } from '../src/app/connection-actions.js'
 import { ConnectionError, ConnectionRemovalError } from '../src/app/connection-errors.js'
 import { AppError } from '../src/app/errors.js'
-import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import { connectionRemovalBlockers } from '../src/domain/connection-removal.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
-import { DomainInvariantError } from '../src/domain/invariants.js'
 import { createConnectionId, createOperationId } from '../src/domain/ids.js'
+import { DomainInvariantError } from '../src/domain/invariants.js'
 import { reduceEvent } from '../src/domain/reducer.js'
 import type { BraidState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
@@ -62,7 +62,7 @@ function capabilities(connectionId: ConnectionRecord['id']): ConnectionCapabilit
       sessions: { continue: true, list: false, messages: false },
       interactions: { originate: false, respond: false },
     },
-    providerMethods: { create: true, get: false, list: false, respondToInteraction: false },
+    providerMethods: { create: true, get: false, list: false },
     actions: {
       stream: true,
       replay: true,

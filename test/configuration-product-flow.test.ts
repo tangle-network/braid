@@ -12,6 +12,7 @@ import type {
   UiDispatchResult,
 } from '../src/views/shared/intents.js'
 import type { BraidViewModel, HeadlessState } from '../src/views/shared/models.js'
+import { profileDetailLines } from '../src/views/tui/configuration-presenters.js'
 import { ConfigurationWizard } from '../src/views/tui/configuration-wizard.js'
 import { ConnectionSetupViewPanel } from '../src/views/tui/connection-setup.js'
 import { ProfileEditorViewPanel } from '../src/views/tui/profile-editor.js'
@@ -28,7 +29,9 @@ function profile(name: string, _writable: boolean): AgentProfile {
     model: {
       default: `provider/${name.toLowerCase()}`,
       reasoningEffort: 'high',
-      metadata: { maxTokens: 8192 },
+      maxVisibleOutputTokens: 8192,
+      maxReasoningTokens: 16_384,
+      maxTotalOutputTokens: 24_576,
     },
     harness: 'pi',
     tools: { read: true },
@@ -53,7 +56,9 @@ function profileSummary(name: string, writable: boolean) {
     runner: 'pi',
     model: `provider/${name.toLowerCase()}`,
     reasoningEffort: 'high',
-    maxOutputTokens: 8192,
+    maxVisibleOutputTokens: 8192,
+    maxReasoningTokens: 16_384,
+    maxTotalOutputTokens: 24_576,
     tools: ['read'],
     skills: [],
     connections: [],
@@ -84,14 +89,16 @@ function accepted(data: unknown, revision = 8): UiDispatchResult {
 
 function controllerFor(
   calls: BraidIntent[],
-  options: { duplicateProfileName?: boolean; rejectLists?: boolean } = {},
+  options: { duplicateProfileName?: boolean; rejectLists?: boolean; singleProfile?: boolean } = {},
 ): BraidUiController {
   let currentView = {
     revision: 7,
     profileName: 'Reviewer',
     connection: 'Local Bridge',
   } as BraidViewModel
-  const profiles = [profileSummary('Reviewer', true), profileSummary('ReadOnly', false)]
+  const profiles = options.singleProfile
+    ? [profileSummary('Reviewer', true)]
+    : [profileSummary('Reviewer', true), profileSummary('ReadOnly', false)]
   if (options.duplicateProfileName) {
     profiles.push({ ...profileSummary('Reviewer', false), id: 'profile-reviewer-duplicate' })
   }
@@ -285,13 +292,17 @@ test('profile editor uses canonical summaries and validates without advertising 
   panel.focused = true
   await settle()
   const initial = panel.render(80).join('\n')
-  assert.match(initial, /Active profile · Reviewer/u)
+  assert.match(initial, /profile/u)
+  assert.match(initial, /─{20,}/u)
+  assert.match(initial, /Reviewer/u)
+  assert.doesNotMatch(initial, /Active profile/u)
   assert.match(initial, /pi/u)
   assert.match(initial, /provider\/reviewer/u)
   assert.doesNotMatch(initial, /secret-canary|secret-profile\.json/u)
   const narrow = panel.render(40)
   assert.ok(narrow.length <= 12)
-  assert.match(narrow.join('\n'), /enter select · \^V validate · esc close/u)
+  assert.match(narrow.join('\n'), /enter · \^V validate · ←\/esc close/u)
+  assert.match(narrow.join('\n'), /close/u)
   assert.doesNotMatch(narrow.join('\n'), /save/iu)
 
   panel.handleInput('\u0016')
@@ -307,6 +318,92 @@ test('profile editor uses canonical summaries and validates without advertising 
     calls.some((intent) => intent.type === 'run-command'),
     false,
   )
+})
+
+test('one profile renders a focused summary without a redundant switch list', async () => {
+  const panel = new ProfileEditorViewPanel(theme, {
+    controller: controllerFor([], { singleProfile: true }),
+  })
+  panel.focused = true
+  await settle()
+  const rendered = panel.render(80).join('\n')
+  assert.match(rendered, /^ profile/mu)
+  assert.match(rendered, /─{20,}/u)
+  assert.match(rendered, /Reviewer/u)
+  assert.match(rendered, /runner pi · model provider\/reviewer/u)
+  assert.doesNotMatch(rendered, /switch profile|profiles/u)
+  assert.match(rendered, /←\/esc close/u)
+})
+
+test('built-in starter details omit the implicit source while real sources remain visible', () => {
+  const builtIn = {
+    ...profileSummary('Braid starter', false),
+    source: {
+      kind: 'inline' as const,
+      reference: 'braid:active',
+      label: 'Braid starter',
+      writable: false,
+      trusted: true,
+    },
+  }
+  const builtInText = profileDetailLines(builtIn).join('\n')
+  assert.doesNotMatch(builtInText, /source Braid starter/u)
+  assert.match(builtInText, /trusted · read-only/u)
+
+  const sourceText = profileDetailLines(profileSummary('Reviewer', false)).join('\n')
+  assert.match(sourceText, /source workspace profile/u)
+})
+
+test('profile and configuration selectors close with either back key', async () => {
+  const connection = {
+    id: 'connection-left-key',
+    kind: 'cli-bridge' as const,
+    name: 'Local Bridge',
+    endpoint: 'https://bridge.example.test/v1',
+    providerOptions: { transport: 'https' as const, capabilityHints: ['stream'] },
+    createdAt: at,
+    updatedAt: at,
+    lastHealth: { status: 'healthy' as const, checkedAt: at },
+  }
+  const record = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'profile:left-key',
+      label: 'Left key profile',
+      writable: false,
+      trusted: true,
+    },
+    profile('Left key profile', false),
+  )
+
+  for (const key of ['\u001b[D', '\u001b']) {
+    let profileCancelled = 0
+    const profiles = new ProfileEditorViewPanel(theme, {
+      controller: controllerFor([]),
+      onCancel: () => {
+        profileCancelled += 1
+      },
+    })
+    profiles.focused = true
+    await settle()
+    profiles.handleInput(key)
+    assert.equal(profileCancelled, 1, `profile ${JSON.stringify(key)}`)
+
+    let configurationCancelled = 0
+    const wizard = new ConfigurationWizard({
+      theme,
+      profiles: [record],
+      connections: [connection],
+      onCommit: () => {},
+      onComplete: () => {},
+      onCancel: () => {
+        configurationCancelled += 1
+      },
+    })
+    wizard.focused = true
+    wizard.handleInput(key)
+    assert.equal(configurationCancelled, 1, `configuration ${JSON.stringify(key)}`)
+  }
 })
 
 test('connection setup shows health and capabilities without endpoints or credentials, then applies exact keyboard actions', async () => {
@@ -328,7 +425,7 @@ test('connection setup shows health and capabilities without endpoints or creden
   assert.doesNotMatch(initial, /access_token|secret-canary/u)
   const narrow = panel.render(40)
   assert.ok(narrow.length <= 12)
-  assert.match(narrow.join('\n'), /enter select · \^T test · esc close/u)
+  assert.match(narrow.join('\n'), /enter select · \^T test · ←\/esc close/u)
 
   panel.handleInput('\u0014')
   await settle()

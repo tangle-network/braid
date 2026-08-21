@@ -1,5 +1,6 @@
 export function createStateDefinitions(normalized) {
   return [
+    ...[40, 80, 120].map((columns) => commandPaletteDefinition(columns, normalized)),
     {
       name: 'empty',
       columns: 80,
@@ -142,7 +143,9 @@ export function createStateDefinitions(normalized) {
         terminal.input('/profile')
         terminal.input('\r')
         await terminal.waitFor(
-          () => normalized(terminal.screen()).includes('Active profile'),
+          () =>
+            normalized(terminal.screen()).includes('Braid starter') &&
+            normalized(terminal.screen()).includes('trusted · read-only'),
           'profile editor',
         )
         const { point, record } = await terminal.captureState()
@@ -175,4 +178,25 @@ export function createStateDefinitions(normalized) {
       },
     },
   ]
+}
+
+function commandPaletteDefinition(columns, normalized) {
+  return {
+    name: `command-palette-${columns}`,
+    columns,
+    rows: columns === 40 ? 12 : 24,
+    run: async (terminal) => {
+      await terminal.waitForStable('before command palette')
+      terminal.input('\u0010')
+      await terminal.waitFor(
+        () =>
+          normalized(terminal.screen()).includes('Commands') &&
+          normalized(terminal.screen()).includes('←/esc close'),
+        `full-screen command palette screen=${normalized(terminal.screen())}`,
+      )
+      const { point, record } = await terminal.captureState()
+      await terminal.closeNormally()
+      return { point, record }
+    },
+  }
 }

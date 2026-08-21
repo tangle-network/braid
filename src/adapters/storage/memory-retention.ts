@@ -10,12 +10,11 @@ import type {
   RetentionReport,
   StorageArtifacts,
 } from '../../ports/storage.js'
+import { missing, projectionOf } from './memory-base.js'
+import { MemoryMaintenanceStorage } from './memory-maintenance.js'
 import { payloadChecksum, tombstone } from './sqlite-crypto.js'
 import { StorageError } from './sqlite-errors.js'
 import { assertOperationRequestDigest } from './storage-validation.js'
-import { missing, projectionOf } from './memory-base.js'
-
-import { MemoryMaintenanceStorage } from './memory-maintenance.js'
 
 export class MemoryRetentionStorage extends MemoryMaintenanceStorage {
   async applyRetention(input: {

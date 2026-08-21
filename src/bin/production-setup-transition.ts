@@ -1,6 +1,7 @@
 import type { BraidApplication } from '../app/application.js'
-import type { ConnectionRegistry } from '../app/connections.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
+import type { ConnectionRegistry } from '../app/connections.js'
+import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import { prepareProductionSelection } from './production-setup-credentials.js'
 import {
   type ProductionStartupPersistence,
@@ -16,6 +17,7 @@ import type { ProductionStartupLoadOptions } from './production-startup.js'
 export interface ProductionApplicationHandle {
   readonly app: BraidApplication
   readonly connections?: ConnectionRegistry
+  readonly nativeInteractive?: NativeInteractiveExecutionControl
   readonly close: () => Promise<void>
 }
 

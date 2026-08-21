@@ -1,0 +1,991 @@
+import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  AgentExactRunControlRefSchema,
+  AgentInteractiveSessionRefSchema,
+} from '@tangle-network/agent-interface'
+import { Sandbox } from '@tangle-network/sandbox'
+import xterm from '@xterm/headless'
+import * as pty from 'node-pty'
+import { sleep } from '../live-bridge/process.mjs'
+import { waitForTreeGone } from '../live-bridge/process-tree.mjs'
+import { runFromState, stateForRun } from '../live-bridge/protocol.mjs'
+import { installPackedBraid } from '../packed-binary.mjs'
+import { connectionConfiguration } from './configuration.mjs'
+import {
+  EXIT_CODES,
+  PROOF_OPERATIONS,
+  proofInvocation,
+  proofReceipt,
+  protectedUnavailable,
+  safeJson,
+  safeMessage,
+  scalarMeasurement,
+} from './contracts.mjs'
+import {
+  closeSession,
+  configEvidence,
+  initializedSession,
+  prepareProductionWorkspace,
+  rpcRequest,
+  rpcState,
+} from './headless.mjs'
+import {
+  assertVerifiedProcessCleanup,
+  cleanupRetainedResourceByControlRef,
+  observeRetainedResource,
+} from './tangle-sandbox-braid-stress.mjs'
+
+const scriptPath = fileURLToPath(import.meta.url)
+const repository = resolve(dirname(scriptPath), '../..')
+const DEFAULT_TIMEOUT_MS = 180_000
+const DEFAULT_IDLE_TTL_SECONDS = 1_800
+const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 10_000
+const DETACH = '\u001d'
+const RUN_STATUS_AFTER_STOP = new Set(['aborted', 'cancelled'])
+const CONTROL_REF_FIELDS = Object.freeze([
+  'provider',
+  'environmentId',
+  'sessionId',
+  'executionId',
+  'runId',
+  'requestDigest',
+])
+const INTERACTIVE_PROOF_CHECKS = Object.freeze([
+  'packed-binary',
+  'interactive-command',
+  'input',
+  'detach',
+  'reconnect',
+  'terminal-resize',
+  'same-local-run',
+  'same-provider-control-ref',
+  'sandbox-observed-before-stop',
+  'stop-through-braid',
+  'sandbox-observed-stopped',
+  'exact-resource-cleanup',
+  'process-exited-before-cleanup',
+  'process-group-exited-before-cleanup',
+])
+const SECRET_ENVIRONMENT_NAMES = [
+  'BRAID_TANGLE_SANDBOX_AUTH',
+  'BRAID_TANGLE_SANDBOX_API_KEY',
+  'BRAID_TANGLE_SANDBOX_BEARER',
+  'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
+  'TANGLE_API_KEY',
+]
+
+function argument(name, argv = process.argv) {
+  const index = argv.indexOf(`--${name}`)
+  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
+}
+
+function positiveEnvironment(environment, name, fallback) {
+  const value = Number(environment[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function configurationEnvironment(environment) {
+  if (
+    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
+    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
+    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
+    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
+    environment.TANGLE_API_KEY
+  ) {
+    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
+  }
+  return environment
+}
+
+function sanitizedEnvironment(environment) {
+  const child = { ...environment }
+  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
+  return child
+}
+
+export function sandboxConfiguration(environment) {
+  return connectionConfiguration(configurationEnvironment(environment), {
+    prefix: 'BRAID_TANGLE_SANDBOX',
+    kind: 'tangle-sandbox',
+    endpointNames: ['BRAID_TANGLE_ENDPOINT'],
+    modelNames: ['BRAID_TANGLE_MODEL'],
+    runnerNames: ['BRAID_TANGLE_RUNNER'],
+    providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    fallbackEndpoint: 'https://sandbox.tangle.tools',
+    fallbackModel: 'tangle-router/glm-5.2',
+    fallbackRunner: 'pi',
+    fallbackProvider: 'tangle',
+  })
+}
+
+export function interactiveProofCommandSequence(markers) {
+  const input = markers.input ?? markers.inputSeed?.toUpperCase()
+  const reconnect = markers.reconnect ?? markers.reconnectSeed?.toUpperCase()
+  return [
+    `/interactive Reply with exactly the uppercase version of ${markers.outputSeed}.`,
+    input,
+    DETACH,
+    '/help',
+    '/attach',
+    reconnect,
+    DETACH,
+    '/help',
+  ]
+}
+
+function occurrences(value, marker) {
+  if (!marker) return 0
+  let count = 0
+  let offset = 0
+  while (offset >= 0) {
+    offset = value.indexOf(marker, offset)
+    if (offset < 0) break
+    count += 1
+    offset += marker.length
+  }
+  return count
+}
+
+function terminalText(terminal) {
+  let text = ''
+  for (let row = 0; row < terminal.rows; row += 1) {
+    text += terminal.buffer.active.getLine(row)?.translateToString(true) ?? ''
+    text += '\n'
+  }
+  return text
+}
+
+async function waitFor(label, predicate, timeoutMs) {
+  const deadline = performance.now() + timeoutMs
+  for (;;) {
+    const value = await predicate()
+    if (value) return value
+    if (performance.now() >= deadline) throw new Error(`${label} timed out after ${timeoutMs}ms`)
+    await sleep(50)
+  }
+}
+
+function createPty(binary, config, statePath, exitTimeoutMs) {
+  const terminal = new xterm.Terminal({ cols: 120, rows: 36, allowProposedApi: true })
+  const child = pty.spawn(process.execPath, [binary, '--inline', '--record-state', statePath], {
+    cwd: config.workspace,
+    env: {
+      ...config.environment,
+      BRAID_SHUTDOWN_MODE: 'detach',
+      NO_COLOR: '1',
+      NODE_NO_WARNINGS: '1',
+    },
+    name: 'xterm-256color',
+    cols: 120,
+    rows: 36,
+  })
+  let output = ''
+  let exited = false
+  let exitResult
+  let processCleanup
+  const waitForProcessCleanup = async () => {
+    processCleanup ??= await waitForTreeGone(child, exitTimeoutMs)
+    return processCleanup
+  }
+  child.onData((chunk) => {
+    output += chunk
+    terminal.write(chunk)
+  })
+  child.onExit((result) => {
+    exited = true
+    exitResult = result
+  })
+  return {
+    child,
+    terminal,
+    get output() {
+      return output
+    },
+    get screen() {
+      return terminalText(terminal)
+    },
+    get exited() {
+      return exited
+    },
+    get processCleanup() {
+      return processCleanup
+    },
+    write(value) {
+      child.write(value)
+    },
+    resize(columns, rows) {
+      assert.ok(Number.isInteger(columns) && columns > 0, 'PTY columns must be positive')
+      assert.ok(Number.isInteger(rows) && rows > 0, 'PTY rows must be positive')
+      child.resize(columns, rows)
+      terminal.resize(columns, rows)
+    },
+    async close() {
+      if (exited) return { ...exitResult, processCleanup: await waitForProcessCleanup() }
+      child.write('\u0003')
+      await waitFor(
+        'Braid terminal quit prompt',
+        () => /Ctrl\+C again to quit/iu.test(this.screen),
+        exitTimeoutMs,
+      )
+      child.write('\u0003')
+      const result = await waitFor('Braid terminal exit', () => exited && exitResult, exitTimeoutMs)
+      return { ...result, processCleanup: await waitForProcessCleanup() }
+    },
+    async forceClose() {
+      if (!exited) child.kill()
+      const result = await waitFor(
+        'forced Braid terminal exit',
+        () => exited && exitResult,
+        exitTimeoutMs,
+      )
+      return { ...result, processCleanup: await waitForProcessCleanup() }
+    },
+    dispose() {
+      terminal.dispose()
+    },
+  }
+}
+
+async function captureStateFrame(runtime, recordPath, timeoutMs) {
+  await rm(`${recordPath}.frame`, { force: true })
+  process.kill(runtime.child.pid, 'SIGUSR2')
+  return waitFor(
+    'atomic Braid interactive state frame',
+    async () => {
+      try {
+        return JSON.parse(await readFile(`${recordPath}.frame`, 'utf8'))
+      } catch {
+        return undefined
+      }
+    },
+    timeoutMs,
+  )
+}
+
+async function proveTuiReturned(runtime, timeoutMs, label) {
+  const before = runtime.output.length
+  runtime.write('/help\r')
+  await waitFor(`${label} returned to Braid`, () => /Commands/iu.test(runtime.screen), timeoutMs)
+  runtime.write('\u001b')
+  await waitFor(
+    `${label} closed the Braid help surface`,
+    () => !/Commands/iu.test(runtime.screen),
+    timeoutMs,
+  )
+  return { outputBytes: runtime.output.length - before }
+}
+
+function eventKind(event) {
+  return event?.kind ?? event?.event?.kind ?? event?.type
+}
+
+function eventRunId(event) {
+  return event?.runId ?? event?.event?.runId
+}
+
+function assertOrderedRunEvents(events, runId, required) {
+  let nextIndex = 0
+  for (const kind of required) {
+    const found = events.findIndex(
+      (event, index) =>
+        index >= nextIndex &&
+        eventKind(event) === kind &&
+        (eventRunId(event) === undefined || eventRunId(event) === runId),
+    )
+    assert.ok(found >= nextIndex, `interactive record omitted ordered ${kind}`)
+    nextIndex = found + 1
+  }
+}
+
+function exactControlRef(value, label) {
+  const parsed = AgentExactRunControlRefSchema.safeParse(value)
+  assert.ok(parsed.success, `${label} is not a valid exact Braid control reference`)
+  return parsed.data
+}
+
+function assertControlRefsEqual(expected, actual, label) {
+  const expectedRef = exactControlRef(expected, `${label} expected`)
+  const actualRef = exactControlRef(actual, `${label} actual`)
+  for (const field of CONTROL_REF_FIELDS) {
+    assert.equal(actualRef[field], expectedRef[field], `${label}.${field} mismatch`)
+  }
+  return actualRef
+}
+
+function interactiveAdmissionIdentity(run) {
+  const admission = run?.retainedAdmission
+  assert.equal(
+    admission?.phase,
+    'interactive_started',
+    'interactive proof requires the canonical interactive_started admission phase',
+  )
+  assert.equal(
+    typeof admission?.interactiveIdempotencyKey,
+    'string',
+    'interactive_started admission omitted interactiveIdempotencyKey',
+  )
+  assert.ok(
+    admission.interactiveIdempotencyKey.length > 0,
+    'interactive_started admission has an empty interactiveIdempotencyKey',
+  )
+  const parsedRef = AgentInteractiveSessionRefSchema.safeParse(admission.ref)
+  assert.ok(parsedRef.success, 'interactive_started admission ref is invalid')
+  const controlRef = assertControlRefsEqual(
+    run.controlRef,
+    parsedRef.data.run,
+    'interactive admission control reference',
+  )
+  if (run.providerSessionId !== undefined) {
+    assert.equal(
+      parsedRef.data.run.sessionId,
+      run.providerSessionId,
+      'interactive admission session differs from the stored provider session',
+    )
+  }
+  return { admission, ref: parsedRef.data, controlRef }
+}
+
+export function recoverInteractiveIdentity(record) {
+  const runs = Array.isArray(record?.state?.runs) ? record.state.runs : []
+  if (runs.length !== 1 || typeof runs[0]?.id !== 'string' || runs[0].id.length === 0)
+    return undefined
+  const run = runs[0]
+  try {
+    const { admission, ref, controlRef } = interactiveAdmissionIdentity(run)
+    return {
+      run,
+      admission,
+      ref,
+      controlRef,
+      eventKinds: (Array.isArray(record?.events) ? record.events : []).map(eventKind),
+    }
+  } catch {
+    return undefined
+  }
+}
+
+export function assertInteractiveRecord(record) {
+  const runs = Array.isArray(record?.state?.runs) ? record.state.runs : []
+  assert.equal(runs.length, 1, 'interactive proof must retain exactly one local run')
+  const run = runs[0]
+  const { controlRef } = interactiveAdmissionIdentity(run)
+  assert.equal(controlRef.provider, 'tangle-sandbox')
+  const events = Array.isArray(record?.events) ? record.events : []
+  const kinds = events.map(eventKind)
+  for (const required of ['run.control.requested', 'run.control.acknowledged', 'run.detached']) {
+    assert.ok(kinds.includes(required), `interactive record omitted ${required}`)
+  }
+  assert.ok(kinds.includes('run.reconnecting'), 'interactive record omitted run.reconnecting')
+  assertOrderedRunEvents(events, run.id, [
+    'run.control.requested',
+    'run.control.acknowledged',
+    'run.detached',
+    'run.reconnecting',
+    'run.detached',
+  ])
+  assert.equal(run.status, 'detached', 'TUI must leave the retained run detached before stop')
+  return { run, controlRef, eventKinds: kinds }
+}
+
+export function assertStoppedTerminal(terminal) {
+  if (terminal === null) return { terminal: null, stopped: true }
+  assert.ok(terminal && typeof terminal === 'object', 'Sandbox terminal observation was invalid')
+  assert.equal(terminal.isRunning, false, 'Sandbox terminal remained active after Braid stop')
+  return { terminal, stopped: true }
+}
+
+async function observeSandbox(client, controlRef, timeoutMs, expectedRunning, expectedGeometry) {
+  const resource = await observeRetainedResource(client, controlRef)
+  const box = await client.get(controlRef.environmentId)
+  assert.equal(box?.id, resource.id, 'Sandbox observation changed environment identity')
+  assert.ok(box.terminals && typeof box.terminals.get === 'function')
+  let terminal
+  await waitFor(
+    expectedRunning ? 'retained interactive terminal' : 'stopped retained interactive terminal',
+    async () => {
+      terminal = await box.terminals.get(controlRef.sessionId)
+      if (terminal !== null) assert.equal(terminal.sessionId, controlRef.sessionId)
+      if (expectedRunning) {
+        return (
+          terminal?.isRunning === true &&
+          (expectedGeometry === undefined ||
+            (terminal.cols === expectedGeometry.cols && terminal.rows === expectedGeometry.rows))
+        )
+      }
+      return terminal === null || terminal?.isRunning === false
+    },
+    timeoutMs,
+  )
+  const stopped = expectedRunning ? undefined : assertStoppedTerminal(terminal)
+  if (expectedGeometry !== undefined) {
+    assert.equal(
+      terminal?.cols,
+      expectedGeometry.cols,
+      'Sandbox terminal columns were not retained',
+    )
+    assert.equal(terminal?.rows, expectedGeometry.rows, 'Sandbox terminal rows were not retained')
+  }
+  return {
+    resource,
+    terminal,
+    ...(terminal === null
+      ? {}
+      : { geometry: { cols: terminal.cols ?? null, rows: terminal.rows ?? null } }),
+    ...(stopped ?? {}),
+  }
+}
+
+async function cleanupExactSandbox(client, identity) {
+  const observed = await observeRetainedResource(client, identity.controlRef)
+  const cleanup = await cleanupRetainedResourceByControlRef(client, identity.controlRef)
+  assert.equal(cleanup.id, observed.id, 'Sandbox cleanup changed the exact Braid resource')
+  assert.equal(cleanup.id, identity.controlRef.environmentId)
+  return cleanup
+}
+
+function cleanupFailure(label, error) {
+  return new Error(`${label}: ${safeMessage(error)}`, { cause: error })
+}
+
+function assertStopResultMatchesIdentity(stopResult, identity) {
+  assert.ok(stopResult && typeof stopResult === 'object', 'Braid stop returned no result')
+  const controlRef = assertControlRefsEqual(
+    identity.controlRef,
+    stopResult.controlRef,
+    'Braid stop result control reference',
+  )
+  assert.ok(
+    RUN_STATUS_AFTER_STOP.has(stopResult.run?.status),
+    'Braid stop result did not prove a terminal stopped status',
+  )
+  assert.equal(
+    stopResult.run?.id,
+    identity.run.id,
+    'Braid stop result returned a different local run',
+  )
+  return controlRef
+}
+
+async function attemptCleanup(errors, label, operation) {
+  try {
+    return { ok: true, value: await operation() }
+  } catch (error) {
+    errors.push(cleanupFailure(label, error))
+    return { ok: false, value: undefined }
+  }
+}
+
+export async function finalizeInteractiveProof({
+  packed,
+  config,
+  runtime,
+  recordPath,
+  identity,
+  client,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  exitTimeoutMs = DEFAULT_PROCESS_EXIT_TIMEOUT_MS,
+  executionStarted = runtime !== undefined,
+  stopped = false,
+  stopResult,
+  stop = ({ binary, targetConfig, runId, timeout }) =>
+    stopThroughBraid(binary, targetConfig, runId, timeout),
+  observe = (targetClient, controlRef, timeout) =>
+    observeSandbox(targetClient, controlRef, timeout, false),
+  cleanupSandbox = cleanupExactSandbox,
+} = {}) {
+  const errors = []
+  let processExited = runtime === undefined || runtime.exited === true
+  let processGroupExited =
+    runtime === undefined ||
+    (runtime.processCleanup?.supported === true && runtime.processCleanup.gone === true)
+  if (runtime !== undefined && !processExited) {
+    await attemptCleanup(errors, 'PTY process exit', () => runtime.forceClose(exitTimeoutMs))
+    processExited = runtime.exited === true
+    processGroupExited =
+      runtime.processCleanup?.supported === true && runtime.processCleanup.gone === true
+  }
+  if (runtime !== undefined && processExited) {
+    await attemptCleanup(errors, 'PTY terminal disposal', () => runtime.dispose?.())
+  }
+  if (runtime !== undefined && !processExited) {
+    errors.push(new Error('PTY process did not exit; workspace cleanup was refused'))
+  }
+  if (runtime !== undefined && processExited && !processGroupExited) {
+    errors.push(new Error('PTY process group did not exit; workspace cleanup was refused'))
+  }
+
+  let resolvedIdentity = identity
+  if (resolvedIdentity === undefined && recordPath !== undefined) {
+    const recovered = await attemptCleanup(errors, 'recorded Braid identity recovery', async () => {
+      const record = JSON.parse(await readFile(recordPath, 'utf8'))
+      const recoveredIdentity = recoverInteractiveIdentity(record)
+      if (recoveredIdentity === undefined)
+        throw new Error('recorded state did not contain one exact Braid run identity')
+      return recoveredIdentity
+    })
+    if (recovered.ok) resolvedIdentity = recovered.value
+  }
+  if (executionStarted && resolvedIdentity === undefined) {
+    errors.push(new Error('Braid run identity was unavailable; exact cloud cleanup was refused'))
+  }
+
+  let resolvedStop = stopResult
+  let didStop = false
+  if (resolvedIdentity !== undefined && resolvedStop !== undefined) {
+    const verifiedStop = await attemptCleanup(errors, 'Braid stop identity', () =>
+      assertStopResultMatchesIdentity(resolvedStop, resolvedIdentity),
+    )
+    didStop = verifiedStop.ok
+  }
+  if (resolvedIdentity !== undefined && resolvedStop === undefined && stopped) {
+    errors.push(new Error('Braid stop result was unavailable; exact cloud cleanup was refused'))
+  } else if (resolvedIdentity !== undefined && resolvedStop === undefined) {
+    if (packed?.binary === undefined || config === undefined) {
+      errors.push(new Error('Braid stop was unavailable; exact cloud cleanup was refused'))
+    } else {
+      const stoppedResult = await attemptCleanup(errors, 'Braid stop', () =>
+        stop({
+          binary: packed.binary,
+          targetConfig: config,
+          runId: resolvedIdentity.run.id,
+          timeout: timeoutMs,
+        }),
+      )
+      if (stoppedResult.ok) {
+        resolvedStop = stoppedResult.value
+        const verifiedStop = await attemptCleanup(errors, 'Braid stop identity', () =>
+          assertStopResultMatchesIdentity(resolvedStop, resolvedIdentity),
+        )
+        didStop = verifiedStop.ok
+      }
+    }
+  }
+
+  let afterStop
+  let cleanup
+  if (resolvedIdentity !== undefined && didStop && processExited && processGroupExited) {
+    if (client === undefined) {
+      errors.push(
+        new Error('Sandbox observation client was unavailable; exact deletion was refused'),
+      )
+    } else {
+      const observed = await attemptCleanup(errors, 'stopped Sandbox observation', () =>
+        observe(client, resolvedIdentity.controlRef, timeoutMs),
+      )
+      if (observed.ok) {
+        afterStop = observed.value
+        const deleted = await attemptCleanup(errors, 'exact Sandbox deletion', () =>
+          cleanupSandbox(client, resolvedIdentity),
+        )
+        if (deleted.ok) {
+          cleanup = deleted.value
+          if (
+            cleanup?.confirmed !== true ||
+            cleanup.id !== resolvedIdentity.controlRef.environmentId
+          )
+            errors.push(new Error('exact Sandbox deletion did not return confirmed identity'))
+        }
+      }
+    }
+  } else if (resolvedIdentity !== undefined && didStop) {
+    errors.push(new Error('PTY process group did not exit; exact cloud deletion was refused'))
+  } else if (resolvedIdentity !== undefined) {
+    errors.push(new Error('Braid stop was not proven; exact cloud cleanup was refused'))
+  }
+
+  if (config !== undefined) {
+    if (!processExited || !processGroupExited) {
+      errors.push(
+        new Error('Braid workspace cleanup was refused while the PTY process group remained'),
+      )
+    } else {
+      const workspace = await attemptCleanup(errors, 'Braid workspace cleanup', () =>
+        config.cleanup(),
+      )
+      if (
+        workspace.ok &&
+        (workspace.value?.credentialRemoved !== true ||
+          workspace.value?.temporaryRootRemoved !== true)
+      )
+        errors.push(new Error('Braid workspace cleanup returned incomplete evidence'))
+    }
+  }
+  if (packed !== undefined) {
+    if (processExited && processGroupExited) {
+      await attemptCleanup(errors, 'packed Braid cleanup', () => packed.cleanup())
+    } else {
+      errors.push(
+        new Error('packed Braid cleanup was refused while the PTY process group remained alive'),
+      )
+    }
+  }
+
+  if (errors.length > 0) {
+    const failure = new AggregateError(errors, 'Braid interactive proof cleanup incomplete')
+    failure.code = 'BRAID_INTERACTIVE_CLEANUP_INCOMPLETE'
+    throw failure
+  }
+  return {
+    processExited,
+    processGroupExited,
+    processCleanup: runtime?.processCleanup,
+    identity: resolvedIdentity,
+    stop: resolvedStop,
+    afterStop,
+    cleanup,
+  }
+}
+
+async function stopThroughBraid(binary, config, runId, timeoutMs) {
+  const initialized = await initializedSession(binary, config)
+  let result
+  try {
+    const before = await rpcState(initialized.session)
+    const beforeRun = runFromState(before.state, runId)
+    if (RUN_STATUS_AFTER_STOP.has(beforeRun?.status)) {
+      result = {
+        operationId: undefined,
+        acknowledgement: { outcome: 'already-applied' },
+        run: beforeRun,
+        controlRef: exactControlRef(beforeRun.controlRef, 'already-stopped Braid run'),
+      }
+    } else {
+      assert.equal(beforeRun?.status, 'detached', 'Braid stop must target the detached run')
+      const operationId = `live-interactive-stop-${randomUUID()}`
+      const acknowledgement = await rpcRequest(
+        initialized.session,
+        'cancel_run',
+        { runId, reason: 'Braid packed-binary interactive live proof complete' },
+        operationId,
+      )
+      assert.ok(
+        acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'replayed',
+        'Braid stop did not return an accepted or replayed outcome',
+      )
+      const terminal = await initialized.session.waitFor(
+        'Braid interactive stop state',
+        (candidate) => {
+          const run = stateForRun(candidate, runId)
+          return run !== undefined && RUN_STATUS_AFTER_STOP.has(run.status)
+        },
+        timeoutMs,
+      )
+      const stoppedRun = runFromState(terminal.state, runId)
+      assert.ok(stoppedRun, 'Braid stop did not return the target run')
+      assert.ok(RUN_STATUS_AFTER_STOP.has(stoppedRun.status))
+      const controlRef = assertControlRefsEqual(
+        beforeRun.controlRef,
+        stoppedRun.controlRef,
+        'Braid stop state control reference',
+      )
+      result = { operationId, acknowledgement, run: stoppedRun, controlRef }
+    }
+  } finally {
+    const closed = await closeSession(initialized.session)
+    const processCleanup = assertVerifiedProcessCleanup(
+      closed?.termination,
+      'Braid interactive stop RPC process',
+    )
+    if (result !== undefined) result = { ...result, processCleanup }
+  }
+  return result
+}
+
+async function runProof({
+  repository: targetRepository = repository,
+  environment = process.env,
+} = {}) {
+  const timeoutMs = positiveEnvironment(
+    environment,
+    'BRAID_TANGLE_SANDBOX_INTERACTIVE_TIMEOUT_MS',
+    DEFAULT_TIMEOUT_MS,
+  )
+  const exitTimeoutMs = Math.min(DEFAULT_PROCESS_EXIT_TIMEOUT_MS, timeoutMs)
+  const idleTtlSeconds = positiveEnvironment(
+    environment,
+    'BRAID_TANGLE_SANDBOX_INTERACTIVE_IDLE_TTL_SECONDS',
+    DEFAULT_IDLE_TTL_SECONDS,
+  )
+  const values = sandboxConfiguration(environment)
+  assert.equal(values.runner, 'pi', 'LIVE-08 native interactive proof must run the Pi harness')
+  if (!values.credentialValue) {
+    throw protectedUnavailable(
+      'SANDBOX_OBSERVATION_CREDENTIAL_REQUIRED',
+      'The packed interactive proof needs a raw Sandbox credential to observe and clean its exact Braid resource',
+    )
+  }
+
+  let packed
+  let config
+  let runtime
+  let recordPath
+  let identity
+  let client
+  let proofData
+  let proofError
+  let stopped = false
+  try {
+    packed = await installPackedBraid(targetRepository)
+    config = await prepareProductionWorkspace({
+      repository: targetRepository,
+      environment: sanitizedEnvironment(configurationEnvironment(environment)),
+      kind: values.kind,
+      endpoint: values.endpoint,
+      model: values.model,
+      runner: values.runner,
+      provider: values.provider,
+      providerOptions: { lifecycle: 'retained', idleTtlSeconds },
+      credentialRef: values.credentialRef,
+      credentialValue: values.credentialValue,
+    })
+    client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
+    recordPath = join(config.root, 'interactive-state.json')
+    runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs)
+    await waitFor('packed Braid TUI startup', () => /Braid/iu.test(runtime.screen), timeoutMs)
+
+    const markers = {
+      outputSeed: `braid_interactive_output_${randomUUID().replaceAll('-', '')}`,
+      inputSeed: `braid_interactive_input_${randomUUID().replaceAll('-', '')}`,
+      reconnectSeed: `braid_interactive_reconnect_${randomUUID().replaceAll('-', '')}`,
+    }
+    markers.output = markers.outputSeed.toUpperCase()
+    markers.input = markers.inputSeed.toUpperCase()
+    markers.reconnect = markers.reconnectSeed.toUpperCase()
+
+    const [interactiveCommand, inputMarker, detach, , attach, reconnectMarker] =
+      interactiveProofCommandSequence(markers)
+    const promptCount = occurrences(runtime.output, markers.output)
+    runtime.write(`${interactiveCommand}\r`)
+    await waitFor(
+      'native interactive output',
+      () => occurrences(runtime.output, markers.output) > promptCount,
+      timeoutMs,
+    )
+    const initialFrame = await captureStateFrame(runtime, recordPath, timeoutMs)
+    const initialIdentity = recoverInteractiveIdentity(initialFrame)
+    assert.ok(initialIdentity, 'interactive frame did not contain one exact Braid run identity')
+    const initialAttach = await observeSandbox(
+      client,
+      initialIdentity.controlRef,
+      timeoutMs,
+      true,
+      { cols: 120, rows: 36 },
+    )
+    const inputCount = occurrences(runtime.output, markers.input)
+    runtime.write(`${inputMarker}\r`)
+    await waitFor(
+      'native interactive input',
+      () => occurrences(runtime.output, markers.input) > inputCount,
+      timeoutMs,
+    )
+
+    runtime.write(detach)
+    await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
+    runtime.write(`${attach}\r`)
+    await sleep(250)
+    runtime.resize(100, 30)
+    const resized = await observeSandbox(client, initialIdentity.controlRef, timeoutMs, true, {
+      cols: 100,
+      rows: 30,
+    })
+    const reconnectedFrame = await captureStateFrame(runtime, recordPath, timeoutMs)
+    const reconnectedIdentity = recoverInteractiveIdentity(reconnectedFrame)
+    assert.ok(reconnectedIdentity, 'reconnected frame did not contain one exact Braid run identity')
+    assert.equal(
+      reconnectedIdentity.run.id,
+      initialIdentity.run.id,
+      'native reconnect changed the local run identity',
+    )
+    assertControlRefsEqual(
+      initialIdentity.controlRef,
+      reconnectedIdentity.controlRef,
+      'native reconnect provider control reference',
+    )
+    const reconnectCount = occurrences(runtime.output, markers.reconnect)
+    runtime.write(`${reconnectMarker}\r`)
+    await waitFor(
+      'native interactive reconnect input',
+      () => occurrences(runtime.output, markers.reconnect) > reconnectCount,
+      timeoutMs,
+    )
+    runtime.write(detach)
+    await proveTuiReturned(runtime, timeoutMs, 'native interactive reconnect detach')
+    const exit = await runtime.close()
+    assert.equal(exit.exitCode, 0, 'packed Braid TUI exited with a non-zero status')
+
+    const record = JSON.parse(await readFile(recordPath, 'utf8'))
+    identity = assertInteractiveRecord(record)
+    assert.equal(
+      identity.run.id,
+      initialIdentity.run.id,
+      'final TUI state changed the local run identity',
+    )
+    assertControlRefsEqual(
+      initialIdentity.controlRef,
+      identity.controlRef,
+      'final TUI state provider control reference',
+    )
+    const sameLocalRun =
+      initialIdentity.run.id === reconnectedIdentity.run.id &&
+      initialIdentity.run.id === identity.run.id
+    const sameProviderControlRef = CONTROL_REF_FIELDS.every(
+      (field) =>
+        initialIdentity.controlRef[field] === reconnectedIdentity.controlRef[field] &&
+        initialIdentity.controlRef[field] === identity.controlRef[field],
+    )
+    const beforeStop = await observeSandbox(client, identity.controlRef, timeoutMs, true, {
+      cols: 100,
+      rows: 30,
+    })
+    const stop = await stopThroughBraid(packed.binary, config, identity.run.id, timeoutMs)
+    stopped = true
+    proofData = {
+      markers,
+      initialAttach,
+      resized,
+      beforeStop,
+      stop,
+      sameLocalRun,
+      sameProviderControlRef,
+      identityContinuity: {
+        initialLocalRunId: initialIdentity.run.id,
+        reconnectedLocalRunId: reconnectedIdentity.run.id,
+        finalLocalRunId: identity.run.id,
+        initialControlRef: initialIdentity.controlRef,
+        reconnectedControlRef: reconnectedIdentity.controlRef,
+        finalControlRef: identity.controlRef,
+      },
+    }
+  } catch (error) {
+    proofError = error
+  }
+
+  let cleanup
+  let cleanupError
+  try {
+    cleanup = await finalizeInteractiveProof({
+      packed,
+      config,
+      runtime,
+      recordPath,
+      identity,
+      client,
+      timeoutMs,
+      exitTimeoutMs,
+      executionStarted: runtime !== undefined,
+      stopped,
+      stopResult: proofData?.stop,
+    })
+  } catch (error) {
+    cleanupError = error
+  }
+
+  if (proofError !== undefined && cleanupError !== undefined)
+    throw new AggregateError(
+      [proofError, cleanupError],
+      'Braid interactive proof failed and cleanup was incomplete',
+    )
+  if (cleanupError !== undefined) throw cleanupError
+  if (proofError !== undefined) throw proofError
+  assert.ok(proofData && cleanup, 'interactive proof completed without proof and cleanup evidence')
+
+  return {
+    status: 'passed',
+    proof: 'braid-packed-binary-native-interactive',
+    checks: {
+      packedBinary: true,
+      interactiveCommand: true,
+      input: true,
+      detach: true,
+      reconnect: true,
+      terminalResize:
+        proofData.resized.geometry?.cols === 100 && proofData.resized.geometry?.rows === 30,
+      sameLocalRun: proofData.sameLocalRun === true,
+      sameProviderControlRef: proofData.sameProviderControlRef === true,
+      sandboxObservedBeforeStop: proofData.beforeStop.terminal?.isRunning === true,
+      stopThroughBraid: RUN_STATUS_AFTER_STOP.has(proofData.stop.run.status),
+      sandboxObservedStopped: cleanup.afterStop?.stopped === true,
+      exactSandboxCleanup: cleanup.cleanup?.confirmed === true,
+      processExitedBeforeWorkspaceCleanup: cleanup.processExited === true,
+      processGroupExitedBeforeWorkspaceCleanup: cleanup.processGroupExited === true,
+    },
+    binary: { tarballSha256: packed.tarballSha256 },
+    configuration: configEvidence(config),
+    run: {
+      localRunId: proofData.stop.run.id,
+      controlRef: identity.controlRef,
+      eventKinds: identity.eventKinds,
+      stoppedStatus: proofData.stop.run.status,
+    },
+    sandbox: {
+      initialAttach: proofData.initialAttach,
+      resized: proofData.resized,
+      beforeStop: proofData.beforeStop.resource,
+      afterStop: cleanup.afterStop.resource,
+      cleanup: cleanup.cleanup,
+    },
+    identityContinuity: proofData.identityContinuity,
+    processCleanup: cleanup.processCleanup,
+    markers: proofData.markers,
+  }
+}
+
+export async function runInteractiveProof({
+  repository: targetRepository = repository,
+  environment = process.env,
+  invocationId = proofInvocation('live-tangle'),
+} = {}) {
+  const startedAt = new Date().toISOString()
+  const proof = await runProof({ repository: targetRepository, environment })
+  const evidence = proofReceipt({
+    invocationId,
+    operation: PROOF_OPERATIONS.tangleSandboxInteractive,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    config: proof.configuration,
+    runIds: [proof.run.localRunId],
+    environmentId: proof.run.controlRef.environmentId,
+    facts: {
+      environmentId: proof.run.controlRef.environmentId,
+      localRunId: proof.run.localRunId,
+      stoppedStatus: proof.run.stoppedStatus,
+      cloudControl: proof.run.controlRef,
+      exactResource: proof.checks.exactSandboxCleanup,
+      processExitedBeforeWorkspaceCleanup: proof.checks.processExitedBeforeWorkspaceCleanup,
+      terminalResize: proof.checks.terminalResize,
+      processGroupExitedBeforeWorkspaceCleanup:
+        proof.checks.processGroupExitedBeforeWorkspaceCleanup,
+    },
+    checks: INTERACTIVE_PROOF_CHECKS,
+    observations: proof,
+    environment,
+  })
+  return {
+    status: 'passed',
+    measurement: scalarMeasurement('LIVE-08'),
+    evidence,
+  }
+}
+
+export async function main(argv = process.argv, environment = process.env) {
+  const outputPath = argument('output', argv)
+  try {
+    if (outputPath) await rm(outputPath, { force: true })
+    const result = await runProof({ environment })
+    if (outputPath) await writeFile(outputPath, `${safeJson(result, environment)}\n`)
+    process.stdout.write(`${safeJson(result, environment)}\n`)
+    return EXIT_CODES.passed
+  } catch (error) {
+    const status = error?.unavailable === true ? 'unavailable' : 'failed'
+    process.stderr.write(
+      `${safeJson({ status, error: safeMessage(error, environment) }, environment)}\n`,
+    )
+    return status === 'unavailable' ? EXIT_CODES.unavailable : EXIT_CODES.failed
+  }
+}
+
+if (process.argv[1] === scriptPath) process.exitCode = await main()

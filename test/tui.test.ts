@@ -17,6 +17,7 @@ import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const SIZES = [
@@ -132,7 +133,7 @@ function automationInteractionExecution(): {
   let release: (() => void) | undefined
   return {
     execution: {
-      capabilities: () => DEFAULT_RUN_CAPABILITIES,
+      capabilities: () => interactionResponseRunCapabilities(),
       async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
         yield {
           type: 'interaction',
@@ -259,11 +260,44 @@ test('the real Braid root renders and sends at all four reference sizes', async 
   }
 })
 
+test('terminal suspension releases input and resumes the same composer state', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'operation-terminal-suspend',
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('before attach')
+    assert.equal(view.editor.getText(), 'before attach')
+
+    view.suspend()
+    terminal.sendInput(' ignored')
+    assert.equal(view.editor.getText(), 'before attach')
+
+    view.resume()
+    terminal.sendInput(' after')
+    assert.equal(view.editor.getText(), 'before attach after')
+    await terminal.waitForRender()
+    assert.match(terminal.getViewport().join('\n'), /before attach after/u)
+  } finally {
+    view.stop()
+    await done
+    await app.close()
+  }
+})
+
 test('composer fallback steers exactly once without queueing or sending', async () => {
   const harness = await startSteeringTerminal()
   try {
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /Enter steers/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /› steer/u)
     harness.terminal.sendInput('correct course')
     harness.terminal.sendInput('\r')
     await waitUntil(() => harness.calls.steer === 1)
@@ -301,10 +335,10 @@ test('Alt+S changes an active composer from queue to steer', async () => {
   const harness = await startSteeringTerminal(true)
   try {
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /Enter queues · Alt\+S steer/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /› queue #1/u)
     harness.terminal.sendInput('\u001bs')
     await harness.terminal.waitForRender()
-    assert.match(harness.terminal.getViewport().join('\n'), /Enter steers · Alt\+S queue/u)
+    assert.match(harness.terminal.getViewport().join('\n'), /› steer/u)
 
     harness.terminal.sendInput('change direction')
     harness.terminal.sendInput('\r')
@@ -430,7 +464,9 @@ test('the searchable command overlay restores editor focus after close', async (
   assert.doesNotMatch(overlay, /alt\+enter newline/u)
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
-  assert.match(terminal.getViewport().join('\n'), /profile Braid starter.*Ctrl\+P commands/u)
+  const restored = terminal.getViewport().join('\n')
+  assert.match(restored, /profile Braid starter/u)
+  assert.match(restored, /type \/ for commands/u)
   terminal.sendInput('focus restored')
   assert.equal(view.editor.getText(), 'focus restored')
 
@@ -461,7 +497,7 @@ test('Ctrl+K exposes one five-row run switcher and updates the branch runner', a
   for (const label of ['Profile', 'Connection', 'Runner', 'Model', 'Thinking']) {
     assert.match(switcher, new RegExp(`\\b${label}\\b`, 'u'))
   }
-  assert.match(switcher, /enter to change · esc to close/u)
+  assert.match(switcher, /enter to change · ←\/esc close/u)
 
   terminal.sendInput('\u001b[B')
   terminal.sendInput('\u001b[B')

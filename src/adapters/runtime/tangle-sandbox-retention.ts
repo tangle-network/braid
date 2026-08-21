@@ -5,7 +5,7 @@ import {
   MIN_RETAINED_IDLE_TTL_SECONDS,
 } from '../../domain/entities-core.js'
 import type { SandboxLifecyclePolicy } from './prepared-execution.js'
-import { safeExecutionId } from './production-backend-common.js'
+import { stableProviderId } from './production-backend-common.js'
 import type { ObservableSandboxClient } from './sandbox-observation-types.js'
 
 export { MAX_RETAINED_IDLE_TTL_SECONDS, MIN_RETAINED_IDLE_TTL_SECONDS }
@@ -22,11 +22,10 @@ export interface RetainedSandboxIdentity {
 }
 
 export function retainedSandboxIdentity(providerSessionId: string): RetainedSandboxIdentity {
-  const suffix = safeExecutionId(providerSessionId)
   return Object.freeze({
     providerSessionId,
-    environmentIdempotencyKey: `env-braid-${suffix}`,
-    name: `braid-${suffix}`,
+    environmentIdempotencyKey: stableProviderId('env-braid-', providerSessionId),
+    name: stableProviderId('braid-', providerSessionId),
     metadata: Object.freeze({ owner: 'braid', lifecycle: 'retained', providerSessionId }),
   })
 }
@@ -49,6 +48,8 @@ export function withRetainedSandboxPolicy(
   const get = source.get?.bind(source)
   const list = source.list?.bind(source)
   const fetch = source.fetch?.bind(source)
+  const listBackends = source.listBackends?.bind(source)
+  const getBackend = source.getBackend?.bind(source)
   const describePlacement = source.describePlacement?.bind(source)
   const getIdentity = observable.getIdentity?.bind(source)
   const usage = observable.usage?.bind(source)
@@ -74,6 +75,9 @@ export function withRetainedSandboxPolicy(
           },
         }),
     ...(fetch === undefined ? {} : { fetch }),
+    // The backend catalog decides which interaction kinds the provider may claim.
+    ...(listBackends === undefined ? {} : { listBackends }),
+    ...(getBackend === undefined ? {} : { getBackend }),
     ...(list === undefined
       ? {}
       : {

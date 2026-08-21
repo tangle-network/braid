@@ -1,6 +1,6 @@
-import { parseOperationId, type OperationId } from '../domain/ids.js'
-import { AppError } from './errors.js'
+import { type OperationId, parseOperationId } from '../domain/ids.js'
 import type { ExecutionPort } from '../ports/execution.js'
+import { AppError } from './errors.js'
 
 export function operationId(value: string, command: string): OperationId {
   try {

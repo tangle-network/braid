@@ -19,14 +19,14 @@ import {
   canonicalCandidateJson,
   defineAgentProfile,
 } from '@tangle-network/agent-interface'
-import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
-import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import {
   materializeBridgeModelRoute,
   portableBridgeModel,
   qualifyBridgeProfileModel,
 } from '../src/adapters/connections/cli-bridge-model-route.js'
-import { resolveProductionBackend } from '../src/adapters/runtime/production-backend-resolver.js'
+import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
+import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { resolveProductionCliBridgeConnection } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createBraidApplication,
@@ -71,7 +71,11 @@ import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import { SequenceIds } from '../src/ports/ids.js'
-import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
+import {
+  bridgeCapabilityDocument,
+  startRuntimeBridgeServer,
+} from './support/runtime-bridge-server.js'
+import { FakeTangleRetainedSandbox } from './support/tangle-retained-sandbox.js'
 
 const at = '2026-08-03T12:00:00.000Z'
 
@@ -197,13 +201,51 @@ test('normal composition streams a configured CLI Bridge turn through agent-runt
     )
     assert.equal(result.state.messages.at(-1)?.text, 'production response')
     assert.equal(bridge.requests.length, 1)
-    assert.equal(bridge.requests[0]?.body.model, 'pi/openai/gpt-5')
+    assert.equal(bridge.requests[0]?.session?.model, 'pi/openai/gpt-5')
     assert.equal(result.state.runs[0]?.receipt.provider, 'cli-bridge')
     assert.equal(result.state.environments.length, 1)
     assert.equal(result.state.environments[0]?.kind, 'local-process')
     assert.equal(result.state.environments[0]?.placement.provider, 'cli-bridge')
     assert.equal(result.state.environments[0]?.continuity, 'session')
     assert.equal(result.state.runs[0]?.environmentId, result.state.environments[0]?.id)
+  } finally {
+    await bridge.close()
+  }
+})
+
+test('retained CLI Bridge turns forward request-scoped model credentials only on the model call', async () => {
+  const bridge = await startRuntimeBridgeServer()
+  const seen: { token?: string | null; baseUrl?: string | null } = {}
+  try {
+    const record = connection('cli-bridge', 'scoped-model', bridge.endpoint)
+    const result = await runProductionTurn(
+      composition(record, {
+        bridgeModelCredential: {
+          key: 'BRAID_TEST_MODEL_TOKEN',
+          baseUrlKey: 'BRAID_TEST_MODEL_BASE_URL',
+          provider: {
+            get: async (key: string) =>
+              key === 'BRAID_TEST_MODEL_TOKEN'
+                ? 'test-model-token'
+                : key === 'BRAID_TEST_MODEL_BASE_URL'
+                  ? 'https://chatgpt.com/backend-api'
+                  : undefined,
+          },
+        },
+        fetch: async (input, init) => {
+          const path = new URL(String(input)).pathname
+          if (path === '/v1/chat/completions' || /^\/v1\/sessions\/[^/]+\/turns$/u.test(path)) {
+            seen.token = requestHeader(init, 'x-cli-bridge-model-credential')
+            seen.baseUrl = requestHeader(init, 'x-cli-bridge-model-base-url')
+          }
+          return fetch(input, init)
+        },
+      }),
+    )
+
+    assert.equal(result.state.runs[0]?.status, 'completed')
+    assert.equal(seen.token, 'test-model-token')
+    assert.equal(seen.baseUrl, 'https://chatgpt.com/backend-api')
   } finally {
     await bridge.close()
   }
@@ -391,6 +433,90 @@ test('production rejects remote cleartext endpoints unless an explicit policy ac
   assert.equal(accepted.connection.id, remote.id)
 })
 
+test('retained Tangle composition exposes one native control through durable startup', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-native-control-'))
+  const record: ConnectionRecord = {
+    ...connection('tangle-sandbox', 'native-control', 'https://sandbox.tangle.tools'),
+    providerOptions: {
+      transport: 'https',
+      lifecycle: 'retained',
+      idleTtlSeconds: 1_800,
+    },
+  }
+  const selected = composition(
+    record,
+    {},
+    defineAgentProfile({
+      name: 'native production profile',
+      harness: 'opencode',
+      model: { default: 'openai/gpt-5', provider: 'openai' },
+    }),
+  )
+  const composed = createProductionComposition(selected)
+  assert.notEqual(composed.nativeInteractive, undefined)
+
+  const durable = await createDurableBraidApplication({
+    path: join(root, 'braid.db'),
+    workspaceRoot: root,
+    credentialStore: new MemoryCredentialStore(),
+    production: selected,
+  })
+  try {
+    assert.notEqual(durable.nativeInteractive, undefined)
+  } finally {
+    await durable.app.close()
+    await durable.storage.close()
+  }
+})
+
+test('retained Tangle composition routes interactive admission without creating a sandbox', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const record: ConnectionRecord = {
+    ...connection('tangle-sandbox', 'interactive-routing', 'https://sandbox.tangle.tools', true),
+    providerOptions: {
+      transport: 'https',
+      lifecycle: 'retained',
+      idleTtlSeconds: 1_800,
+    },
+  }
+  const credentials = new MemoryCredentialStore()
+  await credentials.store({
+    ref: credentialRef('cred:v1:credential-interactive-routing'),
+    value: Buffer.from('test-only-sandbox-key'),
+  })
+  const selectedProfile = defineAgentProfile({
+    name: 'interactive routing profile',
+    harness: 'opencode',
+    model: { default: 'openai/gpt-5', provider: 'openai' },
+  })
+  const composed = createProductionComposition(
+    composition(record, { credentials, sandboxClient: sandbox.client() }, selectedProfile),
+  )
+  const interactiveTurn = {
+    operationId: 'operation-interactive-routing',
+    runId: 'run-interactive-routing',
+    text: 'Inspect this workspace.',
+    profile: selectedProfile,
+    connectionId: record.id,
+    signal: new AbortController().signal,
+  }
+  // Sandbox 0.30.1 exposes no claimControl or validateControl, so the provider
+  // proves no exact interactive agent and the interactive route refuses before
+  // any billable environment exists. Sandbox 0.31 turns this into an admission.
+  await assert.rejects(
+    async () => composed.execution.admit?.({ ...interactiveTurn, mode: 'interactive' }),
+    /does not support exact interactive agents/u,
+  )
+  const headless = await composed.execution.admit?.({
+    ...interactiveTurn,
+    operationId: 'operation-headless-routing',
+    runId: 'run-headless-routing',
+  })
+  assert.equal(headless?.materializationReceipt?.surface, undefined)
+  assert.equal(headless?.capabilities?.streaming.replay, true)
+  assert.equal(sandbox.createCalls.length, 0)
+})
+
 test('bin startup loads a canonical profile and exact connection from a bounded config file', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-production-startup-'))
   const profilePath = join(root, 'profile.json')
@@ -459,53 +585,57 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
     },
   ] as const
 
-  for (const candidate of cases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-production-routing-${candidate.name}-`))
-    const configPath = join(root, 'config.json')
-    const record = connection(
-      'cli-bridge',
-      `routing-${candidate.name.replaceAll(' ', '-')}`,
-      'http://127.0.0.1:4010',
-    )
-    await writeFile(
-      configPath,
-      `${JSON.stringify({
-        format: 'braid-startup-config',
-        schemaVersion: 2,
-        profile: profile(),
-        connectionId: record.id,
-        connections: [record],
-      })}\n`,
-      { mode: 0o600 },
-    )
+  const bridge = await startRuntimeBridgeServer()
+  try {
+    for (const candidate of cases) {
+      const root = await mkdtemp(join(tmpdir(), `braid-production-routing-${candidate.name}-`))
+      const configPath = join(root, 'config.json')
+      const record = connection(
+        'cli-bridge',
+        `routing-${candidate.name.replaceAll(' ', '-')}`,
+        bridge.endpoint,
+      )
+      await writeFile(
+        configPath,
+        `${JSON.stringify({
+          format: 'braid-startup-config',
+          schemaVersion: 2,
+          profile: profile(),
+          connectionId: record.id,
+          connections: [record],
+        })}\n`,
+        { mode: 0o600 },
+      )
 
-    const startup = await loadProductionStartup({
-      workspace: root,
-      configPath,
-      ...candidate.options,
-    })
-    assert.equal(startup.profile.name, 'production test profile', candidate.name)
-    assert.equal(startup.profile.harness, candidate.runner, candidate.name)
-    assert.equal(startup.profile.model?.default, candidate.model, candidate.name)
-    assert.equal(startup.profile.model?.provider, 'openai', candidate.name)
+      const startup = await loadProductionStartup({
+        workspace: root,
+        configPath,
+        ...candidate.options,
+      })
+      assert.equal(startup.profile.name, 'production test profile', candidate.name)
+      assert.equal(startup.profile.harness, candidate.runner, candidate.name)
+      assert.equal(startup.profile.model?.default, candidate.model, candidate.name)
+      assert.equal(startup.profile.model?.provider, 'openai', candidate.name)
 
-    const composition = createProductionComposition({
-      ...startup,
-      workspaceRoot: root,
-    })
-    const resolved = await composition.backendResolver({
-      operationId: `operation-routing-${candidate.name}`,
-      runId: `run-routing-${candidate.name}`,
-      text: 'verify routing override',
-      profile: composition.profile,
-      workspaceRoot: root,
-      signal: new AbortController().signal,
-    })
-    assert.equal(resolved.kind, 'prepared-execution', candidate.name)
-    if (resolved.kind !== 'prepared-execution') continue
-    assert.equal(resolved.materializationReceipt.runner, candidate.runner, candidate.name)
-    assert.equal(resolved.materializationReceipt.model, candidate.model, candidate.name)
-    assert.equal(resolved.materializationReceipt.route, candidate.route, candidate.name)
+      const composition = createProductionComposition({
+        ...startup,
+        workspaceRoot: root,
+      })
+      // CLI Bridge routing is proved on the retained port, which owns Bridge execution.
+      const admission = await composition.execution.admit?.({
+        operationId: `operation-routing-${candidate.name}`,
+        runId: `run-routing-${candidate.name}`,
+        text: 'verify routing override',
+        profile: composition.profile,
+        workspaceRoot: root,
+        signal: new AbortController().signal,
+      })
+      assert.equal(admission?.materializationReceipt?.runner, candidate.runner, candidate.name)
+      assert.equal(admission?.materializationReceipt?.model, candidate.model, candidate.name)
+      assert.equal(admission?.materializationReceipt?.route, candidate.route, candidate.name)
+    }
+  } finally {
+    await bridge.close()
   }
 })
 
@@ -530,80 +660,86 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
     },
     { runner: 'codex' as const, routed: 'codex/default', portable: 'codex/default' },
   ]
-  for (const candidate of cases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
-    const configPath = join(root, 'config.json')
-    const record = connection('cli-bridge', `v1-${candidate.runner}`, 'http://127.0.0.1:4010')
-    await writeFile(
-      configPath,
-      `${JSON.stringify({
-        format: 'braid-startup-config',
-        schemaVersion: 1,
-        profile: {
-          name: `prior ${candidate.runner} profile`,
-          harness: candidate.runner,
-          model: {
-            default: candidate.routed,
-            provider: candidate.runner === 'pi' ? 'tangle-router' : 'codex',
+  const bridge = await startRuntimeBridgeServer()
+  try {
+    for (const candidate of cases) {
+      const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
+      const configPath = join(root, 'config.json')
+      const record = connection('cli-bridge', `v1-${candidate.runner}`, bridge.endpoint)
+      await writeFile(
+        configPath,
+        `${JSON.stringify({
+          format: 'braid-startup-config',
+          schemaVersion: 1,
+          profile: {
+            name: `prior ${candidate.runner} profile`,
+            harness: candidate.runner,
+            model: {
+              default: candidate.routed,
+              provider: candidate.runner === 'pi' ? 'tangle-router' : 'codex',
+            },
           },
-        },
-        connectionId: record.id,
-        connections: [record],
-      })}\n`,
-      { mode: 0o600 },
-    )
+          connectionId: record.id,
+          connections: [record],
+        })}\n`,
+        { mode: 0o600 },
+      )
 
-    const startup = await loadProductionStartup({ workspace: root, configPath })
-    assert.equal(startup.profile.model?.default, candidate.portable)
-    const prepared = await resolveProductionBackend(
+      const startup = await loadProductionStartup({ workspace: root, configPath })
+      assert.equal(startup.profile.model?.default, candidate.portable)
+      const prepared = await resolveProductionCliBridgeConnection(
+        {
+          connections: new ConnectionRegistry([record]),
+          workspaceCwd: root,
+          select: () => ({ connection: { connectionId: record.id } }),
+        },
+        {
+          operationId: `operation-v1-${candidate.runner}`,
+          runId: `run-v1-${candidate.runner}`,
+          text: 'verify prior profile',
+          profile: startup.profile,
+          signal: new AbortController().signal,
+        },
+      )
+      assert.equal(prepared.profile.model?.default, candidate.portable)
+      assert.equal(prepared.materializationReceipt.route, candidate.routed)
+    }
+  } finally {
+    await bridge.close()
+  }
+})
+
+test('runner-only CLI Bridge models execute without an invented provider', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-runner-model-'))
+  const bridge = await startRuntimeBridgeServer()
+  const record = connection('cli-bridge', 'runner-model', bridge.endpoint)
+  const runnerProfile = defineAgentProfile({
+    name: 'Claude runner alias',
+    harness: 'claude-code',
+    model: { default: 'opus', reasoningEffort: 'high' },
+  })
+  try {
+    const prepared = await resolveProductionCliBridgeConnection(
       {
         connections: new ConnectionRegistry([record]),
         workspaceCwd: root,
         select: () => ({ connection: { connectionId: record.id } }),
       },
       {
-        operationId: `operation-v1-${candidate.runner}`,
-        runId: `run-v1-${candidate.runner}`,
-        text: 'verify prior profile',
-        profile: startup.profile,
+        operationId: 'operation-runner-model',
+        runId: 'run-runner-model',
+        text: 'verify runner alias',
+        profile: runnerProfile,
         signal: new AbortController().signal,
       },
-      { connection: { connectionId: record.id } },
     )
-    assert.equal(prepared.kind, 'prepared-execution')
-    assert.equal(prepared.backend.profile.model?.default, candidate.portable)
-    assert.equal(prepared.materializationReceipt.route, candidate.routed)
+
+    assert.equal(prepared.profile.model?.default, 'opus')
+    assert.equal(prepared.profile.model?.provider, undefined)
+    assert.equal(prepared.materializationReceipt.route, 'claude-code/opus')
+  } finally {
+    await bridge.close()
   }
-})
-
-test('runner-only CLI Bridge models execute without an invented provider', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'braid-production-runner-model-'))
-  const record = connection('cli-bridge', 'runner-model', 'http://127.0.0.1:4010')
-  const runnerProfile = defineAgentProfile({
-    name: 'Claude runner alias',
-    harness: 'claude-code',
-    model: { default: 'opus', reasoningEffort: 'high' },
-  })
-  const prepared = await resolveProductionBackend(
-    {
-      connections: new ConnectionRegistry([record]),
-      workspaceCwd: root,
-      select: () => ({ connection: { connectionId: record.id } }),
-    },
-    {
-      operationId: 'operation-runner-model',
-      runId: 'run-runner-model',
-      text: 'verify runner alias',
-      profile: runnerProfile,
-      signal: new AbortController().signal,
-    },
-    { connection: { connectionId: record.id } },
-  )
-
-  assert.equal(prepared.kind, 'prepared-execution')
-  assert.equal(prepared.backend.profile.model?.default, 'opus')
-  assert.equal(prepared.backend.profile.model?.provider, undefined)
-  assert.equal(prepared.materializationReceipt.route, 'claude-code/opus')
 })
 
 test('startup resolves relative database keys beside external config and rejects workspace paths', async () => {
@@ -1061,15 +1197,19 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.notEqual(secondBody.session_id, firstBody.session_id)
     for (const body of [firstBody, secondBody]) {
       const runId = String(body.run_id)
+      assert.equal(body.session_id, `session-braid-${runId}`)
+      assert.equal(body.execution_id, runId)
+      // Runtime 0.142 writes only the environment ownership key into provider
+      // metadata; turn and process identity stays in durable admissions.
       assert.deepEqual(body.metadata, {
-        retainedIdempotencyKey: `environment-braid-${runId}`,
-        sessionId: `session-braid-${runId}`,
-        executionId: runId,
+        retainedIdempotencyKey: `environment-braid-session-braid-${runId}`,
       })
     }
     const stableBody = ({
       run_id: _runId,
       session_id: _sessionId,
+      environment_id: _environmentId,
+      execution_id: _executionId,
       metadata: _metadata,
       ...body
     }: Record<string, unknown>) => body
@@ -1661,10 +1801,17 @@ test('configured restart keeps alternate profiles and routes each run from its A
   })
   const selectedConnection = connection('cli-bridge', 'restart-profiles', 'http://127.0.0.1:3345')
   const fetch: typeof globalThis.fetch = async (input) => {
-    const path = new URL(String(input)).pathname
+    const url = new URL(String(input))
+    const path = url.pathname
     if (path === '/health') {
       return new Response(
         JSON.stringify({ status: 'ok', backends: [{ name: 'claude-code', state: 'ready' }] }),
+        { status: 200 },
+      )
+    }
+    if (path === '/v1/capabilities') {
+      return new Response(
+        JSON.stringify(bridgeCapabilityDocument(url.searchParams.get('model') ?? '')),
         { status: 200 },
       )
     }
@@ -1946,6 +2093,8 @@ test('first-run model validation authorizes its token limit in a separate AgentP
       readonly default?: unknown
       readonly provider?: unknown
       readonly reasoningEffort?: unknown
+      readonly maxVisibleOutputTokens?: unknown
+      readonly maxTotalOutputTokens?: unknown
       readonly metadata?: Record<string, unknown>
     }
   }
@@ -1953,7 +2102,9 @@ test('first-run model validation authorizes its token limit in a separate AgentP
   assert.equal(validationProfile.model?.default, 'tangle-router/glm-5.2')
   assert.equal(validationProfile.model?.provider, 'tangle-router')
   assert.equal(validationProfile.model?.reasoningEffort, 'high')
-  assert.equal(validationProfile.model?.metadata?.maxTokens, 1)
+  assert.equal(validationProfile.model?.maxVisibleOutputTokens, 1)
+  assert.equal(validationProfile.model?.maxTotalOutputTokens, 1)
+  assert.equal(validationProfile.model?.metadata, undefined)
   assert.equal('effort' in (body ?? {}), false)
 })
 

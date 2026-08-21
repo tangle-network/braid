@@ -6,7 +6,7 @@ import type {
   ProductionConnectionOptions,
 } from '../../adapters/connections/production-connections.js'
 import type { BraidApplication } from '../../app/application.js'
-import { type ConnectionActions, ConnectionActionService } from '../../app/connection-actions.js'
+import { ConnectionActionService, type ConnectionActions } from '../../app/connection-actions.js'
 import type { ConnectionProbeFactory } from '../../app/connection-probe.js'
 import { AppError } from '../../app/errors.js'
 import { type ProfileActionOptions, ProfileActionService } from '../../app/profile-actions.js'

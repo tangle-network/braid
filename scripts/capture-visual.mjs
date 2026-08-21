@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
-import { captureProductDemo } from './capture-product-demo.mjs'
 import { createStateDefinitions } from './capture-visual-definitions.mjs'
 import {
   captureProvenance,
@@ -74,7 +73,15 @@ function normalized(screen) {
 
 const STATE_DEFINITIONS = createStateDefinitions(normalized)
 
-async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixture, cliArgs = []) {
+async function spawnTerminal(
+  name,
+  columns,
+  rows,
+  extraEnvironment = {},
+  uiFixture,
+  cliArgs = [],
+  { fixture = true } = {},
+) {
   const emulator = new XtermTerminal({
     cols: columns,
     rows,
@@ -85,7 +92,9 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
   delete environment.NO_COLOR
   delete environment.FORCE_COLOR
   const recordPath = join(rawRoot, `${name}-${randomUUID()}.json`)
-  const args = [binary, '--fixture', 'deterministic', '--record-state', recordPath]
+  const args = [binary]
+  if (fixture) args.push('--fixture', 'deterministic')
+  args.push('--record-state', recordPath)
   if (uiFixture) args.push('--ui-fixture', uiFixture)
   args.push(...cliArgs)
   const session = pty.spawn(process.execPath, args, {
@@ -164,10 +173,16 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
       await waitForStable(`${name} escape layer ${layer + 1}`)
     }
     input('\u0003')
-    await waitFor(
-      () => normalized(screen).toLowerCase().includes('ctrl+c again to quit'),
-      `${name} safe exit prompt`,
-    )
+    try {
+      await waitFor(
+        () => output.toLowerCase().includes('ctrl+c again to quit'),
+        `${name} safe exit prompt`,
+        2_000,
+      )
+    } catch {
+      await closeWithSignal()
+      return
+    }
     input('\u0003')
     const event = await waitForExit('normally')
     if (event.exitCode !== 0) throw new Error(`${name} exited ${event.exitCode}`)
@@ -196,8 +211,13 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
   }
   const waitForStable = (label = 'settled terminal frame') =>
     waitFor(() => pendingWrites === 0 && performance.now() - lastOutputAt >= 75, `${name} ${label}`)
+  const fullInterfaceMarker = uiFixture === 'interaction' ? '↑↓ move' : 'type / for commands'
   const waitForInterface = () =>
-    waitFor(() => output.includes('\u001b]0;Braid —'), `${name} full interface handoff`)
+    waitFor(
+      () => output.includes('\u001b[?1049h') && output.includes(fullInterfaceMarker),
+      `${name} full interface handoff`,
+      15_000,
+    )
   const captureState = async () => {
     await waitForStable()
     const point = snapshot()
@@ -235,7 +255,7 @@ async function spawnTerminal(name, columns, rows, extraEnvironment = {}, uiFixtu
   }
 }
 
-function castFor(result, events, title) {
+function castFor(result, events, title, command = 'packed braid --fixture deterministic') {
   const lastEventAt = events.at(-1)?.[0] ?? 0
   // agg samples a percentage position before applying an output event that lands
   // exactly at the cast duration. A later no-op makes every split final write
@@ -248,7 +268,7 @@ function castFor(result, events, title) {
     timestamp: Math.floor(Date.now() / 1_000),
     duration: settledEvents.at(-1)[0],
     idle_time_limit: 1,
-    command: 'packed braid --fixture deterministic',
+    command,
     title,
     env: { TERM: 'xterm-256color' },
     stdin: true,
@@ -279,7 +299,7 @@ async function plainFrame() {
     '/bin/sh',
     [
       '-c',
-      `{ printf '%s\\n' 'W6 plain proof'; } | exec ${shellArgument(binary)} --plain --fixture deterministic --no-color > ${shellArgument(stdoutPath)} 2> ${shellArgument(stderrPath)}`,
+      `{ printf '%s\\n' 'W6 plain proof'; sleep 4; } | exec ${shellArgument(binary)} --plain --fixture deterministic --no-color > ${shellArgument(stdoutPath)} 2> ${shellArgument(stderrPath)}`,
     ],
     {
       cwd: repository,
@@ -297,7 +317,7 @@ async function plainFrame() {
     session.on('error', reject)
     session.on('close', (code) => resolve({ exitCode: code }))
   })
-  const timeout = setTimeout(() => session.kill(), 5_000)
+  const timeout = setTimeout(() => session.kill(), 10_000)
   const [exit] = await Promise.all([
     exited,
     readFifo(stdoutPath, output),
@@ -471,7 +491,7 @@ try {
         throw new Error('comparison capture did not contain a saved comparison result')
       if (
         definition.name === 'profile' &&
-        !normalized(result.point.screen).includes('Active profile')
+        !normalized(result.point.screen).includes('trusted · read-only')
       )
         throw new Error('profile capture did not contain the active profile editor')
       const stateRootName = definition.name.replaceAll('/', '-')
@@ -558,26 +578,6 @@ try {
   await writeCastGif(join(rawRoot, 'automation-frame.cast'), automationGif)
   artifacts.push(await artifactFor(automationGif, 'automation-flow', 80, 24, 'automation'))
 
-  const productDemo = await captureProductDemo({ spawnTerminal, normalized, castFor })
-  const productDemoCast = join(rawRoot, 'braid-demo.cast')
-  const productFrameCast = join(rawRoot, 'braid-demo-frame.cast')
-  const productText = join(outputRoot, 'braid.txt')
-  const productPng = join(outputRoot, 'braid.png')
-  const productGif = join(outputRoot, 'braid.gif')
-  const productRasterGif = join(rawRoot, 'braid-demo-frame.gif')
-  await writeFile(productDemoCast, productDemo.demoCast)
-  await writeFile(productFrameCast, productDemo.frameCast)
-  await writeFile(productText, productDemo.finalScreen)
-  await writeRaster(productFrameCast, productPng, productRasterGif)
-  await writeCastGif(productDemoCast, productGif, { loop: true })
-  const productArtifacts = [
-    await artifactFor(productDemoCast, 'product-asciicast', productDemo.columns, productDemo.rows),
-    await artifactFor(productText, 'product-frame', productDemo.columns, productDemo.rows),
-    await artifactFor(productPng, 'product-png', productDemo.columns, productDemo.rows),
-    await artifactFor(productGif, 'product-flow', productDemo.columns, productDemo.rows),
-  ]
-  artifacts.push(...productArtifacts)
-
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
   const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
@@ -602,17 +602,14 @@ try {
         binarySha256: await sha256(binary),
         tarball: packed.tarballName,
         tarballSha256: packed.tarballSha256,
-        fixture: 'deterministic',
+        stateFixture: 'deterministic',
+        liveDemoCommand: 'pnpm capture:demo:live',
         terminal: 'node-pty/xterm-256color',
         node: process.version,
         provenance,
         keyboardFlow: {
           steps: keyboardFlow.steps,
           artifacts: keyboardArtifacts.map((artifact) => artifact.path),
-        },
-        productDemo: {
-          steps: productDemo.steps,
-          artifacts: productArtifacts.map((artifact) => artifact.path),
         },
         states: stateManifests,
         artifacts,

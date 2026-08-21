@@ -4,6 +4,7 @@ import type {
   ProviderEventMeta,
   RunTerminalStatus,
 } from './events.js'
+import type { BraidInteraction } from './runtime-projection.js'
 import type {
   BraidActivity,
   BraidMessage,
@@ -14,7 +15,6 @@ import type {
   MessageStatus,
   RunStatus,
 } from './state.js'
-import type { BraidInteraction } from './runtime-projection.js'
 
 export const TERMINAL_RUN_STATES: readonly RunStatus[] = [
   'completed',
