@@ -41,7 +41,32 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.11.0. */
+/** The catalog entry provider 0.13.0 reads to narrow interaction kinds per backend. */
+function backendRegistryEntry(type: string) {
+  return {
+    type,
+    name: type,
+    description: `Fake ${type} backend`,
+    capabilities: {
+      streaming: true,
+      toolUse: true,
+      reasoning: true,
+      multimodal: false,
+      imageInput: false,
+      contextWindow: 200_000,
+      mcp: true,
+      sessions: true,
+      configurable: true,
+      interactions: ['question', 'permission', 'plan'] as (
+        | 'permission'
+        | 'question'
+        | 'plan'
+      )[],
+    },
+  }
+}
+
+/** Stateful double for the exact Tangle SDK surface used by provider 0.13.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -70,6 +95,12 @@ export class FakeTangleRetainedSandbox {
       async fetch() {
         throw new Error('The lazy capability probe must not call the Sandbox transport')
       },
+      listBackends: async () => ({
+        backends: [backendRegistryEntry('opencode')],
+        timestamp: new Date(0).toISOString(),
+      }),
+      getBackend: async (type: string) =>
+        type === 'opencode' ? backendRegistryEntry(type) : undefined,
       create: async (options) => {
         const create = structuredClone(options ?? {})
         this.createCalls.push(create)

@@ -324,19 +324,18 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.name, prepared.environmentName)
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
-  const metadata = sandbox.createCalls[0]?.metadata
-  assert.ok(metadata)
-  const { retainedIntentDigest, retainedRunId, ...stableMetadata } = metadata
-  assert.deepEqual(stableMetadata, {
+  // Runtime writes the ownership key only. Turn and process identity stay in the
+  // durable admission and in the session's own run control reference.
+  assert.deepEqual(sandbox.createCalls[0]?.metadata, {
     ...prepared.environmentMetadata,
     retainedIdempotencyKey: prepared.environmentIdempotencyKey,
-    sessionId: prepared.providerSessionId,
-    executionId: safeExecutionId('run/tangle-retained'),
   })
-  assert.match(String(retainedIntentDigest), /^sha256:[0-9a-f]{64}$/u)
+  const intent = admissions[0]
+  if (intent?.phase !== 'intent') throw new Error('The first admission must record the intent')
+  assert.match(intent.requestDigest, /^sha256:[0-9a-f]{64}$/u)
   assert.equal(
-    retainedRunId,
-    `retained-intent-run:${String(retainedIntentDigest).slice('sha256:'.length)}`,
+    intent.runId,
+    `retained-intent-run:${intent.requestDigest.slice('sha256:'.length)}`,
   )
   assert.equal(handle.controlRef.environmentId, sandbox.boxes[0]?.id)
   assert.equal(handle.controlRef.sessionId, prepared.providerSessionId)

@@ -495,18 +495,28 @@ test('retained Tangle composition routes interactive admission without creating 
   const composed = createProductionComposition(
     composition(record, { credentials, sandboxClient: sandbox.client() }, selectedProfile),
   )
-  const admission = await composed.execution.admit?.({
+  const interactiveTurn = {
     operationId: 'operation-interactive-routing',
     runId: 'run-interactive-routing',
     text: 'Inspect this workspace.',
     profile: selectedProfile,
-    mode: 'interactive',
     connectionId: record.id,
     signal: new AbortController().signal,
+  }
+  // Sandbox 0.30.1 exposes no claimControl or validateControl, so the provider
+  // proves no exact interactive agent and the interactive route refuses before
+  // any billable environment exists. Sandbox 0.31 turns this into an admission.
+  await assert.rejects(
+    async () => composed.execution.admit?.({ ...interactiveTurn, mode: 'interactive' }),
+    /does not support exact interactive agents/u,
+  )
+  const headless = await composed.execution.admit?.({
+    ...interactiveTurn,
+    operationId: 'operation-headless-routing',
+    runId: 'run-headless-routing',
   })
-
-  assert.equal(admission?.materializationReceipt?.surface, 'interactive-agent')
-  assert.equal(admission?.capabilities?.streaming.replay, true)
+  assert.equal(headless?.materializationReceipt?.surface, undefined)
+  assert.equal(headless?.capabilities?.streaming.replay, true)
   assert.equal(sandbox.createCalls.length, 0)
 })
 

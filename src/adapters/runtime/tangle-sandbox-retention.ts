@@ -48,6 +48,8 @@ export function withRetainedSandboxPolicy(
   const get = source.get?.bind(source)
   const list = source.list?.bind(source)
   const fetch = source.fetch?.bind(source)
+  const listBackends = source.listBackends?.bind(source)
+  const getBackend = source.getBackend?.bind(source)
   const describePlacement = source.describePlacement?.bind(source)
   const getIdentity = observable.getIdentity?.bind(source)
   const usage = observable.usage?.bind(source)
@@ -73,6 +75,9 @@ export function withRetainedSandboxPolicy(
           },
         }),
     ...(fetch === undefined ? {} : { fetch }),
+    // The backend catalog decides which interaction kinds the provider may claim.
+    ...(listBackends === undefined ? {} : { listBackends }),
+    ...(getBackend === undefined ? {} : { getBackend }),
     ...(list === undefined
       ? {}
       : {

@@ -19,6 +19,13 @@ type RetainedList = (options?: {
   readonly signal?: AbortSignal
 }) => Promise<SandboxInstanceLike[]>
 
+/**
+ * Match the environment by its ownership marker alone.
+ *
+ * Runtime writes only `retainedIdempotencyKey` into provider metadata. Turn and
+ * process identity live in the durable admission and in the session's own run
+ * control reference, which this lookup reads before it returns anything.
+ */
 function matchesRetainedEnvironment(
   box: SandboxInstanceLike,
   input: TangleRetainedControlLookupInput,
@@ -29,9 +36,7 @@ function matchesRetainedEnvironment(
     metadata?.owner === 'braid' &&
     metadata.lifecycle === 'retained' &&
     metadata.providerSessionId === input.providerSessionId &&
-    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey &&
-    metadata.sessionId === input.providerSessionId &&
-    metadata.executionId === input.executionId
+    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey
   )
 }
 
