@@ -679,10 +679,12 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       admissions.map((admission) => admission.phase),
       ['intent', 'environment', 'dispatched'],
     )
-    const body = bridge.requests[0]?.body
-    assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
-    assert.equal(body?.max_tokens, undefined)
-    const executionProfile = body?.agent_profile as AgentProfile
+    const request = bridge.requests[0]
+    const session = request?.session
+    assert.equal(session?.model, 'pi/tangle-router/glm-5.2')
+    assert.equal(request?.body.max_tokens, undefined)
+    assert.equal(session?.body.max_tokens, undefined)
+    const executionProfile = session?.body.agent_profile as AgentProfile
     assert.equal(executionProfile.harness, 'pi')
     assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
     assert.equal(executionProfile.model?.provider, 'tangle-router')
@@ -710,10 +712,9 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       write: 'deny',
     })
     assert.deepEqual(executionProfile.extensions, { pi: { load: [] } })
-    const messages = body?.messages as Array<{ readonly role?: string; readonly content?: string }>
-    assert.equal(messages.length, 1)
-    assert.equal(messages[0]?.role, 'user')
-    assert.deepEqual(JSON.parse(messages[0]?.content ?? '{}'), {
+    const message = request?.body.message
+    assert.equal(typeof message, 'string')
+    assert.deepEqual(JSON.parse(typeof message === 'string' ? message : '{}'), {
       messages: optimizerRequest().request.messages,
     })
     assert.equal(

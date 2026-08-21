@@ -71,7 +71,10 @@ import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import { SequenceIds } from '../src/ports/ids.js'
-import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
+import {
+  bridgeCapabilityDocument,
+  startRuntimeBridgeServer,
+} from './support/runtime-bridge-server.js'
 import { FakeTangleRetainedSandbox } from './support/tangle-retained-sandbox.js'
 
 const at = '2026-08-03T12:00:00.000Z'
@@ -198,7 +201,7 @@ test('normal composition streams a configured CLI Bridge turn through agent-runt
     )
     assert.equal(result.state.messages.at(-1)?.text, 'production response')
     assert.equal(bridge.requests.length, 1)
-    assert.equal(bridge.requests[0]?.body.model, 'pi/openai/gpt-5')
+    assert.equal(bridge.requests[0]?.session?.model, 'pi/openai/gpt-5')
     assert.equal(result.state.runs[0]?.receipt.provider, 'cli-bridge')
     assert.equal(result.state.environments.length, 1)
     assert.equal(result.state.environments[0]?.kind, 'local-process')
@@ -230,7 +233,11 @@ test('retained CLI Bridge turns forward request-scoped model credentials only on
           },
         },
         fetch: async (input, init) => {
-          if (new URL(String(input)).pathname === '/v1/chat/completions') {
+          const path = new URL(String(input)).pathname
+          if (
+            path === '/v1/chat/completions' ||
+            /^\/v1\/sessions\/[^/]+\/turns$/u.test(path)
+          ) {
             seen.token = requestHeader(init, 'x-cli-bridge-model-credential')
             seen.baseUrl = requestHeader(init, 'x-cli-bridge-model-base-url')
           }
@@ -1173,20 +1180,19 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.notEqual(secondBody.session_id, firstBody.session_id)
     for (const body of [firstBody, secondBody]) {
       const runId = String(body.run_id)
-      const metadata = body.metadata as Record<string, unknown>
-      const retainedIntentDigest = String(metadata.retainedIntentDigest)
-      assert.match(retainedIntentDigest, /^sha256:[0-9a-f]{64}$/u)
-      assert.deepEqual(metadata, {
-        retainedIdempotencyKey: `environment-braid-${runId}`,
-        retainedIntentDigest,
-        retainedRunId: `retained-intent-run:${retainedIntentDigest.slice('sha256:'.length)}`,
-        sessionId: `session-braid-${runId}`,
-        executionId: runId,
+      assert.equal(body.session_id, `session-braid-${runId}`)
+      assert.equal(body.execution_id, runId)
+      // Runtime 0.142 writes only the environment ownership key into provider
+      // metadata; turn and process identity stays in durable admissions.
+      assert.deepEqual(body.metadata, {
+        retainedIdempotencyKey: `environment-braid-session-braid-${runId}`,
       })
     }
     const stableBody = ({
       run_id: _runId,
       session_id: _sessionId,
+      environment_id: _environmentId,
+      execution_id: _executionId,
       metadata: _metadata,
       ...body
     }: Record<string, unknown>) => body
@@ -1778,10 +1784,17 @@ test('configured restart keeps alternate profiles and routes each run from its A
   })
   const selectedConnection = connection('cli-bridge', 'restart-profiles', 'http://127.0.0.1:3345')
   const fetch: typeof globalThis.fetch = async (input) => {
-    const path = new URL(String(input)).pathname
+    const url = new URL(String(input))
+    const path = url.pathname
     if (path === '/health') {
       return new Response(
         JSON.stringify({ status: 'ok', backends: [{ name: 'claude-code', state: 'ready' }] }),
+        { status: 200 },
+      )
+    }
+    if (path === '/v1/capabilities') {
+      return new Response(
+        JSON.stringify(bridgeCapabilityDocument(url.searchParams.get('model') ?? '')),
         { status: 200 },
       )
     }

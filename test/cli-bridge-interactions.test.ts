@@ -74,7 +74,7 @@ test('fresh CLI Bridge plans keep provider identity unknown until Runtime admiss
     }
     const recovered = await createCliBridgeRetainedPlan(prepared, input.runId, exact)
     assert.equal(recovered.environmentId, exact.environmentId)
-    assert.equal(recovered.environmentIdempotencyKey, 'environment-braid-run-cli-identity')
+    assert.equal(recovered.environmentIdempotencyKey, 'environment-braid-session-cli-identity')
     assert.notEqual(recovered.environmentId, recovered.environmentIdempotencyKey)
   } finally {
     await bridge.close()
@@ -205,7 +205,7 @@ test('retained CLI Bridge receives the exact admitted interaction map', async ()
     connectionId: connection.id,
     workspaceRoot: '/workspace',
     signal: new AbortController().signal,
-    interactions: Object.freeze({ permission: true, question: true, plan: true }),
+    interactions: Object.freeze({ permission: true }),
     onRetainedAdmission: async (_admission: RetainedRunAdmissionRecord) => {},
   }
   const options = {
@@ -227,6 +227,18 @@ test('retained CLI Bridge receives the exact admitted interaction map', async ()
 
     assert.equal(bridge.requests.length, 1)
     assert.deepEqual(bridge.requests[0]?.body.interactions, input.interactions)
+
+    const rejectedPlan = await createCliBridgeRetainedPlan(prepared, 'run-cli-interactions-2')
+    await assert.rejects(
+      startCliBridgeRetainedRun(rejectedPlan, {
+        ...input,
+        operationId: 'operation-cli-interactions-2',
+        runId: 'run-cli-interactions-2',
+        interactions: Object.freeze({ permission: true, question: true, plan: true }),
+      }),
+      /does not support requested interaction/u,
+    )
+    assert.equal(bridge.requests.length, 1)
   } finally {
     await bridge.close()
   }
