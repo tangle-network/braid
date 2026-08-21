@@ -2,6 +2,7 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
+import { redactSensitiveText } from '../../domain/redaction.js'
 import { BRAID_SANDBOX_CLEANUP_UNCONFIRMED } from '../../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../../domain/runtime-events.js'
 import type {
@@ -217,7 +218,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         const observed = observation === undefined ? undefined : await observationEvent(observation)
         if (observed !== undefined) yield observed
         if (terminal !== undefined) {
-          yield terminalAfterCleanup(terminalAfterSandboxOutcome(terminal), observed)
+          yield redactedTerminal(terminalAfterCleanup(terminalAfterSandboxOutcome(terminal), observed))
         }
       } catch (error) {
         if (observation !== undefined) {
@@ -248,6 +249,31 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
     this.#prepared.delete(runId)
     const index = this.#preparedOrder.indexOf(runId)
     if (index >= 0) this.#preparedOrder.splice(index, 1)
+  }
+}
+
+/**
+ * Remove provider secrets from runtime failure text at Braid's boundary.
+ *
+ * The runtime fails a sandbox turn inside its executor and reports the
+ * provider's own message, which can carry a credential. Every consumer of this
+ * event, not only the journal, must see the redacted text.
+ */
+function redactedTerminal(
+  terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
+): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+  const reason = terminal.reason === undefined ? undefined : redactSensitiveText(terminal.reason)
+  const message =
+    terminal.error?.message === undefined
+      ? undefined
+      : redactSensitiveText(terminal.error.message)
+  if (reason === terminal.reason && message === terminal.error?.message) return terminal
+  return {
+    ...terminal,
+    ...(reason === undefined ? {} : { reason }),
+    ...(terminal.error === undefined || message === undefined
+      ? {}
+      : { error: { ...terminal.error, message } }),
   }
 }
 
