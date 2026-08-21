@@ -277,20 +277,30 @@ test('low-entropy control values stay redacted without corrupting structured rel
     BRAID_LIVE_BRIDGE: '1',
     BRAID_RELEASE_ARTIFACT_ROOT: '/tmp/braid-release-artifacts',
     BRAID_CLI_BRIDGE_BEARER: 'short',
+    BRAID_CLI_BRIDGE_TOKEN: 'long-enough-canary',
   }
   const secrets = collectRedactionSecrets(environment)
-  assert(secrets.includes('1'))
-  assert(secrets.includes('short'))
+  // A value below the literal minimum is not a credential and matching it
+  // rewrites unrelated text, such as row LIVE-10 or a build path.
+  assert(!secrets.includes('1'))
+  assert(!secrets.includes('short'))
+  assert(secrets.includes('long-enough-canary'))
+  assert.equal(redactText('rows LIVE-01 through LIVE-10 short', secrets), 'rows LIVE-01 through LIVE-10 short')
+  assert.equal(redactText('TOKEN=short', secrets), 'TOKEN=[REDACTED]')
   const output =
     'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
-    'BRAID_RELEASE_MEASUREMENTS_JSON={"measurements":[{"kind":"scalar","name":"LIVE-01","unit":"count","value":1000}]}\n'
+    'BRAID_RELEASE_MEASUREMENTS_JSON={"measurements":[{"kind":"scalar","name":"LIVE-01","unit":"count","value":1000}]}\n' +
+    'trace: long-enough-canary\n'
   const processResult = await executeArgv({
     file: process.execPath,
     args: ['-e', `process.stdout.write(${JSON.stringify(output)})`],
     cwd: process.cwd(),
     environment: { ...process.env, ...environment },
   })
-  assert(processResult.stdout.bytes.toString('utf8').includes('[REDACTED]'))
+  const stdout = processResult.stdout.bytes.toString('utf8')
+  assert(stdout.includes('[REDACTED]'))
+  assert(!stdout.includes('long-enough-canary'))
+  assert(stdout.includes('"name":"LIVE-01"'))
   const evidence = structuredChildEvidence(
     'live',
     processResult.structuredStdout.bytes,

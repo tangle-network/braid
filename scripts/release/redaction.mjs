@@ -107,14 +107,36 @@ function safeRedactionBoundary(text, desired, secrets) {
   return boundary
 }
 
+/**
+ * The shortest value that can be matched as a literal secret.
+ *
+ * A shorter value carries too little entropy to be a credential and appears
+ * inside ordinary text, so matching it corrupts release evidence: a control
+ * value of "1" rewrites row LIVE-10 as LIVE-[REDACTED]0. Credential shapes,
+ * such as an assignment, a bearer header, or URL user information, stay
+ * redacted at any length through the patterns above.
+ */
+export const MINIMUM_LITERAL_SECRET_LENGTH = 8
+
+/** Keep the values that can be matched as literal secrets without corrupting text. */
+export function literalSecrets(values = []) {
+  return [
+    ...new Set(
+      [...values]
+        .map((value) => String(value))
+        .filter((value) => value.length >= MINIMUM_LITERAL_SECRET_LENGTH),
+    ),
+  ]
+}
+
 export function redactText(value, secrets = []) {
   let redacted = String(value)
     .replace(URL_USERINFO, '$1[REDACTED]@')
     .replace(URL_QUERY_SECRET, '$1[REDACTED]')
     .replace(BEARER, 'Bearer [REDACTED]')
     .replace(SECRET_ASSIGNMENT, '$1$2[REDACTED]$2')
-  for (const secret of [...new Set(secrets)].filter((candidate) => String(candidate).length > 0)) {
-    redacted = redacted.replace(secretPattern(String(secret)), '[REDACTED]')
+  for (const secret of literalSecrets(secrets)) {
+    redacted = redacted.replace(secretPattern(secret), '[REDACTED]')
   }
   return redacted
 }
@@ -157,26 +179,14 @@ export function collectCredentialSecrets(environment, explicitSecrets = []) {
   const credentialValues = Object.entries(environment ?? {})
     .filter(([name]) => CREDENTIAL_ENVIRONMENT_NAME.test(name))
     .map(([, value]) => value)
-  return [
-    ...new Set(
-      [...explicitSecrets, ...credentialValues]
-        .map((value) => String(value))
-        .filter((value) => value.length > 0),
-    ),
-  ]
+  return literalSecrets([...explicitSecrets, ...credentialValues])
 }
 
 export function collectRedactionSecrets(environment, explicitSecrets = []) {
   const environmentValues = Object.entries(environment ?? {})
     .filter(([name, value]) => !isProvablySafeEnvironmentValue(name, value))
     .map(([, value]) => value)
-  return [
-    ...new Set(
-      [...explicitSecrets, ...environmentValues]
-        .map((value) => String(value))
-        .filter((value) => value.length > 0),
-    ),
-  ]
+  return literalSecrets([...explicitSecrets, ...environmentValues])
 }
 
 function safeEnvironmentValue(name, value) {

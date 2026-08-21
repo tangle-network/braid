@@ -422,7 +422,7 @@ function expectedResourceIdentity(controlRef) {
   return expectedResourceIdentityForSession(controlRef.sessionId, controlRef.environmentId)
 }
 
-async function observeRetainedResource(client, controlRef) {
+export async function observeRetainedResource(client, controlRef) {
   if (!client) {
     throw new MissingIntegrationError(
       'No cleanup credential is available to verify the exact retained Braid Sandbox resource',
@@ -452,6 +452,25 @@ async function observeRetainedResource(client, controlRef) {
     )
   }
   return { observed: true, ...expectedResourceIdentity(controlRef) }
+}
+
+/** Delete the exact Braid-owned retained Sandbox named by one control reference. */
+export async function cleanupRetainedResourceByControlRef(client, controlRef) {
+  const observed = await observeRetainedResource(client, controlRef)
+  const box = await client.get(controlRef.environmentId)
+  if (box === null) {
+    throw new MissingIntegrationError(
+      `Sandbox environment ${controlRef.environmentId} disappeared before exact cleanup`,
+      { environmentId: controlRef.environmentId },
+    )
+  }
+  const cleanup = await deleteOwnedResource(client, box, (exact) =>
+    retainedResourceIdentity(exact, controlRef),
+  )
+  if (!cleanup.confirmed) {
+    throw new Error(`Retained Braid Sandbox ${observed.id} remained after exact cleanup`)
+  }
+  return cleanup
 }
 
 export async function cleanupRetainedResourceByRunId(client, firstRunId) {

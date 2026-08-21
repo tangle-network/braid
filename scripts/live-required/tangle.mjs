@@ -15,6 +15,7 @@ import {
   runHeadlessTurn,
 } from './headless.mjs'
 import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
+import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
 
 const TANGLE_ROWS = Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'])
 const MINIMUM_SANDBOX_STRESS_RUNS = 3
@@ -176,8 +177,8 @@ export async function runMatrixAdapter({ environment }) {
   return {
     status: 'unavailable',
     reason: configured
-      ? 'External Tangle matrix adapters are not accepted as release proof; built-in parent checks for LIVE-07 through LIVE-10 are unavailable'
-      : 'Built-in parent checks for LIVE-08 through LIVE-10 are unavailable',
+      ? 'External Tangle matrix adapters are not accepted as release proof; built-in parent checks for LIVE-09 and LIVE-10 are unavailable'
+      : 'Built-in parent checks for LIVE-09 and LIVE-10 are unavailable',
   }
 }
 
@@ -186,6 +187,7 @@ export async function runTangleFlows({
   environment,
   inferenceRunner = runInference,
   sandboxRunner = runSandbox,
+  interactiveRunner = runInteractiveProof,
   matrixRunner = runMatrixAdapter,
 }) {
   const binary = await resolveBinary(repository, environment)
@@ -227,14 +229,26 @@ export async function runTangleFlows({
     addUnavailable('LIVE-07', classified.message)
   }
   try {
+    const interactive = await interactiveRunner({ repository, environment, invocationId })
+    setFlow('LIVE-08', {
+      row: 'LIVE-08',
+      status: interactive.status,
+      evidence: interactive.evidence,
+    })
+    measurements.push(interactive.measurement)
+  } catch (error) {
+    const classified = classifyExternalFailure(error, 'Tangle interactive session', environment)
+    addUnavailable('LIVE-08', classified.message)
+  }
+  try {
     const matrix = await matrixRunner({ repository, environment, binary })
-    for (const row of TANGLE_ROWS.slice(2)) {
+    for (const row of TANGLE_ROWS.slice(3)) {
       const reason = `${row} remains protected-unavailable: ${matrix.reason}`
       addUnavailable(row, reason)
     }
   } catch (error) {
     const classified = classifyExternalFailure(error, 'Tangle matrix', environment)
-    for (const row of TANGLE_ROWS.slice(2)) addUnavailable(row, classified.message)
+    for (const row of TANGLE_ROWS.slice(3)) addUnavailable(row, classified.message)
   }
   const complete = TANGLE_ROWS.every((row) =>
     measurements.some((measurement) => measurement.name === row),
