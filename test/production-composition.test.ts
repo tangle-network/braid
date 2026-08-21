@@ -26,7 +26,7 @@ import {
 } from '../src/adapters/connections/cli-bridge-model-route.js'
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
-import { resolveProductionBackend } from '../src/adapters/runtime/production-backend-resolver.js'
+import { resolveProductionCliBridgeConnection } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createBraidApplication,
@@ -578,13 +578,15 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
     },
   ] as const
 
-  for (const candidate of cases) {
+  const bridge = await startRuntimeBridgeServer()
+  try {
+   for (const candidate of cases) {
     const root = await mkdtemp(join(tmpdir(), `braid-production-routing-${candidate.name}-`))
     const configPath = join(root, 'config.json')
     const record = connection(
       'cli-bridge',
       `routing-${candidate.name.replaceAll(' ', '-')}`,
-      'http://127.0.0.1:4010',
+      bridge.endpoint,
     )
     await writeFile(
       configPath,
@@ -612,7 +614,8 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
       ...startup,
       workspaceRoot: root,
     })
-    const resolved = await composition.backendResolver({
+    // CLI Bridge routing is proved on the retained port, which owns Bridge execution.
+    const admission = await composition.execution.admit?.({
       operationId: `operation-routing-${candidate.name}`,
       runId: `run-routing-${candidate.name}`,
       text: 'verify routing override',
@@ -620,11 +623,12 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
       workspaceRoot: root,
       signal: new AbortController().signal,
     })
-    assert.equal(resolved.kind, 'prepared-execution', candidate.name)
-    if (resolved.kind !== 'prepared-execution') continue
-    assert.equal(resolved.materializationReceipt.runner, candidate.runner, candidate.name)
-    assert.equal(resolved.materializationReceipt.model, candidate.model, candidate.name)
-    assert.equal(resolved.materializationReceipt.route, candidate.route, candidate.name)
+    assert.equal(admission?.materializationReceipt?.runner, candidate.runner, candidate.name)
+    assert.equal(admission?.materializationReceipt?.model, candidate.model, candidate.name)
+    assert.equal(admission?.materializationReceipt?.route, candidate.route, candidate.name)
+   }
+  } finally {
+    await bridge.close()
   }
 })
 
@@ -649,10 +653,12 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
     },
     { runner: 'codex' as const, routed: 'codex/default', portable: 'codex/default' },
   ]
-  for (const candidate of cases) {
+  const bridge = await startRuntimeBridgeServer()
+  try {
+   for (const candidate of cases) {
     const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
     const configPath = join(root, 'config.json')
-    const record = connection('cli-bridge', `v1-${candidate.runner}`, 'http://127.0.0.1:4010')
+    const record = connection('cli-bridge', `v1-${candidate.runner}`, bridge.endpoint)
     await writeFile(
       configPath,
       `${JSON.stringify({
@@ -674,7 +680,7 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
 
     const startup = await loadProductionStartup({ workspace: root, configPath })
     assert.equal(startup.profile.model?.default, candidate.portable)
-    const prepared = await resolveProductionBackend(
+    const prepared = await resolveProductionCliBridgeConnection(
       {
         connections: new ConnectionRegistry([record]),
         workspaceCwd: root,
@@ -687,42 +693,46 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
         profile: startup.profile,
         signal: new AbortController().signal,
       },
-      { connection: { connectionId: record.id } },
     )
-    assert.equal(prepared.kind, 'prepared-execution')
-    assert.equal(prepared.backend.profile.model?.default, candidate.portable)
+    assert.equal(prepared.profile.model?.default, candidate.portable)
     assert.equal(prepared.materializationReceipt.route, candidate.routed)
+   }
+  } finally {
+    await bridge.close()
   }
 })
 
 test('runner-only CLI Bridge models execute without an invented provider', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-production-runner-model-'))
-  const record = connection('cli-bridge', 'runner-model', 'http://127.0.0.1:4010')
+  const bridge = await startRuntimeBridgeServer()
+  const record = connection('cli-bridge', 'runner-model', bridge.endpoint)
   const runnerProfile = defineAgentProfile({
     name: 'Claude runner alias',
     harness: 'claude-code',
     model: { default: 'opus', reasoningEffort: 'high' },
   })
-  const prepared = await resolveProductionBackend(
-    {
-      connections: new ConnectionRegistry([record]),
-      workspaceCwd: root,
-      select: () => ({ connection: { connectionId: record.id } }),
-    },
-    {
-      operationId: 'operation-runner-model',
-      runId: 'run-runner-model',
-      text: 'verify runner alias',
-      profile: runnerProfile,
-      signal: new AbortController().signal,
-    },
-    { connection: { connectionId: record.id } },
-  )
+  try {
+    const prepared = await resolveProductionCliBridgeConnection(
+      {
+        connections: new ConnectionRegistry([record]),
+        workspaceCwd: root,
+        select: () => ({ connection: { connectionId: record.id } }),
+      },
+      {
+        operationId: 'operation-runner-model',
+        runId: 'run-runner-model',
+        text: 'verify runner alias',
+        profile: runnerProfile,
+        signal: new AbortController().signal,
+      },
+    )
 
-  assert.equal(prepared.kind, 'prepared-execution')
-  assert.equal(prepared.backend.profile.model?.default, 'opus')
-  assert.equal(prepared.backend.profile.model?.provider, undefined)
-  assert.equal(prepared.materializationReceipt.route, 'claude-code/opus')
+    assert.equal(prepared.profile.model?.default, 'opus')
+    assert.equal(prepared.profile.model?.provider, undefined)
+    assert.equal(prepared.materializationReceipt.route, 'claude-code/opus')
+  } finally {
+    await bridge.close()
+  }
 })
 
 test('startup resolves relative database keys beside external config and rejects workspace paths', async () => {

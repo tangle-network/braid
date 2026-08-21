@@ -2,14 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
+import { CliBridgeRetainedExecutionPort } from '../src/adapters/runtime/cli-bridge-retained-execution.js'
 import {
-  createProductionBackendResolver,
   type ProductionBackendResolverOptions,
+  resolveProductionCliBridgeConnection,
 } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
-import type { ExecuteTurnInput } from '../src/ports/execution.js'
+import type {
+  ExecuteTurnInput,
+  RetainedRunAdmissionRecord,
+} from '../src/ports/execution.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const at = '2026-08-03T12:00:00.000Z'
@@ -105,7 +109,20 @@ function input(value: string, runId: string): ExecuteTurnInput {
     connectionId: contractConnection.id,
     sessionId,
     signal: new AbortController().signal,
+    onRetainedAdmission: async (admission: RetainedRunAdmissionRecord) => {
+      admissions.push(admission)
+    },
   }
+}
+
+/** Braid drives CLI Bridge through the retained port; the ephemeral resolver refuses it. */
+function retainedExecution(options: ProductionBackendResolverOptions) {
+  return new CliBridgeRetainedExecutionPort({
+    resolve: (turn) => resolveProductionCliBridgeConnection(options, turn),
+    recover: () => {
+      throw new Error('This contract test never recovers a persisted run')
+    },
+  })
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
@@ -117,6 +134,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<voi
 }
 
 let contractConnection: ConnectionRecord
+let admissions: RetainedRunAdmissionRecord[] = []
 
 test('production CLI Bridge sends the frozen profile and complete turn identity', async () => {
   const bridge = await startRuntimeBridgeServer({ responseText: 'CONTRACT_OK' })
@@ -132,61 +150,69 @@ test('production CLI Bridge sends the frozen profile and complete turn identity'
         ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
       }),
     }
-    const resolver = createProductionBackendResolver(options)
+    admissions = []
     const first = input('first contract turn', 'run-contract-1')
     const second = input('second contract turn', 'run-contract-2')
-    const prepared = await resolver(first)
-    assert.equal(prepared.kind, 'prepared-execution')
-    assert.deepEqual(prepared.backend.profile, profile)
+    const prepared = await resolveProductionCliBridgeConnection(options, first)
+    assert.deepEqual(prepared.profile, profile)
     assert.equal(prepared.materializationReceipt.runner, 'pi')
     assert.equal(prepared.materializationReceipt.workspace, workspaceCwd)
 
-    const execution = new AgentRuntimeExecutionPort(resolver)
+    const execution = retainedExecution(options)
     const firstAdmission = await execution.admit(first)
     assert.equal(firstAdmission.providerSessionId, sessionId)
     assert.equal(firstAdmission.capabilities?.environment?.streaming.replay, true)
     assert.equal(firstAdmission.capabilities?.environment?.sessions.continue, true)
     assert.equal(firstAdmission.capabilities?.environment?.streaming.turnIdempotency, true)
-    assert.equal(firstAdmission.capabilities?.streaming.replay, false)
+    // The retained port replays and reads exact status from the durable run.
+    assert.equal(firstAdmission.capabilities?.streaming.replay, true)
     assert.equal(firstAdmission.capabilities?.sessions.continue, true)
     assert.equal(firstAdmission.capabilities?.controls.cancel, true)
-    assert.equal(firstAdmission.capabilities?.controls.status, false)
+    assert.equal(firstAdmission.capabilities?.controls.status, true)
     const firstEvents = []
     for await (const event of execution.streamTurn(first)) firstEvents.push(event)
     const secondAdmission = await execution.admit(second)
     assert.equal(secondAdmission.providerSessionId, sessionId)
     const secondEvents = []
     for await (const event of execution.streamTurn(second)) secondEvents.push(event)
-    assert.equal(firstEvents.at(-1)?.type, 'final')
-    assert.equal(secondEvents.at(-1)?.type, 'final')
+    assert.equal(firstEvents.at(-1)?.event.type, 'final')
+    assert.equal(secondEvents.at(-1)?.event.type, 'final')
     assert.equal(bridge.requests.length, 2, JSON.stringify({ firstEvents, secondEvents }, null, 2))
+
+    // One native session carries the frozen profile; every turn binds to its exact run.
+    assert.equal(bridge.sessions.length, 1)
+    const session = bridge.sessions[0]
+    assert.deepEqual(session?.body.agent_profile, profile)
+    assert.equal(
+      session?.body.agent_profile &&
+        typeof session.body.agent_profile === 'object' &&
+        'harness' in session.body.agent_profile
+        ? session.body.agent_profile.harness
+        : undefined,
+      'pi',
+    )
+    assert.equal(session?.model, 'pi/openai-codex/gpt-5.6-luna')
+    assert.equal(session?.id, sessionId)
+    assert.equal(session?.body.cwd, workspaceCwd)
+    assert.equal(JSON.stringify(session?.body).includes('inline-'), false)
 
     for (const [request, turn] of bridge.requests.map(
       (request, index) => [request, index === 0 ? first : second] as const,
     )) {
       const body = request.body
-      assert.deepEqual(body.agent_profile, profile)
-      assert.equal(
-        body.agent_profile &&
-          typeof body.agent_profile === 'object' &&
-          'harness' in body.agent_profile
-          ? body.agent_profile.harness
-          : undefined,
-        'pi',
-      )
-      assert.equal(body.model, 'pi/openai-codex/gpt-5.6-luna')
       assert.equal(body.run_id, request.runId)
-      assert.match(String(body.run_id), /^bridge-run-/u)
-      assert.notEqual(body.run_id, turn.runId)
-      assert.equal(body.session_id, sessionId)
+      assert.equal(body.run_id, turn.runId)
+      assert.equal(body.execution_id, turn.runId)
+      assert.equal(body.provider, 'cli-bridge')
+      assert.equal(request.session?.id, sessionId)
       assert.equal(request.sessionId, sessionId)
-      assert.equal(body.cwd, workspaceCwd)
-      assert.equal(
-        body.messages && Array.isArray(body.messages) ? body.messages.at(-1)?.content : undefined,
-        turn.text,
-      )
+      assert.equal(body.message, turn.text)
       assert.equal(JSON.stringify(body).includes('inline-'), false)
     }
+    assert.deepEqual(
+      admissions.map((admission) => admission.phase),
+      ['intent', 'environment', 'dispatched', 'intent', 'environment', 'dispatched'],
+    )
   } finally {
     await bridge.close()
   }
@@ -206,8 +232,8 @@ test('production CLI Bridge cancellation uses Runtime provider acknowledgement',
         ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
       }),
     }
-    const resolver = createProductionBackendResolver(options)
-    const execution = new AgentRuntimeExecutionPort(resolver)
+    admissions = []
+    const execution = retainedExecution(options)
     const turn = input('cancel this provider turn', 'run-contract-provider-cancel')
 
     const admission = await execution.admit(turn)
@@ -225,15 +251,18 @@ test('production CLI Bridge cancellation uses Runtime provider acknowledgement',
     assert.deepEqual(acknowledgement, {
       operationId: 'operation-provider-cancel',
       outcome: 'accepted',
-      detail: 'Provider cancellation acknowledged',
+      detail: 'cancelled',
     })
     assert.equal(bridge.cancellations.length, 1)
-    assert.equal(bridge.cancellations[0]?.runId.startsWith('bridge-run-'), true)
+    assert.equal(bridge.cancellations[0]?.runId, turn.runId)
 
-    await pendingEvent
-    for await (const _event of stream) {
-      // Drain the Runtime terminal path after provider acknowledgement.
-    }
+    // The retained reader stops at the cancellation; Braid keeps no second terminal path.
+    await assert.rejects(async () => {
+      await pendingEvent
+      for await (const _event of stream) {
+        // The cancelled reader emits nothing more.
+      }
+    }, /Retained run cancelled/u)
   } finally {
     await bridge.close()
   }
@@ -256,8 +285,8 @@ test('production CLI Bridge cancellation keeps a Runtime provider error unknown'
         ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
       }),
     }
-    const resolver = createProductionBackendResolver(options)
-    const execution = new AgentRuntimeExecutionPort(resolver)
+    admissions = []
+    const execution = retainedExecution(options)
     const turn = input('reject this provider turn', 'run-contract-provider-reject')
 
     const admission = await execution.admit(turn)
@@ -274,11 +303,13 @@ test('production CLI Bridge cancellation keeps a Runtime provider error unknown'
     assert.deepEqual(acknowledgement, {
       operationId: 'operation-provider-reject',
       outcome: 'unknown',
-      detail: 'Provider cancellation failed before acknowledgement',
+      detail: 'unknown',
     })
+    // A refused cancellation leaves the provider run live, so the reader stays open.
+    bridge.complete(turn.runId)
     await pendingEvent
     for await (const _event of stream) {
-      // Drain the Runtime terminal path after the provider error.
+      // Drain the retained reader after the provider refused the cancellation.
     }
   } finally {
     await bridge.close()

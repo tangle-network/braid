@@ -15,6 +15,7 @@ import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
   resolveProductionBackend,
+  resolveProductionCliBridgeConnection,
 } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry, mergeConnectionTelemetry } from '../src/app/connections.js'
@@ -25,6 +26,7 @@ import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { BRAID_SANDBOX_INTERACTION_UNSUPPORTED } from '../src/domain/runtime-diagnostics.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { ExecuteTurnInput } from '../src/ports/execution.js'
+import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const at = '2026-08-03T12:00:00.000Z'
 
@@ -319,7 +321,8 @@ test('production resolver routes chat connections through agent-runtime', async 
 })
 
 test('CLI Bridge and sandbox resolvers expose only supported runtime backend shapes', async () => {
-  const bridge = connection('cli-bridge', 'bridge', 'http://127.0.0.1:4010')
+  const bridgeServer = await startRuntimeBridgeServer()
+  const bridge = connection('cli-bridge', 'bridge', bridgeServer.endpoint)
   const sandbox = connection('tangle-sandbox', 'sandbox', 'https://sandbox.test', true)
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox')
@@ -346,17 +349,22 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
     workspaceCwd: '/tmp/braid-connection-test',
     select: () => ({ connection: { connectionId: bridge.id } }),
   }
-  const cliBackend = await resolveProductionBackend(
-    options,
-    turnInput(profile('openai/gpt-5', 'pi')),
-    {
-      connection: { connectionId: bridge.id },
-    },
+  // CLI Bridge execution belongs to the retained port; the ephemeral resolver refuses it.
+  await assert.rejects(
+    () =>
+      resolveProductionBackend(options, turnInput(profile('openai/gpt-5', 'pi')), {
+        connection: { connectionId: bridge.id },
+      }),
+    /owned by CliBridgeRetainedExecutionPort/u,
   )
-  assert.equal(cliBackend.kind, 'prepared-execution')
+  const cliBackend = await resolveProductionCliBridgeConnection(options, {
+    ...turnInput(profile('openai/gpt-5', 'pi')),
+    connectionId: bridge.id,
+  })
   assert.equal(cliBackend.materializationReceipt.runner, 'pi')
   assert.equal(cliBackend.materializationReceipt.model, 'openai/gpt-5')
-  assert.deepEqual(cliBackend.backend.profile, profile('openai/gpt-5', 'pi'))
+  assert.equal(cliBackend.materializationReceipt.route, 'pi/openai/gpt-5')
+  assert.deepEqual(cliBackend.profile, profile('openai/gpt-5', 'pi'))
 
   const sandboxBackend = await resolveProductionBackend(options, turnInput(profile()), {
     connection: { connectionId: sandbox.id },
@@ -405,6 +413,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
       /harness=claude-code.*model=openai\/gpt-4o.*not changed/iu.test(error.message),
   )
+  await bridgeServer.close()
 })
 
 test('sandbox success=false fails closed despite a conflicting success status', async () => {
@@ -601,55 +610,59 @@ test('sandbox creation receives the Runtime abort signal', { timeout: 2_000 }, a
 })
 
 test('CLI Bridge materializes portable models into routes and rejects incompatible runners', async () => {
-  const bridge = connection('cli-bridge', 'route', 'http://127.0.0.1:4010')
-  const options: ProductionBackendResolverOptions = {
+  const bridgeServer = await startRuntimeBridgeServer()
+  const bridge = connection('cli-bridge', 'route', bridgeServer.endpoint)
+  const bridgeOptions = (
+    selection: { readonly runner?: 'pi' | 'codex'; readonly model?: string } = {},
+  ): ProductionBackendResolverOptions => ({
     connections: new ConnectionRegistry([bridge]),
     workspaceCwd: '/tmp/braid-bridge-route',
-    select: () => ({ connection: { connectionId: bridge.id } }),
+    select: () => ({ connection: { connectionId: bridge.id }, ...selection }),
+  })
+  try {
+    const prepared = await resolveProductionCliBridgeConnection(
+      bridgeOptions({ runner: 'codex', model: 'default' }),
+      turnInput(profile('default', 'codex')),
+    )
+    assert.equal(prepared.materializationReceipt.runner, 'codex')
+    assert.equal(prepared.materializationReceipt.model, 'default')
+    assert.equal(prepared.route, 'codex/default')
+    const priorPiProfile = profile('pi/tangle-router/glm-5.2', 'pi')
+    const priorPi = await resolveProductionCliBridgeConnection(
+      bridgeOptions(),
+      turnInput(priorPiProfile),
+    )
+    assert.deepEqual(priorPi.profile, priorPiProfile)
+    assert.equal(priorPi.materializationReceipt.model, 'pi/tangle-router/glm-5.2')
+    const priorCodexProfile = profile('codex/default', 'codex')
+    const priorCodex = await resolveProductionCliBridgeConnection(
+      bridgeOptions(),
+      turnInput(priorCodexProfile),
+    )
+    assert.deepEqual(priorCodex.profile, priorCodexProfile)
+    assert.equal(priorCodex.materializationReceipt.model, 'codex/default')
+    await assert.rejects(
+      () =>
+        resolveProductionCliBridgeConnection(
+          bridgeOptions({ runner: 'codex', model: 'codex/default' }),
+          turnInput(profile('default', 'codex')),
+        ),
+      /conflicts with AgentProfile\.model\.default/u,
+    )
+    await assert.rejects(
+      () =>
+        resolveProductionCliBridgeConnection(
+          bridgeOptions({ runner: 'codex', model: 'zai-coding-plan/glm-5.2' }),
+          turnInput(profile('zai-coding-plan/glm-5.2', 'codex')),
+        ),
+      (error: unknown) =>
+        error instanceof ConnectionError &&
+        error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
+        /runner=codex.*model=zai-coding-plan\/glm-5\.2.*not changed.*runner=opencode/iu.test(
+          error.message,
+        ),
+    )
+  } finally {
+    await bridgeServer.close()
   }
-  const prepared = await resolveProductionBackend(options, turnInput(profile('default', 'codex')), {
-    connection: { connectionId: bridge.id },
-    runner: 'codex',
-    model: 'default',
-  })
-  assert.equal(prepared.kind, 'prepared-execution')
-  assert.equal(prepared.materializationReceipt.runner, 'codex')
-  assert.equal(prepared.materializationReceipt.model, 'default')
-  const priorPiProfile = profile('pi/tangle-router/glm-5.2', 'pi')
-  const priorPi = await resolveProductionBackend(options, turnInput(priorPiProfile), {
-    connection: { connectionId: bridge.id },
-  })
-  assert.equal(priorPi.kind, 'prepared-execution')
-  assert.deepEqual(priorPi.backend.profile, priorPiProfile)
-  assert.equal(priorPi.materializationReceipt.model, 'pi/tangle-router/glm-5.2')
-  const priorCodexProfile = profile('codex/default', 'codex')
-  const priorCodex = await resolveProductionBackend(options, turnInput(priorCodexProfile), {
-    connection: { connectionId: bridge.id },
-  })
-  assert.equal(priorCodex.kind, 'prepared-execution')
-  assert.deepEqual(priorCodex.backend.profile, priorCodexProfile)
-  assert.equal(priorCodex.materializationReceipt.model, 'codex/default')
-  await assert.rejects(
-    () =>
-      resolveProductionBackend(options, turnInput(profile('default', 'codex')), {
-        connection: { connectionId: bridge.id },
-        runner: 'codex',
-        model: 'codex/default',
-      }),
-    /conflicts with AgentProfile\.model\.default/u,
-  )
-  await assert.rejects(
-    () =>
-      resolveProductionBackend(options, turnInput(profile('zai-coding-plan/glm-5.2', 'codex')), {
-        connection: { connectionId: bridge.id },
-        runner: 'codex',
-        model: 'zai-coding-plan/glm-5.2',
-      }),
-    (error: unknown) =>
-      error instanceof ConnectionError &&
-      error.code === 'CONNECTION_MODEL_HARNESS_MISMATCH' &&
-      /runner=codex.*model=zai-coding-plan\/glm-5\.2.*not changed.*runner=opencode/iu.test(
-        error.message,
-      ),
-  )
 })
