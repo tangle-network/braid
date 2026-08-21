@@ -205,9 +205,14 @@ export function evalJudgeProfile(config: EvalRouteConfig): AgentProfile {
       provider: 'tangle-router',
       default: config.model,
       reasoningEffort: 'none',
+      // One budget bounds the visible answer and the whole completion alike: the judge
+      // returns a short verdict and must never spend the run on reasoning. Runtime lowers
+      // these onto the Router route as `max_tokens` and `max_completion_tokens`, which this
+      // profile used to spell out by hand in `extraBody` and a request-level cap.
+      maxVisibleOutputTokens: EVAL_TOTAL_COMPLETION_TOKENS,
+      maxTotalOutputTokens: EVAL_TOTAL_COMPLETION_TOKENS,
       metadata: {
         temperature: 0,
-        maxTokens: EVAL_TOTAL_COMPLETION_TOKENS,
         retry: {
           maxAttempts: 3,
           initialBackoffMs: 1_000,
@@ -216,8 +221,6 @@ export function evalJudgeProfile(config: EvalRouteConfig): AgentProfile {
           requestTimeoutMs: config.timeoutMs,
         },
         extraBody: {
-          // Router treats this field as the hard ceiling over visible and reasoning tokens.
-          max_completion_tokens: EVAL_TOTAL_COMPLETION_TOKENS,
           // GLM enables thinking by default and does not honor reasoning_effort: none.
           ...(disablesThinking ? { thinking: { type: 'disabled' } } : {}),
         },

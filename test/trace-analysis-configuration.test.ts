@@ -587,7 +587,11 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
       content: JSON.stringify({ messages: optimizerRequest().request.messages }),
     },
   ])
-  assert.equal(receivedBody?.max_tokens, undefined)
+  // The request's cap is the visible ceiling, and Runtime now lowers it onto the Router
+  // route as `max_tokens`; it used to accept the cap and never send it. This profile
+  // declares no total ceiling, so no `max_completion_tokens` is sent.
+  assert.equal(receivedBody?.max_tokens, 64)
+  assert.equal(receivedBody?.max_completion_tokens, undefined)
   assert.equal(receivedBody?.temperature, 0.2)
   assert.deepEqual(receivedBody?.response_format, {
     type: 'json_schema',
