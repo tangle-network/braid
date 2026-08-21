@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/braid",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A universal terminal interface for portable agent profiles",
   "type": "module",
   "bin": {
