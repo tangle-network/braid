@@ -206,6 +206,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'analysis-model-call-observability.test.js',
       'analysis-model-call-roundtrip.test.js',
       'application.test.js',
+      'canonical.test.js',
       'cli-startup.test.js',
       'conversations.test.js',
       'coordination.test.js',

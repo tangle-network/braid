@@ -1,5 +1,5 @@
 import { boundedDrain } from '../../app/application-lifecycle.js'
-import { canonicalDigest } from '../shared/canonical.js'
+import { canonicalRequestIdentity } from '../shared/canonical.js'
 import type { BraidUiController, UiEvent } from '../shared/intents.js'
 import { redactSensitiveText, sanitizeTerminalText } from '../shared/sanitize.js'
 import { BoundedOutputQueue } from './bounded-output.js'
@@ -222,10 +222,10 @@ export async function runRpc(
       let requestRecord: RequestRecord | undefined
       try {
         const request = parseRequest(line)
-        const digest = canonicalDigest(request)
+        const identity = canonicalRequestIdentity(request)
         const previous = requests.get(request.requestId)
         if (previous) {
-          if (previous.digest !== digest) {
+          if (previous.identity !== identity) {
             await write(
               errorResponse(
                 new RpcParseError(
@@ -250,7 +250,7 @@ export async function runRpc(
           }
           continue
         }
-        requestRecord = { digest, responses: [], bytes: 0, replayable: true }
+        requestRecord = { identity, responses: [], bytes: 0, replayable: true }
         requests.set(request.requestId, requestRecord)
         trimReplayHistory()
         const respond = async (response: BraidResponse): Promise<void> => {
