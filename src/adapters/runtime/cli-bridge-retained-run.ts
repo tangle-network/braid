@@ -71,8 +71,13 @@ export async function createCliBridgeRetainedPlan(
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
       : safeExecutionId(runId))
+  const providerSessionId =
+    exactControlRef?.sessionId ??
+    (admission?.phase === 'intent' || admission?.phase === 'environment'
+      ? admission.sessionId
+      : prepared.providerSessionId)
   const environmentIdempotencyKey =
-    admission?.idempotencyKey ?? retainedEnvironmentIdempotencyKey(runId)
+    admission?.idempotencyKey ?? retainedEnvironmentIdempotencyKey(providerSessionId)
   const providerName = provider.name
   const capabilities = retainedCapabilities(await provider.capabilities())
   const materializationReceipt = publicMaterializationReceipt({
@@ -89,11 +94,7 @@ export async function createCliBridgeRetainedPlan(
     environmentIdempotencyKey,
     executionId,
     providerName,
-    providerSessionId:
-      exactControlRef?.sessionId ??
-      (admission?.phase === 'intent' || admission?.phase === 'environment'
-        ? admission.sessionId
-        : prepared.providerSessionId),
+    providerSessionId,
     model: prepared.route,
     capabilities,
     materializationReceipt,
@@ -220,8 +221,9 @@ export async function discoverCliBridgeControlRef(
   })
 }
 
-function retainedEnvironmentIdempotencyKey(runId: string): string {
-  return stableProviderId('environment-braid-', runId)
+/** One provider session keeps one Bridge environment across every retained turn. */
+function retainedEnvironmentIdempotencyKey(providerSessionId: string): string {
+  return stableProviderId('environment-braid-', providerSessionId)
 }
 
 function headlessRetainedAdmission(
