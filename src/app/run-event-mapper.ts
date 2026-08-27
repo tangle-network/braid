@@ -28,6 +28,7 @@ import {
   safeProviderDiagnostic,
   safePublicIdentifier,
 } from './provider-values.js'
+import { finishRuntimeStream, sanitizeRuntimeTextDelta } from './run-event-mapper-stream-budget.js'
 
 function safeText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? redactSensitiveText(value) : fallback
@@ -285,7 +286,12 @@ export function providerEventFor(
         : event
   switch (event.type) {
     case 'text_delta':
-      return { kind: 'run.text.delta', runId, text: safeText(event.text), provider }
+      return {
+        kind: 'run.text.delta',
+        runId,
+        text: sanitizeRuntimeTextDelta(runId, provider.providerSequence, event.text),
+        provider,
+      }
     case 'reasoning_delta':
       return {
         kind: 'run.reasoning.delta',
@@ -354,12 +360,16 @@ export function providerEventFor(
         recoverable: event.recoverable,
         provider,
       }
-    case 'final':
+    case 'final': {
+      const completion = finishRuntimeStream(runId)
       return {
         kind: 'run.finished',
         runId,
         status: terminalStatus(event.status),
-        finalText: safeText(event.text),
+        finalText:
+          event.text === undefined || event.text.length === 0
+            ? completion.accumulatedText
+            : safeText(event.text),
         usage: usageFromMetadata(event.metadata),
         ...(event.error === undefined
           ? {}
@@ -369,6 +379,7 @@ export function providerEventFor(
           : { reason: safeProviderDiagnostic(event.reason, 'RUNTIME_FINAL_REASON') }),
         provider,
       }
+    }
     case 'message.part.updated': {
       const part = canonicalPart(event.part, provider)
       return {
