@@ -1,4 +1,5 @@
 import type {
+  AgentExactRunControlRef,
   InteractionBinding,
   InteractionRequest,
   InteractionRequestMaterial,
@@ -49,9 +50,13 @@ interface SafeInteractionRequest {
   readonly responseBinding: InteractionBinding
 }
 
-function safeInteractionRequest(value: unknown, runId: string): SafeInteractionRequest {
+function safeInteractionRequest(
+  value: unknown,
+  runId: string,
+  controlRef?: AgentExactRunControlRef,
+): SafeInteractionRequest {
   const parsed = parseInteractionRequest(value)
-  if (parsed === undefined || parsed.binding.runId !== runId)
+  if (parsed === undefined || !interactionBindingMatchesRun(parsed.binding, runId, controlRef))
     return invalidInteractionRequest(runId)
   const material = safeValue(interactionRequestMaterial(parsed))
   if (material === null || typeof material !== 'object' || Array.isArray(material))
@@ -65,6 +70,21 @@ function safeInteractionRequest(value: unknown, runId: string): SafeInteractionR
   } catch {
     return invalidInteractionRequest(runId)
   }
+}
+
+function interactionBindingMatchesRun(
+  binding: InteractionRequest['binding'],
+  runId: string,
+  controlRef?: AgentExactRunControlRef,
+): boolean {
+  if (controlRef === undefined) return binding.runId === runId
+  return (
+    binding.runId === controlRef.runId &&
+    binding.provider === controlRef.provider &&
+    binding.environmentId === controlRef.environmentId &&
+    binding.sessionId === controlRef.sessionId &&
+    binding.executionId === controlRef.executionId
+  )
 }
 
 function invalidInteractionRequest(runId: string): SafeInteractionRequest {
@@ -326,6 +346,7 @@ export function providerEventFor(
   runId: string,
   event: BraidRuntimeEvent,
   provider: ProviderEventMeta,
+  controlRef?: AgentExactRunControlRef,
 ): BraidEvent {
   const detailEvent =
     event.type === 'raw'
@@ -437,7 +458,7 @@ export function providerEventFor(
       return {
         kind: 'run.interaction',
         runId,
-        ...safeInteractionRequest(event.request, runId),
+        ...safeInteractionRequest(event.request, runId, controlRef),
         provider,
       }
     case 'interaction.cancel':

@@ -21,12 +21,23 @@ export async function dispatchCoreIntent(
 ): Promise<UiDispatchResult> {
   switch (intent.type) {
     case 'send': {
-      const receipt = context.app.send({
-        operationId: intent.operationId,
-        text: intent.text,
+      const continuationRunId = context.app.nativeContinuationRunId({
         ...(intent.conversationId ? { conversationId: intent.conversationId } : {}),
         ...(intent.branchId ? { branchId: intent.branchId } : {}),
       })
+      const receipt =
+        continuationRunId === undefined
+          ? context.app.send({
+              operationId: intent.operationId,
+              text: intent.text,
+              ...(intent.conversationId ? { conversationId: intent.conversationId } : {}),
+              ...(intent.branchId ? { branchId: intent.branchId } : {}),
+            })
+          : await context.app.continueNative({
+              operationId: intent.operationId,
+              text: intent.text,
+              runId: continuationRunId,
+            })
       if (receipt.admissionReady !== undefined) await receipt.admissionReady
       return {
         kind: 'accepted',

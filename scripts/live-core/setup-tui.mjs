@@ -35,7 +35,7 @@ async function waitForSelection(getOutput, start, timeoutMs = 120_000) {
   while (true) {
     const current = getOutput().slice(start)
     if (current.includes('selection applied')) return
-    const applying = current.indexOf('applying selection')
+    const applying = current.lastIndexOf('applying selection')
     const retry = applying < 0 ? -1 : current.indexOf('→ Apply and start', applying)
     if (retry >= 0) {
       throw new Error(`Selection activation failed; output:\n${current.slice(applying)}`)

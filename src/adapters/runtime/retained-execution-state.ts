@@ -29,6 +29,7 @@ export function retainedExecutionKey(
     workspaceRoot: input.workspaceRoot ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
+    nativeContextBoundaryProof: input.nativeContextBoundaryProof ?? null,
   })
 }
 

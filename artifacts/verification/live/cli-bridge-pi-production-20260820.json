@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "command": "pnpm test:live:bridge",
+  "scope": {
+    "name": "one-shot-production-target-proof",
+    "claims": [
+      "packed startup",
+      "exact marker response for each required target",
+      "advertised cancel and interaction semantics",
+      "bounded process cleanup"
+    ],
+    "excludes": [
+      "LIVE-01..05 full interactive runner conformance"
+    ]
+  },
+  "optIn": true,
+  "startedAt": "2026-08-20T06:54:16.877Z",
+  "runtime": {
+    "node": "v24.13.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cwd": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
+  },
+  "environment": {
+    "endpoint": "http://127.0.0.1:3344",
+    "bearerConfigured": false,
+    "launchRequested": true
+  },
+  "targetPolicy": {
+    "source": "environment",
+    "requested": [
+      "pi-glm-5.2"
+    ],
+    "required": [
+      {
+        "key": "pi-glm-5.2",
+        "label": "GLM 5.2 through Pi",
+        "modelId": "pi/tangle-router/glm-5.2",
+        "backend": "pi"
+      }
+    ]
+  },
+  "targets": [],
+  "bridge": {
+    "initialHealth": {
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "launch": {
+      "requested": true,
+      "directory": "/home/drew/code/cli-bridge",
+      "command": "pnpm start",
+      "health": {
+        "ok": false,
+        "error": "fetch failed"
+      },
+      "process": {
+        "stdout": "\u001b[41m\u001b[31m[\u001b[39m\u001b[49m\u001b[41m\u001b[30mELIFECYCLE\u001b[39m\u001b[49m\u001b[41m\u001b[31m]\u001b[39m\u001b[49m \u001b[31mCommand failed with exit code 1.\u001b[39m\n",
+        "stderr": "(node:673871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[2m$ tsx src/server.ts\u001b[22m\n(node:674170) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:674407) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n[cli-bridge] cli-bridge data directory /home/drew/code/cli-bridge/data is already owned by pid 680062. Lockfile /home/drew/code/cli-bridge/data/.cli-bridge-data-directory.pid is held by a live process. Stop the other instance or choose a different BRIDGE_DATA_DIR.\n",
+        "exited": {
+          "code": 1,
+          "signal": null
+        },
+        "termination": {
+          "strategy": "already-exited",
+          "termTimeoutMs": 2000,
+          "killTimeoutMs": 2000,
+          "termSent": false,
+          "killSent": false,
+          "forcedKill": false,
+          "initialExited": true,
+          "initialTree": {
+            "supported": true,
+            "gone": true,
+            "present": false
+          },
+          "exited": true,
+          "descendantsExited": true,
+          "descendantsVerified": true,
+          "cleanupStatus": "already-exited",
+          "tree": {
+            "supported": true,
+            "gone": true,
+            "present": false
+          }
+        },
+        "exit": {
+          "code": 1,
+          "signal": null
+        }
+      },
+      "cleanup": {
+        "stopped": {
+          "termination": {
+            "strategy": "already-exited",
+            "termTimeoutMs": 2000,
+            "killTimeoutMs": 2000,
+            "termSent": false,
+            "killSent": false,
+            "forcedKill": false,
+            "initialExited": true,
+            "initialTree": {
+              "supported": true,
+              "gone": true,
+              "present": false
+            },
+            "exited": true,
+            "descendantsExited": true,
+            "descendantsVerified": true,
+            "cleanupStatus": "already-exited",
+            "tree": {
+              "supported": true,
+              "gone": true,
+              "present": false
+            }
+          },
+          "exit": {
+            "code": 1,
+            "signal": null
+          },
+          "stdout": "\u001b[41m\u001b[31m[\u001b[39m\u001b[49m\u001b[41m\u001b[30mELIFECYCLE\u001b[39m\u001b[49m\u001b[41m\u001b[31m]\u001b[39m\u001b[49m \u001b[31mCommand failed with exit code 1.\u001b[39m\n",
+          "stderr": "(node:673871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[2m$ tsx src/server.ts\u001b[22m\n(node:674170) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:674407) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n[cli-bridge] cli-bridge data directory /home/drew/code/cli-bridge/data is already owned by pid 680062. Lockfile /home/drew/code/cli-bridge/data/.cli-bridge-data-directory.pid is held by a live process. Stop the other instance or choose a different BRIDGE_DATA_DIR.\n"
+        }
+      }
+    }
+  },
+  "error": {
+    "code": "BRIDGE_START_FAILED",
+    "message": "CLI Bridge did not become ready at http://127.0.0.1:3344",
+    "exitCode": 2,
+    "details": {
+      "health": {
+        "ok": false,
+        "error": "fetch failed"
+      },
+      "process": {
+        "stdout": "\u001b[41m\u001b[31m[\u001b[39m\u001b[49m\u001b[41m\u001b[30mELIFECYCLE\u001b[39m\u001b[49m\u001b[41m\u001b[31m]\u001b[39m\u001b[49m \u001b[31mCommand failed with exit code 1.\u001b[39m\n",
+        "stderr": "(node:673871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[2m$ tsx src/server.ts\u001b[22m\n(node:674170) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:674407) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n[cli-bridge] cli-bridge data directory /home/drew/code/cli-bridge/data is already owned by pid 680062. Lockfile /home/drew/code/cli-bridge/data/.cli-bridge-data-directory.pid is held by a live process. Stop the other instance or choose a different BRIDGE_DATA_DIR.\n",
+        "exited": {
+          "code": 1,
+          "signal": null
+        }
+      }
+    }
+  },
+  "cleanup": {
+    "ok": true,
+    "results": []
+  },
+  "status": "unavailable",
+  "exitCode": 2,
+  "finishedAt": "2026-08-20T06:54:19.417Z"
+}

@@ -1,8 +1,13 @@
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
+import { safeRuntimeDiagnostic } from '../../app/provider-values.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
-import { BRAID_SANDBOX_CLEANUP_UNCONFIRMED } from '../../domain/runtime-diagnostics.js'
+import {
+  BRAID_SANDBOX_CLEANUP_UNCONFIRMED,
+  BRAID_SANDBOX_INTERACTION_UNSUPPORTED,
+  publicRuntimeDiagnostic,
+} from '../../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../../domain/runtime-events.js'
 import type {
   CancelRunInput,
@@ -25,7 +30,6 @@ import {
   type PreparedExecution,
   type RuntimeCancellationCapability,
 } from './prepared-execution.js'
-import { sandboxTerminalOutcomeFromExecutorOutput } from './sandbox-result-projection.js'
 
 export type AgentTurnBackendResolver = (
   input: ExecuteTurnInput,
@@ -217,7 +221,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         const observed = observation === undefined ? undefined : await observationEvent(observation)
         if (observed !== undefined) yield observed
         if (terminal !== undefined) {
-          yield terminalAfterCleanup(terminalAfterSandboxOutcome(terminal), observed)
+          yield publicRuntimeTerminal(terminalAfterCleanup(terminal, observed))
         }
       } catch (error) {
         if (observation !== undefined) {
@@ -251,25 +255,25 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   }
 }
 
-function terminalAfterSandboxOutcome(
+function publicRuntimeTerminal(
   terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
 ): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
-  if (terminal.status !== 'completed') return terminal
-  const result = terminal.metadata?.result
-  const output =
-    result !== null && typeof result === 'object' && !Array.isArray(result)
-      ? (result as { readonly output?: unknown }).output
-      : undefined
-  const outcome = sandboxTerminalOutcomeFromExecutorOutput(output)
-  if (outcome === undefined || outcome.status === 'completed') return terminal
-  const reason = outcome.reason ?? `Sandbox agent reported a ${outcome.status} turn`
+  if (terminal.status === 'completed') return terminal
+  const reason =
+    publicRuntimeDiagnostic(terminal.reason) === undefined
+      ? safeRuntimeDiagnostic(terminal.reason, 'RUNTIME_FINAL_REASON')
+      : terminal.reason
+  const error =
+    terminal.error === undefined
+      ? undefined
+      : {
+          ...terminal.error,
+          message: safeRuntimeDiagnostic(terminal.error.message, 'RUNTIME_FINAL_ERROR'),
+        }
   return {
     ...terminal,
-    status: outcome.status,
     reason,
-    ...(outcome.status === 'failed'
-      ? { error: { kind: 'backend' as const, message: reason } }
-      : {}),
+    ...(error === undefined ? {} : { error }),
   }
 }
 
@@ -277,6 +281,17 @@ function terminalAfterCleanup(
   terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
   observed: Extract<BraidRuntimeEvent, { readonly type: 'braid.execution.observed' }> | undefined,
 ): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+  if (observed?.observation.cleanup === 'delete-after-turn' && terminal.status === 'blocked') {
+    return {
+      ...terminal,
+      status: 'failed',
+      reason: BRAID_SANDBOX_INTERACTION_UNSUPPORTED,
+      error: {
+        kind: 'backend',
+        message: BRAID_SANDBOX_INTERACTION_UNSUPPORTED,
+      },
+    }
+  }
   if (
     terminal.status !== 'completed' ||
     observed?.observation.cleanup !== 'delete-after-turn' ||

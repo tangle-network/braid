@@ -42,9 +42,10 @@ import {
   type NativeKeyringEntry,
   type NativeKeyringEntryFactory,
 } from '../src/adapters/credentials/os.js'
-import { openAt } from '../src/adapters/persistence/posix-at.js'
+import { lockExclusiveNonBlocking, openAt } from '../src/adapters/persistence/posix-at.js'
 import {
   acquirePrivateFileLock,
+  acquirePrivateFileLockAt,
   assertNoSymlinkPath,
   assertSafeDirectory,
   ensurePrivateDirectory,
@@ -53,10 +54,15 @@ import {
   readNoFollow,
   releasePrivateFileLock,
   replacePrivateFile,
+  replacePrivateFileAt,
   SafeFileError,
   writePrivateFile,
 } from '../src/adapters/persistence/safe-file.js'
-import { componentPath, safePath } from '../src/adapters/persistence/safe-file-descriptor.js'
+import {
+  componentPath,
+  openParent,
+  safePath,
+} from '../src/adapters/persistence/safe-file-descriptor.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import {
   closeBoundSqliteDatabase,
@@ -588,6 +594,133 @@ test('every safe-file operation rejects a swapped parent and unsupported platfor
       )
     }
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('an incomplete lock owner is not stolen while live and recovers after its crash', async () => {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') return
+  const root = await mkdtemp(join(tmpdir(), 'braid-incomplete-lock-'))
+  const lockPath = join(root, 'journal.lock')
+  let liveHandle: number | undefined
+  try {
+    liveHandle = openSync(
+      lockPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    )
+    lockExclusiveNonBlocking(liveHandle)
+    await writeFile(lockPath, String(process.pid), { mode: 0o600 })
+    assert.equal(readFileSync(lockPath, 'utf8'), String(process.pid))
+    assert.throws(() => acquirePrivateFileLock(lockPath), /busy in another process/u)
+    assert.equal(readFileSync(lockPath, 'utf8'), String(process.pid))
+
+    closeSync(liveHandle)
+    liveHandle = undefined
+    const recovered = acquirePrivateFileLock(lockPath)
+    try {
+      assert.equal(readFileSync(lockPath, 'utf8'), `${process.pid}\n`)
+    } finally {
+      releasePrivateFileLock(lockPath, recovered)
+    }
+    assert.throws(() => lstatSync(lockPath), { code: 'ENOENT' })
+
+    await writeFile(lockPath, 'not-a-pid\n', { mode: 0o600 })
+    assert.throws(() => acquirePrivateFileLock(lockPath), /corrupt owner record/u)
+    assert.equal(readFileSync(lockPath, 'utf8'), 'not-a-pid\n')
+  } finally {
+    if (liveHandle !== undefined) closeSync(liveHandle)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('lock release rejects a closed and reused parent descriptor', async () => {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') return
+  const root = await mkdtemp(join(tmpdir(), 'braid-lock-descriptor-reuse-'))
+  const original = join(root, 'original')
+  const unrelated = join(root, 'unrelated')
+  const lockPath = join(original, 'journal.lock')
+  await mkdir(original, { mode: 0o700 })
+  await mkdir(unrelated, { mode: 0o700 })
+  const parent = openParent(lockPath)
+  const lock = acquirePrivateFileLockAt(parent.fd, parent.leaf, parent.leafPath)
+  let reused: number | undefined
+  try {
+    assert.equal(
+      Reflect.ownKeys(lock).some((key) => typeof Reflect.get(lock, key) === 'number'),
+      false,
+    )
+    closeSync(parent.fd)
+    reused = openSync(unrelated, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0))
+    assert.equal(reused, parent.fd)
+    assert.throws(
+      () => releasePrivateFileLock(lockPath, lock),
+      (error: unknown) =>
+        error instanceof SafeFileError && error.code === 'SAFE_FILE_DESCRIPTOR_CHANGED',
+    )
+    assert.equal(fstatSync(reused).isDirectory(), true)
+    assert.equal(lstatSync(lockPath).isFile(), true)
+    closeSync(reused)
+    reused = undefined
+
+    const recovered = acquirePrivateFileLock(lockPath)
+    releasePrivateFileLock(lockPath, recovered)
+    assert.throws(() => lstatSync(lockPath), { code: 'ENOENT' })
+  } finally {
+    if (reused !== undefined) closeSync(reused)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('private publication rejects a closed and reused parent descriptor before mutation', async () => {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') return
+  const root = await mkdtemp(join(tmpdir(), 'braid-publication-descriptor-reuse-'))
+  const original = join(root, 'original')
+  const unrelated = join(root, 'unrelated')
+  const target = join(original, 'config.json')
+  const unrelatedTarget = join(unrelated, 'config.json')
+  await mkdir(original, { mode: 0o700 })
+  await mkdir(unrelated, { mode: 0o700 })
+  await writeFile(target, 'original', { mode: 0o600 })
+  await writeFile(unrelatedTarget, 'unrelated', { mode: 0o600 })
+  const parent = openParent(target)
+  let parentClosed = false
+  let reused: number | undefined
+  const replacementDescriptors: number[] = []
+  try {
+    assert.throws(
+      () =>
+        replacePrivateFileAt(parent, 'replacement', {
+          overwrite: true,
+          maxExistingBytes: 128,
+          expected: (current) => {
+            assert.equal(current?.toString('utf8'), 'original')
+            closeSync(parent.fd)
+            parentClosed = true
+            for (;;) {
+              const replacement = openSync(
+                unrelated,
+                constants.O_RDONLY | (constants.O_DIRECTORY ?? 0),
+              )
+              replacementDescriptors.push(replacement)
+              if (replacement === parent.fd) {
+                reused = replacement
+                break
+              }
+              assert.ok(replacement < parent.fd)
+            }
+          },
+        }),
+      (error: unknown) =>
+        error instanceof SafeFileError && error.code === 'SAFE_FILE_DESCRIPTOR_CHANGED',
+    )
+    if (reused === undefined) throw new Error('The hostile descriptor was not reused')
+    assert.equal(fstatSync(reused).isDirectory(), true)
+    assert.equal(await readFile(target, 'utf8'), 'original')
+    assert.equal(await readFile(unrelatedTarget, 'utf8'), 'unrelated')
+  } finally {
+    for (const descriptor of replacementDescriptors) closeSync(descriptor)
+    if (!parentClosed) closeSync(parent.fd)
     await rm(root, { recursive: true, force: true })
   }
 })

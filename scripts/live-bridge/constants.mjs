@@ -44,6 +44,12 @@ export const targetDefinitions = Object.freeze([
     modelId: 'opencode/zai-coding-plan/glm-5.2',
     backend: 'opencode',
   },
+  {
+    key: 'pi-glm-5.2',
+    label: 'GLM 5.2 through Pi',
+    modelId: 'pi/tangle-router/glm-5.2',
+    backend: 'pi',
+  },
 ])
 
 export const livePrompts = Object.freeze({

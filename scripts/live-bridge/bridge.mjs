@@ -90,6 +90,7 @@ export function releaseTargetDefinitions(definitions, modelsResponse, healthResp
   )
   const selected = []
   const missingBackends = []
+  const configuredBackends = new Set(definitions.map(({ backend }) => backend))
   for (const backend of readyBackends) {
     const preferred = definitions.find(
       (definition) =>
@@ -97,7 +98,7 @@ export function releaseTargetDefinitions(definitions, modelsResponse, healthResp
         advertised.includes(bridgeModelIdForDefinition(definition)),
     )
     const candidate =
-      preferred === undefined
+      preferred === undefined && !configuredBackends.has(backend)
         ? advertised.find((modelId) => modelId.startsWith(`${backend}/`))
         : undefined
     const definition =

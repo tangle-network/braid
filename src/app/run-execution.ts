@@ -31,6 +31,9 @@ export async function executeRun(
       ...(currentRun?.lastCursor === undefined ? {} : { after: currentRun.lastCursor }),
       ...(currentRun === undefined ? {} : { afterSequence: currentRun.lastProviderSequence }),
       ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.nativeContextBoundaryProof === undefined
+        ? {}
+        : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),
       onRetainedAdmission: async (retainedAdmission) => {
         const committed = context.commitAndWait({
           kind: 'run.retained.admitted',
@@ -46,6 +49,7 @@ export async function executeRun(
       if (context.isTerminal(context.findRun(admission.runId).status)) break
       if (terminalSeen) break
       if (isRuntimeEventEnvelope(runtimeEvent)) {
+        eventSequence = Math.max(eventSequence, runtimeEvent.sequence)
         const result = await context.ingestRuntimeEvent(runtimeEvent)
         if (result.accepted && runtimeEvent.event.type === 'final') {
           terminalSeen = true

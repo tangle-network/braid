@@ -21,6 +21,8 @@ export class TangleRetainedExecutionPort extends RetainedExecutionPort {
   constructor(options: TangleRetainedExecutionOptions) {
     super({
       resolve: async (input) => createTangleRetainedPlan(await options.resolve(input), input.runId),
+      continue: async (input, controlRef) =>
+        createTangleRetainedPlan(await options.resolve(input), input.runId, controlRef),
       recover: async ({ runId, providerSessionId, controlRef, signal, ...recovery }) =>
         createTangleRetainedPlan(
           await options.recover({
@@ -32,6 +34,7 @@ export class TangleRetainedExecutionPort extends RetainedExecutionPort {
           }),
           runId,
           controlRef,
+          recovery,
         ),
     })
   }

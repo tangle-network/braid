@@ -20,5 +20,5 @@
 › new message
 
 
-─────────────── type / for commands · Alt+Enter newline · paste ────────────────
+─────────────────── type / for commands · Alt+Enter · paste ────────────────────
 profile Braid starter · pi · via local         failed · /activity details · /new

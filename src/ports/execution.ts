@@ -3,6 +3,7 @@ import type {
   AgentExactRunControlRef,
   AgentProfile,
   InteractionResponseCommand,
+  NativeContextBoundaryProof,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
@@ -33,6 +34,8 @@ export interface ExecuteTurnInput {
   readonly after?: string
   readonly afterSequence?: number
   readonly contextBoundary?: string
+  /** Exact provider proof required for one retry-safe same-session turn. */
+  readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
   readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
 }
 
@@ -128,6 +131,8 @@ export interface ExecutionPort {
     } & RetainedExecutionRecoveryContext,
   ): Promise<ProviderRunSnapshot | null>
   respondInteraction?(input: {
+    /** Braid-owned run identity used to recover the correct retained handle. */
+    readonly runId: string
     readonly command: InteractionResponseCommand
     readonly signal?: AbortSignal
     readonly recovery?: RetainedExecutionRecoveryContext
@@ -143,15 +148,14 @@ export interface ExecutionPort {
       readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
     } & RetainedExecutionRecoveryContext,
   ): AsyncIterable<RuntimeEventEnvelope>
-  nativeBoundary?(input: {
-    readonly runId: string
-    readonly sessionId: string
-    readonly signal?: AbortSignal
-  }): Promise<{
-    readonly boundary: string
-    readonly digest: string
-    readonly revision?: string
-  } | null>
+  nativeBoundary?(
+    input: {
+      readonly runId: string
+      readonly sessionId: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & RetainedExecutionRecoveryContext,
+  ): Promise<NativeContextBoundaryProof | null>
   environmentCapabilities?(): AgentEnvironmentCapabilities | Promise<AgentEnvironmentCapabilities>
 }
 
@@ -174,6 +178,21 @@ export const UNKNOWN_RUN_CAPABILITIES: RunCapabilities = Object.freeze({
 /** Treat a published environment capability document as authoritative. */
 export function supportsInteractionResponse(capabilities: RunCapabilities): boolean {
   return capabilities.environment?.interactions?.responseIdempotency === true
+}
+
+export function supportsNativeContinuation(capabilities: AgentEnvironmentCapabilities): boolean {
+  return (
+    capabilities.sessions.continue &&
+    capabilities.nativeContinuation?.atomicBoundary === true &&
+    capabilities.nativeContinuation.requestIdempotency === true
+  )
+}
+
+/** A retained run can use the exact native path only when its environment proved both guarantees. */
+export function runSupportsNativeContinuation(capabilities: RunCapabilities): boolean {
+  return (
+    capabilities.environment !== undefined && supportsNativeContinuation(capabilities.environment)
+  )
 }
 
 export function capabilitiesFromEnvironment(

@@ -98,12 +98,13 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   }
 
   async respondInteraction(input: {
+    readonly runId: string
     readonly command: InteractionResponseCommand
     readonly signal?: AbortSignal
     readonly recovery?: RetainedExecutionRecoveryContext
   }) {
     const port = this.#portForInput({
-      runId: input.command.binding.runId,
+      runId: input.runId,
       ...(input.recovery?.retainedAdmission === undefined
         ? {}
         : { retainedAdmission: input.recovery.retainedAdmission }),

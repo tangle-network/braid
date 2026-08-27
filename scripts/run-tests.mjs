@@ -73,6 +73,7 @@ const scopeFiles = {
     'domain-reducer.test.js',
     'observability.test.js',
     'reducer.test.js',
+    'retained-execution-lifecycle.test.js',
     'scripts.test.js',
     'tangle-retained-lifecycle.test.js',
     'usage-projection.test.js',

@@ -201,6 +201,9 @@ test('retained recovery passes the exact provider reference into plan constructi
     resolve: async () => {
       throw new Error('fresh admission is not part of this recovery test')
     },
+    continue: async () => {
+      throw new Error('native continuation is not part of this recovery test')
+    },
     recover: async ({ runId, controlRef: exact }) => {
       recoveredRunId = runId
       recoveredEnvironmentId = exact?.environmentId
@@ -244,6 +247,9 @@ test('retained recovery carries the persisted opaque environment identity throug
   const execution = new RetainedExecutionPort({
     resolve: async () => {
       throw new Error('fresh admission is not part of this recovery test')
+    },
+    continue: async () => {
+      throw new Error('native continuation is not part of this recovery test')
     },
     recover: async ({ retainedAdmission: admission }) => {
       receivedAdmission = admission
@@ -297,8 +303,8 @@ test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job 
       text: 'Keep working while Braid restarts.',
     })
     await send.admissionReady
-    await waitFor(() => (first?.app.state().runs[0]?.lastProviderSequence ?? 0) >= 2)
-
+    await waitFor(() => bridge.requests.length === 1, 5_000)
+    await waitFor(() => first?.app.state().runs[0]?.lastCursor === '1:0', 5_000)
     const beforeDetach = first.app.state().runs[0]
     assert.equal(beforeDetach?.lastCursor, '1:0')
     assert.equal(beforeDetach?.controlRef?.runId, send.runId)
@@ -356,18 +362,26 @@ test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job 
       1,
     )
 
-    const followUp = restarted.app.send({
+    const followUp = await controller.dispatch({
+      type: 'send',
       operationId: 'operation-retained-restart-follow-up',
-      text: 'Continue in the same provider session.',
+      text: 'Continue in the exact native provider session.',
     })
-    await followUp.admissionReady
-    await waitFor(() => bridge.requests.length === 2)
-    bridge.complete()
+    assert.equal(followUp.kind, 'accepted')
+    if (followUp.kind !== 'accepted') return
     await followUp.completion
-    assert.equal(bridge.requests.length, 2)
+    assert.equal(bridge.requests.length, 1)
+    assert.equal(bridge.sessionCreates.length, 1)
+    assert.equal(bridge.continuations.length, 1)
     assert.equal(typeof bridge.requests[0]?.sessionId, 'string')
-    assert.equal(bridge.requests[1]?.sessionId, bridge.requests[0]?.sessionId)
-    assert.equal(restarted.app.state().runs.at(-1)?.status, 'completed')
+    assert.equal(bridge.continuations[0]?.sessionId, bridge.requests[0]?.sessionId)
+    assert.equal(bridge.continuations[0]?.request.run.sessionId, bridge.requests[0]?.sessionId)
+    assert.equal(
+      bridge.continuations[0]?.turn.prompt,
+      'Continue in the exact native provider session.',
+    )
+    const continuedRun = restarted.app.state().runs.at(-1)
+    assert.equal(continuedRun?.status, 'completed', JSON.stringify(continuedRun))
     assert.equal(restarted.app.state().runs.at(-1)?.llmCalls, 1)
   } finally {
     await first?.app.close().catch(() => undefined)

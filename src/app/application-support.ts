@@ -13,6 +13,7 @@ import type { ControlAcknowledgement } from '../ports/execution.js'
 import type {
   ExecutionRunPort,
   JournalWriter,
+  ReconnectInput,
   RestartPort,
   StateReader,
 } from './application-ports.js'
@@ -30,6 +31,7 @@ import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import type { RunLedger } from './run-ledger.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
+import { runSupportsNativeContinuation } from '../ports/execution.js'
 
 export interface ApplicationJournal {
   readonly all: () => readonly BraidEventEnvelope[]
@@ -249,13 +251,18 @@ export function restoreApplicationOperations(
   }
 }
 
-export function reconcileRestartRun(context: RestartPort): Promise<void> {
+export function reconcileRestartRun(
+  context: RestartPort,
+  reconnectRun: (input: ReconnectInput) => Promise<BraidState>,
+): Promise<void> {
   const runId = context.currentState().activeRunId
   if (!runId) return Promise.resolve()
   const run = context.currentState().runs.find((candidate) => candidate.id === runId)
   if (!run || isProvenTerminalStatus(run.status)) return Promise.resolve()
   if (!context.execution.status) {
-    if (canReplayAfterRestart(context, run)) return markRestartReconnecting(context, runId)
+    if (canReplayAfterRestart(context, run)) {
+      return resumeNativeContinuationAfterRestart(context, reconnectRun, runId, run)
+    }
     const unknown = context.commitAndWait({
       kind: 'run.finished',
       runId,
@@ -266,7 +273,11 @@ export function reconcileRestartRun(context: RestartPort): Promise<void> {
     })
     return Promise.resolve(unknown)
   }
-  return reconcileRestartSnapshot(context, runId)
+  return reconcileRestartSnapshot(context, runId).then(() => {
+    const current = context.currentState().runs.find((candidate) => candidate.id === runId)
+    if (current === undefined || isProvenTerminalStatus(current.status)) return
+    return resumeNativeContinuationAfterRestart(context, reconnectRun, runId, current)
+  })
 }
 
 async function reconcileRestartSnapshot(context: RestartPort, runId: string): Promise<void> {
@@ -308,6 +319,38 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
   }
   await markRestartReconnecting(context, runId)
   await reconcileSnapshot(context, runId, snapshot)
+}
+
+export function restartReconnectOperationId(runId: string): string {
+  return `operation-restart-reconnect-${runId}`
+}
+
+async function resumeNativeContinuationAfterRestart(
+  context: RestartPort,
+  reconnectRun: (input: ReconnectInput) => Promise<BraidState>,
+  runId: string,
+  run: BraidState['runs'][number],
+): Promise<void> {
+  if (!isRecoverableNativeContinuation(context, run)) {
+    await markRestartReconnecting(context, runId)
+    return
+  }
+  await reconnectRun({
+    operationId: restartReconnectOperationId(runId),
+    runId,
+  })
+}
+
+function isRecoverableNativeContinuation(
+  context: RestartPort,
+  run: BraidState['runs'][number],
+): boolean {
+  return Boolean(
+    !isProvenTerminalStatus(run.status) &&
+      run.receipt.nativeContextBoundaryProof !== undefined &&
+      runSupportsNativeContinuation(run.capabilities) &&
+      canReplayAfterRestart(context, run),
+  )
 }
 
 async function reconcileSnapshot(

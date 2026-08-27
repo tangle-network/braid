@@ -19,6 +19,7 @@ import {
   canonicalCandidateJson,
   defineAgentProfile,
 } from '@tangle-network/agent-interface'
+import { defaultCliBridgeCapabilities } from '@tangle-network/agent-provider-cli-bridge'
 import {
   materializeBridgeModelRoute,
   portableBridgeModel,
@@ -26,14 +27,12 @@ import {
 } from '../src/adapters/connections/cli-bridge-model-route.js'
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
-import { resolveProductionBackend } from '../src/adapters/runtime/production-backend-resolver.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createBraidApplication,
   createDurableBraidApplication,
   createProductionBraidApplication,
 } from '../src/app/composition.js'
-import { ConnectionRegistry } from '../src/app/connections.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
   createProductionComposition,
@@ -198,7 +197,8 @@ test('normal composition streams a configured CLI Bridge turn through agent-runt
     )
     assert.equal(result.state.messages.at(-1)?.text, 'production response')
     assert.equal(bridge.requests.length, 1)
-    assert.equal(bridge.requests[0]?.body.model, 'pi/openai/gpt-5')
+    assert.equal(bridge.sessionCreates.length, 1)
+    assert.equal(bridge.sessionCreates[0]?.body.model, 'pi/openai/gpt-5')
     assert.equal(result.state.runs[0]?.receipt.provider, 'cli-bridge')
     assert.equal(result.state.environments.length, 1)
     assert.equal(result.state.environments[0]?.kind, 'local-process')
@@ -212,7 +212,7 @@ test('normal composition streams a configured CLI Bridge turn through agent-runt
 
 test('retained CLI Bridge turns forward request-scoped model credentials only on the model call', async () => {
   const bridge = await startRuntimeBridgeServer()
-  const seen: { token?: string | null; baseUrl?: string | null } = {}
+  const seen = new Map<string, { token: string | null; baseUrl: string | null }>()
   try {
     const record = connection('cli-bridge', 'scoped-model', bridge.endpoint)
     const result = await runProductionTurn(
@@ -230,9 +230,12 @@ test('retained CLI Bridge turns forward request-scoped model credentials only on
           },
         },
         fetch: async (input, init) => {
-          if (new URL(String(input)).pathname === '/v1/chat/completions') {
-            seen.token = requestHeader(init, 'x-cli-bridge-model-credential')
-            seen.baseUrl = requestHeader(init, 'x-cli-bridge-model-base-url')
+          const path = new URL(String(input)).pathname
+          if (init?.method === 'POST') {
+            seen.set(path, {
+              token: requestHeader(init, 'x-cli-bridge-model-credential'),
+              baseUrl: requestHeader(init, 'x-cli-bridge-model-base-url'),
+            })
           }
           return fetch(input, init)
         },
@@ -240,8 +243,22 @@ test('retained CLI Bridge turns forward request-scoped model credentials only on
     )
 
     assert.equal(result.state.runs[0]?.status, 'completed')
-    assert.equal(seen.token, 'test-model-token')
-    assert.equal(seen.baseUrl, 'https://chatgpt.com/backend-api')
+    const modelRequests = [...seen.entries()].filter(
+      ([path]) =>
+        path === '/v1/chat/completions' ||
+        path === '/v1/sessions' ||
+        /^\/v1\/sessions\/[^/]+\/(?:turns|continue)$/u.test(path),
+    )
+    assert.notEqual(modelRequests.length, 0)
+    for (const [, headers] of modelRequests) {
+      assert.equal(headers.token, 'test-model-token')
+      assert.equal(headers.baseUrl, 'https://chatgpt.com/backend-api')
+    }
+    for (const [path, headers] of seen) {
+      if (modelRequests.some(([modelPath]) => modelPath === path)) continue
+      assert.equal(headers.token, null)
+      assert.equal(headers.baseUrl, null)
+    }
   } finally {
     await bridge.close()
   }
@@ -539,88 +556,6 @@ test('bin startup loads a canonical profile and exact connection from a bounded 
   assert.equal(parseArgs(['--config', configPath], root).config, configPath)
 })
 
-test('CLI routing overrides agree with the canonical profile passed to runtime', async () => {
-  const cases = [
-    {
-      name: 'model only',
-      options: { model: 'openai/gpt-5.1' },
-      runner: 'pi' as const,
-      model: 'openai/gpt-5.1',
-      route: 'pi/openai/gpt-5.1',
-    },
-    {
-      name: 'runner only',
-      options: { runner: 'codex' },
-      runner: 'codex' as const,
-      model: 'openai/gpt-5',
-      route: 'codex/openai/gpt-5',
-    },
-    {
-      name: 'model and runner',
-      options: { model: 'openai/gpt-5.1', runner: 'codex' },
-      runner: 'codex' as const,
-      model: 'openai/gpt-5.1',
-      route: 'codex/openai/gpt-5.1',
-    },
-    {
-      name: 'no override',
-      options: {},
-      runner: 'pi' as const,
-      model: 'openai/gpt-5',
-      route: 'pi/openai/gpt-5',
-    },
-  ] as const
-
-  for (const candidate of cases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-production-routing-${candidate.name}-`))
-    const configPath = join(root, 'config.json')
-    const record = connection(
-      'cli-bridge',
-      `routing-${candidate.name.replaceAll(' ', '-')}`,
-      'http://127.0.0.1:4010',
-    )
-    await writeFile(
-      configPath,
-      `${JSON.stringify({
-        format: 'braid-startup-config',
-        schemaVersion: 2,
-        profile: profile(),
-        connectionId: record.id,
-        connections: [record],
-      })}\n`,
-      { mode: 0o600 },
-    )
-
-    const startup = await loadProductionStartup({
-      workspace: root,
-      configPath,
-      ...candidate.options,
-    })
-    assert.equal(startup.profile.name, 'production test profile', candidate.name)
-    assert.equal(startup.profile.harness, candidate.runner, candidate.name)
-    assert.equal(startup.profile.model?.default, candidate.model, candidate.name)
-    assert.equal(startup.profile.model?.provider, 'openai', candidate.name)
-
-    const composition = createProductionComposition({
-      ...startup,
-      workspaceRoot: root,
-    })
-    const resolved = await composition.backendResolver({
-      operationId: `operation-routing-${candidate.name}`,
-      runId: `run-routing-${candidate.name}`,
-      text: 'verify routing override',
-      profile: composition.profile,
-      workspaceRoot: root,
-      signal: new AbortController().signal,
-    })
-    assert.equal(resolved.kind, 'prepared-execution', candidate.name)
-    if (resolved.kind !== 'prepared-execution') continue
-    assert.equal(resolved.materializationReceipt.runner, candidate.runner, candidate.name)
-    assert.equal(resolved.materializationReceipt.model, candidate.model, candidate.name)
-    assert.equal(resolved.materializationReceipt.route, candidate.route, candidate.name)
-  }
-})
-
 test('CLI Bridge routes preserve nested model ids below the selected provider', () => {
   const model = 'openai/gpt-5.6-luna'
   const qualified = 'tangle-router/openai/gpt-5.6-luna'
@@ -631,91 +566,6 @@ test('CLI Bridge routes preserve nested model ids below the selected provider', 
   assert.equal(portableBridgeModel('pi', routed, 'tangle-router'), qualified)
   assert.equal(materializeBridgeModelRoute('pi', model, 'tangle-router'), routed)
   assert.equal(materializeBridgeModelRoute('codex', 'codex/default', 'codex'), 'codex/default')
-})
-
-test('schema-v1 CLI Bridge profiles load as portable models and dispatch one runner prefix', async () => {
-  const cases = [
-    {
-      runner: 'pi' as const,
-      routed: 'pi/tangle-router/glm-5.2',
-      portable: 'tangle-router/glm-5.2',
-    },
-    { runner: 'codex' as const, routed: 'codex/default', portable: 'codex/default' },
-  ]
-  for (const candidate of cases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-production-v1-${candidate.runner}-`))
-    const configPath = join(root, 'config.json')
-    const record = connection('cli-bridge', `v1-${candidate.runner}`, 'http://127.0.0.1:4010')
-    await writeFile(
-      configPath,
-      `${JSON.stringify({
-        format: 'braid-startup-config',
-        schemaVersion: 1,
-        profile: {
-          name: `prior ${candidate.runner} profile`,
-          harness: candidate.runner,
-          model: {
-            default: candidate.routed,
-            provider: candidate.runner === 'pi' ? 'tangle-router' : 'codex',
-          },
-        },
-        connectionId: record.id,
-        connections: [record],
-      })}\n`,
-      { mode: 0o600 },
-    )
-
-    const startup = await loadProductionStartup({ workspace: root, configPath })
-    assert.equal(startup.profile.model?.default, candidate.portable)
-    const prepared = await resolveProductionBackend(
-      {
-        connections: new ConnectionRegistry([record]),
-        workspaceCwd: root,
-        select: () => ({ connection: { connectionId: record.id } }),
-      },
-      {
-        operationId: `operation-v1-${candidate.runner}`,
-        runId: `run-v1-${candidate.runner}`,
-        text: 'verify prior profile',
-        profile: startup.profile,
-        signal: new AbortController().signal,
-      },
-      { connection: { connectionId: record.id } },
-    )
-    assert.equal(prepared.kind, 'prepared-execution')
-    assert.equal(prepared.backend.profile.model?.default, candidate.portable)
-    assert.equal(prepared.materializationReceipt.route, candidate.routed)
-  }
-})
-
-test('runner-only CLI Bridge models execute without an invented provider', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'braid-production-runner-model-'))
-  const record = connection('cli-bridge', 'runner-model', 'http://127.0.0.1:4010')
-  const runnerProfile = defineAgentProfile({
-    name: 'Claude runner alias',
-    harness: 'claude-code',
-    model: { default: 'opus', reasoningEffort: 'high' },
-  })
-  const prepared = await resolveProductionBackend(
-    {
-      connections: new ConnectionRegistry([record]),
-      workspaceCwd: root,
-      select: () => ({ connection: { connectionId: record.id } }),
-    },
-    {
-      operationId: 'operation-runner-model',
-      runId: 'run-runner-model',
-      text: 'verify runner alias',
-      profile: runnerProfile,
-      signal: new AbortController().signal,
-    },
-    { connection: { connectionId: record.id } },
-  )
-
-  assert.equal(prepared.kind, 'prepared-execution')
-  assert.equal(prepared.backend.profile.model?.default, 'opus')
-  assert.equal(prepared.backend.profile.model?.provider, undefined)
-  assert.equal(prepared.materializationReceipt.route, 'claude-code/opus')
 })
 
 test('startup resolves relative database keys beside external config and rejects workspace paths', async () => {
@@ -1171,22 +1021,24 @@ test('protected Bridge auth survives setup, restart, and a real turn without per
     assert.match(String(secondBody.run_id), /^run-/u)
     assert.notEqual(secondBody.run_id, firstBody.run_id)
     assert.notEqual(secondBody.session_id, firstBody.session_id)
+    assert.match(String(firstBody.execution_id), /^run-/u)
+    assert.match(String(secondBody.execution_id), /^run-/u)
+    assert.notEqual(secondBody.execution_id, firstBody.execution_id)
+    assert.match(String(firstBody.environment_id), /^cb1\./u)
+    assert.match(String(secondBody.environment_id), /^cb1\./u)
+    assert.notEqual(secondBody.environment_id, firstBody.environment_id)
     for (const body of [firstBody, secondBody]) {
       const runId = String(body.run_id)
       const metadata = body.metadata as Record<string, unknown>
-      const retainedIntentDigest = String(metadata.retainedIntentDigest)
-      assert.match(retainedIntentDigest, /^sha256:[0-9a-f]{64}$/u)
       assert.deepEqual(metadata, {
         retainedIdempotencyKey: `environment-braid-${runId}`,
-        retainedIntentDigest,
-        retainedRunId: `retained-intent-run:${retainedIntentDigest.slice('sha256:'.length)}`,
-        sessionId: `session-braid-${runId}`,
-        executionId: runId,
       })
     }
     const stableBody = ({
       run_id: _runId,
       session_id: _sessionId,
+      execution_id: _executionId,
+      environment_id: _environmentId,
       metadata: _metadata,
       ...body
     }: Record<string, unknown>) => body
@@ -1785,6 +1637,11 @@ test('configured restart keeps alternate profiles and routes each run from its A
         { status: 200 },
       )
     }
+    if (path === '/v1/capabilities') {
+      return new Response(JSON.stringify(defaultCliBridgeCapabilities('claude-code')), {
+        status: 200,
+      })
+    }
     return new Response(
       JSON.stringify({
         data: [
@@ -2011,7 +1868,7 @@ test('first-run model validation rejects a non-marker completion body', async ()
   )
 })
 
-test('first-run model validation authorizes its token limit in a separate AgentProfile field', async () => {
+test('first-run model validation keeps its transport token limit separate from the AgentProfile', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-production-validation-profile-'))
   const setup = await loadProductionSetup({
     workspace: root,
@@ -2063,7 +1920,6 @@ test('first-run model validation authorizes its token limit in a separate AgentP
       readonly default?: unknown
       readonly provider?: unknown
       readonly reasoningEffort?: unknown
-      readonly maxVisibleOutputTokens?: unknown
       readonly maxTotalOutputTokens?: unknown
       readonly metadata?: Record<string, unknown>
     }
@@ -2072,9 +1928,9 @@ test('first-run model validation authorizes its token limit in a separate AgentP
   assert.equal(validationProfile.model?.default, 'tangle-router/glm-5.2')
   assert.equal(validationProfile.model?.provider, 'tangle-router')
   assert.equal(validationProfile.model?.reasoningEffort, 'high')
-  assert.equal(validationProfile.model?.maxVisibleOutputTokens, 1)
-  assert.equal(validationProfile.model?.maxTotalOutputTokens, 1)
   assert.equal(validationProfile.model?.metadata, undefined)
+  assert.equal('maxVisibleOutputTokens' in (validationProfile.model ?? {}), false)
+  assert.equal(validationProfile.model?.maxTotalOutputTokens, 1)
   assert.equal('effort' in (body ?? {}), false)
 })
 

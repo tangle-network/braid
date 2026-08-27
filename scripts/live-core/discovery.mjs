@@ -14,12 +14,27 @@ const KNOWN_UNAVAILABLE_MODELS = new Map([
   ],
 ])
 
-export async function readJson(endpoint, path, timeoutMs = 15_000) {
+function authorizationHeader(value) {
+  const trimmed = value?.trim()
+  if (!trimmed) return undefined
+  return /^(?:Bearer|Basic)\s+/iu.test(trimmed) ? trimmed : `Bearer ${trimmed}`
+}
+
+export async function readJson(
+  endpoint,
+  path,
+  timeoutMs = 15_000,
+  auth = process.env.BRAID_CLI_BRIDGE_AUTH,
+) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
+    const authorization = authorizationHeader(auth)
     const response = await fetch(`${endpoint}${path}`, {
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(authorization === undefined ? {} : { Authorization: authorization }),
+      },
       signal: controller.signal,
     })
     const body = await response.text()
@@ -128,10 +143,13 @@ export function chooseRunnerTargets(health, catalog) {
   return { targets, inventory, models: models.map(({ id, backend }) => ({ id, backend })) }
 }
 
-export async function discover(endpoint = DEFAULT_ENDPOINT) {
-  const health = await readJson(endpoint, '/health')
+export async function discover(
+  endpoint = DEFAULT_ENDPOINT,
+  auth = process.env.BRAID_CLI_BRIDGE_AUTH,
+) {
+  const health = await readJson(endpoint, '/health', 15_000, auth)
   assert.equal(health?.status, 'ok', `CLI Bridge health is not ok: ${JSON.stringify(health)}`)
-  const catalog = await readJson(endpoint, '/v1/models')
+  const catalog = await readJson(endpoint, '/v1/models', 15_000, auth)
   return { endpoint, health, catalog, ...chooseRunnerTargets(health, catalog) }
 }
 

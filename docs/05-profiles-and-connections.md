@@ -82,6 +82,8 @@ The effective effort follows explicit next-run override, branch override, then p
 
 The effective connection follows explicit next-run selection, branch selection, trusted workspace default, then user default.
 
+The first connection selection creates the workspace `.braid` directory with private permissions before it acquires the shared configuration lock.
+
 An explicit user action may create a derived profile using the canonical `mergeAgentProfiles` helper, but the preview must show every changed path and the result is saved as a new profile source or explicit overwrite.
 
 Braid never stores run overrides back into the source profile without `Save to profile` and a diff confirmation.

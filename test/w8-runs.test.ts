@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
@@ -13,6 +14,7 @@ import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { runtimeContractEnvelopes } from '../src/testing/runtime-contract-fixtures.js'
+import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 
 const REPLAY_CAPABILITIES = {
   ...DEFAULT_RUN_CAPABILITIES,
@@ -20,6 +22,15 @@ const REPLAY_CAPABILITIES = {
   sessions: { continue: true, messages: true },
   controls: { cancel: true, steer: true, queue: true, status: true, recreate: true },
   events: { stableIdentity: true, sequence: true, cursor: true },
+} as const
+
+const NATIVE_REPLAY_CAPABILITIES = {
+  ...REPLAY_CAPABILITIES,
+  environment: {
+    ...RETAINED_RUN_HANDLE_CAPABILITIES,
+    sessions: { continue: true, list: false, messages: false },
+    nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+  },
 } as const
 
 function finalEvent(text: string): RuntimeStreamEvent {
@@ -366,15 +377,50 @@ test('status reconciliation never regresses a committed terminal run from a stal
 })
 
 test('native continuation requires and records a matching provider boundary proof', async () => {
+  const controlRef = {
+    runId: 'provider-run-native',
+    provider: 'native-test',
+    environmentId: 'environment-native',
+    sessionId: 'session-native',
+    executionId: 'execution-native',
+    requestDigest: `sha256:${'a'.repeat(64)}` as const,
+  }
   const execution: ExecutionPort = {
-    capabilities: () => REPLAY_CAPABILITIES,
-    admit: () => ({ capabilities: REPLAY_CAPABILITIES, providerSessionId: 'session-native' }),
-    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+    capabilities: () => NATIVE_REPLAY_CAPABILITIES,
+    admit: () => ({
+      capabilities: NATIVE_REPLAY_CAPABILITIES,
+      providerSessionId: 'session-native',
+    }),
+    async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope | RuntimeStreamEvent> {
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}:observed`,
+        sequence: 1,
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          type: 'braid.execution.observed',
+          observation: {
+            kind: 'local-process',
+            provider: 'native-test',
+            lifecycle: 'ready',
+            lifecycleMode: 'retained',
+            cleanup: 'explicit',
+            continuity: 'session',
+            location: 'local',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            observedAt: '2026-08-01T00:00:00.000Z',
+            unavailable: [],
+          },
+          controlRef,
+          timestamp: '2026-08-01T00:00:00.000Z',
+        },
+      }
       yield finalEvent('native')
     },
-    nativeBoundary: async (input) => ({
-      boundary: 'boundary-native',
-      digest: `${input.sessionId}:proof`,
+    nativeBoundary: async () => ({
+      ...controlRef,
+      boundary: { kind: 'revision', revision: 'boundary-native' },
+      observedAt: '2026-08-01T00:00:01.000Z',
     }),
   }
   const app = appFor(execution)
@@ -387,10 +433,10 @@ test('native continuation requires and records a matching provider boundary proo
         text: 'forged',
         sessionId: 'session-other',
         nativeContextBoundaryProof: {
-          runId: first.runs[0]?.id ?? '',
-          providerSessionId: 'session-other',
-          boundary: 'boundary-native',
-          digest: 'forged-proof',
+          ...controlRef,
+          sessionId: 'session-other',
+          boundary: { kind: 'revision', revision: 'boundary-native' },
+          observedAt: '2026-08-01T00:00:01.000Z',
         },
       }),
     (error: unknown) =>
@@ -402,7 +448,10 @@ test('native continuation requires and records a matching provider boundary proo
     text: 'continue',
   })
   const state = await continued.completion
-  assert.equal(continued.admission.nativeContextBoundaryProof?.boundary, 'boundary-native')
+  assert.deepEqual(continued.admission.nativeContextBoundaryProof?.boundary, {
+    kind: 'revision',
+    revision: 'boundary-native',
+  })
   assert.equal(state.runs.length, 2)
   assert.equal(state.runs[1]?.status, 'completed')
 })
@@ -490,6 +539,14 @@ test('restart keeps a replayable run reconnecting until replay proves its outcom
   const heldStream = new Promise<void>((resolve) => {
     releaseStream = resolve
   })
+  const replayControlRef = {
+    runId: 'provider-restart-replay',
+    provider: 'replay-test',
+    environmentId: 'environment-restart-replay',
+    sessionId: 'session-restart-replay',
+    executionId: 'execution-restart-replay',
+    requestDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
   const sourceJournal = new MemoryJournal(new FixedClock())
   const first = appFor(
     {
@@ -501,8 +558,32 @@ test('restart keeps a replayable run reconnecting until replay proves its outcom
       async *streamTurn(input): AsyncIterable<RuntimeStreamEvent | RuntimeEventEnvelope> {
         yield {
           runId: input.runId,
-          eventId: 'event-before-restart',
+          eventId: 'event-before-restart-observation',
           sequence: 1,
+          receivedAt: '2026-08-01T00:00:00.000Z',
+          event: {
+            type: 'braid.execution.observed',
+            observation: {
+              kind: 'local-process',
+              provider: replayControlRef.provider,
+              providerEnvironmentId: replayControlRef.environmentId,
+              lifecycle: 'ready',
+              lifecycleMode: 'retained',
+              cleanup: 'explicit',
+              continuity: 'session',
+              location: 'local',
+              createdAt: '2026-08-01T00:00:00.000Z',
+              observedAt: '2026-08-01T00:00:00.000Z',
+              unavailable: [],
+            },
+            controlRef: replayControlRef,
+            timestamp: '2026-08-01T00:00:00.000Z',
+          },
+        }
+        yield {
+          runId: input.runId,
+          eventId: 'event-before-restart',
+          sequence: 2,
           cursor: 'cursor-before-restart',
           receivedAt: '2026-08-01T00:00:00.000Z',
           event: { type: 'text_delta', text: 'before restart' },
@@ -540,7 +621,7 @@ test('restart keeps a replayable run reconnecting until replay proves its outcom
           yield {
             runId: input.runId,
             eventId: 'event-restart-replay-final',
-            sequence: 2,
+            sequence: 3,
             cursor: 'cursor-restart-replay-final',
             receivedAt: '2026-08-01T00:00:00.000Z',
             event: finalEvent('survived restart replay'),
@@ -565,17 +646,222 @@ test('restart keeps a replayable run reconnecting until replay proves its outcom
     false,
   )
 
-  const recovered = await restarted.reconnectRun({
+  const recovered = await createApplicationUiController(restarted).dispatch({
+    type: 'run-command',
     operationId: 'op-restart-replay-reconnect',
-    runId: send.runId,
+    command: 'reconnect',
+    args: [],
   })
+  assert.equal(recovered.kind, 'accepted')
   assert.equal(reconnectCalls, 1)
-  assert.equal(recovered.runs[0]?.status, 'completed')
-  assert.equal(recovered.messages[1]?.text, 'survived restart replay')
+  assert.equal(restarted.state().runs[0]?.status, 'completed')
+  assert.equal(restarted.state().messages[1]?.text, 'survived restart replay')
 
   releaseStream()
   await send.completion
   await first.close()
+  await restarted.close()
+})
+
+type NativeRestartReconnectInput = Parameters<NonNullable<ExecutionPort['reconnect']>>[0]
+
+function finalReconnect(
+  input: NativeRestartReconnectInput,
+  text: string,
+): AsyncIterable<RuntimeEventEnvelope> {
+  return {
+    async *[Symbol.asyncIterator](): AsyncIterator<RuntimeEventEnvelope> {
+      yield {
+        runId: input.runId,
+        eventId: 'native-restart-final',
+        sequence: 1,
+        cursor: 'native-restart-final',
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: finalEvent(text),
+      }
+    },
+  }
+}
+
+async function prepareNativeRestartFixture(
+  reconnectResult: (input: NativeRestartReconnectInput) => AsyncIterable<RuntimeEventEnvelope>,
+) {
+  const sourceControlRef = {
+    runId: 'provider-native-source',
+    provider: 'native-test',
+    environmentId: 'environment-native',
+    sessionId: 'session-native',
+    executionId: 'execution-native-source',
+    requestDigest: `sha256:${'a'.repeat(64)}` as const,
+  }
+  const proof = {
+    ...sourceControlRef,
+    boundary: { kind: 'revision' as const, revision: 'native-boundary:1' },
+    observedAt: '2026-08-01T00:00:00.000Z',
+  }
+  let continuationStarted!: () => void
+  const continuationStartedPromise = new Promise<void>((resolve) => {
+    continuationStarted = resolve
+  })
+  let releaseFirstContinuation!: () => void
+  const firstContinuationHeld = new Promise<void>((resolve) => {
+    releaseFirstContinuation = resolve
+  })
+  let admissionCalls = 0
+  let statusCalls = 0
+  let reconnectCalls = 0
+  const reconnectInputs: Array<Parameters<NonNullable<ExecutionPort['reconnect']>>[0]> = []
+
+  const executionForProcess = (): ExecutionPort => ({
+    capabilities: () => NATIVE_REPLAY_CAPABILITIES,
+    admit: (input) => {
+      admissionCalls += 1
+      if (input.nativeContextBoundaryProof !== undefined) {
+        assert.deepEqual(input.nativeContextBoundaryProof, proof)
+      }
+      return {
+        capabilities: NATIVE_REPLAY_CAPABILITIES,
+        provider: sourceControlRef.provider,
+        environmentId: sourceControlRef.environmentId,
+        providerSessionId: sourceControlRef.sessionId,
+      }
+    },
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent | RuntimeEventEnvelope> {
+      if (input.nativeContextBoundaryProof !== undefined) {
+        continuationStarted()
+        await firstContinuationHeld
+        yield finalEvent('first process completed after the crash window')
+        return
+      }
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}:observed`,
+        sequence: 1,
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          type: 'braid.execution.observed',
+          observation: {
+            kind: 'local-process',
+            provider: sourceControlRef.provider,
+            providerEnvironmentId: sourceControlRef.environmentId,
+            lifecycle: 'ready',
+            lifecycleMode: 'retained',
+            cleanup: 'explicit',
+            continuity: 'session',
+            location: 'local',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            observedAt: '2026-08-01T00:00:00.000Z',
+            unavailable: [],
+          },
+          controlRef: sourceControlRef,
+          timestamp: '2026-08-01T00:00:00.000Z',
+        },
+      }
+      yield finalEvent('source completed')
+    },
+    nativeBoundary: async (input) => {
+      assert.deepEqual(input.controlRef, sourceControlRef)
+      return proof
+    },
+    status: async (input) => {
+      statusCalls += 1
+      assert.equal(input.providerSessionId, sourceControlRef.sessionId)
+      return {
+        runId: input.runId,
+        sessionId: sourceControlRef.sessionId,
+        status: 'reconnecting',
+      }
+    },
+    reconnect: (input) => {
+      reconnectCalls += 1
+      reconnectInputs.push(input)
+      return reconnectResult(input)
+    },
+  })
+
+  const sourceJournal = new MemoryJournal(new FixedClock())
+  const first = appFor(executionForProcess(), sourceJournal)
+  const source = await first.send({ operationId: 'op-native-source', text: 'source' }).completion
+  const sourceRun = source.runs[0]
+  assert.deepEqual(sourceRun?.controlRef, sourceControlRef)
+  const continued = await first.continueNative({
+    operationId: 'op-native-restart',
+    runId: sourceRun?.id,
+    text: 'continue the exact native chat',
+  })
+  await continuationStartedPromise
+
+  const restartedJournal = new MemoryJournal(new FixedClock())
+  for (const envelope of sourceJournal.all()) restartedJournal.append(envelope)
+  releaseFirstContinuation()
+  await continued.completion
+  await first.close()
+
+  return {
+    sourceControlRef,
+    proof,
+    continued,
+    restartedJournal,
+    openRestarted: () => appFor(executionForProcess(), restartedJournal),
+    admissionCalls: () => admissionCalls,
+    statusCalls: () => statusCalls,
+    reconnectCalls: () => reconnectCalls,
+    reconnectInputs,
+  }
+}
+
+test('restart automatically resumes a native continuation without a new session or command', async () => {
+  const fixture = await prepareNativeRestartFixture((input) =>
+    finalReconnect(input, 'resumed automatically after restart'),
+  )
+  const admissionCallsBeforeRestart = fixture.admissionCalls()
+  const restarted = fixture.openRestarted()
+  await restarted.whenDurable()
+
+  assert.equal(fixture.statusCalls(), 1)
+  assert.equal(fixture.reconnectCalls(), 1)
+  assert.equal(fixture.admissionCalls(), admissionCallsBeforeRestart)
+  assert.equal(restarted.state().runs.at(-1)?.status, 'completed')
+  assert.equal(restarted.state().messages.at(-1)?.text, 'resumed automatically after restart')
+  assert.equal(fixture.reconnectInputs[0]?.providerSessionId, fixture.sourceControlRef.sessionId)
+  assert.deepEqual(fixture.reconnectInputs[0]?.receipt?.nativeContextBoundaryProof, fixture.proof)
+  assert.equal(fixture.reconnectInputs[0]?.receipt?.operationId, fixture.continued.operationId)
+  await restarted.close()
+})
+
+test('a failed automatic native restart remains manually reconnectable without a run id', async () => {
+  let automaticAttempt = true
+  const fixture = await prepareNativeRestartFixture((input) => {
+    if (automaticAttempt) {
+      return {
+        [Symbol.asyncIterator](): AsyncIterator<RuntimeEventEnvelope> {
+          return {
+            next: async () => {
+              throw new Error('automatic native recovery failed')
+            },
+          }
+        },
+      }
+    }
+    return finalReconnect(input, 'manual fallback completed')
+  })
+  const admissionCallsBeforeRestart = fixture.admissionCalls()
+  const restarted = fixture.openRestarted()
+  await restarted.whenDurable()
+  assert.equal(restarted.state().runs.at(-1)?.status, 'unknown')
+
+  automaticAttempt = false
+  const fallback = await createApplicationUiController(restarted).dispatch({
+    type: 'run-command',
+    operationId: 'operation-manual-native-reconnect',
+    command: 'reconnect',
+    args: [],
+  })
+  assert.equal(fallback.kind, 'accepted')
+  assert.equal(fixture.reconnectCalls(), 2)
+  assert.equal(fixture.admissionCalls(), admissionCallsBeforeRestart)
+  assert.equal(restarted.state().runs.at(-1)?.status, 'completed')
+  assert.equal(restarted.state().messages.at(-1)?.text, 'manual fallback completed')
   await restarted.close()
 })
 

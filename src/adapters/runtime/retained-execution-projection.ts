@@ -23,7 +23,7 @@ export function retainedCapabilities(
       turnIdempotency: environment.streaming.turnIdempotency,
     },
     sessions: {
-      continue: options.sessionContinuation ?? environment.sessions.continue,
+      continue: options.sessionContinuation === false ? false : environment.sessions.continue,
       messages: false,
     },
     controls: {

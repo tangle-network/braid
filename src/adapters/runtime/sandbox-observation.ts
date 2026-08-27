@@ -2,6 +2,7 @@ import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/age
 import type { ExecutionEnvironmentObservation } from '../../domain/execution-observation.js'
 import type { ExecutionObservationSource, SandboxLifecyclePolicy } from './prepared-execution.js'
 import { observeSandboxAccount } from './sandbox-account-observation.js'
+import { withSandboxClientOverrides } from './sandbox-client-overrides.js'
 import {
   captureSandboxBox,
   captureSandboxPlacement,
@@ -69,7 +70,7 @@ export function observeSandboxClient(
     return proxy
   }
 
-  const wrapped: SandboxClientLike = {
+  const wrapped = withSandboxClientOverrides(source, {
     async create(options, requestOptions) {
       state.lifecycle = 'creating'
       state.name = boundedObservationText(options?.name)
@@ -108,7 +109,7 @@ export function observeSandboxClient(
           describePlacement: (box) =>
             source.describePlacement?.(originals.get(box as object) ?? box),
         }),
-  }
+  })
 
   return {
     client: wrapped,

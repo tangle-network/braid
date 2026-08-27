@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, mkdtemp, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import type { ProductionConnectionOptions } from '../src/adapters/connections/production-connections.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { SafeFileError } from '../src/adapters/persistence/safe-file.js'
 import type { BraidApplication } from '../src/app/application.js'
 import {
   createBraidApplication,
@@ -16,10 +17,12 @@ import { ConnectionError, ConnectionRemovalError } from '../src/app/connection-e
 import { ConnectionRegistry } from '../src/app/connections.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { createProfileRecord } from '../src/app/profiles.js'
+import { withProductionConfigMutationLock } from '../src/bin/production-config-mutation-lock.js'
 import { ProductionConnectionActions } from '../src/bin/production-connection-actions.js'
 import { recoverPendingConnectionCredentialRemoval } from '../src/bin/production-connection-credential-cleanup.js'
 import { defaultProductionCredentialRefResolver } from '../src/bin/production-credential-reference.js'
 import { saveProductionStartupSelection } from '../src/bin/production-setup.js'
+import { persistProductionStartupSelection } from '../src/bin/production-setup-persistence.js'
 import { loadProductionStartup } from '../src/bin/production-startup.js'
 import type { ConnectionKind, ConnectionRecord, IsoDateTime } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
@@ -127,6 +130,7 @@ class RecordingCredentialStore implements CredentialPort {
 interface FixtureOptions {
   readonly records: readonly ConnectionRecord[]
   readonly selected: ConnectionRecord
+  readonly persistInitialConfig?: boolean
   readonly durable?: boolean
   readonly chunkDelayMs?: number
   readonly journal?: MemoryJournal
@@ -223,9 +227,11 @@ async function createFixture(options: FixtureOptions): Promise<Fixture> {
   })
   await app.whenDurable()
 
-  await saveProductionStartupSelection(configPath, startupSelection(options.selected), {
-    connections: options.records,
-  })
+  if (options.persistInitialConfig !== false) {
+    await saveProductionStartupSelection(configPath, startupSelection(options.selected), {
+      connections: options.records,
+    })
+  }
   const startupOptions = {
     workspace,
     configPath,
@@ -380,6 +386,122 @@ test('select persists the selected connection and updates the live runtime selec
       true,
     )
   } finally {
+    await fixture.close()
+  }
+})
+
+test('first connection selection creates the private configuration directory', async () => {
+  const base = connection('cli-bridge', 'first-select-base')
+  const alternate = connection('tangle-sandbox', 'first-select-sandbox')
+  const fixture = await createFixture({
+    records: [base, alternate],
+    selected: base,
+    persistInitialConfig: false,
+  })
+  try {
+    await assert.rejects(access(fixture.configPath), { code: 'ENOENT' })
+
+    const selected = await fixture.actions.select({
+      operationId: 'operation-production-first-select-sandbox',
+      connectionId: alternate.id,
+    })
+
+    assert.equal(selected.connection.id, alternate.id)
+    assert.equal(fixture.app.state().selectedConnectionId, alternate.id)
+    const document = await readStartupDocument(fixture.configPath)
+    assert.equal(document.connectionId, alternate.id)
+    assert.deepEqual(
+      document.connections?.map((record) => record.id).sort(),
+      [base.id, alternate.id].sort(),
+    )
+  } finally {
+    await fixture.close()
+  }
+})
+
+test('first config publication keeps its created parent descriptor private and bound', async () => {
+  const base = connection('cli-bridge', 'first-parent-binding-base')
+  const alternate = connection('tangle-sandbox', 'first-parent-binding-alternate')
+  const fixture = await createFixture({
+    records: [base, alternate],
+    selected: base,
+    persistInitialConfig: false,
+  })
+  const directory = dirname(fixture.configPath)
+  const parked = `${directory}.parked`
+  try {
+    await assert.rejects(access(directory), { code: 'ENOENT' })
+    await withProductionConfigMutationLock(fixture.configPath, async (lock) => {
+      assert.equal('parent' in lock, false)
+      assert.equal(
+        Reflect.ownKeys(lock).some((key) => typeof Reflect.get(lock, key) === 'number'),
+        false,
+      )
+      await rename(directory, parked)
+      await mkdir(directory, { mode: 0o700 })
+      await persistProductionStartupSelection(fixture.configPath, startupSelection(alternate), {
+        connections: [base, alternate],
+        mutationLock: lock,
+      })
+    })
+
+    assert.equal(
+      (await readStartupDocument(join(parked, 'config.json'))).connectionId,
+      alternate.id,
+    )
+    await assert.rejects(access(fixture.configPath), { code: 'ENOENT' })
+    await assert.rejects(access(join(parked, 'config.json.connection-mutation.lock')), {
+      code: 'ENOENT',
+    })
+  } finally {
+    await fixture.close()
+  }
+})
+
+test('config publication stays on the opened parent after regular directory replacement', async () => {
+  const base = connection('cli-bridge', 'parent-replacement-base')
+  const alternate = connection('tangle-sandbox', 'parent-replacement-alternate')
+  const fixture = await createFixture({ records: [base, alternate], selected: base })
+  const directory = dirname(fixture.configPath)
+  const parked = `${directory}.parked`
+  try {
+    const original = await readFile(fixture.configPath)
+    await withProductionConfigMutationLock(fixture.configPath, async (lock) => {
+      await rename(directory, parked)
+      await mkdir(directory, { mode: 0o700 })
+      await writeFile(fixture.configPath, original, { mode: 0o600 })
+      await persistProductionStartupSelection(fixture.configPath, startupSelection(alternate), {
+        connections: [base, alternate],
+        mutationLock: lock,
+      })
+    })
+
+    assert.equal(
+      (await readStartupDocument(join(parked, 'config.json'))).connectionId,
+      alternate.id,
+    )
+    assert.equal((await readStartupDocument(fixture.configPath)).connectionId, base.id)
+  } finally {
+    await fixture.close()
+  }
+})
+
+test('config mutation rejects every pre-existing directory mode except exact 0700', async () => {
+  const base = connection('cli-bridge', 'non-private-config-directory')
+  const fixture = await createFixture({ records: [base], selected: base })
+  const directory = dirname(fixture.configPath)
+  try {
+    for (const mode of [0o755, 0o1700]) {
+      await chmod(directory, mode)
+      assert.equal((await stat(directory)).mode & 0o7777, mode)
+      await assert.rejects(
+        () => saveProductionStartupSelection(fixture.configPath, startupSelection(base)),
+        (error: unknown) =>
+          error instanceof SafeFileError && error.code === 'SAFE_FILE_PRIVATE_PERMISSIONS',
+      )
+    }
+  } finally {
+    await chmod(directory, 0o700)
     await fixture.close()
   }
 })

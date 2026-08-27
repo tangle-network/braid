@@ -123,13 +123,19 @@ If token limits are unknown, Braid labels the estimate unavailable and lets the 
 
 ## Native continuation
 
-Continuing the active branch on the same compatible provider uses the current provider session identifier only when `sessions.continue` is true and the provider proves that its context ends at Braid's recorded message boundary.
+Continuing the active branch reuses a provider session only when exact native continuation is advertised.
 
 Only the new user input is submitted because the provider session remains authoritative for native context.
 
-Braid compares its last known message boundary with a provider boundary token, revision, digest, or session messages.
+Braid binds the continuation to the completed run at its current branch tip, including the exact provider control reference.
 
-A mismatch triggers reconciliation before admission and never causes Braid to resend the full history into the same native session automatically.
+The provider returns an opaque boundary proof for that run.
+
+The provider then compares that proof with its durable completed boundary and live native state inside the idempotent continuation operation.
+
+Braid does not reinterpret an opaque provider revision as a stream cursor or duplicate this provider-owned check.
+
+A mismatch returns a typed refusal before another native turn starts and never causes an automatic full-history resend.
 
 An unavailable boundary proof is treated as unverified context, not as a match.
 

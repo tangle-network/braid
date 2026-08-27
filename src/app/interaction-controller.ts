@@ -154,6 +154,7 @@ export async function respondInteraction(
     })
   }
   const effectCompletion = executeInteractionEffect({
+    runId: input.runId,
     effects: input.effects,
     execution: input.execution,
     request,
@@ -204,12 +205,21 @@ function assertBinding(
   run: ReturnType<typeof findRun>,
   binding: import('@tangle-network/agent-interface').InteractionBinding,
 ): void {
+  const expected = run.controlRef
+  const providerBindingMatches =
+    expected === undefined
+      ? binding.runId === input.runId &&
+        (run.providerSessionId === undefined || binding.sessionId === run.providerSessionId) &&
+        (run.environmentId === undefined || binding.environmentId === run.environmentId) &&
+        (run.receipt.provider === undefined || binding.provider === run.receipt.provider)
+      : binding.runId === expected.runId &&
+        binding.provider === expected.provider &&
+        binding.environmentId === expected.environmentId &&
+        binding.sessionId === expected.sessionId &&
+        binding.executionId === expected.executionId
   if (
-    binding.runId !== input.runId ||
+    !providerBindingMatches ||
     binding.interactionId !== input.interactionId ||
-    (run.providerSessionId !== undefined && binding.sessionId !== run.providerSessionId) ||
-    (run.environmentId !== undefined && binding.environmentId !== run.environmentId) ||
-    (run.receipt.provider !== undefined && binding.provider !== run.receipt.provider) ||
     (input.providerSessionId !== undefined && binding.sessionId !== input.providerSessionId)
   ) {
     throw new AppError(

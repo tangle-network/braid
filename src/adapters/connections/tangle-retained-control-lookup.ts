@@ -1,5 +1,6 @@
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
+import type { SessionInfo } from '@tangle-network/sandbox'
 import { stableProviderId } from '../runtime/production-backend-common.js'
 import type {
   TangleRetainedControlLookup,
@@ -29,9 +30,7 @@ function matchesRetainedEnvironment(
     metadata?.owner === 'braid' &&
     metadata.lifecycle === 'retained' &&
     metadata.providerSessionId === input.providerSessionId &&
-    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey &&
-    metadata.sessionId === input.providerSessionId &&
-    metadata.executionId === input.executionId
+    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey
   )
 }
 
@@ -106,14 +105,13 @@ export function createTangleRetainedControlLookup(
       input.signal === undefined ? undefined : { signal: input.signal },
     )
     if (session === undefined) return null
-    const status = await session.status(
+    // Sandbox 0.30 owns the typed session/run identity. Braid only reads it.
+    const status = (await session.status(
       input.signal === undefined ? undefined : { signal: input.signal },
-    )
+    )) as SessionInfo | null
     input.signal?.throwIfAborted()
-    if (status === null || typeof status !== 'object' || Array.isArray(status)) return null
-    const parsed = AgentExactRunControlRefSchema.safeParse(
-      (status as Record<string, unknown>).runControlRef,
-    )
+    if (status === null) return null
+    const parsed = AgentExactRunControlRefSchema.safeParse(status.runControlRef)
     if (!parsed.success) return null
     const controlRef = parsed.data
     if (

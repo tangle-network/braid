@@ -76,7 +76,7 @@ export function renderTerminalContext(
     )
   }
 
-  const route = terminalValuePart(theme, `harness ${identity.runner}`)
+  const route = terminalValuePart(theme, `runner ${identity.runner}`)
   const modelPart = model ? terminalValuePart(theme, `model ${model}`) : ''
   const backendLabel = executionBackendLabel(identity.backend, identity.connection)
   const backend = terminalValuePart(theme, `backend ${backendLabel}`)

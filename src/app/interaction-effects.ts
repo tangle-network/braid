@@ -9,6 +9,7 @@ import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 export type InteractionEffectRequest = InteractionResponseCommand
 
 export async function executeInteractionEffect(input: {
+  readonly runId: string
   readonly effects: SerializedEffectCoordinator
   readonly execution: ExecutionPort
   readonly request: InteractionEffectRequest
@@ -23,19 +24,25 @@ export async function executeInteractionEffect(input: {
       operationId: request.operationId,
       effectKind: 'interaction.respond',
       request,
-      serializationKey: `run:${request.binding.runId}:interaction`,
+      serializationKey: `run:${input.runId}:interaction`,
       metadata: {
-        runId: request.binding.runId,
+        runId: input.runId,
         interactionId: request.binding.interactionId,
         owner: input.owner,
       },
     },
     {
       dispatch: async () => {
-        return dispatchResponse(input.execution, request, input.timeoutMs, input.recovery)
+        return dispatchResponse(
+          input.execution,
+          input.runId,
+          request,
+          input.timeoutMs,
+          input.recovery,
+        )
       },
       reconcile: async () =>
-        dispatchResponse(input.execution, request, input.timeoutMs, input.recovery),
+        dispatchResponse(input.execution, input.runId, request, input.timeoutMs, input.recovery),
     },
   )
   const record = await effect.completion
@@ -63,6 +70,7 @@ export async function executeInteractionEffect(input: {
 
 async function dispatchResponse(
   execution: ExecutionPort,
+  runId: string,
   request: InteractionEffectRequest,
   timeoutMs: number,
   recovery?: RetainedExecutionRecoveryContext,
@@ -76,6 +84,7 @@ async function dispatchResponse(
     const controller = new AbortController()
     const result = await interactionResponseDeadline(
       execution.respondInteraction({
+        runId,
         command: request,
         signal: controller.signal,
         ...(recovery === undefined ? {} : { recovery }),

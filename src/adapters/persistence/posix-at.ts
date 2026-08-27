@@ -9,6 +9,7 @@ interface PosixAtBindings {
     pointerType: 'void *',
     value: Buffer,
   ) => number
+  readonly flock: (fileDescriptor: number, operation: number) => number
   readonly linkAt: (
     sourceDirectory: number,
     source: string,
@@ -49,6 +50,7 @@ function bindings(): PosixAtBindings {
   const libc = koffi.load(null)
   cachedBindings = {
     fcntl: libc.func('int fcntl(int fileDescriptor, int command, ...)') as PosixAtBindings['fcntl'],
+    flock: libc.func('int flock(int fileDescriptor, int operation)') as PosixAtBindings['flock'],
     linkAt: libc.func(
       'int linkat(int sourceDirectory, const char *source, int targetDirectory, const char *target, int flags)',
     ) as PosixAtBindings['linkAt'],
@@ -67,6 +69,9 @@ function bindings(): PosixAtBindings {
   }
   return cachedBindings
 }
+
+const LOCK_EXCLUSIVE = 2
+const LOCK_NON_BLOCKING = 4
 
 const DARWIN_F_GETPATH = 50
 const DARWIN_MAX_PATH_LENGTH = 1024
@@ -124,6 +129,13 @@ export function openAt(directory: number, path: string, flags: number, mode = 0)
   const result = bindings().openAt(directory, path, flags | CLOSE_ON_EXEC, 'unsigned int', mode)
   if (result < 0) throw syscallError('openat', path)
   return result
+}
+
+/** Claims an exclusive kernel lock without waiting behind a live owner. */
+export function lockExclusiveNonBlocking(fileDescriptor: number): void {
+  if (bindings().flock(fileDescriptor, LOCK_EXCLUSIVE | LOCK_NON_BLOCKING) < 0) {
+    throw syscallError('flock', String(fileDescriptor))
+  }
 }
 
 export function mkdirAt(directory: number, path: string, mode: number): void {

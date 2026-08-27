@@ -233,7 +233,7 @@ A transport error, missing run, lost identity, or deadline must remain `unknown`
 
 The operation must preserve the provider run identifier and request digest, remain idempotent, and stop its wait when the caller signal aborts.
 
-Braid's production reproduction is `test/cli-bridge-profile-contract.test.ts`, where a Runtime-owned bridge executor receives a bridge `409` cancellation response.
+Braid's production reproduction is `test/cli-bridge-retained-restart.test.ts`, where the retained CLI Bridge port receives a bridge `409` cancellation response.
 
 Braid currently records that response as `unknown` because the installed public Runtime API does not expose the refusal separately.
 
@@ -572,7 +572,9 @@ No adapter may flatten history into an untyped prompt without recording that tra
 
 The runtime must expose context-size planning before dispatch or return a typed over-limit result that allows Braid to select a shorter boundary or cited summary.
 
-Native continuation also needs a provider boundary token, revision, digest, or message listing that proves the provider session still ends at Braid's recorded boundary.
+Native continuation needs an opaque provider proof bound to Braid's recorded branch-tip run and exact control reference.
+
+The provider that owns native state must compare this proof with its durable completed boundary and live state during atomic admission.
 
 If a provider cannot prove that boundary, runtime must use a fresh-session context transfer instead of submitting a new turn into an unverified native session.
 

@@ -34,7 +34,7 @@ export function ingestRuntimeEvent(
           envelope.sequence <= (range.toSequence ?? range.fromSequence),
       )
     if (!isMissing) return { accepted: false, duplicate: true }
-    return afterCommit(context.commitAndWait(eventFromEnvelope(envelope)), {
+    return afterCommit(context.commitAndWait(eventFromEnvelope(envelope, run.controlRef)), {
       accepted: true,
       duplicate: false,
     })
@@ -68,7 +68,7 @@ export function ingestRuntimeEvent(
       )
     return afterCommits(commits, { accepted: false, duplicate: false, sequenceGap: gap })
   }
-  return afterCommit(context.commitAndWait(eventFromEnvelope(envelope)), {
+  return afterCommit(context.commitAndWait(eventFromEnvelope(envelope, run.controlRef)), {
     accepted: true,
     duplicate: false,
   })
@@ -98,7 +98,10 @@ function isPromiseLike(value: unknown): value is Promise<void> {
   )
 }
 
-function eventFromEnvelope(envelope: RuntimeEventEnvelope) {
+function eventFromEnvelope(
+  envelope: RuntimeEventEnvelope,
+  controlRef?: import('@tangle-network/agent-interface').AgentExactRunControlRef,
+) {
   const meta: ProviderEventMeta = safeProviderMeta(
     {
       eventId: envelope.eventId,
@@ -109,5 +112,5 @@ function eventFromEnvelope(envelope: RuntimeEventEnvelope) {
     },
     envelope.sequence,
   )
-  return providerEventFor(envelope.runId, envelope.event, meta)
+  return providerEventFor(envelope.runId, envelope.event, meta, controlRef)
 }

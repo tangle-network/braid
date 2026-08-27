@@ -13,6 +13,7 @@ const LEAF_FLAGS = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOL
 // the descriptor acquired for its parent; unsupported platforms reject before path I/O.
 
 export type SafeFileErrorCode =
+  | 'SAFE_FILE_DESCRIPTOR_CHANGED'
   | 'SAFE_FILE_INVALID_LIMIT'
   | 'SAFE_FILE_INVALID_PATH'
   | 'SAFE_FILE_LOCK_NOT_OWNED'
@@ -20,6 +21,7 @@ export type SafeFileErrorCode =
   | 'SAFE_FILE_NOT_REGULAR'
   | 'SAFE_FILE_PATH_RACE_UNSUPPORTED'
   | 'SAFE_FILE_PUBLISHED_INVALID'
+  | 'SAFE_FILE_PRIVATE_PERMISSIONS'
   | 'SAFE_FILE_SYMLINK'
 
 /** A fail-closed error from the private filesystem boundary. */
@@ -39,9 +41,15 @@ export interface SafePath {
   readonly components: readonly string[]
 }
 
+export interface DescriptorIdentity {
+  readonly device: bigint
+  readonly inode: bigint
+}
+
 export interface OpenParent {
   readonly path: SafePath
   readonly fd: number
+  readonly identity: DescriptorIdentity
   readonly leaf: string
   readonly leafPath: string
 }
@@ -118,6 +126,49 @@ export function requireDirectory(handle: number, path: string): void {
   }
 }
 
+export function requirePrivateDirectory(handle: number, path: string, mode = 0o700): void {
+  const stats = fstatSync(handle)
+  if (!stats.isDirectory()) {
+    throw new SafeFileError(
+      'SAFE_FILE_NOT_DIRECTORY',
+      `Private storage path is not a directory: ${path}`,
+    )
+  }
+  if ((stats.mode & 0o7777) !== mode) {
+    throw new SafeFileError(
+      'SAFE_FILE_PRIVATE_PERMISSIONS',
+      `Private storage directory must have mode ${mode.toString(8).padStart(4, '0')}: ${path}`,
+    )
+  }
+}
+
+export function descriptorIdentity(handle: number): DescriptorIdentity {
+  const stats = fstatSync(handle, { bigint: true })
+  return Object.freeze({ device: stats.dev, inode: stats.ino })
+}
+
+export function requireDescriptorIdentity(
+  handle: number,
+  expected: DescriptorIdentity,
+  path: string,
+): void {
+  let actual: DescriptorIdentity
+  try {
+    actual = descriptorIdentity(handle)
+  } catch {
+    throw new SafeFileError(
+      'SAFE_FILE_DESCRIPTOR_CHANGED',
+      `Private storage descriptor is no longer valid for its opened path: ${path}`,
+    )
+  }
+  if (actual.device !== expected.device || actual.inode !== expected.inode) {
+    throw new SafeFileError(
+      'SAFE_FILE_DESCRIPTOR_CHANGED',
+      `Private storage descriptor no longer identifies its opened path: ${path}`,
+    )
+  }
+}
+
 export function requireRegularFile(handle: number, path: string): void {
   if (!fstatSync(handle).isFile()) {
     throw new SafeFileError(
@@ -161,30 +212,47 @@ export function openDirectoryComponents(path: SafePath, count: number): number {
   }
 }
 
-export function openParent(path: string): OpenParent {
-  const parsed = safePath(path)
+function openedParent(parsed: SafePath, directoryFd: number): OpenParent {
   if (parsed.components.length === 0) {
+    closeSync(directoryFd)
     throw new SafeFileError(
       'SAFE_FILE_NOT_REGULAR',
       `Private storage path is not a regular file: ${parsed.absolute}`,
     )
   }
   const parentCount = parsed.components.length - 1
-  const directoryFd = openDirectoryComponents(parsed, parentCount)
   const leaf = parsed.components[parsed.components.length - 1]
   if (leaf === undefined) {
     closeSync(directoryFd)
     throw new SafeFileError(
       'SAFE_FILE_INVALID_PATH',
-      `Private storage path has no file name: ${path}`,
+      `Private storage path has no file name: ${parsed.absolute}`,
     )
   }
-  return {
-    path: parsed,
-    fd: directoryFd,
-    leaf,
-    leafPath: join(componentPath(parsed, parentCount), leaf),
+  try {
+    return Object.freeze({
+      path: parsed,
+      fd: directoryFd,
+      identity: descriptorIdentity(directoryFd),
+      leaf,
+      leafPath: join(componentPath(parsed, parentCount), leaf),
+    })
+  } catch (error) {
+    closeSync(directoryFd)
+    throw error
   }
+}
+
+export function openParent(path: string): OpenParent {
+  const parsed = safePath(path)
+  const directoryFd = openDirectoryComponents(parsed, Math.max(0, parsed.components.length - 1))
+  return openedParent(parsed, directoryFd)
+}
+
+export function requireOpenParentIdentity(parent: OpenParent): void {
+  const parentPath = componentPath(parent.path, parent.path.components.length - 1)
+  requireDescriptorIdentity(parent.fd, parent.identity, parentPath)
+  requireDirectory(parent.fd, parentPath)
 }
 
 export function openChild(
@@ -279,15 +347,17 @@ export function assertSafeDirectory(path: string): void {
   closeSync(handle)
 }
 
-/** Creates missing private directories without resolving a renamed parent by path. */
-export function ensurePrivateDirectory(path: string, mode = 0o700): void {
-  const parsed = safePath(path)
+function openOrCreatePrivateDirectoryComponents(
+  parsed: SafePath,
+  count: number,
+  mode: number,
+): number {
   let currentFd: number | undefined
   try {
     currentFd = openSync(parsed.root, DIRECTORY_FLAGS)
     requireDirectory(currentFd, parsed.root)
     let currentPath = parsed.root
-    for (const component of parsed.components) {
+    for (const component of parsed.components.slice(0, count)) {
       const nextPath = join(currentPath, component)
       let nextFd: number | undefined
       for (;;) {
@@ -317,9 +387,40 @@ export function ensurePrivateDirectory(path: string, mode = 0o700): void {
       currentPath = nextPath
       closeSync(previousFd)
     }
+    if (count > 0) requirePrivateDirectory(currentFd, componentPath(parsed, count), mode)
+    const result = currentFd
+    currentFd = undefined
+    return result
   } finally {
     if (currentFd !== undefined) closeSync(currentFd)
   }
+}
+
+/** Opens one newly created or existing private parent without reopening it by path. */
+export function openOrCreatePrivateParent(path: string, mode = 0o700): OpenParent {
+  const parsed = safePath(path)
+  if (parsed.components.length === 0) {
+    throw new SafeFileError(
+      'SAFE_FILE_NOT_REGULAR',
+      `Private storage path is not a regular file: ${parsed.absolute}`,
+    )
+  }
+  const parentCount = parsed.components.length - 1
+  const directoryFd = openOrCreatePrivateDirectoryComponents(parsed, parentCount, mode)
+  try {
+    requirePrivateDirectory(directoryFd, componentPath(parsed, parentCount), mode)
+  } catch (error) {
+    closeSync(directoryFd)
+    throw error
+  }
+  return openedParent(parsed, directoryFd)
+}
+
+/** Creates missing private directories without resolving a renamed parent by path. */
+export function ensurePrivateDirectory(path: string, mode = 0o700): void {
+  const parsed = safePath(path)
+  const directoryFd = openOrCreatePrivateDirectoryComponents(parsed, parsed.components.length, mode)
+  closeSync(directoryFd)
 }
 
 export { DIRECTORY_FLAGS, LEAF_FLAGS }

@@ -49,8 +49,11 @@ export async function dispatchCommandIntent(
             .reverse()
             .find(
               (run) =>
-                (run.status === 'detached' || run.status === 'unknown') &&
-                run.controlRef !== undefined,
+                (run.status === 'detached' ||
+                  run.status === 'reconnecting' ||
+                  run.status === 'unknown') &&
+                (run.controlRef !== undefined ||
+                  run.receipt.nativeContextBoundaryProof !== undefined),
             )?.id)
     if (runId === undefined) {
       return {
@@ -59,7 +62,7 @@ export async function dispatchCommandIntent(
         message:
           intent.command === 'detach'
             ? 'There is no active run to detach'
-            : `There is no detached run to ${intent.command}`,
+            : `There is no recoverable run to ${intent.command}`,
         retryable: false,
       }
     }

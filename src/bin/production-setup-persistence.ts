@@ -1,25 +1,20 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import {
   canonicalCandidateJson,
   snapshotAgentProfile,
 } from '../adapters/agent-interface/profile-runtime.js'
-import {
-  assertNoSymlinkPath,
-  assertSafeDirectory,
-  readNoFollow,
-  removePrivateFile,
-  replacePrivateFile,
-  writePrivateFile,
-} from '../adapters/persistence/safe-file.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
 import { ConnectionRegistry } from '../app/connections.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import {
   assertProductionConfigMutationLock,
   type ProductionConfigMutationLock,
+  readProductionConfigFile,
+  removeProductionConfigFile,
+  replaceProductionConfigFile,
   withProductionConfigMutationLock,
+  writeProductionConfigFile,
 } from './production-config-mutation-lock.js'
 
 const MAX_STARTUP_CONFIG_BYTES = 2 * 1024 * 1024
@@ -217,12 +212,16 @@ function serializedSelection(
   })}\n`
 }
 
-function publish(target: string, bytes: Buffer, previous: Buffer | undefined): void {
+function publish(
+  lock: ProductionConfigMutationLock,
+  bytes: Buffer,
+  previous: Buffer | undefined,
+): void {
   if (previous === undefined) {
-    writePrivateFile(target, bytes)
+    writeProductionConfigFile(lock, bytes)
     return
   }
-  replacePrivateFile(target, bytes, {
+  replaceProductionConfigFile(lock, bytes, {
     overwrite: true,
     expected: (current) => {
       if (current === undefined || !current.equals(previous)) {
@@ -233,9 +232,13 @@ function publish(target: string, bytes: Buffer, previous: Buffer | undefined): v
   })
 }
 
-function restore(target: string, bytes: Buffer, previous: Buffer | undefined): void {
+function restore(
+  lock: ProductionConfigMutationLock,
+  bytes: Buffer,
+  previous: Buffer | undefined,
+): void {
   if (previous !== undefined) {
-    replacePrivateFile(target, previous, {
+    replaceProductionConfigFile(lock, previous, {
       overwrite: true,
       expected: (current) => {
         if (current === undefined || !current.equals(bytes)) {
@@ -246,8 +249,8 @@ function restore(target: string, bytes: Buffer, previous: Buffer | undefined): v
     })
     return
   }
-  const current = readNoFollow(target, MAX_STARTUP_CONFIG_BYTES)
-  if (current?.equals(bytes)) removePrivateFile(target)
+  const current = readProductionConfigFile(lock, MAX_STARTUP_CONFIG_BYTES)
+  if (current?.equals(bytes)) removeProductionConfigFile(lock)
 }
 
 /** Publishes a selection only after the caller has prepared the replacement app. */
@@ -257,25 +260,20 @@ export async function persistProductionStartupSelection(
   options: ProductionStartupPersistenceOptions = {},
 ): Promise<ProductionStartupPersistence> {
   const target = resolve(configPath)
-  const directory = dirname(target)
-  assertNoSymlinkPath(directory)
-  await mkdir(directory, { recursive: true, mode: 0o700 })
-  assertNoSymlinkPath(directory)
-  assertSafeDirectory(directory)
   const publishSelection = async (
     lock: ProductionConfigMutationLock,
   ): Promise<ProductionStartupPersistence> => {
     assertProductionConfigMutationLock(lock, target)
-    const previous = readNoFollow(target, MAX_STARTUP_CONFIG_BYTES)
+    const previous = readProductionConfigFile(lock, MAX_STARTUP_CONFIG_BYTES)
     const bytes = Buffer.from(
       serializedSelection(selection, options.databaseKeyFile, options.connections),
       'utf8',
     )
     try {
-      publish(target, bytes, previous)
+      publish(lock, bytes, previous)
     } catch (error) {
       try {
-        restore(target, bytes, previous)
+        restore(lock, bytes, previous)
       } catch (rollbackError) {
         throw new Error('The production configuration could not be safely rolled back', {
           cause: rollbackError,
@@ -287,7 +285,7 @@ export async function persistProductionStartupSelection(
       rollback: async () => {
         const rollback = async (activeLock: ProductionConfigMutationLock): Promise<void> => {
           assertProductionConfigMutationLock(activeLock, target)
-          restore(target, bytes, previous)
+          restore(activeLock, bytes, previous)
         }
         if (options.mutationLock !== undefined) return rollback(options.mutationLock)
         return withProductionConfigMutationLock(target, rollback)

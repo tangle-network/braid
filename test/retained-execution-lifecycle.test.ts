@@ -132,6 +132,7 @@ function executionFor(
 ): RetainedExecutionPort {
   return new RetainedExecutionPort({
     resolve,
+    continue: resolve,
     recover: async () => {
       throw new Error('recovery is not part of this lifecycle test')
     },
@@ -175,6 +176,9 @@ test('restart cancellation of a persisted retained intent does not recover provi
   const execution = new RetainedExecutionPort({
     resolve: async () => {
       throw new Error('a cancelled intent must not resolve a new plan')
+    },
+    continue: async () => {
+      throw new Error('a cancelled intent must not continue provider work')
     },
     recover: async () => {
       throw new Error('a cancelled intent must not recover provider work')
@@ -220,6 +224,9 @@ test('restart detach validates the persisted retained control reference', async 
     resolve: async () => {
       throw new Error('restart detach must not resolve a fresh run')
     },
+    continue: async () => {
+      throw new Error('restart detach must not continue a run')
+    },
     recover: async ({ controlRef }) => {
       recoveries += 1
       assert.deepEqual(controlRef, exact)
@@ -263,6 +270,9 @@ test('restart controls reject a process reference against a pre-dispatch admissi
   const execution = new RetainedExecutionPort({
     resolve: async () => {
       throw new Error('pre-dispatch control must not resolve a fresh run')
+    },
+    continue: async () => {
+      throw new Error('pre-dispatch control must not continue a run')
     },
     recover: async () => {
       recoveries += 1
@@ -498,6 +508,9 @@ test('interaction response recovers the retained handle and preserves retry ackn
     resolve: async () => {
       throw new Error('a recovered interaction must not resolve a new run')
     },
+    continue: async () => {
+      throw new Error('a recovered interaction must not continue a run')
+    },
     recover: async ({ runId, providerSessionId, signal }) => {
       assert.equal(runId, 'run-interaction')
       assert.equal(providerSessionId, exact.sessionId)
@@ -509,7 +522,7 @@ test('interaction response recovers the retained handle and preserves retry ackn
     operationId: 'operation-interaction-response',
     binding: {
       requestDigest: `sha256:${'b'.repeat(64)}`,
-      runId: 'run-interaction',
+      runId: exact.runId,
       provider: exact.provider,
       environmentId: exact.environmentId,
       sessionId: exact.sessionId,
@@ -521,13 +534,16 @@ test('interaction response recovers the retained handle and preserves retry ackn
   }
 
   const signal = new AbortController().signal
-  assert.deepEqual(await execution.respondInteraction({ command, signal }), {
-    operationId: command.operationId,
-    outcome: 'accepted',
-    detail: 'INTERACTION_RESPONSE_ACCEPTED',
-  })
+  assert.deepEqual(
+    await execution.respondInteraction({ runId: 'run-interaction', command, signal }),
+    {
+      operationId: command.operationId,
+      outcome: 'accepted',
+      detail: 'INTERACTION_RESPONSE_ACCEPTED',
+    },
+  )
   assert.equal(recoverySignal, signal)
-  assert.deepEqual(await execution.respondInteraction({ command }), {
+  assert.deepEqual(await execution.respondInteraction({ runId: 'run-interaction', command }), {
     operationId: command.operationId,
     outcome: 'already-applied',
     detail: 'INTERACTION_RESPONSE_REPLAYED',

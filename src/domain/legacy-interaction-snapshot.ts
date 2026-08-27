@@ -119,7 +119,7 @@ function legacyRequestMaterial(
   id: string,
 ): InteractionRequestMaterial {
   const binding: InteractionRequestBinding = {
-    runId: run.id,
+    runId: run.controlRef?.runId ?? run.id,
     provider: providerIdentifier(run),
     environmentId:
       run.controlRef?.environmentId ??

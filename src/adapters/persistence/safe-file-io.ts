@@ -21,6 +21,7 @@ import {
   openExistingLeaf,
   openLeaf,
   openParent,
+  requireOpenParentIdentity,
   requireRegularFile,
   SafeFileError,
   safePath,
@@ -100,11 +101,17 @@ export function readAt(
   }
 }
 
+export function readPrivateFileAt(parent: OpenParent, maxBytes: number): Buffer | undefined {
+  requireOpenParentIdentity(parent)
+  return readAt(parent.fd, parent.leaf, parent.leafPath, maxBytes)
+}
+
 function safeLeafFlags(): number {
   return constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
 }
 
 function assertExistingRegularAt(parent: OpenParent): void {
+  requireOpenParentIdentity(parent)
   let handle: number | undefined
   try {
     try {
@@ -132,6 +139,7 @@ function writeTemporary(
   bytes: Buffer,
   onPhase?: PrivateFileWriteOptions['onPhase'],
 ): void {
+  requireOpenParentIdentity(parent)
   const temporaryPath = join(
     componentPath(parent.path, parent.path.components.length - 1),
     temporary,
@@ -168,21 +176,29 @@ export function readNoFollow(path: string, maxBytes: number): Buffer | undefined
 }
 
 /** Removes one private regular file through its opened parent directory. */
-export function removePrivateFile(path: string): void {
-  const parent = openParent(path)
+export function removePrivateFileAt(parent: OpenParent): void {
+  requireOpenParentIdentity(parent)
   let handle: number | undefined
   try {
-    try {
-      handle = openLeaf(parent, safeLeafFlags())
-      requireRegularFile(handle, parent.leafPath)
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') return
-      throw normalizePathError(error, parent.leafPath)
-    } finally {
-      if (handle !== undefined) closeSync(handle)
-    }
-    unlinkAt(parent.fd, parent.leaf, parent.leafPath)
-    fsyncSync(parent.fd)
+    handle = openLeaf(parent, safeLeafFlags())
+    requireRegularFile(handle, parent.leafPath)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return
+    throw normalizePathError(error, parent.leafPath)
+  } finally {
+    if (handle !== undefined) closeSync(handle)
+  }
+  requireOpenParentIdentity(parent)
+  unlinkAt(parent.fd, parent.leaf, parent.leafPath)
+  requireOpenParentIdentity(parent)
+  fsyncSync(parent.fd)
+}
+
+/** Removes one private regular file through its opened parent directory. */
+export function removePrivateFile(path: string): void {
+  const parent = openParent(path)
+  try {
+    removePrivateFileAt(parent)
   } finally {
     closeSync(parent.fd)
   }
@@ -218,12 +234,12 @@ export function fsyncDirectory(path: string): void {
  * and verifies the published bytes afterward; that closes the parent race without claiming
  * a stronger conditional-replacement guarantee than the available primitives provide.
  */
-export function replacePrivateFile(
-  path: string,
+export function replacePrivateFileAt(
+  parent: OpenParent,
   value: string | Buffer,
   options: PrivateFileWriteOptions,
 ): void {
-  const parent = openParent(path)
+  requireOpenParentIdentity(parent)
   const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf8')
   const temporary = `.${parent.leaf}.${randomUUID()}.tmp`
   const temporaryPath = join(
@@ -242,10 +258,12 @@ export function replacePrivateFile(
         options.maxExistingBytes ?? bytes.byteLength,
       )
       options.expected(current)
+      requireOpenParentIdentity(parent)
     }
     assertExistingRegularAt(parent)
     temporaryExists = true
     writeTemporary(parent, temporary, bytes, options.onPhase)
+    requireOpenParentIdentity(parent)
     const written = readAt(parent.fd, temporary, temporaryPath, bytes.byteLength)
     if (written === undefined || !written.equals(bytes)) {
       throw new SafeFileError(
@@ -254,6 +272,7 @@ export function replacePrivateFile(
       )
     }
     options.verify?.(written)
+    requireOpenParentIdentity(parent)
     try {
       if (options.overwrite) renameAt(parent.fd, temporary, parent.fd, parent.leaf)
       else linkAt(parent.fd, temporary, parent.fd, parent.leaf)
@@ -263,12 +282,15 @@ export function replacePrivateFile(
     if (options.overwrite) {
       temporaryExists = false
     } else {
+      requireOpenParentIdentity(parent)
       unlinkAt(parent.fd, temporary, temporaryPath)
       temporaryExists = false
     }
     options.onPhase?.('renamed')
+    requireOpenParentIdentity(parent)
     fsyncSync(parent.fd)
     options.onPhase?.('directory-fsynced')
+    requireOpenParentIdentity(parent)
     const published = readAt(parent.fd, parent.leaf, parent.leafPath, bytes.byteLength)
     if (published === undefined || !published.equals(bytes)) {
       throw new SafeFileError(
@@ -281,19 +303,32 @@ export function replacePrivateFile(
   } finally {
     if (temporaryExists) {
       try {
+        requireOpenParentIdentity(parent)
         unlinkAt(parent.fd, temporary, temporaryPath)
       } catch (error) {
         cleanupFailure = error
       }
     }
-    try {
-      closeSync(parent.fd)
-    } catch (error) {
-      cleanupFailure ??= error
-    }
   }
   if (failure !== undefined) throw failure
   if (cleanupFailure !== undefined) throw cleanupFailure
+}
+
+export function replacePrivateFile(
+  path: string,
+  value: string | Buffer,
+  options: PrivateFileWriteOptions,
+): void {
+  const parent = openParent(path)
+  try {
+    replacePrivateFileAt(parent, value, options)
+  } finally {
+    closeSync(parent.fd)
+  }
+}
+
+export function writePrivateFileAt(parent: OpenParent, value: string | Buffer): void {
+  replacePrivateFileAt(parent, value, { overwrite: false })
 }
 
 export function writePrivateFile(path: string, value: string | Buffer): void {

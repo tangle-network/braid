@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.2.0.tgz",
-    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
+    "tarballSha256": "d28990e163ee3a1c7ffed6ed377e5884b0d70f13e7af360b9a0730260d520a6a"
   },
   "dimensions": {
     "columns": 40,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " Commands\n────────────────────────────────────────\n>\n→ /new\n  /open\n  /profile\n  /connection\n  /runner\n  /model\n  (1/29)\n────────────────────────────────────────\n enter choose · ←/esc close\n",
+  "frame": " Commands\n────────────────────────────────────────\n>\n→ /new\n  /open\n  /profile\n  /connection\n  /runner\n  /model\n  (1/31)\n────────────────────────────────────────\n enter choose · ←/esc close\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -275,6 +275,16 @@
           "available": false,
           "source": "application",
           "reason": "Interaction automation requires the shared response contract"
+        },
+        "run.interactive": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal mode requires an interactive TUI and a supported provider"
+        },
+        "run.attach": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal attachment requires an interactive TUI and a retained session"
         },
         "export.create": {
           "available": true,

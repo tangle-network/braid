@@ -165,7 +165,7 @@ test('execution identity comes from one active run receipt instead of current pr
   })
   const rendered = chrome.render(120).join('\n')
   assert.match(rendered, /Exact run profile/u)
-  assert.match(rendered, /harness pi · model tangle-router\/glm-5\.2/u)
+  assert.match(rendered, /runner pi · model tangle-router\/glm-5\.2/u)
   assert.match(rendered, /CLI Bridge/u)
   assert.doesNotMatch(rendered, /backend cli-bridge|pi · tangle-router/u)
   assert.doesNotMatch(rendered, /exec local CLI|active/u)

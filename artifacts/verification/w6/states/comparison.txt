@@ -1,4 +1,4 @@
- analyses › /compare · frozen runs   Braid starter · pi · fixture/deterministic
+ analyses › /compare · frozen runs
 ────────────────────────────────────────────────────────────────────────────────
  saved result: replayed from the local journal
  baseline run: run-route-serial

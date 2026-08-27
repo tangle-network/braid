@@ -254,8 +254,6 @@ test('retained control lookup uses the hashed identity for long provider session
     metadata: {
       ...identity.metadata,
       retainedIdempotencyKey: identity.environmentIdempotencyKey,
-      sessionId: providerSessionId,
-      executionId,
     },
     async *streamPrompt() {},
     session(sessionId: string) {
@@ -326,17 +324,17 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
   const metadata = sandbox.createCalls[0]?.metadata
   assert.ok(metadata)
-  const { retainedIntentDigest, retainedRunId, ...stableMetadata } = metadata
-  assert.deepEqual(stableMetadata, {
-    ...prepared.environmentMetadata,
-    retainedIdempotencyKey: prepared.environmentIdempotencyKey,
-    sessionId: prepared.providerSessionId,
-    executionId: safeExecutionId('run/tangle-retained'),
-  })
-  assert.match(String(retainedIntentDigest), /^sha256:[0-9a-f]{64}$/u)
-  assert.equal(
-    retainedRunId,
-    `retained-intent-run:${String(retainedIntentDigest).slice('sha256:'.length)}`,
+  assert.deepEqual(
+    {
+      owner: metadata.owner,
+      lifecycle: metadata.lifecycle,
+      providerSessionId: metadata.providerSessionId,
+      retainedIdempotencyKey: metadata.retainedIdempotencyKey,
+    },
+    {
+      ...prepared.environmentMetadata,
+      retainedIdempotencyKey: prepared.environmentIdempotencyKey,
+    },
   )
   assert.equal(handle.controlRef.environmentId, sandbox.boxes[0]?.id)
   assert.equal(handle.controlRef.sessionId, prepared.providerSessionId)
@@ -409,7 +407,7 @@ test('ambiguous dispatch failure never deletes the retained environment', async 
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
 })
 
-test('a failed retry never deletes a pre-existing retained workspace', async () => {
+test('an exact retained retry never deletes the retained workspace', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
   const { input } = setup(sandbox, 'session-braid-existing-workspace')
   const providerSessionId = input.sessionId
@@ -420,20 +418,16 @@ test('a failed retry never deletes a pre-existing retained workspace', async () 
     runId: input.runId,
     providerSessionId,
   })
-  const first = await startTangleRetainedRun(createTangleRetainedPlan(prepared, input.runId), input)
-  sandbox.complete(first.controlRef.executionId, 'EXISTING_WORKSPACE')
   sandbox.failDispatch = true
-  const retryInput = {
-    ...input,
-    operationId: 'operation-tangle-retained-retry',
-    runId: 'run/tangle-retained-retry',
-  }
+  const plan = createTangleRetainedPlan(prepared, input.runId)
 
-  await assert.rejects(
-    startTangleRetainedRun(createTangleRetainedPlan(prepared, retryInput.runId), retryInput),
-    /dispatch failure/u,
-  )
+  await assert.rejects(startTangleRetainedRun(plan, input), /dispatch failure/u)
   assert.equal(sandbox.boxes.length, 1)
+  assert.equal(sandbox.createCalls.length, 1)
+
+  await assert.rejects(startTangleRetainedRun(plan, input), /dispatch failure/u)
+  assert.equal(sandbox.boxes.length, 1)
+  assert.equal(sandbox.createCalls.length, 1)
 })
 
 test('exact cancellation is retry-safe through the Runtime handle', async () => {

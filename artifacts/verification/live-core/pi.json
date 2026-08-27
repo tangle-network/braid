@@ -732,6 +732,189 @@
     "binary": "@tangle-network/braid/dist/bin/braid.js",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f"
   },
+  "braidPiCliBridgeProof": {
+    "claim": "real-local-pi-cli-bridge-prompt-stream-restart-resume-slash",
+    "status": "passed",
+    "recordedAt": "2026-08-20T05:57:06.568Z",
+    "source": {
+      "commit": "7e19843217b9d1c9233fb1c5cdc93f54aa8552ff",
+      "workingTree": "dirty",
+      "packageVersion": "0.2.0",
+      "dependencies": {
+        "@tangle-network/agent-interface": "1.3.0",
+        "@tangle-network/agent-provider-cli-bridge": "0.9.3",
+        "@tangle-network/agent-runtime": "0.142.3",
+        "@tangle-network/sandbox": "0.30.0"
+      }
+    },
+    "environment": {
+      "workspace": "/tmp/braid-pi-live-setup-session-GzmpMs/workspace",
+      "databaseKeyFile": "/tmp/braid-pi-live-setup-session-GzmpMs/database.key",
+      "profile": {
+        "name": "CLI Bridge · pi · tangle-router/gpt-5-mini",
+        "harness": "pi",
+        "runner": "pi",
+        "model": "tangle-router/gpt-5-mini",
+        "provider": "tangle-router",
+        "route": "pi/tangle-router/gpt-5-mini"
+      },
+      "connection": {
+        "id": "connection-local-cli-bridge",
+        "kind": "cli-bridge",
+        "endpoint": "http://127.0.0.1:8899"
+      },
+      "bridge": {
+        "pidBeforeRestart": 3618773,
+        "pidAfterRestart": 3672374,
+        "healthAfterRestart": {
+          "httpStatus": 200,
+          "status": "ok",
+          "backendVersions": [
+            "2.1.232 (Claude Code)",
+            "codex-cli 0.148.0",
+            "1.18.18",
+            "0.83.0"
+          ]
+        }
+      }
+    },
+    "commands": {
+      "build": "pnpm run build",
+      "tui": "node dist/bin/braid.js --workspace /tmp/braid-pi-live-setup-session-GzmpMs/workspace --no-color --database-key-file /tmp/braid-pi-live-setup-session-GzmpMs/database.key",
+      "bridgeRestart": "systemctl --user restart disco-bridge-8899.service",
+      "headless": "node --input-type=module",
+      "tuiInput": "/help\\r"
+    },
+    "normalPrompt": {
+      "operationId": "op-live-pi-real-prompt-final-1787205016844",
+      "conversationId": "conversation-976bdd1b3ac783a8143a2e1d8eb080a3",
+      "branchId": "branch-976bdd1b3ac783a8143a2e1d8eb080a3",
+      "runId": "run-4348a25a-dc80-4b18-8747-2ae4a830b583",
+      "turnId": "turn-fc5d174f-9523-4473-acf4-eaec15c457ec",
+      "providerSessionId": "session-braid-run-4348a25a-dc80-4b18-8747-2ae4a830b583",
+      "executionId": "run-4348a25a-dc80-4b18-8747-2ae4a830b583",
+      "environmentId": "environment-723f38aff7b53e66f3b5bd82923718ab",
+      "prompt": "Reply exactly BRAID_PI_LIVE_PROMPT_FINAL_OK",
+      "output": "BRAID_PI_LIVE_PROMPT_FINAL_OK",
+      "status": "completed",
+      "transcript": {
+        "completeUserMessages": 1,
+        "completeAssistantMessages": 1,
+        "duplicateAssistantMessages": 0
+      },
+      "eventTypes": [
+        "draft.changed",
+        "run.requested",
+        "effect.upserted",
+        "run.retained.admitted",
+        "run.environment.observed",
+        "run.status.changed",
+        "run.provider.event",
+        "run.part.updated",
+        "run.finished"
+      ],
+      "cursor": {
+        "value": "103",
+        "committedProviderSequence": 268
+      },
+      "usage": {
+        "inputTokens": 37,
+        "outputTokens": 66,
+        "reasoningTokens": 102,
+        "contentBytes": 917
+      },
+      "controlRef": {
+        "provider": "cli-bridge",
+        "executionId": "run-4348a25a-dc80-4b18-8747-2ae4a830b583",
+        "runId": "run-4348a25a-dc80-4b18-8747-2ae4a830b583",
+        "sessionId": "session-braid-run-4348a25a-dc80-4b18-8747-2ae4a830b583",
+        "requestDigest": "sha256:b26f97b8ca1317e16fd0a302e63793b50df3423cd6d19fe19b178da3c08fd8c8"
+      }
+    },
+    "streamRestartResume": {
+      "operationId": "op-live-pi-stream-restart-final-1787205155473",
+      "conversationId": "conversation-ca176d7a9469772c56155e4b32586093",
+      "branchId": "branch-ca176d7a9469772c56155e4b32586093",
+      "runId": "run-348fa476-3740-4404-9957-ad8398fd2658",
+      "turnId": "turn-c5137194-340d-47a1-996b-c87beda78151",
+      "providerSessionId": "session-braid-run-348fa476-3740-4404-9957-ad8398fd2658",
+      "executionId": "run-348fa476-3740-4404-9957-ad8398fd2658",
+      "environmentId": "environment-756a0679d121aa75e8f0996c47641e67",
+      "prompt": {
+        "instruction": "Reply with exactly these 80 lines and nothing else.",
+        "markers": "BRAID_STREAM_001 through BRAID_STREAM_080"
+      },
+      "firstObservedWhileStreaming": {
+        "observedAt": "2026-08-20T05:53:12.135Z",
+        "status": "streaming",
+        "cursor": "29",
+        "committedProviderSequence": 310,
+        "contentBytes": 64,
+        "assistantPrefix": "BRAID_STREAM_001\\nBRAID_STREAM_002\\nBRAID_STREAM_003\\nBRAID_STREAM_"
+      },
+      "restart": {
+        "command": "systemctl --user restart disco-bridge-8899.service",
+        "observedAt": "2026-08-20T05:53:24.871Z",
+        "bridgePidBefore": 3618773,
+        "bridgePidAfter": 3672374,
+        "healthAfter": "HTTP 200, status ok, Pi 0.83.0 ready"
+      },
+      "final": {
+        "status": "completed",
+        "cursor": "492",
+        "committedProviderSequence": 773,
+        "contentBytes": 4097,
+        "assistantOutputCharacters": 1359,
+        "completeUserMessages": 1,
+        "completeAssistantMessages": 1,
+        "expectedMarkerCount": 80,
+        "observedMarkerCount": 80,
+        "duplicateMarkers": [],
+        "allMarkersExactlyOnce": true,
+        "outputMatchesExpectedMarkers": true
+      },
+      "bridgeRunAfterRestart": {
+        "httpStatus": 200,
+        "state": "terminal",
+        "terminal": true,
+        "canonicalLastSeq": 492,
+        "postRestartInMemoryLastSeq": 0,
+        "replayExpired": false,
+        "retainedDeltas": 0,
+        "retainedBytes": 0
+      }
+    },
+    "slashCommand": {
+      "startedAt": "2026-08-20T05:57:06.568Z",
+      "command": "node dist/bin/braid.js --workspace /tmp/braid-pi-live-setup-session-GzmpMs/workspace --no-color --database-key-file /tmp/braid-pi-live-setup-session-GzmpMs/database.key",
+      "transport": "real PTY connected to the TUI",
+      "terminal": { "columns": 120, "rows": 36 },
+      "input": "/help",
+      "startupVisible": true,
+      "helpVisible": true,
+      "observedCommands": [
+        "/fork",
+        "/ask",
+        "/analyze",
+        "/compare",
+        "/reconnect",
+        "/interactive",
+        "/attach"
+      ],
+      "exit": { "exitCode": 0, "signal": 0, "clean": true }
+    },
+    "checks": {
+      "normalPrompt": true,
+      "streamedOutput": true,
+      "bridgeRestart": true,
+      "nonzeroCursorBeforeRestart": true,
+      "nonzeroCursorAfterResume": true,
+      "slashCommand": true,
+      "noDuplicateOutput": true,
+      "noFakeProvider": true,
+      "noNarrowRegressionTestAdded": true
+    }
+  },
   "status": "passed",
   "completedAt": "2026-08-09T11:26:03.078Z"
 }

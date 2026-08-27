@@ -675,14 +675,14 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       usd: 0.00002,
     })
     assert.equal(bridge.requests.length, 1)
+    assert.equal(bridge.sessionCreates.length, 1)
     assert.deepEqual(
       admissions.map((admission) => admission.phase),
       ['intent', 'environment', 'dispatched'],
     )
-    const body = bridge.requests[0]?.body
-    assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
-    assert.equal(body?.max_tokens, undefined)
-    const executionProfile = body?.agent_profile as AgentProfile
+    const sessionBody = bridge.sessionCreates[0]?.body
+    assert.equal(sessionBody?.model, 'pi/tangle-router/glm-5.2')
+    const executionProfile = sessionBody?.agent_profile as AgentProfile
     assert.equal(executionProfile.harness, 'pi')
     assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
     assert.equal(executionProfile.model?.provider, 'tangle-router')
@@ -710,10 +710,8 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
       write: 'deny',
     })
     assert.deepEqual(executionProfile.extensions, { pi: { load: [] } })
-    const messages = body?.messages as Array<{ readonly role?: string; readonly content?: string }>
-    assert.equal(messages.length, 1)
-    assert.equal(messages[0]?.role, 'user')
-    assert.deepEqual(JSON.parse(messages[0]?.content ?? '{}'), {
+    const turnBody = bridge.requests[0]?.body
+    assert.deepEqual(JSON.parse(String(turnBody?.message ?? '{}')), {
       messages: optimizerRequest().request.messages,
     })
     assert.equal(

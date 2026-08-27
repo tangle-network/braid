@@ -4,7 +4,7 @@ import type {
   AgentEnvironmentProvider,
 } from '@tangle-network/agent-interface/environment-provider'
 import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
-import type { SandboxClient } from '@tangle-network/agent-runtime/kernel'
+import type { ExecutorFactory, SandboxClient } from '@tangle-network/agent-runtime/kernel'
 import type { BackendType, CreateSandboxOptions, SandboxInstance } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import { canonicalDigest } from '../../domain/canonical.js'
@@ -32,7 +32,6 @@ import {
   stableProviderId,
 } from './production-backend-common.js'
 import { observeSandboxClient } from './sandbox-observation.js'
-import { withSandboxResultProjection } from './sandbox-result-projection.js'
 import {
   retainedSandboxIdentity,
   retainedSandboxLifecycle,
@@ -83,20 +82,20 @@ export async function resolveTangleSandboxBackend(
   })
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
   const providerSessionId = providerSessionFor(input, capabilities)
+  const factory: ExecutorFactory<unknown> = (spec, context) =>
+    createExecutor({
+      backend: 'sandbox',
+      sandboxClient: runtimeSandboxClient(
+        observedClient.client,
+        record.name,
+        idempotencyKey,
+        context.signal,
+      ),
+      maxIterations: 1,
+    })(spec, context)
   const backend = Object.freeze({
     kind: 'executor' as const,
-    factory: withSandboxResultProjection((spec, context) =>
-      createExecutor({
-        backend: 'sandbox',
-        sandboxClient: runtimeSandboxClient(
-          observedClient.client,
-          record.name,
-          idempotencyKey,
-          context.signal,
-        ),
-        maxIterations: 1,
-      })(spec, context),
-    ),
+    factory,
     profile,
     agentRunName: model,
   })
@@ -137,6 +136,7 @@ export interface PreparedTangleRetainedConnection {
   readonly discoverControlRef: (
     braidRunId: string,
     signal?: AbortSignal,
+    executionId?: string,
   ) => Promise<AgentExactRunControlRef | null>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
 }
@@ -236,12 +236,12 @@ export async function resolveTangleSandboxRetainedConnection(
     environmentName: identity.name,
     environmentMetadata: identity.metadata,
     idleTtlSeconds,
-    discoverControlRef: (braidRunId, signal) =>
+    discoverControlRef: (braidRunId, signal, executionId = safeExecutionId(braidRunId)) =>
       retainedControlLookup({
         connectionId,
         braidRunId,
         providerSessionId,
-        executionId: safeExecutionId(braidRunId),
+        executionId,
         environmentIdempotencyKey: identity.environmentIdempotencyKey,
         ...(signal === undefined ? {} : { signal }),
       }),
@@ -295,11 +295,14 @@ function capabilitiesForLifecycle(
   lifecycle: SandboxLifecyclePolicy,
 ): AgentEnvironmentCapabilities {
   if (lifecycle.continuity === 'session') return capabilities
-  return {
+  const narrowed: AgentEnvironmentCapabilities = {
     ...capabilities,
     sessions: { ...capabilities.sessions, continue: false, list: false, messages: false },
     branching: { ...capabilities.branching, checkpoint: false, fork: false },
   }
+  delete narrowed.interactions
+  delete narrowed.retainedControl
+  return narrowed
 }
 
 function providerSessionFor(

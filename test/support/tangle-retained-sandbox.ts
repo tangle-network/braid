@@ -41,7 +41,7 @@ export interface FakeRetainedBox {
   deleted: boolean
 }
 
-/** Stateful double for the exact Tangle SDK surface used by provider 0.11.0. */
+/** Stateful double for the exact Tangle SDK surface used by provider 0.13.0. */
 export class FakeTangleRetainedSandbox {
   readonly createCalls: CreateSandboxOptions[] = []
   readonly dispatches: Array<{
@@ -86,6 +86,28 @@ export class FakeTangleRetainedSandbox {
         return box === undefined || box.deleted ? null : this.#instance(box)
       },
       list: async () => this.boxes.map((box) => this.#instance(box)),
+      listBackends: async () => ({
+        backends: [
+          {
+            type: 'opencode',
+            name: 'OpenCode',
+            description: 'Fake retained OpenCode backend',
+            capabilities: {
+              streaming: true,
+              toolUse: true,
+              reasoning: true,
+              multimodal: false,
+              imageInput: false,
+              contextWindow: 128_000,
+              mcp: true,
+              sessions: true,
+              configurable: true,
+              interactions: ['permission', 'question', 'plan'],
+            },
+          },
+        ],
+        timestamp: new Date(0).toISOString(),
+      }),
       describePlacement: () => ({
         kind: 'sandbox',
         machineId: 'machine-fake-retained',
