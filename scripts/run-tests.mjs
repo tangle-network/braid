@@ -41,6 +41,7 @@ const scopeFiles = {
     'domain-invariants.test.js',
     'domain-reducer.test.js',
     'domain-text.test.js',
+    'incremental-safety-adversarial.test.js',
     'redaction-adversarial.test.js',
     'reducer.test.js',
     'replay-idempotency-adversarial.test.js',
@@ -76,6 +77,7 @@ const scopeFiles = {
   security: [
     'coordination.test.js',
     'control-injection-adversarial.test.js',
+    'incremental-safety-adversarial.test.js',
     'redaction-adversarial.test.js',
     'sanitize.test.js',
     'storage.test.js',

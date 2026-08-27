@@ -9,7 +9,26 @@ import {
   type GenericRpcRequest,
   type RpcCommandName,
 } from './protocol.js'
-import type { RpcInput } from './rpc-types.js'
+import { RpcParseError } from './rpc-errors.js'
+import { linesOf } from './rpc-framing.js'
+import {
+  MAX_RPC_COMMAND_TEXT_BYTES,
+  MAX_RPC_FIELD_BYTES,
+  MAX_RPC_LINE_BYTES,
+  MAX_RPC_OPERATION_ID_BYTES,
+  MAX_RPC_REQUEST_ID_BYTES,
+} from './rpc-types.js'
+import { utf8ByteLength } from '../../domain/utf8.js'
+
+export {
+  MAX_RPC_COMMAND_TEXT_BYTES,
+  MAX_RPC_FIELD_BYTES,
+  MAX_RPC_LINE_BYTES,
+  MAX_RPC_OPERATION_ID_BYTES,
+  MAX_RPC_REQUEST_ID_BYTES,
+  RpcParseError,
+  linesOf,
+}
 
 const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> = {
   initialize: ['workspace', 'subscribe'],
@@ -151,7 +170,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function requestIdOf(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined
-  return typeof value.requestId === 'string' ? value.requestId : undefined
+  if (typeof value.requestId !== 'string') return undefined
+  return utf8ByteLength(value.requestId) <= MAX_RPC_REQUEST_ID_BYTES ? value.requestId : undefined
 }
 
 function assertAllowedKeys(
@@ -186,23 +206,75 @@ function assertParameterTypes(command: HeadlessCommandName, params: Record<strin
   }
 }
 
-export class RpcParseError extends Error {
-  readonly code: string
-  readonly choices?: readonly string[]
-
-  constructor(code: string, message: string, choices?: readonly string[]) {
-    super(message)
-    this.name = 'RpcParseError'
-    this.code = code
-    if (choices) this.choices = choices
-  }
-}
-
-function assertString(value: unknown, label: string): string {
+function assertString(
+  value: unknown,
+  label: string,
+  maxBytes = MAX_RPC_FIELD_BYTES,
+  code = 'INVALID_PARAMS',
+): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new RpcParseError('INVALID_PARAMS', `${label} must be a non-empty string`)
   }
+  if (utf8ByteLength(value) > maxBytes) {
+    throw new RpcParseError(code, `${label} must not exceed ${maxBytes} UTF-8 bytes`)
+  }
   return value
+}
+
+const COMMAND_TEXT_FIELDS = new Set([
+  'set_draft.text',
+  'send.text',
+  'queue.text',
+  'steer.text',
+  'branch.text',
+  'ask.question',
+  'steer_worker.text',
+])
+
+function assertRecordStringBounds(value: unknown, label: string, depth = 0): void {
+  if (depth > 64) throw new RpcParseError('INVALID_PARAMS', `${label} is too deeply nested`)
+  if (typeof value === 'string') {
+    if (utf8ByteLength(value) > MAX_RPC_FIELD_BYTES) {
+      throw new RpcParseError(
+        'INVALID_PARAMS',
+        `${label} must not exceed ${MAX_RPC_FIELD_BYTES} UTF-8 bytes`,
+      )
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries())
+      assertRecordStringBounds(item, `${label}[${index}]`, depth + 1)
+    return
+  }
+  if (!isRecord(value)) return
+  for (const [key, child] of Object.entries(value)) {
+    if (utf8ByteLength(key) > MAX_RPC_FIELD_BYTES) {
+      throw new RpcParseError('INVALID_PARAMS', `${label} contains an overlong field name`)
+    }
+    assertRecordStringBounds(child, `${label}.${key}`, depth + 1)
+  }
+}
+
+function assertParameterByteBounds(
+  command: HeadlessCommandName,
+  params: Record<string, unknown>,
+): void {
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === 'string') {
+      const limit = COMMAND_TEXT_FIELDS.has(`${command}.${key}`)
+        ? MAX_RPC_COMMAND_TEXT_BYTES
+        : MAX_RPC_FIELD_BYTES
+      if (utf8ByteLength(value) > limit) {
+        throw new RpcParseError(
+          'INVALID_PARAMS',
+          `${command}.params.${key} must not exceed ${limit} UTF-8 bytes`,
+        )
+      }
+    } else if (value !== undefined) {
+      assertRecordStringBounds(value, `${command}.params.${key}`)
+    }
+  }
 }
 
 function assertCommand(value: unknown): value is RpcCommandName {
@@ -215,8 +287,16 @@ function genericRequest(
   params: Record<string, unknown>,
 ): GenericRpcRequest {
   const operationId = value.operationId
-  if (operationId !== undefined && (typeof operationId !== 'string' || operationId.length === 0)) {
-    throw new RpcParseError('INVALID_OPERATION_ID', 'operationId must be a non-empty string')
+  if (operationId !== undefined) {
+    if (typeof operationId !== 'string' || operationId.length === 0) {
+      throw new RpcParseError('INVALID_OPERATION_ID', 'operationId must be a non-empty string')
+    }
+    if (utf8ByteLength(operationId) > MAX_RPC_OPERATION_ID_BYTES) {
+      throw new RpcParseError(
+        'INVALID_OPERATION_ID',
+        `operationId must not exceed ${MAX_RPC_OPERATION_ID_BYTES} UTF-8 bytes`,
+      )
+    }
   }
   if (isMutatingHeadlessCommand(command) && operationId === undefined) {
     throw new RpcParseError('OPERATION_ID_REQUIRED', `${command} requires operationId`)
@@ -231,6 +311,12 @@ function genericRequest(
 }
 
 export function parseRequest(line: string): BraidRequest {
+  if (utf8ByteLength(line) > MAX_RPC_LINE_BYTES) {
+    throw new RpcParseError(
+      'LINE_TOO_LARGE',
+      `JSONL line must not exceed ${MAX_RPC_LINE_BYTES} bytes`,
+    )
+  }
   let parsed: unknown
   try {
     parsed = JSON.parse(line)
@@ -242,7 +328,7 @@ export function parseRequest(line: string): BraidRequest {
   if (parsed.version !== BRAID_PROTOCOL_VERSION) {
     throw new RpcParseError('UNSUPPORTED_VERSION', 'Only protocol version 1 is supported')
   }
-  const requestId = assertString(parsed.requestId, 'requestId')
+  const requestId = assertString(parsed.requestId, 'requestId', MAX_RPC_REQUEST_ID_BYTES)
   const command = parsed.command
   if (!assertCommand(command)) {
     throw new RpcParseError(
@@ -257,6 +343,15 @@ export function parseRequest(line: string): BraidRequest {
   ) {
     throw new RpcParseError('INVALID_OPERATION_ID', 'operationId must be a non-empty string')
   }
+  if (
+    typeof parsed.operationId === 'string' &&
+    utf8ByteLength(parsed.operationId) > MAX_RPC_OPERATION_ID_BYTES
+  ) {
+    throw new RpcParseError(
+      'INVALID_OPERATION_ID',
+      `operationId must not exceed ${MAX_RPC_OPERATION_ID_BYTES} UTF-8 bytes`,
+    )
+  }
   if (parsed.params !== undefined && !isRecord(parsed.params)) {
     throw new RpcParseError('INVALID_PARAMS', 'params must be an object')
   }
@@ -266,6 +361,7 @@ export function parseRequest(line: string): BraidRequest {
     throw new RpcParseError('OPERATION_ID_REQUIRED', `${command} requires operationId`)
   }
   assertParameterTypes(command, params)
+  assertParameterByteBounds(command, params)
 
   switch (command) {
     case 'initialize':
@@ -353,21 +449,4 @@ export function parseRequest(line: string): BraidRequest {
     default:
       return genericRequest(parsed, command, params)
   }
-}
-
-export async function* linesOf(input: RpcInput): AsyncGenerator<string> {
-  const decoder = new TextDecoder()
-  let buffered = ''
-  for await (const chunk of input) {
-    buffered += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
-    let newline = buffered.indexOf('\n')
-    while (newline >= 0) {
-      const line = buffered.slice(0, newline).replace(/\r$/u, '')
-      buffered = buffered.slice(newline + 1)
-      yield line
-      newline = buffered.indexOf('\n')
-    }
-  }
-  buffered += decoder.decode()
-  if (buffered.length > 0) yield buffered.replace(/\r$/u, '')
 }

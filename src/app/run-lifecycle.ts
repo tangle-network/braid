@@ -3,6 +3,8 @@ import type { BraidEvent } from '../domain/events.js'
 import type { BraidState } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { EffectDispatchResult } from './effect-coordinator.js'
+import { IncrementalSanitizer } from '../domain/incremental-sanitizer.js'
+import { redactSensitiveText } from '../domain/redaction.js'
 import { safeDiagnostic, usageFromFinal } from './provider-values.js'
 
 export interface RunLifecycleOptions {
@@ -33,6 +35,7 @@ export class RunLifecycle {
   readonly #flush: () => Promise<void>
   readonly #cancellationRequested = new Set<string>()
   readonly #terminalizedRuns = new Set<string>()
+  readonly #textSanitizers = new Map<string, IncrementalSanitizer>()
   #activeAbort: AbortController | undefined
 
   constructor(options: RunLifecycleOptions) {
@@ -59,6 +62,7 @@ export class RunLifecycle {
       this.#activeAbort = undefined
       return Promise.resolve({ status: 'failed', detail: 'RUN_NOT_DISPATCHED' })
     }
+    this.#textSanitizers.set(runId, new IncrementalSanitizer())
     return this.#execute(operationId, runId, text, abort)
   }
 
@@ -115,6 +119,19 @@ export class RunLifecycle {
     text: string,
     abort: AbortController,
   ): Promise<EffectDispatchResult> {
+    const sanitizer = this.#textSanitizers.get(runId) ?? new IncrementalSanitizer()
+    let textFinished = false
+    const finishText = (): string => {
+      if (textFinished) return ''
+      textFinished = true
+      return sanitizer.finish()
+    }
+    const commitPendingText = (): void => {
+      const pending = finishText()
+      if (pending && !this.#terminalizedRuns.has(runId)) {
+        this.#commit({ kind: 'run.text.delta', runId, text: pending })
+      }
+    }
     let terminalSeen = false
     let terminalDurable = false
     let terminalStatus: string | undefined
@@ -132,14 +149,24 @@ export class RunLifecycle {
       for await (const runtimeEvent of stream) {
         if (this.#terminalizedRuns.has(runId)) break
         if (runtimeEvent.type === 'text_delta' && runtimeEvent.text) {
-          this.#commit({ kind: 'run.text.delta', runId, text: runtimeEvent.text })
+          const textDelta = sanitizer.push(runtimeEvent.text)
+          if (textDelta) this.#commit({ kind: 'run.text.delta', runId, text: textDelta })
         } else if (runtimeEvent.type === 'final' && !terminalSeen) {
+          const pendingText = finishText()
+          if (
+            runtimeEvent.text === undefined &&
+            pendingText &&
+            !this.#terminalizedRuns.has(runId)
+          ) {
+            this.#commit({ kind: 'run.text.delta', runId, text: pendingText })
+          }
+          const finalText = redactSensitiveText(runtimeEvent.text ?? '')
           terminalStatus = runtimeEvent.status
           this.#commit({
             kind: 'run.finished',
             runId,
             status: runtimeEvent.status,
-            finalText: runtimeEvent.text ?? '',
+            finalText,
             usage: usageFromFinal(runtimeEvent),
             ...(runtimeEvent.error
               ? { error: safeDiagnostic(runtimeEvent.error.message, 'RUNTIME_FINAL_ERROR') }
@@ -158,6 +185,7 @@ export class RunLifecycle {
     } catch (error) {
       if (!terminalDurable && !this.#settledElsewhere(runId)) {
         try {
+          commitPendingText()
           this.#commit({
             kind: 'run.finished',
             runId,
@@ -182,6 +210,8 @@ export class RunLifecycle {
       }
       return this.#observedOutcome(terminalStatus, dispatchStarted, terminalDurable, error)
     } finally {
+      if (!textFinished) sanitizer.finish()
+      this.#textSanitizers.delete(runId)
       if (this.#activeAbort === abort) this.#activeAbort = undefined
     }
   }

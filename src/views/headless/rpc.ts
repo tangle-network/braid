@@ -9,6 +9,11 @@ import {
 } from './protocol.js'
 import { linesOf, parseRequest, requestIdOf, RpcParseError } from './rpc-parser.js'
 import {
+  MAX_RPC_COMMAND_TEXT_BYTES,
+  MAX_RPC_FIELD_BYTES,
+  MAX_RPC_LINE_BYTES,
+  MAX_RPC_OPERATION_ID_BYTES,
+  MAX_RPC_REQUEST_ID_BYTES,
   RPC_REPLAY_MAX_BYTES,
   RPC_REPLAY_MAX_ENTRIES,
   type RequestRecord,
@@ -17,7 +22,15 @@ import {
 } from './rpc-types.js'
 
 export type { RpcInput, RpcOutput }
-export { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES }
+export {
+  MAX_RPC_COMMAND_TEXT_BYTES,
+  MAX_RPC_FIELD_BYTES,
+  MAX_RPC_LINE_BYTES,
+  MAX_RPC_OPERATION_ID_BYTES,
+  MAX_RPC_REQUEST_ID_BYTES,
+  RPC_REPLAY_MAX_BYTES,
+  RPC_REPLAY_MAX_ENTRIES,
+}
 
 function errorResponse(error: unknown, requestId?: string): ErrorResponse {
   if (error instanceof RpcParseError) {
@@ -166,6 +179,15 @@ export async function runRpc(
     }
     write(eventResponse(event))
   })
+
+  const shutdownAtEof = async (): Promise<void> => {
+    const eofShutdown = await controller.dispatch({
+      type: 'shutdown',
+      operationId: 'rpc-eof-shutdown',
+    })
+    if (eofShutdown.kind === 'accepted' && eofShutdown.completion) await eofShutdown.completion
+    await Promise.all(pendingCompletions)
+  }
 
   try {
     for await (const line of linesOf(input)) {
@@ -371,13 +393,15 @@ export async function runRpc(
         else write(response)
       }
     }
-    const eofShutdown = await controller.dispatch({
-      type: 'shutdown',
-      operationId: 'rpc-eof-shutdown',
-    })
-    if (eofShutdown.kind === 'accepted' && eofShutdown.completion) await eofShutdown.completion
-    await Promise.all(pendingCompletions)
+    await shutdownAtEof()
     return 0
+  } catch (error) {
+    if (error instanceof RpcParseError) {
+      await shutdownAtEof()
+      write(errorResponse(error))
+      return 1
+    }
+    throw error
   } finally {
     unsubscribe()
   }
