@@ -21,7 +21,7 @@ const REQUIRED_PHASES = Object.freeze([
   'provider.observe',
 ])
 
-export const MULTIRUN_PROOF_SCHEMA = 'braid.live-required.multirun.v1'
+export const MULTIRUN_PROOF_SCHEMA = 'braid.live-required.multirun.v2'
 export { REQUIRED_PHASES as MULTIRUN_REQUIRED_PHASES }
 
 const PROVIDER_IDENTIFIER_KINDS = Object.freeze([
@@ -53,7 +53,14 @@ function assertRun(run, index) {
     `multirun proof run ${index} has no streamed events`,
   )
   assert(run.eventIdsUnique === true, `multirun proof run ${index} has duplicate event identities`)
-  assert(text(run.environmentId), `multirun proof run ${index} has no environment id`)
+  assert(
+    text(run.localEnvironmentId),
+    `multirun proof run ${index} has no local environment id`,
+  )
+  assert(
+    text(run.providerEnvironmentId),
+    `multirun proof run ${index} has no provider environment id`,
+  )
   assert(
     Array.isArray(run.identifiers) &&
       run.identifiers.length === PROVIDER_IDENTIFIER_KINDS.length &&
@@ -66,12 +73,8 @@ function assertRun(run, index) {
     `multirun proof run ${index} has incomplete provider identity`,
   )
   assert(
-    run.identifiers[0].id === run.environmentId,
-    `multirun proof run ${index} has a mismatched environment identity`,
-  )
-  assert(
-    run.identifiers[3].id === run.runId,
-    `multirun proof run ${index} has a mismatched run identity`,
+    run.identifiers[0].id === run.providerEnvironmentId,
+    `multirun proof run ${index} has a mismatched provider environment identity`,
   )
 }
 
@@ -132,6 +135,10 @@ export function assertMultirunProof(proof) {
     new Set(proof.runs.map((run) => run.branchId)).size === 2,
     'LIVE-07 runs are not on independent branches',
   )
+  assert(
+    new Set(proof.runs.map((run) => run.localEnvironmentId)).size === 2,
+    'LIVE-07 multirun proof reused a local environment identity',
+  )
   const conversations = new Map([
     [proof.conversations.first.conversationId, proof.conversations.first.branchId],
     [proof.conversations.second.conversationId, proof.conversations.second.branchId],
@@ -140,11 +147,15 @@ export function assertMultirunProof(proof) {
     proof.runs.every((run) => conversations.get(run.conversationId) === run.branchId),
     'LIVE-07 runs do not bind to the recorded conversations and branches',
   )
-  const providerIdentifiers = proof.runs.flatMap((run) => run.identifiers.map(({ id }) => id))
-  assert(
-    new Set(providerIdentifiers).size === providerIdentifiers.length,
-    'LIVE-07 multirun proof reused a provider identity',
-  )
+  for (const kind of PROVIDER_IDENTIFIER_KINDS) {
+    const identifiers = proof.runs.map(
+      (run) => run.identifiers.find((identifier) => identifier.kind === kind)?.id,
+    )
+    assert(
+      new Set(identifiers).size === proof.runs.length,
+      `LIVE-07 multirun proof reused a ${kind} identity`,
+    )
+  }
 
   assert(object(proof.overlap), 'LIVE-07 multirun overlap evidence is missing')
   assert(
@@ -272,7 +283,7 @@ export function assertMultirunProof(proof) {
       (resource) =>
         object(resource) &&
         text(resource.runId) &&
-        text(resource.environmentId) &&
+        text(resource.providerEnvironmentId) &&
         text(resource.id) &&
         resource.confirmed === true,
     ),
@@ -281,7 +292,8 @@ export function assertMultirunProof(proof) {
   const runsById = new Map(proof.runs.map((run) => [run.runId, run]))
   assert(
     proof.cleanup.resources.every(
-      (resource) => resource.environmentId === runsById.get(resource.runId)?.environmentId,
+      (resource) =>
+        resource.providerEnvironmentId === runsById.get(resource.runId)?.providerEnvironmentId,
     ),
     'LIVE-07 multirun cleanup did not bind provider environments to runs',
   )

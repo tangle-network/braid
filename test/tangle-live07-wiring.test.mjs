@@ -77,7 +77,8 @@ function passedMultirunProof() {
       branchId: 'branch-a',
       eventCount: 2,
       eventIdsUnique: true,
-      environmentId: 'environment-a',
+      localEnvironmentId: 'local-environment-a',
+      providerEnvironmentId: 'environment-a',
       identifiers: [
         { kind: 'provider-environment', id: 'environment-a' },
         { kind: 'provider-session', id: 'session-a' },
@@ -92,7 +93,8 @@ function passedMultirunProof() {
       branchId: 'branch-b',
       eventCount: 2,
       eventIdsUnique: true,
-      environmentId: 'environment-b',
+      localEnvironmentId: 'local-environment-b',
+      providerEnvironmentId: 'environment-b',
       identifiers: [
         { kind: 'provider-environment', id: 'environment-b' },
         { kind: 'provider-session', id: 'session-b' },
@@ -103,7 +105,7 @@ function passedMultirunProof() {
     },
   ]
   return {
-    schemaVersion: 'braid.live-required.multirun.v1',
+    schemaVersion: 'braid.live-required.multirun.v2',
     status: 'passed',
     provider: {
       endpoint: 'https://sandbox.tangle.tools',
@@ -152,13 +154,13 @@ function passedMultirunProof() {
       resources: [
         {
           runId: 'multirun-a',
-          environmentId: 'environment-a',
+          providerEnvironmentId: 'environment-a',
           id: 'resource-a',
           confirmed: true,
         },
         {
           runId: 'multirun-b',
-          environmentId: 'environment-b',
+          providerEnvironmentId: 'environment-b',
           id: 'resource-b',
           confirmed: true,
         },

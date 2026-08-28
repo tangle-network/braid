@@ -935,11 +935,15 @@ export async function runProof({
   for (const [runId, controlRef] of controls) {
     try {
       const result = await cleanupRetainedResourceByControlRef(client, controlRef)
-      cleanup.resources.push({ runId, environmentId: controlRef.environmentId, ...result })
+      cleanup.resources.push({
+        runId,
+        providerEnvironmentId: controlRef.environmentId,
+        ...result,
+      })
     } catch (error) {
       cleanup.errors.push({
         runId,
-        environmentId: controlRef.environmentId,
+        providerEnvironmentId: controlRef.environmentId,
         error: safeMessage(error, environment),
       })
     }
@@ -959,7 +963,7 @@ export async function runProof({
         assert.equal(await client.get(resource.id), null)
         cleanup.resources.push({
           runId: null,
-          environmentId: null,
+          providerEnvironmentId: null,
           id: resource.id,
           discovered: true,
           confirmed: true,
@@ -1060,7 +1064,8 @@ export async function runProof({
         provider: viewRun?.provider ?? null,
         runner: viewRun?.runner ?? null,
         model: viewRun?.model ?? null,
-        environmentId: viewRun?.environmentId ?? null,
+        localEnvironmentId: viewRun?.environmentId ?? null,
+        providerEnvironmentId: controlRef?.environmentId ?? null,
         materializationDigest: viewRun?.materializationDigest ?? null,
         cursor: viewRun?.cursor ?? null,
         contentBytes: viewRun?.contentBytes ?? null,

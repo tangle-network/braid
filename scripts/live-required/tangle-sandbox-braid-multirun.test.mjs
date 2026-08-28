@@ -224,7 +224,7 @@ test('multirun release contract rejects missing, failed, or unclean evidence', (
   )
   assert.throws(
     () =>
-      assertMultirunProof({ schemaVersion: 'braid.live-required.multirun.v1', status: 'failed' }),
+      assertMultirunProof({ schemaVersion: 'braid.live-required.multirun.v2', status: 'failed' }),
     /evidence did not pass/u,
   )
 })

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -135,7 +135,8 @@ function validMultirunProof() {
       branchId: 'branch-a',
       eventCount: 2,
       eventIdsUnique: true,
-      environmentId: 'environment-a',
+      localEnvironmentId: 'local-environment-a',
+      providerEnvironmentId: 'environment-a',
       identifiers: [
         { kind: 'provider-environment', id: 'environment-a' },
         { kind: 'provider-session', id: 'session-a' },
@@ -150,7 +151,8 @@ function validMultirunProof() {
       branchId: 'branch-b',
       eventCount: 2,
       eventIdsUnique: true,
-      environmentId: 'environment-b',
+      localEnvironmentId: 'local-environment-b',
+      providerEnvironmentId: 'environment-b',
       identifiers: [
         { kind: 'provider-environment', id: 'environment-b' },
         { kind: 'provider-session', id: 'session-b' },
@@ -161,7 +163,7 @@ function validMultirunProof() {
     },
   ]
   return {
-    schemaVersion: 'braid.live-required.multirun.v1',
+    schemaVersion: 'braid.live-required.multirun.v2',
     status: 'passed',
     provider: {
       endpoint: 'https://sandbox.tangle.tools',
@@ -214,13 +216,13 @@ function validMultirunProof() {
       resources: [
         {
           runId: 'multirun-a',
-          environmentId: 'environment-a',
+          providerEnvironmentId: 'environment-a',
           id: 'resource-a',
           confirmed: true,
         },
         {
           runId: 'multirun-b',
-          environmentId: 'environment-b',
+          providerEnvironmentId: 'environment-b',
           id: 'resource-b',
           confirmed: true,
         },
