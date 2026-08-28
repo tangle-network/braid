@@ -260,6 +260,17 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
       finiteRatio(finding.confidence, 'analysis.finding.confidence')
     for (const citation of finding.citations) assertAnalysisCitation(citation)
   }
+  for (const analyst of record.analysts ?? []) {
+    nonEmpty(analyst.analystId, 'analysis.analysts.analystId')
+    if (!['pending', 'running', 'completed', 'skipped', 'failed'].includes(analyst.status))
+      fail('analysis.analysts.status is invalid')
+    if (analyst.startedAt !== undefined)
+      assertDate(analyst.startedAt, 'analysis.analysts.startedAt')
+    if (analyst.findingsCount !== undefined)
+      finiteNonNegative(analyst.findingsCount, 'analysis.analysts.findingsCount')
+    if (analyst.latencyMs !== undefined)
+      finiteNonNegative(analyst.latencyMs, 'analysis.analysts.latencyMs')
+  }
   if (record.sourceRange !== undefined) {
     for (const eventId of record.sourceRange.eventIds)
       assertEntityId('event', eventId, 'analysis.sourceRange.eventId')

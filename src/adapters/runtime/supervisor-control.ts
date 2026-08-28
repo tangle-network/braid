@@ -1,5 +1,11 @@
-import { type RootHandle, writeWorkerSteer } from '@tangle-network/agent-runtime/kernel'
-import type { WorkerView } from '@tangle-network/agent-runtime/tui'
+import {
+  cancelRun,
+  cancelWorker,
+  type RunCancellation,
+  type WorkerCancellation,
+  writeWorkerSteer,
+} from '@tangle-network/agent-runtime/kernel'
+import type { SupervisorView, WorkerView } from '@tangle-network/agent-runtime/tui'
 import { AGENT_RUNTIME_VERSION } from './agent-runtime-version.js'
 import { type RuntimeSupervisorSnapshotPort, RuntimeSupervisorWatcher } from './supervisor-watch.js'
 
@@ -22,24 +28,21 @@ export interface SupervisorWorkerSteerResult {
 }
 
 export interface SupervisorWorkerCancelResult {
-  readonly status: 'unavailable'
+  readonly status: 'requested' | 'acknowledged' | 'unavailable'
   readonly worker: string
-  readonly issue: SupervisorCapabilityIssue
-}
-
-export interface SupervisorCancelResult {
-  readonly status: 'accepted' | 'unavailable'
+  readonly operationId?: string
+  readonly effect?: WorkerCancellation['effect']
+  readonly detail?: string
+  readonly terminated?: readonly string[]
   readonly issue?: SupervisorCapabilityIssue
 }
 
-export const WORKER_CANCEL_UNAVAILABLE: SupervisorCapabilityIssue = {
-  capability: 'supervisor.worker.cancel',
-  packageName: '@tangle-network/agent-runtime',
-  packageVersion: AGENT_RUNTIME_VERSION,
-  reason:
-    'The published runtime exposes RootHandle.abort for the whole supervisor and writeWorkerSteer for a worker inbox, but no worker-scoped cancellation method.',
-  reproduction:
-    "import { writeWorkerSteer } from '@tangle-network/agent-runtime/kernel'; import { loadTopSnapshot } from '@tangle-network/agent-runtime/tui'; console.log(Object.keys({ writeWorkerSteer, loadTopSnapshot }));",
+export interface SupervisorCancelResult {
+  readonly status: 'requested' | 'acknowledged' | 'unavailable'
+  readonly operationId?: string
+  readonly effect?: RunCancellation['effect']
+  readonly detail?: string
+  readonly issue?: SupervisorCapabilityIssue
 }
 
 function missingWorkerIssue(worker: string): SupervisorCapabilityIssue {
@@ -53,15 +56,14 @@ function missingWorkerIssue(worker: string): SupervisorCapabilityIssue {
   }
 }
 
-function externalCancelIssue(): SupervisorCapabilityIssue {
+function missingSupervisorIssue(supervisorId: string): SupervisorCapabilityIssue {
   return {
-    capability: 'supervisor.cancel.external',
+    capability: 'supervisor.resolve',
     packageName: '@tangle-network/agent-runtime',
     packageVersion: AGENT_RUNTIME_VERSION,
-    reason:
-      'The published runtime monitor can reload persisted state and enqueue worker steering, but it does not expose an external root cancellation operation.',
+    reason: `Runtime snapshot contains no supervisor with id '${supervisorId}'`,
     reproduction:
-      "import * as runtime from '@tangle-network/agent-runtime/kernel'; console.log('RootHandle.abort exists only on an in-process handle', runtime);",
+      "import { loadTopSnapshot } from '@tangle-network/agent-runtime/tui'; console.log(loadTopSnapshot(rootDir).supervisors);",
   }
 }
 
@@ -71,19 +73,22 @@ function findWorker(workers: readonly WorkerView[], target: string): WorkerView 
 
 export class RuntimeSupervisorController {
   readonly #watcher: RuntimeSupervisorSnapshotPort
-  readonly #rootHandle: RootHandle<unknown> | undefined
   readonly #write: typeof writeWorkerSteer
+  readonly #cancelWorker: typeof cancelWorker
+  readonly #cancelRun: typeof cancelRun
 
   constructor(
     options: {
       readonly watcher?: RuntimeSupervisorSnapshotPort
-      readonly rootHandle?: RootHandle<unknown>
       readonly write?: typeof writeWorkerSteer
+      readonly cancelWorker?: typeof cancelWorker
+      readonly cancelRun?: typeof cancelRun
     } = {},
   ) {
     this.#watcher = options.watcher ?? new RuntimeSupervisorWatcher()
-    this.#rootHandle = options.rootHandle
     this.#write = options.write ?? writeWorkerSteer
+    this.#cancelWorker = options.cancelWorker ?? cancelWorker
+    this.#cancelRun = options.cancelRun ?? cancelRun
   }
 
   steerWorker(
@@ -113,14 +118,67 @@ export class RuntimeSupervisorController {
     }
   }
 
-  cancelWorker(worker: string): SupervisorWorkerCancelResult {
-    return { status: 'unavailable', worker, issue: WORKER_CANCEL_UNAVAILABLE }
+  cancelWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    operationId: string,
+    reason = 'cancelled by user',
+    source = 'braid',
+  ): SupervisorWorkerCancelResult {
+    const supervisor = this.#findSupervisor(rootDir, supervisorId)
+    if (supervisor === undefined) {
+      return {
+        status: 'unavailable',
+        worker: workerIdOrLabel,
+        issue: missingSupervisorIssue(supervisorId),
+      }
+    }
+    const worker = findWorker(supervisor.workers, workerIdOrLabel)
+    if (worker === undefined) {
+      return {
+        status: 'unavailable',
+        worker: workerIdOrLabel,
+        issue: missingWorkerIssue(workerIdOrLabel),
+      }
+    }
+    const cancellation = this.#cancelWorker(supervisor.stateDir, worker.id, operationId, {
+      reason,
+      source,
+    })
+    return {
+      status: cancellation.effect === 'unknown' ? 'requested' : 'acknowledged',
+      worker: worker.id,
+      operationId: cancellation.operationId,
+      effect: cancellation.effect,
+      ...(cancellation.detail === undefined ? {} : { detail: cancellation.detail }),
+      terminated: cancellation.terminated,
+    }
   }
 
-  cancelSupervisor(reason = 'cancelled by user'): SupervisorCancelResult {
-    if (this.#rootHandle === undefined)
-      return { status: 'unavailable', issue: externalCancelIssue() }
-    this.#rootHandle.abort(reason)
-    return { status: 'accepted' }
+  cancelSupervisor(
+    rootDir: string,
+    supervisorId: string,
+    operationId: string,
+    reason = 'cancelled by user',
+    source = 'braid',
+  ): SupervisorCancelResult {
+    const supervisor = this.#findSupervisor(rootDir, supervisorId)
+    if (supervisor === undefined) {
+      return { status: 'unavailable', issue: missingSupervisorIssue(supervisorId) }
+    }
+    const cancellation = this.#cancelRun(supervisor.stateDir, operationId, { reason, source })
+    return {
+      status: cancellation.effect === 'unknown' ? 'requested' : 'acknowledged',
+      operationId: cancellation.operationId,
+      effect: cancellation.effect,
+      ...(cancellation.detail === undefined ? {} : { detail: cancellation.detail }),
+    }
+  }
+
+  #findSupervisor(rootDir: string, supervisorId: string): SupervisorView | undefined {
+    return this.#watcher
+      .snapshot(rootDir)
+      .supervisors.find((candidate) => candidate.id === supervisorId)
   }
 }

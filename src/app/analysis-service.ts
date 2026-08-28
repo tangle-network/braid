@@ -105,10 +105,10 @@ export class AnalysisService {
       }
       await this.#lifecycle.create(current)
       yield { type: 'started', analysis: current }
-      current = await this.#lifecycle.running(current)
+      const analystIds = this.#execution.resolveAnalystIds(request)
+      current = await this.#lifecycle.running(current, analystIds)
       yield { type: 'running', analysis: current }
 
-      const analystIds = this.#execution.resolveAnalystIds(request)
       let exactResult: ExactAnalystRunResult | undefined
       for await (const item of this.#execution.stream({
         identity: prepared.identity,
@@ -120,6 +120,7 @@ export class AnalysisService {
           this.#lifecycle.recordRetainedAdmission(prepared.identity, callId, admission),
       })) {
         if (item.result !== undefined) exactResult = item.result
+        current = await this.#lifecycle.progress(current, item.event)
         yield {
           type: 'analyst',
           analysisId: prepared.identity.analysisId,

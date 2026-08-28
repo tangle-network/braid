@@ -378,6 +378,12 @@ export interface ActivityItemView {
   readonly entityId?: string
   readonly parentId?: string
   readonly depth?: number
+  readonly supervisorId?: string
+  readonly analysisFindings?: readonly {
+    readonly id: string
+    readonly title: string
+    readonly supported: boolean
+  }[]
 }
 
 export type GraphNodeType =
@@ -484,12 +490,22 @@ export interface AnalysisExecutionView {
   readonly wallTimeMs?: number
 }
 
+export interface AnalysisAnalystProgressView {
+  readonly id: string
+  readonly status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed'
+  readonly findingsCount?: number
+  readonly latencyMs?: number
+  readonly detail?: string
+}
+
 export interface AnalysisView {
   readonly source: string
   readonly question?: string
   readonly analyst: string
   readonly recipe: string
+  readonly budget?: string
   readonly status: ViewStatus
+  readonly analysts?: readonly AnalysisAnalystProgressView[]
   readonly findings: readonly AnalysisFindingView[]
   readonly citations: readonly {
     readonly id: string

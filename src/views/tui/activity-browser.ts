@@ -12,6 +12,7 @@ import { executionTargetFor } from './execution-target.js'
 import type { BraidTheme } from './theme.js'
 
 export type ActivityBrowserScope = 'all' | 'runs' | 'analyses' | 'workers'
+export type ActivityBrowserAction = 'refresh' | 'steer' | 'cancel' | 'attach' | 'promote'
 
 const ACTIVITY_SCOPES = ['all', 'runs', 'analyses', 'workers'] as const
 
@@ -26,10 +27,12 @@ export interface ActivityBrowserOptions {
   readonly notice?: () => string | undefined
   readonly emptyMessage?: string
   readonly pinned?: string
+  readonly onAction?: (action: ActivityBrowserAction, selectedId: string | undefined) => void
 }
 
 export class ActivityBrowserPanel extends EntityBrowser {
   readonly #scopeState: { scope: ActivityBrowserScope }
+  readonly #onAction: ActivityBrowserOptions['onAction']
 
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
@@ -49,6 +52,7 @@ export class ActivityBrowserPanel extends EntityBrowser {
       ...(options.openSelected === undefined ? {} : { openSelected: options.openSelected }),
     })
     this.#scopeState = scopeState
+    this.#onAction = options.onAction
   }
 
   override handleInput(data: string): void {
@@ -56,6 +60,11 @@ export class ActivityBrowserPanel extends EntityBrowser {
       const current = ACTIVITY_SCOPES.indexOf(this.#scopeState.scope)
       this.#scopeState.scope = ACTIVITY_SCOPES[(current + 1) % ACTIVITY_SCOPES.length] ?? 'all'
       this.invalidate()
+      return
+    }
+    const action = activityAction(data, this.#scopeState.scope)
+    if (action !== undefined && this.#onAction !== undefined) {
+      this.#onAction(action, this.selectedId)
       return
     }
     super.handleInput(data)
@@ -79,7 +88,7 @@ export function activityDocument(
     .reverse()
   return {
     title: scope === 'all' ? 'activity' : scope,
-    filterHint: `tab filter: ${scope}`,
+    filterHint: activityFooter(scope, view),
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
@@ -91,6 +100,31 @@ export function activityDocument(
           : 'No activity has been recorded.'),
     rows: items.map((item) => rowFor(item, details, runs, view)),
   }
+}
+
+function activityAction(
+  data: string,
+  scope: ActivityBrowserScope,
+): ActivityBrowserAction | undefined {
+  if (matchesKey(data, 'r')) return 'refresh'
+  if (scope === 'runs') return undefined
+  if (matchesKey(data, 'x')) return 'cancel'
+  if (scope === 'analyses') return matchesKey(data, 'p') ? 'promote' : undefined
+  if (matchesKey(data, 's')) return 'steer'
+  if (matchesKey(data, 'a')) return 'attach'
+  if (scope === 'all' && matchesKey(data, 'p')) return 'promote'
+  return undefined
+}
+
+function activityFooter(scope: ActivityBrowserScope, view: BraidViewModel): string {
+  if (scope === 'workers') {
+    const steer = view.capabilities['supervisor.worker.steer']?.available === true
+    const attach = view.capabilities['supervisor.worker.attach']?.available === true
+    return steer || attach ? 's steer · x cancel · a/r' : 's/a off · x cancel · r'
+  }
+  if (scope === 'analyses') return 'p promote · x cancel · r'
+  if (scope === 'all') return 'tab filter: selected actions s/x/a/p · r refresh'
+  return 'tab filter · r refresh'
 }
 
 function rowFor(

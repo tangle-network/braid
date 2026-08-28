@@ -182,6 +182,7 @@ function surfaceOptions(
     modals,
     rows: () => 12,
     requestRender,
+    nextOperationId: () => 'op-refresh-lifecycle',
     openProfile: () => {},
     openConnection: () => {},
   }

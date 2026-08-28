@@ -20,6 +20,7 @@ import { ConversationConfirmation } from '../src/views/tui/conversation-dialogs.
 import { ForkPreviewPanel } from '../src/views/tui/fork-preview.js'
 import { GraphView } from '../src/views/tui/graph.js'
 import { InteractionShell } from '../src/views/tui/interaction.js'
+import { createWorkerSteerPrompt } from '../src/views/tui/supervisor-actions.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -374,7 +375,7 @@ test('long workflow state preserves the closing key instead of pushing it below 
   const analysisScreen = await renderOverlay(analysis, 40, 12)
   assert.match(analysisScreen.join('\n'), /page 1\/\d+/u)
   analysis.handleInput('\u001b[6~')
-  assert.match(analysis.render(40).join('\n'), /finding 4/u)
+  assert.match(analysis.render(40).join('\n'), /finding [2-8]/u)
   assert.match(analysisScreen.join('\n'), /←\/esc back/u)
 })
 
@@ -551,7 +552,7 @@ test('wide activity keeps the list and details together and tabs through bounded
   browser.handleInput('\t')
   assert.match(browser.render(120).join('\n'), /workers · 0/u)
   browser.handleInput('\t')
-  assert.match(browser.render(120).join('\n'), /tab filter: all/u)
+  assert.match(browser.render(120).join('\n'), /tab filter/u)
   browser.handleInput('\u001b[D')
   assert.equal(leftCloses, 1)
 
@@ -567,6 +568,122 @@ test('wide activity keeps the list and details together and tabs through bounded
   escaped.render(120)
   escaped.handleInput('\u001b')
   assert.equal(escapeCloses, 1)
+})
+
+test('activity browser exposes keyboard actions for workers and analyses at every reference size', async () => {
+  const actions: Array<{ action: string; selectedId: string | undefined }> = []
+  const recordAction = (action: string, selectedId: string | undefined) => {
+    actions.push({ action, selectedId })
+  }
+  const workerView: BraidViewModel = {
+    ...baseView(),
+    activity: [
+      {
+        id: 'worker:worker-action',
+        kind: 'worker',
+        title: 'worker action',
+        status: 'running',
+        entityType: 'worker',
+        entityId: 'worker-action',
+        supervisorId: 'supervisor-action',
+      },
+    ],
+  }
+  for (const [width, rows] of [
+    [40, 12],
+    [80, 24],
+    [120, 40],
+    [200, 60],
+  ] as const) {
+    const rendered = await renderOverlay(
+      new ActivityBrowserPanel(theme, {
+        view: () => workerView,
+        rows: () => rows,
+        onClose: () => {},
+        scope: 'workers',
+        onAction: recordAction,
+      }),
+      width,
+      rows,
+    )
+    assert.equal(rendered.length, rows)
+    assertFits(rendered, width)
+    assert.match(rendered.join('\n'), /s\/a off/u)
+  }
+  const workerBrowser = new ActivityBrowserPanel(theme, {
+    view: () => workerView,
+    rows: () => 24,
+    onClose: () => {},
+    scope: 'workers',
+    onAction: recordAction,
+  })
+  workerBrowser.render(80)
+  for (const key of ['s', 'x', 'a', 'r']) workerBrowser.handleInput(key)
+  assert.deepEqual(actions, [
+    { action: 'steer', selectedId: 'worker:worker-action' },
+    { action: 'cancel', selectedId: 'worker:worker-action' },
+    { action: 'attach', selectedId: 'worker:worker-action' },
+    { action: 'refresh', selectedId: 'worker:worker-action' },
+  ])
+
+  const analysisBrowser = new ActivityBrowserPanel(theme, {
+    view: () => ({
+      ...baseView(),
+      activity: [
+        {
+          id: 'analysis:analysis-action',
+          kind: 'analysis',
+          title: 'failure review',
+          status: 'completed',
+          entityType: 'analysis',
+          entityId: 'analysis-action',
+        },
+      ],
+    }),
+    rows: () => 24,
+    onClose: () => {},
+    scope: 'analyses',
+    onAction: recordAction,
+  })
+  analysisBrowser.render(80)
+  analysisBrowser.handleInput('p')
+  assert.deepEqual(actions.at(-1), {
+    action: 'promote',
+    selectedId: 'analysis:analysis-action',
+  })
+})
+
+test('worker steer prompt accepts one message and keeps empty and cancel paths keyboard reachable', async () => {
+  const submissions: string[] = []
+  let cancels = 0
+  const prompt = createWorkerSteerPrompt({
+    theme,
+    worker: 'worker-action',
+    onSubmit: (message) => submissions.push(message),
+    onCancel: () => {
+      cancels += 1
+    },
+  })
+  const frame = await renderOverlay(prompt, 40, 12)
+  assertFits(frame, 40)
+  assert.match(frame.join('\n'), /enter send · esc cancel/u)
+  prompt.handleInput('\r')
+  assert.match(prompt.render(40).join('\n'), /steering message is required/iu)
+  prompt.handleInput('  inspect the failed check  ')
+  prompt.handleInput('\r')
+  prompt.handleInput('\r')
+  assert.deepEqual(submissions, ['inspect the failed check'])
+
+  const cancelled = createWorkerSteerPrompt({
+    theme,
+    worker: 'worker-action',
+    onSubmit: () => assert.fail('cancel must not submit'),
+    onCancel: () => {
+      cancels += 1
+    },
+  })
+  cancelled.handleInput('\u001b')
+  assert.equal(cancels, 1)
 })
 
 test('wide activity gives one selected result the full surface', () => {

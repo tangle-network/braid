@@ -1,3 +1,4 @@
+import type { ExactAnalystRunEvent } from '@tangle-network/agent-eval'
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import type {
   AnalysisRecord,
@@ -97,7 +98,7 @@ export interface AnalysisProgressAnalyst {
   readonly type: 'analyst'
   readonly analysisId: AnalysisId
   readonly analysisRunId: AnalysisRunId
-  readonly event: unknown
+  readonly event: ExactAnalystRunEvent
 }
 
 export interface AnalysisProgressCompleted {

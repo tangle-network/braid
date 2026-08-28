@@ -340,12 +340,24 @@ function registry(
       execution_plan: {},
     } as unknown as ExactAnalystRunEvent
     const findings = [...(options.findings ?? [])]
+    const summary = {
+      analyst_id: runOptions.analystIds[0] ?? 'efficiency-behavioral',
+      status: 'ok',
+      findings_count: findings.length,
+      latency_ms: 1,
+      usage: {
+        calls: 0,
+        tokens: null,
+        cost: { kind: 'known', usd: 0 },
+        knownCostUsd: 0,
+      },
+    } as const
     yield {
       type: 'analyst-completed',
       analyst_id: runOptions.analystIds[0] ?? 'efficiency-behavioral',
       started_at: NOW,
       findings,
-      summary: {},
+      summary,
     } as unknown as ExactAnalystRunEvent
     const result: ExactAnalystRunResult = {
       run_id: runId,
@@ -353,7 +365,7 @@ function registry(
       started_at: NOW,
       ended_at: NOW,
       findings,
-      per_analyst: [],
+      per_analyst: [summary],
       total_cost_usd: 0,
       execution_plan: {},
       completion: { status: 'complete' },

@@ -1,15 +1,22 @@
 import type { Component } from '@earendil-works/pi-tui'
 import type { AnalysisRecord } from '../../domain/entities.js'
-import type { BraidUiController } from '../shared/intents.js'
+import type { BraidIntent, BraidUiController } from '../shared/intents.js'
+import type { ActivityItemView } from '../shared/models.js'
 import { sanitizeNotification } from '../shared/sanitize.js'
-import { ActivityBrowserPanel, type ActivityBrowserScope } from './activity-browser.js'
+import {
+  type ActivityBrowserAction,
+  ActivityBrowserPanel,
+  type ActivityBrowserScope,
+} from './activity-browser.js'
 import { isAnalysisComparisonResult } from './comparison.js'
+import { ConversationConfirmation } from './conversation-dialogs.js'
 import { DetailsViewPanel } from './details.js'
 import { GraphView } from './graph.js'
 import { type HelpViewOptions, HelpViewPanel } from './help.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import { SearchableSelector } from './selector.js'
 import { UnavailablePanel } from './terminal-shell.js'
+import { createWorkerSteerPrompt } from './supervisor-actions.js'
 import type { BraidTheme } from './theme.js'
 import type { EntityBrowserRow } from './entity-browser.js'
 
@@ -19,6 +26,7 @@ export interface TerminalSurfaceOverlayOptions {
   readonly modals: ModalCoordinator
   readonly rows: () => number
   readonly requestRender: () => void
+  readonly nextOperationId: () => string
   readonly keyboardDiagnostic?: () => string
   readonly keymapDiagnostic?: () => string | undefined
   readonly openProfile: () => void
@@ -182,6 +190,7 @@ export class TerminalSurfaceOverlays {
       ...(emptyMessage === undefined ? {} : { emptyMessage }),
       ...(pinned === undefined ? {} : { pinned }),
       onOpenSelected: (row) => this.#focusSelectedRun(row),
+      onAction: (action, actionSelectedId) => this.#handleActivityAction(action, actionSelectedId),
       openSelected,
     })
   }
@@ -189,6 +198,206 @@ export class TerminalSurfaceOverlays {
   #focusSelectedRun(row: EntityBrowserRow): void {
     if (row.kind !== 'run' || row.runId === undefined) return
     this.#options.focusRun?.(row.runId)
+  }
+
+  #handleActivityAction(action: ActivityBrowserAction, selectedId: string | undefined): void {
+    if (action === 'refresh') {
+      void this.#manualRefresh()
+      return
+    }
+    const selected = this.#options.controller.view().activity.find((item) => item.id === selectedId)
+    if (selected === undefined) {
+      this.openUnavailable('activity action unavailable', 'Select an activity row first')
+      return
+    }
+    if (action === 'steer') {
+      this.#openWorkerSteer(selected)
+      return
+    }
+    if (action === 'cancel') {
+      this.#openActivityCancel(selected)
+      return
+    }
+    if (action === 'attach') {
+      void this.#attachWorker(selected)
+      return
+    }
+    this.#openAnalysisPromotion(selected)
+  }
+
+  async #manualRefresh(): Promise<void> {
+    const result = await this.#options.controller.dispatch({ type: 'refresh-supervision' })
+    if (result.kind === 'accepted') {
+      this.#setSupervisionStatus('runtime activity refreshed')
+      return
+    }
+    this.#setSupervisionStatus(
+      result.kind === 'unavailable' ? result.reason : `refresh failed: ${result.message}`,
+    )
+  }
+
+  #openWorkerSteer(selected: ActivityItemView): void {
+    if (
+      selected.kind !== 'worker' ||
+      selected.entityId === undefined ||
+      selected.supervisorId === undefined
+    ) {
+      this.openUnavailable('steer unavailable', 'Select a runtime worker before steering')
+      return
+    }
+    const capability = this.#options.controller.view().capabilities['supervisor.worker.steer']
+    if (capability?.available !== true) {
+      this.openUnavailable(
+        'steer unavailable',
+        capability?.reason ?? 'Runtime did not report retry-safe worker steering',
+      )
+      return
+    }
+    const prompt = createWorkerSteerPrompt({
+      theme: this.#options.theme,
+      worker: selected.title,
+      onCancel: () => this.#options.modals.closeTop(),
+      onSubmit: (message) => {
+        void this.#options.controller
+          .dispatch({
+            type: 'headless-command',
+            command: 'steer_worker',
+            operationId: this.#options.nextOperationId(),
+            params: {
+              supervisorId: selected.supervisorId,
+              workerId: selected.entityId,
+              text: message,
+            },
+          })
+          .then((result) => {
+            if (result.kind !== 'accepted') {
+              prompt.setError(result.kind === 'unavailable' ? result.reason : result.message)
+              return
+            }
+            this.#options.modals.closeTop()
+            this.#setSupervisionStatus(`steer queued for ${selected.title}`)
+          })
+          .catch((error: unknown) => {
+            prompt.setError(error instanceof Error ? error.message : 'Worker steering failed')
+          })
+      },
+    })
+    this.#options.modals.open(prompt, { anchor: 'center', width: '72%', maxHeight: 10 })
+  }
+
+  #openActivityCancel(selected: ActivityItemView): void {
+    const command = cancelCommand(selected, this.#options.nextOperationId())
+    if (command === undefined) {
+      this.openUnavailable(
+        'cancel unavailable',
+        'Select a running analysis, worker, or supervisor before cancelling',
+      )
+      return
+    }
+    const descendants = descendantCount(this.#options.controller.view().activity, selected)
+    const detail =
+      descendants === 0
+        ? `cancel this ${selected.kind}; the result waits for an exact acknowledgement`
+        : `cancel this ${selected.kind} and ${descendants} descendant(s); the result waits for exact acknowledgements`
+    let confirmation: ConversationConfirmation
+    confirmation = new ConversationConfirmation({
+      theme: this.#options.theme,
+      title: `cancel ${selected.kind}`,
+      target: selected.title,
+      detail,
+      confirmLabel: 'request cancellation',
+      onCancel: () => this.#options.modals.closeTop(),
+      onConfirm: () => {
+        void this.#options.controller
+          .dispatch(command)
+          .then((result) => {
+            if (result.kind !== 'accepted') {
+              confirmation.setError(result.kind === 'unavailable' ? result.reason : result.message)
+              return
+            }
+            this.#options.modals.closeTop()
+            this.#setSupervisionStatus(`cancellation requested for ${selected.title}`)
+          })
+          .catch((error: unknown) => {
+            confirmation.setError(
+              error instanceof Error ? error.message : 'Cancellation request failed',
+            )
+          })
+      },
+    })
+    this.#options.modals.open(confirmation, { anchor: 'center', width: '78%', maxHeight: 10 })
+  }
+
+  async #attachWorker(selected: ActivityItemView): Promise<void> {
+    if (
+      selected.kind !== 'worker' ||
+      selected.entityId === undefined ||
+      selected.supervisorId === undefined
+    ) {
+      this.openUnavailable('attach unavailable', 'Select a runtime worker before attaching')
+      return
+    }
+    const result = await this.#options.controller.dispatch({
+      type: 'headless-command',
+      command: 'attach_worker',
+      operationId: this.#options.nextOperationId(),
+      params: { supervisorId: selected.supervisorId, workerId: selected.entityId },
+    })
+    if (result.kind !== 'accepted') {
+      this.openUnavailable(
+        'attach unavailable',
+        result.kind === 'unavailable' ? result.reason : result.message,
+      )
+      return
+    }
+    this.openUnavailable('attach unavailable', 'The runtime returned no terminal attachment')
+  }
+
+  #openAnalysisPromotion(selected: ActivityItemView): void {
+    if (selected.kind !== 'analysis' || selected.entityId === undefined) {
+      this.openUnavailable('promotion unavailable', 'Select a completed analysis first')
+      return
+    }
+    const findings = (selected.analysisFindings ?? []).filter((finding) => finding.supported)
+    if (findings.length === 0) {
+      this.openUnavailable(
+        'promotion unavailable',
+        'This analysis has no cited finding that can be sent to the branch',
+      )
+      return
+    }
+    const selector = new SearchableSelector({
+      title: 'send cited finding to branch',
+      items: findings.map((finding) => ({
+        value: finding.id,
+        label: finding.title,
+        description: 'cited finding',
+      })),
+      theme: this.#options.theme,
+      footer: 'enter send · esc cancel',
+      onCancel: () => this.#options.modals.closeTop(),
+      onSelect: (item) => {
+        void this.#options.controller
+          .dispatch({
+            type: 'headless-command',
+            command: 'promote_analysis',
+            operationId: this.#options.nextOperationId(),
+            params: { analysisId: selected.entityId, findingIds: [item.value] },
+          })
+          .then((result) => {
+            this.#options.modals.closeTop()
+            if (result.kind !== 'accepted') {
+              this.openUnavailable(
+                'promotion unavailable',
+                result.kind === 'unavailable' ? result.reason : result.message,
+              )
+              return
+            }
+            this.#options.requestRender()
+          })
+      },
+    })
+    this.#options.modals.open(selector, { anchor: 'center', width: '84%', maxHeight: '80%' })
   }
 
   #hasActivity(id: string): boolean {
@@ -346,4 +555,60 @@ function comparisonActivityId(value: unknown): string | undefined {
   return isRecord(value) && typeof value.analysisId === 'string'
     ? `analysis:${value.analysisId}`
     : undefined
+}
+
+function cancelCommand(
+  selected: ActivityItemView,
+  operationId: string,
+): Extract<BraidIntent, { type: 'headless-command' }> | undefined {
+  if (selected.status !== 'running' && selected.status !== 'starting') return undefined
+  if (selected.kind === 'analysis' && selected.entityId !== undefined) {
+    return {
+      type: 'headless-command',
+      command: 'cancel_analysis',
+      operationId,
+      params: { analysisId: selected.entityId },
+    }
+  }
+  if (
+    selected.kind === 'worker' &&
+    selected.entityId !== undefined &&
+    selected.supervisorId !== undefined
+  ) {
+    return {
+      type: 'headless-command',
+      command: 'cancel_worker',
+      operationId,
+      params: { supervisorId: selected.supervisorId, workerId: selected.entityId },
+    }
+  }
+  if (selected.kind === 'supervisor' && selected.entityId !== undefined) {
+    return {
+      type: 'headless-command',
+      command: 'cancel_supervisor',
+      operationId,
+      params: { supervisorId: selected.entityId },
+    }
+  }
+  return undefined
+}
+
+function descendantCount(
+  activity: readonly ActivityItemView[],
+  selected: ActivityItemView,
+): number {
+  if (selected.entityId === undefined) return 0
+  const queue = [selected.entityId]
+  const descendants = new Set<string>()
+  while (queue.length > 0) {
+    const parent = queue.shift()
+    if (parent === undefined) break
+    for (const item of activity) {
+      if (item.parentId !== parent || item.entityId === undefined || descendants.has(item.entityId))
+        continue
+      descendants.add(item.entityId)
+      queue.push(item.entityId)
+    }
+  }
+  return descendants.size
 }

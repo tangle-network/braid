@@ -18,6 +18,10 @@ export const UNSUPPORTED = Object.freeze({
   'interaction.automation': 'Interaction automation requires the shared response contract',
   'run.interactive': 'Native terminal mode requires an interactive TUI and a supported provider',
   'run.attach': 'Native terminal attachment requires an interactive TUI and a retained session',
+  'supervisor.worker.attach':
+    'The runtime snapshot does not carry the retained interactive reference required to attach to an exact worker',
+  'supervisor.worker.steer':
+    'The runtime steer API generates a new request identifier on every call and cannot replay a caller operation identifier safely',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
 } satisfies Readonly<Record<string, string>>)
 
@@ -69,6 +73,15 @@ export function capabilityMap(
           reason: 'Two completed or failed runs are required for comparison',
         }
       : { available: true, source: 'application' }
+  capabilities['analysis.cancel'] = state.analyses.some(
+    (analysis) => analysis.status === 'preparing' || analysis.status === 'running',
+  )
+    ? { available: true, source: 'application' }
+    : {
+        available: false,
+        source: 'application',
+        reason: 'There is no running analysis to cancel',
+      }
   capabilities['application.quit'] = { available: true, source: 'local' }
   capabilities['help.read'] = { available: true, source: 'local' }
   capabilities['profile.select'] = { available: true, source: 'application' }
@@ -77,6 +90,42 @@ export function capabilityMap(
   capabilities['activity.read'] = { available: true, source: 'local' }
   capabilities['graph.read'] = { available: true, source: 'local' }
   capabilities['details.read'] = { available: true, source: 'local' }
+  const hasWorkspace = state.workspace !== null
+  const hasRunningWorker = state.workers.some((worker) => worker.status === 'running')
+  const hasRunningSupervisor = state.supervisors.some(
+    (supervisor) => supervisor.status === 'running',
+  )
+  capabilities['supervisor.refresh'] = hasWorkspace
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'Initialize a workspace before refreshing runtime supervision',
+      }
+  capabilities['supervisor.worker.steer'] = {
+    available: false,
+    source: 'runtime',
+    reason: UNSUPPORTED['supervisor.worker.steer'],
+  }
+  capabilities['supervisor.worker.cancel'] = hasRunningWorker
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'There is no running supervised worker to cancel',
+      }
+  capabilities['supervisor.cancel'] = hasRunningSupervisor
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'There is no running supervisor to cancel',
+      }
+  capabilities['supervisor.worker.attach'] = {
+    available: false,
+    source: 'runtime',
+    reason: UNSUPPORTED['supervisor.worker.attach'],
+  }
   capabilities['interaction.respond'] = canRespond
     ? { available: true, source: 'runtime' }
     : {

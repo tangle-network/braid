@@ -470,11 +470,15 @@ function queueViews(state: BraidState): readonly {
 
 export function activityFor(state: BraidState): ActivityItemView[] {
   const workers = new Map(state.workers.map((worker) => [String(worker.id), worker] as const))
+  const analyses = new Map(
+    state.analyses.map((analysis) => [String(analysis.id), analysis] as const),
+  )
   const workerDepth = new Map<string, number>()
   const runs = new Map(state.runs.map((run) => [String(run.id), run] as const))
   return queryActivity(state, { limit: MAX_VISIBLE_RUNS }).activity.map((item) => {
     const run = item.runId === undefined ? undefined : runs.get(item.runId)
     const worker = item.entityType === 'worker' ? workers.get(item.entityId ?? '') : undefined
+    const analysis = item.entityType === 'analysis' ? analyses.get(item.entityId ?? '') : undefined
     const parentId =
       worker?.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined
         ? undefined
@@ -503,6 +507,16 @@ export function activityFor(state: BraidState): ActivityItemView[] {
       ...(item.entityId === undefined ? {} : { entityId: item.entityId }),
       ...(parentId === undefined ? {} : { parentId: String(parentId) }),
       ...(depth === undefined ? {} : { depth }),
+      ...(worker === undefined ? {} : { supervisorId: String(worker.supervisorId) }),
+      ...(analysis === undefined
+        ? {}
+        : {
+            analysisFindings: analysis.findings.map((finding) => ({
+              id: finding.id,
+              title: sanitizeTerminalText(finding.text),
+              supported: finding.supported && finding.citations.length > 0,
+            })),
+          }),
     }
   })
 }

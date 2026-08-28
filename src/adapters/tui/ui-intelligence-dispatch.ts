@@ -6,7 +6,9 @@ import { AnalysisCapabilityError } from '../../app/analysis-types.js'
 import type { BraidApplication } from '../../app/application.js'
 import { AppError } from '../../app/errors.js'
 import type { BraidState } from '../../domain/state.js'
+import { capabilityForHeadlessCommand } from '../../views/shared/headless-commands.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
+import type { BraidViewModel } from '../../views/shared/models.js'
 import { redactSensitiveText } from '../../views/shared/sanitize.js'
 import type { UiFixture } from './ui-fixtures.js'
 import { resolveIntelligenceFixture } from './ui-intelligence-fixtures.js'
@@ -14,6 +16,7 @@ import { resolveIntelligenceFixture } from './ui-intelligence-fixtures.js'
 interface IntelligenceDispatchContext {
   readonly app: BraidApplication
   readonly fixture: UiFixture | undefined
+  readonly view: () => BraidViewModel
   readonly notify: () => void
   readonly setNotice: (notice: string) => void
 }
@@ -49,10 +52,29 @@ function requiresOperationId(intent: BraidIntent): boolean {
     intent.command === 'analyze' ||
     intent.command === 'compare' ||
     intent.command === 'promote_analysis' ||
+    intent.command === 'cancel_analysis' ||
     intent.command === 'reconnect' ||
     intent.command === 'steer_worker' ||
-    intent.command === 'cancel_worker'
+    intent.command === 'cancel_worker' ||
+    intent.command === 'cancel_supervisor' ||
+    intent.command === 'attach_worker'
   )
+}
+
+function isIntelligenceHeadlessCommand(command: string): boolean {
+  return [
+    'ask',
+    'analyze',
+    'compare',
+    'promote_analysis',
+    'cancel_analysis',
+    'reconnect',
+    'refresh_supervision',
+    'steer_worker',
+    'cancel_worker',
+    'cancel_supervisor',
+    'attach_worker',
+  ].includes(command)
 }
 
 function accepted(app: BraidApplication, data: unknown, operationId?: string): UiDispatchResult {
@@ -197,11 +219,12 @@ function analysisRequestForCommand(
     return { request: { ...source, question, recipe: 'ask' } }
   }
   if (command === 'analyze') {
-    if (args.length !== 1 || !['failure', 'cost', 'tools', 'improvement'].includes(args[0] ?? '')) {
-      invalid('INVALID_PARAMS', '/analyze requires one of failure, cost, tools, or improvement')
-    }
-    const recipe = args[0]
-    if (recipe === undefined) invalid('INVALID_PARAMS', '/analyze requires a named recipe')
+    const recipe = args
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(',')
+    if (!recipe) invalid('INVALID_PARAMS', '/analyze requires a named recipe or all')
     return { request: { ...sourceRequest(state, 'last'), recipe } }
   }
   invalid('INVALID_PARAMS', '/compare requires two source references')
@@ -273,6 +296,15 @@ function runtimeWorkerReference(
   }
 }
 
+function runtimeSupervisorReference(
+  state: BraidState,
+  supervisorId: string,
+): { readonly rootDir: string; readonly runtimeSupervisorId: string } | undefined {
+  const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
+  if (supervisor === undefined || state.workspace !== supervisor.runtimeRoot) return undefined
+  return { rootDir: supervisor.runtimeRoot, runtimeSupervisorId: supervisor.runtimeId }
+}
+
 async function dispatchSupervisorWorker(
   command: 'steer_worker' | 'cancel_worker',
   context: IntelligenceDispatchContext,
@@ -285,13 +317,40 @@ async function dispatchSupervisorWorker(
   if (typeof supervisorId !== 'string') {
     invalid('INVALID_PARAMS', `${command} requires supervisorId and workerId`)
   }
-  if (command === 'cancel_worker') {
-    const result = await context.app.intelligence.supervisor.cancelWorker(workerId)
-    return unavailable(issueReason(result.issue))
-  }
   const reference = runtimeWorkerReference(context.app.state(), supervisorId, workerId)
   if (reference === undefined) {
     return unavailable('The selected worker is not present under the selected supervisor')
+  }
+  if (command === 'cancel_worker') {
+    if (operationId === undefined)
+      invalid('OPERATION_ID_REQUIRED', 'cancel_worker requires operationId')
+    const reason = typeof params.reason === 'string' ? params.reason : undefined
+    try {
+      const result = await context.app.intelligence.supervisor.cancelWorker(
+        reference.rootDir,
+        reference.runtimeSupervisorId,
+        reference.runtimeWorkerId,
+        operationId,
+        reason,
+      )
+      if (result.status === 'unavailable') {
+        return unavailable(
+          result.issue === undefined
+            ? 'Worker cancellation is unavailable'
+            : issueReason(result.issue),
+        )
+      }
+      context.setNotice(
+        result.effect === 'cancelled'
+          ? `Worker cancellation confirmed: ${workerId}`
+          : `Worker cancellation ${result.effect ?? 'requested'}: ${workerId}`,
+      )
+      return accepted(context.app, { ...result, worker: workerId }, operationId)
+    } catch (error) {
+      return unavailable(
+        `Worker cancellation is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
   const text = params.text
   if (typeof text !== 'string') {
@@ -317,6 +376,48 @@ async function dispatchSupervisorWorker(
   }
 }
 
+async function dispatchSupervisorCancel(
+  context: IntelligenceDispatchContext,
+  params: Readonly<Record<string, unknown>>,
+  operationId?: string,
+): Promise<UiDispatchResult> {
+  const supervisorId = params.supervisorId
+  if (typeof supervisorId !== 'string')
+    invalid('INVALID_PARAMS', 'cancel_supervisor requires supervisorId')
+  if (operationId === undefined)
+    invalid('OPERATION_ID_REQUIRED', 'cancel_supervisor requires operationId')
+  const reference = runtimeSupervisorReference(context.app.state(), supervisorId)
+  if (reference === undefined) {
+    return unavailable('The selected supervisor is not present in the current workspace')
+  }
+  const reason = typeof params.reason === 'string' ? params.reason : undefined
+  try {
+    const result = await context.app.intelligence.supervisor.cancelSupervisor(
+      reference.rootDir,
+      reference.runtimeSupervisorId,
+      operationId,
+      reason,
+    )
+    if (result.status === 'unavailable') {
+      return unavailable(
+        result.issue === undefined
+          ? 'Supervisor cancellation is unavailable'
+          : issueReason(result.issue),
+      )
+    }
+    context.setNotice(
+      result.effect === 'cancelled'
+        ? `Supervisor cancellation confirmed: ${supervisorId}`
+        : `Supervisor cancellation ${result.effect ?? 'requested'}: ${supervisorId}`,
+    )
+    return accepted(context.app, result, operationId)
+  } catch (error) {
+    return unavailable(
+      `Supervisor cancellation is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
 export async function dispatchIntelligenceIntent(
   intent: BraidIntent,
   context: IntelligenceDispatchContext,
@@ -335,6 +436,14 @@ export async function dispatchIntelligenceIntent(
         : undefined
     if (operationId === undefined)
       invalid('OPERATION_ID_REQUIRED', `${command} requires operationId`)
+  }
+  if (intent.type === 'headless-command' && isIntelligenceHeadlessCommand(intent.command)) {
+    const capability = capabilityForHeadlessCommand(intent.command)
+    const availability =
+      capability === undefined ? undefined : context.view().capabilities[capability]
+    if (availability !== undefined && !availability.available) {
+      return unavailable(availability.reason ?? 'Capability is unavailable')
+    }
   }
   const fixture = resolveIntelligenceFixture(intent, context.fixture)
   if (fixture !== undefined) {
@@ -388,15 +497,25 @@ export async function dispatchIntelligenceIntent(
     case 'analyze': {
       const source = intent.params.source
       const recipe = intent.params.recipe
-      if (typeof source !== 'string' || typeof recipe !== 'string') {
-        invalid('INVALID_PARAMS', 'analyze requires source and recipe')
+      const analystIds = intent.params.analystIds
+      if (
+        typeof source !== 'string' ||
+        (recipe !== undefined && typeof recipe !== 'string') ||
+        (analystIds !== undefined &&
+          (!Array.isArray(analystIds) || !analystIds.every((id) => typeof id === 'string')))
+      ) {
+        invalid('INVALID_PARAMS', 'analyze requires source and a recipe or analystIds')
       }
-      if (!['failure', 'cost', 'tools', 'improvement'].includes(recipe)) {
-        invalid('INVALID_PARAMS', `Unknown analysis recipe '${recipe}'`)
+      if (recipe === undefined && analystIds === undefined) {
+        invalid('INVALID_PARAMS', 'analyze requires a recipe or analystIds')
       }
       return runAnalysis(
         context,
-        { ...sourceRequest(context.app.state(), source), recipe },
+        {
+          ...sourceRequest(context.app.state(), source),
+          ...(recipe === undefined ? {} : { recipe }),
+          ...(analystIds === undefined ? {} : { analystIds }),
+        },
         intent.operationId,
       )
     }
@@ -450,6 +569,25 @@ export async function dispatchIntelligenceIntent(
       })
       return accepted(context.app, attachment, intent.operationId)
     }
+    case 'cancel_analysis': {
+      const analysisId = intent.params.analysisId
+      if (typeof analysisId !== 'string')
+        invalid('INVALID_PARAMS', 'cancel_analysis requires analysisId')
+      const analysis = context.app
+        .state()
+        .analyses.find((candidate) => String(candidate.id) === analysisId)
+      if (analysis === undefined)
+        invalid('UNKNOWN_ANALYSIS', `Analysis ${analysisId} is not present`)
+      const reason =
+        typeof intent.params.reason === 'string'
+          ? intent.params.reason
+          : 'cancelled from analysis activity'
+      if (!context.app.intelligence.analysis.cancel(analysis.id, reason)) {
+        return unavailable(`Analysis ${analysisId} is not active in this process`)
+      }
+      context.setNotice(`Analysis cancellation requested: ${analysisId}`)
+      return accepted(context.app, { analysisId, status: 'cancel_requested' }, intent.operationId)
+    }
     case 'reconnect': {
       const runId = intent.params.runId
       if (
@@ -465,9 +603,17 @@ export async function dispatchIntelligenceIntent(
       }
       return undefined
     }
+    case 'refresh_supervision':
+      return dispatchSupervisorQuery('snapshot', context)
     case 'steer_worker':
     case 'cancel_worker':
       return dispatchSupervisorWorker(intent.command, context, intent.params, intent.operationId)
+    case 'cancel_supervisor':
+      return dispatchSupervisorCancel(context, intent.params, intent.operationId)
+    case 'attach_worker':
+      return unavailable(
+        'Worker attachment is unavailable: the runtime snapshot does not carry the retained interactive reference required to reconnect the exact worker',
+      )
     default:
       return undefined
   }

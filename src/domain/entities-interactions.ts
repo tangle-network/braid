@@ -156,6 +156,15 @@ export type AnalysisStatus =
   | 'failed'
   | 'unknown'
 
+export interface AnalysisAnalystProgressRecord {
+  readonly analystId: string
+  readonly status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed'
+  readonly startedAt?: string
+  readonly findingsCount?: number
+  readonly latencyMs?: number
+  readonly detail?: string
+}
+
 export interface AnalysisRecord {
   readonly id: AnalysisId
   readonly analysisRunId?: AnalysisRunId
@@ -170,6 +179,7 @@ export interface AnalysisRecord {
   readonly analystProfileId?: ProfileId
   readonly analystProfileDigest?: Digest
   readonly status: AnalysisStatus
+  readonly analysts?: readonly AnalysisAnalystProgressRecord[]
   readonly findings: readonly AnalysisFinding[]
   readonly provenance?: AnalysisProvenance
   readonly checks?: readonly AnalysisCheck[]

@@ -82,14 +82,34 @@ export class SupervisorService {
     return controller.steerWorker(rootDir, supervisorId, workerIdOrLabel, message, source)
   }
 
-  async cancelWorker(worker: string): Promise<SupervisorWorkerCancelResult> {
+  async cancelWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    operationId: string,
+    reason?: string,
+    source?: string,
+  ): Promise<SupervisorWorkerCancelResult> {
     const controller = await this.#loadController()
-    return controller.cancelWorker(worker)
+    return controller.cancelWorker(
+      rootDir,
+      supervisorId,
+      workerIdOrLabel,
+      operationId,
+      reason,
+      source,
+    )
   }
 
-  async cancelSupervisor(reason?: string): Promise<SupervisorCancelResult> {
+  async cancelSupervisor(
+    rootDir: string,
+    supervisorId: string,
+    operationId: string,
+    reason?: string,
+    source?: string,
+  ): Promise<SupervisorCancelResult> {
     const controller = await this.#loadController()
-    return controller.cancelSupervisor(reason)
+    return controller.cancelSupervisor(rootDir, supervisorId, operationId, reason, source)
   }
 
   #loadWatcher(): Promise<RuntimeSupervisorSnapshotPort> {

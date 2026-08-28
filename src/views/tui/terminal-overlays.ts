@@ -92,6 +92,7 @@ export class TerminalOverlayController {
       modals: this.#modals,
       rows: options.rows,
       requestRender: options.requestRender,
+      nextOperationId: options.nextOperationId,
       ...(options.keyboardDiagnostic === undefined
         ? {}
         : { keyboardDiagnostic: options.keyboardDiagnostic }),

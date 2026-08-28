@@ -261,21 +261,25 @@ Braid adapts `loadTopSnapshot` into its own worker view, but it does not copy th
 
 The runtime kernel exports `writeWorkerSteer` for worker inbox delivery.
 
-Braid resolves its public supervisor and worker identifiers to the exact runtime references before it calls that function.
+That function generates a new request identifier on every call and does not accept a caller operation identifier.
+
+Braid keeps worker steering disabled until Runtime supports same-body replay and changed-body conflict for a stable operation identifier.
 
 An explicit parent reference stays visible when no worker resolves it, and Braid does not create a replacement supervisor edge.
 
 The snapshot has no Braid run identifier, so Braid does not infer a run binding from snapshot order, current selection, or time.
 
-The snapshot also omits partial-read diagnostics.
+The snapshot reports completeness and bounded diagnostics for unreadable or partial sources.
 
-[agent-runtime issue 757](https://github.com/tangle-network/agent-runtime/issues/757) requests bounded completeness evidence.
+The runtime kernel exports `cancelWorker` and `cancelRun` as idempotent cancellation operations.
 
-The runtime does not export worker-scoped cancellation or reconnectable external root cancellation.
+Braid supplies the runtime state directory, exact runtime target, and caller operation identifier.
 
-Braid therefore keeps those actions unavailable instead of treating an unread request as acknowledgement.
+An `unknown` effect means the request awaits acknowledgement and never becomes local success.
 
-[agent-runtime issue 758](https://github.com/tangle-network/agent-runtime/issues/758) tracks acknowledged worker and external root cancellation.
+The runtime snapshot does not expose a retained interactive reference for one worker.
+
+Braid therefore disables worker attachment until Runtime owns a worker-to-retained-session attachment operation.
 
 The shared stream has no stable provider-native child-task lifecycle.
 

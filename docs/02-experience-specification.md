@@ -173,6 +173,14 @@ F2 opens the focused activity browser for active and historical work.
 
 The activity browser uses one list/detail surface and keeps direct turns, analyses, and workers distinct.
 
+Each running analysis lists the selected analysts and their exact registry progress.
+
+The analysis scope exposes promote, cancel, and refresh keys without hiding the current result.
+
+The worker scope exposes steer, cancel, attach, and refresh keys only through reported runtime capabilities.
+
+An unavailable attach action explains the missing runtime contract and does not create a replacement run.
+
 Graph, details, and workspace views use focused overlays.
 
 No secondary surface reduces the transcript below its minimum width because secondary surfaces replace the shell.

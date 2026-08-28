@@ -171,6 +171,12 @@ These commands inspect or compare recorded work rather than sending another ordi
 
 `/ask` does not append a message to the analyzed branch.
 
+`/analyze failure,cost,tools` selects multiple exact analysts, while `/analyze all` selects every available trace analyst.
+
+The activity view shows each selected analyst as pending, running, completed, skipped, or failed.
+
+The upstream exact registry runs selected analysts in order, so Braid does not claim they execute concurrently.
+
 Each analysis has its own run identity, source digest, analyst profile, model, budget, usage, latency, cost, completeness, and citations.
 
 The standard Braid install includes `uv` for `/ask`.
@@ -180,6 +186,12 @@ On first use, `uv` downloads a managed Python 3.12 runtime and runs `agent-eval-
 Set `BRAID_PYTHON` only when an operator must use a preinstalled compatible environment instead.
 
 Findings remain separate until the user explicitly sends selected findings to a branch or forks from the analysis.
+
+In the analysis activity scope, `p` promotes a supported cited finding and `x` cancels active analysis work.
+
+In the worker scope, `x` cancels and `r` refreshes.
+
+The `s` and `a` keys explain why retry-safe steering and exact attachment are disabled by the current runtime contract.
 
 ## Interactive and headless modes
 
