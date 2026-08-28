@@ -1,4 +1,8 @@
-import type { HarnessType } from '@tangle-network/agent-interface'
+import type {
+  PortableContextPlan as CanonicalPortableContextPlan,
+  HarnessType,
+  PlacementInfo,
+} from '@tangle-network/agent-interface'
 import type {
   BranchRecord,
   ConversationRecord,
@@ -12,6 +16,8 @@ import type {
 import type { BraidEvent } from '../domain/events.js'
 import type { PortableContextPlan } from '../domain/receipts.js'
 import type { BraidState } from '../domain/state.js'
+import type { ExecutionPort } from '../ports/execution.js'
+import type { SendInput, SendReceipt } from './application-types.js'
 
 export interface ConversationHost {
   state(): BraidState
@@ -22,6 +28,8 @@ export interface ConversationHost {
     input: { readonly operationId: string; readonly digest: string },
     action: () => Promise<T>,
   ): Promise<T>
+  readonly execution?: ExecutionPort
+  readonly send?: (input: SendInput) => SendReceipt
 }
 
 export interface CreateConversationInput {
@@ -44,6 +52,7 @@ export interface UpdateConversationInput {
 
 export interface CreateBranchInput {
   readonly operationId: string
+  readonly destinationBranchId?: string
   readonly conversationId?: string
   readonly branchId?: string
   readonly throughMessageId?: string
@@ -52,6 +61,8 @@ export interface CreateBranchInput {
   readonly model?: string
   readonly effort?: string
   readonly mode?: string
+  /** Internal destination binding supplied after an external fork succeeds. */
+  readonly environmentId?: string
 }
 
 export interface SetRunOverridesInput {
@@ -79,11 +90,25 @@ export interface PlanContextInput {
 }
 
 export interface ForkPlanInput extends CreateBranchInput {
-  readonly kind?: 'conversation' | 'workspace'
+  readonly kind?: 'conversation' | 'workspace' | 'cross-runner'
+  readonly acceptedDigest?: string
+  readonly destinationProvider?: string
+  readonly placement?: PlacementInfo
+}
+
+export interface WorkspaceForkCleanupInput {
+  readonly operationId: string
+  readonly checkpointId?: string
+  readonly environmentId?: string
+}
+
+export interface WorkspaceForkCleanupResult {
+  readonly checkpoint: 'deleted' | 'already_absent' | 'not_requested'
+  readonly environment: 'deleted' | 'already_absent' | 'not_requested'
 }
 
 export interface ForkPlan {
-  readonly kind: 'conversation' | 'workspace'
+  readonly kind: 'conversation' | 'workspace' | 'cross-runner'
   readonly operationId: string
   readonly sourceConversationId: string
   readonly sourceBranchId: string
@@ -93,6 +118,14 @@ export interface ForkPlan {
   readonly environment: 'shared' | 'new' | 'unavailable'
   readonly providerSession: 'new'
   readonly checkpoint: 'none' | 'required' | 'unavailable'
+  readonly portableContextPlan?: CanonicalPortableContextPlan
+  readonly sourceRunId?: string
+  readonly sourceEnvironmentId?: string
+  readonly destinationEnvironmentId?: string
+  readonly checkpointId?: string
+  readonly placement?: PlacementInfo
+  readonly text?: string
+  readonly destinationProvider?: string
   readonly allowed: boolean
   readonly reason?: string
   readonly digest: string

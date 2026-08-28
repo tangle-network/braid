@@ -31,7 +31,14 @@ export async function executeRun(
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(currentRun?.lastCursor === undefined ? {} : { after: currentRun.lastCursor }),
       ...(currentRun === undefined ? {} : { afterSequence: currentRun.lastProviderSequence }),
-      ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.contextPlan === undefined
+        ? input.portableContextPlan === undefined
+          ? {}
+          : { contextBoundary: input.portableContextPlan.digest }
+        : { contextBoundary: input.contextPlan.digest }),
+      ...(input.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: input.portableContextTransferRequest }),
       onRetainedAdmission: async (retainedAdmission) => {
         const committed = context.commitAndWait({
           kind: 'run.retained.admitted',

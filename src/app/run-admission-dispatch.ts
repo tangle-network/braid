@@ -1,5 +1,6 @@
 import type { AdmissionPort, AsyncAdmissionPort } from './application-ports.js'
 import type { SendReceipt } from './application-types.js'
+import type { ContextTransferReceipt } from '../domain/receipts.js'
 import { AppError } from './errors.js'
 import { admitRun, admitRunAsync } from './run-admission-receipt.js'
 import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission-request.js'
@@ -32,7 +33,8 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
 
   const runId = context.ids.next('run')
   const turnId = context.ids.next('turn')
-  if (input.contextTransfer && input.contextTransfer.destinationRunId !== runId)
+  const contextTransfer = localContextTransfer(input, runId)
+  if (contextTransfer && contextTransfer.destinationRunId !== runId)
     throw new AppError(
       'CONTEXT_RECEIPT_CONFLICT',
       'The context transfer receipt names a different destination run',
@@ -49,13 +51,20 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
       signal: new AbortController().signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.contextPlan === undefined
+        ? input.portableContextPlan === undefined
+          ? {}
+          : { contextBoundary: input.portableContextPlan.digest }
+        : { contextBoundary: input.contextPlan.digest }),
+      ...(input.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: input.portableContextTransferRequest }),
     },
     conversationId,
     branchId,
-    input.contextTransfer,
+    contextTransfer,
     turnId,
-    input.contextPlan?.digest,
+    input.contextPlan?.digest ?? input.portableContextPlan?.digest,
     input.nativeContextBoundaryProof,
     input.contextPlan,
   )
@@ -119,7 +128,8 @@ export async function sendRunAsync(
       'RUN_ACTIVE',
       `Run ${active.id} is still active on this branch; queue the next input explicitly`,
     )
-  if (input.contextTransfer && input.contextTransfer.destinationRunId !== ids.runId)
+  const contextTransfer = localContextTransfer(input, ids.runId)
+  if (contextTransfer && contextTransfer.destinationRunId !== ids.runId)
     throw new AppError(
       'CONTEXT_RECEIPT_CONFLICT',
       'The context transfer receipt names a different destination run',
@@ -136,13 +146,20 @@ export async function sendRunAsync(
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
       signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.contextPlan === undefined
+        ? input.portableContextPlan === undefined
+          ? {}
+          : { contextBoundary: input.portableContextPlan.digest }
+        : { contextBoundary: input.contextPlan.digest }),
+      ...(input.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: input.portableContextTransferRequest }),
     },
     conversationId,
     branchId,
-    input.contextTransfer,
+    contextTransfer,
     ids.turnId,
-    input.contextPlan?.digest,
+    input.contextPlan?.digest ?? input.portableContextPlan?.digest,
     input.nativeContextBoundaryProof,
     input.contextPlan,
   )
@@ -201,5 +218,22 @@ function assertTargetBranch(
   )
   if (!conversation || !branch) {
     throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is unavailable')
+  }
+}
+
+function localContextTransfer(
+  input: RunExecutionSnapshot,
+  runId: string,
+): ContextTransferReceipt | undefined {
+  if (input.contextTransfer !== undefined) return input.contextTransfer
+  const receipt = input.portableContextTransferReceipt
+  if (receipt === undefined || (receipt.status !== 'accepted' && receipt.status !== 'replayed'))
+    return undefined
+  return {
+    planDigest: receipt.planDigest,
+    sourceRunId: receipt.source.runId,
+    destinationRunId: runId,
+    destinationSessionId: receipt.sessionId,
+    acceptedAt: receipt.admittedAt,
   }
 }

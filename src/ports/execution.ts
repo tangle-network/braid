@@ -2,8 +2,13 @@ import type {
   AgentEnvironmentCapabilities,
   AgentExactRunControlRef,
   AgentProfile,
+  AgentWorkspaceBranching,
+  ContextTransferRequest,
+  ContextTransferResult,
   InteractionResponseCommand,
   NativeContextBoundaryProof,
+  PortableContextPlanRequest,
+  PortableContextPlanResult,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
@@ -36,6 +41,8 @@ export interface ExecuteTurnInput {
   readonly contextBoundary?: string
   /** Exact provider proof required for one retry-safe same-session turn. */
   readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
+  /** Canonical context transfer request for a fresh destination session. */
+  readonly contextTransfer?: ContextTransferRequest
   readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
 }
 
@@ -52,6 +59,18 @@ export interface ExecutionAdmission {
   readonly profileDigest?: string
   readonly capabilitiesDigest?: string
   readonly materializationDigest?: string
+}
+
+/**
+ * Optional provider-owned context planning and transfer operations.
+ *
+ * The payloads remain the canonical agent-interface contracts; this port only
+ * describes how Braid reaches an adapter that implements them.
+ */
+export interface ContextTransferExecutionPort {
+  readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>
+  readonly transfer?: (input: ContextTransferRequest) => Promise<ContextTransferResult>
+  readonly lookup?: (input: ContextTransferRequest) => Promise<ContextTransferResult | undefined>
 }
 
 export interface ProviderRunSnapshot {
@@ -155,6 +174,14 @@ export interface ExecutionPort {
     } & RetainedExecutionRecoveryContext,
   ): Promise<NativeContextBoundaryProof | null>
   environmentCapabilities?(): AgentEnvironmentCapabilities | Promise<AgentEnvironmentCapabilities>
+  /** Provider-owned context planning and fresh-session transfer, when supported. */
+  readonly context?: ContextTransferExecutionPort
+  /** Alias retained for adapters that name the capability after its operation. */
+  readonly contextTransfer?: ContextTransferExecutionPort
+  /** Retry-safe checkpoint, fork, lookup, and cleanup operations, when supported. */
+  readonly workspaceBranching?: AgentWorkspaceBranching
+  /** Provider identity used when Braid builds a destination context plan. */
+  readonly provider?: string
 }
 
 export const DEFAULT_RUN_CAPABILITIES: RunCapabilities = Object.freeze({

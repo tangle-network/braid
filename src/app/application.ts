@@ -290,6 +290,8 @@ export class BraidApplication {
       },
       coordinate: (input, action) =>
         this.#conversationOperations.run(input.operationId, input.digest, action),
+      execution: this.#execution,
+      send: (input) => this.send(input),
       ...(options.conversationStorage === undefined
         ? {}
         : { storage: options.conversationStorage }),

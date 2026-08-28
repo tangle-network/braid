@@ -43,6 +43,20 @@ export {
   type DurableCompositionOptions,
   STARTER_PROFILE,
 } from './app/composition.js'
+export type {
+  CloneConversationInput,
+  ConversationListQuery,
+  CreateBranchInput,
+  CreateConversationInput,
+  ForkPlan,
+  ForkPlanInput,
+  OpenConversationInput,
+  PlanContextInput,
+  SetRunOverridesInput,
+  UpdateConversationInput,
+  WorkspaceForkCleanupInput,
+  WorkspaceForkCleanupResult,
+} from './app/conversations.js'
 export {
   type EffectContext,
   EffectCoordinator,
@@ -131,6 +145,7 @@ export type {
   JournalPort,
 } from './ports/effect-storage.js'
 export type {
+  ContextTransferExecutionPort,
   ControlAcknowledgement,
   ExecuteTurnInput,
   ExecutionAdmission,

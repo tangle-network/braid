@@ -18,6 +18,15 @@ export function runEffectRequest(input: RunExecutionSnapshot): Readonly<Record<s
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     ...(input.contextPlan === undefined ? {} : { contextPlan: input.contextPlan }),
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    ...(input.portableContextPlan === undefined
+      ? {}
+      : { portableContextPlan: input.portableContextPlan }),
+    ...(input.portableContextTransferRequest === undefined
+      ? {}
+      : { portableContextTransferRequest: input.portableContextTransferRequest }),
+    ...(input.portableContextTransferReceipt === undefined
+      ? {}
+      : { portableContextTransferReceipt: input.portableContextTransferReceipt }),
     ...(input.nativeContextBoundaryProof === undefined
       ? {}
       : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),
@@ -45,6 +54,7 @@ export function exactAdmissionRequestDigest(
       ...(input.nativeContextBoundaryProof === undefined
         ? {}
         : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),
+      ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
     },
   })
 }

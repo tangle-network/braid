@@ -211,7 +211,12 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         let terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> | undefined
         for await (const event of streamAgentTurn(
           runtimeBackend,
-          { prompt: input.text },
+          {
+            prompt: input.text,
+            ...(input.contextTransfer === undefined
+              ? {}
+              : { contextTransfer: input.contextTransfer }),
+          },
           {
             signal: localAbort.signal,
             preserveToolParts: true,
@@ -406,5 +411,6 @@ function admissionKey(input: ExecuteTurnInput, profileDigest: string): string {
     mode: input.mode ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
+    contextTransfer: input.contextTransfer ?? null,
   })
 }

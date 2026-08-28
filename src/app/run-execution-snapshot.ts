@@ -1,4 +1,9 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AgentProfile,
+  PortableContextPlan as CanonicalPortableContextPlan,
+  ContextTransferReceipt as PortableContextTransferReceipt,
+  ContextTransferRequest as PortableContextTransferRequest,
+} from '@tangle-network/agent-interface'
 import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
 import type {
   ContextTransferReceipt,
@@ -29,6 +34,9 @@ export interface RunExecutionSnapshot {
   readonly sessionSource?: 'caller' | 'continuation'
   readonly contextPlan?: PortableContextPlan
   readonly contextTransfer?: ContextTransferReceipt
+  readonly portableContextPlan?: CanonicalPortableContextPlan
+  readonly portableContextTransferRequest?: PortableContextTransferRequest
+  readonly portableContextTransferReceipt?: PortableContextTransferReceipt
   readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
 }
 
@@ -64,6 +72,15 @@ export function snapshotRunExecution(
       : { sessionId: input.sessionId, sessionSource: 'caller' as const }),
     ...(input.contextPlan === undefined ? {} : { contextPlan: input.contextPlan }),
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    ...(input.portableContextPlan === undefined
+      ? {}
+      : { portableContextPlan: input.portableContextPlan }),
+    ...(input.portableContextTransferRequest === undefined
+      ? {}
+      : { portableContextTransferRequest: input.portableContextTransferRequest }),
+    ...(input.portableContextTransferReceipt === undefined
+      ? {}
+      : { portableContextTransferReceipt: input.portableContextTransferReceipt }),
     ...(input.nativeContextBoundaryProof === undefined
       ? {}
       : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),

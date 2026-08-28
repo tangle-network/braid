@@ -3,6 +3,11 @@ import {
   NativeContextBoundaryProofSchema,
 } from '@tangle-network/agent-interface'
 import {
+  ContextTransferRequestSchema,
+  contextTransferResultMatchesRequest,
+  PortableContextPlanSchema,
+} from '@tangle-network/agent-interface'
+import {
   canonicalAgentProfileDigestHex,
   snapshotAgentProfile,
 } from '../adapters/agent-interface/profile-runtime.js'
@@ -27,7 +32,11 @@ export function validateNativeProof(
     },
 ): void {
   if (!input.nativeContextBoundaryProof) {
-    if (input.sessionId !== undefined && input.sessionSource !== 'continuation')
+    if (
+      input.sessionId !== undefined &&
+      input.sessionSource !== 'continuation' &&
+      input.portableContextTransferRequest === undefined
+    )
       throw new AppError(
         'NATIVE_CONTINUATION_UNVERIFIED',
         'A caller-supplied provider session requires a valid native context boundary proof',
@@ -86,6 +95,29 @@ export function validateContextPlan(input: SendInput): void {
       'CONTEXT_RECEIPT_CONFLICT',
       'The context transfer receipt does not match the accepted plan',
     )
+  if (input.portableContextPlan !== undefined) {
+    const parsedPlan = PortableContextPlanSchema.safeParse(input.portableContextPlan)
+    if (!parsedPlan.success)
+      throw new AppError('CONTEXT_DIGEST_INVALID', 'The canonical portable context plan is invalid')
+  }
+  if (input.portableContextTransferRequest !== undefined) {
+    const parsedRequest = ContextTransferRequestSchema.safeParse(
+      input.portableContextTransferRequest,
+    )
+    if (!parsedRequest.success)
+      throw new AppError(
+        'CONTEXT_RECEIPT_CONFLICT',
+        'The canonical context transfer request is invalid',
+      )
+    if (
+      input.portableContextTransferReceipt !== undefined &&
+      !contextTransferResultMatchesRequest(parsedRequest.data, input.portableContextTransferReceipt)
+    )
+      throw new AppError(
+        'CONTEXT_RECEIPT_CONFLICT',
+        'The canonical context transfer receipt does not match its request',
+      )
+  }
 }
 
 export function validateExecutionContext(

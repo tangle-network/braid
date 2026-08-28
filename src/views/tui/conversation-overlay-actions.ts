@@ -238,6 +238,13 @@ export class ConversationOverlayActions {
         ...(plan.context.destinationRunner === undefined
           ? {}
           : { runner: plan.context.destinationRunner }),
+        ...(plan.destinationProvider === undefined
+          ? {}
+          : { destinationProvider: plan.destinationProvider }),
+        ...(plan.text === undefined ? {} : { text: plan.text }),
+        ...(plan.portableContextPlan?.requiresAcceptance !== true
+          ? {}
+          : { acceptedDigest: plan.portableContextPlan.digest }),
       },
     })
     if (result.kind === 'accepted') this.#modals.closeTop()

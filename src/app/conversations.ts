@@ -54,4 +54,6 @@ export type {
   PlanContextInput,
   SetRunOverridesInput,
   UpdateConversationInput,
+  WorkspaceForkCleanupInput,
+  WorkspaceForkCleanupResult,
 } from './conversation-types.js'
