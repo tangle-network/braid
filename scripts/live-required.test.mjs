@@ -409,7 +409,7 @@ test('LIVE-11 composes a complete canonical profile by default', () => {
     harness: 'opencode',
     model: {
       provider: 'tangle-router',
-      default: 'tangle-router/glm-5.2',
+      default: 'tangle-router/glm-5.3',
       reasoningEffort: 'none',
     },
     prompt: {
