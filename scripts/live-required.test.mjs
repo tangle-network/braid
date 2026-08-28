@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -27,6 +27,7 @@ import {
   prepareProductionWorkspace,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
+import { createSupervisorProofFixture, runSupervisorFlow } from './live-required/supervisor.mjs'
 import { runMatrixAdapter, runSandbox } from './live-required/tangle.mjs'
 import { executionLatencyDistribution } from './live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
@@ -349,46 +350,6 @@ function validTangleSandboxReceiptInput(overrides = {}) {
     checks: TANGLE_SANDBOX_CHECKS,
     ...overrides,
   }
-}
-
-function expectedFailureOutput(scope, environment, expectedStatus = 1) {
-  let failure
-  try {
-    execFileSync(process.execPath, ['scripts/live-required.mjs', scope], {
-      cwd: repository,
-      env: environment,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-  } catch (error) {
-    failure = error
-  }
-  assert(failure, `${scope} unexpectedly passed`)
-  assert.equal(failure.status, expectedStatus)
-  return `${failure.stdout ?? ''}${failure.stderr ?? ''}`
-}
-
-async function createSupervisorFixture(root) {
-  const supervisorId = 'supervisor-live-required'
-  const workerId = 'worker-live-required'
-  const runDir = join(root, '.agent', 'supervisor', supervisorId)
-  await mkdir(runDir, { recursive: true })
-  await writeFile(
-    join(runDir, 'state.json'),
-    `${JSON.stringify({
-      id: supervisorId,
-      status: 'running',
-      task: 'live-required test',
-      workspaceDir: root,
-      budget: 1,
-    })}\n`,
-  )
-  const now = '2026-08-10T00:00:00.000Z'
-  await writeFile(
-    join(runDir, 'spawn-journal.jsonl'),
-    `${JSON.stringify({ kind: 'spawned', id: supervisorId, label: 'root', at: now })}\n${JSON.stringify({ kind: 'spawned', id: workerId, label: workerId, parent: supervisorId, at: now })}\n`,
-  )
-  return { supervisorId, workerId }
 }
 
 test('protected live scopes emit unavailable release evidence without credentials', () => {
@@ -869,59 +830,199 @@ test('retained Sandbox error details are safe for direct proof output', () => {
   })
 })
 
-test('configured supervisor failures stay unavailable and redact environment credentials', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'braid-live-required-supervisor-test-'))
-  const missingRoot = join(root, 'missing-runtime-root')
-  const common = {
-    ...protectedEnvironment(),
-    BRAID_SUPERVISOR_ROOT: missingRoot,
-    BRAID_SUPERVISOR_ID: 'configured-supervisor',
-    BRAID_SUPERVISOR_WORKER: 'configured-worker',
+test('supervisor proof proves public observation, effects, replay, and reconnect', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'attached' })
+  const environment = {
+    BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+    BRAID_SUPERVISOR_ID: fixture.supervisorId,
+    BRAID_SUPERVISOR_WORKER: fixture.workerId,
+    BRAID_SUPERVISOR_STEER_OPERATION_ID: 'supervisor-steer-test-1',
+    BRAID_SUPERVISOR_CANCEL_OPERATION_ID: 'supervisor-cancel-test-1',
+    BRAID_SUPERVISOR_MESSAGE: 'inspect the deterministic worker',
+    BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+    BRAID_SUPERVISOR_POLL_MS: '1',
   }
+  const result = await runSupervisorFlow({
+    environment,
+    invocationId: 'live-required-supervisor-test',
+    runtime: fixture.api,
+    providers: {},
+  })
+  assert.equal(result.status, 'passed')
+  assert.deepEqual(result.measurements, [
+    { kind: 'scalar', name: 'LIVE-11', unit: 'verified-flow', value: 1 },
+  ])
+  assert.equal(result.steering.effect, 'delivered')
+  assert.equal(result.steering.replayed, true)
+  assert.equal(result.cancellation.effect, 'cancelled')
+  assert.equal(result.terminalTakeover.status, 'attached')
+  assert.equal(result.proof.facts.spendObserved, true)
+  assert.equal(result.proof.facts.statusObserved, true)
+  assert.equal(result.proof.facts.reconnectable, true)
+  assert.equal(result.proof.facts.cancellationAvailable, true)
+  assert.equal(assertProofReceipt(result.proof), result.proof)
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...result.proof,
+        facts: { ...result.proof.facts, cancellationEffect: 'not_live' },
+      }),
+    /cancelled worker effect/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...result.proof,
+        status: 'partial',
+        checks: ['snapshot'],
+      }),
+    /cannot have a partial status/u,
+  )
+  assert.equal(fixture.calls.filter((call) => call.name === 'writeWorkerSteer').length, 2)
+  assert.equal(fixture.calls.filter((call) => call.name === 'cancelWorker').length, 2)
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'supervisorRunDir'),
+    true,
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'readWorkerCancellation'),
+    true,
+  )
+})
+
+test('supervisor proof fails closed when a required runtime effect is absent or unclean', async () => {
+  const cases = [
+    [
+      'missing steering acknowledgement',
+      { steerAcknowledgement: false },
+      /worker steer acknowledgement was not acknowledged/u,
+    ],
+    ['refused steering effect', { steerEffect: 'refused' }, /did not report delivered effect/u],
+    [
+      'missing cancellation acknowledgement',
+      { cancellationAcknowledgement: false },
+      /worker cancellation acknowledgement was not acknowledged/u,
+    ],
+    [
+      'unclean cancellation effect',
+      { cancellationEffect: 'not_live' },
+      /did not report a proven effect/u,
+    ],
+  ]
+  for (const [label, options, expected] of cases) {
+    const fixture = createSupervisorProofFixture(options)
+    await assert.rejects(
+      () =>
+        runSupervisorFlow({
+          environment: {
+            BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+            BRAID_SUPERVISOR_ID: fixture.supervisorId,
+            BRAID_SUPERVISOR_WORKER: fixture.workerId,
+            BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+            BRAID_SUPERVISOR_POLL_MS: '1',
+          },
+          invocationId: `live-required-supervisor-${label.replaceAll(' ', '-')}`,
+          runtime: fixture.api,
+        }),
+      expected,
+      label,
+    )
+  }
+})
+
+test('supervisor proof rejects incomplete public snapshots before control', async () => {
+  const fixture = createSupervisorProofFixture({ snapshotCompleteness: 'partial' })
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+          BRAID_SUPERVISOR_ID: fixture.supervisorId,
+          BRAID_SUPERVISOR_WORKER: fixture.workerId,
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        runtime: fixture.api,
+      }),
+    /runtime supervisor snapshot is incomplete/u,
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'writeWorkerSteer'),
+    false,
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'cancelWorker'),
+    false,
+  )
+})
+
+test('supervisor proof fails unavailable when a required Runtime API is missing', async () => {
+  const fixture = createSupervisorProofFixture()
+  const runtime = { ...fixture.api }
+  delete runtime.cancelWorker
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+          BRAID_SUPERVISOR_ID: fixture.supervisorId,
+          BRAID_SUPERVISOR_WORKER: fixture.workerId,
+        },
+        runtime,
+      }),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'RUNTIME_SUPERVISOR_API_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('supervisor proof records unsupported terminal takeover without claiming attachment', async () => {
+  const fixture = createSupervisorProofFixture()
+  const result = await runSupervisorFlow({
+    environment: {
+      BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+      BRAID_SUPERVISOR_ID: fixture.supervisorId,
+      BRAID_SUPERVISOR_WORKER: fixture.workerId,
+      BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+      BRAID_SUPERVISOR_POLL_MS: '1',
+    },
+    runtime: fixture.api,
+  })
+  assert.equal(result.status, 'passed')
+  assert.deepEqual(result.terminalTakeover, {
+    status: 'unavailable',
+    reason: 'No environment provider source was supplied for exact terminal takeover',
+  })
+  assert.equal(result.proof.facts.terminalTakeover, 'unavailable')
+})
+
+test('configured supervisor failures are failed and never reported as partial', () => {
+  let failure
   try {
-    let output = expectedFailureOutput('live-supervisor', common)
-    assert.match(output, /failed against the configured live path/u)
-    assert.doesNotMatch(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
-
-    const { supervisorId, workerId } = await createSupervisorFixture(root)
-    const wrongShape = join(root, 'wrong-supervisor-adapter.mjs')
-    await writeFile(wrongShape, 'export default 42\n')
-    output = expectedFailureOutput(
-      'live-supervisor',
-      {
-        ...common,
-        BRAID_SUPERVISOR_ROOT: root,
-        BRAID_SUPERVISOR_ID: supervisorId,
-        BRAID_SUPERVISOR_WORKER: workerId,
-        BRAID_SUPERVISOR_LIVE_ADAPTER: wrongShape,
+    execFileSync(process.execPath, ['scripts/live-required.mjs', 'live-supervisor'], {
+      cwd: repository,
+      env: {
+        ...protectedEnvironment(),
+        BRAID_SUPERVISOR_ROOT: join(tmpdir(), 'missing-braid-supervisor-root'),
+        BRAID_SUPERVISOR_ID: 'configured-supervisor',
+        BRAID_SUPERVISOR_WORKER: 'configured-worker',
+        BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+        BRAID_SUPERVISOR_POLL_MS: '1',
       },
-      2,
-    )
-    assert.match(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
-
-    const secret = 'live-required-secret-7e5d'
-    const throwingAdapter = join(root, 'throwing-supervisor-adapter.mjs')
-    await writeFile(
-      throwingAdapter,
-      'process.stdout.write(process.env.BRAID_TANGLE_API_KEY)\nthrow new Error(process.env.BRAID_TANGLE_API_KEY)\n',
-    )
-    const configured = {
-      ...common,
-      BRAID_SUPERVISOR_ROOT: root,
-      BRAID_SUPERVISOR_ID: supervisorId,
-      BRAID_SUPERVISOR_WORKER: workerId,
-      BRAID_SUPERVISOR_LIVE_ADAPTER: throwingAdapter,
-      BRAID_TANGLE_API_KEY: secret,
-    }
-    const direct = safeMessage(new Error(`provider rejected ${secret}`), configured)
-    assert.doesNotMatch(direct, new RegExp(secret, 'u'))
-    assert.match(direct, /\[REDACTED\]/u)
-    output = expectedFailureOutput('live-supervisor', configured, 2)
-    assert.equal(output.includes(secret), false)
-    assert.match(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
-  } finally {
-    await rm(root, { recursive: true, force: true })
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch (error) {
+    failure = error
   }
+  assert(failure, 'configured supervisor unexpectedly passed')
+  assert.equal(failure.status, 1)
+  const output = `${failure.stdout ?? ''}${failure.stderr ?? ''}`
+  assert.match(output, /failed against the configured live path/u)
+  assert.doesNotMatch(output, /status":"partial/u)
+  assert.doesNotMatch(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
 })
 
 test('configured headless checks execute the real Braid RPC process and validate its marker', async () => {

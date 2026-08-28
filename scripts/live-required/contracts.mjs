@@ -57,7 +57,15 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'restart-restored',
     'promoted',
   ]),
-  [PROOF_OPERATIONS.supervisor]: Object.freeze(['snapshot', 'reconnect', 'steering']),
+  [PROOF_OPERATIONS.supervisor]: Object.freeze([
+    'snapshot',
+    'spend-status',
+    'steering',
+    'steering-acknowledged',
+    'cancellation',
+    'reconnect',
+    'terminal-takeover',
+  ]),
 })
 
 const PROOF_OPERATION_FACT_KEYS = Object.freeze({
@@ -94,6 +102,16 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'supervisorId',
     'workerId',
     'steeringRequestId',
+    'steeringOperationId',
+    'steeringEffect',
+    'cancellationOperationId',
+    'cancellationEffect',
+    'initialStatus',
+    'finalStatus',
+    'spendObserved',
+    'statusObserved',
+    'reconnectable',
+    'terminalTakeover',
     'cancellationAvailable',
   ]),
 })
@@ -371,6 +389,9 @@ function validateProofFacts(operation, status, facts) {
     if (
       key === 'promoted' ||
       key === 'cancellationAvailable' ||
+      key === 'spendObserved' ||
+      key === 'statusObserved' ||
+      key === 'reconnectable' ||
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
       key === 'processGroupExitedBeforeWorkspaceCleanup'
@@ -404,6 +425,23 @@ function validateProofFacts(operation, status, facts) {
     if (facts.usage.tokensKnown !== true)
       throw new Error('Passed trace-analysis proof requires known token usage')
   }
+}
+
+function validatePassedSupervisorReceipt(receipt) {
+  const { facts } = receipt
+  for (const key of ['spendObserved', 'statusObserved', 'reconnectable', 'cancellationAvailable']) {
+    if (facts[key] !== true) throw new Error(`Passed supervisor proof requires ${key} to be true`)
+  }
+  if (facts.initialStatus !== 'running')
+    throw new Error('Passed supervisor proof requires a running worker at the first snapshot')
+  if (!['cancelled', 'down'].includes(facts.finalStatus))
+    throw new Error('Passed supervisor proof requires a terminal cancelled worker snapshot')
+  if (facts.steeringEffect !== 'delivered')
+    throw new Error('Passed supervisor proof requires a delivered steering effect')
+  if (facts.cancellationEffect !== 'cancelled')
+    throw new Error('Passed supervisor proof requires a cancelled worker effect')
+  if (!['attached', 'unavailable'].includes(facts.terminalTakeover))
+    throw new Error('Passed supervisor proof requires an attached or unavailable terminal takeover')
 }
 
 function validatePassedTangleSandboxReceipt(receipt) {
@@ -526,6 +564,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     throw new Error('Live proof receipt belongs to a different operation')
   if (!PROOF_STATUSES.has(receipt.status))
     throw new Error('Live proof receipt has an invalid status')
+  if (receipt.operation === PROOF_OPERATIONS.supervisor && receipt.status === 'partial')
+    throw new Error('LIVE-11 supervisor proof cannot have a partial status')
   validTimestamp(receipt.startedAt, 'Live proof startedAt')
   validTimestamp(receipt.completedAt, 'Live proof completedAt')
   if (Date.parse(receipt.completedAt) < Date.parse(receipt.startedAt))
@@ -576,6 +616,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     receipt.status === 'passed'
   )
     validatePassedTangleSandboxInteractiveReceipt(receipt)
+  if (receipt.operation === PROOF_OPERATIONS.supervisor && receipt.status === 'passed')
+    validatePassedSupervisorReceipt(receipt)
   return receipt
 }
 

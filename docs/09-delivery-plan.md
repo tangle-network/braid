@@ -367,13 +367,17 @@ The UI proof includes the source and destination file state of a real cloud envi
 - Implement `/ask`, failure, cost, tools, improvement, paired comparison, citation validation, finding promotion, and fork from analysis.
 - Implement feedback trajectory export from structured decisions.
 - Implement the complete graph with conversation, branch, turn, run, analysis, environment, checkpoint, supervisor, and worker nodes and named edges.
-- Implement runtime-owned supervisor snapshot watch, activity, log tail, typed steering, typed cancellation, and reconnect.
+- Implement runtime-owned supervisor snapshot watch, activity, log tail, typed steering, typed cancellation, and reconnect through the published Runtime APIs.
+- Make the `LIVE-11` release proof require complete root and worker observation, changed spend, acknowledged steering, proven cancellation, stable operation retries, and a fresh reconnect snapshot.
+- Record exact terminal takeover only when Runtime returns an opaque handle for a registered provider; preserve the explicit unavailable capability otherwise.
 - Keep direct-turn, trace-analysis, and delegated-worker usage separate until Runtime exports stable shared call identity.
 - Add calibrated semantic cases and raw evidence capture.
 
 ### Done when
 
 `PR-07`, `PR-08`, `AN-01` through `AN-10`, `LIVE-11`, `LIVE-12`, and `EVAL-01` through `EVAL-06` pass.
+
+`LIVE-11` cannot pass from a queued request, an incomplete snapshot, an unacknowledged effect, or a partial result.
 
 An analysis cannot pass if its source branch journal changes before explicit promotion or any cited reference fails deterministic resolution.
 

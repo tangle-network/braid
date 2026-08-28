@@ -380,6 +380,24 @@ Model discovery does not make every advertised model a release gate.
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
 
+`LIVE-11` uses one reusable flow over the published `@tangle-network/agent-runtime/kernel` and `@tangle-network/agent-runtime/tui` APIs.
+
+The flow rejects incomplete snapshots and requires an exact supervisor identifier, exact worker identifier, root status, worker status, and complete spend fields.
+
+It observes a spend change while the worker remains running before it admits any control operation.
+
+It retries one stable steering operation identifier, then requires a matching request digest, exact worker, and `delivered` Runtime acknowledgement.
+
+It retries one stable worker-cancellation operation identifier, then requires a `cancelled` acknowledgement that names the terminated worker.
+
+It reloads the snapshot after cancellation and rereads the same cancellation acknowledgement to prove reconnect persistence.
+
+When a provider supplies the exact interactive reconnect contract, the flow records the opaque terminal takeover handle.
+
+When no provider supplies that contract, the flow records the explicit unavailable reason and makes no attachment claim.
+
+The check returns the `LIVE-11` measurement only after every required effect and reconnect assertion passes; it never returns a partial result.
+
 ### Tangle Sandbox durability stress
 
 Run `pnpm test:live:tangle:sandbox:stress` against the public Sandbox endpoint.
