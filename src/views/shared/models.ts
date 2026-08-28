@@ -555,6 +555,11 @@ export interface ForkPreviewView {
   readonly source: string
   readonly destination: string
   readonly kind: 'conversation' | 'workspace' | 'cross-runner'
+  /** Exact retry-safe identity consumed by the controller, never rendered as decision copy. */
+  readonly execution?: {
+    readonly operationId: string
+    readonly planDigest: string
+  }
   readonly fields: readonly {
     readonly label: string
     readonly source: string

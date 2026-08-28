@@ -176,19 +176,22 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
       referenced.add(citationId)
       const citation = citations.get(citationId)
       const number = citationNumbers.get(citationId) ?? '?'
-      details.push(
-        citation === undefined
-          ? `! evidence [${number}] unavailable · citation ${shortDigest(citationId)}`
-          : `↳ [${number}] ${sanitizeTerminalText(citation.text)} · event ${shortDigest(citation.eventId)}`,
-      )
+      if (citation === undefined) {
+        details.push(`! evidence [${number}] unavailable`)
+        details.push(`  source: ${shortDigest(citationId)}`)
+      } else {
+        details.push(`↳ [${number}] ${sanitizeTerminalText(citation.text)}`)
+        details.push(`  source: ${shortDigest(citation.eventId)}`)
+      }
     }
   }
   if (analysis.findings.length === 0) details.push('No findings were returned.')
   for (const citation of analysis.citations) {
     if (referenced.has(citation.id)) continue
     details.push(
-      `↳ [${citationNumbers.get(citation.id) ?? '?'}] ${sanitizeTerminalText(citation.text)} · event ${shortDigest(citation.eventId)}`,
+      `↳ [${citationNumbers.get(citation.id) ?? '?'}] ${sanitizeTerminalText(citation.text)}`,
     )
+    details.push(`  source: ${shortDigest(citation.eventId)}`)
   }
 
   const nextAction = analysisNextAction(analysis, mode)

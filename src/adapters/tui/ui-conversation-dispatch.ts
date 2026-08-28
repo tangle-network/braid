@@ -339,9 +339,11 @@ function forkPreview(plan: ForkPlan): ForkPreviewView {
     source: `${plan.sourceConversationId} / ${plan.sourceBranchId}`,
     destination: `${plan.sourceConversationId} / ${plan.destinationBranchId}`,
     kind: plan.kind,
+    execution: {
+      operationId: plan.operationId,
+      planDigest: plan.digest,
+    },
     fields: [
-      { label: 'operation id', source: plan.operationId, destination: plan.operationId },
-      { label: 'plan digest', source: plan.digest, destination: plan.digest },
       {
         label: 'conversation context',
         source: plan.context.sourceBoundary,

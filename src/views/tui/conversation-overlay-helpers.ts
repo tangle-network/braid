@@ -65,19 +65,12 @@ export function findConversation(
       }
 }
 
-export function fieldValue(
-  preview: BraidViewModel['forkPreview'],
-  label: string,
-): string | undefined {
-  return preview?.fields.find((field) => field.label === label)?.source
-}
-
 export function forkExecutionIdentity(
   preview: BraidViewModel['forkPreview'],
 ): { readonly operationId: string; readonly planDigest: string } | undefined {
   if (!preview?.allowed) return undefined
-  const operationId = fieldValue(preview, 'operation id')
-  const planDigest = fieldValue(preview, 'plan digest')
+  const operationId = preview.execution?.operationId
+  const planDigest = preview.execution?.planDigest
   return operationId === undefined || planDigest === undefined
     ? undefined
     : { operationId, planDigest }

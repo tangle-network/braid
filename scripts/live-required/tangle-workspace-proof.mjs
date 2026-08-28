@@ -8,6 +8,7 @@ import {
   workspaceCheckpointRequestDigest,
   workspaceForkRequestDigest,
 } from '@tangle-network/agent-interface'
+import { generateAttestationNonce } from '@tangle-network/sandbox'
 
 import { connectionConfiguration } from './configuration.mjs'
 import {
@@ -630,7 +631,7 @@ async function runWorkspaceProof({
         ? {
             confidential: {
               requested: true,
-              nonce: `braid-live-${proofId}`,
+              nonce: generateAttestationNonce(),
               policy: 'tangle-confidential-v1',
               profileDigest: `sha256:${opened.modules.profiles.canonicalAgentProfileDigestHex(opened.app.state().profile)}`,
             },

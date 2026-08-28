@@ -74,6 +74,10 @@ function forkView(): BraidViewModel {
       kind: 'conversation',
       source: 'conversation:source / branch:main',
       destination: 'conversation:copy / branch:fork',
+      execution: {
+        operationId: 'operation-fork-preview',
+        planDigest: 'digest:fork-preview',
+      },
       fields: [
         {
           label: 'transcript boundary',
@@ -89,16 +93,6 @@ function forkView(): BraidViewModel {
           label: 'working tree',
           source: 'checkpoint:source',
           destination: 'checkpoint:copy',
-        },
-        {
-          label: 'operation id',
-          source: 'operation-fork-preview',
-          destination: 'operation-fork-preview',
-        },
-        {
-          label: 'plan digest',
-          source: 'digest:fork-preview',
-          destination: 'digest:fork-preview',
         },
       ],
       allowed: true,
@@ -214,12 +208,7 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
     assert.match(forkScreen.join('\n'), /source: conversation:source/u)
     assert.match(forkScreen.join('\n'), /destination: conversation:copy/u)
     assert.match(forkScreen.join('\n'), /boundary: message:42/u)
-    assert.match(forkScreen.join('\n'), /operation id:/u)
-    assert.match(forkScreen.join('\n'), /plan digest:/u)
-    if (columns === 80) {
-      assert.match(forkScreen.join('\n'), /operation id: operation-fork-preview/u)
-      assert.match(forkScreen.join('\n'), /plan digest: digest:fork-preview/u)
-    }
+    assert.doesNotMatch(forkScreen.join('\n'), /operation-fork-preview|digest:fork-preview/u)
     assert.match(forkScreen.join('\n'), /enter\/y create(?: fork)? .*←\/esc/u)
 
     const graphScreen = await renderOverlay(graph, columns, rows)
@@ -998,14 +987,10 @@ test('fork and confirmation dialogs expose only short, actionable keys', () => {
   const completeFork = forkView()
   const completePreview = completeFork.forkPreview
   assert.ok(completePreview)
+  const { execution: _execution, ...incompletePreview } = completePreview
   panel.setView({
     ...completeFork,
-    forkPreview: {
-      ...completePreview,
-      fields: completePreview.fields.filter(
-        (field) => field.label !== 'operation id' && field.label !== 'plan digest',
-      ),
-    },
+    forkPreview: incompletePreview,
   })
   const incomplete = panel.render(80).join('\n')
   assert.match(incomplete, /missing execution data/u)
