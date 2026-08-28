@@ -118,12 +118,6 @@ export function requireWorkspace(state: BraidState): NonNullable<BraidState['wor
   return state.workspaceId
 }
 
-export function requireIdle(state: BraidState, command: string): void {
-  if (state.activeRunId !== null) {
-    throw new AppError('RUN_ACTIVE', `${command} is unavailable while a run is active`)
-  }
-}
-
 export function selectedProfile(
   state: BraidState,
   value: string | undefined,

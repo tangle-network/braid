@@ -129,7 +129,7 @@ const DEFINITIONS: readonly CommandDefinition[] = [
   [
     'branch',
     [],
-    'Create a branch at a message boundary',
+    'Create and open a branch at a message boundary',
     '/branch [message]',
     'conversation.branch',
     'explicit',
@@ -145,8 +145,8 @@ const DEFINITIONS: readonly CommandDefinition[] = [
   [
     'fork',
     [],
-    'Preview or create a conversation or workspace fork',
-    '/fork [--workspace]',
+    'Preview a conversation, cross-runner, or workspace fork',
+    '/fork [message] [--workspace | --runner name [--provider name]]',
     'conversation.fork',
     'explicit',
   ],
@@ -155,8 +155,8 @@ const DEFINITIONS: readonly CommandDefinition[] = [
   [
     'analyze',
     [],
-    'Run a named trace-analysis recipe',
-    '/analyze <failure|cost|tools|improvement>',
+    'Run one or all trace-analysis recipes',
+    '/analyze <failure|cost|tools|improvement|all>',
     'analysis.recipe',
     'explicit',
   ],

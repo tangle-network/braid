@@ -288,10 +288,10 @@ An unknown slash command is not sent to the agent and opens a correction list.
 | `/effort [level]` | Set or clear reasoning effort using canonical allowed values |
 | `/branch [message]` | Create a new conversation branch at the selected or named message boundary |
 | `/clone` | Duplicate the active branch into a new conversation with fresh execution identity |
-| `/fork [--workspace]` | Preview and create a conversation fork, optionally with a real environment checkpoint and fork |
+| `/fork [message] [--workspace \| --runner name [--provider name]]` | Preview a conversation, cross-runner, or real workspace fork |
 | `/graph` | Open the conversation, analysis, run, environment, and worker graph |
 | `/ask <question>` | Run a cited trace analysis against the selected frozen source |
-| `/analyze <failure|cost|tools|improvement>` | Run a named trace-analysis recipe against the selected source |
+| `/analyze <failure|cost|tools|improvement|all>` | Run one or all trace-analysis recipes against the selected source |
 | `/compare <left> <right>` | Create a paired comparison of two frozen run or branch sources |
 | `/approve [scope]` | Accept the focused pending interaction using an allowed scope |
 | `/reject [feedback]` | Decline the focused pending interaction with optional feedback when accepted by its schema |
