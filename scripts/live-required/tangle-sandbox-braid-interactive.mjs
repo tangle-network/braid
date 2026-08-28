@@ -40,9 +40,20 @@ import {
 } from './headless.mjs'
 import {
   assertVerifiedProcessCleanup,
-  cleanupRetainedResourceByControlRef,
+  assertSingleExecutionAttemptLedger,
+  assertStableAccountIdentity,
+  cleanupOwnedRetainedResources,
+  accountIdentity,
+  executionAttemptLedgerPath,
   observeRetainedResource,
+  publicAccountIdentityEvidence,
+  providerWorkspaceReadbackEvidence,
+  readRetainedWorkspaceFile,
+  singleRunSpendDisclosure,
+  telemetryDisclosure,
+  usage,
 } from './tangle-sandbox-braid-stress.mjs'
+import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -74,6 +85,15 @@ const INTERACTIVE_PROOF_CHECKS = Object.freeze([
   'exact-resource-cleanup',
   'process-exited-before-cleanup',
   'process-group-exited-before-cleanup',
+  'provider-bound-input',
+  'provider-bound-reconnect',
+  'single-provider-execution-attempt',
+  'exact-owned-resource-set-cleanup',
+  'account-identity-stable',
+  'active-resource-delta',
+  'telemetry-complete',
+  'spend-disclosed',
+  'latency-observed',
 ])
 const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_AUTH',
@@ -130,13 +150,18 @@ export function sandboxConfiguration(environment) {
 export function interactiveProofCommandSequence(markers) {
   const input = markers.input ?? markers.inputSeed?.toUpperCase()
   const reconnect = markers.reconnect ?? markers.reconnectSeed?.toUpperCase()
+  const proofId = markers.proofId ?? `interactive-${markers.outputSeed ?? 'proof'}`
+  const inputPath = markers.inputPath ?? `.braid-live/${proofId}/native-input.txt`
+  const reconnectPath = markers.reconnectPath ?? `.braid-live/${proofId}/native-reconnect.txt`
+  const attemptPath = markers.attemptPath ?? executionAttemptLedgerPath(proofId)
+  const attempt = markers.executionAttempt ?? `ATTEMPT_${proofId.replaceAll(/[^A-Za-z0-9]/gu, '_')}`
   return [
-    `/interactive Reply with exactly the uppercase version of ${markers.outputSeed}.`,
-    input,
+    `/interactive Use a shell command with append redirection (>>) in the current Tangle Sandbox workspace to write exactly ${attempt} followed by a newline to ${attemptPath}; never overwrite this file. Then reply with exactly the uppercase version of ${markers.outputSeed}.`,
+    `Use a shell command in the current Tangle Sandbox workspace to write exactly ${input} followed by a newline to ${inputPath}. Read it back and reply with exactly ${input}.`,
     DETACH,
     '/help',
     '/attach',
-    reconnect,
+    `Use a shell command in the current Tangle Sandbox workspace to write exactly ${reconnect} followed by a newline to ${reconnectPath}. Read it back and reply with exactly ${reconnect}.`,
     DETACH,
     '/help',
   ]
@@ -153,6 +178,113 @@ function occurrences(value, marker) {
     offset += marker.length
   }
   return count
+}
+
+export function assertProviderBoundEvidence(evidence, label = 'provider-bound mutation') {
+  assert.ok(evidence && typeof evidence === 'object', `${label} evidence is missing`)
+  assert.equal(evidence.provider, 'tangle-sandbox', `${label} was not observed by the provider`)
+  assert.equal(evidence.source, 'sandbox-workspace-read', `${label} lacks provider readback`)
+  assert.equal(
+    evidence.providerObserved ?? evidence.matched,
+    true,
+    `${label} was not provider-bound; local terminal echo is insufficient`,
+  )
+  assert.equal(evidence.localEchoOnly, false, `${label} relied on local terminal echo`)
+  return evidence
+}
+
+export function assertInteractiveTelemetry(telemetry, spend, timing) {
+  assert.equal(
+    telemetry?.completeDisclosure,
+    true,
+    'interactive telemetry disclosure is incomplete',
+  )
+  const fields = telemetry.fields ?? {}
+  const missingTelemetry = Object.entries(fields)
+    .filter(([, field]) => field?.status === 'missing' || field?.status === 'in-flight')
+    .map(([name]) => name)
+  assert.deepEqual(missingTelemetry, [], 'interactive telemetry contains missing fields')
+  const rows = Array.isArray(spend?.rows) ? spend.rows : []
+  assert.equal(rows.length, 1, 'interactive spend disclosure must contain one run')
+  const missingSpend = rows.flatMap((row) =>
+    ['tokens', 'cost', 'duration']
+      .filter((name) => row?.[name]?.status === 'missing')
+      .map((name) => `${row.label ?? 'run'}.${name}`),
+  )
+  assert.deepEqual(missingSpend, [], 'interactive spend disclosure contains missing fields')
+  assert.equal(timing?.status, 'observed', 'interactive latency was not observed')
+  assert.ok(
+    Number.isFinite(timing?.milliseconds) && timing.milliseconds >= 0,
+    'interactive latency is not a finite measurement',
+  )
+  return { complete: true }
+}
+
+export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironmentId) {
+  assert.equal(cleanup?.confirmed, true, 'owned Sandbox cleanup was not confirmed')
+  assert.ok(
+    Array.isArray(cleanup?.removedIds) && cleanup.removedIds.includes(expectedEnvironmentId),
+    'owned Sandbox cleanup omitted the exact resource',
+  )
+  assert.equal(cleanup?.remainingIds?.length, 0, 'owned Sandbox cleanup left a resource behind')
+  assert.equal(
+    cleanup?.matchedCount,
+    1,
+    `owned Sandbox cleanup found ${cleanup?.matchedCount ?? 'an unknown number of'} resources; expected one`,
+  )
+  return cleanup
+}
+
+async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
+  const observation = await waitFor(
+    `${label} provider readback`,
+    () =>
+      readRetainedWorkspaceFile(client, controlRef, path, { label, allowMissing: true }).then(
+        (value) => (value?.value === expectedValue ? value : undefined),
+      ),
+    timeoutMs,
+  )
+  return assertProviderBoundEvidence(
+    providerWorkspaceReadbackEvidence(observation, expectedValue, `provider-bound ${label}`),
+    label,
+  )
+}
+
+async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt, timeoutMs) {
+  const expectedValue = `${expectedAttempt}\n`
+  let previousValue
+  let stableReads = 0
+  const observation = await waitFor(
+    'single provider execution attempt',
+    async () => {
+      const value = await readRetainedWorkspaceFile(client, controlRef, path, {
+        label: 'Execution-attempt ledger',
+        allowMissing: true,
+      })
+      if (value?.value === undefined) return undefined
+      assertSingleExecutionAttemptLedger(value.value, expectedAttempt)
+      if (value.value === previousValue) stableReads += 1
+      else {
+        previousValue = value.value
+        stableReads = 1
+      }
+      return stableReads >= 3 ? value : undefined
+    },
+    timeoutMs,
+  )
+  const ledger = assertSingleExecutionAttemptLedger(observation.value, expectedAttempt)
+  return {
+    ...assertProviderBoundEvidence(
+      providerWorkspaceReadbackEvidence(
+        observation,
+        expectedValue,
+        'provider-bound execution attempt',
+      ),
+      'execution attempt',
+    ),
+    path: observation.path,
+    ...ledger,
+  }
 }
 
 function terminalText(terminal) {
@@ -456,9 +588,27 @@ async function observeSandbox(client, controlRef, timeoutMs, expectedRunning, ex
     )
     assert.equal(terminal?.rows, expectedGeometry.rows, 'Sandbox terminal rows were not retained')
   }
+  let resourceSample
+  let resourceSampleError
+  try {
+    if (typeof box.resourceUsage !== 'function') {
+      resourceSample = undefined
+    } else {
+      resourceSample = await box.resourceUsage()
+    }
+  } catch (error) {
+    resourceSampleError = safeMessage(error)
+  }
   return {
     resource,
     terminal,
+    resourceSample:
+      resourceSample === undefined
+        ? { status: 'missing' }
+        : resourceSample === null
+          ? { status: 'unavailable', value: null }
+          : { status: 'observed', value: resourceSample },
+    ...(resourceSampleError === undefined ? {} : { resourceSampleError }),
     ...(terminal === null
       ? {}
       : { geometry: { cols: terminal.cols ?? null, rows: terminal.rows ?? null } }),
@@ -468,10 +618,12 @@ async function observeSandbox(client, controlRef, timeoutMs, expectedRunning, ex
 
 async function cleanupExactSandbox(client, identity) {
   const observed = await observeRetainedResource(client, identity.controlRef)
-  const cleanup = await cleanupRetainedResourceByControlRef(client, identity.controlRef)
-  assert.equal(cleanup.id, observed.id, 'Sandbox cleanup changed the exact Braid resource')
-  assert.equal(cleanup.id, identity.controlRef.environmentId)
-  return cleanup
+  const cleanup = await cleanupOwnedRetainedResources(client, {
+    controlRef: identity.controlRef,
+    firstRunId: identity.run.id,
+    operationId: identity.run.operationId ?? identity.admission?.interactiveIdempotencyKey,
+  })
+  return assertInteractiveOwnedResourceCleanup(cleanup, observed.id)
 }
 
 function cleanupFailure(label, error) {
@@ -628,11 +780,14 @@ export async function finalizeInteractiveProof({
         )
         if (deleted.ok) {
           cleanup = deleted.value
-          if (
-            cleanup?.confirmed !== true ||
-            cleanup.id !== resolvedIdentity.controlRef.environmentId
-          )
-            errors.push(new Error('exact Sandbox deletion did not return confirmed identity'))
+          try {
+            assertInteractiveOwnedResourceCleanup(
+              cleanup,
+              resolvedIdentity.controlRef.environmentId,
+            )
+          } catch (error) {
+            errors.push(error)
+          }
         }
       }
     }
@@ -774,6 +929,10 @@ async function runProof({
   let proofError
   let runObserved = false
   let stopped = false
+  const proofStartedAt = performance.now()
+  const usageRecords = []
+  const identityRecords = []
+  let metrics
   try {
     packed = await installPackedBraid(targetRepository)
     config = await prepareProductionWorkspace({
@@ -789,20 +948,27 @@ async function runProof({
       credentialValue: values.credentialValue,
     })
     client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
+    usageRecords.push(await usage(client, 'before'))
+    identityRecords.push(await accountIdentity(client, 'before'))
     recordPath = join(config.root, 'interactive-state.json')
     runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs)
     await waitFor('packed Braid TUI startup', () => /Braid/iu.test(runtime.screen), timeoutMs)
 
     const markers = {
+      proofId: `braid-live-interactive-${randomUUID().replaceAll('-', '')}`,
       outputSeed: `braid_interactive_output_${randomUUID().replaceAll('-', '')}`,
       inputSeed: `braid_interactive_input_${randomUUID().replaceAll('-', '')}`,
       reconnectSeed: `braid_interactive_reconnect_${randomUUID().replaceAll('-', '')}`,
+      executionAttempt: `ATTEMPT_${randomUUID().replaceAll('-', '')}`,
     }
     markers.output = markers.outputSeed.toUpperCase()
     markers.input = markers.inputSeed.toUpperCase()
     markers.reconnect = markers.reconnectSeed.toUpperCase()
+    markers.inputPath = `.braid-live/${markers.proofId}/native-input.txt`
+    markers.reconnectPath = `.braid-live/${markers.proofId}/native-reconnect.txt`
+    markers.attemptPath = executionAttemptLedgerPath(markers.proofId)
 
-    const [interactiveCommand, inputMarker, detach, , attach, reconnectMarker] =
+    const [interactiveCommand, inputPrompt, detach, , attach, reconnectPrompt] =
       interactiveProofCommandSequence(markers)
     const promptCount = occurrences(runtime.output, markers.output)
     runtime.write(`${interactiveCommand}\r`)
@@ -829,12 +995,14 @@ async function runProof({
       true,
       { cols: 120, rows: 36 },
     )
-    const inputCount = occurrences(runtime.output, markers.input)
-    runtime.write(`${inputMarker}\r`)
-    await waitFor(
-      'native interactive input',
-      () => occurrences(runtime.output, markers.input) > inputCount,
+    runtime.write(`${inputPrompt}\r`)
+    const inputEvidence = await waitForProviderReadback(
+      client,
+      initialIdentity.controlRef,
+      markers.inputPath,
+      `${markers.input}\n`,
       timeoutMs,
+      'interactive input',
     )
 
     runtime.write(detach)
@@ -859,11 +1027,20 @@ async function runProof({
       reconnectedIdentity.controlRef,
       'native reconnect provider control reference',
     )
-    const reconnectCount = occurrences(runtime.output, markers.reconnect)
-    runtime.write(`${reconnectMarker}\r`)
-    await waitFor(
-      'native interactive reconnect input',
-      () => occurrences(runtime.output, markers.reconnect) > reconnectCount,
+    runtime.write(`${reconnectPrompt}\r`)
+    const reconnectEvidence = await waitForProviderReadback(
+      client,
+      initialIdentity.controlRef,
+      markers.reconnectPath,
+      `${markers.reconnect}\n`,
+      timeoutMs,
+      'interactive reconnect input',
+    )
+    const executionAttempt = await waitForExecutionAttempt(
+      client,
+      initialIdentity.controlRef,
+      markers.attemptPath,
+      markers.executionAttempt,
       timeoutMs,
     )
     runtime.write(detach)
@@ -903,6 +1080,10 @@ async function runProof({
       resized,
       beforeStop,
       stop,
+      recordState: record.state,
+      inputEvidence,
+      reconnectEvidence,
+      executionAttempt,
       sameLocalRun,
       sameProviderControlRef,
       identityContinuity: {
@@ -956,6 +1137,75 @@ async function runProof({
     cleanupError = error
   }
 
+  if (client !== undefined) {
+    usageRecords.push(await usage(client, 'after'))
+    identityRecords.push(await accountIdentity(client, 'after'))
+  }
+  if (proofError === undefined && cleanupError === undefined) {
+    try {
+      const beforeUsage = usageRecords.find((entry) => entry.phase === 'before')
+      const afterUsage = usageRecords.find((entry) => entry.phase === 'after')
+      const usageDelta = resourceDelta(afterUsage?.value, beforeUsage?.value)
+      const usageObservationComplete =
+        beforeUsage?.error === undefined &&
+        beforeUsage?.value !== undefined &&
+        beforeUsage?.value !== null &&
+        afterUsage?.error === undefined &&
+        afterUsage?.value !== undefined &&
+        afterUsage?.value !== null &&
+        usageDelta.activeSandboxes !== null
+      assert.equal(usageObservationComplete, true, 'interactive usage telemetry was unavailable')
+      assert.equal(
+        usageDelta.activeSandboxes,
+        0,
+        'interactive resource cleanup changed active usage',
+      )
+      const accountIdentityConsistency = assertStableAccountIdentity(identityRecords)
+      const telemetry = telemetryDisclosure(
+        proofData.stop.run,
+        proofData.recordState,
+        proofData.beforeStop,
+        { identityDigest: accountIdentityConsistency.identityDigest },
+      )
+      const spend = singleRunSpendDisclosure(proofData.stop.run)
+      const timing = {
+        status: 'observed',
+        milliseconds: performance.now() - proofStartedAt,
+      }
+      assertInteractiveTelemetry(telemetry, spend, timing)
+      metrics = {
+        usage: usageRecords.map((entry) => ({
+          phase: entry.phase,
+          status:
+            entry.error !== undefined
+              ? 'unavailable'
+              : entry.value === undefined
+                ? 'missing'
+                : entry.value === null
+                  ? 'unavailable'
+                  : 'observed',
+          ...(entry.value === undefined ? {} : { value: entry.value }),
+          ...(entry.error ? { error: entry.error } : {}),
+        })),
+        accountIdentities: identityRecords.map((entry) => ({
+          phase: entry.phase,
+          status: entry.error ? 'unavailable' : entry.value === undefined ? 'missing' : 'observed',
+          ...(entry.value === undefined
+            ? {}
+            : { value: publicAccountIdentityEvidence(entry.value) }),
+          ...(entry.error ? { error: entry.error } : {}),
+        })),
+        accountIdentityConsistency,
+        usageDelta,
+        telemetry,
+        spend,
+        timing,
+      }
+    } catch (error) {
+      proofError = new AggregateError([error], 'Braid interactive telemetry proof failed')
+    }
+  }
+
   if (proofError !== undefined && cleanupError !== undefined)
     throw new AggregateError(
       [proofError, cleanupError],
@@ -971,9 +1221,12 @@ async function runProof({
     checks: {
       packedBinary: true,
       interactiveCommand: true,
-      input: true,
+      input: proofData.inputEvidence?.matched === true,
       detach: true,
       reconnect: true,
+      providerBoundInput: proofData.inputEvidence?.matched === true,
+      providerBoundReconnect: proofData.reconnectEvidence?.matched === true,
+      singleProviderExecutionAttempt: proofData.executionAttempt?.lineCount === 1,
       terminalResize:
         proofData.resized.geometry?.cols === 100 && proofData.resized.geometry?.rows === 30,
       sameLocalRun: proofData.sameLocalRun === true,
@@ -982,6 +1235,13 @@ async function runProof({
       stopThroughBraid: RUN_STATUS_AFTER_STOP.has(proofData.stop.run.status),
       sandboxObservedStopped: cleanup.afterStop?.stopped === true,
       exactSandboxCleanup: cleanup.cleanup?.confirmed === true,
+      exactOwnedResourceSetCleanup:
+        cleanup.cleanup?.confirmed === true && cleanup.cleanup?.matchedCount === 1,
+      accountIdentityStable: metrics.accountIdentityConsistency?.stable === true,
+      activeResourceDelta: metrics.usageDelta?.activeSandboxes === 0,
+      telemetryComplete: metrics.telemetry?.completeDisclosure === true,
+      spendDisclosed: metrics.spend?.rows?.length === 1,
+      latencyObserved: metrics.timing?.status === 'observed',
       processExitedBeforeWorkspaceCleanup: cleanup.processExited === true,
       processGroupExitedBeforeWorkspaceCleanup: cleanup.processGroupExited === true,
     },
@@ -1002,6 +1262,18 @@ async function runProof({
     },
     identityContinuity: proofData.identityContinuity,
     processCleanup: cleanup.processCleanup,
+    providerEvidence: {
+      input: proofData.inputEvidence,
+      reconnect: proofData.reconnectEvidence,
+    },
+    executionAttempt: proofData.executionAttempt,
+    usage: metrics.usage,
+    accountIdentities: metrics.accountIdentities,
+    accountIdentityConsistency: metrics.accountIdentityConsistency,
+    usageDelta: metrics.usageDelta,
+    telemetry: metrics.telemetry,
+    spend: metrics.spend,
+    timing: metrics.timing,
     markers: proofData.markers,
   }
 }
@@ -1031,6 +1303,15 @@ export async function runInteractiveProof({
       terminalResize: proof.checks.terminalResize,
       processGroupExitedBeforeWorkspaceCleanup:
         proof.checks.processGroupExitedBeforeWorkspaceCleanup,
+      providerInput: proof.checks.providerBoundInput,
+      providerReconnect: proof.checks.providerBoundReconnect,
+      singleProviderExecutionAttempt: proof.checks.singleProviderExecutionAttempt,
+      exactOwnedResourceSetCleanup: proof.checks.exactOwnedResourceSetCleanup,
+      accountIdentityStable: proof.checks.accountIdentityStable,
+      activeResourceDelta: proof.usageDelta.activeSandboxes,
+      telemetryComplete: proof.checks.telemetryComplete,
+      spendDisclosed: proof.checks.spendDisclosed,
+      latencyObserved: proof.checks.latencyObserved,
     },
     checks: INTERACTIVE_PROOF_CHECKS,
     observations: proof,

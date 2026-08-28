@@ -525,11 +525,14 @@ export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
     workspace?.readMatched !== true ||
     workspace?.continuity?.matched !== true ||
     workspace?.git?.exitCode !== 0 ||
+    workspace?.executionAttempt?.matched !== true ||
+    workspace?.executionAttempt?.lineCount !== 1 ||
+    !nonEmptyString(workspace?.executionAttempt?.path) ||
     continuity?.matched !== true ||
     !Number.isSafeInteger(proof.followUpEvidence?.visibleProviderEvents) ||
     proof.followUpEvidence.visibleProviderEvents < 1
   ) {
-    failures.push('retained workspace continuity proof was incomplete')
+    failures.push('retained workspace continuity or exactly-once proof was incomplete')
   }
 
   const resourceIdentity = proof.resourceIdentity

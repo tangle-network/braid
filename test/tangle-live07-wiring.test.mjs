@@ -5,10 +5,17 @@ import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contrac
 import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
 import {
+  assertInteractiveOwnedResourceCleanup,
+  assertProviderBoundEvidence,
+  assertInteractiveTelemetry,
   finalizeInteractiveProof,
   interactiveFailureMessages,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
-import { cleanupRetainedResourceByRunId } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
+import {
+  assertSingleExecutionAttemptLedger,
+  cleanupOwnedRetainedResources,
+  cleanupRetainedResourceByRunId,
+} from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 
@@ -191,6 +198,15 @@ function passedInteractiveProof(
       sandbox: {},
       identityContinuity: {},
       processCleanup: {},
+      providerEvidence: {},
+      executionAttempt: {},
+      usage: {},
+      accountIdentities: {},
+      accountIdentityConsistency: {},
+      usageDelta: {},
+      telemetry: {},
+      spend: {},
+      timing: {},
     },
   } = {},
 ) {
@@ -229,6 +245,15 @@ function passedInteractiveProof(
         processExitedBeforeWorkspaceCleanup: true,
         terminalResize: true,
         processGroupExitedBeforeWorkspaceCleanup: true,
+        providerInput: true,
+        providerReconnect: true,
+        singleProviderExecutionAttempt: true,
+        exactOwnedResourceSetCleanup: true,
+        accountIdentityStable: true,
+        activeResourceDelta: 0,
+        telemetryComplete: true,
+        spendDisclosed: true,
+        latencyObserved: true,
       },
       checks: [
         'packed-binary',
@@ -245,6 +270,15 @@ function passedInteractiveProof(
         'exact-resource-cleanup',
         'process-exited-before-cleanup',
         'process-group-exited-before-cleanup',
+        'provider-bound-input',
+        'provider-bound-reconnect',
+        'single-provider-execution-attempt',
+        'exact-owned-resource-set-cleanup',
+        'account-identity-stable',
+        'active-resource-delta',
+        'telemetry-complete',
+        'spend-disclosed',
+        'latency-observed',
       ],
       observations,
     }),
@@ -369,6 +403,73 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
         observations: { status: 'passed' },
       }),
     /observations\.checks/u,
+  )
+})
+
+test('LIVE-08 rejects input evidence that only observed local terminal echo', () => {
+  assert.throws(
+    () =>
+      assertProviderBoundEvidence(
+        {
+          provider: 'tangle-sandbox',
+          source: 'sandbox-workspace-read',
+          providerObserved: false,
+          localEchoOnly: true,
+        },
+        'interactive input',
+      ),
+    /provider-bound/u,
+  )
+})
+
+test('LIVE-08 rejects missing telemetry and latency status', () => {
+  assert.throws(
+    () =>
+      assertInteractiveTelemetry(
+        { completeDisclosure: true, fields: { environment: { status: 'missing' } } },
+        undefined,
+        undefined,
+      ),
+    /missing fields/u,
+  )
+})
+
+test('LIVE-07 and LIVE-08 reject duplicate provider execution attempts', () => {
+  assert.throws(
+    () => assertSingleExecutionAttemptLedger('attempt-1\nattempt-1\n', 'attempt-1'),
+    /exactly one/u,
+  )
+})
+
+test('LIVE-08 cleanup census finds and reports duplicate owned resources', async () => {
+  const controlRef = { sessionId: 'session-duplicate', environmentId: 'sandbox-primary' }
+  const boxes = ['sandbox-primary', 'sandbox-duplicate'].map((id) => ({
+    id,
+    name: 'braid-session-duplicate',
+    metadata: {
+      owner: 'braid',
+      lifecycle: 'retained',
+      providerSessionId: 'session-duplicate',
+    },
+    deleted: false,
+    async delete() {
+      this.deleted = true
+    },
+  }))
+  const client = {
+    async list() {
+      return boxes.filter((box) => !box.deleted)
+    },
+    async get(id) {
+      return boxes.find((box) => box.id === id && !box.deleted) ?? null
+    },
+  }
+  const cleanup = await cleanupOwnedRetainedResources(client, { controlRef })
+  assert.equal(cleanup.confirmed, true)
+  assert.equal(cleanup.matchedCount, 2)
+  assert.throws(
+    () => assertInteractiveOwnedResourceCleanup(cleanup, controlRef.environmentId),
+    /expected one/u,
   )
 })
 

@@ -116,6 +116,13 @@ function continuityResponsePath(coordinates) {
   return `.braid-live/${coordinates.proofId}/continuity-response.txt`
 }
 
+export function executionAttemptLedgerPath(proofId) {
+  if (typeof proofId !== 'string' || proofId.length === 0) {
+    throw new Error('Execution-attempt ledger paths require a proof ID')
+  }
+  return `.braid-live/${proofId}/execution-attempts.log`
+}
+
 export function sandboxWorkspaceRelativePath(path) {
   const normalized = path.startsWith('./') ? path.slice(2) : path
   const segments = normalized.split('/')
@@ -134,6 +141,30 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
+export function assertSingleExecutionAttemptLedger(value, expectedAttempt) {
+  assert.equal(typeof value, 'string', 'Execution-attempt ledger was not readable')
+  assert.equal(typeof expectedAttempt, 'string', 'Execution-attempt ledger has no expected attempt')
+  const normalized = value.replaceAll('\r\n', '\n')
+  assert.equal(
+    normalized.endsWith('\n'),
+    true,
+    'Execution-attempt ledger did not end with a newline',
+  )
+  const lines = normalized.slice(0, -1).split('\n')
+  assert.equal(
+    lines.length,
+    1,
+    `Execution-attempt ledger recorded ${lines.length} attempts; expected exactly one`,
+  )
+  assert.equal(lines[0], expectedAttempt, 'Execution-attempt ledger recorded the wrong attempt')
+  return {
+    lineCount: lines.length,
+    expectedDigest: `sha256:${sha256(`${expectedAttempt}\n`)}`,
+    observedDigest: `sha256:${sha256(normalized)}`,
+    matched: true,
+  }
+}
+
 export function continuityDigestMatches(value, expectedDigest) {
   return value === expectedDigest || value === `${expectedDigest}\n`
 }
@@ -146,11 +177,13 @@ function proofPrompts(coordinates, holdMs) {
   const path = workspaceMarkerPath(coordinates)
   const challengePath = continuityChallengePath(coordinates)
   const responsePath = continuityResponsePath(coordinates)
+  const attemptPath = executionAttemptLedgerPath(coordinates.proofId)
   const holdSeconds = Math.max(5, Math.ceil(holdMs / 1000))
   return {
     first: [
       'Use the current Tangle Sandbox working directory for every command in this turn.',
       `Create ${path} and write exactly ${coordinates.marker} followed by a newline.`,
+      `Run a shell command with append redirection (>>) that writes exactly ${coordinates.executionAttempt} followed by a newline to ${attemptPath}; never overwrite this file.`,
       `Read ${path}, print its contents, and prove the workspace is usable with a shell command.`,
       'Run git -C . rev-parse --is-inside-work-tree. If it fails, run git -C . init.',
       'Then run git -C . rev-parse --is-inside-work-tree again and print its result.',
@@ -185,6 +218,47 @@ async function retainedBox(client, controlRef, label) {
     })
   }
   return box
+}
+
+export async function readRetainedWorkspaceFile(
+  client,
+  controlRef,
+  path,
+  { label = 'Workspace file read', allowMissing = false } = {},
+) {
+  const box = await retainedBox(client, controlRef, label)
+  const relativePath = sandboxWorkspaceRelativePath(path)
+  let value
+  try {
+    value = await box.read(relativePath)
+  } catch (error) {
+    if (allowMissing) return undefined
+    throw error
+  }
+  return { environmentId: box.id, path: relativePath, value }
+}
+
+export function providerWorkspaceReadbackEvidence(
+  observation,
+  expectedValue,
+  label = 'provider-bound readback',
+) {
+  assert.ok(observation && typeof observation === 'object', `${label} observation is missing`)
+  assert.equal(typeof observation.environmentId, 'string', `${label} omitted environment identity`)
+  assert.equal(typeof observation.path, 'string', `${label} omitted workspace path`)
+  assert.equal(typeof observation.value, 'string', `${label} did not return file bytes`)
+  assert.equal(observation.value, expectedValue, `${label} did not match the expected remote bytes`)
+  return {
+    provider: 'tangle-sandbox',
+    source: 'sandbox-workspace-read',
+    environmentId: observation.environmentId,
+    path: observation.path,
+    expectedDigest: `sha256:${sha256(expectedValue)}`,
+    observedDigest: `sha256:${sha256(observation.value)}`,
+    bytes: Buffer.byteLength(observation.value),
+    matched: true,
+    localEchoOnly: false,
+  }
 }
 
 async function prepareContinuityChallenge(client, controlRef, coordinates) {
@@ -226,11 +300,17 @@ async function listAllSandboxes(client) {
 async function verifyRetainedWorkspace(client, controlRef, coordinates, continuity) {
   const box = await retainedBox(client, controlRef, 'Workspace verification')
   const markerPath = workspaceMarkerPath(coordinates)
+  const attemptPath = executionAttemptLedgerPath(coordinates.proofId)
   const expectedMarker = `${coordinates.marker}\n`
-  const [readValue, continuityResponse] = await Promise.all([
+  const [readValue, continuityResponse, attemptValue] = await Promise.all([
     box.read(sandboxWorkspaceRelativePath(markerPath)),
     box.read(sandboxWorkspaceRelativePath(continuity.responsePath)),
+    box.read(sandboxWorkspaceRelativePath(attemptPath)),
   ])
+  const executionAttempt = assertSingleExecutionAttemptLedger(
+    attemptValue,
+    coordinates.executionAttempt,
+  )
   const git = await box.exec(
     `set -eu; test "$(cat -- ${shellQuote(markerPath)})" = ${shellQuote(coordinates.marker)}; test "$(cat -- ${shellQuote(continuity.responsePath)})" = ${shellQuote(continuity.expectedDigest)}; test "$(git -C . rev-parse --is-inside-work-tree)" = true; git -C . status --short --untracked-files=no`,
   )
@@ -257,6 +337,10 @@ async function verifyRetainedWorkspace(client, controlRef, coordinates, continui
     markerPath,
     readValue,
     readMatched: readValue === expectedMarker,
+    executionAttempt: {
+      path: attemptPath,
+      ...executionAttempt,
+    },
     continuity: {
       challengePath: continuity.path,
       responsePath: continuity.responsePath,
@@ -565,14 +649,18 @@ async function deleteOwnedResource(client, box, predicate) {
   return { id: box.id, attempts, confirmed: false }
 }
 
-async function cleanupOwnedRetainedResources(client, { controlRef, firstRunId, operationId }) {
+export async function cleanupOwnedRetainedResources(
+  client,
+  { controlRef, firstRunId, operationId } = {},
+) {
   if (!client) {
     throw new MissingIntegrationError('Retained Sandbox cleanup has no authenticated client', {
       required: 'the execution Sandbox credential',
     })
   }
   const expectedSessionId =
-    typeof firstRunId === 'string' ? `session-braid-${safeExecutionId(firstRunId)}` : undefined
+    controlRef?.sessionId ??
+    (typeof firstRunId === 'string' ? `session-braid-${safeExecutionId(firstRunId)}` : undefined)
   const predicate = (box) =>
     (controlRef !== undefined && retainedResourceIdentity(box, controlRef)) ||
     (expectedSessionId !== undefined &&
@@ -613,7 +701,7 @@ async function cleanupOwnedRetainedResources(client, { controlRef, firstRunId, o
   }
 }
 
-async function usage(client, phase) {
+export async function usage(client, phase) {
   if (!client) return { phase, value: undefined, error: undefined }
   try {
     return { phase, value: await client.usage(), error: undefined }
@@ -640,7 +728,7 @@ function accountIdentityDigest(value) {
   return createHash('sha256').update(`${value.customerId}:${value.billingOwnerId}`).digest('hex')
 }
 
-function publicAccountIdentityEvidence(value) {
+export function publicAccountIdentityEvidence(value) {
   return {
     identityDigest: accountIdentityDigest(value),
     ...(typeof value.billingDelegationAuthorized === 'boolean'
@@ -649,7 +737,7 @@ function publicAccountIdentityEvidence(value) {
   }
 }
 
-async function accountIdentity(client, phase) {
+export async function accountIdentity(client, phase) {
   if (!client) return { phase, value: undefined, error: undefined }
   try {
     return { phase, value: publicAccountIdentity(await client.getIdentity()), error: undefined }
@@ -658,7 +746,7 @@ async function accountIdentity(client, phase) {
   }
 }
 
-function assertStableAccountIdentity(records) {
+export function assertStableAccountIdentity(records) {
   const before = records.find((entry) => entry.phase === 'before')
   const after = records.find((entry) => entry.phase === 'after')
   if (!before?.value?.customerId || !before.value.billingOwnerId) {
@@ -873,6 +961,29 @@ export function spendDisclosure(runs) {
   }
 }
 
+export function singleRunSpendDisclosure(run, label = 'interactive-run') {
+  const row = runSpend(run, label)
+  return {
+    scope: 'the unique local run in this cloud proof',
+    rows: [row],
+    totals: {
+      tokens: {
+        observedRuns: row.tokens.status === 'observed' ? 1 : 0,
+        unavailableRuns: row.tokens.status === 'unavailable' ? 1 : 0,
+        missingRuns: row.tokens.status === 'missing' ? 1 : 0,
+        input: row.tokens.status === 'observed' ? row.tokens.input : 0,
+        output: row.tokens.status === 'observed' ? row.tokens.output : 0,
+      },
+      cost: {
+        observedRuns: row.cost.status === 'observed' ? 1 : 0,
+        unavailableRuns: row.cost.status === 'unavailable' ? 1 : 0,
+        missingRuns: row.cost.status === 'missing' ? 1 : 0,
+        usd: row.cost.status === 'observed' ? row.cost.usd : 0,
+      },
+    },
+  }
+}
+
 export function telemetryDisclosure(
   run,
   state,
@@ -1072,7 +1183,11 @@ export async function runBraidSandboxStress({
   requireZeroActiveResourceDelta = false,
 } = {}) {
   const startedAt = performance.now()
-  const coordinates = proofCoordinates()
+  const baseCoordinates = proofCoordinates()
+  const coordinates = {
+    ...baseCoordinates,
+    executionAttempt: `ATTEMPT_${baseCoordinates.proofId.replaceAll(/[^A-Za-z0-9]/gu, '_')}`,
+  }
   const ids = operationIds(coordinates.proofId)
   const holdMs = numberEnvironment(
     environment,

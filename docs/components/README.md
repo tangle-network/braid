@@ -55,6 +55,7 @@ It proves keyboard behavior and terminal output at 40×12, 80×24, 120×40, and 
 | Retained run lifecycle | [retained-run-lifecycle.md](retained-run-lifecycle.md) | Reconnect, replay, detach, cancel, and recover one exact provider run. |
 | Native continuation | [native-continuation.md](native-continuation.md) | Continue the exact provider session at a verified branch boundary. |
 | Run stream sanitizer | [run-stream-sanitizer.md](run-stream-sanitizer.md) | Make split provider output safe before durable storage and rendering. |
+| Cloud proof observations | [cloud-proof-observations.md](cloud-proof-observations.md) | Prove provider-bound input, execution uniqueness, telemetry, identity, and cleanup. |
 | Selectors and commands | [selectors-and-commands.md](selectors-and-commands.md) | Find an action or entity through one keyboard contract. |
 | Modal coordination | [modal-coordination.md](modal-coordination.md) | Present one bounded decision surface with reliable focus restoration. |
 | Conversation navigation | [conversation-navigation.md](conversation-navigation.md) | Create, rename, archive, switch, branch, and clone through explicit identities. |

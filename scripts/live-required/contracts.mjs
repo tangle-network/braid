@@ -52,6 +52,15 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'exact-resource-cleanup',
     'process-exited-before-cleanup',
     'process-group-exited-before-cleanup',
+    'provider-bound-input',
+    'provider-bound-reconnect',
+    'single-provider-execution-attempt',
+    'exact-owned-resource-set-cleanup',
+    'account-identity-stable',
+    'active-resource-delta',
+    'telemetry-complete',
+    'spend-disclosed',
+    'latency-observed',
   ]),
   [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
     'configuration',
@@ -114,6 +123,15 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'processExitedBeforeWorkspaceCleanup',
     'terminalResize',
     'processGroupExitedBeforeWorkspaceCleanup',
+    'providerInput',
+    'providerReconnect',
+    'singleProviderExecutionAttempt',
+    'exactOwnedResourceSetCleanup',
+    'accountIdentityStable',
+    'activeResourceDelta',
+    'telemetryComplete',
+    'spendDisclosed',
+    'latencyObserved',
   ]),
   [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
     'sourceProviderEnvironmentId',
@@ -455,7 +473,15 @@ function validateProofFacts(operation, status, facts) {
       key === 'wrongMeasurementRejected' ||
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
-      key === 'processGroupExitedBeforeWorkspaceCleanup'
+      key === 'processGroupExitedBeforeWorkspaceCleanup' ||
+      key === 'providerInput' ||
+      key === 'providerReconnect' ||
+      key === 'singleProviderExecutionAttempt' ||
+      key === 'exactOwnedResourceSetCleanup' ||
+      key === 'accountIdentityStable' ||
+      key === 'telemetryComplete' ||
+      key === 'spendDisclosed' ||
+      key === 'latencyObserved'
     ) {
       if (typeof value !== 'boolean') throw new Error(`Live proof ${key} must be boolean`)
       continue
@@ -645,6 +671,21 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     throw new Error('Passed Tangle interactive proof requires terminal resize evidence')
   if (receipt.facts.processGroupExitedBeforeWorkspaceCleanup !== true)
     throw new Error('Passed Tangle interactive proof requires process-group exit before cleanup')
+  for (const field of [
+    'providerInput',
+    'providerReconnect',
+    'singleProviderExecutionAttempt',
+    'exactOwnedResourceSetCleanup',
+    'accountIdentityStable',
+    'telemetryComplete',
+    'spendDisclosed',
+    'latencyObserved',
+  ]) {
+    if (receipt.facts[field] !== true)
+      throw new Error(`Passed Tangle interactive proof requires ${field}=true`)
+  }
+  if (receipt.facts.activeResourceDelta !== 0)
+    throw new Error('Passed Tangle interactive proof requires activeResourceDelta=0')
   if (!record(receipt.observations) || Object.keys(receipt.observations).length === 0)
     throw new Error('Passed Tangle interactive proof requires redacted observations')
   for (const field of [
@@ -654,6 +695,15 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     'sandbox',
     'identityContinuity',
     'processCleanup',
+    'providerEvidence',
+    'executionAttempt',
+    'usage',
+    'accountIdentities',
+    'accountIdentityConsistency',
+    'usageDelta',
+    'telemetry',
+    'spend',
+    'timing',
   ]) {
     if (!record(receipt.observations[field]))
       throw new Error(`Passed Tangle interactive proof requires observations.${field}`)

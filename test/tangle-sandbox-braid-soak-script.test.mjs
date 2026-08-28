@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import { runBraidSandboxSoak } from '../scripts/live-required/tangle-sandbox-braid-soak.mjs'
+import {
+  proofFailures,
+  runBraidSandboxSoak,
+} from '../scripts/live-required/tangle-sandbox-braid-soak.mjs'
 
 function mergeRecords(base, override) {
   if (
@@ -269,6 +272,11 @@ function passedProof(index, overrides = {}) {
         readMatched: true,
         continuity: { matched: true },
         git: { exitCode: 0 },
+        executionAttempt: {
+          path: `.braid-live/proof-${index}/execution-attempts.log`,
+          lineCount: 1,
+          matched: true,
+        },
         resourceSample: { status: 'observed', value: { activeSandboxes: 0 } },
       },
       followUpEvidence: {
@@ -467,6 +475,21 @@ test('sandbox soak rejects a passed proof with missing durable retained fields',
   assert.equal(result.status, 'failed')
   assert.ok(result.failures.some((failure) => /freshControlRef.*incomplete/u.test(failure)))
   assert.ok(result.failures.some((failure) => /replay\.resumeFromCursor/u.test(failure)))
+})
+
+test('sandbox soak rejects a provider execution-attempt ledger with two lines', () => {
+  const failures = proofFailures(
+    mergeRecords(passedProof(0), {
+      workspaceVerification: {
+        executionAttempt: {
+          path: '.braid-live/proof-0/execution-attempts.log',
+          lineCount: 2,
+          matched: false,
+        },
+      },
+    }),
+  )
+  assert.ok(failures.some((failure) => /exactly-once/u.test(failure)))
 })
 
 test('sandbox soak does not attribute shared account churn to exact owned resources', async () => {
