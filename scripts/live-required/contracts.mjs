@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { collectCredentialSecrets, redactText } from '../release/redaction.mjs'
+import { assertMultirunProof } from './multirun-contract.mjs'
 
 export const EXIT_CODES = Object.freeze({
   passed: 0,
@@ -447,6 +448,7 @@ function validatePassedTangleSandboxReceipt(receipt) {
     throw new Error('Passed Tangle Sandbox proof requires numeric activeResourceDelta=0')
   if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
     throw new Error('Passed Tangle Sandbox proof requires redacted observations')
+  assertMultirunProof(receipt.observations.multirun)
 }
 
 function validatePassedTangleSandboxInteractiveReceipt(receipt) {

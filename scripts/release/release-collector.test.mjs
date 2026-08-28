@@ -823,6 +823,53 @@ test('one local catalog check produces redacted artifacts and an immutable colle
   })
 })
 
+test('Tangle release collection rejects a passing command without the multirun artifact', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    const measurements = Array.from({ length: 5 }, (_, index) => ({
+      kind: 'scalar',
+      name: `LIVE-${String(index + 6).padStart(2, '0')}`,
+      unit: 'verified-flow',
+      value: 1,
+    }))
+    const output =
+      'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
+      `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({ measurements })}\n`
+    const result = await collectReleaseEvidence({
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['live-tangle'] } },
+      checkIds: ['live-tangle'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck: async ({ checkId, cwd, environment }) => {
+        const evidenceRoot = join(artifactRoot, 'live', 'tangle')
+        await mkdir(evidenceRoot, { recursive: true })
+        await writeFile(join(evidenceRoot, 'stale.json'), '{}\n')
+        const processResult = await executeArgv({
+          file: process.execPath,
+          args: ['-e', `process.stdout.write(${JSON.stringify(output)})`],
+          cwd,
+          environment,
+        })
+        return {
+          checkId,
+          category: 'live',
+          command: 'pnpm test:live:tangle',
+          argv: ['pnpm', 'test:live:tangle'],
+          ...processResult,
+        }
+      },
+    })
+    assert.notEqual(result.result, 'passed')
+    assert.equal(result.envelope.checks[0].result, 'uncaptured')
+    assert.match(
+      result.envelope.checks[0].failureDetails.reason,
+      /multirun artifact is missing or invalid/u,
+    )
+  })
+})
+
 test('a selected check reports only requirements covered by that check', async () => {
   await withRepo(
     async ({ root, artifactRoot, tarballPath, proof }) => {

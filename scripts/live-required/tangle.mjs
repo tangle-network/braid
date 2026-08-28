@@ -16,6 +16,8 @@ import {
 } from './headless.mjs'
 import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
 import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
+import { assertMultirunProof } from './multirun-contract.mjs'
+import { runProof as runMultirunProof } from './tangle-sandbox-braid-multirun.mjs'
 
 const TANGLE_ROWS = Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'])
 const MINIMUM_SANDBOX_STRESS_RUNS = 3
@@ -88,6 +90,7 @@ export async function runSandbox({
   binary,
   invocationId,
   stressRunner = runBraidSandboxSoak,
+  multirunRunner = runMultirunProof,
 }) {
   const startedAt = new Date().toISOString()
   const cohort = await stressRunner({ repository, environment, binary })
@@ -117,6 +120,11 @@ export async function runSandbox({
   if (proof?.status !== 'passed') {
     throw new Error('LIVE-07 Braid Tangle Sandbox stress has no passing canary proof')
   }
+  const multirun = await multirunRunner({
+    targetRepository: repository,
+    environment,
+  })
+  assertMultirunProof(multirun)
   const firstRun = proof.runs?.first
   const runIds = [
     ...new Set([
@@ -153,7 +161,7 @@ export async function runSandbox({
       environmentId: localEnvironmentId,
       materializationDigest: firstRun?.materializationDigest ?? null,
       facts,
-      observations: cohort,
+      observations: { stress: cohort, multirun },
       environment,
       checks: [
         'marker',
@@ -166,7 +174,7 @@ export async function runSandbox({
         'exact-resource-cleanup',
       ],
     }),
-    observations: cohort,
+    observations: { stress: cohort, multirun },
   }
 }
 

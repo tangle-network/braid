@@ -43,6 +43,8 @@ import {
 } from './live-required/tangle-sandbox-stress.mjs'
 import { runWorker } from './live-required/tangle-sandbox-worker.mjs'
 import './live-required/tangle-sandbox-braid-multirun.test.mjs'
+import { MULTIRUN_REQUIRED_PHASES } from './live-required/multirun-contract.mjs'
+import { readLiveTangleProof } from './release/live-tangle-proof.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 
@@ -124,6 +126,172 @@ const TANGLE_SANDBOX_CHECKS = [
   'exact-resource-cleanup',
 ]
 
+function validMultirunProof() {
+  const runs = [
+    {
+      runId: 'multirun-a',
+      conversationId: 'conversation-a',
+      branchId: 'branch-a',
+      eventCount: 2,
+      eventIdsUnique: true,
+      environmentId: 'environment-a',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-a' },
+        { kind: 'provider-session', id: 'session-a' },
+        { kind: 'provider-execution', id: 'execution-a' },
+        { kind: 'provider-run', id: 'multirun-a' },
+      ],
+      status: 'completed',
+    },
+    {
+      runId: 'multirun-b',
+      conversationId: 'conversation-b',
+      branchId: 'branch-b',
+      eventCount: 2,
+      eventIdsUnique: true,
+      environmentId: 'environment-b',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-b' },
+        { kind: 'provider-session', id: 'session-b' },
+        { kind: 'provider-execution', id: 'execution-b' },
+        { kind: 'provider-run', id: 'multirun-b' },
+      ],
+      status: 'cancelled',
+    },
+  ]
+  return {
+    schemaVersion: 'braid.live-required.multirun.v1',
+    status: 'passed',
+    provider: {
+      endpoint: 'https://sandbox.tangle.tools',
+      runner: 'opencode',
+      model: 'tangle-router/glm-5.2',
+      lifecycle: 'retained',
+      credentialConfigured: true,
+    },
+    conversations: {
+      first: { conversationId: 'conversation-a', branchId: 'branch-a' },
+      second: { conversationId: 'conversation-b', branchId: 'branch-b' },
+    },
+    runs,
+    overlap: {
+      activeRunCount: 2,
+      streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
+      workStripCount: 2,
+      independentConversations: true,
+    },
+    focus: {
+      beforeRunId: 'multirun-b',
+      firstSwitchRunId: 'multirun-a',
+      secondSwitchRunId: 'multirun-b',
+      firstSwitchPreservedStatuses: true,
+      secondSwitchPreservedStatuses: true,
+    },
+    cancellation: {
+      targetRunId: 'multirun-b',
+      targetStatus: 'cancelled',
+      unaffectedRunId: 'multirun-a',
+      unaffectedStatusAtAck: 'streaming',
+      unaffectedFinalStatus: 'completed',
+    },
+    replay: {
+      restartedRunCount: 2,
+      noDuplicateEventIds: true,
+      eventSetsStable: true,
+    },
+    cleanup: {
+      exact: true,
+      errors: [],
+      resources: [
+        {
+          runId: 'multirun-a',
+          environmentId: 'environment-a',
+          id: 'resource-a',
+          confirmed: true,
+        },
+        {
+          runId: 'multirun-b',
+          environmentId: 'environment-b',
+          id: 'resource-b',
+          confirmed: true,
+        },
+      ],
+      activeResourceDelta: 0,
+      accountStable: true,
+      workspace: { protectedStoreClean: true, temporaryRootRemoved: true },
+    },
+    error: null,
+    phases: Object.fromEntries(
+      MULTIRUN_REQUIRED_PHASES.map((name) => [name, { status: 'passed' }]),
+    ),
+  }
+}
+
+function passingTangleProcess() {
+  const measurements = Array.from({ length: 5 }, (_, index) => ({
+    kind: 'scalar',
+    name: `LIVE-${String(index + 6).padStart(2, '0')}`,
+    unit: 'verified-flow',
+    value: 1,
+  }))
+  const structuredStdout = Buffer.from(
+    `BRAID_RELEASE_RESULT_JSON={"status":"passed"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({ measurements })}\n`,
+  )
+  return {
+    exitCode: 0,
+    signal: null,
+    timedOut: false,
+    spawnError: null,
+    cleanupConfirmed: true,
+    durationMs: 1,
+    stdout: { redactionFailClosed: false, bytes: structuredStdout },
+    stderr: { redactionFailClosed: false, bytes: Buffer.alloc(0) },
+    structuredStdout: { bytes: structuredStdout, error: null },
+  }
+}
+
+test('LIVE-07 release artifact validation requires complete multirun evidence and exact cleanup', async () => {
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-live-tangle-proof-'))
+  const artifactPath = join(artifactRoot, 'live', 'tangle', 'evidence.json')
+  try {
+    await mkdir(join(artifactRoot, 'live', 'tangle'), { recursive: true })
+    await writeFile(artifactPath, `${JSON.stringify(validMultirunProof())}\n`)
+    const passed = await readLiveTangleProof({
+      artifactRoot,
+      checkId: 'live-tangle',
+      processResult: passingTangleProcess(),
+    })
+    assert.equal(passed.result, 'passed')
+
+    await rm(artifactPath)
+    const missing = await readLiveTangleProof({
+      artifactRoot,
+      checkId: 'live-tangle',
+      processResult: passingTangleProcess(),
+    })
+    assert.equal(missing.result, 'uncaptured')
+    assert.match(missing.reason, /artifact is missing/u)
+
+    for (const proof of [
+      { ...validMultirunProof(), status: 'failed' },
+      {
+        ...validMultirunProof(),
+        cleanup: { ...validMultirunProof().cleanup, exact: false },
+      },
+    ]) {
+      await writeFile(artifactPath, `${JSON.stringify(proof)}\n`)
+      const invalid = await readLiveTangleProof({
+        artifactRoot,
+        checkId: 'live-tangle',
+        processResult: passingTangleProcess(),
+      })
+      assert.equal(invalid.result, 'uncaptured')
+    }
+  } finally {
+    await rm(artifactRoot, { recursive: true, force: true })
+  }
+})
+
 function validTangleSandboxReceiptInput(overrides = {}) {
   const cloudControl = {
     provider: 'tangle-sandbox',
@@ -164,6 +332,7 @@ function validTangleSandboxReceiptInput(overrides = {}) {
       phase: 'completed',
       cloudControl,
       usage: { inputTokens: 12, outputTokens: 8, costUsd: 0.001 },
+      multirun: validMultirunProof(),
     },
     checks: TANGLE_SANDBOX_CHECKS,
     ...overrides,
@@ -489,13 +658,14 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
     binary: 'unused-injected-binary',
     invocationId: input.invocationId,
     stressRunner: async () => cohort,
+    multirunRunner: async () => validMultirunProof(),
   })
 
   assert.equal(result.evidence.status, 'passed')
   assert.deepEqual(result.evidence.facts.cloudControl, input.facts.cloudControl)
   assert.equal(result.evidence.facts.exactResource, true)
   assert.equal(result.evidence.facts.activeResourceDelta, 0)
-  assert.equal(result.evidence.observations.detailed, true)
+  assert.equal(result.evidence.observations.stress.detailed, true)
 })
 
 test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {

@@ -294,6 +294,7 @@ A repository search and dependency test must prove no Braid-owned runner/model m
 - Implement shutdown behavior that distinguishes detachable and non-detachable runs.
 - Run the packed Braid binary against CLI Bridge, Tangle inference, and Tangle sandbox.
 - Run one Tangle Sandbox canary before a bounded three-proof durability cohort.
+- Run the retained two-conversation multirun proof with concurrent streams, focus switching, targeted cancellation, restart replay, and exact cleanup as part of `LIVE-07`.
 - Record exact cleanup, account identity, latency distributions, tokens, costs, placement, and resource observations for every cloud proof.
 
 ### Done when
@@ -301,6 +302,8 @@ A repository search and dependency test must prove no Braid-owned runner/model m
 `PR-04`, `UX-04`, `UX-09`, `AR-04`, `AR-05`, `LIVE-01`, `LIVE-02`, `LIVE-04`, `LIVE-06`, `LIVE-07`, and every replay, cancel, and terminal-state reliability row pass.
 
 The event ledger must show zero duplicate displayed part and zero lost committed event across forced disconnect and restart cases.
+
+`LIVE-07` cannot pass without the multirun artifact proving two independent conversations, both streamed runs, both focus switches, targeted cancellation, restart replay, and exact cleanup.
 
 The Tangle Sandbox cohort must leave zero resources owned by its exact operation identities.
 
@@ -406,7 +409,7 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 - Run `pnpm check` once against the exact main commit.
 - Build one immutable package with `pnpm release:prepare` and use its installed CLI, RPC, and terminal flows.
 - Keep live, performance, semantic, soak, and complete-manifest audits available as explicit product audits.
-- Do not make provider or sandbox availability an npm publication prerequisite.
+- Require a passed `LIVE-07` multirun artifact before release completion; provider or sandbox availability may still block that completion rather than becoming an unavailable claim.
 - Endorse the exact candidate package and package manifest in an isolated code-free job.
 - Publish `@tangle-network/braid` with npm provenance.
 - Download the registry package in clean supported environments and repeat the post-publication smoke.

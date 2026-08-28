@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
+import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
 import { cleanupRetainedResourceByRunId } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 
@@ -65,6 +66,103 @@ function passedStressCohort() {
     concurrency: 2,
     cleanup: { exactProofs: 3, exactResourcesRemaining: 0, activeResourceDelta: 0 },
     attempts,
+  }
+}
+
+function passedMultirunProof() {
+  const runs = [
+    {
+      runId: 'multirun-a',
+      conversationId: 'conversation-a',
+      branchId: 'branch-a',
+      eventCount: 2,
+      eventIdsUnique: true,
+      environmentId: 'environment-a',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-a' },
+        { kind: 'provider-session', id: 'session-a' },
+        { kind: 'provider-execution', id: 'execution-a' },
+        { kind: 'provider-run', id: 'multirun-a' },
+      ],
+      status: 'completed',
+    },
+    {
+      runId: 'multirun-b',
+      conversationId: 'conversation-b',
+      branchId: 'branch-b',
+      eventCount: 2,
+      eventIdsUnique: true,
+      environmentId: 'environment-b',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-b' },
+        { kind: 'provider-session', id: 'session-b' },
+        { kind: 'provider-execution', id: 'execution-b' },
+        { kind: 'provider-run', id: 'multirun-b' },
+      ],
+      status: 'cancelled',
+    },
+  ]
+  return {
+    schemaVersion: 'braid.live-required.multirun.v1',
+    status: 'passed',
+    provider: {
+      endpoint: 'https://sandbox.tangle.tools',
+      runner: 'opencode',
+      model: 'tangle-router/glm-5.2',
+      lifecycle: 'retained',
+      credentialConfigured: true,
+    },
+    conversations: {
+      first: { conversationId: 'conversation-a', branchId: 'branch-a' },
+      second: { conversationId: 'conversation-b', branchId: 'branch-b' },
+    },
+    runs,
+    overlap: {
+      activeRunCount: 2,
+      streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
+      workStripCount: 2,
+      independentConversations: true,
+    },
+    focus: {
+      beforeRunId: 'multirun-b',
+      firstSwitchRunId: 'multirun-a',
+      secondSwitchRunId: 'multirun-b',
+      firstSwitchPreservedStatuses: true,
+      secondSwitchPreservedStatuses: true,
+    },
+    cancellation: {
+      targetRunId: 'multirun-b',
+      targetStatus: 'cancelled',
+      unaffectedRunId: 'multirun-a',
+      unaffectedStatusAtAck: 'streaming',
+      unaffectedFinalStatus: 'completed',
+    },
+    replay: { restartedRunCount: 2, noDuplicateEventIds: true, eventSetsStable: true },
+    cleanup: {
+      exact: true,
+      errors: [],
+      resources: [
+        {
+          runId: 'multirun-a',
+          environmentId: 'environment-a',
+          id: 'resource-a',
+          confirmed: true,
+        },
+        {
+          runId: 'multirun-b',
+          environmentId: 'environment-b',
+          id: 'resource-b',
+          confirmed: true,
+        },
+      ],
+      activeResourceDelta: 0,
+      accountStable: true,
+      workspace: { protectedStoreClean: true, temporaryRootRemoved: true },
+    },
+    error: null,
+    phases: Object.fromEntries(
+      MULTIRUN_REQUIRED_PHASES.map((name) => [name, { status: 'passed' }]),
+    ),
   }
 }
 
@@ -148,6 +246,7 @@ test('built-in LIVE-07 and LIVE-08 wiring emits evidence and deduped dispatch', 
     binary: 'unused-injected-binary',
     invocationId: 'live-required-test-invocation',
     stressRunner,
+    multirunRunner: async () => passedMultirunProof(),
   })
 
   assert.equal(sandbox.status, 'passed')
@@ -163,7 +262,8 @@ test('built-in LIVE-07 and LIVE-08 wiring emits evidence and deduped dispatch', 
       measurement: { kind: 'scalar', name: 'LIVE-06', unit: 'verified-flow', value: 1 },
       evidence: null,
     }),
-    sandboxRunner: (input) => runSandbox({ ...input, stressRunner }),
+    sandboxRunner: (input) =>
+      runSandbox({ ...input, stressRunner, multirunRunner: async () => passedMultirunProof() }),
     interactiveRunner: async (input) => {
       dispatches.push(input)
       return passedInteractiveProof(input.invocationId)
@@ -205,6 +305,32 @@ test('LIVE-07 rejects a passing canary presented as a stress cohort', async () =
     }),
     /at least three complete cloud proofs/u,
   )
+})
+
+test('LIVE-07 requires passed, complete, and exact multirun evidence', async () => {
+  const cases = [
+    ['missing', undefined, /multirun evidence is missing/u],
+    ['failed', { ...passedMultirunProof(), status: 'failed' }, /multirun evidence did not pass/u],
+    [
+      'unclean',
+      { ...passedMultirunProof(), cleanup: { ...passedMultirunProof().cleanup, exact: false } },
+      /multirun cleanup was not exact/u,
+    ],
+  ]
+  for (const [label, multirun, expected] of cases) {
+    await assert.rejects(
+      runSandbox({
+        repository,
+        environment: {},
+        binary: 'unused-injected-binary',
+        invocationId: `live-required-test-${label}`,
+        stressRunner: async () => passedStressCohort(),
+        multirunRunner: async () => multirun,
+      }),
+      expected,
+      label,
+    )
+  }
 })
 
 test('LIVE-08 rejects a non-Pi runner from the native interactive proof', () => {

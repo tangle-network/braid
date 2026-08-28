@@ -371,7 +371,7 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-04 | CLI Bridge restart | Run state becomes honestly unknown or recovers according to retained state; Braid never labels it cancelled or resubmits unsafely |
 | LIVE-05 | Every advertised interactive bridge runner | Common conformance flow at a pinned minimum runner version; failures remove the interactive capability claim |
 | LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, cancellation, and immutable receipt |
-| LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, and confirmed cleanup |
+| LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, two-conversation concurrent streaming with focus switching, and confirmed cleanup |
 | LIVE-08 | Tangle interaction | A retained cloud interaction remains answerable after Braid reconnect and continues once from the acknowledged response |
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |
 | LIVE-10 | Confidential Tangle path | Requested placement remains unverified until valid attestation is checked; negative nonce and measurement tests fail |
@@ -383,6 +383,10 @@ If a required live provider is unavailable, the release is blocked and the manif
 ### Tangle Sandbox durability stress
 
 Run `pnpm test:live:tangle:sandbox:stress` against the public Sandbox endpoint.
+
+The aggregate `pnpm test:live:tangle` command also runs `tangle-sandbox-braid-multirun.mjs` as part of `LIVE-07`.
+
+The direct `pnpm test:live:tangle:sandbox:multirun` command runs the same proof when an operator needs only the concurrent-session path.
 
 The command runs one canary before it starts the remaining cohort.
 
@@ -411,6 +415,16 @@ The cohort reports each result and the minimum, median, p90, and maximum latency
 The cohort also reports observed tokens, costs, active-resource deltas, and explicit unavailable values.
 
 The command fails when a cloud identity repeats, an account changes, evidence is missing, or one owned resource remains.
+
+The multirun proof creates two independent conversations, streams both retained runs concurrently, and switches focus to each run.
+
+It cancels only the selected run, closes Braid, replays both runs after restart, and confirms exact cleanup.
+
+The proof holds each provider turn for 180 seconds and allows 300 seconds per phase by default to absorb public startup variance.
+
+When a phase fails, its artifact retains the latest semantic terminal frame and the latest frame-capture error.
+
+The release collector registers the multirun artifact below `live/tangle/evidence.json` and rejects `LIVE-07` when that artifact is absent, failed, incomplete, or not exactly clean.
 
 ### Current core-path observations
 

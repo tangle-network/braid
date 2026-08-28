@@ -18,11 +18,12 @@ import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
 } from './tangle-sandbox-braid-stress.mjs'
+import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
-const DEFAULT_TIMEOUT_MS = 240_000
-const DEFAULT_HOLD_SECONDS = 60
+const DEFAULT_TIMEOUT_MS = 300_000
+const DEFAULT_HOLD_SECONDS = 180
 const DEFAULT_COLUMNS = 120
 const DEFAULT_ROWS = 40
 const TERMINAL_STATUSES = new Set([
@@ -159,6 +160,8 @@ function createTerminal(
   let exitResult
   let pendingWrites = 0
   let lastOutputAt = performance.now()
+  let lastFrame
+  let lastFrameError
   let processCleanup
   const exitPromise = new Promise((resolveExit) => {
     child.onExit((result) => {
@@ -201,9 +204,15 @@ function createTerminal(
       try {
         const framePath = `${recordPath}.frame`
         const metadata = await stat(framePath)
-        if (previousMtime === undefined || metadata.mtimeNs !== previousMtime)
-          return JSON.parse(await readFile(framePath, 'utf8'))
-      } catch {}
+        if (previousMtime === undefined || metadata.mtimeNs !== previousMtime) {
+          const frame = JSON.parse(await readFile(framePath, 'utf8'))
+          lastFrame = frame
+          lastFrameError = undefined
+          return frame
+        }
+      } catch (error) {
+        lastFrameError = safeMessage(error, config.environment)
+      }
       if (performance.now() >= deadline) throw new Error('semantic terminal frame was not recorded')
       await pause(25)
     }
@@ -255,11 +264,28 @@ function createTerminal(
     get output() {
       return output
     },
+    get lastFrame() {
+      return lastFrame
+    },
+    get lastFrameError() {
+      return lastFrameError
+    },
     screen: () => screenFrom(terminal),
     snapshot: () => ({ screen: screenFrom(terminal), outputBytes: Buffer.byteLength(output) }),
     captureState,
     close,
     dispose,
+  }
+}
+
+/** Preserve the last terminal evidence when a live phase fails. */
+export function terminalFailureEvidence(runtime) {
+  return {
+    ...runtime.snapshot(),
+    exited: runtime.exited,
+    outputTail: runtime.output.slice(-20_000),
+    latestFrame: runtime.lastFrame ?? null,
+    latestFrameError: runtime.lastFrameError ?? null,
   }
 }
 
@@ -437,6 +463,7 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
 export async function runProof({
   targetRepository = process.env.BRAID_LIVE_REPOSITORY ?? repository,
   environment = process.env,
+  outputPath: suppliedOutputPath,
 } = {}) {
   const startedAt = new Date().toISOString()
   const startedClock = performance.now()
@@ -462,7 +489,10 @@ export async function runProof({
   const markerA = markerFor(proof, 'A')
   const markerB = markerFor(proof, 'B')
   const outputPath =
+    suppliedOutputPath ??
     argument('output') ??
+    environment.BRAID_TANGLE_SANDBOX_MULTI_RUN_EVIDENCE ??
+    environment.BRAID_LIVE_TANGLE_EVIDENCE ??
     join(
       targetRepository,
       'artifacts',
@@ -760,20 +790,9 @@ export async function runProof({
     })
   } catch (error) {
     proofError = error
-    if (runtime !== undefined) {
-      terminalEvidence.failure = {
-        ...runtime.snapshot(),
-        exited: runtime.exited,
-        outputTail: runtime.output.slice(-20_000),
-      }
-    }
-    if (restarted !== undefined) {
-      terminalEvidence.restartFailure = {
-        ...restarted.snapshot(),
-        exited: restarted.exited,
-        outputTail: restarted.output.slice(-20_000),
-      }
-    }
+    if (runtime !== undefined) terminalEvidence.failure = terminalFailureEvidence(runtime)
+    if (restarted !== undefined)
+      terminalEvidence.restartFailure = terminalFailureEvidence(restarted)
   }
 
   if (runtime !== undefined && !runtime.exited) {
@@ -860,6 +879,17 @@ export async function runProof({
     cleanup.accountStable === true &&
     cleanup.workspace?.credentialRemoved === true &&
     cleanup.workspace?.temporaryRootRemoved === true
+  const publicCleanup = {
+    ...cleanup,
+    ...(cleanup.workspace === undefined
+      ? {}
+      : {
+          workspace: {
+            protectedStoreClean: cleanup.workspace.credentialRemoved === true,
+            temporaryRootRemoved: cleanup.workspace.temporaryRootRemoved === true,
+          },
+        }),
+  }
   const passed =
     proofError === undefined &&
     finalFrame !== undefined &&
@@ -868,7 +898,7 @@ export async function runProof({
     cleanup.exact === true
   const completedAt = new Date().toISOString()
   const result = {
-    schemaVersion: 'braid.live-required.multirun.v1',
+    schemaVersion: MULTIRUN_PROOF_SCHEMA,
     status: passed ? 'passed' : 'failed',
     proofId: proof,
     startedAt,
@@ -980,7 +1010,7 @@ export async function runProof({
     timings,
     phases,
     account: { before: beforeAccount ?? null, after: afterAccount ?? null },
-    cleanup,
+    cleanup: publicCleanup,
     error: proofError === undefined ? null : safeMessage(proofError, environment),
   }
   await writeArtifact(outputPath, result, environment)

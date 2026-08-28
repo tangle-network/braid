@@ -74,6 +74,7 @@
     "test:live:required:self": "pnpm run build && node --test scripts/live-required.test.mjs test/tangle-live07-wiring.test.mjs",
     "test:live:tangle": "node scripts/live-required.mjs live-tangle",
     "test:live:tangle:sandbox:stress": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-soak.mjs",
+    "test:live:tangle:sandbox:multirun": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-multirun.mjs",
     "test:live:tangle:sandbox:interactive": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-interactive.mjs",
     "test:live:tangle:sandbox:execution": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-execution-soak.mjs",
     "test:live:supervisor": "node scripts/live-required.mjs live-supervisor",
