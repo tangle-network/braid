@@ -38,6 +38,7 @@ import type { NativeTerminalSignalPort } from '../src/index.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
+import { createSupervisionSnapshot } from '../src/testing/supervision-fixture.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 import { analysisLines } from '../src/views/shared/analysis-presentation.js'
@@ -144,60 +145,74 @@ function createTestApplication(): BraidApplication {
   })
 }
 
-function supervisionSnapshot(
-  workers: readonly {
-    readonly id: string
-    readonly label: string
-    readonly parent?: string
-    readonly status?: 'running' | 'done'
-  }[],
-  generatedAt = Date.parse(NOW),
-  supervisorId = 'runtime-supervisor-live',
-): TopSnapshot {
-  const spend = { iterations: 1, tokensInput: 2, tokensOutput: 3, usd: 0.01, ms: 4 }
-  return {
-    root: '/workspace',
-    generatedAt,
+test('supervision fixtures derive immutable counts and measurements from one snapshot', () => {
+  const snapshot = createSupervisionSnapshot({
+    root: '/workspace/fixture',
     supervisors: [
       {
-        id: supervisorId,
-        status: workers.every((worker) => worker.status === 'done') ? 'completed' : 'running',
-        task: 'build Braid',
-        workspaceDir: '/workspace',
-        budget: 1,
-        stateDir: '/workspace/.agent',
-        workers: workers.map((worker) => ({
-          id: worker.id,
-          label: worker.label,
-          status: worker.status ?? 'running',
-          ...(worker.parent === undefined ? {} : { parent: worker.parent }),
-          latencyMs: 4,
-          spend,
-          metered: spend,
-          liveTail: [`${worker.label} progress`],
-        })),
-        progressTail: [],
-        journalTail: [],
-        driverSpend: spend,
-        totals: {
-          workers: workers.length,
-          running: workers.filter((worker) => worker.status !== 'done').length,
-          done: workers.filter((worker) => worker.status === 'done').length,
-          down: 0,
-          cancelled: 0,
-          inFlight: workers.filter((worker) => worker.status !== 'done').length,
-          settled: workers.filter((worker) => worker.status === 'done').length,
-          tokensInput: workers.length * 2,
-          tokensOutput: workers.length * 3,
-          tokensTotal: workers.length * 5,
-          usd: workers.length * 0.01,
-          latencyMs: workers.length * 4,
-          workerLatency: { n: workers.length, min: 4, median: 4, p90: 4, max: 4 },
-        },
+        id: 'runtime-supervisor-measured',
+        task: 'measure workers',
+        budget: 4,
+        workers: [
+          {
+            id: 'runtime-worker-running',
+            label: 'running worker',
+            latencyMs: 40,
+            spend: { tokensInput: 10, tokensOutput: 4, usd: 0.1, ms: 40 },
+          },
+          {
+            id: 'runtime-worker-done',
+            label: 'done worker',
+            status: 'done',
+            latencyMs: 20,
+            spend: { tokensInput: 8, tokensOutput: 2, usd: 0.08, ms: 20 },
+          },
+          {
+            id: 'runtime-worker-down',
+            label: 'down worker',
+            status: 'down',
+            latencyMs: 50,
+            spend: { tokensInput: 6, tokensOutput: 1, usd: 0.06, ms: 50 },
+          },
+          {
+            id: 'runtime-worker-cancelled',
+            label: 'cancelled worker',
+            status: 'cancelled',
+            latencyMs: 30,
+            spend: { tokensInput: 4, tokensOutput: 3, usd: 0.04, ms: 30 },
+          },
+        ],
       },
+      { id: 'runtime-supervisor-empty', workers: [] },
     ],
-  } as unknown as TopSnapshot
-}
+  })
+  const supervisor = snapshot.supervisors[0]
+  const emptySupervisor = snapshot.supervisors[1]
+  assert(supervisor && emptySupervisor)
+  assert.equal(snapshot.discovered, 2)
+  assert.equal(snapshot.loaded, 2)
+  assert.equal(supervisor.status, 'running')
+  assert.deepEqual(supervisor.totals, {
+    workers: 4,
+    running: 1,
+    done: 1,
+    down: 1,
+    cancelled: 1,
+    inFlight: 1,
+    settled: 3,
+    tokensInput: 28,
+    tokensOutput: 10,
+    tokensTotal: 38,
+    usd: 0.28,
+    latencyMs: 140,
+    workerLatency: { n: 4, min: 20, median: 35, p90: 50, max: 50 },
+  })
+  assert.equal(emptySupervisor.status, 'completed')
+  assert.equal(Object.isFrozen(snapshot), true)
+  assert.equal(Object.isFrozen(snapshot.supervisors), true)
+  assert.equal(Object.isFrozen(supervisor.workers), true)
+  assert.equal(Object.isFrozen(supervisor.totals.workerLatency), true)
+})
 
 class DetachingWorkerTerminalSession implements AgentInteractiveTerminalSession {
   readonly ref = {
@@ -430,23 +445,23 @@ test('Braid exposes analysis actions through the TUI controller without creating
 })
 
 test('runtime supervisors stay unbound until each runtime id is explicitly assigned to a run', async () => {
-  const firstSnapshot = supervisionSnapshot(
-    [{ id: 'runtime-worker-one', label: 'worker-one' }],
-    Date.parse(NOW),
-    'runtime-supervisor-one',
-  )
-  const secondSnapshot = supervisionSnapshot(
-    [{ id: 'runtime-worker-two', label: 'worker-two' }],
-    Date.parse(NOW),
-    'runtime-supervisor-two',
-  )
-  const firstSupervisor = firstSnapshot.supervisors[0]
-  const secondSupervisor = secondSnapshot.supervisors[0]
+  const snapshot = createSupervisionSnapshot({
+    generatedAt: Date.parse(NOW),
+    supervisors: [
+      {
+        id: 'runtime-supervisor-one',
+        workers: [{ id: 'runtime-worker-one', label: 'worker-one' }],
+      },
+      {
+        id: 'runtime-supervisor-two',
+        workers: [{ id: 'runtime-worker-two', label: 'worker-two' }],
+      },
+    ],
+  })
+  const firstSupervisor = snapshot.supervisors[0]
+  const secondSupervisor = snapshot.supervisors[1]
   assert(firstSupervisor && secondSupervisor)
-  let raw: TopSnapshot = {
-    ...firstSnapshot,
-    supervisors: [firstSupervisor, secondSupervisor],
-  }
+  let raw: TopSnapshot = snapshot
   const watcher = new RuntimeSupervisorWatcher(() => raw)
   const app = createBraidApplication({
     fixture: 'deterministic',
@@ -498,7 +513,9 @@ test('runtime supervisors stay unbound until each runtime id is explicitly assig
 })
 
 test('supervisor controls resolve public ids and preserve retry-safe operation ids', async () => {
-  const raw = supervisionSnapshot([{ id: 'runtime-worker-control', label: 'worker-control' }])
+  const raw = createSupervisionSnapshot({
+    supervisors: [{ workers: [{ id: 'runtime-worker-control', label: 'worker-control' }] }],
+  })
   const watcher = new RuntimeSupervisorWatcher(() => raw)
   let writeInput:
     | {
@@ -664,7 +681,7 @@ test('supervisor controls resolve public ids and preserve retry-safe operation i
 })
 
 test('an empty live supervisor snapshot is normal before any worker activity exists', async () => {
-  const raw = { ...supervisionSnapshot([]), supervisors: [] }
+  const raw = createSupervisionSnapshot({ supervisors: [] })
   const watcher = new RuntimeSupervisorWatcher(() => raw)
   const app = createBraidApplication({
     fixture: 'deterministic',
@@ -846,7 +863,9 @@ test('saved analysis results present status-aware next actions', () => {
 })
 
 test('activity follows runtime workers while open and stops cleanly when closed', async () => {
-  let raw = supervisionSnapshot([{ id: 'runtime-worker-1', label: 'worker-one' }])
+  let raw = createSupervisionSnapshot({
+    supervisors: [{ workers: [{ id: 'runtime-worker-1', label: 'worker-one' }] }],
+  })
   let snapshotCalls = 0
   const watcher = new RuntimeSupervisorWatcher(() => {
     snapshotCalls += 1
@@ -907,13 +926,17 @@ test('activity follows runtime workers while open and stops cleanly when closed'
   assert.ok(snapshotCalls >= 3)
   assert.equal(app.state().revision, unchangedRevision)
 
-  raw = supervisionSnapshot(
-    [
-      { id: 'runtime-worker-1', label: 'worker-one' },
-      { id: 'runtime-worker-2', label: 'worker-two', parent: 'worker-one' },
+  raw = createSupervisionSnapshot({
+    generatedAt: Date.parse(NOW) + 1_000,
+    supervisors: [
+      {
+        workers: [
+          { id: 'runtime-worker-1', label: 'worker-one' },
+          { id: 'runtime-worker-2', label: 'worker-two', parent: 'worker-one' },
+        ],
+      },
     ],
-    Date.parse(NOW) + 1_000,
-  )
+  })
   await waitUntil(() => app.state().workers.length === 2)
   await terminal.waitForRender()
   const workerScreen = terminal.getViewport().join('\n')
@@ -929,14 +952,18 @@ test('activity follows runtime workers while open and stops cleanly when closed'
   assert.equal(childActivity?.parentId, parent.id)
   assert.equal(childActivity?.depth, (parentActivity?.depth ?? 0) + 1)
 
-  raw = supervisionSnapshot(
-    [
-      { id: 'runtime-worker-1', label: 'worker-one' },
-      { id: 'runtime-worker-2', label: 'worker-two', parent: 'worker-one' },
-      { id: 'runtime-worker-3', label: 'worker-orphan', parent: 'missing-parent' },
+  raw = createSupervisionSnapshot({
+    generatedAt: Date.parse(NOW) + 2_000,
+    supervisors: [
+      {
+        workers: [
+          { id: 'runtime-worker-1', label: 'worker-one' },
+          { id: 'runtime-worker-2', label: 'worker-two', parent: 'worker-one' },
+          { id: 'runtime-worker-3', label: 'worker-orphan', parent: 'missing-parent' },
+        ],
+      },
     ],
-    Date.parse(NOW) + 2_000,
-  )
+  })
   await waitUntil(() => app.state().workers.length === 3)
   const orphan = app.state().workers.find((worker) => worker.title === 'worker-orphan')
   assert(orphan)
@@ -967,7 +994,7 @@ test('activity follows runtime workers while open and stops cleanly when closed'
   await new Promise((resolve) => setTimeout(resolve, 400))
   assert.equal(snapshotCalls, callsAfterClose)
 
-  raw = { ...supervisionSnapshot([]), supervisors: [] }
+  raw = createSupervisionSnapshot({ supervisors: [] })
   terminal.sendInput('/activity')
   terminal.sendInput('\r')
   await waitUntil(() => snapshotCalls > callsAfterClose)
@@ -987,7 +1014,9 @@ test('activity follows runtime workers while open and stops cleanly when closed'
 })
 
 test('activity attaches a running worker through the native terminal and restores Braid', async () => {
-  const raw = supervisionSnapshot([{ id: 'runtime-worker-attach', label: 'worker-attach' }])
+  const raw = createSupervisionSnapshot({
+    supervisors: [{ workers: [{ id: 'runtime-worker-attach', label: 'worker-attach' }] }],
+  })
   const watcher = new RuntimeSupervisorWatcher(() => raw)
   const session = new DetachingWorkerTerminalSession()
   const attached: AgentInteractiveSessionControlClaimRequest[] = []
