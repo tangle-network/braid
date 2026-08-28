@@ -189,6 +189,13 @@ function validMultirunProof() {
       secondSwitchPreservedStatuses: true,
     },
     cancellation: {
+      dispatch: {
+        eventKind: 'run.control.requested',
+        control: 'cancel',
+        runId: 'multirun-b',
+        operationId: 'operation-cancel-b',
+        sequence: 3,
+      },
       targetRunId: 'multirun-b',
       targetStatus: 'cancelled',
       unaffectedRunId: 'multirun-a',
@@ -278,6 +285,10 @@ test('LIVE-07 release artifact validation requires complete multirun evidence an
       {
         ...validMultirunProof(),
         cleanup: { ...validMultirunProof().cleanup, exact: false },
+      },
+      {
+        ...validMultirunProof(),
+        cancellation: { ...validMultirunProof().cancellation, dispatch: null },
       },
     ]) {
       await writeFile(artifactPath, `${JSON.stringify(proof)}\n`)

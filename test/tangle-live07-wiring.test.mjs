@@ -132,6 +132,13 @@ function passedMultirunProof() {
       secondSwitchPreservedStatuses: true,
     },
     cancellation: {
+      dispatch: {
+        eventKind: 'run.control.requested',
+        control: 'cancel',
+        runId: 'multirun-b',
+        operationId: 'operation-cancel-b',
+        sequence: 3,
+      },
       targetRunId: 'multirun-b',
       targetStatus: 'cancelled',
       unaffectedRunId: 'multirun-a',
@@ -316,6 +323,14 @@ test('LIVE-07 requires passed, complete, and exact multirun evidence', async () 
       'unclean',
       { ...passedMultirunProof(), cleanup: { ...passedMultirunProof().cleanup, exact: false } },
       /multirun cleanup was not exact/u,
+    ],
+    [
+      'missing cancellation dispatch',
+      {
+        ...passedMultirunProof(),
+        cancellation: { ...passedMultirunProof().cancellation, dispatch: null },
+      },
+      /cancellation dispatch evidence is missing/u,
     ],
   ]
   for (const [label, multirun, expected] of cases) {

@@ -418,6 +418,10 @@ The command fails when a cloud identity repeats, an account changes, evidence is
 
 The multirun proof creates two independent conversations, streams both retained runs concurrently, and switches focus to each run.
 
+It closes the activity browser before sending cancellation to the selected run.
+
+It records the canonical cancellation dispatch event and operation before waiting for provider acknowledgement.
+
 It cancels only the selected run, closes Braid, replays both runs after restart, and confirms exact cleanup.
 
 The proof holds each provider turn for 180 seconds and allows 300 seconds per phase by default to absorb public startup variance.

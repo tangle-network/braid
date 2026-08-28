@@ -2,11 +2,25 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import {
+  activityBrowserOpen,
+  cancellationDispatchVisible,
   assertFrameHasConcurrentRuns,
+  assertSuccessfulTerminalExit,
+  frameCancellationDispatch,
   frameEventIds,
   renderedWorkStripCount,
+  sendCancellationAfterActivityBrowserDismissal,
   terminalFailureEvidence,
+  transcriptSurfaceReady,
+  waitForActivityBrowserDismissal,
 } from './tangle-sandbox-braid-multirun.mjs'
+
+const activityBrowserScreen = [
+  'Braid',
+  'runs › run run-b',
+  '↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close · tab filter · r refresh',
+].join('\n')
+const transcriptScreen = 'Braid\n──────────────── type / for commands · Alt+Enter newline'
 
 function frame({ statusA = 'streaming', statusB = 'streaming', duplicate = false } = {}) {
   const eventA = { id: 'activity-a-1', runId: 'run-a', sourceEventId: 'provider-a-1' }
@@ -41,6 +55,88 @@ test('multirun frame guard requires two active streamed runs', () => {
   assert.equal(assertFrameHasConcurrentRuns(frame(), ['run-a', 'run-b']), true)
   assert.deepEqual(frameEventIds(frame(), 'run-a'), ['provider-a-1'])
   assert.deepEqual(frameEventIds(frame(), 'run-b'), ['provider-b-1'])
+})
+
+test('activity browser dismissal is an explicit waitable terminal state', async () => {
+  assert.equal(activityBrowserOpen(activityBrowserScreen), true)
+  assert.equal(transcriptSurfaceReady(activityBrowserScreen), false)
+  assert.equal(activityBrowserOpen('Braid\nruns › run run-b\ntype / for commands ·'), true)
+  assert.equal(transcriptSurfaceReady('Braid\nruns › run run-b\ntype / for commands ·'), false)
+  assert.equal(activityBrowserOpen(transcriptScreen), false)
+  assert.equal(transcriptSurfaceReady(transcriptScreen), true)
+
+  let screen = activityBrowserScreen
+  let settled = false
+  const runtime = { screen: () => screen }
+  const dismissal = waitForActivityBrowserDismissal(runtime, 'focus branch B', 1_000).then(() => {
+    settled = true
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(settled, false)
+  screen = transcriptScreen
+  await dismissal
+  assert.equal(settled, true)
+})
+
+test('cancellation sends Ctrl-C only after the activity browser is closed', async () => {
+  let screen = activityBrowserScreen
+  const inputs = []
+  const runtime = {
+    screen: () => screen,
+    input(value) {
+      inputs.push(value)
+      if (value === '\u001b') screen = transcriptScreen
+    },
+  }
+  await sendCancellationAfterActivityBrowserDismissal(runtime, 'branch B', 1_000)
+  assert.deepEqual(inputs, ['\u001b', '\u0003'])
+})
+
+test('cancellation dispatch extraction requires canonical cancel event and operation identity', () => {
+  const frame = {
+    events: [
+      {
+        sequence: 4,
+        kind: 'run.control.requested',
+        payload: { runId: 'run-b', operationId: 'op-cancel-b', control: 'cancel' },
+      },
+    ],
+  }
+  assert.deepEqual(frameCancellationDispatch(frame, 'run-b'), {
+    eventKind: 'run.control.requested',
+    control: 'cancel',
+    runId: 'run-b',
+    operationId: 'op-cancel-b',
+    sequence: 4,
+  })
+  assert.equal(frameCancellationDispatch(frame, 'run-a'), undefined)
+  assert.equal(
+    frameCancellationDispatch(
+      { events: [{ kind: 'run.cancel.requested', payload: { runId: 'run-b' } }] },
+      'run-b',
+    ),
+    undefined,
+  )
+})
+
+test('cancellation dispatch accepts a fast acknowledgement after an active proof frame', () => {
+  const acknowledged = frame({ statusB: 'cancelled' })
+  acknowledged.events = [
+    {
+      sequence: 4,
+      kind: 'run.control.requested',
+      payload: { runId: 'run-b', operationId: 'op-cancel-b', control: 'cancel' },
+    },
+  ]
+  assert.equal(cancellationDispatchVisible(acknowledged, 'run-a', 'run-b'), true)
+})
+
+test('restart close rejects a nonzero terminal exit code', () => {
+  assert.doesNotThrow(() => assertSuccessfulTerminalExit({ exitCode: 0 }, 'restarted'))
+  assert.throws(
+    () => assertSuccessfulTerminalExit({ exitCode: 1 }, 'restarted'),
+    /restarted Braid terminal process exited with a non-zero status/u,
+  )
 })
 
 test('rendered work-strip guard counts only actionable ownership rows', () => {

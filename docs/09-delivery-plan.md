@@ -305,6 +305,8 @@ The event ledger must show zero duplicate displayed part and zero lost committed
 
 `LIVE-07` cannot pass without the multirun artifact proving two independent conversations, both streamed runs, both focus switches, targeted cancellation, restart replay, and exact cleanup.
 
+The artifact must record the canonical cancellation operation while branch B is still active after the activity browser closes.
+
 The Tangle Sandbox cohort must leave zero resources owned by its exact operation identities.
 
 ## W9: Interactions and automation

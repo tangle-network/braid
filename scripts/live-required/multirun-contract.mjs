@@ -10,6 +10,7 @@ const REQUIRED_PHASES = Object.freeze([
   'concurrent.stream',
   'focus-a',
   'focus-b',
+  'cancel-b.dispatch',
   'cancel-b',
   'branch-a.complete',
   'remote.status',
@@ -210,6 +211,23 @@ export function assertMultirunProof(proof) {
   )
 
   assert(object(proof.cancellation), 'LIVE-07 cancellation evidence is missing')
+  assert(object(proof.cancellation.dispatch), 'LIVE-07 cancellation dispatch evidence is missing')
+  assert(
+    proof.cancellation.dispatch.eventKind === 'run.control.requested',
+    'LIVE-07 cancellation dispatch used an unknown event kind',
+  )
+  assert(
+    proof.cancellation.dispatch.control === 'cancel',
+    'LIVE-07 cancellation dispatch did not request cancel',
+  )
+  assert(
+    proof.cancellation.dispatch.runId === secondRun.runId,
+    'LIVE-07 cancellation dispatch targeted the wrong run',
+  )
+  assert(
+    text(proof.cancellation.dispatch.operationId),
+    'LIVE-07 cancellation dispatch has no operation identity',
+  )
   assert(proof.cancellation.targetRunId === secondRun.runId, 'LIVE-07 cancelled the wrong run')
   assert(
     ['aborted', 'cancelled'].includes(proof.cancellation.targetStatus),

@@ -126,6 +126,8 @@ function normalizeScreen(screen) {
   return screen.replace(/\s+/gu, ' ').trim()
 }
 
+const TRANSCRIPT_FOOTER = 'type / for commands ·'
+
 function createTerminal(
   binary,
   config,
@@ -308,6 +310,32 @@ async function waitFor(label, predicate, timeoutMs) {
   }
 }
 
+export function activityBrowserOpen(screen) {
+  return typeof screen === 'string' && screen.split('\n').some((line) => /^\s*runs ›/u.test(line))
+}
+
+export function transcriptSurfaceReady(screen) {
+  return (
+    typeof screen === 'string' && !activityBrowserOpen(screen) && screen.includes(TRANSCRIPT_FOOTER)
+  )
+}
+
+export async function waitForActivityBrowserDismissal(runtime, label, timeoutMs) {
+  return waitFor(
+    `${label} activity browser dismissal`,
+    () => transcriptSurfaceReady(runtime.screen()),
+    timeoutMs,
+  )
+}
+
+export async function sendCancellationAfterActivityBrowserDismissal(runtime, label, timeoutMs) {
+  if (!transcriptSurfaceReady(runtime.screen())) {
+    runtime.input('\u001b')
+    await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
+  }
+  runtime.input('\u0003')
+}
+
 async function typeAndSubmit(runtime, value) {
   for (const character of value) {
     runtime.input(character)
@@ -445,6 +473,60 @@ export function frameEventIds(frame, runId) {
   return eventIdsForRun(frame, runId)
 }
 
+function eventKind(event) {
+  return event?.kind ?? event?.event?.kind ?? event?.type
+}
+
+function eventPayload(event) {
+  if (event?.payload !== undefined) return event.payload
+  if (event?.event?.payload !== undefined) return event.event.payload
+  return event?.event ?? event
+}
+
+function eventRunId(event) {
+  return event?.runId ?? eventPayload(event)?.runId
+}
+
+function eventOperationId(event) {
+  const payload = eventPayload(event)
+  return event?.operationId ?? payload?.operationId ?? payload?.value?.operationId
+}
+
+export function frameCancellationDispatch(frame, runId) {
+  const event = (Array.isArray(frame?.events) ? frame.events : []).find((candidate) => {
+    const payload = eventPayload(candidate)
+    return (
+      eventKind(candidate) === 'run.control.requested' &&
+      eventRunId(candidate) === runId &&
+      payload?.control === 'cancel' &&
+      typeof eventOperationId(candidate) === 'string' &&
+      eventOperationId(candidate).length > 0
+    )
+  })
+  if (event === undefined) return undefined
+  return {
+    eventKind: eventKind(event),
+    control: eventPayload(event)?.control,
+    runId: eventRunId(event),
+    operationId: eventOperationId(event),
+    sequence: event?.sequence ?? event?.event?.sequence ?? null,
+  }
+}
+
+export function cancellationDispatchVisible(frame, unaffectedRunId, targetRunId) {
+  const dispatch = frameCancellationDispatch(frame, targetRunId)
+  if (dispatch === undefined) return false
+  const targetStatus = runStatus(frame, targetRunId)
+  return (
+    isActive(runStatus(frame, unaffectedRunId)) &&
+    (isActive(targetStatus) || ['aborted', 'cancelled'].includes(targetStatus))
+  )
+}
+
+export function assertSuccessfulTerminalExit(exit, label) {
+  assert.equal(exit?.exitCode, 0, `${label} Braid terminal process exited with a non-zero status`)
+}
+
 export function renderedWorkStripCount(screen) {
   return screen
     .split('\n')
@@ -520,6 +602,8 @@ export async function runProof({
   let secondFrame
   let focusAFrame
   let focusBFrame
+  let cancelDispatchFrame
+  let cancelDispatch
   let cancelFrame
   let finalFrame
   let restartedFrame
@@ -704,6 +788,7 @@ export async function runProof({
       assert.ok(isActive(runStatus(focusAFrame, runAId)))
       assert.ok(isActive(runStatus(focusAFrame, runBId)))
       runtime.input('\u001b')
+      await waitForActivityBrowserDismissal(runtime, 'focus branch A', timeoutMs)
     })
     terminalEvidence.focusA = runtime.snapshot()
     await phase('focus-b', async () => {
@@ -721,14 +806,27 @@ export async function runProof({
       )
       assertFrameHasConcurrentRuns(focusBFrame, [runAId, runBId])
       runtime.input('\u001b')
+      await waitForActivityBrowserDismissal(runtime, 'focus branch B', timeoutMs)
     })
     terminalEvidence.focusB = runtime.snapshot()
+    await phase('cancel-b.dispatch', async () => {
+      await sendCancellationAfterActivityBrowserDismissal(runtime, 'branch B', timeoutMs)
+      cancelDispatchFrame = await waitForFrame(
+        runtime,
+        'branch B cancellation dispatch',
+        (frame) => cancellationDispatchVisible(frame, runAId, runBId),
+        timeoutMs,
+      )
+      cancelDispatch = frameCancellationDispatch(cancelDispatchFrame, runBId)
+      assert.ok(cancelDispatch, 'branch B cancellation did not persist its dispatch event')
+      terminalEvidence.cancelDispatch = runtime.snapshot()
+    })
     await phase('cancel-b', async () => {
-      runtime.input('\u0003')
       cancelFrame = await waitForFrame(
         runtime,
         'branch B cancellation',
         (frame) =>
+          frameCancellationDispatch(frame, runBId)?.operationId === cancelDispatch?.operationId &&
           ['aborted', 'cancelled'].includes(runStatus(frame, runBId)) &&
           isActive(runStatus(frame, runAId)),
         timeoutMs,
@@ -758,7 +856,7 @@ export async function runProof({
     })
     await phase('terminal.first.close', async () => {
       const exit = await runtime.close()
-      assert.equal(exit.exitCode, 0, 'first Braid terminal process exited with a non-zero status')
+      assertSuccessfulTerminalExit(exit, 'first')
       await runtime.dispose()
     })
     terminalEvidence.final = runtime.snapshot()
@@ -786,11 +884,7 @@ export async function runProof({
     terminalEvidence.restart = restarted.snapshot()
     await phase('terminal.restart.close', async () => {
       const exit = await restarted.close()
-      assert.equal(
-        exit.exitCode,
-        0,
-        'restarted Braid terminal process exited with a non-zero status',
-      )
+      assertSuccessfulTerminalExit(exit, 'restarted')
       await restarted.dispose()
     })
     await phase('provider.observe', async () => {
@@ -903,6 +997,7 @@ export async function runProof({
     proofError === undefined &&
     finalFrame !== undefined &&
     restartedFrame !== undefined &&
+    cancelDispatch !== undefined &&
     controls.size === 2 &&
     cleanup.exact === true
   const completedAt = new Date().toISOString()
@@ -983,6 +1078,7 @@ export async function runProof({
           : [runAId, runBId].every((runId) => isActive(runStatus(focusBFrame, runId))),
     },
     cancellation: {
+      dispatch: cancelDispatch ?? null,
       targetRunId: runBId ?? null,
       targetStatus:
         cancelFrame === undefined || runBId === undefined ? null : runStatus(cancelFrame, runBId),
