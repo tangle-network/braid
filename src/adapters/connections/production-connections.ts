@@ -8,6 +8,15 @@ import type {
   ProductionConnectionOptions,
 } from './production-connection-types.js'
 
+export type {
+  NitroConfidentialAttestationTrustPolicy,
+  NitroConfidentialAttestationVerifierOptions,
+  NitroConfidentialAttestationVerifiers,
+} from './nitro-confidential-attestation.js'
+export {
+  createNitroConfidentialAttestationVerifiers,
+  normalizeNitroConfidentialAttestationTrustPolicy,
+} from './nitro-confidential-attestation.js'
 export { readConnectionCredential } from './production-connection-credentials.js'
 export {
   connectionEndpoint,

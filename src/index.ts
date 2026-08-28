@@ -1,3 +1,12 @@
+export type {
+  NitroConfidentialAttestationTrustPolicy,
+  NitroConfidentialAttestationVerifierOptions,
+  NitroConfidentialAttestationVerifiers,
+} from './adapters/connections/production-connections.js'
+export {
+  createNitroConfidentialAttestationVerifiers,
+  normalizeNitroConfidentialAttestationTrustPolicy,
+} from './adapters/connections/production-connections.js'
 export {
   closeHeadlessKeyFile,
   openHeadlessKeyFile,

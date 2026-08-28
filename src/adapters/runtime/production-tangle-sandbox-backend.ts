@@ -11,6 +11,7 @@ import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
+import { nitroVerifiersForConnection } from '../connections/nitro-confidential-attestation.js'
 import {
   createTangleRetainedControlLookup,
   supportsTangleRetainedControlLookup,
@@ -75,13 +76,14 @@ export async function resolveTangleSandboxBackend(
   })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
+  const confidential = nitroVerifiersForConnection(record, options)
   const sdkProvider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
-    ...(options.tangleConfidentialAttestationVerifier === undefined
+    ...(confidential?.tangle === undefined
       ? {}
-      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
+      : { confidentialAttestationVerifier: confidential.tangle }),
   })
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
   const providerSessionId = providerSessionFor(input, capabilities)
@@ -196,13 +198,14 @@ export async function resolveTangleSandboxRetainedConnection(
   const observedClient = observeSandboxClient(boundedClient, lifecycle)
   const retainedControlLookup =
     options.tangleRetainedControlLookup ?? createTangleRetainedControlLookup(observedClient.client)
+  const confidential = nitroVerifiersForConnection(record, options)
   const provider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
-    ...(options.tangleConfidentialAttestationVerifier === undefined
+    ...(confidential?.tangle === undefined
       ? {}
-      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
+      : { confidentialAttestationVerifier: confidential.tangle }),
   })
   const reportedCapabilities = await provider.capabilities()
   const retained = reportedCapabilities.retainedControl

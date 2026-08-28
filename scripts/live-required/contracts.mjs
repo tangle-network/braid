@@ -76,7 +76,7 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
   ]),
   [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
     'configuration',
-    'external-verifier',
+    'nitro-attestation',
     'requested-unverified-binding',
     'missing-attestation',
     'valid-attestation',

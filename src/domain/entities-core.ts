@@ -90,6 +90,18 @@ export interface ProfileSnapshotRecord {
 
 export type ConnectionKind = 'cli-bridge' | 'tangle-inference' | 'tangle-sandbox'
 
+/**
+ * Non-secret trust constraints for a confidential Tangle connection.
+ *
+ * The selected connection owns this policy so startup and restart use the
+ * same explicit allowlists without loading executable verifier modules.
+ */
+export interface ConfidentialAttestationTrustPolicy {
+  readonly acceptedMeasurements: readonly `sha256:${string}`[]
+  readonly acceptedPolicyIds: readonly string[]
+  readonly maxAgeSeconds: number
+}
+
 export type ConnectionHealth =
   | { readonly status: 'unknown' }
   | { readonly status: 'healthy'; readonly checkedAt: IsoDateTime; readonly message?: string }
@@ -135,6 +147,7 @@ export interface ConnectionRecord {
   readonly name: string
   readonly endpoint?: string
   readonly credentialRef?: CredentialRefId
+  readonly confidentialAttestationPolicy?: ConfidentialAttestationTrustPolicy
   readonly providerOptions: ConnectionTransportOptions
   readonly createdAt: IsoDateTime
   readonly updatedAt: IsoDateTime
@@ -145,6 +158,8 @@ export interface ConnectionRecord {
 export const DEFAULT_RETAINED_IDLE_TTL_SECONDS = 1_800
 export const MIN_RETAINED_IDLE_TTL_SECONDS = 60
 export const MAX_RETAINED_IDLE_TTL_SECONDS = 604_800
+export const MIN_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS = 1
+export const MAX_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS = 86_400
 
 /**
  * Braid stores only transport metadata and capability hints here.

@@ -8,12 +8,15 @@ import type {
   SandboxClientLike,
   TangleConfidentialAttestationVerifier,
 } from '@tangle-network/agent-provider-tangle'
+
 export type { TangleConfidentialAttestationVerifier } from '@tangle-network/agent-provider-tangle'
+
 import type {
   BridgeModelCredential,
   RouterTransportConfig,
 } from '@tangle-network/agent-runtime/kernel'
 import type {
+  ConfidentialAttestationTrustPolicy,
   ConnectionHealth,
   ConnectionKind,
   ConnectionModelVerification,
@@ -116,6 +119,8 @@ export interface ProductionConnectionOptions {
   readonly sandboxClient?: SandboxClientLike
   readonly sandboxClientFactory?: SandboxClientFactory
   readonly tangleRetainedControlLookup?: TangleRetainedControlLookup
+  /** Persisted, non-secret Nitro trust policy for the selected Tangle connection. */
+  readonly tangleConfidentialAttestationPolicy?: ConfidentialAttestationTrustPolicy
   /** Trusted provider-key and measurement verification for confidential forks. */
   readonly tangleConfidentialAttestationVerifier?: TangleConfidentialAttestationVerifier
   /** Canonical Braid-side attestation verifier for returned fork evidence. */

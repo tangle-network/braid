@@ -17,6 +17,7 @@ import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { environmentSupportsInteractionResponse } from '../../ports/execution.js'
+import { nitroVerifiersForConnection } from './nitro-confidential-attestation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
 import type {
@@ -59,12 +60,13 @@ export async function createTangleEnvironmentProvider(
   signal?: AbortSignal,
 ): Promise<AgentEnvironmentProvider> {
   const client = await createTangleSandboxClient(record, options, signal)
+  const confidential = nitroVerifiersForConnection(record, options)
   return createTangleProvider({
     client,
     name: 'tangle-sandbox',
-    ...(options.tangleConfidentialAttestationVerifier === undefined
+    ...(confidential?.tangle === undefined
       ? {}
-      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
+      : { confidentialAttestationVerifier: confidential.tangle }),
   })
 }
 
@@ -126,6 +128,7 @@ export async function capabilitiesForConnection(
         list: false,
       })
     case 'tangle-sandbox': {
+      const confidential = nitroVerifiersForConnection(record, options)
       const reported =
         options.sandboxClient === undefined
           ? {
@@ -141,10 +144,10 @@ export async function capabilitiesForConnection(
             }
           : await createTangleProvider({
               client: options.sandboxClient,
-              ...(options.tangleConfidentialAttestationVerifier === undefined
+              ...(confidential?.tangle === undefined
                 ? {}
                 : {
-                    confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier,
+                    confidentialAttestationVerifier: confidential.tangle,
                   }),
             }).capabilities()
       const environment = tangleConnectionCapabilities(

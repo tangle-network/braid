@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
@@ -62,6 +62,95 @@ function idleTtlSeconds(environment) {
   if (!Number.isSafeInteger(candidate) || candidate < 60 || candidate > 604_800)
     return DEFAULT_IDLE_TTL_SECONDS
   return candidate
+}
+
+const MAX_CONFIDENTIAL_POLICY_ITEMS = 256
+const MAX_CONFIDENTIAL_ATTESTATION_AGE_SECONDS = 86_400
+const SHA256_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
+const POLICY_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u
+
+function configuredList(environment, name) {
+  const value = environment[name]
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_REQUIRED',
+      `LIVE-10 requires ${name} as a comma-separated non-secret allowlist`,
+    )
+  }
+  const values = value.split(',').map((entry) => entry.trim())
+  if (
+    values.length === 0 ||
+    values.length > MAX_CONFIDENTIAL_POLICY_ITEMS ||
+    values.some((entry) => entry.length === 0)
+  ) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      `${name} must contain one to ${MAX_CONFIDENTIAL_POLICY_ITEMS} values`,
+    )
+  }
+  return values
+}
+
+export function parseConfidentialTrustPolicy(environment) {
+  const acceptedMeasurements = configuredList(environment, 'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS')
+  if (acceptedMeasurements.some((entry) => !SHA256_DIGEST_PATTERN.test(entry))) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS must contain canonical sha256 digests',
+    )
+  }
+  if (new Set(acceptedMeasurements).size !== acceptedMeasurements.length) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS must not contain duplicates',
+    )
+  }
+  const acceptedPolicyIds = configuredList(environment, 'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS')
+  if (acceptedPolicyIds.some((entry) => !POLICY_ID_PATTERN.test(entry))) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS must contain canonical policy identifiers',
+    )
+  }
+  if (new Set(acceptedPolicyIds).size !== acceptedPolicyIds.length) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS must not contain duplicates',
+    )
+  }
+  const selectedPolicyId =
+    typeof environment.BRAID_TANGLE_CONFIDENTIAL_POLICY_ID === 'string'
+      ? environment.BRAID_TANGLE_CONFIDENTIAL_POLICY_ID.trim()
+      : environment.BRAID_TANGLE_CONFIDENTIAL_POLICY_ID
+  if (
+    typeof selectedPolicyId !== 'string' ||
+    !POLICY_ID_PATTERN.test(selectedPolicyId) ||
+    !acceptedPolicyIds.includes(selectedPolicyId)
+  ) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_POLICY_ID must name an accepted policy id',
+    )
+  }
+  const maxAgeSeconds = Number(environment.BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS)
+  if (
+    !Number.isSafeInteger(maxAgeSeconds) ||
+    maxAgeSeconds < 1 ||
+    maxAgeSeconds > MAX_CONFIDENTIAL_ATTESTATION_AGE_SECONDS
+  ) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      `BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS must be an integer from 1 to ${MAX_CONFIDENTIAL_ATTESTATION_AGE_SECONDS}`,
+    )
+  }
+  return Object.freeze({
+    policy: Object.freeze({
+      acceptedMeasurements: Object.freeze(acceptedMeasurements),
+      acceptedPolicyIds: Object.freeze(acceptedPolicyIds),
+      maxAgeSeconds,
+    }),
+    selectedPolicyId,
+  })
 }
 
 function shellQuote(value) {
@@ -127,93 +216,7 @@ async function runtimeModules(repository) {
   return { startup, application, credentials, connections, profiles }
 }
 
-function verifierExports(moduleNamespace) {
-  const defaultExport =
-    moduleNamespace.default !== null && typeof moduleNamespace.default === 'object'
-      ? moduleNamespace.default
-      : undefined
-  return { ...(defaultExport ?? {}), ...moduleNamespace }
-}
-
-/**
- * Load the deployment's trust decision without inventing a local TEE verdict.
- *
- * The module must export `verifyTeeAttestation` and `verifyConfidentialAttestation`.
- * The first checks the raw provider quote and returns provider key evidence.
- * The second checks the canonical attestation against the deployment policy.
- */
-export async function loadConfidentialVerifier(environment, repository = DEFAULT_REPOSITORY) {
-  const configured =
-    environment.BRAID_TANGLE_TEE_VERIFIER_MODULE ??
-    environment.BRAID_TANGLE_CONFIDENTIAL_VERIFIER_MODULE
-  if (typeof configured !== 'string' || configured.trim().length === 0) {
-    throw unavailable(
-      'PROTECTED_CONFIDENTIAL_VERIFIER_REQUIRED',
-      'LIVE-10 requires BRAID_TANGLE_TEE_VERIFIER_MODULE with trusted provider-key and measurement checks',
-    )
-  }
-  const modulePath = isAbsolute(configured) ? configured : resolve(repository, configured)
-  let loaded
-  try {
-    loaded = await import(pathToFileURL(modulePath).href)
-  } catch (error) {
-    throw unavailable(
-      'PROTECTED_CONFIDENTIAL_VERIFIER_UNAVAILABLE',
-      `LIVE-10 could not load its configured confidential verifier module: ${modulePath}`,
-      error,
-    )
-  }
-  const exports = verifierExports(loaded)
-  const raw = exports.verifyTeeAttestation
-  const canonical = exports.verifyConfidentialAttestation
-  if (typeof raw !== 'function' || typeof canonical !== 'function') {
-    throw unavailable(
-      'PROTECTED_CONFIDENTIAL_VERIFIER_INVALID',
-      'LIVE-10 verifier module must export verifyTeeAttestation and verifyConfidentialAttestation',
-    )
-  }
-  return Object.freeze({
-    raw: async (input) => {
-      const result = await raw(input)
-      if (result === null) return null
-      if (result === undefined || typeof result !== 'object' || Array.isArray(result)) return null
-      if (
-        typeof result.providerKeyId !== 'string' ||
-        result.providerKeyId.length === 0 ||
-        result.providerKeyId === 'unverified' ||
-        typeof result.providerSignature !== 'string' ||
-        result.providerSignature.length === 0 ||
-        result.providerSignature === 'unverified'
-      ) {
-        return null
-      }
-      return {
-        providerKeyId: result.providerKeyId,
-        providerSignature: result.providerSignature,
-        ...(result.measurement === undefined ? {} : { measurement: result.measurement }),
-      }
-    },
-    canonical: (attestation, expected) => {
-      if (
-        attestation === null ||
-        typeof attestation !== 'object' ||
-        Array.isArray(attestation) ||
-        attestation.providerKeyId === 'unverified' ||
-        attestation.providerSignature === 'unverified' ||
-        attestation.providerSignature === attestation.quote
-      ) {
-        return false
-      }
-      try {
-        return canonical(attestation, expected) === true
-      } catch {
-        return false
-      }
-    },
-  })
-}
-
-async function openProofApplication({ repository, config, verifier }) {
+async function openProofApplication({ repository, config }) {
   const modules = await runtimeModules(repository)
   let context
   try {
@@ -244,12 +247,6 @@ async function openProofApplication({ repository, config, verifier }) {
     const connectionOptions = {
       ...(startup.connectionOptions ?? {}),
       credentials: context.store,
-      ...(verifier?.raw === undefined
-        ? {}
-        : { tangleConfidentialAttestationVerifier: verifier.raw }),
-      ...(verifier?.canonical === undefined
-        ? {}
-        : { confidentialAttestationVerifier: verifier.canonical }),
     }
     const production = {
       ...startup,
@@ -272,17 +269,34 @@ async function openProofApplication({ repository, config, verifier }) {
       await opened.close().catch(() => undefined)
       throw error
     }
+    const confidentialVerifiers =
+      connection.confidentialAttestationPolicy === undefined
+        ? undefined
+        : modules.connections.createNitroConfidentialAttestationVerifiers(
+            connection.confidentialAttestationPolicy,
+          )
     return Object.freeze({
       ...opened,
       startup,
       production,
       connection,
+      ...(confidentialVerifiers === undefined ? {} : { confidentialVerifiers }),
       modules,
     })
   } catch (error) {
     context?.dispose()
     throw error
   }
+}
+
+function confidentialVerifiersFor(opened) {
+  if (opened.confidentialVerifiers === undefined) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_REQUIRED',
+      'LIVE-10 selected a connection without a persisted Nitro trust policy',
+    )
+  }
+  return opened.confidentialVerifiers
 }
 
 function providerAdapters(opened) {
@@ -575,9 +589,7 @@ async function runWorkspaceProof({
 }) {
   const proofId = `${Date.now()}-${randomUUID().replaceAll('-', '')}`
   const startedAt = new Date().toISOString()
-  const verifier = confidential
-    ? await loadConfidentialVerifier(environment, repository)
-    : undefined
+  const trust = confidential ? parseConfidentialTrustPolicy(environment) : undefined
   const values = sandboxConfiguration(environment)
   const config = await prepareProductionWorkspace({
     repository,
@@ -594,6 +606,7 @@ async function runWorkspaceProof({
       lifecycle: 'retained',
       idleTtlSeconds: idleTtlSeconds(environment),
     },
+    ...(trust === undefined ? {} : { confidentialAttestationPolicy: trust.policy }),
   })
   let opened
   let restarted
@@ -612,7 +625,16 @@ async function runWorkspaceProof({
   let completedResult
   let cleanupFailure
   try {
-    opened = await openProofApplication({ repository, config, verifier })
+    opened = await openProofApplication({ repository, config })
+    const verifier = confidential ? confidentialVerifiersFor(opened) : undefined
+    if (trust !== undefined) {
+      assertCondition(
+        opened.connection.confidentialAttestationPolicy?.acceptedPolicyIds.includes(
+          trust.selectedPolicyId,
+        ) === true,
+        'LIVE-10 did not retain the selected policy id in the connection trust policy',
+      )
+    }
     const adapters = providerAdapters(opened)
     source = await sendSource(opened.app, proofId)
     sourceBefore = await readWorkspace(adapters, source.providerId, source.path, 'source')
@@ -632,7 +654,7 @@ async function runWorkspaceProof({
             confidential: {
               requested: true,
               nonce: generateAttestationNonce(),
-              policy: 'tangle-confidential-v1',
+              policy: trust.selectedPolicyId,
               profileDigest: `sha256:${opened.modules.profiles.canonicalAgentProfileDigestHex(opened.app.state().profile)}`,
             },
           }
@@ -712,7 +734,8 @@ async function runWorkspaceProof({
 
     await opened.close()
     opened = undefined
-    restarted = await openProofApplication({ repository, config, verifier })
+    restarted = await openProofApplication({ repository, config })
+    const restartedVerifier = confidential ? confidentialVerifiersFor(restarted) : undefined
     const restartedAdapters = providerAdapters(restarted)
     const replayBranch = await restarted.app.conversations.branches.execute({
       ...planInput,
@@ -745,7 +768,7 @@ async function runWorkspaceProof({
         forkedEnvironmentConfidentialityVerified(
           resources.forkRequest,
           lookedUp.fork.environment,
-          verifier.canonical,
+          restartedVerifier.canonical,
         ),
         'Canonical confidential attestation verification failed for the valid fork',
       )
@@ -753,7 +776,7 @@ async function runWorkspaceProof({
         request: resources.forkRequest.confidential,
         environment: expected,
         attestation,
-        verifyProviderAttestation: verifier.canonical,
+        verifyProviderAttestation: restartedVerifier.canonical,
       })
       assertCondition(
         negatives.missingAttestationRejected,
@@ -862,7 +885,7 @@ async function runWorkspaceProof({
         checks: confidential
           ? [
               'configuration',
-              'external-verifier',
+              'nitro-attestation',
               'requested-unverified-binding',
               'missing-attestation',
               'valid-attestation',
@@ -927,7 +950,7 @@ async function runWorkspaceProof({
     if (source !== undefined) {
       if (cleanupOwner === undefined) {
         try {
-          cleanupOwner = await openProofApplication({ repository, config, verifier })
+          cleanupOwner = await openProofApplication({ repository, config })
           rescueOwner = true
         } catch (error) {
           cleanupError ??= error

@@ -40,11 +40,31 @@ The request records `requested` placement separately from provider evidence.
 
 The Tangle adapter calls `getTeeAttestation` on the forked Sandbox child.
 
-An operator-supplied verifier must validate the raw provider quote, provider key, nonce, and measurement.
+The selected `tangle-sandbox` connection carries an immutable, public Nitro trust policy.
 
-The adapter rejects a missing key, a copied quote, an invalid nonce, or an untrusted measurement.
+The policy requires non-empty SHA-256 measurement and policy identifier allowlists.
 
-Braid marks `confidentialVerified` only after the canonical external verifier accepts the complete attestation.
+The policy also sets a bounded maximum age for signed and provider timestamps.
+
+The startup configuration persists this policy with the connection record.
+
+Credentials, quotes, certificates, and executable module paths never enter that record.
+
+The adapter pins the AWS Nitro Enclaves Root-G1 certificate and checks its SHA-256 fingerprint at construction.
+
+The adapter parses the provider report and the CBOR/COSE document through the published Tangle attestation package.
+
+The adapter verifies the certificate chain, COSE signature, exact nonce, raw measurement, signed-document age, and bindings.
+
+The adapter derives `providerKeyId` from the verified leaf certificate fingerprint.
+
+The adapter derives `providerSignature` from the verified COSE signature bytes.
+
+The canonical replay path decodes the persisted quote and repeats every check.
+
+Replay also requires the persisted provider key and signature to match the derived identities.
+
+Braid marks `confidentialVerified` only after this canonical verifier accepts the complete attestation.
 
 The request and attestation remain unverified when either verifier or attestation evidence is absent.
 
@@ -64,19 +84,25 @@ The request and attestation remain unverified when either verifier or attestatio
 
 `LIVE-09` requires source materialization, checkpoint lookup, fork lookup, restart replay, independent destination mutation, unchanged source content, and exact cleanup.
 
-`LIVE-10` requires a configured external verifier, a valid attestation, missing-attestation rejection, wrong-nonce rejection, wrong-measurement rejection, and exact cleanup.
+`LIVE-10` requires the typed Nitro policy, a valid attestation, missing-attestation rejection, wrong-nonce rejection, wrong-measurement rejection, and exact cleanup.
 
 The built-in proofs run through Braid application and connection adapters.
 
 They do not import the Sandbox SDK or call Sandbox methods directly.
 
-Set `BRAID_TANGLE_TEE_VERIFIER_MODULE` to an absolute or repository-relative module for `LIVE-10`.
+Set `BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS` to the accepted canonical `sha256:` measurements.
 
-That module must export `verifyTeeAttestation(input)` and `verifyConfidentialAttestation(attestation, expected)`.
+Set `BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS` to the accepted policy identifiers.
 
-The first function returns `{ providerKeyId, providerSignature, measurement? }` only after raw quote verification.
+Set `BRAID_TANGLE_CONFIDENTIAL_POLICY_ID` to the selected identifier from that allowlist.
 
-The second function returns `true` only after canonical nonce, measurement, policy, and provider-key checks.
+Set `BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS` to the bounded freshness limit.
+
+LIVE-10 persists these values as the selected connection's typed trust policy.
+
+The production composition constructs the same Nitro verifier factory for provider admission and replay.
+
+No arbitrary verifier module is loaded or executed.
 
 Missing credentials, deployment capability, or verifier configuration returns typed unavailable evidence.
 
@@ -87,6 +113,8 @@ Configured provider failures remain failed and never become simulated passes.
 `test/conversation-branch-effects.test.ts` proves exact requests, provider reconstruction, restart cleanup, idempotent replay, and source protection.
 
 `test/tangle-workspace-proof.test.mjs` proves the confidential negative checks reject nonce, measurement, and self-echo mutations.
+
+`test/nitro-confidential-attestation.test.ts` proves COSE verification, identity derivation, mutation rejection, freshness, persistence, migration, replay, and secret-free snapshots.
 
 The protected live matrix validates both receipts against the public evidence schema.
 

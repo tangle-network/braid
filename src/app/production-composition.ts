@@ -1,4 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import { nitroVerifiersForConnection } from '../adapters/connections/nitro-confidential-attestation.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   connectionEndpoint,
@@ -182,7 +183,7 @@ export function createProductionComposition(
     )
   }
 
-  const resolverOptions: ProductionBackendResolverOptions = {
+  const resolverOptionsBase: ProductionBackendResolverOptions = {
     ...(config.connectionOptions ?? {}),
     connections,
     ...(config.workspaceRoot === undefined ? {} : { workspaceCwd: config.workspaceRoot }),
@@ -193,6 +194,16 @@ export function createProductionComposition(
         expectedUpdatedAt: connection.updatedAt,
       },
     }),
+  }
+  const confidential = nitroVerifiersForConnection(connection, resolverOptionsBase)
+  const resolverOptions: ProductionBackendResolverOptions = {
+    ...resolverOptionsBase,
+    ...(confidential?.tangle === undefined
+      ? {}
+      : { tangleConfidentialAttestationVerifier: confidential.tangle }),
+    ...(confidential?.canonical === undefined
+      ? {}
+      : { confidentialAttestationVerifier: confidential.canonical }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
   const supervisorController =

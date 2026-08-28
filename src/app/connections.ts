@@ -112,6 +112,8 @@ export function mergeConnectionTelemetry(
     saved.workspaceId !== observed.workspaceId ||
     saved.endpoint !== observed.endpoint ||
     saved.credentialRef !== observed.credentialRef ||
+    canonicalDigest(saved.confidentialAttestationPolicy ?? null) !==
+      canonicalDigest(observed.confidentialAttestationPolicy ?? null) ||
     canonicalDigest(saved.providerOptions) !== canonicalDigest(observed.providerOptions)
   ) {
     return saved
@@ -164,6 +166,7 @@ function assertSecretFree(record: ConnectionRecord): void {
     'name',
     'endpoint',
     'credentialRef',
+    'confidentialAttestationPolicy',
     'providerOptions',
     'createdAt',
     'updatedAt',
@@ -217,6 +220,8 @@ function assertSecretFree(record: ConnectionRecord): void {
     record.providerOptions.account,
     record.providerOptions.lifecycle,
     ...(record.providerOptions.capabilityHints ?? []),
+    ...(record.confidentialAttestationPolicy?.acceptedMeasurements ?? []),
+    ...(record.confidentialAttestationPolicy?.acceptedPolicyIds ?? []),
     ...('message' in record.lastHealth ? [record.lastHealth.message] : []),
     ...(record.lastModelVerification === undefined
       ? []
@@ -256,8 +261,21 @@ function freezeConnectionRecord(record: ConnectionRecord): ConnectionRecord {
     record.lastModelVerification === undefined
       ? undefined
       : Object.freeze({ ...record.lastModelVerification })
+  const confidentialAttestationPolicy =
+    record.confidentialAttestationPolicy === undefined
+      ? undefined
+      : Object.freeze({
+          ...record.confidentialAttestationPolicy,
+          acceptedMeasurements: Object.freeze([
+            ...record.confidentialAttestationPolicy.acceptedMeasurements,
+          ]),
+          acceptedPolicyIds: Object.freeze([
+            ...record.confidentialAttestationPolicy.acceptedPolicyIds,
+          ]),
+        })
   return Object.freeze({
     ...record,
+    ...(confidentialAttestationPolicy === undefined ? {} : { confidentialAttestationPolicy }),
     providerOptions,
     lastHealth,
     ...(lastModelVerification === undefined ? {} : { lastModelVerification }),
