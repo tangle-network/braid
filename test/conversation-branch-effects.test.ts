@@ -9,6 +9,7 @@ import type {
   WorkspaceForkRequest,
   WorkspaceForkResult,
 } from '@tangle-network/agent-interface'
+import type { AgentWorkspaceBranchingProvider } from '@tangle-network/agent-interface'
 import { createBraidApplication } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -103,6 +104,7 @@ function branchCapabilities(workspace = false): RunCapabilities {
         lookup: workspace,
         cleanup: workspace,
       },
+      confidential: workspace,
     },
   } as unknown as RunCapabilities
 }
@@ -190,6 +192,28 @@ function workspaceProvider(): {
     },
     async fork(request) {
       state.forkRequests.push(request)
+      const confidential = request.confidential
+      const confidentialAttestation =
+        confidential?.requested === true &&
+        confidential.nonce !== undefined &&
+        confidential.policy !== undefined &&
+        confidential.profileDigest !== undefined
+          ? {
+              provider: request.checkpoint.provider,
+              requested: true as const,
+              nonce: confidential.nonce,
+              measurement: `sha256:${'a'.repeat(64)}` as `sha256:${string}`,
+              environmentId: 'provider-destination-environment',
+              source: request.checkpoint.source,
+              requestDigest: request.requestDigest,
+              profileDigest: confidential.profileDigest,
+              policy: confidential.policy,
+              quote: 'provider-quote',
+              providerKeyId: 'trusted-provider-key',
+              providerSignature: 'trusted-provider-signature',
+              verifiedAt: AT,
+            }
+          : undefined
       const result: WorkspaceForkResult = {
         status: 'created',
         idempotencyKey: request.idempotencyKey,
@@ -205,6 +229,7 @@ function workspaceProvider(): {
           createdAt: AT,
           placement: request.placement,
           confidentialRequested: request.confidential?.requested ?? false,
+          ...(confidentialAttestation === undefined ? {} : { confidentialAttestation }),
           ...(request.metadata === undefined ? {} : { metadata: request.metadata }),
         },
       }
@@ -262,6 +287,8 @@ function executionFor(options: {
   readonly capabilities: ReturnType<typeof branchCapabilities>
   readonly contextState?: ContextProviderState
   readonly workspaceBranching?: NonNullable<ExecutionPort['workspaceBranching']>
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: NonNullable<ExecutionPort['confidentialAttestationVerifier']>
 }): ExecutionPort {
   const contextState = options.contextState
   return {
@@ -335,6 +362,12 @@ function executionFor(options: {
     ...(options.workspaceBranching === undefined
       ? {}
       : { workspaceBranching: options.workspaceBranching }),
+    ...(options.workspaceBranchingProvider === undefined
+      ? {}
+      : { workspaceBranchingProvider: options.workspaceBranchingProvider }),
+    ...(options.confidentialAttestationVerifier === undefined
+      ? {}
+      : { confidentialAttestationVerifier: options.confidentialAttestationVerifier }),
   }
 }
 
@@ -549,16 +582,21 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
 
 test('workspace fork uses exact provider operations, isolates destination, and cleans both resources', async () => {
   const provider = workspaceProvider()
+  const sourceLookups: string[] = []
+  const workspaceBranchingProvider: AgentWorkspaceBranchingProvider = {
+    async forEnvironment(sourceEnvironmentId) {
+      sourceLookups.push(sourceEnvironmentId)
+      return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+    },
+  }
   const execution = executionFor({
     capabilities: branchCapabilities(true),
-    workspaceBranching: provider.branching,
+    workspaceBranchingProvider,
   })
-  const workspaceBranching = execution.workspaceBranching
-  assert(workspaceBranching)
   const journal = new MemoryJournal(new FixedClock(AT))
   const app = createBraidApplication({
     fixture: 'deterministic',
-    execution: { ...execution, workspaceBranching },
+    execution,
     clock: new FixedClock(AT),
     journal,
   })
@@ -577,6 +615,7 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   })
   assert.equal(provider.state.checkpointRequests.length, 1)
   assert.equal(provider.state.forkRequests.length, 1)
+  assert.deepEqual(sourceLookups, ['provider-source-environment'])
   assert.notEqual(branch.environmentId, plan.sourceEnvironmentId)
   assert.equal(
     provider.state.forkRequests[0]?.checkpoint.source.environmentId,
@@ -603,8 +642,15 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   assert.equal(workspaceReplay.id, branch.id)
   assert.equal(provider.state.checkpointRequests.length, 1)
   assert.equal(provider.state.forkRequests.length, 1)
+  assert.deepEqual(sourceLookups, ['provider-source-environment'])
 
-  const cleanup = await app.conversations.branches.cleanup({
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+  })
+  const cleanup = await restarted.conversations.branches.cleanup({
     operationId: 'op-cleanup-workspace-effects',
     checkpointId: String(checkpoint.id),
     environmentId: String(destination.id),
@@ -622,27 +668,109 @@ test('workspace fork uses exact provider operations, isolates destination, and c
     provider.state.cleanupRequests[1]?.operationId,
   )
   assert.equal(
-    app.state().checkpoints.find((candidate) => candidate.id === checkpoint.id)?.status,
+    restarted.state().checkpoints.find((candidate) => candidate.id === checkpoint.id)?.status,
     'deleted',
   )
   assert.equal(
-    app.state().environments.find((candidate) => candidate.id === destination.id)?.lifecycle,
+    restarted.state().environments.find((candidate) => candidate.id === destination.id)?.lifecycle,
     'destroyed',
   )
 
-  const restarted = createBraidApplication({
+  const replayRestarted = createBraidApplication({
     fixture: 'deterministic',
-    execution: { ...execution, workspaceBranching },
+    execution,
     clock: new FixedClock(AT),
     journal,
   })
-  const cleanupReplay = await restarted.conversations.branches.cleanup({
+  const cleanupReplay = await replayRestarted.conversations.branches.cleanup({
     operationId: 'op-cleanup-workspace-effects',
     checkpointId: String(checkpoint.id),
     environmentId: String(destination.id),
   })
   assert.deepEqual(cleanupReplay, cleanup)
   assert.equal(provider.state.cleanupRequests.length, 2)
+  assert.deepEqual(sourceLookups, ['provider-source-environment', 'provider-source-environment'])
+})
+
+test('confidential workspace fork records verification only after canonical attestation checks', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+    confidentialAttestationVerifier: (attestation, environment) =>
+      attestation.providerKeyId === 'trusted-provider-key' &&
+      attestation.providerSignature === 'trusted-provider-signature' &&
+      attestation.measurement === `sha256:${'a'.repeat(64)}` &&
+      attestation.environmentId === environment.environmentId,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-effects', text: 'confidential source' })
+    .completion
+  const confidential = {
+    requested: true as const,
+    nonce: 'confidential-nonce',
+    policy: 'confidential-policy',
+    profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+  }
+  const planInput = {
+    operationId: 'op-confidential-workspace-effects',
+    kind: 'workspace' as const,
+    confidential,
+  }
+  const plan = app.conversations.branches.plan(planInput)
+  assert.equal(plan.allowed, true)
+  assert.equal(plan.confidential?.requested, true)
+  const branch = await app.conversations.branches.execute({
+    ...planInput,
+    planDigest: plan.digest,
+  })
+  const destination = app.state().environments.find(
+    (environment) => environment.id === branch.environmentId,
+  )
+  assert(destination)
+  assert.equal(destination.placement.confidentialRequested, true)
+  assert.equal(destination.placement.confidentialVerified, true)
+  assert.equal(provider.state.forkRequests[0]?.confidential?.requested, true)
+})
+
+test('confidential workspace planning stays unavailable without an external verifier', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-unverified', text: 'source' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-confidential-unverified',
+    kind: 'workspace',
+    confidential: {
+      requested: true,
+      nonce: 'confidential-nonce',
+      policy: 'confidential-policy',
+      profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+    },
+  })
+  assert.equal(plan.allowed, false)
+  assert.match(plan.reason ?? '', /confidential placement and attestation verification/u)
 })
 
 test('cross-runner planning stays unavailable without a provider transfer method', async () => {

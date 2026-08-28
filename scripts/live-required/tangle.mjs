@@ -18,6 +18,7 @@ import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
 import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import { runProof as runMultirunProof } from './tangle-sandbox-braid-multirun.mjs'
+import { runConfidentialProof, runWorkspaceForkProof } from './tangle-workspace-proof.mjs'
 
 const TANGLE_ROWS = Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'])
 const MINIMUM_SANDBOX_STRESS_RUNS = 3
@@ -178,15 +179,68 @@ export async function runSandbox({
   }
 }
 
-export async function runMatrixAdapter({ environment }) {
+export async function runMatrixAdapter({
+  repository,
+  environment,
+  binary,
+  invocationId = proofInvocation('live-tangle-matrix'),
+}) {
   const configured =
     typeof environment.BRAID_TANGLE_LIVE_ADAPTER === 'string' &&
     environment.BRAID_TANGLE_LIVE_ADAPTER.trim().length > 0
+  const flows = []
+  const measurements = []
+  const unavailable = []
+  const setFlow = (row, result) => {
+    const flow = {
+      row,
+      status: result.status,
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
+      ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
+      ...(result.observations === undefined ? {} : { observations: result.observations }),
+    }
+    const index = flows.findIndex((candidate) => candidate.row === row)
+    if (index === -1) flows.push(flow)
+    else flows[index] = flow
+  }
+  const addUnavailable = (row, reason) => {
+    const detail = configured
+      ? `External Tangle matrix adapters are not accepted as release proof; ${reason}`
+      : reason
+    unavailable.push({ row, reason: detail })
+    setFlow(row, { status: 'unavailable', reason: detail })
+  }
+  const runBuiltIn = async (row, runner) => {
+    try {
+      const result = await runner({ repository, environment, binary, invocationId })
+      if (result.status === 'failed') throw new Error(`${row} built-in proof failed`)
+      if (result.status !== 'passed') {
+        addUnavailable(row, result.reason ?? `${row} built-in proof is unavailable`)
+        return
+      }
+      setFlow(row, result)
+      if (result.measurement !== undefined) measurements.push(result.measurement)
+    } catch (error) {
+      const classified = classifyExternalFailure(error, `${row} built-in Tangle proof`, environment)
+      addUnavailable(row, classified.message)
+    }
+  }
+  await runBuiltIn('LIVE-09', runWorkspaceForkProof)
+  await runBuiltIn('LIVE-10', runConfidentialProof)
+  const status =
+    flows.length === 2 && flows.every((flow) => flow.status === 'passed')
+      ? 'passed'
+      : flows.every((flow) => flow.status === 'unavailable')
+        ? 'unavailable'
+        : 'partial'
   return {
-    status: 'unavailable',
-    reason: configured
-      ? 'External Tangle matrix adapters are not accepted as release proof; built-in parent checks for LIVE-09 and LIVE-10 are unavailable'
-      : 'Built-in parent checks for LIVE-09 and LIVE-10 are unavailable',
+    status,
+    flows,
+    measurements,
+    unavailable,
+    ...(unavailable.length === 0
+      ? {}
+      : { reason: unavailable.map((entry) => entry.reason).join('; ') }),
   }
 }
 
@@ -249,10 +303,18 @@ export async function runTangleFlows({
     addUnavailable('LIVE-08', classified.message)
   }
   try {
-    const matrix = await matrixRunner({ repository, environment, binary })
+    const matrix = await matrixRunner({ repository, environment, binary, invocationId })
     for (const row of TANGLE_ROWS.slice(3)) {
-      const reason = `${row} remains protected-unavailable: ${matrix.reason}`
-      addUnavailable(row, reason)
+      const result = matrix.flows?.find((candidate) => candidate.row === row)
+      if (result?.status === 'passed') {
+        setFlow(result.row, result)
+        const measurement = matrix.measurements?.find((candidate) => candidate.name === row)
+        if (measurement !== undefined) measurements.push(measurement)
+      } else if (result?.status === 'failed') {
+        throw new Error(result.reason ?? `${row} matrix proof failed`)
+      } else {
+        addUnavailable(row, result?.reason ?? matrix.reason ?? `${row} matrix proof unavailable`)
+      }
     }
   } catch (error) {
     const classified = classifyExternalFailure(error, 'Tangle matrix', environment)

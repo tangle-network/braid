@@ -45,6 +45,7 @@ export {
 } from './app/composition.js'
 export type {
   CloneConversationInput,
+  ConfidentialExecutionRequest,
   ConversationListQuery,
   CreateBranchInput,
   CreateConversationInput,

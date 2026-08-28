@@ -3,6 +3,8 @@ import type {
   AgentExactRunControlRef,
   AgentProfile,
   AgentWorkspaceBranching,
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
   ContextTransferRequest,
   ContextTransferResult,
   InteractionResponseCommand,
@@ -180,6 +182,10 @@ export interface ExecutionPort {
   readonly contextTransfer?: ContextTransferExecutionPort
   /** Retry-safe checkpoint, fork, lookup, and cleanup operations, when supported. */
   readonly workspaceBranching?: AgentWorkspaceBranching
+  /** Provider-owned source lookup used to reconstruct branching after restart. */
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  /** External verifier required before Braid marks a confidential fork verified. */
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
   /** Provider identity used when Braid builds a destination context plan. */
   readonly provider?: string
 }

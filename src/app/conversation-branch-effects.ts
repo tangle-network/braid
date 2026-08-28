@@ -14,6 +14,7 @@ import {
   type WorkspaceCleanupRequest,
   type WorkspaceForkRequest,
   type WorkspaceForkResult,
+  forkedEnvironmentConfidentialityVerified,
   workspaceCheckpointRequestDigest,
   workspaceCheckpointResultMatchesRequest,
   workspaceCleanupAcknowledgementMatches,
@@ -72,7 +73,6 @@ export async function cleanupWorkspaceFork(
   input: WorkspaceForkCleanupInput,
 ): Promise<WorkspaceForkCleanupResult> {
   const execution = host.execution
-  const branching = execution?.workspaceBranching
   const state = host.state()
   const operationId = parseOperationId(input.operationId)
   const checkpoint =
@@ -132,6 +132,7 @@ export async function cleanupWorkspaceFork(
   if (environment !== undefined && environment.providerEnvironmentId === undefined)
     throw new AppError('UNKNOWN_ENVIRONMENT', 'The environment has no provider reference')
   assertCleanupCapabilities(state, checkpoint, environment)
+  const sourceEnvironment = sourceEnvironmentForCleanup(state, checkpoint, environment)
   const digest = canonicalDigest({
     command: 'cleanup_workspace_fork',
     operationId,
@@ -148,9 +149,13 @@ export async function cleanupWorkspaceFork(
       throw new AppError('OPERATION_INCOMPLETE', `Operation ${operationId} has no cleanup result`)
     return result
   }
+  const previous = cleanupResultFromOperation(existing)
+  const branching = await workspaceBranchingForEnvironment(
+    execution,
+    sourceEnvironment?.providerEnvironmentId,
+  )
   if (!hasWorkspaceBranching(branching))
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Workspace cleanup is unavailable')
-  const previous = cleanupResultFromOperation(existing)
 
   const checkpointOutcome =
     checkpoint === undefined
@@ -310,9 +315,6 @@ async function executeWorkspace(
   plan: ForkPlan,
   createBranch: CreateBranch,
 ): Promise<BranchRecord> {
-  const branching = host.execution?.workspaceBranching
-  if (!hasWorkspaceBranching(branching))
-    throw new AppError('CAPABILITY_UNAVAILABLE', plan.reason ?? 'Workspace fork is unavailable')
   const state = host.state()
   const operationId = parseOperationId(input.operationId)
   const sourceRun = sourceRunForPlan(state, plan)
@@ -364,6 +366,12 @@ async function executeWorkspace(
   const reserved = await reserveOperation(host, operationId, digest)
   const existing = reserved.operations.find((operation) => operation.id === operationId)
   if (existing?.status === 'acknowledged') return branchForOperation(reserved, existing)
+  const branching = await workspaceBranchingForEnvironment(
+    host.execution,
+    sourceEnvironmentRecord.providerEnvironmentId,
+  )
+  if (!hasWorkspaceBranching(branching))
+    throw new AppError('CAPABILITY_UNAVAILABLE', plan.reason ?? 'Workspace fork is unavailable')
 
   const checkpointMaterial = {
     source,
@@ -418,6 +426,7 @@ async function executeWorkspace(
     checkpoint: checkpoint.checkpoint,
     name: `braid fork ${plan.destinationBranchId}`,
     placement,
+    ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
     metadata: {
       braidOperationId: input.operationId,
       destinationBranchId: String(plan.destinationBranchId),
@@ -439,7 +448,7 @@ async function executeWorkspace(
     )
   if (fork.environment.environmentId === source.environmentId)
     throw new AppError('FORK_PLAN_CONFLICT', 'The provider fork reused the source environment')
-  const destination = await recordForkedEnvironment(host, plan, fork.environment)
+  const destination = await recordForkedEnvironment(host, plan, fork.environment, forkRequest)
   const branch = await createBranch({
     ...input,
     operationId: derivedOperationId(input.operationId, 'branch'),
@@ -496,7 +505,9 @@ async function lookupOrCheckpoint(
   if (lookup.status === 'conflict')
     throw new AppError('CHECKPOINT_CONFLICT', 'Checkpoint idempotency key has a different request')
   if (lookup.status === 'unknown') throw new AppError('CHECKPOINT_UNKNOWN', lookup.message)
-  return branching.checkpoint(request)
+  const result = await branching.checkpoint(request)
+  if (result.status === 'unknown' || result.status === 'conflict') assertCheckpointResult(result)
+  return result
 }
 
 async function lookupOrFork(
@@ -511,7 +522,9 @@ async function lookupOrFork(
   if (lookup.status === 'conflict')
     throw new AppError('FORK_CONFLICT', 'Fork idempotency key has a different request')
   if (lookup.status === 'unknown') throw new AppError('FORK_UNKNOWN', lookup.message)
-  return branching.fork(request)
+  const result = await branching.fork(request)
+  if (result.status === 'unknown' || result.status === 'conflict') assertForkResult(result)
+  return result
 }
 
 async function cleanupCheckpoint(
@@ -623,6 +636,35 @@ function assertCleanupCapabilities(
       'CAPABILITY_UNAVAILABLE',
       'The selected run does not report retry-safe workspace cleanup support',
     )
+}
+
+function sourceEnvironmentForCleanup(
+  state: BraidState,
+  checkpoint: CheckpointRecord | undefined,
+  environment: EnvironmentRecord | undefined,
+): EnvironmentRecord | undefined {
+  const sourceCheckpoint =
+    checkpoint ??
+    (environment === undefined
+      ? undefined
+      : (() => {
+          const edge = state.graphEdges.find((candidate) => {
+            const source = graphReference(state, candidate.source)
+            const destination = graphReference(state, candidate.destination)
+            return (
+              candidate.kind === 'forked_environment' &&
+              destination?.kind === 'environment' &&
+              destination.id === environment.id &&
+              source?.kind === 'checkpoint'
+            )
+          })
+          const source = edge === undefined ? undefined : graphReference(state, edge.source)
+          return source?.kind === 'checkpoint'
+            ? state.checkpoints.find((candidate) => candidate.id === source.id)
+            : undefined
+        })())
+  if (sourceCheckpoint === undefined) return undefined
+  return state.environments.find((candidate) => candidate.id === sourceCheckpoint.sourceEnvironmentId)
 }
 
 function cleanupResultFromOperation(
@@ -770,6 +812,7 @@ async function recordForkedEnvironment(
   host: ConversationHost,
   plan: ForkPlan,
   ref: Extract<WorkspaceForkResult, { status: 'created' | 'replayed' }>['environment'],
+  request: WorkspaceForkRequest,
 ): Promise<EnvironmentRecord> {
   const source = host
     .state()
@@ -789,7 +832,14 @@ async function recordForkedEnvironment(
       provider: ref.provider,
       ...(ref.placement.region === undefined ? {} : { region: ref.placement.region }),
       confidentialRequested: ref.confidentialRequested,
-      confidentialVerified: false,
+      confidentialVerified:
+        ref.confidentialRequested && host.execution?.confidentialAttestationVerifier !== undefined
+          ? verifiedForkConfidentiality(
+              request,
+              ref,
+              host.execution.confidentialAttestationVerifier,
+            )
+          : false,
     },
     providerEnvironmentId: ref.environmentId,
     continuity: 'session',
@@ -809,6 +859,34 @@ async function recordForkedEnvironment(
     })
   }
   return existing ?? environment
+}
+
+function verifiedForkConfidentiality(
+  request: WorkspaceForkRequest,
+  environment: Extract<WorkspaceForkResult, { status: 'created' | 'replayed' }>['environment'],
+  verifier: NonNullable<ExecutionPort['confidentialAttestationVerifier']>,
+): boolean {
+  try {
+    return forkedEnvironmentConfidentialityVerified(
+      request,
+      environment,
+      (attestation, expected) => {
+        if (
+          attestation.providerKeyId === 'unverified' ||
+          attestation.providerSignature === 'unverified' ||
+          attestation.providerSignature === attestation.quote
+        )
+          return false
+        try {
+          return verifier(attestation, expected) === true
+        } catch {
+          return false
+        }
+      },
+    )
+  } catch {
+    return false
+  }
 }
 
 async function recordHandedOffEdge(
@@ -970,6 +1048,19 @@ function hasWorkspaceBranching(
     typeof branching.lookupFork === 'function' &&
     typeof branching.destroyFork === 'function'
   )
+}
+
+/** Resolve a fresh source handle when the provider exposes restart-safe lookup. */
+async function workspaceBranchingForEnvironment(
+  execution: ExecutionPort | undefined,
+  providerEnvironmentId: string | undefined,
+): Promise<ExecutionPort['workspaceBranching']> {
+  const provider = execution?.workspaceBranchingProvider
+  if (provider !== undefined) {
+    if (providerEnvironmentId === undefined) return undefined
+    return (await provider.forEnvironment(providerEnvironmentId)) ?? undefined
+  }
+  return execution?.workspaceBranching
 }
 
 function graphReference(state: BraidState, id: string) {

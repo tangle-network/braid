@@ -38,6 +38,7 @@ import {
   stableConversationIds,
 } from './conversation-support.js'
 import type {
+  ConfidentialExecutionRequest,
   CloneConversationInput,
   ConversationHost,
   CreateBranchInput,
@@ -298,6 +299,7 @@ export class ConversationBranches {
       sourceRun,
       this.#host.execution,
       sourceEnvironmentId,
+      input.confidential?.requested === true,
     )
     const portableContextPlan =
       kind === 'cross-runner'
@@ -345,6 +347,7 @@ export class ConversationBranches {
       ...(input.destinationProvider === undefined
         ? {}
         : { destinationProvider: input.destinationProvider }),
+      ...(input.confidential === undefined ? {} : { confidential: input.confidential }),
       environment:
         kind === 'conversation'
           ? ('shared' as const)
@@ -370,7 +373,9 @@ export class ConversationBranches {
               kind === 'workspace'
                 ? workspaceAvailable
                   ? 'The current runtime does not expose retry-safe environment fork execution to Braid'
-                  : 'The selected run does not report retry-safe checkpoint and environment fork support'
+                  : input.confidential?.requested === true
+                    ? 'The selected run does not expose confidential placement and attestation verification'
+                    : 'The selected run does not report retry-safe checkpoint and environment fork support'
                 : 'The selected connection does not expose canonical fresh-session context transfer',
           }),
     }
@@ -463,7 +468,11 @@ function resolveBranch(
   return { conversation, branch }
 }
 
-function branchRequest(source: ResolvedSource, input: CreateBranchInput) {
+function branchRequest(
+  source: ResolvedSource,
+  input: CreateBranchInput & { readonly confidential?: ConfidentialExecutionRequest },
+) {
+  const confidential = input.confidential
   return {
     conversationId: source.conversation.id,
     branchId: source.branch.id,
@@ -473,6 +482,7 @@ function branchRequest(source: ResolvedSource, input: CreateBranchInput) {
     model: input.model ?? source.branch.overrides.model ?? null,
     effort: input.effort ?? source.branch.overrides.effort ?? null,
     mode: input.mode ?? source.branch.overrides.mode ?? null,
+    ...(confidential === undefined ? {} : { confidential }),
   }
 }
 
@@ -518,19 +528,26 @@ function workspaceForkReported(
   run: BraidState['runs'][number] | undefined,
   execution: ExecutionPort | undefined,
   sourceEnvironmentId: string | undefined,
+  confidentialRequested: boolean,
 ): boolean {
   if (sourceEnvironmentId === undefined || run?.environmentId !== sourceEnvironmentId) return false
   const environment = state.environments.find((candidate) => candidate.id === sourceEnvironmentId)
   if (environment?.providerEnvironmentId === undefined) return false
   if (run?.controlRef?.environmentId !== environment.providerEnvironmentId) return false
   const branching = run?.capabilities.environment?.branching
-  return Boolean(
+  const supported = Boolean(
     hasWorkspaceBranchingMethods(execution) &&
       branching?.checkpoint &&
       branching.fork &&
       branching.retrySafe &&
       branching.lookup &&
       branching.cleanup,
+  )
+  if (!supported) return false
+  return (
+    !confidentialRequested ||
+    (run?.capabilities.environment?.confidential === true &&
+      typeof execution?.confidentialAttestationVerifier === 'function')
   )
 }
 
@@ -556,6 +573,7 @@ function contextTransferPort(
 
 function hasWorkspaceBranchingMethods(execution: ExecutionPort | undefined): boolean {
   const branching = execution?.workspaceBranching
+  if (typeof execution?.workspaceBranchingProvider?.forEnvironment === 'function') return true
   return Boolean(
     branching !== undefined &&
       typeof branching.checkpoint === 'function' &&

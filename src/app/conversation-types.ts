@@ -1,8 +1,10 @@
 import type {
+  ConfidentialExecutionRequest,
   PortableContextPlan as CanonicalPortableContextPlan,
   HarnessType,
   PlacementInfo,
 } from '@tangle-network/agent-interface'
+export type { ConfidentialExecutionRequest } from '@tangle-network/agent-interface'
 import type {
   BranchRecord,
   ConversationRecord,
@@ -94,6 +96,8 @@ export interface ForkPlanInput extends CreateBranchInput {
   readonly acceptedDigest?: string
   readonly destinationProvider?: string
   readonly placement?: PlacementInfo
+  /** Confidential placement request. The provider must prove it separately. */
+  readonly confidential?: ConfidentialExecutionRequest
 }
 
 export interface WorkspaceForkCleanupInput {
@@ -124,6 +128,7 @@ export interface ForkPlan {
   readonly destinationEnvironmentId?: string
   readonly checkpointId?: string
   readonly placement?: PlacementInfo
+  readonly confidential?: ConfidentialExecutionRequest
   readonly text?: string
   readonly destinationProvider?: string
   readonly allowed: boolean

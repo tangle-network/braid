@@ -1,4 +1,9 @@
-import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  AgentProfile,
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
+} from '@tangle-network/agent-interface'
 import {
   agentInteractiveSessionStopRequestDigest,
   canonicalCandidateDigest,
@@ -59,6 +64,8 @@ export interface TangleRetainedInteractiveExecutionOptions {
   readonly recover?: (input: ExecuteTurnInput) => Promise<PreparedTangleRetainedConnection>
   readonly broker: Pick<NativeInteractiveRunBroker, 'open' | 'settle'>
   readonly holderId?: string
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 }
 
 interface PreparedInteractiveConnection {
@@ -79,12 +86,18 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #activeRuns = new Set<string>()
   readonly #detachRequested = new Set<string>()
   readonly #cancelledRuns = new Set<string>()
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 
   constructor(options: TangleRetainedInteractiveExecutionOptions) {
     this.#resolve = options.resolve
     this.#recover = options.recover
     this.#broker = options.broker
     this.#holderId = options.holderId ?? 'braid'
+    if (options.workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 
   capabilities = (input: ExecuteTurnInput): RunCapabilities | Promise<RunCapabilities> =>

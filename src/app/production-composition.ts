@@ -1,5 +1,8 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { connectionEndpoint } from '../adapters/connections/production-connection-endpoints.js'
+import {
+  connectionEndpoint,
+  createTangleWorkspaceBranchingProvider,
+} from '../adapters/connections/production-connections.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   AgentRuntimeExecutionPort,
@@ -189,6 +192,10 @@ export function createProductionComposition(
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
+  const workspaceBranchingProvider =
+    connection.kind === 'tangle-sandbox'
+      ? createTangleWorkspaceBranchingProvider(connection, resolverOptions)
+      : undefined
   const recoveryInput = (
     runId: string,
     providerSessionId: string | undefined,
@@ -235,17 +242,30 @@ export function createProductionComposition(
             resolverOptions,
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
+        ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(resolverOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
       })
       const broker = new NativeInteractiveRunBroker()
       const interactive = new TangleRetainedInteractiveExecutionPort({
         resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
         recover: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
         broker,
+        ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(resolverOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
       })
       nativeInteractive = broker
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
-    return new AgentRuntimeExecutionPort(backendResolver)
+    return new AgentRuntimeExecutionPort(backendResolver, undefined, {
+      ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+      ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ? {}
+        : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+    })
   })()
 
   return Object.freeze({

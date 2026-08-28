@@ -60,6 +60,7 @@ It proves keyboard behavior and terminal output at 40×12, 80×24, 120×40, and 
 | Conversation navigation | [conversation-navigation.md](conversation-navigation.md) | Create, rename, archive, switch, branch, and clone through explicit identities. |
 | Fork preview | [fork-preview.md](fork-preview.md) | Explain exactly what a fork copies before any external mutation. |
 | Conversation branch effects | [conversation-branch-effects.md](conversation-branch-effects.md) | Execute portable context transfer and real workspace forks without hidden provider assumptions. |
+| Workspace branching | [workspace-branching.md](workspace-branching.md) | Reconstruct exact provider checkpoints and forks across restart, mutation, and cleanup. |
 | Interactions and secrets | [interactions.md](interactions.md) | Answer, decline, cancel, or automate a typed request safely. |
 | Profiles and connections | [profiles-and-connections.md](profiles-and-connections.md) | Select a portable agent and a credential-bearing execution connection. |
 | Activity | [activity.md](activity.md) | Find live, queued, waiting, detached, and completed work. |

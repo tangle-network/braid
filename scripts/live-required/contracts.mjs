@@ -15,6 +15,8 @@ export const PROOF_OPERATIONS = Object.freeze({
   tangleInference: 'tangle.inference.turn',
   tangleSandbox: 'tangle.sandbox.turn',
   tangleSandboxInteractive: 'tangle.sandbox.interactive',
+  tangleWorkspaceFork: 'tangle.sandbox.workspace-fork',
+  tangleConfidential: 'tangle.sandbox.confidential',
   traceAnalysis: 'trace.analysis.ask-promote',
   supervisor: 'supervisor.snapshot-reconnect-steer',
 })
@@ -50,6 +52,28 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'exact-resource-cleanup',
     'process-exited-before-cleanup',
     'process-group-exited-before-cleanup',
+  ]),
+  [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
+    'configuration',
+    'source-run',
+    'plan',
+    'execute',
+    'retry',
+    'restart',
+    'independent-destination',
+    'source-unchanged',
+    'cleanup-checkpoint',
+    'cleanup-environment',
+  ]),
+  [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
+    'configuration',
+    'external-verifier',
+    'requested-unverified-binding',
+    'missing-attestation',
+    'valid-attestation',
+    'wrong-nonce',
+    'wrong-measurement',
+    'cleanup',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'source-frozen',
@@ -90,6 +114,29 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'processExitedBeforeWorkspaceCleanup',
     'terminalResize',
     'processGroupExitedBeforeWorkspaceCleanup',
+  ]),
+  [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
+    'sourceProviderEnvironmentId',
+    'destinationProviderEnvironmentId',
+    'checkpointRetried',
+    'forkRetried',
+    'restarted',
+    'sourceDigestBefore',
+    'sourceDigestAfter',
+    'destinationDigest',
+    'cleanupCheckpoint',
+    'cleanupEnvironment',
+  ]),
+  [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
+    'sourceProviderEnvironmentId',
+    'destinationProviderEnvironmentId',
+    'confidentialRequested',
+    'confidentialVerified',
+    'missingAttestationRejected',
+    'wrongNonceRejected',
+    'wrongMeasurementRejected',
+    'cleanupCheckpoint',
+    'cleanupEnvironment',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'analysisId',
@@ -398,6 +445,14 @@ function validateProofFacts(operation, status, facts) {
       key === 'reconnectable' ||
       key === 'provisioned' ||
       key === 'cleanupVerified' ||
+      key === 'checkpointRetried' ||
+      key === 'forkRetried' ||
+      key === 'restarted' ||
+      key === 'confidentialRequested' ||
+      key === 'confidentialVerified' ||
+      key === 'missingAttestationRejected' ||
+      key === 'wrongNonceRejected' ||
+      key === 'wrongMeasurementRejected' ||
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
       key === 'processGroupExitedBeforeWorkspaceCleanup'
@@ -605,6 +660,77 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
   }
 }
 
+function validatePassedTangleWorkspaceForkReceipt(receipt) {
+  const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
+  for (const field of requiredConnectionFields)
+    validRequiredString(
+      receipt.connection[field],
+      `Passed Tangle workspace-fork connection.${field}`,
+    )
+  if (receipt.connection.connectionKind !== 'tangle-sandbox')
+    throw new Error('Passed Tangle workspace-fork proof requires a tangle-sandbox connection')
+  if (receipt.connection.credentialConfigured !== true)
+    throw new Error('Passed Tangle workspace-fork proof requires configured credentials')
+  if (receipt.run.ids.length !== 1)
+    throw new Error('Passed Tangle workspace-fork proof requires one source run ID')
+  validRequiredString(receipt.run.environmentId, 'Passed Tangle workspace-fork environmentId')
+  for (const field of [
+    'sourceProviderEnvironmentId',
+    'destinationProviderEnvironmentId',
+    'sourceDigestBefore',
+    'sourceDigestAfter',
+    'destinationDigest',
+  ])
+    validRequiredString(receipt.facts[field], `Passed Tangle workspace-fork ${field}`)
+  if (receipt.facts.sourceProviderEnvironmentId === receipt.facts.destinationProviderEnvironmentId)
+    throw new Error('Passed Tangle workspace-fork proof reused its source environment')
+  if (receipt.facts.sourceDigestBefore !== receipt.facts.sourceDigestAfter)
+    throw new Error('Passed Tangle workspace-fork proof changed the source workspace')
+  for (const field of ['checkpointRetried', 'forkRetried', 'restarted']) {
+    if (receipt.facts[field] !== true)
+      throw new Error(`Passed Tangle workspace-fork proof requires ${field}=true`)
+  }
+  for (const field of ['cleanupCheckpoint', 'cleanupEnvironment']) {
+    if (!['deleted', 'already_absent'].includes(receipt.facts[field]))
+      throw new Error(`Passed Tangle workspace-fork proof requires ${field} cleanup`)
+  }
+  if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
+    throw new Error('Passed Tangle workspace-fork proof requires redacted observations')
+}
+
+function validatePassedTangleConfidentialReceipt(receipt) {
+  const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
+  for (const field of requiredConnectionFields)
+    validRequiredString(receipt.connection[field], `Passed Tangle confidential connection.${field}`)
+  if (receipt.connection.connectionKind !== 'tangle-sandbox')
+    throw new Error('Passed Tangle confidential proof requires a tangle-sandbox connection')
+  if (receipt.connection.credentialConfigured !== true)
+    throw new Error('Passed Tangle confidential proof requires configured credentials')
+  if (receipt.run.ids.length !== 1)
+    throw new Error('Passed Tangle confidential proof requires one source run ID')
+  validRequiredString(receipt.run.environmentId, 'Passed Tangle confidential environmentId')
+  if (receipt.facts.confidentialRequested !== true)
+    throw new Error('Passed Tangle confidential proof requires a requested confidential fork')
+  if (receipt.facts.confidentialVerified !== true)
+    throw new Error('Passed Tangle confidential proof requires an externally verified attestation')
+  if (
+    receipt.facts.missingAttestationRejected !== true ||
+    receipt.facts.wrongNonceRejected !== true ||
+    receipt.facts.wrongMeasurementRejected !== true
+  )
+    throw new Error('Passed Tangle confidential proof requires all negative checks')
+  for (const field of ['sourceProviderEnvironmentId', 'destinationProviderEnvironmentId'])
+    validRequiredString(receipt.facts[field], `Passed Tangle confidential ${field}`)
+  if (receipt.facts.sourceProviderEnvironmentId === receipt.facts.destinationProviderEnvironmentId)
+    throw new Error('Passed Tangle confidential proof reused its source environment')
+  for (const field of ['cleanupCheckpoint', 'cleanupEnvironment']) {
+    if (!['deleted', 'already_absent'].includes(receipt.facts[field]))
+      throw new Error(`Passed Tangle confidential proof requires ${field} cleanup`)
+  }
+  if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
+    throw new Error('Passed Tangle confidential proof requires redacted observations')
+}
+
 export function proofInvocation(scope) {
   if (typeof scope !== 'string' || scope.trim().length === 0)
     throw new Error('Live proof scope must be a non-empty string')
@@ -679,6 +805,10 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     receipt.status === 'passed'
   )
     validatePassedTangleSandboxInteractiveReceipt(receipt)
+  if (receipt.operation === PROOF_OPERATIONS.tangleWorkspaceFork && receipt.status === 'passed')
+    validatePassedTangleWorkspaceForkReceipt(receipt)
+  if (receipt.operation === PROOF_OPERATIONS.tangleConfidential && receipt.status === 'passed')
+    validatePassedTangleConfidentialReceipt(receipt)
   if (receipt.operation === PROOF_OPERATIONS.supervisor && receipt.status === 'passed')
     validatePassedSupervisorReceipt(receipt)
   return receipt

@@ -1,4 +1,11 @@
-import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
+import type {
+  AgentEnvironment,
+  AgentEnvironmentCapabilities,
+} from '@tangle-network/agent-interface/environment-provider'
+import type {
+  AgentWorkspaceBranching,
+  AgentWorkspaceBranchingProvider,
+} from '@tangle-network/agent-interface'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import {
   createTangleProvider,
@@ -44,6 +51,55 @@ export async function createTangleSandboxClient(
   return new Sandbox({ baseUrl: endpoint, apiKey }) as unknown as SandboxClientLike
 }
 
+/**
+ * Create a restart-safe source lookup without retaining a live environment.
+ *
+ * The provider constructs the source-scoped handle and owns every Sandbox call.
+ * Braid retains only this lazy factory, so restart recovery cannot use stale state.
+ */
+export function createTangleWorkspaceBranchingProvider(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+): AgentWorkspaceBranchingProvider {
+  return Object.freeze({
+    async forEnvironment(
+      sourceEnvironmentId: string,
+      operation?: { readonly signal?: AbortSignal },
+    ): Promise<AgentWorkspaceBranching | null> {
+      const client = await createTangleSandboxClient(record, options, operation?.signal)
+      const provider = createTangleProvider({
+        client,
+        name: 'tangle-sandbox',
+        ...(options.tangleConfidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
+      })
+      const branching = provider.workspaceBranching
+      if (branching === undefined) return null
+      return branching.forEnvironment(sourceEnvironmentId, operation)
+    },
+  })
+}
+
+/** Reconstruct one provider environment for an independent workspace check. */
+export async function getTangleSandboxEnvironment(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+  environmentId: string,
+  signal?: AbortSignal,
+): Promise<AgentEnvironment | null> {
+  const client = await createTangleSandboxClient(record, options, signal)
+  const provider = createTangleProvider({
+    client,
+    name: 'tangle-sandbox',
+    ...(options.tangleConfidentialAttestationVerifier === undefined
+      ? {}
+      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
+  })
+  if (provider.get === undefined) return null
+  return provider.get(environmentId, signal === undefined ? undefined : { signal })
+}
+
 export async function capabilitiesForConnection(
   record: ConnectionRecord,
   options: ProductionConnectionOptions,
@@ -67,9 +123,28 @@ export async function capabilitiesForConnection(
         list: false,
       })
     case 'tangle-sandbox': {
-      const reported = options.sandboxClient
-        ? await createTangleProvider({ client: options.sandboxClient }).capabilities()
-        : defaultTangleSandboxCapabilities()
+      const reported =
+        options.sandboxClient === undefined
+          ? {
+              ...defaultTangleSandboxCapabilities(),
+              branching: {
+                checkpoint: false,
+                fork: false,
+                retrySafe: false,
+                lookup: false,
+                cleanup: false,
+              },
+              confidential: false,
+            }
+          : await createTangleProvider({
+              client: options.sandboxClient,
+              ...(options.tangleConfidentialAttestationVerifier === undefined
+                ? {}
+                : {
+                    confidentialAttestationVerifier:
+                      options.tangleConfidentialAttestationVerifier,
+                  }),
+            }).capabilities()
       const environment = tangleConnectionCapabilities(
         record,
         reported,

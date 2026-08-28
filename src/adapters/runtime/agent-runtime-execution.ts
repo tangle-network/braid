@@ -1,4 +1,8 @@
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import type {
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
+} from '@tangle-network/agent-interface'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
@@ -43,6 +47,8 @@ export type AgentTurnCancelResolver = (
 
 export interface AgentRuntimeExecutionOptions {
   readonly admissionMode?: 'sync' | 'async'
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 }
 
 export class AgentRuntimeExecutionPort implements ExecutionPort {
@@ -56,6 +62,8 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   >()
   readonly #preparedOrder: string[] = []
   readonly #capabilitySnapshot: RunCapabilities
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 
   static readonly #MAX_PREPARED = 128
 
@@ -78,6 +86,10 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         streaming: { ...UNKNOWN_RUN_CAPABILITIES.streaming, live: true },
       }
     }
+    if (options.workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 
   capabilities(): RunCapabilities {

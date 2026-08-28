@@ -14,7 +14,11 @@ export {
   DEFAULT_TANGLE_INFERENCE_ENDPOINT,
   normalizeCliBridgeRuntimeBaseUrl,
 } from './production-connection-endpoints.js'
-export { createTangleSandboxClient } from './production-connection-providers.js'
+export {
+  createTangleSandboxClient,
+  getTangleSandboxEnvironment,
+  createTangleWorkspaceBranchingProvider,
+} from './production-connection-providers.js'
 export {
   type ConnectionCapabilityAction,
   type ConnectionCapabilityReport,
@@ -29,6 +33,7 @@ export {
   type SandboxClientFactoryInput,
   type TangleRetainedControlLookup,
   type TangleRetainedControlLookupInput,
+  type TangleConfidentialAttestationVerifier,
 } from './production-connection-types.js'
 
 export function createProductionConnectionAdapter(

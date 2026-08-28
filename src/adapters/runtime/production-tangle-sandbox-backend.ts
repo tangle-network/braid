@@ -79,6 +79,9 @@ export async function resolveTangleSandboxBackend(
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
+    ...(options.tangleConfidentialAttestationVerifier === undefined
+      ? {}
+      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
   })
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
   const providerSessionId = providerSessionFor(input, capabilities)
@@ -197,6 +200,9 @@ export async function resolveTangleSandboxRetainedConnection(
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
+    ...(options.tangleConfidentialAttestationVerifier === undefined
+      ? {}
+      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
   })
   const reportedCapabilities = await provider.capabilities()
   const retained = reportedCapabilities.retainedControl

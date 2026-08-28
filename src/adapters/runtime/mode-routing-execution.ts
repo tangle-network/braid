@@ -38,6 +38,10 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   readonly context?: NonNullable<ExecutionPort['context']>
   readonly contextTransfer?: NonNullable<ExecutionPort['contextTransfer']>
   readonly workspaceBranching?: NonNullable<ExecutionPort['workspaceBranching']>
+  readonly workspaceBranchingProvider?: NonNullable<ExecutionPort['workspaceBranchingProvider']>
+  readonly confidentialAttestationVerifier?: NonNullable<
+    ExecutionPort['confidentialAttestationVerifier']
+  >
   readonly provider?: string
 
   constructor(options: ModeRoutingExecutionOptions) {
@@ -59,6 +63,15 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
     const workspaceBranching =
       options.headless.workspaceBranching ?? options.interactive.workspaceBranching
     if (workspaceBranching !== undefined) this.workspaceBranching = workspaceBranching
+    const workspaceBranchingProvider =
+      options.headless.workspaceBranchingProvider ?? options.interactive.workspaceBranchingProvider
+    if (workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = workspaceBranchingProvider
+    const confidentialAttestationVerifier =
+      options.headless.confidentialAttestationVerifier ??
+      options.interactive.confidentialAttestationVerifier
+    if (confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = confidentialAttestationVerifier
     const provider = options.headless.provider ?? options.interactive.provider
     if (provider !== undefined) this.provider = provider
   }
