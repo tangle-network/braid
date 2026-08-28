@@ -27,6 +27,16 @@ const TOTAL_FIELDS = Object.freeze([
   'usd',
   'latencyMs',
 ])
+const PROVISION_ENVIRONMENT_KEYS = Object.freeze([
+  'BRAID_SUPERVISOR_ENDPOINT',
+  'BRAID_SUPERVISOR_CONNECTION_ID',
+  'BRAID_SUPERVISOR_CONNECTION_KIND',
+  'BRAID_SUPERVISOR_CREDENTIAL_CONFIGURED',
+  'BRAID_SUPERVISOR_CREDENTIAL_REF',
+  'BRAID_SUPERVISOR_MODEL',
+  'BRAID_SUPERVISOR_RUNNER',
+  'BRAID_SUPERVISOR_WORKSPACE',
+])
 
 function requiredText(value, name) {
   if (typeof value !== 'string' || value.trim().length === 0)
@@ -298,23 +308,180 @@ function proofConfig(environment) {
 /**
  * Prove one Runtime supervisor through its published read and control APIs.
  *
- * The optional `providers` value enables exact terminal takeover when the provider publishes an
- * interactive reconnect contract. A missing provider is recorded as unavailable capability, not
- * converted into a false attachment.
+ * A protected run provisions its own Runtime supervisor unless all three legacy identifiers are
+ * supplied as an explicit external-resource override. The provisioner owns the run and returns
+ * its exact identifiers plus a cleanup function; Braid never reads or writes Runtime files.
  */
+function supervisorConfiguration(environment) {
+  const values = {
+    rootDir: environment.BRAID_SUPERVISOR_ROOT,
+    supervisorId: environment.BRAID_SUPERVISOR_ID,
+    workerId: environment.BRAID_SUPERVISOR_WORKER,
+  }
+  const configured = Object.values(values).filter(
+    (value) => typeof value === 'string' && value.trim().length > 0,
+  ).length
+  if (configured === 0) return undefined
+  if (configured !== Object.keys(values).length)
+    throw protectedUnavailable(
+      'PROTECTED_SUPERVISOR_CONFIGURATION_INVALID',
+      'BRAID_SUPERVISOR_ROOT, BRAID_SUPERVISOR_ID, and BRAID_SUPERVISOR_WORKER must be set together',
+    )
+  return {
+    mode: 'configured',
+    rootDir: requiredProtectedText(values.rootDir, 'BRAID_SUPERVISOR_ROOT'),
+    supervisorId: requiredProtectedText(values.supervisorId, 'BRAID_SUPERVISOR_ID'),
+    workerId: requiredProtectedText(values.workerId, 'BRAID_SUPERVISOR_WORKER'),
+    providers: undefined,
+    terminalTakeover: 'unspecified',
+    cleanup: undefined,
+  }
+}
+
+function provisionEnvironment(environment) {
+  return Object.fromEntries(
+    PROVISION_ENVIRONMENT_KEYS.flatMap((name) => {
+      const value = environment[name]
+      return typeof value === 'string' && value.trim().length > 0 ? [[name, value.trim()]] : []
+    }),
+  )
+}
+
+function provisionRequest(environment, invocationId, timeoutMs, pollMs, profile, connection) {
+  const workspaceDir = environment.BRAID_SUPERVISOR_WORKSPACE?.trim()
+  return {
+    invocationId,
+    environment: provisionEnvironment(environment),
+    workspaceDir: workspaceDir || undefined,
+    timeoutMs,
+    pollMs,
+    ...(profile === undefined ? {} : { profile }),
+    ...(connection === undefined ? {} : { connection }),
+  }
+}
+
+function validateProvisionedSupervisor(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Runtime supervisor provisioner returned no receipt')
+  const rootDir = requiredText(value.rootDir, 'Runtime provision root directory')
+  const supervisorId = requiredText(value.supervisorId, 'Runtime provision supervisor id')
+  const workerId = requiredText(value.workerId, 'Runtime provision worker id')
+  if (typeof value.cleanup !== 'function')
+    throw new Error('Runtime supervisor provision receipt has no cleanup function')
+  const terminalTakeover = value.terminalTakeover ?? 'unspecified'
+  if (!['required', 'unsupported', 'unspecified'].includes(terminalTakeover))
+    throw new Error(
+      'Runtime supervisor provision receipt has an invalid terminal takeover requirement',
+    )
+  return {
+    mode: 'provisioned',
+    rootDir,
+    supervisorId,
+    workerId,
+    providers: value.providers,
+    terminalTakeover,
+    cleanup: value.cleanup,
+  }
+}
+
+async function acquireSupervisor({
+  environment,
+  invocationId,
+  runtimeApi,
+  timeoutMs,
+  pollMs,
+  provision,
+  profile,
+  connection,
+}) {
+  const configured = supervisorConfiguration(environment)
+  if (configured !== undefined) return configured
+  const provisioner = provision ?? runtimeApi.provisionSupervisor
+  if (typeof provisioner !== 'function')
+    throw protectedUnavailable(
+      'RUNTIME_SUPERVISOR_PROVISION_REQUIRED',
+      'The installed agent-runtime package must expose provisionSupervisor for the protected LIVE-11 path',
+    )
+  try {
+    const receipt = await provisioner(
+      provisionRequest(environment, invocationId, timeoutMs, pollMs, profile, connection),
+    )
+    return validateProvisionedSupervisor(receipt)
+  } catch (error) {
+    if (error?.unavailable === true) throw error
+    throw new Error('Runtime supervisor provisioning failed before LIVE-11 controls', {
+      cause: error,
+    })
+  }
+}
+
+function notOwnedCleanup(binding) {
+  return {
+    status: 'not-owned',
+    rootDir: binding.rootDir,
+    supervisorId: binding.supervisorId,
+    workerId: binding.workerId,
+    supervisorStatus: null,
+    workerStatus: null,
+    resourcesReleased: null,
+    remainingResources: null,
+  }
+}
+
+function validateCleanupReceipt(value, binding) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Runtime supervisor cleanup returned no receipt')
+  if (value.status !== 'completed')
+    throw new Error(`Runtime supervisor cleanup was not completed: ${String(value.status)}`)
+  if (value.rootDir !== binding.rootDir)
+    throw new Error('Runtime supervisor cleanup receipt names another root directory')
+  if (value.supervisorId !== binding.supervisorId)
+    throw new Error('Runtime supervisor cleanup receipt names another supervisor')
+  if (value.workerId !== binding.workerId)
+    throw new Error('Runtime supervisor cleanup receipt names another worker')
+  if (typeof value.supervisorStatus !== 'string' || value.supervisorStatus.length === 0)
+    throw new Error('Runtime supervisor cleanup receipt has no terminal supervisor status')
+  if (typeof value.workerStatus !== 'string' || value.workerStatus.length === 0)
+    throw new Error('Runtime supervisor cleanup receipt has no terminal worker status')
+  if (value.resourcesReleased !== true)
+    throw new Error('Runtime supervisor cleanup did not prove resource release')
+  if (!Array.isArray(value.remainingResources) || value.remainingResources.length !== 0)
+    throw new Error('Runtime supervisor cleanup left unconfirmed resources')
+  return {
+    status: 'completed',
+    rootDir: binding.rootDir,
+    supervisorId: binding.supervisorId,
+    workerId: binding.workerId,
+    supervisorStatus: value.supervisorStatus,
+    workerStatus: value.workerStatus,
+    resourcesReleased: true,
+    remainingResources: [],
+  }
+}
+
+function cleanupObservation(value) {
+  return {
+    status: value.status,
+    rootDir: value.rootDir,
+    supervisorId: value.supervisorId,
+    workerId: value.workerId,
+    supervisorStatus: value.supervisorStatus,
+    workerStatus: value.workerStatus,
+    resourcesReleased: value.resourcesReleased,
+    remainingResources: value.remainingResources,
+  }
+}
+
 export async function runSupervisorFlow({
   environment = process.env,
   invocationId = proofInvocation('live-supervisor'),
   runtime,
   providers,
+  provision,
+  profile,
+  connection,
 } = {}) {
   const startedAt = new Date().toISOString()
-  const rootDir = requiredProtectedText(environment.BRAID_SUPERVISOR_ROOT, 'BRAID_SUPERVISOR_ROOT')
-  const supervisorId = requiredProtectedText(environment.BRAID_SUPERVISOR_ID, 'BRAID_SUPERVISOR_ID')
-  const workerId = requiredProtectedText(
-    environment.BRAID_SUPERVISOR_WORKER,
-    'BRAID_SUPERVISOR_WORKER',
-  )
   const timeoutMs = configuredDuration(
     environment,
     ['BRAID_SUPERVISOR_TIMEOUT_MS', 'BRAID_LIVE_REQUIRED_TIMEOUT_MS'],
@@ -335,219 +502,277 @@ export async function runSupervisorFlow({
   )
   const runtimeApi = await loadPublicRuntimeApi(runtime)
   requireRuntimeFunctions(runtimeApi)
-
-  const initial = readTarget(runtimeApi, rootDir, supervisorId, workerId)
-  if (initial.supervisor.status !== 'running')
-    throw new Error(
-      `configured supervisor '${supervisorId}' is ${initial.supervisor.status}; cancellation proof requires a running supervisor`,
-    )
-  if (initial.worker.status !== 'running')
-    throw new Error(
-      `configured supervisor worker '${workerId}' is ${initial.worker.status}; cancellation proof requires a live worker`,
-    )
-  const initialSpend = spendView(initial.supervisor, initial.worker)
-  if (!knownSpend(initialSpend))
-    throw new Error(`runtime worker '${workerId}' did not report complete spend fields`)
-
-  const spendUpdated = await waitForSnapshot({
-    runtime: runtimeApi,
-    rootDir,
-    supervisorId,
-    workerId,
-    label: 'worker spend update',
+  const binding = await acquireSupervisor({
+    environment,
+    invocationId,
+    runtimeApi,
     timeoutMs,
     pollMs,
-    predicate: (candidate) => {
-      const spend = spendView(candidate.supervisor, candidate.worker)
-      return (
-        candidate.worker.status === 'running' &&
-        knownSpend(spend) &&
-        changedSpend(initialSpend, spend)
-      )
-    },
+    provision,
+    profile,
+    connection,
   })
-  const updatedSpend = spendView(spendUpdated.supervisor, spendUpdated.worker)
-
-  const reconnected = readTarget(runtimeApi, rootDir, supervisorId, workerId)
-  if (reconnected.worker.status !== 'running')
-    throw new Error(
-      `worker '${workerId}' stopped before reconnectable control proof: ${reconnected.worker.status}`,
-    )
-  const eventDir = requiredText(
-    runtimeApi.supervisorRunDir(rootDir, supervisorId),
-    'Runtime supervisor event directory',
-  )
-
-  let terminalTakeover
-  if (typeof runtimeApi.attachWorker !== 'function') {
-    terminalTakeover = { status: 'unavailable', reason: 'Runtime has no public attachWorker API' }
-  } else if (providers === undefined) {
-    terminalTakeover = {
-      status: 'unavailable',
-      reason: 'No environment provider source was supplied for exact terminal takeover',
-    }
-  } else {
-    const attachment = await runtimeApi.attachWorker(eventDir, workerId, { providers })
-    if (attachment?.status === 'available' && attachment.handle !== undefined) {
-      terminalTakeover = { status: 'attached' }
-    } else {
-      terminalTakeover = {
-        status: 'unavailable',
-        reason: attachment?.reason ?? 'Runtime did not return an exact interactive handle',
-      }
-    }
+  const { rootDir, supervisorId, workerId } = binding
+  const providerSource = providers ?? binding.providers
+  let cleanupStarted = false
+  let cleanupReceipt = notOwnedCleanup(binding)
+  const cleanupOwned = async () => {
+    if (cleanupStarted) return cleanupReceipt
+    cleanupStarted = true
+    if (binding.mode === 'configured') return cleanupReceipt
+    cleanupReceipt = validateCleanupReceipt(await binding.cleanup(), binding)
+    return cleanupReceipt
   }
 
-  const steer = runtimeApi.writeWorkerSteer(rootDir, supervisorId, workerId, {
-    operationId: steerOperationId,
-    message,
-    source: 'braid-live-supervisor',
-    interrupt: true,
-  })
-  assertSteerResult(steer, workerId, steerOperationId, message)
-  const steerReplay = runtimeApi.writeWorkerSteer(rootDir, supervisorId, workerId, {
-    operationId: steerOperationId,
-    message,
-    source: 'braid-live-supervisor',
-    interrupt: true,
-  })
-  assertSteerResult(steerReplay, workerId, steerOperationId, message)
-  if (
-    steerReplay.replayed !== true ||
-    steerReplay.request.requestDigest !== steer.request.requestDigest
-  )
-    throw new Error('worker steer retry did not replay the same admitted operation')
-  const steerAcknowledgement = await waitForAcknowledgement({
-    read: runtimeApi.readWorkerSteerAcknowledgement,
-    eventDir,
-    operationId: steerOperationId,
-    label: 'worker steer acknowledgement',
-    timeoutMs,
-    pollMs,
-  })
-  assertSteerAcknowledgement(steerAcknowledgement, steer.request, workerId, steerOperationId)
+  try {
+    const initial = readTarget(runtimeApi, rootDir, supervisorId, workerId)
+    if (initial.supervisor.status !== 'running')
+      throw new Error(
+        `supervisor '${supervisorId}' is ${initial.supervisor.status}; cancellation proof requires a running supervisor`,
+      )
+    if (initial.worker.status !== 'running')
+      throw new Error(
+        `supervisor worker '${workerId}' is ${initial.worker.status}; cancellation proof requires a live worker`,
+      )
+    const initialSpend = spendView(initial.supervisor, initial.worker)
+    if (!knownSpend(initialSpend))
+      throw new Error(`runtime worker '${workerId}' did not report complete spend fields`)
 
-  const beforeCancel = readTarget(runtimeApi, rootDir, supervisorId, workerId)
-  if (beforeCancel.worker.status !== 'running')
-    throw new Error(
-      `worker '${workerId}' stopped before cancellation dispatch: ${beforeCancel.worker.status}`,
-    )
-  const cancel = runtimeApi.cancelWorker(eventDir, workerId, cancelOperationId, {
-    reason: 'Braid live supervisor cancellation proof',
-    source: 'braid-live-supervisor',
-  })
-  const cancelReplay = runtimeApi.cancelWorker(eventDir, workerId, cancelOperationId, {
-    reason: 'Braid live supervisor cancellation proof',
-    source: 'braid-live-supervisor',
-  })
-  if (
-    cancel?.operationId !== cancelOperationId ||
-    cancelReplay?.operationId !== cancelOperationId ||
-    cancelReplay?.worker !== workerId
-  )
-    throw new Error('worker cancellation retry did not preserve its operation identity')
-  const cancellationAcknowledgement = await waitForAcknowledgement({
-    read: runtimeApi.readWorkerCancellation,
-    eventDir,
-    operationId: cancelOperationId,
-    label: 'worker cancellation acknowledgement',
-    timeoutMs,
-    pollMs,
-  })
-  assertCancellationAcknowledgement(cancellationAcknowledgement, workerId, cancelOperationId)
-
-  const final = await waitForSnapshot({
-    runtime: runtimeApi,
-    rootDir,
-    supervisorId,
-    workerId,
-    label: 'cancelled worker snapshot',
-    timeoutMs,
-    pollMs,
-    predicate: (candidate) => ['cancelled', 'down'].includes(candidate.worker.status),
-  })
-  const persistedCancellation = runtimeApi.readWorkerCancellation(eventDir, cancelOperationId)
-  assertCancellationAcknowledgement(persistedCancellation, workerId, cancelOperationId)
-
-  const proof = proofReceipt({
-    invocationId,
-    operation: PROOF_OPERATIONS.supervisor,
-    startedAt,
-    completedAt: new Date().toISOString(),
-    config: proofConfig(environment),
-    facts: {
+    const spendUpdated = await waitForSnapshot({
+      runtime: runtimeApi,
+      rootDir,
       supervisorId,
       workerId,
-      steeringRequestId: steer.request.operationId,
-      steeringOperationId: steerOperationId,
-      steeringEffect: steerAcknowledgement.effect,
-      cancellationOperationId: cancelOperationId,
-      cancellationEffect: cancellationAcknowledgement.effect,
-      initialStatus: initial.worker.status,
-      finalStatus: final.worker.status,
-      spendObserved: true,
-      statusObserved: true,
-      reconnectable: true,
-      terminalTakeover: terminalTakeover.status,
-      cancellationAvailable: true,
-    },
-    checks: SUPERVISOR_CHECKS,
-    observations: {
-      snapshots: [
-        snapshotObservation(initial),
-        snapshotObservation(spendUpdated),
-        snapshotObservation(reconnected),
-        snapshotObservation(beforeCancel),
-        snapshotObservation(final),
-      ],
-      spend: { initial: initialSpend, updated: updatedSpend },
+      label: 'worker spend update',
+      timeoutMs,
+      pollMs,
+      predicate: (candidate) => {
+        const spend = spendView(candidate.supervisor, candidate.worker)
+        return (
+          candidate.worker.status === 'running' &&
+          knownSpend(spend) &&
+          changedSpend(initialSpend, spend)
+        )
+      },
+    })
+    const updatedSpend = spendView(spendUpdated.supervisor, spendUpdated.worker)
+
+    const reconnected = readTarget(runtimeApi, rootDir, supervisorId, workerId)
+    if (reconnected.worker.status !== 'running')
+      throw new Error(
+        `worker '${workerId}' stopped before reconnectable control proof: ${reconnected.worker.status}`,
+      )
+    const eventDir = requiredText(
+      runtimeApi.supervisorRunDir(rootDir, supervisorId),
+      'Runtime supervisor event directory',
+    )
+
+    let terminalTakeover
+    if (typeof runtimeApi.attachWorker !== 'function') {
+      terminalTakeover = { status: 'unavailable', reason: 'Runtime has no public attachWorker API' }
+    } else if (providerSource === undefined) {
+      terminalTakeover = {
+        status: 'unavailable',
+        reason: 'No environment provider source was supplied for exact terminal takeover',
+      }
+    } else {
+      const attachment = await runtimeApi.attachWorker(eventDir, workerId, {
+        providers: providerSource,
+      })
+      if (attachment?.status === 'available' && attachment.handle !== undefined) {
+        terminalTakeover = { status: 'attached' }
+      } else {
+        terminalTakeover = {
+          status: 'unavailable',
+          reason: attachment?.reason ?? 'Runtime did not return an exact interactive handle',
+        }
+      }
+    }
+    if (binding.terminalTakeover === 'required' && terminalTakeover.status !== 'attached')
+      throw new Error(
+        `Runtime provider supports terminal takeover, but LIVE-11 could not attach the exact worker: ${terminalTakeover.reason}`,
+      )
+
+    const steer = runtimeApi.writeWorkerSteer(rootDir, supervisorId, workerId, {
+      operationId: steerOperationId,
+      message,
+      source: 'braid-live-supervisor',
+      interrupt: true,
+    })
+    assertSteerResult(steer, workerId, steerOperationId, message)
+    const steerReplay = runtimeApi.writeWorkerSteer(rootDir, supervisorId, workerId, {
+      operationId: steerOperationId,
+      message,
+      source: 'braid-live-supervisor',
+      interrupt: true,
+    })
+    assertSteerResult(steerReplay, workerId, steerOperationId, message)
+    if (
+      steerReplay.replayed !== true ||
+      steerReplay.request.requestDigest !== steer.request.requestDigest
+    )
+      throw new Error('worker steer retry did not replay the same admitted operation')
+    const steerAcknowledgement = await waitForAcknowledgement({
+      read: runtimeApi.readWorkerSteerAcknowledgement,
+      eventDir,
+      operationId: steerOperationId,
+      label: 'worker steer acknowledgement',
+      timeoutMs,
+      pollMs,
+    })
+    assertSteerAcknowledgement(steerAcknowledgement, steer.request, workerId, steerOperationId)
+
+    const beforeCancel = readTarget(runtimeApi, rootDir, supervisorId, workerId)
+    if (beforeCancel.worker.status !== 'running')
+      throw new Error(
+        `worker '${workerId}' stopped before cancellation dispatch: ${beforeCancel.worker.status}`,
+      )
+    const cancel = runtimeApi.cancelWorker(eventDir, workerId, cancelOperationId, {
+      reason: 'Braid live supervisor cancellation proof',
+      source: 'braid-live-supervisor',
+    })
+    const cancelReplay = runtimeApi.cancelWorker(eventDir, workerId, cancelOperationId, {
+      reason: 'Braid live supervisor cancellation proof',
+      source: 'braid-live-supervisor',
+    })
+    if (
+      cancel?.operationId !== cancelOperationId ||
+      cancelReplay?.operationId !== cancelOperationId ||
+      cancelReplay?.worker !== workerId
+    )
+      throw new Error('worker cancellation retry did not preserve its operation identity')
+    const cancellationAcknowledgement = await waitForAcknowledgement({
+      read: runtimeApi.readWorkerCancellation,
+      eventDir,
+      operationId: cancelOperationId,
+      label: 'worker cancellation acknowledgement',
+      timeoutMs,
+      pollMs,
+    })
+    assertCancellationAcknowledgement(cancellationAcknowledgement, workerId, cancelOperationId)
+
+    const final = await waitForSnapshot({
+      runtime: runtimeApi,
+      rootDir,
+      supervisorId,
+      workerId,
+      label: 'cancelled worker snapshot',
+      timeoutMs,
+      pollMs,
+      predicate: (candidate) => ['cancelled', 'down'].includes(candidate.worker.status),
+    })
+    const persistedCancellation = runtimeApi.readWorkerCancellation(eventDir, cancelOperationId)
+    assertCancellationAcknowledgement(persistedCancellation, workerId, cancelOperationId)
+
+    await cleanupOwned()
+    const provisioning = {
+      mode: binding.mode,
+      rootDir,
+      supervisorId,
+      workerId,
+      terminalTakeover: binding.terminalTakeover,
+    }
+    const cleanup = cleanupObservation(cleanupReceipt)
+    const proof = proofReceipt({
+      invocationId,
+      operation: PROOF_OPERATIONS.supervisor,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      config: proofConfig(environment),
+      runIds: [supervisorId, workerId],
+      facts: {
+        supervisorId,
+        workerId,
+        steeringRequestId: steer.request.operationId,
+        steeringOperationId: steerOperationId,
+        steeringEffect: steerAcknowledgement.effect,
+        cancellationOperationId: cancelOperationId,
+        cancellationEffect: cancellationAcknowledgement.effect,
+        initialStatus: initial.worker.status,
+        finalStatus: final.worker.status,
+        spendObserved: true,
+        statusObserved: true,
+        reconnectable: true,
+        terminalTakeover: terminalTakeover.status,
+        terminalTakeoverRequired: binding.terminalTakeover === 'required',
+        cancellationAvailable: true,
+        provisioned: binding.mode === 'provisioned',
+        cleanupVerified: binding.mode === 'provisioned',
+      },
+      checks: SUPERVISOR_CHECKS,
+      observations: {
+        snapshots: [
+          snapshotObservation(initial),
+          snapshotObservation(spendUpdated),
+          snapshotObservation(reconnected),
+          snapshotObservation(beforeCancel),
+          snapshotObservation(final),
+        ],
+        spend: { initial: initialSpend, updated: updatedSpend },
+        steering: {
+          operationId: steerOperationId,
+          requestDigest: steer.request.requestDigest,
+          replayed: steerReplay.replayed === true,
+          acknowledgement: {
+            operationId: steerAcknowledgement.operationId,
+            worker: steerAcknowledgement.worker,
+            effect: steerAcknowledgement.effect,
+            detail: steerAcknowledgement.detail,
+          },
+        },
+        cancellation: {
+          operationId: cancelOperationId,
+          acknowledgement: {
+            operationId: cancellationAcknowledgement.operationId,
+            worker: cancellationAcknowledgement.worker,
+            effect: cancellationAcknowledgement.effect,
+            terminated: cancellationAcknowledgement.terminated,
+            detail: cancellationAcknowledgement.detail,
+          },
+          replay: {
+            effect: cancelReplay.effect,
+            terminated: cancelReplay.terminated,
+          },
+        },
+        terminalTakeover,
+        provisioning,
+        cleanup,
+      },
+      environment,
+    })
+    return {
+      status: 'passed',
+      measurements: [scalarMeasurement('LIVE-11')],
+      supervisor: supervisorId,
+      worker: workerId,
+      provisioning,
+      cleanup,
       steering: {
         operationId: steerOperationId,
-        requestDigest: steer.request.requestDigest,
+        effect: steerAcknowledgement.effect,
         replayed: steerReplay.replayed === true,
-        acknowledgement: {
-          operationId: steerAcknowledgement.operationId,
-          worker: steerAcknowledgement.worker,
-          effect: steerAcknowledgement.effect,
-          detail: steerAcknowledgement.detail,
-        },
       },
       cancellation: {
         operationId: cancelOperationId,
-        acknowledgement: {
-          operationId: cancellationAcknowledgement.operationId,
-          worker: cancellationAcknowledgement.worker,
-          effect: cancellationAcknowledgement.effect,
-          terminated: cancellationAcknowledgement.terminated,
-          detail: cancellationAcknowledgement.detail,
-        },
-        replay: {
-          effect: cancelReplay.effect,
-          terminated: cancelReplay.terminated,
-        },
+        effect: cancellationAcknowledgement.effect,
+        replayed: cancelReplay.operationId === cancelOperationId,
       },
+      reconnect: true,
       terminalTakeover,
-    },
-    environment,
-  })
-  return {
-    status: 'passed',
-    measurements: [scalarMeasurement('LIVE-11')],
-    supervisor: supervisorId,
-    worker: workerId,
-    steering: {
-      operationId: steerOperationId,
-      effect: steerAcknowledgement.effect,
-      replayed: steerReplay.replayed === true,
-    },
-    cancellation: {
-      operationId: cancelOperationId,
-      effect: cancellationAcknowledgement.effect,
-      replayed: cancelReplay.operationId === cancelOperationId,
-    },
-    reconnect: true,
-    terminalTakeover,
-    proof,
+      proof,
+    }
+  } catch (error) {
+    if (binding.mode === 'provisioned' && !cleanupStarted) {
+      try {
+        await cleanupOwned()
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'LIVE-11 failed and Runtime supervisor cleanup also failed',
+        )
+      }
+    }
+    throw error
   }
 }
 

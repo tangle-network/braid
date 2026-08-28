@@ -112,7 +112,10 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'statusObserved',
     'reconnectable',
     'terminalTakeover',
+    'terminalTakeoverRequired',
     'cancellationAvailable',
+    'provisioned',
+    'cleanupVerified',
   ]),
 })
 
@@ -389,9 +392,12 @@ function validateProofFacts(operation, status, facts) {
     if (
       key === 'promoted' ||
       key === 'cancellationAvailable' ||
+      key === 'terminalTakeoverRequired' ||
       key === 'spendObserved' ||
       key === 'statusObserved' ||
       key === 'reconnectable' ||
+      key === 'provisioned' ||
+      key === 'cleanupVerified' ||
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
       key === 'processGroupExitedBeforeWorkspaceCleanup'
@@ -442,6 +448,63 @@ function validatePassedSupervisorReceipt(receipt) {
     throw new Error('Passed supervisor proof requires a cancelled worker effect')
   if (!['attached', 'unavailable'].includes(facts.terminalTakeover))
     throw new Error('Passed supervisor proof requires an attached or unavailable terminal takeover')
+  if (facts.provisioned === true && facts.cleanupVerified !== true)
+    throw new Error('Passed provisioned supervisor proof requires verified cleanup')
+  if (facts.terminalTakeoverRequired === true && facts.terminalTakeover !== 'attached')
+    throw new Error(
+      'Passed supervisor proof requires terminal takeover when the provider supports it',
+    )
+  if (receipt.observations === null || typeof receipt.observations !== 'object')
+    throw new Error('Passed supervisor proof requires provisioning and cleanup observations')
+  const provisioning = receipt.observations.provisioning
+  const cleanup = receipt.observations.cleanup
+  if (provisioning === undefined || cleanup === undefined)
+    throw new Error('Passed supervisor proof requires provisioning and cleanup observations')
+  if (typeof provisioning !== 'object' || Array.isArray(provisioning))
+    throw new Error('Passed supervisor provisioning observation must be an object')
+  if (typeof cleanup !== 'object' || Array.isArray(cleanup))
+    throw new Error('Passed supervisor cleanup observation must be an object')
+  const provisioningKeys = ['mode', 'rootDir', 'supervisorId', 'workerId', 'terminalTakeover']
+  exactKeys(provisioning, provisioningKeys, 'Passed supervisor provisioning observation')
+  if (!['configured', 'provisioned'].includes(provisioning.mode))
+    throw new Error('Passed supervisor provisioning mode is invalid')
+  for (const key of ['rootDir', 'supervisorId', 'workerId'])
+    validRequiredString(provisioning[key], `Passed supervisor provisioning ${key}`)
+  if (!['required', 'unsupported', 'unspecified'].includes(provisioning.terminalTakeover))
+    throw new Error('Passed supervisor provisioning terminal takeover requirement is invalid')
+  const cleanupKeys = [
+    'status',
+    'rootDir',
+    'supervisorId',
+    'workerId',
+    'supervisorStatus',
+    'workerStatus',
+    'resourcesReleased',
+    'remainingResources',
+  ]
+  exactKeys(cleanup, cleanupKeys, 'Passed supervisor cleanup observation')
+  if (!['completed', 'not-owned'].includes(cleanup.status))
+    throw new Error('Passed supervisor cleanup status is invalid')
+  for (const key of ['rootDir', 'supervisorId', 'workerId'])
+    validRequiredString(cleanup[key], `Passed supervisor cleanup ${key}`)
+  if (cleanup.supervisorStatus !== null && typeof cleanup.supervisorStatus !== 'string')
+    throw new Error('Passed supervisor cleanup supervisorStatus must be a string or null')
+  if (cleanup.workerStatus !== null && typeof cleanup.workerStatus !== 'string')
+    throw new Error('Passed supervisor cleanup workerStatus must be a string or null')
+  if (cleanup.resourcesReleased !== null && typeof cleanup.resourcesReleased !== 'boolean')
+    throw new Error('Passed supervisor cleanup resourcesReleased must be boolean or null')
+  if (cleanup.remainingResources !== null && !Array.isArray(cleanup.remainingResources))
+    throw new Error('Passed supervisor cleanup remainingResources must be an array or null')
+  if (facts.provisioned === true) {
+    if (provisioning.mode !== 'provisioned')
+      throw new Error('Passed provisioned supervisor proof has a configured provisioning mode')
+    if (cleanup.status !== 'completed' || cleanup.resourcesReleased !== true)
+      throw new Error('Passed provisioned supervisor proof requires completed resource cleanup')
+    if (!Array.isArray(cleanup.remainingResources) || cleanup.remainingResources.length !== 0)
+      throw new Error('Passed provisioned supervisor proof left resources behind')
+  } else if (provisioning.mode !== 'configured' || cleanup.status !== 'not-owned') {
+    throw new Error('Passed configured supervisor proof has an invalid ownership receipt')
+  }
 }
 
 function validatePassedTangleSandboxReceipt(receipt) {

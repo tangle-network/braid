@@ -512,7 +512,6 @@ function eventControl(event) {
 
 export function frameCancellationDispatch(frame, runId) {
   const event = (Array.isArray(frame?.events) ? frame.events : []).find((candidate) => {
-    const payload = eventPayload(candidate)
     return (
       eventKind(candidate) === 'run.control.requested' &&
       eventRunId(candidate) === runId &&

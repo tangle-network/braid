@@ -368,7 +368,7 @@ The UI proof includes the source and destination file state of a real cloud envi
 - Implement feedback trajectory export from structured decisions.
 - Implement the complete graph with conversation, branch, turn, run, analysis, environment, checkpoint, supervisor, and worker nodes and named edges.
 - Implement runtime-owned supervisor snapshot watch, activity, log tail, typed steering, typed cancellation, and reconnect through the published Runtime APIs.
-- Make the `LIVE-11` release proof require complete root and worker observation, changed spend, acknowledged steering, proven cancellation, stable operation retries, and a fresh reconnect snapshot.
+- Make the `LIVE-11` release proof provision an owned Runtime root and worker, validate complete observation, changed spend, acknowledged steering, proven cancellation, stable operation retries, fresh reconnect, and exact cleanup.
 - Record exact terminal takeover only when Runtime returns an opaque handle for a registered provider; preserve the explicit unavailable capability otherwise.
 - Keep direct-turn, trace-analysis, and delegated-worker usage separate until Runtime exports stable shared call identity.
 - Add calibrated semantic cases and raw evidence capture.

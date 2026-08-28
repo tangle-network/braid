@@ -110,6 +110,8 @@ function protectedEnvironment() {
     'BRAID_SUPERVISOR_ROOT',
     'BRAID_SUPERVISOR_ID',
     'BRAID_SUPERVISOR_WORKER',
+    'BRAID_SUPERVISOR_WORKSPACE',
+    'BRAID_SUPERVISOR_CREDENTIAL_REF',
     'BRAID_SUPERVISOR_LIVE_ADAPTER',
   ])
     delete environment[name]
@@ -998,6 +1000,235 @@ test('supervisor proof records unsupported terminal takeover without claiming at
     reason: 'No environment provider source was supplied for exact terminal takeover',
   })
   assert.equal(result.proof.facts.terminalTakeover, 'unavailable')
+})
+
+test('supervisor proof provisions an owned Runtime run and validates cleanup', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'attached' })
+  const environment = {
+    ...protectedEnvironment(),
+    BRAID_SUPERVISOR_ENDPOINT: 'https://router.example/v1',
+    BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-proof',
+    BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-proof-workspace',
+    BRAID_SUPERVISOR_API_KEY: 'must-not-cross-the-provision-boundary',
+    BRAID_SUPERVISOR_AUTH: 'must-not-cross-the-provision-boundary',
+    BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+    BRAID_SUPERVISOR_POLL_MS: '1',
+    BRAID_SUPERVISOR_MESSAGE: 'inspect the provisioned worker',
+  }
+  let provisionRequest
+  let cleanupCalls = 0
+  const result = await runSupervisorFlow({
+    environment,
+    invocationId: 'live-required-supervisor-provisioned',
+    runtime: {
+      ...fixture.api,
+      provisionSupervisor: async (request) => {
+        provisionRequest = request
+        return {
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          providers: {},
+          terminalTakeover: 'required',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: [],
+            }
+          },
+        }
+      },
+    },
+  })
+  assert.equal(result.status, 'passed')
+  assert.equal(result.provisioning.mode, 'provisioned')
+  assert.equal(result.provisioning.terminalTakeover, 'required')
+  assert.equal(result.cleanup.status, 'completed')
+  assert.equal(cleanupCalls, 1)
+  assert.equal(provisionRequest.invocationId, 'live-required-supervisor-provisioned')
+  assert.equal(provisionRequest.timeoutMs, 1000)
+  assert.equal(provisionRequest.pollMs, 1)
+  assert.deepEqual(provisionRequest.environment, {
+    BRAID_SUPERVISOR_ENDPOINT: 'https://router.example/v1',
+    BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-proof',
+    BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-proof-workspace',
+  })
+  assert.equal(provisionRequest.profile, undefined)
+  assert.equal(provisionRequest.connection, undefined)
+  assert.deepEqual(result.proof.run.ids, [fixture.supervisorId, fixture.workerId])
+  assert.equal(result.proof.facts.provisioned, true)
+  assert.equal(result.proof.facts.cleanupVerified, true)
+  assert.equal(result.proof.facts.terminalTakeoverRequired, true)
+  assert.equal(assertProofReceipt(result.proof), result.proof)
+})
+
+test('supervisor proof cleans an owned Runtime run after an observation failure', async () => {
+  const fixture = createSupervisorProofFixture({ snapshotCompleteness: 'partial' })
+  let cleanupCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        invocationId: 'live-required-supervisor-cleanup-on-failure',
+        runtime: fixture.api,
+        provision: async () => ({
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          terminalTakeover: 'unsupported',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: [],
+            }
+          },
+        }),
+      }),
+    /runtime supervisor snapshot is incomplete/u,
+  )
+  assert.equal(cleanupCalls, 1)
+})
+
+test('supervisor proof rejects a supported terminal takeover without a real attachment', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'unavailable' })
+  let cleanupCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        invocationId: 'live-required-supervisor-required-attach',
+        runtime: fixture.api,
+        provision: async () => ({
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          providers: {},
+          terminalTakeover: 'required',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: [],
+            }
+          },
+        }),
+      }),
+    /supports terminal takeover/u,
+  )
+  assert.equal(cleanupCalls, 1)
+})
+
+test('supervisor proof refuses an incomplete owned cleanup receipt', async () => {
+  const fixture = createSupervisorProofFixture()
+  let cleanupCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        invocationId: 'live-required-supervisor-incomplete-cleanup',
+        runtime: fixture.api,
+        provision: async () => ({
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          terminalTakeover: 'unsupported',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: ['worker-process'],
+            }
+          },
+        }),
+      }),
+    /left unconfirmed resources/u,
+  )
+  assert.equal(cleanupCalls, 1)
+})
+
+test('supervisor proof requires Runtime provisioning when no external run is configured', async () => {
+  const fixture = createSupervisorProofFixture()
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        runtime: fixture.api,
+      }),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'RUNTIME_SUPERVISOR_PROVISION_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('supervisor proof rejects a partial external binding before provisioning', async () => {
+  const fixture = createSupervisorProofFixture()
+  let provisionCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+        },
+        runtime: {
+          ...fixture.api,
+          provisionSupervisor: async () => {
+            provisionCalls += 1
+            throw new Error('provisioning must not run for a partial override')
+          },
+        },
+      }),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'PROTECTED_SUPERVISOR_CONFIGURATION_INVALID')
+      return true
+    },
+  )
+  assert.equal(provisionCalls, 0)
 })
 
 test('configured supervisor failures are failed and never reported as partial', () => {

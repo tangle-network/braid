@@ -8,6 +8,12 @@ The supervisor graph shows the runtime-owned tree of active supervisors and work
 
 Read the canonical runtime supervisor snapshot through the shared Runtime API.
 
+The protected LIVE-11 command provisions one Runtime-owned supervisor when no external run is supplied.
+
+The Runtime provisioner creates the root, worker, acknowledger, and provider binding through its public APIs.
+
+The provisioner returns exact identifiers and an owner-scoped cleanup function.
+
 Project it into bounded `GraphNodeView` rows with stable supervisor, worker, run, and parent identifiers.
 
 Render it through `GraphView` and the shared entity browser.
@@ -22,6 +28,10 @@ Use `attachWorker` only when an exact provider source exists and the runtime ret
 
 Do not read `.agent/supervisor` files or infer control support from worker status text.
 
+The protected command accepts `BRAID_SUPERVISOR_ROOT`, `BRAID_SUPERVISOR_ID`, and `BRAID_SUPERVISOR_WORKER` only as an all-or-nothing external-run override.
+
+Those identifiers are not the normal path and Braid never cleans up an external run it does not own.
+
 ## Component map
 
 | Component | Responsibility |
@@ -30,6 +40,7 @@ Do not read `.agent/supervisor` files or infer control support from worker statu
 | `RuntimeSupervisorWatcher` | Read and refresh the Runtime-owned immutable snapshot. |
 | `RuntimeSupervisorController` | Resolve one exact worker and route typed steer, cancel, and attach operations. |
 | `SupervisorService` | Serialize projection commits and expose the supervisor port to the application. |
+| `RuntimeSupervisorProvisioner` | Ask Runtime to create one owned proof run and validate its cleanup receipt. |
 
 The runtime owns graph reads, control reconciliation, and live worker state.
 
@@ -69,7 +80,11 @@ Steer appears only when the runtime reports steer support for that worker.
 
 Cancel appears only when the runtime reports cancellation support.
 
-Attach remains disabled until Runtime exposes an external-client attach contract.
+Attach remains unavailable until Runtime exposes an external-client attach contract.
+
+If Runtime reports that the selected provider supports terminal takeover, LIVE-11 requires a successful exact attach.
+
+A failed attach never becomes a simulated terminal row.
 
 The disabled action includes that exact reason.
 
@@ -105,9 +120,39 @@ Tests cover hierarchy, cycles, missing parents, two supervisors, status updates,
 
 The deterministic supervisor fixture exercises the same public Runtime API shape without creating supervisor files.
 
-Live proof requires a real root and worker stream, a changed spend observation, acknowledged steering, proven cancellation, and a fresh reconnect snapshot.
+Live proof provisions a real root and worker through Runtime, then requires a stream, a changed spend observation, acknowledged steering, proven cancellation, and a fresh reconnect snapshot.
 
 The release check records terminal takeover as attached or unavailable and never treats an unavailable provider as an attachment.
+
+An owned proof run must return a completed cleanup receipt with terminal root and worker status, `resourcesReleased: true`, and no remaining resources.
+
+The receipt validator binds cleanup to the provisioned root, supervisor, and worker identifiers.
+
+Cleanup runs after a passing proof and after every failed observation or control attempt.
+
+The proof records configured external runs as `not-owned` and records the owner-scoped cleanup receipt for provisioned runs.
+
+Runtime provisioner contract:
+
+```text
+provisionSupervisor({ invocationId, environment, workspaceDir, timeoutMs, pollMs, profile?, connection? })
+  -> { rootDir, supervisorId, workerId, providers?, terminalTakeover, cleanup() }
+cleanup()
+  -> { status: "completed", rootDir, supervisorId, workerId,
+       supervisorStatus, workerStatus, resourcesReleased: true, remainingResources: [] }
+```
+
+The environment argument contains only supervisor selectors, endpoints, model and runner preferences, workspace, and opaque credential references.
+
+The optional profile is the canonical `AgentProfile` supplied by the caller.
+
+The optional connection is the caller's connection record.
+
+The Runtime creates its canonical default profile and connection when those optional values are absent.
+
+The environment argument is never written into the proof receipt.
+
+The Runtime owns all supervisor files and provider resources created by this contract.
 
 ## Non-goals
 

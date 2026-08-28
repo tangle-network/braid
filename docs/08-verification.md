@@ -382,6 +382,14 @@ If a required live provider is unavailable, the release is blocked and the manif
 
 `LIVE-11` uses one reusable flow over the published `@tangle-network/agent-runtime/kernel` and `@tangle-network/agent-runtime/tui` APIs.
 
+The protected command calls Runtime `provisionSupervisor` when no complete external supervisor binding is configured.
+
+Runtime creates the root, worker, acknowledger, and provider-owned process binding through its public APIs.
+
+The command discovers exact identifiers from the returned Runtime receipt instead of requiring pre-existing `BRAID_SUPERVISOR_*` identifiers.
+
+The three `BRAID_SUPERVISOR_ROOT`, `BRAID_SUPERVISOR_ID`, and `BRAID_SUPERVISOR_WORKER` values remain an all-or-nothing override for an externally managed run.
+
 The flow rejects incomplete snapshots and requires an exact supervisor identifier, exact worker identifier, root status, worker status, and complete spend fields.
 
 It observes a spend change while the worker remains running before it admits any control operation.
@@ -395,6 +403,14 @@ It reloads the snapshot after cancellation and rereads the same cancellation ack
 When a provider supplies the exact interactive reconnect contract, the flow records the opaque terminal takeover handle.
 
 When no provider supplies that contract, the flow records the explicit unavailable reason and makes no attachment claim.
+
+When Runtime reports that the provider supports terminal takeover, an unavailable attachment fails the check.
+
+An owned run always invokes its Runtime cleanup function after success or failure.
+
+Cleanup must return the exact root, supervisor, and worker identifiers, terminal statuses, `resourcesReleased: true`, and an empty `remainingResources` list.
+
+The receipt validator rejects mismatched identifiers, incomplete cleanup, and leaked resources.
 
 The check returns the `LIVE-11` measurement only after every required effect and reconnect assertion passes; it never returns a partial result.
 
