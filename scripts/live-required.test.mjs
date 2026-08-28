@@ -653,15 +653,37 @@ test('nested credential fields and error text are redacted before public output'
 
 test('retained Sandbox error details are safe for direct proof output', () => {
   const secret = 'retained-sandbox-error-secret-canary-4f8c'
+  const networkError = Object.assign(new Error(`transport failed ${secret}`), {
+    name: 'NetworkError',
+    code: 'NETWORK_ERROR',
+    status: 503,
+  })
   const rawDetails = errorDetails(
-    new MissingIntegrationError('provider rejected the request', {
-      authorization: secret,
-      nested: { token: secret },
-    }),
+    Object.assign(
+      new MissingIntegrationError('provider rejected the request', {
+        authorization: secret,
+        nested: { token: secret },
+      }),
+      {
+        cause: Object.assign(new Error(`runtime failed ${secret}`), {
+          code: 'RETAINED_RESULT_READ_FAILED',
+          cause: networkError,
+        }),
+      },
+    ),
   )
   const output = safeJson({ status: 'failed', failure: rawDetails }, { TANGLE_API_KEY: secret })
   assert.doesNotMatch(output, new RegExp(secret, 'u'))
   assert.match(output, /\[REDACTED\]/u)
+  assert.deepEqual(rawDetails.fingerprint, {
+    name: 'MissingIntegrationError',
+    code: 'BRAID_LIVE_INTEGRATION_MISSING',
+    cause: {
+      name: 'Error',
+      code: 'RETAINED_RESULT_READ_FAILED',
+      cause: { name: 'NetworkError', code: 'NETWORK_ERROR', status: 503 },
+    },
+  })
 })
 
 test('configured supervisor failures stay unavailable and redact environment credentials', async () => {

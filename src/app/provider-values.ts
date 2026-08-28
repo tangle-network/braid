@@ -16,6 +16,13 @@ function safeProperty(value: object, key: string): unknown {
   }
 }
 
+function nestedRuntimeCode(value: unknown, depth = 0): string {
+  if (depth > 4 || typeof value !== 'object' || value === null) return ''
+  const code = safeProviderDiagnostic(safeProperty(value, 'code'), '')
+  if (code.length > 0) return code
+  return nestedRuntimeCode(safeProperty(value, 'cause'), depth + 1)
+}
+
 /**
  * Provider payloads are untrusted input to durable state.
  *
@@ -28,10 +35,16 @@ function safeProperty(value: object, key: string): unknown {
 
 export function safeRuntimeDiagnostic(value: unknown, fallback: string): string {
   if (typeof value === 'object' && value !== null) {
+    const code = safeProviderDiagnostic(safeProperty(value, 'code'), '')
+    if (code.length > 0) {
+      const causeCode = nestedRuntimeCode(safeProperty(value, 'cause'))
+      if (causeCode.length > 0 && causeCode !== code) {
+        return safeProviderDiagnostic(`${code}.${causeCode}`, code)
+      }
+      return code
+    }
     const message = safeProviderDiagnostic(safeProperty(value, 'message'), '')
     if (message.length > 0) return message
-    const code = safeProviderDiagnostic(safeProperty(value, 'code'), '')
-    if (code.length > 0) return code
     const name = safeProperty(value, 'name')
     if (typeof name === 'string') {
       const typedName = name

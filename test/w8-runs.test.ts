@@ -270,6 +270,27 @@ test('failed dispatch preserves its typed diagnostic when exact status is unavai
   assert.equal(state.lastError, 'CLOUD_PROVISION_REJECTED')
 })
 
+test('reconnect preserves its typed diagnostic when replay itself fails', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    streamTurn: () => failedAsyncIterable(new Error('transport disconnected')),
+    reconnect: () =>
+      failedAsyncIterable(
+        Object.assign(new Error('[{"unrecognized":"runControlRef"}]'), {
+          code: 'RETAINED_CONTROL_REF_REJECTED',
+        }),
+      ),
+    status: async () => null,
+  }
+  const app = appFor(execution)
+
+  const state = await app.send({ operationId: 'op-reconnect-diagnostic', text: 'resume once' })
+    .completion
+
+  assert.equal(state.runs[0]?.status, 'unknown')
+  assert.equal(state.lastError, 'RETAINED_CONTROL_REF_REJECTED')
+})
+
 test('explicit cancellation is acknowledged and reaches cancelled, while legacy abort remains distinct', async () => {
   let release: (() => void) | undefined
   const execution: ExecutionPort = {

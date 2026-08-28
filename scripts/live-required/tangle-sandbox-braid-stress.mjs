@@ -134,6 +134,10 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
+export function continuityDigestMatches(value, expectedDigest) {
+  return value === expectedDigest || value === `${expectedDigest}\n`
+}
+
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`
 }
@@ -258,8 +262,10 @@ async function verifyRetainedWorkspace(client, controlRef, coordinates, continui
       responsePath: continuity.responsePath,
       challengeBytes: continuity.bytes,
       expectedDigest: continuity.expectedDigest,
-      responseDigest: continuityResponse.trim(),
-      matched: continuityResponse === `${continuity.expectedDigest}\n`,
+      responseDigest: continuityDigestMatches(continuityResponse, continuity.expectedDigest)
+        ? continuity.expectedDigest
+        : null,
+      matched: continuityDigestMatches(continuityResponse, continuity.expectedDigest),
     },
     git: {
       exitCode: gitExitCode,

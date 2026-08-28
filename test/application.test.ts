@@ -890,6 +890,31 @@ test('provider diagnostic getters cannot break execution failure handling', () =
   assert.equal(safeRuntimeDiagnostic(hostile, 'RUNTIME_EXECUTION_ERROR'), 'RUNTIME_EXECUTION_ERROR')
 })
 
+test('provider diagnostics prefer a stable code over an unsafe message', () => {
+  const diagnostic = Object.assign(new Error('request failed with provider-private detail'), {
+    code: 'RETAINED_RESULT_READ_FAILED',
+  })
+
+  assert.equal(
+    safeRuntimeDiagnostic(diagnostic, 'RUNTIME_EXECUTION_ERROR'),
+    'RETAINED_RESULT_READ_FAILED',
+  )
+})
+
+test('provider diagnostics retain a safe nested transport code', () => {
+  const diagnostic = Object.assign(new Error('request failed with provider-private detail'), {
+    code: 'RETAINED_RESULT_READ_FAILED',
+    cause: Object.assign(new Error('transport detail'), {
+      code: 'NETWORK_ERROR',
+    }),
+  })
+
+  assert.equal(
+    safeRuntimeDiagnostic(diagnostic, 'RUNTIME_EXECUTION_ERROR'),
+    'RETAINED_RESULT_READ_FAILED.NETWORK_ERROR',
+  )
+})
+
 test('subscriber failures cannot alter a completed run', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.subscribe(() => {

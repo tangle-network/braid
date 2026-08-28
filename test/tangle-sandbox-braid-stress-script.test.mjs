@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   cloudFailureEventTimeline,
+  continuityDigestMatches,
   hasSingleMarkerLine,
   runIdForOperation,
   sandboxWorkspaceRelativePath,
@@ -41,6 +42,14 @@ const controlRef = {
   runId: 'provider-run-1',
   requestDigest: `sha256:${'a'.repeat(64)}`,
 }
+
+test('workspace continuity accepts one exact digest with an optional final newline', () => {
+  const digest = 'a'.repeat(64)
+  assert.equal(continuityDigestMatches(digest, digest), true)
+  assert.equal(continuityDigestMatches(`${digest}\n`, digest), true)
+  assert.equal(continuityDigestMatches(`${digest}\n\n`, digest), false)
+  assert.equal(continuityDigestMatches(` ${digest}`, digest), false)
+})
 
 function event(kind, payload) {
   const { provider, ...rest } = payload
