@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module'
+import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 
-const AGENT_EVAL_RPC_VERSION = '0.145.15'
+const AGENT_EVAL_RPC_VERSION = AGENT_EVAL_VERSION
 const PYTHON_VERSION = '3.12'
-const RESOLUTION_CUTOFF = '2026-08-11T05:00:00Z'
+const RESOLUTION_CUTOFF = '2026-08-21T12:09:00Z'
 const RUNTIME_PROBE = [
   'import importlib.metadata',
   'import sys',
@@ -91,3 +92,4 @@ export function managedAnalysisRunner(
 export const MANAGED_AGENT_EVAL_RPC_VERSION = AGENT_EVAL_RPC_VERSION
 export const MANAGED_ANALYSIS_PYTHON_VERSION = PYTHON_VERSION
 export const MANAGED_ANALYSIS_RUNTIME_PROBE = RUNTIME_PROBE
+export const MANAGED_ANALYSIS_RESOLUTION_CUTOFF = RESOLUTION_CUTOFF

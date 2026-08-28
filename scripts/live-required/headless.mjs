@@ -492,8 +492,19 @@ export async function runHeadlessTurn({ binary, config, marker, prompt, fixture 
       Number(process.env.BRAID_LIVE_REQUIRED_TIMEOUT_MS ?? 180_000),
     )
     const run = runFromState(terminal.state, response.runId)
-    if (run?.status !== 'completed')
-      throw new Error(`turn ${response.runId} ended with status ${run?.status ?? 'missing'}`)
+    if (run?.status !== 'completed') {
+      const diagnostics = [
+        typeof run?.error === 'string' && run.error.length > 0
+          ? `error=${JSON.stringify(safeMessage(run.error, config.environment))}`
+          : undefined,
+        typeof run?.model === 'string' && run.model.length > 0
+          ? `model=${JSON.stringify(safeMessage(run.model, config.environment))}`
+          : undefined,
+      ].filter(Boolean)
+      throw new Error(
+        `turn ${response.runId} ended with status ${run?.status ?? 'missing'}${diagnostics.length === 0 ? '' : `; ${diagnostics.join('; ')}`}`,
+      )
+    }
     const message = terminalMessage(terminal.state, response.runId)
     if (!exactMarker(message?.text, marker)) {
       throw new Error(

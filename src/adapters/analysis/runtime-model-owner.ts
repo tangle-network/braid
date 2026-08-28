@@ -608,6 +608,11 @@ function analystCallProfile(
       'Trace analysis execution limits exceed AgentProfile.model.maxTotalOutputTokens',
     )
   }
+  const enforceableTotalOutputTokens =
+    maxTotalOutputTokens ??
+    (maxVisibleOutputTokens === undefined || maxReasoningTokens === undefined
+      ? undefined
+      : maxVisibleOutputTokens + maxReasoningTokens)
   return snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
@@ -624,11 +629,10 @@ function analystCallProfile(
       default: model,
       ...(provider === undefined ? {} : { provider }),
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-      ...(maxVisibleOutputTokens === undefined ? {} : { maxVisibleOutputTokens }),
-      ...(maxReasoningTokens === undefined || maxReasoningTokens <= 0
+      ...(bridge || maxVisibleOutputTokens === undefined ? {} : { maxVisibleOutputTokens }),
+      ...(enforceableTotalOutputTokens === undefined
         ? {}
-        : { maxReasoningTokens }),
-      ...(maxTotalOutputTokens === undefined ? {} : { maxTotalOutputTokens }),
+        : { maxTotalOutputTokens: enforceableTotalOutputTokens }),
       metadata: {
         ...(bridge ? {} : { retry }),
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),

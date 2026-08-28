@@ -181,7 +181,9 @@ Each analysis has its own run identity, source digest, analyst profile, model, b
 
 The standard Braid install includes `uv` for `/ask`.
 
-On first use, `uv` downloads a managed Python 3.12 runtime and runs `agent-eval-rpc[dspy]==0.145.15` in an isolated cached environment.
+On first use, `uv` downloads a managed Python 3.12 runtime and runs the `agent-eval-rpc[dspy]` release that matches the installed `@tangle-network/agent-eval` package.
+
+The managed runtime fails closed instead of using packages from the host Python installation.
 
 Set `BRAID_PYTHON` only when an operator must use a preinstalled compatible environment instead.
 

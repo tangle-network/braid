@@ -474,7 +474,9 @@ Paired comparisons retain outcomes and costs across two frozen candidates.
 
 The current DSPy RLM engine accepts a caller-owned model function, stable public call reference, and execution recorder instead of a provider URL or credential.
 Braid invokes this engine through its bundled `uv` binary and an isolated managed Python 3.12 runtime.
-The invocation pins `agent-eval-rpc[dspy]` to `0.149.0` and fixes the dependency resolution cutoff.
+The invocation pins `agent-eval-rpc[dspy]` to the installed `@tangle-network/agent-eval` version and fixes the dependency resolution cutoff.
+
+If the managed runtime cannot resolve that exact cohort, Braid reports analysis as unavailable and does not use host Python packages.
 Braid never sends model credentials to the managed Python process.
 Braid gives each analyst invocation one explicit runtime transport attempt by default so its recorded usage and cost cannot hide additional paid retries.
 

@@ -49,6 +49,18 @@ function analysisSummary(analysis) {
     checks: Array.isArray(analysis.checks)
       ? analysis.checks.map((check) => ({ id: check.id, status: check.status }))
       : null,
+    modelCalls: Array.isArray(analysis.modelCalls)
+      ? analysis.modelCalls.map((call) => ({
+          id: call.id,
+          model: call.model,
+          status: call.status,
+          errorKind: call.errorKind,
+          errorStatus: call.errorStatus,
+          inputTokens: call.inputTokens,
+          outputTokens: call.outputTokens,
+          cost: call.cost,
+        }))
+      : null,
   }
 }
 
@@ -96,8 +108,13 @@ export async function runTraceAnalysis({ repository, environment }) {
     const analysis = data?.analysis
     if (data?.status !== 'completed' || typeof analysis?.id !== 'string') {
       const detail = typeof data?.error === 'string' ? `: ${data.error}` : ''
+      const failedAnalysis =
+        analysis ??
+        (Array.isArray(afterResponse.state?.analyses)
+          ? afterResponse.state.analyses.at(-1)
+          : undefined)
       throw new Error(
-        `trace analysis returned ${String(data?.status ?? 'no status')} instead of completed${detail}`,
+        `trace analysis returned ${String(data?.status ?? 'no status')} instead of completed; evidence=${JSON.stringify(analysisSummary(failedAnalysis))}${detail}`,
       )
     }
     if (!supportedFindings(analysis)) {
