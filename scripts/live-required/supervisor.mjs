@@ -346,14 +346,12 @@ export function supervisorConnection(environment) {
       'PROTECTED_CREDENTIAL_REQUIRED',
       'LIVE-11 supervisor requires BRAID_SUPERVISOR_API_KEY, BRAID_SUPERVISOR_AUTH, BRAID_SUPERVISOR_BEARER, or TANGLE_API_KEY',
     )
-  const credentialRef = firstConfigured(environment, ['BRAID_SUPERVISOR_CREDENTIAL_REF'])
   const kind =
     environment.BRAID_SUPERVISOR_CONNECTION_KIND?.trim() || DEFAULT_SUPERVISOR_CONNECTION_KIND
   return {
     endpoint,
     apiKey,
     kind,
-    ...(credentialRef === undefined ? {} : { credentialRef }),
   }
 }
 

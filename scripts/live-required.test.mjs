@@ -122,7 +122,6 @@ function protectedEnvironment() {
     'BRAID_SUPERVISOR_CONNECTION_ID',
     'BRAID_SUPERVISOR_CONNECTION_KIND',
     'BRAID_SUPERVISOR_CREDENTIAL_CONFIGURED',
-    'BRAID_SUPERVISOR_CREDENTIAL_REF',
     'BRAID_SUPERVISOR_API_KEY',
     'BRAID_SUPERVISOR_AUTH',
     'BRAID_SUPERVISOR_BEARER',
@@ -457,7 +456,6 @@ test('LIVE-11 resolves caller-owned task, connection, and generic worker input',
     BRAID_SUPERVISOR_ENDPOINT: 'https://sandbox.example/v1',
     BRAID_SUPERVISOR_API_KEY: 'supervisor-api-key-fixture',
     BRAID_SUPERVISOR_CONNECTION_KIND: 'tangle-sandbox',
-    BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-fixture',
     BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-fixture-workspace',
     BRAID_SUPERVISOR_WORKER_NAME: 'retained-worker-fixture',
   }
@@ -466,7 +464,6 @@ test('LIVE-11 resolves caller-owned task, connection, and generic worker input',
     endpoint: 'https://sandbox.example/v1',
     apiKey: 'supervisor-api-key-fixture',
     kind: 'tangle-sandbox',
-    credentialRef: 'cred:v1:supervisor-fixture',
   })
   assert.deepEqual(supervisorWorkerEnvironment(environment, 'invocation-fixture'), {
     workspace: { cwd: '/tmp/supervisor-fixture-workspace' },
@@ -1127,7 +1124,6 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
   const environment = {
     ...protectedEnvironment(),
     BRAID_SUPERVISOR_ENDPOINT: 'https://router.example/v1',
-    BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-proof',
     BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-proof-workspace',
     BRAID_SUPERVISOR_TASK: 'Inspect the provisioned worker',
     BRAID_SUPERVISOR_API_KEY: 'must-not-cross-the-provision-boundary',
@@ -1183,7 +1179,6 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
     endpoint: 'https://router.example/v1',
     apiKey: 'must-not-cross-the-provision-boundary',
     kind: 'tangle-sandbox',
-    credentialRef: 'cred:v1:supervisor-proof',
   })
   assert.deepEqual(provisionRequest.workerEnvironment, {
     workspace: { cwd: '/tmp/supervisor-proof-workspace' },
