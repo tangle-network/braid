@@ -9,7 +9,12 @@ import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 
-import { sendTreeSignal, waitForTreeGone } from '../live-bridge/process-tree.mjs'
+import {
+  processTreeEnvironment,
+  sendTreeSignal,
+  trackProcessTree,
+  waitForTreeGone,
+} from '../live-bridge/process-tree.mjs'
 import { pause } from '../live-demo/terminal.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
@@ -157,13 +162,15 @@ function createTerminal(
     NODE_NO_WARNINGS: '1',
   }
   for (const name of SECRET_ENVIRONMENT_NAMES) delete environment[name]
+  const tracked = processTreeEnvironment(environment)
   const child = pty.spawn(process.execPath, [binary, '--inline', '--record-state', recordPath], {
     cwd: config.workspace,
-    env: environment,
+    env: tracked.environment,
     name: 'xterm-256color',
     cols: columns,
     rows,
   })
+  trackProcessTree(child, tracked.token)
   let output = ''
   let exited = false
   let exitResult

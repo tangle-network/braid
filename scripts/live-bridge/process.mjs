@@ -5,9 +5,11 @@ import { StreamingRedactor } from './capture.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import {
+  processTreeEnvironment,
   processTreeStatus,
   releaseProcessTree,
   sendTreeSignal,
+  trackProcessTree,
   waitForTreeGone,
 } from './process-tree.mjs'
 import { secretValues } from './redaction.mjs'
@@ -24,8 +26,14 @@ export function sleep(ms) {
 }
 
 export async function managedSpawn(command, args, options) {
-  if (process.platform === 'win32') return await spawnWindowsJob(command, args, options)
-  return spawn(command, args, { ...options, detached: true })
+  const prepared = processTreeEnvironment(options.env)
+  const spawnOptions = { ...options, env: prepared.environment }
+  const child =
+    process.platform === 'win32'
+      ? await spawnWindowsJob(command, args, spawnOptions)
+      : spawn(command, args, { ...spawnOptions, detached: true })
+  trackProcessTree(child, prepared.token)
+  return child
 }
 
 function hasExited(child) {

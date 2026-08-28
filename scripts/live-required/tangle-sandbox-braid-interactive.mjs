@@ -11,7 +11,12 @@ import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 import { sleep } from '../live-bridge/process.mjs'
-import { waitForTreeGone } from '../live-bridge/process-tree.mjs'
+import {
+  processTreeEnvironment,
+  sendTreeSignal,
+  trackProcessTree,
+  waitForTreeGone,
+} from '../live-bridge/process-tree.mjs'
 import { runFromState, stateForRun } from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
 import { connectionConfiguration } from './configuration.mjs'
@@ -191,18 +196,20 @@ async function waitFor(label, predicate, timeoutMs) {
 
 function createPty(binary, config, statePath, exitTimeoutMs) {
   const terminal = new xterm.Terminal({ cols: 120, rows: 36, allowProposedApi: true })
+  const environment = processTreeEnvironment({
+    ...config.environment,
+    BRAID_SHUTDOWN_MODE: 'detach',
+    NO_COLOR: '1',
+    NODE_NO_WARNINGS: '1',
+  })
   const child = pty.spawn(process.execPath, [binary, '--inline', '--record-state', statePath], {
     cwd: config.workspace,
-    env: {
-      ...config.environment,
-      BRAID_SHUTDOWN_MODE: 'detach',
-      NO_COLOR: '1',
-      NODE_NO_WARNINGS: '1',
-    },
+    env: environment.environment,
     name: 'xterm-256color',
     cols: 120,
     rows: 36,
   })
+  trackProcessTree(child, environment.token)
   let output = ''
   let exited = false
   let exitResult
@@ -256,7 +263,7 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
       return { ...result, processCleanup: await waitForProcessCleanup() }
     },
     async forceClose() {
-      if (!exited) child.kill()
+      if (!exited) await sendTreeSignal(child, 'SIGKILL')
       const result = await waitFor(
         'forced Braid terminal exit',
         () => exited && exitResult,

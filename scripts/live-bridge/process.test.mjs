@@ -1,10 +1,28 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import { runCommand } from './command.mjs'
 import { managedSpawn, terminateProcess } from './process.mjs'
+import { processTreeStatus, sendTreeSignal, waitForTreeGone } from './process-tree.mjs'
 
 function waitForClose(child) {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
   return new Promise((resolve) => child.once('close', resolve))
+}
+
+async function waitForFile(path, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      return await readFile(path, 'utf8')
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+  throw new Error(`Timed out waiting for ${path}`)
 }
 
 test('termination evidence marks a naturally exited process as unsignalled', async () => {
@@ -36,4 +54,83 @@ test('termination evidence records signal-driven process-tree cleanup', async ()
   assert.equal(result.descendantsExited, true)
   assert.equal(result.descendantsVerified, true)
   assert.notEqual(result.cleanupStatus, 'already-exited')
+})
+
+test('timeout cleanup terminates a tracked descendant set', async () => {
+  const result = await runCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    cwd: process.cwd(),
+    timeoutMs: 50,
+  })
+
+  assert.equal(result.timedOut, true)
+  assert.equal(result.cleanupOk, true, JSON.stringify(result.termination))
+  assert.equal(result.termination.descendantsExited, true)
+  assert.equal(result.termination.descendantsVerified, true)
+})
+
+test('missing POSIX owner identity refuses cleanup', async () => {
+  const child = { pid: undefined }
+  const status = processTreeStatus(child)
+
+  assert.equal(status.supported, false)
+  assert.equal(status.gone, false)
+  assert.match(
+    status.reason,
+    /lifecycle tracker|valid owner PID|Windows Job Object host process id/u,
+  )
+  assert.deepEqual(await waitForTreeGone(child, 0), status)
+  const signal = await sendTreeSignal(child, 'SIGTERM')
+  assert.equal(signal.sent, false)
+  assert.equal(
+    signal.method,
+    process.platform === 'win32' ? 'windows-job-object-unavailable' : 'unavailable',
+  )
+})
+
+test('detached descendants stay owned after their parent exits', {
+  skip: process.platform !== 'linux',
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-process-tree-'))
+  const pidPath = join(root, 'detached.pid')
+  let descendantPid
+  try {
+    const child = await managedSpawn(
+      process.execPath,
+      [
+        '-e',
+        [
+          "import { spawn } from 'node:child_process'",
+          "import { writeFileSync } from 'node:fs'",
+          "const detached = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { detached: true, stdio: 'ignore' })",
+          'detached.unref()',
+          'writeFileSync(process.env.PID_PATH, String(detached.pid))',
+          'setTimeout(() => process.exit(0), 200)',
+        ].join(';'),
+      ],
+      { cwd: root, env: { PID_PATH: pidPath }, stdio: 'ignore' },
+    )
+    descendantPid = Number(await waitForFile(pidPath))
+    assert.ok(Number.isInteger(descendantPid) && descendantPid > 0)
+    await waitForClose(child)
+
+    const observed = processTreeStatus(child)
+    assert.equal(observed.supported, true, JSON.stringify(observed))
+    assert.equal(observed.gone, false, JSON.stringify(observed))
+    assert.equal(observed.escaped, true, JSON.stringify(observed))
+    const stillRunning = await waitForTreeGone(child, 100)
+    assert.equal(stillRunning.supported, true)
+    assert.equal(stillRunning.gone, false)
+
+    const termination = await terminateProcess(child, { termTimeoutMs: 100, killTimeoutMs: 1_000 })
+    assert.equal(termination.descendantsExited, true, JSON.stringify(termination))
+    assert.equal(termination.descendantsVerified, true, JSON.stringify(termination))
+    assert.equal(await waitForTreeGone(child, 1_000).then((status) => status.gone), true)
+  } finally {
+    if (descendantPid !== undefined) {
+      try {
+        process.kill(descendantPid, 'SIGKILL')
+      } catch {}
+    }
+    await rm(root, { recursive: true, force: true })
+  }
 })
