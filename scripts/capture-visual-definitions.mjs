@@ -109,6 +109,32 @@ export function createStateDefinitions(normalized) {
       },
     },
     {
+      name: 'supervision',
+      columns: 80,
+      rows: 24,
+      uiFixture: 'supervision',
+      run: async (terminal) => {
+        terminal.input('/activity')
+        terminal.input('\r')
+        await terminal.waitFor(
+          () => normalized(terminal.screen()).includes('stream and replay'),
+          'supervisor activity',
+        )
+        terminal.input('\t')
+        await terminal.waitFor(
+          () => /^\s*workers\b/iu.test(terminal.screen()),
+          'worker activity filter',
+        )
+        await terminal.waitFor(
+          () => normalized(terminal.screen()).includes('a/r'),
+          'worker attach control',
+        )
+        const { point, record } = await terminal.captureState()
+        await terminal.closeNormally()
+        return { point, record }
+      },
+    },
+    {
       name: 'interaction',
       columns: 80,
       rows: 24,

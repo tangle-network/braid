@@ -482,6 +482,14 @@ try {
           )
         }
       }
+      if (definition.name === 'supervision') {
+        if (result.record.view?.activity?.filter((item) => item.kind === 'worker').length !== 3) {
+          throw new Error('supervision capture did not contain three projected workers')
+        }
+        if (!normalized(result.point.screen).includes('a/r')) {
+          throw new Error('supervision capture did not expose the worker attach control')
+        }
+      }
       if (
         result.record.capturePhase !== 'atomic-signal-frame' ||
         result.record.state?.revision !== result.record.view?.revision

@@ -12,7 +12,13 @@ import {
 } from '../../domain/ids.js'
 import type { ForkPreviewView, InteractionView } from '../../views/shared/models.js'
 
-export type UiFixture = 'interaction' | 'fork' | 'analysis' | 'comparison' | 'product-demo'
+export type UiFixture =
+  | 'interaction'
+  | 'fork'
+  | 'analysis'
+  | 'comparison'
+  | 'product-demo'
+  | 'supervision'
 
 export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   runId: 'fixture-run-1',
