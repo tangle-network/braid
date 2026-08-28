@@ -30,7 +30,7 @@ The activity selector receives keyboard input and a bounded list of run rows.
 
 ## Outputs and intents
 
-Each item exposes branch, state, runner, model, pending interaction count, focus marker, and switch, ask, steer, and cancel actions.
+Each item exposes branch, state, runner, model, pending interaction count, a `focus` or `work` label, and switch, ask, steer, and cancel actions.
 
 Each activity run row carries its run identifier for explicit focus dispatch.
 
@@ -48,7 +48,9 @@ Detached runs remain visible so the operator can distinguish remote work from lo
 
 Queued entries remain separate items even when they share a source run.
 
-An item marks focus from `focusedRunId` and does not infer focus from row order.
+An item labels the controlled run as `focus` and every other row as `work`.
+
+The label comes from `focusedRunId` and never from row order or the selected conversation.
 
 An item reports runner and model from the admitted run receipt or canonical run record.
 

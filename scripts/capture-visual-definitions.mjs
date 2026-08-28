@@ -38,6 +38,78 @@ export function createStateDefinitions(normalized) {
       },
     },
     {
+      name: 'multi-run',
+      columns: 80,
+      rows: 24,
+      environment: { BRAID_FIXTURE_CHUNK_DELAY_MS: '10000' },
+      run: async (terminal) => {
+        terminal.input('parallel run A')
+        terminal.input('\r')
+        await terminal.waitFor(
+          () => normalized(terminal.screen()).includes('working'),
+          'first active run',
+        )
+        terminal.input('/new Parallel run B')
+        terminal.input('\r')
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        terminal.input('parallel run B')
+        terminal.input('\r')
+        await terminal.waitFor(
+          () =>
+            terminal
+              .screen()
+              .split('\n')
+              .filter((line) => /^(?:focus|work) .+ · running · /u.test(line.trimStart())).length >=
+            2,
+          'two Work Strip rows',
+        )
+        const before = await terminal.captureState()
+        const switchedFrom = before.record.view?.focusedRunId
+        const activityRuns = (before.record.view?.activity ?? [])
+          .filter((item) => item.kind === 'run')
+          .slice()
+          .reverse()
+        const targetIndex = activityRuns.findIndex((item) => item.runId !== switchedFrom)
+        const targetRunId = activityRuns[targetIndex]?.runId
+        const targetTitle = activityRuns[targetIndex]?.title
+        if (typeof targetRunId !== 'string' || typeof targetTitle !== 'string') {
+          throw new Error('multi-run capture could not resolve the background Activity row')
+        }
+        if (targetIndex !== 1) {
+          throw new Error(`multi-run capture expected one background row, received ${targetIndex}`)
+        }
+        terminal.input('\u001bOQ')
+        await terminal.waitFor(() => /^\s*activity\b/iu.test(terminal.screen()), 'activity browser')
+        terminal.input('\t')
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        terminal.input('\u001b[B')
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        await terminal.waitForStable('background Activity row')
+        const selectedLine = terminal
+          .screen()
+          .split('\n')
+          .find((line) => /^\s*›\s/u.test(line))
+        if (!selectedLine?.includes(targetTitle)) {
+          throw new Error(
+            `multi-run capture could not select ${JSON.stringify(targetTitle)} in Activity; selected=${JSON.stringify(selectedLine ?? '')}`,
+          )
+        }
+        terminal.input('\r')
+        await terminal.waitForStable('background focus selection')
+        terminal.input('\u001b[D')
+        await terminal.waitForStable('activity list return')
+        terminal.input('\u001b')
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        await terminal.waitFor(
+          () => !/^\s*runs\b/iu.test(terminal.screen()),
+          'activity browser dismissal',
+        )
+        const { point, record } = await terminal.captureState()
+        await terminal.closeWithSignal()
+        return { point, record, switchedFrom, targetRunId }
+      },
+    },
+    {
       name: 'interaction',
       columns: 80,
       rows: 24,

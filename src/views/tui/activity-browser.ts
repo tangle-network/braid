@@ -88,6 +88,7 @@ export function activityDocument(
     .reverse()
   return {
     title: scope === 'all' ? 'activity' : scope,
+    ...(scope === 'runs' ? { context: 'Enter opens details and focuses controls' } : {}),
     filterHint: activityFooter(scope, view),
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
@@ -150,13 +151,17 @@ function rowFor(
       : [...activityLines, ...(entity?.lines ?? [])]
   if (item.kind === 'run') lines.push(...runContext(item, runs, view))
   const meta = listMeta(item, elapsed)
+  const focusedRun = item.kind === 'run' && item.runId === view.focusedRunId
+  const listMetadata = [focusedRun ? 'controls' : undefined, meta]
+    .filter((value): value is string => value !== undefined)
+    .join(' · ')
   return {
     id: item.id,
     kind: item.kind,
     ...(item.runId === undefined ? {} : { runId: item.runId }),
     title: entity?.title ?? item.title,
     status: item.status,
-    ...(meta === undefined ? {} : { meta }),
+    ...(listMetadata.length === 0 ? {} : { meta: listMetadata }),
     ...(item.depth === undefined ? {} : { depth: Math.max(0, item.depth) }),
     detailLines: lines,
   }

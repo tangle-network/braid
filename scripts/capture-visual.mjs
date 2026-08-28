@@ -221,6 +221,7 @@ async function spawnTerminal(
   const captureState = async () => {
     await waitForStable()
     const point = snapshot()
+    await rm(`${recordPath}.frame`, { force: true })
     process.kill(session.pid, 'SIGUSR2')
     return { point, record: await readRecord('.frame') }
   }
@@ -463,6 +464,26 @@ try {
         if (!normalized(result.point.screen).includes('working'))
           throw new Error('active-streaming frame does not show active work')
       }
+      if (definition.name === 'multi-run') {
+        const workStrip = result.record.view?.workStrip ?? []
+        const renderedRows = result.point.screen
+          .split('\n')
+          .filter((line) => /^(?:focus|work) .+ · running · /u.test(line.trimStart()))
+        if (workStrip.length !== 2 || renderedRows.length !== 2) {
+          throw new Error(
+            `multi-run capture did not expose two Work Strip rows (view=${workStrip.length}, rendered=${renderedRows.length})`,
+          )
+        }
+        if (
+          typeof result.switchedFrom !== 'string' ||
+          typeof result.targetRunId !== 'string' ||
+          result.record.view?.focusedRunId !== result.targetRunId
+        ) {
+          throw new Error(
+            `multi-run capture did not switch the focused run through Activity (before=${String(result.switchedFrom)}, target=${String(result.targetRunId)}, after=${String(result.record.view?.focusedRunId)}, rows=${JSON.stringify(workStrip.map((item) => ({ runId: item.runId, focused: item.focused })))})`,
+          )
+        }
+      }
       if (
         result.record.capturePhase !== 'atomic-signal-frame' ||
         result.record.state?.revision !== result.record.view?.revision
@@ -578,6 +599,11 @@ try {
   await writeCastGif(join(rawRoot, 'automation-frame.cast'), automationGif)
   artifacts.push(await artifactFor(automationGif, 'automation-flow', 80, 24, 'automation'))
 
+  const multiRunGif = join(outputRoot, '80x24-multirun.gif')
+  await writeCastGif(join(rawRoot, 'multi-run.cast'), multiRunGif)
+  const multiRunArtifact = await artifactFor(multiRunGif, 'multi-run-flow', 80, 24, 'multi-run')
+  artifacts.push(multiRunArtifact)
+
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
   const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
@@ -610,6 +636,16 @@ try {
         keyboardFlow: {
           steps: keyboardFlow.steps,
           artifacts: keyboardArtifacts.map((artifact) => artifact.path),
+        },
+        multiRunFlow: {
+          steps: [
+            'start run A',
+            'create conversation B while A remains active',
+            'start run B',
+            'open Activity',
+            'switch focus to run A',
+          ],
+          artifacts: [multiRunArtifact.path],
         },
         states: stateManifests,
         artifacts,

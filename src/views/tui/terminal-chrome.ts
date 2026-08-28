@@ -143,7 +143,7 @@ function renderWorkStrip(
 }
 
 function workStripItem(theme: BraidTheme, item: WorkStripItemView, width: number): string {
-  const marker = item.focused ? theme.accent('›') : theme.muted('·')
+  const marker = item.focused ? theme.accent('focus') : theme.muted('work')
   const state = sanitizeNotification(item.state)
   const runner = sanitizeNotification(item.runner ?? '?')
   const model = sanitizeNotification(item.model ?? '?')

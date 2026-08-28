@@ -547,8 +547,9 @@ export function assertSuccessfulTerminalExit(exit, label) {
 export function renderedWorkStripCount(screen) {
   return screen
     .split('\n')
-    .filter((line) => /^[·›] .+ · [^/\s]+\/[^\s]+ · \d+ interactions?/u.test(line.trimStart()))
-    .length
+    .filter((line) =>
+      /^(?:focus|work) .+ · [^/\s]+\/[^\s]+ · \d+ interactions?/u.test(line.trimStart()),
+    ).length
 }
 
 export function assertFrameHasConcurrentRuns(frame, runIds) {

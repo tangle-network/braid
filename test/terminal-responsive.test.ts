@@ -195,9 +195,9 @@ test('work strip is conditional and exposes branch work controls', () => {
   const wide = chrome.render(120).join('\n')
   assert.match(
     wide,
-    /branch-focused · running · pi\/fixture\/model · 1 interaction · actions switch\/ask\/steer\/cancel/u,
+    /focus branch-focused · running · pi\/fixture\/model · 1 interaction · actions switch\/ask\/steer\/cancel/u,
   )
-  assert.match(wide, /branch-background · running · pi\/fixture\/model/u)
+  assert.match(wide, /work branch-background · running · pi\/fixture\/model/u)
   const narrow = chrome.render(40)
   assert.equal(narrow.length, 2)
   assert.match(narrow[1] ?? '', /work 2 · \/activity to switch/u)

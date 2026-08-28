@@ -3,15 +3,15 @@ import test from 'node:test'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import {
   activityBrowserOpen,
-  cancellationDispatchVisible,
   assertFrameHasConcurrentRuns,
   assertSuccessfulTerminalExit,
+  cancellationDispatchVisible,
   frameCancellationDispatch,
   frameEventIds,
   renderedWorkStripCount,
   sendCancellationAfterActivityBrowserDismissal,
-  terminalRecordPath,
   terminalFailureEvidence,
+  terminalRecordPath,
   transcriptSurfaceReady,
   waitForActivityBrowserDismissal,
 } from './tangle-sandbox-braid-multirun.mjs'
@@ -173,9 +173,9 @@ test('rendered work-strip guard counts only actionable ownership rows', () => {
   assert.equal(
     renderedWorkStripCount(
       [
-        '· branch-a · streaming · opencode/model · 1 interaction · actions switch/!ask/!steer/cancel',
+        'work branch-a · streaming · opencode/model · 1 interaction · actions switch/!ask/!steer/cancel',
         'status text mentioning work',
-        '› branch-b · streaming · opencode/model · 0 interactions · actions swi…',
+        'focus branch-b · streaming · opencode/model · 0 interactions · actions swi…',
       ].join('\n'),
     ),
     2,
