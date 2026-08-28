@@ -206,6 +206,7 @@ export class TerminalOverlayController {
       title: 'Commands',
       items: commandItems(view.capabilities),
       theme: this.#theme,
+      markDescriptionOverflow: true,
       maxVisible: Math.max(1, Math.min(8, this.#rows() - 6)),
       footer:
         this.#columns() < 60

@@ -35,6 +35,7 @@ const sizes = [
   [120, 40],
   [200, 60],
 ] as const
+const sgrPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu')
 
 function viewForChrome(): BraidViewModel {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -248,6 +249,9 @@ test('command palette stays isolated and keeps close controls at narrow and wide
       assert.match(screen, /←\/esc close/u)
       assert.doesNotMatch(screen, /profile Braid starter/u)
       if (columns >= 80) assert.match(screen, /Inspect and manage connections/u)
+      const plainScreen = screen.replace(sgrPattern, '')
+      if (columns === 80) assert.match(plainScreen, /message bound…/u)
+      if (columns === 120) assert.doesNotMatch(plainScreen, /message bound…/u)
       for (const line of terminal.getViewport()) assert.ok(visibleWidth(line) <= columns)
     } finally {
       view.stop()

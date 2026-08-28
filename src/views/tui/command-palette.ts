@@ -17,6 +17,7 @@ export class CommandPalette extends SearchableSelector {
       title: 'commands',
       items: commandItems(capabilities),
       theme,
+      markDescriptionOverflow: true,
       onSelect: (item) => onCommand(item.value as PaletteCommand),
       onCancel: () => onCommand('help'),
     })

@@ -34,6 +34,7 @@ import {
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const theme = createBraidTheme({ colors: false, highContrast: true, reducedMotion: true })
+const sgrPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu')
 
 function viewFor(status: ViewStatus): BraidViewModel {
   return Object.freeze({
@@ -597,6 +598,31 @@ test('one searchable selector preserves query and supports keyboard selection', 
   selector.handleInput('\u001b')
   selector.handleInput('\u001b[D')
   assert.equal(cancellations, 2)
+})
+
+test('searchable selector marks descriptions that do not fit the terminal row', () => {
+  const selector = new SearchableSelector({
+    title: 'commands',
+    items: [
+      {
+        value: 'branch',
+        label: '/branch',
+        description: 'Create and open a branch at a message boundary',
+      },
+    ],
+    theme,
+    markDescriptionOverflow: true,
+    onSelect: () => {},
+    onCancel: () => {},
+  })
+
+  const standard = selector.render(80).join('\n').replace(sgrPattern, '')
+  assert.match(standard, /Create and open a branch at a message bound…/u)
+  assert.ok(selector.render(80).every((line) => visibleWidth(line) <= 80))
+
+  const wide = selector.render(120).join('\n').replace(sgrPattern, '')
+  assert.match(wide, /Create and open a branch at a message boundary/u)
+  assert.doesNotMatch(wide, /boundary…/u)
 })
 
 test('profile selector rows keep the profile identity intact at responsive widths', () => {
