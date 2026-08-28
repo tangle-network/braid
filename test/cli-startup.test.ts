@@ -3,10 +3,12 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
 import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
+import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
 import { createStartupPreview } from '../src/startup/preview-runtime.js'
 import { BRAID_VERSION } from '../src/version.js'
 import type { BraidUiController } from '../src/views/shared/intents.js'
@@ -126,6 +128,35 @@ test('startup responsibilities stay split into bounded modules', async () => {
   assert.match(startupBuild, /minifyWhitespace: true/u)
   assert.match(startupBuild, /minifyIdentifiers: true/u)
   assert.match(startupBuild, /['"]koffi['"]/u)
+})
+
+test('lazy execution defers provider loading and reuses the loaded port', async () => {
+  let loads = 0
+  let streamCalls = 0
+  const admission = { provider: 'test-provider' }
+  const execution = new LazyExecutionPort({
+    load: async () => {
+      loads += 1
+      return {
+        admit: async () => admission,
+        async *streamTurn() {
+          streamCalls += 1
+          yield* []
+        },
+      } satisfies ExecutionPort
+    },
+  })
+  const input = {} as ExecuteTurnInput
+
+  assert.equal(loads, 0)
+  assert.deepEqual(await execution.admit(input), admission)
+  assert.equal(loads, 1)
+  for await (const _event of execution.streamTurn(input)) {
+    // The test provider emits no events.
+  }
+  assert.equal(streamCalls, 1)
+  assert.deepEqual(await execution.admit(input), admission)
+  assert.equal(loads, 1)
 })
 
 test('repeated verification signals capture frames during streaming', async () => {
