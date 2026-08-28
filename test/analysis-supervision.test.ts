@@ -6,6 +6,10 @@ import type {
   ExactAnalystRunResult,
 } from '@tangle-network/agent-eval'
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  RetainedInteractiveRunHandle,
+  WorkerInteractiveProviderSource,
+} from '@tangle-network/agent-runtime/kernel'
 import { mapAnalystFinding } from '../src/adapters/analysis/citations.js'
 import {
   AgentEvalAnalystAdapter,
@@ -831,6 +835,15 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
     | { readonly eventDir: string; readonly worker: string; readonly operationId: string }
     | undefined
   let runCancelInput: { readonly eventDir: string; readonly operationId: string } | undefined
+  let workerAttachInput:
+    | {
+        readonly eventDir: string
+        readonly worker: string
+        readonly providers: WorkerInteractiveProviderSource
+      }
+    | undefined
+  const interactiveProvider = {} as WorkerInteractiveProviderSource
+  const interactiveHandle = {} as RetainedInteractiveRunHandle
   const controller = new RuntimeSupervisorController({
     watcher,
     write: (_rootDir, _supervisorId, workerId, options) => ({
@@ -871,6 +884,11 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
         ...(options?.reason === undefined ? {} : { reason: options.reason }),
         detail: 'runtime accepted supervisor cancellation',
       }
+    },
+    providers: async () => interactiveProvider,
+    attachWorker: async (eventDir, worker, options) => {
+      workerAttachInput = { eventDir, worker, providers: options.providers }
+      return { status: 'available', handle: interactiveHandle }
     },
   })
   const first = history()
@@ -922,5 +940,17 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
   assert.deepEqual(runCancelInput, {
     eventDir: '/tmp/braid/.agent',
     operationId: 'op-cancel-supervisor-1',
+  })
+  const attached = await service.attachWorker(
+    '/tmp/braid',
+    'runtime-supervisor-1',
+    'runtime-worker-1',
+  )
+  assert.equal(attached.status, 'available')
+  if (attached.status === 'available') assert.equal(attached.handle, interactiveHandle)
+  assert.deepEqual(workerAttachInput, {
+    eventDir: '/tmp/braid/.agent',
+    worker: 'runtime-worker-1',
+    providers: interactiveProvider,
   })
 })

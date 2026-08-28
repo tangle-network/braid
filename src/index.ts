@@ -228,6 +228,8 @@ export type {
   NativeInteractiveCommand,
   NativeInteractiveCommandResult,
   NativeInteractiveUiActions,
+  NativeInteractiveWorkerCommand,
+  NativeInteractiveWorkerResult,
 } from './views/shared/native-interactive-actions.js'
 export {
   sanitizeClipboardText,

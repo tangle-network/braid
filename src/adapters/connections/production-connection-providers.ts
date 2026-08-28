@@ -1,11 +1,12 @@
 import type {
-  AgentEnvironment,
-  AgentEnvironmentCapabilities,
-} from '@tangle-network/agent-interface/environment-provider'
-import type {
   AgentWorkspaceBranching,
   AgentWorkspaceBranchingProvider,
 } from '@tangle-network/agent-interface'
+import type {
+  AgentEnvironment,
+  AgentEnvironmentCapabilities,
+  AgentEnvironmentProvider,
+} from '@tangle-network/agent-interface/environment-provider'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import {
   createTangleProvider,
@@ -51,6 +52,22 @@ export async function createTangleSandboxClient(
   return new Sandbox({ baseUrl: endpoint, apiKey }) as unknown as SandboxClientLike
 }
 
+/** Construct the selected Tangle provider without creating or retaining an environment. */
+export async function createTangleEnvironmentProvider(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+  signal?: AbortSignal,
+): Promise<AgentEnvironmentProvider> {
+  const client = await createTangleSandboxClient(record, options, signal)
+  return createTangleProvider({
+    client,
+    name: 'tangle-sandbox',
+    ...(options.tangleConfidentialAttestationVerifier === undefined
+      ? {}
+      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
+  })
+}
+
 /**
  * Create a restart-safe source lookup without retaining a live environment.
  *
@@ -66,14 +83,7 @@ export function createTangleWorkspaceBranchingProvider(
       sourceEnvironmentId: string,
       operation?: { readonly signal?: AbortSignal },
     ): Promise<AgentWorkspaceBranching | null> {
-      const client = await createTangleSandboxClient(record, options, operation?.signal)
-      const provider = createTangleProvider({
-        client,
-        name: 'tangle-sandbox',
-        ...(options.tangleConfidentialAttestationVerifier === undefined
-          ? {}
-          : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
-      })
+      const provider = await createTangleEnvironmentProvider(record, options, operation?.signal)
       const branching = provider.workspaceBranching
       if (branching === undefined) return null
       return branching.forEnvironment(sourceEnvironmentId, operation)
@@ -88,14 +98,7 @@ export async function getTangleSandboxEnvironment(
   environmentId: string,
   signal?: AbortSignal,
 ): Promise<AgentEnvironment | null> {
-  const client = await createTangleSandboxClient(record, options, signal)
-  const provider = createTangleProvider({
-    client,
-    name: 'tangle-sandbox',
-    ...(options.tangleConfidentialAttestationVerifier === undefined
-      ? {}
-      : { confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier }),
-  })
+  const provider = await createTangleEnvironmentProvider(record, options, signal)
   if (provider.get === undefined) return null
   return provider.get(environmentId, signal === undefined ? undefined : { signal })
 }
@@ -141,8 +144,7 @@ export async function capabilitiesForConnection(
               ...(options.tangleConfidentialAttestationVerifier === undefined
                 ? {}
                 : {
-                    confidentialAttestationVerifier:
-                      options.tangleConfidentialAttestationVerifier,
+                    confidentialAttestationVerifier: options.tangleConfidentialAttestationVerifier,
                   }),
             }).capabilities()
       const environment = tangleConnectionCapabilities(

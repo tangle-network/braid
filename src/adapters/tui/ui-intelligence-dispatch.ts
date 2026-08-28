@@ -5,6 +5,7 @@ import type { AnalysisRequest, AnalysisSourceRequest } from '../../app/analysis-
 import { AnalysisCapabilityError } from '../../app/analysis-types.js'
 import type { BraidApplication } from '../../app/application.js'
 import { AppError } from '../../app/errors.js'
+import { runtimeWorkerReference } from '../../app/supervisor-projection.js'
 import type { BraidState } from '../../domain/state.js'
 import { capabilityForHeadlessCommand } from '../../views/shared/headless-commands.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
@@ -269,30 +270,6 @@ async function dispatchSupervisorQuery(
     return unavailable(
       `Supervisor ${command} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
     )
-  }
-}
-
-function runtimeWorkerReference(
-  state: BraidState,
-  supervisorId: string,
-  workerId: string,
-):
-  | {
-      readonly rootDir: string
-      readonly runtimeSupervisorId: string
-      readonly runtimeWorkerId: string
-    }
-  | undefined {
-  const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
-  if (supervisor === undefined || state.workspace !== supervisor.runtimeRoot) return undefined
-  const worker = state.workers.find(
-    (candidate) => String(candidate.id) === workerId && candidate.supervisorId === supervisor.id,
-  )
-  if (worker === undefined) return undefined
-  return {
-    rootDir: supervisor.runtimeRoot,
-    runtimeSupervisorId: supervisor.runtimeId,
-    runtimeWorkerId: worker.runtimeId,
   }
 }
 
@@ -615,7 +592,7 @@ export async function dispatchIntelligenceIntent(
       return dispatchSupervisorCancel(context, intent.params, intent.operationId)
     case 'attach_worker':
       return unavailable(
-        'Worker attachment is unavailable: the runtime snapshot does not carry the retained interactive reference required to reconnect the exact worker',
+        'Worker terminal attachment requires the interactive TUI; open runtime activity and press a on a running worker',
       )
     default:
       return undefined

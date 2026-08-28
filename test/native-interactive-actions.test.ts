@@ -313,3 +313,115 @@ test('native terminal start only blocks an active run on the selected branch', (
 
   assert.deepEqual(actions.availability('start'), { available: true })
 })
+
+test('attaches the exact projected Runtime worker and returns after terminal exit', async () => {
+  const terminal = new TestTerminal()
+  const attachedClaims: AgentInteractiveSessionControlClaimRequest[] = []
+  const handle = retainedHandle(new ExitTerminalSession(), attachedClaims)
+  const calls: unknown[] = []
+  const state = {
+    workspace: '/workspace',
+    activeRunId: null,
+    runs: [],
+    supervisors: [
+      {
+        id: 'supervisor-braid',
+        runtimeId: 'supervisor-runtime',
+        runtimeRoot: '/workspace',
+      },
+    ],
+    workers: [
+      {
+        id: 'worker-braid',
+        runtimeId: 'worker-runtime',
+        supervisorId: 'supervisor-braid',
+        status: 'running',
+      },
+    ],
+  }
+  const app = {
+    state: () => state,
+    intelligence: {
+      supervisor: {
+        attachWorker: async (rootDir: string, supervisorId: string, workerId: string) => {
+          calls.push({ rootDir, supervisorId, workerId })
+          return { status: 'available' as const, worker: workerId, handle }
+        },
+      },
+    },
+  } as unknown as BraidApplication
+  let suspends = 0
+  let resumes = 0
+  const actions = createNativeInteractiveUiActions({
+    current: () => ({ app }),
+    terminal,
+    signals: () => signals,
+    suspend: () => {
+      suspends += 1
+    },
+    resume: () => {
+      resumes += 1
+    },
+    nextOperationId: () => 'operation-unused',
+    holderId: 'braid-native-actions',
+  })
+
+  assert.deepEqual(actions.workerAvailability?.('worker-braid'), { available: true })
+  assert.ok(actions.attachWorker)
+  const result = await actions.attachWorker({
+    operationId: 'operation-attach-worker',
+    supervisorId: 'supervisor-braid',
+    workerId: 'worker-braid',
+  })
+
+  assert.deepEqual(result, {
+    kind: 'returned',
+    operationId: 'operation-attach-worker',
+    workerId: 'worker-braid',
+    outcome: 'exited',
+  })
+  assert.deepEqual(calls, [
+    {
+      rootDir: '/workspace',
+      supervisorId: 'supervisor-runtime',
+      workerId: 'worker-runtime',
+    },
+  ])
+  assert.equal(attachedClaims[0]?.holderId, 'braid-native-actions')
+  assert.equal(terminal.starts, 1)
+  assert.equal(terminal.stops, 1)
+  assert.equal(suspends, 1)
+  assert.equal(resumes, 1)
+})
+
+test('worker attachment fails closed when no projected worker is running', async () => {
+  const app = {
+    state: () => ({ workspace: '/workspace', runs: [], supervisors: [], workers: [] }),
+  } as unknown as BraidApplication
+  const actions = createNativeInteractiveUiActions({
+    current: () => ({ app }),
+    terminal: new TestTerminal(),
+    signals: () => signals,
+    suspend: () => {},
+    resume: () => {},
+    nextOperationId: () => 'operation-unused',
+    holderId: 'braid-native-actions',
+  })
+
+  assert.deepEqual(actions.workerAvailability?.(), {
+    available: false,
+    reason: 'There is no running supervised worker to attach',
+  })
+  assert.ok(actions.attachWorker)
+  assert.deepEqual(
+    await actions.attachWorker({
+      operationId: 'operation-attach-missing-worker',
+      supervisorId: 'supervisor-missing',
+      workerId: 'worker-missing',
+    }),
+    {
+      kind: 'unavailable',
+      reason: 'The selected worker is not running',
+    },
+  )
+})

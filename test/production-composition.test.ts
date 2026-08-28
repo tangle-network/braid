@@ -454,6 +454,7 @@ test('retained Tangle composition exposes one native control through durable sta
   )
   const composed = createProductionComposition(selected)
   assert.notEqual(composed.nativeInteractive, undefined)
+  assert.notEqual(composed.supervisorController, undefined)
 
   const durable = await createDurableBraidApplication({
     path: join(root, 'braid.db'),

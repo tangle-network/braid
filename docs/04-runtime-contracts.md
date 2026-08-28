@@ -261,9 +261,9 @@ Braid adapts `loadTopSnapshot` into its own worker view, but it does not copy th
 
 The runtime kernel exports `writeWorkerSteer` for worker inbox delivery.
 
-That function generates a new request identifier on every call and does not accept a caller operation identifier.
+Braid supplies a stable operation identifier.
 
-Braid keeps worker steering disabled until Runtime supports same-body replay and changed-body conflict for a stable operation identifier.
+Runtime replays the same request body and rejects a different body for the same identifier.
 
 An explicit parent reference stays visible when no worker resolves it, and Braid does not create a replacement supervisor edge.
 
@@ -277,9 +277,13 @@ Braid supplies the runtime state directory, exact runtime target, and caller ope
 
 An `unknown` effect means the request awaits acknowledgement and never becomes local success.
 
-The runtime snapshot does not expose a retained interactive reference for one worker.
+Runtime stores each worker's exact interactive binding outside its presentation snapshot.
 
-Braid therefore disables worker attachment until Runtime owns a worker-to-retained-session attachment operation.
+Braid passes the supervisor state directory, exact worker identifier, and selected provider source to Runtime `attachWorker`.
+
+Runtime reconstructs the retained process and returns an opaque handle or a named unavailable reason.
+
+Braid never persists the provider reference or reads Runtime files directly.
 
 The shared stream has no stable provider-native child-task lifecycle.
 
@@ -606,17 +610,19 @@ Braid must never label the second operation as attachment.
 
 The same reference can identify an attachable Runtime worker or provider-native child only when Runtime reports a stable parent relation.
 
-The current shared interface and Runtime package do not expose terminal input, output bytes, resize, or an attachment lifecycle.
+The shared interface exposes terminal input, output events, resize, detach, close, and exact control claims.
+
+Runtime exposes retained interactive handles for Braid runs and exact supervised workers.
+
+Braid owns only terminal presentation and restores its screen after detach or remote exit.
 
 The sandbox platform already provides authenticated PTY transport, while CLI Bridge currently provides logical session continuity without a retained terminal process.
 
 [Agent SDK issue 138](https://github.com/tangle-network/agent-sdk/issues/138) owns the portable terminal-session contract.
 
-[Runtime issue 773](https://github.com/tangle-network/agent-runtime/issues/773) owns exact execution and worker attachment.
-
 [CLI Bridge issue 140](https://github.com/drewstone/cli-bridge/issues/140) owns retained local terminal processes.
 
-Braid will consume the Runtime contract and will not add runner-specific attachment code.
+Braid consumes the Runtime contract and contains no runner-specific attachment code.
 
 ## CLI Bridge target transport
 

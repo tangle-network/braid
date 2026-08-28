@@ -4,6 +4,7 @@ import { type CommandName, commandItems } from '../shared/command-registry.js'
 import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import type { BraidUiController } from '../shared/intents.js'
 import type { ActivityItemView } from '../shared/models.js'
+import type { NativeInteractiveUiActions } from '../shared/native-interactive-actions.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import {
   type AutomationOverlayOpenOptions,
@@ -37,6 +38,7 @@ export interface TerminalOverlayOptions {
   readonly requestRender: () => void
   readonly columns: () => number
   readonly rows: () => number
+  readonly nativeInteractive?: NativeInteractiveUiActions
 }
 
 export class TerminalOverlayController {
@@ -68,6 +70,9 @@ export class TerminalOverlayController {
       controller: this.#controller,
       modals: this.#modals,
       nextOperationId: options.nextOperationId,
+      ...(options.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: options.nativeInteractive }),
       rows: options.rows,
     })
     this.#dispatchCommand = options.dispatchCommand

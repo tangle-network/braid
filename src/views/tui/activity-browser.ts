@@ -27,6 +27,7 @@ export interface ActivityBrowserOptions {
   readonly notice?: () => string | undefined
   readonly emptyMessage?: string
   readonly pinned?: string
+  readonly workerAttachAvailable?: () => boolean
   readonly onAction?: (action: ActivityBrowserAction, selectedId: string | undefined) => void
 }
 
@@ -44,6 +45,7 @@ export class ActivityBrowserPanel extends EntityBrowser {
           options.notice?.(),
           options.emptyMessage,
           options.pinned,
+          options.workerAttachAvailable?.(),
         ),
       rows: options.rows,
       onClose: options.onClose,
@@ -77,6 +79,7 @@ export function activityDocument(
   notice?: string,
   emptyMessage?: string,
   pinned?: string,
+  workerAttachAvailable?: boolean,
 ): EntityBrowserDocument {
   const details = new Map(
     (view.entityDetails ?? []).map((detail) => [detailKey(detail), detail] as const),
@@ -89,7 +92,7 @@ export function activityDocument(
   return {
     title: scope === 'all' ? 'activity' : scope,
     ...(scope === 'runs' ? { context: 'Enter opens details and focuses controls' } : {}),
-    filterHint: activityFooter(scope, view),
+    filterHint: activityFooter(scope, view, workerAttachAvailable),
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
@@ -117,10 +120,15 @@ function activityAction(
   return undefined
 }
 
-function activityFooter(scope: ActivityBrowserScope, view: BraidViewModel): string {
+function activityFooter(
+  scope: ActivityBrowserScope,
+  view: BraidViewModel,
+  workerAttachAvailable?: boolean,
+): string {
   if (scope === 'workers') {
     const steer = view.capabilities['supervisor.worker.steer']?.available === true
-    const attach = view.capabilities['supervisor.worker.attach']?.available === true
+    const attach =
+      workerAttachAvailable ?? view.capabilities['supervisor.worker.attach']?.available === true
     return steer || attach ? 's steer · x cancel · a/r' : 's/a off · x cancel · r'
   }
   if (scope === 'analyses') return 'p promote · x cancel · r'

@@ -40,6 +40,31 @@ export interface SupervisorProjection {
   readonly graphEdges: readonly GraphEdgeRecord[]
 }
 
+export interface RuntimeWorkerReference {
+  readonly rootDir: string
+  readonly runtimeSupervisorId: string
+  readonly runtimeWorkerId: string
+}
+
+/** Resolve one projected worker back to the opaque Runtime identifiers that own its controls. */
+export function runtimeWorkerReference(
+  state: BraidState,
+  supervisorId: string,
+  workerId: string,
+): RuntimeWorkerReference | undefined {
+  const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
+  if (supervisor === undefined || state.workspace !== supervisor.runtimeRoot) return undefined
+  const worker = state.workers.find(
+    (candidate) => String(candidate.id) === workerId && candidate.supervisorId === supervisor.id,
+  )
+  if (worker === undefined) return undefined
+  return {
+    rootDir: supervisor.runtimeRoot,
+    runtimeSupervisorId: supervisor.runtimeId,
+    runtimeWorkerId: worker.runtimeId,
+  }
+}
+
 function validIso(value: string | undefined, fallback: string): string {
   if (value !== undefined && Number.isFinite(Date.parse(value))) return value
   return fallback

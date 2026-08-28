@@ -150,6 +150,9 @@ export class BraidTerminalApp {
       ...(options.connectionLifecycle === undefined
         ? {}
         : { connectionLifecycle: options.connectionLifecycle }),
+      ...(options.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: options.nativeInteractive }),
       dispatchCommand: (command, args) => this.#commands.dispatchCommand(command, args),
       requestRender: () => this.#tui.requestRender(),
       columns: () => this.#tui.terminal.columns,

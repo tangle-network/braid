@@ -1,9 +1,10 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   connectionEndpoint,
+  createTangleEnvironmentProvider,
   createTangleWorkspaceBranchingProvider,
 } from '../adapters/connections/production-connections.js'
-import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
@@ -17,6 +18,7 @@ import {
   resolveProductionCliBridgeConnection,
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
+import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
 import type { ConnectionRecord } from '../domain/entities.js'
@@ -71,6 +73,7 @@ export interface ProductionComposition {
   readonly connection: ConnectionRecord
   readonly execution: ExecutionPort
   readonly nativeInteractive?: NativeInteractiveExecutionControl
+  readonly supervisorController?: RuntimeSupervisorController
   readonly backendResolver: AgentTurnBackendResolver
 }
 
@@ -192,6 +195,13 @@ export function createProductionComposition(
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
+  const supervisorController =
+    connection.kind === 'tangle-sandbox'
+      ? new RuntimeSupervisorController({
+          providers: (signal) =>
+            createTangleEnvironmentProvider(connection, resolverOptions, signal),
+        })
+      : undefined
   const workspaceBranchingProvider =
     connection.kind === 'tangle-sandbox'
       ? createTangleWorkspaceBranchingProvider(connection, resolverOptions)
@@ -274,6 +284,7 @@ export function createProductionComposition(
     connection,
     execution,
     ...(nativeInteractive === undefined ? {} : { nativeInteractive }),
+    ...(supervisorController === undefined ? {} : { supervisorController }),
     backendResolver,
   })
 }

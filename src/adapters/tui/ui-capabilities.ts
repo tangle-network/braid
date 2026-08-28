@@ -19,7 +19,7 @@ export const UNSUPPORTED = Object.freeze({
   'run.interactive': 'Native terminal mode requires an interactive TUI and a supported provider',
   'run.attach': 'Native terminal attachment requires an interactive TUI and a retained session',
   'supervisor.worker.attach':
-    'The runtime snapshot does not carry the retained interactive reference required to attach to an exact worker',
+    'Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
 } satisfies Readonly<Record<string, string>>)
 

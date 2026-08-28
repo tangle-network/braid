@@ -15,9 +15,10 @@ export {
   normalizeCliBridgeRuntimeBaseUrl,
 } from './production-connection-endpoints.js'
 export {
+  createTangleEnvironmentProvider,
   createTangleSandboxClient,
-  getTangleSandboxEnvironment,
   createTangleWorkspaceBranchingProvider,
+  getTangleSandboxEnvironment,
 } from './production-connection-providers.js'
 export {
   type ConnectionCapabilityAction,
@@ -31,9 +32,9 @@ export {
   type ProductionConnectionOptions,
   type SandboxClientFactory,
   type SandboxClientFactoryInput,
+  type TangleConfidentialAttestationVerifier,
   type TangleRetainedControlLookup,
   type TangleRetainedControlLookupInput,
-  type TangleConfidentialAttestationVerifier,
 } from './production-connection-types.js'
 
 export function createProductionConnectionAdapter(

@@ -1,6 +1,7 @@
 import type {
   RuntimeSupervisorController,
   SupervisorCancelResult,
+  SupervisorWorkerAttachResult,
   SupervisorWorkerCancelResult,
   SupervisorWorkerSteerResult,
 } from '../adapters/runtime/supervisor-control.js'
@@ -122,6 +123,16 @@ export class SupervisorService {
     return controller.cancelSupervisor(rootDir, supervisorId, operationId, reason, source)
   }
 
+  async attachWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    signal?: AbortSignal,
+  ): Promise<SupervisorWorkerAttachResult> {
+    const controller = await this.#loadController()
+    return controller.attachWorker(rootDir, supervisorId, workerIdOrLabel, signal)
+  }
+
   #loadWatcher(): Promise<RuntimeSupervisorSnapshotPort> {
     if (this.#watcher !== undefined) return Promise.resolve(this.#watcher)
     if (this.#watcherLoad !== undefined) return this.#watcherLoad
@@ -156,4 +167,9 @@ export type {
   SupervisorSnapshotRequest,
   SupervisorWatchRequest,
 } from './supervisor-projection.js'
-export type { SupervisorCancelResult, SupervisorWorkerCancelResult, SupervisorWorkerSteerResult }
+export type {
+  SupervisorCancelResult,
+  SupervisorWorkerAttachResult,
+  SupervisorWorkerCancelResult,
+  SupervisorWorkerSteerResult,
+}

@@ -1,8 +1,12 @@
 import {
+  attachWorker,
   cancelRun,
   cancelWorker,
   type RunCancellation,
   type WorkerCancellation,
+  type WorkerInteractiveProviderSource,
+  type WorkerInteractiveSession,
+  type WorkerInteractiveUnavailableReason,
   type WorkerSteerAcknowledgement,
   type WorkerSteerRequest,
   writeWorkerSteer,
@@ -51,6 +55,27 @@ export interface SupervisorCancelResult {
   readonly issue?: SupervisorCapabilityIssue
 }
 
+export type SupervisorWorkerAttachUnavailableReason =
+  | WorkerInteractiveUnavailableReason
+  | 'interactive-provider-not-configured'
+
+export type SupervisorWorkerAttachResult =
+  | {
+      readonly status: 'available'
+      readonly worker: string
+      readonly handle: Extract<WorkerInteractiveSession, { readonly status: 'available' }>['handle']
+    }
+  | {
+      readonly status: 'unavailable'
+      readonly worker: string
+      readonly reason: SupervisorWorkerAttachUnavailableReason
+      readonly issue?: SupervisorCapabilityIssue
+    }
+
+export type SupervisorWorkerProviderResolver = (
+  signal?: AbortSignal,
+) => Promise<WorkerInteractiveProviderSource>
+
 function missingWorkerIssue(worker: string): SupervisorCapabilityIssue {
   return {
     capability: 'supervisor.worker.resolve',
@@ -82,6 +107,8 @@ export class RuntimeSupervisorController {
   readonly #write: typeof writeWorkerSteer
   readonly #cancelWorker: typeof cancelWorker
   readonly #cancelRun: typeof cancelRun
+  readonly #attachWorker: typeof attachWorker
+  readonly #providers: SupervisorWorkerProviderResolver | undefined
 
   constructor(
     options: {
@@ -89,12 +116,16 @@ export class RuntimeSupervisorController {
       readonly write?: typeof writeWorkerSteer
       readonly cancelWorker?: typeof cancelWorker
       readonly cancelRun?: typeof cancelRun
+      readonly attachWorker?: typeof attachWorker
+      readonly providers?: SupervisorWorkerProviderResolver
     } = {},
   ) {
     this.#watcher = options.watcher ?? new RuntimeSupervisorWatcher()
     this.#write = options.write ?? writeWorkerSteer
     this.#cancelWorker = options.cancelWorker ?? cancelWorker
     this.#cancelRun = options.cancelRun ?? cancelRun
+    this.#attachWorker = options.attachWorker ?? attachWorker
+    this.#providers = options.providers
   }
 
   steerWorker(
@@ -198,6 +229,49 @@ export class RuntimeSupervisorController {
       effect: cancellation.effect,
       ...(cancellation.detail === undefined ? {} : { detail: cancellation.detail }),
     }
+  }
+
+  async attachWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    signal?: AbortSignal,
+  ): Promise<SupervisorWorkerAttachResult> {
+    signal?.throwIfAborted()
+    const supervisor = this.#findSupervisor(rootDir, supervisorId)
+    if (supervisor === undefined) {
+      return {
+        status: 'unavailable',
+        worker: workerIdOrLabel,
+        reason: 'unknown-node',
+        issue: missingSupervisorIssue(supervisorId),
+      }
+    }
+    const worker = findWorker(supervisor.workers, workerIdOrLabel)
+    if (worker === undefined) {
+      return {
+        status: 'unavailable',
+        worker: workerIdOrLabel,
+        reason: 'unknown-node',
+        issue: missingWorkerIssue(workerIdOrLabel),
+      }
+    }
+    if (this.#providers === undefined) {
+      return {
+        status: 'unavailable',
+        worker: worker.id,
+        reason: 'interactive-provider-not-configured',
+      }
+    }
+    const providers = await this.#providers(signal)
+    signal?.throwIfAborted()
+    const attached = await this.#attachWorker(supervisor.stateDir, worker.id, {
+      providers,
+      ...(signal === undefined ? {} : { signal }),
+    })
+    return attached.status === 'available'
+      ? { status: 'available', worker: worker.id, handle: attached.handle }
+      : { status: 'unavailable', worker: worker.id, reason: attached.reason }
   }
 
   #findSupervisor(rootDir: string, supervisorId: string): SupervisorView | undefined {

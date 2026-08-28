@@ -80,7 +80,15 @@ Steer appears only when the runtime reports steer support for that worker.
 
 Cancel appears only when the runtime reports cancellation support.
 
-Attach remains unavailable until Runtime exposes an external-client attach contract.
+Attach appears in the interactive TUI when at least one projected worker is running.
+
+Braid resolves the selected projected identifiers back to Runtime identifiers before attachment.
+
+Runtime rereads the exact durable worker binding and returns an opaque handle or a named unavailable reason.
+
+Braid claims control, suspends its own screen, forwards terminal input and resize, and restores the same screen after detach.
+
+The JSONL interface keeps attachment unavailable because it cannot present a native terminal.
 
 If Runtime reports that the selected provider supports terminal takeover, LIVE-11 requires a successful exact attach.
 
@@ -116,7 +124,7 @@ Refresh uses one subscription or bounded poll per open surface.
 
 ## Proof
 
-Tests cover hierarchy, cycles, missing parents, two supervisors, status updates, spend, steer, cancel, unavailable actions, restart, and unchanged refresh.
+Tests cover hierarchy, cycles, missing parents, two supervisors, status updates, spend, steer, cancel, exact attach, unavailable actions, restart, and unchanged refresh.
 
 The deterministic supervisor fixture exercises the same public Runtime API shape without creating supervisor files.
 

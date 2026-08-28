@@ -169,8 +169,16 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
     options.journal ?? (isFixture ? createMemoryJournal(clock) : new FailClosedJournal(clock))
   const effectStorage =
     options.effectStorage ?? (isEffectStorage(journal) ? journal : new FailClosedJournal(clock))
-  const intelligence =
+  const configuredIntelligence: IntelligenceActionsOptions | undefined =
     options.intelligence ?? (isFixture ? undefined : { analyst: new UnavailableAnalyst() })
+  const intelligence =
+    production?.supervisorController === undefined
+      ? configuredIntelligence
+      : {
+          ...(configuredIntelligence ?? {}),
+          supervisorController:
+            configuredIntelligence?.supervisorController ?? production.supervisorController,
+        }
   return new BraidApplication({
     profile:
       options.profile ??
@@ -252,6 +260,17 @@ export async function createDurableBraidApplication(
     const scopedJournal = await StorageJournal.fromStorage(storage, clock)
     reportStartupStage(options.startupObserver, 'journal-restore', stageStarted)
     stageStarted = performance.now()
+    const configuredIntelligence: IntelligenceActionsOptions = options.intelligence ?? {
+      analyst: new UnavailableAnalyst(),
+    }
+    const intelligence =
+      production?.supervisorController === undefined
+        ? configuredIntelligence
+        : {
+            ...configuredIntelligence,
+            supervisorController:
+              configuredIntelligence.supervisorController ?? production.supervisorController,
+          }
     const app = new BraidApplication({
       profile: options.profile ?? production?.profile ?? STARTER_PROFILE,
       execution:
@@ -265,9 +284,7 @@ export async function createDurableBraidApplication(
       journal: scopedJournal,
       effectStorage: storage,
       conversationStorage: storage,
-      ...(options.intelligence === undefined
-        ? { intelligence: { analyst: new UnavailableAnalyst() } }
-        : { intelligence: options.intelligence }),
+      intelligence,
       ...(options.effectCoordinator === undefined
         ? {}
         : { effectCoordinator: options.effectCoordinator }),

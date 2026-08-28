@@ -2,6 +2,7 @@ import type { Component } from '@earendil-works/pi-tui'
 import type { AnalysisRecord } from '../../domain/entities.js'
 import type { BraidIntent, BraidUiController } from '../shared/intents.js'
 import type { ActivityItemView } from '../shared/models.js'
+import type { NativeInteractiveUiActions } from '../shared/native-interactive-actions.js'
 import { sanitizeNotification } from '../shared/sanitize.js'
 import {
   type ActivityBrowserAction,
@@ -11,14 +12,14 @@ import {
 import { isAnalysisComparisonResult } from './comparison.js'
 import { ConversationConfirmation } from './conversation-dialogs.js'
 import { DetailsViewPanel } from './details.js'
+import type { EntityBrowserRow } from './entity-browser.js'
 import { GraphView } from './graph.js'
 import { type HelpViewOptions, HelpViewPanel } from './help.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import { SearchableSelector } from './selector.js'
-import { UnavailablePanel } from './terminal-shell.js'
 import { createWorkerSteerPrompt } from './supervisor-actions.js'
+import { UnavailablePanel } from './terminal-shell.js'
 import type { BraidTheme } from './theme.js'
-import type { EntityBrowserRow } from './entity-browser.js'
 
 export interface TerminalSurfaceOverlayOptions {
   readonly theme: BraidTheme
@@ -32,6 +33,7 @@ export interface TerminalSurfaceOverlayOptions {
   readonly openProfile: () => void
   readonly openConnection: () => void
   readonly focusRun?: (runId: string) => void
+  readonly nativeInteractive?: NativeInteractiveUiActions
 }
 
 export interface IntelligenceProgressHandle {
@@ -191,6 +193,12 @@ export class TerminalSurfaceOverlays {
       ...(pinned === undefined ? {} : { pinned }),
       onOpenSelected: (row) => this.#focusSelectedRun(row),
       onAction: (action, actionSelectedId) => this.#handleActivityAction(action, actionSelectedId),
+      ...(this.#options.nativeInteractive === undefined
+        ? {}
+        : {
+            workerAttachAvailable: () =>
+              this.#options.nativeInteractive?.workerAvailability?.().available === true,
+          }),
       openSelected,
     })
   }
@@ -337,20 +345,32 @@ export class TerminalSurfaceOverlays {
       this.openUnavailable('attach unavailable', 'Select a runtime worker before attaching')
       return
     }
-    const result = await this.#options.controller.dispatch({
-      type: 'headless-command',
-      command: 'attach_worker',
+    const actions = this.#options.nativeInteractive
+    if (actions?.workerAvailability === undefined || actions.attachWorker === undefined) {
+      this.openUnavailable('attach unavailable', 'Worker terminals require an interactive TUI')
+      return
+    }
+    const availability = actions.workerAvailability(selected.entityId)
+    if (!availability.available) {
+      this.openUnavailable(
+        'attach unavailable',
+        availability.reason ?? 'Worker terminal unavailable',
+      )
+      return
+    }
+    const result = await actions.attachWorker({
       operationId: this.#options.nextOperationId(),
-      params: { supervisorId: selected.supervisorId, workerId: selected.entityId },
+      supervisorId: selected.supervisorId,
+      workerId: selected.entityId,
     })
-    if (result.kind !== 'accepted') {
+    if (result.kind !== 'returned') {
       this.openUnavailable(
         'attach unavailable',
         result.kind === 'unavailable' ? result.reason : result.message,
       )
       return
     }
-    this.openUnavailable('attach unavailable', 'The runtime returned no terminal attachment')
+    this.#setSupervisionStatus(`worker terminal ${result.outcome}: ${selected.title}`)
   }
 
   #openAnalysisPromotion(selected: ActivityItemView): void {

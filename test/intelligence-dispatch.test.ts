@@ -463,7 +463,7 @@ test('supervisor controls resolve public ids and preserve retry-safe operation i
     params: { supervisorId: supervisor.id, workerId: worker.id },
   })
   assert.equal(attach.kind, 'unavailable')
-  if (attach.kind === 'unavailable') assert.match(attach.reason, /retained interactive reference/u)
+  if (attach.kind === 'unavailable') assert.match(attach.reason, /interactive TUI/u)
 
   writeInput = undefined
   const rejected = await controller.dispatch({
