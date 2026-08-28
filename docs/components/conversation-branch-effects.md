@@ -4,6 +4,16 @@
 
 The implementation uses the published `@tangle-network/agent-interface` contracts as the single cross-runner and workspace-fork boundary.
 
+## Best simple implementation
+
+Plan every branch effect from immutable Braid state and return one digest-bound preview before external work.
+
+Execute portable transfer, checkpoint, fork, lookup, and cleanup only through the matching published capability.
+
+Keep provider resources authoritative outside Braid and persist only exact redacted receipts and graph identities.
+
+Use one stable operation identity for retry and reject a response that does not match the planned source and destination.
+
 ## Inputs and outputs
 
 The planner reads immutable Braid state, the selected branch boundary, and the execution port capabilities.

@@ -1,8 +1,18 @@
 # Run stream sanitizer
 
+## Job
+
 The application ingestion boundary owns one incremental sanitizer for every active run stream.
 Each input is a trusted-boundary candidate containing untrusted provider text and an application stream name.
 Each output is safe text that may be committed to the local event journal and projected to any client surface.
+
+## Best simple implementation
+
+Keep one bounded incremental state machine per run and stream name at the application ingestion boundary.
+Reject duplicate provider events before sanitation and finalize the exact stream once at its terminal event.
+Sanitize terminal controls, secret candidates, URLs, and split Unicode before any journal write or view projection.
+Delete stream state at terminal completion and refuse new state after the bounded active-stream limit.
+
 The sanitizer carries terminal-control, credential-candidate, and split-Unicode state between input calls.
 The sanitizer keeps stream state separate for text, reasoning, and message-part delta streams.
 The sanitizer rejects terminal control payloads after the bounded control length instead of reopening visible output.

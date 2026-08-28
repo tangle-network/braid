@@ -8,6 +8,16 @@ It keeps one explicit focused run for foreground controls while every non-termin
 
 It preserves continuation ordering on one branch while allowing different branches and conversations to stream concurrently.
 
+## Best simple implementation
+
+Keep one durable active-run index, one explicit focused run, and one independent reader per admitted run.
+
+Serialize state commits through the journal while different branches execute concurrently.
+
+Address every control, interaction, queue entry, and replay cursor by exact run and branch identity.
+
+Do not add a global scheduler when branch admission and stable operation identities already provide the required ordering.
+
 ## Ownership
 
 `BraidState.activeRuns` owns the durable index of active run identifiers and their immutable conversation and branch targets.

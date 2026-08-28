@@ -8,6 +8,16 @@ It appears only when at least two work items require attention.
 
 It provides a compact route to switch focus and inspect the full activity surface.
 
+## Best simple implementation
+
+Project one immutable row for each non-terminal run or actionable queue entry.
+
+Show the strip only when at least two rows exist, and move full selection and details into Activity.
+
+Derive the `focus` label from the exact focused run while leaving conversation selection independent.
+
+Emit typed run intents and let the application own every control effect.
+
 ## Ownership
 
 `workStripFor` in `src/adapters/tui/ui-projection.ts` converts canonical runs and queued entries into immutable work item views.

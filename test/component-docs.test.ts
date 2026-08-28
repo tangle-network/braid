@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import test from 'node:test'
 
@@ -62,6 +62,23 @@ test('every exported terminal component maps to one existing design document', (
     assert.ok(
       existsSync(join(dirname(componentIndex), component.document)),
       `${component.name} references missing ${component.document}`,
+    )
+  }
+})
+
+test('every product component states its best simple implementation', () => {
+  const directory = dirname(componentIndex)
+  const documents = readdirSync(directory)
+    .filter((filename) => filename.endsWith('.md') && filename !== 'README.md')
+    .sort()
+
+  assert.ok(documents.length > 0)
+  for (const document of documents) {
+    const text = readFileSync(join(directory, document), 'utf8')
+    assert.match(
+      text,
+      /^## Best simple implementation$/mu,
+      `${document} must state its best simple implementation`,
     )
   }
 })
