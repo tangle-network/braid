@@ -39,7 +39,9 @@ Rows within a group use canonical event or update order.
 
 The browser preserves selection by entity identifier across refreshes.
 
-Filters operate over the projected bounded row set.
+The runs filter contains only run ownership rows so keyboard focus switching is deterministic.
+
+Other filters operate over their matching projected rows.
 
 Detached work remains visible because local silence is not completion.
 
@@ -72,4 +74,3 @@ Captures show activity with concurrent work at all required terminal sizes.
 Activity does not duplicate transcript content or replace the Work Strip.
 
 It does not assign a worker to a different run.
-

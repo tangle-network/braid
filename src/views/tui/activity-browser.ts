@@ -276,9 +276,10 @@ function listMeta(item: ActivityDocumentItem, elapsed: number | undefined): stri
 
 function included(item: ActivityDocumentItem, scope: ActivityBrowserScope): boolean {
   if (scope === 'all') return true
+  if (scope === 'runs') return item.kind === 'run'
   if (scope === 'analyses') return item.kind === 'analysis'
   if (scope === 'workers') return item.kind === 'supervisor' || item.kind === 'worker'
-  return item.kind !== 'analysis' && item.kind !== 'supervisor' && item.kind !== 'worker'
+  return false
 }
 
 function detailKey(detail: EntityDetailView): string {

@@ -118,6 +118,15 @@ test('live work stays in the focused activity surface instead of docking beside 
   tui.stop()
 })
 
+test('the runs scope contains only selectable run ownership rows', () => {
+  const rows = activityDocument(activityView(), 'runs').rows
+
+  assert.deepEqual(
+    rows.map((row) => ({ id: row.id, kind: row.kind })),
+    [{ id: 'run-1', kind: 'run' }],
+  )
+})
+
 test('the TUI omits unreported cost and latency fragments without inventing values', () => {
   assert.deepEqual(
     omitUnreportedCostAndLatency([
