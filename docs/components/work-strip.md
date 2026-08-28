@@ -76,9 +76,11 @@ The projection returns no strip for fewer than two items.
 
 The narrow renderer emits one bounded summary line with the item count and activity route.
 
-The standard renderer emits up to three bounded item rows and a browse hint for additional items.
+The standard renderer emits up to three rows with bounded branch identities and priority-aware state, waiting, and control fields.
 
-The wide renderer emits up to eight bounded item rows and keeps detail in the selected activity view.
+The wide renderer emits up to eight rows, includes unavailable control markers, and keeps detail in the selected activity view.
+
+Long branch identities retain both a stable prefix and suffix while the canonical identifier remains unchanged in emitted intents.
 
 The renderer sanitizes branch, state, runner, model, and action text before terminal output.
 
@@ -108,7 +110,7 @@ An unknown run focus request returns a stable application error without changing
 
 Terminal rows remain inspectable but cannot receive live cancellation or steering.
 
-Rows that exceed the available width are atomically clipped without terminal control sequences.
+Rows select complete fields by priority before they elide a bounded branch identity, so controls never become partial words.
 
 ## Performance
 

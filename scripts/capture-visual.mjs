@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
-import { createStateDefinitions } from './capture-visual-definitions.mjs'
+import { createStateDefinitions, isRunningWorkStripRow } from './capture-visual-definitions.mjs'
 import {
   captureProvenance,
   createArtifactFor,
@@ -466,9 +466,7 @@ try {
       }
       if (definition.name === 'multi-run') {
         const workStrip = result.record.view?.workStrip ?? []
-        const renderedRows = result.point.screen
-          .split('\n')
-          .filter((line) => /^(?:focus|work) .+ · running · /u.test(line.trimStart()))
+        const renderedRows = result.point.screen.split('\n').filter(isRunningWorkStripRow)
         if (workStrip.length !== 2 || renderedRows.length !== 2) {
           throw new Error(
             `multi-run capture did not expose two Work Strip rows (view=${workStrip.length}, rendered=${renderedRows.length})`,

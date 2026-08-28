@@ -1,3 +1,7 @@
+export function isRunningWorkStripRow(line) {
+  return /^(?:focus|work) .+ · running(?: ·|\s|$)/u.test(line.trimStart())
+}
+
 export function createStateDefinitions(normalized) {
   return [
     ...[40, 80, 120].map((columns) => commandPaletteDefinition(columns, normalized)),
@@ -55,12 +59,7 @@ export function createStateDefinitions(normalized) {
         terminal.input('parallel run B')
         terminal.input('\r')
         await terminal.waitFor(
-          () =>
-            terminal
-              .screen()
-              .split('\n')
-              .filter((line) => /^(?:focus|work) .+ · running · /u.test(line.trimStart())).length >=
-            2,
+          () => terminal.screen().split('\n').filter(isRunningWorkStripRow).length >= 2,
           'two Work Strip rows',
         )
         const before = await terminal.captureState()

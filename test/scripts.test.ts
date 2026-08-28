@@ -40,7 +40,8 @@ const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstr
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { renderVerificationReport } = await import('../scripts/release/verification-report.mjs')
 // @ts-expect-error The visual definitions are an executable JavaScript release helper.
-const { createStateDefinitions } = await import('../scripts/capture-visual-definitions.mjs')
+const visualDefinitions = await import('../scripts/capture-visual-definitions.mjs')
+const { createStateDefinitions, isRunningWorkStripRow } = visualDefinitions
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -129,6 +130,18 @@ test('active streaming capture waits for a terminal run state before exiting', a
   })
 
   assert.equal(closed, true)
+})
+
+test('multi-run capture recognizes responsive Work Strip rows without requiring lower-priority fields', () => {
+  assert.equal(
+    isRunningWorkStripRow(
+      'focus branch-0123456789ab…345-terminal · running  actions switch/cancel',
+    ),
+    true,
+  )
+  assert.equal(isRunningWorkStripRow('work branch-background · running · pi/fixture/model'), true)
+  assert.equal(isRunningWorkStripRow('work branch-background · queued'), false)
+  assert.equal(isRunningWorkStripRow('Fixture response includes work branch · running'), false)
 })
 
 test('the scoped test runner rejects an unregistered scope instead of silently running the wrong suite', async () => {

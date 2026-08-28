@@ -195,9 +195,36 @@ test('work strip is conditional and exposes branch work controls', () => {
   const wide = chrome.render(120).join('\n')
   assert.match(
     wide,
-    /focus branch-focused · running · pi\/fixture\/model · 1 interaction · actions switch\/ask\/steer\/cancel/u,
+    /focus branch-focused · running · pi\/fixture\/model\s+1 waiting interaction · actions switch\/ask\/steer\/cancel/u,
   )
   assert.match(wide, /work branch-background · running · pi\/fixture\/model/u)
+  const standard = chrome.render(80).join('\n')
+  assert.match(standard, /focus branch-focused · running/u)
+  assert.match(standard, /1 waiting interaction/u)
+  assert.match(standard, /actions switch\/ask\/steer\/cancel/u)
+
+  chrome.setState({
+    view: {
+      ...base,
+      focusedRunId: 'run-metrics',
+      workStrip: Object.freeze([
+        item({
+          id: 'run-metrics',
+          runId: 'run-metrics',
+          branchId: 'branch-0123456789abcdef0123456789abcdef-terminal',
+          interactionCount: 0,
+          focused: true,
+          actions: { switch: true, ask: false, steer: true, cancel: true },
+        }),
+        item({ interactionCount: 0 }),
+      ]),
+    },
+    ...state,
+  })
+  const generatedIdentityRow = chrome.render(80)[1] ?? ''
+  assert.match(generatedIdentityRow, /focus branch-0123456789ab…345-terminal · running/u)
+  assert.match(generatedIdentityRow, /actions switch\/steer\/cancel/u)
+  assert.doesNotMatch(generatedIdentityRow, /!ask|0123456789abcdef0123456789abcdef/u)
   const narrow = chrome.render(40)
   assert.equal(narrow.length, 2)
   assert.match(narrow[1] ?? '', /work 2 · \/activity to switch/u)
