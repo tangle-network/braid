@@ -133,10 +133,12 @@ test('runtime activity projection stays bounded at 10k and 100k saved workers', 
   }
 })
 
-test('controller renders reuse one state clone and semantic projection per revision', () => {
+test('controller renders reuse one state clone and semantic projection per revision', (t) => {
   const source = runtimeWorkerState(10_000)
   let revision = source.revision
   let stateCalls = 0
+  let storageFailure: string | undefined
+  let cleanupUncertain: string | undefined
   const app = {
     revision: () => revision,
     state: () => {
@@ -144,23 +146,49 @@ test('controller renders reuse one state clone and semantic projection per revis
       return structuredClone({ ...source, revision })
     },
     canCancel: () => false,
-    storageFailure: () => undefined,
-    cleanupUncertain: () => undefined,
+    storageFailure: () => storageFailure,
+    cleanupUncertain: () => cleanupUncertain,
     canRespondToInteractions: () => false,
   } as unknown as BraidApplication
   const controller = new ApplicationUiController(app)
-  controller.view()
+  const initial = controller.view()
   const samples: number[] = []
   for (let repetition = 0; repetition < 20; repetition += 1) {
     const started = performance.now()
-    controller.view()
+    assert.equal(controller.view(), initial)
     samples.push(performance.now() - started)
   }
   assert.equal(stateCalls, 1)
-  assert.ok(distribution(samples).p90 < 10)
+  const stable = distribution(samples)
+  assert.ok(stable.p90 < 10, `stable controller view p90=${stable.p90.toFixed(1)}ms`)
+  t.diagnostic(
+    JSON.stringify({
+      name: 'controller-view-cache',
+      unit: 'ms',
+      environment: { node: process.version, savedWorkers: 10_000 },
+      viewIdentityReused: true,
+      stateCalls,
+      ...stable,
+    }),
+  )
+
+  storageFailure = 'storage unavailable'
+  const failed = controller.view()
+  assert.notEqual(failed, initial)
+  assert.equal(failed.storageFailure, storageFailure)
+  assert.equal(stateCalls, 1)
+
+  storageFailure = undefined
+  cleanupUncertain = 'cleanup confirmation unavailable'
+  const cleanup = controller.view()
+  assert.notEqual(cleanup, failed)
+  assert.equal(cleanup.cleanupUncertain, cleanupUncertain)
+  assert.equal(stateCalls, 1)
 
   revision += 1
-  assert.equal(controller.view().revision, revision)
+  const changed = controller.view()
+  assert.notEqual(changed, cleanup)
+  assert.equal(changed.revision, revision)
   assert.equal(stateCalls, 2)
 })
 

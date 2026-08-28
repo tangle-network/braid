@@ -84,6 +84,10 @@ The shell never renders credential values or secret-designated interaction answe
 
 One frame subscription coalesces stream deltas at the configured frame interval.
 
+`ApplicationUiController` reuses one immutable final view while the application revision, failure signals, and local presentation inputs remain unchanged.
+
+An application revision or a local surface, notice, preview, or analysis selection change invalidates that view without a provider-specific path.
+
 Rendering remains proportional to the bounded visible transcript and visible Work Strip.
 
 The shell does not scan the journal or provider state during render.
