@@ -26,6 +26,17 @@ const SOURCE_PROVIDER = 'source-provider'
 const TARGET_PROVIDER = 'target-provider'
 const SOURCE_SESSION = 'provider-session-source'
 
+function deferred<T = void>(): {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T | PromiseLike<T>) => void
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
 interface WorkspaceProviderState {
   readonly checkpoints: Map<
     string,
@@ -402,6 +413,64 @@ test('cross-runner handoff transfers canonical history and replays after restart
     restarted.state().branches.filter((candidate) => candidate.id === branch.id).length,
     1,
   )
+})
+
+test('fork execution on another branch preserves a live run', async () => {
+  const started = deferred()
+  const release = deferred()
+  const baseExecution = executionFor({ capabilities: branchCapabilities() })
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    async *streamTurn(input) {
+      started.resolve()
+      await release.promise
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'live run completed',
+        text: `completed ${input.text}`,
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: `task-${input.runId}`, intent: input.text },
+        timestamp: AT,
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  const sourceBranchId = app.state().branchId
+  const liveBranch = await app.conversations.branches.create({
+    operationId: 'op-create-live-branch',
+  })
+  const live = app.send({ operationId: 'op-live-branch', text: 'keep this run live' })
+
+  try {
+    await started.promise
+    assert.equal(liveBranch.id, app.state().branchId)
+    assert.equal(app.state().activeRunId, live.runId)
+
+    const plan = app.conversations.branches.plan({
+      operationId: 'op-fork-while-live',
+      kind: 'conversation',
+      branchId: sourceBranchId,
+    })
+    const fork = await app.conversations.branches.execute({
+      operationId: 'op-fork-while-live',
+      kind: 'conversation',
+      branchId: sourceBranchId,
+      planDigest: plan.digest,
+    })
+
+    assert.equal(fork.id, plan.destinationBranchId)
+    assert.equal(app.state().activeRunId, live.runId)
+    assert.equal(app.state().runs.find((run) => run.id === live.runId)?.status, 'streaming')
+  } finally {
+    release.resolve()
+    await live.completion
+  }
 })
 
 test('cross-runner retry reuses the original acceptance timestamp in its request digest', async () => {
