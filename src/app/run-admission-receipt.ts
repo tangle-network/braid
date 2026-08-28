@@ -36,7 +36,7 @@ export function admitRun(
   validateProfile(input.profile)
   const rawAdmission = resolveSyncAdmission(context, input)
   const resolved = rawAdmission ?? {}
-  validateExecutionContext(context.currentState(), input, resolved)
+  validateExecutionContext(context.currentState(), input, resolved, conversationId, branchId)
   const capabilities = resolved.capabilities ?? resolveSyncCapabilities(context, input)
   const interactions = requestedInteractionsForRun(input.mode, capabilities)
   const receipt = createAdmissionReceipt({
@@ -88,7 +88,7 @@ export async function admitRunAsync(
 ): Promise<RunAdmissionReceipt> {
   validateProfile(input.profile)
   const resolved = await resolveAsyncAdmission(context, input)
-  validateExecutionContext(context.currentState(), input, resolved)
+  validateExecutionContext(context.currentState(), input, resolved, conversationId, branchId)
   const capabilities = resolved?.capabilities ?? (await resolveAsyncCapabilities(context, input))
   const interactions = requestedInteractionsForRun(input.mode, capabilities)
   const receipt = createAdmissionReceipt({

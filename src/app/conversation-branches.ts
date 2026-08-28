@@ -24,7 +24,6 @@ import {
   operationReplay,
   parseOperation,
   requestDigest,
-  requireIdle,
   requireWorkspace,
   stableBranchIds,
   stableConversationIds,
@@ -60,7 +59,6 @@ export class ConversationBranches {
 
   async #setRunOverrides(input: SetRunOverridesInput): Promise<BranchRecord> {
     const state = this.#host.state()
-    requireIdle(state, 'Changing run configuration')
     const source = resolveBranch(state, input)
     const operationId = parseOperation(input.operationId, 'set_run_override')
     const hasOverride = [input.runner, input.model, input.effort, input.mode].some(
@@ -117,7 +115,6 @@ export class ConversationBranches {
 
   async #create(input: CreateBranchInput): Promise<BranchRecord> {
     const state = this.#host.state()
-    requireIdle(state, 'Creating a branch')
     const source = resolveSource(state, input)
     const operationId = parseOperation(input.operationId, 'branch')
     const normalized = branchRequest(source, input)
@@ -205,7 +202,6 @@ export class ConversationBranches {
   async #clone(input: CloneConversationInput): Promise<ConversationRecord> {
     const state = this.#host.state()
     const workspaceId = requireWorkspace(state)
-    requireIdle(state, 'Cloning a conversation')
     const source = resolveSource(state, input)
     const operationId = parseOperation(input.operationId, 'clone')
     const title = normalizedTitle(input.title, `${source.conversation.title} copy`)

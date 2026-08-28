@@ -14,7 +14,6 @@ import {
   MAX_RUN_INTERACTIONS,
   type ReducerBase,
   sourceFromProvider,
-  TERMINAL_RUN_STATES,
   terminalMessageStatus,
   terminalPartStatus,
   updateMessage,
@@ -210,12 +209,6 @@ export function reduceInteractionEvent(
       return {
         ...state,
         ...base,
-        activeRunId:
-          event.status === 'detached' || TERMINAL_RUN_STATES.includes(event.status)
-            ? state.activeRunId === event.runId
-              ? null
-              : state.activeRunId
-            : event.runId,
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...withProviderProgress({ ...run, status: event.status }, event.provider) },
@@ -416,7 +409,6 @@ function reduceFinishedEvent(
   return {
     ...state,
     ...base,
-    activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
     lastError: errorReservation?.value ?? (event.status === 'failed' ? state.lastError : null),
     messages: updateMessage(state, event.runId, (message) => {
       const source = sourceFromProvider(event.provider)

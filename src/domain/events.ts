@@ -180,6 +180,8 @@ export interface DomainBraidEventMap {
     readonly detail?: string
     readonly provider?: ProviderEventMeta
   }
+  /** Records the one run whose controls receive unqualified user actions. */
+  readonly 'run.focused': { readonly runId: RunId | null }
   /**
    * A cancellation correction must carry the durable cancel operation id.
    * Ordinary provider reconciliation has no operation id.
@@ -292,6 +294,8 @@ export function eventRunId(event: BraidEvent): RunId | undefined {
     case 'run.reconciled':
     case 'run.environment.observed':
       return event.runId as RunId
+    case 'run.focused':
+      return event.runId ?? undefined
     case 'history.missing':
       return event.range.runId
     case 'replay.cursor.advanced':

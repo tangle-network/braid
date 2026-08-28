@@ -15,6 +15,7 @@ import type { BraidTheme } from './theme.js'
 export interface EntityBrowserRow {
   readonly id: string
   readonly kind: string
+  readonly runId?: string
   readonly title: string
   readonly status: string
   readonly meta?: string
@@ -37,6 +38,7 @@ export interface EntityBrowserOptions {
   readonly document: (selectedId?: string) => EntityBrowserDocument
   readonly rows: () => number
   readonly onClose: () => void
+  readonly onOpenSelected?: (row: EntityBrowserRow) => void
   readonly selectedId?: string
   readonly openSelected?: boolean
 }
@@ -49,6 +51,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
   readonly #document: (selectedId?: string) => EntityBrowserDocument
   readonly #terminalRows: () => number
   readonly #onClose: () => void
+  readonly #onOpenSelected: ((row: EntityBrowserRow) => void) | undefined
   #selectedId: string | undefined
   #selectedIndex = 0
   #page = 0
@@ -62,6 +65,7 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     this.#document = options.document
     this.#terminalRows = options.rows
     this.#onClose = options.onClose
+    this.#onOpenSelected = options.onOpenSelected
     this.#selectedId = options.selectedId
     this.#mode = options.openSelected === true ? 'detail' : 'list'
   }
@@ -110,6 +114,8 @@ export class EntityBrowser extends Container implements Focusable, ModalBackTarg
     }
     if (document.rows.length === 0) return
     if (matchesKey(data, 'enter') || matchesKey(data, 'return') || matchesKey(data, 'right')) {
+      const selected = document.rows[this.#selectedIndex]
+      if (selected !== undefined) this.#onOpenSelected?.(selected)
       if (!wide && this.#mode === 'list') {
         this.#mode = 'detail'
         this.#page = 0

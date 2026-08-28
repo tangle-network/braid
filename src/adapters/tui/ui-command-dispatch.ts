@@ -30,8 +30,17 @@ export async function dispatchCommandIntent(
     return dispatchCoreIntent({ type: 'shutdown', operationId: intent.operationId ?? '' }, context)
   }
   if (intent.command === 'cancel') {
+    const view = context.view()
     return dispatchCoreIntent(
-      { type: 'cancel-run', operationId: intent.operationId ?? '' },
+      {
+        type: 'cancel-run',
+        operationId: intent.operationId ?? '',
+        ...(view.activeRunId === undefined
+          ? view.focusedRunId === undefined
+            ? {}
+            : { runId: view.focusedRunId }
+          : { runId: view.activeRunId }),
+      },
       context,
     )
   }

@@ -30,12 +30,7 @@ import {
   optionalFiniteNumber,
   requiredString,
 } from './conversation-import-values.js'
-import {
-  acknowledgedOperation,
-  normalizedTitle,
-  requireIdle,
-  requireWorkspace,
-} from './conversation-support.js'
+import { acknowledgedOperation, normalizedTitle, requireWorkspace } from './conversation-support.js'
 import { AppError } from './errors.js'
 
 export type ConversationImportedEvent = Extract<
@@ -51,7 +46,6 @@ export function buildConversationImport(input: {
   readonly at: string
   readonly title?: string
 }): ConversationImportedEvent {
-  requireIdle(input.state, 'Conversation import')
   const workspaceId = requireWorkspace(input.state)
   const content = input.prepared.document.content
   const sourceConversation = importRecord(content.conversation, 'content.conversation')

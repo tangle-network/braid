@@ -37,7 +37,7 @@ import {
   restoreMaterializedState,
 } from '../src/domain/materialized-state-snapshot.js'
 import { canonicalProjectionChecksum } from '../src/domain/projection-checksum.js'
-import { reduceEvent, replayEvents } from '../src/domain/reducer.js'
+import { DuplicateEventConflictError, reduceEvent, replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { type CredentialRef, credentialRef } from '../src/ports/credentials.js'
 import type { JournalEvent } from '../src/ports/storage.js'
@@ -350,6 +350,69 @@ test('migrates legacy interactions, rejects snapshot conflicts, and recomputes t
       new RegExp(`rule\\.answer\\.${field} is secret-designated and cannot be retained`, 'u'),
     )
   }
+})
+
+test('migrates the legacy active run alias and rejects conflicting duplicate events', () => {
+  const at = '2026-08-03T00:00:00.000Z'
+  const legacyRunId = createRunId('run-snapshot-active-alias')
+  const requestedEventId = createEventId('event-snapshot-active-alias-requested')
+  const requestedEvent = {
+    kind: 'run.requested' as const,
+    operationId: createOperationId('operation-snapshot-active-alias'),
+    runId: legacyRunId,
+    turnId: createTurnId('turn-snapshot-active-alias'),
+    userMessageId: createMessageId('message-snapshot-active-alias-user'),
+    assistantMessageId: createMessageId('message-snapshot-active-alias-assistant'),
+    text: 'resume the active run',
+  }
+  const requested: BraidEventEnvelope = {
+    eventId: requestedEventId,
+    sequence: 2,
+    revision: 2,
+    occurredAt: at,
+    event: requestedEvent,
+  }
+  const state = replayEvents(initialState(STARTER_PROFILE, { conversationId }), [
+    {
+      eventId: createEventId('event-snapshot-active-alias-workspace'),
+      sequence: 1,
+      revision: 1,
+      occurredAt: at,
+      event: { kind: 'workspace.opened', workspace: '/workspace' },
+    },
+    requested,
+  ])
+  const snapshot = createMaterializedStateSnapshot({
+    scopeId: 'snapshot-active-alias',
+    generation: state.sequence,
+    eventId: requestedEventId,
+    state,
+  })
+  const { activeRuns: _activeRuns, focusedRunId: _focusedRunId, ...legacyState } = snapshot.state
+  const restored = restoreMaterializedState({
+    ...snapshot,
+    state: legacyState,
+    stateChecksum: canonicalDigest(legacyState),
+  })
+  assert.deepEqual(restored.activeRuns, [
+    {
+      runId: legacyRunId,
+      conversationId,
+      branchId: state.branchId,
+    },
+  ])
+  assert.equal(restored.focusedRunId, legacyRunId)
+  assert.equal(restored.activeRunId, legacyRunId)
+
+  assert.equal(reduceEvent(state, requested), state)
+  assert.throws(
+    () =>
+      reduceEvent(state, {
+        ...requested,
+        event: { ...requestedEvent, text: 'conflicting replay' },
+      }),
+    DuplicateEventConflictError,
+  )
 })
 
 async function withRawDatabase<T>(

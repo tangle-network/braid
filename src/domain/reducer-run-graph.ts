@@ -57,6 +57,8 @@ export function attachRequestedRunToConversation(
       provenance,
     }),
   ]
+  const selectedBranch =
+    state.conversationId === input.run.conversationId && state.branchId === input.run.branchId
   return {
     ...state,
     branches: upsert(state.branches, {
@@ -66,7 +68,7 @@ export function attachRequestedRunToConversation(
     }),
     conversations: upsert(state.conversations, {
       ...conversation,
-      activeBranchId: branch.id,
+      ...(selectedBranch ? { activeBranchId: branch.id } : {}),
       updatedAt: input.at,
     }),
     graphNodes: nodes.reduce(upsert, state.graphNodes),

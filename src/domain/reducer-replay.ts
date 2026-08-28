@@ -18,7 +18,7 @@ import {
 } from './reducer-helpers.js'
 import { reduceLegacyEvent } from './reducer-legacy.js'
 import { isRuntimeEvent, reduceRuntimeEvent } from './reducer-runtime.js'
-import { type BraidState, initialState } from './state.js'
+import { normalizeActiveRuns, type BraidState, initialState } from './state.js'
 import { isCanonicalIsoDateTime } from './text.js'
 
 export const MAX_APPLIED_EVENT_HISTORY = 256
@@ -39,7 +39,7 @@ function applyEnvelopeMetadata(
     readonly finalize?: boolean
   } = {},
 ): BraidState {
-  let next: BraidState = {
+  let next: BraidState = normalizeActiveRuns({
     ...reduced,
     revision: envelope.revision,
     sequence: envelope.sequence,
@@ -49,7 +49,7 @@ function applyEnvelopeMetadata(
         ...reduced.appliedEvents,
         { id: eventId, sequence: envelope.sequence, revision: envelope.revision, digest },
       ]),
-  }
+  })
   const runId = eventRunId(envelope.event)
   if (envelope.cursor !== undefined && runId !== undefined) {
     const cursor = parseReplayCursor(envelope.cursor)
@@ -81,7 +81,7 @@ function applyEnvelopeMetadata(
 }
 
 function finalizeReducedState(state: BraidState): BraidState {
-  const healthy = withHealth(state)
+  const healthy = withHealth(normalizeActiveRuns(state))
   const finalized = {
     ...healthy,
     projectionChecksum: canonicalProjectionChecksum(healthy),

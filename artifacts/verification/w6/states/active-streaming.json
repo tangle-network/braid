@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.2.0.tgz",
-    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
+    "tarball": "tangle-network-braid-0.2.2.tgz",
+    "tarballSha256": "05758395a4c14b77ee4df05cb8d547c97ba362d65b73fb4078297957a28a88f9"
   },
   "dimensions": {
     "columns": 80,
@@ -17,7 +17,7 @@
       "package": "@earendil-works/pi-tui@0.84.2",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 5,
-  "frame": " › W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› queue #1\n\n\n─────────────── type / for commands · Alt+Enter newline · paste ────────────────\nprofile Braid starter · pi · via not connected                     Ctrl+C cancel\n",
+  "frame": " › W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› queue #1\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via not connected                     Ctrl+C cancel\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 5,
       "sequence": 5,
-      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
+      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -159,11 +159,19 @@
       "interactions": [],
       "queue": [],
       "activeRunId": "run-000001",
+      "focusedRunId": "run-000001",
+      "activeRuns": [
+        {
+          "runId": "run-000001",
+          "conversationId": "conv-1",
+          "branchId": "branch-1"
+        }
+      ],
       "lastError": null
     },
     "view": {
       "revision": 5,
-      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
+      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -281,6 +289,7 @@
       },
       "environments": [],
       "activeRunId": "run-000001",
+      "focusedRunId": "run-000001",
       "interactions": [],
       "activity": [
         {
@@ -311,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-16T11:05:23.005Z",
+          "occurredAt": "2026-08-28T10:35:41.123Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -391,44 +400,36 @@
       },
       "capabilities": {
         "conversation.create": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "conversation.open": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "run.runner": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "run.model": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "run.effort": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "conversation.branch": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "conversation.clone": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "conversation.fork": {
-          "available": false,
-          "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "available": true,
+          "source": "application"
         },
         "analysis.ask": {
           "available": false,
@@ -455,10 +456,19 @@
           "source": "application",
           "reason": "Interaction automation requires the shared response contract"
         },
-        "export.create": {
+        "run.interactive": {
           "available": false,
           "source": "application",
-          "reason": "Finish or cancel the active run first"
+          "reason": "Native terminal mode requires an interactive TUI and a supported provider"
+        },
+        "run.attach": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal attachment requires an interactive TUI and a retained session"
+        },
+        "export.create": {
+          "available": true,
+          "source": "application"
         },
         "application.quit": {
           "available": true,
@@ -546,7 +556,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
+            "workspace": "/home/drew/code/.worktrees/braid-10-multirun"
           }
         }
       },
@@ -658,10 +668,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-221214e8dc3317bcb681a929",
+              "id": "effect-op-terminal-000002-f42480eb9f3f2a5b76208330",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "221214e8dc3317bcb681a929a14c7405e4e06d08e9bbba09c7a20cf138d54c87",
+              "requestDigest": "f42480eb9f3f2a5b762083305eb8bb56efed4b6ab20ceeeed6492a4f63f304a8",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -680,40 +690,40 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-16T11:05:23.005Z",
+            "occurredAt": "2026-08-28T10:35:41.123Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-00c1be56-e524-49c2-9635-c92d7fae52aa",
+              "id": "turn-b161f084-e508-413f-b58d-99baa80dcf40",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
                   "profileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
-                  "taskDigest": "sha256:3ce61a40a3cd4e7f777080a96e3df6dac9a740154c2d4ea7c6893f65eab607d5"
+                  "taskDigest": "sha256:dd6b9e9d100729342b1c39bd909692e03d7cc5f24ba7bb0de942a5add8aeb64f"
                 }
               }
             },
             "session": {
-              "id": "2e852f40-2813-4ba4-9e23-78f2991e7c5a",
+              "id": "1da25da7-5cbb-47b4-9627-3d60db3295a1",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-16T11:05:23.005Z",
-              "updatedAt": "2026-08-16T11:05:23.005Z",
+              "createdAt": "2026-08-28T10:35:41.123Z",
+              "updatedAt": "2026-08-28T10:35:41.123Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
             "metadata": {
               "identity": {
                 "profileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
-                "taskDigest": "sha256:3ce61a40a3cd4e7f777080a96e3df6dac9a740154c2d4ea7c6893f65eab607d5"
+                "taskDigest": "sha256:dd6b9e9d100729342b1c39bd909692e03d7cc5f24ba7bb0de942a5add8aeb64f"
               },
               "materialization": {
                 "status": "known",
                 "authoredProfileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
                 "effectiveProfileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
-                "materializationPlanDigest": "sha256:00acc9b6378f74a84629ea6c26f6e800d054bc04588a1daba8d1924b79792478",
+                "materializationPlanDigest": "sha256:a5b3379719400534a3c394e89e6822ba88632b2583f080635b5a0a119d959f5f",
                 "runtime": "router",
                 "backend": "router",
                 "model": {
@@ -722,16 +732,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-00c1be56-e524-49c2-9635-c92d7fae52aa"
+                  "id": "turn-b161f084-e508-413f-b58d-99baa80dcf40"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-00c1be56-e524-49c2-9635-c92d7fae52aa:attempt:c94a79bb-1272-44ba-ace0-f6fa63c8ad8a",
-                  "materializationReceiptDigest": "sha256:bdae6c111d17379adb467471e373ca52efbafa678fa43bc4cd3bcb66d79cb91b",
-                  "bindingDigest": "sha256:dbfb11afb6d471167ed41e0d48a5a4399546209487e8f350b2f38870c0455b37",
+                  "attemptId": "turn-b161f084-e508-413f-b58d-99baa80dcf40:attempt:c1ead8eb-8ad4-42e4-aaa2-559a02eee1f4",
+                  "materializationReceiptDigest": "sha256:7292070a64fb6aeb7726ce1020c30453a846ee0db9322d1b4c436900e1aa556a",
+                  "bindingDigest": "sha256:bc2cfc07b970a1f007a96c7f8099a9b84f0dab440550b39cd8e61b8f54af8654",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -743,10 +753,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-16T11:05:23.001Z"
+                "startedAt": "2026-08-28T10:35:41.121Z"
               }
             },
-            "timestamp": "2026-08-16T11:05:23.005Z"
+            "timestamp": "2026-08-28T10:35:41.123Z"
           }
         }
       }

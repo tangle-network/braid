@@ -401,7 +401,7 @@ test('branch run configuration merges, replays, rejects conflicts, and clears at
   assertBraidState(app.state())
 })
 
-test('branch run configuration survives journal replay and cannot change during a run', async () => {
+test('branch run configuration survives journal replay and can change future runs during a run', async () => {
   const journal = new MemoryJournal(new FixedClock())
   const first = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
   first.initialize('/workspace')
@@ -426,19 +426,16 @@ test('branch run configuration survives journal replay and cannot change during 
     text: 'keep configuration stable while this runs',
   })
   await active.admissionReady
-  await assert.rejects(
-    () =>
-      restarted.conversations.branches.setRunOverrides({
-        operationId: 'op-run-override-active-change',
-        runner: 'pi',
-      }),
-    (error: unknown) => error instanceof AppError && error.code === 'RUN_ACTIVE',
-  )
+  const changed = await restarted.conversations.branches.setRunOverrides({
+    operationId: 'op-run-override-active-change',
+    runner: 'pi',
+  })
+  assert.equal(changed.overrides.runner, 'pi')
   await active.completion
   assert.equal(
     restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)?.overrides
       .runner,
-    'codex',
+    'pi',
   )
   assertBraidState(restarted.state())
 })

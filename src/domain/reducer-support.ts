@@ -59,7 +59,7 @@ export function activity(
   detail?: string,
   source?: MessagePartSource,
 ): BraidActivity {
-  const runId = 'runId' in event ? event.runId : 'run-unknown'
+  const runId = 'runId' in event && event.runId ? event.runId : 'run-unknown'
   return {
     id: `${runId}:${type}:${source?.eventId ?? 'local'}:${label}`,
     runId,

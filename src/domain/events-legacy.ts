@@ -204,6 +204,8 @@ export type LegacyBraidEvent =
       readonly operationId: string
       readonly text: string
       readonly position: number
+      readonly conversationId?: string
+      readonly branchId?: string
     }
   | {
       readonly kind: 'run.queue.removed'

@@ -1,4 +1,4 @@
-import type { BraidRun, BraidState, RunStatus } from '../domain/state.js'
+import { isLiveRunStatus, type BraidRun, type BraidState, type RunStatus } from '../domain/state.js'
 import type { StateReader, StatusPort } from './application-ports.js'
 import { AppError } from './errors.js'
 
@@ -33,13 +33,29 @@ export async function waitForRun(context: StatusPort, runId: string): Promise<Br
 
 export async function waitForIdle(context: StatusPort): Promise<BraidState> {
   await Promise.resolve()
-  const runId = context.currentState().activeRunId
-  if (!runId) return structuredClone(context.currentState())
-  const control = context.ledger.controlForRun(runId)
-  if (control) {
-    await control.acknowledgement
-    if (!context.currentState().activeRunId) return structuredClone(context.currentState())
+  for (;;) {
+    const state = context.currentState()
+    const runIds = new Set(
+      (state.activeRuns ?? [])
+        .filter((run) => {
+          const record = state.runs.find((candidate) => candidate.id === run.runId)
+          return record !== undefined && isLiveRunStatus(record.status)
+        })
+        .map((run) => run.runId),
+    )
+    if (runIds.size === 0 && state.activeRunId !== null) runIds.add(state.activeRunId)
+    const waits: Promise<unknown>[] = []
+    for (const runId of runIds) {
+      const control = context.ledger.controlForRun(runId)
+      if (control) {
+        await control.acknowledgement
+        const controlledRun = context.currentState().runs.find((run) => run.id === runId)
+        if (controlledRun === undefined || isTerminal(controlledRun.status)) continue
+      }
+      const operation = context.ledger.operationForRun(runId)
+      if (operation) waits.push(operation.completion)
+    }
+    if (waits.length === 0) return structuredClone(context.currentState())
+    await Promise.all(waits)
   }
-  await waitForRun(context, runId)
-  return structuredClone(context.currentState())
 }

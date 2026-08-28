@@ -1,6 +1,8 @@
 import type { RunRecord, TurnRecord } from './entities.js'
 import type { BraidEvent } from './events.js'
 import {
+  parseBranchId,
+  parseConversationId,
   parseDigestValue,
   parseMessageId,
   parseOperationId,
@@ -24,7 +26,7 @@ import {
   upsertPart,
 } from './reducer-support.js'
 import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
-import type { BraidState } from './state.js'
+import { activeRunForBranch, type BraidState } from './state.js'
 
 type LifecycleEvent = Extract<
   BraidEvent,
@@ -131,6 +133,8 @@ export function reduceLifecycleEvent(
           {
             operationId: event.operationId,
             runId: event.runId,
+            ...(event.conversationId === undefined ? {} : { conversationId: event.conversationId }),
+            ...(event.branchId === undefined ? {} : { branchId: event.branchId }),
             text: event.text,
             position: event.position,
           },
@@ -151,7 +155,6 @@ export function reduceLifecycleEvent(
       return {
         ...state,
         ...base,
-        activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             {
@@ -167,7 +170,7 @@ export function reduceLifecycleEvent(
       return {
         ...state,
         ...base,
-        activeRunId: event.runId,
+        focusedRunId: event.runId,
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...run, status: 'reconnecting' },
@@ -199,7 +202,6 @@ export function reduceLifecycleEvent(
         return {
           ...state,
           ...base,
-          activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
           lastError: null,
           messages: updateMessage(state, event.runId, (message) => ({
             ...message,
@@ -226,12 +228,7 @@ export function reduceLifecycleEvent(
       return {
         ...state,
         ...base,
-        activeRunId:
-          isTerminalStatus(to) && state.activeRunId === event.runId
-            ? null
-            : isTerminalStatus(to)
-              ? state.activeRunId
-              : event.runId,
+        ...(isTerminalStatus(to) ? {} : { focusedRunId: event.runId }),
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...run, status: to },
@@ -244,7 +241,6 @@ export function reduceLifecycleEvent(
       return {
         ...state,
         ...base,
-        activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         messages: state.messages.map((message) =>
           message.runId === event.runId && message.role === 'assistant'
             ? {
@@ -289,7 +285,6 @@ function reduceRequestedRun(
   base: ReducerBase,
   occurredAt: string,
 ): BraidState {
-  if (state.activeRunId) throw new Error(`Run ${state.activeRunId} is already active`)
   const runId = parseRunId(event.runId)
   const turnId = parseTurnId(event.turnId)
   const userMessageId = parseMessageId(event.userMessageId)
@@ -307,6 +302,10 @@ function reduceRequestedRun(
       text: event.text,
       capabilities: LEGACY_RUN_CAPABILITIES,
     })
+  const conversationId = parseConversationId(receipt.conversationId)
+  const branchId = parseBranchId(receipt.branchId)
+  const existing = activeRunForBranch(state, conversationId, branchId)
+  if (existing) throw new Error(`Run ${existing.id} is already active on branch ${branchId}`)
   const userMessage = legacyMessage(
     state,
     userMessageId,
@@ -316,6 +315,7 @@ function reduceRequestedRun(
     turnId,
     'complete',
     occurredAt,
+    { conversationId, branchId },
   )
   const assistantMessage = {
     ...legacyMessage(
@@ -327,13 +327,14 @@ function reduceRequestedRun(
       turnId,
       'streaming',
       occurredAt,
+      { conversationId, branchId },
     ),
     parts: [],
   }
   const turn: TurnRecord = {
     id: turnId,
-    conversationId: state.conversationId,
-    branchId: state.branchId,
+    conversationId,
+    branchId,
     userMessageId,
     runIds: [runId],
     status: 'running',
@@ -348,8 +349,8 @@ function reduceRequestedRun(
   )?.id
   const run: RunRecord = {
     id: runId,
-    conversationId: state.conversationId,
-    branchId: state.branchId,
+    conversationId,
+    branchId,
     turnId,
     operationId: event.operationId,
     status: 'streaming' as const,
@@ -378,10 +379,11 @@ function reduceRequestedRun(
     {
       ...state,
       ...base,
-      draft: '',
+      draft: state.branchId === branchId ? '' : state.draft,
       drafts: state.drafts.map((draft) =>
-        draft.branchId === state.branchId ? { ...draft, text: '', updatedAt: occurredAt } : draft,
+        draft.branchId === branchId ? { ...draft, text: '', updatedAt: occurredAt } : draft,
       ),
+      focusedRunId: event.runId,
       activeRunId: event.runId,
       lastError: null,
       messages: [...state.messages, userMessage, assistantMessage],
@@ -403,6 +405,7 @@ function isTerminalStatus(status: import('./state.js').RunStatus): boolean {
     status === 'aborted' ||
     status === 'cancelled' ||
     status === 'blocked' ||
-    status === 'expired'
+    status === 'expired' ||
+    status === 'unknown'
   )
 }

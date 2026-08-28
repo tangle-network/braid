@@ -1,5 +1,5 @@
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
-import type { BraidState } from '../domain/state.js'
+import { activeRunForBranch, type BraidState } from '../domain/state.js'
 import type { IdSource } from '../ports/ids.js'
 import type { AdmissionRegistration } from './application-lifecycle.js'
 import type { SendReceipt } from './application-types.js'
@@ -38,31 +38,34 @@ export interface DurableSendRuntime {
 export function createDurableSender(
   runtime: DurableSendRuntime,
 ): (input: RunExecutionSnapshot) => SendReceipt {
-  let pending:
-    | {
-        readonly operationId: string
-        readonly digest: string
-        readonly receipt: SendReceipt
-      }
-    | undefined
+  const pending = new Map<
+    string,
+    {
+      readonly operationId: string
+      readonly digest: string
+      readonly receipt: SendReceipt
+    }
+  >()
 
   return (input) => {
     const state = runtime.currentState()
+    const scope = runScope(input)
     const digest = runtime.requestDigest(state, input)
     const persisted = runtime.admitPersistedSend(input.operationId, digest)
     if (persisted) return persisted
-    if (pending) {
-      if (pending.operationId !== input.operationId)
+    const inFlight = pending.get(scope)
+    if (inFlight) {
+      if (inFlight.operationId !== input.operationId)
         throw new AppError(
           'RUN_ACTIVE',
-          `Run ${pending.receipt.runId} is awaiting admission; queue the next input explicitly`,
+          `Run ${inFlight.receipt.runId} is awaiting admission; queue the next input explicitly`,
         )
-      if (pending.digest !== digest)
+      if (inFlight.digest !== digest)
         throw new AppError(
           'OPERATION_CONFLICT',
           `Operation ${input.operationId} was already used with different input`,
         )
-      return replayPendingReceipt(pending.receipt)
+      return replayPendingReceipt(inFlight.receipt)
     }
 
     const receipt = durableSend({
@@ -78,9 +81,9 @@ export function createDurableSender(
       sendAsync: runtime.sendAsync,
     })
     const reservation = { operationId: input.operationId, digest, receipt }
-    pending = reservation
+    pending.set(scope, reservation)
     const clear = () => {
-      if (pending === reservation) pending = undefined
+      if (pending.get(scope) === reservation) pending.delete(scope)
     }
     receipt.admissionReady?.then(clear, clear)
     return receipt
@@ -92,10 +95,11 @@ export function durableSend(input: DurableSendInput): SendReceipt {
   const digest = input.requestDigest(state, input.input)
   const replay = input.admitPersistedSend(input.input.operationId, digest)
   if (replay) return replay
-  if (state.activeRunId)
+  const active = activeRunForBranch(state, input.input.conversationId, input.input.branchId)
+  if (active)
     throw new AppError(
       'RUN_ACTIVE',
-      `Run ${state.activeRunId} is still active; queue the next input explicitly`,
+      `Run ${active.id} is still active on this branch; queue the next input explicitly`,
     )
   const runId = input.ids.next('run')
   const turnId = input.ids.next('turn')
@@ -153,4 +157,8 @@ function replayPendingReceipt(receipt: SendReceipt): SendReceipt {
     ...(receipt.admissionReady === undefined ? {} : { admissionReady: receipt.admissionReady }),
     completion: receipt.completion,
   }
+}
+
+function runScope(input: RunExecutionSnapshot): string {
+  return `${input.conversationId}\u0000${input.branchId}`
 }

@@ -10,7 +10,11 @@ import {
 } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
-import type { BraidViewModel, EnvironmentView } from '../src/views/shared/models.js'
+import type {
+  BraidViewModel,
+  EnvironmentView,
+  WorkStripItemView,
+} from '../src/views/shared/models.js'
 import {
   composerBorderLine,
   composerProjectionFor,
@@ -144,6 +148,60 @@ test('chrome uses complete responsive groups at every reference width', () => {
       assert.doesNotMatch(line, /[\r\n]/u)
     }
   }
+})
+
+test('work strip is conditional and exposes branch work controls', () => {
+  const base = viewForChrome()
+  const item = (overrides: Partial<WorkStripItemView>): WorkStripItemView => ({
+    id: 'run-background',
+    runId: 'run-background',
+    conversationId: 'conversation-1',
+    branchId: 'branch-background',
+    state: 'running',
+    runner: 'pi',
+    model: 'fixture/model',
+    interactionCount: 1,
+    focused: false,
+    actions: { switch: true, ask: true, steer: true, cancel: true },
+    ...overrides,
+  })
+  const chrome = new TerminalChrome(theme)
+  const state = {
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: '/ commands · Ctrl+P',
+    composerMode: 'queue' as const,
+  }
+  chrome.setState({ view: base, ...state })
+  assert.doesNotMatch(chrome.render(120).join('\n'), /work 2|\/activity to switch/u)
+
+  chrome.setState({
+    view: {
+      ...base,
+      focusedRunId: 'run-metrics',
+      workStrip: Object.freeze([
+        item({
+          id: 'run-metrics',
+          runId: 'run-metrics',
+          branchId: 'branch-focused',
+          focused: true,
+        }),
+        item({}),
+      ]),
+    },
+    ...state,
+  })
+  const wide = chrome.render(120).join('\n')
+  assert.match(
+    wide,
+    /branch-focused · running · pi\/fixture\/model · 1 interaction · actions switch\/ask\/steer\/cancel/u,
+  )
+  assert.match(wide, /branch-background · running · pi\/fixture\/model/u)
+  const narrow = chrome.render(40)
+  assert.equal(narrow.length, 2)
+  assert.match(narrow[1] ?? '', /work 2 · \/activity to switch/u)
+  for (const line of narrow) assert.ok(visibleWidth(line) <= 40)
+  for (const line of chrome.render(120)) assert.ok(visibleWidth(line) <= 120)
 })
 
 test('composer hint chooses a complete slash affordance before narrow truncation', () => {

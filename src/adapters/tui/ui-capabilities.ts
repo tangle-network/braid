@@ -1,4 +1,4 @@
-import type { BraidState } from '../../domain/state.js'
+import { activeRunForBranch, isLiveRunStatus, type BraidState } from '../../domain/state.js'
 import type { CapabilityMap } from '../../views/shared/models.js'
 import type { UiFixture } from './ui-fixtures.js'
 
@@ -27,7 +27,12 @@ export function capabilityMap(
   fixture?: UiFixture,
   canRespond = false,
 ): CapabilityMap {
-  const active = state.activeRunId !== null
+  const selectedActive = activeRunForBranch(state, state.conversationId, state.branchId)
+  const active = selectedActive !== undefined
+  const focusedRun = state.focusedRunId
+    ? state.runs.find((run) => run.id === state.focusedRunId)
+    : undefined
+  const focusedActive = focusedRun !== undefined && isLiveRunStatus(focusedRun.status)
   const deterministicFixture = state.profile.model?.default === 'fixture/deterministic'
   const configuredConnection = state.selectedConnectionId !== null
   const capabilities: Record<
@@ -94,7 +99,7 @@ export function capabilityMap(
           reason: 'Initialize a workspace before editing a draft',
         }
       : { available: true, source: 'application' }
-  const conversationsAvailable = state.workspace !== null && !active
+  const conversationsAvailable = state.workspace !== null
   for (const capability of [
     'conversation.create',
     'conversation.open',
@@ -111,7 +116,7 @@ export function capabilityMap(
           reason:
             state.workspace === null
               ? 'Initialize a workspace first'
-              : 'Finish or cancel the active run first',
+              : 'The workspace is not ready for conversation changes',
         }
   }
   capabilities['run.send'] =
@@ -127,33 +132,30 @@ export function capabilityMap(
               : 'Configure a connection before sending',
         }
   const runConfigurationAvailable =
-    state.workspace !== null && !active && (deterministicFixture || configuredConnection)
+    state.workspace !== null && (deterministicFixture || configuredConnection)
   for (const capability of ['run.runner', 'run.model', 'run.effort']) {
     capabilities[capability] = runConfigurationAvailable
       ? { available: true, source: 'application' }
       : {
           available: false,
           source: 'application',
-          reason: active
-            ? 'Finish or cancel the active run first'
-            : state.workspace === null
+          reason:
+            state.workspace === null
               ? 'Initialize a workspace first'
               : 'Configure a connection before changing run settings',
         }
   }
   capabilities['run.cancel'] =
-    active && canCancel
+    focusedActive && canCancel
       ? { available: true, source: 'runtime' }
       : {
           available: false,
           source: 'runtime',
-          reason: active
+          reason: focusedActive
             ? 'The current runtime does not acknowledge provider cancellation'
             : 'There is no active run to cancel',
         }
-  const activeRun = state.activeRunId
-    ? state.runs.find((run) => run.id === state.activeRunId)
-    : undefined
+  const activeRun = focusedActive ? focusedRun : undefined
   const recoverableRun = activeRun
     ? undefined
     : [...state.runs]

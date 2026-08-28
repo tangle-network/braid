@@ -12,7 +12,7 @@ import type {
 import { redactSensitiveText } from '../domain/redaction.js'
 import { replayEvents } from '../domain/reducer.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
-import { type BraidState, initialState } from '../domain/state.js'
+import { isLiveRunStatus, type BraidState, initialState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
@@ -352,8 +352,9 @@ export class BraidApplication {
 
   markCleanupUncertain(reason: string): void {
     this.#cleanupUncertain = redactSensitiveText(reason).slice(0, 512)
-    const runId = this.#state.activeRunId
-    if (runId) this.#ledger.getAbort(runId)?.abort(new Error('Cleanup deadline exceeded'))
+    for (const run of this.#state.activeRuns) {
+      this.#ledger.getAbort(run.runId)?.abort(new Error('Cleanup deadline exceeded'))
+    }
   }
 
   async whenDurable(): Promise<void> {
@@ -493,6 +494,15 @@ export class BraidApplication {
     }
   }
 
+  focusRun(input: { readonly operationId: string; readonly runId: string }): BraidState {
+    operationId(input.operationId, 'focus-run')
+    const run = this.#state.runs.find((candidate) => candidate.id === input.runId)
+    if (!run) throw new AppError('UNKNOWN_RUN', `Run ${input.runId} is unknown`)
+    if (this.#state.focusedRunId === run.id) return this.state()
+    this.#commit({ kind: 'run.focused', runId: run.id })
+    return this.state()
+  }
+
   canCancel(): boolean {
     const runId = this.#state.activeRunId
     const run = runId ? this.#state.runs.find((candidate) => candidate.id === runId) : undefined
@@ -606,6 +616,10 @@ export class BraidApplication {
     try {
       await this.#lifecycle.settleActive({
         runIds: this.#activeRunIds(),
+        shouldSettleRun: (runId) => {
+          const run = this.#state.runs.find((candidate) => candidate.id === runId)
+          return run !== undefined && isLiveRunStatus(run.status)
+        },
         timeoutMs: this.#cancelTimeoutMs,
         cancel: (runId) => this.#cancelForClose(runId),
         markUnknown: (runId) => this.#markRunUnknownAfterCloseDeadline(runId),
@@ -681,9 +695,20 @@ export class BraidApplication {
   }
 
   #activeRunIds(): readonly string[] {
-    const active = this.#lifecycle.activeOperations().map((operation) => operation.runId)
-    const current = this.#state.activeRunId
-    return current === null ? active : [...active, current]
+    const active = this.#lifecycle
+      .activeOperations()
+      .filter((operation) => {
+        const run = this.#state.runs.find((candidate) => candidate.id === operation.runId)
+        return run !== undefined && isLiveRunStatus(run.status)
+      })
+      .map((operation) => operation.runId)
+    const current = this.#state.activeRuns
+      .filter((run) => {
+        const record = this.#state.runs.find((candidate) => candidate.id === run.runId)
+        return record !== undefined && isLiveRunStatus(record.status)
+      })
+      .map((run) => run.runId)
+    return [...new Set([...active, ...current])]
   }
 
   async #cancelForClose(runId: string): Promise<void> {

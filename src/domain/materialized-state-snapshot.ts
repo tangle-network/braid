@@ -1,11 +1,11 @@
 import { canonicalDigest } from './canonical.js'
 import type { EventId } from './ids.js'
-import { assertBraidState } from './invariants.js'
+import { assertBraidState, DomainInvariantError } from './invariants.js'
 import { migrateLegacyInteractions } from './legacy-interaction-snapshot.js'
 import type { MaterializedState } from './materialized-state.js'
 import { canonicalProjectionChecksum } from './projection-checksum.js'
 import { withHealth } from './reducer-helpers.js'
-import { type BraidState, initialState } from './state.js'
+import { normalizeActiveRuns, type BraidState, initialState } from './state.js'
 
 export const MATERIALIZED_SNAPSHOT_SCHEMA_VERSION = 1 as const
 
@@ -44,6 +44,8 @@ function materializedState(state: BraidState): MaterializedState {
     messages: state.messages,
     messageParts: state.messageParts,
     runs: state.runs,
+    activeRuns: state.activeRuns,
+    focusedRunId: state.focusedRunId,
     activeRunId: state.activeRunId,
     queuedInputs: state.queuedInputs,
     lastError: state.lastError,
@@ -138,9 +140,12 @@ export function restoreMaterializedState(value: unknown): BraidState {
   const stateFields = migrateLegacyInteractions({ ...snapshot.state } as MaterializedState & {
     interactions?: unknown
   })
-  const restored: BraidState = {
+  validatePersistedActiveRunReferences(stateFields)
+  const restored: BraidState = normalizeActiveRuns({
     ...base,
     ...stateFields,
+    activeRuns: stateFields.activeRuns ?? base.activeRuns,
+    focusedRunId: stateFields.focusedRunId ?? stateFields.activeRunId ?? base.focusedRunId,
     revision: snapshot.revision,
     sequence: snapshot.sequence,
     appliedEvents: [],
@@ -152,7 +157,7 @@ export function restoreMaterializedState(value: unknown): BraidState {
       missingHistoryCount: snapshot.state.missingHistory.length,
       unknownEventCount: 0,
     },
-  }
+  })
   const healthy = withHealth(restored)
   const finalized: BraidState = {
     ...healthy,
@@ -160,4 +165,29 @@ export function restoreMaterializedState(value: unknown): BraidState {
   }
   assertBraidState(finalized)
   return finalized
+}
+
+function validatePersistedActiveRunReferences(state: MaterializedState): void {
+  const runs = new Map(state.runs.map((run) => [run.id, run]))
+  for (const [name, runId] of [
+    ['activeRunId', state.activeRunId],
+    ['focusedRunId', state.focusedRunId],
+  ] as const) {
+    if (runId !== null && runId !== undefined && !runs.has(runId)) {
+      throw new DomainInvariantError(`state.${name} references unknown run ${runId}`)
+    }
+  }
+  const seen = new Set<string>()
+  for (const active of state.activeRuns ?? []) {
+    if (seen.has(active.runId)) {
+      throw new DomainInvariantError(`state.activeRuns contains duplicate run ${active.runId}`)
+    }
+    seen.add(active.runId)
+    const run = runs.get(active.runId)
+    if (!run)
+      throw new DomainInvariantError(`state.activeRuns references unknown run ${active.runId}`)
+    if (run.conversationId !== active.conversationId || run.branchId !== active.branchId) {
+      throw new DomainInvariantError(`state.activeRuns has stale identity for run ${active.runId}`)
+    }
+  }
 }

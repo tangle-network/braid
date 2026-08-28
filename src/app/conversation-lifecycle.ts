@@ -15,7 +15,6 @@ import {
   operationReplay,
   parseOperation,
   requestDigest,
-  requireIdle,
   requireWorkspace,
   selectedConnection,
   selectedProfile,
@@ -70,7 +69,6 @@ export class ConversationLifecycle {
   async #create(input: CreateConversationInput): Promise<ConversationRecord> {
     const state = this.#host.state()
     const workspaceId = requireWorkspace(state)
-    requireIdle(state, 'Creating a conversation')
     const title = normalizedTitle(input.title)
     const profileId = selectedProfile(state, input.profileId)
     const connectionId = selectedConnection(state, input.connectionId)
@@ -113,7 +111,6 @@ export class ConversationLifecycle {
 
   async #open(input: OpenConversationInput): Promise<ConversationRecord> {
     const state = this.#host.state()
-    requireIdle(state, 'Opening a conversation')
     const conversationId = parseConversationId(input.conversationId)
     const conversation = availableConversation(state, conversationId)
     const branchId =

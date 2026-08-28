@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.2.0.tgz",
-    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
+    "tarball": "tangle-network-braid-0.2.2.tgz",
+    "tarballSha256": "05758395a4c14b77ee4df05cb8d547c97ba362d65b73fb4078297957a28a88f9"
   },
   "dimensions": {
     "columns": 80,
@@ -17,7 +17,7 @@
       "package": "@earendil-works/pi-tui@0.84.2",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n Ask Braid starter anything.\n\n────────────────────────────────────────────────────────────────────────────────\n› new message\n\n\n─────────────── type / for commands · Alt+Enter newline · paste ────────────────\nprofile Braid starter · pi · via local\n",
+  "frame": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n Ask Braid starter anything.\n\n────────────────────────────────────────────────────────────────────────────────\n› new message\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via local\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
+      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -116,11 +116,13 @@
       "interactions": [],
       "queue": [],
       "activeRunId": null,
+      "focusedRunId": null,
+      "activeRuns": [],
       "lastError": null
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
+      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -276,6 +278,16 @@
           "source": "application",
           "reason": "Interaction automation requires the shared response contract"
         },
+        "run.interactive": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal mode requires an interactive TUI and a supported provider"
+        },
+        "run.attach": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal attachment requires an interactive TUI and a retained session"
+        },
         "export.create": {
           "available": true,
           "source": "application"
@@ -367,7 +379,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
+            "workspace": "/home/drew/code/.worktrees/braid-10-multirun"
           }
         }
       }

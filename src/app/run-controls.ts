@@ -41,6 +41,8 @@ export function queueRunInput(
     operationId: input.operationId,
     text: input.text,
     position,
+    conversationId: run.conversationId,
+    branchId: run.branchId,
   })
   return {
     operationId: input.operationId,

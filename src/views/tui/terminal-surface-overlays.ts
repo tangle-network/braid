@@ -11,6 +11,7 @@ import type { ModalCoordinator } from './modal-coordinator.js'
 import { SearchableSelector } from './selector.js'
 import { UnavailablePanel } from './terminal-shell.js'
 import type { BraidTheme } from './theme.js'
+import type { EntityBrowserRow } from './entity-browser.js'
 
 export interface TerminalSurfaceOverlayOptions {
   readonly theme: BraidTheme
@@ -22,6 +23,7 @@ export interface TerminalSurfaceOverlayOptions {
   readonly keymapDiagnostic?: () => string | undefined
   readonly openProfile: () => void
   readonly openConnection: () => void
+  readonly focusRun?: (runId: string) => void
 }
 
 export interface IntelligenceProgressHandle {
@@ -179,8 +181,14 @@ export class TerminalSurfaceOverlays {
       ...(selectedId === undefined ? {} : { selectedId }),
       ...(emptyMessage === undefined ? {} : { emptyMessage }),
       ...(pinned === undefined ? {} : { pinned }),
+      onOpenSelected: (row) => this.#focusSelectedRun(row),
       openSelected,
     })
+  }
+
+  #focusSelectedRun(row: EntityBrowserRow): void {
+    if (row.kind !== 'run' || row.runId === undefined) return
+    this.#options.focusRun?.(row.runId)
   }
 
   #hasActivity(id: string): boolean {

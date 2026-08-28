@@ -6,7 +6,7 @@ import { applyExecutionObservation } from './reducer-execution-observation.js'
 import { find, updateRun, upsert, upsertBy } from './reducer-helpers.js'
 import { applyRetainedAdmission } from './reducer-retained-admission.js'
 import { isCancellationConfirmedReconciliation } from './reducer-support.js'
-import type { BraidState } from './state.js'
+import { normalizeActiveRuns, type BraidState } from './state.js'
 
 export function applyDomainEvent(
   state: BraidState,
@@ -94,6 +94,10 @@ export function applyDomainEvent(
         ...state,
         runs: upsert(state.runs, { ...run, bindingId: event.bindingId, updatedAt: at }),
       }
+    }
+    case 'run.focused': {
+      if (event.runId !== null) find(state.runs, event.runId, 'Run')
+      return normalizeActiveRuns({ ...state, focusedRunId: event.runId }, event.runId)
     }
     case 'run.retained.admitted':
       return applyRetainedAdmission(state, event, at)

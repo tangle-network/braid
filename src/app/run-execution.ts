@@ -1,5 +1,6 @@
 import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
 import { isRuntimeEventEnvelope } from '../domain/runtime-events.js'
+import { activeRunForBranch } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
@@ -232,9 +233,16 @@ function finishPendingText(context: ExecutionRunPort, runId: string): string {
 }
 
 export async function drainQueue(context: ExecutionRunPort & SendAccess): Promise<void> {
-  const next = context.currentState().queuedInputs[0]
-  if (!next || context.currentState().activeRunId) return
-  if (context.currentState().missingHistory.some((range) => range.runId === next.runId)) return
+  const state = context.currentState()
+  const next = state.queuedInputs.find((candidate) => {
+    const completed = state.runs.find((run) => run.id === candidate.runId)
+    if (!completed) return false
+    const conversationId = candidate.conversationId ?? completed.conversationId
+    const branchId = candidate.branchId ?? completed.branchId
+    return activeRunForBranch(state, conversationId, branchId) === undefined
+  })
+  if (!next) return
+  if (state.missingHistory.some((range) => range.runId === next.runId)) return
   const completed = context.findRun(next.runId)
   if (
     (completed.status === 'unknown' &&
@@ -244,7 +252,12 @@ export async function drainQueue(context: ExecutionRunPort & SendAccess): Promis
     return
   if (!context.ledger.claimQueueDrain(next.operationId)) return
   try {
-    const receipt = context.send({ operationId: next.operationId, text: next.text })
+    const receipt = context.send({
+      operationId: next.operationId,
+      text: next.text,
+      conversationId: next.conversationId ?? completed.conversationId,
+      branchId: next.branchId ?? completed.branchId,
+    })
     if (receipt.admissionReady !== undefined) await receipt.admissionReady
     const removed = context.commitAndWait({
       kind: 'run.queue.removed',

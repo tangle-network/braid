@@ -11,12 +11,17 @@ import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/compos
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { createProfileRecord } from '../src/app/profiles.js'
+import {
+  createInteractionRequest,
+  rebindInteractionRequest,
+} from '../src/app/interaction-request.js'
 import { safeRuntimeDiagnostic } from '../src/app/provider-values.js'
 import { runEffectRequest } from '../src/app/run-admission.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { assertBraidState } from '../src/domain/invariants.js'
+import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { JournalPort } from '../src/ports/effect-storage.js'
 import type {
@@ -24,9 +29,11 @@ import type {
   ExecutionAdmission,
   ExecutionPort,
 } from '../src/ports/execution.js'
+import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 import { MAX_RENDERED_TEXT_CHARS } from '../src/views/shared/sanitize.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 function deferred<T = void>(): {
   readonly promise: Promise<T>
@@ -74,6 +81,401 @@ test('one send streams through runtime and reaches one terminal result', async (
       'effect.upserted',
     ],
   )
+})
+
+test('independent branches stream concurrently while same-branch input waits its turn', async () => {
+  const dispatches: Array<{
+    readonly input: Parameters<NonNullable<ExecutionPort['streamTurn']>>[0]
+    readonly release: () => void
+  }> = []
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      const gate = deferred<void>()
+      const aborted = new Promise<void>((resolve) => {
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      dispatches.push({ input, release: () => gate.resolve() })
+      await Promise.race([gate.promise, aborted])
+      if (input.signal.aborted) return
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'concurrent branch test completed',
+        text: `completed ${input.runId}`,
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: input.runId, intent: 'concurrent branch test' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  const sourceBranchId = app.state().branchId
+  const conversationId = app.state().conversationId
+
+  const first = app.send({ operationId: 'op-multirun-first', text: 'first branch turn' })
+  await waitUntil(() => dispatches.length === 1, 'first branch did not start')
+
+  const child = await app.conversations.branches.create({ operationId: 'op-multirun-branch' })
+  const second = app.send({ operationId: 'op-multirun-second', text: 'second branch turn' })
+  await waitUntil(() => dispatches.length === 2, 'independent branch did not start concurrently')
+
+  const queued = app.queueInput({
+    operationId: 'op-multirun-queued',
+    runId: first.runId,
+    text: 'queued source continuation',
+  })
+  await queued.completion
+  const active = app.state().activeRuns
+  assert.equal(active.length, 2)
+  assert.deepEqual(new Set(active.map((run) => run.branchId)), new Set([sourceBranchId, child.id]))
+  assert.equal(app.state().queuedInputs.length, 1)
+
+  await app.conversations.lifecycle.open({
+    operationId: 'op-multirun-focus-source',
+    conversationId,
+    branchId: sourceBranchId,
+  })
+  assert.equal(app.state().focusedRunId, first.runId)
+
+  const changed = await app.conversations.branches.setRunOverrides({
+    operationId: 'op-multirun-background-config',
+    conversationId,
+    branchId: child.id,
+    runner: 'codex',
+  })
+  assert.equal(changed.overrides.runner, 'codex')
+
+  dispatches[1]?.release()
+  await second.completion
+  assert.deepEqual(
+    app.state().activeRuns.map((run) => run.runId),
+    [first.runId],
+  )
+
+  dispatches[0]?.release()
+  await first.completion
+  await waitUntil(() => dispatches.length === 3, 'same-branch queue did not drain')
+  assert.equal(app.state().queuedInputs.length, 0)
+  assert.equal(app.state().activeRuns.length, 1)
+  assert.equal(dispatches[2]?.input.runId === first.runId, false)
+
+  dispatches[2]?.release()
+  await app.waitForIdle()
+  assert.deepEqual(app.state().activeRuns, [])
+  assert.deepEqual(
+    app.state().runs.map((run) => run.status),
+    ['completed', 'completed', 'completed'],
+  )
+  await app.close()
+})
+
+test('a background branch keeps its interaction response independent after focus switches', async () => {
+  const interaction = createInteractionRequest({
+    id: 'interaction-multirun-background',
+    kind: 'question',
+    title: 'Continue the background run?',
+    body: 'The background run needs a response.',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    responseScopes: ['interaction'],
+    binding: {
+      runId: 'run-placeholder',
+      provider: 'fixture',
+      environmentId: 'environment-multirun',
+      sessionId: 'session-multirun',
+      executionId: 'execution-multirun',
+      interactionId: 'interaction-multirun-background',
+    },
+  })
+  const releases = new Map<string, ReturnType<typeof deferred<void>>>()
+  const execution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      const release = deferred<void>()
+      releases.set(input.runId, release)
+      const aborted = new Promise<void>((resolve) => {
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      if (input.text === 'background interaction') {
+        yield {
+          type: 'interaction',
+          request: rebindInteractionRequest(interaction, {
+            ...interaction.binding,
+            runId: input.runId,
+            executionId: input.runId,
+          }),
+        }
+      }
+      await Promise.race([release.promise, aborted])
+      if (input.signal.aborted) return
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'background interaction test completed',
+        text: `completed ${input.runId}`,
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: input.runId, intent: 'background interaction test' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+    respondInteraction: async (input) => {
+      releases.get(input.command.binding.runId)?.resolve()
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  const conversationId = app.state().conversationId
+  const first = app.send({ operationId: 'op-multirun-background', text: 'background interaction' })
+  await waitUntil(
+    () => app.state().runs[0]?.interactions[0]?.status === 'pending',
+    'background interaction did not arrive',
+  )
+
+  const child = await app.conversations.branches.create({
+    operationId: 'op-multirun-interaction-branch',
+  })
+  const second = app.send({ operationId: 'op-multirun-foreground', text: 'foreground turn' })
+  await waitUntil(() => releases.size === 2, 'foreground branch did not start')
+  await app.conversations.lifecycle.open({
+    operationId: 'op-multirun-focus-foreground',
+    conversationId,
+    branchId: child.id,
+  })
+  assert.equal(app.state().focusedRunId, second.runId)
+
+  const backgroundRun = app.state().runs.find((run) => run.id === first.runId)
+  const pending = backgroundRun?.interactions[0]
+  assert(backgroundRun && pending)
+  const response = await app.respondInteraction({
+    operationId: 'op-multirun-background-response',
+    runId: first.runId,
+    interactionId: pending.request.id,
+    response: { id: pending.request.id, outcome: 'accepted', data: { continue: true } },
+  })
+  await response.completion
+  await first.completion
+  assert.equal(app.state().runs.find((run) => run.id === first.runId)?.status, 'completed')
+  assert.equal(app.state().runs.find((run) => run.id === second.runId)?.status, 'streaming')
+  assert.equal(app.state().focusedRunId, second.runId)
+
+  releases.get(second.runId)?.resolve()
+  await second.completion
+  await app.waitForIdle()
+  assert.deepEqual(app.state().activeRuns, [])
+  await app.close()
+})
+
+test('concurrent streams isolate disconnect replay and duplicate provider events', async () => {
+  const replayCapabilities = {
+    ...DEFAULT_RUN_CAPABILITIES,
+    streaming: { ...DEFAULT_RUN_CAPABILITIES.streaming, replay: true },
+    events: { ...DEFAULT_RUN_CAPABILITIES.events, cursor: true, stableIdentity: true },
+  } as const
+  const firstStarted = deferred<void>()
+  const releaseFirstDisconnect = deferred<void>()
+  const secondStarted = deferred<void>()
+  const releaseSecondFinal = deferred<void>()
+  const reconnects: string[] = []
+  const execution: ExecutionPort = {
+    capabilities: () => replayCapabilities,
+    async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope> {
+      const before = {
+        runId: input.runId,
+        eventId: `${input.runId}-before`,
+        sequence: 1,
+        receivedAt: '2026-08-03T00:00:00.000Z',
+        event: { type: 'text_delta' as const, text: `before ${input.runId}` },
+      }
+      if (input.text === 'disconnect and replay') {
+        firstStarted.resolve()
+        yield before
+        await releaseFirstDisconnect.promise
+        throw new Error('concurrent stream disconnected')
+      }
+      secondStarted.resolve()
+      yield before
+      yield before
+      await releaseSecondFinal.promise
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}-final`,
+        sequence: 2,
+        receivedAt: '2026-08-03T00:00:00.000Z',
+        event: {
+          type: 'final' as const,
+          status: 'completed' as const,
+          reason: 'duplicate stream completed',
+          text: `after ${input.runId}`,
+          task: { id: input.runId, intent: 'duplicate stream test' },
+          timestamp: '2026-08-03T00:00:00.000Z',
+        },
+      }
+    },
+    reconnect: async function* (input): AsyncIterable<RuntimeEventEnvelope> {
+      reconnects.push(input.runId)
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}-replayed-final`,
+        sequence: 2,
+        cursor: `${input.runId}-cursor-2`,
+        receivedAt: '2026-08-03T00:00:00.000Z',
+        event: {
+          type: 'final' as const,
+          status: 'completed' as const,
+          reason: 'replayed after disconnect',
+          text: `replayed ${input.runId}`,
+          task: { id: input.runId, intent: 'replay test' },
+          timestamp: '2026-08-03T00:00:00.000Z',
+        },
+      }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  const conversationId = app.state().conversationId
+  const sourceBranchId = app.state().branchId
+  const first = app.send({ operationId: 'op-multirun-disconnect', text: 'disconnect and replay' })
+  await firstStarted.promise
+  const child = await app.conversations.branches.create({
+    operationId: 'op-multirun-replay-branch',
+  })
+  const second = app.send({ operationId: 'op-multirun-duplicate', text: 'duplicate events' })
+  await secondStarted.promise
+  assert.equal(app.state().activeRuns.length, 2)
+
+  releaseFirstDisconnect.resolve()
+  await first.completion
+  assert.deepEqual(reconnects, [first.runId])
+  assert.equal(app.state().runs.find((run) => run.id === first.runId)?.status, 'completed')
+  assert.deepEqual(
+    app.state().activeRuns.map((run) => run.runId),
+    [second.runId],
+  )
+  assert.equal(
+    app
+      .events()
+      .filter(
+        (entry) => entry.event.kind === 'run.text.delta' && entry.event.runId === second.runId,
+      ).length,
+    1,
+  )
+
+  releaseSecondFinal.resolve()
+  await second.completion
+  await app.waitForIdle()
+  assert.equal(app.state().runs.find((run) => run.id === second.runId)?.status, 'completed')
+  assert.deepEqual(app.state().activeRuns, [])
+  assert.equal(app.state().conversationId, conversationId)
+  assert.equal(app.state().branchId, child.id)
+  assert.notEqual(sourceBranchId, child.id)
+  await app.close()
+})
+
+test('cancelling a background branch leaves the focused branch running', async () => {
+  const releases = new Map<string, ReturnType<typeof deferred<void>>>()
+  const cancelledRuns = new Set<string>()
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+      const release = deferred<void>()
+      releases.set(input.runId, release)
+      const aborted = new Promise<void>((resolve) => {
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      await Promise.race([release.promise, aborted])
+      if (input.signal.aborted || cancelledRuns.has(input.runId)) return
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'background cancellation test completed',
+        text: `completed ${input.runId}`,
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: input.runId, intent: 'background cancellation test' },
+        timestamp: '2026-08-03T00:00:00.000Z',
+      }
+    },
+    cancelRun: async (input) => {
+      cancelledRuns.add(input.runId)
+      releases.get(input.runId)?.resolve()
+      return { operationId: input.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+  app.initialize('/workspace')
+  const conversationId = app.state().conversationId
+  const sourceBranchId = app.state().branchId
+  const first = app.send({ operationId: 'op-multirun-cancel-background', text: 'background work' })
+  await waitUntil(() => releases.size === 1, 'background run did not start')
+  const child = await app.conversations.branches.create({
+    operationId: 'op-multirun-cancel-branch',
+  })
+  const second = app.send({ operationId: 'op-multirun-cancel-foreground', text: 'foreground work' })
+  await waitUntil(() => releases.size === 2, 'focused run did not start')
+  await app.conversations.lifecycle.open({
+    operationId: 'op-multirun-cancel-focus',
+    conversationId,
+    branchId: child.id,
+  })
+  assert.equal(app.state().focusedRunId, second.runId)
+
+  const cancelled = await app.cancelRun({
+    operationId: 'op-multirun-cancel-control',
+    runId: first.runId,
+  })
+  const cancelledState = await cancelled.completion
+  assert.equal(cancelled.acknowledgement.outcome, 'accepted')
+  assert.equal(cancelledState.runs.find((run) => run.id === first.runId)?.status, 'cancelled')
+  assert.equal(app.state().runs.find((run) => run.id === second.runId)?.status, 'streaming')
+  assert.equal(app.state().focusedRunId, second.runId)
+  assert.deepEqual(
+    app.state().activeRuns.map((run) => run.runId),
+    [second.runId],
+  )
+
+  releases.get(second.runId)?.resolve()
+  await second.completion
+  await first.completion
+  await app.waitForIdle()
+  assert.deepEqual(app.state().activeRuns, [])
+  assert.equal(app.state().branchId, child.id)
+  assert.notEqual(sourceBranchId, child.id)
+  await app.close()
 })
 
 test('admission snapshots profile and connection before a blocked dispatch', async () => {

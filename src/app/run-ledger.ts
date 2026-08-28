@@ -1,5 +1,5 @@
 import type { BraidControlKind, BraidEventEnvelope } from '../domain/events.js'
-import type { BraidState } from '../domain/state.js'
+import { isLiveRunStatus, type BraidState } from '../domain/state.js'
 import type {
   ControlOperationRecord,
   OperationRecord,
@@ -104,15 +104,9 @@ export function createRunLedger(): RunLedger {
         const event = envelope.event
         if (event.kind === 'run.requested' && event.receipt) {
           const run = state().runs.find((candidate) => candidate.id === event.runId)
-          if (run && !isTerminal(run.status)) aborts.set(run.id, new AbortController())
+          if (run && isLiveRunStatus(run.status)) aborts.set(run.id, new AbortController())
         }
       }
     },
   }
-}
-
-function isTerminal(status: BraidState['runs'][number]['status']): boolean {
-  return ['completed', 'failed', 'aborted', 'cancelled', 'blocked', 'expired', 'unknown'].includes(
-    status,
-  )
 }

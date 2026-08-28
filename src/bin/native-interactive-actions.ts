@@ -2,7 +2,7 @@ import type { AgentInteractiveTerminalSession } from '@tangle-network/agent-inte
 import { claimRetainedInteractiveControl } from '@tangle-network/agent-runtime/kernel'
 import { createNativeTerminalTransport } from '../adapters/tui/native-terminal-transport.js'
 import type { BraidApplication } from '../app/application.js'
-import type { BraidRun } from '../domain/state.js'
+import { activeRunForBranch, type BraidRun, type BraidState } from '../domain/state.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import type {
   NativeTerminalHost,
@@ -72,13 +72,19 @@ function availability(
   }
   const state = current.app.state()
   if (action === 'start') {
-    return state.activeRunId === null
+    return !selectedBranchHasActiveRun(state)
       ? { available: true }
       : { available: false, reason: 'Detach or finish the active run first' }
   }
   return latestAttachableRun(state.runs) === undefined
     ? { available: false, reason: 'No retained native session is available' }
     : { available: true }
+}
+
+function selectedBranchHasActiveRun(state: BraidState): boolean {
+  if (typeof state.conversationId !== 'string' || typeof state.branchId !== 'string')
+    return state.activeRunId !== null
+  return activeRunForBranch(state, state.conversationId, state.branchId) !== undefined
 }
 
 async function runCommand(

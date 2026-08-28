@@ -19,6 +19,7 @@ export interface ActivityBrowserOptions {
   readonly view: () => BraidViewModel
   readonly rows: () => number
   readonly onClose: () => void
+  readonly onOpenSelected?: (row: EntityBrowserRow) => void
   readonly scope?: ActivityBrowserScope
   readonly selectedId?: string
   readonly openSelected?: boolean
@@ -43,6 +44,7 @@ export class ActivityBrowserPanel extends EntityBrowser {
         ),
       rows: options.rows,
       onClose: options.onClose,
+      ...(options.onOpenSelected === undefined ? {} : { onOpenSelected: options.onOpenSelected }),
       ...(options.selectedId === undefined ? {} : { selectedId: options.selectedId }),
       ...(options.openSelected === undefined ? {} : { openSelected: options.openSelected }),
     })
@@ -117,6 +119,7 @@ function rowFor(
   return {
     id: item.id,
     kind: item.kind,
+    ...(item.runId === undefined ? {} : { runId: item.runId }),
     title: entity?.title ?? item.title,
     status: item.status,
     ...(meta === undefined ? {} : { meta }),

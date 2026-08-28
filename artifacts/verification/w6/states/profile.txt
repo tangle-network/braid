@@ -1,3 +1,10 @@
+ profile
+────────────────────────────────────────────────────────────────────────────────
+ Braid starter
+ trusted · read-only
+ runner pi · model fixture/deterministic
+ thinking none · limits provider default
+ digest sha256:44ed91c9…8cfa0a14
 
 
 
@@ -7,9 +14,11 @@
 
 
 
-      Braid starter
-      trusted · read-only
-      runner pi · model fixture/deterministic
-      thinking none · limits provider default
-      digest sha256:44ed91c9…8cfa0a14
-      ←/esc close
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ ←/esc close

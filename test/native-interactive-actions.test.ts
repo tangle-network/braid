@@ -276,3 +276,40 @@ test('requires a prompt and explains unavailable native providers', async () => 
     message: 'Usage: /interactive <prompt>',
   })
 })
+
+test('native terminal start only blocks an active run on the selected branch', () => {
+  const app = {
+    state: () => ({
+      activeRunId: 'run-other-branch',
+      conversationId: 'conversation-selected',
+      branchId: 'branch-selected',
+      runs: [
+        {
+          id: 'run-other-branch',
+          conversationId: 'conversation-other',
+          branchId: 'branch-other',
+          status: 'running',
+        },
+      ],
+    }),
+  } as unknown as Pick<BraidApplication, 'detachRun' | 'reconnectRun' | 'send' | 'state'>
+  const actions = createNativeInteractiveUiActions({
+    current: () => ({
+      app,
+      nativeInteractive: {
+        waitForHandle: async () => {
+          throw new Error('not used')
+        },
+        settle: () => {},
+      },
+    }),
+    terminal: new TestTerminal(),
+    signals: () => signals,
+    suspend: () => {},
+    resume: () => {},
+    nextOperationId: () => 'operation-unused',
+    holderId: 'braid-native-actions',
+  })
+
+  assert.deepEqual(actions.availability('start'), { available: true })
+})

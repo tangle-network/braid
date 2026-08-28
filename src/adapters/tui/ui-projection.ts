@@ -8,7 +8,7 @@ import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
-import type { BraidState } from '../../domain/state.js'
+import { activeRunForBranch, isActiveRunStatus, type BraidState } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
 import type {
@@ -19,6 +19,7 @@ import type {
   InteractionView,
   MessageView,
   RunView,
+  WorkStripItemView,
   TranscriptPartView,
   ViewStatus,
 } from '../../views/shared/models.js'
@@ -47,15 +48,11 @@ const ALL_PROTOCOL_INTERACTION_OUTCOMES = [
 ] as const satisfies readonly ProtocolInteractionOutcome[]
 
 export function statusFor(state: BraidState): ViewStatus {
-  if (state.activeRunId) {
-    const active = state.runs.find((run) => run.id === state.activeRunId)
-    if (active?.status === 'cancelling') return 'cancelling'
-    if (active?.status === 'reconnecting') return 'reconnecting'
-    if (active?.status === 'starting') return 'starting'
-    if (active?.status === 'blocked') return 'waiting'
-    return 'running'
-  }
-  const status = state.runs.at(-1)?.status
+  const active = activeRunForBranch(state, state.conversationId, state.branchId)
+  if (active) return viewStatusForRun(active.status)
+  const status = state.runs
+    .filter((run) => run.conversationId === state.conversationId && run.branchId === state.branchId)
+    .at(-1)?.status
   if (!status) return state.messages.length === 0 ? 'empty' : 'ready'
   switch (status) {
     case 'completed':
@@ -87,15 +84,12 @@ export function statusFor(state: BraidState): ViewStatus {
   }
 }
 
-function statusForRun(state: BraidState, run: BraidState['runs'][number]): ViewStatus {
-  if (state.activeRunId === run.id) {
-    if (run.status === 'cancelling') return 'cancelling'
-    if (run.status === 'reconnecting') return 'reconnecting'
-    if (run.status === 'starting') return 'starting'
-    if (run.status === 'blocked') return 'waiting'
-    return 'running'
-  }
-  switch (run.status) {
+function statusForRun(_state: BraidState, run: BraidState['runs'][number]): ViewStatus {
+  return viewStatusForRun(run.status)
+}
+
+function viewStatusForRun(status: BraidState['runs'][number]['status']): ViewStatus {
+  switch (status) {
     case 'completed':
       return 'completed'
     case 'failed':
@@ -242,6 +236,58 @@ export function runViews(state: BraidState): RunView[] {
       ...(run.interactionsTruncated ? { interactionsTruncated: true } : {}),
     })
   })
+}
+
+/** Projects the compact multi-run strip without widening the transcript layout. */
+export function workStripFor(state: BraidState): readonly WorkStripItemView[] | undefined {
+  const runs = state.runs.filter((run) => isActiveRunStatus(run.status))
+  const queued = state.queuedInputs.flatMap((entry) => {
+    const run = state.runs.find((candidate) => candidate.id === entry.runId)
+    return run === undefined ? [] : [{ entry, run }]
+  })
+  const focusedRunId = state.focusedRunId ?? state.activeRunId
+  const items: WorkStripItemView[] = runs.map((run) => ({
+    id: run.id,
+    runId: run.id,
+    conversationId: String(run.conversationId),
+    branchId: String(run.branchId),
+    state: viewStatusForRun(run.status),
+    ...(run.receipt.requested.runner === undefined
+      ? {}
+      : { runner: sanitizeTerminalText(run.receipt.requested.runner) }),
+    ...(run.model === undefined ? {} : { model: sanitizeTerminalText(run.model) }),
+    interactionCount: run.interactions.filter((item) => item.status === 'pending').length,
+    focused: run.id === focusedRunId,
+    actions: {
+      switch: true,
+      ask: run.complete && (run.status === 'completed' || run.status === 'failed'),
+      steer: run.capabilities.controls.steer,
+      cancel: run.capabilities.controls.cancel,
+    },
+  }))
+  for (const { entry, run } of queued) {
+    items.push({
+      id: entry.operationId,
+      runId: run.id,
+      conversationId: String(run.conversationId),
+      branchId: String(run.branchId),
+      state: 'queued',
+      ...(run.receipt.requested.runner === undefined
+        ? {}
+        : { runner: sanitizeTerminalText(run.receipt.requested.runner) }),
+      ...(run.model === undefined ? {} : { model: sanitizeTerminalText(run.model) }),
+      interactionCount: run.interactions.filter((item) => item.status === 'pending').length,
+      focused: false,
+      queueOperationId: entry.operationId,
+      actions: {
+        switch: true,
+        ask: run.complete && (run.status === 'completed' || run.status === 'failed'),
+        steer: false,
+        cancel: false,
+      },
+    })
+  }
+  return items.length < 2 ? undefined : Object.freeze(items)
 }
 
 function completenessFor(
@@ -667,6 +713,8 @@ export function toHeadlessState(
     interactions: interactionViews(state),
     queue: queueViews(state),
     activeRunId: state.activeRunId,
+    focusedRunId: state.focusedRunId,
+    activeRuns: state.activeRuns,
     lastError: state.lastError ? sanitizeTerminalText(state.lastError) : null,
     ...(storageFailure === undefined
       ? {}

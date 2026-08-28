@@ -100,6 +100,13 @@ export class TerminalOverlayController {
         : { keymapDiagnostic: options.keymapDiagnostic }),
       openProfile: () => this.openProfile(),
       openConnection: () => this.openConnection(),
+      focusRun: (runId) => {
+        void this.#controller.dispatch({
+          type: 'focus-run',
+          operationId: this.#nextOperationId(),
+          runId,
+        })
+      },
     })
     this.#automation = new AutomationOverlayWorkflow({
       theme: this.#theme,

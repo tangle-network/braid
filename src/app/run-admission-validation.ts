@@ -92,14 +92,16 @@ export function validateExecutionContext(
   state: ReturnType<StateReader['currentState']>,
   input: ExecuteTurnInput,
   admission: ExecutionAdmission | undefined,
+  conversationId = state.conversationId,
+  branchId = state.branchId,
 ): void {
   const receipt = admission?.materializationReceipt
   if (receipt?.portableContext !== 'unavailable') return
   if (input.sessionId !== undefined && input.contextBoundary === undefined) return
   const hasHistory = branchHasVisibleHistory({
     state,
-    conversationId: state.conversationId,
-    branchId: state.branchId,
+    conversationId,
+    branchId,
   })
   if (!hasHistory) return
   throw new AppError(

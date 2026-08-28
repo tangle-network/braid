@@ -82,6 +82,9 @@ export interface BraidActivity {
 export interface QueuedInput {
   readonly operationId: string
   readonly runId: string
+  /** The continuation scope remains stable if the user switches branches. */
+  readonly conversationId?: string
+  readonly branchId?: string
   readonly text: string
   readonly position: number
 }

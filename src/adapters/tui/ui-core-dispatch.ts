@@ -67,6 +67,18 @@ export async function dispatchCoreIntent(
         completion: receipt.completion.then(() => undefined),
       }
     }
+    case 'focus-run': {
+      const state = context.app.focusRun({
+        operationId: intent.operationId,
+        runId: intent.runId,
+      })
+      return {
+        kind: 'accepted',
+        operationId: intent.operationId,
+        runId: intent.runId,
+        revision: state.revision,
+      }
+    }
     case 'open-surface':
       context.setSelectedSurface(
         intent.surface === 'settings' ? 'details' : intent.surface,
@@ -120,6 +132,7 @@ export async function dispatchCoreIntent(
       const receipt = context.app.queueInput({
         operationId: intent.operationId,
         text: intent.text,
+        ...(intent.runId === undefined ? {} : { runId: intent.runId }),
       })
       if (receipt.completion !== undefined) await receipt.completion
       return {
@@ -138,6 +151,7 @@ export async function dispatchCoreIntent(
       const receipt = await context.app.steer({
         operationId: intent.operationId,
         text: intent.text,
+        ...(intent.runId === undefined ? {} : { runId: intent.runId }),
       })
       return {
         kind: 'accepted',

@@ -102,6 +102,8 @@ function stateResponse(
         queue: view.queue ?? [],
         queueCount: view.queueCount,
         activeRunId: state.activeRunId,
+        ...(state.focusedRunId === undefined ? {} : { focusedRunId: state.focusedRunId }),
+        ...(state.activeRuns === undefined ? {} : { activeRuns: state.activeRuns }),
         lastError: state.lastError,
       },
     }

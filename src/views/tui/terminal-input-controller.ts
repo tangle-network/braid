@@ -152,7 +152,7 @@ export class TerminalInputController {
       matchesKeyAction(data, this.#keymap, 'exit') &&
       !this.#tui.hasOverlay() &&
       !this.#shell.editor.getText() &&
-      !this.#controller.view().activeRunId
+      liveRunId(this.#controller.view()) === undefined
     ) {
       this.#requestShutdown()
       return { consume: true }
@@ -162,8 +162,14 @@ export class TerminalInputController {
         this.#shell.editor.setText('')
         return { consume: true }
       }
-      if (this.#controller.view().activeRunId) {
-        void this.#dispatch({ type: 'cancel-run', operationId: this.#nextOperationId() })
+      const view = this.#controller.view()
+      const runId = liveRunId(view)
+      if (runId) {
+        void this.#dispatch({
+          type: 'cancel-run',
+          operationId: this.#nextOperationId(),
+          runId,
+        })
         return { consume: true }
       }
       if (this.#quitArmed) this.#requestShutdown()
@@ -217,4 +223,17 @@ export class TerminalInputController {
     this.#quitTimer = undefined
     this.#stateChanged()
   }
+}
+
+function liveRunId(view: ReturnType<BraidUiController['view']>): string | undefined {
+  for (const runId of [view.focusedRunId, view.activeRunId]) {
+    if (runId === undefined) continue
+    const run = view.runs.find((candidate) => candidate.id === runId)
+    if (
+      run !== undefined &&
+      !['completed', 'cancelled', 'failed', 'expired', 'unknown', 'detached'].includes(run.status)
+    )
+      return runId
+  }
+  return undefined
 }

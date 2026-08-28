@@ -1,7 +1,7 @@
 import { selectedRunConfiguration } from '../../app/effective-run-configuration.js'
 import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { canonicalDigest } from '../../domain/canonical.js'
-import type { BraidState } from '../../domain/state.js'
+import { activeRunForBranch, type BraidState } from '../../domain/state.js'
 import { type ColorMode, resolveColorMode } from '../../views/shared/appearance.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import { type BraidViewModel, freezeView } from '../../views/shared/models.js'
@@ -19,6 +19,7 @@ import {
   queueViews,
   runViews,
   statusFor,
+  workStripFor,
 } from './ui-projection.js'
 import { uiSemanticState } from './ui-semantic-state.js'
 
@@ -100,6 +101,8 @@ export function buildBraidViewModel(
   const color =
     appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
   const semantic = semanticViewFor(state, graphQuery)
+  const selectedActiveRun = activeRunForBranch(state, state.conversationId, state.branchId)
+  const workStrip = workStripFor(state)
   return freezeView({
     revision: state.revision,
     workspace: state.workspace ? sanitizeTerminalText(state.workspace) : null,
@@ -166,7 +169,9 @@ export function buildBraidViewModel(
     runs: Object.freeze(runViews(state)),
     sessionUsage: sessionUsageFor(state),
     environments: Object.freeze(state.environments.map(environmentView)),
-    ...(state.activeRunId ? { activeRunId: state.activeRunId } : {}),
+    ...(selectedActiveRun ? { activeRunId: selectedActiveRun.id } : {}),
+    ...(state.focusedRunId ? { focusedRunId: state.focusedRunId } : {}),
+    ...(workStrip === undefined ? {} : { workStrip }),
     interactions: Object.freeze(interactionViews(state)),
     activity: semantic.activity,
     graph: semantic.graph,
