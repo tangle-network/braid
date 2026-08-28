@@ -167,12 +167,12 @@ function workStripItem(
           `${item.interactionCount} waiting interaction${item.interactionCount === 1 ? '' : 's'}`,
         )
   const actionText = actions.length === 0 ? '' : theme.muted(`actions ${actions}`)
-  return fitTerminalColumns(
-    [`${marker} ${branch}`, theme.muted(state), theme.muted(`${runner}/${model}`)],
-    [waiting, actionText],
-    width,
-    'left',
-  )
+  const left = [`${marker} ${branch}`, theme.muted(state), theme.muted(`${runner}/${model}`)]
+  const full = fitTerminalColumns(left, [waiting, actionText], width, 'left')
+  if (item.focused && actionText.length > 0 && !full.includes('actions ')) {
+    return fitTerminalColumns(left, [actionText], width, 'left')
+  }
+  return full
 }
 
 function compactWorkIdentity(value: string, maxWidth: number): string {

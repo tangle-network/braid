@@ -198,10 +198,13 @@ test('work strip is conditional and exposes branch work controls', () => {
     /focus branch-focused · running · pi\/fixture\/model\s+1 waiting interaction · actions switch\/ask\/steer\/cancel/u,
   )
   assert.match(wide, /work branch-background · running · pi\/fixture\/model/u)
-  const standard = chrome.render(80).join('\n')
+  const standardLines = chrome.render(80)
+  const standard = standardLines.join('\n')
   assert.match(standard, /focus branch-focused · running/u)
   assert.match(standard, /1 waiting interaction/u)
   assert.match(standard, /actions switch\/ask\/steer\/cancel/u)
+  assert.match(standardLines[1] ?? '', /actions switch\/ask\/steer\/cancel/u)
+  assert.match(standardLines[2] ?? '', /1 waiting interaction/u)
 
   chrome.setState({
     view: {
@@ -222,7 +225,7 @@ test('work strip is conditional and exposes branch work controls', () => {
     ...state,
   })
   const generatedIdentityRow = chrome.render(80)[1] ?? ''
-  assert.match(generatedIdentityRow, /focus branch-0123456789ab…345-terminal · running/u)
+  assert.match(generatedIdentityRow, /focus branch-0123456789…terminal · running/u)
   assert.match(generatedIdentityRow, /actions switch\/steer\/cancel/u)
   assert.doesNotMatch(generatedIdentityRow, /!ask|0123456789abcdef0123456789abcdef/u)
   const narrow = chrome.render(40)
