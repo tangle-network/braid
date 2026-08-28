@@ -2,6 +2,21 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TuiMainScreen } from '@earendil-works/pi-tui'
 import type { ExactAnalystRunEvent, ExactAnalystRunResult } from '@tangle-network/agent-eval'
+import type {
+  AgentInteractiveSessionControlClaimRequest,
+  AgentInteractiveSessionRef,
+  AgentInteractiveTerminalSession,
+  TerminalDetachAck,
+} from '@tangle-network/agent-interface'
+import {
+  agentExecutionPreparationReceiptSchema,
+  canonicalCandidateDigest,
+} from '@tangle-network/agent-interface'
+import type {
+  RetainedInteractiveRunHandle,
+  WorkerInteractiveProviderSource,
+  WorkerInteractiveSession,
+} from '@tangle-network/agent-runtime/kernel'
 import {
   AgentEvalAnalystAdapter,
   type AnalystRegistryPort,
@@ -18,12 +33,15 @@ import { freezeAnalysisSource } from '../src/app/analysis-source.js'
 import { BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { createMemoryJournal } from '../src/app/journal.js'
+import { createNativeInteractiveUiActions } from '../src/bin/native-interactive-actions.js'
+import type { NativeTerminalSignalPort } from '../src/index.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 import { analysisLines } from '../src/views/shared/analysis-presentation.js'
+import type { BraidIntent, BraidUiController } from '../src/views/shared/intents.js'
 import { queryGraph } from '../src/views/shared/semantic-graph.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -179,6 +197,170 @@ function supervisionSnapshot(
       },
     ],
   } as unknown as TopSnapshot
+}
+
+class DetachingWorkerTerminalSession implements AgentInteractiveTerminalSession {
+  readonly ref = {
+    terminalSessionId: 'terminal-worker-attach',
+    parentExecutionId: 'execution-worker-attach',
+    name: 'worker attach test',
+    shell: '/bin/sh',
+    cwd: '/workspace',
+    cols: 100,
+    rows: 30,
+    createdAt: '2026-08-16T00:00:00.000Z',
+    lastActivityAt: '2026-08-16T00:00:00.000Z',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    isRunning: true,
+    attachCount: 1,
+  }
+  readonly cursors = { earliest: 0, latest: 0 }
+  readonly control = {
+    refDigest: `sha256:${'1'.repeat(64)}` as const,
+    generation: 1,
+    leaseId: 'lease-worker-attach',
+    holderId: 'braid-worker-attach',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  }
+  detachCalls = 0
+  #releaseEvents: () => void = () => {}
+
+  input(): Promise<void> {
+    return Promise.resolve()
+  }
+
+  resize(): Promise<void> {
+    return Promise.resolve()
+  }
+
+  detach(): Promise<TerminalDetachAck> {
+    this.detachCalls += 1
+    this.#releaseEvents()
+    return Promise.resolve({
+      status: 'detached',
+      terminalSessionId: this.ref.terminalSessionId,
+    })
+  }
+
+  close(): Promise<TerminalDetachAck> {
+    return Promise.resolve({ status: 'closed', terminalSessionId: this.ref.terminalSessionId })
+  }
+
+  async *events(): AsyncIterable<{
+    readonly type: 'output'
+    readonly seq: number
+    readonly data: string
+  }> {
+    yield { type: 'output', seq: 0, data: 'native worker terminal output\r\n' }
+    await new Promise<void>((resolve) => {
+      this.#releaseEvents = resolve
+    })
+  }
+}
+
+class LifecycleVirtualTerminal extends VirtualTerminal {
+  starts = 0
+  stops = 0
+
+  override start(onInput: (data: string) => void, onResize: () => void): void {
+    this.starts += 1
+    super.start(onInput, onResize)
+  }
+
+  override stop(): void {
+    this.stops += 1
+    super.stop()
+  }
+}
+
+const workerInteractivePreparation = {
+  kind: 'agent-execution-preparation' as const,
+  schemaVersion: 1 as const,
+  preparationId: 'preparation-worker-attach',
+  requestDigest: `sha256:${'1'.repeat(64)}` as const,
+  authoredProfileDigest: `sha256:${'2'.repeat(64)}` as const,
+  effectiveProfileDigest: `sha256:${'2'.repeat(64)}` as const,
+  backend: 'test-backend',
+  harness: 'pi' as const,
+  harnessVersion: 'test-harness-1',
+  resolvedModel: { requested: 'test/model', resolved: 'test/model' },
+  workspace: {
+    leaseId: 'workspace-lease-worker-attach',
+    provider: 'test-provider',
+    identityDigest: `sha256:${'3'.repeat(64)}` as const,
+    isolation: 'per-run' as const,
+    sourceSnapshotDigest: `sha256:${'4'.repeat(64)}` as const,
+    sourceSnapshotPolicy: {
+      kind: 'provider-declared' as const,
+      name: 'test-snapshot',
+      version: 1,
+      digest: `sha256:${'5'.repeat(64)}` as const,
+    },
+    preparedWorkspaceDigest: `sha256:${'6'.repeat(64)}` as const,
+    profileActivationDigest: `sha256:${'7'.repeat(64)}` as const,
+  },
+  axisResults: [],
+  executionPlanDigest: `sha256:${'8'.repeat(64)}` as const,
+  materializer: { name: 'test-materializer', version: '1' },
+  expiresAtMs: 4_102_444_800_000,
+}
+
+const workerInteractiveRef: AgentInteractiveSessionRef = {
+  run: {
+    provider: 'test-provider',
+    environmentId: 'environment-worker-attach',
+    sessionId: 'session-worker-attach',
+    executionId: 'execution-worker-attach',
+    runId: 'provider-run-worker-attach',
+    requestDigest: workerInteractivePreparation.requestDigest,
+  },
+  preparationReceipt: agentExecutionPreparationReceiptSchema.parse({
+    ...workerInteractivePreparation,
+    digest: canonicalCandidateDigest(workerInteractivePreparation),
+  }),
+  incarnationId: 'incarnation-worker-attach',
+  startedAt: '2026-08-16T00:00:00.000Z',
+}
+
+function workerInteractiveHandle(
+  session: AgentInteractiveTerminalSession,
+  attached: AgentInteractiveSessionControlClaimRequest[],
+): RetainedInteractiveRunHandle {
+  const ref = workerInteractiveRef
+  return {
+    ref,
+    capabilities: {} as RetainedInteractiveRunHandle['capabilities'],
+    claimControl: async (request) => ({
+      operationId: request.operationId,
+      requestDigest: request.requestDigest,
+      ref,
+      status: 'accepted',
+      control: {
+        refDigest: canonicalCandidateDigest(ref),
+        generation: 1,
+        leaseId: 'lease-worker-attach',
+        holderId: request.holderId,
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    }),
+    status: async () => ({ state: 'running', ref }),
+    attach: async (request) => {
+      attached.push({
+        operationId: 'attach-observation',
+        requestDigest: `sha256:${'2'.repeat(64)}`,
+        ref,
+        holderId: request.control.holderId,
+        expectedGeneration: request.control.generation,
+      })
+      return session
+    },
+    sendPrompt: async () => {
+      throw new Error('not used')
+    },
+    stop: async () => {
+      throw new Error('not used')
+    },
+  }
 }
 
 async function createCompletedRun(app: BraidApplication, text: string): Promise<string> {
@@ -798,6 +980,132 @@ test('activity follows runtime workers while open and stops cleanly when closed'
   )
   terminal.sendInput('\u001b')
   await terminal.waitForRender()
+
+  view.stop()
+  await done
+  await app.close()
+})
+
+test('activity attaches a running worker through the native terminal and restores Braid', async () => {
+  const raw = supervisionSnapshot([{ id: 'runtime-worker-attach', label: 'worker-attach' }])
+  const watcher = new RuntimeSupervisorWatcher(() => raw)
+  const session = new DetachingWorkerTerminalSession()
+  const attached: AgentInteractiveSessionControlClaimRequest[] = []
+  const handle = workerInteractiveHandle(session, attached)
+  let attachInput:
+    | { readonly eventDir: string; readonly workerId: string; readonly providerCount: number }
+    | undefined
+  const runtimeController = new RuntimeSupervisorController({
+    watcher,
+    providers: async () => ({}) as WorkerInteractiveProviderSource,
+    attachWorker: async (eventDir, workerId, options): Promise<WorkerInteractiveSession> => {
+      attachInput = {
+        eventDir,
+        workerId,
+        providerCount: Object.keys(options.providers).length,
+      }
+      return { status: 'available', handle }
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: { supervisorWatcher: watcher, supervisorController: runtimeController },
+  })
+  const baseController = createApplicationUiController(app)
+  const intents: BraidIntent[] = []
+  const controller: BraidUiController = {
+    view: () => baseController.view(),
+    state: () => baseController.state(),
+    events: () => baseController.events(),
+    initialize: (workspace) => baseController.initialize(workspace),
+    subscribe: (subscriber, options) => baseController.subscribe(subscriber, options),
+    dispatch: async (intent) => {
+      intents.push(intent)
+      return baseController.dispatch(intent)
+    },
+    waitForIdle: () => baseController.waitForIdle(),
+  }
+  const initialized = await controller.initialize('/workspace')
+  assert.equal(initialized.kind, 'accepted')
+  const refreshed = await controller.dispatch({ type: 'refresh-supervision' })
+  assert.equal(refreshed.kind, 'accepted')
+  const publicSupervisor = app.state().supervisors[0]
+  const publicWorker = app.state().workers[0]
+  assert(publicSupervisor && publicWorker)
+
+  const terminal = new LifecycleVirtualTerminal(100, 30)
+  const tui = new TuiMainScreen(terminal)
+  const signalPort: NativeTerminalSignalPort = { takeOver: () => () => {} }
+  let suspends = 0
+  let resumes = 0
+  let operation = 0
+  let view: BraidTerminalApp | undefined
+  const actions = createNativeInteractiveUiActions({
+    current: () => ({ app }),
+    terminal,
+    signals: () => signalPort,
+    suspend: () => {
+      suspends += 1
+      view?.suspend()
+    },
+    resume: () => {
+      resumes += 1
+      view?.resume()
+    },
+    nextOperationId: () => `op-worker-attach-${++operation}`,
+    holderId: 'braid-worker-attach',
+  })
+  view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-worker-attach-${++operation}`,
+    nativeInteractive: actions,
+  })
+  const done = view.start()
+
+  terminal.sendInput('/activity')
+  terminal.sendInput('\r')
+  await waitUntil(() => terminal.getViewport().join('\n').includes('worker-attach'))
+  for (let index = 0; index < 3; index += 1) terminal.sendInput('\t')
+  await waitUntil(() => terminal.getViewport().join('\n').includes('workers'))
+  const beforeAttach = terminal.getViewport().join('\n')
+  assert.match(beforeAttach, /a\/r/u)
+
+  terminal.sendInput('a')
+  await waitUntil(() => suspends === 1)
+  await waitUntil(() =>
+    terminal.getScrollBuffer().join('\n').includes('native worker terminal output'),
+  )
+  assert.equal(terminal.starts >= 2, true)
+  assert.equal(terminal.stops >= 1, true)
+  terminal.sendInput('\u001d')
+  await waitUntil(() => resumes === 1)
+  await waitUntil(() => terminal.getViewport().join('\n').includes('worker terminal detached'))
+  const restored = terminal.getViewport().join('\n')
+
+  assert.equal(suspends, 1)
+  assert.equal(resumes, 1)
+  assert.equal(terminal.starts >= 3, true)
+  assert.equal(terminal.stops >= 2, true)
+  assert.deepEqual(attachInput, {
+    eventDir: '/workspace/.agent',
+    workerId: 'runtime-worker-attach',
+    providerCount: 0,
+  })
+  assert.equal(attached[0]?.holderId, 'braid-worker-attach')
+  assert.equal(attached[0]?.expectedGeneration, 1)
+  assert.equal(session.detachCalls, 1)
+  assert.match(restored, /worker-attach/u)
+  assert.match(restored, /workers/u)
+  assert.doesNotMatch(restored, /native worker terminal output/u)
+  assert.equal(app.state().runs.length, 0)
+  assert.equal(app.state().messages.length, 0)
+  assert.equal(
+    intents.some((intent) => intent.type === 'headless-command'),
+    false,
+  )
 
   view.stop()
   await done

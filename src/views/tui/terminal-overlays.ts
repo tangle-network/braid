@@ -98,6 +98,9 @@ export class TerminalOverlayController {
       rows: options.rows,
       requestRender: options.requestRender,
       nextOperationId: options.nextOperationId,
+      ...(options.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: options.nativeInteractive }),
       ...(options.keyboardDiagnostic === undefined
         ? {}
         : { keyboardDiagnostic: options.keyboardDiagnostic }),
