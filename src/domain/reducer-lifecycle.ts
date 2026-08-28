@@ -21,6 +21,7 @@ import {
   terminalPartStatus,
   updateMessage,
   updateRun,
+  upsertPart,
 } from './reducer-support.js'
 import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
 import type { BraidState } from './state.js'
@@ -246,7 +247,11 @@ export function reduceLifecycleEvent(
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         messages: state.messages.map((message) =>
           message.runId === event.runId && message.role === 'assistant'
-            ? { ...message, status: 'incomplete', complete: false }
+            ? {
+                ...withPendingText(message, event.runId, event.pendingText),
+                status: 'incomplete',
+                complete: false,
+              }
             : message,
         ),
         runs: updateRun(state, event.runId, (run) =>
@@ -262,6 +267,20 @@ export function reduceLifecycleEvent(
       return exhaustive
     }
   }
+}
+
+function withPendingText(
+  message: import('./state.js').BraidMessage,
+  runId: string,
+  pendingText: string | undefined,
+): import('./state.js').BraidMessage {
+  if (pendingText === undefined || pendingText.length === 0) return message
+  const textPart = message.parts.find((part) => part.kind === 'text')
+  return upsertPart(message, {
+    id: textPart?.id ?? `${runId}:text`,
+    kind: 'text',
+    text: `${message.text}${pendingText}`,
+  })
 }
 
 function reduceRequestedRun(

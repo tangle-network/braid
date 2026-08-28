@@ -31,6 +31,7 @@ import {
   safeProviderDiagnostic,
   safePublicIdentifier,
 } from './provider-values.js'
+import type { RuntimeStreamSanitizer } from './run-stream-sanitizer.js'
 
 function safeText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? redactSensitiveText(value) : fallback
@@ -326,6 +327,7 @@ export function providerEventFor(
   runId: string,
   event: BraidRuntimeEvent,
   provider: ProviderEventMeta,
+  streamSanitizer?: RuntimeStreamSanitizer,
 ): BraidEvent {
   const detailEvent =
     event.type === 'raw'
@@ -335,13 +337,18 @@ export function providerEventFor(
         : event
   switch (event.type) {
     case 'text_delta':
-      return { kind: 'run.text.delta', runId, text: safeText(event.text), provider }
+      return {
+        kind: 'run.text.delta',
+        runId,
+        text: streamSanitizer?.push(runId, 'text', event.text) ?? safeText(event.text),
+        provider,
+      }
     case 'reasoning_delta':
       return {
         kind: 'run.reasoning.delta',
         runId,
         partId: `${runId}:reasoning`,
-        text: safeText(event.text),
+        text: streamSanitizer?.push(runId, 'reasoning', event.text) ?? safeText(event.text),
         provider,
       }
     case 'tool_call':
@@ -409,7 +416,10 @@ export function providerEventFor(
         kind: 'run.finished',
         runId,
         status: terminalStatus(event.status),
-        finalText: safeText(event.text),
+        finalText:
+          typeof event.text !== 'string' || event.text.length === 0
+            ? (streamSanitizer?.finish(runId, 'text') ?? safeText(event.text))
+            : (streamSanitizer?.complete(runId, 'final', event.text) ?? safeText(event.text)),
         usage: usageFromMetadata(event.metadata),
         ...(event.error === undefined
           ? {}
@@ -429,7 +439,16 @@ export function providerEventFor(
         kind: 'run.part.updated',
         runId,
         part,
-        ...(event.delta === undefined ? {} : { delta: safeText(event.delta) }),
+        ...(typeof event.delta !== 'string'
+          ? {}
+          : {
+              delta:
+                streamSanitizer?.push(
+                  runId,
+                  `part:${safePublicIdentifier(event.part.id) ?? 'part-unknown'}`,
+                  event.delta,
+                ) ?? safeText(event.delta),
+            }),
         provider,
       }
     }

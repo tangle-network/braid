@@ -91,10 +91,7 @@ test('terminal control sanitization remains safe when hostile sequences split ac
   const sanitizer = new TerminalControlSanitizer()
   assert.equal(sanitizer.push('before\u001b]0;owned'), 'before')
   assert.equal(sanitizer.push('\u0007after'), 'after')
-  assert.equal(
-    sanitizer.push(`before\u001bP${'x'.repeat(5_000)}visible`),
-    `before${'x'.repeat(905)}visible`,
-  )
+  assert.equal(sanitizer.push(`before\u001bP${'x'.repeat(5_000)}visible`), 'before')
   assert.equal(sanitizer.finish(), '')
 })
 

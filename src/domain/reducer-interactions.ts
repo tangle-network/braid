@@ -421,17 +421,21 @@ function reduceFinishedEvent(
     messages: updateMessage(state, event.runId, (message) => {
       const source = sourceFromProvider(event.provider)
       const existingTextPart = message.parts.find((part) => part.kind === 'text')
-      const withFinalPart = event.finalText
+      const finalText =
+        event.finalTextMode === 'append'
+          ? `${message.text}${finalReservation.value}`
+          : finalReservation.value
+      const withFinalPart = finalText
         ? upsertPart(message, {
             id: existingTextPart?.id ?? `${event.runId}:text`,
             kind: 'text',
-            text: finalReservation.value,
+            text: finalText,
             ...(source === undefined ? {} : { source }),
           })
         : message
       return {
         ...withFinalPart,
-        text: finalReservation.value || withFinalPart.text,
+        text: finalText || withFinalPart.text,
         status: messageStatus,
         complete: event.status !== 'unknown' && !hasMissingHistory,
         parts: withFinalPart.parts.map((part) =>

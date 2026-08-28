@@ -419,14 +419,16 @@ export function updateMessageFinal(
   status: BraidMessage['status'],
   partStatus: NonNullable<BraidMessagePart['status']>,
   at: string,
+  mode: 'replace' | 'append' = 'replace',
 ): BraidState {
   const message = state.messages.find(
     (entry) => entry.runId === runId && entry.role === 'assistant',
   )
   if (!message) throw new DomainInvariantError(`Assistant message for run ${runId} does not exist`)
+  const nextText = mode === 'append' ? `${message.text}${text}` : text
   const nextMessage = {
     ...message,
-    text: text || message.text,
+    text: nextText || message.text,
     status,
     complete: status === 'complete',
     parts: message.parts.map((part) =>

@@ -203,6 +203,7 @@ export function reduceLegacyEvent(
         messageStatus,
         terminalPartStatus(event.status),
         at,
+        event.finalTextMode === 'append' ? 'append' : 'replace',
       )
       const turn = next.turns.find((entry) => entry.id === run.turnId)
       if (turn)

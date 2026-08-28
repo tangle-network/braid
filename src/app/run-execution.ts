@@ -139,7 +139,7 @@ async function finishWithoutTerminal(
         abort.signal.reason instanceof Error ? abort.signal.reason.message : 'Cancelled by user',
     })
   } else {
-    await context.commitAndWait({
+    await commitRequiredRecovery(context, {
       kind: 'run.unknown',
       runId: admission.runId,
       detail: 'The normalized event stream ended without a terminal event',
@@ -211,9 +211,24 @@ async function commitRequiredRecovery(
   context: ExecutionRunPort,
   event: import('../domain/events.js').BraidEvent,
 ): Promise<void> {
+  let durableEvent = event
+  if (event.kind === 'run.finished' && event.finalText.length === 0) {
+    const pending = finishPendingText(context, event.runId)
+    if (pending.length > 0) durableEvent = { ...event, finalText: pending, finalTextMode: 'append' }
+  } else if (event.kind === 'run.unknown') {
+    const pending = finishPendingText(context, event.runId)
+    if (pending.length > 0) durableEvent = { ...event, pendingText: pending }
+  }
   const commit = context.commitAndWaitRecovery ?? context.commitAndWait
-  const result = commit(event)
+  const result = commit(durableEvent)
   if (result !== undefined) await result
+  if (event.kind === 'run.finished' || event.kind === 'run.unknown')
+    context.streamSanitizer.reset(event.runId)
+}
+
+function finishPendingText(context: ExecutionRunPort, runId: string): string {
+  const pending = context.streamSanitizer.finish(runId, 'text')
+  return pending
 }
 
 export async function drainQueue(context: ExecutionRunPort & SendAccess): Promise<void> {
