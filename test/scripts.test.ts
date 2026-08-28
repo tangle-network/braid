@@ -208,6 +208,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'application.test.js',
       'canonical.test.js',
       'cli-startup.test.js',
+      'component-docs.test.js',
       'conversation-branch-effects.test.js',
       'conversations.test.js',
       'coordination.test.js',

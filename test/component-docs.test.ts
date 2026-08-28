@@ -2,9 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
 
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const repositoryRoot = resolve(process.cwd())
 const componentIndex = join(repositoryRoot, 'docs/components/README.md')
 const sourceDirectories = ['src/adapters/tui', 'src/views/tui'] as const
 

@@ -52,10 +52,14 @@ It proves keyboard behavior and terminal output at 40×12, 80×24, 120×40, and 
 | Transcript and composer | [transcript-composer.md](transcript-composer.md) | Read one branch and submit, queue, or steer without losing a draft. |
 | Work Strip | [work-strip.md](work-strip.md) | See and focus concurrent work without a permanent side panel. |
 | Multi-run orchestration | [multi-run-orchestration.md](multi-run-orchestration.md) | Run independent branches concurrently while preserving branch order. |
+| Retained run lifecycle | [retained-run-lifecycle.md](retained-run-lifecycle.md) | Reconnect, replay, detach, cancel, and recover one exact provider run. |
+| Native continuation | [native-continuation.md](native-continuation.md) | Continue the exact provider session at a verified branch boundary. |
+| Run stream sanitizer | [run-stream-sanitizer.md](run-stream-sanitizer.md) | Make split provider output safe before durable storage and rendering. |
 | Selectors and commands | [selectors-and-commands.md](selectors-and-commands.md) | Find an action or entity through one keyboard contract. |
 | Modal coordination | [modal-coordination.md](modal-coordination.md) | Present one bounded decision surface with reliable focus restoration. |
 | Conversation navigation | [conversation-navigation.md](conversation-navigation.md) | Create, rename, archive, switch, branch, and clone through explicit identities. |
 | Fork preview | [fork-preview.md](fork-preview.md) | Explain exactly what a fork copies before any external mutation. |
+| Conversation branch effects | [conversation-branch-effects.md](conversation-branch-effects.md) | Execute portable context transfer and real workspace forks without hidden provider assumptions. |
 | Interactions and secrets | [interactions.md](interactions.md) | Answer, decline, cancel, or automate a typed request safely. |
 | Profiles and connections | [profiles-and-connections.md](profiles-and-connections.md) | Select a portable agent and a credential-bearing execution connection. |
 | Activity | [activity.md](activity.md) | Find live, queued, waiting, detached, and completed work. |
@@ -67,8 +71,6 @@ It proves keyboard behavior and terminal output at 40×12, 80×24, 120×40, and 
 | Help and unavailable states | [help-and-capability-states.md](help-and-capability-states.md) | Explain real commands and disabled actions without fake readiness. |
 | Safe rendering and responsive layout | [safe-rendering.md](safe-rendering.md) | Preserve terminal integrity and primary meaning at every supported size. |
 | Headless and accessible presentation | [headless-and-accessibility.md](headless-and-accessibility.md) | Expose the same application through bounded JSONL and plain text. |
-
-The stream sanitizer, native continuation, workspace fork, and retained run documents extend this map at their owning boundaries.
 
 ## Concrete component inventory
 

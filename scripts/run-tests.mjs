@@ -37,6 +37,7 @@ const scopeFiles = {
   unit: [
     'agent-interface-runtime-parity.test.js',
     'canonical.test.js',
+    'component-docs.test.js',
     'analysis-model-call-observability.test.js',
     'analysis-model-call-roundtrip.test.js',
     'application.test.js',
