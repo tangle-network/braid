@@ -98,7 +98,15 @@ test('cancellation dispatch extraction requires canonical cancel event and opera
       {
         sequence: 4,
         kind: 'run.control.requested',
-        payload: { runId: 'run-b', operationId: 'op-cancel-b', control: 'cancel' },
+        payload: {
+          runId: 'run-b',
+          control: {
+            operationId: 'op-cancel-b',
+            runId: 'run-b',
+            control: 'cancel',
+            status: 'requested',
+          },
+        },
       },
     ],
   }
@@ -125,7 +133,15 @@ test('cancellation dispatch accepts a fast acknowledgement after an active proof
     {
       sequence: 4,
       kind: 'run.control.requested',
-      payload: { runId: 'run-b', operationId: 'op-cancel-b', control: 'cancel' },
+      payload: {
+        runId: 'run-b',
+        control: {
+          operationId: 'op-cancel-b',
+          runId: 'run-b',
+          control: 'cancel',
+          status: 'requested',
+        },
+      },
     },
   ]
   assert.equal(cancellationDispatchVisible(acknowledged, 'run-a', 'run-b'), true)

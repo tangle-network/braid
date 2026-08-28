@@ -489,7 +489,18 @@ function eventRunId(event) {
 
 function eventOperationId(event) {
   const payload = eventPayload(event)
-  return event?.operationId ?? payload?.operationId ?? payload?.value?.operationId
+  return (
+    event?.operationId ??
+    payload?.operationId ??
+    payload?.value?.operationId ??
+    payload?.control?.operationId
+  )
+}
+
+function eventControl(event) {
+  const payload = eventPayload(event)
+  if (typeof payload?.control === 'string') return payload.control
+  return payload?.value?.control ?? payload?.control?.control
 }
 
 export function frameCancellationDispatch(frame, runId) {
@@ -498,7 +509,7 @@ export function frameCancellationDispatch(frame, runId) {
     return (
       eventKind(candidate) === 'run.control.requested' &&
       eventRunId(candidate) === runId &&
-      payload?.control === 'cancel' &&
+      eventControl(candidate) === 'cancel' &&
       typeof eventOperationId(candidate) === 'string' &&
       eventOperationId(candidate).length > 0
     )
@@ -506,7 +517,7 @@ export function frameCancellationDispatch(frame, runId) {
   if (event === undefined) return undefined
   return {
     eventKind: eventKind(event),
-    control: eventPayload(event)?.control,
+    control: eventControl(event),
     runId: eventRunId(event),
     operationId: eventOperationId(event),
     sequence: event?.sequence ?? event?.event?.sequence ?? null,
