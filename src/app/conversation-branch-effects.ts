@@ -230,6 +230,7 @@ async function executeCrossRunner(
   const reserved = await reserveOperation(host, operationId, digest)
   const existing = reserved.operations.find((operation) => operation.id === operationId)
   if (existing?.status === 'acknowledged') return branchForOperation(state, existing)
+  const acceptedAt = existing?.createdAt ?? host.now()
 
   const planRequestMaterial = {
     requestId: `${input.operationId}:plan`,
@@ -252,7 +253,6 @@ async function executeCrossRunner(
       throw new AppError('CONTEXT_PLAN_CONFLICT', 'The provider changed the accepted context plan')
   }
 
-  const acceptedAt = host.now()
   const transferMaterial = {
     operationId: `${input.operationId}:context`,
     plan: portablePlan,

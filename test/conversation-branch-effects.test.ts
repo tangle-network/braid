@@ -404,6 +404,80 @@ test('cross-runner handoff transfers canonical history and replays after restart
   )
 })
 
+test('cross-runner retry reuses the original acceptance timestamp in its request digest', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  let failOnce = true
+  const baseExecution = executionFor({
+    capabilities: branchCapabilities(),
+    contextState,
+  })
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    context: {
+      async transfer(request) {
+        contextState.transfers.push(request)
+        if (failOnce) {
+          failOnce = false
+          return {
+            status: 'unknown',
+            operationId: request.operationId,
+            requestDigest: request.requestDigest,
+            message: 'The provider response was lost',
+            retryable: true,
+          }
+        }
+        return contextResult(request)
+      },
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-transfer-retry', text: 'source history' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-cross-runner-transfer-retry',
+    kind: 'cross-runner',
+    runner: 'codex',
+    destinationProvider: TARGET_PROVIDER,
+  })
+  const portableContextPlan = plan.portableContextPlan
+  assert(portableContextPlan)
+  const accepted = portableContextPlan.requiresAcceptance
+    ? { acceptedDigest: portableContextPlan.digest }
+    : {}
+  const input = {
+    operationId: 'op-cross-runner-transfer-retry',
+    kind: 'cross-runner' as const,
+    runner: 'codex',
+    destinationProvider: TARGET_PROVIDER,
+    ...accepted,
+    planDigest: plan.digest,
+  }
+  await assert.rejects(() => app.conversations.branches.execute(input), /response was lost/u)
+
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-29T00:00:00.000Z'),
+    journal,
+    effectStorage: journal,
+  })
+  await restarted.conversations.branches.execute(input)
+
+  assert.equal(contextState.transfers.length, 2)
+  assert.equal(
+    contextState.transfers[0]?.acceptance.acceptedAt,
+    contextState.transfers[1]?.acceptance.acceptedAt,
+  )
+  assert.equal(contextState.transfers[0]?.requestDigest, contextState.transfers[1]?.requestDigest)
+})
+
 test('workspace fork uses exact provider operations, isolates destination, and cleans both resources', async () => {
   const provider = workspaceProvider()
   const execution = executionFor({
