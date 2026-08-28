@@ -27,7 +27,11 @@ import {
   prepareProductionWorkspace,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
-import { createSupervisorProofFixture, runSupervisorFlow } from './live-required/supervisor.mjs'
+import {
+  createSupervisorProofFixture,
+  runSupervisorFlow,
+  supervisorProfile,
+} from './live-required/supervisor.mjs'
 import { runMatrixAdapter, runSandbox } from './live-required/tangle.mjs'
 import { executionLatencyDistribution } from './live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
@@ -385,6 +389,50 @@ test('protected live scopes emit unavailable release evidence without credential
       },
     )
   }
+})
+
+test('live wrappers preserve provider unavailability', () => {
+  const providerError = Object.assign(new Error('provider credential is unavailable'), {
+    unavailable: true,
+  })
+  const normalized = normalizeExternalFailure(providerError, 'live-supervisor', {})
+  assert.equal(normalized.code, 'LIVE_PROTECTED_PATH_UNAVAILABLE')
+  assert.equal(normalized.unavailable, true)
+  assert.equal(normalized.message, 'provider credential is unavailable')
+})
+
+test('LIVE-11 composes a complete canonical profile by default', () => {
+  assert.deepEqual(supervisorProfile({}), {
+    name: 'Braid live supervisor',
+    description: 'Protected LIVE-11 supervisor profile',
+    version: '1.0.0',
+    harness: 'opencode',
+    model: {
+      provider: 'tangle-router',
+      default: 'tangle-router/glm-5.2',
+      reasoningEffort: 'none',
+    },
+    prompt: {
+      instructions: ['Remain available for the protected LIVE-11 supervisor proof.'],
+    },
+  })
+  assert.deepEqual(
+    supervisorProfile({
+      BRAID_SUPERVISOR_MODEL: 'custom/model',
+      BRAID_SUPERVISOR_MODEL_PROVIDER: 'custom-provider',
+      BRAID_SUPERVISOR_RUNNER: 'pi',
+    }),
+    {
+      name: 'Braid live supervisor',
+      description: 'Protected LIVE-11 supervisor profile',
+      version: '1.0.0',
+      harness: 'pi',
+      model: { provider: 'custom-provider', default: 'custom/model', reasoningEffort: 'none' },
+      prompt: {
+        instructions: ['Remain available for the protected LIVE-11 supervisor proof.'],
+      },
+    },
+  )
 })
 
 test('only explicit protected configuration failures remain unavailable', () => {
@@ -1199,6 +1247,33 @@ test('supervisor proof requires Runtime provisioning when no external run is con
     (error) => {
       assert.equal(error.unavailable, true)
       assert.equal(error.code, 'RUNTIME_SUPERVISOR_PROVISION_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('supervisor provisioning failures retain the provider cause', async () => {
+  const fixture = createSupervisorProofFixture()
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        runtime: {
+          ...fixture.api,
+          provisionSupervisor: async () => {
+            throw new Error('SESSION_DELETING')
+          },
+        },
+      }),
+    (error) => {
+      assert.match(
+        error.message,
+        /Runtime supervisor provisioning failed before LIVE-11 controls: SESSION_DELETING/u,
+      )
       return true
     },
   )

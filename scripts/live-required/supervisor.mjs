@@ -5,6 +5,7 @@ import {
   proofInvocation,
   proofReceipt,
   protectedUnavailable,
+  safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
 
@@ -19,6 +20,9 @@ const SUPERVISOR_CHECKS = Object.freeze([
 ])
 const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_POLL_INTERVAL_MS = 100
+const DEFAULT_SUPERVISOR_RUNNER = 'opencode'
+const DEFAULT_SUPERVISOR_MODEL = 'tangle-router/glm-5.2'
+const DEFAULT_SUPERVISOR_MODEL_PROVIDER = 'tangle-router'
 const SPEND_FIELDS = Object.freeze(['iterations', 'tokensInput', 'tokensOutput', 'usd', 'ms'])
 const TOTAL_FIELDS = Object.freeze([
   'tokensInput',
@@ -305,6 +309,23 @@ function proofConfig(environment) {
   }
 }
 
+export function supervisorProfile(environment) {
+  const runner = environment.BRAID_SUPERVISOR_RUNNER?.trim() || DEFAULT_SUPERVISOR_RUNNER
+  const model = environment.BRAID_SUPERVISOR_MODEL?.trim() || DEFAULT_SUPERVISOR_MODEL
+  const provider =
+    environment.BRAID_SUPERVISOR_MODEL_PROVIDER?.trim() || DEFAULT_SUPERVISOR_MODEL_PROVIDER
+  return {
+    name: 'Braid live supervisor',
+    description: 'Protected LIVE-11 supervisor profile',
+    version: '1.0.0',
+    harness: runner,
+    model: { provider, default: model, reasoningEffort: 'none' },
+    prompt: {
+      instructions: ['Remain available for the protected LIVE-11 supervisor proof.'],
+    },
+  }
+}
+
 /**
  * Prove one Runtime supervisor through its published read and control APIs.
  *
@@ -409,9 +430,12 @@ async function acquireSupervisor({
     return validateProvisionedSupervisor(receipt)
   } catch (error) {
     if (error?.unavailable === true) throw error
-    throw new Error('Runtime supervisor provisioning failed before LIVE-11 controls', {
-      cause: error,
-    })
+    throw new Error(
+      `Runtime supervisor provisioning failed before LIVE-11 controls: ${safeMessage(error, environment)}`,
+      {
+        cause: error,
+      },
+    )
   }
 }
 
@@ -777,7 +801,7 @@ export async function runSupervisorFlow({
 }
 
 export async function runSupervisorCheck({ environment }) {
-  const direct = await runSupervisorFlow({ environment })
+  const direct = await runSupervisorFlow({ environment, profile: supervisorProfile(environment) })
   return {
     status: direct.status,
     measurements: direct.measurements,

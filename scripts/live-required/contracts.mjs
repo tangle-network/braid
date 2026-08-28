@@ -922,6 +922,9 @@ export function normalizeExternalFailure(error, label, environment = process.env
     if (error.message === message) return error
     return new LiveRequiredError(error.code, message, { unavailable: error.unavailable })
   }
+  if (error?.unavailable === true) {
+    return new LiveRequiredError('LIVE_PROTECTED_PATH_UNAVAILABLE', message, { unavailable: true })
+  }
   return new LiveRequiredError(
     'LIVE_REAL_PATH_FAILED',
     `${label} failed against the configured live path: ${message}`,
