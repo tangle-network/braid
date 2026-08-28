@@ -22,14 +22,17 @@ export function entityDetailsFor(
   state: BraidState,
   activity: readonly ActivityItemView[],
 ): EntityDetailView[] {
-  const analyses = new Map(state.analyses.map((record) => [String(record.id), record] as const))
-  const supervisors = new Map(
-    state.supervisors.map((record) => [String(record.id), record] as const),
-  )
-  const workers = new Map(state.workers.map((record) => [String(record.id), record] as const))
-  const environments = new Map(
-    state.environments.map((record) => [String(record.id), record] as const),
-  )
+  const wanted = new Map<string, Set<string>>()
+  for (const item of activity) {
+    if (item.entityType === undefined || item.entityId === undefined) continue
+    const ids = wanted.get(item.entityType) ?? new Set<string>()
+    ids.add(item.entityId)
+    wanted.set(item.entityType, ids)
+  }
+  const analyses = selectedRecords(state.analyses, wanted.get('analysis'))
+  const supervisors = selectedRecords(state.supervisors, wanted.get('supervisor'))
+  const workers = selectedRecords(state.workers, wanted.get('worker'))
+  const environments = selectedRecords(state.environments, wanted.get('environment'))
   const seen = new Set<string>()
   const details: EntityDetailView[] = []
 
@@ -51,6 +54,21 @@ export function entityDetailsFor(
     if (detail !== undefined) details.push(detail)
   }
   return details
+}
+
+function selectedRecords<T extends { readonly id: string }>(
+  records: readonly T[],
+  ids: ReadonlySet<string> | undefined,
+): ReadonlyMap<string, T> {
+  if (ids === undefined || ids.size === 0) return new Map()
+  const selected = new Map<string, T>()
+  for (const record of records) {
+    const id = String(record.id)
+    if (!ids.has(id)) continue
+    selected.set(id, record)
+    if (selected.size === ids.size) break
+  }
+  return selected
 }
 
 function environmentDetail(

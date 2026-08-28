@@ -5,6 +5,7 @@ import {
   ApplicationUiController,
   buildBraidViewModel,
 } from '../src/adapters/tui/application-ui-controller.js'
+import { uiSemanticState } from '../src/adapters/tui/ui-semantic-state.js'
 import type { BraidApplication } from '../src/app/application.js'
 import type { SupervisorRecord, WorkerRecord } from '../src/domain/entities.js'
 import { createSupervisorId, createWorkerId } from '../src/domain/ids-values.js'
@@ -197,6 +198,37 @@ test('bounded activity matches the exact tail of a scrambled worker history', ()
     .map(({ id }) => id)
   const actual = queryActivity(state, { limit: 500 }).activity.map(({ id }) => id)
   assert.deepEqual(actual, expected)
+})
+
+test('bounded terminal graphs retain active work and its ancestry before old history', () => {
+  const source = runtimeWorkerState(3_000)
+  const workers: WorkerRecord[] = source.workers.map((worker, index) => ({
+    ...worker,
+    updatedAt: new Date(Date.parse(worker.updatedAt) + index * 1_000).toISOString(),
+  }))
+  const active = workers[0]
+  const parent = workers[1]
+  const newest = workers.at(-1)
+  const oldCompleted = workers[2]
+  assert(active && parent && newest && oldCompleted)
+  workers[0] = {
+    ...active,
+    status: 'running',
+    parentWorkerId: parent.id,
+  }
+
+  const bounded = uiSemanticState({ ...source, workers })
+  const selected = new Set(bounded.state.workers.map((worker) => worker.id))
+  assert.equal(selected.has(active.id), true)
+  assert.equal(selected.has(parent.id), true)
+  assert.equal(selected.has(newest.id), true)
+  assert.equal(selected.has(oldCompleted.id), false)
+  assert.equal(bounded.state.workers.length, 2_049)
+  assert.equal(bounded.hiddenNodeCount, 951)
+  assert.deepEqual(
+    bounded.state.workers.map((worker) => worker.id),
+    workers.filter((worker) => selected.has(worker.id)).map((worker) => worker.id),
+  )
 })
 
 function runtimeWorkerState(count: number): BraidState {
