@@ -122,6 +122,13 @@ function screenFrom(terminal) {
   return text
 }
 
+export function terminalRecordPath(basePath, instance) {
+  if (!Number.isSafeInteger(instance) || instance < 0) {
+    throw new Error('Terminal record instance must be a non-negative safe integer')
+  }
+  return instance === 0 ? basePath : `${basePath}.restart-${instance}`
+}
+
 function normalizeScreen(screen) {
   return screen.replace(/\s+/gu, ' ').trim()
 }
@@ -668,7 +675,7 @@ export async function runProof({
       }),
     )
     const recordPath = join(config.root, 'multirun-state.json')
-    runtime = createTerminal(binary, config, recordPath)
+    runtime = createTerminal(binary, config, terminalRecordPath(recordPath, 0))
     await phase('terminal.start', () =>
       waitFor('Braid terminal startup', () => /Braid/iu.test(runtime.screen()), timeoutMs),
     )
@@ -871,7 +878,7 @@ export async function runProof({
       await runtime.dispose()
     })
     terminalEvidence.final = runtime.snapshot()
-    restarted = createTerminal(binary, config, recordPath)
+    restarted = createTerminal(binary, config, terminalRecordPath(recordPath, 1))
     await phase('terminal.restart', () =>
       waitFor('restarted Braid terminal', () => /Braid/iu.test(restarted.screen()), timeoutMs),
     )

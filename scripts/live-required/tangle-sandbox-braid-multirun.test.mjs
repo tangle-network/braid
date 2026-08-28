@@ -10,6 +10,7 @@ import {
   frameEventIds,
   renderedWorkStripCount,
   sendCancellationAfterActivityBrowserDismissal,
+  terminalRecordPath,
   terminalFailureEvidence,
   transcriptSurfaceReady,
   waitForActivityBrowserDismissal,
@@ -153,6 +154,19 @@ test('restart close rejects a nonzero terminal exit code', () => {
     () => assertSuccessfulTerminalExit({ exitCode: 1 }, 'restarted'),
     /restarted Braid terminal process exited with a non-zero status/u,
   )
+})
+
+test('each terminal process owns one final state evidence path', () => {
+  assert.equal(terminalRecordPath('/tmp/multirun-state.json', 0), '/tmp/multirun-state.json')
+  assert.equal(
+    terminalRecordPath('/tmp/multirun-state.json', 1),
+    '/tmp/multirun-state.json.restart-1',
+  )
+  assert.notEqual(
+    terminalRecordPath('/tmp/multirun-state.json', 1),
+    terminalRecordPath('/tmp/multirun-state.json', 2),
+  )
+  assert.throws(() => terminalRecordPath('/tmp/multirun-state.json', -1), /non-negative/u)
 })
 
 test('rendered work-strip guard counts only actionable ownership rows', () => {
