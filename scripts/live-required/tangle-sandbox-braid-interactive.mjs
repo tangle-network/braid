@@ -159,6 +159,26 @@ function terminalText(terminal) {
   return text
 }
 
+function terminalDiagnostic(runtime) {
+  if (runtime === undefined) return 'terminal unavailable'
+  const rows = runtime.screen
+    .split('\n')
+    .map((row) => row.trim())
+    .filter((row) => row.length > 0)
+    .slice(-8)
+  return rows.length === 0 ? 'terminal screen empty' : rows.join(' | ').slice(-768)
+}
+
+function stateDiagnostic(frame) {
+  const runs = Array.isArray(frame?.state?.runs) ? frame.state.runs : []
+  return runs.map((run) => ({
+    id: typeof run?.id === 'string' ? run.id : null,
+    status: typeof run?.status === 'string' ? run.status : null,
+    retainedAdmission:
+      typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null,
+  }))
+}
+
 async function waitFor(label, predicate, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
@@ -451,6 +471,24 @@ function cleanupFailure(label, error) {
   return new Error(`${label}: ${safeMessage(error)}`, { cause: error })
 }
 
+export function interactiveFailureMessages(error, environment = process.env) {
+  const messages = []
+  const seen = new Set()
+  const visit = (candidate) => {
+    if (candidate === null || (typeof candidate !== 'object' && typeof candidate !== 'function'))
+      return
+    if (seen.has(candidate)) return
+    seen.add(candidate)
+    messages.push(safeMessage(candidate, environment))
+    if (candidate instanceof AggregateError) {
+      for (const nested of candidate.errors) visit(nested)
+    }
+    visit(candidate.cause)
+  }
+  visit(error)
+  return [...new Set(messages)]
+}
+
 function assertStopResultMatchesIdentity(stopResult, identity) {
   assert.ok(stopResult && typeof stopResult === 'object', 'Braid stop returned no result')
   const controlRef = assertControlRefsEqual(
@@ -519,7 +557,7 @@ export async function finalizeInteractiveProof({
   }
 
   let resolvedIdentity = identity
-  if (resolvedIdentity === undefined && recordPath !== undefined) {
+  if (resolvedIdentity === undefined && executionStarted && recordPath !== undefined) {
     const recovered = await attemptCleanup(errors, 'recorded Braid identity recovery', async () => {
       const record = JSON.parse(await readFile(recordPath, 'utf8'))
       const recoveredIdentity = recoverInteractiveIdentity(record)
@@ -727,6 +765,7 @@ async function runProof({
   let client
   let proofData
   let proofError
+  let runObserved = false
   let stopped = false
   try {
     packed = await installPackedBraid(targetRepository)
@@ -762,10 +801,18 @@ async function runProof({
     runtime.write(`${interactiveCommand}\r`)
     await waitFor(
       'native interactive output',
-      () => occurrences(runtime.output, markers.output) > promptCount,
+      () => {
+        if (/This action is unavailable with the selected connection/iu.test(runtime.screen)) {
+          throw new Error(
+            `native interactive command was unavailable: ${terminalDiagnostic(runtime)}`,
+          )
+        }
+        return occurrences(runtime.output, markers.output) > promptCount
+      },
       timeoutMs,
     )
     const initialFrame = await captureStateFrame(runtime, recordPath, timeoutMs)
+    runObserved = stateDiagnostic(initialFrame).length > 0
     const initialIdentity = recoverInteractiveIdentity(initialFrame)
     assert.ok(initialIdentity, 'interactive frame did not contain one exact Braid run identity')
     const initialAttach = await observeSandbox(
@@ -861,7 +908,25 @@ async function runProof({
       },
     }
   } catch (error) {
-    proofError = error
+    const failures = [error]
+    if (runtime !== undefined && !runtime.exited && recordPath !== undefined) {
+      try {
+        const failureFrame = await captureStateFrame(runtime, recordPath, exitTimeoutMs)
+        runObserved ||= stateDiagnostic(failureFrame).length > 0
+        identity ??= recoverInteractiveIdentity(failureFrame)
+        failures.push(
+          new Error(`failure Braid state: ${JSON.stringify(stateDiagnostic(failureFrame))}`),
+        )
+      } catch (captureError) {
+        failures.push(
+          new Error(`failure-state identity capture failed: ${safeMessage(captureError)}`, {
+            cause: captureError,
+          }),
+        )
+      }
+    }
+    failures.push(new Error(`last Braid terminal screen: ${terminalDiagnostic(runtime)}`))
+    proofError = new AggregateError(failures, 'Braid native interactive flow failed')
   }
 
   let cleanup
@@ -876,7 +941,7 @@ async function runProof({
       client,
       timeoutMs,
       exitTimeoutMs,
-      executionStarted: runtime !== undefined,
+      executionStarted: runObserved,
       stopped,
       stopResult: proofData?.stop,
     })
@@ -981,8 +1046,9 @@ export async function main(argv = process.argv, environment = process.env) {
     return EXIT_CODES.passed
   } catch (error) {
     const status = error?.unavailable === true ? 'unavailable' : 'failed'
+    const messages = interactiveFailureMessages(error, environment)
     process.stderr.write(
-      `${safeJson({ status, error: safeMessage(error, environment) }, environment)}\n`,
+      `${safeJson({ status, error: messages[0], causes: messages.slice(1) }, environment)}\n`,
     )
     return status === 'unavailable' ? EXIT_CODES.unavailable : EXIT_CODES.failed
   }

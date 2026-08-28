@@ -4,6 +4,10 @@ import test from 'node:test'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
 import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
+import {
+  finalizeInteractiveProof,
+  interactiveFailureMessages,
+} from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { cleanupRetainedResourceByRunId } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
@@ -365,6 +369,61 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
         observations: { status: 'passed' },
       }),
     /observations\.checks/u,
+  )
+})
+
+test('LIVE-08 reports sanitized nested proof and cleanup failures', () => {
+  const secret = 'live-interactive-secret'
+  const failure = new AggregateError(
+    [
+      new Error(`interaction failed with ${secret}`),
+      new AggregateError([new Error('exact cleanup failed')], 'cleanup incomplete'),
+    ],
+    'interactive proof failed',
+  )
+  assert.deepEqual(interactiveFailureMessages(failure, { TANGLE_API_KEY: secret }), [
+    'interactive proof failed',
+    'interaction failed with [REDACTED]',
+    'cleanup incomplete',
+    'exact cleanup failed',
+  ])
+})
+
+test('LIVE-08 cleans local resources without inventing a cloud leak before admission', async () => {
+  let workspaceCleanup = 0
+  let packedCleanup = 0
+  const result = await finalizeInteractiveProof({
+    packed: {
+      binary: '/tmp/braid',
+      cleanup: async () => {
+        packedCleanup += 1
+      },
+    },
+    config: {
+      cleanup: async () => {
+        workspaceCleanup += 1
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    },
+    recordPath: '/does/not/exist/without-an-admitted-run.json',
+    executionStarted: false,
+  })
+  assert.equal(result.identity, undefined)
+  assert.equal(workspaceCleanup, 1)
+  assert.equal(packedCleanup, 1)
+})
+
+test('LIVE-08 refuses cloud cleanup when a run existed without exact identity', async () => {
+  await assert.rejects(
+    () => finalizeInteractiveProof({ executionStarted: true }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /run identity was unavailable/u.test(message),
+        ),
+      )
+      return true
+    },
   )
 })
 
