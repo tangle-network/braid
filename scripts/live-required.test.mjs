@@ -42,6 +42,7 @@ import {
   runStressProof,
 } from './live-required/tangle-sandbox-stress.mjs'
 import { runWorker } from './live-required/tangle-sandbox-worker.mjs'
+import './live-required/tangle-sandbox-braid-multirun.test.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 

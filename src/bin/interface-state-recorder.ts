@@ -1,6 +1,10 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { assertNoSymlinkPath, writePrivateFile } from '../adapters/persistence/safe-file.js'
+import {
+  assertNoSymlinkPath,
+  replacePrivateFile,
+  writePrivateFile,
+} from '../adapters/persistence/safe-file.js'
 import type { BraidUiController } from '../views/shared/intents.js'
 
 export async function recordInterfaceState(
@@ -24,5 +28,7 @@ export async function recordInterfaceState(
   assertNoSymlinkPath(directory)
   await mkdir(directory, { recursive: true, mode: 0o700 })
   assertNoSymlinkPath(directory)
-  writePrivateFile(target, payload)
+  if (capturePhase === 'atomic-signal-frame') {
+    replacePrivateFile(target, payload, { overwrite: true })
+  } else writePrivateFile(target, payload)
 }

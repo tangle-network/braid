@@ -116,6 +116,8 @@ A duplicate event with a changed payload or position raises a durable conflict.
 
 A disconnected reader uses the run's replay capability and cursor before declaring an unknown outcome.
 
+Storage routes late provider events by run identity before it falls back to the selected conversation.
+
 A provider cancellation acknowledgement settles only its target run and leaves other active runs unchanged.
 
 An unknown cancellation remains unknown until provider evidence supports a correction.
@@ -137,6 +139,10 @@ The compatibility alias adds no second source of truth because normalization der
 `test/application.test.ts` proves concurrent branch streaming, same-branch queue ordering, focus switching, background interaction responses, background cancellation, disconnect replay, and duplicate provider events.
 
 `test/storage-snapshots.test.ts` proves legacy active-run migration, invalid-reference quarantine, restart restoration, and duplicate conflict behavior.
+
+`test/storage-journal-routing.test.ts` proves late background events remain in their run conversation after focus changes.
+
+`test/cli-startup.test.ts` proves repeated signal captures retain the newest frame during active streaming.
 
 `test/w8-runs.test.ts` retains single-run replay, cursor, cancellation, and queue coverage against the same ports.
 

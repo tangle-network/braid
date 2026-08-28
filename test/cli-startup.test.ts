@@ -123,12 +123,12 @@ test('startup responsibilities stay split into bounded modules', async () => {
   assert.match(startupBuild, /['"]koffi['"]/u)
 })
 
-test('verification signals capture more than one atomic semantic frame', async () => {
+test('repeated verification signals capture frames during streaming', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-signal-frames-'))
   const recordPath = join(root, 'state.json')
   let revision = 1
   const controller = {
-    state: () => ({ revision }),
+    state: () => ({ revision, status: 'streaming' }),
     view: () => ({ revision }),
     events: () => [],
   } as unknown as BraidUiController
@@ -147,11 +147,10 @@ test('verification signals capture more than one atomic semantic frame', async (
   try {
     frameSignal('SIGUSR2')
     await waitForRecordedRevision(`${recordPath}.frame`, 1)
-    await rm(`${recordPath}.frame`)
     revision = 2
-    frameSignal('SIGUSR2')
-    await waitForRecordedRevision(`${recordPath}.frame`, 2)
+    for (let signal = 0; signal < 8; signal += 1) frameSignal('SIGUSR2')
     await lifecycle.settle()
+    await waitForRecordedRevision(`${recordPath}.frame`, 2)
   } finally {
     lifecycle.dispose()
     await rm(root, { force: true, recursive: true })

@@ -72,6 +72,8 @@ No layout creates a permanent side pane.
 
 Terminal cleanup must run after normal exit, signal exit, startup failure, stream failure, and test interruption.
 
+The signal lifecycle queues frame requests and atomically replaces the latest signal frame during repeated captures.
+
 Unknown capabilities render through `UnavailablePanel` with the provider reason.
 
 All title, status, identity, and notification text is sanitized before terminal output.
@@ -99,4 +101,3 @@ Captures prove the shell at 40×12, 80×24, 120×40, and 200×60.
 The shell does not own agent execution, replay, persistence, profiles, or provider sessions.
 
 The shell does not infer a runner or model from display text.
-
