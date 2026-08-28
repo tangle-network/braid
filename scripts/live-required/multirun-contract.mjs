@@ -22,6 +22,7 @@ const REQUIRED_PHASES = Object.freeze([
 
 export const MULTIRUN_PROOF_SCHEMA = 'braid.live-required.multirun.v1'
 export { REQUIRED_PHASES as MULTIRUN_REQUIRED_PHASES }
+
 const PROVIDER_IDENTIFIER_KINDS = Object.freeze([
   'provider-environment',
   'provider-session',
@@ -156,6 +157,11 @@ export function assertMultirunProof(proof) {
   assert(
     Number.isInteger(proof.overlap.workStripCount) && proof.overlap.workStripCount >= 2,
     'LIVE-07 multirun proof did not expose both runs in the work strip',
+  )
+  assert(
+    Number.isInteger(proof.overlap.renderedWorkStripCount) &&
+      proof.overlap.renderedWorkStripCount >= 2,
+    'LIVE-07 multirun proof did not render both work-strip rows',
   )
   assert(
     Array.isArray(proof.overlap.streamEventCounts) && proof.overlap.streamEventCounts.length === 2,

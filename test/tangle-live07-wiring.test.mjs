@@ -121,6 +121,7 @@ function passedMultirunProof() {
       activeRunCount: 2,
       streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
       workStripCount: 2,
+      renderedWorkStripCount: 2,
       independentConversations: true,
     },
     focus: {

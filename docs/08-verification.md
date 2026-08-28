@@ -424,6 +424,10 @@ The proof holds each provider turn for 180 seconds and allows 300 seconds per ph
 
 When a phase fails, its artifact retains the latest semantic terminal frame and the latest frame-capture error.
 
+The multi-run proof reads active ownership from `BraidState.activeRuns` and Work Strip items from the real `BraidViewModel`.
+
+It also requires two actionable Work Strip rows in the packed terminal frame.
+
 The release collector registers the multirun artifact below `live/tangle/evidence.json` and rejects `LIVE-07` when that artifact is absent, failed, incomplete, or not exactly clean.
 
 ### Current core-path observations

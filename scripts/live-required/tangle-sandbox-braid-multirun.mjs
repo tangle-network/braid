@@ -14,11 +14,11 @@ import { pause } from '../live-demo/terminal.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
+import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
 } from './tangle-sandbox-braid-stress.mjs'
-import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -445,6 +445,13 @@ export function frameEventIds(frame, runId) {
   return eventIdsForRun(frame, runId)
 }
 
+export function renderedWorkStripCount(screen) {
+  return screen
+    .split('\n')
+    .filter((line) => /^[·›] .+ · [^/\s]+\/[^\s]+ · \d+ interactions?/u.test(line.trimStart()))
+    .length
+}
+
 export function assertFrameHasConcurrentRuns(frame, runIds) {
   assert.equal(runIds.length, 2, 'concurrent proof requires exactly two run ids')
   for (const runId of runIds) {
@@ -452,11 +459,10 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
     assert.ok(isActive(runStatus(frame, runId)), `run ${runId} is not active`)
     assert.ok(eventIdsForRun(frame, runId).length > 0, `run ${runId} has no streamed events`)
   }
-  assert.equal(
-    frame.view?.activeRuns?.filter((entry) => runIds.includes(entry.runId)).length,
-    2,
-    'frame did not expose two active run ownership records',
-  )
+  const activeOwnership = frame.state?.activeRuns?.filter((entry) => runIds.includes(entry.runId))
+  assert.equal(activeOwnership?.length, 2, 'frame did not expose two active run ownership records')
+  const workStrip = frame.view?.workStrip?.filter((entry) => runIds.includes(entry.runId))
+  assert.equal(workStrip?.length, 2, 'frame did not project both runs into the work strip')
   return true
 }
 
@@ -665,7 +671,10 @@ export async function runProof({
         'two concurrent streams',
         (frame) => {
           try {
-            return assertFrameHasConcurrentRuns(frame, [runAId, runBId])
+            return (
+              assertFrameHasConcurrentRuns(frame, [runAId, runBId]) &&
+              renderedWorkStripCount(runtime.screen()) >= 2
+            )
           } catch {
             return false
           }
@@ -948,12 +957,15 @@ export async function runProof({
       }
     }),
     overlap: {
-      activeRunCount: 2,
+      activeRunCount:
+        secondFrame?.state?.activeRuns?.filter((entry) => runIds.has(entry.runId)).length ?? 0,
       streamEventCounts: [runAId, runBId].map((runId) => ({
         runId,
         count: eventIdsForRun(secondFrame, runId).length,
       })),
-      workStripCount: secondFrame?.view?.workStrip?.length ?? 0,
+      workStripCount:
+        secondFrame?.view?.workStrip?.filter((entry) => runIds.has(entry.runId)).length ?? 0,
+      renderedWorkStripCount: renderedWorkStripCount(terminalEvidence.concurrent?.screen ?? ''),
       independentConversations:
         firstFrame?.state?.conversationId !== secondFrame?.state?.conversationId,
     },

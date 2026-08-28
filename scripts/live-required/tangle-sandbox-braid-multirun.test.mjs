@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-
+import { assertMultirunProof } from './multirun-contract.mjs'
 import {
   assertFrameHasConcurrentRuns,
   frameEventIds,
+  renderedWorkStripCount,
   terminalFailureEvidence,
 } from './tangle-sandbox-braid-multirun.mjs'
-import { assertMultirunProof } from './multirun-contract.mjs'
 
 function frame({ statusA = 'streaming', statusB = 'streaming', duplicate = false } = {}) {
   const eventA = { id: 'activity-a-1', runId: 'run-a', sourceEventId: 'provider-a-1' }
@@ -17,15 +17,19 @@ function frame({ statusA = 'streaming', statusB = 'streaming', duplicate = false
         { id: 'run-a', status: statusA },
         { id: 'run-b', status: statusB },
       ],
+      activeRuns: [
+        { runId: 'run-a', conversationId: 'conversation-a', branchId: 'branch-a' },
+        { runId: 'run-b', conversationId: 'conversation-b', branchId: 'branch-b' },
+      ],
     },
     view: {
       runs: [
         { id: 'run-a', conversationId: 'conversation-a', branchId: 'branch-a' },
         { id: 'run-b', conversationId: 'conversation-b', branchId: 'branch-b' },
       ],
-      activeRuns: [
-        { runId: 'run-a', conversationId: 'conversation-a', branchId: 'branch-a' },
-        { runId: 'run-b', conversationId: 'conversation-b', branchId: 'branch-b' },
+      workStrip: [
+        { runId: 'run-a', branchId: 'branch-a' },
+        { runId: 'run-b', branchId: 'branch-b' },
       ],
       activity: duplicate ? [eventA, eventA, eventB] : [eventA, eventB],
       messages: [],
@@ -39,12 +43,31 @@ test('multirun frame guard requires two active streamed runs', () => {
   assert.deepEqual(frameEventIds(frame(), 'run-b'), ['provider-b-1'])
 })
 
+test('rendered work-strip guard counts only actionable ownership rows', () => {
+  assert.equal(
+    renderedWorkStripCount(
+      [
+        '· branch-a · streaming · opencode/model · 1 interaction · actions switch/!ask/!steer/cancel',
+        'status text mentioning work',
+        '› branch-b · streaming · opencode/model · 0 interactions · actions swi…',
+      ].join('\n'),
+    ),
+    2,
+  )
+})
+
 test('multirun frame guard rejects a terminal or underpowered run', () => {
   assert.throws(
     () => assertFrameHasConcurrentRuns(frame({ statusB: 'completed' }), ['run-a', 'run-b']),
     /run run-b is not active/u,
   )
   assert.throws(() => assertFrameHasConcurrentRuns(frame(), ['run-a']), /exactly two run ids/u)
+  const missingOwnership = frame()
+  missingOwnership.state.activeRuns = missingOwnership.state.activeRuns.slice(0, 1)
+  assert.throws(
+    () => assertFrameHasConcurrentRuns(missingOwnership, ['run-a', 'run-b']),
+    /active run ownership/u,
+  )
 })
 
 test('event extraction preserves duplicates for the live replay assertion', () => {
