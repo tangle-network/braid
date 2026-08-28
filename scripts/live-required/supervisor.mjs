@@ -23,6 +23,10 @@ const DEFAULT_POLL_INTERVAL_MS = 100
 const DEFAULT_SUPERVISOR_RUNNER = 'opencode'
 const DEFAULT_SUPERVISOR_MODEL = 'tangle-router/glm-5.3'
 const DEFAULT_SUPERVISOR_MODEL_PROVIDER = 'tangle-router'
+const DEFAULT_SANDBOX_ENDPOINT = 'https://sandbox.tangle.tools'
+const DEFAULT_SUPERVISOR_CONNECTION_KIND = 'tangle-sandbox'
+const DEFAULT_SUPERVISOR_TASK =
+  'Start the assigned interactive worker and remain available for supervision.'
 const SPEND_FIELDS = Object.freeze(['iterations', 'tokensInput', 'tokensOutput', 'usd', 'ms'])
 const TOTAL_FIELDS = Object.freeze([
   'tokensInput',
@@ -31,17 +35,6 @@ const TOTAL_FIELDS = Object.freeze([
   'usd',
   'latencyMs',
 ])
-const PROVISION_ENVIRONMENT_KEYS = Object.freeze([
-  'BRAID_SUPERVISOR_ENDPOINT',
-  'BRAID_SUPERVISOR_CONNECTION_ID',
-  'BRAID_SUPERVISOR_CONNECTION_KIND',
-  'BRAID_SUPERVISOR_CREDENTIAL_CONFIGURED',
-  'BRAID_SUPERVISOR_CREDENTIAL_REF',
-  'BRAID_SUPERVISOR_MODEL',
-  'BRAID_SUPERVISOR_RUNNER',
-  'BRAID_SUPERVISOR_WORKSPACE',
-])
-
 function requiredText(value, name) {
   if (typeof value !== 'string' || value.trim().length === 0)
     throw new Error(`${name} must be a non-empty string`)
@@ -326,6 +319,59 @@ export function supervisorProfile(environment) {
   }
 }
 
+export function supervisorTask(environment) {
+  return requiredText(
+    environment.BRAID_SUPERVISOR_TASK?.trim() || DEFAULT_SUPERVISOR_TASK,
+    'BRAID_SUPERVISOR_TASK',
+  )
+}
+
+function firstConfigured(environment, names) {
+  return names
+    .map((name) => environment[name])
+    .find((value) => typeof value === 'string' && value.trim().length > 0)
+    ?.trim()
+}
+
+export function supervisorConnection(environment) {
+  const endpoint = environment.BRAID_SUPERVISOR_ENDPOINT?.trim() || DEFAULT_SANDBOX_ENDPOINT
+  const apiKey = firstConfigured(environment, [
+    'BRAID_SUPERVISOR_API_KEY',
+    'BRAID_SUPERVISOR_AUTH',
+    'BRAID_SUPERVISOR_BEARER',
+    'TANGLE_API_KEY',
+  ])
+  if (apiKey === undefined)
+    throw protectedUnavailable(
+      'PROTECTED_CREDENTIAL_REQUIRED',
+      'LIVE-11 supervisor requires BRAID_SUPERVISOR_API_KEY, BRAID_SUPERVISOR_AUTH, BRAID_SUPERVISOR_BEARER, or TANGLE_API_KEY',
+    )
+  const credentialRef = firstConfigured(environment, ['BRAID_SUPERVISOR_CREDENTIAL_REF'])
+  const kind =
+    environment.BRAID_SUPERVISOR_CONNECTION_KIND?.trim() || DEFAULT_SUPERVISOR_CONNECTION_KIND
+  return {
+    endpoint,
+    apiKey,
+    kind,
+    ...(credentialRef === undefined ? {} : { credentialRef }),
+  }
+}
+
+export function supervisorWorkerEnvironment(environment, invocationId) {
+  const workspaceDir = environment.BRAID_SUPERVISOR_WORKSPACE?.trim()
+  const name =
+    environment.BRAID_SUPERVISOR_WORKER_NAME?.trim() || `braid-live-supervisor-${invocationId}`
+  return {
+    ...(workspaceDir === undefined ? {} : { workspace: { cwd: workspaceDir } }),
+    name,
+    metadata: {
+      owner: 'braid-live-supervisor',
+      proof: 'LIVE-11',
+      invocationId,
+    },
+  }
+}
+
 /**
  * Prove one Runtime supervisor through its published read and control APIs.
  *
@@ -359,25 +405,25 @@ function supervisorConfiguration(environment) {
   }
 }
 
-function provisionEnvironment(environment) {
-  return Object.fromEntries(
-    PROVISION_ENVIRONMENT_KEYS.flatMap((name) => {
-      const value = environment[name]
-      return typeof value === 'string' && value.trim().length > 0 ? [[name, value.trim()]] : []
-    }),
-  )
-}
-
-function provisionRequest(environment, invocationId, timeoutMs, pollMs, profile, connection) {
-  const workspaceDir = environment.BRAID_SUPERVISOR_WORKSPACE?.trim()
+function provisionRequest({
+  invocationId,
+  task,
+  timeoutMs,
+  pollMs,
+  profile,
+  connection,
+  workerEnvironment,
+  workspaceDir,
+}) {
   return {
     invocationId,
-    environment: provisionEnvironment(environment),
+    task,
+    profile,
+    connection,
+    ...(workerEnvironment === undefined ? {} : { workerEnvironment }),
     workspaceDir: workspaceDir || undefined,
     timeoutMs,
     pollMs,
-    ...(profile === undefined ? {} : { profile }),
-    ...(connection === undefined ? {} : { connection }),
   }
 }
 
@@ -412,8 +458,10 @@ async function acquireSupervisor({
   timeoutMs,
   pollMs,
   provision,
+  task,
   profile,
   connection,
+  workerEnvironment,
 }) {
   const configured = supervisorConfiguration(environment)
   if (configured !== undefined) return configured
@@ -425,7 +473,17 @@ async function acquireSupervisor({
     )
   try {
     const receipt = await provisioner(
-      provisionRequest(environment, invocationId, timeoutMs, pollMs, profile, connection),
+      provisionRequest({
+        invocationId,
+        task: task ?? supervisorTask(environment),
+        profile: profile ?? supervisorProfile(environment),
+        connection: connection ?? supervisorConnection(environment),
+        workerEnvironment:
+          workerEnvironment ?? supervisorWorkerEnvironment(environment, invocationId),
+        workspaceDir: environment.BRAID_SUPERVISOR_WORKSPACE?.trim(),
+        timeoutMs,
+        pollMs,
+      }),
     )
     return validateProvisionedSupervisor(receipt)
   } catch (error) {
@@ -502,8 +560,10 @@ export async function runSupervisorFlow({
   runtime,
   providers,
   provision,
+  task,
   profile,
   connection,
+  workerEnvironment,
 } = {}) {
   const startedAt = new Date().toISOString()
   const timeoutMs = configuredDuration(
@@ -533,8 +593,10 @@ export async function runSupervisorFlow({
     timeoutMs,
     pollMs,
     provision,
+    task,
     profile,
     connection,
+    workerEnvironment,
   })
   const { rootDir, supervisorId, workerId } = binding
   const providerSource = providers ?? binding.providers

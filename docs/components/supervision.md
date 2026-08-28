@@ -143,22 +143,27 @@ The proof records configured external runs as `not-owned` and records the owner-
 Runtime provisioner contract:
 
 ```text
-provisionSupervisor({ invocationId, environment, workspaceDir, timeoutMs, pollMs, profile?, connection? })
+provisionSupervisor({ invocationId, task, profile, workerEnvironment?, workspaceDir?,
+                      timeoutMs, pollMs, connection })
   -> { rootDir, supervisorId, workerId, providers?, terminalTakeover, cleanup() }
 cleanup()
   -> { status: "completed", rootDir, supervisorId, workerId,
        supervisorStatus, workerStatus, resourcesReleased: true, remainingResources: [] }
 ```
 
-The environment argument contains only supervisor selectors, endpoints, model and runner preferences, workspace, and opaque credential references.
+The Braid LIVE-11 caller resolves its task, canonical profile, and provider connection before it calls Runtime.
 
-The optional profile is the canonical `AgentProfile` supplied by the caller.
+The task is the initial worker assignment and remains caller-owned.
 
-The optional connection is the caller's connection record.
+The profile is the canonical `AgentProfile` supplied by the caller.
 
-The Runtime creates its canonical default profile and connection when those optional values are absent.
+The connection is either a provider or client object, or an explicit endpoint and API key.
 
-The environment argument is never written into the proof receipt.
+`workerEnvironment` carries generic provider create fields such as workspace, name, and metadata.
+
+Runtime does not receive Braid environment keys or resolve Braid credentials and endpoints.
+
+The Braid caller may use `https://sandbox.tangle.tools` as its endpoint default, but it passes the resolved endpoint and credential to Runtime explicitly.
 
 The Runtime owns all supervisor files and provider resources created by this contract.
 

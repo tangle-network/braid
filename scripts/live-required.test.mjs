@@ -30,7 +30,10 @@ import {
 import {
   createSupervisorProofFixture,
   runSupervisorFlow,
+  supervisorConnection,
   supervisorProfile,
+  supervisorTask,
+  supervisorWorkerEnvironment,
 } from './live-required/supervisor.mjs'
 import { runMatrixAdapter, runSandbox } from './live-required/tangle.mjs'
 import { executionLatencyDistribution } from './live-required/tangle-sandbox-braid-execution-soak.mjs'
@@ -115,8 +118,21 @@ function protectedEnvironment() {
     'BRAID_SUPERVISOR_ID',
     'BRAID_SUPERVISOR_WORKER',
     'BRAID_SUPERVISOR_WORKSPACE',
+    'BRAID_SUPERVISOR_ENDPOINT',
+    'BRAID_SUPERVISOR_CONNECTION_ID',
+    'BRAID_SUPERVISOR_CONNECTION_KIND',
+    'BRAID_SUPERVISOR_CREDENTIAL_CONFIGURED',
     'BRAID_SUPERVISOR_CREDENTIAL_REF',
+    'BRAID_SUPERVISOR_API_KEY',
+    'BRAID_SUPERVISOR_AUTH',
+    'BRAID_SUPERVISOR_BEARER',
+    'BRAID_SUPERVISOR_MODEL',
+    'BRAID_SUPERVISOR_MODEL_PROVIDER',
+    'BRAID_SUPERVISOR_RUNNER',
+    'BRAID_SUPERVISOR_TASK',
+    'BRAID_SUPERVISOR_WORKER_NAME',
     'BRAID_SUPERVISOR_LIVE_ADAPTER',
+    'TANGLE_API_KEY',
   ])
     delete environment[name]
   return environment
@@ -434,6 +450,62 @@ test('LIVE-11 composes a complete canonical profile by default', () => {
     },
   )
 })
+
+test('LIVE-11 resolves caller-owned task, connection, and generic worker input', () => {
+  const environment = {
+    BRAID_SUPERVISOR_TASK: 'Inspect the retained worker workspace',
+    BRAID_SUPERVISOR_ENDPOINT: 'https://sandbox.example/v1',
+    BRAID_SUPERVISOR_API_KEY: 'supervisor-api-key-fixture',
+    BRAID_SUPERVISOR_CONNECTION_KIND: 'tangle-sandbox',
+    BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-fixture',
+    BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-fixture-workspace',
+    BRAID_SUPERVISOR_WORKER_NAME: 'retained-worker-fixture',
+  }
+  assert.equal(supervisorTask(environment), 'Inspect the retained worker workspace')
+  assert.deepEqual(supervisorConnection(environment), {
+    endpoint: 'https://sandbox.example/v1',
+    apiKey: 'supervisor-api-key-fixture',
+    kind: 'tangle-sandbox',
+    credentialRef: 'cred:v1:supervisor-fixture',
+  })
+  assert.deepEqual(supervisorWorkerEnvironment(environment, 'invocation-fixture'), {
+    workspace: { cwd: '/tmp/supervisor-fixture-workspace' },
+    name: 'retained-worker-fixture',
+    metadata: {
+      owner: 'braid-live-supervisor',
+      proof: 'LIVE-11',
+      invocationId: 'invocation-fixture',
+    },
+  })
+})
+
+test('LIVE-11 requires a caller-owned provider credential for a new run', () => {
+  assert.throws(
+    () => supervisorConnection({}),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'PROTECTED_CREDENTIAL_REQUIRED')
+      assert.match(error.message, /BRAID_SUPERVISOR_API_KEY/u)
+      return true
+    },
+  )
+})
+
+function supervisorProvisionInputs(invocationId) {
+  return {
+    task: `fixture supervisor task ${invocationId}`,
+    profile: supervisorProfile({}),
+    connection: {
+      endpoint: 'https://sandbox.example/v1',
+      apiKey: 'fixture-supervisor-api-key',
+      kind: 'tangle-sandbox',
+    },
+    workerEnvironment: {
+      name: `fixture-supervisor-${invocationId}`,
+      metadata: { owner: 'braid-live-supervisor-test', invocationId },
+    },
+  }
+}
 
 test('only explicit protected configuration failures remain unavailable', () => {
   const unavailable = normalizeExternalFailure(
@@ -1057,6 +1129,7 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
     BRAID_SUPERVISOR_ENDPOINT: 'https://router.example/v1',
     BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-proof',
     BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-proof-workspace',
+    BRAID_SUPERVISOR_TASK: 'Inspect the provisioned worker',
     BRAID_SUPERVISOR_API_KEY: 'must-not-cross-the-provision-boundary',
     BRAID_SUPERVISOR_AUTH: 'must-not-cross-the-provision-boundary',
     BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
@@ -1101,15 +1174,28 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
   assert.equal(result.cleanup.status, 'completed')
   assert.equal(cleanupCalls, 1)
   assert.equal(provisionRequest.invocationId, 'live-required-supervisor-provisioned')
+  assert.equal(provisionRequest.task, 'Inspect the provisioned worker')
   assert.equal(provisionRequest.timeoutMs, 1000)
   assert.equal(provisionRequest.pollMs, 1)
-  assert.deepEqual(provisionRequest.environment, {
-    BRAID_SUPERVISOR_ENDPOINT: 'https://router.example/v1',
-    BRAID_SUPERVISOR_CREDENTIAL_REF: 'cred:v1:supervisor-proof',
-    BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-proof-workspace',
+  assert.equal(provisionRequest.workspaceDir, '/tmp/supervisor-proof-workspace')
+  assert.deepEqual(provisionRequest.profile, supervisorProfile(environment))
+  assert.deepEqual(provisionRequest.connection, {
+    endpoint: 'https://router.example/v1',
+    apiKey: 'must-not-cross-the-provision-boundary',
+    kind: 'tangle-sandbox',
+    credentialRef: 'cred:v1:supervisor-proof',
   })
-  assert.equal(provisionRequest.profile, undefined)
-  assert.equal(provisionRequest.connection, undefined)
+  assert.deepEqual(provisionRequest.workerEnvironment, {
+    workspace: { cwd: '/tmp/supervisor-proof-workspace' },
+    name: 'braid-live-supervisor-live-required-supervisor-provisioned',
+    metadata: {
+      owner: 'braid-live-supervisor',
+      proof: 'LIVE-11',
+      invocationId: 'live-required-supervisor-provisioned',
+    },
+  })
+  assert.equal('environment' in provisionRequest, false)
+  assert.equal('BRAID_SUPERVISOR_API_KEY' in provisionRequest.workerEnvironment, false)
   assert.deepEqual(result.proof.run.ids, [fixture.supervisorId, fixture.workerId])
   assert.equal(result.proof.facts.provisioned, true)
   assert.equal(result.proof.facts.cleanupVerified, true)
@@ -1130,6 +1216,7 @@ test('supervisor proof cleans an owned Runtime run after an observation failure'
         },
         invocationId: 'live-required-supervisor-cleanup-on-failure',
         runtime: fixture.api,
+        ...supervisorProvisionInputs('live-required-supervisor-cleanup-on-failure'),
         provision: async () => ({
           rootDir: fixture.rootDir,
           supervisorId: fixture.supervisorId,
@@ -1168,6 +1255,7 @@ test('supervisor proof rejects a supported terminal takeover without a real atta
         },
         invocationId: 'live-required-supervisor-required-attach',
         runtime: fixture.api,
+        ...supervisorProvisionInputs('live-required-supervisor-required-attach'),
         provision: async () => ({
           rootDir: fixture.rootDir,
           supervisorId: fixture.supervisorId,
@@ -1207,6 +1295,7 @@ test('supervisor proof refuses an incomplete owned cleanup receipt', async () =>
         },
         invocationId: 'live-required-supervisor-incomplete-cleanup',
         runtime: fixture.api,
+        ...supervisorProvisionInputs('live-required-supervisor-incomplete-cleanup'),
         provision: async () => ({
           rootDir: fixture.rootDir,
           supervisorId: fixture.supervisorId,
@@ -1268,6 +1357,7 @@ test('supervisor provisioning failures retain the provider cause', async () => {
             throw new Error('SESSION_DELETING')
           },
         },
+        ...supervisorProvisionInputs('fixture-provisioning-failure'),
       }),
     (error) => {
       assert.match(
