@@ -6,8 +6,8 @@ import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-cont
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
 import {
   assertInteractiveOwnedResourceCleanup,
-  assertProviderBoundEvidence,
   assertInteractiveTelemetry,
+  assertProviderBoundEvidence,
   finalizeInteractiveProof,
   interactiveFailureMessages,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
