@@ -27,11 +27,13 @@ export async function reconnectRun(
       'CAPABILITY_UNAVAILABLE',
       'The selected execution path does not report replay with a stable cursor',
     )
-  await context.commitAndWait({
-    kind: 'run.reconnecting',
-    runId: run.id,
-    ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
-  })
+  if (run.status !== 'reconnecting') {
+    await context.commitAndWait({
+      kind: 'run.reconnecting',
+      runId: run.id,
+      ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
+    })
+  }
   const abort = context.ledger.getAbort(run.id) ?? new AbortController()
   context.ledger.setAbort(run.id, abort)
   context.ledger.clearDetached(run.id)

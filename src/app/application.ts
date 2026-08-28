@@ -59,6 +59,7 @@ import {
   sendRunAsync,
   validateNativeProof,
 } from './run-admission.js'
+import { resolveNativeContinuationRun } from './run-continuation.js'
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { snapshotRunExecution } from './run-execution-snapshot.js'
@@ -414,6 +415,25 @@ export class BraidApplication {
     }
   }
 
+  nativeContinuationRunId(
+    input: Pick<SendInput, 'conversationId' | 'branchId'> = {},
+  ): string | undefined {
+    const configuration = effectiveRunConfiguration(
+      this.#state,
+      this.runtimeSelection.profile(),
+      input,
+    )
+    return resolveNativeContinuationRun({
+      state: this.#state,
+      conversationId: input.conversationId ?? this.#state.conversationId,
+      branchId: input.branchId ?? this.#state.branchId,
+      profile: configuration.profile,
+      ...(configuration.connectionId === undefined
+        ? {}
+        : { connectionId: configuration.connectionId }),
+    })?.id
+  }
+
   queueInput(input: {
     readonly operationId: string
     readonly text: string
@@ -542,9 +562,17 @@ export class BraidApplication {
     readonly text: string
     readonly runId?: string
   }): Promise<SendReceipt> {
+    const configuration = effectiveRunConfiguration(
+      this.#state,
+      this.runtimeSelection.profile(),
+      {},
+    )
     return continueNative(this.#portViews.nativeContinuation, {
       ...input,
       operationId: operationId(input.operationId, 'continue'),
+      ...(configuration.connectionId === undefined
+        ? {}
+        : { connectionId: configuration.connectionId }),
     })
   }
 

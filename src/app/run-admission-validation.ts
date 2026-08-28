@@ -1,4 +1,7 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import {
+  type AgentProfile,
+  NativeContextBoundaryProofSchema,
+} from '@tangle-network/agent-interface'
 import {
   canonicalAgentProfileDigestHex,
   snapshotAgentProfile,
@@ -14,7 +17,7 @@ import { DEFAULT_RUN_CAPABILITIES, UNKNOWN_RUN_CAPABILITIES } from '../ports/exe
 import type { AdmissionPort, ExecutionAccess, StateReader } from './application-ports.js'
 import type { SendInput } from './application-types.js'
 import { AppError } from './errors.js'
-import { branchHasVisibleHistory } from './run-continuation.js'
+import { branchHasVisibleHistory, resolveNativeContinuationRun } from './run-continuation.js'
 
 export function validateNativeProof(
   context: StateReader & ExecutionAccess,
@@ -31,35 +34,40 @@ export function validateNativeProof(
       )
     return
   }
-  const proof = input.nativeContextBoundaryProof
-  const source = context.currentState().runs.find((candidate) => candidate.id === proof.runId)
+  const parsed = NativeContextBoundaryProofSchema.safeParse(input.nativeContextBoundaryProof)
+  if (!parsed.success)
+    throw new AppError(
+      'NATIVE_CONTINUATION_UNVERIFIED',
+      'The native continuation proof is malformed',
+    )
+  const proof = parsed.data
+  const state = context.currentState()
+  const source = resolveNativeContinuationRun({
+    state,
+    conversationId: input.conversationId ?? state.conversationId,
+    branchId: input.branchId ?? state.branchId,
+    profile: input.profile,
+    ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+  })
+  const control = source?.controlRef
+  const proofMatchesControl =
+    control !== undefined &&
+    control.runId === proof.runId &&
+    control.provider === proof.provider &&
+    control.environmentId === proof.environmentId &&
+    control.sessionId === proof.sessionId &&
+    control.executionId === proof.executionId &&
+    control.requestDigest === proof.requestDigest
   if (
     !source ||
+    !proofMatchesControl ||
     !input.sessionId ||
-    source.providerSessionId !== proof.providerSessionId ||
-    input.sessionId !== proof.providerSessionId ||
-    !source.capabilities.sessions.continue
+    source.providerSessionId !== proof.sessionId ||
+    input.sessionId !== proof.sessionId
   )
     throw new AppError(
       'NATIVE_CONTINUATION_UNVERIFIED',
-      'The native continuation proof is not bound to a recorded provider session',
-    )
-  const state = context.currentState()
-  const sourceConnection = source.connectionId ?? source.receipt.requested.connectionId
-  if (
-    source.conversationId !== state.conversationId ||
-    source.branchId !== state.branchId ||
-    sourceConnection !== input.connectionId ||
-    source.receipt.profileDigest !== admissionProfileDigest(input.profile)
-  )
-    throw new AppError(
-      'NATIVE_CONTINUATION_UNVERIFIED',
-      'The native continuation proof is bound to a different profile, connection, or branch',
-    )
-  if (source.lastCursor !== undefined && proof.boundary !== source.lastCursor)
-    throw new AppError(
-      'NATIVE_BOUNDARY_MISMATCH',
-      'The native continuation proof does not end at the recorded Braid boundary',
+      'The native continuation proof is not bound to the completed run at this branch tip',
     )
 }
 

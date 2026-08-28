@@ -13,6 +13,7 @@ import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { runtimeContractEnvelopes } from '../src/testing/runtime-contract-fixtures.js'
+import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 
 const REPLAY_CAPABILITIES = {
   ...DEFAULT_RUN_CAPABILITIES,
@@ -20,6 +21,15 @@ const REPLAY_CAPABILITIES = {
   sessions: { continue: true, messages: true },
   controls: { cancel: true, steer: true, queue: true, status: true, recreate: true },
   events: { stableIdentity: true, sequence: true, cursor: true },
+} as const
+
+const NATIVE_REPLAY_CAPABILITIES = {
+  ...REPLAY_CAPABILITIES,
+  environment: {
+    ...RETAINED_RUN_HANDLE_CAPABILITIES,
+    sessions: { continue: true, list: false, messages: false },
+    nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+  },
 } as const
 
 function finalEvent(text: string): RuntimeStreamEvent {
@@ -387,15 +397,56 @@ test('status reconciliation never regresses a committed terminal run from a stal
 })
 
 test('native continuation requires and records a matching provider boundary proof', async () => {
+  const controlRef = {
+    runId: 'provider-run-native',
+    provider: 'native-test',
+    environmentId: 'environment-native',
+    sessionId: 'session-native',
+    executionId: 'execution-native',
+    requestDigest: `sha256:${'a'.repeat(64)}` as const,
+  }
   const execution: ExecutionPort = {
-    capabilities: () => REPLAY_CAPABILITIES,
-    admit: () => ({ capabilities: REPLAY_CAPABILITIES, providerSessionId: 'session-native' }),
-    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
-      yield finalEvent('native')
+    capabilities: () => NATIVE_REPLAY_CAPABILITIES,
+    admit: () => ({
+      capabilities: NATIVE_REPLAY_CAPABILITIES,
+      providerSessionId: 'session-native',
+    }),
+    async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope | RuntimeStreamEvent> {
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}:observed`,
+        sequence: 1,
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          type: 'braid.execution.observed',
+          observation: {
+            kind: 'local-process',
+            provider: 'native-test',
+            lifecycle: 'ready',
+            lifecycleMode: 'retained',
+            cleanup: 'explicit',
+            continuity: 'session',
+            location: 'local',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            observedAt: '2026-08-01T00:00:00.000Z',
+            unavailable: [],
+          },
+          controlRef,
+          timestamp: '2026-08-01T00:00:00.000Z',
+        },
+      }
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}:final`,
+        sequence: 2,
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: finalEvent('native'),
+      }
     },
-    nativeBoundary: async (input) => ({
-      boundary: 'boundary-native',
-      digest: `${input.sessionId}:proof`,
+    nativeBoundary: async () => ({
+      ...controlRef,
+      boundary: { kind: 'revision', revision: 'boundary-native' },
+      observedAt: '2026-08-01T00:00:01.000Z',
     }),
   }
   const app = appFor(execution)
@@ -408,10 +459,10 @@ test('native continuation requires and records a matching provider boundary proo
         text: 'forged',
         sessionId: 'session-other',
         nativeContextBoundaryProof: {
-          runId: first.runs[0]?.id ?? '',
-          providerSessionId: 'session-other',
-          boundary: 'boundary-native',
-          digest: 'forged-proof',
+          ...controlRef,
+          sessionId: 'session-other',
+          boundary: { kind: 'revision', revision: 'boundary-native' },
+          observedAt: '2026-08-01T00:00:01.000Z',
         },
       }),
     (error: unknown) =>
@@ -423,7 +474,10 @@ test('native continuation requires and records a matching provider boundary proo
     text: 'continue',
   })
   const state = await continued.completion
-  assert.equal(continued.admission.nativeContextBoundaryProof?.boundary, 'boundary-native')
+  assert.deepEqual(continued.admission.nativeContextBoundaryProof?.boundary, {
+    kind: 'revision',
+    revision: 'boundary-native',
+  })
   assert.equal(state.runs.length, 2)
   assert.equal(state.runs[1]?.status, 'completed')
 })

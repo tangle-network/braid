@@ -42,6 +42,9 @@ export function exactAdmissionRequestDigest(
       ...(input.interactions === undefined ? {} : { interactions: input.interactions }),
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(contextPlan === undefined ? {} : { contextPlan }),
+      ...(input.nativeContextBoundaryProof === undefined
+        ? {}
+        : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),
     },
   })
 }

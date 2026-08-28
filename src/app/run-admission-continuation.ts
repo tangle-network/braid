@@ -1,36 +1,52 @@
-import type { NativeContextBoundaryProof } from '../domain/receipts.js'
 import type { NativeContinuationPort } from './application-ports.js'
 import type { SendReceipt } from './application-types.js'
 import { AppError } from './errors.js'
+import { resolveNativeContinuationRun } from './run-continuation.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 export async function continueNative(
   context: NativeContinuationPort,
-  input: { readonly operationId: string; readonly text: string; readonly runId?: string },
+  input: {
+    readonly operationId: string
+    readonly text: string
+    readonly runId?: string
+    readonly connectionId?: string
+  },
 ): Promise<SendReceipt> {
-  const source = context.findRun(input.runId ?? context.currentState().runs.at(-1)?.id ?? '')
-  const sessionId = source.providerSessionId
-  if (!sessionId || !source.capabilities.sessions.continue || !context.execution.nativeBoundary)
+  const state = context.currentState()
+  const profile = context.profile?.()
+  const source =
+    profile === undefined
+      ? undefined
+      : resolveNativeContinuationRun({
+          state,
+          conversationId: state.conversationId,
+          branchId: state.branchId,
+          profile,
+          ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+        })
+  const sessionId = source?.providerSessionId
+  if (
+    !source ||
+    (input.runId !== undefined && source.id !== input.runId) ||
+    !sessionId ||
+    !source.controlRef ||
+    !context.execution.nativeBoundary
+  )
     throw new AppError(
       'NATIVE_CONTINUATION_UNVERIFIED',
       'The provider cannot prove a native session boundary for this run',
     )
-  const boundary = await context.execution.nativeBoundary({ runId: source.id, sessionId })
-  if (!boundary)
+  const proof = await context.execution.nativeBoundary({
+    runId: source.id,
+    sessionId,
+    controlRef: source.controlRef,
+    ...retainedExecutionRecoveryContext(source, state.workspace),
+  })
+  if (!proof)
     throw new AppError(
       'NATIVE_CONTINUATION_UNVERIFIED',
       'The provider did not return a native session boundary proof',
-    )
-  const proof: NativeContextBoundaryProof = {
-    runId: source.id,
-    providerSessionId: sessionId,
-    boundary: boundary.boundary,
-    digest: boundary.digest,
-    ...(boundary.revision === undefined ? {} : { revision: boundary.revision }),
-  }
-  if (source.lastCursor !== undefined && proof.boundary !== source.lastCursor)
-    throw new AppError(
-      'NATIVE_BOUNDARY_MISMATCH',
-      'The provider session no longer ends at the recorded Braid boundary',
     )
   return context.send({
     operationId: input.operationId,

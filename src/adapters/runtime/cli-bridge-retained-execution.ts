@@ -22,6 +22,8 @@ export class CliBridgeRetainedExecutionPort extends RetainedExecutionPort {
     super({
       resolve: async (input) =>
         createCliBridgeRetainedPlan(await options.resolve(input), input.runId),
+      continue: async (input, controlRef) =>
+        createCliBridgeRetainedPlan(await options.resolve(input), input.runId, controlRef),
       recover: async ({ runId, providerSessionId, controlRef, signal, ...recovery }) =>
         createCliBridgeRetainedPlan(
           await options.recover({

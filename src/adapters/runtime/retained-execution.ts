@@ -17,6 +17,7 @@ import type {
   RetainedRunAdmissionRecord,
   RetainedRunAdmissionRecorder,
 } from '../../ports/execution.js'
+import { runSupportsNativeContinuation } from '../../ports/execution.js'
 import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
 import type {
   RetainedExecutionDriver,
@@ -24,6 +25,11 @@ import type {
 } from './retained-execution-contract.js'
 import { RetainedExecutionState, retainedExecutionKey } from './retained-execution-state.js'
 import { streamRetainedExecution } from './retained-execution-stream.js'
+import {
+  continueRetainedNative,
+  controlRefFromBoundaryProof,
+  nativeContinuationInputFromRecovery,
+} from './retained-native-continuation.js'
 
 export type {
   RetainedExecutionDriver,
@@ -48,7 +54,25 @@ export class RetainedExecutionPort implements ExecutionPort {
   }
 
   async admit(input: ExecuteTurnInput): Promise<ExecutionAdmission> {
-    const plan = await this.#driver.resolve(input)
+    const continueNative = this.#driver.continue
+    let plan: RetainedExecutionPlan
+    if (input.nativeContextBoundaryProof === undefined) {
+      plan = await this.#driver.resolve(input)
+    } else {
+      if (continueNative === undefined) {
+        throw new Error('Provider does not implement verified same-session continuation')
+      }
+      plan = await continueNative(
+        input,
+        controlRefFromBoundaryProof(input.nativeContextBoundaryProof),
+      )
+    }
+    if (
+      input.nativeContextBoundaryProof !== undefined &&
+      !runSupportsNativeContinuation(plan.capabilities)
+    ) {
+      throw new Error('Provider does not support verified same-session continuation')
+    }
     this.#state.rememberPrepared(input.runId, retainedExecutionKey(input, plan.capabilities), plan)
     return {
       capabilities: plan.capabilities,
@@ -74,7 +98,11 @@ export class RetainedExecutionPort implements ExecutionPort {
     if (plan === undefined) {
       throw new Error('Retained run was not admitted with this exact request')
     }
-    const starting = Promise.resolve().then(() => plan.start(input))
+    const starting = Promise.resolve().then(() =>
+      input.nativeContextBoundaryProof === undefined
+        ? plan.start(input)
+        : continueRetainedNative(plan, input),
+    )
     this.#state.rememberStartingHandle(input.runId, starting)
     let handle: RetainedRunHandle
     try {
@@ -114,14 +142,40 @@ export class RetainedExecutionPort implements ExecutionPort {
     assertRecoveryIdentity(input.retainedAdmission, input.providerSessionId, input.controlRef)
     const persistedControlRef = controlRefFromAdmission(input.retainedAdmission)
     const suppliedControlRef = input.controlRef ?? persistedControlRef
-    const providerSessionId = this.#recoverySessionId(input.providerSessionId, suppliedControlRef)
+    const continuationInput =
+      suppliedControlRef === undefined
+        ? nativeContinuationInputFromRecovery(input.runId, input, input.signal)
+        : undefined
+    const recoveryControlRef =
+      continuationInput === undefined
+        ? suppliedControlRef
+        : controlRefFromBoundaryProof(continuationInput.nativeContextBoundaryProof)
+    const providerSessionId = this.#recoverySessionId(input.providerSessionId, recoveryControlRef)
     const plan = await this.#planFor(
       input.runId,
       providerSessionId,
-      suppliedControlRef,
+      recoveryControlRef,
       input,
       input.signal,
     )
+    if (continuationInput !== undefined) {
+      if (!runSupportsNativeContinuation(plan.capabilities)) {
+        throw new Error('Provider does not support verified same-session continuation')
+      }
+      const handle = await continueRetainedNative(plan, continuationInput)
+      this.#state.rememberHandle(input.runId, plan, handle)
+      this.#state.markDetached(input.runId, false)
+      yield* streamRetainedExecution({
+        runId: input.runId,
+        handle,
+        plan,
+        state: this.#state,
+        signal: input.signal,
+        includeObservation: true,
+        afterSequence: 0,
+      })
+      return
+    }
     const recovered = await this.#recoverHandle(plan, input, input.onRetainedAdmission)
     if (recovered !== undefined) {
       if (recovered === null) return
@@ -307,6 +361,23 @@ export class RetainedExecutionPort implements ExecutionPort {
       readonly signal?: AbortSignal
     } & RetainedExecutionRecoveryContext,
   ): Promise<ProviderRunSnapshot | null> {
+    if (
+      input.controlRef === undefined &&
+      controlRefFromAdmission(input.retainedAdmission) === undefined
+    ) {
+      const continuation = nativeContinuationInputFromRecovery(
+        input.runId,
+        input,
+        input.signal ?? new AbortController().signal,
+      )
+      if (continuation !== undefined) {
+        return {
+          runId: input.runId,
+          status: 'reconnecting',
+          sessionId: continuation.nativeContextBoundaryProof.sessionId,
+        }
+      }
+    }
     const resolved = await this.#handleFor(
       input.runId,
       input.providerSessionId,
@@ -396,6 +467,20 @@ export class RetainedExecutionPort implements ExecutionPort {
       }
     }
     return interactionAcknowledgement(input.command.operationId, acknowledgement.status)
+  }
+
+  async nativeBoundary(input: Parameters<NonNullable<ExecutionPort['nativeBoundary']>>[0]) {
+    const resolved = await this.#handleFor(
+      input.runId,
+      input.sessionId,
+      input.controlRef,
+      input.signal,
+      input,
+    )
+    if (!resolved) return null
+    return resolved.handle.contextBoundary({
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    })
   }
 
   async #handleFor(

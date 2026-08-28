@@ -63,6 +63,11 @@ export interface RetainedExecutionPlan {
 
 export interface RetainedExecutionDriver {
   readonly resolve: (input: ExecuteTurnInput) => Promise<RetainedExecutionPlan>
+  /** Resolve the provider connection for a verified same-session continuation. */
+  readonly continue?: (
+    input: ExecuteTurnInput,
+    controlRef: AgentExactRunControlRef,
+  ) => Promise<RetainedExecutionPlan>
   readonly recover: (
     input: {
       readonly runId: string

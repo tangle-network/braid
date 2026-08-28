@@ -160,7 +160,10 @@ export function capabilityMap(
         .reverse()
         .find(
           (run) =>
-            (run.status === 'detached' || run.status === 'unknown') && run.controlRef !== undefined,
+            (run.status === 'detached' ||
+              run.status === 'reconnecting' ||
+              run.status === 'unknown') &&
+            (run.controlRef !== undefined || run.receipt.nativeContextBoundaryProof !== undefined),
         )
   capabilities['run.queue'] = activeRun?.capabilities.controls.queue
     ? { available: true, source: 'provider' }
@@ -199,7 +202,7 @@ export function capabilityMap(
             ? 'Detach the active run before reconnecting it'
             : recoverableRun
               ? 'The detached run cannot be recreated by this provider'
-              : 'There is no detached run to reconnect',
+              : 'There is no recoverable run to reconnect',
         }
   capabilities['run.reconcile'] = recoverableRun?.capabilities.controls.status
     ? { available: true, source: 'provider' }
@@ -210,7 +213,7 @@ export function capabilityMap(
           ? 'Detach the active run before reconciling it'
           : recoverableRun
             ? 'The detached run does not expose provider status'
-            : 'There is no detached run to reconcile',
+            : 'There is no recoverable run to reconcile',
       }
   if (fixture === 'interaction') {
     capabilities['interaction.respond'] = { available: true, source: 'provider' }

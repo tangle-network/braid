@@ -135,6 +135,7 @@ export interface PreparedTangleRetainedConnection {
   readonly discoverControlRef: (
     braidRunId: string,
     signal?: AbortSignal,
+    executionId?: string,
   ) => Promise<AgentExactRunControlRef | null>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
 }
@@ -234,12 +235,12 @@ export async function resolveTangleSandboxRetainedConnection(
     environmentName: identity.name,
     environmentMetadata: identity.metadata,
     idleTtlSeconds,
-    discoverControlRef: (braidRunId, signal) =>
+    discoverControlRef: (braidRunId, signal, executionId = safeExecutionId(braidRunId)) =>
       retainedControlLookup({
         connectionId,
         braidRunId,
         providerSessionId,
-        executionId: safeExecutionId(braidRunId),
+        executionId,
         environmentIdempotencyKey: identity.environmentIdempotencyKey,
         ...(signal === undefined ? {} : { signal }),
       }),
