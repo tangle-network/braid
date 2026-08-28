@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.2.2.tgz",
-    "tarballSha256": "05758395a4c14b77ee4df05cb8d547c97ba362d65b73fb4078297957a28a88f9"
+    "tarball": "tangle-network-braid-0.3.0.tgz",
+    "tarballSha256": "af16b86949ffe8c7a0c36366daa5db5d13b6e2c374a230fc756c8323cb6bac12"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.2",
+      "package": "@earendil-works/pi-tui@0.84.3",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.18.0",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
+      "workspace": "/home/drew/code/.worktrees/braid-10-complete",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -122,7 +122,7 @@
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
+      "workspace": "/home/drew/code/.worktrees/braid-10-complete",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -323,9 +323,19 @@
           "source": "application",
           "reason": "Native terminal attachment requires an interactive TUI and a retained session"
         },
+        "supervisor.worker.attach": {
+          "available": false,
+          "source": "runtime",
+          "reason": "Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding"
+        },
         "export.create": {
           "available": true,
           "source": "application"
+        },
+        "analysis.cancel": {
+          "available": false,
+          "source": "application",
+          "reason": "There is no running analysis to cancel"
         },
         "application.quit": {
           "available": true,
@@ -359,6 +369,25 @@
           "available": true,
           "source": "local"
         },
+        "supervisor.refresh": {
+          "available": true,
+          "source": "runtime"
+        },
+        "supervisor.worker.steer": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to steer"
+        },
+        "supervisor.worker.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to cancel"
+        },
+        "supervisor.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervisor to cancel"
+        },
         "draft.write": {
           "available": true,
           "source": "application"
@@ -390,12 +419,12 @@
         "run.reconnect": {
           "available": false,
           "source": "provider",
-          "reason": "There is no detached run to reconnect"
+          "reason": "There is no recoverable run to reconnect"
         },
         "run.reconcile": {
           "available": false,
           "source": "provider",
-          "reason": "There is no detached run to reconcile"
+          "reason": "There is no recoverable run to reconcile"
         }
       },
       "draft": "",
@@ -414,7 +443,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-10-multirun"
+            "workspace": "/home/drew/code/.worktrees/braid-10-complete"
           }
         }
       }

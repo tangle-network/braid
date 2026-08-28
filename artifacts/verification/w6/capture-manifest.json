@@ -1,18 +1,18 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T10:36:00.415Z",
+  "generatedAt": "2026-08-28T23:29:51.179Z",
   "command": "pnpm capture:visual",
   "binary": "clean npm install from generated tarball",
   "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-  "tarball": "tangle-network-braid-0.2.2.tgz",
-  "tarballSha256": "05758395a4c14b77ee4df05cb8d547c97ba362d65b73fb4078297957a28a88f9",
+  "tarball": "tangle-network-braid-0.3.0.tgz",
+  "tarballSha256": "af16b86949ffe8c7a0c36366daa5db5d13b6e2c374a230fc756c8323cb6bac12",
   "stateFixture": "deterministic",
   "liveDemoCommand": "pnpm capture:demo:live",
   "terminal": "node-pty/xterm-256color",
   "node": "v24.18.0",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.2",
+      "package": "@earendil-works/pi-tui@0.84.3",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.18.0",
@@ -37,6 +37,18 @@
     "artifacts": [
       "raw/transcript-keyboard.cast",
       "80x24-transcript-keyboard.gif"
+    ]
+  },
+  "multiRunFlow": {
+    "steps": [
+      "start run A",
+      "create conversation B while A remains active",
+      "start run B",
+      "open Activity",
+      "switch focus to run A"
+    ],
+    "artifacts": [
+      "80x24-multirun.gif"
     ]
   },
   "states": [
@@ -98,6 +110,30 @@
         "asciicast": "raw/active-streaming.cast",
         "ansi": "states/active-streaming.ansi",
         "png": "states/active-streaming.png"
+      }
+    },
+    {
+      "name": "multi-run",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/multi-run.json",
+        "plain-frame": "states/multi-run.txt",
+        "asciicast": "raw/multi-run.cast",
+        "ansi": "states/multi-run.ansi",
+        "png": "states/multi-run.png"
+      }
+    },
+    {
+      "name": "supervision",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/supervision.json",
+        "plain-frame": "states/supervision.txt",
+        "asciicast": "raw/supervision.cast",
+        "ansi": "states/supervision.ansi",
+        "png": "states/supervision.png"
       }
     },
     {
@@ -219,14 +255,14 @@
     },
     {
       "path": "40x12-plain.txt",
-      "sha256": "195a7fe45710007458daa309733140a49405a3e9126c53cf815d0f0a2df175bc",
+      "sha256": "b77cd1eff3077ae58000fc67787c8d4abb08874c84ff44d716ddb049712fab4a",
       "kind": "plain-frame",
       "columns": 40,
       "rows": 12
     },
     {
       "path": "40x12.png",
-      "sha256": "6f553ddc7e73053cf57a8b5917766f3181f8368409079cd540e0220f22e87daa",
+      "sha256": "a9a6333b546bb2931a6a6f5595a3b227975ad3c15a10944fbff8c4c0acb31d58",
       "kind": "png",
       "columns": 40,
       "rows": 12
@@ -240,14 +276,14 @@
     },
     {
       "path": "80x24-plain.txt",
-      "sha256": "195a7fe45710007458daa309733140a49405a3e9126c53cf815d0f0a2df175bc",
+      "sha256": "b77cd1eff3077ae58000fc67787c8d4abb08874c84ff44d716ddb049712fab4a",
       "kind": "plain-frame",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24.png",
-      "sha256": "5fc5466cb225796d39390272f6d5010e16b72f64cf59402db4dbe575158bfe16",
+      "sha256": "b95fc55039fc496948afbf953389643035fe75ef44f7b880d6abcb66141f6d98",
       "kind": "png",
       "columns": 80,
       "rows": 24
@@ -261,14 +297,14 @@
     },
     {
       "path": "120x40-plain.txt",
-      "sha256": "195a7fe45710007458daa309733140a49405a3e9126c53cf815d0f0a2df175bc",
+      "sha256": "b77cd1eff3077ae58000fc67787c8d4abb08874c84ff44d716ddb049712fab4a",
       "kind": "plain-frame",
       "columns": 120,
       "rows": 40
     },
     {
       "path": "120x40.png",
-      "sha256": "199ef05def6d05d5cfb14beb1048bf83c6ee39086036c71b753fb27b0b283fef",
+      "sha256": "dc8db518f3a59f6ce5d6007cade4cd5d403e5867ee65468d02398a59896fec75",
       "kind": "png",
       "columns": 120,
       "rows": 40
@@ -282,21 +318,21 @@
     },
     {
       "path": "200x60-plain.txt",
-      "sha256": "195a7fe45710007458daa309733140a49405a3e9126c53cf815d0f0a2df175bc",
+      "sha256": "b77cd1eff3077ae58000fc67787c8d4abb08874c84ff44d716ddb049712fab4a",
       "kind": "plain-frame",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "200x60.png",
-      "sha256": "856523bfa8ae4f7c9c7e83040c4593ef91884b73d1eafc64c136de65f77a8039",
+      "sha256": "1314f53748d98d1af6101d09296bba5c8a34d968766050cfa4956a5779c4206b",
       "kind": "png",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "states/command-palette-40.json",
-      "sha256": "f0d43289b92d653526921860d0fc7b555a539ac0352bd2236081c2570232d1d1",
+      "sha256": "74aaf313a7c81fa8fe9705d87cf4968f31297d46494210edeef90990c5c5367e",
       "kind": "semantic-state",
       "state": "command-palette-40",
       "columns": 40,
@@ -312,7 +348,7 @@
     },
     {
       "path": "raw/command-palette-40.cast",
-      "sha256": "971b009977ffe28895af3ae410ffb511f1373d4005a42ddbdd99c247172a0f53",
+      "sha256": "d46eb3f7cae924329c329ea8c2c303407077fc3946d6edd1e7008a4a80611ee8",
       "kind": "asciicast",
       "state": "command-palette-40",
       "columns": 40,
@@ -320,7 +356,7 @@
     },
     {
       "path": "states/command-palette-40.ansi",
-      "sha256": "784f0eb2ecdd2df21bc4607ee95bf15c3f15c0349fb045b17a9e0fb2ae4f2df3",
+      "sha256": "3297fade4a163c3fe6b78237db4f23599a26201c27c693b5c84de806da3bc082",
       "kind": "ansi",
       "state": "command-palette-40",
       "columns": 40,
@@ -328,7 +364,7 @@
     },
     {
       "path": "states/command-palette-40.png",
-      "sha256": "0a9e9d671ec161c211ef708f147b9901aa2aba7962bd1cdb7c66e93c6e249686",
+      "sha256": "781f6ef13dc7f1bc97fd34fe11835e10d25e8ec885fff6ee1b6ddd0bd121e195",
       "kind": "png",
       "state": "command-palette-40",
       "columns": 40,
@@ -336,7 +372,7 @@
     },
     {
       "path": "states/command-palette-80.json",
-      "sha256": "24ac4d361434deb38b704832071d4361d2e4f1484c691919c583593f342c84de",
+      "sha256": "eb9b58bff12779fa8f01154df307a325133f7c64d0f3e25d0c3c37d92b6c0019",
       "kind": "semantic-state",
       "state": "command-palette-80",
       "columns": 80,
@@ -344,7 +380,7 @@
     },
     {
       "path": "states/command-palette-80.txt",
-      "sha256": "52c01aee9ac42508a3a78136cd7601d59fb7feaf77e2be361913104a0af125c6",
+      "sha256": "0f870966dfbe08cf0d32f3725f66b604664073b7320e596291dd27c34c2de675",
       "kind": "plain-frame",
       "state": "command-palette-80",
       "columns": 80,
@@ -352,7 +388,7 @@
     },
     {
       "path": "raw/command-palette-80.cast",
-      "sha256": "4eb1edc32ffd128d7b53daa066a121cbedf7f9c23b4e602e9450ff28e36c2703",
+      "sha256": "3701e292dff0ed5b5b52c5db81f93c528661541faa25c213ab24efcc88ca0321",
       "kind": "asciicast",
       "state": "command-palette-80",
       "columns": 80,
@@ -360,7 +396,7 @@
     },
     {
       "path": "states/command-palette-80.ansi",
-      "sha256": "6f3bd847f52bd387ee336f4a0d4dc652cbb8fbbaaa8bb43f9c23a6a83f92a10b",
+      "sha256": "55ef7cf6d440ff0b214f341581092a219f6f7d04499f2a558a22c65d9fbb79ce",
       "kind": "ansi",
       "state": "command-palette-80",
       "columns": 80,
@@ -368,7 +404,7 @@
     },
     {
       "path": "states/command-palette-80.png",
-      "sha256": "858386c9fe3d484413bb19766018763a72504162a87ab6b66c1443fe0b8fa3fe",
+      "sha256": "15b55341450ccec9fbe9bc96688d78ca8bea9b7b1ccd38bc738201675a4c4c4c",
       "kind": "png",
       "state": "command-palette-80",
       "columns": 80,
@@ -376,7 +412,7 @@
     },
     {
       "path": "states/command-palette-120.json",
-      "sha256": "f7763af99a61437920b7f1a64eaae9301641deca748918f58d139c4a667d543b",
+      "sha256": "b85a8d086d7c938ddf37df8011106ae1548d36bf5dae2b0fa5a7877e32a5cf3f",
       "kind": "semantic-state",
       "state": "command-palette-120",
       "columns": 120,
@@ -384,7 +420,7 @@
     },
     {
       "path": "states/command-palette-120.txt",
-      "sha256": "c0544ec9d134f3fc4631e2c11ecd60b10e1fb44f8d06985d44538a3daeedacac",
+      "sha256": "cc7b41da10b8b5746447069352b7235e51ce058068527a8cd95c1fba0d5c87e2",
       "kind": "plain-frame",
       "state": "command-palette-120",
       "columns": 120,
@@ -392,7 +428,7 @@
     },
     {
       "path": "raw/command-palette-120.cast",
-      "sha256": "2de7d8fedafbb02250cbcbbaf7c2a20291ebee9ae29d08ebdd10ed15814afde0",
+      "sha256": "2619cd205f2ca9d7a5253a69d14d159341673f80666aedad84d253ac85b1eaf0",
       "kind": "asciicast",
       "state": "command-palette-120",
       "columns": 120,
@@ -400,7 +436,7 @@
     },
     {
       "path": "states/command-palette-120.ansi",
-      "sha256": "4664efed8a04c5996afde9a0907d93fcdd8f3be32545771b472cd6a100a44231",
+      "sha256": "75cee28627e9a3c92fdac9590538c73fba4929a209a729033f30f9e2590631ab",
       "kind": "ansi",
       "state": "command-palette-120",
       "columns": 120,
@@ -408,7 +444,7 @@
     },
     {
       "path": "states/command-palette-120.png",
-      "sha256": "03e24ad8391eecc74453e38ad9503a229836edbc4c5b86e278045f93939a2450",
+      "sha256": "f33dce783e181c26df0ccc35f0c1749484dee239b55541d15e196fc6d07956fd",
       "kind": "png",
       "state": "command-palette-120",
       "columns": 120,
@@ -416,7 +452,7 @@
     },
     {
       "path": "states/empty.json",
-      "sha256": "f42ee9dee06cbd17a882e489b3da56f9146fc6d4b7697718e95145504ffe9f59",
+      "sha256": "9027ca5da201c8370d54341cd22011510a9b2613e03113e3a0678a423bde33c8",
       "kind": "semantic-state",
       "state": "empty",
       "columns": 80,
@@ -432,7 +468,7 @@
     },
     {
       "path": "raw/empty.cast",
-      "sha256": "c607de2eb2667d33ae2024f6b8004fa7a5e257e992a988b4a523c59b4d86a7bd",
+      "sha256": "abdfa60b1687494abfc0a4e1673c994c87bbab229e6d0a9cc120963aa3a64dfc",
       "kind": "asciicast",
       "state": "empty",
       "columns": 80,
@@ -440,7 +476,7 @@
     },
     {
       "path": "states/empty.ansi",
-      "sha256": "3ad16ef5f533a741236d72441853f75959f877cdae001508be802b3a8f0d51a5",
+      "sha256": "283855aa491310320ea63a83568a94614c6553d7f864653ef8ffa88d19289f16",
       "kind": "ansi",
       "state": "empty",
       "columns": 80,
@@ -448,7 +484,7 @@
     },
     {
       "path": "states/empty.png",
-      "sha256": "efb6309c32dbd9ca3df1d247e9b796e11f6acf08270eb2d052cb803d4fcb5fd5",
+      "sha256": "b6e5fdb575d0f3a0961d2697e18ad56c71c339fb2821a7736380627ab4a7eed0",
       "kind": "png",
       "state": "empty",
       "columns": 80,
@@ -456,7 +492,7 @@
     },
     {
       "path": "states/active-streaming.json",
-      "sha256": "48353a49cc613bee23bc2fa288da83c83bc24d29c475cc148103839101bc0b54",
+      "sha256": "c7d3c23c690d929974b7f4b737eafab568f7a077a578d3e192751c125dc9587c",
       "kind": "semantic-state",
       "state": "active-streaming",
       "columns": 80,
@@ -472,7 +508,7 @@
     },
     {
       "path": "raw/active-streaming.cast",
-      "sha256": "25b91b4b4fc2485da6e33ee654392fed540f7478f01e72733eb26eb867620ddb",
+      "sha256": "855dbc3ef728db4c4311f2652e4ccd7a5c2ddc85e2606cc6b9bd8137f9478976",
       "kind": "asciicast",
       "state": "active-streaming",
       "columns": 80,
@@ -480,7 +516,7 @@
     },
     {
       "path": "states/active-streaming.ansi",
-      "sha256": "826377679e220980e778c12da1d53c37bbd7d791f153dbea14b9054bee1b6369",
+      "sha256": "0d20f3327cb98244661040071abc211cbe975decc17ce7e4c0f772902781e651",
       "kind": "ansi",
       "state": "active-streaming",
       "columns": 80,
@@ -488,15 +524,95 @@
     },
     {
       "path": "states/active-streaming.png",
-      "sha256": "f593062cdb9fa307f1d69edcd17d264a3cc31dcd5a71b1ed208086c3c344673f",
+      "sha256": "946f92b1782c05b4239244536afb548116b400896fccb2358fb91cb9d2ec6be1",
       "kind": "png",
       "state": "active-streaming",
       "columns": 80,
       "rows": 24
     },
     {
+      "path": "states/multi-run.json",
+      "sha256": "2eafbcc920f9b0b343f3a066f090941c595a4d1d874a2f1b6ed6947f281e63d9",
+      "kind": "semantic-state",
+      "state": "multi-run",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/multi-run.txt",
+      "sha256": "78b50658bf4b064e854a6fa8cf443321da099d27b30b914e9df6e2a01936ad79",
+      "kind": "plain-frame",
+      "state": "multi-run",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/multi-run.cast",
+      "sha256": "45b294328c16dc26950e99e595eefb6788e69b752ee34a6994b8ad3a111ee8c9",
+      "kind": "asciicast",
+      "state": "multi-run",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/multi-run.ansi",
+      "sha256": "a2e243b22455e488111fd8ea27730a62d5626dd8d68891b8a331144561155900",
+      "kind": "ansi",
+      "state": "multi-run",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/multi-run.png",
+      "sha256": "8456020385ddc89fe6cac8e8c3740966c5752da37563c46ceffe14baf0aa1d1c",
+      "kind": "png",
+      "state": "multi-run",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/supervision.json",
+      "sha256": "26470488abf22875058b9a2e83c0842dcdc19b6d2034d87cfd0290ee74b3fa04",
+      "kind": "semantic-state",
+      "state": "supervision",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/supervision.txt",
+      "sha256": "8d462e403a5aef200facc54b8a9c26429a529f6f6a5bdfcfb954e9d92b2a0d6b",
+      "kind": "plain-frame",
+      "state": "supervision",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/supervision.cast",
+      "sha256": "ca05aafdabf06f919b6b968063782ffd9ae636d39eb35d52781539733e7dd965",
+      "kind": "asciicast",
+      "state": "supervision",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/supervision.ansi",
+      "sha256": "548e4473763a65553063de6a4f7a32ab391bd0e26b2131edbd6c0ab1c19d3b98",
+      "kind": "ansi",
+      "state": "supervision",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/supervision.png",
+      "sha256": "2eeb692f792e6e166372d015476ce72ffcf752b8ae2f9a3f843bce5a7c55d1da",
+      "kind": "png",
+      "state": "supervision",
+      "columns": 80,
+      "rows": 24
+    },
+    {
       "path": "states/interaction.json",
-      "sha256": "045945e0cc20e74298ade682b3db3c0caa2a1d66b9b3548ef578b108d9aa77ea",
+      "sha256": "931ba1c06c592c2bd310cf0b3bb4c1bcadb90a258d6ba15d7c526c74b2dda830",
       "kind": "semantic-state",
       "state": "interaction",
       "columns": 80,
@@ -512,7 +628,7 @@
     },
     {
       "path": "raw/interaction.cast",
-      "sha256": "74c9d95211a849c9eacd2b6b6e9d2556f42c3c7033a6abd6d4aeaae530fa60c4",
+      "sha256": "5603eeb1483637b9118649bebb112b5c8c95b6efad17082e97184459c1843ac5",
       "kind": "asciicast",
       "state": "interaction",
       "columns": 80,
@@ -520,7 +636,7 @@
     },
     {
       "path": "states/interaction.ansi",
-      "sha256": "ebc6f4307cd971261d843d4e151e47919afd0834c3cb9d6ab32ae31160565046",
+      "sha256": "cf227250e34267978db20f710bc7a25e88ff43f49c964edc5f07efb35b1c77a5",
       "kind": "ansi",
       "state": "interaction",
       "columns": 80,
@@ -528,7 +644,7 @@
     },
     {
       "path": "states/interaction.png",
-      "sha256": "6daca9da31d7c60a988a63b87fcf0a36f38d04824af5fcee256572873cd39306",
+      "sha256": "c3668983917935012910682899aa369c8beab39f617ce55241657f00e14fac76",
       "kind": "png",
       "state": "interaction",
       "columns": 80,
@@ -536,7 +652,7 @@
     },
     {
       "path": "states/automation.json",
-      "sha256": "f8b4c958ee978a517b9cd96e39c7ac83ef699d201f90eec4e61bec0789d9a96e",
+      "sha256": "7fe1e4c67b1b6adaf9938230200c4e5d8df71b841bfaec89aaef2899ff90d1e5",
       "kind": "semantic-state",
       "state": "automation",
       "columns": 80,
@@ -552,7 +668,7 @@
     },
     {
       "path": "raw/automation.cast",
-      "sha256": "5ed0246a44a87811ea6c8db16a58619d1aaedcbcbdc2f38de81f12e0ddc9deb6",
+      "sha256": "2b19eabd898dfdc4f8ae5c2cccbbdd2d9bf16dfcfbce983c9eb78e2ea5c39b09",
       "kind": "asciicast",
       "state": "automation",
       "columns": 80,
@@ -560,7 +676,7 @@
     },
     {
       "path": "states/automation.ansi",
-      "sha256": "0a4bf43e3ba13c89055c88506851e7f79afb336de04630b64c57d04a4acd76bd",
+      "sha256": "eb00e926c0e22e2e5d1b045852f314151d51d7da8dd15de4339ee0b298e7cd2a",
       "kind": "ansi",
       "state": "automation",
       "columns": 80,
@@ -568,7 +684,7 @@
     },
     {
       "path": "states/automation.png",
-      "sha256": "c0f1c8cf8441a52fa5f4666eee9a68673f8ce714e1a0dd3f93182b9993c760fe",
+      "sha256": "17cee0b7693be58826e5b6eb99367916c0081be596f87ef4333b63571b8e0f35",
       "kind": "png",
       "state": "automation",
       "columns": 80,
@@ -576,7 +692,7 @@
     },
     {
       "path": "states/fork-preview.json",
-      "sha256": "ee147f581ff60ae405dad7d85596512cd6e853a7de57da9d53e8b83b1f5d1eed",
+      "sha256": "0c7d1ec104896054ca18195f2098ab4f3d224fc3ff48a4edd7a70a20daca62ab",
       "kind": "semantic-state",
       "state": "fork-preview",
       "columns": 80,
@@ -584,7 +700,7 @@
     },
     {
       "path": "states/fork-preview.txt",
-      "sha256": "50255443ac4b8706749cdbcc7e37a082aefaaad32c8ece52be7abe6aad1edcb6",
+      "sha256": "bf3a769b7843aa23421e042c0653f44a2b9810bc72e4c14250a3f84e8b06f5a8",
       "kind": "plain-frame",
       "state": "fork-preview",
       "columns": 80,
@@ -592,7 +708,7 @@
     },
     {
       "path": "raw/fork-preview.cast",
-      "sha256": "cc89ca6d800336a12f3758cda741f36edba64d8026f9025ca7575109b3b8558f",
+      "sha256": "a5795fdb8764e7212ffe646bc47b28630492edb492355d49c4040de831f1709d",
       "kind": "asciicast",
       "state": "fork-preview",
       "columns": 80,
@@ -600,7 +716,7 @@
     },
     {
       "path": "states/fork-preview.ansi",
-      "sha256": "899a38d2b39dfbc4672ad64b2025cc9c4f4b51ba8ed12d4e3a866ead8cda6417",
+      "sha256": "f936788b83f84226e76bd20bc64dccada054cfc5686890c6303d43a902a848d9",
       "kind": "ansi",
       "state": "fork-preview",
       "columns": 80,
@@ -608,7 +724,7 @@
     },
     {
       "path": "states/fork-preview.png",
-      "sha256": "287b81487c9890a62af37cce773e0b867ca6e91622347cd3421d1c6229d92568",
+      "sha256": "2abd7df30fc85b0b65b185e76b41b0a98d375a1dc5dad6ad7c8a48b8870fc56c",
       "kind": "png",
       "state": "fork-preview",
       "columns": 80,
@@ -616,7 +732,7 @@
     },
     {
       "path": "states/graph-or-analysis.json",
-      "sha256": "be41f0b4df3cf149b47b043af3cb88ff19675603d05bd768b4334ebc4455b884",
+      "sha256": "0da309a3a1bbbd8e4c7b5fb926d853f2d83105d09f62d21eb7c5ee6e5d675248",
       "kind": "semantic-state",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -632,7 +748,7 @@
     },
     {
       "path": "raw/graph-or-analysis.cast",
-      "sha256": "1a7a188ca5bb4c4f052afb94316fc7a4f6cd6b9526dcec4db7c5499bbb46b60d",
+      "sha256": "09e5b399ba163d63980aeed768ef106d0aa77b18a5d0310386fdd0e2b595b077",
       "kind": "asciicast",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -640,7 +756,7 @@
     },
     {
       "path": "states/graph-or-analysis.ansi",
-      "sha256": "0a89dbcbda70fb62412c358038dcff9bf558da38340476f8c6b8ad9a1f637472",
+      "sha256": "5b7fc46ca79db3e75ff0de00e6d8168e3585e2e3765892e4fd692e735fc5e230",
       "kind": "ansi",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -648,7 +764,7 @@
     },
     {
       "path": "states/graph-or-analysis.png",
-      "sha256": "d9951d231264e4cbd9343a07e15a10dd1b8c53046d94913e5544f27d49f86a80",
+      "sha256": "770586bd2620e2b05fd9577088e0cb9d84820ba5537619186931d694ab0625d8",
       "kind": "png",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -656,7 +772,7 @@
     },
     {
       "path": "states/analysis.json",
-      "sha256": "6c0a62481f0c0a874aaeff647e0829d6e8ca558a2418aa478561c0c85bfd0525",
+      "sha256": "143e4a3374c2dc415fe1198bf25d240468577bbf93f712277a3aba3a3d3909ab",
       "kind": "semantic-state",
       "state": "analysis",
       "columns": 80,
@@ -664,7 +780,7 @@
     },
     {
       "path": "states/analysis.txt",
-      "sha256": "a5415a56fd51c11929eb7ac3c5d9c31bc94065b262426a3993697ac945329ca5",
+      "sha256": "e038b88f1cf4bc7dbb7cf48f1dd3d62170f1f21f61ffbba5178a66f51aa52a6b",
       "kind": "plain-frame",
       "state": "analysis",
       "columns": 80,
@@ -672,7 +788,7 @@
     },
     {
       "path": "raw/analysis.cast",
-      "sha256": "02020a77046127a7670f1d2b39021c412f0a662b51ea336de79a9c4937391ad6",
+      "sha256": "d5da5b9f2d37edf1393841a140e88a8f6dc15ed5d8d87a61bd4ef1c1636f2362",
       "kind": "asciicast",
       "state": "analysis",
       "columns": 80,
@@ -680,7 +796,7 @@
     },
     {
       "path": "states/analysis.ansi",
-      "sha256": "d949d8d48d477585473f73af41c6058fce0605f4bce130483fef0978ec4ad41f",
+      "sha256": "af70e39675929e6c9346f7f4a9eee39f40275473fef2f2f549279087bf75bc04",
       "kind": "ansi",
       "state": "analysis",
       "columns": 80,
@@ -688,7 +804,7 @@
     },
     {
       "path": "states/analysis.png",
-      "sha256": "bc5dd3330ff6594c3bb58f719c2d492d89335abd149f003954166fc065f03e72",
+      "sha256": "bbc4ec409568fa6c1497dfe04700f2dcee5b8329c0ace8f4da7acf8ec45e3c7b",
       "kind": "png",
       "state": "analysis",
       "columns": 80,
@@ -696,7 +812,7 @@
     },
     {
       "path": "states/comparison.json",
-      "sha256": "4a362ee220418bdab6c74e82b6bdc936d60deb87f45e058753088ffe858c9845",
+      "sha256": "1108cd085108e5625befdf0b707c210a23158c5c6b039dae0279831336a51f30",
       "kind": "semantic-state",
       "state": "comparison",
       "columns": 80,
@@ -704,7 +820,7 @@
     },
     {
       "path": "states/comparison.txt",
-      "sha256": "5ccab00bda42fc3c5286941269e5993512903809ac97a8e87dc0dca5f232a2b6",
+      "sha256": "ea38ad5ff9f0b7a57ebaf88bc7abd23608c97b0569d2c72a23a392ef88f144f2",
       "kind": "plain-frame",
       "state": "comparison",
       "columns": 80,
@@ -712,7 +828,7 @@
     },
     {
       "path": "raw/comparison.cast",
-      "sha256": "97b4bf3ff7c6c1d1f3cde30da6b232321e6594c88aeecf7656ee5f32dd7427dc",
+      "sha256": "7eb421e8d5bdec735b1bb9b007866ea15d5fa181b7437a0e0ab7fa8a2f2cb927",
       "kind": "asciicast",
       "state": "comparison",
       "columns": 80,
@@ -720,7 +836,7 @@
     },
     {
       "path": "states/comparison.ansi",
-      "sha256": "55a81f37604ef95cd5d25918b7687f6eed7587ed4eb0e4f48c099329aaca78b0",
+      "sha256": "09952f60a90e77b374113d4c241df956337c42a90b38d1d04340d7b7d587fb99",
       "kind": "ansi",
       "state": "comparison",
       "columns": 80,
@@ -728,7 +844,7 @@
     },
     {
       "path": "states/comparison.png",
-      "sha256": "0d8b408250cb31893852608450a85beb9ad5d84fcaed308ac9c5045444c93657",
+      "sha256": "f985a8e7017cdc2dd4f71de4b15f3a54744bece0985f1404d0f9b919eaac0972",
       "kind": "png",
       "state": "comparison",
       "columns": 80,
@@ -736,7 +852,7 @@
     },
     {
       "path": "states/profile.json",
-      "sha256": "7c3aa167f75446fbd2d36797e9e157dcb9e3eb4cc615365c50908aa2a9d12435",
+      "sha256": "0d1c038fe79b3498e27dc5493320eef3db1ef352fc2ed890198496577815edd9",
       "kind": "semantic-state",
       "state": "profile",
       "columns": 80,
@@ -752,7 +868,7 @@
     },
     {
       "path": "raw/profile.cast",
-      "sha256": "09e95729b386476e3d08048e014382da756b32d8675c403d46cad86f765e541c",
+      "sha256": "8631af34144079e9c309abc67f157dcb2af6531868c12b44c6cbb9ac4da381a4",
       "kind": "asciicast",
       "state": "profile",
       "columns": 80,
@@ -760,7 +876,7 @@
     },
     {
       "path": "states/profile.ansi",
-      "sha256": "c8c35d0e03c6fc018119c831c2fc0183c21fb247cab4eaf8e766f373661cd613",
+      "sha256": "ffb1eb651a9330eaefd79413840c312aa5d9224d6cf4a752d3c74ab5c25f4e12",
       "kind": "ansi",
       "state": "profile",
       "columns": 80,
@@ -768,7 +884,7 @@
     },
     {
       "path": "states/profile.png",
-      "sha256": "e2fcc7bcf581d0f8d3e6ce28514dcb9f3067125b66e8a4ef581c3c73704589c7",
+      "sha256": "707f8c5f9ff195bf7bf30c98a272013d346bf638a09cfafd0a25dc30e2555400",
       "kind": "png",
       "state": "profile",
       "columns": 80,
@@ -776,7 +892,7 @@
     },
     {
       "path": "states/narrow.json",
-      "sha256": "d4474a729f556e91ee0d0ba5e07b0c31e6c808d489a2307d9eeb12ce745908d2",
+      "sha256": "06bb846dfc06de0b626d680a0e5bf0b61c66bf8cd92541e6d515e59d03160b34",
       "kind": "semantic-state",
       "state": "narrow",
       "columns": 40,
@@ -792,7 +908,7 @@
     },
     {
       "path": "raw/narrow.cast",
-      "sha256": "fadcf6f0db2463044ef8435950d32a2adcf3820365b2d10100fe169f394aeab7",
+      "sha256": "c71777b74719daa9a4d8497a6b7f05d10f54347ab8a28f8595ae40b892b2b58d",
       "kind": "asciicast",
       "state": "narrow",
       "columns": 40,
@@ -800,7 +916,7 @@
     },
     {
       "path": "states/narrow.ansi",
-      "sha256": "baf2d66e758ee50866e03e05327c595ce0fe0a5f78af48396cab57e697cf6072",
+      "sha256": "586d4b24ef4d000c7c9174774727320adedcc7e142533e622475e87022e93a28",
       "kind": "ansi",
       "state": "narrow",
       "columns": 40,
@@ -808,7 +924,7 @@
     },
     {
       "path": "states/narrow.png",
-      "sha256": "d5e0c63cdb2db70cfe35c8b5d64460a5a448022e353541cbc748327802accae1",
+      "sha256": "1ae6ed0085e2433c1b656ec53d610261ae46034ef41f3a922d237e2273e0cf7e",
       "kind": "png",
       "state": "narrow",
       "columns": 40,
@@ -816,7 +932,7 @@
     },
     {
       "path": "states/failure-or-reconnect.json",
-      "sha256": "1cfac13a579b77d39e2debf63c8c4e414b187167a2dee362b19b3cfd50c8f519",
+      "sha256": "4bd262cf6da0cf7f5ee4702a33cb97def6235c1313943d383fff0c4f966bfd9a",
       "kind": "semantic-state",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -832,7 +948,7 @@
     },
     {
       "path": "raw/failure-or-reconnect.cast",
-      "sha256": "e83fd8582db95d9e0e8514a7c03c60d0ca971358dca0cb26c94b7491ab59ce6f",
+      "sha256": "726e7634e5186fd77bd92c2747ea208d4146a2a06ba5094e813cd4c4b9173a82",
       "kind": "asciicast",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -840,7 +956,7 @@
     },
     {
       "path": "states/failure-or-reconnect.ansi",
-      "sha256": "5157c4e51eba8be499372a1e1904432f84101d4c28182b4bbda020fb003eab42",
+      "sha256": "1d14d1adc1b352d56f0bbac1d01d3ed7c261900114fdb55a9ff1c0f9cd0b68bb",
       "kind": "ansi",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -848,7 +964,7 @@
     },
     {
       "path": "states/failure-or-reconnect.png",
-      "sha256": "f260c601efa55fbf417a73bfa794bc9c955a01a1dad1b3720723397eea5ee0f0",
+      "sha256": "184b6dd526b7f715c14c118e558a456d410d22014488dd738a92869c3113d5dc",
       "kind": "png",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -863,22 +979,30 @@
     },
     {
       "path": "80x24-automation.gif",
-      "sha256": "352145984fba2e0f9a648e30e128e381066ef5e57275893bdaa2bc30e82c81bf",
+      "sha256": "6ef28e9987406f8c8b8451b0a845ccc5e2547b774062a1de9a2690fae14f82be",
       "kind": "automation-flow",
       "state": "automation",
       "columns": 80,
       "rows": 24
     },
     {
+      "path": "80x24-multirun.gif",
+      "sha256": "f75315c00870bf509f2b0282dcb6a4c9dd4ba845d1f28598aaa8e86026206a10",
+      "kind": "multi-run-flow",
+      "state": "multi-run",
+      "columns": 80,
+      "rows": 24
+    },
+    {
       "path": "raw/transcript-keyboard.cast",
-      "sha256": "9812625c2f3f47f6170a1d516bb5dc2e0963511c700b2186df7c0d10da0ac208",
+      "sha256": "a5da6f1866a3dabfd925279505aa05039ff1353c728ae1695ae476bb31dacf8b",
       "kind": "keyboard-asciicast",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24-transcript-keyboard.gif",
-      "sha256": "7d3e8c8c5bae782a95bbcaf3691d94f442025eeaad4d28c1a5148a739578baed",
+      "sha256": "3b0ffd1d8a7e2ab21ed3d0e8defaeea14015ea9ba3e56a45258213fd198f5169",
       "kind": "keyboard-flow",
       "columns": 80,
       "rows": 24

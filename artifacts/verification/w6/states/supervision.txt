@@ -1,11 +1,11 @@
- fork preview                                                         workspace
+ workers · 4
 ────────────────────────────────────────────────────────────────────────────────
- will create a new workspace from this source
- source: workspace:/workspace
- destination: workspace:/workspace-fork
- boundary: conv-1 / branch-1 → conv-fork-1 / branch-1
- profile snapshot: digest:fixture-source → digest:fixture-copy
- workspace state: checkpoint:fixture-1 → checkpoint:fixture-1
+ ›     └ ● release review · worker · running · 3h 29m
+     └ ● terminal proof · worker · running · 3h 29m
+     └ ● stream and replay · worker · running · 3h 29m
+   ● prove the Braid release · supervisor · running · 3h 29m
+
+
 
 
 
@@ -21,4 +21,4 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────
- enter/y create fork · ←/esc cancel
+ ↑↓ move · enter/→ open · ←/esc close · s steer · x cancel · a/r

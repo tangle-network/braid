@@ -132,6 +132,42 @@ test('active streaming capture waits for a terminal run state before exiting', a
   assert.equal(closed, true)
 })
 
+test('supervision capture reaches the worker Activity scope from the default scope', async () => {
+  const definition = createStateDefinitions((value: string) => value).find(
+    (candidate: { readonly name: string }) => candidate.name === 'supervision',
+  )
+  assert.ok(definition)
+
+  let screen = 'activity · 4\nstream and replay'
+  const inputs: string[] = []
+  let closed = false
+  await definition.run({
+    input(data: string) {
+      inputs.push(data)
+      const tabCount = inputs.filter((item) => item === '\t').length
+      if (tabCount > 0 && tabCount < 3) screen = `${['runs', 'analyses'][tabCount - 1]} · 0`
+      if (tabCount === 3) screen = 'workers · 3\na/r'
+    },
+    screen: () => screen,
+    async waitFor(predicate: () => boolean, label: string) {
+      assert.equal(predicate(), true, label)
+    },
+    async waitForStable() {},
+    async captureState() {
+      return {
+        point: { screen },
+        record: { view: { activity: [{ kind: 'worker' }] } },
+      }
+    },
+    async closeNormally() {
+      closed = true
+    },
+  })
+
+  assert.deepEqual(inputs, ['/activity', '\r', '\t', '\t', '\t'])
+  assert.equal(closed, true)
+})
+
 test('multi-run capture recognizes responsive Work Strip rows without requiring lower-priority fields', () => {
   assert.equal(
     isRunningWorkStripRow(

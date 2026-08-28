@@ -21,4 +21,4 @@
  paired.correctness.b10: 0
  paired.correctness.mcnemar.b: 0
 ────────────────────────────────────────────────────────────────────────────────
- ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab: analyses
+ ↑↓ · Pg · ←/esc back · page 1/4 · p promote · x cancel · r

@@ -1,4 +1,4 @@
-Braid ready — /home/drew/code/.worktrees/braid-10-multirun
+Braid ready — /home/drew/code/.worktrees/braid-10-complete
 status: ready for a message
 conversation: New conversation; branch: branch-1
 profile: Braid starter; runner: pi; connection: deterministic fixture
@@ -6,7 +6,7 @@ appearance: none; high contrast off; reduced motion off
 event 2: draft.changed; status: ready for a message
 event 3: run.requested; status: admitted: W6 plain proof
 event 4: effect.upserted; status: streaming
-event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-65b7ec82-3f0c-4571-a6d7-23e45d0c536c","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:d36c141186589fc69f020dd03cda71443909176c6bbf640d87724c3ad0297c66"}}},"session":{"id":"c458bedd-8754-443c-a63d-c265d6734ab9","backend":"executor","status":"active","createdAt":"2026-08-28T10:35:21.598Z","updatedAt":"2026-08-28T10:35:21.598Z","metadata":"[unavailable]"},"
+event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-606b068d-d6f6-4216-ad63-1be74dc80a37","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:d36c141186589fc69f020dd03cda71443909176c6bbf640d87724c3ad0297c66"}}},"session":{"id":"2479430b-264d-409f-be78-d3d185addaba","backend":"executor","status":"active","createdAt":"2026-08-28T23:29:10.911Z","updatedAt":"2026-08-28T23:29:10.911Z","metadata":"[unavailable]"},"
 event 6: run.usage; status: streaming
 event 7: run.artifact; status: streaming: agent-turn-result
 event 8: run.finished; status: completed: Fixture response through pi: W6 plain proof

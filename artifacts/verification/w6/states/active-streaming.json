@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.2.2.tgz",
-    "tarballSha256": "05758395a4c14b77ee4df05cb8d547c97ba362d65b73fb4078297957a28a88f9"
+    "tarball": "tangle-network-braid-0.3.0.tgz",
+    "tarballSha256": "af16b86949ffe8c7a0c36366daa5db5d13b6e2c374a230fc756c8323cb6bac12"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.2",
+      "package": "@earendil-works/pi-tui@0.84.3",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.18.0",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 5,
       "sequence": 5,
-      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
+      "workspace": "/home/drew/code/.worktrees/braid-10-complete",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -171,7 +171,7 @@
     },
     "view": {
       "revision": 5,
-      "workspace": "/home/drew/code/.worktrees/braid-10-multirun",
+      "workspace": "/home/drew/code/.worktrees/braid-10-complete",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-28T10:35:41.123Z",
+          "occurredAt": "2026-08-28T23:29:28.917Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -466,9 +466,19 @@
           "source": "application",
           "reason": "Native terminal attachment requires an interactive TUI and a retained session"
         },
+        "supervisor.worker.attach": {
+          "available": false,
+          "source": "runtime",
+          "reason": "Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding"
+        },
         "export.create": {
           "available": true,
           "source": "application"
+        },
+        "analysis.cancel": {
+          "available": false,
+          "source": "application",
+          "reason": "There is no running analysis to cancel"
         },
         "application.quit": {
           "available": true,
@@ -501,6 +511,25 @@
         "details.read": {
           "available": true,
           "source": "local"
+        },
+        "supervisor.refresh": {
+          "available": true,
+          "source": "runtime"
+        },
+        "supervisor.worker.steer": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to steer"
+        },
+        "supervisor.worker.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to cancel"
+        },
+        "supervisor.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervisor to cancel"
         },
         "draft.write": {
           "available": true,
@@ -556,7 +585,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-10-multirun"
+            "workspace": "/home/drew/code/.worktrees/braid-10-complete"
           }
         }
       },
@@ -668,10 +697,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-f42480eb9f3f2a5b76208330",
+              "id": "effect-op-terminal-000002-21a5cfb954eabf6c97d3d061",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "f42480eb9f3f2a5b762083305eb8bb56efed4b6ab20ceeeed6492a4f63f304a8",
+              "requestDigest": "21a5cfb954eabf6c97d3d06170a1bae5789f7c6759f3f7d8e6a16440358b6805",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -690,13 +719,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-28T10:35:41.123Z",
+            "occurredAt": "2026-08-28T23:29:28.917Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-b161f084-e508-413f-b58d-99baa80dcf40",
+              "id": "turn-233466b8-b149-46a5-a7d6-eb418bf44422",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
@@ -706,11 +735,11 @@
               }
             },
             "session": {
-              "id": "1da25da7-5cbb-47b4-9627-3d60db3295a1",
+              "id": "982719fe-28b6-4b2f-acf8-910c6927fbae",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-28T10:35:41.123Z",
-              "updatedAt": "2026-08-28T10:35:41.123Z",
+              "createdAt": "2026-08-28T23:29:28.917Z",
+              "updatedAt": "2026-08-28T23:29:28.917Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -732,16 +761,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-b161f084-e508-413f-b58d-99baa80dcf40"
+                  "id": "turn-233466b8-b149-46a5-a7d6-eb418bf44422"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-b161f084-e508-413f-b58d-99baa80dcf40:attempt:c1ead8eb-8ad4-42e4-aaa2-559a02eee1f4",
-                  "materializationReceiptDigest": "sha256:7292070a64fb6aeb7726ce1020c30453a846ee0db9322d1b4c436900e1aa556a",
-                  "bindingDigest": "sha256:bc2cfc07b970a1f007a96c7f8099a9b84f0dab440550b39cd8e61b8f54af8654",
+                  "attemptId": "turn-233466b8-b149-46a5-a7d6-eb418bf44422:attempt:7600ea2e-d7fe-48fd-9436-bd05cc341094",
+                  "materializationReceiptDigest": "sha256:3c34ecf4d56c81b3581a736aedc85c682a865fc5867031bd20cf99bf925a4742",
+                  "bindingDigest": "sha256:71f5702ace44c44d5db0970b3a6b7603d9194b65c5f7893a6fc9f3fc5678551d",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -753,10 +782,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-28T10:35:41.121Z"
+                "startedAt": "2026-08-28T23:29:28.915Z"
               }
             },
-            "timestamp": "2026-08-28T10:35:41.123Z"
+            "timestamp": "2026-08-28T23:29:28.917Z"
           }
         }
       }

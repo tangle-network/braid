@@ -120,7 +120,16 @@ export function createStateDefinitions(normalized) {
           () => normalized(terminal.screen()).includes('stream and replay'),
           'supervisor activity',
         )
-        terminal.input('\t')
+        // Activity starts on the all scope. Cycle until the worker scope is visible.
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          if (/^\s*workers\b/iu.test(terminal.screen())) break
+          const previousHeading = terminal.screen().split('\n', 1)[0]
+          terminal.input('\t')
+          await terminal.waitFor(
+            () => terminal.screen().split('\n', 1)[0] !== previousHeading,
+            `worker activity scope ${attempt + 1}`,
+          )
+        }
         await terminal.waitFor(
           () => /^\s*workers\b/iu.test(terminal.screen()),
           'worker activity filter',
