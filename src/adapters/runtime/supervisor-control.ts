@@ -3,6 +3,8 @@ import {
   cancelWorker,
   type RunCancellation,
   type WorkerCancellation,
+  type WorkerSteerAcknowledgement,
+  type WorkerSteerRequest,
   writeWorkerSteer,
 } from '@tangle-network/agent-runtime/kernel'
 import type { SupervisorView, WorkerView } from '@tangle-network/agent-runtime/tui'
@@ -20,10 +22,14 @@ export interface SupervisorCapabilityIssue {
 }
 
 export interface SupervisorWorkerSteerResult {
-  readonly status: 'queued' | 'unavailable'
+  readonly status: 'queued' | 'acknowledged' | 'unavailable'
   readonly worker: string
-  readonly requestId?: string
+  readonly operationId?: string
+  readonly requestDigest?: WorkerSteerRequest['requestDigest']
   readonly file?: string
+  readonly replayed?: boolean
+  readonly effect?: WorkerSteerAcknowledgement['effect']
+  readonly detail?: string
   readonly issue?: SupervisorCapabilityIssue
 }
 
@@ -95,8 +101,10 @@ export class RuntimeSupervisorController {
     rootDir: string,
     supervisorId: string,
     workerIdOrLabel: string,
+    operationId: string,
     message: string,
     source = 'braid',
+    interrupt = false,
   ): SupervisorWorkerSteerResult {
     const snapshot = this.#watcher.snapshot(rootDir)
     const supervisor = snapshot.supervisors.find((candidate) => candidate.id === supervisorId)
@@ -109,12 +117,28 @@ export class RuntimeSupervisorController {
         issue: missingWorkerIssue(workerIdOrLabel),
       }
     }
-    const result = this.#write(rootDir, supervisorId, worker.label, message, source)
+    const result = this.#write(rootDir, supervisorId, worker.id, {
+      operationId,
+      message,
+      source,
+      interrupt,
+    })
     return {
-      status: 'queued',
+      status:
+        result.acknowledgement !== undefined && result.acknowledgement.effect !== 'unknown'
+          ? 'acknowledged'
+          : 'queued',
       worker: result.worker,
-      requestId: result.request.id,
+      operationId: result.request.operationId,
+      requestDigest: result.request.requestDigest,
       file: result.file,
+      replayed: result.replayed,
+      ...(result.acknowledgement === undefined
+        ? {}
+        : {
+            effect: result.acknowledgement.effect,
+            detail: result.acknowledgement.detail,
+          }),
     }
   }
 

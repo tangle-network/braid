@@ -75,11 +75,21 @@ export class SupervisorService {
     rootDir: string,
     supervisorId: string,
     workerIdOrLabel: string,
+    operationId: string,
     message: string,
     source?: string,
+    interrupt?: boolean,
   ): Promise<SupervisorWorkerSteerResult> {
     const controller = await this.#loadController()
-    return controller.steerWorker(rootDir, supervisorId, workerIdOrLabel, message, source)
+    return controller.steerWorker(
+      rootDir,
+      supervisorId,
+      workerIdOrLabel,
+      operationId,
+      message,
+      source,
+      interrupt,
+    )
   }
 
   async cancelWorker(

@@ -356,11 +356,14 @@ async function dispatchSupervisorWorker(
   if (typeof text !== 'string') {
     invalid('INVALID_PARAMS', 'steer_worker requires supervisorId, workerId, and text')
   }
+  if (operationId === undefined)
+    invalid('OPERATION_ID_REQUIRED', 'steer_worker requires operationId')
   try {
     const result = await context.app.intelligence.supervisor.steerWorker(
       reference.rootDir,
       reference.runtimeSupervisorId,
       reference.runtimeWorkerId,
+      operationId,
       text,
     )
     if (result.status === 'unavailable') {

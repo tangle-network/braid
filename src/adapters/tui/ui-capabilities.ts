@@ -1,4 +1,4 @@
-import { activeRunForBranch, isLiveRunStatus, type BraidState } from '../../domain/state.js'
+import { activeRunForBranch, type BraidState, isLiveRunStatus } from '../../domain/state.js'
 import type { CapabilityMap } from '../../views/shared/models.js'
 import type { UiFixture } from './ui-fixtures.js'
 
@@ -20,8 +20,6 @@ export const UNSUPPORTED = Object.freeze({
   'run.attach': 'Native terminal attachment requires an interactive TUI and a retained session',
   'supervisor.worker.attach':
     'The runtime snapshot does not carry the retained interactive reference required to attach to an exact worker',
-  'supervisor.worker.steer':
-    'The runtime steer API generates a new request identifier on every call and cannot replay a caller operation identifier safely',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
 } satisfies Readonly<Record<string, string>>)
 
@@ -102,11 +100,13 @@ export function capabilityMap(
         source: 'runtime',
         reason: 'Initialize a workspace before refreshing runtime supervision',
       }
-  capabilities['supervisor.worker.steer'] = {
-    available: false,
-    source: 'runtime',
-    reason: UNSUPPORTED['supervisor.worker.steer'],
-  }
+  capabilities['supervisor.worker.steer'] = hasRunningWorker
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'There is no running supervised worker to steer',
+      }
   capabilities['supervisor.worker.cancel'] = hasRunningWorker
     ? { available: true, source: 'runtime' }
     : {

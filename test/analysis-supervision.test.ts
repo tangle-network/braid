@@ -833,17 +833,20 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
   let runCancelInput: { readonly eventDir: string; readonly operationId: string } | undefined
   const controller = new RuntimeSupervisorController({
     watcher,
-    write: (_rootDir, supervisorId, workerLabel, message, source) => ({
-      worker: workerLabel,
+    write: (_rootDir, _supervisorId, workerId, options) => ({
+      worker: workerId,
       file: '/tmp/braid/.agent/inbox/request.json',
       request: {
-        id: 'request-1',
+        schemaVersion: 1,
+        operationId: options.operationId,
+        requestDigest: `sha256:${'a'.repeat(64)}`,
         at: NOW,
-        supervisorId,
-        worker: workerLabel,
-        message,
-        source: source ?? 'braid',
+        worker: workerId,
+        message: options.message,
+        source: options.source ?? 'braid',
+        interrupt: options.interrupt === true,
       },
+      replayed: false,
     }),
     cancelWorker: (eventDir, worker, operationId, options) => {
       workerCancelInput = { eventDir, worker, operationId }
@@ -891,10 +894,11 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
     '/tmp/braid',
     'runtime-supervisor-1',
     'worker-one',
+    'op-steer-worker-1',
     'inspect this',
   )
   assert.equal(queued.status, 'queued')
-  if (queued.status === 'queued') assert.equal(queued.requestId, 'request-1')
+  if (queued.status === 'queued') assert.equal(queued.operationId, 'op-steer-worker-1')
   const cancelledWorker = await service.cancelWorker(
     '/tmp/braid',
     'runtime-supervisor-1',
