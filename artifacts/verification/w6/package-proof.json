@@ -1,10 +1,10 @@
 {
   "tarball": "tangle-network-braid-0.3.0.tgz",
-  "sha256": "551a0739cdae863f784eef82dba7ef926e7bf436f67ca908ef0f18899788355c",
+  "sha256": "2ff0d7cf65eb929cc55b1669821b23c5381f401eb271002c0a16679a450efbe9",
   "version": "0.3.0",
-  "gitCommit": "4f97573380bedf01943604813447588d0cfc8016",
-  "treeSha256": "d3dd69e95958f6ffef72ca37c2beed4487569a52",
-  "sourceDigest": "c893a730eb2e5f35cb231bd4e8264dced4b86570ea3799aeef0c45b114ee8b49",
+  "gitCommit": "515b5af81a69c662713ef4f9a4a5d2d38a906fe6",
+  "treeSha256": "e8dc8ae7d9e68ca1d12a7e8dd547585269dfcd34",
+  "sourceDigest": "f54b865d7e36477b0542bddf8034eedef44ac9f505af776b75282f9bbb2e5919",
   "isolatedBuild": true,
   "sourceCheckout": "isolated-copy-of-worktree",
   "packageFileManifest": {
@@ -811,24 +811,44 @@
         "sha256": "2ac975e46e4c95050633d4b59bf66f8168389488a1a66fa4d5f1ec1594939954"
       },
       {
+        "path": "package/dist/adapters/runtime/cli-bridge-context-transfer.d.ts",
+        "size": 861,
+        "sha256": "06d54deb433c36431d2576c86abeca05f4369a447a7b91381d5eda4a22070f08"
+      },
+      {
+        "path": "package/dist/adapters/runtime/cli-bridge-context-transfer.d.ts.map",
+        "size": 626,
+        "sha256": "3e02f6a1f4b3688ec6f53d073fac1a614e3893ff15f76061ee77a67f634aeb5c"
+      },
+      {
+        "path": "package/dist/adapters/runtime/cli-bridge-context-transfer.js",
+        "size": 1778,
+        "sha256": "f16cdcd0d193b129302105c592bd63da27a04b3eefe521dd11b12fe733c7a96b"
+      },
+      {
+        "path": "package/dist/adapters/runtime/cli-bridge-context-transfer.js.map",
+        "size": 1511,
+        "sha256": "679ab8ff08bd87524a19eaf75a318d11881db0fbd0f9c0618bf29ed643848cb1"
+      },
+      {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-execution.d.ts",
-        "size": 1063,
-        "sha256": "140f63295a3b41eb0b6102a7c3ae330195881e0d90975a462f99d2ab4195d7b5"
+        "size": 1199,
+        "sha256": "74ec9a56c40fe76347efd68cc4a1bae34600108628273ef3147c216a522cf46f"
       },
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-execution.d.ts.map",
-        "size": 827,
-        "sha256": "5304b2ae1247286622049a8a24f3f6f704c21047d133dd256ee735c87a24d526"
+        "size": 928,
+        "sha256": "84846704ec8f77cdc1704bb4877ac5f637392045f811bb66a3d3551e0e08234b"
       },
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-execution.js",
-        "size": 1134,
-        "sha256": "41251eefeb0130ffacfc05dec0023ed3f9368cc0c79ee6e8f10596693e249d2d"
+        "size": 1234,
+        "sha256": "6c32e25be5df2001b125f68e01866ad460215fe0d8551f7bb6af73179ea904af"
       },
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-execution.js.map",
-        "size": 1109,
-        "sha256": "4ad7fcd819c4a4c7dcaf16e25b420a0fa02e3a0d720806bee2452ecafb4c746b"
+        "size": 1207,
+        "sha256": "c123a9ea53910673ece3b3132da57f81df59295e8b01381d2ded6c84cec44db0"
       },
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-run.d.ts",
@@ -838,17 +858,17 @@
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-run.d.ts.map",
         "size": 1218,
-        "sha256": "fbddd0fa4be36d12af5492f29d6b45738938fcd1b9fbe64629b1a74738e0d4b8"
+        "sha256": "dad7ebe5f34375c61be9efbeb84fde60299be1e0b40f28d5bae2b00a48aa29c0"
       },
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-run.js",
-        "size": 7726,
-        "sha256": "f621170aa957a8ec93ee6eb3f6fc4696c3182504e2d224b5aa3e5a13477945d0"
+        "size": 8609,
+        "sha256": "6694f91541bbb7705dbd1ad0952e4aaa40d4040da15a7ee89d780096a5c2e0ed"
       },
       {
         "path": "package/dist/adapters/runtime/cli-bridge-retained-run.js.map",
-        "size": 6487,
-        "sha256": "a1ec9057cdb661b98b7c2e235dfcd1dc3521761150aa69275aaeaa777c7b493d"
+        "size": 7183,
+        "sha256": "be734be9c80e092a3488ab5775f058ab28cc7207bc702a69a6f9b5ed6b6befde"
       },
       {
         "path": "package/dist/adapters/runtime/execution-observation-source.d.ts",
@@ -992,23 +1012,23 @@
       },
       {
         "path": "package/dist/adapters/runtime/production-cli-bridge-backend.d.ts",
-        "size": 1557,
-        "sha256": "2361c757743c1b717a20ca7f1d595bc85f437f5b8a0234af13eddda47d1dc528"
+        "size": 2136,
+        "sha256": "a77680eca0be436561ef9e0a948aeddbc51162de311b9fc7148b6344487d72a1"
       },
       {
         "path": "package/dist/adapters/runtime/production-cli-bridge-backend.d.ts.map",
-        "size": 1372,
-        "sha256": "08cae03ebcfa071104c374053ab94a1921fff041e4c4abf44b1b565e80bb1271"
+        "size": 1781,
+        "sha256": "76f4930c91bf9b29f794a6d7a4a85861aa1394988abca94ae3201ac443e0156b"
       },
       {
         "path": "package/dist/adapters/runtime/production-cli-bridge-backend.js",
-        "size": 6986,
-        "sha256": "0d523c8a7d325e32ccc86feaa048e3ac6e354011c9e059e67a651a6dad5f6d9c"
+        "size": 8805,
+        "sha256": "7ca44ebdc7116e4ca9c813a436c92ee1c431ad0f670fdd29eb3ea09c1978f426"
       },
       {
         "path": "package/dist/adapters/runtime/production-cli-bridge-backend.js.map",
-        "size": 5663,
-        "sha256": "4d2eb5c0936e963c8984f915b1ff0bb23cf6eedc1679c481037c82c41dff2bf3"
+        "size": 7028,
+        "sha256": "32d3079855bce2a58a83d4e60773b731681ccfdd02c390601ef8e90f22dfc3a4"
       },
       {
         "path": "package/dist/adapters/runtime/production-tangle-inference-backend.d.ts",
@@ -1118,17 +1138,17 @@
       {
         "path": "package/dist/adapters/runtime/retained-execution-stream.d.ts.map",
         "size": 811,
-        "sha256": "907c9512cfaf24ddad53b8def2a2dbdb51d75bb7590a79c3b62952bffa1a9804"
+        "sha256": "6957487804091829c9d4d49b73b79d4064be0ef059bdb5f0e8290b999a89f6df"
       },
       {
         "path": "package/dist/adapters/runtime/retained-execution-stream.js",
-        "size": 1939,
-        "sha256": "289c56365b43d9250f2f22ebe7fb7a5a272c57fd09aa98e8df8b04fa217b39cb"
+        "size": 2500,
+        "sha256": "e94169a343cde478e151e2b44cb58ec3b6f29ce97bdb66c4ce0c86ffb7da383d"
       },
       {
         "path": "package/dist/adapters/runtime/retained-execution-stream.js.map",
-        "size": 1985,
-        "sha256": "2c7abace45c973b8c1e7ff488edf92f3fab216cd5d9c4d9e4322430557fc9c34"
+        "size": 2298,
+        "sha256": "991577144799427c81a0d51c888ad753df7720e24c5ca4ee7b6361a37b6d4e81"
       },
       {
         "path": "package/dist/adapters/runtime/retained-execution.d.ts",
@@ -1638,17 +1658,17 @@
       {
         "path": "package/dist/adapters/storage/sqlite-crypto.d.ts.map",
         "size": 500,
-        "sha256": "006299c7091a65a7ee98a2c03d523e753d9732f27c184f72671f98b11804b9f5"
+        "sha256": "3177112a040830a8d3a133a8e50a4d4b1a9137c1ab1a6fa768cba29b899d208a"
       },
       {
         "path": "package/dist/adapters/storage/sqlite-crypto.js",
-        "size": 8068,
-        "sha256": "83ed6ae5d00eb78614d2cdeeb49ac19e97936246443dd22049b47c3e6ca9caef"
+        "size": 8494,
+        "sha256": "b24c5dd134cc2ee35aed7cefc78000c02385f1cfa3379149548613d0a685667e"
       },
       {
         "path": "package/dist/adapters/storage/sqlite-crypto.js.map",
-        "size": 7501,
-        "sha256": "995cc2207bcbeabe8e98f8af9e7075be8762aa56979152fe43bbd73a5f2ef193"
+        "size": 7890,
+        "sha256": "9fb0ad3fb0a686a6cba4c5f70e376f09dbc8a423a60581ee2dc0077a9fa393ea"
       },
       {
         "path": "package/dist/adapters/storage/sqlite-driver.d.ts",
@@ -3822,13 +3842,13 @@
       },
       {
         "path": "package/dist/app/conversation-branches.js",
-        "size": 23468,
-        "sha256": "457a9a204845a9808bdab75de5aed76cd5da7cae928a58fb92de23cb4bb11067"
+        "size": 23481,
+        "sha256": "ab2700a114639e548d82a3e816b19899fbe3ce8193648c1fcd972113da30869c"
       },
       {
         "path": "package/dist/app/conversation-branches.js.map",
-        "size": 21865,
-        "sha256": "9d6092f88338cc3d2eef069bc879941ee10732335e97565031f551dc08b4c305"
+        "size": 21885,
+        "sha256": "70aba7052a8e6aec364400093853c5ddf015166b2b6501202518522e5ced5bef"
       },
       {
         "path": "package/dist/app/conversation-composition.d.ts",
@@ -4593,22 +4613,22 @@
       {
         "path": "package/dist/app/production-composition.d.ts",
         "size": 2549,
-        "sha256": "065aeeb2a634ab9bb700625a52b54b09a8c51100025d08968a77d2919a344042"
+        "sha256": "825be10292c8c9f930d0edeb67701dd3d99984e39d83fe6eec226ef4316f8e22"
       },
       {
         "path": "package/dist/app/production-composition.d.ts.map",
-        "size": 1577,
-        "sha256": "d94af449f94806efddde537e5c0b062abcc16a617af0212d393199af9a817cb8"
+        "size": 1578,
+        "sha256": "cda86ffa594e6dea016d6146bee1e904d104ce3e9deb0ed0a9a123c590d08d02"
       },
       {
         "path": "package/dist/app/production-composition.js",
-        "size": 10553,
-        "sha256": "282eb2f14dee2ed6dd0e2f7d561115e53df805065ec0ed91023acd5ce5e9a375"
+        "size": 11675,
+        "sha256": "7fa98c871ca11c0c5d8386b6cfb598c927557944ec2bab01ef2c75a80180df04"
       },
       {
         "path": "package/dist/app/production-composition.js.map",
-        "size": 8061,
-        "sha256": "8f7c360503b306c6b170bf094e5f15b536e96e056b49ac85d0c68b981c3bbd8a"
+        "size": 8772,
+        "sha256": "180e5736c4d11cb0ff07d574e6a15de0417d8ae08a30d18efad18f8764bfe714"
       },
       {
         "path": "package/dist/app/profile-action-support.d.ts",
@@ -4738,17 +4758,17 @@
       {
         "path": "package/dist/app/profile-selection.d.ts.map",
         "size": 357,
-        "sha256": "5dbbdaca43921a5b622b13f7168d36cbd90bbc320b8227a3a1aad00d51588913"
+        "sha256": "c4e7a67a2b2fbbf562a177f2fd03eea76ca4932e804e50514065d89392a3f1b2"
       },
       {
         "path": "package/dist/app/profile-selection.js",
-        "size": 5121,
-        "sha256": "fd193ec876ce3c29bc2aa9029cd019b470d6f6527bd4df65c6413d2d57f49094"
+        "size": 5547,
+        "sha256": "4716aff60c6829188375226e3c7b217c7446bee82fd9f5657c4b5f003d771f51"
       },
       {
         "path": "package/dist/app/profile-selection.js.map",
-        "size": 5176,
-        "sha256": "26db347c14953f9b129c652eeb39675fa2c0959ad308c13f7202c54a45ac6648"
+        "size": 5579,
+        "sha256": "04fb1ac322ca691c1d5905674ba7610731c452a0db521767e614b8b66c4d96f6"
       },
       {
         "path": "package/dist/app/profile-snapshots.d.ts",
@@ -7158,17 +7178,17 @@
       {
         "path": "package/dist/domain/reducer-runtime.d.ts.map",
         "size": 828,
-        "sha256": "c548568b811c406c6022a08d12462995df5af42c7b49c07457ce295674303fe0"
+        "sha256": "9e62d7d8a55f3bacffd20fce494c474cf3a7332c354d906c02103eb821cb1b51"
       },
       {
         "path": "package/dist/domain/reducer-runtime.js",
-        "size": 6578,
-        "sha256": "3f583149e8d539e4646eca3e17b4124953114ceba0441c3db27d65aef30aef7f"
+        "size": 6787,
+        "sha256": "7b9cef2aa0aecb8873de37ef27857924898fbdbb15d82c1926c73580cd9e0871"
       },
       {
         "path": "package/dist/domain/reducer-runtime.js.map",
-        "size": 5899,
-        "sha256": "9f511db403a58ef4c38c4d5b54e4c80decd066df96741fb86d38218bdda64048"
+        "size": 5991,
+        "sha256": "f510de444d6cf78d439ef4ac757e32575d0f7a8bb4a570e779ec22a777a26f76"
       },
       {
         "path": "package/dist/domain/reducer-support.d.ts",
@@ -8238,17 +8258,17 @@
       {
         "path": "package/dist/views/headless/rpc.d.ts.map",
         "size": 460,
-        "sha256": "fa65c8fe62b5ca8ca9fda7c7d974a0ca74fc0af125eec327843ece710d37e0c4"
+        "sha256": "a5899e3b947df9dd17b606d3e5547635941c96c0f17aae12f48209a352d10d13"
       },
       {
         "path": "package/dist/views/headless/rpc.js",
-        "size": 18893,
-        "sha256": "948a9f2c88164fefbb33d0d4408c44e41167896a2f0b96a575127cf6c06bbece"
+        "size": 19431,
+        "sha256": "d54ef4da2814fcbbf980c26e70058b16252a46a80d9fefad376305b673d09fa8"
       },
       {
         "path": "package/dist/views/headless/rpc.js.map",
-        "size": 14940,
-        "sha256": "4094e1d97979008c7070bbeba05ba90cd9dd334b2305d1ca74ab50b068209e1d"
+        "size": 15381,
+        "sha256": "8ad45c42bbc31fd6cecfceacfe1b3a33c07e9e34a2227198b73b24c502d07631"
       },
       {
         "path": "package/dist/views/shared/analysis-model-call-presentation.d.ts",
@@ -8718,17 +8738,17 @@
       {
         "path": "package/dist/views/shared/semantic-projection.d.ts.map",
         "size": 580,
-        "sha256": "63803a6cda605e4d143071b913af1602a1054dbe3e5c43678bdc15c200ffdf74"
+        "sha256": "b3a3a1580c531350cdd0c1fca0a4312ddf59afc654b504159fab19dd9b7ab8f3"
       },
       {
         "path": "package/dist/views/shared/semantic-projection.js",
-        "size": 16731,
-        "sha256": "b26f09b65c7d76539ffc6f321f8afddde45f7c4d058124b31b9fe7b1e21f7568"
+        "size": 22885,
+        "sha256": "741d5f86b53b91816b04438beee437cd8910635339042531eee4aa044a6ffd84"
       },
       {
         "path": "package/dist/views/shared/semantic-projection.js.map",
-        "size": 16482,
-        "sha256": "500aa03bd74c1cbc91be87561988649333841258cb93127d2daf0e5470f0b7cf"
+        "size": 21654,
+        "sha256": "ad7b16160d99cad8dc8fe87590646893133700b2ae7bb6f915a0f2ceb0921b13"
       },
       {
         "path": "package/dist/views/shared/semantic-query-scope.d.ts",
@@ -10233,10 +10253,10 @@
       {
         "path": "package/package.json",
         "size": 6160,
-        "sha256": "5b6a72ffdb83769fd440001e817247111413bca8e6feb6eb4ba1c287e4e43ced"
+        "sha256": "c4980275f346b60e04de4299c77d9b1b04cf37f38728b533513520d4b2aff5f1"
       }
     ],
-    "digest": "f4b81fe5197fd1478b892a14fa18da61ccbe0053a5466f38f53e5a043be554b0"
+    "digest": "25eb4c33b72cfd93131316431d5e0203003a4fb4532285fb1cb71d85c4ff6944"
   },
   "rpcRecords": 37,
   "referenceSizes": [

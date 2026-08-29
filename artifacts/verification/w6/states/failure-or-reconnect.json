@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "551a0739cdae863f784eef82dba7ef926e7bf436f67ca908ef0f18899788355c"
+    "tarballSha256": "2ff0d7cf65eb929cc55b1669821b23c5381f401eb271002c0a16679a450efbe9"
   },
   "dimensions": {
     "columns": 80,
@@ -336,7 +336,7 @@
           "title": "event backend_start",
           "status": "failed",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-29T12:58:13.794Z",
+          "occurredAt": "2026-08-29T18:49:35.058Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -348,7 +348,7 @@
           "title": "error",
           "status": "failed",
           "detail": "RUNTIME_BACKEND_ERROR",
-          "occurredAt": "2026-08-29T12:58:13.799Z",
+          "occurredAt": "2026-08-29T18:49:35.062Z",
           "sourceEventId": "run-000001:runtime:2",
           "runId": "run-000001",
           "entityType": "run",
@@ -725,10 +725,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-5e39aac4d18105dd9e577ca7",
+              "id": "effect-op-terminal-000002-12c768a101dbda06afca5deb",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "5e39aac4d18105dd9e577ca78326af4faad463c24670308fb8b7aa1361f7054c",
+              "requestDigest": "12c768a101dbda06afca5deb7d9dcae1c76a81c2075fe222c7c8be66c0bd421b",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -747,13 +747,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-29T12:58:13.794Z",
+            "occurredAt": "2026-08-29T18:49:35.058Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-2769ffcc-98ea-4612-9576-2f322f445d1b",
+              "id": "turn-d42e6be9-24b7-4230-818b-38afb5d626ea",
               "intent": "W6 failure state",
               "metadata": {
                 "identity": {
@@ -763,11 +763,11 @@
               }
             },
             "session": {
-              "id": "e9bd77a2-9b79-41bf-b5be-854afbff5652",
+              "id": "2e03c87a-08b5-43b3-aa03-093d7ab31dc4",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-29T12:58:13.794Z",
-              "updatedAt": "2026-08-29T12:58:13.794Z",
+              "createdAt": "2026-08-29T18:49:35.058Z",
+              "updatedAt": "2026-08-29T18:49:35.058Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -789,16 +789,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-2769ffcc-98ea-4612-9576-2f322f445d1b"
+                  "id": "turn-d42e6be9-24b7-4230-818b-38afb5d626ea"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-2769ffcc-98ea-4612-9576-2f322f445d1b:attempt:2c9ef26e-cf70-4224-8b9c-f6442fd1cb0d",
-                  "materializationReceiptDigest": "sha256:d02922ef9799ffd4d065649684bb2ae79b30b5ad6494dbf96a14d331e9ecabb5",
-                  "bindingDigest": "sha256:1c9a2f7c75e37f9bf99cb00ed5bca04871428aa8bdc2bcf7cd6c53261cb4e9e8",
+                  "attemptId": "turn-d42e6be9-24b7-4230-818b-38afb5d626ea:attempt:58676d50-c9e3-4233-8e0e-1f4aac8064ce",
+                  "materializationReceiptDigest": "sha256:04ae2d1c383de26ce002261980b27455265eea81238c78b1a6b6cd479da758e4",
+                  "bindingDigest": "sha256:47d4bb00ab4f9cbfaaad069f1111dd4a7b03e62d5792097ad7014f08c133ca50",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -810,10 +810,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-29T12:58:13.792Z"
+                "startedAt": "2026-08-29T18:49:35.056Z"
               }
             },
-            "timestamp": "2026-08-29T12:58:13.794Z"
+            "timestamp": "2026-08-29T18:49:35.058Z"
           }
         }
       },
@@ -826,7 +826,7 @@
           "source": {
             "eventId": "run-000001:runtime:2",
             "providerSequence": 2,
-            "occurredAt": "2026-08-29T12:58:13.799Z",
+            "occurredAt": "2026-08-29T18:49:35.062Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "error": {
@@ -845,7 +845,7 @@
           "source": {
             "eventId": "run-000001:runtime:3",
             "providerSequence": 3,
-            "occurredAt": "2026-08-29T12:58:13.802Z",
+            "occurredAt": "2026-08-29T18:49:35.066Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "status": "failed",
@@ -869,10 +869,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-5e39aac4d18105dd9e577ca7",
+              "id": "effect-op-terminal-000002-12c768a101dbda06afca5deb",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "5e39aac4d18105dd9e577ca78326af4faad463c24670308fb8b7aa1361f7054c",
+              "requestDigest": "12c768a101dbda06afca5deb7d9dcae1c76a81c2075fe222c7c8be66c0bd421b",
               "kind": "send",
               "status": "failed",
               "attempt": 1,
