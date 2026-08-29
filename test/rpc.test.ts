@@ -488,7 +488,6 @@ test('JSONL run configuration is replay safe, visible, and reaches Runtime', asy
     ...DETERMINISTIC_PROFILE,
     harness: 'codex',
     model: {
-      ...DETERMINISTIC_PROFILE.model,
       default: 'openai/gpt-5.6',
       reasoningEffort: 'xhigh',
     },
@@ -690,6 +689,76 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
   if (cancelReplay?.type !== 'ack') assert.fail('missing cancellation replay acknowledgement')
   assert.equal(cancelReplay.replayed, true)
   assert.equal(cancelReplay.outcome, 'accepted')
+})
+
+test('JSONL detach retains its completion and reports the detached event and state', async () => {
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => ({
+      ...DEFAULT_RUN_CAPABILITIES,
+      streaming: { ...DEFAULT_RUN_CAPABILITIES.streaming, replay: true, detach: true },
+      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, recreate: true },
+    }),
+    async *streamTurn(input) {
+      yield { type: 'text_delta', text: 'waiting for detach' }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    detachRun: async (input) => {
+      releaseStream?.()
+      return { operationId: input.operationId, outcome: 'accepted', detail: 'detached' }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  const responses: BraidResponse[] = []
+  const code = await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-detach-init',
+        command: 'initialize',
+        params: { workspace: '/workspace', subscribe: true },
+      },
+      {
+        version: 1,
+        requestId: 'req-detach-send',
+        operationId: 'op-detach-send',
+        command: 'send',
+        params: { text: 'detach this active turn' },
+      },
+      {
+        version: 1,
+        requestId: 'req-detach',
+        operationId: 'op-detach-active',
+        command: 'detach',
+        params: { runId: 'run-000001' },
+      },
+      {
+        version: 1,
+        requestId: 'req-detach-stop',
+        operationId: 'op-detach-stop',
+        command: 'shutdown',
+        params: { mode: 'detach' },
+      },
+    ]),
+    { write: responseWriter(responses) },
+  )
+
+  assert.equal(code, 0)
+  assert.ok(
+    responses.some(
+      (response) => response.type === 'event' && response.event.kind === 'run.detached',
+    ),
+  )
+  const state = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'req-detach',
+  )
+  assert.equal(state?.type, 'state')
+  if (state?.type !== 'state' || state.projection !== 'full') assert.fail('missing detach state')
+  assert.equal(state.state.runs[0]?.status, 'detached')
 })
 
 test('RPC and plain shutdown exit at the drain deadline for a never-ending iterator', async () => {

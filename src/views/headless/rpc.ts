@@ -175,6 +175,18 @@ export async function runRpc(
     await closePromise
     applicationClosed = true
   }
+  const trackCompletion = (
+    completion: Promise<unknown>,
+    onFulfilled?: () => void | Promise<void>,
+  ): void => {
+    let tracked: Promise<void>
+    tracked = completion
+      .then(() => onFulfilled?.())
+      .then(() => undefined)
+      .finally(() => pendingCompletions.delete(tracked))
+    pendingCompletions.add(tracked)
+    void tracked.catch(() => undefined)
+  }
   const trimReplayHistory = () => {
     while (requests.size > RPC_REPLAY_MAX_ENTRIES || replayBytes > RPC_REPLAY_MAX_BYTES) {
       const oldest = requests.entries().next().value as [string, RequestRecord] | undefined
@@ -349,15 +361,10 @@ export async function runRpc(
             bufferedEvents = undefined
             if (admissionState) await respond(admissionState)
             if (result.completion) {
-              let tracked: Promise<void>
-              tracked = result.completion.finally(() => pendingCompletions.delete(tracked))
-              pendingCompletions.add(tracked)
-              void tracked
-                .then(() => {
-                  if (applicationClosed) return
-                  return respond(stateResponse(controller, request.requestId))
-                })
-                .catch(() => undefined)
+              trackCompletion(result.completion, () => {
+                if (applicationClosed) return
+                return respond(stateResponse(controller, request.requestId))
+              })
             } else {
               await respond(stateResponse(controller, request.requestId))
             }
@@ -390,7 +397,9 @@ export async function runRpc(
           }
           default: {
             const generic = request as GenericRpcRequest
-            if (generic.command === 'cancel_run') bufferedEvents = []
+            const awaitControlCompletion =
+              generic.command === 'cancel_run' || generic.command === 'detach'
+            if (awaitControlCompletion) bufferedEvents = []
             const result = await controller.dispatch({
               type: 'headless-command',
               command: generic.command,
@@ -416,11 +425,16 @@ export async function runRpc(
               ...(result.admission === undefined ? {} : { admission: result.admission }),
               ...(result.data === undefined ? {} : { result: result.data }),
             })
-            if (generic.command === 'cancel_run') {
+            if (awaitControlCompletion) {
+              if (result.completion) await result.completion
               for (const event of bufferedEvents ?? []) await respond(eventResponse(event))
               bufferedEvents = undefined
-              if (result.completion) await result.completion
               await respond(stateResponse(controller, request.requestId))
+            } else if (result.completion) {
+              trackCompletion(result.completion, () => {
+                if (applicationClosed) return
+                return respond(stateResponse(controller, request.requestId))
+              })
             }
             break
           }
