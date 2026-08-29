@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "69273283b2c48e3fc57e32ba3cc7cfb8f2808c5a879744e190e6df9378d521e5"
+    "tarballSha256": "58a8863510b0af5864fc571b823db50e8e034d7e9a69576195cc748c2202b8fb"
   },
   "dimensions": {
     "columns": 80,
@@ -14,7 +14,7 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.3",
+      "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
       "node": "v24.18.0",
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-29T04:15:19.660Z",
+          "occurredAt": "2026-08-29T12:48:28.135Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -561,12 +561,12 @@
         "run.reconnect": {
           "available": false,
           "source": "provider",
-          "reason": "Detach the active run before reconnecting it"
+          "reason": "There is no recoverable run to reconnect while another run is active"
         },
         "run.reconcile": {
           "available": false,
           "source": "provider",
-          "reason": "Detach the active run before reconciling it"
+          "reason": "There is no recoverable run to reconcile while another run is active"
         }
       },
       "draft": "",
@@ -697,10 +697,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-45de610136272ea261191af6",
+              "id": "effect-op-terminal-000002-18fb4f2ea4315b9485e2f7aa",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "45de610136272ea261191af643c9dd3b12914e873e83e8b680df5b1fe3e76aea",
+              "requestDigest": "18fb4f2ea4315b9485e2f7aa740a443a630558f65d1a8e4c4e8c4f5142b786bc",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -719,13 +719,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-29T04:15:19.660Z",
+            "occurredAt": "2026-08-29T12:48:28.135Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-d8490564-4935-4979-ba99-140f6bdcf903",
+              "id": "turn-aa7ce0df-ffda-4546-a4ba-1dddcb8d605a",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
@@ -735,11 +735,11 @@
               }
             },
             "session": {
-              "id": "3a6fd1ce-c86b-465e-88ad-c030ddbec98d",
+              "id": "5d959641-1813-4738-a7cf-77a3e1e049c4",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-29T04:15:19.660Z",
-              "updatedAt": "2026-08-29T04:15:19.660Z",
+              "createdAt": "2026-08-29T12:48:28.135Z",
+              "updatedAt": "2026-08-29T12:48:28.135Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -761,16 +761,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-d8490564-4935-4979-ba99-140f6bdcf903"
+                  "id": "turn-aa7ce0df-ffda-4546-a4ba-1dddcb8d605a"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-d8490564-4935-4979-ba99-140f6bdcf903:attempt:74db3162-d771-425f-870f-e3ff90ccde34",
-                  "materializationReceiptDigest": "sha256:195e92e6febf86c70504edfb0327cf82a9a9be8bb902113992f254a48deaa9c0",
-                  "bindingDigest": "sha256:c2c0fcc9d684c3d83693ed84679af33065bbdda1bd8fa5f81327f9329b89a784",
+                  "attemptId": "turn-aa7ce0df-ffda-4546-a4ba-1dddcb8d605a:attempt:6d56bf67-7908-4ef3-b21b-f44f348d03cc",
+                  "materializationReceiptDigest": "sha256:f350a414fb447652a42c8a9c041fe052fd82cb32b3505571d711202ecc9c934a",
+                  "bindingDigest": "sha256:ad029068d16f85a3e8f5265c2c35413d96b3f0bbbc681ee3fbf937fcc92f2956",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -782,10 +782,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-29T04:15:19.657Z"
+                "startedAt": "2026-08-29T12:48:28.133Z"
               }
             },
-            "timestamp": "2026-08-29T04:15:19.660Z"
+            "timestamp": "2026-08-29T12:48:28.135Z"
           }
         }
       }

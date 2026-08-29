@@ -1,6 +1,6 @@
-braid  cwd  workspace  ·  session  New conversation  ·  branch  branch-1
 
- Write a message, or press Ctrl+P for commands.
+
+
 
 
 
@@ -20,21 +20,3 @@ braid  cwd  workspace  ·  session  New conversation  ·  branch  branch-1
                   Saved by your secure credential manager; Braid keeps only a reference.
                  > •••••••••••••••••••••••••••••••••••••••••••••••••••••••
                   enter continue · esc back
-
-
-
-
-
-
-
-
-
-
-
-
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-ready for a message                                                                                         openai/gpt-5
-Connection workflow proof · runner pi · Local CLI Bridge                                                 Ctrl+P commands

@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-09T13:48:23.197Z",
+  "generatedAt": "2026-08-29T12:53:28.474Z",
   "command": "pnpm capture:connections",
   "binary": "clean npm install from generated tarball",
   "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-  "tarball": "tangle-network-braid-0.1.0.tgz",
-  "tarballSha256": "edc58f6bd72ffde9ad3e4bb61f758963ccb03ecbdf244cb0b3388e9861ebf116",
+  "tarball": "tangle-network-braid-0.3.0.tgz",
+  "tarballSha256": "58a8863510b0af5864fc571b823db50e8e034d7e9a69576195cc748c2202b8fb",
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.1",
+      "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -34,70 +34,70 @@
   "artifacts": [
     {
       "path": "40x12.txt",
-      "sha256": "b624b3555f14bea70560c8fbada112860c47af93566918c86ee4cada62f50567",
+      "sha256": "d96c507b55d1acf6095b32a38e8bf155b6cea664e30b996314907da40393edbb",
       "kind": "terminal-frame",
       "columns": 40,
       "rows": 12
     },
     {
       "path": "40x12.png",
-      "sha256": "27d6babd46ca5fce919925ea7f048ab45e06a28ab91de4719071cedef6db56f2",
+      "sha256": "a0c88820e002dd78c4f536ac350e622469065bf2048e1a259373b8d855ba2640",
       "kind": "png",
       "columns": 40,
       "rows": 12
     },
     {
       "path": "80x24.txt",
-      "sha256": "f92d5611afdaaa0bc63e56c26c29b32cf6b1887b2540ff8a38f0f52ad54c7151",
+      "sha256": "609b7359eb3e8ac1b8bc64b1da667f7c5d25e8b8a958ad28b79829feefe4106d",
       "kind": "terminal-frame",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24.png",
-      "sha256": "4042bf8a68980111c3f4a4862ad4d6fffb92dd54c4b310bbbb4607fbefee5cf7",
+      "sha256": "db50abc7bd612e19e8809883083a87370c7eecd97d75262503758f425a409ad3",
       "kind": "png",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "120x40.txt",
-      "sha256": "0ac8a6430176c30c6e28e3e090bbb785a50e7fa0e56ea473b0d456566d6aaa1e",
+      "sha256": "e966d916c4134c494fab2ec1eaef1788988d5142d1f73d87d5eeead9d079c0ab",
       "kind": "terminal-frame",
       "columns": 120,
       "rows": 40
     },
     {
       "path": "120x40.png",
-      "sha256": "df736d4f7c8a775d003edaf5ee2e037ee5c6a4241beedd57b0e392ab00aed0ba",
+      "sha256": "b9b126021a16259aae2d66949562bd66f41baad318c3800b117b1117964cdee2",
       "kind": "png",
       "columns": 120,
       "rows": 40
     },
     {
       "path": "200x60.txt",
-      "sha256": "8067b62ec11ff438b429d121c85fa3cb5d5814e322fd644355eb5ee090020754",
+      "sha256": "8ca3b0f366b7ea7f1cafe552c29c70f17c37dd78b2f7fd3277b15c839655a5d9",
       "kind": "terminal-frame",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "200x60.png",
-      "sha256": "745d261f5ff8c7f2121e0424c8713b059c4a246a2fb821b1309e97d013126c91",
+      "sha256": "56f29ce88c0219786dfa8b7409a72727a464c462ea08b13c5990aaef87211938",
       "kind": "png",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "raw/connection-keyboard.cast",
-      "sha256": "98e157217351bb9e4a3d1913f23ae492868a8c4116277632e8eb29bb61c42d93",
+      "sha256": "810a36040ff4b6db33b2d31419357427aceef960bbb809aa45985031f5774eeb",
       "kind": "keyboard-asciicast",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24-connection-keyboard.gif",
-      "sha256": "fe012591871b19260db3e25a727bd08425fcea00eca2fb3db42eeb415bac83e5",
+      "sha256": "aca997424c72f902ff30e6dc1f6ed4b870d1640e9f1c6592969d9e4257559448",
       "kind": "keyboard-flow",
       "columns": 80,
       "rows": 24

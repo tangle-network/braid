@@ -22,22 +22,30 @@ const sizes = [
   [200, 60],
 ]
 const captureSecret = `connection-capture-${randomUUID()}`
+const captureProfileName = 'Connection workflow proof'
 const XtermTerminal = xterm.Terminal
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
-async function waitFor(predicate, label, timeoutMs = 10_000) {
+async function waitFor(predicate, label, diagnostic, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
+    if (Date.now() >= deadline) {
+      const detail = diagnostic?.()
+      throw new Error(`Timed out waiting for ${label}${detail ? `\n${detail}` : ''}`)
+    }
     await sleep(20)
   }
 }
 
 function normalized(value) {
   return value.replace(/\s+/gu, ' ').trim()
+}
+
+function conversationShellReady(screen) {
+  return screen.includes(captureProfileName) && screen.includes('new message')
 }
 
 function screenFrom(emulator, rows) {
@@ -88,7 +96,7 @@ async function createProductionFixture(root) {
         format: 'braid-startup-config',
         schemaVersion: 2,
         profile: {
-          name: 'Connection workflow proof',
+          name: captureProfileName,
           description: 'Packed terminal connection workflow proof',
           harness: 'pi',
           model: { default: 'openai/gpt-5' },
@@ -186,15 +194,31 @@ async function spawnTerminal(binary, columns, rows, root) {
     waitFor(
       () => pendingWrites === 0 && performance.now() - lastOutputAt >= 75,
       `${columns}x${rows} ${label}`,
+      () => screen,
     )
   const close = async () => {
     if (exited) return
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
+      const before = normalized(screen)
+      if (conversationShellReady(before)) break
       input('\u001b')
-      await sleep(50)
+      await waitFor(
+        () => conversationShellReady(normalized(screen)) || normalized(screen) !== before,
+        'overlay close',
+        () => screen,
+        1_000,
+      )
     }
+    if (!conversationShellReady(normalized(screen)))
+      throw new Error(
+        `Packed connection capture could not return to the conversation shell\n${screen}`,
+      )
     input('\u0003')
-    await waitFor(() => normalized(screen).includes('ctrl+c again to quit'), 'safe exit')
+    await waitFor(
+      () => normalized(screen).toLowerCase().includes('ctrl+c again to quit'),
+      'safe exit',
+      () => screen,
+    )
     input('\u0003')
     const result = await Promise.race([
       exit,
@@ -223,31 +247,39 @@ async function spawnTerminal(binary, columns, rows, root) {
   }
 }
 
-async function reachCredentialPrompt(terminal) {
-  await waitFor(
-    () => normalized(terminal.screen()).includes('Braid starter'),
-    'Braid conversation shell',
+function waitForScreen(terminal, predicate, label) {
+  return waitFor(
+    () => predicate(normalized(terminal.screen())),
+    label,
+    () => terminal.screen(),
   )
+}
+
+async function reachCredentialPrompt(terminal) {
+  await waitForScreen(terminal, conversationShellReady, 'Braid conversation shell')
   terminal.input('/connection create\r')
-  await waitFor(
-    () => normalized(terminal.screen()).includes('connection metadata'),
+  await waitForScreen(
+    terminal,
+    (screen) => screen.includes('connection metadata'),
     'connection kind editor',
   )
   terminal.input('\u001b[B')
   terminal.input('\r')
-  await waitFor(
-    () => normalized(terminal.screen()).includes('Tangle inference metadata'),
+  await waitForScreen(
+    terminal,
+    (screen) => screen.includes('Tangle inference metadata'),
     'connection fields',
   )
   for (let index = 0; index < 4; index += 1) terminal.input('\r')
-  await waitFor(() => normalized(terminal.screen()).includes('review connection'), 'review')
+  await waitForScreen(terminal, (screen) => screen.includes('review connection'), 'review')
   terminal.input('\r')
-  await waitFor(
-    () => normalized(terminal.screen()).includes('credential · Tangle Inference'),
+  await waitForScreen(
+    terminal,
+    (screen) => screen.includes('credential · Tangle Inference'),
     'credential prompt',
   )
   terminal.sensitiveInput(captureSecret)
-  await waitFor(() => terminal.screen().includes('••••'), 'masked credential')
+  await waitForScreen(terminal, (screen) => screen.includes('••••'), 'masked credential')
   await terminal.stable('masked credential frame')
 }
 
@@ -286,24 +318,28 @@ async function captureKeyboardFlow(binary) {
     await reachCredentialPrompt(terminal)
     await sleep(350)
     terminal.input('\r')
-    await waitFor(() => {
-      const screen = normalized(terminal.screen())
-      return screen.includes('connections') && screen.includes('^D remove')
-    }, 'created connection picker')
+    await waitForScreen(
+      terminal,
+      (screen) => screen.includes('connections') && screen.includes('^D remove'),
+      'created connection picker',
+    )
     terminal.input('Tangle')
-    await waitFor(
-      () => normalized(terminal.screen()).includes('Tangle Inference'),
+    await waitForScreen(
+      terminal,
+      (screen) => screen.includes('Tangle Inference'),
       'created connection filter',
     )
     terminal.input('\u0004')
-    await waitFor(
-      () => normalized(terminal.screen()).includes('remove connection'),
+    await waitForScreen(
+      terminal,
+      (screen) => screen.includes('remove connection'),
       'removal confirmation',
     )
     await sleep(500)
     terminal.input('\r')
-    await waitFor(
-      () => !normalized(terminal.screen()).includes('remove connection'),
+    await waitForScreen(
+      terminal,
+      (screen) => !screen.includes('remove connection'),
       'connection removal',
     )
     await terminal.stable('removed connection picker')
