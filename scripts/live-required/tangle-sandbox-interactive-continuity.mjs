@@ -62,6 +62,14 @@ function identityText(ref) {
     .join('/')
 }
 
+/**
+ * Accept the explicit identity conflict returned by the Sandbox sidecar.
+ * A mismatched incarnation is a rejected lookup, not an absent session.
+ */
+export function isStaleInteractiveIdentityError(error) {
+  return error?.code === 'STALE_INCARNATION'
+}
+
 function directCredentialEnvironment(environment) {
   const hasSandboxCredential = [
     'BRAID_TANGLE_SANDBOX_AUTH',
@@ -763,26 +771,35 @@ export async function runInteractiveContinuityProof({
       incarnationId: `${ref.incarnationId}-stale`,
     }
     const staleHandle = session.interactive({ ref: staleRef, control: startInfo.control })
-    const staleStatus = await bounded(
-      `Stale identity status [${identityText(staleRef)}]`,
-      () => staleHandle.status(),
-      timeoutMs,
-    )
-    assert.equal(
-      staleStatus,
-      null,
-      `Stale identity [${identityText(staleRef)}] resolved to a live process`,
+    let staleStatusError
+    await assert.rejects(
+      () =>
+        bounded(
+          `Stale identity status [${identityText(staleRef)}]`,
+          () => staleHandle.status(),
+          timeoutMs,
+        ),
+      (error) => {
+        staleStatusError = error
+        assert.equal(
+          isStaleInteractiveIdentityError(error),
+          true,
+          `Stale identity [${identityText(staleRef)}] returned an unrelated status error`,
+        )
+        return true
+      },
     )
     await assert.rejects(
       () => staleHandle.attach({ cols: DEFAULT_COLS, rows: DEFAULT_ROWS }),
       (error) => {
-        const message = safeMessage(error, environment)
-        return /stale|identity|not running|exists/iu.test(message)
+        return isStaleInteractiveIdentityError(error)
       },
     )
     checks.push(
       checkRecord('stale-identity-rejected', box.id, ref, {
         rejectedIncarnationId: staleRef.incarnationId,
+        statusErrorCode:
+          typeof staleStatusError?.code === 'string' ? staleStatusError.code : null,
       }),
     )
 
