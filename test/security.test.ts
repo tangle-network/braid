@@ -901,6 +901,25 @@ test('secret-designated interaction values are rejected before journal persisten
     }),
   )
   assert.doesNotThrow(() =>
+    assertPersistablePayload({
+      __braidEvent: {
+        environment: { secretNames: ['OPENAI_API_KEY', 'workspace-token'] },
+      },
+    }),
+  )
+  assert.throws(
+    () =>
+      assertPersistablePayload({
+        __braidEvent: {
+          environment: { secretNames: ['not a bounded identifier'] },
+        },
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
+  )
+  assert.doesNotThrow(() =>
     assertPersistablePayload({ inputTokens: 12, outputTokens: 7, reasoningTokens: 3 }),
   )
   assert.doesNotThrow(() =>

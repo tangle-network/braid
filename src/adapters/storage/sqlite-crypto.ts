@@ -79,6 +79,15 @@ function isSafeInteractionCapabilityFlag(path: string, key: string, value: JsonV
   )
 }
 
+function isSafeEnvironmentSecretNames(path: string, key: string, value: JsonValue): boolean {
+  return (
+    path.endsWith('.environment') &&
+    key === 'secretNames' &&
+    Array.isArray(value) &&
+    value.every((name) => typeof name === 'string' && /^[A-Za-z][A-Za-z0-9._-]{0,127}$/u.test(name))
+  )
+}
+
 function secretFieldNames(value: JsonValue): readonly string[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return []
   const fields = (value as Readonly<Record<string, JsonValue>>).fields
@@ -195,12 +204,14 @@ export function assertPersistablePayload(value: JsonValue): void {
           isSafeBooleanTelemetryField(key, child) ||
           isSafeTokenUsageRecord(key, child))
       const isSafeCapability = !containsSecret && isSafeInteractionCapabilityFlag(path, key, child)
+      const isSafeSecretMetadata = !containsSecret && isSafeEnvironmentSecretNames(path, key, child)
       if (
         SECRET_KEY.test(key) &&
         !SAFE_REFERENCE_SUFFIX.test(key) &&
         !isSecretMarker &&
         !isSafeTelemetry &&
-        !isSafeCapability
+        !isSafeCapability &&
+        !isSafeSecretMetadata
       ) {
         throw new StorageError(
           'SECRET_PAYLOAD_REJECTED',
