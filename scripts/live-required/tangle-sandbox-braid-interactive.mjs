@@ -60,6 +60,7 @@ const repository = resolve(dirname(scriptPath), '../..')
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 10_000
+const SANDBOX_LIST_PAGE_SIZE = 100
 const DETACH = '\u001d'
 const RUN_STATUS_AFTER_STOP = new Set(['aborted', 'cancelled'])
 const CONTROL_REF_FIELDS = Object.freeze([
@@ -314,6 +315,146 @@ function stateDiagnostic(frame) {
     retainedAdmission:
       typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null,
   }))
+}
+
+export function interactiveMaterializationEvidence(record) {
+  const runs = Array.isArray(record?.state?.runs) ? record.state.runs : []
+  if (runs.length !== 1) return undefined
+  const run = runs[0]
+  const phase =
+    typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null
+  const runId = typeof run?.id === 'string' && run.id.length > 0 ? run.id : undefined
+  const materialized =
+    phase === 'interactive_environment' ||
+    phase === 'interactive_started' ||
+    typeof run?.environmentId === 'string' ||
+    typeof run?.controlRef?.environmentId === 'string'
+  return {
+    ...(runId === undefined ? {} : { runId }),
+    phase,
+    materialized,
+    boundary: materialized
+      ? 'provider-environment-identity'
+      : phase === 'interactive_intent'
+        ? 'before-interactive_environment'
+        : 'unknown',
+  }
+}
+
+function interactiveResourceName(runId) {
+  if (typeof runId !== 'string' || !/^[A-Za-z0-9._:-]{1,95}$/u.test(runId)) {
+    throw new Error('Interactive pre-environment cleanup requires a bounded Braid run identity')
+  }
+  return `braid-interactive-${runId}`
+}
+
+function isOwnedInteractiveResource(box, expectedName) {
+  return (
+    typeof box?.id === 'string' &&
+    box.name === expectedName &&
+    box.metadata?.owner === 'braid' &&
+    box.metadata?.lifecycle === 'retained' &&
+    box.metadata?.surface === 'interactive-agent'
+  )
+}
+
+function sameNameInteractiveResources(resources, expectedName, predicate) {
+  const matches = resources.filter((resource) => resource?.name === expectedName)
+  if (matches.length > 1) {
+    throw new Error(
+      `Interactive pre-environment cleanup found ${String(matches.length)} same-name Sandbox resources; cleanup refused`,
+    )
+  }
+  if (matches.length === 1 && !predicate(matches[0])) {
+    throw new Error(
+      `Interactive pre-environment resource ${String(matches[0]?.id ?? 'without-id')} failed exact ownership validation`,
+    )
+  }
+  return matches
+}
+
+async function listAllSandboxResources(client) {
+  const resources = []
+  const seenIds = new Set()
+  let offset = 0
+  for (;;) {
+    const page = await client.list({ limit: SANDBOX_LIST_PAGE_SIZE, offset })
+    if (!Array.isArray(page)) throw new Error('Sandbox list returned an invalid page')
+    for (const resource of page) {
+      if (typeof resource?.id === 'string') {
+        if (seenIds.has(resource.id)) throw new Error(`Sandbox list repeated ${resource.id}`)
+        seenIds.add(resource.id)
+      }
+      resources.push(resource)
+    }
+    if (page.length < SANDBOX_LIST_PAGE_SIZE) return resources
+    offset += page.length
+  }
+}
+
+async function cleanupInteractiveBeforeEnvironment(client, materialization) {
+  const runId = materialization?.runId
+  const expectedName = interactiveResourceName(runId)
+  const predicate = (resource) => isOwnedInteractiveResource(resource, expectedName)
+  const listed = sameNameInteractiveResources(
+    await listAllSandboxResources(client),
+    expectedName,
+    predicate,
+  )
+  const deletions = []
+  const removedIds = []
+  for (const resource of listed) {
+    const exact = await client.get(resource.id)
+    if (exact === null) {
+      deletions.push({
+        id: resource.id,
+        observed: true,
+        resolved: true,
+        deleted: false,
+        confirmed: true,
+      })
+      continue
+    }
+    if (!predicate(exact)) {
+      throw new Error(
+        `Interactive pre-environment resource ${resource.id} failed exact ownership validation`,
+      )
+    }
+    await exact.delete()
+    if ((await client.get(resource.id)) !== null) {
+      throw new Error(`Interactive pre-environment resource ${resource.id} remained after delete`)
+    }
+    removedIds.push(resource.id)
+    deletions.push({
+      id: resource.id,
+      observed: true,
+      resolved: true,
+      deleted: true,
+      confirmed: true,
+    })
+  }
+  const remaining = sameNameInteractiveResources(
+    await listAllSandboxResources(client),
+    expectedName,
+    predicate,
+  )
+  if (remaining.length > 0) {
+    throw new Error(
+      `Interactive pre-environment cleanup left ${String(remaining.length)} same-name Sandbox resources`,
+    )
+  }
+  return {
+    confirmed: true,
+    mode: listed.length === 0 ? 'pre-environment-absence' : 'pre-environment-owned-resource-set',
+    phase: materialization.phase,
+    runId,
+    expectedName,
+    matchedCount: listed.length,
+    observedIds: listed.map((resource) => resource.id),
+    removedIds,
+    deletions,
+    remainingIds: [],
+  }
 }
 
 async function waitFor(label, predicate, timeoutMs) {
@@ -682,6 +823,7 @@ export async function finalizeInteractiveProof({
   runtime,
   recordPath,
   identity,
+  materialization,
   client,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   exitTimeoutMs = DEFAULT_PROCESS_EXIT_TIMEOUT_MS,
@@ -726,8 +868,29 @@ export async function finalizeInteractiveProof({
     })
     if (recovered.ok) resolvedIdentity = recovered.value
   }
+  let providerMaterialization
   if (executionStarted && resolvedIdentity === undefined) {
-    errors.push(new Error('Braid run identity was unavailable; exact cloud cleanup was refused'))
+    if (
+      materialization !== undefined &&
+      materialization.materialized === false &&
+      (materialization.phase === 'interactive_intent' || materialization.phase === null) &&
+      materialization.runId !== undefined
+    ) {
+      if (client === undefined) {
+        errors.push(
+          new Error(
+            'Sandbox observation client was unavailable; pre-environment absence could not be confirmed',
+          ),
+        )
+      } else {
+        const observed = await attemptCleanup(errors, 'pre-environment Sandbox absence', () =>
+          cleanupInteractiveBeforeEnvironment(client, materialization),
+        )
+        if (observed.ok) providerMaterialization = observed.value
+      }
+    } else {
+      errors.push(new Error('Braid run identity was unavailable; exact cloud cleanup was refused'))
+    }
   }
 
   let resolvedStop = stopResult
@@ -834,6 +997,7 @@ export async function finalizeInteractiveProof({
     processGroupExited,
     processCleanup: runtime?.processCleanup,
     identity: resolvedIdentity,
+    ...(providerMaterialization === undefined ? {} : { providerMaterialization }),
     stop: resolvedStop,
     afterStop,
     cleanup,
@@ -924,6 +1088,7 @@ async function runProof({
   let runtime
   let recordPath
   let identity
+  let materialization
   let client
   let proofData
   let proofError
@@ -1100,7 +1265,8 @@ async function runProof({
     if (runtime !== undefined && !runtime.exited && recordPath !== undefined) {
       try {
         const failureFrame = await captureStateFrame(runtime, recordPath, exitTimeoutMs)
-        runObserved ||= stateDiagnostic(failureFrame).length > 0
+        materialization = interactiveMaterializationEvidence(failureFrame)
+        runObserved ||= materialization?.runId !== undefined
         identity ??= recoverInteractiveIdentity(failureFrame)
         failures.push(
           new Error(`failure Braid state: ${JSON.stringify(stateDiagnostic(failureFrame))}`),
@@ -1126,6 +1292,7 @@ async function runProof({
       runtime,
       recordPath,
       identity,
+      materialization,
       client,
       timeoutMs,
       exitTimeoutMs,
@@ -1204,6 +1371,17 @@ async function runProof({
     } catch (error) {
       proofError = new AggregateError([error], 'Braid interactive telemetry proof failed')
     }
+  }
+
+  if (proofError !== undefined && cleanup?.providerMaterialization !== undefined) {
+    const prior = proofError instanceof AggregateError ? [...proofError.errors] : [proofError]
+    const materialization = cleanup.providerMaterialization
+    const phase = materialization.phase ?? 'no-retained-phase'
+    const cleanupMessage =
+      materialization.matchedCount === 0
+        ? `Sandbox interactive resource absence confirmed before ${phase} for ${materialization.runId}`
+        : `Sandbox interactive resource cleanup confirmed after ${phase} for ${materialization.runId}; removed ${materialization.matchedCount}`
+    proofError = new AggregateError([...prior, new Error(cleanupMessage)], proofError.message)
   }
 
   if (proofError !== undefined && cleanupError !== undefined)

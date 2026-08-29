@@ -10,6 +10,7 @@ import {
   assertProviderBoundEvidence,
   finalizeInteractiveProof,
   interactiveFailureMessages,
+  interactiveMaterializationEvidence,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import {
   assertSingleExecutionAttemptLedger,
@@ -512,6 +513,291 @@ test('LIVE-08 cleans local resources without inventing a cloud leak before admis
   assert.equal(result.identity, undefined)
   assert.equal(workspaceCleanup, 1)
   assert.equal(packedCleanup, 1)
+})
+
+test('LIVE-08 confirms Sandbox absence for a provider rejection before interactive_environment', async () => {
+  let listCalls = 0
+  let workspaceCleanup = 0
+  let packedCleanup = 0
+  const materialization = interactiveMaterializationEvidence({
+    state: {
+      runs: [
+        {
+          id: 'run-pre-environment',
+          status: 'streaming',
+          retainedAdmission: { phase: 'interactive_intent' },
+        },
+      ],
+    },
+  })
+  assert.deepEqual(materialization, {
+    runId: 'run-pre-environment',
+    phase: 'interactive_intent',
+    materialized: false,
+    boundary: 'before-interactive_environment',
+  })
+  const result = await finalizeInteractiveProof({
+    packed: {
+      binary: '/tmp/braid',
+      cleanup: async () => {
+        packedCleanup += 1
+      },
+    },
+    config: {
+      cleanup: async () => {
+        workspaceCleanup += 1
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    },
+    client: {
+      async list() {
+        listCalls += 1
+        return []
+      },
+    },
+    executionStarted: true,
+    materialization,
+  })
+  assert.equal(listCalls, 2)
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'pre-environment-absence',
+    phase: 'interactive_intent',
+    runId: 'run-pre-environment',
+    expectedName: 'braid-interactive-run-pre-environment',
+    matchedCount: 0,
+    observedIds: [],
+    removedIds: [],
+    deletions: [],
+    remainingIds: [],
+  })
+  assert.equal(workspaceCleanup, 1)
+  assert.equal(packedCleanup, 1)
+})
+
+test('LIVE-08 deletes and confirms one exact resource when the Runtime phase is unavailable', async () => {
+  const resource = {
+    id: 'sandbox-pre-environment',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+    deleted: false,
+    async delete() {
+      this.deleted = true
+    },
+  }
+  const client = {
+    async list() {
+      return resource.deleted ? [] : [resource]
+    },
+    async get(id) {
+      return id === resource.id && !resource.deleted ? resource : null
+    },
+  }
+  const result = await finalizeInteractiveProof({
+    client,
+    executionStarted: true,
+    materialization: {
+      runId: 'run-pre-environment',
+      phase: null,
+      materialized: false,
+      boundary: 'unknown',
+    },
+  })
+  assert.equal(resource.deleted, true)
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'pre-environment-owned-resource-set',
+    phase: null,
+    runId: 'run-pre-environment',
+    expectedName: 'braid-interactive-run-pre-environment',
+    matchedCount: 1,
+    observedIds: ['sandbox-pre-environment'],
+    removedIds: ['sandbox-pre-environment'],
+    deletions: [
+      {
+        id: 'sandbox-pre-environment',
+        observed: true,
+        resolved: true,
+        deleted: true,
+        confirmed: true,
+      },
+    ],
+    remainingIds: [],
+  })
+})
+
+test('LIVE-08 confirms absence when the observed resource races away before deletion', async () => {
+  let listCalls = 0
+  const resource = {
+    id: 'sandbox-pre-environment',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+  }
+  const result = await finalizeInteractiveProof({
+    client: {
+      async list() {
+        listCalls += 1
+        return listCalls === 1 ? [resource] : []
+      },
+      async get() {
+        return null
+      },
+    },
+    executionStarted: true,
+    materialization: {
+      runId: 'run-pre-environment',
+      phase: null,
+      materialized: false,
+      boundary: 'unknown',
+    },
+  })
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'pre-environment-owned-resource-set',
+    phase: null,
+    runId: 'run-pre-environment',
+    expectedName: 'braid-interactive-run-pre-environment',
+    matchedCount: 1,
+    observedIds: ['sandbox-pre-environment'],
+    removedIds: [],
+    deletions: [
+      {
+        id: 'sandbox-pre-environment',
+        observed: true,
+        resolved: true,
+        deleted: false,
+        confirmed: true,
+      },
+    ],
+    remainingIds: [],
+  })
+})
+
+test('LIVE-08 refuses cleanup when more than one exact pre-environment resource matches', async () => {
+  let deleteCalls = 0
+  const resources = ['sandbox-pre-environment-a', 'sandbox-pre-environment-b'].map((id) => ({
+    id,
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+    async delete() {
+      deleteCalls += 1
+    },
+  }))
+  await assert.rejects(
+    () =>
+      finalizeInteractiveProof({
+        client: {
+          async list() {
+            return resources
+          },
+        },
+        executionStarted: true,
+        materialization: {
+          runId: 'run-pre-environment',
+          phase: null,
+          materialized: false,
+          boundary: 'unknown',
+        },
+      }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /same-name Sandbox resources; cleanup refused/u.test(message),
+        ),
+      )
+      return true
+    },
+  )
+  assert.equal(deleteCalls, 0)
+})
+
+test('LIVE-08 refuses a same-name resource with non-Braid ownership', async () => {
+  let getCalls = 0
+  let deleteCalls = 0
+  const resource = {
+    id: 'sandbox-pre-environment-collision',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'other', lifecycle: 'retained', surface: 'interactive-agent' },
+    async delete() {
+      deleteCalls += 1
+    },
+  }
+  await assert.rejects(
+    () =>
+      finalizeInteractiveProof({
+        client: {
+          async list() {
+            return [resource]
+          },
+          async get() {
+            getCalls += 1
+            return resource
+          },
+        },
+        executionStarted: true,
+        materialization: {
+          runId: 'run-pre-environment',
+          phase: null,
+          materialized: false,
+          boundary: 'unknown',
+        },
+      }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /failed exact ownership validation/u.test(message),
+        ),
+      )
+      return true
+    },
+  )
+  assert.equal(getCalls, 0)
+  assert.equal(deleteCalls, 0)
+})
+
+test('LIVE-08 leaves a resource untouched when its ownership changes before deletion', async () => {
+  let deleteCalls = 0
+  const listed = {
+    id: 'sandbox-pre-environment',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+  }
+  const changed = {
+    ...listed,
+    metadata: { owner: 'other', lifecycle: 'retained', surface: 'interactive-agent' },
+    async delete() {
+      deleteCalls += 1
+    },
+  }
+  await assert.rejects(
+    () =>
+      finalizeInteractiveProof({
+        client: {
+          async list() {
+            return [listed]
+          },
+          async get() {
+            return changed
+          },
+        },
+        executionStarted: true,
+        materialization: {
+          runId: 'run-pre-environment',
+          phase: null,
+          materialized: false,
+          boundary: 'unknown',
+        },
+      }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /failed exact ownership validation/u.test(message),
+        ),
+      )
+      return true
+    },
+  )
+  assert.equal(deleteCalls, 0)
 })
 
 test('LIVE-08 refuses cloud cleanup when a run existed without exact identity', async () => {
