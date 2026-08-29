@@ -33,8 +33,8 @@ importers:
         specifier: 0.10.0
         version: 0.10.0
       '@tangle-network/agent-provider-tangle':
-        specifier: 0.14.2
-        version: 0.14.2(@tangle-network/sandbox@0.34.3)
+        specifier: 0.14.3
+        version: 0.14.3(@tangle-network/sandbox@0.34.3)
       '@tangle-network/agent-runtime':
         specifier: 0.178.0
         version: 0.178.0(@tangle-network/agent-eval@0.170.0)(@tangle-network/agent-interface@1.8.0)(@tangle-network/sandbox@0.34.3)
@@ -541,8 +541,8 @@ packages:
   '@tangle-network/agent-provider-cli-bridge@0.10.0':
     resolution: {integrity: sha512-G4EzQ8UErCFYVU/R0LHc9kjVOadIrrZYecqCX6Az8dlGzKPDRup8niu50EYKjR/VuaUNdmyNxNuWhcRExuPWyg==}
 
-  '@tangle-network/agent-provider-tangle@0.14.2':
-    resolution: {integrity: sha512-46cfQZKbDkhhVNfRdrKsnLDY9K4DIQ/bkNIUGlMtujBy0miLCWYxX2UUDD8GrRrNUs/b800XzcXKtcJURJIghg==}
+  '@tangle-network/agent-provider-tangle@0.14.3':
+    resolution: {integrity: sha512-4EAfWp+8F3U0UKq/Bu+UIcRbDt2EGf2nY3drtgho37UsAj0KpOh+DykoKNFevlyM179jPutw9CEuvIqSztDTeg==}
     peerDependencies:
       '@tangle-network/sandbox': '>=0.34.0 <1.0.0'
 
@@ -1201,7 +1201,7 @@ snapshots:
       '@tangle-network/agent-interface': 1.8.0
       undici: 7.29.0
 
-  '@tangle-network/agent-provider-tangle@0.14.2(@tangle-network/sandbox@0.34.3)':
+  '@tangle-network/agent-provider-tangle@0.14.3(@tangle-network/sandbox@0.34.3)':
     dependencies:
       '@tangle-network/agent-interface': 1.8.0
       '@tangle-network/sandbox': 0.34.3

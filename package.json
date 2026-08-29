@@ -105,7 +105,7 @@
     "@tangle-network/agent-eval": "0.170.0",
     "@tangle-network/agent-interface": "1.8.0",
     "@tangle-network/agent-provider-cli-bridge": "0.10.0",
-    "@tangle-network/agent-provider-tangle": "0.14.2",
+    "@tangle-network/agent-provider-tangle": "0.14.3",
     "@tangle-network/agent-runtime": "0.178.0",
     "@tangle-network/sandbox": "0.34.3",
     "@tangle-network/tcloud-attestation": "0.1.1",
