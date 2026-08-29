@@ -217,12 +217,20 @@ async function waitForSnapshot({
   }
 }
 
-async function waitForAcknowledgement({ read, eventDir, operationId, label, timeoutMs, pollMs }) {
+async function waitForAcknowledgement({
+  read,
+  eventDir,
+  operationId,
+  label,
+  timeoutMs,
+  pollMs,
+  accepted,
+}) {
   const deadline = Date.now() + timeoutMs
   let latest
   while (true) {
     latest = read(eventDir, operationId)
-    if (latest !== undefined) return latest
+    if (latest !== undefined && (accepted === undefined || accepted(latest))) return latest
     if (Date.now() >= deadline)
       throw new Error(
         `${label} was not acknowledged before ${timeoutMs}ms: ${JSON.stringify({ operationId, response: latest })}`,
@@ -732,6 +740,7 @@ export async function runSupervisorFlow({
       label: 'worker cancellation acknowledgement',
       timeoutMs,
       pollMs,
+      accepted: (value) => value?.effect !== 'cancel_requested',
     })
     assertCancellationAcknowledgement(cancellationAcknowledgement, workerId, cancelOperationId)
 

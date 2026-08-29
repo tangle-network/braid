@@ -71,6 +71,7 @@ const scopeFiles = {
     'analysis-model-call-roundtrip.test.js',
     'application.test.js',
     'conversation-branch-effects.test.js',
+    'cli-bridge-context-transfer.test.js',
     'cli-bridge-interactions.test.js',
     'cli-bridge-profile-contract.test.js',
     'cli-bridge-retained-restart.test.js',
