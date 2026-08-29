@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import test from 'node:test'
 import type {
   ExternalOptimizerModelCallRequest,
@@ -623,7 +624,71 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
   assert.doesNotMatch(execution, /private analyst instruction/u)
   assert.doesNotMatch(execution, /private trace question/u)
   assert.match(execution, /streamAgentTurn/u)
-  assert.match(execution, /"maxAttempts":1/u)
+  assert.match(execution, /"maxAttempts":2/u)
+})
+
+test('runtime-owned trace model retries one transient Router failure with the same call', async () => {
+  let attempts = 0
+  const idempotencyKeys: string[] = []
+  const server = createServer((request, response) => {
+    attempts += 1
+    const key = request.headers['idempotency-key']
+    if (typeof key === 'string') idempotencyKeys.push(key)
+    if (attempts === 1) {
+      response.statusCode = 502
+      response.end('temporary router failure')
+      return
+    }
+    response.setHeader('content-type', 'application/json')
+    response.end(
+      JSON.stringify({
+        model: 'pi/tangle-router/glm-5.2',
+        choices: [{ message: { content: '{"answer":"recovered"}' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      }),
+    )
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  try {
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('test server has no port')
+    const selected = connection(
+      'tangle-inference',
+      'runtime-owner-retry',
+      `http://127.0.0.1:${address.port}/v1`,
+      true,
+    )
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        harness: 'cli-base',
+        model: {
+          default: 'pi/tangle-router/glm-5.2',
+          provider: 'tangle-router',
+          reasoningEffort: 'high',
+        },
+      },
+      connection: selected,
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      credential: 'credential-never-recorded',
+      model: 'pi/tangle-router/glm-5.2',
+      pricing: PRICING,
+      retry: { initialBackoffMs: 0, maxBackoffMs: 0, jitter: 0 },
+    })
+
+    const result = await owner.call(optimizerRequest())
+    assert.equal(result.succeeded, true)
+    assert.equal(attempts, 2)
+    assert.deepEqual(idempotencyKeys, ['analysis-model-call-1', 'analysis-model-call-1'])
+    assert.equal(result.succeeded ? result.response.content : undefined, '{"answer":"recovered"}')
+    assert.match(JSON.stringify(result.execution), /"maxAttempts":2/u)
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error === undefined ? resolve() : reject(error)))
+    })
+  }
 })
 
 test('runtime-owned trace model lowers visible and aggregate ceilings without an unenforceable reasoning ceiling', async () => {

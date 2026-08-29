@@ -657,9 +657,8 @@ function analystModelPrompt(harness: NonNullable<AgentProfile['harness']>): Agen
 export function createRuntimeTraceModelOwner(
   options: RuntimeTraceModelOwnerOptions,
 ): RuntimeTraceModelOwner {
-  // Analyst calls settle one receipt per invocation. Keep retries explicit so a
-  // single recorded invocation cannot conceal multiple paid provider requests.
-  const retry = Object.freeze({ maxAttempts: 1, ...options.retry })
+  // Runtime retries one transient transport failure with the same idempotent call identity.
+  const retry = Object.freeze({ maxAttempts: 2, ...options.retry })
   const sourceProfileDigest = canonicalAgentProfileDigestHex(options.profile)
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({
