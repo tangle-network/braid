@@ -33,8 +33,8 @@ importers:
         specifier: 0.10.0
         version: 0.10.0
       '@tangle-network/agent-provider-tangle':
-        specifier: 0.14.1
-        version: 0.14.1(@tangle-network/sandbox@0.34.3)
+        specifier: 0.14.2
+        version: 0.14.2(@tangle-network/sandbox@0.34.3)
       '@tangle-network/agent-runtime':
         specifier: 0.178.0
         version: 0.178.0(@tangle-network/agent-eval@0.170.0)(@tangle-network/agent-interface@1.8.0)(@tangle-network/sandbox@0.34.3)
@@ -541,10 +541,10 @@ packages:
   '@tangle-network/agent-provider-cli-bridge@0.10.0':
     resolution: {integrity: sha512-G4EzQ8UErCFYVU/R0LHc9kjVOadIrrZYecqCX6Az8dlGzKPDRup8niu50EYKjR/VuaUNdmyNxNuWhcRExuPWyg==}
 
-  '@tangle-network/agent-provider-tangle@0.14.1':
-    resolution: {integrity: sha512-tTv0y+OSSZtiIGjOtgJ3XL7N8dvl8lOGlZfK5CG+iHc2RNlcfp/gjjCz8X9VOUoJsNAWX1Lw8MIxy/C2JN9fHg==}
+  '@tangle-network/agent-provider-tangle@0.14.2':
+    resolution: {integrity: sha512-46cfQZKbDkhhVNfRdrKsnLDY9K4DIQ/bkNIUGlMtujBy0miLCWYxX2UUDD8GrRrNUs/b800XzcXKtcJURJIghg==}
     peerDependencies:
-      '@tangle-network/sandbox': '>=0.33.1 <1.0.0'
+      '@tangle-network/sandbox': '>=0.34.0 <1.0.0'
 
   '@tangle-network/agent-runtime@0.178.0':
     resolution: {integrity: sha512-CltB1+dhcIOVKj+t2jpW4cM7qn8aLuY039RlfssZ+VTID0tBeXJZUa+G9dQIMTMLJA3qn2hxuh2u+dRgwhmnUQ==}
@@ -1201,7 +1201,7 @@ snapshots:
       '@tangle-network/agent-interface': 1.8.0
       undici: 7.29.0
 
-  '@tangle-network/agent-provider-tangle@0.14.1(@tangle-network/sandbox@0.34.3)':
+  '@tangle-network/agent-provider-tangle@0.14.2(@tangle-network/sandbox@0.34.3)':
     dependencies:
       '@tangle-network/agent-interface': 1.8.0
       '@tangle-network/sandbox': 0.34.3
