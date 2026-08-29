@@ -11,7 +11,7 @@ import * as pty from 'node-pty'
 
 import {
   processTreeEnvironment,
-  sendTreeSignal,
+  terminateTrackedProcessTree,
   trackProcessTree,
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
@@ -256,12 +256,11 @@ function createTerminal(
   }
   const dispose = async () => {
     if (!exited) {
-      await sendTreeSignal(child, 'SIGTERM')
-      await Promise.race([exitPromise, pause(1_000)])
-      if (!exited) {
-        await sendTreeSignal(child, 'SIGKILL')
-        await Promise.race([exitPromise, pause(5_000)])
-      }
+      const termination = await terminateTrackedProcessTree(child, {
+        termTimeoutMs: 1_000,
+        killTimeoutMs: 5_000,
+      })
+      processCleanup = termination.tree
     }
     processCleanup ??= await waitForTreeGone(child, 10_000)
     terminal.dispose()

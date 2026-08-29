@@ -3,9 +3,17 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import * as pty from 'node-pty'
 import { runCommand } from './command.mjs'
 import { managedSpawn, terminateProcess } from './process.mjs'
-import { processTreeStatus, sendTreeSignal, waitForTreeGone } from './process-tree.mjs'
+import {
+  processTreeEnvironment,
+  processTreeStatus,
+  sendTreeSignal,
+  terminateTrackedProcessTree,
+  trackProcessTree,
+  waitForTreeGone,
+} from './process-tree.mjs'
 
 function waitForClose(child) {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
@@ -54,6 +62,46 @@ test('termination evidence records signal-driven process-tree cleanup', async ()
   assert.equal(result.descendantsExited, true)
   assert.equal(result.descendantsVerified, true)
   assert.notEqual(result.cleanupStatus, 'already-exited')
+})
+
+test('tracked process-tree termination verifies absence without a child close event', async () => {
+  const child = await managedSpawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    stdio: 'ignore',
+  })
+
+  const result = await terminateTrackedProcessTree(child, {
+    termTimeoutMs: 1_000,
+    killTimeoutMs: 1_000,
+  })
+
+  assert.equal(result.termSent || result.killSent, true)
+  assert.equal(result.descendantsExited, true, JSON.stringify(result))
+  assert.equal(result.descendantsVerified, true, JSON.stringify(result))
+  assert.equal(result.tree.gone, true, JSON.stringify(result))
+})
+
+test('tracked PTY termination verifies the exact process group used by live proofs', {
+  skip: process.platform === 'win32',
+}, async () => {
+  const tracked = processTreeEnvironment(process.env)
+  const child = pty.spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    cwd: process.cwd(),
+    env: tracked.environment,
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 24,
+  })
+  trackProcessTree(child, tracked.token)
+
+  const result = await terminateTrackedProcessTree(child, {
+    termTimeoutMs: 1_000,
+    killTimeoutMs: 1_000,
+  })
+
+  assert.equal(result.termSent || result.killSent, true)
+  assert.equal(result.descendantsExited, true, JSON.stringify(result))
+  assert.equal(result.descendantsVerified, true, JSON.stringify(result))
+  assert.equal(result.tree.gone, true, JSON.stringify(result))
 })
 
 test('timeout cleanup terminates a tracked descendant set', async () => {

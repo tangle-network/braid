@@ -7,6 +7,9 @@ const pollMs = 25
 const procRoot = '/proc'
 const processTreeToken = 'BRAID_PROCESS_TREE_TOKEN'
 const processTreeTrackers = new WeakMap()
+const ownershipObservationTimeoutMs = 1_000
+const defaultTermTimeoutMs = 2_000
+const defaultKillTimeoutMs = 2_000
 
 function childHasExited(child) {
   return child.exitCode !== null || child.signalCode !== null
@@ -22,6 +25,16 @@ function unsupported(reason) {
     gone: false,
     mechanism: 'posix-descendant-tracker',
     reason,
+  }
+}
+
+function pendingOwnership(reason) {
+  return {
+    ...unsupported(reason),
+    pending: true,
+    mechanism: 'posix-descendant-tracker',
+    ownership: 'pid-start-time-and-descendant-lineage',
+    observed: false,
   }
 }
 
@@ -201,6 +214,7 @@ class PosixProcessTreeTracker {
     this.rootPid = numericPid(child.pid)
     this.rootObserved = false
     this.rootStartTime = undefined
+    this.ownershipDeadline = Date.now() + ownershipObservationTimeoutMs
     this.released = false
     this.failure = undefined
     this.observeRoot()
@@ -227,13 +241,9 @@ class PosixProcessTreeTracker {
       this.failure = 'The POSIX process exited before ownership was observed'
       return
     }
-    if (marker !== true) {
-      this.failure = 'The POSIX process did not retain its ownership marker'
-      return
-    }
-    this.rootObserved = true
     this.rootStartTime = root.startTime
     this.entries.set(root.pid, { ...root, depth: 0 })
+    if (marker === true) this.rootObserved = true
   }
 
   refresh() {
@@ -262,7 +272,9 @@ class PosixProcessTreeTracker {
         return
       }
       if (marker !== true) {
-        this.failure = 'The POSIX process did not retain its ownership marker'
+        if (Date.now() >= this.ownershipDeadline) {
+          this.failure = 'The POSIX process did not retain its ownership marker'
+        }
         return
       }
       this.rootObserved = true
@@ -315,6 +327,9 @@ class PosixProcessTreeTracker {
   status() {
     this.refresh()
     if (this.failure !== undefined) return unsupported(this.failure)
+    if (!this.rootObserved) {
+      return pendingOwnership('The POSIX process ownership marker is not observable yet')
+    }
     const active = []
     for (const entry of this.entries.values()) {
       const current = currentIdentity(entry.pid, entry.startTime)
@@ -472,9 +487,19 @@ export async function waitForTreeGone(child, timeoutMs) {
   const deadline = Date.now() + boundedTimeout
   while (true) {
     const status = processTreeStatus(child)
-    if (!status.supported) return status
+    if (!status.supported && status.pending !== true) return status
     if (status.gone) return status
     if (Date.now() >= deadline) return status
+    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())))
+  }
+}
+
+async function waitForTreeOwnership(child, timeoutMs) {
+  const boundedTimeout = Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 0
+  const deadline = Date.now() + boundedTimeout
+  while (true) {
+    const status = processTreeStatus(child)
+    if (status.pending !== true || Date.now() >= deadline) return status
     await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())))
   }
 }
@@ -489,4 +514,64 @@ export async function sendTreeSignal(child, signal) {
       reason: 'The POSIX process was not started by a lifecycle tracker',
     }
   return tracker.signal(signal)
+}
+
+export async function terminateTrackedProcessTree(
+  child,
+  { termTimeoutMs = defaultTermTimeoutMs, killTimeoutMs = defaultKillTimeoutMs } = {},
+) {
+  const initialTree = await waitForTreeOwnership(child, termTimeoutMs)
+  let tree = initialTree
+  let termSignal
+  let killSignal
+  const usesWindowsJob = tree.mechanism === 'windows-job-object'
+
+  if (usesWindowsJob && !tree.gone) {
+    killSignal = await sendTreeSignal(child, 'SIGKILL')
+    tree = await waitForTreeGone(child, killTimeoutMs)
+  }
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
+    termSignal = await sendTreeSignal(child, 'SIGTERM')
+    tree = await waitForTreeGone(child, termTimeoutMs)
+  }
+  if (!usesWindowsJob && (!tree.supported || !tree.gone)) {
+    killSignal = await sendTreeSignal(child, 'SIGKILL')
+    tree = await waitForTreeGone(child, killTimeoutMs)
+  }
+
+  const termSent = termSignal?.sent === true
+  const killSent = killSignal?.sent === true
+  const cleanupStatus = !tree.supported
+    ? 'unsupported'
+    : tree.gone && !termSent && !killSent
+      ? 'already-exited'
+      : tree.gone && !killSent
+        ? 'term'
+        : tree.gone
+          ? 'kill'
+          : 'descendants-still-running'
+  const strategy = killSent
+    ? killSignal.method
+    : termSent
+      ? termSignal.method
+      : (killSignal?.method ??
+        termSignal?.method ??
+        (initialTree.supported ? 'already-exited' : 'unsupported'))
+
+  releaseProcessTree(child)
+  return {
+    strategy,
+    termTimeoutMs,
+    killTimeoutMs,
+    termSent,
+    killSent,
+    forcedKill: killSent,
+    initialTree,
+    tree,
+    descendantsExited: tree.supported && tree.gone,
+    descendantsVerified: tree.supported && tree.gone,
+    cleanupStatus,
+    termSignal,
+    killSignal,
+  }
 }

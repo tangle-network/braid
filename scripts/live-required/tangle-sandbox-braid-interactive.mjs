@@ -13,7 +13,7 @@ import * as pty from 'node-pty'
 import { sleep } from '../live-bridge/process.mjs'
 import {
   processTreeEnvironment,
-  sendTreeSignal,
+  terminateTrackedProcessTree,
   trackProcessTree,
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
@@ -509,7 +509,7 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
       return terminalText(terminal)
     },
     get exited() {
-      return exited
+      return exited || (processCleanup?.supported === true && processCleanup.gone === true)
     },
     get processCleanup() {
       return processCleanup
@@ -536,13 +536,19 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
       return { ...result, processCleanup: await waitForProcessCleanup() }
     },
     async forceClose() {
-      if (!exited) await sendTreeSignal(child, 'SIGKILL')
-      const result = await waitFor(
-        'forced Braid terminal exit',
-        () => exited && exitResult,
-        exitTimeoutMs,
-      )
-      return { ...result, processCleanup: await waitForProcessCleanup() }
+      if (exited) return { ...exitResult, processCleanup: await waitForProcessCleanup() }
+      const termTimeoutMs = Math.min(1_000, exitTimeoutMs)
+      const termination = await terminateTrackedProcessTree(child, {
+        termTimeoutMs,
+        killTimeoutMs: Math.max(0, exitTimeoutMs - termTimeoutMs),
+      })
+      processCleanup = termination.tree
+      if (!termination.descendantsVerified) {
+        throw new Error(
+          `forced Braid terminal cleanup did not remove the tracked process tree (${termination.cleanupStatus})`,
+        )
+      }
+      return { ...exitResult, processCleanup, termination }
     },
     dispose() {
       terminal.dispose()
