@@ -277,6 +277,24 @@ export class RpcSession {
     })
   }
 
+  async waitForExit(label, timeoutMs = this.timeoutMs) {
+    let timer
+    const timeout = new Promise((_, rejectExit) => {
+      timer = setTimeout(() => {
+        rejectExit(
+          new LiveBridgeError('RPC_TIMEOUT', `timed out waiting for ${label}`, exitCodes.failed, {
+            timeoutMs,
+          }),
+        )
+      }, timeoutMs)
+    })
+    try {
+      return await Promise.race([this.exit, timeout])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   async close() {
     if (this.closePromise !== undefined) return this.closePromise
     this.closePromise = (async () => {

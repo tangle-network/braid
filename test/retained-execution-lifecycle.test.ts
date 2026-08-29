@@ -164,6 +164,40 @@ test('retained controls follow complete provider capabilities', () => {
   )
 })
 
+test('retained observations use the exact provider environment identity', async () => {
+  const exact = controlRef('observation')
+  const retainedPlan: RetainedExecutionPlan = {
+    ...plan(exact, async () => handle(exact)),
+    observe: async () => ({
+      kind: 'remote-service',
+      provider: exact.provider,
+      lifecycle: 'ready',
+      lifecycleMode: 'retained',
+      cleanup: 'explicit',
+      continuity: 'session',
+      location: 'remote',
+      createdAt: now,
+      observedAt: now,
+      unavailable: [],
+    }),
+  }
+  const execution = executionFor(async () => retainedPlan)
+  const runInput = input('observation')
+
+  await execution.admit(runInput)
+  const stream = execution.streamTurn(runInput)[Symbol.asyncIterator]()
+  const first = await stream.next()
+
+  assert.equal(first.done, false)
+  assert.equal(first.value?.event.type, 'braid.execution.observed')
+  if (first.value?.event.type !== 'braid.execution.observed') {
+    throw new Error('expected the retained execution observation')
+  }
+  assert.equal(first.value.event.observation.providerEnvironmentId, exact.environmentId)
+  assert.deepEqual(first.value.event.controlRef, exact)
+  await stream.return?.(undefined as never)
+})
+
 function executionFor(
   resolve: (input: ExecuteTurnInput) => Promise<RetainedExecutionPlan>,
 ): RetainedExecutionPort {

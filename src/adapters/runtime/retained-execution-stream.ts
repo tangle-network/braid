@@ -27,6 +27,12 @@ export async function* streamRetainedExecution(input: {
       if (observation === undefined) {
         throw new Error('Retained execution observation is unavailable')
       }
+      if (
+        observation.providerEnvironmentId !== undefined &&
+        observation.providerEnvironmentId !== input.handle.controlRef.environmentId
+      ) {
+        throw new Error('Retained execution observation conflicts with its exact control reference')
+      }
       yield {
         runId: input.runId,
         eventId: `${input.runId}:execution-bound`,
@@ -34,7 +40,13 @@ export async function* streamRetainedExecution(input: {
         receivedAt: observedAt,
         event: {
           type: 'braid.execution.observed',
-          observation,
+          observation:
+            observation.providerEnvironmentId === undefined
+              ? {
+                  ...observation,
+                  providerEnvironmentId: input.handle.controlRef.environmentId,
+                }
+              : observation,
           controlRef: input.handle.controlRef,
           timestamp: observedAt,
         },

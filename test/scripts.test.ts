@@ -357,6 +357,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'analysis-model-call-observability.test.js',
       'analysis-model-call-roundtrip.test.js',
       'application.test.js',
+      'cli-bridge-context-transfer.test.js',
       'cli-bridge-interactions.test.js',
       'cli-bridge-profile-contract.test.js',
       'cli-bridge-retained-restart.test.js',

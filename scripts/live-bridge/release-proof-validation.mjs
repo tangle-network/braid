@@ -113,7 +113,12 @@ export function assertTargetRunIdentity(run, target) {
       receipt,
       materialization,
     })
-  if (text(run.model)) same(run.model, expected.model, 'run model', { run, expected })
+  if (text(run.model) && run.model !== target.modelId && run.model !== expected.model)
+    fail(
+      'LIVE_RELEASE_TARGET_IDENTITY_INVALID',
+      'run model does not match the selected route or provider model',
+      { run, target, expected },
+    )
 
   return {
     key: target.key,
@@ -128,17 +133,24 @@ export function assertTargetRunIdentity(run, target) {
 }
 
 export function assertObservedUsage(run) {
-  if (run?.status !== 'completed' || run.complete !== true)
+  if (run?.status !== 'completed' || run.completeness !== 'complete')
     fail('LIVE_RELEASE_USAGE_MISSING', 'The release run did not complete', { run })
   if (
-    run.tokensKnown === false ||
+    run.tokensKnown !== true ||
+    run.tokenStatus !== 'complete' ||
     !Number.isFinite(run.inputTokens) ||
     !Number.isFinite(run.outputTokens)
   )
     fail('LIVE_RELEASE_USAGE_MISSING', 'The release run omitted known token usage', { run })
-  if (!Number.isInteger(run.llmCalls) || run.llmCalls < 1)
-    fail('LIVE_RELEASE_USAGE_MISSING', 'The release run omitted observed model-call usage', { run })
-  return { inputTokens: run.inputTokens, outputTokens: run.outputTokens, llmCalls: run.llmCalls }
+  if (run.inputTokens + run.outputTokens < 1)
+    fail('LIVE_RELEASE_USAGE_MISSING', 'The release run reported empty token usage', { run })
+  if (run.llmCalls !== undefined && (!Number.isInteger(run.llmCalls) || run.llmCalls < 1))
+    fail('LIVE_RELEASE_USAGE_MISSING', 'The release run reported invalid model-call usage', { run })
+  return {
+    inputTokens: run.inputTokens,
+    outputTokens: run.outputTokens,
+    ...(run.llmCalls === undefined ? {} : { llmCalls: run.llmCalls }),
+  }
 }
 
 export function assertRetainedInteraction(
@@ -193,8 +205,19 @@ export function assertRetainedInteraction(
 
 export function assertContextTransfer({ sourceRunId, sourceMessageId, plan, destinationRun }) {
   const context = plan?.context
+  const portablePlan = plan?.portableContextPlan
+  const portableSource = portablePlan?.source?.source
+  const portableContext = portablePlan?.context
   const transfer = destinationRun?.receipt?.contextTransfer
-  if (!text(sourceRunId) || !text(sourceMessageId) || !context || !transfer)
+  if (
+    !text(sourceRunId) ||
+    !text(sourceMessageId) ||
+    !context ||
+    !portablePlan ||
+    !portableSource ||
+    !portableContext ||
+    !transfer
+  )
     fail(
       'LIVE_RELEASE_CONTEXT_TRANSFER_MISSING',
       'The handoff omitted durable context transfer evidence',
@@ -206,13 +229,37 @@ export function assertContextTransfer({ sourceRunId, sourceMessageId, plan, dest
     context,
     sourceMessageId,
   })
-  if (!text(context.digest) || !text(plan.digest))
+  same(portableSource.runId, sourceRunId, 'portable source run', {
+    portableSource,
+    sourceRunId,
+  })
+  same(portableSource.messageId, sourceMessageId, 'portable source boundary', {
+    portableSource,
+    sourceMessageId,
+  })
+  same(portableContext.source?.runId, sourceRunId, 'transferred context source run', {
+    portableContext,
+    sourceRunId,
+  })
+  same(portableContext.source?.messageId, sourceMessageId, 'transferred context source boundary', {
+    portableContext,
+    sourceMessageId,
+  })
+  if (
+    !text(context.digest) ||
+    !text(plan.digest) ||
+    !text(portablePlan.digest) ||
+    !text(portableContext.digest)
+  )
     fail(
       'LIVE_RELEASE_CONTEXT_TRANSFER_INVALID',
       'The handoff omitted a context or fork-plan digest',
       { plan },
     )
-  same(transfer.planDigest, context.digest, 'destination context digest', { transfer, context })
+  same(transfer.planDigest, portablePlan.digest, 'destination plan digest', {
+    transfer,
+    portablePlan,
+  })
   same(transfer.sourceRunId, sourceRunId, 'destination source run', { transfer, sourceRunId })
   same(transfer.destinationRunId, destinationRun.id, 'destination run', {
     transfer,
@@ -220,9 +267,9 @@ export function assertContextTransfer({ sourceRunId, sourceMessageId, plan, dest
   })
   same(
     destinationRun.receipt.requested?.contextPlanDigest,
-    context.digest,
-    'destination requested context digest',
-    { destinationRun, context },
+    portablePlan.digest,
+    'destination requested plan digest',
+    { destinationRun, portablePlan },
   )
   if (text(transfer.sourceBoundary))
     same(transfer.sourceBoundary, sourceMessageId, 'destination source boundary', {
@@ -232,8 +279,9 @@ export function assertContextTransfer({ sourceRunId, sourceMessageId, plan, dest
   return {
     sourceRunId,
     sourceMessageId,
-    contextDigest: context.digest,
-    planDigest: plan.digest,
+    contextDigest: portableContext.digest,
+    planDigest: portablePlan.digest,
+    forkPlanDigest: plan.digest,
     transfer,
   }
 }
@@ -328,13 +376,39 @@ function assertRecoveryIdentity(before, after, label) {
     })
 }
 
-function assertSavedCursor(run, cursor, providerSequence, label) {
-  if (run?.lastCursor !== cursor || run?.lastProviderSequence !== providerSequence)
+function assertSavedCursor(run, cursor, committedSequence, label) {
+  if (run?.cursor !== cursor || run?.cursorCommittedSequence !== committedSequence)
     fail(
       'LIVE_RELEASE_RESTART_CURSOR_CHANGED',
       `${label} did not retain the saved provider cursor`,
-      { cursor, providerSequence, run },
+      { cursor, committedSequence, run },
     )
+}
+
+function assertSavedCursorBoundary(boundary, runId, cursor, providerSequence) {
+  if (
+    boundary?.runId !== runId ||
+    typeof boundary.kind !== 'string' ||
+    boundary.kind.length === 0 ||
+    !nonNegativeInteger(boundary.responseIndex) ||
+    !positiveInteger(boundary.sequence) ||
+    !positiveInteger(boundary.revision) ||
+    boundary.cursor !== cursor ||
+    boundary.providerSequence !== providerSequence
+  )
+    fail(
+      'LIVE_RELEASE_RESTART_CURSOR_BOUNDARY_MISSING',
+      'The restart proof did not bind its saved cursor to a durable provider event',
+      { boundary, runId, cursor, providerSequence },
+    )
+  return {
+    kind: boundary.kind,
+    responseIndex: boundary.responseIndex,
+    sequence: boundary.sequence,
+    revision: boundary.revision,
+    cursor: boundary.cursor,
+    providerSequence: boundary.providerSequence,
+  }
 }
 
 function assertForcedRestartProcess({ oldProcess, newProcess, forcedProcess }) {
@@ -530,11 +604,12 @@ function assertReconnectBoundary({
       'The restart proof did not retain the durable reconnect boundary',
       { reconnectBoundary, reconnectResponse },
     )
-  const provider = replayEvent?.event?.provider
+  const provider = replayEvent?.event?.source
   const nextProviderSequence = savedProviderSequence + 1
   if (
     replayEvent?.event?.runId !== runId ||
-    replayEvent.kind !== replayEvent.event.kind ||
+    typeof replayEvent.kind !== 'string' ||
+    replayEvent.kind.length === 0 ||
     replayEvent.kind === 'run.reconnecting' ||
     !nonNegativeInteger(replayEvent.responseIndex) ||
     replayEvent.responseIndex <= reconnectBoundary.responseIndex ||
@@ -589,19 +664,23 @@ function assertTerminalUniqueness(terminalReceiptsValue, finalState, runId, term
     )
   const receipt = terminalReceiptsValue[0]
   const finalRun = finalState?.state?.runs?.find((run) => run?.id === runId)
+  const receiptCursor = receipt.cursor !== null && text(receipt.cursor) ? receipt.cursor : undefined
+  const durableCursor = text(finalRun?.cursor) ? finalRun.cursor : undefined
   if (
     receipt.runId !== runId ||
     (terminalSession !== undefined && receipt.session !== terminalSession) ||
     receipt.status !== 'completed' ||
     !text(receipt.providerEventId) ||
     !positiveInteger(receipt.providerSequence) ||
-    !text(receipt.cursor) ||
+    (receipt.cursor !== null && receiptCursor === undefined) ||
+    durableCursor === undefined ||
+    (receiptCursor !== undefined && receiptCursor !== durableCursor) ||
     !positiveInteger(receipt.sequence) ||
     !positiveInteger(receipt.revision) ||
     !positiveInteger(finalState?.revision) ||
     !positiveInteger(finalState?.state?.revision) ||
     finalRun?.status !== 'completed' ||
-    finalRun.complete !== true ||
+    finalRun.completeness !== 'complete' ||
     receipt.sequence > finalState.state.revision ||
     receipt.revision > finalState.state.revision
   )
@@ -614,6 +693,7 @@ function assertTerminalUniqueness(terminalReceiptsValue, finalState, runId, term
     deliveryCount: terminalReceiptsValue.length,
     receipt,
     durableRevision: finalState.state.revision,
+    durableCursor,
   }
 }
 
@@ -629,6 +709,7 @@ export function assertRetainedRestartProof({
   newProcess,
   forcedProcess,
   activeModel,
+  savedCursorBoundary,
   reopenedRevision,
   reconnectRequest,
   reconnectResponse,
@@ -665,6 +746,12 @@ export function assertRetainedRestartProof({
       { savedCursor, savedProviderSequence, beforeDetach },
     )
   const activeEvidence = assertActiveModelTiming(activeModel, runId)
+  const cursorEvidence = assertSavedCursorBoundary(
+    savedCursorBoundary,
+    runId,
+    savedCursor,
+    savedProviderSequence,
+  )
   if (beforeDetach?.status === undefined || !ACTIVE_RUN_STATUSES.has(beforeDetach.status))
     fail('LIVE_RELEASE_RESTART_NOT_ACTIVE', 'The restart proof did not detach an active run', {
       beforeDetach,
@@ -685,9 +772,9 @@ export function assertRetainedRestartProof({
   assertRecoveryIdentity(beforeDetach, detached, 'detach')
   assertRecoveryIdentity(beforeDetach, reopened, 'restart')
   assertRecoveryIdentity(beforeDetach, final, 'reconnect')
-  assertSavedCursor(beforeDetach, savedCursor, savedProviderSequence, 'active stream')
-  assertSavedCursor(detached, savedCursor, savedProviderSequence, 'detached state')
-  assertSavedCursor(reopened, savedCursor, savedProviderSequence, 'reopened state')
+  assertSavedCursor(beforeDetach, savedCursor, cursorEvidence.sequence, 'active stream')
+  assertSavedCursor(detached, savedCursor, cursorEvidence.sequence, 'detached state')
+  assertSavedCursor(reopened, savedCursor, cursorEvidence.sequence, 'reopened state')
   const reconnectEvidence = assertReconnectBoundary({
     runId,
     savedCursor,
@@ -704,12 +791,13 @@ export function assertRetainedRestartProof({
       'The restart proof did not replay a provider event after the saved cursor',
       { savedCursor, savedProviderSequence, replayEvent },
     )
-  if (final?.status !== 'completed' || final.complete !== true)
+  if (final?.status !== 'completed' || final.completeness !== 'complete')
     fail(
       'LIVE_RELEASE_RESTART_NOT_COMPLETED',
       'The retained run did not complete after reconnect',
       {
         final,
+        lastError: finalState?.state?.lastError ?? null,
       },
     )
   const terminalEvidence = assertTerminalUniqueness(
@@ -726,6 +814,7 @@ export function assertRetainedRestartProof({
     controlRef: final.controlRef,
     process: processEvidence,
     activeModel: activeEvidence,
+    savedCursorBoundary: cursorEvidence,
     reconnect: reconnectEvidence,
     terminal: terminalEvidence,
   }

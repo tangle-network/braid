@@ -1,4 +1,4 @@
-import { exitCodes, livePrompts } from './constants.mjs'
+import { exitCodes, liveMarkers, livePrompts } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { sleep } from './process.mjs'
 import {
@@ -85,7 +85,7 @@ export async function runNormalTurn(
   { operationPrefix = 'live', prompt, marker } = {},
 ) {
   const normalPrompt = prompt ?? livePrompts.normal(target.key)
-  const expectedMarker = marker ?? `LIVE_BRAID_${target.key.toUpperCase().replaceAll('.', '_')}_OK`
+  const expectedMarker = marker ?? liveMarkers.normal(target.key)
   const send = {
     ...requestBase(
       requestIdFor(operationPrefix, 'send', target.key),
@@ -148,6 +148,7 @@ export async function runNormalTurn(
     marker: expectedMarker,
     markerObserved,
     prompt: normalPrompt,
+    lastError: terminal.state?.lastError ?? null,
   }
   if (
     finalRun?.status !== 'completed' ||
@@ -155,13 +156,20 @@ export async function runNormalTurn(
     finalMessage.text.trim() === '' ||
     !markerObserved
   ) {
+    const providerFailed = finalRun?.status === 'failed'
     throw new LiveBridgeError(
-      markerObserved ? 'LIVE_FINAL_OUTPUT_MISSING' : 'LIVE_FINAL_OUTPUT_MISMATCH',
-      markerObserved
-        ? `Packed Braid ${target.definition.label} turn did not produce a completed assistant message`
-        : `Packed Braid ${target.definition.label} turn completed without the expected response marker`,
+      providerFailed
+        ? 'LIVE_PROVIDER_RUN_FAILED'
+        : markerObserved
+          ? 'LIVE_FINAL_OUTPUT_MISSING'
+          : 'LIVE_FINAL_OUTPUT_MISMATCH',
+      providerFailed
+        ? `Packed Braid ${target.definition.label} reported a failed provider run`
+        : markerObserved
+          ? `Packed Braid ${target.definition.label} turn did not produce a completed assistant message`
+          : `Packed Braid ${target.definition.label} turn completed without the expected response marker`,
       exitCodes.failed,
-      { run: finalRun, assistant: finalMessage },
+      { run: finalRun, assistant: finalMessage, lastError: terminal.state?.lastError ?? null },
     )
   }
   return { finalRun, runId, terminal }
@@ -404,4 +412,32 @@ export async function finishTarget(session, result, { operationPrefix = 'live' }
       15_000,
     ),
   )
+}
+
+export async function cancelFailedTarget(session, result, { operationPrefix, timeoutMs = 30_000 }) {
+  const shutdown = {
+    ...requestBase(
+      requestIdFor(operationPrefix, 'failure-shutdown', result.targetKey),
+      'shutdown',
+      operationIdFor(operationPrefix, 'failure-shutdown', result.targetKey),
+    ),
+    params: { mode: 'cancel' },
+  }
+  result.requests.push(evidenceValue(shutdown))
+  session.send(shutdown)
+  const response = await session.waitFor(
+    'failed operation cancellation acknowledgement',
+    responseForRequest(shutdown.requestId),
+    timeoutMs,
+  )
+  if (response.type !== 'ack') {
+    throw new LiveBridgeError(
+      'LIVE_RELEASE_FAILURE_CLEANUP_REJECTED',
+      'Packed Braid rejected cancellation cleanup for a failed release operation',
+      exitCodes.failed,
+      { response },
+    )
+  }
+  const exit = await session.waitForExit('failed operation cancellation shutdown', timeoutMs)
+  return evidenceValue({ response, exit })
 }

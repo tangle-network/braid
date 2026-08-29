@@ -14,6 +14,10 @@ import {
   runWithAdmissionReceipt,
 } from './protocol.mjs'
 import {
+  ownedProviderSessionIds,
+  providerSessionReleaseResult,
+} from './provider-session-cleanup.mjs'
+import {
   evidenceValue,
   secretValues,
   withoutBraidLiveSecrets,
@@ -28,7 +32,8 @@ import {
   assertUniqueRunIds,
   terminalReceipts,
 } from './release-proof-validation.mjs'
-import { assertTargetSemantics, verifyInteraction } from './target-actions.mjs'
+import { selectRestartTarget } from './release-proofs.mjs'
+import { assertTargetSemantics, cancelFailedTarget, verifyInteraction } from './target-actions.mjs'
 import { operationRequest, operationState } from './target-flow.mjs'
 
 const target = {
@@ -36,6 +41,83 @@ const target = {
   modelId: 'pi/provider/model',
   definition: { backend: 'pi' },
 }
+
+test('restart proof selects the target with measured incremental delivery', () => {
+  const buffered = {
+    key: 'buffered',
+    modelId: 'opencode/provider/buffered',
+    definition: { backend: 'opencode' },
+  }
+  const incremental = {
+    key: 'incremental',
+    modelId: 'pi/provider/incremental',
+    definition: { backend: 'pi' },
+  }
+  const records = [
+    {
+      status: 'passed',
+      targetProof: { key: buffered.key, route: buffered.modelId },
+      normal: { run: { cursorCommittedSequence: 12 } },
+    },
+    {
+      status: 'passed',
+      targetProof: { key: incremental.key, route: incremental.modelId },
+      normal: { run: { cursorCommittedSequence: 48 } },
+    },
+  ]
+
+  assert.equal(selectRestartTarget([buffered, incremental], records), incremental)
+  assert.equal(selectRestartTarget([buffered, incremental], []), buffered)
+  assert.equal(selectRestartTarget([], records), undefined)
+})
+
+test('provider cleanup selects only exact CLI Bridge session bindings', () => {
+  const responses = [
+    {
+      type: 'ack',
+      admission: { provider: 'cli-bridge', providerSessionId: 'session-admission' },
+    },
+    {
+      type: 'state',
+      state: {
+        runs: [
+          {
+            provider: 'cli-bridge',
+            providerSessionId: 'session-admission',
+            controlRef: { provider: 'cli-bridge', sessionId: 'session-control' },
+          },
+          { provider: 'another-provider', providerSessionId: 'session-foreign' },
+        ],
+      },
+    },
+  ]
+
+  assert.deepEqual(ownedProviderSessionIds(responses), ['session-admission', 'session-control'])
+})
+
+test('provider cleanup accepts closed and already absent sessions only', () => {
+  assert.deepEqual(
+    providerSessionReleaseResult('session-closed', {
+      status: 200,
+      body: { closed: true },
+    }),
+    {
+      sessionId: 'session-closed',
+      status: 200,
+      closed: true,
+      alreadyAbsent: false,
+      released: true,
+    },
+  )
+  assert.deepEqual(providerSessionReleaseResult('session-absent', { status: 404 }), {
+    sessionId: 'session-absent',
+    status: 404,
+    closed: false,
+    alreadyAbsent: true,
+    released: true,
+  })
+  assert.equal(providerSessionReleaseResult('session-conflict', { status: 409 }).released, false)
+})
 
 test('retained cancellation proof reads the environment capability contract', () => {
   assert.equal(retainedCancellationAdvertised({}), false)
@@ -145,11 +227,13 @@ function run(overrides = {}) {
   return {
     id: 'run-1',
     status: 'completed',
-    complete: true,
+    completeness: 'complete',
     inputTokens: 2,
     outputTokens: 3,
+    tokensKnown: true,
+    tokenStatus: 'complete',
     llmCalls: 1,
-    model: 'model',
+    model: 'pi/provider/model',
     receipt: {
       runId: 'run-1',
       profileDigest: 'profile-digest',
@@ -173,6 +257,11 @@ function run(overrides = {}) {
 
 test('identity validation rejects configured-label false positives', () => {
   assert.doesNotThrow(() => assertTargetRunIdentity(run(), target))
+  assert.doesNotThrow(() => assertTargetRunIdentity(run({ model: 'model' }), target))
+  assert.throws(
+    () => assertTargetRunIdentity(run({ model: 'other' }), target),
+    /selected route or provider model/u,
+  )
   for (const broken of [
     { requested: { runner: 'codex' } },
     { requested: { model: 'other' } },
@@ -216,7 +305,7 @@ test('identity validation retains nested and runner-only model routes', () => {
     definition: { backend: 'pi' },
   }
   const nestedRun = run({
-    model: 'openai/gpt-5.6-luna',
+    model: nestedTarget.modelId,
     receipt: {
       ...run().receipt,
       requested: {
@@ -243,7 +332,7 @@ test('identity validation retains nested and runner-only model routes', () => {
     definition: { backend: 'codex' },
   }
   const defaultRun = run({
-    model: 'default',
+    model: defaultTarget.modelId,
     receipt: {
       ...run().receipt,
       requested: {
@@ -265,6 +354,10 @@ test('identity validation retains nested and runner-only model routes', () => {
 test('usage and cancellation unavailable states cannot pass strict conformance', () => {
   assert.throws(() => assertObservedUsage(run({ tokensKnown: false })), /known token usage/u)
   assert.throws(() => assertObservedUsage(run({ llmCalls: 0 })), /model-call usage/u)
+  assert.deepEqual(assertObservedUsage(run({ llmCalls: undefined })), {
+    inputTokens: 2,
+    outputTokens: 3,
+  })
   const cancellationUnavailable = {
     cancel: { status: 'reported-unavailable', advertised: false },
     interaction: { status: 'reported-unavailable', advertised: false },
@@ -329,8 +422,8 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
   const identity = {
     id: 'run-1',
     providerSessionId: 'session-1',
-    lastCursor: '1:0',
-    lastProviderSequence: 1,
+    cursor: '1:0',
+    cursorCommittedSequence: 11,
     controlRef: {
       runId: 'provider-run-1',
       provider: 'cli-bridge',
@@ -354,7 +447,7 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
     beforeDetach: { ...identity, status: 'streaming' },
     detached: { ...identity, status: 'detached' },
     reopened: { ...identity, status: 'detached' },
-    final: { ...identity, status: 'completed', complete: true },
+    final: { ...identity, status: 'completed', completeness: 'complete' },
     oldProcess,
     newProcess,
     forcedProcess: {
@@ -396,6 +489,15 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
         cursor: '2:0',
       },
     },
+    savedCursorBoundary: {
+      runId: 'run-1',
+      kind: 'run.text.delta',
+      responseIndex: 10,
+      sequence: 11,
+      revision: 11,
+      cursor: '1:0',
+      providerSequence: 1,
+    },
     reopenedRevision: 12,
     reconnectRequest,
     reconnectResponse: {
@@ -419,9 +521,8 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
       sequence: 14,
       revision: 14,
       event: {
-        kind: 'run.text.delta',
         runId: 'run-1',
-        provider: { providerSequence: 2, cursor: '2:0' },
+        source: { providerSequence: 2, cursor: '2:0' },
       },
     },
     terminalReceipts: [
@@ -441,12 +542,19 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
       revision: 16,
       state: {
         revision: 16,
-        runs: [{ id: 'run-1', status: 'completed', complete: true }],
+        runs: [{ id: 'run-1', status: 'completed', completeness: 'complete', cursor: '3:0' }],
       },
     },
     terminalSession: newProcess.instanceId,
   }
   assert.equal(assertRetainedRestartProof(proof).terminal.deliveryCount, 1)
+  assert.equal(
+    assertRetainedRestartProof({
+      ...proof,
+      terminalReceipts: [{ ...proof.terminalReceipts[0], cursor: null }],
+    }).terminal.durableCursor,
+    '3:0',
+  )
 
   const adversarial = [
     {
@@ -523,6 +631,10 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
       },
     },
     {
+      name: 'replay without a public kind',
+      proof: { ...proof, replayEvent: { ...proof.replayEvent, kind: '' } },
+    },
+    {
       name: 'reconnect boundary uses a different saved cursor',
       proof: {
         ...proof,
@@ -537,7 +649,7 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
           ...proof.replayEvent,
           event: {
             ...proof.replayEvent.event,
-            provider: { providerSequence: 99, cursor: '99:0' },
+            source: { providerSequence: 99, cursor: '99:0' },
           },
         },
       },
@@ -562,6 +674,13 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
     {
       name: 'terminal not durable',
       proof: { ...proof, finalState: { revision: 14, state: { revision: 14 } } },
+    },
+    {
+      name: 'terminal cursor conflicts with durable run',
+      proof: {
+        ...proof,
+        terminalReceipts: [{ ...proof.terminalReceipts[0], cursor: 'other-cursor' }],
+      },
     },
     {
       name: 'terminal completion missing',
@@ -740,15 +859,26 @@ test('context transfer binds boundary, source run, digest, and destination recei
       digest: 'context-digest',
       messages: [{ id: 'message-1' }],
     },
+    portableContextPlan: {
+      digest: 'portable-plan-digest',
+      source: {
+        source: { runId: 'source-run', messageId: 'message-1' },
+      },
+      context: {
+        source: { runId: 'source-run', messageId: 'message-1' },
+        digest: 'portable-context-digest',
+      },
+      requiresAcceptance: true,
+    },
   }
   const destination = run({
     id: 'destination-run',
     receipt: {
       ...run().receipt,
       runId: 'destination-run',
-      requested: { ...run().receipt.requested, contextPlanDigest: 'context-digest' },
+      requested: { ...run().receipt.requested, contextPlanDigest: 'portable-plan-digest' },
       contextTransfer: {
-        planDigest: 'context-digest',
+        planDigest: 'portable-plan-digest',
         sourceRunId: 'source-run',
         destinationRunId: 'destination-run',
         acceptedAt: '2026-08-10T00:00:00.000Z',
@@ -767,6 +897,15 @@ test('context transfer binds boundary, source run, digest, and destination recei
     { plan: { ...plan, throughMessageId: 'other' } },
     { plan: { ...plan, context: { ...plan.context, sourceRunId: 'other' } } },
     {
+      plan: {
+        ...plan,
+        portableContextPlan: {
+          ...plan.portableContextPlan,
+          source: { source: { runId: 'other', messageId: 'message-1' } },
+        },
+      },
+    },
+    {
       destinationRun: run({
         id: 'destination-run',
         receipt: { ...destination.receipt, contextTransfer: undefined },
@@ -781,7 +920,7 @@ test('context transfer binds boundary, source run, digest, and destination recei
           plan: broken.plan ?? plan,
           destinationRun: broken.destinationRun ?? destination,
         }),
-      /message|context|boundary/u,
+      /message|context|boundary|source/u,
     )
   }
 })
@@ -799,6 +938,43 @@ test('release operations reject reused run IDs and redact bridge bearers', () =>
     new RegExp(secret, 'u'),
   )
   assert.equal(withoutBridgeSecrets({ BRIDGE_BEARER: secret }).BRIDGE_BEARER, undefined)
+})
+
+test('failed release operations cancel active work and await RPC exit', async () => {
+  const sent = []
+  const acknowledgement = {
+    type: 'ack',
+    requestId: 'interactive-failure-shutdown-pi-test',
+    command: 'shutdown',
+    revision: 7,
+  }
+  const session = {
+    send(request) {
+      sent.push(request)
+    },
+    async waitFor(label, predicate, timeoutMs) {
+      assert.equal(label, 'failed operation cancellation acknowledgement')
+      assert.equal(timeoutMs, 2_000)
+      assert.equal(predicate(acknowledgement), true)
+      return acknowledgement
+    },
+    async waitForExit(label, timeoutMs) {
+      assert.equal(label, 'failed operation cancellation shutdown')
+      assert.equal(timeoutMs, 2_000)
+      return { code: 0, signal: null }
+    },
+  }
+  const result = { targetKey: 'pi-test', requests: [] }
+
+  const receipt = await cancelFailedTarget(session, result, {
+    operationPrefix: 'interactive',
+    timeoutMs: 2_000,
+  })
+
+  assert.deepEqual(sent, result.requests)
+  assert.deepEqual(sent[0]?.params, { mode: 'cancel' })
+  assert.equal(receipt.response.command, 'shutdown')
+  assert.deepEqual(receipt.exit, { code: 0, signal: null })
 })
 
 test('started CLI Bridge keeps local subscription settings but strips Braid live credentials', () => {

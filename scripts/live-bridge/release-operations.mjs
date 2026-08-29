@@ -1,9 +1,14 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { profileForBridgeTarget } from './config.mjs'
-import { exitCodes, livePrompts } from './constants.mjs'
+import { exitCodes, liveMarkers, livePrompts } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { RpcSession } from './process.mjs'
 import {
   classifyPackedStartup,
+  eventPayload,
+  exactMarker,
   interactionFromResponse,
   requestBase,
   runEventPayload,
@@ -89,7 +94,7 @@ export async function executeCrossRunnerHandoff(
       const sourceTurn = await runNormalTurn(session, result, sourceTarget, timeoutMs, {
         operationPrefix: `${operationPrefix}-source`,
         prompt: livePrompts.handoffSource(sourceTarget.key),
-        marker: 'LIVE_BRAID_PI_HANDOFF_SOURCE_OK',
+        marker: liveMarkers.handoffSource(sourceTarget.key),
       })
       const sourceMessage = terminalMessage(sourceTurn.terminal.state, sourceTurn.runId)
       if (typeof sourceMessage?.id !== 'string') {
@@ -103,10 +108,13 @@ export async function executeCrossRunnerHandoff(
       const sourceProof = assertTargetRunIdentity(sourceTurn.finalRun, sourceTarget)
       const sourceUsage = assertObservedUsage(sourceTurn.finalRun)
       const destinationProfile = profileForBridgeTarget(destinationTarget)
+      const destinationPrompt = livePrompts.handoffDestination(destinationTarget.key)
+      const destinationMarker = liveMarkers.handoffDestination(destinationTarget.key)
       const forkParams = {
         conversationId: result.conversationId,
         branchId: result.branchId,
         messageId: sourceMessage.id,
+        text: destinationPrompt,
         workspace: false,
         runner: destinationTarget.definition.backend,
         model: destinationProfile.model.default,
@@ -129,17 +137,22 @@ export async function executeCrossRunnerHandoff(
         timeoutMs,
       )
       const plan = planResponse.type === 'ack' ? planResponse.result : undefined
+      const portablePlan = plan?.portableContextPlan
       if (
         planResponse.type === 'error' ||
         plan?.allowed !== true ||
         plan.providerSession !== 'new' ||
         typeof plan.digest !== 'string' ||
+        typeof portablePlan?.digest !== 'string' ||
+        typeof portablePlan.requiresAcceptance !== 'boolean' ||
         typeof plan.destinationBranchId !== 'string' ||
         !Array.isArray(plan.context?.messages) ||
         plan.throughMessageId !== sourceMessage.id ||
         plan.context?.sourceRunId !== sourceTurn.runId ||
         plan.context?.sourceBoundary !== sourceMessage.id ||
-        typeof plan.context?.digest !== 'string'
+        typeof plan.context?.digest !== 'string' ||
+        portablePlan.source?.source?.runId !== sourceTurn.runId ||
+        portablePlan.source?.source?.messageId !== sourceMessage.id
       ) {
         throw new LiveBridgeError(
           'LIVE_RELEASE_HANDOFF_PLAN_INVALID',
@@ -156,8 +169,15 @@ export async function executeCrossRunnerHandoff(
           'execute_fork',
           forkOperationId,
         ),
-        params: { ...forkParams, planDigest: plan.digest },
+        params: {
+          ...forkParams,
+          planDigest: plan.digest,
+          ...(portablePlan.requiresAcceptance === true
+            ? { acceptedDigest: portablePlan.digest }
+            : {}),
+        },
       }
+      const executeResponseStartIndex = session.responses.length
       const executeResponse = await sendOperationRequest(
         session,
         result,
@@ -190,12 +210,55 @@ export async function executeCrossRunnerHandoff(
       result.sourceRunId = sourceTurn.runId
       result.branchId = plan.destinationBranchId
       applyTargetReceipt(result, config, destinationTarget)
-      const destinationTurn = await runNormalTurn(session, result, destinationTarget, timeoutMs, {
-        operationPrefix: `${operationPrefix}-destination`,
-        prompt: livePrompts.handoffDestination(destinationTarget.key),
-        marker: 'LIVE_BRAID_CODEX_HANDOFF_OK',
-      })
-      const destinationSessionId = providerSessionId(destinationTurn.finalRun)
+      const destinationAdmissionResponse = await session.waitFor(
+        'cross-runner destination admission',
+        (response) => {
+          const payload = eventPayload(response)
+          return (
+            session.responses.indexOf(response) >= executeResponseStartIndex &&
+            response?.event?.kind === 'run.requested' &&
+            payload?.status === 'admitted' &&
+            typeof payload.runId === 'string' &&
+            payload.admission?.runId === payload.runId &&
+            payload.admission?.branchId === plan.destinationBranchId
+          )
+        },
+        timeoutMs,
+      )
+      const destinationAdmission = eventPayload(destinationAdmissionResponse)
+      const destinationRunId = destinationAdmission.runId
+      const destinationTerminal = await terminalOperationState(
+        session,
+        result,
+        `${operationPrefix}-destination`,
+        destinationRunId,
+        timeoutMs,
+      )
+      const destinationRun = runWithAdmissionReceipt(
+        destinationTerminal.run,
+        destinationAdmission.admission,
+      )
+      const destinationMessage = terminalMessage(
+        destinationTerminal.response.state,
+        destinationRunId,
+      )
+      const destinationMarkerObserved = exactMarker(destinationMessage?.text, destinationMarker)
+      if (
+        destinationRun?.status !== 'completed' ||
+        typeof destinationMessage?.text !== 'string' ||
+        destinationMessage.text.trim() === '' ||
+        !destinationMarkerObserved
+      ) {
+        throw new LiveBridgeError(
+          destinationMarkerObserved ? 'LIVE_FINAL_OUTPUT_MISSING' : 'LIVE_FINAL_OUTPUT_MISMATCH',
+          destinationMarkerObserved
+            ? 'The cross-runner destination did not retain a completed assistant message'
+            : 'The cross-runner destination completed without the expected response marker',
+          exitCodes.failed,
+          { run: destinationRun, assistant: destinationMessage },
+        )
+      }
+      const destinationSessionId = providerSessionId(destinationRun)
       if (
         typeof destinationSessionId !== 'string' ||
         destinationSessionId.length === 0 ||
@@ -205,20 +268,20 @@ export async function executeCrossRunnerHandoff(
           'LIVE_RELEASE_DESTINATION_RECEIPT_INVALID',
           'The Codex destination run did not prove a distinct runner and provider session',
           exitCodes.failed,
-          { run: destinationTurn.finalRun, sourceSessionId },
+          { run: destinationRun, sourceSessionId },
         )
       }
-      const destinationProof = assertTargetRunIdentity(destinationTurn.finalRun, destinationTarget)
-      const destinationUsage = assertObservedUsage(destinationTurn.finalRun)
+      const destinationProof = assertTargetRunIdentity(destinationRun, destinationTarget)
+      const destinationUsage = assertObservedUsage(destinationRun)
       const transfer = assertContextTransfer({
         sourceRunId: sourceTurn.runId,
         sourceMessageId: sourceMessage.id,
         plan,
-        destinationRun: destinationTurn.finalRun,
+        destinationRun,
       })
       return {
-        runId: destinationTurn.runId,
-        runIds: [sourceTurn.runId, destinationTurn.runId],
+        runId: destinationRunId,
+        runIds: [sourceTurn.runId, destinationRunId],
         targetProof: destinationProof,
         evidence: {
           sourceRunner: sourceProof.harness,
@@ -226,11 +289,11 @@ export async function executeCrossRunnerHandoff(
           sourceProvider: sourceProof.provider,
           destinationProvider: destinationProof.provider,
           sourceRun: evidenceValue(sourceRun),
-          destinationRun: evidenceValue(destinationTurn.finalRun),
+          destinationRun: evidenceValue(destinationRun),
           sourceUsage,
           destinationUsage,
           sourceRunId: sourceTurn.runId,
-          destinationRunId: destinationTurn.runId,
+          destinationRunId,
           sourceProviderSessionId: sourceSessionId,
           destinationProviderSessionId: destinationSessionId,
           sourceMessageId: sourceMessage.id,
@@ -239,9 +302,17 @@ export async function executeCrossRunnerHandoff(
           planDigest: plan.digest,
           contextPlanDigest: plan.context.digest,
           providerSession: plan.providerSession,
+          acceptance:
+            portablePlan.requiresAcceptance === true
+              ? { required: true, acceptedDigest: portablePlan.digest }
+              : { required: false },
           transfer: evidenceValue(transfer),
           plan: evidenceValue(plan),
           execution: evidenceValue(branch),
+          destinationAdmission: evidenceValue(destinationAdmissionResponse),
+          destinationPrompt,
+          destinationMarker,
+          destinationMarkerObserved,
         },
       }
     },
@@ -278,8 +349,13 @@ export async function executeInteractiveProtocol(
     timeoutMs,
     operation,
     operationPrefix,
-    execute: async ({ result, getSession }) => {
+    execute: async ({ result, config, getSession }) => {
       const session = getSession()
+      await writeFile(
+        join(config.workspace, `interaction-proof-${target.key}.txt`),
+        `${liveMarkers.interactive(target.key)}\n`,
+        { mode: 0o600 },
+      )
       const started = await admitOperationTurn(
         session,
         result,
@@ -570,6 +646,23 @@ export async function executeRestartReconciliation(
         timeoutMs,
       )
       const streamedRun = runFromState(streamedState.state, started.runId)
+      if (!['running', 'waiting', 'streaming'].includes(streamedRun?.status)) {
+        throw new LiveBridgeError(
+          'LIVE_RELEASE_RESTART_STREAM_ENDED',
+          'The selected run reached a terminal state before Braid could disconnect',
+          exitCodes.failed,
+          {
+            run: streamedRun,
+            progress: {
+              kind: activeStream.event.kind,
+              sequence: activeStream.sequence,
+              revision: activeStream.revision,
+              providerSequence: activeStreamPayload.source.providerSequence,
+              cursor: activeStreamPayload.source.cursor ?? null,
+            },
+          },
+        )
+      }
       const activeStateResponseIndex = getSession().responses.indexOf(activeState)
       const activeStreamResponseIndex = getSession().responses.indexOf(activeStream)
       const activeModel = {
@@ -597,8 +690,28 @@ export async function executeRestartReconciliation(
           cursor: activeStreamPayload.source.cursor ?? null,
         },
       }
-      const savedCursor = streamedRun?.lastCursor
-      const savedProviderSequence = streamedRun?.lastProviderSequence
+      const savedCursor = streamedRun?.cursor
+      const savedCursorCommittedSequence = streamedRun?.cursorCommittedSequence
+      const savedCursorResponse = getSession().responses.findLast((response) => {
+        const payload = runEventPayload(response, started.runId)
+        return (
+          response.type === 'event' &&
+          response.sequence === savedCursorCommittedSequence &&
+          payload?.source?.cursor === savedCursor &&
+          Number.isSafeInteger(payload.source.providerSequence)
+        )
+      })
+      const savedCursorPayload = runEventPayload(savedCursorResponse, started.runId)
+      const savedProviderSequence = savedCursorPayload?.source?.providerSequence
+      const savedCursorBoundary = {
+        runId: started.runId,
+        kind: savedCursorResponse?.event?.kind,
+        responseIndex: getSession().responses.indexOf(savedCursorResponse),
+        sequence: savedCursorResponse?.sequence,
+        revision: savedCursorResponse?.revision,
+        cursor: savedCursorPayload?.source?.cursor,
+        providerSequence: savedProviderSequence,
+      }
       const detachRequest = operationRequest(result, operationPrefix, 'detach', 'detach', {
         runId: started.runId,
       })
@@ -702,28 +815,85 @@ export async function executeRestartReconciliation(
       )
       const reconnectBoundaryResponseIndex = restarted.responses.indexOf(reconnectBoundaryResponse)
       const reconnectBoundaryPayload = runEventPayload(reconnectBoundaryResponse, started.runId)
-      const replayEvent = await restarted.waitFor(
-        'restart replayed post-cursor event',
-        (response) => {
-          const payload = runEventPayload(response, started.runId)
-          return (
-            restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
-            payload !== undefined &&
-            response.event?.kind !== 'run.reconnecting' &&
-            Number.isSafeInteger(response.sequence) &&
-            response.sequence > reconnectBoundaryResponse.sequence &&
-            Number.isSafeInteger(response.revision) &&
-            response.revision > reconnectBoundaryResponse.revision &&
-            Number.isSafeInteger(payload.source?.providerSequence) &&
-            Number.isSafeInteger(savedProviderSequence) &&
-            savedProviderSequence > 0 &&
-            payload.source.providerSequence === savedProviderSequence + 1 &&
-            response.sequence <= reconnectResponse.revision &&
-            response.revision <= reconnectResponse.revision
-          )
-        },
-        timeoutMs,
-      )
+      let replayEvent
+      try {
+        replayEvent = await restarted.waitFor(
+          'restart replayed post-cursor event',
+          (response) => {
+            const payload = runEventPayload(response, started.runId)
+            return (
+              restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
+              payload !== undefined &&
+              response.event?.kind !== 'run.reconnecting' &&
+              Number.isSafeInteger(response.sequence) &&
+              response.sequence > reconnectBoundaryResponse.sequence &&
+              Number.isSafeInteger(response.revision) &&
+              response.revision > reconnectBoundaryResponse.revision &&
+              Number.isSafeInteger(payload.source?.providerSequence) &&
+              Number.isSafeInteger(savedProviderSequence) &&
+              savedProviderSequence > 0 &&
+              payload.source.providerSequence > savedProviderSequence &&
+              response.sequence <= reconnectResponse.revision &&
+              response.revision <= reconnectResponse.revision
+            )
+          },
+          timeoutMs,
+        )
+      } catch (error) {
+        const postReconnectResponses = restarted.responses
+          .slice(responseCountBeforeReconnect)
+          .map((response, responseOffset) => {
+            const payload = runEventPayload(response, started.runId)
+            return {
+              responseIndex: responseCountBeforeReconnect + responseOffset,
+              type: response.type,
+              ...(response.requestId === undefined ? {} : { requestId: response.requestId }),
+              ...(response.sequence === undefined ? {} : { sequence: response.sequence }),
+              ...(response.revision === undefined ? {} : { revision: response.revision }),
+              ...(response.event?.kind === undefined ? {} : { kind: response.event.kind }),
+              ...(payload === undefined
+                ? {}
+                : {
+                    run: {
+                      runId: payload.runId,
+                      ...(payload.status === undefined ? {} : { status: payload.status }),
+                      ...(payload.cursor === undefined ? {} : { cursor: payload.cursor }),
+                      ...(payload.source?.providerSequence === undefined
+                        ? {}
+                        : { providerSequence: payload.source.providerSequence }),
+                      ...(payload.source?.cursor === undefined
+                        ? {}
+                        : { providerCursor: payload.source.cursor }),
+                    },
+                  }),
+              ...(response.type !== 'error'
+                ? {}
+                : { error: { code: response.code, message: response.message } }),
+            }
+          })
+        const postReconnect = {
+          count: postReconnectResponses.length,
+          first: postReconnectResponses.slice(0, 8),
+          last: postReconnectResponses.slice(-8),
+        }
+        throw new LiveBridgeError(
+          'LIVE_RELEASE_REPLAY_TIMEOUT',
+          'The restart operation did not retain a provider event after its saved cursor',
+          exitCodes.failed,
+          {
+            cause:
+              error instanceof LiveBridgeError
+                ? { code: error.code, message: error.message, details: error.details }
+                : { message: error instanceof Error ? error.message : String(error) },
+            savedCursor,
+            savedProviderSequence,
+            reopenedRun,
+            reconnectResponse,
+            reconnectBoundary: reconnectBoundaryResponse,
+            postReconnect,
+          },
+        )
+      }
       const replayPayload = runEventPayload(replayEvent, started.runId)
       const terminal = await terminalOperationState(
         restarted,
@@ -757,6 +927,7 @@ export async function executeRestartReconciliation(
         newProcess,
         forcedProcess,
         activeModel,
+        savedCursorBoundary,
         reopenedRevision: reopenedState.revision,
         reconnectRequest,
         reconnectResponse,
@@ -798,6 +969,7 @@ export async function executeRestartReconciliation(
           detachedState: evidenceValue(detachedState),
           savedCursor,
           savedProviderSequence,
+          savedCursorBoundary: evidenceValue(savedCursorBoundary),
           reopenedState: evidenceValue(reopenedState),
           detach: evidenceValue(detachResponse),
           reconnect: evidenceValue(reconnectResponse),

@@ -1,4 +1,5 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import { harnessTypeSchema, type AgentProfile } from '@tangle-network/agent-interface'
+import { materializeBridgeModelRoute } from '../adapters/connections/cli-bridge-model-route.js'
 import { nitroVerifiersForConnection } from '../adapters/connections/nitro-confidential-attestation.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
@@ -10,6 +11,7 @@ import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
+import { createCliBridgeContextTransferPort } from '../adapters/runtime/cli-bridge-context-transfer.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
 import { NativeInteractiveRunBroker } from '../adapters/runtime/native-interactive-run-broker.js'
@@ -19,6 +21,7 @@ import {
   resolveProductionCliBridgeConnection,
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
+import { prepareCliBridgeProviderRoute } from '../adapters/runtime/production-cli-bridge-backend.js'
 import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
@@ -243,7 +246,26 @@ export function createProductionComposition(
   let nativeInteractive: NativeInteractiveExecutionControl | undefined
   const execution = (() => {
     if (connection.kind === 'cli-bridge') {
+      const context = createCliBridgeContextTransferPort({
+        resolve: (request) => {
+          const destination = request.plan.destination
+          const runner = harnessTypeSchema.safeParse(destination.runner)
+          if (!runner.success || destination.model === undefined) {
+            throw new Error(
+              'The portable context destination requires a supported runner and exact model',
+            )
+          }
+          return prepareCliBridgeProviderRoute(
+            resolverOptions,
+            connection.id,
+            connectionEndpoint(connection, resolverOptions),
+            runner.data,
+            materializeBridgeModelRoute(runner.data, destination.model),
+          )
+        },
+      })
       return new CliBridgeRetainedExecutionPort({
+        context,
         resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionCliBridgeConnection(

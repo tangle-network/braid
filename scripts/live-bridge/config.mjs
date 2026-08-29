@@ -193,7 +193,8 @@ export async function writeTargetConfig(root, endpoint, target, credential) {
     .replaceAll(/[^a-z0-9]+/giu, '-')
     .replace(/^-|-$/gu, '')
     .toLowerCase()
-  const workspace = join(root, `workspace-${key}`)
+  const operationNamespace = randomUUID()
+  const workspace = join(root, `workspace-${key}-${operationNamespace}`)
   const configDirectory = join(workspace, '.braid')
   const profileDirectory = join(configDirectory, 'profiles')
   await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
@@ -202,7 +203,7 @@ export async function writeTargetConfig(root, endpoint, target, credential) {
   const profile = profileForBridgeTarget(target)
   const connectionId = 'connection-live-cli-bridge'
   const now = new Date().toISOString()
-  const databaseKeyFile = join(root, `database-key-${key}`)
+  const databaseKeyFile = join(root, `database-key-${key}-${operationNamespace}`)
   await writeFile(databaseKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
   const connection = {
     id: connectionId,
@@ -240,6 +241,7 @@ export async function writeTargetConfig(root, endpoint, target, credential) {
     profile,
     connection,
     key,
+    operationNamespace,
     databaseKeyFile,
   }
 }

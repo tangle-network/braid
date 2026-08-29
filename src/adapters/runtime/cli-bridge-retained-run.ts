@@ -63,14 +63,18 @@ export async function createCliBridgeRetainedPlan(
     throw new Error('retained CLI Bridge control reference conflicts with the persisted run')
   }
   const exactControlRef = controlRef ?? persistedControlRef
+  const contextDestination = prepared.contextTransfer?.plan.destination
   const environmentId =
     exactControlRef?.environmentId ??
-    (admission?.phase === 'environment' ? admission.environmentId : undefined)
+    (admission?.phase === 'environment' ? admission.environmentId : undefined) ??
+    contextDestination?.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
-      : safeExecutionId(runId))
+      : undefined) ??
+    contextDestination?.executionId ??
+    safeExecutionId(runId)
   const providerSessionId =
     exactControlRef?.sessionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
@@ -136,12 +140,16 @@ export async function startCliBridgeRetainedRun(
       backend: plan.prepared.runner,
       workspace: { cwd: plan.prepared.workspace },
       idempotencyKey: plan.environmentIdempotencyKey,
+      ...(input.contextTransfer === undefined
+        ? {}
+        : { requestedId: input.contextTransfer.plan.destination.environmentId }),
     },
     turn: {
       prompt: input.text,
       turnId: safeExecutionId(input.operationId),
       interactions: input.interactions ?? {},
       signal: input.signal,
+      ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
     },
     identity: {
       sessionId: plan.prepared.providerSessionId,
@@ -179,12 +187,20 @@ async function recoverCliBridgeRetainedRun(
           backend: plan.prepared.runner,
           workspace: { cwd: plan.prepared.workspace },
           idempotencyKey: admission.idempotencyKey,
+          ...(plan.prepared.contextTransfer === undefined
+            ? {}
+            : {
+                requestedId: plan.prepared.contextTransfer.plan.destination.environmentId,
+              }),
         },
         turn: {
           prompt: input.receipt.requested.text,
           turnId: admission.turnId,
           interactions: input.receipt.requested.interactions ?? {},
           ...(input.signal === undefined ? {} : { signal: input.signal }),
+          ...(plan.prepared.contextTransfer === undefined
+            ? {}
+            : { contextTransfer: plan.prepared.contextTransfer }),
         },
         identity: {
           sessionId: admission.sessionId,

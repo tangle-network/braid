@@ -34,6 +34,28 @@ function interactionTarget(targets, capabilitiesByBackend) {
   )
 }
 
+function observedCommittedSequence(target, targetRecords) {
+  const record = (targetRecords ?? []).find(
+    (candidate) =>
+      candidate?.status === 'passed' &&
+      candidate?.targetProof?.key === target?.key &&
+      candidate?.targetProof?.route === target?.modelId,
+  )
+  const sequence = record?.normal?.run?.cursorCommittedSequence
+  return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : 0
+}
+
+/** Select the runner that has already proved the richest incremental delivery. */
+export function selectRestartTarget(targets, targetRecords) {
+  return (targets ?? []).reduce((selected, candidate) => {
+    if (selected === undefined) return candidate
+    return observedCommittedSequence(candidate, targetRecords) >
+      observedCommittedSequence(selected, targetRecords)
+      ? candidate
+      : selected
+  }, undefined)
+}
+
 function proofTarget(target, operationResult) {
   const proof = operationResult?.targetProof
   if (
@@ -79,7 +101,13 @@ function passedProof(requirementId, operation, target, operationResult, targetRe
       'LIVE_RELEASE_OPERATION_EVIDENCE_MISSING',
       `${operation} did not return a passed packed operation receipt`,
       exitCodes.failed,
-      { requirementId, operation },
+      {
+        requirementId,
+        operation,
+        status: operationResult?.status,
+        error: operationResult?.error,
+        receipt: operationResult?.operationReceipt,
+      },
     )
   }
   const descriptor = proofTarget(target, operationResult)
@@ -149,6 +177,31 @@ function operationFailure(requirementId, operation, target, error) {
         : 'failed',
     error: errorEvidence(error),
   }
+}
+
+function operationResultFailure(requirementId, operation, target, result) {
+  const missing = errorEvidence(
+    new LiveBridgeError(
+      'LIVE_RELEASE_OPERATION_EVIDENCE_MISSING',
+      `${operation} returned no failure evidence`,
+      exitCodes.failed,
+      { requirementId, operation },
+    ),
+  )
+  return evidenceValue({
+    requirementId,
+    operation,
+    target: {
+      key: target.key,
+      modelId: target.modelId,
+      harness: target.definition.backend,
+    },
+    status: result?.status === 'unavailable' ? 'unavailable' : 'failed',
+    error: result?.error ?? missing,
+    ...(typeof result?.stderr === 'string' && result.stderr.length > 0
+      ? { stderr: result.stderr }
+      : {}),
+  })
 }
 
 function missingTarget(requirementId, operation, harness, targets) {
@@ -222,6 +275,12 @@ export async function executeReleaseProofs({
     }
     try {
       const operationResult = await action(target)
+      if (operationResult?.status !== 'passed') {
+        const failure = operationResultFailure(requirementId, operation, target, operationResult)
+        releaseOperations.push(failure)
+        failures.push(failure)
+        return
+      }
       const proof = passedProof(
         requirementId,
         operation,
@@ -308,7 +367,7 @@ export async function executeReleaseProofs({
       ),
   )
 
-  const restartTarget = targets[0]
+  const restartTarget = selectRestartTarget(targets, targetRecords)
   await execute(REQUIREMENTS.restart, liveReleaseProofOperations.restart, restartTarget, (target) =>
     executeRestartReconciliation(
       binary,

@@ -320,9 +320,16 @@ async function runConfigurationMatrix() {
   const root = await mkdtemp(join(tmpdir(), 'braid-live-config-matrix-'))
   try {
     const written = await writeTargetConfig(root, endpoint, piGlm, undefined)
+    const repeated = await writeTargetConfig(root, endpoint, piGlm, undefined)
     assert.deepEqual(JSON.parse(await readFile(written.profilePath, 'utf8')), written.profile)
     assert.equal(written.profile.model.default, 'deepseek-v4-flash')
     assert.equal(written.profile.model.provider, 'deepseek')
+    assert.notEqual(repeated.workspace, written.workspace)
+    assert.notEqual(repeated.databaseKeyFile, written.databaseKeyFile)
+    assert.equal(
+      resolve(written.databaseKeyFile).startsWith(`${resolve(written.workspace)}/`),
+      false,
+    )
     const credential = await writeTargetConfig(root, endpoint, glm, {
       recordRef: createLiveCredentialId('11111111-1111-1111-1111-111111111111'),
     })
