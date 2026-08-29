@@ -419,7 +419,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       environment: interactiveEnvironment(prepared, input.runId),
       interactiveIdempotencyKey: interactiveIdempotencyKey(input.runId),
       ...(input.text.trim() === '' ? {} : { initialPrompt: input.text }),
-      ...(input.workspaceRoot === undefined ? {} : { cwd: input.workspaceRoot }),
+      // workspaceRoot identifies Braid's local checkout. The provider owns its remote cwd.
       onAdmission,
       signal: input.signal,
     })
@@ -495,7 +495,6 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
         ),
         interactiveIdempotencyKey: admission.interactiveIdempotencyKey,
         ...(receipt.requested.text.trim() === '' ? {} : { initialPrompt: receipt.requested.text }),
-        ...(input.workspaceRoot === undefined ? {} : { cwd: input.workspaceRoot }),
       },
       onAdmission,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
