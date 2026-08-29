@@ -335,6 +335,57 @@ test('built-in LIVE-07 and LIVE-08 wiring emits evidence and deduped dispatch', 
   )
 })
 
+test('Tangle aggregate records unavailable rows and rejects invalid passed rows', async () => {
+  const unavailable = await runTangleFlows({
+    repository,
+    environment: {},
+    inferenceRunner: async () => ({ status: 'unavailable', reason: 'inference unavailable' }),
+    sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+    interactiveRunner: async () => ({ status: 'unavailable', reason: 'interactive unavailable' }),
+    matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+  })
+
+  assert.equal(unavailable.status, 'partial')
+  assert.deepEqual(unavailable.measurements, [])
+  assert.deepEqual(
+    unavailable.unavailable.map((entry) => entry.row),
+    ['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'],
+  )
+
+  await assert.rejects(
+    runTangleFlows({
+      repository,
+      environment: {},
+      inferenceRunner: async () => ({
+        status: 'failed',
+        measurement: { kind: 'scalar', name: 'LIVE-06', unit: 'verified-flow', value: 1 },
+      }),
+      sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+      interactiveRunner: async () => ({
+        status: 'unavailable',
+        reason: 'interactive unavailable',
+      }),
+      matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+    }),
+    /LIVE-06 live proof returned invalid status failed/u,
+  )
+
+  await assert.rejects(
+    runTangleFlows({
+      repository,
+      environment: {},
+      inferenceRunner: async () => ({ status: 'passed', evidence: null }),
+      sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+      interactiveRunner: async () => ({
+        status: 'unavailable',
+        reason: 'interactive unavailable',
+      }),
+      matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+    }),
+    /LIVE-06 live proof passed without its required measurement/u,
+  )
+})
+
 test('LIVE-07 rejects a passing canary presented as a stress cohort', async () => {
   const cohort = passedStressCohort()
   await assert.rejects(

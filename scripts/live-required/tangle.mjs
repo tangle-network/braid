@@ -14,15 +14,28 @@ import {
   runHeadlessCancellation,
   runHeadlessTurn,
 } from './headless.mjs'
-import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
-import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
+import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
 import { runProof as runMultirunProof } from './tangle-sandbox-braid-multirun.mjs'
+import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
 import { runConfidentialProof, runWorkspaceForkProof } from './tangle-workspace-proof.mjs'
 
 const TANGLE_ROWS = Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'])
 const MINIMUM_SANDBOX_STRESS_RUNS = 3
 const MINIMUM_SANDBOX_STRESS_CONCURRENCY = 2
+
+function requiredMeasurement(row, result) {
+  if (result?.status === 'unavailable') return undefined
+  if (result?.status !== 'passed') {
+    throw new Error(
+      `${row} live proof returned invalid status ${String(result?.status ?? 'missing')}`,
+    )
+  }
+  if (result.measurement?.name !== row) {
+    throw new Error(`${row} live proof passed without its required measurement`)
+  }
+  return result.measurement
+}
 
 function tokenMarker(name) {
   return `LIVE_BRAID_${name}_OK`
@@ -270,34 +283,49 @@ export async function runTangleFlows({
   let inference
   try {
     inference = await inferenceRunner({ repository, environment, binary, invocationId })
-    setFlow('LIVE-06', { row: 'LIVE-06', status: inference.status, evidence: inference.evidence })
-    measurements.push(inference.measurement)
+    const measurement = requiredMeasurement('LIVE-06', inference)
+    if (measurement === undefined) {
+      addUnavailable('LIVE-06', inference.reason ?? 'Tangle inference proof is unavailable')
+    } else {
+      setFlow('LIVE-06', { row: 'LIVE-06', status: inference.status, evidence: inference.evidence })
+      measurements.push(measurement)
+    }
   } catch (error) {
     const classified = classifyExternalFailure(error, 'Tangle inference', environment)
     addUnavailable('LIVE-06', classified.message)
   }
   try {
     const sandbox = await sandboxRunner({ repository, environment, binary, invocationId })
-    setFlow('LIVE-07', {
-      row: 'LIVE-07',
-      status: sandbox.status,
-      evidence: sandbox.evidence,
-      observations: sandbox.observations,
-    })
-    measurements.push(sandbox.measurement)
-    if (sandbox.unavailable) addUnavailable(sandbox.unavailable.row, sandbox.unavailable.reason)
+    const measurement = requiredMeasurement('LIVE-07', sandbox)
+    if (measurement === undefined) {
+      addUnavailable('LIVE-07', sandbox.reason ?? 'Tangle Sandbox proof is unavailable')
+    } else {
+      setFlow('LIVE-07', {
+        row: 'LIVE-07',
+        status: sandbox.status,
+        evidence: sandbox.evidence,
+        observations: sandbox.observations,
+      })
+      measurements.push(measurement)
+      if (sandbox.unavailable) addUnavailable(sandbox.unavailable.row, sandbox.unavailable.reason)
+    }
   } catch (error) {
     const classified = classifyExternalFailure(error, 'Tangle sandbox', environment)
     addUnavailable('LIVE-07', classified.message)
   }
   try {
     const interactive = await interactiveRunner({ repository, environment, invocationId })
-    setFlow('LIVE-08', {
-      row: 'LIVE-08',
-      status: interactive.status,
-      evidence: interactive.evidence,
-    })
-    measurements.push(interactive.measurement)
+    const measurement = requiredMeasurement('LIVE-08', interactive)
+    if (measurement === undefined) {
+      addUnavailable('LIVE-08', interactive.reason ?? 'Tangle interactive proof is unavailable')
+    } else {
+      setFlow('LIVE-08', {
+        row: 'LIVE-08',
+        status: interactive.status,
+        evidence: interactive.evidence,
+      })
+      measurements.push(measurement)
+    }
   } catch (error) {
     const classified = classifyExternalFailure(error, 'Tangle interactive session', environment)
     addUnavailable('LIVE-08', classified.message)
