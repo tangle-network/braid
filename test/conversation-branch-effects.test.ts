@@ -461,6 +461,7 @@ test('cross-runner planning binds the exact destination profile after redaction 
     harness: 'pi',
     model: {
       default: 'source-model',
+      provider: 'source-model-provider',
       metadata: { apiKey: 'profile-secret', maxTokens: 512 },
     },
   })
@@ -489,7 +490,10 @@ test('cross-runner planning binds the exact destination profile after redaction 
   const expectedProfile = {
     ...profile,
     harness: 'codex' as const,
-    model: { ...profile.model, default: 'target-model' },
+    model: {
+      default: 'target-model',
+      metadata: profile.model?.metadata,
+    },
   }
   assert.equal(
     plan.portableContextPlan.destination.profileDigest,

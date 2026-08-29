@@ -72,19 +72,29 @@ function applyProfileOverrides(
   profile: Readonly<AgentProfile>,
   overrides: ProfileRunOverrides,
 ): Readonly<AgentProfile> {
+  const changesRunnerAndModel =
+    overrides.harness !== undefined &&
+    overrides.harness !== profile.harness &&
+    overrides.model !== undefined
+  const baseProfile = (() => {
+    if (!changesRunnerAndModel || profile.model?.provider === undefined) return profile
+    const model = { ...profile.model }
+    delete model.provider
+    return { ...profile, model }
+  })()
   const overlay: AgentProfile = {
     ...(overrides.harness === undefined ? {} : { harness: overrides.harness }),
     ...(overrides.model === undefined && overrides.effort === undefined
       ? {}
       : {
           model: {
-            ...(profile.model ?? {}),
+            ...(baseProfile.model ?? {}),
             ...(overrides.model === undefined ? {} : { default: overrides.model }),
             ...(overrides.effort === undefined ? {} : { reasoningEffort: overrides.effort }),
           },
         }),
   }
-  const merged = mergeAgentProfiles(profile, overlay)
+  const merged = mergeAgentProfiles(baseProfile, overlay)
   if (merged === undefined)
     throw new Error('AgentProfile override unexpectedly produced no profile')
   return snapshotAgentProfile(merged)

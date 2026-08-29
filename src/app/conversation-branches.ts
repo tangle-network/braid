@@ -327,9 +327,9 @@ export class ConversationBranches {
             ...(input.destinationProvider === undefined
               ? {}
               : { destinationProvider: input.destinationProvider }),
-            ...(targetOverrides.model === undefined
+            ...(targetProfile.model?.default === undefined
               ? {}
-              : { destinationModel: targetOverrides.model }),
+              : { destinationModel: targetProfile.model.default }),
             profileDigest: canonicalAgentProfileDigestHex(targetProfile),
           })
         : undefined

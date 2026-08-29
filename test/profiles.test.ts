@@ -342,6 +342,7 @@ test('selection precedence and run overrides never mutate the source profile', (
   assert.equal(effective.mode, 'fast')
   assert.equal(effective.connectionId, 'next-connection')
   assert.equal(effective.effectiveProfile.model?.small, fullProfile.model?.small)
+  assert.equal(effective.effectiveProfile.model?.provider, undefined)
   assert.equal(command.profile.model?.default, fullProfile.model?.default)
   assert.equal(effective.compatibility.modelSupported, true)
 
