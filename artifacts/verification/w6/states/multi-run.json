@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "58a8863510b0af5864fc571b823db50e8e034d7e9a69576195cc748c2202b8fb"
+    "tarballSha256": "551a0739cdae863f784eef82dba7ef926e7bf436f67ca908ef0f18899788355c"
   },
   "dimensions": {
     "columns": 80,
@@ -456,7 +456,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-29T12:48:29.997Z",
+          "occurredAt": "2026-08-29T12:57:57.576Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -468,7 +468,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-29T12:48:30.124Z",
+          "occurredAt": "2026-08-29T12:57:57.711Z",
           "sourceEventId": "run-000005:runtime:1",
           "runId": "run-000005",
           "entityType": "run",
@@ -1022,10 +1022,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000003-b53694b57cbb0cdafda1f884",
+              "id": "effect-op-terminal-000003-354b13a404335bfa25af0aee",
               "operationId": "op-terminal-000003",
               "effectKind": "run.execute",
-              "requestDigest": "b53694b57cbb0cdafda1f8843907114ccecfe68085e482f961f6a56545fa8a86",
+              "requestDigest": "354b13a404335bfa25af0aee470c0330e1d69babf4a17dda9bd9ad8fe6f27b0e",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -1044,13 +1044,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-29T12:48:29.997Z",
+            "occurredAt": "2026-08-29T12:57:57.576Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-f93868c1-739d-4ee3-8d32-06e90e2ec6b7",
+              "id": "turn-2a0b3f72-352c-4468-91be-96ce0e9502ca",
               "intent": "parallel run A",
               "metadata": {
                 "identity": {
@@ -1060,11 +1060,11 @@
               }
             },
             "session": {
-              "id": "ac065684-19f0-47bf-a4bf-d367dbb53c1e",
+              "id": "3ab968e0-a991-4254-8320-7cdecf4f090c",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-29T12:48:29.997Z",
-              "updatedAt": "2026-08-29T12:48:29.997Z",
+              "createdAt": "2026-08-29T12:57:57.576Z",
+              "updatedAt": "2026-08-29T12:57:57.576Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -1086,16 +1086,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-f93868c1-739d-4ee3-8d32-06e90e2ec6b7"
+                  "id": "turn-2a0b3f72-352c-4468-91be-96ce0e9502ca"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-f93868c1-739d-4ee3-8d32-06e90e2ec6b7:attempt:69af5d89-4f74-48d7-b45c-10e1f4ff29d9",
-                  "materializationReceiptDigest": "sha256:aa583a818811557ab8472ec061dab6460f082f46186709bbaff763829536a04f",
-                  "bindingDigest": "sha256:4ec0dc8d6cac00f02ff624bc34c164920da5d4f15e0a32c41ac978e68add4a21",
+                  "attemptId": "turn-2a0b3f72-352c-4468-91be-96ce0e9502ca:attempt:1ddc1f6c-3b37-4471-9cdf-1df4153b64ad",
+                  "materializationReceiptDigest": "sha256:b24dde71ea5836c46a6dfd53a380981178af4e54bd4c907420986852770ea257",
+                  "bindingDigest": "sha256:25d1202e69d9d4c9287d9545f4f41655ffbd32cac5bf7d945dfd75d8b3364d8d",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -1107,10 +1107,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-29T12:48:29.994Z"
+                "startedAt": "2026-08-29T12:57:57.574Z"
               }
             },
-            "timestamp": "2026-08-29T12:48:29.997Z"
+            "timestamp": "2026-08-29T12:57:57.576Z"
           }
         }
       },
@@ -1360,10 +1360,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000007-e380f2c90027dc906661fbe9",
+              "id": "effect-op-terminal-000007-925e14a7359350e02503ba59",
               "operationId": "op-terminal-000007",
               "effectKind": "run.execute",
-              "requestDigest": "e380f2c90027dc906661fbe9f44c50a094f00e70a8353cf51a708351d014b1c5",
+              "requestDigest": "925e14a7359350e02503ba59fc2c1f0443041ab24d81a02404943cece23c3dcf",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -1382,13 +1382,13 @@
           "source": {
             "eventId": "run-000005:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-29T12:48:30.124Z",
+            "occurredAt": "2026-08-29T12:57:57.711Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-8a6bbb5a-5bef-49eb-be10-403a4cecec6e",
+              "id": "turn-72e1b6ee-9e74-4a13-a70a-50d0f444a174",
               "intent": "parallel run B",
               "metadata": {
                 "identity": {
@@ -1398,11 +1398,11 @@
               }
             },
             "session": {
-              "id": "880e30e5-b5c7-471b-83ff-77dec4f7169e",
+              "id": "76bc27f8-1247-4431-a222-3924c0202c80",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-29T12:48:30.124Z",
-              "updatedAt": "2026-08-29T12:48:30.124Z",
+              "createdAt": "2026-08-29T12:57:57.711Z",
+              "updatedAt": "2026-08-29T12:57:57.711Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -1424,16 +1424,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-8a6bbb5a-5bef-49eb-be10-403a4cecec6e"
+                  "id": "turn-72e1b6ee-9e74-4a13-a70a-50d0f444a174"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-8a6bbb5a-5bef-49eb-be10-403a4cecec6e:attempt:7acd6c6a-e578-4d1e-8433-15c8e9284bb2",
-                  "materializationReceiptDigest": "sha256:b4472a6fea16fcdc65e541edb082a387840d5c77f22146313916302d1443b917",
-                  "bindingDigest": "sha256:a77d6c96acb175c76a5cdadfb0e939ee82cda7de45565cbf0e2776b3108ad887",
+                  "attemptId": "turn-72e1b6ee-9e74-4a13-a70a-50d0f444a174:attempt:5dace444-8cb6-4465-b692-ad101d306761",
+                  "materializationReceiptDigest": "sha256:8e3a4854db5f2faee7343323e73e425ca3f91f49a36e3e09c541981d07ef905f",
+                  "bindingDigest": "sha256:9fa3b9a1e018a743a72853bf019a6b0d649a016f1f41f15eca56ea2a7b272c27",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -1445,10 +1445,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-29T12:48:30.124Z"
+                "startedAt": "2026-08-29T12:57:57.711Z"
               }
             },
-            "timestamp": "2026-08-29T12:48:30.124Z"
+            "timestamp": "2026-08-29T12:57:57.711Z"
           }
         }
       },

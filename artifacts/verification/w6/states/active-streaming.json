@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "58a8863510b0af5864fc571b823db50e8e034d7e9a69576195cc748c2202b8fb"
+    "tarballSha256": "551a0739cdae863f784eef82dba7ef926e7bf436f67ca908ef0f18899788355c"
   },
   "dimensions": {
     "columns": 80,
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-29T12:48:28.135Z",
+          "occurredAt": "2026-08-29T12:57:55.792Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -697,10 +697,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-18fb4f2ea4315b9485e2f7aa",
+              "id": "effect-op-terminal-000002-7af8efb4db2aaabf6ec9874d",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "18fb4f2ea4315b9485e2f7aa740a443a630558f65d1a8e4c4e8c4f5142b786bc",
+              "requestDigest": "7af8efb4db2aaabf6ec9874d6335e0371986dbea87c7625a02693d9a8a91c405",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -719,13 +719,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-29T12:48:28.135Z",
+            "occurredAt": "2026-08-29T12:57:55.792Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-aa7ce0df-ffda-4546-a4ba-1dddcb8d605a",
+              "id": "turn-718fa6f2-257a-4a6f-a893-7e855c481115",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
@@ -735,11 +735,11 @@
               }
             },
             "session": {
-              "id": "5d959641-1813-4738-a7cf-77a3e1e049c4",
+              "id": "0f0f50e5-afc1-4a5a-9d07-b8c4898f18db",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-29T12:48:28.135Z",
-              "updatedAt": "2026-08-29T12:48:28.135Z",
+              "createdAt": "2026-08-29T12:57:55.792Z",
+              "updatedAt": "2026-08-29T12:57:55.792Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -761,16 +761,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-aa7ce0df-ffda-4546-a4ba-1dddcb8d605a"
+                  "id": "turn-718fa6f2-257a-4a6f-a893-7e855c481115"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-aa7ce0df-ffda-4546-a4ba-1dddcb8d605a:attempt:6d56bf67-7908-4ef3-b21b-f44f348d03cc",
-                  "materializationReceiptDigest": "sha256:f350a414fb447652a42c8a9c041fe052fd82cb32b3505571d711202ecc9c934a",
-                  "bindingDigest": "sha256:ad029068d16f85a3e8f5265c2c35413d96b3f0bbbc681ee3fbf937fcc92f2956",
+                  "attemptId": "turn-718fa6f2-257a-4a6f-a893-7e855c481115:attempt:53ca744c-2c49-442e-b2c5-364aad62e0fc",
+                  "materializationReceiptDigest": "sha256:13fb22bcca0e0719404ec0295edc82971091c57a35c0a41d0a341d10360735af",
+                  "bindingDigest": "sha256:0aa5f9d69e44070ede279df98caa1a075448ba0b84f02b533764de7011bfe6b9",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -782,10 +782,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-29T12:48:28.133Z"
+                "startedAt": "2026-08-29T12:57:55.791Z"
               }
             },
-            "timestamp": "2026-08-29T12:48:28.135Z"
+            "timestamp": "2026-08-29T12:57:55.792Z"
           }
         }
       }

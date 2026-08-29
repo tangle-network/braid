@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-29T12:53:28.474Z",
+  "generatedAt": "2026-08-29T12:58:38.807Z",
   "command": "pnpm capture:connections",
   "binary": "clean npm install from generated tarball",
   "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
   "tarball": "tangle-network-braid-0.3.0.tgz",
-  "tarballSha256": "58a8863510b0af5864fc571b823db50e8e034d7e9a69576195cc748c2202b8fb",
+  "tarballSha256": "551a0739cdae863f784eef82dba7ef926e7bf436f67ca908ef0f18899788355c",
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
@@ -41,7 +41,7 @@
     },
     {
       "path": "40x12.png",
-      "sha256": "a0c88820e002dd78c4f536ac350e622469065bf2048e1a259373b8d855ba2640",
+      "sha256": "ad60fa9811a3d65677d849917d99aa4b9730b34aeafa74af260abafae0fcc23b",
       "kind": "png",
       "columns": 40,
       "rows": 12
@@ -55,7 +55,7 @@
     },
     {
       "path": "80x24.png",
-      "sha256": "db50abc7bd612e19e8809883083a87370c7eecd97d75262503758f425a409ad3",
+      "sha256": "72be1aa1e924d369810f652609525eb4ec5e24ec4e7e387f0eba060bfda2d592",
       "kind": "png",
       "columns": 80,
       "rows": 24
@@ -69,7 +69,7 @@
     },
     {
       "path": "120x40.png",
-      "sha256": "b9b126021a16259aae2d66949562bd66f41baad318c3800b117b1117964cdee2",
+      "sha256": "8f3a8a4b379d7e4489b29d57ab5bf1de1c7239feaace25aca774ea33764efee8",
       "kind": "png",
       "columns": 120,
       "rows": 40
@@ -83,21 +83,21 @@
     },
     {
       "path": "200x60.png",
-      "sha256": "56f29ce88c0219786dfa8b7409a72727a464c462ea08b13c5990aaef87211938",
+      "sha256": "8a056506f5c7bbd12493d66dbb7f04a9cdec27e1894cc7a4658b0598f75f9d8a",
       "kind": "png",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "raw/connection-keyboard.cast",
-      "sha256": "810a36040ff4b6db33b2d31419357427aceef960bbb809aa45985031f5774eeb",
+      "sha256": "884ad48ba8f507179430acd257b98880eac5d62be8c1142b2fbabda7c5b8cb21",
       "kind": "keyboard-asciicast",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24-connection-keyboard.gif",
-      "sha256": "aca997424c72f902ff30e6dc1f6ed4b870d1640e9f1c6592969d9e4257559448",
+      "sha256": "4071afbd8979842a42c486f6539660419e0466188c6405b213a2bba000bb03f1",
       "kind": "keyboard-flow",
       "columns": 80,
       "rows": 24
