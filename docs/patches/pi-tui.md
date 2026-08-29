@@ -19,3 +19,11 @@ The adapter contains no renderer, viewport, input handler, or application state.
 Removal condition: replace the adapter with `TuiAltScreen` only if Braid moves transcript history into Pi's `ScrollView` without losing the current keyboard, restart, visual, and full-history checks.
 
 Revalidation required on every Pi TUI update.
+
+Revalidated: 2026-08-29 against `@earendil-works/pi-tui@0.84.4` from source commit `b79e4cc834970cca69daebffab7df1da7d1e52c4`.
+
+The published package still omits the virtual-terminal helper and still reserves alternate-screen viewport actions.
+
+The current adapter remains necessary.
+
+Proof: 156 virtual-terminal checks passed, and packed PTY checks passed at 40×12, 80×24, 120×40, and 200×60.

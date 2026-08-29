@@ -261,7 +261,7 @@ No test imports an internal controller to claim headless protocol proof.
 
 Braid's test-only implementation of Pi TUI's public `Terminal` interface renders the real root component and application core at 40×12, 80×24, 120×40, and 200×60.
 
-The adapter is derived from Pi's test helper with immutable source and license attribution because `@earendil-works/pi-tui@0.84.1` does not publish that helper.
+The adapter is derived from Pi's test helper with immutable source and license attribution because `@earendil-works/pi-tui@0.84.4` does not publish that helper.
 
 The output assertion includes cell character, width, semantic style, cursor, focus, overlay bounds, clipped rows, and hidden content.
 

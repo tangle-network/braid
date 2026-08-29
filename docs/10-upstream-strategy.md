@@ -14,6 +14,8 @@ The initial comparison used source, package metadata, licenses, application inst
 
 The core terminal references were refreshed from their live default branches on 2026-08-10 before and during the production UX pass.
 
+The Pi TUI runtime dependency was revalidated at npm `0.84.4` and source commit `b79e4cc834970cca69daebffab7df1da7d1e52c4` on 2026-08-29.
+
 DeepSeek Harness and Cordis were inspected at their live default branches on 2026-08-13.
 
 The Pi repository head was `cd6852a`, with no newer change below `packages/tui` after `87142a8`.
@@ -53,7 +55,7 @@ The Kimi SDK coupling count selected terminal files that directly import `@moons
 
 Pi TUI provides main-screen and alternate-screen rendering, differential frame output, cell-width calculation, viewport and scrolling, containers, overlays, focus, editor input, autocomplete, history, undo, kill ring behavior, selection lists, settings lists, markdown, images, IME handling, keyboard decoding, and a public terminal interface.
 
-The Pi repository includes a useful `packages/tui/test/virtual-terminal.ts` helper, but `@earendil-works/pi-tui@0.84.1` does not publish or export it.
+The Pi repository includes a useful `packages/tui/test/virtual-terminal.ts` helper, but `@earendil-works/pi-tui@0.84.4` does not publish or export it.
 
 Braid will adapt that test-only helper with attribution unless Pi first publishes a supported testing export.
 

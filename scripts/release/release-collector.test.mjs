@@ -71,7 +71,7 @@ async function makeRepo({
     `${JSON.stringify({
       name: '@example/braid',
       version: '1.0.0',
-      packageManager: 'pnpm@11.18.0',
+      packageManager: 'pnpm@11.24.0',
       dependencies: {},
     })}\n`,
   )
