@@ -1005,6 +1005,65 @@ test('terminal outcomes close every running reasoning and tool part precisely', 
   }
 })
 
+test('the final missing provider event restores every terminal message status', () => {
+  const cases = [
+    ['completed', 'complete'],
+    ['failed', 'failed'],
+    ['aborted', 'aborted'],
+    ['cancelled', 'cancelled'],
+    ['blocked', 'blocked'],
+    ['expired', 'expired'],
+  ] as const
+
+  for (const [terminalStatus, messageStatus] of cases) {
+    const runId = `run-missing-terminal-${terminalStatus}`
+    const state = replayEvents(initialState(STARTER_PROFILE), [
+      envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+      envelope(
+        {
+          kind: 'run.requested',
+          operationId: `op-missing-terminal-${terminalStatus}`,
+          runId,
+          turnId: `turn-missing-terminal-${terminalStatus}`,
+          userMessageId: `message-user-missing-terminal-${terminalStatus}`,
+          assistantMessageId: `message-assistant-missing-terminal-${terminalStatus}`,
+          text: 'recover the terminal event',
+        },
+        2,
+      ),
+      envelope(
+        {
+          kind: 'history.missing',
+          range: { runId, fromSequence: 1, toSequence: 1, reason: 'provider-missing' },
+        },
+        3,
+      ),
+      envelope(
+        {
+          kind: 'run.finished',
+          runId,
+          status: terminalStatus,
+          finalText: '',
+          usage: { input: 0, output: 0 },
+          provider: {
+            eventId: `provider-missing-terminal-${terminalStatus}`,
+            providerSequence: 1,
+            cursor: `cursor-missing-terminal-${terminalStatus}`,
+            occurredAt: at,
+          },
+        },
+        4,
+      ),
+    ])
+    const assistant = state.messages.find((message) => message.role === 'assistant')
+
+    assert.equal(state.missingHistory.length, 0, terminalStatus)
+    assert.equal(state.runs[0]?.complete, true, terminalStatus)
+    assert.equal(assistant?.complete, true, terminalStatus)
+    assert.equal(assistant?.status, messageStatus, terminalStatus)
+  }
+})
+
 test('incremental and full replay checksums agree for 1,000 generated histories', () => {
   for (let index = 0; index < 1_000; index += 1) {
     const suffix = String(index).padStart(4, '0')

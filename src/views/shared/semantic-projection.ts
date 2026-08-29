@@ -1,5 +1,6 @@
 import type { InteractionRequest } from '@tangle-network/agent-interface'
 import type { BraidEvent, BraidEventEnvelope, ProviderEventMeta } from '../../domain/events.js'
+import type { RunAdmissionReceipt, RunCapabilities } from '../../domain/receipts.js'
 import type { BraidMessagePart } from '../../domain/state.js'
 import type { TranscriptPartView } from './models.js'
 import { boundVisibleText, redactStructuredValue, sanitizeTerminalText } from './sanitize.js'
@@ -13,6 +14,19 @@ function safe(value: unknown): unknown {
     maxItems: MAX_EVENT_ITEMS,
     maxBytes: MAX_EVENT_BYTES,
   })
+}
+
+function safeWithin(
+  value: unknown,
+  limits: { readonly maxDepth: number; readonly maxItems: number; readonly maxBytes: number },
+): unknown {
+  return redactStructuredValue(value, undefined, limits)
+}
+
+function boundedAdmissionText(value: unknown, maxBytes = 4096): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const projected = safeWithin(value, { maxDepth: 1, maxItems: 1, maxBytes })
+  return typeof projected === 'string' ? projected : undefined
 }
 
 function text(value: unknown): string | undefined {
@@ -228,7 +242,9 @@ export function projectSemanticEvent(
       return {
         ...base,
         text: text(event.text) ?? '',
-        admission: safe(event.receipt),
+        ...(event.receipt === undefined
+          ? {}
+          : { admission: semanticAdmissionReceipt(event.receipt) }),
         status: 'admitted',
       }
     case 'run.unknown':
@@ -263,6 +279,142 @@ export function projectSemanticEvent(
       }
     default:
       return { ...base, value: safe(event) }
+  }
+}
+
+/** Keep stable run identity independent of the size of provider capability data. */
+function semanticAdmissionReceipt(receipt: RunAdmissionReceipt): Readonly<Record<string, unknown>> {
+  const requested = receipt.requested
+  return {
+    version: receipt.version,
+    runId: boundedAdmissionText(receipt.runId) ?? '',
+    turnId: boundedAdmissionText(receipt.turnId) ?? '',
+    operationId: boundedAdmissionText(receipt.operationId) ?? '',
+    conversationId: boundedAdmissionText(receipt.conversationId) ?? '',
+    branchId: boundedAdmissionText(receipt.branchId) ?? '',
+    admittedAt: boundedAdmissionText(receipt.admittedAt) ?? '',
+    profileDigest: boundedAdmissionText(receipt.profileDigest) ?? '',
+    requested: {
+      text: boundedAdmissionText(requested.text, 8 * 1024) ?? '',
+      profile: safeWithin(requested.profile, {
+        maxDepth: 6,
+        maxItems: 64,
+        maxBytes: 12 * 1024,
+      }),
+      ...(requested.connectionId === undefined
+        ? {}
+        : { connectionId: boundedAdmissionText(requested.connectionId) ?? '' }),
+      ...(requested.mode === undefined ? {} : { mode: boundedAdmissionText(requested.mode) ?? '' }),
+      ...(requested.interactions === undefined
+        ? {}
+        : {
+            interactions: safeWithin(requested.interactions, {
+              maxDepth: 4,
+              maxItems: 32,
+              maxBytes: 4 * 1024,
+            }),
+          }),
+      ...(requested.model === undefined
+        ? {}
+        : { model: boundedAdmissionText(requested.model) ?? '' }),
+      ...(requested.runner === undefined
+        ? {}
+        : { runner: boundedAdmissionText(requested.runner) ?? '' }),
+      ...(requested.contextPlanDigest === undefined
+        ? {}
+        : { contextPlanDigest: boundedAdmissionText(requested.contextPlanDigest) ?? '' }),
+    },
+    capabilities: semanticRunCapabilities(receipt.capabilities),
+    ...(receipt.provider === undefined
+      ? {}
+      : { provider: boundedAdmissionText(receipt.provider) ?? '' }),
+    ...(receipt.requestedSessionId === undefined
+      ? {}
+      : { requestedSessionId: boundedAdmissionText(receipt.requestedSessionId) ?? '' }),
+    ...(receipt.environmentId === undefined
+      ? {}
+      : { environmentId: boundedAdmissionText(receipt.environmentId) ?? '' }),
+    ...(receipt.providerSessionId === undefined
+      ? {}
+      : { providerSessionId: boundedAdmissionText(receipt.providerSessionId) ?? '' }),
+    ...(receipt.materializationReceipt === undefined
+      ? {}
+      : {
+          materializationReceipt: safeWithin(receipt.materializationReceipt, {
+            maxDepth: 6,
+            maxItems: 64,
+            maxBytes: 12 * 1024,
+          }),
+        }),
+    ...(receipt.contextTransfer === undefined
+      ? {}
+      : {
+          contextTransfer: safeWithin(receipt.contextTransfer, {
+            maxDepth: 4,
+            maxItems: 16,
+            maxBytes: 2 * 1024,
+          }),
+        }),
+    ...(receipt.nativeContextBoundaryProof === undefined
+      ? {}
+      : {
+          nativeContextBoundaryProof: safeWithin(receipt.nativeContextBoundaryProof, {
+            maxDepth: 4,
+            maxItems: 32,
+            maxBytes: 4 * 1024,
+          }),
+        }),
+    ...(receipt.warnings === undefined
+      ? {}
+      : {
+          warnings: receipt.warnings
+            .slice(0, 64)
+            .map((warning) => boundedAdmissionText(warning, 1024) ?? 'PROVIDER_WARNING'),
+        }),
+    ...(receipt.admissionStatus === undefined ? {} : { admissionStatus: receipt.admissionStatus }),
+    requestDigest: boundedAdmissionText(receipt.requestDigest) ?? '',
+    capabilitiesDigest: boundedAdmissionText(receipt.capabilitiesDigest) ?? '',
+    ...(receipt.materializationDigest === undefined
+      ? {}
+      : { materializationDigest: boundedAdmissionText(receipt.materializationDigest) ?? '' }),
+    digest: boundedAdmissionText(receipt.digest) ?? '',
+  }
+}
+
+function semanticRunCapabilities(capabilities: RunCapabilities): Readonly<Record<string, unknown>> {
+  return {
+    streaming: {
+      live: capabilities.streaming.live,
+      replay: capabilities.streaming.replay,
+      detach: capabilities.streaming.detach,
+      turnIdempotency: capabilities.streaming.turnIdempotency,
+    },
+    sessions: {
+      continue: capabilities.sessions.continue,
+      messages: capabilities.sessions.messages,
+    },
+    controls: {
+      cancel: capabilities.controls.cancel,
+      steer: capabilities.controls.steer,
+      queue: capabilities.controls.queue,
+      status: capabilities.controls.status,
+      recreate: capabilities.controls.recreate,
+    },
+    events: {
+      stableIdentity: capabilities.events.stableIdentity,
+      sequence: capabilities.events.sequence,
+      cursor: capabilities.events.cursor,
+    },
+    usage: capabilities.usage,
+    ...(capabilities.environment === undefined
+      ? {}
+      : {
+          environment: safeWithin(capabilities.environment, {
+            maxDepth: 6,
+            maxItems: 128,
+            maxBytes: 16 * 1024,
+          }),
+        }),
   }
 }
 

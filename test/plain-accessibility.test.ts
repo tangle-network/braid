@@ -5,9 +5,11 @@ import {
   interactionResponseBinding,
 } from '../src/app/interaction-request.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
+import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import type { BraidViewModel, InteractionView } from '../src/views/shared/models.js'
 import { plainAccessibilityText, plainEventText } from '../src/views/shared/plain-accessibility.js'
 import { projectSemanticEvent } from '../src/views/shared/semantic-projection.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 const request = createInteractionRequest({
   id: 'interaction-plain',
@@ -80,6 +82,74 @@ test('semantic projection keeps detached state and only public interaction reque
   assert.equal('default' in projected, false)
   assert.equal(JSON.stringify(interaction).includes('\u001b'), false)
   assert.equal(JSON.stringify(interaction).includes('\u0007'), false)
+})
+
+test('semantic run admission keeps identity after projecting a full capability document', () => {
+  const receipt = createAdmissionReceipt({
+    runId: 'run-destination',
+    turnId: 'turn-destination',
+    operationId: 'operation-destination',
+    conversationId: 'conversation-destination',
+    branchId: 'branch-destination',
+    admittedAt: '2026-08-29T00:00:00.000Z',
+    profile: {
+      name: 'Destination reviewer',
+      version: '1.0.0',
+      harness: 'codex',
+      model: { default: 'openai/gpt-5.6' },
+    },
+    connectionId: 'connection-destination',
+    text: 'Continue from the accepted context.',
+    capabilities: interactionResponseRunCapabilities(),
+    provider: 'cli-bridge',
+    environmentId: 'environment-destination',
+    providerSessionId: 'session-destination',
+    materializationReceipt: {
+      provider: 'cli-bridge',
+      runner: 'codex',
+      model: 'openai/gpt-5.6',
+      apiKey: 'must-not-appear',
+    },
+    contextPlanDigest: 'sha256:context-plan',
+    contextTransfer: {
+      planDigest: 'sha256:context-plan',
+      sourceRunId: 'run-source',
+      destinationRunId: 'provider-run-destination',
+      destinationSessionId: 'session-destination',
+      acceptedAt: '2026-08-29T00:00:00.000Z',
+    },
+  })
+  const payload = projectSemanticEvent(
+    envelope({
+      kind: 'run.requested',
+      operationId: receipt.operationId,
+      runId: receipt.runId,
+      turnId: receipt.turnId,
+      userMessageId: 'message-user',
+      assistantMessageId: 'message-assistant',
+      text: receipt.requested.text,
+      requestDigest: receipt.requestDigest,
+      receipt,
+    }),
+  )
+  const admission = payload.admission as Record<string, unknown>
+  const requested = admission.requested as Record<string, unknown>
+  const contextTransfer = admission.contextTransfer as Record<string, unknown>
+  const controls = (admission.capabilities as Record<string, Record<string, unknown>>).controls
+
+  assert.equal(admission.runId, receipt.runId)
+  assert.equal(admission.branchId, receipt.branchId)
+  assert.equal(admission.profileDigest, receipt.profileDigest)
+  assert.equal(admission.requestDigest, receipt.requestDigest)
+  assert.equal(admission.capabilitiesDigest, receipt.capabilitiesDigest)
+  assert.equal(admission.materializationDigest, receipt.materializationDigest)
+  assert.equal(admission.digest, receipt.digest)
+  assert.equal(requested.contextPlanDigest, 'sha256:context-plan')
+  assert.equal(contextTransfer.destinationRunId, 'provider-run-destination')
+  assert.ok(controls)
+  assert.equal(controls.cancel, true)
+  assert.equal(admission.__braidTruncated, undefined)
+  assert.equal(JSON.stringify(payload).includes('must-not-appear'), false)
 })
 
 test('plain interaction events expose the request needed for a safe decision', () => {
