@@ -454,6 +454,43 @@ test('cross-runner handoff transfers canonical history and replays after restart
   )
 })
 
+test('cross-runner planning resolves a completed run inherited by a child branch', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const execution = executionFor({
+    capabilities: branchCapabilities(),
+    contextState,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  const source = await app.send({ operationId: 'op-inherited-source', text: 'source history' })
+    .completion
+  const sourceRun = source.runs.find((run) => run.operationId === 'op-inherited-source')
+  assert(sourceRun)
+  const boundary = app.state().messages.find((message) => message.runId === sourceRun.id)
+  assert(boundary)
+  const child = await app.conversations.branches.create({
+    operationId: 'op-inherited-child',
+    throughMessageId: boundary.id,
+  })
+
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-inherited-cross-runner',
+    kind: 'cross-runner',
+    branchId: child.id,
+    runner: 'codex',
+    destinationProvider: TARGET_PROVIDER,
+  })
+
+  assert.equal(plan.allowed, true)
+  assert.equal(plan.sourceRunId, sourceRun.id)
+  assert.equal(plan.sourceEnvironmentId, sourceRun.environmentId)
+  assert.equal(plan.portableContextPlan?.source.source.runId, sourceRun.id)
+})
+
 test('cross-runner planning binds the exact destination profile after redaction and overrides', async () => {
   const contextState: ContextProviderState = { transfers: [] }
   const profile = defineAgentProfile({

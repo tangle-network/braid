@@ -583,13 +583,28 @@ function sourceRunForBranch(
   branchId: BranchRecord['id'],
   preferredRunId: MessageRecord['runId'],
 ): BraidState['runs'][number] | undefined {
+  const branch = state.branches.find((candidate) => candidate.id === branchId)
+  if (branch === undefined) return undefined
+  const visibleRunIds = new Set(
+    messagesVisibleOnBranch(state, branchId)
+      .map((message) => message.runId)
+      .filter((runId): runId is string => runId !== undefined),
+  )
   if (preferredRunId !== undefined) {
     const preferred = state.runs.find(
-      (candidate) => candidate.id === preferredRunId && candidate.branchId === branchId,
+      (candidate) =>
+        candidate.id === preferredRunId &&
+        candidate.conversationId === branch.conversationId &&
+        visibleRunIds.has(candidate.id),
     )
     if (preferred !== undefined) return preferred
   }
-  return state.runs.filter((candidate) => candidate.branchId === branchId).at(-1)
+  return state.runs
+    .filter(
+      (candidate) =>
+        candidate.conversationId === branch.conversationId && visibleRunIds.has(candidate.id),
+    )
+    .at(-1)
 }
 
 function contextTransferPort(

@@ -535,16 +535,27 @@ function sourceRunForBoundary(
   messageId: string,
   messageRunId: string | undefined,
 ): BraidState['runs'][number] | undefined {
+  const branch = state.branches.find((candidate) => candidate.id === branchId)
+  if (branch === undefined) return undefined
+  const boundary = messagesVisibleOnBranch(state, branchId).find(
+    (message) => message.id === messageId,
+  )
+  if (boundary === undefined) return undefined
   if (messageRunId !== undefined) {
-    const direct = state.runs.find((run) => run.id === messageRunId && run.branchId === branchId)
+    const direct = state.runs.find(
+      (run) =>
+        run.id === messageRunId &&
+        run.conversationId === branch.conversationId &&
+        run.id === boundary.runId,
+    )
     if (direct !== undefined) return direct
   }
   return state.runs
     .filter(
       (run) =>
-        run.branchId === branchId &&
+        run.conversationId === branch.conversationId &&
         run.controlRef !== undefined &&
-        state.messages.some((message) => message.id === messageId && message.runId === run.id),
+        run.id === boundary.runId,
     )
     .at(-1)
 }
