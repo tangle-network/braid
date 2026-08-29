@@ -622,6 +622,83 @@ test('retained admission survives the pre-dispatch crash window and binds one ex
   )
 })
 
+test('retained interactive intent preserves Runtime-owned session identity across restart', () => {
+  const sessionId = 'retained-session:env-braid-run-interactive:interactive-braid-run-interactive'
+  const intent = {
+    phase: 'interactive_intent' as const,
+    provider: 'tangle-sandbox',
+    idempotencyKey: 'env-braid-run-interactive',
+    interactiveIdempotencyKey: 'interactive-braid-run-interactive',
+    sessionId,
+    executionId: 'retained-execution:env-braid-run-interactive:interactive-braid-run-interactive',
+    runId: 'interactive-intent-run:runtime-owned-identity',
+    requestedProfileDigest: `sha256:${'a'.repeat(64)}` as const,
+    requestDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
+  const journal = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: 'op-runtime-interactive-identity',
+        runId: 'run-runtime-interactive-identity',
+        turnId: 'turn-runtime-interactive-identity',
+        userMessageId: 'message-user-runtime-interactive-identity',
+        assistantMessageId: 'message-assistant-runtime-interactive-identity',
+        text: 'retain this interactive run',
+      },
+      2,
+    ),
+    envelope(
+      {
+        kind: 'run.retained.admitted',
+        runId: 'run-runtime-interactive-identity',
+        admission: intent,
+      },
+      3,
+    ),
+  ] as const
+
+  const restored = replayEvents(initialState(STARTER_PROFILE), journal)
+  assert.equal(restored.runs[0]?.providerSessionId, sessionId)
+  assert.deepEqual(restored.runs[0]?.retainedAdmission, intent)
+  assert.deepEqual(replayEvents(initialState(STARTER_PROFILE), journal), restored)
+
+  assert.throws(
+    () =>
+      reduceEvent(
+        replayEvents(initialState(STARTER_PROFILE), journal.slice(0, 2)),
+        envelope(
+          {
+            kind: 'run.retained.admitted',
+            runId: 'run-runtime-interactive-identity',
+            admission: {
+              ...intent,
+              sessionId: 'retained-session:credential=not-public',
+            },
+          },
+          3,
+        ),
+      ),
+    /cannot contain credential material/u,
+  )
+  assert.throws(
+    () =>
+      reduceEvent(
+        replayEvents(initialState(STARTER_PROFILE), journal.slice(0, 2)),
+        envelope(
+          {
+            kind: 'run.retained.admitted',
+            runId: 'run-runtime-interactive-identity',
+            admission: { ...intent, sessionId: 'retained-session:unsafe\u001b' },
+          },
+          3,
+        ),
+      ),
+    /cannot contain terminal control characters/u,
+  )
+})
+
 test('a cancellation request that loses the terminal race preserves the proven result', () => {
   const completed = replayEvents(initialState(STARTER_PROFILE), verticalSliceEvents())
   const operationId = 'op-cancel-after-terminal'

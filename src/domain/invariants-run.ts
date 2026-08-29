@@ -26,7 +26,10 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
-import { assertRetainedRunAdmission } from './invariants-retained-admission.js'
+import {
+  assertProviderSessionIdentifier,
+  assertRetainedRunAdmission,
+} from './invariants-retained-admission.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
 import { safePublicIdentifier } from './provider-values.js'
 
@@ -56,7 +59,7 @@ export function assertRunRecord(record: RunRecord): void {
   if (record.connectionId !== undefined)
     assertEntityId('connection', record.connectionId, 'run.connectionId')
   if (record.providerSessionId !== undefined)
-    assertEntityId('providerSession', record.providerSessionId, 'run.providerSessionId')
+    assertProviderSessionIdentifier(record.providerSessionId, 'run.providerSessionId')
   if (record.harnessSessionId !== undefined) {
     nonEmpty(record.harnessSessionId, 'run.harnessSessionId')
     assertPublicReference(record.harnessSessionId, 'run.harnessSessionId')

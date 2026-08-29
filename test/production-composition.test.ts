@@ -506,6 +506,11 @@ test('retained Tangle composition routes interactive admission without creating 
     mode: 'interactive',
   })
   assert.equal(interactive?.provider, 'tangle-sandbox')
+  assert.equal(
+    interactive?.providerSessionId,
+    undefined,
+    'interactive admission must leave session identity to agent-runtime',
+  )
   assert.equal(interactive?.materializationReceipt?.surface, 'interactive-agent')
   assert.equal(interactive?.capabilities?.environment?.interactiveAgent?.start, true)
   assert.equal(sandbox.createCalls.length, 0)
