@@ -133,6 +133,19 @@ function processExists(pid) {
   }
 }
 
+function processGroupPresent(pid) {
+  const normalizedPid = numericPid(pid)
+  if (normalizedPid === undefined) return undefined
+  try {
+    process.kill(-normalizedPid, 0)
+    return true
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false
+    if (error?.code === 'EPERM') return true
+    return undefined
+  }
+}
+
 function readOwnershipMarker(pid, token) {
   try {
     const environment = readFileSync(procFile(pid, 'environ'), 'utf8')
@@ -190,9 +203,37 @@ class PosixProcessTreeTracker {
     this.rootStartTime = undefined
     this.released = false
     this.failure = undefined
+    this.observeRoot()
     this.refresh()
     this.monitor = setInterval(() => this.refresh(), pollMs)
     this.monitor.unref()
+  }
+
+  observeRoot() {
+    if (this.rootPid === undefined) {
+      this.failure = 'The POSIX process has no valid owner PID'
+      return
+    }
+    let root
+    let marker
+    try {
+      root = processStat(this.rootPid)
+      marker = readOwnershipMarker(this.rootPid, this.token)
+    } catch (error) {
+      this.failure = `The POSIX process ownership marker could not be read: ${errorMessage(error)}`
+      return
+    }
+    if (root === undefined) {
+      this.failure = 'The POSIX process exited before ownership was observed'
+      return
+    }
+    if (marker !== true) {
+      this.failure = 'The POSIX process did not retain its ownership marker'
+      return
+    }
+    this.rootObserved = true
+    this.rootStartTime = root.startTime
+    this.entries.set(root.pid, { ...root, depth: 0 })
   }
 
   refresh() {
@@ -341,8 +382,55 @@ class PosixProcessTreeTracker {
   }
 }
 
+class PosixProcessGroupTracker {
+  constructor(child) {
+    this.rootPid = numericPid(child.pid)
+  }
+
+  status() {
+    if (this.rootPid === undefined)
+      return {
+        ...unsupported('The POSIX process has no valid owner PID'),
+        mechanism: 'posix-process-group',
+      }
+    const present = processGroupPresent(this.rootPid)
+    if (present === undefined)
+      return {
+        ...unsupported('The POSIX process group could not be inspected'),
+        mechanism: 'posix-process-group',
+      }
+    return {
+      supported: true,
+      gone: !present,
+      present,
+      pids: [],
+      roots: present ? [this.rootPid] : [],
+      version: present ? 0 : 1,
+      mechanism: 'posix-process-group',
+      ownership: 'kernel-process-group',
+      observed: true,
+      escaped: false,
+    }
+  }
+
+  signal(signal) {
+    const status = this.status()
+    if (!status.supported) return { method: 'unavailable', sent: false, reason: status.reason }
+    if (status.gone) return { method: 'already-exited', sent: false }
+    try {
+      process.kill(-this.rootPid, signal)
+      return { method: 'process-group', sent: true }
+    } catch (error) {
+      if (error?.code === 'ESRCH') return { method: 'already-exited', sent: false }
+      return { method: 'failed', sent: false, error: errorMessage(error) }
+    }
+  }
+
+  release() {}
+}
+
 export function processTreeEnvironment(environment = process.env) {
-  if (process.platform === 'win32') return { environment, token: undefined }
+  if (process.platform !== 'linux') return { environment, token: undefined }
   const token = randomUUID()
   return {
     environment: { ...environment, [processTreeToken]: token },
@@ -351,10 +439,16 @@ export function processTreeEnvironment(environment = process.env) {
 }
 
 export function trackProcessTree(child, token) {
-  if (process.platform === 'win32' || token === undefined) return undefined
+  if (process.platform === 'win32') return undefined
   if (child === null || typeof child !== 'object')
     throw new TypeError('A child process is required')
-  const tracker = new PosixProcessTreeTracker(child, token)
+  const tracker =
+    process.platform === 'linux'
+      ? token === undefined
+        ? undefined
+        : new PosixProcessTreeTracker(child, token)
+      : new PosixProcessGroupTracker(child)
+  if (tracker === undefined) return undefined
   processTreeTrackers.set(child, tracker)
   return tracker
 }
