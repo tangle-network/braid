@@ -105,6 +105,7 @@ jobs:
           KEY="$RUNNER_TEMP/braid-release-key.pem"
           mkdir -p "$ENDORSEMENT"
           trap 'rm -f "$KEY"' EXIT
+          test -z "$(find "$ROOT" -type l -print -quit)"
           printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEY"
           chmod 600 "$KEY"
           find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
@@ -213,6 +214,7 @@ jobs:
           set -euo pipefail
           ROOT="$RUNNER_TEMP/braid-release"
           ENDORSEMENT="$ROOT/endorsement/candidate"
+          test -z "$(find "$ROOT" -type l -print -quit)"
           cmp release/endorsement-public-key.pem "$ENDORSEMENT/public-key.pem"
           openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
             -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"
@@ -402,6 +404,7 @@ jobs:
           KEY="$RUNNER_TEMP/braid-release-key.pem"
           mkdir -p "$ENDORSEMENT"
           trap 'rm -f "$KEY"' EXIT
+          test -z "$(find "$ROOT" -type l -print -quit)"
           printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEY"
           chmod 600 "$KEY"
           find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
@@ -456,6 +459,7 @@ jobs:
           set -euo pipefail
           ROOT="$RUNNER_TEMP/braid-release"
           ENDORSEMENT="$ROOT/endorsement/final"
+          test -z "$(find "$ROOT" -type l -print -quit)"
           cmp release/endorsement-public-key.pem "$ENDORSEMENT/public-key.pem"
           openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
             -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"

@@ -109,6 +109,16 @@ export async function createPublicationProof({
   completedAt = new Date().toISOString(),
 }) {
   const root = resolve(artifactRoot)
+  const candidatePath = containedPath(
+    root,
+    join('candidate', packageProof.tarball),
+    'Candidate package archive',
+  )
+  const candidateBytes = await readRegularFileNoFollow(candidatePath)
+  assert(
+    sha256(candidateBytes) === packageProof.sha256,
+    'Candidate package archive digest differs from package proof',
+  )
   const candidate = await readPhase({ artifactRoot: root, phase: 'candidate', packageProof })
   const registry = await readPhase({ artifactRoot: root, phase: 'registry', packageProof })
   const provenance = await readAndValidateNpmProvenance({ artifactRoot: root, packageProof })

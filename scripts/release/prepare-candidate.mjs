@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises'
+import { lstat, mkdir, readFile, realpath } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { pnpmInvocation } from './platform.mjs'
+import { readRegularFileNoFollow } from '../release-files.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -33,7 +34,7 @@ async function run(file, args, options = {}) {
 
 async function sha256(path) {
   return createHash('sha256')
-    .update(await readFile(path))
+    .update(await readRegularFileNoFollow(path))
     .digest('hex')
 }
 
@@ -71,8 +72,8 @@ const archiveName = `${packageJson.name.replace(/^@/u, '').replace('/', '-')}-${
 const candidateRoot = join(artifactRoot, 'candidate')
 const tarballPath = join(candidateRoot, archiveName)
 const packageProofPath = join(artifactRoot, 'w6', 'package-proof.json')
-const existingTarball = await stat(tarballPath).catch(() => undefined)
-const existingProof = await stat(packageProofPath).catch(() => undefined)
+const existingTarball = await lstat(tarballPath).catch(() => undefined)
+const existingProof = await lstat(packageProofPath).catch(() => undefined)
 assert(Boolean(existingTarball) === Boolean(existingProof), 'Restored candidate is incomplete')
 
 if (!existingTarball) {
@@ -91,7 +92,7 @@ if (!existingTarball) {
   )
 }
 
-const packageProof = JSON.parse(await readFile(packageProofPath, 'utf8'))
+const packageProof = JSON.parse((await readRegularFileNoFollow(packageProofPath)).toString('utf8'))
 const head = await new Promise((resolvePromise, reject) => {
   let stdout = ''
   const child = spawn('git', ['rev-parse', 'HEAD'], {

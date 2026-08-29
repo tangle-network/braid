@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -607,7 +607,43 @@ test('release subprocesses and recorded paths are portable to Windows', async ()
     'utf8',
   )
   assert.match(candidatePreparation, /pnpmInvocation\(\['run', 'build'\]\)/u)
+  assert.match(candidatePreparation, /readRegularFileNoFollow/u)
   assert.doesNotMatch(candidatePreparation, /run\('pnpm'/u)
+})
+
+test('package smoke rejects symlinked restored candidate archives', async () => {
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-release-symlink-'))
+  const outsideRoot = await mkdtemp(join(tmpdir(), 'braid-release-symlink-target-'))
+  const archive = 'tangle-network-braid-0.3.0.tgz'
+  const archiveBytes = Buffer.from('candidate archive')
+  try {
+    await mkdir(join(artifactRoot, 'candidate'), { recursive: true })
+    await mkdir(join(artifactRoot, 'w6'), { recursive: true })
+    const target = join(outsideRoot, archive)
+    await writeFile(target, archiveBytes)
+    await symlink(target, join(artifactRoot, 'candidate', archive))
+    await writeFile(
+      join(artifactRoot, 'w6', 'package-proof.json'),
+      `${JSON.stringify({
+        version: '0.3.0',
+        tarball: archive,
+        sha256: createHash('sha256').update(archiveBytes).digest('hex'),
+      })}\n`,
+    )
+    assert.throws(
+      () =>
+        execFileSync(process.execPath, ['scripts/release/smoke-package.mjs'], {
+          cwd: process.cwd(),
+          env: { ...process.env, BRAID_RELEASE_ARTIFACT_ROOT: artifactRoot },
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      /Regular non-symlink file required/u,
+    )
+  } finally {
+    await rm(artifactRoot, { recursive: true, force: true })
+    await rm(outsideRoot, { recursive: true, force: true })
+  }
 })
 
 test('upstream requirements require successful owning-repository checks', () => {
@@ -969,7 +1005,7 @@ test('the final release proof requires matching candidate and registry smokes on
     version: '0.1.0',
     gitCommit: 'a'.repeat(40),
     tarball: 'tangle-network-braid-0.1.0.tgz',
-    sha256: 'b'.repeat(64),
+    sha256: createHash('sha256').update(Buffer.from('candidate archive bytes')).digest('hex'),
   }
   const completedAt = '2026-08-09T01:00:00.000Z'
   try {
@@ -1097,6 +1133,13 @@ test('the final release proof requires matching candidate and registry smokes on
     assert.equal(augmented.evidence.finishedAt, completedAt)
     assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 7)
     assert.equal(augmented.evidence.artifacts.length, 7)
+
+    await writeFile(join(candidateDirectory, packageProof.tarball), Buffer.from('tampered archive'))
+    await assert.rejects(
+      createPublicationProof({ artifactRoot, packageProof, completedAt }),
+      /Candidate package archive digest differs/u,
+    )
+    await writeFile(join(candidateDirectory, packageProof.tarball), candidateBytes)
 
     const registryPath = join(artifactRoot, 'publication', 'registry', 'linux-x64.json')
     const mismatched = JSON.parse(await readFile(registryPath, 'utf8'))
