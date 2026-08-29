@@ -937,7 +937,7 @@ export function safeJson(value, environment = process.env) {
   } catch {
     serialized = JSON.stringify({ status: 'unavailable', reason: '[UNAVAILABLE]' })
   }
-  return redactText(serialized === undefined ? 'null' : serialized, secrets)
+  return serialized === undefined ? 'null' : serialized
 }
 
 export function endpointEvidence(value) {

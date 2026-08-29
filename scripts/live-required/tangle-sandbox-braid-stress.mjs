@@ -1874,6 +1874,10 @@ export async function runBraidSandboxStress({
       config: config ? configEvidence(config) : undefined,
       timing: phases,
     }),
+    processes: {
+      ...(result?.processes ?? {}),
+      binarySha256: result?.processes?.binarySha256 ?? binarySha256 ?? null,
+    },
     status:
       failure === undefined &&
       cleanupError === undefined &&

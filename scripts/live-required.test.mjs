@@ -916,6 +916,21 @@ test('nested credential fields and error text are redacted before public output'
   assert.match(nestedMessage, /\[REDACTED\]/u)
 })
 
+test('public JSON redaction preserves field names', () => {
+  const output = safeJson(
+    {
+      status: 'completed',
+      startedAt: '2026-08-28T00:00:00.000Z',
+      completedAt: '2026-08-28T00:00:01.000Z',
+    },
+    { TANGLE_API_KEY: 'completed' },
+  )
+  const parsed = JSON.parse(output)
+  assert.equal(parsed.status, '[REDACTED]')
+  assert.equal(parsed.startedAt, '2026-08-28T00:00:00.000Z')
+  assert.equal(parsed.completedAt, '2026-08-28T00:00:01.000Z')
+})
+
 test('retained Sandbox error details are safe for direct proof output', () => {
   const secret = 'retained-sandbox-error-secret-canary-4f8c'
   const networkError = Object.assign(new Error(`transport failed ${secret}`), {

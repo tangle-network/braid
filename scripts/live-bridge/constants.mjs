@@ -47,13 +47,14 @@ export const targetDefinitions = Object.freeze([
 ])
 
 export const livePrompts = Object.freeze({
-  normal: (key) => `Reply with exactly LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_OK.`,
+  normal: (key) =>
+    `Output only this token, with no punctuation or explanation: LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_OK`,
   cancel: (key) =>
     `For LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_CANCEL, produce a numbered list from 1 to 1000 with one short word per line.`,
   handoffSource: (key) =>
-    `Reply with exactly LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_HANDOFF_SOURCE_OK.`,
+    `Output only this token, with no punctuation or explanation: LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_HANDOFF_SOURCE_OK`,
   handoffDestination: (key) =>
-    `Reply with exactly LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_HANDOFF_OK.`,
+    `Output only this token, with no punctuation or explanation: LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_HANDOFF_OK`,
   interactive: (key) =>
     `Ask one user-visible permission question before completing LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_INTERACTIVE_OK.`,
   restart: (key) =>
