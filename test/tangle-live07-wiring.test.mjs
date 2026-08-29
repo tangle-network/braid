@@ -556,6 +556,7 @@ test('LIVE-08 confirms Sandbox absence for a provider rejection before interacti
       },
     },
     executionStarted: true,
+    recordPath: '/does/not/exist/without-an-exact-run-identity.json',
     materialization,
   })
   assert.equal(listCalls, 2)
@@ -692,6 +693,7 @@ test('LIVE-08 refuses cleanup when more than one exact pre-environment resource 
           },
         },
         executionStarted: true,
+        recordPath: '/does/not/exist/without-an-exact-run-identity.json',
         materialization: {
           runId: 'run-pre-environment',
           phase: null,
@@ -700,10 +702,10 @@ test('LIVE-08 refuses cleanup when more than one exact pre-environment resource 
         },
       }),
     (error) => {
+      const messages = interactiveFailureMessages(error)
+      assert.ok(messages.some((message) => /identity recovery/u.test(message)))
       assert.ok(
-        interactiveFailureMessages(error).some((message) =>
-          /same-name Sandbox resources; cleanup refused/u.test(message),
-        ),
+        messages.some((message) => /same-name Sandbox resources; cleanup refused/u.test(message)),
       )
       return true
     },

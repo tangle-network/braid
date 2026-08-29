@@ -864,14 +864,19 @@ export async function finalizeInteractiveProof({
   }
 
   let resolvedIdentity = identity
+  const identityRecoveryErrors = []
   if (resolvedIdentity === undefined && executionStarted && recordPath !== undefined) {
-    const recovered = await attemptCleanup(errors, 'recorded Braid identity recovery', async () => {
-      const record = JSON.parse(await readFile(recordPath, 'utf8'))
-      const recoveredIdentity = recoverInteractiveIdentity(record)
-      if (recoveredIdentity === undefined)
-        throw new Error('recorded state did not contain one exact Braid run identity')
-      return recoveredIdentity
-    })
+    const recovered = await attemptCleanup(
+      identityRecoveryErrors,
+      'recorded Braid identity recovery',
+      async () => {
+        const record = JSON.parse(await readFile(recordPath, 'utf8'))
+        const recoveredIdentity = recoverInteractiveIdentity(record)
+        if (recoveredIdentity === undefined)
+          throw new Error('recorded state did not contain one exact Braid run identity')
+        return recoveredIdentity
+      },
+    )
     if (recovered.ok) resolvedIdentity = recovered.value
   }
   let providerMaterialization
@@ -897,6 +902,9 @@ export async function finalizeInteractiveProof({
     } else {
       errors.push(new Error('Braid run identity was unavailable; exact cloud cleanup was refused'))
     }
+  }
+  if (resolvedIdentity === undefined && providerMaterialization === undefined) {
+    errors.unshift(...identityRecoveryErrors)
   }
 
   let resolvedStop = stopResult
