@@ -107,7 +107,7 @@
     "@tangle-network/agent-provider-cli-bridge": "0.10.0",
     "@tangle-network/agent-provider-tangle": "0.14.1",
     "@tangle-network/agent-runtime": "0.178.0",
-    "@tangle-network/sandbox": "0.34.0",
+    "@tangle-network/sandbox": "0.34.3",
     "@tangle-network/tcloud-attestation": "0.1.1",
     "better-sqlite3-multiple-ciphers": "13.0.3",
     "chalk": "6.0.0",
