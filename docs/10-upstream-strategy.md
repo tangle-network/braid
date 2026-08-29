@@ -34,7 +34,7 @@ The deciding question was how much source can be reused while preserving `AgentP
 
 | Source | Commit or version | License | Measured relevant TypeScript | Role in decision |
 | --- | --- | --- | ---: | --- |
-| [Pi TUI](https://github.com/earendil-works/pi/tree/main/packages/tui) | repository `cd6852a`; TUI `87142a8d50640e93d43fcb35123439d642bc0304`; npm `0.84.1` | MIT | 32,585 lines | Selected renderer dependency |
+| [Pi TUI](https://github.com/earendil-works/pi/tree/main/packages/tui) | repository `cd6852a`; TUI `87142a8d50640e93d43fcb35123439d642bc0304`; npm `0.84.4` | MIT | 32,585 lines | Selected renderer dependency |
 | [Pi coding-agent interactive mode](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive) | repository `cd6852a`; interactive mode `87142a8d50640e93d43fcb35123439d642bc0304` | MIT | 17,379 lines, including a 6,399-line coordinator | Selective behavior and component source |
 | [Kimi Code terminal app](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | `0401ec4286f37929d1d298527c05f5351850bf8a` | MIT | No refreshed size claim | Selective interaction and controller source |
 | [Kimi private Pi TUI fork](https://github.com/MoonshotAI/kimi-code/tree/main/packages/pi-tui) | `0401ec4286f37929d1d298527c05f5351850bf8a` | MIT | Included in repository inspection | Patch and regression reference only |
