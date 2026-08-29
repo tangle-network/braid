@@ -536,13 +536,17 @@ This cohort satisfies the retained create, process-loss recovery, replay, cancel
 
 The August 12 failure artifacts remain diagnostic history and are superseded by this passing cohort.
 
-On 2026-08-21, this branch upgraded the provider cohort to interface `1.3.0`, runtime `0.143.0`, eval `0.149.0`, CLI Bridge adapter `0.9.4`, Tangle adapter `0.13.0`, and sandbox `0.31.0`.
+Historical verification snapshot (2026-08-21): this branch used interface `1.3.0`, runtime `0.143.0`, eval `0.149.0`, CLI Bridge adapter `0.9.4`, Tangle adapter `0.13.0`, and sandbox `0.31.0`.
 
-The automated suite passed 782 of 782 tests on Linux, and the release self-check passed 32 of 32 tests, both with the deleted second sandbox parser and the published Sandbox run outcome as the only terminal result source.
+Historical result for that cohort: the automated suite passed 782 of 782 tests on Linux, and the release self-check passed 32 of 32 tests, both with the deleted second sandbox parser and the published Sandbox run outcome as the only terminal result source.
 
-`LIVE-03` and `LIVE-08` were attempted through their built-in checks: both emit `unavailable` because this environment holds no CLI Bridge interaction credential and no Tangle Sandbox credential, and the built-in check refuses to claim a row it cannot execute.
+In that snapshot, `LIVE-03` and `LIVE-08` were attempted through their built-in checks: both emitted `unavailable` because the environment held no CLI Bridge interaction credential and no Tangle Sandbox credential, and the built-in check refused to claim a row it could not execute.
 
-`LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` remain unavailable in this environment for the same reason, and no live claim in this record comes from a simulated provider.
+In that snapshot, `LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` were also unavailable for the same reason, and no live claim in that record came from a simulated provider.
+
+Current dependency evidence (2026-08-29) is documented in [Runtime contracts](04-runtime-contracts.md): interface `1.8.0`, Runtime `0.178.0`, eval `0.170.0`, CLI Bridge adapter `0.10.0`, Tangle adapter `0.14.2`, and Sandbox `0.34.3`.
+
+The historical test counts above do not represent verification of this current cohort.
 
 ## Runner conformance
 
