@@ -3,6 +3,17 @@ import test from 'node:test'
 import { bridgeLaunchEnvironment } from './bridge.mjs'
 import { StreamingRedactor } from './capture.mjs'
 import {
+  assertObservedIdentity,
+  eventSummary,
+  observedProviderAndModel,
+  parseSseEvents,
+} from './native-continuation.mjs'
+import {
+  interactionFromResponse,
+  retainedCancellationAdvertised,
+  runWithAdmissionReceipt,
+} from './protocol.mjs'
+import {
   evidenceValue,
   secretValues,
   withoutBraidLiveSecrets,
@@ -18,12 +29,117 @@ import {
   terminalReceipts,
 } from './release-proof-validation.mjs'
 import { assertTargetSemantics, verifyInteraction } from './target-actions.mjs'
+import { operationRequest, operationState } from './target-flow.mjs'
 
 const target = {
   key: 'pi-test',
   modelId: 'pi/provider/model',
   definition: { backend: 'pi' },
 }
+
+test('retained cancellation proof reads the environment capability contract', () => {
+  assert.equal(retainedCancellationAdvertised({}), false)
+  assert.equal(
+    retainedCancellationAdvertised({
+      retainedControl: {
+        exactRunIdentity: true,
+        resultIdentity: true,
+        eventIdentity: true,
+        cancellationIdempotency: true,
+      },
+    }),
+    true,
+  )
+})
+
+test('native continuation proof reads provider identity from retained Bridge envelopes', () => {
+  const [frame] = parseSseEvents(
+    [
+      'event: raw',
+      'data: {"runId":"run-1","event":{"type":"raw","backend":"pi","event":{"type":"message_start","message":{"provider":"tangle-router","model":"glm-5.2"}}}}',
+      '',
+    ].join('\n'),
+  )
+  const summary = eventSummary(frame)
+  assert.deepEqual(summary, {
+    type: 'raw',
+    backend: 'pi',
+    provider: 'tangle-router',
+    model: 'glm-5.2',
+  })
+  assert.deepEqual(observedProviderAndModel([summary], 'pi/tangle-router/glm-5.2'), {
+    backends: ['pi'],
+    providers: ['tangle-router'],
+    models: ['glm-5.2'],
+    backend: 'pi',
+    provider: 'tangle-router',
+    model: 'glm-5.2',
+  })
+})
+
+test('native continuation identity stays bound to the retained session route', () => {
+  const session = { backend: 'pi', model: 'pi/tangle-router/glm-5.2' }
+  assert.doesNotThrow(() =>
+    assertObservedIdentity(
+      observedProviderAndModel([{ type: 'status', backend: 'pi' }], session.model),
+      session,
+    ),
+  )
+  assert.throws(
+    () =>
+      assertObservedIdentity(
+        observedProviderAndModel(
+          [{ type: 'raw', backend: 'pi', provider: 'other', model: 'glm-5.2' }],
+          session.model,
+        ),
+        session,
+      ),
+    /did not match the retained session route/u,
+  )
+  assert.throws(
+    () =>
+      assertObservedIdentity(
+        observedProviderAndModel(
+          [{ type: 'raw', backend: 'pi', provider: 'tangle-router', model: 'glm-5.3' }],
+          session.model,
+        ),
+        session,
+      ),
+    /did not match the retained session route/u,
+  )
+  assert.throws(
+    () =>
+      assertObservedIdentity(
+        observedProviderAndModel(
+          [
+            { type: 'raw', backend: 'pi', provider: 'tangle-router', model: 'glm-5.2' },
+            { type: 'raw', backend: 'pi', provider: 'tangle-router', model: 'glm-5.3' },
+          ],
+          session.model,
+        ),
+        session,
+      ),
+    /did not match the retained session route/u,
+  )
+
+  const alternateSession = { backend: 'pi', model: 'pi/tangle-router/gpt-5.4-mini' }
+  assert.doesNotThrow(() =>
+    assertObservedIdentity(
+      observedProviderAndModel(
+        [
+          {
+            type: 'raw',
+            backend: 'pi',
+            provider: 'tangle-router',
+            model: 'gpt-5.4-mini',
+          },
+        ],
+        alternateSession.model,
+      ),
+      alternateSession,
+    ),
+  )
+})
 
 function run(overrides = {}) {
   return {
@@ -146,14 +262,26 @@ test('identity validation retains nested and runner-only model routes', () => {
   assert.equal(assertTargetRunIdentity(defaultRun, defaultTarget).provider, undefined)
 })
 
-test('usage, replay, and cancellation unavailable states cannot pass strict conformance', () => {
+test('usage and cancellation unavailable states cannot pass strict conformance', () => {
   assert.throws(() => assertObservedUsage(run({ tokensKnown: false })), /known token usage/u)
   assert.throws(() => assertObservedUsage(run({ llmCalls: 0 })), /model-call usage/u)
-  const unavailable = {
+  const cancellationUnavailable = {
     cancel: { status: 'reported-unavailable', advertised: false },
     interaction: { status: 'reported-unavailable', advertised: false },
   }
-  assert.throws(() => assertTargetSemantics(unavailable, { strict: true }), /verified live proof/u)
+  assert.throws(
+    () => assertTargetSemantics(cancellationUnavailable, { strict: true }),
+    /verified live proof/u,
+  )
+  assert.doesNotThrow(() =>
+    assertTargetSemantics(
+      {
+        cancel: { status: 'verified', advertised: true },
+        interaction: { status: 'reported-unavailable', advertised: false },
+      },
+      { strict: true },
+    ),
+  )
   assert.throws(
     () =>
       assertTargetSemantics(
@@ -454,9 +582,11 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
     revision: 4,
     event: {
       kind: 'run.finished',
-      runId: 'run-1',
-      status: 'completed',
-      provider: { eventId: 'provider-finished', providerSequence: 3, cursor: '3:0' },
+      payload: {
+        runId: 'run-1',
+        status: 'completed',
+        source: { eventId: 'provider-finished', providerSequence: 3, cursor: '3:0' },
+      },
     },
   }
   assert.deepEqual(terminalReceipts([terminalResponse], 'restarted-session', 'run-1'), [
@@ -474,32 +604,126 @@ test('restart proof rejects process, timing, reconnect, replay, and terminal fal
   ])
 })
 
-test('interaction proof requires durable declined or resolved state', () => {
-  const retained = {
-    request: { id: 'interaction-1' },
-    status: 'declined',
-    responseOperation: { outcome: 'declined' },
+test('release RPC reads state and interaction frames from the public envelope', async () => {
+  const stateFrame = {
+    version: 1,
+    type: 'state',
+    requestId: 'interactive-proof-execution-a-state-active-pi-test',
+    state: { runs: [{ id: 'run-1', status: 'streaming' }] },
   }
-  assert.deepEqual(
-    assertRetainedInteraction({ interactions: [retained] }, 'interaction-1', { type: 'ack' }),
-    retained,
+  const sent = []
+  const session = {
+    send(request) {
+      sent.push(request)
+    },
+    async waitFor(label, predicate, timeoutMs) {
+      assert.equal(label, 'release operation state')
+      assert.equal(timeoutMs, 15_000)
+      assert.equal(predicate(stateFrame), true)
+      return stateFrame
+    },
+  }
+  const result = { operationNamespace: 'proof-execution-a', targetKey: 'pi-test', requests: [] }
+  assert.equal(await operationState(session, result, 'interactive', 'active', 120_000), stateFrame)
+  assert.deepEqual(sent, result.requests)
+
+  const requestInput = ['interactive', 'respond', 'respond_interaction', { runId: 'run-1' }]
+  const first = operationRequest(result, ...requestInput)
+  const retry = operationRequest(result, ...requestInput)
+  const independent = operationRequest(
+    { ...result, operationNamespace: 'proof-execution-b' },
+    ...requestInput,
   )
-  for (const interaction of [
-    undefined,
-    { request: { id: 'interaction-1' }, status: 'unknown' },
-    { request: { id: 'interaction-1' }, status: 'pending' },
+  assert.deepEqual(retry, first)
+  assert.notEqual(independent.operationId, first.operationId)
+
+  const projectedRun = { id: 'run-1', status: 'completed' }
+  const admission = { runId: 'run-1', profileDigest: 'profile-digest' }
+  assert.deepEqual(runWithAdmissionReceipt(projectedRun, admission), {
+    ...projectedRun,
+    receipt: admission,
+  })
+  assert.equal(
+    runWithAdmissionReceipt(projectedRun, { ...admission, runId: 'run-2' }),
+    projectedRun,
+  )
+
+  const interactionFrame = {
+    version: 1,
+    type: 'event',
+    sequence: 10,
+    revision: 10,
+    event: {
+      kind: 'run.interaction',
+      payload: {
+        runId: 'run-1',
+        interaction: {
+          id: 'interaction-local-1',
+          kind: 'permission',
+          title: 'Permission: bash',
+        },
+      },
+    },
+  }
+  assert.deepEqual(interactionFromResponse(interactionFrame, 'run-1'), {
+    runId: 'run-1',
+    interactionId: 'interaction-local-1',
+    request: interactionFrame.event.payload.interaction,
+  })
+})
+
+test('interaction proof requires ordered durable response events', () => {
+  const operationId = 'operation-interaction-1'
+  const event = (sequence, kind, outcome = 'declined') => ({
+    type: 'event',
+    sequence,
+    revision: sequence,
+    event: {
+      kind,
+      payload: {
+        runId: 'run-1',
+        value: { interactionId: 'interaction-1', operationId, outcome },
+      },
+    },
+  })
+  const requested = event(1, 'run.interaction.response.requested')
+  const responded = event(2, 'run.interaction.responded')
+  const acknowledgement = { type: 'ack', operationId, outcome: 'accepted' }
+  assert.deepEqual(
+    assertRetainedInteraction(
+      [requested, responded],
+      'run-1',
+      'interaction-1',
+      operationId,
+      acknowledgement,
+    ),
     {
-      request: { id: 'interaction-1' },
-      status: 'resolved',
-      responseOperation: { outcome: 'accepted' },
+      status: 'declined',
+      responseOperation: responded.event.payload.value,
+      requestedSequence: 1,
+      respondedSequence: 2,
+    },
+  )
+  for (const input of [
+    { responses: [], acknowledgement },
+    { responses: [responded, requested], acknowledgement },
+    {
+      responses: [requested, event(2, 'run.interaction.responded', 'unknown')],
+      acknowledgement,
+    },
+    {
+      responses: [requested, responded],
+      acknowledgement: { ...acknowledgement, outcome: 'rejected' },
     },
   ]) {
     assert.throws(
       () =>
         assertRetainedInteraction(
-          { interactions: interaction === undefined ? [] : [interaction] },
+          input.responses,
+          'run-1',
           'interaction-1',
-          { type: 'ack' },
+          operationId,
+          input.acknowledgement,
         ),
       /interaction/u,
     )

@@ -134,6 +134,13 @@ test('lazy execution defers provider loading and reuses the loaded port', async 
   let loads = 0
   let streamCalls = 0
   const admission = { provider: 'test-provider' }
+  const context = {} as NonNullable<ExecutionPort['context']>
+  const contextTransfer = {} as NonNullable<ExecutionPort['contextTransfer']>
+  const workspaceBranching = {} as NonNullable<ExecutionPort['workspaceBranching']>
+  const workspaceBranchingProvider = {} as NonNullable<ExecutionPort['workspaceBranchingProvider']>
+  const confidentialAttestationVerifier = (() => true) as NonNullable<
+    ExecutionPort['confidentialAttestationVerifier']
+  >
   const execution = new LazyExecutionPort({
     load: async () => {
       loads += 1
@@ -143,14 +150,27 @@ test('lazy execution defers provider loading and reuses the loaded port', async 
           streamCalls += 1
           yield* []
         },
+        context,
+        contextTransfer,
+        workspaceBranching,
+        workspaceBranchingProvider,
+        confidentialAttestationVerifier,
+        provider: 'test-provider',
       } satisfies ExecutionPort
     },
   })
   const input = {} as ExecuteTurnInput
 
   assert.equal(loads, 0)
+  assert.equal(execution.context, undefined)
   assert.deepEqual(await execution.admit(input), admission)
   assert.equal(loads, 1)
+  assert.equal(execution.context, context)
+  assert.equal(execution.contextTransfer, contextTransfer)
+  assert.equal(execution.workspaceBranching, workspaceBranching)
+  assert.equal(execution.workspaceBranchingProvider, workspaceBranchingProvider)
+  assert.equal(execution.confidentialAttestationVerifier, confidentialAttestationVerifier)
+  assert.equal(execution.provider, 'test-provider')
   for await (const _event of execution.streamTurn(input)) {
     // The test provider emits no events.
   }

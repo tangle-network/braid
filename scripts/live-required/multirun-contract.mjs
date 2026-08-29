@@ -53,10 +53,7 @@ function assertRun(run, index) {
     `multirun proof run ${index} has no streamed events`,
   )
   assert(run.eventIdsUnique === true, `multirun proof run ${index} has duplicate event identities`)
-  assert(
-    text(run.localEnvironmentId),
-    `multirun proof run ${index} has no local environment id`,
-  )
+  assert(text(run.localEnvironmentId), `multirun proof run ${index} has no local environment id`)
   assert(
     text(run.providerEnvironmentId),
     `multirun proof run ${index} has no provider environment id`,

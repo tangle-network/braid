@@ -367,7 +367,7 @@ Model discovery does not make every advertised model a release gate.
 | --- | --- | --- |
 | LIVE-01 | CLI Bridge with Pi | Exact profile materialization, text, reasoning, tool, usage, native session continuation, event replay, explicit cancel, and terminal receipt |
 | LIVE-02 | CLI Bridge with Codex | The same cross-family flow and a cross-runner handoff from the Pi source context |
-| LIVE-03 | CLI Bridge interactive protocol | Real question or permission pauses the runner, reaches Braid, receives once and session responses, resumes, and rejects a stale duplicate |
+| LIVE-03 | CLI Bridge interactive protocol | Real question or permission pauses the runner, reaches Braid, receives a response in an advertised scope, resumes, and rejects a stale duplicate |
 | LIVE-04 | CLI Bridge restart | Run state becomes honestly unknown or recovers according to retained state; Braid never labels it cancelled or resubmits unsafely |
 | LIVE-05 | Every advertised interactive bridge runner | Common conformance flow at a pinned minimum runner version; failures remove the interactive capability claim |
 | LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, cancellation, and immutable receipt |
@@ -379,6 +379,10 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-12 | `agent-eval` trace analysis | Real source run freezes, the selected profile and connection execute analyst model calls through `agent-runtime`, usage and cost receipts settle, citations resolve, source remains unchanged, and selected finding promotion records provenance |
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
+
+The live interaction check must not invent a broader response scope than the provider advertises.
+
+The current Pi route advertises interaction-only responses, so Braid disables session and persistent choices for that route.
 
 `LIVE-11` uses one reusable flow over the published `@tangle-network/agent-runtime/kernel` and `@tangle-network/agent-runtime/tui` APIs.
 

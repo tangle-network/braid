@@ -21,4 +21,4 @@
 
 
 ─────────────────── type / for commands · Alt+Enter · paste ────────────────────
-profile Braid starter · pi · via not connected                     Ctrl+C cancel
+profile Braid starter · pi · via local                             Ctrl+C cancel

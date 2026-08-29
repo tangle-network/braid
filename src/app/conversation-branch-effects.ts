@@ -3,6 +3,7 @@ import {
   type ContextTransferResult,
   contextTransferRequestDigest,
   contextTransferResultMatchesRequest,
+  forkedEnvironmentConfidentialityVerified,
   type PlacementInfo,
   type PortableContextPlanRequest,
   type PortableContextPlanResult,
@@ -14,7 +15,6 @@ import {
   type WorkspaceCleanupRequest,
   type WorkspaceForkRequest,
   type WorkspaceForkResult,
-  forkedEnvironmentConfidentialityVerified,
   workspaceCheckpointRequestDigest,
   workspaceCheckpointResultMatchesRequest,
   workspaceCleanupAcknowledgementMatches,
@@ -41,7 +41,8 @@ import {
   parseOperationId,
   parseRunId,
 } from '../domain/ids.js'
-import type { BraidState } from '../domain/state.js'
+import { assertJsonValue, objectValue } from '../domain/invariants-base.js'
+import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type {
   ConversationHost,
@@ -214,6 +215,11 @@ async function executeCrossRunner(
       'CAPABILITY_UNAVAILABLE',
       'Canonical context transfer requires a recorded source environment',
     )
+  if (sourceEnvironment.placement.provider !== portablePlan.source.source.provider)
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The portable plan names a different source provider than the recorded environment',
+    )
   if (sourceEnvironment.providerEnvironmentId !== portablePlan.source.source.environmentId)
     throw new AppError(
       'FORK_PLAN_CONFLICT',
@@ -342,6 +348,16 @@ async function executeWorkspace(
     throw new AppError(
       'CAPABILITY_UNAVAILABLE',
       'Workspace fork requires an exact recorded source environment',
+    )
+  if (sourceEnvironmentRecord.placement.provider !== source.provider)
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The source run and environment belong to different providers',
+    )
+  if (!sourceRun.complete || isActiveRunStatus(sourceRun.status) || sourceRun.status === 'unknown')
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'Workspace fork requires a completed source run boundary',
     )
   const capabilities = sourceRun.capabilities.environment?.branching
   if (
@@ -664,7 +680,9 @@ function sourceEnvironmentForCleanup(
             : undefined
         })())
   if (sourceCheckpoint === undefined) return undefined
-  return state.environments.find((candidate) => candidate.id === sourceCheckpoint.sourceEnvironmentId)
+  return state.environments.find(
+    (candidate) => candidate.id === sourceCheckpoint.sourceEnvironmentId,
+  )
 }
 
 function cleanupResultFromOperation(
@@ -973,7 +991,7 @@ async function acknowledgeOperation(
   operationId: ReturnType<typeof parseOperationId>,
   digest: string,
   branch: BranchRecord,
-  result: Record<string, unknown>,
+  result: unknown,
 ): Promise<void> {
   const current = host.state().operations.find((operation) => operation.id === operationId)
   if (current === undefined)
@@ -985,7 +1003,7 @@ async function acknowledgeOperation(
       requestDigest: digest as Digest,
       status: 'acknowledged',
       target: { kind: 'branch', id: branch.id },
-      result: result as unknown as NonNullable<OperationRecord['result']>,
+      result: operationResult(result),
       updatedAt: host.now(),
       acknowledgedAt: host.now(),
     },
@@ -1007,11 +1025,17 @@ async function acknowledgeCleanupOperation(
       ...current,
       requestDigest: digest as Digest,
       status: 'acknowledged',
-      result: result as unknown as NonNullable<OperationRecord['result']>,
+      result: operationResult(result),
       updatedAt: host.now(),
       acknowledgedAt: host.now(),
     },
   })
+}
+
+function operationResult(value: unknown): NonNullable<OperationRecord['result']> {
+  objectValue(value, 'operation.result')
+  assertJsonValue(value, 'operation.result')
+  return value
 }
 
 function branchForOperation(state: BraidState, operation: OperationRecord): BranchRecord {

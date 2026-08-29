@@ -10,6 +10,7 @@ import {
 } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import { effectiveElapsedMs } from '../src/views/shared/duration.js'
 import type {
   BraidViewModel,
   EnvironmentView,
@@ -120,7 +121,7 @@ test('chrome uses complete responsive groups at every reference width', () => {
   assert.match(wide, /Release engineer/u)
   assert.match(
     wide,
-    /profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
+    /profile Release engineer · runner pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
   )
   assert.match(wide, / · think high/u)
   assert.doesNotMatch(wide, /caps/u)
@@ -138,7 +139,7 @@ test('chrome uses complete responsive groups at every reference width', () => {
   assert.equal(spaciousLines.length, 2)
   assert.match(
     spaciousLines[0] ?? '',
-    /^profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge · think high · caps vis 8\.2k · reas 4\.1k · total 12k$/u,
+    /^profile Release engineer · runner pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge · think high · caps vis 8\.2k · reas 4\.1k · total 12k$/u,
   )
   assert.match(spaciousLines[1] ?? '', /^in 1\.2k · out 567 · \$0\.0312 · latency 842ms$/u)
   assert.doesNotMatch(spaciousLines.join('\n'), /(?:^|\n)rofile\b/u)
@@ -151,6 +152,22 @@ test('chrome uses complete responsive groups at every reference width', () => {
   }
 })
 
+test('authoritative elapsed measurements beat the terminal host clock', () => {
+  assert.equal(
+    effectiveElapsedMs('running', '2026-08-28T20:00:00.000Z', 1_840, Date.parse('2027-01-01')),
+    1_840,
+  )
+  assert.equal(
+    effectiveElapsedMs(
+      'running',
+      '2026-08-28T20:00:00.000Z',
+      undefined,
+      Date.parse('2026-08-28T20:00:05.000Z'),
+    ),
+    5_000,
+  )
+})
+
 test('work strip is conditional and exposes branch work controls', () => {
   const base = viewForChrome()
   const item = (overrides: Partial<WorkStripItemView>): WorkStripItemView => ({
@@ -158,6 +175,7 @@ test('work strip is conditional and exposes branch work controls', () => {
     runId: 'run-background',
     conversationId: 'conversation-1',
     branchId: 'branch-background',
+    label: 'Background review',
     state: 'running',
     runner: 'pi',
     model: 'fixture/model',
@@ -185,6 +203,7 @@ test('work strip is conditional and exposes branch work controls', () => {
           id: 'run-metrics',
           runId: 'run-metrics',
           branchId: 'branch-focused',
+          label: 'Focused release',
           focused: true,
         }),
         item({}),
@@ -195,12 +214,12 @@ test('work strip is conditional and exposes branch work controls', () => {
   const wide = chrome.render(120).join('\n')
   assert.match(
     wide,
-    /focus branch-focused · running · pi\/fixture\/model\s+1 waiting interaction · actions switch\/ask\/steer\/cancel/u,
+    /focus Focused release · running · pi\/fixture\/model\s+1 waiting interaction · actions switch\/ask\/steer\/cancel/u,
   )
-  assert.match(wide, /work branch-background · running · pi\/fixture\/model/u)
+  assert.match(wide, /work Background review · running · pi\/fixture\/model/u)
   const standardLines = chrome.render(80)
   const standard = standardLines.join('\n')
-  assert.match(standard, /focus branch-focused · running/u)
+  assert.match(standard, /focus Focused release · running/u)
   assert.match(standard, /1 waiting interaction/u)
   assert.match(standard, /actions switch\/ask\/steer\/cancel/u)
   assert.match(standardLines[1] ?? '', /actions switch\/ask\/steer\/cancel/u)
@@ -215,6 +234,7 @@ test('work strip is conditional and exposes branch work controls', () => {
           id: 'run-metrics',
           runId: 'run-metrics',
           branchId: 'branch-0123456789abcdef0123456789abcdef-terminal',
+          label: 'Release 0123456789abcdef0123456789abcdef terminal',
           interactionCount: 0,
           focused: true,
           actions: { switch: true, ask: false, steer: true, cancel: true },
@@ -225,7 +245,7 @@ test('work strip is conditional and exposes branch work controls', () => {
     ...state,
   })
   const generatedIdentityRow = chrome.render(80)[1] ?? ''
-  assert.match(generatedIdentityRow, /focus branch-0123456789…terminal · running/u)
+  assert.match(generatedIdentityRow, /focus Release 012345678…terminal · running/u)
   assert.match(generatedIdentityRow, /actions switch\/steer\/cancel/u)
   assert.doesNotMatch(generatedIdentityRow, /!ask|0123456789abcdef0123456789abcdef/u)
   const narrow = chrome.render(40)
@@ -460,7 +480,7 @@ test('completed notices preserve the persistent route and measured context', () 
   const wide = chrome.render(120).join('\n')
   assert.match(
     wide,
-    /profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
+    /profile Release engineer · runner pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
   )
   assert.match(wide, /Prepared markdown export/u)
   assert.match(wide, /in 1\.2k/u)

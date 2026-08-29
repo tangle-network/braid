@@ -170,7 +170,7 @@ export function reduceLifecycleEvent(
       return {
         ...state,
         ...base,
-        focusedRunId: event.runId,
+        ...(state.focusedRunId === null ? { focusedRunId: event.runId } : {}),
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...run, status: 'reconnecting' },
@@ -228,7 +228,6 @@ export function reduceLifecycleEvent(
       return {
         ...state,
         ...base,
-        ...(isTerminalStatus(to) ? {} : { focusedRunId: event.runId }),
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...run, status: to },
@@ -395,17 +394,5 @@ function reduceRequestedRun(
       runs: upsert(state.runs, run),
     },
     { run, turn, userMessage, assistantMessage, at: occurredAt },
-  )
-}
-
-function isTerminalStatus(status: import('./state.js').RunStatus): boolean {
-  return (
-    status === 'completed' ||
-    status === 'failed' ||
-    status === 'aborted' ||
-    status === 'cancelled' ||
-    status === 'blocked' ||
-    status === 'expired' ||
-    status === 'unknown'
   )
 }

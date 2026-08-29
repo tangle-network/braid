@@ -184,7 +184,11 @@ const PI_NATIVE_CAPABILITIES: AgentEnvironmentCapabilities = {
     eventIdentity: true,
     cancellationIdempotency: true,
   },
-  nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+  nativeContinuation: {
+    atomicBoundary: true,
+    requestIdempotency: true,
+    admissionControl: true,
+  },
   sessions: { continue: true, list: true, messages: true },
   interactions: {
     kinds: ['permission'],

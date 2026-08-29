@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  type AgentExactRunControlRef,
   type InteractionRequest,
   type InteractionRequestMaterial,
   type InteractionResponse,
@@ -275,12 +276,14 @@ test('secret answers are validated in memory but never become public data or aut
   const app = applicationFor(provider.execution)
   app.send({ operationId: 'operation-send-secret', text: 'ask-for-secret' })
   await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
-  const runId = app.state().runs[0]?.id ?? ''
+  const run = app.state().runs[0]
+  const pendingInteraction = run?.interactions[0]
+  assert(run && pendingInteraction)
   await app.respondInteraction({
     operationId: 'operation-respond-secret',
-    runId,
-    interactionId: request.id,
-    response: checked.response,
+    runId: run.id,
+    interactionId: pendingInteraction.request.id,
+    response: { ...checked.response, id: pendingInteraction.request.id },
   })
   assert.deepEqual(provider.lastResponse()?.data, { credential: 'secret-answer-fixture' })
   assert.equal(JSON.stringify(app.events()).includes('secret-answer-fixture'), false)
@@ -334,8 +337,8 @@ test('sensitive request context stays usable through a redacted display copy', a
   await app.respondInteraction({
     operationId: 'operation-respond-sensitive-context',
     runId: stored.runId,
-    interactionId: request.id,
-    response: { id: request.id, outcome: 'declined' },
+    interactionId: stored.request.id,
+    response: { id: stored.request.id, outcome: 'declined' },
   })
   const command = provider.lastCommand()
   assert.ok(command)
@@ -370,33 +373,37 @@ test('application interaction response is idempotent, conflict-safe, and survive
   const app = applicationFor(provider.execution, journal)
   app.send({ operationId: 'operation-send-interaction', text: 'ask' })
   await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+  const run = app.state().runs[0]
+  const localInteraction = run?.interactions[0]
+  assert(run && localInteraction)
 
   const response: InteractionResponse = {
-    id: request.id,
+    id: localInteraction.request.id,
     outcome: 'accepted',
     data: { continue: true },
   }
   const first = await app.respondInteraction({
     operationId: 'operation-respond-interaction',
-    runId: app.state().runs[0]?.id ?? '',
-    interactionId: request.id,
+    runId: run.id,
+    interactionId: localInteraction.request.id,
     response,
   })
   assert.equal(first.acknowledgement.outcome, 'accepted')
   assert.equal(provider.responses(), 1)
   const command = provider.lastCommand()
-  const storedRequest = app.state().runs[0]?.interactions[0]?.request
+  const storedInteraction = app.state().runs[0]?.interactions[0]
+  const storedRequest = storedInteraction?.request
   assert.ok(command)
-  assert.ok(storedRequest)
+  assert.ok(storedInteraction && storedRequest)
   assert.equal(command.binding.runId, first.runId)
   assert.equal(command.binding.interactionId, request.id)
-  assert.equal(command.binding.requestDigest, storedRequest.requestDigest)
+  assert.equal(command.binding.requestDigest, storedInteraction.responseBinding.requestDigest)
 
   await assert.rejects(
     app.respondInteraction({
       operationId: 'operation-stale-interaction',
       runId: first.runId,
-      interactionId: request.id,
+      interactionId: localInteraction.request.id,
       response,
     }),
     (error: unknown) => error instanceof AppError && error.code === 'INTERACTION_STALE',
@@ -405,7 +412,7 @@ test('application interaction response is idempotent, conflict-safe, and survive
   const replay = await app.respondInteraction({
     operationId: 'operation-respond-interaction',
     runId: first.runId,
-    interactionId: request.id,
+    interactionId: localInteraction.request.id,
     response,
   })
   assert.equal(replay.replayed, true)
@@ -426,8 +433,8 @@ test('application interaction response is idempotent, conflict-safe, and survive
     app.respondInteraction({
       operationId: 'operation-respond-interaction',
       runId: first.runId,
-      interactionId: request.id,
-      response: { id: request.id, outcome: 'accepted', data: { continue: false } },
+      interactionId: localInteraction.request.id,
+      response: { id: localInteraction.request.id, outcome: 'accepted', data: { continue: false } },
     }),
     (error: unknown) => error instanceof AppError && error.code === 'OPERATION_CONFLICT',
   )
@@ -441,12 +448,120 @@ test('application interaction response is idempotent, conflict-safe, and survive
   const afterRestart = await restarted.respondInteraction({
     operationId: 'operation-respond-interaction',
     runId: first.runId,
-    interactionId: request.id,
+    interactionId: localInteraction.request.id,
     response,
   })
   assert.equal(afterRestart.replayed, true)
   assert.equal(afterRestart.acknowledgement.outcome, 'already-applied')
   provider.release()
+})
+
+test('application answers a local interaction through its original provider binding', async () => {
+  const providerInteractionId = 'run-provider:interaction:opaque-provider-id'
+  const request = questionRequest(providerInteractionId)
+  const provider = interactionExecution(request)
+  const app = applicationFor(provider.execution)
+  app.send({ operationId: 'operation-send-provider-binding', text: 'ask' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+
+  const run = app.state().runs[0]
+  const localRequest = run?.interactions[0]?.request
+  assert.ok(run)
+  assert.ok(localRequest)
+  assert.match(localRequest.id, /^interaction-/u)
+  assert.notEqual(localRequest.id, providerInteractionId)
+
+  const receipt = await app.respondInteraction({
+    operationId: 'operation-respond-provider-binding',
+    runId: run.id,
+    interactionId: localRequest.id,
+    response: { id: localRequest.id, outcome: 'declined' },
+  })
+  const command = provider.lastCommand()
+  assert.ok(command)
+  assert.equal(receipt.interactionId, localRequest.id)
+  assert.equal(command.binding.interactionId, providerInteractionId)
+  assert.equal(command.response.id, providerInteractionId)
+  provider.release()
+})
+
+test('interaction bindings use provider environment identity instead of the local projection id', async () => {
+  const providerEnvironmentId = 'provider-environment-opaque'
+  const providerSessionId = 'provider-session-opaque'
+  let command: InteractionResponseCommand | undefined
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      const controlRef: AgentExactRunControlRef = {
+        runId: input.runId,
+        provider: 'test-provider',
+        environmentId: providerEnvironmentId,
+        sessionId: providerSessionId,
+        executionId: input.runId,
+        requestDigest: `sha256:${'a'.repeat(64)}` as `sha256:${string}`,
+      }
+      yield {
+        type: 'braid.execution.observed',
+        observation: {
+          kind: 'remote-service',
+          provider: 'test-provider',
+          providerEnvironmentId,
+          lifecycle: 'ready',
+          lifecycleMode: 'retained',
+          cleanup: 'explicit',
+          continuity: 'session',
+          location: 'remote',
+          createdAt: NOW,
+          observedAt: NOW,
+          unavailable: [],
+        },
+        controlRef,
+        timestamp: NOW,
+      }
+      const providerInteractionId = `${input.runId}:interaction:opaque`
+      yield {
+        type: 'interaction',
+        request: questionRequest(providerInteractionId, {
+          binding: {
+            runId: controlRef.runId,
+            provider: controlRef.provider,
+            environmentId: controlRef.environmentId,
+            sessionId: controlRef.sessionId,
+            executionId: controlRef.executionId,
+            interactionId: providerInteractionId,
+          },
+        }),
+      }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        if (input.signal.aborted) resolve()
+        else input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    respondInteraction: async (input) => {
+      command = structuredClone(input.command)
+      releaseStream?.()
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const app = applicationFor(execution)
+  app.send({ operationId: 'operation-send-provider-environment', text: 'ask' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+
+  const run = app.state().runs[0]
+  const localInteraction = run?.interactions[0]
+  assert.ok(run)
+  assert.ok(localInteraction)
+  assert.notEqual(run.environmentId, providerEnvironmentId)
+  assert.equal(run.controlRef?.environmentId, providerEnvironmentId)
+  await app.respondInteraction({
+    operationId: 'operation-respond-provider-environment',
+    runId: run.id,
+    interactionId: localInteraction.request.id,
+    response: { id: localInteraction.request.id, outcome: 'declined' },
+  })
+  assert.equal(command?.binding.environmentId, providerEnvironmentId)
 })
 
 test('declined and cancelled interaction outcomes remain distinct after restart', async () => {
@@ -457,11 +572,14 @@ test('declined and cancelled interaction outcomes remain distinct after restart'
     const app = applicationFor(provider.execution, journal)
     app.send({ operationId: `operation-send-${outcome}`, text: outcome })
     await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+    const run = app.state().runs[0]
+    const interaction = run?.interactions[0]
+    assert(run && interaction)
     await app.respondInteraction({
       operationId: `operation-respond-${outcome}`,
-      runId: app.state().runs[0]?.id ?? '',
-      interactionId: request.id,
-      response: { id: request.id, outcome },
+      runId: run.id,
+      interactionId: interaction.request.id,
+      response: { id: interaction.request.id, outcome },
     })
     assert.equal(app.state().runs[0]?.interactions[0]?.status, outcome)
 
@@ -504,12 +622,14 @@ test('the terminal API never reports an unconfirmed interaction response as acce
   const app = applicationFor(execution)
   const send = app.send({ operationId: 'operation-send-unconfirmed', text: 'ask' })
   await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+  const interaction = app.state().runs[0]?.interactions[0]
+  assert(interaction)
   const controller = createApplicationUiController(app)
   const result = await controller.dispatch({
     type: 'respond-interaction',
     operationId: 'operation-respond-unconfirmed',
     runId: app.state().runs[0]?.id ?? '',
-    interactionId: request.id,
+    interactionId: interaction.request.id,
     response: { outcome: 'accept', value: true },
   })
 
@@ -524,19 +644,103 @@ test('the terminal API never reports an unconfirmed interaction response as acce
   await send.completion
 })
 
+test('an unknown response is reconciled on retry without changing operation identity', async () => {
+  const request = questionRequest('interaction-response-retry')
+  let releaseStream: (() => void) | undefined
+  let responseCount = 0
+  const operationIds: string[] = []
+  const execution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      yield {
+        type: 'interaction',
+        request: rebindInteractionRequest(request, {
+          ...request.binding,
+          runId: input.runId,
+          executionId: input.runId,
+        }),
+      }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        if (input.signal.aborted) resolve()
+        else input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    respondInteraction: async (input) => {
+      responseCount += 1
+      operationIds.push(input.command.operationId)
+      if (responseCount === 1)
+        return {
+          operationId: input.command.operationId,
+          outcome: 'unknown' as const,
+          detail: 'INTERACTION_RESPONSE_UNKNOWN',
+        }
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const app = applicationFor(execution)
+  const send = app.send({ operationId: 'operation-send-response-retry', text: 'ask' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+  const run = app.state().runs[0]
+  const interaction = run?.interactions[0]
+  assert(run && interaction)
+  const input = {
+    operationId: 'operation-response-retry',
+    runId: run.id,
+    interactionId: interaction.request.id,
+    response: {
+      id: interaction.request.id,
+      outcome: 'accepted' as const,
+      data: { continue: true },
+    },
+  }
+
+  const first = await app.respondInteraction(input)
+  await first.completion
+  assert.equal(first.acknowledgement.outcome, 'unknown')
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'unknown')
+
+  const second = await app.respondInteraction(input)
+  await second.completion
+  assert.equal(second.acknowledgement.outcome, 'accepted')
+  assert.equal(second.replayed, true)
+  assert.equal(app.state().runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(responseCount, 2)
+  assert.equal(operationIds[0], operationIds[1])
+  assert.deepEqual(
+    app
+      .events()
+      .map((envelope) => envelope.event)
+      .filter((event) => event.kind === 'run.interaction.responded')
+      .map((event) => event.outcome),
+    ['unknown', 'accepted'],
+  )
+
+  const replay = await app.respondInteraction(input)
+  await replay.completion
+  assert.equal(replay.acknowledgement.outcome, 'already-applied')
+  assert.equal(responseCount, 2)
+
+  releaseStream?.()
+  await send.completion
+  await app.close()
+})
+
 test('stale and expired interactions are rejected before provider dispatch', async () => {
   const request = questionRequest('interaction-expired', { timeoutMs: 1, onTimeout: 'fail' })
   const provider = interactionExecution(request)
   const app = applicationFor(provider.execution)
   app.send({ operationId: 'operation-send-expired', text: 'expire' })
   await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
-  const runId = app.state().runs[0]?.id ?? ''
+  const run = app.state().runs[0]
+  const interaction = run?.interactions[0]
+  assert(run && interaction)
   await assert.rejects(
     app.respondInteraction({
       operationId: 'operation-respond-expired',
-      runId,
-      interactionId: request.id,
-      response: { id: request.id, outcome: 'accepted', data: { continue: true } },
+      runId: run.id,
+      interactionId: interaction.request.id,
+      response: { id: interaction.request.id, outcome: 'accepted', data: { continue: true } },
     }),
     (error: unknown) => error instanceof AppError && error.code === 'INTERACTION_EXPIRED',
   )

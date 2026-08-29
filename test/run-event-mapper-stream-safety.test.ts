@@ -4,19 +4,20 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { providerEventFor } from '../src/app/run-event-mapper.js'
 import {
   ApplicationStreamSanitizer,
   MAX_ACTIVE_RUNTIME_STREAMS,
 } from '../src/app/run-stream-sanitizer.js'
-import { redactSensitiveText } from '../src/domain/secret-sanitizer.js'
 import { replayEvents } from '../src/domain/reducer.js'
+import { redactSensitiveText } from '../src/domain/secret-sanitizer.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { ExecutionPort } from '../src/ports/execution.js'
-import { SequenceIds } from '../src/ports/ids.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
+import { SequenceIds } from '../src/ports/ids.js'
 
 const CONTROL_CANARY = 'STREAM_CONTROL_CANARY'
 const BEARER_CANARY = 'STREAM_BEARER_CANARY'
@@ -57,6 +58,54 @@ function streamAtBoundary(value: string, boundary: number): string {
   const second = mappedText(sanitizer, runId, 2, value.slice(boundary))
   return `${first}${second}${sanitizer.finish(runId, 'text')}`
 }
+
+test('provider interaction identities map to stable local ids without changing response bindings', () => {
+  const runId = 'run-provider-interaction'
+  const providerInteractionId = `${runId}:interaction:opaque-provider-id`
+  const request = createInteractionRequest({
+    id: providerInteractionId,
+    kind: 'permission',
+    title: 'Permission: shell',
+    answerSpec: {
+      fields: [
+        {
+          name: 'grant',
+          label: 'Decision',
+          required: true,
+          type: 'select',
+          options: [
+            { value: 'allow_once', label: 'Allow once' },
+            { value: 'deny', label: 'Deny' },
+          ],
+        },
+      ],
+    },
+    binding: {
+      runId,
+      provider: 'cli-bridge',
+      environmentId: 'environment-provider-interaction',
+      sessionId: 'session-provider-interaction',
+      executionId: runId,
+      interactionId: providerInteractionId,
+    },
+  })
+  const first = providerEventFor(runId, { type: 'interaction', request }, provider(1))
+  const replay = providerEventFor(runId, { type: 'interaction', request }, provider(2))
+  const cancelled = providerEventFor(
+    runId,
+    { type: 'interaction.cancel', id: providerInteractionId },
+    provider(3),
+  )
+
+  assert.equal(first.kind, 'run.interaction')
+  assert.equal(replay.kind, 'run.interaction')
+  assert.equal(cancelled.kind, 'run.interaction.cancelled')
+  assert.match(first.request.id, /^interaction-/u)
+  assert.equal(first.request.binding.interactionId, first.request.id)
+  assert.equal(first.responseBinding.interactionId, providerInteractionId)
+  assert.equal(replay.request.id, first.request.id)
+  assert.equal(cancelled.interactionId, first.request.id)
+})
 
 test('incremental mapper redaction matches complete redaction at every credential boundary', () => {
   const values = [

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type {
   AgentExactRunControlRef,
+  AgentWorkspaceBranchingProvider,
   ContextTransferRequest,
   ContextTransferResult,
   WorkspaceCheckpointRequest,
@@ -9,7 +10,8 @@ import type {
   WorkspaceForkRequest,
   WorkspaceForkResult,
 } from '@tangle-network/agent-interface'
-import type { AgentWorkspaceBranchingProvider } from '@tangle-network/agent-interface'
+import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -285,12 +287,16 @@ async function prepareSource(app: ReturnType<typeof createBraidApplication>): Pr
 
 function executionFor(options: {
   readonly capabilities: ReturnType<typeof branchCapabilities>
+  readonly sourceControlProvider?: string
   readonly contextState?: ContextProviderState
   readonly workspaceBranching?: NonNullable<ExecutionPort['workspaceBranching']>
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
-  readonly confidentialAttestationVerifier?: NonNullable<ExecutionPort['confidentialAttestationVerifier']>
+  readonly confidentialAttestationVerifier?: NonNullable<
+    ExecutionPort['confidentialAttestationVerifier']
+  >
 }): ExecutionPort {
   const contextState = options.contextState
+  const sourceControlProvider = options.sourceControlProvider ?? SOURCE_PROVIDER
   return {
     admissionMode: 'sync',
     capabilities: () => options.capabilities,
@@ -331,7 +337,7 @@ function executionFor(options: {
           },
           controlRef: exactControl({
             runId: input.runId,
-            provider: SOURCE_PROVIDER,
+            provider: sourceControlProvider,
             environmentId: 'provider-source-environment',
             sessionId: SOURCE_SESSION,
             executionId: 'provider-source-execution',
@@ -448,6 +454,53 @@ test('cross-runner handoff transfers canonical history and replays after restart
   )
 })
 
+test('cross-runner planning binds the exact destination profile after redaction and overrides', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const profile = defineAgentProfile({
+    name: 'Profile identity test',
+    harness: 'pi',
+    model: {
+      default: 'source-model',
+      metadata: { apiKey: 'profile-secret', maxTokens: 512 },
+    },
+  })
+  const execution = executionFor({
+    capabilities: branchCapabilities(),
+    contextState,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    profile,
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-profile-source', text: 'source history' }).completion
+
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-profile-cross-runner',
+    kind: 'cross-runner',
+    runner: 'codex',
+    model: 'target-model',
+    destinationProvider: TARGET_PROVIDER,
+  })
+  assert.equal(plan.allowed, true)
+  assert(plan.portableContextPlan)
+  const expectedProfile = {
+    ...profile,
+    harness: 'codex' as const,
+    model: { ...profile.model, default: 'target-model' },
+  }
+  assert.equal(
+    plan.portableContextPlan.destination.profileDigest,
+    `sha256:${canonicalAgentProfileDigestHex(expectedProfile)}`,
+  )
+  assert.notEqual(
+    plan.portableContextPlan.destination.profileDigest,
+    `sha256:${canonicalAgentProfileDigestHex(app.state().profile)}`,
+  )
+})
+
 test('fork execution on another branch preserves a live run', async () => {
   const started = deferred()
   const release = deferred()
@@ -504,6 +557,83 @@ test('fork execution on another branch preserves a live run', async () => {
     release.resolve()
     await live.completion
   }
+})
+
+test('workspace fork requires a completed source boundary', async () => {
+  const provider = workspaceProvider()
+  const started = deferred()
+  const release = deferred()
+  const workspaceBranchingProvider: AgentWorkspaceBranchingProvider = {
+    async forEnvironment(sourceEnvironmentId) {
+      return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+    },
+  }
+  const baseExecution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider,
+  })
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    async *streamTurn(input) {
+      let first = true
+      for await (const event of baseExecution.streamTurn(input)) {
+        yield event
+        if (first) {
+          first = false
+          started.resolve()
+          await release.promise
+        }
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  const live = app.send({ operationId: 'op-live-workspace-boundary', text: 'still running' })
+  try {
+    await started.promise
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    const plan = app.conversations.branches.plan({
+      operationId: 'op-workspace-boundary-required',
+      kind: 'workspace',
+    })
+    assert.equal(plan.allowed, false)
+    assert.match(plan.reason ?? '', /retry-safe checkpoint and environment fork support/u)
+    assert.equal(provider.state.checkpointRequests.length, 0)
+  } finally {
+    release.resolve()
+    await live.completion
+  }
+})
+
+test('workspace fork rejects a source control reference from another provider', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    sourceControlProvider: 'foreign-provider',
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-provider-mismatch-source', text: 'source' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-provider-mismatch-fork',
+    kind: 'workspace',
+  })
+  assert.equal(plan.allowed, false)
+  assert.match(plan.reason ?? '', /retry-safe checkpoint and environment fork support/u)
+  assert.equal(provider.state.checkpointRequests.length, 0)
 })
 
 test('cross-runner retry reuses the original acceptance timestamp in its request digest', async () => {
@@ -733,9 +863,9 @@ test('confidential workspace fork records verification only after canonical atte
     ...planInput,
     planDigest: plan.digest,
   })
-  const destination = app.state().environments.find(
-    (environment) => environment.id === branch.environmentId,
-  )
+  const destination = app
+    .state()
+    .environments.find((environment) => environment.id === branch.environmentId)
   assert(destination)
   assert.equal(destination.placement.confidentialRequested, true)
   assert.equal(destination.placement.confidentialVerified, true)

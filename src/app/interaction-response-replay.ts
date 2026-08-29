@@ -8,6 +8,8 @@ type RecordedInteractionEvent = Extract<
   { kind: 'run.interaction.response.requested' | 'run.interaction.responded' }
 >
 
+type InteractionResponseOutcome = 'accepted' | 'declined' | 'cancelled'
+
 export interface RecordedInteractionOperation {
   readonly requested?: Extract<BraidEvent, { kind: 'run.interaction.response.requested' }>
   readonly responded?: Extract<BraidEvent, { kind: 'run.interaction.responded' }>
@@ -71,9 +73,13 @@ export function assertRecordedResponseMatches(
   event: RecordedInteractionEvent,
   checked: ReturnType<typeof checkInteractionResponse>,
   operationId: string,
+  options: {
+    readonly allowUnknownOutcome?: boolean
+    readonly requestedOutcome?: InteractionResponseOutcome
+  } = {},
 ): void {
   if (
-    event.outcome !== checked.response.outcome ||
+    !responseOutcomeMatches(event.outcome, checked.response.outcome, options) ||
     (event.dataDigest ?? undefined) !== (checked.dataDigest ?? undefined)
   )
     throw new AppError('OPERATION_CONFLICT', `Operation ${operationId} has different input`)
@@ -96,11 +102,33 @@ export function assertDurableResponseMatches(
   response: NonNullable<BraidInteraction['responseOperation']>,
   checked: ReturnType<typeof checkInteractionResponse>,
   operationId: string,
+  options: {
+    readonly allowUnknownOutcome?: boolean
+    readonly requestedOutcome?: InteractionResponseOutcome
+  } = {},
 ): void {
   if (
-    response.outcome !== checked.response.outcome ||
+    !responseOutcomeMatches(
+      response.outcome,
+      checked.response.outcome,
+      response.requestedOutcome === undefined
+        ? options
+        : { ...options, requestedOutcome: response.requestedOutcome },
+    ) ||
     (response.dataDigest ?? undefined) !== (checked.dataDigest ?? undefined) ||
     response.containsSecret !== checked.containsSecret
   )
     throw new AppError('OPERATION_CONFLICT', `Operation ${operationId} has different input`)
+}
+
+function responseOutcomeMatches(
+  recorded: InteractionResponseOutcome | 'unknown',
+  checked: InteractionResponseOutcome,
+  options: {
+    readonly allowUnknownOutcome?: boolean
+    readonly requestedOutcome?: InteractionResponseOutcome
+  },
+): boolean {
+  if (recorded !== 'unknown') return recorded === checked
+  return options.allowUnknownOutcome === true && options.requestedOutcome === checked
 }

@@ -39,8 +39,9 @@ export async function removeTemp(paths) {
   }
 }
 
-export async function writeEvidence(evidence) {
+export async function writeEvidence(evidence, destinationOverride) {
   const destination =
+    destinationOverride ??
     process.env.BRAID_LIVE_BRIDGE_EVIDENCE ??
     (process.env.BRAID_RELEASE_ARTIFACT_ROOT
       ? join(process.env.BRAID_RELEASE_ARTIFACT_ROOT, 'live', 'bridge', 'evidence.json')

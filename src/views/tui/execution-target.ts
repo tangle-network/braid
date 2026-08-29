@@ -1,4 +1,5 @@
 import type { BraidViewModel, EnvironmentView, GraphNodeType, RunView } from '../shared/models.js'
+import { isSyntheticFixture } from './terminal-identity.js'
 
 export interface ExecutionTargetView {
   readonly source: 'profile' | 'run'
@@ -119,14 +120,16 @@ function runTarget(view: BraidViewModel, run: RunView): ExecutionTargetView {
     run.environmentId === undefined
       ? undefined
       : view.environments.find((candidate) => candidate.id === run.environmentId)
-  const backend = run.provider ?? environment?.provider
+  const model = run.model ?? run.usage?.model ?? view.model
+  const synthetic = isSyntheticFixture(model)
+  const backend = run.provider ?? environment?.provider ?? (synthetic ? 'fixture' : undefined)
   return Object.freeze({
     source: 'run',
     runId: run.id,
     profileName: run.profileName ?? view.profileName,
     ...(run.profileDigest === undefined ? {} : { profileDigest: run.profileDigest }),
     runner: run.runner ?? view.runner,
-    model: run.model ?? run.usage?.model ?? view.model,
+    model,
     ...(backend === undefined ? {} : { backend }),
     ...(run.effort === undefined ? {} : { effort: run.effort }),
     ...(run.maxVisibleOutputTokens === undefined
@@ -136,7 +139,8 @@ function runTarget(view: BraidViewModel, run: RunView): ExecutionTargetView {
     ...(run.maxTotalOutputTokens === undefined
       ? {}
       : { maxTotalOutputTokens: run.maxTotalOutputTokens }),
-    connection: run.connection ?? run.connectionId ?? 'not connected',
+    connection:
+      run.connection ?? run.connectionId ?? (synthetic ? 'deterministic fixture' : 'not connected'),
     ...(run.connectionId === undefined ? {} : { connectionId: run.connectionId }),
     ...(environment === undefined ? {} : { environment }),
   })

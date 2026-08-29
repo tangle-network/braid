@@ -13,10 +13,7 @@ import {
 } from '../src/adapters/storage/sqlite-driver.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
 import { STARTER_PROFILE } from '../src/app/composition.js'
-import {
-  createInteractionRequest,
-  interactionResponseBinding,
-} from '../src/app/interaction-request.js'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { toJson } from '../src/app/storage-journal-support.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -32,6 +29,7 @@ import {
   createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import {
   createMaterializedStateSnapshot,
   restoreMaterializedState,
@@ -118,8 +116,9 @@ function fixture(): SnapshotFixture {
 }
 
 test('migrates legacy interactions, rejects snapshot conflicts, and recomputes the projection checksum', () => {
-  const interactionId = createInteractionId('interaction-snapshot')
   const runId = createRunId('run-snapshot-interaction')
+  const providerInteractionId = createInteractionId('interaction-snapshot')
+  const interactionId = localInteractionId(runId, providerInteractionId)
   const request = createInteractionRequest({
     id: interactionId,
     kind: 'question',
@@ -169,7 +168,11 @@ test('migrates legacy interactions, rejects snapshot conflicts, and recomputes t
         kind: 'run.interaction',
         runId,
         request,
-        responseBinding: interactionResponseBinding(request),
+        responseBinding: {
+          ...request.binding,
+          interactionId: providerInteractionId,
+          requestDigest: request.requestDigest,
+        },
         provider: {
           eventId: 'provider-snapshot-interaction',
           providerSequence: 1,
@@ -190,10 +193,10 @@ test('migrates legacy interactions, rejects snapshot conflicts, and recomputes t
     ...snapshot.state,
     interactions: [
       {
-        id: interactionId,
+        id: providerInteractionId,
         runId,
         request: {
-          id: interactionId,
+          id: providerInteractionId,
           kind: request.kind,
           title: request.title,
           answerSpec: request.answerSpec,
@@ -231,6 +234,11 @@ test('migrates legacy interactions, rejects snapshot conflicts, and recomputes t
   assert.deepEqual(
     topLevelOnly.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
     [interactionId],
+  )
+  assert.equal(
+    topLevelOnly.runs.find((run) => run.id === runId)?.interactions[0]?.responseBinding
+      .interactionId,
+    providerInteractionId,
   )
   assert.equal(topLevelOnly.projectionChecksum, canonicalProjectionChecksum(topLevelOnly))
 

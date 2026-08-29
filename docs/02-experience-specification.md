@@ -96,7 +96,7 @@ The transcript begins at the top of the viewport and remains visually primary.
 
 The calm context rail uses one compact identity/status row from 60 through 99 columns.
 
-At 100 columns and above, the first row labels the profile, harness, model, and backend.
+At 100 columns and above, the first row labels the profile, runner, model, and backend.
 
 It adds a distinct connection, configured reasoning and caps, known sandbox facts, and measured values when they fit.
 
@@ -163,7 +163,7 @@ Headless state retains complete measurement status, including unavailable fields
  › _
 
 
- profile reviewer · harness codex · model openai/gpt-5.6 · backend Sandbox · think xhigh
+ profile reviewer · runner codex · model openai/gpt-5.6 · backend Sandbox · think xhigh
  working · Ctrl+C cancel
 ```
 

@@ -39,6 +39,10 @@ const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
 const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { renderVerificationReport } = await import('../scripts/release/verification-report.mjs')
+const processMeasurementsPath = '../scripts/performance/process-measurements.mjs'
+const { interactiveReadyFramePredicate } = await import(processMeasurementsPath)
+const packageProofTracePath = '../scripts/package-proof-trace.mjs'
+const { firstTerminalTrace } = await import(packageProofTracePath)
 // @ts-expect-error The visual definitions are an executable JavaScript release helper.
 const visualDefinitions = await import('../scripts/capture-visual-definitions.mjs')
 const { createStateDefinitions, isRunningWorkStripRow } = visualDefinitions
@@ -93,6 +97,73 @@ test('deterministic visual capture stays separate from the explicit live demo', 
   assert.doesNotMatch(visualSource, /capture-product-demo|productDemo/u)
   assert.match(liveDemoSource, /BRAID_LIVE_DEMO_ENDPOINT/u)
   assert.match(liveDemoSource, /assertPublicCapture/u)
+})
+
+test('packed startup readiness uses visible profile and composer contracts', () => {
+  const marker = 'Completed Braid performance conversation (10000 committed events)'
+  const ready = interactiveReadyFramePredicate(marker)
+  const frame = [
+    marker,
+    'braid',
+    'profile Braid performance profile · pi · via Performance local bridge',
+    '──────── type / for commands · Alt+Enter newline · paste ────────',
+  ]
+
+  assert.equal(ready(frame, frame.join('\n')), true)
+  assert.equal(
+    ready(
+      frame.filter((line) => !line.includes('profile ')),
+      frame.join('\n'),
+    ),
+    false,
+  )
+  assert.equal(
+    ready(
+      frame.filter((line) => !line.includes('type / for commands')),
+      frame.join('\n'),
+    ),
+    false,
+  )
+  assert.equal(ready(frame, `${frame.join('\n')}\nstartup error`), false)
+})
+
+test('terminal package parity restores baseline focus from the complete keyboard trace', () => {
+  const trace = firstTerminalTrace({
+    state: {
+      revision: 9,
+      sequence: 9,
+      messages: [{ id: 'message-1' }, { id: 'message-2' }, { id: 'message-9' }],
+      runs: [{ id: 'run-000001' }, { id: 'run-000009' }],
+      focusedRunId: 'run-000009',
+      activeRunId: 'run-000009',
+      lastError: 'later failure',
+    },
+    events: [
+      {
+        kind: 'run.requested',
+        revision: 1,
+        sequence: 1,
+        payload: { operationId: 'op-baseline' },
+      },
+      {
+        kind: 'run.finished',
+        revision: 2,
+        sequence: 2,
+        payload: { status: 'completed' },
+      },
+      {
+        kind: 'run.requested',
+        revision: 3,
+        sequence: 3,
+        payload: { operationId: 'op-later' },
+      },
+    ],
+  })
+
+  assert.equal(trace.state.focusedRunId, 'run-000001')
+  assert.equal(trace.state.activeRunId, null)
+  assert.equal(trace.state.revision, 2)
+  assert.equal(trace.events.length, 2)
 })
 
 test('active streaming capture waits for a terminal run state before exiting', async () => {
@@ -268,6 +339,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'eval.test.js',
       'native-interactive-actions.test.js',
       'native-interactive-run-broker.test.js',
+      'nitro-confidential-attestation.test.js',
       'observability.test.js',
       'plain-accessibility.test.js',
       'property.test.js',
@@ -293,6 +365,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'coordination.test.js',
       'domain-invariants.test.js',
       'domain-reducer.test.js',
+      'nitro-confidential-attestation.test.js',
       'observability.test.js',
       'reducer.test.js',
       'scripts.test.js',
@@ -357,6 +430,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'conversation-branch-effects.test.js',
       'conversations.test.js',
       'coordination.test.js',
+      'nitro-confidential-attestation.test.js',
       'observability.test.js',
       'plain-accessibility.test.js',
       'profile-connection-actions.test.js',
@@ -387,6 +461,7 @@ test('every scoped package alias forwards its declared file set', () => {
     'cli-bridge-retained-restart.test.js',
     'cli-startup.test.js',
     'configuration-product-flow.test.js',
+    'nitro-confidential-attestation.test.js',
     'observability.test.js',
     'plain-accessibility.test.js',
     'profile-connection-actions.test.js',

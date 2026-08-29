@@ -39,6 +39,7 @@ export class LazyExecutionPort implements ExecutionPort {
   readonly admissionMode = 'async' as const
   readonly #loadPort: () => Promise<ExecutionPort>
   #portPromise: Promise<ExecutionPort> | undefined
+  #loadedPort: ExecutionPort | undefined
 
   constructor(options: LazyExecutionOptions) {
     this.#loadPort = options.load
@@ -130,8 +131,35 @@ export class LazyExecutionPort implements ExecutionPort {
     return port.environmentCapabilities()
   }
 
+  get context(): ExecutionPort['context'] {
+    return this.#loadedPort?.context
+  }
+
+  get contextTransfer(): ExecutionPort['contextTransfer'] {
+    return this.#loadedPort?.contextTransfer
+  }
+
+  get workspaceBranching(): ExecutionPort['workspaceBranching'] {
+    return this.#loadedPort?.workspaceBranching
+  }
+
+  get workspaceBranchingProvider(): ExecutionPort['workspaceBranchingProvider'] {
+    return this.#loadedPort?.workspaceBranchingProvider
+  }
+
+  get confidentialAttestationVerifier(): ExecutionPort['confidentialAttestationVerifier'] {
+    return this.#loadedPort?.confidentialAttestationVerifier
+  }
+
+  get provider(): ExecutionPort['provider'] {
+    return this.#loadedPort?.provider
+  }
+
   #load(): Promise<ExecutionPort> {
-    this.#portPromise ??= this.#loadPort()
+    this.#portPromise ??= this.#loadPort().then((port) => {
+      this.#loadedPort = port
+      return port
+    })
     return this.#portPromise
   }
 }

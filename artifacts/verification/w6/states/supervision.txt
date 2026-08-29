@@ -1,9 +1,9 @@
  workers · 4
 ────────────────────────────────────────────────────────────────────────────────
- ›     └ ● release review · worker · running · 3h 29m
-     └ ● terminal proof · worker · running · 3h 29m
-     └ ● stream and replay · worker · running · 3h 29m
-   ● prove the Braid release · supervisor · running · 3h 29m
+ ›     └ ● release review · worker · running · 1.2s
+     └ ● terminal proof · worker · running · 3.1s
+     └ ● stream and replay · worker · running · 4.2s
+   ● prove the Braid release · supervisor · running · 6.2s
 
 
 

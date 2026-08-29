@@ -13,7 +13,7 @@ import {
   type SqliteStorage,
 } from '../adapters/storage/sqlite.js'
 import { BraidApplication } from '../app/application.js'
-import type { CompositionOptions } from '../app/composition.js'
+import type { CompositionOptions } from '../app/composition-options.js'
 import type { ConnectionRegistry } from '../app/connections.js'
 import { STARTER_PROFILE } from '../app/default-profiles.js'
 import type { IntelligenceActionsOptions } from '../app/intelligence-actions.js'

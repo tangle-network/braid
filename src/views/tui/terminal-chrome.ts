@@ -153,7 +153,7 @@ function workStripItem(
   const runner = sanitizeNotification(item.runner ?? '?')
   const model = sanitizeNotification(item.model ?? '?')
   const branchWidth = Math.max(12, Math.min(mode === 'wide' ? 44 : 28, Math.floor(width / 3)))
-  const branch = compactWorkIdentity(item.branchId, branchWidth)
+  const branch = compactWorkIdentity(item.label, branchWidth)
   const actionEntries = Object.entries(item.actions)
   const actions = (
     mode === 'wide'

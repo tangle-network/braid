@@ -1,5 +1,6 @@
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
+import { runEventPayload } from './protocol.mjs'
 
 const ACTIVE_RUN_STATUSES = new Set(['running', 'waiting', 'streaming'])
 const ACTIVE_PROGRESS_KINDS = new Set([
@@ -140,30 +141,54 @@ export function assertObservedUsage(run) {
   return { inputTokens: run.inputTokens, outputTokens: run.outputTokens, llmCalls: run.llmCalls }
 }
 
-export function assertRetainedInteraction(run, interactionId, responseAck) {
-  if (responseAck?.type !== 'ack')
+export function assertRetainedInteraction(
+  responses,
+  runId,
+  interactionId,
+  operationId,
+  responseAck,
+) {
+  if (
+    responseAck?.type !== 'ack' ||
+    responseAck.operationId !== operationId ||
+    !['accepted', 'already-applied'].includes(responseAck.outcome)
+  )
     fail('LIVE_RELEASE_INTERACTION_NOT_RETAINED', 'The interaction response was not acknowledged', {
       responseAck,
     })
-  const interaction = run?.interactions?.find((item) => item?.request?.id === interactionId)
-  if (interaction === undefined || interaction.status === 'unknown')
+  const retained = (kind) =>
+    responses
+      .map((response, index) => ({ response, index, payload: runEventPayload(response, runId) }))
+      .find(
+        ({ response, payload }) =>
+          response.event?.kind === kind &&
+          payload?.value?.interactionId === interactionId &&
+          payload.value.operationId === operationId,
+      )
+  const requested = retained('run.interaction.response.requested')
+  const responded = retained('run.interaction.responded')
+  if (requested === undefined || responded === undefined)
     fail('LIVE_RELEASE_INTERACTION_UNKNOWN', 'The interaction outcome is unknown or absent', {
-      run,
+      runId,
       interactionId,
+      operationId,
     })
-  if (!['declined', 'resolved'].includes(interaction.status))
+  if (
+    requested.index >= responded.index ||
+    requested.payload.value.outcome !== 'declined' ||
+    responded.payload.value.outcome !== 'declined'
+  )
     fail(
       'LIVE_RELEASE_INTERACTION_NOT_RETAINED',
-      'The interaction did not retain a declined or resolved outcome',
-      { interaction },
+      'The durable interaction events did not retain one ordered declined response',
+      { requested, responded },
     )
-  if (interaction.responseOperation?.outcome !== 'declined')
-    fail(
-      'LIVE_RELEASE_INTERACTION_NOT_RETAINED',
-      'The durable interaction receipt did not retain the declined response',
-      { interaction },
-    )
-  return interaction
+  return {
+    status: 'declined',
+    responseOperation: responded.payload.value,
+    requestedSequence: requested.response.sequence,
+    respondedSequence: responded.response.sequence,
+  }
 }
 
 export function assertContextTransfer({ sourceRunId, sourceMessageId, plan, destinationRun }) {
@@ -239,13 +264,14 @@ function nonNegativeInteger(value) {
 export function terminalReceipts(responses, session, runId) {
   if (!Array.isArray(responses)) return []
   return responses.flatMap((response, responseIndex) => {
+    const payload = runEventPayload(response, runId)
     if (
       response?.type !== 'event' ||
       response.event?.kind !== 'run.finished' ||
-      response.event?.runId !== runId
+      payload === undefined
     )
       return []
-    const provider = response.event.provider
+    const provider = payload.source
     return [
       {
         session,
@@ -253,7 +279,7 @@ export function terminalReceipts(responses, session, runId) {
         runId,
         sequence: response.sequence ?? null,
         revision: response.revision ?? null,
-        status: response.event.status ?? null,
+        status: payload.status ?? null,
         providerEventId: provider?.eventId ?? null,
         providerSequence: provider?.providerSequence ?? null,
         cursor: provider?.cursor ?? null,

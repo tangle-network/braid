@@ -1,6 +1,8 @@
 import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
-import type { AgentTurnResult } from '@tangle-network/agent-interface/environment-provider'
-import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
+import type {
+  NativeContextContinuationExecution,
+  RetainedRunHandle,
+} from '@tangle-network/agent-runtime/kernel'
 import type { TurnUsage } from '../../domain/entities.js'
 import type { ExecutionEnvironmentObservation } from '../../domain/execution-observation.js'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
@@ -18,6 +20,11 @@ export interface RetainedResultProjection {
   readonly usage: TurnUsage
   readonly error?: string
 }
+
+export type RetainedTurnResult = Extract<
+  NativeContextContinuationExecution,
+  { readonly result: unknown }
+>['result']
 
 /** Provider-specific facts and operations needed by the retained lifecycle. */
 export interface RetainedExecutionPlan {
@@ -53,11 +60,11 @@ export interface RetainedExecutionPlan {
     readonly detached: boolean
   }) => ProviderRunSnapshot['status']
   readonly isTerminalStatus: (status: ProviderRunSnapshot['status']) => boolean
-  readonly projectResult: (result: AgentTurnResult) => RetainedResultProjection
+  readonly projectResult: (result: RetainedTurnResult) => RetainedResultProjection
   readonly projectFinal: (input: {
     readonly runId: string
     readonly sequence: number
-    readonly result: AgentTurnResult
+    readonly result: RetainedTurnResult
   }) => RuntimeEventEnvelope
 }
 

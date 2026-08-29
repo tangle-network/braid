@@ -25,10 +25,12 @@ function readyFramePredicate(marker) {
     !READY_ERROR.test(output)
 }
 
-function interactiveReadyFramePredicate(marker) {
+export function interactiveReadyFramePredicate(marker) {
   const ready = readyFramePredicate(marker)
   return (lines, output) =>
-    ready(lines, output) && lines.some((line) => line.includes('AgentProfile'))
+    ready(lines, output) &&
+    lines.some((line) => line.includes('profile Braid performance profile')) &&
+    lines.some((line) => line.includes('type / for commands'))
 }
 
 function composerKeyPredicate(snapshot, token) {

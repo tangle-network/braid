@@ -383,7 +383,10 @@ async function runSemanticMatrix() {
     interactionFromResponse(
       {
         type: 'event',
-        event: { kind: 'run.interaction', runId: 'run-live', request: interactionRequest },
+        event: {
+          kind: 'run.interaction',
+          payload: { runId: 'run-live', interaction: interactionRequest },
+        },
       },
       'run-live',
     ),
@@ -391,7 +394,13 @@ async function runSemanticMatrix() {
   )
   assert.equal(
     interactionFromResponse(
-      { type: 'event', event: { kind: 'run.interaction', runId: 'other-run' } },
+      {
+        type: 'event',
+        event: {
+          kind: 'run.interaction',
+          payload: { runId: 'other-run', interaction: interactionRequest },
+        },
+      },
       'run-live',
     ),
     undefined,

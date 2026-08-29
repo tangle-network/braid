@@ -1,8 +1,8 @@
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type {
   AgentWorkspaceBranchingProvider,
   ConfidentialAttestationVerifier,
 } from '@tangle-network/agent-interface'
+import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'

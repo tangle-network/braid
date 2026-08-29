@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "af16b86949ffe8c7a0c36366daa5db5d13b6e2c374a230fc756c8323cb6bac12"
+    "tarballSha256": "69273283b2c48e3fc57e32ba3cc7cfb8f2808c5a879744e190e6df9378d521e5"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 5,
-  "frame": " › W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› queue #1\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via not connected                     Ctrl+C cancel\n",
+  "frame": " › W6 active streaming\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› queue #1\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via local                             Ctrl+C cancel\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-28T23:29:28.917Z",
+          "occurredAt": "2026-08-29T04:15:19.660Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -697,10 +697,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-21a5cfb954eabf6c97d3d061",
+              "id": "effect-op-terminal-000002-45de610136272ea261191af6",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "21a5cfb954eabf6c97d3d06170a1bae5789f7c6759f3f7d8e6a16440358b6805",
+              "requestDigest": "45de610136272ea261191af643c9dd3b12914e873e83e8b680df5b1fe3e76aea",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -719,13 +719,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-28T23:29:28.917Z",
+            "occurredAt": "2026-08-29T04:15:19.660Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-233466b8-b149-46a5-a7d6-eb418bf44422",
+              "id": "turn-d8490564-4935-4979-ba99-140f6bdcf903",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
@@ -735,11 +735,11 @@
               }
             },
             "session": {
-              "id": "982719fe-28b6-4b2f-acf8-910c6927fbae",
+              "id": "3a6fd1ce-c86b-465e-88ad-c030ddbec98d",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-28T23:29:28.917Z",
-              "updatedAt": "2026-08-28T23:29:28.917Z",
+              "createdAt": "2026-08-29T04:15:19.660Z",
+              "updatedAt": "2026-08-29T04:15:19.660Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -761,16 +761,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-233466b8-b149-46a5-a7d6-eb418bf44422"
+                  "id": "turn-d8490564-4935-4979-ba99-140f6bdcf903"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-233466b8-b149-46a5-a7d6-eb418bf44422:attempt:7600ea2e-d7fe-48fd-9436-bd05cc341094",
-                  "materializationReceiptDigest": "sha256:3c34ecf4d56c81b3581a736aedc85c682a865fc5867031bd20cf99bf925a4742",
-                  "bindingDigest": "sha256:71f5702ace44c44d5db0970b3a6b7603d9194b65c5f7893a6fc9f3fc5678551d",
+                  "attemptId": "turn-d8490564-4935-4979-ba99-140f6bdcf903:attempt:74db3162-d771-425f-870f-e3ff90ccde34",
+                  "materializationReceiptDigest": "sha256:195e92e6febf86c70504edfb0327cf82a9a9be8bb902113992f254a48deaa9c0",
+                  "bindingDigest": "sha256:c2c0fcc9d684c3d83693ed84679af33065bbdda1bd8fa5f81327f9329b89a784",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -782,10 +782,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-28T23:29:28.915Z"
+                "startedAt": "2026-08-29T04:15:19.657Z"
               }
             },
-            "timestamp": "2026-08-28T23:29:28.917Z"
+            "timestamp": "2026-08-29T04:15:19.660Z"
           }
         }
       }

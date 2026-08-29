@@ -22,14 +22,18 @@ import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runti
 import type {
   RetainedExecutionDriver,
   RetainedExecutionPlan,
+  RetainedTurnResult,
 } from './retained-execution-contract.js'
 import { RetainedExecutionState, retainedExecutionKey } from './retained-execution-state.js'
 import { streamRetainedExecution } from './retained-execution-stream.js'
+import type { RetainedNativeContinuation } from './retained-native-continuation.js'
 import {
   continueRetainedNative,
   controlRefFromBoundaryProof,
   nativeContinuationInputFromRecovery,
 } from './retained-native-continuation.js'
+
+const CANCEL_STATUS_WAIT_MS = 30_000
 
 export type {
   RetainedExecutionDriver,
@@ -41,6 +45,11 @@ interface ResolvedRetainedHandle {
   readonly handle: RetainedRunHandle
   readonly plan: RetainedExecutionPlan
   readonly wasStarting: boolean
+}
+
+interface RetainedRunStart {
+  readonly handle: RetainedRunHandle
+  readonly terminalResult?: Promise<RetainedTurnResult>
 }
 
 /** Provider-neutral durable execution lifecycle used by Braid adapters. */
@@ -98,18 +107,21 @@ export class RetainedExecutionPort implements ExecutionPort {
     if (plan === undefined) {
       throw new Error('Retained run was not admitted with this exact request')
     }
-    const starting = Promise.resolve().then(() =>
-      input.nativeContextBoundaryProof === undefined
-        ? plan.start(input)
-        : continueRetainedNative(plan, input),
-    )
-    this.#state.rememberStartingHandle(input.runId, starting)
+    const starting = Promise.resolve().then(async (): Promise<RetainedRunStart> => {
+      if (input.nativeContextBoundaryProof === undefined) return { handle: await plan.start(input) }
+      return continueRetainedNative(plan, input)
+    })
+    const startingHandle = starting.then(({ handle }) => handle)
+    this.#state.rememberStartingHandle(input.runId, startingHandle)
     let handle: RetainedRunHandle
+    let terminalResult: Promise<RetainedTurnResult> | undefined
     try {
-      handle = await starting
+      const started = await starting
+      handle = started.handle
+      terminalResult = started.terminalResult
       this.#state.rememberHandle(input.runId, plan, handle)
     } finally {
-      this.#state.clearStartingHandle(input.runId, starting)
+      this.#state.clearStartingHandle(input.runId, startingHandle)
     }
     if (this.#state.isDetached(input.runId)) return
     this.#state.markDetached(input.runId, false)
@@ -121,6 +133,7 @@ export class RetainedExecutionPort implements ExecutionPort {
       signal: input.signal,
       includeObservation: true,
       afterSequence: 0,
+      ...(terminalResult === undefined ? {} : { terminalResult }),
     })
   }
 
@@ -162,17 +175,26 @@ export class RetainedExecutionPort implements ExecutionPort {
       if (!runSupportsNativeContinuation(plan.capabilities)) {
         throw new Error('Provider does not support verified same-session continuation')
       }
-      const handle = await continueRetainedNative(plan, continuationInput)
-      this.#state.rememberHandle(input.runId, plan, handle)
+      const starting = continueRetainedNative(plan, continuationInput)
+      const startingHandle = starting.then(({ handle }) => handle)
+      this.#state.rememberStartingHandle(input.runId, startingHandle)
+      let continued: RetainedNativeContinuation
+      try {
+        continued = await starting
+      } finally {
+        this.#state.clearStartingHandle(input.runId, startingHandle)
+      }
+      this.#state.rememberHandle(input.runId, plan, continued.handle)
       this.#state.markDetached(input.runId, false)
       yield* streamRetainedExecution({
         runId: input.runId,
-        handle,
+        handle: continued.handle,
         plan,
         state: this.#state,
         signal: input.signal,
         includeObservation: true,
         afterSequence: 0,
+        terminalResult: continued.terminalResult,
       })
       return
     }
@@ -323,19 +345,16 @@ export class RetainedExecutionPort implements ExecutionPort {
     if (result.status === 'unknown') {
       return { operationId: input.operationId, outcome: 'unknown', detail: result.effect }
     }
-    if (result.effect === 'cancel_requested') {
-      return {
-        operationId: input.operationId,
-        outcome: 'unknown',
-        detail: 'cancel_requested',
-      }
-    }
     let effect = result.effect
-    if (effect === 'unknown' || effect === 'not_live') {
+    if (effect === 'cancel_requested' || effect === 'unknown' || effect === 'not_live') {
       if (resolved.plan.exactStatus === false) {
         return { operationId: input.operationId, outcome: 'unknown', detail: result.effect }
       }
-      const reconciled = await this.#reconcileCancelled(resolved, input)
+      const reconciled = await this.#reconcileCancelled(
+        resolved,
+        input,
+        effect === 'cancel_requested' ? CANCEL_STATUS_WAIT_MS : 0,
+      )
       if (!reconciled) {
         return { operationId: input.operationId, outcome: 'unknown', detail: result.effect }
       }
@@ -506,6 +525,9 @@ export class RetainedExecutionPort implements ExecutionPort {
         if (starting === undefined) throw new Error('Retained run state is incomplete')
         handle = await starting
       }
+      if (providerSessionId !== undefined && handle.controlRef.sessionId !== providerSessionId) {
+        throw new Error('retained provider session conflicts with the active run')
+      }
       if (suppliedControlRef !== undefined) {
         const exact = this.#state.validateControlRef(activePlan, suppliedControlRef)
         this.#state.assertSameControlRef(handle.controlRef, exact)
@@ -534,10 +556,12 @@ export class RetainedExecutionPort implements ExecutionPort {
   async #reconcileCancelled(
     resolved: ResolvedRetainedHandle,
     input: CancelRunInput & { readonly signal?: AbortSignal },
+    waitMs: number,
   ): Promise<boolean> {
     try {
       const signal = resolved.wasStarting || input.signal?.aborted ? undefined : input.signal
       const snapshot = await resolved.handle.status({
+        ...(waitMs === 0 ? {} : { waitMs }),
         ...(signal === undefined ? {} : { signal }),
       })
       const exact = this.#state.validateControlRef(resolved.plan, snapshot.controlRef)
@@ -634,9 +658,16 @@ export class RetainedExecutionPort implements ExecutionPort {
     const plan = this.#state.plan(runId)
     if (plan === undefined) return
     this.#state.assertProviderSession(plan, providerSessionId)
+    const active = this.#state.handle(runId)
+    if (
+      providerSessionId !== undefined &&
+      active !== undefined &&
+      active.controlRef.sessionId !== providerSessionId
+    ) {
+      throw new Error('retained provider session conflicts with the active run')
+    }
     if (controlRef === undefined) return
     const exact = this.#state.validateControlRef(plan, controlRef)
-    const active = this.#state.handle(runId)
     if (active !== undefined) this.#state.assertSameControlRef(active.controlRef, exact)
   }
 }

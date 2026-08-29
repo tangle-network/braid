@@ -103,11 +103,11 @@ test('runtime activity projection stays bounded at 10k and 100k saved workers', 
     }
 
     const stableState = { ...state, revision: 11 }
-    buildBraidViewModel(stableState)
+    const stableView = buildBraidViewModel(stableState)
     const unchangedRevision: number[] = []
     for (let repetition = 0; repetition < 20; repetition += 1) {
       const started = performance.now()
-      buildBraidViewModel(stableState)
+      assert.equal(buildBraidViewModel(stableState), stableView)
       unchangedRevision.push(performance.now() - started)
     }
 

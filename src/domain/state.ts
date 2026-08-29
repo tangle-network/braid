@@ -209,6 +209,16 @@ export function isLiveRunStatus(status: RunStatus): boolean {
   return isActiveRunStatus(status) && status !== 'detached'
 }
 
+/** Returns true when a retained run has enough identity to resume or reconcile. */
+export function isRecoverableRun(run: BraidRun): boolean {
+  return (
+    (run.status === 'detached' || run.status === 'reconnecting' || run.status === 'unknown') &&
+    (run.controlRef !== undefined ||
+      run.receipt?.nativeContextBoundaryProof !== undefined ||
+      run.providerSessionId !== undefined)
+  )
+}
+
 /** Derives the branch-scoped active run index from canonical run records. */
 export function activeRunRefs(state: BraidState): readonly ActiveRunRef[] {
   return state.runs

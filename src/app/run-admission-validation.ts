@@ -3,15 +3,9 @@ import {
   NativeContextBoundaryProofSchema,
 } from '@tangle-network/agent-interface'
 import {
-  ContextTransferRequestSchema,
-  contextTransferResultMatchesRequest,
-  PortableContextPlanSchema,
-} from '@tangle-network/agent-interface'
-import {
   canonicalAgentProfileDigestHex,
   snapshotAgentProfile,
 } from '../adapters/agent-interface/profile-runtime.js'
-import { canonicalDigest } from '../domain/canonical.js'
 import type { RunAdmissionReceipt, RunCapabilities } from '../domain/receipts.js'
 import type {
   ExecuteTurnInput,
@@ -23,6 +17,8 @@ import type { AdmissionPort, ExecutionAccess, StateReader } from './application-
 import type { SendInput } from './application-types.js'
 import { AppError } from './errors.js'
 import { branchHasVisibleHistory, resolveNativeContinuationRun } from './run-continuation.js'
+
+export { validateContextPlan } from './run-admission-context.js'
 
 export function validateNativeProof(
   context: StateReader & ExecutionAccess,
@@ -78,46 +74,6 @@ export function validateNativeProof(
       'NATIVE_CONTINUATION_UNVERIFIED',
       'The native continuation proof is not bound to the completed run at this branch tip',
     )
-}
-
-export function validateContextPlan(input: SendInput): void {
-  if (
-    input.contextPlan &&
-    input.contextPlan.digest !== canonicalDigest({ ...input.contextPlan, digest: undefined })
-  )
-    throw new AppError('CONTEXT_DIGEST_INVALID', 'The portable context plan digest is invalid')
-  if (
-    input.contextTransfer &&
-    input.contextPlan &&
-    input.contextTransfer.planDigest !== input.contextPlan.digest
-  )
-    throw new AppError(
-      'CONTEXT_RECEIPT_CONFLICT',
-      'The context transfer receipt does not match the accepted plan',
-    )
-  if (input.portableContextPlan !== undefined) {
-    const parsedPlan = PortableContextPlanSchema.safeParse(input.portableContextPlan)
-    if (!parsedPlan.success)
-      throw new AppError('CONTEXT_DIGEST_INVALID', 'The canonical portable context plan is invalid')
-  }
-  if (input.portableContextTransferRequest !== undefined) {
-    const parsedRequest = ContextTransferRequestSchema.safeParse(
-      input.portableContextTransferRequest,
-    )
-    if (!parsedRequest.success)
-      throw new AppError(
-        'CONTEXT_RECEIPT_CONFLICT',
-        'The canonical context transfer request is invalid',
-      )
-    if (
-      input.portableContextTransferReceipt !== undefined &&
-      !contextTransferResultMatchesRequest(parsedRequest.data, input.portableContextTransferReceipt)
-    )
-      throw new AppError(
-        'CONTEXT_RECEIPT_CONFLICT',
-        'The canonical context transfer receipt does not match its request',
-      )
-  }
 }
 
 export function validateExecutionContext(

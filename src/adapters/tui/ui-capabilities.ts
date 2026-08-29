@@ -1,4 +1,9 @@
-import { activeRunForBranch, type BraidState, isLiveRunStatus } from '../../domain/state.js'
+import {
+  activeRunForBranch,
+  type BraidState,
+  isLiveRunStatus,
+  isRecoverableRun,
+} from '../../domain/state.js'
 import type { CapabilityMap } from '../../views/shared/models.js'
 import type { UiFixture } from './ui-fixtures.js'
 
@@ -204,18 +209,10 @@ export function capabilityMap(
             ? 'The current runtime does not acknowledge provider cancellation'
             : 'There is no active run to cancel',
         }
-  const activeRun = focusedActive ? focusedRun : undefined
-  const recoverableRun = activeRun
-    ? undefined
-    : [...state.runs]
-        .reverse()
-        .find(
-          (run) =>
-            (run.status === 'detached' ||
-              run.status === 'reconnecting' ||
-              run.status === 'unknown') &&
-            (run.controlRef !== undefined || run.receipt.nativeContextBoundaryProof !== undefined),
-        )
+  const focusedRecoverable =
+    focusedRun !== undefined && isRecoverableRun(focusedRun) ? focusedRun : undefined
+  const activeRun = focusedActive && focusedRecoverable === undefined ? focusedRun : undefined
+  const recoverableRun = focusedRecoverable ?? [...state.runs].reverse().find(isRecoverableRun)
   capabilities['run.queue'] = activeRun?.capabilities.controls.queue
     ? { available: true, source: 'provider' }
     : {
@@ -244,15 +241,17 @@ export function capabilityMap(
           : 'There is no active run',
       }
   capabilities['run.reconnect'] =
-    recoverableRun?.capabilities.streaming.replay && recoverableRun.capabilities.controls.recreate
+    recoverableRun?.capabilities.streaming.replay &&
+    recoverableRun.capabilities.events.cursor &&
+    recoverableRun.capabilities.controls.recreate
       ? { available: true, source: 'provider' }
       : {
           available: false,
           source: 'provider',
-          reason: active
-            ? 'Detach the active run before reconnecting it'
-            : recoverableRun
-              ? 'The detached run cannot be recreated by this provider'
+          reason: recoverableRun
+            ? 'The detached run cannot be recreated by this provider'
+            : active
+              ? 'There is no recoverable run to reconnect while another run is active'
               : 'There is no recoverable run to reconnect',
         }
   capabilities['run.reconcile'] = recoverableRun?.capabilities.controls.status
@@ -260,10 +259,10 @@ export function capabilityMap(
     : {
         available: false,
         source: 'provider',
-        reason: active
-          ? 'Detach the active run before reconciling it'
-          : recoverableRun
-            ? 'The detached run does not expose provider status'
+        reason: recoverableRun
+          ? 'The detached run does not expose provider status'
+          : active
+            ? 'There is no recoverable run to reconcile while another run is active'
             : 'There is no recoverable run to reconcile',
       }
   if (fixture === 'interaction') {

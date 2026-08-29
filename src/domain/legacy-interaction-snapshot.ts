@@ -6,6 +6,7 @@ import {
   interactionRequestDigest,
 } from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
+import { localInteractionId } from './interaction-identity.js'
 import type { MaterializedState } from './materialized-state.js'
 import { MAX_RUN_INTERACTIONS, withPendingInteractionIndex } from './reducer-support.js'
 import type { BraidInteraction } from './runtime-projection.js'
@@ -25,17 +26,19 @@ interface LegacyInteractionRecord {
 type LegacyMaterializedState = MaterializedState & { readonly interactions?: unknown }
 
 export function migrateLegacyInteractions(state: LegacyMaterializedState): MaterializedState {
-  if (!Object.hasOwn(state, 'interactions')) return state
-  if (!Array.isArray(state.interactions)) {
+  const hasLegacyInteractions = Object.hasOwn(state, 'interactions')
+  if (hasLegacyInteractions && !Array.isArray(state.interactions)) {
     throw new Error('Legacy snapshot interactions must be an array')
   }
 
   const { interactions: _legacyInteractions, ...withoutLegacyInteractions } = state
-  if (state.interactions.length === 0) return withoutLegacyInteractions
+  const legacyInteractions: readonly unknown[] = hasLegacyInteractions
+    ? (state.interactions as readonly unknown[])
+    : []
 
   const seen = new Set<string>()
   const runs = [...state.runs]
-  for (const raw of state.interactions) {
+  for (const raw of legacyInteractions) {
     const legacy = legacyInteractionRecord(raw)
     const id = requiredString(legacy.id, 'legacy interaction id')
     const runId = requiredString(legacy.runId, `legacy interaction ${id} runId`)
@@ -44,12 +47,15 @@ export function migrateLegacyInteractions(state: LegacyMaterializedState): Mater
     if (runIndex === -1) throw new Error(`Legacy snapshot interaction ${id} has no run ${runId}`)
     const run = runs[runIndex]
     if (!run) throw new Error(`Legacy snapshot interaction ${id} has no run ${runId}`)
-    const existing = run.interactions.find((interaction) => interaction.request.id === id)
+    const localId = localInteractionId(runId, id)
+    const existing = run.interactions.find(
+      (interaction) => interaction.request.id === id || interaction.request.id === localId,
+    )
     if (existing !== undefined) {
-      assertLegacyInteractionMatches(legacy, existing)
+      assertLegacyInteractionMatches(legacy, existing, existing.request.id === localId)
       continue
     }
-    if (run.pendingInteractionIds?.includes(id)) {
+    if (run.pendingInteractionIds?.includes(id) || run.pendingInteractionIds?.includes(localId)) {
       throw new Error(`Legacy snapshot interaction ${id} conflicts with canonical pending identity`)
     }
     const migrated = migrateLegacyInteraction(legacy, run, id)
@@ -61,7 +67,7 @@ export function migrateLegacyInteractions(state: LegacyMaterializedState): Mater
       ...(allInteractions.length > MAX_RUN_INTERACTIONS ? { interactionsTruncated: true } : {}),
     }
   }
-  return { ...withoutLegacyInteractions, runs }
+  return migrateStoredInteractions({ ...withoutLegacyInteractions, runs })
 }
 
 function legacyInteractionRecord(value: unknown): LegacyInteractionRecord {
@@ -77,21 +83,95 @@ function migrateLegacyInteraction(
   id: string,
 ): BraidInteraction {
   const legacyRequest = recordValue(legacy.request, `legacy interaction ${id} request`)
-  const request = legacyRequestWithBinding(legacyRequest, legacy, run, id)
+  const migratedRequest = localizeInteraction(
+    legacyRequestWithBinding(legacyRequest, legacy, run, id),
+    run.id,
+    id,
+  )
   const status = legacyInteractionStatus(legacy.status, id)
   const responseOperation = legacyResponseOperation(legacy.resolution, status, id)
   if (status === 'responding' && responseOperation === undefined) {
     throw new Error(`Legacy snapshot interaction ${id} is responding without a response operation`)
   }
   return {
-    request,
-    responseBinding: { ...request.binding, requestDigest: request.requestDigest },
+    request: migratedRequest.request,
+    responseBinding: migratedRequest.responseBinding,
     runId: run.id,
     source: {
       ...(isCanonicalIsoDateTime(legacy.createdAt) ? { occurredAt: legacy.createdAt } : {}),
     },
     status,
     ...(responseOperation === undefined ? {} : { responseOperation }),
+  }
+}
+
+function migrateStoredInteractions(state: MaterializedState): MaterializedState {
+  const runs = state.runs.map((run) => {
+    const migratedIds = new Map<string, string>()
+    const interactions = run.interactions.map((interaction) => {
+      const migrated = migrateStoredInteraction(interaction, run.id)
+      if (migrated.request.id !== interaction.request.id)
+        migratedIds.set(interaction.request.id, migrated.request.id)
+      return migrated
+    })
+    const pendingInteractionIds = run.pendingInteractionIds?.map(
+      (interactionId) => migratedIds.get(interactionId) ?? interactionId,
+    )
+    return {
+      ...run,
+      interactions,
+      ...(pendingInteractionIds === undefined ? {} : { pendingInteractionIds }),
+    }
+  })
+  return { ...state, runs }
+}
+
+function migrateStoredInteraction(interaction: BraidInteraction, runId: string): BraidInteraction {
+  const providerInteractionId = interaction.responseBinding.interactionId
+  if (
+    interaction.request.id !== providerInteractionId ||
+    interaction.request.binding.interactionId !== interaction.request.id ||
+    localInteractionId(runId, providerInteractionId) === interaction.request.id
+  )
+    return interaction
+  const localized = localizeInteraction(
+    interaction.request,
+    runId,
+    providerInteractionId,
+    interaction.responseBinding,
+  )
+  return { ...interaction, ...localized }
+}
+
+function localizeInteraction(
+  request: InteractionRequest,
+  runId: string,
+  providerInteractionId: string,
+  existingResponseBinding?: BraidInteraction['responseBinding'],
+): {
+  readonly request: InteractionRequest
+  readonly responseBinding: BraidInteraction['responseBinding']
+} {
+  const localId = localInteractionId(runId, providerInteractionId)
+  const { requestDigest: _requestDigest, binding, ...requestFields } = request
+  const material = {
+    ...requestFields,
+    id: localId,
+    binding: { ...binding, interactionId: localId },
+  }
+  const parsed = InteractionRequestSchema.safeParse({
+    ...material,
+    requestDigest: interactionRequestDigest(material),
+  })
+  if (!parsed.success)
+    throw new Error(`Legacy interaction ${providerInteractionId} request is invalid`)
+  return {
+    request: parsed.data as InteractionRequest,
+    responseBinding: existingResponseBinding ?? {
+      ...binding,
+      interactionId: providerInteractionId,
+      requestDigest: request.requestDigest,
+    },
   }
 }
 
@@ -219,24 +299,39 @@ function legacyResponseOperation(
 function assertLegacyInteractionMatches(
   legacy: LegacyInteractionRecord,
   current: BraidInteraction,
+  mapped = false,
 ): void {
   const id = current.request.id
   const request = recordValue(legacy.request, `legacy interaction ${id} request`)
-  for (const key of [
-    'id',
-    'kind',
-    'title',
-    'body',
-    'subject',
-    'answerSpec',
-    'responseScopes',
-    'allowedOutcomes',
-    'default',
-    'timeoutMs',
-    'onTimeout',
-    'binding',
-    'requestDigest',
-  ] as const) {
+  const keys: readonly (keyof InteractionRequest)[] = mapped
+    ? [
+        'kind',
+        'title',
+        'body',
+        'subject',
+        'answerSpec',
+        'responseScopes',
+        'allowedOutcomes',
+        'default',
+        'timeoutMs',
+        'onTimeout',
+      ]
+    : [
+        'id',
+        'kind',
+        'title',
+        'body',
+        'subject',
+        'answerSpec',
+        'responseScopes',
+        'allowedOutcomes',
+        'default',
+        'timeoutMs',
+        'onTimeout',
+        'binding',
+        'requestDigest',
+      ]
+  for (const key of keys) {
     if (
       request[key] !== undefined &&
       canonicalDigest(request[key]) !== canonicalDigest(current.request[key])

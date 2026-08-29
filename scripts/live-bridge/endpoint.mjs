@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
@@ -62,29 +64,58 @@ export function bridgeAuthToken() {
   )
 }
 
-export async function requestJson(endpoint, path, token, timeoutMs = 10_000) {
+/**
+ * Issue one bounded JSON request against CLI Bridge.
+ *
+ * The optional request object keeps live checks on this shared transport while
+ * allowing them to prove POST acknowledgements without retaining raw bodies.
+ */
+export async function requestJson(
+  endpoint,
+  path,
+  token,
+  timeoutMs = 10_000,
+  {
+    method = 'GET',
+    body: requestBody,
+    headers: requestHeaders = {},
+    captureWireDigest = false,
+  } = {},
+) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(`${endpoint}${path}`, {
+      method,
       headers: {
         accept: 'application/json',
+        ...(requestBody === undefined ? {} : { 'content-type': 'application/json' }),
+        ...requestHeaders,
         ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
       },
+      ...(requestBody === undefined ? {} : { body: requestBody }),
       signal: controller.signal,
     })
     const text = await response.text()
-    let body
+    let responseBody
     try {
-      body = text.length === 0 ? undefined : JSON.parse(text)
+      responseBody = text.length === 0 ? undefined : JSON.parse(text)
     } catch {
-      body = undefined
+      responseBody = undefined
     }
     return {
       status: response.status,
       ok: response.ok,
-      body: evidenceValue(body, '', 0, token === undefined ? [] : [token]),
+      body: evidenceValue(responseBody, '', 0, token === undefined ? [] : [token]),
       text: redactString(text, token === undefined ? [] : [token]).slice(0, 64_000),
+      ...(captureWireDigest
+        ? {
+            wire: {
+              bytes: Buffer.byteLength(text),
+              digest: `sha256:${createHash('sha256').update(text).digest('hex')}`,
+            },
+          }
+        : {}),
     }
   } catch (error) {
     return {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { join, relative } from 'node:path'
 import {
   createLiveCredentialReference,
@@ -15,6 +16,7 @@ import {
   requestBase,
   responseForRequest,
   runFromState,
+  stateForRequest,
   stateForRun,
 } from './protocol.mjs'
 import {
@@ -216,6 +218,7 @@ export async function executeTarget(
 
 function targetResult(config, target, providerCapabilities, credential, operation) {
   return {
+    operationNamespace: randomUUID(),
     targetKey: target.key,
     workspace: config.workspace,
     label: target.definition.label,
@@ -439,7 +442,14 @@ export async function executeNamedOperation({
 }
 
 export function operationRequest(result, prefix, action, command, params, suffix) {
-  const stem = `${prefix}-${action}${suffix === undefined ? '' : `-${suffix}`}-${result.targetKey}`
+  if (typeof result.operationNamespace !== 'string' || result.operationNamespace.length === 0) {
+    throw new LiveBridgeError(
+      'LIVE_RELEASE_OPERATION_NAMESPACE_MISSING',
+      'The release operation has no stable execution namespace',
+      exitCodes.failed,
+    )
+  }
+  const stem = `${prefix}-${result.operationNamespace}-${action}${suffix === undefined ? '' : `-${suffix}`}-${result.targetKey}`
   return {
     ...requestBase(stem, command, command === 'get_state' ? undefined : `op-${stem}`),
     params,
@@ -485,11 +495,11 @@ export async function operationState(session, result, prefix, suffix, timeoutMs)
     { projection: 'full' },
     suffix,
   )
-  const response = await sendOperationRequest(
-    session,
-    result,
-    request,
+  result.requests.push(evidenceValue(request))
+  session.send(request)
+  const response = await session.waitFor(
     'release operation state',
+    stateForRequest(request.requestId),
     Math.min(timeoutMs, 15_000),
   )
   if (response.type !== 'state') {

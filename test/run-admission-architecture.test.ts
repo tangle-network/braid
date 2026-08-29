@@ -40,6 +40,7 @@ const PROFILE = defineAgentProfile({
 const MODULES = [
   'run-admission.ts',
   'run-admission-request.ts',
+  'run-admission-context.ts',
   'run-admission-validation.ts',
   'run-admission-receipt.ts',
   'run-admission-dispatch.ts',

@@ -69,7 +69,7 @@ function processStat(pid) {
   }
 }
 
-function processTable(token) {
+function processTable(token, requiredPids) {
   let names
   try {
     names = readdirSync(procRoot)
@@ -80,22 +80,45 @@ function processTable(token) {
   const marked = []
   for (const name of names) {
     if (!/^\d+$/u.test(name)) continue
+    const pid = Number(name)
     let record
+    let marker
+    let markerInspected = false
     try {
-      record = processStat(Number(name))
-    } catch (error) {
-      return { error: `The POSIX process table could not be inspected: ${errorMessage(error)}` }
+      record = processStat(pid)
+    } catch {
+      try {
+        marker = readOwnershipMarker(pid, token)
+        markerInspected = true
+      } catch (markerError) {
+        if (markerError?.code !== 'EACCES')
+          return {
+            error: `The POSIX process ownership could not be inspected: ${errorMessage(markerError)}`,
+          }
+        markerInspected = true
+      }
+      if (marker !== true && !requiredPids.has(pid)) continue
+      try {
+        record = processStat(pid)
+      } catch (retryError) {
+        return {
+          error: `The POSIX process table could not be inspected: ${errorMessage(retryError)}`,
+        }
+      }
     }
     if (record === undefined) continue
     records.set(record.pid, record)
-    try {
-      if (readOwnershipMarker(record.pid, token) === true) marked.push(record)
-    } catch (error) {
-      if (error?.code !== 'EACCES')
-        return {
-          error: `The POSIX process ownership could not be inspected: ${errorMessage(error)}`,
-        }
+    if (!markerInspected) {
+      try {
+        marker = readOwnershipMarker(record.pid, token)
+      } catch (error) {
+        if (error?.code !== 'EACCES')
+          return {
+            error: `The POSIX process ownership could not be inspected: ${errorMessage(error)}`,
+          }
+      }
     }
+    if (marker === true) marked.push(record)
   }
   return { records, marked }
 }
@@ -178,7 +201,8 @@ class PosixProcessTreeTracker {
       this.failure = 'The POSIX process has no valid owner PID'
       return
     }
-    const table = processTable(this.token)
+    const requiredPids = new Set([this.rootPid, ...this.entries.keys()])
+    const table = processTable(this.token, requiredPids)
     if (table.error !== undefined) {
       this.failure = table.error
       return

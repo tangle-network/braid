@@ -1,0 +1,388 @@
+{
+  "schema": "braid.live-bridge.native-continuation.v1",
+  "command": "pnpm test:live:bridge:continuation",
+  "scope": {
+    "claims": [
+      "admission before terminal output",
+      "active status and event access",
+      "exact cancellation",
+      "cancelled terminal replay",
+      "byte-identical duplicate admission",
+      "successful native continuation"
+    ],
+    "provider": "real Pi through Tangle Router"
+  },
+  "startedAt": "2026-08-29T04:25:26.025Z",
+  "runtime": {
+    "node": "v24.18.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "environment": {
+    "endpoint": "http://127.0.0.1:3478",
+    "bearerConfigured": true,
+    "model": "pi/tangle-router/deepseek-v4-flash",
+    "runner": "pi",
+    "provider": "tangle-router",
+    "timeoutMs": 120000
+  },
+  "capabilities": {
+    "nativeContinuation": {
+      "atomicBoundary": true,
+      "requestIdempotency": true,
+      "admissionControl": true
+    },
+    "retainedControl": {
+      "exactRunIdentity": true,
+      "resultIdentity": true,
+      "eventIdentity": true,
+      "cancellationIdempotency": true
+    },
+    "streaming": {
+      "live": true,
+      "replay": true,
+      "detach": true,
+      "turnIdempotency": true
+    },
+    "sessions": {
+      "continue": true,
+      "list": false,
+      "messages": false
+    },
+    "interactions": {
+      "kinds": [
+        "permission"
+      ],
+      "answerFieldTypes": [
+        "select"
+      ],
+      "responseScopes": [
+        "interaction"
+      ],
+      "secretAnswers": false,
+      "concurrentRequests": false,
+      "replay": true,
+      "responseIdempotency": true
+    }
+  },
+  "bridgeCapabilities": {
+    "nativeContinuation": {
+      "atomicBoundary": true,
+      "requestIdempotency": true,
+      "admissionControl": true
+    },
+    "retainedControl": {
+      "exactRunIdentity": true,
+      "resultIdentity": true,
+      "eventIdentity": true,
+      "cancellationIdempotency": true
+    },
+    "streaming": {
+      "live": true,
+      "replay": true,
+      "detach": true,
+      "turnIdempotency": true
+    },
+    "sessions": {
+      "continue": true,
+      "list": true,
+      "messages": true
+    },
+    "interactions": {
+      "kinds": [
+        "permission"
+      ],
+      "answerFieldTypes": [
+        "select"
+      ],
+      "responseScopes": [
+        "interaction"
+      ],
+      "secretAnswers": false,
+      "concurrentRequests": false,
+      "replay": true,
+      "responseIdempotency": true
+    }
+  },
+  "provider": {
+    "name": "cli-bridge",
+    "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+    "route": "pi/tangle-router/deepseek-v4-flash",
+    "real": true
+  },
+  "cleanup": [
+    {
+      "scope": "session",
+      "sessionId": "braid-live-native-1787977526323-cancel-session",
+      "continuationObserved": true,
+      "cancellation": {
+        "attempted": false
+      },
+      "status": 200,
+      "closed": true,
+      "session": {
+        "status": "closed"
+      }
+    },
+    {
+      "scope": "session",
+      "sessionId": "braid-live-native-1787977526323-success-session",
+      "continuationObserved": true,
+      "cancellation": {
+        "attempted": false
+      },
+      "status": 200,
+      "closed": true,
+      "session": {
+        "status": "closed"
+      }
+    },
+    {
+      "scope": "environment",
+      "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+      "destroyed": true
+    }
+  ],
+  "cancellation": {
+    "sessionId": "braid-live-native-1787977526323-cancel-session",
+    "first": {
+      "success": true,
+      "status": "done",
+      "elapsedMs": 4218,
+      "run": {
+        "runId": "braid-live-native-1787977526323-cancel-execution-1",
+        "provider": "cli-bridge",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+        "sessionId": "braid-live-native-1787977526323-cancel-session",
+        "executionId": "braid-live-native-1787977526323-cancel-execution-1",
+        "requestDigest": "sha256:ad922cab8b37cf530e3a83877b14ae3eaa66452b970c0a23f459f2499a542912"
+      },
+      "boundary": {
+        "runId": "braid-live-native-1787977526323-cancel-execution-1",
+        "provider": "cli-bridge",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+        "sessionId": "braid-live-native-1787977526323-cancel-session",
+        "executionId": "braid-live-native-1787977526323-cancel-execution-1",
+        "requestDigest": "sha256:ad922cab8b37cf530e3a83877b14ae3eaa66452b970c0a23f459f2499a542912",
+        "kind": "revision",
+        "observedAt": "2026-08-29T04:25:30.533Z"
+      },
+      "session": {
+        "id": "braid-live-native-1787977526323-cancel-session",
+        "backend": "pi",
+        "model": "pi/tangle-router/deepseek-v4-flash",
+        "status": "idle",
+        "runId": "braid-live-native-1787977526323-cancel-execution-1"
+      }
+    },
+    "admission": {
+      "controlRef": {
+        "runId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+        "provider": "cli-bridge",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+        "sessionId": "braid-live-native-1787977526323-cancel-session",
+        "executionId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+        "requestDigest": "sha256:287f9fcf416ddcfb178be42747cf77f61255514ac713159f15b490dc6eaf2749"
+      },
+      "elapsedMs": 39,
+      "request": {
+        "operationId": "braid-live-native-1787977526323-cancel-continue",
+        "requestDigest": "sha256:128e00589b94fb4229e0bb62e88b84392acc32c38cdddc93b43d989d27d8b856",
+        "turnDigest": "sha256:3898278147dbc94641bc32f0c7e87e3c9e2011debc7ec70840fa65302cab7875"
+      }
+    },
+    "active": {
+      "status": {
+        "status": "running",
+        "terminal": false,
+        "state": "detached",
+        "canonicalLastSeq": 5
+      },
+      "events": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "count": 12,
+        "types": [
+          "status",
+          "raw",
+          "message.part.updated"
+        ],
+        "session": {
+          "id": "braid-live-native-1787977526323-cancel-session",
+          "backend": "pi",
+          "model": "pi/tangle-router/deepseek-v4-flash",
+          "status": "idle",
+          "runId": "braid-live-native-1787977526323-cancel-execution-1"
+        },
+        "backends": [
+          "pi"
+        ],
+        "providers": [
+          "tangle-router"
+        ],
+        "models": [
+          "deepseek-v4-flash"
+        ]
+      }
+    },
+    "cancellation": {
+      "request": {
+        "operationId": "braid-live-native-1787977526323-cancel-cancel",
+        "requestDigest": "sha256:1594647aa48426bcb09ed7f04ca7ee22da4942a01710d198c68c97cb54a3eb8a"
+      },
+      "acknowledgement": {
+        "status": "accepted",
+        "effect": "cancel_requested"
+      },
+      "elapsedMs": 14
+    },
+    "terminal": {
+      "status": {
+        "status": "cancelled",
+        "terminal": true,
+        "state": "terminal",
+        "canonicalLastSeq": 16
+      },
+      "acknowledgement": "accepted",
+      "result": {
+        "success": false,
+        "status": "cancelled",
+        "error": "pi native turn aborted"
+      },
+      "elapsedMs": 55
+    },
+    "terminalReplay": {
+      "status": 200,
+      "acknowledgement": "replayed",
+      "result": {
+        "success": false,
+        "status": "cancelled"
+      }
+    },
+    "duplicateAdmission": {
+      "statuses": [
+        202,
+        202
+      ],
+      "phases": [
+        "admitted",
+        "admitted"
+      ],
+      "controlRefs": [
+        {
+          "runId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+          "provider": "cli-bridge",
+          "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+          "sessionId": "braid-live-native-1787977526323-cancel-session",
+          "executionId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+          "requestDigest": "sha256:287f9fcf416ddcfb178be42747cf77f61255514ac713159f15b490dc6eaf2749"
+        },
+        {
+          "runId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+          "provider": "cli-bridge",
+          "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+          "sessionId": "braid-live-native-1787977526323-cancel-session",
+          "executionId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+          "requestDigest": "sha256:287f9fcf416ddcfb178be42747cf77f61255514ac713159f15b490dc6eaf2749"
+        }
+      ],
+      "byteIdentical": true,
+      "wire": {
+        "bytes": 1528,
+        "digest": "sha256:2206cde3049f02181404deca6ecd716737a352fd6199695ed6bc567a9a1c7ffb"
+      }
+    },
+    "assertions": {
+      "admissionBeforeTerminal": true,
+      "activeStatus": true,
+      "activeEvents": true,
+      "exactCancel": true,
+      "cancelledTerminalReplay": true,
+      "duplicateAdmissionByteIdentical": true,
+      "timing": {
+        "admissionElapsedMs": 39,
+        "cancelElapsedMs": 14,
+        "terminalElapsedMs": 55,
+        "terminalObservedAfterCancel": true
+      }
+    }
+  },
+  "success": {
+    "sessionId": "braid-live-native-1787977526323-success-session",
+    "first": {
+      "success": true,
+      "status": "done",
+      "elapsedMs": 3023,
+      "run": {
+        "runId": "braid-live-native-1787977526323-success-execution-1",
+        "provider": "cli-bridge",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+        "sessionId": "braid-live-native-1787977526323-success-session",
+        "executionId": "braid-live-native-1787977526323-success-execution-1",
+        "requestDigest": "sha256:380bd3caa7da82acc325ba7a41569b3145f69be883cfb7e86663138d12e78fbd"
+      },
+      "boundary": {
+        "runId": "braid-live-native-1787977526323-success-execution-1",
+        "provider": "cli-bridge",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+        "sessionId": "braid-live-native-1787977526323-success-session",
+        "executionId": "braid-live-native-1787977526323-success-execution-1",
+        "requestDigest": "sha256:380bd3caa7da82acc325ba7a41569b3145f69be883cfb7e86663138d12e78fbd",
+        "kind": "revision",
+        "observedAt": "2026-08-29T04:25:35.073Z"
+      },
+      "session": {
+        "id": "braid-live-native-1787977526323-success-session",
+        "backend": "pi",
+        "model": "pi/tangle-router/deepseek-v4-flash",
+        "status": "idle",
+        "runId": "braid-live-native-1787977526323-success-execution-1"
+      }
+    },
+    "admission": {
+      "controlRef": {
+        "runId": "native-continuation:sha256:d88bfaa3f984051fee54ae5844d147bc579bf92af86ab9b7035678d9bf8e0ec2",
+        "provider": "cli-bridge",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+        "sessionId": "braid-live-native-1787977526323-success-session",
+        "executionId": "native-continuation:sha256:d88bfaa3f984051fee54ae5844d147bc579bf92af86ab9b7035678d9bf8e0ec2",
+        "requestDigest": "sha256:4f33ac1f127965e28aba747378d1bc803fed5bdb234a6f66f0530bea46513bd9"
+      },
+      "elapsedMs": 33,
+      "request": {
+        "operationId": "braid-live-native-1787977526323-success-continue",
+        "requestDigest": "sha256:1980e5fa4847a296ee1fb6b11954078cdcb3b58887e0a2147765c7300ef378b3",
+        "turnDigest": "sha256:80df5bc4c46ba4475450fdd8d13508ead8459e3d71a31942998cbeff9f35d39c"
+      }
+    },
+    "terminal": {
+      "status": {
+        "status": "done",
+        "terminal": true,
+        "state": "terminal",
+        "canonicalLastSeq": 19
+      },
+      "acknowledgement": "accepted",
+      "result": {
+        "success": true,
+        "status": "done",
+        "text": "Braid live continuation success."
+      }
+    },
+    "assertions": {
+      "admissionBeforeTerminal": true,
+      "successfulContinuation": true
+    }
+  },
+  "assertions": {
+    "admissionBeforeTerminal": true,
+    "activeStatus": true,
+    "activeEvents": true,
+    "exactCancel": true,
+    "cancelledTerminalReplay": true,
+    "duplicateAdmissionByteIdentical": true,
+    "successfulContinuation": true
+  },
+  "status": "passed",
+  "finishedAt": "2026-08-29T04:25:37.348Z"
+}

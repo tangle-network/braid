@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import {
+  contextTransferRequestDigest,
+  defineAgentProfile,
+  portableContextPlanDigest,
+  portableConversationContextDigest,
+} from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { validateContextPlan } from '../src/app/run-admission-validation.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import { createPortableContextPlan } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
@@ -28,7 +36,11 @@ const NATIVE_REPLAY_CAPABILITIES = {
   environment: {
     ...RETAINED_RUN_HANDLE_CAPABILITIES,
     sessions: { continue: true, list: false, messages: false },
-    nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+    nativeContinuation: {
+      atomicBoundary: true,
+      requestIdempotency: true,
+      admissionControl: true,
+    },
   },
 } as const
 
@@ -120,6 +132,100 @@ test('admission receipt binds portable context and is deeply immutable', async (
   assert.equal(Object.isFrozen(plan.messages), true)
 })
 
+test('canonical transfer receipts cannot bypass their request binding', () => {
+  assert.throws(
+    () =>
+      validateContextPlan({
+        operationId: 'op-unbound-context-receipt',
+        text: 'next',
+        portableContextTransferReceipt: {} as never,
+      }),
+    /requires its exact request/u,
+  )
+})
+
+test('canonical context transfer binds admission to its destination session', () => {
+  const source = {
+    source: {
+      runId: 'source-run',
+      messageId: 'source-message',
+      provider: 'source-provider',
+      environmentId: 'source-environment',
+      sessionId: 'source-session',
+      executionId: 'source-execution',
+      requestDigest: `sha256:${'a'.repeat(64)}` as const,
+    },
+    completeness: 'complete' as const,
+    messages: [
+      {
+        id: 'source-message',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'prior context' }],
+        timestamp: '2026-08-01T00:00:00.000Z',
+      },
+    ],
+    attachments: [],
+  }
+  const sourceContext = { ...source, digest: portableConversationContextDigest(source) }
+  const destination = {
+    runner: 'codex',
+    provider: 'target-provider',
+    environmentId: 'target-environment',
+    sessionId: 'target-session',
+    runId: 'target-run',
+    executionId: 'target-execution',
+    profileDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
+  const planMaterial = {
+    planId: 'context-plan-session-binding',
+    source: sourceContext,
+    destination,
+    messages: [
+      {
+        messageId: 'source-message',
+        action: 'include' as const,
+        parts: [{ partIndex: 0, action: 'include' as const }],
+      },
+    ],
+    context: { ...sourceContext, messages: source.messages },
+    requiresAcceptance: false,
+  }
+  const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
+  const requestMaterial = {
+    operationId: 'op-session-binding',
+    plan,
+    acceptance: {
+      planDigest: plan.digest,
+      acceptedAt: '2026-08-01T00:00:00.000Z',
+      acceptedBy: 'policy' as const,
+    },
+  }
+  const request = {
+    ...requestMaterial,
+    requestDigest: contextTransferRequestDigest(requestMaterial),
+  }
+  assert.throws(
+    () =>
+      validateContextPlan({
+        operationId: request.operationId,
+        text: 'next',
+        sessionId: 'unrelated-session',
+        portableContextPlan: plan,
+        portableContextTransferRequest: request,
+      }),
+    /destination/u,
+  )
+  assert.doesNotThrow(() =>
+    validateContextPlan({
+      operationId: request.operationId,
+      text: 'next',
+      sessionId: destination.sessionId,
+      portableContextPlan: plan,
+      portableContextTransferRequest: request,
+    }),
+  )
+})
+
 test('contract fixtures preserve parts, tools, reasoning, artifacts, proposals, warnings, usage, cost, and interactions', async () => {
   const execution: ExecutionPort = {
     capabilities: () => REPLAY_CAPABILITIES,
@@ -144,7 +250,7 @@ test('contract fixtures preserve parts, tools, reasoning, artifacts, proposals, 
   assert.equal(run.inputTokens, 3)
   assert.equal(run.outputTokens, 4)
   assert.equal(run.costUsd, 0.01)
-  assert.equal(run.interactions[0]?.request.id, 'interaction-1')
+  assert.equal(run.interactions[0]?.request.id, localInteractionId(run.id, 'interaction-1'))
   assert.equal(run.eventDetails.length, 0)
   assert.equal(new Set(app.events().flatMap((envelope) => envelope.event.kind)).size > 1, true)
 })
@@ -638,6 +744,10 @@ test('restart keeps a replayable run reconnecting until replay proves its outcom
   assert.equal(
     restarted.events().some((entry) => entry.event.kind === 'run.unknown'),
     false,
+  )
+  assert.equal(
+    createApplicationUiController(restarted).view().capabilities['run.reconnect']?.available,
+    true,
   )
 
   const recovered = await restarted.reconnectRun({

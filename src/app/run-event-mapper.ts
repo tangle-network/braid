@@ -13,6 +13,7 @@ import type {
   TurnUsage,
 } from '../domain/events.js'
 import type { ExecutionEnvironmentObservation } from '../domain/execution-observation.js'
+import { localInteractionId } from '../domain/interaction-identity.js'
 import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.js'
 import { publicRuntimeDiagnostic } from '../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
@@ -52,17 +53,23 @@ interface SafeInteractionRequest {
 
 function safeInteractionRequest(value: unknown, runId: string): SafeInteractionRequest {
   const parsed = parseInteractionRequest(value)
-  if (parsed === undefined || parsed.binding.runId !== runId)
+  if (
+    parsed === undefined ||
+    parsed.binding.runId !== runId ||
+    safePublicIdentifier(parsed.id) !== parsed.id
+  )
     return invalidInteractionRequest(runId)
-  const material = safeValue(interactionRequestMaterial(parsed))
+  const responseBinding = interactionResponseBinding(parsed)
+  const interactionId = localInteractionId(runId, parsed.id)
+  const material = safeValue({
+    ...interactionRequestMaterial(parsed, { ...parsed.binding, interactionId }),
+    id: interactionId,
+  })
   if (material === null || typeof material !== 'object' || Array.isArray(material))
     return invalidInteractionRequest(runId)
   try {
-    const request = createInteractionRequest({
-      ...(material as InteractionRequestMaterial),
-      binding: { ...parsed.binding },
-    })
-    return { request, responseBinding: interactionResponseBinding(parsed) }
+    const request = createInteractionRequest(material as InteractionRequestMaterial)
+    return { request, responseBinding }
   } catch {
     return invalidInteractionRequest(runId)
   }
@@ -70,7 +77,7 @@ function safeInteractionRequest(value: unknown, runId: string): SafeInteractionR
 
 function invalidInteractionRequest(runId: string): SafeInteractionRequest {
   const exactRunId = safePublicIdentifier(runId) ?? 'run-invalid'
-  const interactionId = `${exactRunId}:interaction:invalid`
+  const interactionId = localInteractionId(exactRunId, 'invalid')
   const request = createInteractionRequest({
     id: interactionId,
     kind: 'provider.invalid.interaction',
@@ -463,7 +470,7 @@ export function providerEventFor(
       return {
         kind: 'run.interaction.cancelled',
         runId,
-        interactionId: safePublicIdentifier(event.id) ?? `${runId}:interaction`,
+        interactionId: localInteractionId(runId, safePublicIdentifier(event.id) ?? 'invalid'),
         ...(event.reason === undefined ? {} : { reason: safeText(event.reason) }),
         provider,
       }

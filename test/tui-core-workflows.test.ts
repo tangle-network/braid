@@ -6,8 +6,11 @@ import { fileURLToPath } from 'node:url'
 import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { comparePairedArms } from '@tangle-network/agent-eval'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { capabilityMap } from '../src/adapters/tui/ui-capabilities.js'
 import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-contracts.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
+import { initialState, type BraidState } from '../src/domain/state.js'
 import type { BraidViewModel, InteractionView } from '../src/views/shared/models.js'
 import { ActivityBrowserPanel } from '../src/views/tui/activity-browser.js'
 import { AnalysisViewPanel } from '../src/views/tui/analysis.js'
@@ -26,6 +29,43 @@ import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const theme = createBraidTheme(false)
+
+test('background recoverable runs remain available while another branch is active', () => {
+  const state = initialState({
+    name: 'capability test',
+    harness: 'pi',
+    model: { default: 'provider/model' },
+  })
+  const run = (id: string, branchId: string, status: 'streaming' | 'detached') => ({
+    id,
+    conversationId: state.conversationId,
+    branchId,
+    status,
+    capabilities: {
+      ...DEFAULT_RUN_CAPABILITIES,
+      streaming: {
+        ...DEFAULT_RUN_CAPABILITIES.streaming,
+        replay: true,
+        detach: true,
+      },
+      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, recreate: true },
+      events: { ...DEFAULT_RUN_CAPABILITIES.events, cursor: true },
+    },
+    controlRef: {},
+  })
+  const viewState = {
+    ...state,
+    workspace: '/workspace',
+    focusedRunId: 'run-focused',
+    activeRunId: 'run-focused',
+    runs: [
+      run('run-focused', state.branchId, 'streaming'),
+      run('run-background', 'branch-background', 'detached'),
+    ],
+  } as unknown as BraidState
+
+  assert.equal(capabilityMap(viewState)['run.reconnect']?.available, true)
+})
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
   const deadline = Date.now() + timeoutMs

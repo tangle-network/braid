@@ -74,11 +74,19 @@ export interface AutomationApplyCommand {
   readonly interactionId: string
 }
 
+export interface AutomationApplyOptions {
+  /** Used by startup reconciliation, which already owns the readiness barrier. */
+  readonly bypassStartupReconciliation?: boolean
+}
+
 export interface AutomationActions {
   readonly create: (input: AutomationRuleCreateCommand) => Promise<AutomationRuleReceipt>
   readonly update: (input: AutomationRuleUpdateCommand) => Promise<AutomationRuleReceipt>
   readonly dryRun: (input: AutomationDryRunCommand) => Promise<AutomationDryRunReceipt>
-  readonly apply: (input: AutomationApplyCommand) => Promise<ApplyAutomationReceipt>
+  readonly apply: (
+    input: AutomationApplyCommand,
+    options?: AutomationApplyOptions,
+  ) => Promise<ApplyAutomationReceipt>
   readonly disable: (input: {
     readonly operationId: string
     readonly ruleId: string
@@ -95,13 +103,17 @@ export function createAutomationActions(options: {
   readonly events: () => readonly BraidEventEnvelope[]
   readonly commitAndWait: AutomationStoreInput['commitAndWait']
   readonly now: () => string
-  readonly respond: (input: {
-    readonly operationId: string
-    readonly runId: string
-    readonly interactionId: string
-    readonly response: import('@tangle-network/agent-interface').InteractionResponse
-    readonly automationRule?: AutomationRuleRecord
-  }) => Promise<import('./application-types.js').InteractionReceipt>
+  readonly respond: (
+    input: {
+      readonly operationId: string
+      readonly runId: string
+      readonly interactionId: string
+      readonly response: import('@tangle-network/agent-interface').InteractionResponse
+      readonly automationRule?: AutomationRuleRecord
+    },
+    options?: AutomationApplyOptions,
+  ) => Promise<import('./application-types.js').InteractionReceipt>
+  readonly startupReconciliation?: Promise<void>
   readonly reconcilePending?: () => Promise<void>
   readonly canRespond: (runId?: string) => boolean
 }): AutomationActions {
@@ -158,28 +170,38 @@ export function createAutomationActions(options: {
           context: contextFor(state, target, input.context),
         })
       }),
-    apply: (input) =>
-      queue.run(async () => {
-        const state = options.state()
-        const target = targetFor(state, input.runId, input.interactionId)
-        if (target === undefined)
-          throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
-        assertCanRespond(options, target)
-        return applyAutomation({
-          ...store(),
-          operationId: input.operationId,
-          interaction: target,
-          context: contextFor(state, target, undefined),
-          respond: (response, { rule }) =>
-            options.respond({
-              operationId: input.operationId,
-              runId: input.runId,
-              interactionId: input.interactionId,
-              response,
-              automationRule: rule,
-            }),
-        })
-      }),
+    apply: (input, applyOptions = {}) => {
+      const ready =
+        applyOptions.bypassStartupReconciliation === true
+          ? Promise.resolve()
+          : (options.startupReconciliation ?? Promise.resolve())
+      return ready.then(() =>
+        queue.run(async () => {
+          const state = options.state()
+          const target = targetFor(state, input.runId, input.interactionId)
+          if (target === undefined)
+            throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+          assertCanRespond(options, target)
+          return applyAutomation({
+            ...store(),
+            operationId: input.operationId,
+            interaction: target,
+            context: contextFor(state, target, undefined),
+            respond: (response, { rule }) =>
+              options.respond(
+                {
+                  operationId: input.operationId,
+                  runId: input.runId,
+                  interactionId: input.interactionId,
+                  response,
+                  automationRule: rule,
+                },
+                applyOptions,
+              ),
+          })
+        }),
+      )
+    },
     disable: async (input) => {
       const receipt = await queue.run(() => disableAutomationRule({ ...store(), ...input }))
       await options.reconcilePending?.()

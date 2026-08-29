@@ -142,6 +142,7 @@ export function reduceInteractionEvent(
         responseOperation: {
           operationId: createOperationId(event.operationId),
           outcome: event.outcome,
+          requestedOutcome: event.outcome,
           ...(event.dataDigest === undefined ? {} : { dataDigest: event.dataDigest }),
           containsSecret: event.containsSecret,
           ...(event.automationRule === undefined ? {} : { automationRule: event.automationRule }),
@@ -170,13 +171,14 @@ export function reduceInteractionEvent(
                 : {}),
             }
           }
+          if (!canResolveUnknownResponse(current, event))
+            throw interactionInvariant(
+              `Interaction ${event.interactionId} has a different response result`,
+            )
+        } else
           throw interactionInvariant(
-            `Interaction ${event.interactionId} has a different response result`,
+            `Interaction ${event.interactionId} cannot be resolved from ${current.status}`,
           )
-        }
-        throw interactionInvariant(
-          `Interaction ${event.interactionId} cannot be resolved from ${current.status}`,
-        )
       }
       const responseOperation = current.responseOperation
       if (responseOperation === undefined)
@@ -299,7 +301,7 @@ function sameResponseRequest(
   return (
     response !== undefined &&
     response.operationId === createOperationId(event.operationId) &&
-    response.outcome === event.outcome &&
+    (response.requestedOutcome ?? response.outcome) === event.outcome &&
     (response.dataDigest ?? undefined) === (event.dataDigest ?? undefined) &&
     response.containsSecret === event.containsSecret &&
     canonicalDigest(response.automationRule ?? null) ===
@@ -322,13 +324,31 @@ function sameResponseResult(
   )
 }
 
+function canResolveUnknownResponse(
+  current: BraidInteraction,
+  event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
+): boolean {
+  const response = current.responseOperation
+  return (
+    current.status === 'unknown' &&
+    event.outcome !== 'unknown' &&
+    response !== undefined &&
+    response.outcome === 'unknown' &&
+    response.requestedOutcome === event.outcome &&
+    response.operationId === createOperationId(event.operationId) &&
+    (response.dataDigest ?? undefined) === (event.dataDigest ?? undefined) &&
+    response.containsSecret === event.containsSecret
+  )
+}
+
 function assertResponseMatches(
   response: NonNullable<BraidInteraction['responseOperation']>,
   event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
 ): void {
   if (
     response.operationId !== createOperationId(event.operationId) ||
-    (event.outcome !== 'unknown' && response.outcome !== event.outcome) ||
+    (event.outcome !== 'unknown' &&
+      (response.requestedOutcome ?? response.outcome) !== event.outcome) ||
     (response.dataDigest ?? undefined) !== (event.dataDigest ?? undefined) ||
     response.containsSecret !== event.containsSecret
   ) {

@@ -6,7 +6,9 @@ import {
   classifyPackedStartup,
   interactionFromResponse,
   requestBase,
+  runEventPayload,
   runFromState,
+  runWithAdmissionReceipt,
   terminalMessage,
 } from './protocol.mjs'
 import { evidenceValue } from './redaction.mjs'
@@ -293,9 +295,11 @@ export async function executeInteractiveProtocol(
         timeoutMs,
       )
       const interaction = interactionFromResponse(interactionResponse, started.runId)
+      const interactionPayload = runEventPayload(interactionResponse, started.runId)
       if (
         typeof interaction?.interactionId !== 'string' ||
-        interaction.interactionId.length === 0
+        interaction.interactionId.length === 0 ||
+        !Number.isSafeInteger(interactionPayload?.source?.providerSequence)
       ) {
         throw new LiveBridgeError(
           'LIVE_RELEASE_INTERACTION_INVALID',
@@ -347,6 +351,7 @@ export async function executeInteractiveProtocol(
       const staleCodes = new Set([
         'INTERACTION_RESPONSE_IN_PROGRESS',
         'INTERACTION_RESPONSE_CONFLICT',
+        'INTERACTION_STALE',
       ])
       if (duplicateResponse.type !== 'error' || !staleCodes.has(duplicateResponse.code)) {
         throw new LiveBridgeError(
@@ -355,6 +360,56 @@ export async function executeInteractiveProtocol(
           exitCodes.failed,
           { response: duplicateResponse },
         )
+      }
+      const responseIndex = session.responses.indexOf(responseAck)
+      const providerProgress = await session.waitFor(
+        'post-response provider progress',
+        (response) => {
+          const payload = runEventPayload(response, started.runId)
+          return (
+            session.responses.indexOf(response) > responseIndex &&
+            Number.isSafeInteger(payload?.source?.providerSequence) &&
+            payload.source.providerSequence > interactionPayload.source.providerSequence
+          )
+        },
+        timeoutMs,
+      )
+      const providerProgressPayload = runEventPayload(providerProgress, started.runId)
+      const postResponseState = await operationState(
+        session,
+        result,
+        operationPrefix,
+        'post-response',
+        timeoutMs,
+      )
+      const postResponseRun = runFromState(postResponseState.state, started.runId)
+      let cleanupCancel
+      if (['running', 'waiting', 'streaming', 'reconnecting'].includes(postResponseRun?.status)) {
+        const cancelRequest = operationRequest(
+          result,
+          operationPrefix,
+          'cleanup-cancel',
+          'cancel_run',
+          {
+            runId: started.runId,
+            reason: 'live interactive proof completed',
+          },
+        )
+        cleanupCancel = await sendOperationRequest(
+          session,
+          result,
+          cancelRequest,
+          'interactive proof cleanup cancellation',
+          timeoutMs,
+        )
+        if (cleanupCancel.type !== 'ack') {
+          throw new LiveBridgeError(
+            'LIVE_RELEASE_INTERACTION_CLEANUP_FAILED',
+            'The named interactive operation did not acknowledge cleanup cancellation',
+            exitCodes.failed,
+            { response: cleanupCancel },
+          )
+        }
       }
       const terminal = await terminalOperationState(
         session,
@@ -378,11 +433,13 @@ export async function executeInteractiveProtocol(
           { run: terminal.run, interaction: interactionState },
         )
       }
-      const targetProof = assertTargetRunIdentity(terminal.run, target)
-      const usage = assertObservedUsage(terminal.run)
+      const verifiedRun = runWithAdmissionReceipt(terminal.run, started.response.admission)
+      const targetProof = assertTargetRunIdentity(verifiedRun, target)
       const retainedInteraction = assertRetainedInteraction(
-        terminal.run,
+        session.responses,
+        started.runId,
         interaction.interactionId,
+        responseRequest.operationId,
         responseAck,
       )
       return {
@@ -395,10 +452,27 @@ export async function executeInteractiveProtocol(
           interaction: evidenceValue(interaction),
           response: evidenceValue(responseAck),
           staleDuplicate: evidenceValue(duplicateResponse),
-          terminalRun: evidenceValue(terminal.run),
+          providerProgress: evidenceValue({
+            kind: providerProgress.event.kind,
+            sequence: providerProgress.sequence,
+            revision: providerProgress.revision,
+            providerSequence: providerProgressPayload.source.providerSequence,
+            cursor: providerProgressPayload.source.cursor ?? null,
+          }),
+          postResponseStatus: postResponseRun?.status ?? null,
+          ...(cleanupCancel === undefined ? {} : { cleanupCancel: evidenceValue(cleanupCancel) }),
+          terminalRun: evidenceValue(verifiedRun),
           interactionStatus: retainedInteraction.status,
           responseOutcome: retainedInteraction.responseOperation.outcome,
-          usage,
+          usage: evidenceValue({
+            terminalStatus: verifiedRun.status,
+            input: verifiedRun.inputTokens,
+            output: verifiedRun.outputTokens,
+            tokenStatus: verifiedRun.tokenStatus,
+            costStatus: verifiedRun.costStatus,
+            settled: false,
+            reason: 'The interactive proof cancels after provider progress',
+          }),
         },
       }
     },
@@ -466,24 +540,28 @@ export async function executeRestartReconciliation(
       }
       const activeStream = await getSession().waitFor(
         'restart operation streamed active run event',
-        (response) =>
-          response.type === 'event' &&
-          response.event?.runId === started.runId &&
-          getSession().responses.indexOf(response) > admissionResponseIndex &&
-          [
-            'run.text.delta',
-            'run.part.updated',
-            'run.reasoning.delta',
-            'run.tool.call',
-            'run.tool.result',
-            'run.artifact',
-            'run.proposal',
-            'run.interaction',
-          ].includes(response.event.kind) &&
-          Number.isSafeInteger(response.event?.provider?.providerSequence) &&
-          response.event.provider.providerSequence > 0,
+        (response) => {
+          const payload = runEventPayload(response, started.runId)
+          return (
+            payload !== undefined &&
+            getSession().responses.indexOf(response) > admissionResponseIndex &&
+            [
+              'run.text.delta',
+              'run.part.updated',
+              'run.reasoning.delta',
+              'run.tool.call',
+              'run.tool.result',
+              'run.artifact',
+              'run.proposal',
+              'run.interaction',
+            ].includes(response.event.kind) &&
+            Number.isSafeInteger(payload.source?.providerSequence) &&
+            payload.source.providerSequence > 0
+          )
+        },
         timeoutMs,
       )
+      const activeStreamPayload = runEventPayload(activeStream, started.runId)
       const streamedState = await operationState(
         getSession(),
         result,
@@ -515,8 +593,8 @@ export async function executeRestartReconciliation(
           responseIndex: activeStreamResponseIndex,
           sequence: activeStream.sequence,
           revision: activeStream.revision,
-          providerSequence: activeStream.event.provider.providerSequence,
-          cursor: activeStream.event.provider.cursor ?? null,
+          providerSequence: activeStreamPayload.source.providerSequence,
+          cursor: activeStreamPayload.source.cursor ?? null,
         },
       }
       const savedCursor = streamedRun?.lastCursor
@@ -547,7 +625,7 @@ export async function executeRestartReconciliation(
         (response) =>
           response.type === 'event' &&
           response.event?.kind === 'run.detached' &&
-          response.event?.runId === started.runId,
+          runEventPayload(response, started.runId) !== undefined,
         timeoutMs,
       )
       const detachedState = await operationState(
@@ -615,7 +693,7 @@ export async function executeRestartReconciliation(
           restarted.responses.indexOf(response) >= responseCountBeforeReconnect &&
           response.type === 'event' &&
           response.event?.kind === 'run.reconnecting' &&
-          response.event?.runId === started.runId &&
+          runEventPayload(response, started.runId) !== undefined &&
           Number.isSafeInteger(response.sequence) &&
           response.sequence > 0 &&
           Number.isSafeInteger(response.revision) &&
@@ -623,25 +701,30 @@ export async function executeRestartReconciliation(
         timeoutMs,
       )
       const reconnectBoundaryResponseIndex = restarted.responses.indexOf(reconnectBoundaryResponse)
+      const reconnectBoundaryPayload = runEventPayload(reconnectBoundaryResponse, started.runId)
       const replayEvent = await restarted.waitFor(
         'restart replayed post-cursor event',
-        (response) =>
-          restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
-          response.type === 'event' &&
-          response.event?.runId === started.runId &&
-          response.event?.kind !== 'run.reconnecting' &&
-          Number.isSafeInteger(response.sequence) &&
-          response.sequence > reconnectBoundaryResponse.sequence &&
-          Number.isSafeInteger(response.revision) &&
-          response.revision > reconnectBoundaryResponse.revision &&
-          Number.isSafeInteger(response.event?.provider?.providerSequence) &&
-          Number.isSafeInteger(savedProviderSequence) &&
-          savedProviderSequence > 0 &&
-          response.event.provider.providerSequence === savedProviderSequence + 1 &&
-          response.sequence <= reconnectResponse.revision &&
-          response.revision <= reconnectResponse.revision,
+        (response) => {
+          const payload = runEventPayload(response, started.runId)
+          return (
+            restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
+            payload !== undefined &&
+            response.event?.kind !== 'run.reconnecting' &&
+            Number.isSafeInteger(response.sequence) &&
+            response.sequence > reconnectBoundaryResponse.sequence &&
+            Number.isSafeInteger(response.revision) &&
+            response.revision > reconnectBoundaryResponse.revision &&
+            Number.isSafeInteger(payload.source?.providerSequence) &&
+            Number.isSafeInteger(savedProviderSequence) &&
+            savedProviderSequence > 0 &&
+            payload.source.providerSequence === savedProviderSequence + 1 &&
+            response.sequence <= reconnectResponse.revision &&
+            response.revision <= reconnectResponse.revision
+          )
+        },
         timeoutMs,
       )
+      const replayPayload = runEventPayload(replayEvent, started.runId)
       const terminal = await terminalOperationState(
         restarted,
         result,
@@ -678,15 +761,15 @@ export async function executeRestartReconciliation(
         reconnectRequest,
         reconnectResponse,
         reconnectBoundary: {
-          runId: reconnectBoundaryResponse.event.runId,
+          runId: reconnectBoundaryPayload.runId,
           kind: reconnectBoundaryResponse.event.kind,
           responseIndex: reconnectBoundaryResponseIndex,
           sequence: reconnectBoundaryResponse.sequence,
           revision: reconnectBoundaryResponse.revision,
-          savedCursor: reconnectBoundaryResponse.event.after ?? null,
+          savedCursor: reconnectBoundaryPayload.cursor ?? null,
         },
         replayEvent: {
-          event: replayEvent.event,
+          event: replayPayload,
           kind: replayEvent.event.kind,
           responseIndex: restarted.responses.indexOf(replayEvent),
           sequence: replayEvent.sequence,
@@ -696,8 +779,9 @@ export async function executeRestartReconciliation(
         finalState: terminal.response,
         terminalSession: newProcess.instanceId,
       })
-      const targetProof = assertTargetRunIdentity(terminal.run, target)
-      const usage = assertObservedUsage(terminal.run)
+      const verifiedRun = runWithAdmissionReceipt(terminal.run, started.response.admission)
+      const targetProof = assertTargetRunIdentity(verifiedRun, target)
+      const usage = assertObservedUsage(verifiedRun)
       return {
         runId: started.runId,
         runIds: [started.runId],

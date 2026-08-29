@@ -37,4 +37,4 @@
 
 
 ─────────────────────────────────── type / for commands · Alt+Enter newline · paste ────────────────────────────────────
-profile Braid starter · harness pi · backend local                                                        Ctrl+E details
+profile Braid starter · runner pi · backend local                                                         Ctrl+E details

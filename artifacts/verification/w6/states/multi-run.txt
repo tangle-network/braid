@@ -19,6 +19,6 @@
 
 
 ─────────────────── type / for commands · Alt+Enter · paste ────────────────────
-profile Braid starter · pi · via not connected                     Ctrl+C cancel
-focus branch-1 · running · pi/fixture/deterministic        actions switch/cancel
-work branch-623aa83c34…af629727 · running                  actions switch/cancel
+profile Braid starter · pi · via local                             Ctrl+C cancel
+focus Parallel run A · running · pi/fixture/deterministic  actions switch/cancel
+work Parallel run B · running · pi/fixture/deterministic   actions switch/cancel

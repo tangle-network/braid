@@ -27,7 +27,11 @@ const NATIVE_CAPABILITIES = {
   environment: {
     ...RETAINED_RUN_HANDLE_CAPABILITIES,
     sessions: { continue: true, list: false, messages: false },
-    nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+    nativeContinuation: {
+      atomicBoundary: true,
+      requestIdempotency: true,
+      admissionControl: true,
+    },
   },
 } as const
 

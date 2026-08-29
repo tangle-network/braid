@@ -144,7 +144,9 @@ export class ApplicationUiController implements BraidUiController {
     storageFailure: string | undefined,
     cleanupUncertain: string | undefined,
   ): BraidViewModel {
-    const canRespond = app.canRespondToInteractions(interactionViews(state)[0]?.runId)
+    const canRespond = interactionViews(state).some((interaction) =>
+      app.canRespondToInteractions(interaction.runId),
+    )
     const view = withRunUsage(
       buildBraidViewModel(
         state,

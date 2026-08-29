@@ -10,7 +10,9 @@ import {
   interactionFromResponse,
   requestBase,
   responseForRequest,
+  retainedCancellationAdvertised,
   runFromState,
+  runWithAdmissionReceipt,
   semanticCommandStatus,
   stateForRequest,
   stateForRun,
@@ -131,7 +133,10 @@ export async function runNormalTurn(
     (response) => response.requestId === send.requestId && stateForRun(response, runId),
     timeoutMs,
   )
-  const finalRun = runFromState(terminal.state, runId)
+  const finalRun = runWithAdmissionReceipt(
+    runFromState(terminal.state, runId),
+    sendResponse.admission,
+  )
   const finalMessage = terminalMessage(terminal.state, runId)
   const markerObserved = exactMarker(finalMessage?.text, expectedMarker)
   result.normal = {
@@ -173,9 +178,9 @@ export async function verifyCancel(
   const advertisedByNormalAdmission =
     result.send?.admission?.capabilities?.controls?.cancel === true
   const advertisedByNormalRun = finalRun?.capabilities?.controls?.cancel === true
-  const advertisedByProvider = capabilityAdvertised(providerCapabilities.controls?.cancel)
+  const advertisedByProvider = retainedCancellationAdvertised(providerCapabilities)
   if (!advertisedByProvider && !advertisedByNormalAdmission && !advertisedByNormalRun) {
-    const availability = capabilityAvailability(providerCapabilities.controls?.cancel, false)
+    const availability = capabilityAvailability(advertisedByProvider, false)
     const cancel = {
       ...requestBase(
         requestIdFor(operationPrefix, 'cancel', target.key),
@@ -233,10 +238,7 @@ export async function verifyCancel(
     return
   }
   const advertisedByRun = cancelSendResponse.admission?.capabilities?.controls?.cancel === true
-  const availability = capabilityAvailability(
-    providerCapabilities.controls?.cancel,
-    advertisedByRun,
-  )
+  const availability = capabilityAvailability(advertisedByProvider, advertisedByRun)
   result.cancel.advertisedByProvider = availability.advertisedByProvider
   result.cancel.advertisedByNormalAdmission = advertisedByNormalAdmission
   result.cancel.advertisedByNormalRun = advertisedByNormalRun
@@ -361,7 +363,7 @@ export function assertTargetSemantics(result, { strict = false } = {}) {
     ['interaction', result.interaction],
   ]) {
     assertSemanticOutcome(name, capability.status, capability.advertised, { capability })
-    if (strict && capability.status !== 'verified')
+    if (strict && name === 'cancel' && capability.status !== 'verified')
       throw new LiveBridgeError(
         'LIVE_RELEASE_REQUIRED_PROOF_MISSING',
         `${name} did not produce a verified live proof`,

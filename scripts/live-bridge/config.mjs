@@ -172,7 +172,7 @@ export async function probePackedAnalysisReadiness(installRoot, endpoint, target
   }
 }
 
-export async function loadProviderCapabilities(installRoot) {
+export async function loadProviderCapabilities(installRoot, backend) {
   const module = await import(
     pathToFileURL(
       join(
@@ -185,7 +185,7 @@ export async function loadProviderCapabilities(installRoot) {
       ),
     ).href
   )
-  return module.defaultCliBridgeCapabilities()
+  return module.defaultCliBridgeCapabilities(backend)
 }
 
 export async function writeTargetConfig(root, endpoint, target, credential) {

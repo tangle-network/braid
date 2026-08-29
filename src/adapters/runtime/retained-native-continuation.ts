@@ -9,7 +9,12 @@ import {
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ExecuteTurnInput, RetainedExecutionRecoveryContext } from '../../ports/execution.js'
-import type { RetainedExecutionPlan } from './retained-execution-contract.js'
+import type { RetainedExecutionPlan, RetainedTurnResult } from './retained-execution-contract.js'
+
+export interface RetainedNativeContinuation {
+  readonly handle: RetainedRunHandle
+  readonly terminalResult: Promise<RetainedTurnResult>
+}
 
 export function controlRefFromBoundaryProof(
   value: NativeContextBoundaryProof,
@@ -28,7 +33,7 @@ export function controlRefFromBoundaryProof(
 export async function continueRetainedNative(
   plan: RetainedExecutionPlan,
   input: ExecuteTurnInput,
-): Promise<RetainedRunHandle> {
+): Promise<RetainedNativeContinuation> {
   const proof = input.nativeContextBoundaryProof
   if (proof === undefined) throw new Error('Native continuation requires an exact boundary proof')
   const sourceControlRef = controlRefFromBoundaryProof(proof)
@@ -53,28 +58,51 @@ export async function continueRetainedNative(
     ...material,
     requestDigest: nativeContextContinuationRequestDigest(material),
   }
-  const outcome = await handle.continueNative(request, { ...turn, signal: input.signal })
-  if (
-    outcome.acknowledgement.status !== 'accepted' &&
-    outcome.acknowledgement.status !== 'replayed'
-  ) {
-    throw new Error(`Native continuation was ${outcome.acknowledgement.status}`)
+  const continuation = handle.beginNativeContinuation(request, { ...turn, signal: input.signal })
+  void continuation.result.catch(() => undefined)
+  const admitted = AgentExactRunControlRefSchema.parse(await continuation.admission)
+  assertAdvancedControlRef(sourceControlRef, admitted)
+  if (canonicalDigest(handle.controlRef) !== canonicalDigest(admitted)) {
+    throw new Error('Native continuation handle did not advance to the admitted run')
   }
-  if (!('controlRef' in outcome) || !('result' in outcome)) {
-    throw new Error('Native continuation omitted its exact result')
-  }
-  const next = AgentExactRunControlRefSchema.parse(outcome.controlRef)
+  const terminalResult = continuation.result.then((outcome) => {
+    if (
+      outcome.acknowledgement.status !== 'accepted' &&
+      outcome.acknowledgement.status !== 'replayed'
+    ) {
+      throw new Error(`Native continuation was ${outcome.acknowledgement.status}`)
+    }
+    if (!('controlRef' in outcome) || !('result' in outcome)) {
+      throw new Error('Native continuation omitted its exact result')
+    }
+    const next = AgentExactRunControlRefSchema.parse(outcome.controlRef)
+    assertAdvancedControlRef(sourceControlRef, next)
+    if (canonicalDigest(admitted) !== canonicalDigest(next)) {
+      throw new Error('Native continuation result changed its admitted run reference')
+    }
+    if (canonicalDigest(handle.controlRef) !== canonicalDigest(next)) {
+      throw new Error('Native continuation handle did not advance to the result run')
+    }
+    return outcome.result
+  })
+  void terminalResult.catch(() => undefined)
+  return { handle, terminalResult }
+}
+
+function assertAdvancedControlRef(
+  initial: AgentExactRunControlRef,
+  next: AgentExactRunControlRef,
+): void {
   if (
-    next.provider !== sourceControlRef.provider ||
-    next.environmentId !== sourceControlRef.environmentId ||
-    next.sessionId !== sourceControlRef.sessionId
+    next.provider !== initial.provider ||
+    next.environmentId !== initial.environmentId ||
+    next.sessionId !== initial.sessionId
   ) {
     throw new Error('Native continuation moved to another provider session')
   }
-  if (canonicalDigest(handle.controlRef) !== canonicalDigest(next)) {
-    throw new Error('Native continuation handle did not advance to the admitted run')
+  if (next.runId === initial.runId && next.executionId === initial.executionId) {
+    throw new Error('Native continuation did not return a new exact run execution')
   }
-  return handle
 }
 
 export function nativeContinuationInputFromRecovery(

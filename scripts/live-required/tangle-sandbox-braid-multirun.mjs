@@ -555,7 +555,9 @@ export function renderedWorkStripCount(screen) {
   return screen
     .split('\n')
     .filter((line) =>
-      /^(?:focus|work) .+ · [^/\s]+\/[^\s]+ · \d+ interactions?/u.test(line.trimStart()),
+      /^(?:focus|work) .+ · (?:queued|starting|running|waiting|detached|reconnecting|cancelling)(?: ·|\s|$)/u.test(
+        line.trimStart(),
+      ),
     ).length
 }
 

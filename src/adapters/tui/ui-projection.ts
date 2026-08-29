@@ -8,7 +8,7 @@ import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
-import { activeRunForBranch, isActiveRunStatus, type BraidState } from '../../domain/state.js'
+import { activeRunForBranch, type BraidState, isActiveRunStatus } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
 import type {
@@ -19,9 +19,9 @@ import type {
   InteractionView,
   MessageView,
   RunView,
-  WorkStripItemView,
   TranscriptPartView,
   ViewStatus,
+  WorkStripItemView,
 } from '../../views/shared/models.js'
 import { freezeView } from '../../views/shared/models.js'
 import {
@@ -246,11 +246,26 @@ export function workStripFor(state: BraidState): readonly WorkStripItemView[] | 
     return run === undefined ? [] : [{ entry, run }]
   })
   const focusedRunId = state.focusedRunId ?? state.activeRunId
+  const branchesByConversation = new Map<string, Set<string>>()
+  for (const run of [...runs, ...queued.map(({ run }) => run)]) {
+    const branches = branchesByConversation.get(run.conversationId) ?? new Set<string>()
+    branches.add(run.branchId)
+    branchesByConversation.set(run.conversationId, branches)
+  }
+  const labelFor = (run: BraidState['runs'][number]): string => {
+    const title = state.conversations.find((item) => item.id === run.conversationId)?.title
+    if (title === undefined) return sanitizeTerminalText(run.branchId)
+    const safeTitle = sanitizeTerminalText(title)
+    return (branchesByConversation.get(run.conversationId)?.size ?? 0) > 1
+      ? `${safeTitle} / ${sanitizeTerminalText(run.branchId)}`
+      : safeTitle
+  }
   const items: WorkStripItemView[] = runs.map((run) => ({
     id: run.id,
     runId: run.id,
     conversationId: String(run.conversationId),
     branchId: String(run.branchId),
+    label: labelFor(run),
     state: viewStatusForRun(run.status),
     ...(run.receipt.requested.runner === undefined
       ? {}
@@ -271,6 +286,7 @@ export function workStripFor(state: BraidState): readonly WorkStripItemView[] | 
       runId: run.id,
       conversationId: String(run.conversationId),
       branchId: String(run.branchId),
+      label: labelFor(run),
       state: 'queued',
       ...(run.receipt.requested.runner === undefined
         ? {}

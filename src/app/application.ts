@@ -12,7 +12,7 @@ import type {
 import { redactSensitiveText } from '../domain/redaction.js'
 import { replayEvents } from '../domain/reducer.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
-import { isLiveRunStatus, type BraidState, initialState } from '../domain/state.js'
+import { type BraidState, initialState, isLiveRunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
@@ -97,6 +97,22 @@ export type { BraidApplicationOptions, CancelInput, CancelReceipt } from './appl
 const MAX_MESSAGE_BYTES = 1024 * 1024
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
 
+interface Deferred<T> {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T | PromiseLike<T>) => void
+  readonly reject: (reason?: unknown) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: Deferred<T>['resolve']
+  let reject!: Deferred<T>['reject']
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
@@ -171,6 +187,10 @@ export class BraidApplication {
     this.#state = replayEvents(baseState, persisted)
     assertBraidState(this.#state)
     this.runtimeSelection.syncFromState(this.#state)
+    const interactionReconciliation = deferred<void>()
+    // Keep startup failures observable to callers without creating an unhandled rejection when
+    // no interaction action consumes the barrier.
+    void interactionReconciliation.promise.catch(() => undefined)
     this.#interactions = new ApplicationInteractionActions({
       state: () => this.#state,
       events: () => this.#journal.all(),
@@ -186,6 +206,7 @@ export class BraidApplication {
       owner: this.#controlOwner,
       ports: () => this.#portViews,
       whenDurable: () => this.whenDurable(),
+      startupReconciliation: interactionReconciliation.promise,
       ...(options.interactionResponseTimeoutMs === undefined
         ? {}
         : { responseTimeoutMs: options.interactionResponseTimeoutMs }),
@@ -290,6 +311,7 @@ export class BraidApplication {
       },
       coordinate: (input, action) =>
         this.#conversationOperations.run(input.operationId, input.digest, action),
+      profile: () => this.runtimeSelection.profile(),
       execution: this.#execution,
       send: (input) => this.send(input),
       ...(options.conversationStorage === undefined
@@ -308,7 +330,11 @@ export class BraidApplication {
         throw error
       })
     this.#automationReconciliation = this.#restartReconciliation.then(() =>
-      this.#interactions.reconcile(),
+      this.#interactions.reconcile({ bypassStartupReconciliation: true }),
+    )
+    void this.#automationReconciliation.then(
+      () => interactionReconciliation.resolve(),
+      (error: unknown) => interactionReconciliation.reject(error),
     )
     this.#durableSender = createDurableSender({
       currentState: () => this.#state,

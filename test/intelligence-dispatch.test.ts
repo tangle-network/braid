@@ -863,8 +863,21 @@ test('saved analysis results present status-aware next actions', () => {
 })
 
 test('activity follows runtime workers while open and stops cleanly when closed', async () => {
+  const initialSnapshotAt = Date.parse(NOW)
   let raw = createSupervisionSnapshot({
-    supervisors: [{ workers: [{ id: 'runtime-worker-1', label: 'worker-one' }] }],
+    generatedAt: initialSnapshotAt,
+    supervisors: [
+      {
+        startedAt: new Date(initialSnapshotAt - 6_000).toISOString(),
+        workers: [
+          {
+            id: 'runtime-worker-1',
+            label: 'worker-one',
+            startedAt: new Date(initialSnapshotAt - 4_000).toISOString(),
+          },
+        ],
+      },
+    ],
   })
   let snapshotCalls = 0
   const watcher = new RuntimeSupervisorWatcher(() => {
@@ -921,6 +934,13 @@ test('activity follows runtime workers while open and stops cleanly when closed'
   terminal.sendInput('\r')
   await terminal.waitForRender()
   assert.match(terminal.getViewport().join('\n'), /worker-one/u)
+  const initialWorker = app.state().workers.find((worker) => worker.title === 'worker-one')
+  assert(initialWorker)
+  const initialWorkerActivity = controller
+    .view()
+    .activity.find((item) => item.id === `worker:${initialWorker.id}`)
+  assert.equal(initialWorkerActivity?.elapsedMs, 4_000)
+  assert.notEqual(initialWorkerActivity?.elapsedMs, initialWorker.latencyMs)
   const unchangedRevision = app.state().revision
   await new Promise((resolve) => setTimeout(resolve, 650))
   assert.ok(snapshotCalls >= 3)

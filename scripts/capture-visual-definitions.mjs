@@ -47,6 +47,9 @@ export function createStateDefinitions(normalized) {
       rows: 24,
       environment: { BRAID_FIXTURE_CHUNK_DELAY_MS: '10000' },
       run: async (terminal) => {
+        terminal.input('/new Parallel run A')
+        terminal.input('\r')
+        await new Promise((resolve) => setTimeout(resolve, 100))
         terminal.input('parallel run A')
         terminal.input('\r')
         await terminal.waitFor(

@@ -152,6 +152,9 @@ function recoveryPlan(controlRef: AgentExactRunControlRef): RetainedExecutionPla
     async contextBoundary() {
       return null
     },
+    beginNativeContinuation() {
+      throw new Error('native continuation is not part of this recovery test')
+    },
     async continueNative() {
       throw new Error('native continuation is not part of this recovery test')
     },

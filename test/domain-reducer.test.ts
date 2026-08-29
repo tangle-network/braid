@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { InteractionRequest } from '@tangle-network/agent-interface'
 import { STARTER_PROFILE } from '../src/app/composition.js'
 import {
   createInteractionRequest,
   interactionRequestMaterial,
-  interactionResponseBinding,
 } from '../src/app/interaction-request.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
@@ -19,16 +19,26 @@ import {
   createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import {
   DuplicateEventConflictError,
   reduceEvent,
   replayEvents,
   SequenceGapError,
 } from '../src/domain/reducer.js'
+import { reduceLifecycleEvent } from '../src/domain/reducer-lifecycle.js'
 import { MAX_RUN_INTERACTIONS } from '../src/domain/reducer-support.js'
-import { initialState } from '../src/domain/state.js'
+import { type BraidState, initialState } from '../src/domain/state.js'
 
 const at = '2026-08-02T00:00:00.000Z'
+
+function providerResponseBinding(request: InteractionRequest, providerInteractionId: string) {
+  return {
+    ...request.binding,
+    interactionId: providerInteractionId,
+    requestDigest: request.requestDigest,
+  }
+}
 
 function envelope(
   event: BraidEvent,
@@ -76,7 +86,8 @@ function verticalSliceEvents(): readonly JournalEventEnvelope[] {
 
 test('replay rejects malformed persisted interaction sources and automation rules', () => {
   const runId = createRunId('run-replay-interaction-invariants')
-  const interactionId = createInteractionId('interaction-replay-invariants')
+  const providerInteractionId = createInteractionId('interaction-replay-invariants')
+  const interactionId = localInteractionId(runId, providerInteractionId)
   const request = createInteractionRequest({
     id: interactionId,
     kind: 'question',
@@ -114,7 +125,7 @@ test('replay rejects malformed persisted interaction sources and automation rule
         kind: 'run.interaction',
         runId,
         request,
-        responseBinding: interactionResponseBinding(request),
+        responseBinding: providerResponseBinding(request, providerInteractionId),
         provider: {
           eventId: 'provider-replay-interaction',
           providerSequence,
@@ -164,7 +175,8 @@ test('replay rejects malformed persisted interaction sources and automation rule
 
 test('interaction transitions reject reorder, unknown, conflicting, terminal, and evicted events', () => {
   const runId = createRunId('run-interaction-transition-contract')
-  const interactionId = createInteractionId('interaction-transition-contract')
+  const providerInteractionId = createInteractionId('interaction-transition-contract')
+  const interactionId = localInteractionId(runId, providerInteractionId)
   const request = createInteractionRequest({
     id: interactionId,
     kind: 'question',
@@ -198,25 +210,25 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
   ]
   const interactionEvent = (
     sequence: number,
-    id = interactionId,
+    providerId = providerInteractionId,
     providerSequence = sequence - 2,
     providerEventId = `provider-transition-${sequence}`,
     requestOverride?: typeof request,
   ): JournalEventEnvelope => {
     const eventRequest =
       requestOverride ??
-      (id === interactionId
+      (providerId === providerInteractionId
         ? request
         : createInteractionRequest({
-            id,
+            id: localInteractionId(runId, providerId),
             kind: 'question',
-            title: `Question ${id}`,
+            title: `Question ${providerId}`,
             answerSpec: {
               fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
             },
             binding: {
               ...request.binding,
-              interactionId: id,
+              interactionId: localInteractionId(runId, providerId),
             },
           }))
     return envelope(
@@ -224,7 +236,7 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
         kind: 'run.interaction',
         runId,
         request: eventRequest,
-        responseBinding: interactionResponseBinding(eventRequest),
+        responseBinding: providerResponseBinding(eventRequest, providerId),
         provider: {
           eventId: providerEventId,
           providerSequence,
@@ -286,13 +298,13 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
     () =>
       reduceEvent(
         afterInteraction,
-        interactionEvent(4, interactionId, 1, 'provider-transition-3', conflictingRequest),
+        interactionEvent(4, providerInteractionId, 1, 'provider-transition-3', conflictingRequest),
       ),
     /was requested with different data/u,
   )
   const duplicateInteraction = reduceEvent(
     afterInteraction,
-    interactionEvent(4, interactionId, 1, 'provider-transition-3'),
+    interactionEvent(4, providerInteractionId, 1, 'provider-transition-3'),
   )
   assert.equal(duplicateInteraction.runs[0]?.interactions.length, 1)
   const afterResponseRequested = reduceEvent(duplicateInteraction, responseRequested(5))
@@ -343,11 +355,15 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
   assert.equal(evictedRun.interactions.length, MAX_RUN_INTERACTIONS)
   assert.equal(
     evictedRun.interactions.some(
-      (interaction) => interaction.request.id === 'interaction-evicted-0',
+      (interaction) =>
+        interaction.request.id === localInteractionId(runId, 'interaction-evicted-0'),
     ),
     false,
   )
-  assert.equal(evictedRun.pendingInteractionIds?.includes('interaction-evicted-0'), true)
+  assert.equal(
+    evictedRun.pendingInteractionIds?.includes(localInteractionId(runId, 'interaction-evicted-0')),
+    true,
+  )
   assert.throws(
     () =>
       reduceEvent(
@@ -356,7 +372,7 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
           {
             kind: 'run.interaction.cancelled',
             runId,
-            interactionId: 'interaction-evicted-0',
+            interactionId: localInteractionId(runId, 'interaction-evicted-0'),
             provider: {
               eventId: 'provider-transition-evicted-cancelled',
               providerSequence: 258,
@@ -367,7 +383,7 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
           createEventId('event-transition-evicted-cancelled'),
         ),
       ),
-    /Interaction interaction-evicted-0 is unknown/u,
+    /Interaction interaction-[0-9a-f]+ is unknown/u,
   )
 })
 
@@ -797,6 +813,43 @@ test('cancellation correction requires its durable cancel operation and updates 
   assert.equal(assistant?.status, 'cancelled')
   assert.equal(assistant?.complete, true)
   assert.equal(assistant?.parts.find((part) => part.kind === 'reasoning')?.status, 'cancelled')
+})
+
+test('background recovery preserves the explicitly focused run', () => {
+  const primary = { id: 'run-focus-primary', status: 'streaming', activity: [] } as const
+  const background = { id: 'run-focus-background', status: 'streaming', activity: [] } as const
+  const state = {
+    ...initialState(STARTER_PROFILE),
+    focusedRunId: primary.id,
+    activeRunId: primary.id,
+    runs: [primary, background],
+  } as unknown as BraidState
+
+  const reconnecting = reduceLifecycleEvent(
+    state,
+    { kind: 'run.reconnecting', runId: background.id, after: 'cursor-background' },
+    { revision: 1, sequence: 1 },
+    at,
+  )
+  const reconciled = reduceLifecycleEvent(
+    reconnecting,
+    {
+      kind: 'run.reconciled',
+      runId: background.id,
+      status: 'streaming',
+      from: 'reconnecting',
+      to: 'streaming',
+      evidence: 'a'.repeat(64),
+    },
+    { revision: 2, sequence: 2 },
+    at,
+  )
+
+  assert.equal(reconnecting.focusedRunId, primary.id)
+  assert.equal(reconnecting.activeRunId, primary.id)
+  assert.equal(reconciled.focusedRunId, primary.id)
+  assert.equal(reconciled.activeRunId, primary.id)
+  assert.equal(reconciled.runs.find((run) => run.id === background.id)?.status, 'streaming')
 })
 
 test('terminal outcomes close every running reasoning and tool part precisely', () => {

@@ -173,9 +173,9 @@ test('rendered work-strip guard counts only actionable ownership rows', () => {
   assert.equal(
     renderedWorkStripCount(
       [
-        'work branch-a · streaming · opencode/model · 1 interaction · actions switch/!ask/!steer/cancel',
+        'work branch-a · running · opencode/model · actions switch/!ask/!steer/cancel',
         'status text mentioning work',
-        'focus branch-b · streaming · opencode/model · 0 interactions · actions swi…',
+        'focus branch-b · running · opencode/model · 1 waiting interaction · actions swi…',
       ].join('\n'),
     ),
     2,

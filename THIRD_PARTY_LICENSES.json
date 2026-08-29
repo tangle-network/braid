@@ -78,6 +78,10 @@
       "name": "@tangle-network/sandbox"
     },
     {
+      "license": "Apache-2.0",
+      "name": "@tangle-network/tcloud-attestation"
+    },
+    {
       "license": "MIT",
       "name": "@types/proper-lockfile"
     },

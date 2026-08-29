@@ -1,0 +1,19 @@
+{
+  "scope": "LIVE-07 and LIVE-08 provider-bound cloud proof changes",
+  "base": "1dca6db491f9a03f898a0437394d5903598c7434",
+  "head": "9671907",
+  "files": [
+    "docs/components/README.md",
+    "docs/components/cloud-proof-observations.md",
+    "scripts/live-required/contracts.mjs",
+    "scripts/live-required/tangle-sandbox-braid-interactive.mjs",
+    "scripts/live-required/tangle-sandbox-braid-soak.mjs",
+    "scripts/live-required/tangle-sandbox-braid-stress.mjs",
+    "test/tangle-live07-wiring.test.mjs",
+    "test/tangle-sandbox-braid-soak-script.test.mjs"
+  ],
+  "projectType": "Node package with live release scripts",
+  "reviewers": ["A-correctness-security", "B-architecture-performance", "C-real-system-coverage"],
+  "mode": "serial",
+  "notInspected": "Unrelated dirty source, package, and verification artifacts were excluded from this commit."
+}

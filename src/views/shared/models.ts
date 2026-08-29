@@ -235,6 +235,7 @@ export interface WorkStripItemView {
   readonly runId: string
   readonly conversationId: string
   readonly branchId: string
+  readonly label: string
   readonly state: ViewStatus | 'queued'
   readonly runner?: string
   readonly model?: string

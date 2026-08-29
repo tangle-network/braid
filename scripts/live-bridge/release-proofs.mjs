@@ -24,6 +24,16 @@ function targetForHarness(targets, harness) {
   return (targets ?? []).find((target) => target.definition.backend === harness)
 }
 
+function capabilitiesForTarget(capabilitiesByBackend, target) {
+  return target === undefined ? undefined : capabilitiesByBackend?.[target.definition.backend]
+}
+
+function interactionTarget(targets, capabilitiesByBackend) {
+  return (targets ?? []).find(
+    (target) => capabilitiesForTarget(capabilitiesByBackend, target)?.interactions !== undefined,
+  )
+}
+
 function proofTarget(target, operationResult) {
   const proof = operationResult?.targetProof
   if (
@@ -167,7 +177,7 @@ export async function executeReleaseProofs({
   installRoot,
   root,
   endpoint,
-  providerCapabilities,
+  providerCapabilitiesByBackend = {},
   targets = [],
   targetRecords = [],
   token,
@@ -249,7 +259,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, target),
         target,
         token,
         timeoutMs,
@@ -272,7 +282,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, piTarget),
         piTarget,
         target,
         token,
@@ -280,7 +290,7 @@ export async function executeReleaseProofs({
       ),
   )
 
-  const interactiveTarget = targets[0]
+  const interactiveTarget = interactionTarget(targets, providerCapabilitiesByBackend)
   await execute(
     REQUIREMENTS.interactive,
     liveReleaseProofOperations.interactive,
@@ -291,7 +301,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, target),
         target,
         token,
         timeoutMs,
@@ -305,7 +315,7 @@ export async function executeReleaseProofs({
       installRoot,
       root,
       endpoint,
-      providerCapabilities,
+      capabilitiesForTarget(providerCapabilitiesByBackend, target),
       target,
       token,
       timeoutMs,
@@ -319,7 +329,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, candidate),
         candidate,
         token,
         timeoutMs,

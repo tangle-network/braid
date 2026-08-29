@@ -46,6 +46,21 @@ export const targetDefinitions = Object.freeze([
   },
 ])
 
+export const releaseRunnerTargetDefinitions = Object.freeze([
+  {
+    key: 'pi-tangle-router-deepseek-v4-flash',
+    label: 'Pi with Tangle Router DeepSeek V4 Flash',
+    modelId: 'pi/tangle-router/deepseek-v4-flash',
+    backend: 'pi',
+  },
+  {
+    key: 'codex-default',
+    label: 'Codex default',
+    modelId: 'codex/default',
+    backend: 'codex',
+  },
+])
+
 export const livePrompts = Object.freeze({
   normal: (key) =>
     `Output only this token, with no punctuation or explanation: LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_OK`,

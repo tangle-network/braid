@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import type {
+  InteractionBinding,
   InteractionRequest,
   InteractionRequestMaterial,
 } from '@tangle-network/agent-interface'
@@ -17,9 +18,9 @@ import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/compos
 import { InteractionAutomationCoordinator } from '../src/app/interaction-automation-coordinator.js'
 import {
   createInteractionRequest,
-  interactionResponseBinding,
   rebindInteractionRequest,
 } from '../src/app/interaction-request.js'
+import { MemoryJournal } from '../src/app/journal.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { toJson } from '../src/app/storage-journal-support.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
@@ -35,9 +36,12 @@ import {
   createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import { createMaterializedStateSnapshot } from '../src/domain/materialized-state-snapshot.js'
 import { replayEvents } from '../src/domain/reducer.js'
+import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
+import { FixedClock } from '../src/ports/clock.js'
 import type { ExecutionPort } from '../src/ports/execution.js'
 import type { JournalEvent } from '../src/ports/storage.js'
 import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
@@ -66,6 +70,27 @@ function interactionRequest(id: string, runId = 'run-response-durability'): Inte
     },
   }
   return createInteractionRequest(material)
+}
+
+function localInteractionRequest(providerRequest: InteractionRequest): {
+  readonly request: InteractionRequest
+  readonly responseBinding: InteractionBinding
+} {
+  const localId = localInteractionId(providerRequest.binding.runId, providerRequest.id)
+  const { requestDigest: _requestDigest, binding, ...requestFields } = providerRequest
+  const request = createInteractionRequest({
+    ...requestFields,
+    id: localId,
+    binding: { ...binding, interactionId: localId },
+  })
+  return {
+    request,
+    responseBinding: {
+      ...providerRequest.binding,
+      interactionId: providerRequest.id,
+      requestDigest: providerRequest.requestDigest,
+    },
+  }
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
@@ -197,6 +222,212 @@ test('a hung provider response cannot strand manual response, rule mutation, or 
   await observeSettlement('send completion', send.completion)
 })
 
+test('a restarted unknown response reconciles the same provider operation once', async () => {
+  const journal = new MemoryJournal(new FixedClock(NOW))
+  const request = interactionRequest('interaction-restart-response-retry')
+  let releaseStream: (() => void) | undefined
+  let firstResponseCount = 0
+  const firstExecution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      yield {
+        type: 'interaction',
+        request: rebindInteractionRequest(request, {
+          ...request.binding,
+          runId: input.runId,
+          executionId: input.runId,
+        }),
+      }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        if (input.signal.aborted) resolve()
+        else input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield {
+        type: 'final',
+        task: { id: input.runId, intent: 'restart response retry' },
+        status: 'completed',
+        reason: 'completed',
+        text: 'done',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        timestamp: NOW,
+      }
+    },
+    respondInteraction: async (input) => {
+      firstResponseCount += 1
+      return {
+        operationId: input.command.operationId,
+        outcome: 'unknown' as const,
+        detail: 'INTERACTION_RESPONSE_UNKNOWN',
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution: firstExecution,
+    journal,
+    interactionResponseTimeoutMs: RESPONSE_TIMEOUT_MS,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'operation-send-restart-response-retry', text: 'ask' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+  const run = app.state().runs[0]
+  const interaction = run?.interactions[0]
+  assert(run && interaction)
+  const input = {
+    operationId: 'operation-restart-response-retry',
+    runId: run.id,
+    interactionId: interaction.request.id,
+    response: {
+      id: interaction.request.id,
+      outcome: 'accepted' as const,
+      data: { continue: true },
+    },
+  }
+
+  const first = await app.respondInteraction(input)
+  await first.completion
+  assert.equal(first.acknowledgement.outcome, 'unknown')
+  assert.equal(firstResponseCount, 1)
+  releaseStream?.()
+  await send.completion
+  await app.close()
+
+  let resumedResponseCount = 0
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    journal,
+    execution: {
+      capabilities: () => interactionResponseRunCapabilities(),
+      async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {},
+      respondInteraction: async (response) => {
+        resumedResponseCount += 1
+        return { operationId: response.command.operationId, outcome: 'accepted' as const }
+      },
+    },
+  })
+  restarted.initialize('/workspace')
+  const retry = await restarted.respondInteraction(input)
+  await retry.completion
+
+  assert.equal(retry.acknowledgement.outcome, 'accepted')
+  assert.equal(resumedResponseCount, 1)
+  assert.equal(restarted.state().runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(
+    journal.all().filter((envelope) => envelope.event.kind === 'run.interaction.responded').length,
+    2,
+  )
+  await restarted.close()
+})
+
+test('a response waits for startup reconciliation before provider dispatch', async () => {
+  const journal = new MemoryJournal(new FixedClock(NOW))
+  const request = interactionRequest('interaction-startup-response-race')
+  let releaseStream: (() => void) | undefined
+  const firstExecution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      yield {
+        type: 'interaction',
+        request: rebindInteractionRequest(request, {
+          ...request.binding,
+          runId: input.runId,
+          executionId: input.runId,
+        }),
+      }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        if (input.signal.aborted) resolve()
+        else input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield {
+        type: 'final',
+        task: { id: input.runId, intent: 'startup response race' },
+        status: 'completed',
+        reason: 'completed',
+        text: 'done',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        timestamp: NOW,
+      }
+    },
+    respondInteraction: async (input) => ({
+      operationId: input.command.operationId,
+      outcome: 'unknown' as const,
+      detail: 'INTERACTION_RESPONSE_UNKNOWN',
+    }),
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution: firstExecution,
+    journal,
+  })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'operation-send-startup-response-race', text: 'ask' })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+  const run = app.state().runs[0]
+  const interaction = run?.interactions[0]
+  assert(run && interaction)
+  const input = {
+    operationId: 'operation-startup-response-race',
+    runId: run.id,
+    interactionId: interaction.request.id,
+    response: {
+      id: interaction.request.id,
+      outcome: 'accepted' as const,
+      data: { continue: true },
+    },
+  }
+  const first = await app.respondInteraction(input)
+  await first.completion
+
+  let statusCalls = 0
+  let releaseStatus!: () => void
+  const statusReady = new Promise<void>((resolve) => {
+    releaseStatus = resolve
+  })
+  let responseCalls = 0
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    journal,
+    execution: {
+      capabilities: () => interactionResponseRunCapabilities(),
+      async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {},
+      status: async (statusInput) => {
+        statusCalls += 1
+        await statusReady
+        return {
+          runId: statusInput.runId,
+          status: 'completed' as const,
+          ...(statusInput.providerSessionId === undefined
+            ? {}
+            : { sessionId: statusInput.providerSessionId }),
+        }
+      },
+      respondInteraction: async (response) => {
+        responseCalls += 1
+        return { operationId: response.command.operationId, outcome: 'accepted' as const }
+      },
+    },
+  })
+  restarted.initialize('/workspace')
+  const retry = restarted.respondInteraction(input)
+  await waitFor(() => statusCalls === 1)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(responseCalls, 0)
+
+  releaseStatus()
+  const receipt = await retry
+  await receipt.completion
+  assert.equal(receipt.acknowledgement.outcome, 'accepted')
+  assert.equal(responseCalls, 1)
+  assert.equal(restarted.state().runs[0]?.interactions[0]?.status, 'resolved')
+
+  releaseStream?.()
+  await send.completion
+  await restarted.close()
+  await app.close()
+})
+
 function envelope(sequence: number, event: BraidEvent): BraidEventEnvelope {
   return {
     eventId: createEventId(`event-response-durability-${sequence}`),
@@ -249,11 +480,14 @@ function boundaryFixture(): {
   const conversationId = createConversationId('conversation-response-durability')
   const runId = createRunId('run-response-durability')
   const turnId = createTurnId('turn-response-durability')
-  const interactionId = createInteractionId('interaction-response-durability')
+  const providerInteractionId = createInteractionId('interaction-response-durability')
+  const interactionId = localInteractionId(runId, providerInteractionId)
   const operationId = createOperationId('operation-automation-response-durability')
   const userMessageId = createMessageId('message-user-response-durability')
   const assistantMessageId = createMessageId('message-assistant-response-durability')
-  const request = interactionRequest(interactionId, runId)
+  const { request, responseBinding } = localInteractionRequest(
+    interactionRequest(providerInteractionId, runId),
+  )
   const rule: StoredAutomationRule = {
     id: createRuleId('rule-response-durability'),
     enabled: true,
@@ -287,7 +521,7 @@ function boundaryFixture(): {
       kind: 'run.interaction',
       runId,
       request,
-      responseBinding: interactionResponseBinding(request),
+      responseBinding,
       provider: {
         eventId: 'provider-event-response-durability',
         providerSequence: 1,

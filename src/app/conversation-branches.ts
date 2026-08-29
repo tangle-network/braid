@@ -12,7 +12,7 @@ import {
   parseMessageId,
   parseOperationId,
 } from '../domain/ids.js'
-import type { BraidState } from '../domain/state.js'
+import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import { cleanupWorkspaceFork, executeBranchEffect } from './conversation-branch-effects.js'
 import {
@@ -38,8 +38,8 @@ import {
   stableConversationIds,
 } from './conversation-support.js'
 import type {
-  ConfidentialExecutionRequest,
   CloneConversationInput,
+  ConfidentialExecutionRequest,
   ConversationHost,
   CreateBranchInput,
   ForkPlan,
@@ -47,6 +47,7 @@ import type {
   SetRunOverridesInput,
 } from './conversation-types.js'
 import { AppError } from './errors.js'
+import { resolveEffectiveProfile } from './profile-selection.js'
 
 interface ResolvedSource {
   readonly conversation: ConversationRecord
@@ -281,7 +282,22 @@ export class ConversationBranches {
     const branchDigest = requestDigest('branch', normalized)
     const destinationBranchId = stableBranchIds(operationId, branchDigest).branchId
     const sourceRunner = source.branch.overrides.runner ?? state.profile.harness
-    const requestedRunner = input.runner ?? sourceRunner
+    const targetOverrides = runOverrides({
+      inherited: source.branch.overrides,
+      ...(input.runner === undefined ? {} : { runner: input.runner }),
+      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.effort === undefined ? {} : { effort: input.effort }),
+      ...(input.mode === undefined ? {} : { mode: input.mode }),
+    })
+    const requestedRunner = targetOverrides.runner ?? sourceRunner
+    const targetProfile = resolveEffectiveProfile({
+      profile: { profile: this.#host.profile?.() ?? state.profile },
+      branchOverrides: {
+        ...(targetOverrides.runner === undefined ? {} : { harness: targetOverrides.runner }),
+        ...(targetOverrides.model === undefined ? {} : { model: targetOverrides.model }),
+        ...(targetOverrides.effort === undefined ? {} : { effort: targetOverrides.effort }),
+      },
+    }).effectiveProfile
     const sourceRun = sourceRunForBranch(state, source.branch.id, source.through?.runId)
     const sourceEnvironmentId = source.branch.environmentId ?? sourceRun?.environmentId
     const kind =
@@ -311,8 +327,10 @@ export class ConversationBranches {
             ...(input.destinationProvider === undefined
               ? {}
               : { destinationProvider: input.destinationProvider }),
-            ...(input.model === undefined ? {} : { destinationModel: input.model }),
-            profileDigest: canonicalAgentProfileDigestHex(state.profile),
+            ...(targetOverrides.model === undefined
+              ? {}
+              : { destinationModel: targetOverrides.model }),
+            profileDigest: canonicalAgentProfileDigestHex(targetProfile),
           })
         : undefined
     const contextPort = contextTransferPort(this.#host.execution)
@@ -323,7 +341,8 @@ export class ConversationBranches {
       state.environments.some(
         (environment) =>
           environment.id === sourceEnvironmentId &&
-          environment.providerEnvironmentId === portableContextPlan.source.source.environmentId,
+          environment.providerEnvironmentId === portableContextPlan.source.source.environmentId &&
+          environment.placement.provider === portableContextPlan.source.source.provider,
       ) &&
       contextPort?.transfer !== undefined
     const allowed =
@@ -531,9 +550,17 @@ function workspaceForkReported(
   confidentialRequested: boolean,
 ): boolean {
   if (sourceEnvironmentId === undefined || run?.environmentId !== sourceEnvironmentId) return false
+  if (
+    run === undefined ||
+    !run.complete ||
+    isActiveRunStatus(run.status) ||
+    run.status === 'unknown'
+  )
+    return false
   const environment = state.environments.find((candidate) => candidate.id === sourceEnvironmentId)
   if (environment?.providerEnvironmentId === undefined) return false
   if (run?.controlRef?.environmentId !== environment.providerEnvironmentId) return false
+  if (run.controlRef.provider !== environment.placement.provider) return false
   const branching = run?.capabilities.environment?.branching
   const supported = Boolean(
     hasWorkspaceBranchingMethods(execution) &&

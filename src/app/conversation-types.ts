@@ -1,4 +1,5 @@
 import type {
+  AgentProfile,
   ConfidentialExecutionRequest,
   PortableContextPlan as CanonicalPortableContextPlan,
   HarnessType,
@@ -25,6 +26,8 @@ export interface ConversationHost {
   state(): BraidState
   now(): string
   commit(event: BraidEvent): Promise<void>
+  /** Exact profile selected for the next Runtime admission. */
+  profile?: () => Readonly<AgentProfile>
   destroy?(input: { readonly conversationId: string; readonly operationId: string }): Promise<void>
   coordinate?<T>(
     input: { readonly operationId: string; readonly digest: string },

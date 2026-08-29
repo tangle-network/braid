@@ -177,17 +177,17 @@ export interface ExecutionPort {
   ): Promise<NativeContextBoundaryProof | null>
   environmentCapabilities?(): AgentEnvironmentCapabilities | Promise<AgentEnvironmentCapabilities>
   /** Provider-owned context planning and fresh-session transfer, when supported. */
-  readonly context?: ContextTransferExecutionPort
+  readonly context?: ContextTransferExecutionPort | undefined
   /** Alias retained for adapters that name the capability after its operation. */
-  readonly contextTransfer?: ContextTransferExecutionPort
+  readonly contextTransfer?: ContextTransferExecutionPort | undefined
   /** Retry-safe checkpoint, fork, lookup, and cleanup operations, when supported. */
-  readonly workspaceBranching?: AgentWorkspaceBranching
+  readonly workspaceBranching?: AgentWorkspaceBranching | undefined
   /** Provider-owned source lookup used to reconstruct branching after restart. */
-  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider | undefined
   /** External verifier required before Braid marks a confidential fork verified. */
-  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier | undefined
   /** Provider identity used when Braid builds a destination context plan. */
-  readonly provider?: string
+  readonly provider?: string | undefined
 }
 
 export const DEFAULT_RUN_CAPABILITIES: RunCapabilities = Object.freeze({
@@ -225,11 +225,12 @@ export function supportsNativeContinuation(capabilities: AgentEnvironmentCapabil
   return (
     capabilities.sessions.continue &&
     capabilities.nativeContinuation?.atomicBoundary === true &&
-    capabilities.nativeContinuation.requestIdempotency === true
+    capabilities.nativeContinuation.requestIdempotency === true &&
+    capabilities.nativeContinuation.admissionControl === true
   )
 }
 
-/** A run can continue natively only when its environment proves both safety guarantees. */
+/** A run can continue natively only when its environment proves safe replay and early control. */
 export function runSupportsNativeContinuation(capabilities: RunCapabilities): boolean {
   return (
     capabilities.environment !== undefined && supportsNativeContinuation(capabilities.environment)

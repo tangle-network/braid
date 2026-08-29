@@ -10,6 +10,7 @@ import { messagesVisibleOnBranch } from '../src/app/conversation-context.js'
 import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import { assertBraidState } from '../src/domain/invariants.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
@@ -1048,6 +1049,7 @@ test('conversation deletion blocks on a pending interaction retained by a termin
 
   const run = app.state().runs[0]
   assert.ok(run)
+  const pendingInteractionId = localInteractionId(run.id, 'interaction-delete-pending')
   assert.equal(run.complete, true)
   assert.equal(app.state().runs[0]?.interactions[0]?.status, 'pending')
 
@@ -1060,7 +1062,7 @@ test('conversation deletion blocks on a pending interaction retained by a termin
     (error: unknown) =>
       error instanceof AppError &&
       error.code === 'DELETE_BLOCKED' &&
-      error.message.includes('interaction-delete-pending'),
+      error.message.includes(pendingInteractionId),
   )
 })
 
@@ -1115,11 +1117,16 @@ test('conversation deletion retains pending identity after 257-entry interaction
   assert.equal(run.complete, true)
   assert.equal(run.interactions.length, 256)
   assert.equal(
-    run.interactions.some((item) => item.request.id === 'interaction-delete-evicted-0'),
+    run.interactions.some(
+      (item) => item.request.id === localInteractionId(run.id, 'interaction-delete-evicted-0'),
+    ),
     false,
   )
   assert.equal(run.pendingInteractionIds?.length, 257)
-  assert.equal(run.pendingInteractionIds?.includes('interaction-delete-evicted-0'), true)
+  assert.equal(
+    run.pendingInteractionIds?.includes(localInteractionId(run.id, 'interaction-delete-evicted-0')),
+    true,
+  )
 
   await assert.rejects(
     () =>
@@ -1130,7 +1137,7 @@ test('conversation deletion retains pending identity after 257-entry interaction
     (error: unknown) =>
       error instanceof AppError &&
       error.code === 'DELETE_BLOCKED' &&
-      error.message.includes('interaction-delete-evicted-0'),
+      error.message.includes(localInteractionId(run.id, 'interaction-delete-evicted-0')),
   )
 
   const state = app.state()

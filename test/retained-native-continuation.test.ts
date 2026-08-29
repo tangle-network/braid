@@ -5,6 +5,8 @@ import {
   type AgentNativeContextContinuationResult,
   defineAgentProfile,
   type NativeContextBoundaryProof,
+  type NativeContextContinuationRequest,
+  type NativeContextContinuationTurn,
 } from '@tangle-network/agent-interface'
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import {
@@ -13,14 +15,50 @@ import {
 } from '../src/adapters/runtime/retained-execution.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { DEFAULT_RUN_CAPABILITIES, type ExecuteTurnInput } from '../src/ports/execution.js'
+import {
+  DEFAULT_RUN_CAPABILITIES,
+  type ExecuteTurnInput,
+  supportsNativeContinuation,
+} from '../src/ports/execution.js'
 import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 
 const at = '2026-08-19T12:00:00.000Z'
+
+type NativeContinuationHandle = {
+  readonly admission: Promise<AgentExactRunControlRef>
+  readonly result: Promise<AgentNativeContextContinuationResult>
+}
+
+type NativeContinuationRetainedRunHandle = RetainedRunHandle & {
+  readonly beginNativeContinuation: (
+    request: NativeContextContinuationRequest,
+    turn: NativeContextContinuationTurn & {
+      readonly timeoutMs?: number
+      readonly signal?: AbortSignal
+    },
+  ) => NativeContinuationHandle
+}
+
 const profile = defineAgentProfile({
   name: 'Native continuation test',
   harness: 'pi',
   model: { default: 'openai/gpt-5.6-luna' },
+})
+
+test('native continuation stays disabled until the provider exposes early control', () => {
+  const safeReplay = {
+    ...RETAINED_RUN_HANDLE_CAPABILITIES,
+    sessions: { continue: true, list: false, messages: false },
+    nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+  }
+  assert.equal(supportsNativeContinuation(safeReplay), false)
+  assert.equal(
+    supportsNativeContinuation({
+      ...safeReplay,
+      nativeContinuation: { ...safeReplay.nativeContinuation, admissionControl: true },
+    }),
+    true,
+  )
 })
 
 function exact(suffix: string): AgentExactRunControlRef {
@@ -34,7 +72,9 @@ function exact(suffix: string): AgentExactRunControlRef {
   }
 }
 
-function fixture() {
+function fixture(
+  settings: { readonly pendingResult?: boolean; readonly streamEvents?: boolean } = {},
+) {
   const source = exact('source')
   const next = exact('next')
   const proof: NativeContextBoundaryProof = {
@@ -50,12 +90,70 @@ function fixture() {
     readonly expectedBoundary: NativeContextBoundaryProof
   }> = []
   const continuationStatuses: string[] = []
+  const statusControlRefs: AgentExactRunControlRef[] = []
+  const cancellationControlRefs: AgentExactRunControlRef[] = []
   let continuationCalls = 0
   let reconnectCalls = 0
+  let resultCalls = 0
+  let terminalSettled = settings.pendingResult !== true
+  let releaseTerminal: () => void = () => undefined
+  const terminalGate =
+    settings.pendingResult === true
+      ? new Promise<void>((resolve) => {
+          releaseTerminal = resolve
+        })
+      : Promise.resolve()
+  let resolveEventsActive: () => void = () => undefined
+  const eventsActive =
+    settings.streamEvents === true
+      ? new Promise<void>((resolve) => {
+          resolveEventsActive = resolve
+        })
+      : Promise.resolve()
+  let cancelled = false
 
-  const createHandle = (): RetainedRunHandle => {
+  const createHandle = (): NativeContinuationRetainedRunHandle => {
     let current = source
     const result = { text: 'continued exactly once', success: true, sessionId: source.sessionId }
+    const continueNative = async (
+      request: NativeContextContinuationRequest,
+      turn: NativeContextContinuationTurn & {
+        readonly timeoutMs?: number
+        readonly signal?: AbortSignal
+      },
+    ): Promise<AgentNativeContextContinuationResult> => {
+      continuationCalls += 1
+      continuationRequests.push(structuredClone(request))
+      assert.deepEqual(request.run, source)
+      assert.deepEqual(request.expectedBoundary, proof)
+      assert.equal(turn.prompt, 'Continue this exact Pi chat.')
+      assert.equal(turn.model, 'openai/gpt-5.6-luna')
+      const prior = outcomes.get(request.requestDigest)
+      if (prior !== undefined) {
+        continuationStatuses.push('replayed')
+        current = next
+        return {
+          ...prior,
+          acknowledgement: { ...prior.acknowledgement, status: 'replayed' },
+        } as AgentNativeContextContinuationResult
+      }
+      current = next
+      const accepted: AgentNativeContextContinuationResult = {
+        acknowledgement: {
+          operationId: request.operationId,
+          requestDigest: request.requestDigest,
+          status: 'accepted',
+          historyMessagesSent: 0,
+        },
+        result,
+        controlRef: next,
+      }
+      continuationStatuses.push('accepted')
+      outcomes.set(request.requestDigest, accepted)
+      await terminalGate
+      terminalSettled = true
+      return accepted
+    }
     return {
       get controlRef() {
         return current
@@ -63,19 +161,42 @@ function fixture() {
       capabilities: {
         ...RETAINED_RUN_HANDLE_CAPABILITIES,
         sessions: { continue: true, list: false, messages: false },
-        nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+        nativeContinuation: {
+          atomicBoundary: true,
+          requestIdempotency: true,
+          admissionControl: true,
+        },
       },
       async status() {
+        statusControlRefs.push(current)
         return {
           runId: current.runId,
           controlRef: current,
-          status: 'completed',
-          effect: 'not_live',
+          status: cancelled ? 'cancelled' : 'running',
+          effect: cancelled ? 'cancelled' : 'unknown',
           observedAt: at,
         }
       },
-      async *events() {},
+      async *events(eventOptions) {
+        if (settings.streamEvents !== true) return
+        yield {
+          runId: current.runId,
+          eventId: `${current.runId}:progress`,
+          sequence: 1,
+          receivedAt: at,
+          event: { type: 'status', status: 'processing' },
+        }
+        resolveEventsActive()
+        await new Promise<void>((resolve) => {
+          if (eventOptions?.signal?.aborted === true) {
+            resolve()
+            return
+          }
+          eventOptions?.signal?.addEventListener('abort', () => resolve(), { once: true })
+        })
+      },
       async result() {
+        resultCalls += 1
         return result
       },
       async respondToInteraction() {
@@ -84,48 +205,29 @@ function fixture() {
       async contextBoundary() {
         return proof
       },
-      async continueNative(request, turn) {
-        continuationCalls += 1
-        continuationRequests.push(structuredClone(request))
-        assert.deepEqual(request.run, source)
-        assert.deepEqual(request.expectedBoundary, proof)
-        assert.equal(turn.prompt, 'Continue this exact Pi chat.')
-        assert.equal(turn.model, 'openai/gpt-5.6-luna')
-        const prior = outcomes.get(request.requestDigest)
-        if (prior !== undefined) {
-          continuationStatuses.push('replayed')
+      beginNativeContinuation(request, turn) {
+        const admission = Promise.resolve().then(() => {
           current = next
-          return {
-            ...prior,
-            acknowledgement: { ...prior.acknowledgement, status: 'replayed' },
-          } as AgentNativeContextContinuationResult
-        }
-        current = next
-        const accepted: AgentNativeContextContinuationResult = {
-          acknowledgement: {
-            operationId: request.operationId,
-            requestDigest: request.requestDigest,
-            status: 'accepted',
-            historyMessagesSent: 0,
-          },
-          result,
-          controlRef: next,
-        }
-        continuationStatuses.push('accepted')
-        outcomes.set(request.requestDigest, accepted)
-        return accepted
+          return next
+        })
+        return { admission, result: continueNative(request, turn) }
+      },
+      async continueNative() {
+        throw new Error('legacy native continuation is not part of this test')
       },
       async cancel(request) {
+        cancellationControlRefs.push(current)
+        cancelled = true
         return {
           operationId: request.operationId,
           requestDigest: current.requestDigest,
           status: 'accepted',
-          effect: 'not_live',
+          effect: 'cancelled',
           snapshot: {
             runId: current.runId,
             controlRef: current,
-            status: 'completed',
-            effect: 'not_live',
+            status: 'cancelled',
+            effect: 'cancelled',
             observedAt: at,
           },
         }
@@ -142,7 +244,11 @@ function fixture() {
     environment: {
       ...RETAINED_RUN_HANDLE_CAPABILITIES,
       sessions: { continue: true, list: false, messages: false },
-      nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+      nativeContinuation: {
+        atomicBoundary: true,
+        requestIdempotency: true,
+        admissionControl: true,
+      },
     },
   } as const
   const plan: RetainedExecutionPlan = {
@@ -215,6 +321,14 @@ function fixture() {
     continuationRequests,
     continuationStatuses,
     reconnectCalls: () => reconnectCalls,
+    statusControlRefs,
+    cancellationControlRefs,
+    resultCalls: () => resultCalls,
+    eventsActive,
+    terminalSettled: () => terminalSettled,
+    releaseTerminal: () => {
+      releaseTerminal()
+    },
   }
 }
 
@@ -253,6 +367,53 @@ test('retained execution continues through Runtime without creating another envi
     f.next,
   )
   assert.equal(events.at(-1)?.event.type, 'final')
+  assert.equal(f.resultCalls(), 0)
+})
+
+test('native continuation streams and accepts controls after admission while its result is pending', async () => {
+  const f = fixture({ pendingResult: true, streamEvents: true })
+  const execution = new RetainedExecutionPort({
+    resolve: async () => {
+      throw new Error('native continuation must not resolve a fresh plan')
+    },
+    continue: async () => f.plan,
+    recover: async () => {
+      throw new Error('same-process continuation must not enter restart recovery')
+    },
+  })
+
+  await execution.admit(f.input)
+  const stream = execution.streamTurn(f.input)[Symbol.asyncIterator]()
+  const observed = await stream.next()
+  assert.equal(observed.value?.event.type, 'braid.execution.observed')
+  const streamed = await stream.next()
+  assert.equal(streamed.value?.event.type, 'status')
+  const pendingStream = stream.next()
+  await f.eventsActive
+
+  const status = await execution.status({ runId: f.input.runId })
+  assert.equal(status?.runId, f.input.runId)
+  assert.deepEqual(f.statusControlRefs, [f.next])
+  assert.equal(f.terminalSettled(), false)
+
+  const cancellation = await execution.cancelRun({
+    operationId: 'operation-native-next-cancel',
+    runId: f.input.runId,
+  })
+  assert.deepEqual(cancellation, {
+    operationId: 'operation-native-next-cancel',
+    outcome: 'accepted',
+    detail: 'cancelled',
+  })
+  assert.deepEqual(f.cancellationControlRefs, [f.next])
+  assert.equal(f.terminalSettled(), false)
+
+  f.releaseTerminal()
+  const final = await pendingStream
+  assert.equal(final.value?.event.type, 'final')
+  assert.equal(f.terminalSettled(), true)
+  assert.equal(f.resultCalls(), 0)
+  assert.deepEqual(await stream.next(), { done: true, value: undefined })
 })
 
 test('restart reconnect retries the same continuation request and receives a replay', async () => {
@@ -304,4 +465,5 @@ test('restart reconnect retries the same continuation request and receives a rep
   assert.equal(f.continuationCalls(), 2)
   assert.deepEqual(f.continuationStatuses, ['accepted', 'replayed'])
   assert.deepEqual(f.continuationRequests[0], f.continuationRequests[1])
+  assert.equal(f.resultCalls(), 0)
 })

@@ -1,4 +1,5 @@
 import { commandAvailability, isMutatingCommand } from '../../views/shared/command-registry.js'
+import { isRecoverableRun } from '../../domain/state.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../../views/shared/models.js'
 import { dispatchAutomationCommand } from './ui-automation-command.js'
@@ -50,17 +51,17 @@ export async function dispatchCommandIntent(
     intent.command === 'reconcile'
   ) {
     const state = context.app.state()
+    const focusedRun =
+      state.focusedRunId === null
+        ? undefined
+        : state.runs.find((run) => run.id === state.focusedRunId)
     const runId =
       intent.args[0] ??
       (intent.command === 'detach'
         ? (state.activeRunId ?? undefined)
-        : [...state.runs]
-            .reverse()
-            .find(
-              (run) =>
-                (run.status === 'detached' || run.status === 'unknown') &&
-                run.controlRef !== undefined,
-            )?.id)
+        : focusedRun !== undefined && isRecoverableRun(focusedRun)
+          ? focusedRun.id
+          : [...state.runs].reverse().find(isRecoverableRun)?.id)
     if (runId === undefined) {
       return {
         kind: 'error',
