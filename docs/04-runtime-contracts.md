@@ -18,7 +18,7 @@ The following published versions were resolved in this worktree, and their insta
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.178.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.170.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `0.10.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, live streaming, replay, retry-safe turns, retained control, durable interaction response, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.14.2` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, workspace branching, and interactive-agent operations |
+| `@tangle-network/agent-provider-tangle` | `0.14.3` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, workspace branching, and interactive-agent operations |
 | `@tangle-network/sandbox` | `0.34.3` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
 The installed runtime publishes `agent-eval >=0.163.2 <0.171.0`, `agent-interface ^1.8.0`, and `sandbox >=0.34.0 <0.35.0` as peer ranges.
@@ -27,7 +27,7 @@ The installed Tangle provider publishes `sandbox >=0.34.0 <1.0.0` as a peer rang
 
 Sandbox `0.34.3` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
 
-Braid exercises Runtime `0.178.0` with interface `1.8.0`, eval `0.170.0`, CLI Bridge adapter `0.10.0`, Tangle adapter `0.14.2`, and Sandbox `0.34.3`.
+Braid exercises Runtime `0.178.0` with interface `1.8.0`, eval `0.170.0`, CLI Bridge adapter `0.10.0`, Tangle adapter `0.14.3`, and Sandbox `0.34.3`.
 
 The lockfile pins the registry integrity for every installed package.
 
@@ -59,7 +59,7 @@ The map is not a capability declaration.
 
 Braid derives it only after exact per-run environment capabilities are admitted, and sends an explicit empty map when response idempotency is absent or unknown.
 
-Runtime `0.178.0` projects the interaction map into the Sandbox prompt options, and Tangle provider `0.14.2` preserves it through retained dispatch.
+Runtime `0.178.0` projects the interaction map into the Sandbox prompt options, and Tangle provider `0.14.3` preserves it through retained dispatch.
 
 The Tangle provider exposes response operations only when the deployment reports `interactions.responseDedupe`; Braid still requires that per-run capability and a real deployment check.
 
@@ -365,7 +365,7 @@ The Braid retained CLI Bridge boundary test catches an interaction posture the r
 
 ## Existing Tangle provider contract
 
-The published `@tangle-network/agent-provider-tangle@0.14.2` wraps `@tangle-network/sandbox@0.34.3` as an `AgentEnvironmentProvider`.
+The published `@tangle-network/agent-provider-tangle@0.14.3` wraps `@tangle-network/sandbox@0.34.3` as an `AgentEnvironmentProvider`.
 
 Its default document is an upper bound, not a claim about one client or deployment.
 
@@ -485,7 +485,7 @@ The current published cohort carries the interaction response contract through t
 - Interface `1.8.0` publishes the interaction, checkpoint/fork, and interactive-agent contracts.
 - Runtime `0.178.0` preserves `AgentTurnInput.interactions` and projects it into Sandbox prompt options.
 - CLI Bridge `0.10.0` forwards the requested map and implements the durable response operation ([Agent SDK issue 204](https://github.com/tangle-network/agent-sdk/issues/204)).
-- Tangle provider `0.14.2` narrows interaction kinds to the deployment catalog and exposes keyed workspace branching and interactive-agent operations when their deployment flags and methods are present.
+- Tangle provider `0.14.3` narrows interaction kinds to the deployment catalog and exposes keyed workspace branching and interactive-agent operations when their deployment flags and methods are present.
 
 Braid does not cast around these gaps or duplicate provider dispatch.
 
@@ -673,11 +673,11 @@ The provider package maps the bridge surface into the shared environment and run
 
 Sandbox `0.34.3` carries canonical interaction requests in its replayable event stream and accepts canonical responses bound to session, interaction, and operation identifiers when the deployment reports response deduplication.
 
-Tangle provider `0.14.2` maps that operation into `AgentEnvironment`, `AgentSession`, and Runtime retained run control.
+Tangle provider `0.14.3` maps that operation into `AgentEnvironment`, `AgentSession`, and Runtime retained run control.
 
 Cloud interaction responses must remain valid after Braid reconnect when the sandbox session is still waiting.
 
-Tangle provider `0.14.2` exposes checkpoint and fork requests with caller idempotency keys bound to canonical request digests when the linked Sandbox surface is complete.
+Tangle provider `0.14.3` exposes checkpoint and fork requests with caller idempotency keys bound to canonical request digests when the linked Sandbox surface is complete.
 
 Retrying the same key and digest returns the original checkpoint or destination environment, while reusing a key with changed input returns a conflict.
 

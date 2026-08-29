@@ -544,7 +544,7 @@ In that snapshot, `LIVE-03` and `LIVE-08` were attempted through their built-in 
 
 In that snapshot, `LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` were also unavailable for the same reason, and no live claim in that record came from a simulated provider.
 
-Current dependency evidence (2026-08-29) is documented in [Runtime contracts](04-runtime-contracts.md): interface `1.8.0`, Runtime `0.178.0`, eval `0.170.0`, CLI Bridge adapter `0.10.0`, Tangle adapter `0.14.2`, and Sandbox `0.34.3`.
+Current dependency evidence (2026-08-29) is documented in [Runtime contracts](04-runtime-contracts.md): interface `1.8.0`, Runtime `0.178.0`, eval `0.170.0`, CLI Bridge adapter `0.10.0`, Tangle adapter `0.14.3`, and Sandbox `0.34.3`.
 
 The historical test counts above do not represent verification of this current cohort.
 
