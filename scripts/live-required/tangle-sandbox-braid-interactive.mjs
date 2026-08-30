@@ -142,7 +142,7 @@ export function sandboxConfiguration(environment) {
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
     fallbackEndpoint: 'https://sandbox.tangle.tools',
-    fallbackModel: 'tangle-router/glm-5.2',
+    fallbackModel: 'tangle-router/glm-5.3',
     fallbackRunner: 'pi',
     fallbackProvider: 'tangle',
   })
