@@ -1527,6 +1527,47 @@ test('events after the first final result are ignored', async () => {
   assert.equal(app.events().filter((entry) => entry.event.kind === 'run.text.delta').length, 0)
 })
 
+test('a terminal final result does not pull from a pending execution iterator', async () => {
+  const tailRequested = deferred<void>()
+  const releaseTail = deferred<void>()
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution: {
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+        yield {
+          type: 'final',
+          status: 'failed',
+          reason: 'failed final pending stream',
+          text: '',
+          metadata: { tokenUsage: { input: 1, output: 0 } },
+          task: { id: 'task-pending-final', intent: 'pending final stream' },
+          timestamp: '2026-08-30T00:00:00.000Z',
+        }
+        tailRequested.resolve()
+        await releaseTail.promise
+      },
+    },
+  })
+
+  try {
+    app.initialize('/workspace')
+    const completion = app.send({
+      operationId: 'op-pending-final',
+      text: 'failed final',
+    }).completion
+    const outcome = await Promise.race([
+      completion.then((state) => ({ kind: 'completed' as const, state })),
+      tailRequested.promise.then(() => ({ kind: 'tail-requested' as const })),
+    ])
+
+    assert.equal(outcome.kind, 'completed')
+    if (outcome.kind === 'completed') assert.equal(outcome.state.runs[0]?.status, 'failed')
+  } finally {
+    releaseTail.resolve()
+    await app.close()
+  }
+})
+
 test('provider errors and profile values are redacted before state and journal commit', async () => {
   let providerSawRawProfile = false
   const execution: ExecutionPort = {

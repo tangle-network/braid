@@ -58,6 +58,7 @@ export async function executeRun(
         if (result.accepted && runtimeEvent.event.type === 'final') {
           terminalSeen = true
           await context.flush()
+          break
         }
         continue
       }
@@ -76,6 +77,7 @@ export async function executeRun(
       if (result.accepted && runtimeEvent.type === 'final') {
         terminalSeen = true
         await context.flush()
+        break
       }
     }
     if (context.ledger.isDetached(admission.runId)) return
