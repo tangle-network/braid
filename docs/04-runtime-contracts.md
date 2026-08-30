@@ -18,14 +18,14 @@ The following published versions were resolved in this worktree, and their insta
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.180.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.170.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `0.11.1` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, and explicit cancel |
-| `@tangle-network/agent-provider-tangle` | `0.14.3` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, workspace branching, and interactive-agent operations |
-| `@tangle-network/sandbox` | `0.34.3` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| `@tangle-network/agent-provider-tangle` | `0.14.4` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, workspace branching, and interactive-agent operations |
+| `@tangle-network/sandbox` | `0.34.4` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
 The installed runtime publishes `agent-eval >=0.170.0 <0.171.0`, `agent-interface ^1.9.0`, and `sandbox >=0.34.3 <0.35.0` as peer ranges.
 
-The installed Tangle provider publishes `sandbox >=0.34.0 <1.0.0` as a peer range.
+The installed Tangle provider publishes `sandbox >=0.34.4 <1.0.0` as a peer range.
 
-Sandbox `0.34.3` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
+Sandbox `0.34.4` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
 
 Braid exercises the exact dependency cohort in the table above.
 
