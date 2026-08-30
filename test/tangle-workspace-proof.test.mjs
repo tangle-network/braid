@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  workspaceCleanupRequestDigest,
   workspaceCheckpointRequestDigest,
   workspaceForkRequestDigest,
 } from '@tangle-network/agent-interface'
@@ -23,6 +24,7 @@ import {
 
 const DIGEST = `sha256:${'1'.repeat(64)}`
 const SECOND_DIGEST = `sha256:${'2'.repeat(64)}`
+const AT = '2026-08-28T00:00:00.000Z'
 
 function policyEnvironment(overrides = {}) {
   return {
@@ -227,6 +229,166 @@ test('LIVE-09 fault cleanup releases a partial checkpoint and source run', async
   ])
   assert.equal(result.cleanupResult?.checkpoint, 'deleted')
   assert.equal(result.sourceDestroyed, true)
+  assert.equal(sourceExists, false)
+  assert.equal(state.runs[0].status, 'aborted')
+})
+
+test('LIVE-09 failure cleanup recovers a provider fork by its durable request digest', async () => {
+  const branchOperationId = 'op-live-09-fork-recovery'
+  const sourceRun = {
+    id: 'run-live-09-fork-recovery',
+    environmentId: 'environment-local-source',
+    status: 'running',
+    complete: false,
+    controlRef: {
+      provider: 'tangle-sandbox',
+      environmentId: 'sandbox-source-recovery',
+      sessionId: 'session-live-09-recovery',
+      executionId: 'execution-live-09-recovery',
+      runId: 'run-live-09-fork-recovery',
+      requestDigest: DIGEST,
+    },
+  }
+  const plan = {
+    sourceBranchId: 'branch-source-recovery',
+    destinationBranchId: 'branch-destination-recovery',
+    placement: { kind: 'provider' },
+  }
+  const checkpointMaterial = {
+    source: sourceRun.controlRef,
+    name: `braid checkpoint ${plan.sourceBranchId}`,
+    metadata: {
+      braidOperationId: branchOperationId,
+      sourceBranchId: plan.sourceBranchId,
+    },
+  }
+  const checkpointRef = {
+    checkpointId: 'provider-checkpoint-recovery',
+    provider: sourceRun.controlRef.provider,
+    source: sourceRun.controlRef,
+    idempotencyKey: `${branchOperationId}:checkpoint`,
+    requestDigest: workspaceCheckpointRequestDigest(checkpointMaterial),
+    createdAt: AT,
+    metadata: checkpointMaterial.metadata,
+  }
+  const forkMaterial = {
+    checkpoint: checkpointRef,
+    name: `braid fork ${plan.destinationBranchId}`,
+    placement: plan.placement,
+    metadata: {
+      braidOperationId: branchOperationId,
+      destinationBranchId: plan.destinationBranchId,
+    },
+  }
+  const forkRequest = {
+    ...forkMaterial,
+    idempotencyKey: `${branchOperationId}:fork`,
+    requestDigest: workspaceForkRequestDigest(forkMaterial),
+  }
+  const forkEnvironment = {
+    provider: sourceRun.controlRef.provider,
+    environmentId: 'sandbox-destination-recovery',
+    sourceEnvironmentId: sourceRun.controlRef.environmentId,
+    source: sourceRun.controlRef,
+    sourceCheckpointId: checkpointRef.checkpointId,
+    idempotencyKey: forkRequest.idempotencyKey,
+    requestDigest: forkRequest.requestDigest,
+    createdAt: AT,
+    placement: forkRequest.placement,
+    confidentialRequested: false,
+    metadata: forkRequest.metadata,
+  }
+  let state = {
+    runs: [sourceRun],
+    checkpoints: [
+      { id: 'checkpoint-live-09-fork-recovery', operationId: branchOperationId, createdAt: AT },
+    ],
+    operations: [
+      {
+        id: branchOperationId,
+        result: {
+          providerCheckpointId: checkpointRef.checkpointId,
+          forkRequestDigest: forkRequest.requestDigest,
+        },
+      },
+    ],
+  }
+  const calls = []
+  let sourceExists = true
+  const app = {
+    state: () => state,
+    cancelRun: async (input) => {
+      calls.push(['source-cancel', input.runId])
+      state = {
+        ...state,
+        runs: [{ ...sourceRun, status: input.terminalStatus, complete: true }],
+      }
+      return { completion: Promise.resolve() }
+    },
+    conversations: {
+      branches: {
+        cleanup: async (input) => {
+          calls.push(['checkpoint-cleanup', input.checkpointId])
+          assert.equal(input.environmentId, undefined)
+          return { checkpoint: 'deleted', environment: 'not_requested' }
+        },
+      },
+    },
+  }
+  const adapters = {
+    freshBranching: async (sourceProviderId) => {
+      assert.equal(sourceProviderId, sourceRun.controlRef.environmentId)
+      return {
+        lookupFork: async (input) => {
+          calls.push(['fork-lookup', input])
+          return { status: 'found', ...input, environment: forkEnvironment }
+        },
+        destroyFork: async (input) => {
+          calls.push(['fork-destroy', input])
+          const material = {
+            kind: 'fork',
+            targetId: forkEnvironment.environmentId,
+            provider: forkEnvironment.provider,
+          }
+          return {
+            operationId: input.operationId,
+            kind: 'fork',
+            targetId: material.targetId,
+            provider: material.provider,
+            requestDigest: workspaceCleanupRequestDigest(material),
+            status: 'deleted',
+          }
+        },
+      }
+    },
+    freshEnvironment: async (environmentId) => {
+      assert.equal(environmentId, sourceRun.controlRef.environmentId)
+      if (!sourceExists) return null
+      return {
+        destroy: async () => {
+          calls.push(['source-destroy'])
+          sourceExists = false
+        },
+      }
+    },
+  }
+
+  const result = await cleanupWorkspaceProofResources({
+    cleanupOwner: { app },
+    adapters,
+    source: { run: sourceRun, providerId: sourceRun.controlRef.environmentId },
+    plan,
+    branchOperationId,
+    proofId: 'live-09-fork-recovery',
+  })
+
+  assert.deepEqual(result.cleanupResult, { checkpoint: 'deleted', environment: 'deleted' })
+  assert.deepEqual(
+    calls.map(([kind]) => kind),
+    ['checkpoint-cleanup', 'fork-lookup', 'fork-destroy', 'source-cancel', 'source-destroy'],
+  )
+  assert.equal(calls[1][1].idempotencyKey, forkRequest.idempotencyKey)
+  assert.equal(calls[1][1].requestDigest, forkRequest.requestDigest)
   assert.equal(sourceExists, false)
   assert.equal(state.runs[0].status, 'aborted')
 })

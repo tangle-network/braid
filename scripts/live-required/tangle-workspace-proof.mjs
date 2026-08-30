@@ -5,8 +5,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   confidentialExecutionVerified,
   forkedEnvironmentConfidentialityVerified,
+  workspaceCleanupAcknowledgementMatches,
   workspaceCheckpointRequestDigest,
+  workspaceCheckpointResultMatchesRequest,
+  workspaceCleanupRequestDigest,
   workspaceForkRequestDigest,
+  workspaceForkResultMatchesRequest,
 } from '@tangle-network/agent-interface'
 import { generateAttestationNonce } from '@tangle-network/sandbox'
 
@@ -437,6 +441,9 @@ function checkpointAndForkRequests(state, plan, operationId, sourceRun, destinat
   const providerCheckpointId = operation?.result?.providerCheckpointId
   if (typeof providerCheckpointId !== 'string' || providerCheckpointId.length === 0)
     throw new Error('Braid did not persist the provider checkpoint identity')
+  const persistedForkDigest = operation?.result?.forkRequestDigest
+  if (typeof persistedForkDigest !== 'string' || persistedForkDigest.length === 0)
+    throw new Error('Braid did not persist the provider fork request identity')
   const source = structuredClone(sourceRun.controlRef)
   const checkpointMaterial = {
     source,
@@ -473,6 +480,10 @@ function checkpointAndForkRequests(state, plan, operationId, sourceRun, destinat
     },
   }
   const forkRequestDigest = workspaceForkRequestDigest(forkMaterial)
+  assertCondition(
+    sha256Digest(persistedForkDigest) === forkRequestDigest,
+    'Persisted fork request identity does not match Braid request material',
+  )
   const graphEdge = state.graphEdges.find((candidate) => {
     const sourceNode = state.graphNodes.find((node) => node.id === candidate.source)
     const destinationNode = state.graphNodes.find((node) => node.id === candidate.destination)
@@ -516,6 +527,10 @@ async function lookupAfterRestart(adapters, sourceProviderEnvironmentId, request
   if (checkpoint.status !== 'found')
     throw new Error(`Restart checkpoint lookup returned ${checkpoint.status}`)
   assertCondition(
+    workspaceCheckpointResultMatchesRequest(requests.checkpointRequest, checkpoint),
+    'Restart checkpoint lookup returned another checkpoint request',
+  )
+  assertCondition(
     checkpoint.checkpoint.checkpointId === requests.checkpointRef.checkpointId,
     'Restart checkpoint lookup returned another checkpoint',
   )
@@ -525,6 +540,10 @@ async function lookupAfterRestart(adapters, sourceProviderEnvironmentId, request
     requestDigest: requests.forkRequest.requestDigest,
   })
   if (fork.status !== 'found') throw new Error(`Restart fork lookup returned ${fork.status}`)
+  assertCondition(
+    workspaceForkResultMatchesRequest(requests.forkRequest, fork),
+    'Restart fork lookup returned another fork request',
+  )
   assertCondition(
     fork.environment.sourceEnvironmentId === sourceProviderEnvironmentId,
     'Restart fork lookup returned another source environment',
@@ -582,6 +601,116 @@ function checkpointIdForDestination(state, destinationId) {
   return state.checkpoints.find((candidate) => candidate.id === source.reference.id)?.id
 }
 
+function forkRequestForRecovery(state, plan, operationId, source) {
+  if (plan === undefined || operationId === undefined || source?.run?.controlRef === undefined)
+    return undefined
+  if (!Array.isArray(state.checkpoints) || !Array.isArray(state.operations)) return undefined
+  const checkpoint = state.checkpoints.find((candidate) => candidate.operationId === operationId)
+  const operation = state.operations.find((candidate) => candidate.id === operationId)
+  const providerCheckpointId = operation?.result?.providerCheckpointId
+  const persistedForkDigest = operation?.result?.forkRequestDigest
+  if (
+    checkpoint === undefined ||
+    typeof providerCheckpointId !== 'string' ||
+    providerCheckpointId.length === 0 ||
+    typeof persistedForkDigest !== 'string' ||
+    persistedForkDigest.length === 0
+  )
+    return undefined
+  const sourceRef = structuredClone(source.run.controlRef)
+  const checkpointMaterial = {
+    source: sourceRef,
+    name: `braid checkpoint ${plan.sourceBranchId}`,
+    metadata: {
+      braidOperationId: operationId,
+      sourceBranchId: String(plan.sourceBranchId),
+      ...(plan.throughMessageId === undefined ? {} : { throughMessageId: plan.throughMessageId }),
+    },
+  }
+  const checkpointRequestDigest = workspaceCheckpointRequestDigest(checkpointMaterial)
+  const checkpointRef = {
+    checkpointId: providerCheckpointId,
+    provider: sourceRef.provider,
+    source: sourceRef,
+    idempotencyKey: `${operationId}:checkpoint`,
+    requestDigest: checkpointRequestDigest,
+    createdAt: checkpoint.createdAt,
+    metadata: checkpointMaterial.metadata,
+  }
+  const forkMaterial = {
+    checkpoint: checkpointRef,
+    name: `braid fork ${plan.destinationBranchId}`,
+    placement: plan.placement ?? { kind: 'provider' },
+    ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
+    metadata: {
+      braidOperationId: operationId,
+      destinationBranchId: String(plan.destinationBranchId),
+    },
+  }
+  const requestDigest = workspaceForkRequestDigest(forkMaterial)
+  assertCondition(
+    sha256Digest(persistedForkDigest) === requestDigest,
+    'Persisted fork request identity does not match Braid request material',
+  )
+  return Object.freeze({
+    ...forkMaterial,
+    idempotencyKey: `${operationId}:fork`,
+    requestDigest,
+  })
+}
+
+async function cleanupProviderFork(
+  adapters,
+  source,
+  request,
+  cleanupOperationId,
+  providerEnvironmentId,
+) {
+  // Use provider lookup only when Braid lacks the local destination edge.
+  // Normal cleanup remains the application path and records local lifecycle state.
+  if (adapters === undefined || source?.providerId === undefined || request === undefined)
+    return undefined
+  const branching = await adapters.freshBranching(source.providerId)
+  const lookup = await branching.lookupFork({
+    idempotencyKey: request.idempotencyKey,
+    requestDigest: request.requestDigest,
+  })
+  if (lookup.status === 'not_found' && providerEnvironmentId === undefined) return 'already_absent'
+  if (lookup.status !== 'found' && lookup.status !== 'not_found')
+    throw new Error(`Fork cleanup lookup returned ${lookup.status}`)
+  if (lookup.status === 'found') {
+    assertCondition(
+      workspaceForkResultMatchesRequest(request, lookup),
+      'Fork cleanup lookup returned another fork request',
+    )
+    assertCondition(
+      lookup.environment.sourceEnvironmentId === source.providerId,
+      'Fork cleanup lookup returned another source environment',
+    )
+  }
+  const material = {
+    kind: 'fork',
+    targetId: lookup.status === 'found' ? lookup.environment.environmentId : providerEnvironmentId,
+    provider:
+      lookup.status === 'found' ? lookup.environment.provider : source.run.controlRef.provider,
+  }
+  const cleanupRequest = {
+    operationId: `${cleanupOperationId}:fork-cleanup`,
+    ...material,
+    requestDigest: workspaceCleanupRequestDigest(material),
+  }
+  const acknowledgement = await branching.destroyFork({ ...cleanupRequest, kind: 'fork' })
+  assertCondition(
+    workspaceCleanupAcknowledgementMatches(cleanupRequest, acknowledgement),
+    'Fork cleanup acknowledgement does not match its request',
+  )
+  if (acknowledgement.status === 'deleted' || acknowledgement.status === 'already_absent')
+    return acknowledgement.status
+  throw new Error(
+    `Fork cleanup returned ${acknowledgement.status}${acknowledgement.message === undefined ? '' : `: ${acknowledgement.message}`}`,
+  )
+}
+
 export async function cleanupWorkspaceProofResources({
   cleanupOwner,
   adapters,
@@ -592,6 +721,7 @@ export async function cleanupWorkspaceProofResources({
   cleanupOperationId,
   proofId,
   cleanupResult,
+  plan,
   sourceDestroyed = false,
 }) {
   let cleanupError
@@ -615,6 +745,43 @@ export async function cleanupWorkspaceProofResources({
           checkpointId: String(cleanupCheckpointId),
           ...(destination === undefined ? {} : { environmentId: String(destination.id) }),
         })
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    const cleanupState = cleanupOwner.app.state()
+    const operation =
+      branchOperationId === undefined || !Array.isArray(cleanupState.operations)
+        ? undefined
+        : cleanupState.operations.find((candidate) => candidate.id === branchOperationId)
+    const persistedForkDigest = operation?.result?.forkRequestDigest
+    let forkRequest = resources?.forkRequest
+    const hasForkIdentity =
+      forkRequest !== undefined ||
+      typeof persistedForkDigest === 'string' ||
+      typeof operation?.result?.providerEnvironmentId === 'string'
+    const forkCleanupComplete =
+      resolvedCleanupResult?.environment === 'deleted' ||
+      resolvedCleanupResult?.environment === 'already_absent'
+    if (hasForkIdentity && !forkCleanupComplete) {
+      resolvedCleanupOperationId ??= `op-live-required-${proofId}-cleanup`
+      try {
+        forkRequest ??= forkRequestForRecovery(cleanupState, plan, branchOperationId, source)
+        if (forkRequest === undefined)
+          throw new Error('Braid did not persist enough fork identity for provider cleanup')
+        const forkOutcome = await cleanupProviderFork(
+          adapters ?? providerAdapters(cleanupOwner),
+          source,
+          forkRequest,
+          resolvedCleanupOperationId,
+          destination?.providerEnvironmentId ?? operation?.result?.providerEnvironmentId,
+        )
+        if (forkOutcome !== undefined) {
+          resolvedCleanupResult = {
+            checkpoint: resolvedCleanupResult?.checkpoint ?? 'not_requested',
+            environment: forkOutcome,
+          }
+        }
       } catch (error) {
         cleanupError ??= error
       }
@@ -743,6 +910,7 @@ async function runWorkspaceProof({
   let cleanupOperationId
   let resources
   let cleanupResult
+  let plan
   let sourceDestroyed = false
   let primaryError
   let completedResult
@@ -785,7 +953,7 @@ async function runWorkspaceProof({
           }
         : {}),
     }
-    const plan = opened.app.conversations.branches.plan(planInput)
+    plan = opened.app.conversations.branches.plan(planInput)
     if (!plan.allowed)
       throw unavailable(
         'PROTECTED_WORKSPACE_BRANCHING_UNAVAILABLE',
@@ -1091,6 +1259,7 @@ async function runWorkspaceProof({
           cleanupOperationId,
           proofId,
           cleanupResult,
+          plan,
           sourceDestroyed,
         })
         cleanupError ??= cleanup.cleanupError

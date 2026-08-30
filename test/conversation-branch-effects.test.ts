@@ -140,7 +140,9 @@ function contextResult(request: ContextTransferRequest): ContextTransferResult {
   }
 }
 
-function workspaceProvider(): {
+function workspaceProvider(
+  options: { readonly beforeFork?: (request: WorkspaceForkRequest) => void } = {},
+): {
   readonly branching: NonNullable<ExecutionPort['workspaceBranching']>
   readonly state: WorkspaceProviderState
 } {
@@ -193,6 +195,7 @@ function workspaceProvider(): {
       }
     },
     async fork(request) {
+      options.beforeFork?.(request)
       state.forkRequests.push(request)
       const confidential = request.confidential
       const confidentialAttestation =
@@ -752,7 +755,17 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
 })
 
 test('workspace fork uses exact provider operations, isolates destination, and cleans both resources', async () => {
-  const provider = workspaceProvider()
+  let app: ReturnType<typeof createBraidApplication> | undefined
+  let operationAtFork:
+    | ReturnType<ReturnType<typeof createBraidApplication>['state']>['operations'][number]
+    | undefined
+  const provider = workspaceProvider({
+    beforeFork: () => {
+      operationAtFork = app
+        ?.state()
+        .operations.find((operation) => operation.id === 'op-workspace-branch-effects')
+    },
+  })
   const sourceLookups: string[] = []
   const workspaceBranchingProvider: AgentWorkspaceBranchingProvider = {
     async forEnvironment(sourceEnvironmentId) {
@@ -765,7 +778,7 @@ test('workspace fork uses exact provider operations, isolates destination, and c
     workspaceBranchingProvider,
   })
   const journal = new MemoryJournal(new FixedClock(AT))
-  const app = createBraidApplication({
+  app = createBraidApplication({
     fixture: 'deterministic',
     execution,
     clock: new FixedClock(AT),
@@ -784,8 +797,22 @@ test('workspace fork uses exact provider operations, isolates destination, and c
     kind: 'workspace',
     planDigest: plan.digest,
   })
+  assert.equal(operationAtFork?.status, 'pending')
+  assert.deepEqual(operationAtFork?.result, {
+    checkpointId: String(app.state().checkpoints[0]?.id),
+    providerCheckpointId: 'provider-checkpoint-1',
+    forkRequestDigest: provider.state.forkRequests[0]?.requestDigest,
+  })
   assert.equal(provider.state.checkpointRequests.length, 1)
   assert.equal(provider.state.forkRequests.length, 1)
+  const acknowledged = app
+    .state()
+    .operations.find((operation) => operation.id === 'op-workspace-branch-effects')
+  assert.equal(acknowledged?.status, 'acknowledged')
+  assert.equal(
+    acknowledged?.result?.forkRequestDigest,
+    provider.state.forkRequests[0]?.requestDigest,
+  )
   assert.deepEqual(sourceLookups, ['provider-source-environment'])
   assert.notEqual(branch.environmentId, plan.sourceEnvironmentId)
   assert.equal(

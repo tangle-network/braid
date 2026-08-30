@@ -429,14 +429,6 @@ async function executeWorkspace(
       }),
     })
   }
-  await updateOperation(host, operationId, digest, {
-    status: 'pending',
-    result: {
-      checkpointId: String(checkpointRecord.id),
-      providerCheckpointId: checkpoint.checkpoint.checkpointId,
-    },
-  })
-
   const placement: PlacementInfo = input.placement ?? { kind: 'provider' }
   const forkMaterial = {
     checkpoint: checkpoint.checkpoint,
@@ -453,6 +445,19 @@ async function executeWorkspace(
     idempotencyKey: `${input.operationId}:fork`,
     requestDigest: workspaceForkRequestDigest(forkMaterial),
   }
+  const previousProviderEnvironmentId = existing?.result?.providerEnvironmentId
+  const pendingForkResult = {
+    checkpointId: String(checkpointRecord.id),
+    providerCheckpointId: checkpoint.checkpoint.checkpointId,
+    forkRequestDigest: forkRequest.requestDigest,
+    ...(typeof previousProviderEnvironmentId === 'string'
+      ? { providerEnvironmentId: previousProviderEnvironmentId }
+      : {}),
+  }
+  await updateOperation(host, operationId, digest, {
+    status: 'pending',
+    result: pendingForkResult,
+  })
   const forkResult = await lookupOrFork(branching, forkRequest)
   if (!workspaceForkResultMatchesRequest(forkRequest, forkResult))
     throw new AppError('FORK_CONFLICT', 'The environment fork result does not match its request')
@@ -464,6 +469,13 @@ async function executeWorkspace(
     )
   if (fork.environment.environmentId === source.environmentId)
     throw new AppError('FORK_PLAN_CONFLICT', 'The provider fork reused the source environment')
+  await updateOperation(host, operationId, digest, {
+    status: 'pending',
+    result: {
+      ...pendingForkResult,
+      providerEnvironmentId: fork.environment.environmentId,
+    },
+  })
   const destination = await recordForkedEnvironment(host, plan, fork.environment, forkRequest)
   const branch = await createBranch({
     ...input,
@@ -487,6 +499,7 @@ async function executeWorkspace(
     planDigest: plan.digest,
     checkpointId: String(checkpointRecord.id),
     providerCheckpointId: checkpoint.checkpoint.checkpointId,
+    forkRequestDigest: forkRequest.requestDigest,
     providerEnvironmentId: fork.environment.environmentId,
   })
   return branch
