@@ -18,6 +18,7 @@ import {
   finalizeInteractiveProof,
   interactiveFailureMessages,
   interactiveMaterializationEvidence,
+  interactiveProofCommandSequence,
   sandboxConfiguration as interactiveSandboxConfiguration,
   waitForInteractiveIdentityFrame,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
@@ -493,6 +494,30 @@ test('LIVE-08 rejects a non-Pi runner from the native interactive proof', () => 
     () => passedInteractiveProof('live-required-non-pi-runner', { runner: 'codex' }),
     /native Pi harness/u,
   )
+})
+
+test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () => {
+  const commands = interactiveProofCommandSequence({
+    proofId: 'proof-quote',
+    outputSeed: 'output-seed',
+    input: 'INPUT_VALUE',
+    reconnect: 'RECONNECT_VALUE',
+    inputPath: '.braid-live/proof-quote/input file.txt',
+    reconnectPath: ".braid-live/proof-quote/reconnect's file.txt",
+    attemptPath: '.braid-live/proof-quote/attempts/one.txt',
+    executionAttempt: 'ATTEMPT_VALUE',
+  })
+
+  assert.match(commands[0], /\/interactive/iu)
+  assert.equal(
+    commands[1],
+    "!!printf '%s\\n' 'INPUT_VALUE' >> '.braid-live/proof-quote/input file.txt'",
+  )
+  assert.equal(
+    commands[5],
+    `!!printf '%s\\n' 'RECONNECT_VALUE' >> '.braid-live/proof-quote/reconnect'"'"'s file.txt'`,
+  )
+  assert.equal(commands.filter((command) => command.startsWith('!!')).length, 2)
 })
 
 test('LIVE-08 waits past streamed output until retained admission is durable', async () => {

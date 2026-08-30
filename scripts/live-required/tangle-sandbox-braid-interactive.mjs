@@ -155,14 +155,22 @@ export function interactiveProofCommandSequence(markers) {
   const attempt = markers.executionAttempt ?? `ATTEMPT_${proofId.replaceAll(/[^A-Za-z0-9]/gu, '_')}`
   return [
     `/interactive Use a shell command with append redirection (>>) in the current Tangle Sandbox workspace to write exactly ${attempt} followed by a newline to ${attemptPath}; never overwrite this file. Then reply with exactly the uppercase version of ${markers.outputSeed}.`,
-    `Use a shell command in the current Tangle Sandbox workspace to write exactly ${input} followed by a newline to ${inputPath}. Read it back and reply with exactly ${input}.`,
+    interactiveShellMutationCommand(input, inputPath),
     DETACH,
     '/help',
     '/attach',
-    `Use a shell command in the current Tangle Sandbox workspace to write exactly ${reconnect} followed by a newline to ${reconnectPath}. Read it back and reply with exactly ${reconnect}.`,
+    interactiveShellMutationCommand(reconnect, reconnectPath),
     DETACH,
     '/help',
   ]
+}
+
+function shellLiteral(value) {
+  return `'${String(value).replaceAll("'", "'\"'\"'")}'`
+}
+
+function interactiveShellMutationCommand(value, path) {
+  return `!!printf '%s\\n' ${shellLiteral(value)} >> ${shellLiteral(path)}`
 }
 
 function occurrences(value, marker) {
@@ -1238,7 +1246,7 @@ async function runProof({
     markers.reconnectPath = `.braid-live/${markers.proofId}/native-reconnect.txt`
     markers.attemptPath = executionAttemptLedgerPath(markers.proofId)
 
-    const [interactiveCommand, inputPrompt, detach, , attach, reconnectPrompt] =
+    const [interactiveCommand, inputCommand, detach, , attach, reconnectCommand] =
       interactiveProofCommandSequence(markers)
     const promptCount = occurrences(runtime.output, markers.output)
     runtime.write(`${interactiveCommand}\r`)
@@ -1268,7 +1276,7 @@ async function runProof({
       true,
       { cols: 120, rows: 36 },
     )
-    runtime.write(`${inputPrompt}\r`)
+    runtime.write(`${inputCommand}\r`)
     const inputEvidence = await waitForProviderReadback(
       client,
       initialIdentity.controlRef,
@@ -1304,7 +1312,7 @@ async function runProof({
       reconnectedIdentity.controlRef,
       'native reconnect provider control reference',
     )
-    runtime.write(`${reconnectPrompt}\r`)
+    runtime.write(`${reconnectCommand}\r`)
     const reconnectEvidence = await waitForProviderReadback(
       client,
       initialIdentity.controlRef,
