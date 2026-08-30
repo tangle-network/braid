@@ -61,6 +61,16 @@ const DEFAULT_TERMINAL_POLL_MS = 25
 const SANDBOX_LIST_PAGE_SIZE = 100
 const DETACH = '\u001d'
 const RUN_STATUS_AFTER_STOP = new Set(['aborted', 'cancelled'])
+const CANCELLABLE_INTERACTIVE_RUN_STATUSES = new Set([
+  'prepared',
+  'starting',
+  'running',
+  'streaming',
+  'waiting',
+  'detached',
+  'reconnecting',
+  'cancelling',
+])
 const CONTROL_REF_FIELDS = Object.freeze([
   'provider',
   'environmentId',
@@ -145,6 +155,16 @@ export function sandboxConfiguration(environment) {
     fallbackRunner: 'pi',
     fallbackModelProvider: 'tangle-router',
   })
+}
+
+export function isCancellableInteractiveRunStatus(status) {
+  return typeof status === 'string' && CANCELLABLE_INTERACTIVE_RUN_STATUSES.has(status)
+}
+
+export function stoppedRunFromState(response, runId) {
+  if (!stateForRun(response, runId)) return undefined
+  const run = runFromState(response.state, runId)
+  return run !== undefined && RUN_STATUS_AFTER_STOP.has(run.status) ? run : undefined
 }
 
 export function interactiveProofCommandSequence(markers) {
@@ -1167,7 +1187,10 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
         controlRef: exactControlRef(beforeRun.controlRef, 'already-stopped Braid run'),
       }
     } else {
-      assert.equal(beforeRun?.status, 'detached', 'Braid stop must target the detached run')
+      assert.ok(
+        isCancellableInteractiveRunStatus(beforeRun?.status),
+        `Braid stop cannot target run status ${beforeRun?.status ?? 'missing'}`,
+      )
       const operationId = `live-interactive-stop-${randomUUID()}`
       const acknowledgement = await rpcRequest(
         initialized.session,
@@ -1181,13 +1204,10 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
       )
       const terminal = await initialized.session.waitFor(
         'Braid interactive stop state',
-        (candidate) => {
-          const run = stateForRun(candidate, runId)
-          return run !== undefined && RUN_STATUS_AFTER_STOP.has(run.status)
-        },
+        (candidate) => stoppedRunFromState(candidate, runId) !== undefined,
         timeoutMs,
       )
-      const stoppedRun = runFromState(terminal.state, runId)
+      const stoppedRun = stoppedRunFromState(terminal, runId)
       assert.ok(stoppedRun, 'Braid stop did not return the target run')
       assert.ok(RUN_STATUS_AFTER_STOP.has(stoppedRun.status))
       const controlRef = assertControlRefsEqual(

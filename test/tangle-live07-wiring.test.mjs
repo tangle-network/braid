@@ -20,6 +20,8 @@ import {
   interactiveMaterializationEvidence,
   interactiveProofCommandSequence,
   sandboxConfiguration as interactiveSandboxConfiguration,
+  isCancellableInteractiveRunStatus,
+  stoppedRunFromState,
   waitForInteractiveIdentityFrame,
   waitForTerminalOutputStability,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
@@ -543,6 +545,120 @@ test('LIVE-08 waits for Pi terminal output to settle before native shell input',
   assert.equal(outputSize, 5)
   assert.equal(result.quietMs, 250)
   assert.ok(result.waitedMs >= 650)
+})
+
+test('LIVE-08 cancels a streaming run before exact cleanup after an early flow failure', async () => {
+  const controlRef = {
+    provider: 'tangle-sandbox',
+    environmentId: 'environment-live-08-streaming-failure',
+    sessionId: 'session-live-08-streaming-failure',
+    executionId: 'execution-live-08-streaming-failure',
+    runId: 'provider-run-live-08-streaming-failure',
+    requestDigest: `sha256:${'b'.repeat(64)}`,
+  }
+  const identity = {
+    run: { id: 'run-live-08-streaming-failure', status: 'streaming', controlRef },
+    controlRef,
+  }
+  const events = []
+  let processExited = false
+  let processGroupExited = false
+  const runtime = {
+    get exited() {
+      return processExited
+    },
+    get processCleanup() {
+      return processGroupExited ? { supported: true, gone: true } : undefined
+    },
+    async forceClose() {
+      events.push('process-exit')
+      processExited = true
+      processGroupExited = true
+    },
+    dispose() {
+      events.push('terminal-dispose')
+    },
+  }
+  const stoppedRun = { ...identity.run, status: 'cancelled' }
+  const cleanup = {
+    confirmed: true,
+    removedIds: [controlRef.environmentId],
+    remainingIds: [],
+    matchedCount: 1,
+  }
+  const result = await finalizeInteractiveProof({
+    packed: {
+      binary: '/tmp/braid',
+      cleanup: async () => {
+        events.push('packed-cleanup')
+      },
+    },
+    config: {
+      cleanup: async () => {
+        events.push('workspace-cleanup')
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    },
+    runtime,
+    executionStarted: true,
+    identity,
+    client: {},
+    stop: async ({ runId }) => {
+      events.push(`cancel:${runId}`)
+      assert.equal(runId, identity.run.id)
+      return { run: stoppedRun, controlRef }
+    },
+    observe: async (_client, observedRef, runId) => {
+      events.push('stopped-observation')
+      assert.equal(runId, identity.run.id)
+      assert.deepEqual(observedRef, controlRef)
+      return { stopped: true }
+    },
+    cleanupSandbox: async (_client, cleanupIdentity) => {
+      events.push('exact-delete')
+      assert.equal(cleanupIdentity.run.id, identity.run.id)
+      assert.deepEqual(cleanupIdentity.controlRef, controlRef)
+      return cleanup
+    },
+  })
+
+  assert.deepEqual(events, [
+    'process-exit',
+    'terminal-dispose',
+    `cancel:${identity.run.id}`,
+    'stopped-observation',
+    'exact-delete',
+    'workspace-cleanup',
+    'packed-cleanup',
+  ])
+  assert.equal(result.processExited, true)
+  assert.equal(result.processGroupExited, true)
+  assert.equal(result.stop.run.status, 'cancelled')
+  assert.deepEqual(result.cleanup, cleanup)
+})
+
+test('LIVE-08 only permits active public run statuses for cancellation cleanup', () => {
+  assert.equal(isCancellableInteractiveRunStatus('streaming'), true)
+  assert.equal(isCancellableInteractiveRunStatus('detached'), true)
+  assert.equal(isCancellableInteractiveRunStatus('running'), true)
+  assert.equal(isCancellableInteractiveRunStatus('completed'), false)
+  assert.equal(isCancellableInteractiveRunStatus('failed'), false)
+  assert.equal(isCancellableInteractiveRunStatus('unknown'), false)
+  assert.equal(isCancellableInteractiveRunStatus(undefined), false)
+})
+
+test('LIVE-08 reads the stopped run from the terminal state response', () => {
+  const run = { id: 'run-live-08-stopped', status: 'cancelled' }
+  const response = { type: 'state', state: { runs: [run] } }
+  assert.deepEqual(stoppedRunFromState(response, run.id), run)
+  assert.equal(
+    stoppedRunFromState(
+      { type: 'state', state: { runs: [{ ...run, status: 'streaming' }] } },
+      run.id,
+    ),
+    undefined,
+  )
+  assert.equal(stoppedRunFromState({ type: 'event', state: { runs: [run] } }, run.id), undefined)
 })
 
 test('LIVE-08 waits past streamed output until retained admission is durable', async () => {
