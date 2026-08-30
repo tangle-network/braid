@@ -881,12 +881,7 @@ export async function finalizeInteractiveProof({
   }
   let providerMaterialization
   if (executionStarted && resolvedIdentity === undefined) {
-    if (
-      materialization !== undefined &&
-      materialization.materialized === false &&
-      (materialization.phase === 'interactive_intent' || materialization.phase === null) &&
-      materialization.runId !== undefined
-    ) {
+    if (materialization?.runId !== undefined) {
       if (client === undefined) {
         errors.push(
           new Error(
@@ -894,7 +889,7 @@ export async function finalizeInteractiveProof({
           ),
         )
       } else {
-        const observed = await attemptCleanup(errors, 'pre-environment Sandbox absence', () =>
+        const observed = await attemptCleanup(errors, 'run-derived Sandbox cleanup', () =>
           cleanupInteractiveBeforeEnvironment(client, materialization),
         )
         if (observed.ok) providerMaterialization = observed.value

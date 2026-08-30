@@ -678,6 +678,75 @@ test('LIVE-08 deletes and confirms one exact resource when the Runtime phase is 
   })
 })
 
+test('LIVE-08 deletes the run-derived resource when provider materialization exists without a record', async () => {
+  let listCalls = 0
+  let getCalls = 0
+  const materialization = interactiveMaterializationEvidence({
+    state: {
+      runs: [
+        {
+          id: 'run-materialized-without-record',
+          status: 'detached',
+          controlRef: { environmentId: 'sandbox-materialized-without-record' },
+        },
+      ],
+    },
+  })
+  assert.deepEqual(materialization, {
+    runId: 'run-materialized-without-record',
+    phase: null,
+    materialized: true,
+    boundary: 'provider-environment-identity',
+  })
+  const resource = {
+    id: 'sandbox-materialized-without-record',
+    name: 'braid-interactive-run-materialized-without-record',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+    deleted: false,
+    async delete() {
+      this.deleted = true
+    },
+  }
+  const result = await finalizeInteractiveProof({
+    client: {
+      async list() {
+        listCalls += 1
+        return resource.deleted ? [] : [resource]
+      },
+      async get(id) {
+        getCalls += 1
+        return id === resource.id && !resource.deleted ? resource : null
+      },
+    },
+    executionStarted: true,
+    recordPath: '/does/not/exist/without-a-persisted-run.json',
+    materialization,
+  })
+  assert.equal(resource.deleted, true)
+  assert.equal(listCalls, 2)
+  assert.equal(getCalls, 2)
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'pre-environment-owned-resource-set',
+    phase: null,
+    runId: 'run-materialized-without-record',
+    expectedName: 'braid-interactive-run-materialized-without-record',
+    matchedCount: 1,
+    observedIds: ['sandbox-materialized-without-record'],
+    removedIds: ['sandbox-materialized-without-record'],
+    deletions: [
+      {
+        id: 'sandbox-materialized-without-record',
+        observed: true,
+        resolved: true,
+        deleted: true,
+        confirmed: true,
+      },
+    ],
+    remainingIds: [],
+  })
+})
+
 test('LIVE-08 confirms absence when the observed resource races away before deletion', async () => {
   let listCalls = 0
   const resource = {
