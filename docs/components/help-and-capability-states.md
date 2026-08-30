@@ -74,4 +74,3 @@ Fixtures cover unavailable runner actions, workspace fork, attach, interaction, 
 Help does not become product documentation inside the main transcript.
 
 An unavailable panel does not silently change the selected profile or connection.
-

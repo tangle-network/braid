@@ -92,4 +92,3 @@ Keyboard tests cover open, filter, switch, branch, rename, cancel, and focus res
 Conversation navigation does not perform workspace fork or native provider continuation.
 
 It does not stop a background run merely because selection changed.
-

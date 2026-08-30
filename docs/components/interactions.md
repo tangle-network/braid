@@ -94,4 +94,3 @@ Live proof must keep a retained cloud interaction answerable after Braid reconne
 The component does not invent an approval policy or default answer.
 
 It does not store credential values for later reuse.
-

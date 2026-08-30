@@ -91,4 +91,3 @@ The terminal recording reviews and executes a real plan through the same panel.
 The preview does not promise provider-session continuity across runners.
 
 It does not display raw checkpoint data or provider-private fields.
-

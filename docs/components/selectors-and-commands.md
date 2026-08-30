@@ -88,4 +88,3 @@ The keyboard recording opens the palette, filters an action, selects it, and ret
 Selectors do not fetch provider capabilities or mutate entities.
 
 Autocomplete does not search outside the workspace or execute a command.
-

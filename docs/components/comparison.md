@@ -77,4 +77,3 @@ Tests cover zero and null values, unequal arms, missing telemetry, different ter
 The component does not run an evaluation or choose a winner from incomplete evidence.
 
 It does not summarize away fields captured by the source result.
-

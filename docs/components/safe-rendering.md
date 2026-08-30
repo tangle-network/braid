@@ -87,4 +87,3 @@ Captures compare semantic cells and raster output at the four required dimension
 Sanitization does not interpret provider-native protocol output.
 
 Responsive layout does not hide a blocking status, missing value, or capability reason.
-

@@ -80,4 +80,3 @@ Resize tests prove selection and detail continuity across all layout modes.
 The browser does not own entity state, refresh intervals, or mutations.
 
 It does not introduce a dashboard beside the transcript.
-

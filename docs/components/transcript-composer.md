@@ -101,4 +101,3 @@ PTY recordings prove prompt entry, editing, streaming, queueing, and cancellatio
 The transcript does not parse provider-native output.
 
 The composer does not decide admission, continuation, queue order, or steering support.
-

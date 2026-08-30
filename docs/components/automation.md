@@ -73,4 +73,3 @@ Tests cover create, once, session, persistent confirmation, maximum uses, disabl
 The panel does not predict an answer or create a rule from text similarity alone.
 
 It does not store secret-designated answers.
-

@@ -87,4 +87,3 @@ Live proof requires real analyst model calls, settled usage and cost, resolved c
 Analysis does not become another conversation turn or provider session.
 
 The UI does not invent a verdict when analyst evidence is incomplete.
-
