@@ -633,10 +633,7 @@ export async function cleanupWorkspaceProofResources({
     if (!resolvedSourceDestroyed) {
       try {
         const sourceAdapters = adapters ?? providerAdapters(cleanupOwner)
-        resolvedSourceDestroyed = await destroySource(
-          sourceAdapters,
-          source.providerId,
-        )
+        resolvedSourceDestroyed = await destroySource(sourceAdapters, source.providerId)
       } catch (error) {
         cleanupError ??= error
       }
