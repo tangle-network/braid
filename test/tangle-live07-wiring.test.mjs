@@ -19,6 +19,7 @@ import {
   interactiveFailureMessages,
   interactiveMaterializationEvidence,
   sandboxConfiguration as interactiveSandboxConfiguration,
+  waitForInteractiveIdentityFrame,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
 import {
@@ -496,6 +497,82 @@ test('LIVE-08 rejects a non-Pi runner from the native interactive proof', () => 
     () => passedInteractiveProof('live-required-non-pi-runner', { runner: 'codex' }),
     /native Pi harness/u,
   )
+})
+
+test('LIVE-08 waits past streamed output until retained admission is durable', async () => {
+  const controlRef = {
+    provider: 'tangle-sandbox',
+    environmentId: 'environment-live-08-admission',
+    sessionId: 'session-live-08-admission',
+    executionId: 'execution-live-08-admission',
+    runId: 'provider-run-live-08-admission',
+    requestDigest: `sha256:${'a'.repeat(64)}`,
+  }
+  const incomplete = {
+    state: {
+      runs: [{ id: 'local-run-live-08-admission', status: 'streaming', retainedAdmission: null }],
+    },
+  }
+  const admitted = {
+    state: {
+      runs: [
+        {
+          id: 'local-run-live-08-admission',
+          status: 'streaming',
+          controlRef,
+          providerSessionId: controlRef.sessionId,
+        },
+      ],
+    },
+    events: [
+      {
+        kind: 'run.retained.admitted',
+        payload: {
+          runId: 'local-run-live-08-admission',
+          value: {
+            kind: 'run.retained.admitted',
+            runId: 'local-run-live-08-admission',
+            admission: { phase: 'interactive_intent' },
+          },
+        },
+      },
+      {
+        kind: 'run.retained.admitted',
+        payload: {
+          runId: 'local-run-live-08-admission',
+          value: {
+            kind: 'run.retained.admitted',
+            runId: 'local-run-live-08-admission',
+            admission: { phase: 'interactive_environment' },
+          },
+        },
+      },
+      {
+        kind: 'run.retained.admitted',
+        payload: {
+          runId: 'local-run-live-08-admission',
+          value: {
+            kind: 'run.retained.admitted',
+            runId: 'local-run-live-08-admission',
+            admission: { phase: 'interactive_started', ref: { run: controlRef } },
+          },
+        },
+      },
+    ],
+  }
+  const frames = [incomplete, admitted]
+  let captures = 0
+  const result = await waitForInteractiveIdentityFrame({
+    captureFrame: async () => {
+      captures += 1
+      return frames.shift()
+    },
+    timeoutMs: 1_000,
+  })
+  assert.equal(captures, 2)
+  assert.equal(result.frame, admitted)
+  assert.equal(result.identity.run.id, 'local-run-live-08-admission')
+  assert.deepEqual(result.identity.controlRef, controlRef)
 })
 
 test('LIVE-08 rejects status-only observations from a passed receipt', () => {

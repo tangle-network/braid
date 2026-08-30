@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  AgentExactRunControlRefSchema,
-  AgentInteractiveSessionRefSchema,
-} from '@tangle-network/agent-interface'
+import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
@@ -44,9 +41,7 @@ import {
   assertSingleExecutionAttemptLedger,
   assertStableAccountIdentity,
   assertVerifiedProcessCleanup,
-  cleanupOwnedRetainedResources,
   executionAttemptLedgerPath,
-  observeRetainedResource,
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
   readRetainedWorkspaceFile,
@@ -314,8 +309,8 @@ function stateDiagnostic(frame) {
   return runs.map((run) => ({
     id: typeof run?.id === 'string' ? run.id : null,
     status: typeof run?.status === 'string' ? run.status : null,
-    retainedAdmission:
-      typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null,
+    retainedAdmission: interactiveAdmissionPhase(frame, run?.id),
+    controlRef: AgentExactRunControlRefSchema.safeParse(run?.controlRef).success,
   }))
 }
 
@@ -323,9 +318,8 @@ export function interactiveMaterializationEvidence(record) {
   const runs = Array.isArray(record?.state?.runs) ? record.state.runs : []
   if (runs.length !== 1) return undefined
   const run = runs[0]
-  const phase =
-    typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null
   const runId = typeof run?.id === 'string' && run.id.length > 0 ? run.id : undefined
+  const phase = interactiveAdmissionPhase(record, runId)
   const materialized =
     phase === 'interactive_environment' ||
     phase === 'interactive_started' ||
@@ -391,6 +385,37 @@ async function listAllSandboxResources(client) {
     }
     if (page.length < SANDBOX_LIST_PAGE_SIZE) return resources
     offset += page.length
+  }
+}
+
+async function observeInteractiveResource(client, controlRef, runId) {
+  const expectedName = interactiveResourceName(runId)
+  const box = await client.get(controlRef.environmentId)
+  if (box === null) {
+    throw new Error(`Interactive Sandbox ${controlRef.environmentId} was not visible`)
+  }
+  if (!isOwnedInteractiveResource(box, expectedName)) {
+    throw new Error(
+      `Interactive Sandbox ${controlRef.environmentId} failed exact Braid ownership validation`,
+    )
+  }
+  const matches = sameNameInteractiveResources(
+    await listAllSandboxResources(client),
+    expectedName,
+    (resource) => isOwnedInteractiveResource(resource, expectedName),
+  )
+  if (matches.length !== 1 || matches[0]?.id !== box.id) {
+    throw new Error('Interactive Sandbox control identity did not match its owned resource census')
+  }
+  return {
+    observed: true,
+    id: box.id,
+    name: expectedName,
+    metadata: {
+      owner: 'braid',
+      lifecycle: 'retained',
+      surface: 'interactive-agent',
+    },
   }
 }
 
@@ -559,19 +584,34 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
 }
 
 async function captureStateFrame(runtime, recordPath, timeoutMs) {
-  await rm(`${recordPath}.frame`, { force: true })
+  const framePath = `${recordPath}.frame`
+  const previousVersion = await stateFrameVersion(framePath)
   process.kill(runtime.child.pid, 'SIGUSR2')
   return waitFor(
     'atomic Braid interactive state frame',
     async () => {
       try {
-        return JSON.parse(await readFile(`${recordPath}.frame`, 'utf8'))
-      } catch {
+        const version = await stateFrameVersion(framePath)
+        if (version === undefined || version === previousVersion) return undefined
+        const frame = JSON.parse(await readFile(framePath, 'utf8'))
+        return (await stateFrameVersion(framePath)) === version ? frame : undefined
+      } catch (error) {
+        if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
         return undefined
       }
     },
     timeoutMs,
   )
+}
+
+async function stateFrameVersion(path) {
+  try {
+    const value = await stat(path, { bigint: true })
+    return `${value.dev}:${value.ino}:${value.mtimeNs}:${value.size}`
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  }
 }
 
 async function proveTuiReturned(runtime, timeoutMs, label) {
@@ -592,7 +632,9 @@ function eventKind(event) {
 }
 
 function eventRunId(event) {
-  return event?.runId ?? event?.event?.runId
+  return (
+    event?.runId ?? event?.event?.runId ?? event?.payload?.runId ?? event?.payload?.value?.runId
+  )
 }
 
 function assertOrderedRunEvents(events, runId, required) {
@@ -624,37 +666,59 @@ function assertControlRefsEqual(expected, actual, label) {
   return actualRef
 }
 
-function interactiveAdmissionIdentity(run) {
-  const admission = run?.retainedAdmission
+function projectedRetainedAdmission(event) {
+  if (eventKind(event) !== 'run.retained.admitted') return undefined
+  const value = event?.payload?.value ?? event?.event ?? event
+  const admission = value?.admission ?? event?.payload?.admission
+  return admission && typeof admission === 'object' ? admission : undefined
+}
+
+function interactiveAdmissions(record, runId) {
+  const events = Array.isArray(record?.events) ? record.events : []
+  return events.flatMap((event) => {
+    const admission = projectedRetainedAdmission(event)
+    if (admission === undefined) return []
+    const admittedRunId = eventRunId(event)
+    return admittedRunId === undefined || admittedRunId === runId ? [admission] : []
+  })
+}
+
+function interactiveAdmissionPhase(record, runId) {
+  if (typeof runId !== 'string' || runId.length === 0) return null
+  const projected = interactiveAdmissions(record, runId).at(-1)?.phase
+  if (typeof projected === 'string') return projected
+  const run = Array.isArray(record?.state?.runs)
+    ? record.state.runs.find((candidate) => candidate?.id === runId)
+    : undefined
+  return typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null
+}
+
+function interactiveAdmissionIdentity(record, run) {
+  const admission = interactiveAdmissions(record, run?.id).findLast(
+    (candidate) => candidate?.phase === 'interactive_started',
+  )
   assert.equal(
     admission?.phase,
     'interactive_started',
     'interactive proof requires the canonical interactive_started admission phase',
   )
-  assert.equal(
-    typeof admission?.interactiveIdempotencyKey,
-    'string',
-    'interactive_started admission omitted interactiveIdempotencyKey',
+  const startedControlRef = exactControlRef(
+    admission.ref?.run,
+    'interactive_started admission control reference',
   )
-  assert.ok(
-    admission.interactiveIdempotencyKey.length > 0,
-    'interactive_started admission has an empty interactiveIdempotencyKey',
-  )
-  const parsedRef = AgentInteractiveSessionRefSchema.safeParse(admission.ref)
-  assert.ok(parsedRef.success, 'interactive_started admission ref is invalid')
   const controlRef = assertControlRefsEqual(
     run.controlRef,
-    parsedRef.data.run,
+    startedControlRef,
     'interactive admission control reference',
   )
   if (run.providerSessionId !== undefined) {
     assert.equal(
-      parsedRef.data.run.sessionId,
+      startedControlRef.sessionId,
       run.providerSessionId,
       'interactive admission session differs from the stored provider session',
     )
   }
-  return { admission, ref: parsedRef.data, controlRef }
+  return { admission, ref: { run: startedControlRef }, controlRef }
 }
 
 export function recoverInteractiveIdentity(record) {
@@ -663,7 +727,7 @@ export function recoverInteractiveIdentity(record) {
     return undefined
   const run = runs[0]
   try {
-    const { admission, ref, controlRef } = interactiveAdmissionIdentity(run)
+    const { admission, ref, controlRef } = interactiveAdmissionIdentity(record, run)
     return {
       run,
       admission,
@@ -676,11 +740,33 @@ export function recoverInteractiveIdentity(record) {
   }
 }
 
+export async function waitForInteractiveIdentityFrame({ captureFrame, timeoutMs }) {
+  assert.equal(
+    typeof captureFrame,
+    'function',
+    'interactive identity polling requires captureFrame',
+  )
+  assert.ok(
+    Number.isFinite(timeoutMs) && timeoutMs > 0,
+    'interactive identity timeout must be positive',
+  )
+  const deadline = performance.now() + timeoutMs
+  for (;;) {
+    const frame = await captureFrame()
+    const identity = recoverInteractiveIdentity(frame)
+    if (identity !== undefined) return { frame, identity }
+    if (performance.now() >= deadline) {
+      throw new Error(`retained interactive identity timed out after ${timeoutMs}ms`)
+    }
+    await sleep(50)
+  }
+}
+
 export function assertInteractiveRecord(record) {
   const runs = Array.isArray(record?.state?.runs) ? record.state.runs : []
   assert.equal(runs.length, 1, 'interactive proof must retain exactly one local run')
   const run = runs[0]
-  const { controlRef } = interactiveAdmissionIdentity(run)
+  const { controlRef } = interactiveAdmissionIdentity(record, run)
   assert.equal(controlRef.provider, 'tangle-sandbox')
   const events = Array.isArray(record?.events) ? record.events : []
   const kinds = events.map(eventKind)
@@ -706,8 +792,15 @@ export function assertStoppedTerminal(terminal) {
   return { terminal, stopped: true }
 }
 
-async function observeSandbox(client, controlRef, timeoutMs, expectedRunning, expectedGeometry) {
-  const resource = await observeRetainedResource(client, controlRef)
+async function observeSandbox(
+  client,
+  controlRef,
+  runId,
+  timeoutMs,
+  expectedRunning,
+  expectedGeometry,
+) {
+  const resource = await observeInteractiveResource(client, controlRef, runId)
   const box = await client.get(controlRef.environmentId)
   assert.equal(box?.id, resource.id, 'Sandbox observation changed environment identity')
   assert.ok(box.terminals && typeof box.terminals.get === 'function')
@@ -766,11 +859,10 @@ async function observeSandbox(client, controlRef, timeoutMs, expectedRunning, ex
 }
 
 async function cleanupExactSandbox(client, identity) {
-  const observed = await observeRetainedResource(client, identity.controlRef)
-  const cleanup = await cleanupOwnedRetainedResources(client, {
-    controlRef: identity.controlRef,
-    firstRunId: identity.run.id,
-    operationId: identity.run.operationId ?? identity.admission?.interactiveIdempotencyKey,
+  const observed = await observeInteractiveResource(client, identity.controlRef, identity.run.id)
+  const cleanup = await cleanupInteractiveByRunId(client, {
+    runId: identity.run.id,
+    phase: 'interactive_started',
   })
   return assertInteractiveOwnedResourceCleanup(cleanup, observed.id)
 }
@@ -840,8 +932,8 @@ export async function finalizeInteractiveProof({
   stopResult,
   stop = ({ binary, targetConfig, runId, timeout }) =>
     stopThroughBraid(binary, targetConfig, runId, timeout),
-  observe = (targetClient, controlRef, timeout) =>
-    observeSandbox(targetClient, controlRef, timeout, false),
+  observe = (targetClient, controlRef, runId, timeout) =>
+    observeSandbox(targetClient, controlRef, runId, timeout, false),
   cleanupSandbox = cleanupExactSandbox,
 } = {}) {
   const errors = []
@@ -945,7 +1037,7 @@ export async function finalizeInteractiveProof({
       )
     } else {
       const observed = await attemptCleanup(errors, 'stopped Sandbox observation', () =>
-        observe(client, resolvedIdentity.controlRef, timeoutMs),
+        observe(client, resolvedIdentity.controlRef, resolvedIdentity.run.id, timeoutMs),
       )
       if (observed.ok) {
         afterStop = observed.value
@@ -1160,13 +1252,16 @@ async function runProof({
       },
       timeoutMs,
     )
-    const initialFrame = await captureStateFrame(runtime, recordPath, timeoutMs)
+    const { frame: initialFrame, identity: initialIdentity } =
+      await waitForInteractiveIdentityFrame({
+        captureFrame: () => captureStateFrame(runtime, recordPath, timeoutMs),
+        timeoutMs,
+      })
     runObserved = stateDiagnostic(initialFrame).length > 0
-    const initialIdentity = recoverInteractiveIdentity(initialFrame)
-    assert.ok(initialIdentity, 'interactive frame did not contain one exact Braid run identity')
     const initialAttach = await observeSandbox(
       client,
       initialIdentity.controlRef,
+      initialIdentity.run.id,
       timeoutMs,
       true,
       { cols: 120, rows: 36 },
@@ -1186,10 +1281,14 @@ async function runProof({
     runtime.write(`${attach}\r`)
     await sleep(250)
     runtime.resize(100, 30)
-    const resized = await observeSandbox(client, initialIdentity.controlRef, timeoutMs, true, {
-      cols: 100,
-      rows: 30,
-    })
+    const resized = await observeSandbox(
+      client,
+      initialIdentity.controlRef,
+      initialIdentity.run.id,
+      timeoutMs,
+      true,
+      { cols: 100, rows: 30 },
+    )
     const reconnectedFrame = await captureStateFrame(runtime, recordPath, timeoutMs)
     const reconnectedIdentity = recoverInteractiveIdentity(reconnectedFrame)
     assert.ok(reconnectedIdentity, 'reconnected frame did not contain one exact Braid run identity')
@@ -1244,10 +1343,14 @@ async function runProof({
         initialIdentity.controlRef[field] === reconnectedIdentity.controlRef[field] &&
         initialIdentity.controlRef[field] === identity.controlRef[field],
     )
-    const beforeStop = await observeSandbox(client, identity.controlRef, timeoutMs, true, {
-      cols: 100,
-      rows: 30,
-    })
+    const beforeStop = await observeSandbox(
+      client,
+      identity.controlRef,
+      identity.run.id,
+      timeoutMs,
+      true,
+      { cols: 100, rows: 30 },
+    )
     const stop = await stopThroughBraid(packed.binary, config, identity.run.id, timeoutMs)
     stopped = true
     proofData = {
