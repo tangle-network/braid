@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { mock } from 'node:test'
 import * as pty from 'node-pty'
 import { runCommand } from './command.mjs'
 import { managedSpawn, RpcSession, terminateProcess } from './process.mjs'
@@ -226,7 +226,7 @@ process.stdin.on('end', () => {
   })
   descendant.unref()
   writeFileSync(process.env.PID_PATH, String(descendant.pid))
-  process.exit(0)
+  setTimeout(() => process.exit(0), 200)
 })
 `
   await writeFile(binary, source, { mode: 0o700 })
@@ -269,5 +269,41 @@ process.stdin.on('end', () => {
     } catch {}
     await session?.forceStop().catch(() => undefined)
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('refuses to signal a reused process group without an observed owner', {
+  skip: process.platform !== 'linux',
+}, async () => {
+  const child = await managedSpawn(process.execPath, ['-e', 'process.exit(0)'], {
+    stdio: 'ignore',
+  })
+  await waitForClose(child)
+
+  const groupSignals = []
+  const originalKill = process.kill
+  const killMock = mock.method(process, 'kill', (pid, signal) => {
+    if (pid === -child.pid) {
+      if (signal !== 0) groupSignals.push({ pid, signal })
+      if (signal === 0) return true
+      const error = new Error('group signal must not be attempted')
+      error.code = 'EPERM'
+      throw error
+    }
+    return originalKill.call(process, pid, signal)
+  })
+  try {
+    const result = await terminateTrackedProcessTree(child, {
+      termTimeoutMs: 100,
+      killTimeoutMs: 100,
+    })
+
+    assert.equal(result.termSent, false, JSON.stringify(result))
+    assert.equal(result.killSent, false, JSON.stringify(result))
+    assert.equal(result.tree.supported, false, JSON.stringify(result))
+    assert.match(result.tree.reason, /without an observed tracked member/u)
+    assert.deepEqual(groupSignals, [])
+  } finally {
+    killMock.mock.restore()
   }
 })

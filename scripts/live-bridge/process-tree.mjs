@@ -214,6 +214,7 @@ class PosixProcessTreeTracker {
     this.rootPid = numericPid(child.pid)
     this.rootObserved = false
     this.rootStartTime = undefined
+    this.ownerGroupId = undefined
     this.ownershipDeadline = Date.now() + ownershipObservationTimeoutMs
     this.released = false
     this.failure = undefined
@@ -242,6 +243,11 @@ class PosixProcessTreeTracker {
       return
     }
     this.rootStartTime = root.startTime
+    this.ownerGroupId = numericPid(root.processGroup)
+    if (this.ownerGroupId === undefined) {
+      this.failure = `The POSIX process ${this.rootPid} has no valid process group`
+      return
+    }
     this.entries.set(root.pid, { ...root, depth: 0 })
     if (marker === true) this.rootObserved = true
   }
@@ -336,7 +342,7 @@ class PosixProcessTreeTracker {
       if (current.inaccessible)
         return unsupported(`The POSIX process ${entry.pid} could not be inspected`)
       if (current.reused || current.gone) this.entries.delete(entry.pid)
-      else if (current.identity !== undefined) active.push(entry)
+      else if (current.identity !== undefined) active.push({ ...entry, ...current.identity })
     }
     const root = currentIdentity(this.rootPid, this.rootStartTime)
     if (root.inaccessible)
@@ -344,9 +350,17 @@ class PosixProcessTreeTracker {
     const rootActive = root.identity !== undefined
     if (root.reused) this.failure = 'The POSIX owner PID was reused before cleanup completed'
     if (this.failure !== undefined) return unsupported(this.failure)
-    const processGroup = processGroupPresent(this.rootPid)
+    const processGroup = processGroupPresent(this.ownerGroupId)
     if (processGroup === undefined)
-      return unsupported(`The POSIX process group for ${this.rootPid} could not be inspected`)
+      return unsupported(`The POSIX process group for ${this.ownerGroupId} could not be inspected`)
+    const processGroupMember = active.some(
+      ({ processGroup: groupId }) => groupId === this.ownerGroupId,
+    )
+    if (processGroup && !processGroupMember)
+      return unsupported(
+        `The POSIX process group ${this.ownerGroupId} is present without an observed tracked member`,
+      )
+    const processGroupOwned = processGroup && processGroupMember
     // The detached owner group catches descendants that exit before lineage polling observes them.
     return {
       supported: true,
@@ -356,10 +370,12 @@ class PosixProcessTreeTracker {
       roots: rootActive ? [this.rootPid] : [],
       version: rootActive || active.length > 0 || processGroup ? 0 : 1,
       mechanism: 'posix-descendant-tracker',
-      ownership: 'pid-start-time-and-descendant-lineage',
+      ownership: 'pid-start-time-descendant-lineage-and-process-group-member',
       observed: this.rootObserved,
       escaped: !rootActive && active.some(({ ppid }) => ppid !== this.rootPid),
       processGroup,
+      processGroupId: this.ownerGroupId,
+      processGroupOwned,
     }
   }
 
@@ -369,10 +385,10 @@ class PosixProcessTreeTracker {
     if (status.gone) return { method: 'already-exited', sent: false }
     let sent = false
     let groupSent = false
-    const root = this.entries.get(this.rootPid)
-    if (root === undefined || root.processGroup === this.rootPid) {
+    const group = status.processGroupOwned === true ? this.ownerGroupId : undefined
+    if (group !== undefined) {
       try {
-        process.kill(-this.rootPid, signal)
+        process.kill(-group, signal)
         groupSent = true
         sent = true
       } catch (error) {
@@ -404,6 +420,7 @@ class PosixProcessTreeTracker {
 
 class PosixProcessGroupTracker {
   constructor(child) {
+    this.child = child
     this.rootPid = numericPid(child.pid)
   }
 
@@ -417,6 +434,13 @@ class PosixProcessGroupTracker {
     if (present === undefined)
       return {
         ...unsupported('The POSIX process group could not be inspected'),
+        mechanism: 'posix-process-group',
+      }
+    if (childHasExited(this.child) && present)
+      return {
+        ...unsupported(
+          `The POSIX process group for ${this.rootPid} remained after its owner process exited`,
+        ),
         mechanism: 'posix-process-group',
       }
     return {
