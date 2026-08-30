@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import * as pty from 'node-pty'
 import { runCommand } from './command.mjs'
-import { managedSpawn, terminateProcess } from './process.mjs'
+import { managedSpawn, RpcSession, terminateProcess } from './process.mjs'
 import {
   processTreeEnvironment,
   processTreeStatus,
@@ -179,6 +179,95 @@ test('detached descendants stay owned after their parent exits', {
         process.kill(descendantPid, 'SIGKILL')
       } catch {}
     }
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('RPC stop cleanup proves terminal state and kills an unmarked process-group descendant', {
+  skip: process.platform !== 'linux',
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-rpc-stop-cleanup-'))
+  const binary = join(root, 'rpc-child.mjs')
+  const pidPath = join(root, 'descendant.pid')
+  const source = `import { spawn } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+
+let buffer = ''
+const run = { id: 'run-stop-proof', status: 'streaming' }
+const emit = (value) => process.stdout.write(\`\${JSON.stringify(value)}\\n\`)
+const state = () => emit({ type: 'state', state: { runs: [{ ...run }] } })
+const respond = (request) => {
+  if (request.command === 'initialize') {
+    emit({ type: 'ack', requestId: request.requestId, command: request.command })
+    state()
+  } else if (request.command === 'cancel_run') {
+    run.status = 'cancelled'
+    emit({ type: 'ack', requestId: request.requestId, command: request.command })
+    state()
+  } else if (request.command === 'shutdown') {
+    emit({ type: 'ack', requestId: request.requestId, command: request.command })
+  }
+}
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', (chunk) => {
+  buffer += chunk
+  for (;;) {
+    const newline = buffer.indexOf('\\n')
+    if (newline < 0) break
+    const line = buffer.slice(0, newline)
+    buffer = buffer.slice(newline + 1)
+    if (line.length > 0) respond(JSON.parse(line))
+  }
+})
+process.stdin.on('end', () => {
+  const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    stdio: 'inherit',
+    env: Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'BRAID_PROCESS_TREE_TOKEN')),
+  })
+  descendant.unref()
+  writeFileSync(process.env.PID_PATH, String(descendant.pid))
+  process.exit(0)
+})
+`
+  await writeFile(binary, source, { mode: 0o700 })
+
+  let session
+  try {
+    session = await RpcSession.create(binary, root, { PID_PATH: pidPath }, 4_000)
+    session.send({ requestId: 'request-initialize', command: 'initialize' })
+    await session.waitFor(
+      'running terminal state',
+      (candidate) =>
+        candidate.type === 'state' && candidate.state?.runs?.[0]?.status === 'streaming',
+    )
+
+    session.send({
+      requestId: 'request-cancel',
+      operationId: 'op-live-required-cancel-stop-proof',
+      command: 'cancel_run',
+      params: { runId: 'run-stop-proof' },
+    })
+    const stopped = await session.waitFor(
+      'cancelled terminal state',
+      (candidate) =>
+        candidate.type === 'state' && candidate.state?.runs?.[0]?.status === 'cancelled',
+    )
+    assert.equal(stopped.state.runs[0].id, 'run-stop-proof')
+    const closed = await session.close()
+    assert.equal(closed.natural.cleanupStatus, 'still-running', JSON.stringify(closed))
+    assert.equal(closed.termination.initialTree.processGroup, true, JSON.stringify(closed))
+    assert.equal(closed.termination.termSignal?.method, 'process-group', JSON.stringify(closed))
+    assert.equal(closed.termination.exited, true, JSON.stringify(closed))
+    assert.equal(closed.termination.descendantsVerified, true, JSON.stringify(closed))
+    assert.equal(closed.termination.tree.gone, true, JSON.stringify(closed))
+    assert.equal(closed.exit.timeout, undefined, JSON.stringify(closed))
+    assert.equal(closed.exit.code, 0, JSON.stringify(closed))
+  } finally {
+    try {
+      const pid = Number(await readFile(pidPath, 'utf8'))
+      if (Number.isInteger(pid) && pid > 0) process.kill(pid, 'SIGKILL')
+    } catch {}
+    await session?.forceStop().catch(() => undefined)
     await rm(root, { recursive: true, force: true })
   }
 })

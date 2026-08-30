@@ -344,17 +344,22 @@ class PosixProcessTreeTracker {
     const rootActive = root.identity !== undefined
     if (root.reused) this.failure = 'The POSIX owner PID was reused before cleanup completed'
     if (this.failure !== undefined) return unsupported(this.failure)
+    const processGroup = processGroupPresent(this.rootPid)
+    if (processGroup === undefined)
+      return unsupported(`The POSIX process group for ${this.rootPid} could not be inspected`)
+    // The detached owner group catches descendants that exit before lineage polling observes them.
     return {
       supported: true,
-      gone: !rootActive && active.length === 0,
-      present: rootActive || active.length > 0,
+      gone: !rootActive && active.length === 0 && !processGroup,
+      present: rootActive || active.length > 0 || processGroup,
       pids: active.map(({ pid }) => pid),
       roots: rootActive ? [this.rootPid] : [],
-      version: rootActive || active.length > 0 ? 0 : 1,
+      version: rootActive || active.length > 0 || processGroup ? 0 : 1,
       mechanism: 'posix-descendant-tracker',
       ownership: 'pid-start-time-and-descendant-lineage',
       observed: this.rootObserved,
       escaped: !rootActive && active.some(({ ppid }) => ppid !== this.rootPid),
+      processGroup,
     }
   }
 
@@ -365,7 +370,7 @@ class PosixProcessTreeTracker {
     let sent = false
     let groupSent = false
     const root = this.entries.get(this.rootPid)
-    if (root !== undefined && root.processGroup === this.rootPid) {
+    if (root === undefined || root.processGroup === this.rootPid) {
       try {
         process.kill(-this.rootPid, signal)
         groupSent = true
