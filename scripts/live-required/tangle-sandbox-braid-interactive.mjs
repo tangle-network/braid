@@ -628,13 +628,11 @@ async function proveTuiReturned(runtime, timeoutMs, label) {
 }
 
 function eventKind(event) {
-  return event?.kind ?? event?.event?.kind ?? event?.type
+  return event?.kind
 }
 
 function eventRunId(event) {
-  return (
-    event?.runId ?? event?.event?.runId ?? event?.payload?.runId ?? event?.payload?.value?.runId
-  )
+  return event?.payload?.runId
 }
 
 function assertOrderedRunEvents(events, runId, required) {
@@ -642,9 +640,7 @@ function assertOrderedRunEvents(events, runId, required) {
   for (const kind of required) {
     const found = events.findIndex(
       (event, index) =>
-        index >= nextIndex &&
-        eventKind(event) === kind &&
-        (eventRunId(event) === undefined || eventRunId(event) === runId),
+        index >= nextIndex && eventKind(event) === kind && eventRunId(event) === runId,
     )
     assert.ok(found >= nextIndex, `interactive record omitted ordered ${kind}`)
     nextIndex = found + 1
@@ -668,8 +664,18 @@ function assertControlRefsEqual(expected, actual, label) {
 
 function projectedRetainedAdmission(event) {
   if (eventKind(event) !== 'run.retained.admitted') return undefined
-  const value = event?.payload?.value ?? event?.event ?? event
-  const admission = value?.admission ?? event?.payload?.admission
+  const value = event?.payload?.value
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    value.kind !== 'run.retained.admitted' ||
+    typeof value.runId !== 'string' ||
+    value.runId.length === 0 ||
+    event?.payload?.runId !== value.runId
+  )
+    return undefined
+  const admission = value.admission
   return admission && typeof admission === 'object' ? admission : undefined
 }
 
@@ -679,18 +685,14 @@ function interactiveAdmissions(record, runId) {
     const admission = projectedRetainedAdmission(event)
     if (admission === undefined) return []
     const admittedRunId = eventRunId(event)
-    return admittedRunId === undefined || admittedRunId === runId ? [admission] : []
+    return admittedRunId === runId ? [admission] : []
   })
 }
 
 function interactiveAdmissionPhase(record, runId) {
   if (typeof runId !== 'string' || runId.length === 0) return null
   const projected = interactiveAdmissions(record, runId).at(-1)?.phase
-  if (typeof projected === 'string') return projected
-  const run = Array.isArray(record?.state?.runs)
-    ? record.state.runs.find((candidate) => candidate?.id === runId)
-    : undefined
-  return typeof run?.retainedAdmission?.phase === 'string' ? run.retainedAdmission.phase : null
+  return typeof projected === 'string' ? projected : null
 }
 
 function interactiveAdmissionIdentity(record, run) {

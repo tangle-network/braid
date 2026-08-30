@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
+import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
 import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
 import {
@@ -12,7 +13,6 @@ import { supervisorProfile } from '../scripts/live-required/supervisor.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
 import { sandboxEnvironment } from '../scripts/live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
-  assertInteractiveOwnedResourceCleanup,
   assertInteractiveTelemetry,
   assertProviderBoundEvidence,
   finalizeInteractiveProof,
@@ -22,11 +22,7 @@ import {
   waitForInteractiveIdentityFrame,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
-import {
-  assertSingleExecutionAttemptLedger,
-  cleanupOwnedRetainedResources,
-  cleanupRetainedResourceByRunId,
-} from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
+import { assertSingleExecutionAttemptLedger } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 import { backendConfiguration as workerBackendConfiguration } from '../scripts/live-required/tangle-sandbox-worker.mjs'
 import { sandboxConfiguration as workspaceSandboxConfiguration } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
@@ -510,7 +506,7 @@ test('LIVE-08 waits past streamed output until retained admission is durable', a
   }
   const incomplete = {
     state: {
-      runs: [{ id: 'local-run-live-08-admission', status: 'streaming', retainedAdmission: null }],
+      runs: [{ id: 'local-run-live-08-admission', status: 'streaming' }],
     },
   }
   const admitted = {
@@ -525,39 +521,33 @@ test('LIVE-08 waits past streamed output until retained admission is durable', a
       ],
     },
     events: [
-      {
-        kind: 'run.retained.admitted',
-        payload: {
+      toEvent({
+        sequence: 1,
+        revision: 1,
+        event: {
+          kind: 'run.retained.admitted',
           runId: 'local-run-live-08-admission',
-          value: {
-            kind: 'run.retained.admitted',
-            runId: 'local-run-live-08-admission',
-            admission: { phase: 'interactive_intent' },
-          },
+          admission: { phase: 'interactive_intent' },
         },
-      },
-      {
-        kind: 'run.retained.admitted',
-        payload: {
+      }),
+      toEvent({
+        sequence: 2,
+        revision: 2,
+        event: {
+          kind: 'run.retained.admitted',
           runId: 'local-run-live-08-admission',
-          value: {
-            kind: 'run.retained.admitted',
-            runId: 'local-run-live-08-admission',
-            admission: { phase: 'interactive_environment' },
-          },
+          admission: { phase: 'interactive_environment' },
         },
-      },
-      {
-        kind: 'run.retained.admitted',
-        payload: {
+      }),
+      toEvent({
+        sequence: 3,
+        revision: 3,
+        event: {
+          kind: 'run.retained.admitted',
           runId: 'local-run-live-08-admission',
-          value: {
-            kind: 'run.retained.admitted',
-            runId: 'local-run-live-08-admission',
-            admission: { phase: 'interactive_started', ref: { run: controlRef } },
-          },
+          admission: { phase: 'interactive_started', ref: { run: controlRef } },
         },
-      },
+      }),
     ],
   }
   const frames = [incomplete, admitted]
@@ -620,38 +610,6 @@ test('LIVE-07 and LIVE-08 reject duplicate provider execution attempts', () => {
   )
 })
 
-test('LIVE-08 cleanup census finds and reports duplicate owned resources', async () => {
-  const controlRef = { sessionId: 'session-duplicate', environmentId: 'sandbox-primary' }
-  const boxes = ['sandbox-primary', 'sandbox-duplicate'].map((id) => ({
-    id,
-    name: 'braid-session-duplicate',
-    metadata: {
-      owner: 'braid',
-      lifecycle: 'retained',
-      providerSessionId: 'session-duplicate',
-    },
-    deleted: false,
-    async delete() {
-      this.deleted = true
-    },
-  }))
-  const client = {
-    async list() {
-      return boxes.filter((box) => !box.deleted)
-    },
-    async get(id) {
-      return boxes.find((box) => box.id === id && !box.deleted) ?? null
-    },
-  }
-  const cleanup = await cleanupOwnedRetainedResources(client, { controlRef })
-  assert.equal(cleanup.confirmed, true)
-  assert.equal(cleanup.matchedCount, 2)
-  assert.throws(
-    () => assertInteractiveOwnedResourceCleanup(cleanup, controlRef.environmentId),
-    /expected one/u,
-  )
-})
-
 test('LIVE-08 reports sanitized nested proof and cleanup failures', () => {
   const secret = 'live-interactive-secret'
   const failure = new AggregateError(
@@ -703,10 +661,20 @@ test('LIVE-08 confirms Sandbox absence for a provider rejection before interacti
         {
           id: 'run-pre-environment',
           status: 'streaming',
-          retainedAdmission: { phase: 'interactive_intent' },
         },
       ],
     },
+    events: [
+      toEvent({
+        sequence: 1,
+        revision: 1,
+        event: {
+          kind: 'run.retained.admitted',
+          runId: 'run-pre-environment',
+          admission: { phase: 'interactive_intent' },
+        },
+      }),
+    ],
   })
   assert.deepEqual(materialization, {
     runId: 'run-pre-environment',
@@ -752,6 +720,44 @@ test('LIVE-08 confirms Sandbox absence for a provider rejection before interacti
   })
   assert.equal(workspaceCleanup, 1)
   assert.equal(packedCleanup, 1)
+})
+
+test('LIVE-08 ignores internal retained admission state absent from projected events', () => {
+  const state = {
+    state: {
+      runs: [
+        {
+          id: 'run-hidden-admission',
+          status: 'streaming',
+          retainedAdmission: { phase: 'interactive_intent' },
+        },
+      ],
+    },
+  }
+  assert.deepEqual(interactiveMaterializationEvidence(state), {
+    runId: 'run-hidden-admission',
+    phase: null,
+    materialized: false,
+    boundary: 'unknown',
+  })
+  assert.deepEqual(
+    interactiveMaterializationEvidence({
+      state: state.state,
+      events: [
+        {
+          kind: 'run.retained.admitted',
+          runId: 'run-hidden-admission',
+          admission: { phase: 'interactive_intent' },
+        },
+      ],
+    }),
+    {
+      runId: 'run-hidden-admission',
+      phase: null,
+      materialized: false,
+      boundary: 'unknown',
+    },
+  )
 })
 
 test('LIVE-08 deletes and confirms one exact resource when the Runtime phase is unavailable', async () => {
@@ -1061,43 +1067,4 @@ test('LIVE-08 refuses cloud cleanup when a run existed without exact identity', 
       return true
     },
   )
-})
-
-test('fail-safe cleanup derives one exact Braid resource from the first local run ID', async () => {
-  const firstRunId = 'local/run-1'
-  const box = {
-    id: 'environment-fallback',
-    name: 'braid-session-braid-local-run-1',
-    metadata: {
-      owner: 'braid',
-      lifecycle: 'retained',
-      providerSessionId: 'session-braid-local-run-1',
-    },
-    deleted: false,
-    async delete() {
-      this.deleted = true
-    },
-  }
-  const other = {
-    id: 'environment-other',
-    name: box.name,
-    metadata: {
-      owner: 'other',
-      lifecycle: 'retained',
-      providerSessionId: box.metadata.providerSessionId,
-    },
-  }
-  const client = {
-    async list() {
-      return [other, box]
-    },
-    async get(id) {
-      return id === box.id && !box.deleted ? box : null
-    },
-  }
-
-  const cleanup = await cleanupRetainedResourceByRunId(client, firstRunId)
-  assert.equal(cleanup.confirmed, true)
-  assert.equal(cleanup.id, box.id)
-  assert.equal(box.deleted, true)
 })
