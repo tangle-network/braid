@@ -931,6 +931,35 @@ export function safeMessage(error, environment = process.env) {
   return safeText(value, environment, credentialFieldSecrets(error)).slice(0, 1_024)
 }
 
+const MAX_EXTERNAL_FAILURE_MESSAGES = 8
+const MAX_EXTERNAL_FAILURE_MESSAGE_LENGTH = 4_096
+
+function externalFailureMessages(error, environment, messages = [], seen = new Set()) {
+  if (
+    error === null ||
+    (typeof error !== 'object' && typeof error !== 'function') ||
+    seen.has(error) ||
+    messages.length >= MAX_EXTERNAL_FAILURE_MESSAGES
+  )
+    return messages
+  seen.add(error)
+  const message = safeMessage(error, environment)
+  if (message.length > 0 && !messages.includes(message)) messages.push(message)
+  if (error instanceof AggregateError) {
+    for (const nested of error.errors) {
+      externalFailureMessages(nested, environment, messages, seen)
+      if (messages.length >= MAX_EXTERNAL_FAILURE_MESSAGES) break
+    }
+  }
+  externalFailureMessages(error.cause, environment, messages, seen)
+  return messages
+}
+
+function externalFailureMessage(error, environment) {
+  const messages = externalFailureMessages(error, environment)
+  return messages.join('; ').slice(0, MAX_EXTERNAL_FAILURE_MESSAGE_LENGTH)
+}
+
 export function safeJson(value, environment = process.env) {
   const secrets = redactionSecretsFor(value, environment)
   const sanitized = sanitizePublicValue(value, environment, secrets)
@@ -970,7 +999,10 @@ export function requiredEnvironment(environment, entries, label) {
 }
 
 export function normalizeExternalFailure(error, label, environment = process.env) {
-  const message = safeMessage(error, environment)
+  const message =
+    error instanceof LiveRequiredError
+      ? safeMessage(error, environment)
+      : externalFailureMessage(error, environment)
   if (error instanceof LiveRequiredError) {
     if (error.message === message) return error
     return new LiveRequiredError(error.code, message, { unavailable: error.unavailable })

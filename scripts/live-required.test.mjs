@@ -521,6 +521,25 @@ test('live wrappers preserve provider unavailability', () => {
   assert.equal(normalized.message, 'provider credential is unavailable')
 })
 
+test('live wrappers retain redacted nested external failure causes', () => {
+  const secret = 'live-nested-failure-secret'
+  const failure = new AggregateError(
+    [
+      new Error(`provider request failed with ${secret}`),
+      new AggregateError([new Error('exact cloud cleanup failed')], 'cleanup incomplete'),
+    ],
+    'interactive proof failed',
+  )
+  const normalized = normalizeExternalFailure(failure, 'live-tangle', {
+    TANGLE_API_KEY: secret,
+  })
+  assert.match(normalized.message, /interactive proof failed/u)
+  assert.match(normalized.message, /provider request failed with \[REDACTED\]/u)
+  assert.match(normalized.message, /cleanup incomplete/u)
+  assert.match(normalized.message, /exact cloud cleanup failed/u)
+  assert.doesNotMatch(normalized.message, new RegExp(secret, 'u'))
+})
+
 test('LIVE-11 composes a complete canonical profile by default', () => {
   assert.deepEqual(supervisorProfile({}), {
     name: 'Braid live supervisor',
