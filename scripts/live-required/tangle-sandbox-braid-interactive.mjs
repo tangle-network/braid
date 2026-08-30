@@ -54,6 +54,7 @@ import {
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -142,7 +143,7 @@ export function sandboxConfiguration(environment) {
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
     fallbackEndpoint: 'https://sandbox.tangle.tools',
-    fallbackModel: 'tangle-router/glm-5.3',
+    fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: 'pi',
     fallbackProvider: 'tangle',
   })

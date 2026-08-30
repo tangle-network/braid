@@ -24,6 +24,7 @@ import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
 } from './tangle-sandbox-braid-stress.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -84,7 +85,7 @@ function sanitizedEnvironment(environment) {
   return child
 }
 
-function sandboxConfiguration(environment) {
+export function sandboxConfiguration(environment) {
   return connectionConfiguration(configurationEnvironment(environment), {
     prefix: 'BRAID_TANGLE_SANDBOX',
     kind: 'tangle-sandbox',
@@ -93,7 +94,7 @@ function sandboxConfiguration(environment) {
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
     fallbackEndpoint: 'https://sandbox.tangle.tools',
-    fallbackModel: 'tangle-router/glm-5.2',
+    fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: 'opencode',
     fallbackProvider: 'tangle',
   })

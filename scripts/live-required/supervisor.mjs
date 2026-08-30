@@ -8,6 +8,7 @@ import {
   safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const SUPERVISOR_CHECKS = Object.freeze([
   'snapshot',
@@ -21,7 +22,7 @@ const SUPERVISOR_CHECKS = Object.freeze([
 const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_POLL_INTERVAL_MS = 100
 const DEFAULT_SUPERVISOR_RUNNER = 'opencode'
-const DEFAULT_SUPERVISOR_MODEL = 'tangle-router/glm-5.3'
+const DEFAULT_SUPERVISOR_MODEL = DEFAULT_TANGLE_ROUTER_MODEL
 const DEFAULT_SUPERVISOR_MODEL_PROVIDER = 'tangle-router'
 const DEFAULT_SANDBOX_ENDPOINT = 'https://sandbox.tangle.tools'
 const DEFAULT_SUPERVISOR_CONNECTION_KIND = 'tangle-sandbox'

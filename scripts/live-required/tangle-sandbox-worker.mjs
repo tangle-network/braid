@@ -2,10 +2,10 @@ import { createInterface } from 'node:readline'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Sandbox } from '@tangle-network/sandbox'
+import { DEFAULT_TANGLE_ROUTER_MODEL_ID } from './model-defaults.mjs'
 
 const DEFAULT_SANDBOX_ENDPOINT = 'https://sandbox.tangle.tools'
 const DEFAULT_MODEL_ENDPOINT = 'https://router.tangle.tools/v1'
-const DEFAULT_MODEL = 'glm-5.2'
 const DEFAULT_MODEL_PROVIDER = 'openai-compat'
 
 function argument(name, argv = process.argv) {
@@ -35,9 +35,9 @@ function clientConfiguration(environment = process.env) {
   }
 }
 
-function backendConfiguration(environment = process.env) {
+export function backendConfiguration(environment = process.env) {
   const provider = environment.BRAID_TANGLE_SANDBOX_MODEL_PROVIDER?.trim() || DEFAULT_MODEL_PROVIDER
-  const model = environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || DEFAULT_MODEL
+  const model = environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || DEFAULT_TANGLE_ROUTER_MODEL_ID
   const baseUrl = environment.BRAID_TANGLE_SANDBOX_MODEL_ENDPOINT?.trim() || DEFAULT_MODEL_ENDPOINT
   const apiKey = requiredEnvironment(
     'BRAID_TANGLE_SANDBOX_MODEL_API_KEY',

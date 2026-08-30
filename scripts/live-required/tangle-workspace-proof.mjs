@@ -19,10 +19,10 @@ import {
   scalarMeasurement,
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
-const DEFAULT_MODEL = 'tangle-router/glm-5.2'
 const DEFAULT_RUNNER = 'opencode'
 const DEFAULT_PROVIDER = 'tangle'
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
@@ -42,7 +42,7 @@ function configurationEnvironment(environment) {
   return environment
 }
 
-function sandboxConfiguration(environment) {
+export function sandboxConfiguration(environment) {
   return connectionConfiguration(configurationEnvironment(environment), {
     prefix: 'BRAID_TANGLE_SANDBOX',
     kind: 'tangle-sandbox',
@@ -51,7 +51,7 @@ function sandboxConfiguration(environment) {
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
     fallbackEndpoint: DEFAULT_ENDPOINT,
-    fallbackModel: DEFAULT_MODEL,
+    fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: DEFAULT_RUNNER,
     fallbackProvider: DEFAULT_PROVIDER,
   })

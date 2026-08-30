@@ -18,6 +18,7 @@ import {
   resourceDelta,
   runObservations,
 } from './tangle-sandbox-braid-stress-support.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_RUNS = 3
@@ -57,13 +58,13 @@ export function executionLatencyDistribution(attempts) {
   }
 }
 
-function sandboxEnvironment(environment) {
+export function sandboxEnvironment(environment) {
   return {
     ...environment,
     BRAID_TANGLE_SANDBOX_ENDPOINT:
       environment.BRAID_TANGLE_SANDBOX_ENDPOINT?.trim() || 'https://sandbox.tangle.tools',
     BRAID_TANGLE_SANDBOX_MODEL:
-      environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || 'tangle-router/glm-5.2',
+      environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || DEFAULT_TANGLE_ROUTER_MODEL,
     BRAID_TANGLE_SANDBOX_RUNNER: environment.BRAID_TANGLE_SANDBOX_RUNNER?.trim() || 'opencode',
     BRAID_TANGLE_SANDBOX_PROVIDER:
       environment.BRAID_TANGLE_SANDBOX_PROVIDER?.trim() || 'tangle-router',

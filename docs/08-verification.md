@@ -339,7 +339,7 @@ The judge executes through Runtime with one exact `AgentProfile` and a direct Ta
 
 `BRAID_EVAL_API_KEY` supplies the protected credential.
 
-`BRAID_EVAL_BASE_URL` defaults to `https://router.tangle.tools/v1`, and `BRAID_EVAL_MODEL` defaults to `glm-5.2`.
+`BRAID_EVAL_BASE_URL` defaults to `https://router.tangle.tools/v1`, and `BRAID_EVAL_MODEL` defaults to `glm-5.3`.
 
 The profile sets a 2,048-token total completion limit through `max_completion_tokens`.
 
