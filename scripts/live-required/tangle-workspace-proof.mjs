@@ -27,6 +27,15 @@ const DEFAULT_RUNNER = 'opencode'
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DEFAULT_ABSENCE_ATTEMPTS = 6
 const DEFAULT_ABSENCE_DELAY_MS = 500
+const SOURCE_TERMINAL_STATUSES = new Set([
+  'completed',
+  'failed',
+  'aborted',
+  'cancelled',
+  'blocked',
+  'expired',
+  'unknown',
+])
 
 function configurationEnvironment(environment) {
   if (
@@ -194,6 +203,20 @@ function sourceEnvironmentRecord(state, run) {
   return { environment, providerId }
 }
 
+export function sourceIdentityForRun(state, runId) {
+  const run = state.runs.find((candidate) => candidate.id === runId)
+  if (run === undefined || run.controlRef === undefined) return undefined
+  try {
+    return Object.freeze({ run, ...sourceEnvironmentRecord(state, run) })
+  } catch {
+    return undefined
+  }
+}
+
+export function checkpointIdForOperation(state, operationId) {
+  return state.checkpoints.find((candidate) => candidate.operationId === operationId)?.id
+}
+
 function sourceRunFor(state, runId) {
   const run = state.runs.find((candidate) => candidate.id === runId)
   if (run === undefined) throw new Error(`Source run ${runId} is missing from durable state`)
@@ -337,7 +360,7 @@ function sourcePrompt(marker, path) {
   ].join(' ')
 }
 
-async function sendSource(app, proofId) {
+async function sendSource(app, proofId, onIdentity = () => {}) {
   const initial = app.state()
   const marker = markerFor(proofId, 'SOURCE')
   const path = markerPath(proofId)
@@ -348,8 +371,28 @@ async function sendSource(app, proofId) {
     branchId: initial.branchId,
     text: sourcePrompt(marker, path),
   })
-  await receipt.admissionReady
-  const terminal = await receipt.completion
+  const captureIdentity = () => {
+    const identity = sourceIdentityForRun(app.state(), receipt.runId)
+    if (identity === undefined) return
+    onIdentity(
+      Object.freeze({
+        marker,
+        path,
+        operationId,
+        receipt,
+        ...identity,
+      }),
+    )
+  }
+  let terminal
+  try {
+    await receipt.admissionReady
+    captureIdentity()
+    terminal = await receipt.completion
+  } catch (error) {
+    captureIdentity()
+    throw error
+  }
   const run = sourceRunFor(terminal, receipt.runId)
   const source = sourceEnvironmentRecord(terminal, run)
   return Object.freeze({
@@ -507,6 +550,21 @@ async function destroySource(adapters, sourceProviderEnvironmentId) {
   )
 }
 
+async function cancelSourceRun(app, source, operationId) {
+  const run = app.state().runs.find((candidate) => candidate.id === source.run.id)
+  if (run === undefined || SOURCE_TERMINAL_STATUSES.has(run.status)) return
+  if (typeof app.cancelRun !== 'function')
+    throw new Error('Braid did not expose source-run cancellation for cleanup')
+  const cancellation = await app.cancelRun({
+    operationId: `${operationId}:source-cancel`,
+    runId: run.id,
+    reason: 'LIVE-09 proof cleanup',
+    terminalStatus: 'aborted',
+    legacy: true,
+  })
+  await cancellation.completion
+}
+
 function checkpointIdForDestination(state, destinationId) {
   const edge = state.graphEdges.find((candidate) => {
     const source = state.graphNodes.find((node) => node.id === candidate.source)
@@ -522,6 +580,74 @@ function checkpointIdForDestination(state, destinationId) {
   const source = state.graphNodes.find((node) => node.id === edge.source)
   if (source?.reference.kind !== 'checkpoint') return undefined
   return state.checkpoints.find((candidate) => candidate.id === source.reference.id)?.id
+}
+
+export async function cleanupWorkspaceProofResources({
+  cleanupOwner,
+  adapters,
+  source,
+  destination,
+  resources,
+  branchOperationId,
+  cleanupOperationId,
+  proofId,
+  cleanupResult,
+  sourceDestroyed = false,
+}) {
+  let cleanupError
+  let resolvedCleanupOperationId = cleanupOperationId
+  let resolvedCleanupResult = cleanupResult
+  let resolvedSourceDestroyed = sourceDestroyed
+  if (cleanupOwner !== undefined && source !== undefined) {
+    const cleanupCheckpointId =
+      resources?.checkpoint.id ??
+      (branchOperationId === undefined
+        ? undefined
+        : checkpointIdForOperation(cleanupOwner.app.state(), branchOperationId)) ??
+      (destination === undefined
+        ? undefined
+        : checkpointIdForDestination(cleanupOwner.app.state(), destination.id))
+    if (cleanupCheckpointId !== undefined && resolvedCleanupResult === undefined) {
+      resolvedCleanupOperationId ??= `op-live-required-${proofId}-cleanup`
+      try {
+        resolvedCleanupResult = await cleanupOwner.app.conversations.branches.cleanup({
+          operationId: resolvedCleanupOperationId,
+          checkpointId: String(cleanupCheckpointId),
+          ...(destination === undefined ? {} : { environmentId: String(destination.id) }),
+        })
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    if (!resolvedSourceDestroyed) {
+      try {
+        await cancelSourceRun(
+          cleanupOwner.app,
+          source,
+          resolvedCleanupOperationId ?? `op-live-required-${proofId}-cleanup`,
+        )
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    if (!resolvedSourceDestroyed) {
+      try {
+        const sourceAdapters = adapters ?? providerAdapters(cleanupOwner)
+        resolvedSourceDestroyed = await destroySource(
+          sourceAdapters,
+          source.providerId,
+        )
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+  }
+  return {
+    cleanupError,
+    cleanupOperationId: resolvedCleanupOperationId,
+    cleanupResult: resolvedCleanupResult,
+    sourceDestroyed: resolvedSourceDestroyed,
+  }
 }
 
 function confidentialExpected(source, destinationProviderEnvironmentId, requestDigest) {
@@ -636,7 +762,9 @@ async function runWorkspaceProof({
       )
     }
     const adapters = providerAdapters(opened)
-    source = await sendSource(opened.app, proofId)
+    source = await sendSource(opened.app, proofId, (candidate) => {
+      source ??= candidate
+    })
     sourceBefore = await readWorkspace(adapters, source.providerId, source.path, 'source')
     assertCondition(
       sourceBefore.content.trim() === source.marker,
@@ -956,34 +1084,22 @@ async function runWorkspaceProof({
           cleanupError ??= error
         }
       }
-      const cleanupCheckpointId =
-        resources?.checkpoint.id ??
-        (cleanupOwner === undefined || destination === undefined
-          ? undefined
-          : checkpointIdForDestination(cleanupOwner.app.state(), destination.id))
-      if (
-        cleanupOwner !== undefined &&
-        destination !== undefined &&
-        cleanupCheckpointId !== undefined &&
-        cleanupResult === undefined
-      ) {
-        cleanupOperationId ??= `op-live-required-${proofId}-cleanup`
-        try {
-          cleanupResult = await cleanupOwner.app.conversations.branches.cleanup({
-            operationId: cleanupOperationId,
-            checkpointId: String(cleanupCheckpointId),
-            environmentId: String(destination.id),
-          })
-        } catch (error) {
-          cleanupError ??= error
-        }
-      }
       if (cleanupOwner !== undefined && !sourceDestroyed) {
-        try {
-          sourceDestroyed = await destroySource(providerAdapters(cleanupOwner), source.providerId)
-        } catch (error) {
-          cleanupError ??= error
-        }
+        const cleanup = await cleanupWorkspaceProofResources({
+          cleanupOwner,
+          source,
+          destination,
+          resources,
+          branchOperationId,
+          cleanupOperationId,
+          proofId,
+          cleanupResult,
+          sourceDestroyed,
+        })
+        cleanupError ??= cleanup.cleanupError
+        cleanupOperationId = cleanup.cleanupOperationId
+        cleanupResult = cleanup.cleanupResult
+        sourceDestroyed = cleanup.sourceDestroyed
       }
     }
     if (rescueOwner && cleanupOwner !== undefined) {

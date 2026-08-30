@@ -14,8 +14,11 @@ import {
   proofReceipt,
 } from '../scripts/live-required/contracts.mjs'
 import {
+  checkpointIdForOperation,
   confidentialNegativeChecks,
+  cleanupWorkspaceProofResources,
   parseConfidentialTrustPolicy,
+  sourceIdentityForRun,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
 const DIGEST = `sha256:${'1'.repeat(64)}`
@@ -113,6 +116,119 @@ test('LIVE-10 negative checks reject nonce, measurement, and self-echo mutations
     wrongMeasurementRejected: true,
     selfEchoRejected: true,
   })
+})
+
+test('LIVE-09 failure cleanup can recover partial source and checkpoint identities', () => {
+  const run = {
+    id: 'run-live-09-partial',
+    operationId: 'op-live-09-source',
+    environmentId: 'environment-local-source',
+    status: 'running',
+    complete: false,
+    controlRef: {
+      provider: 'tangle-sandbox',
+      environmentId: 'sandbox-source-partial',
+      sessionId: 'session-live-09-partial',
+      executionId: 'execution-live-09-partial',
+      runId: 'run-live-09-partial',
+      requestDigest: DIGEST,
+    },
+  }
+  const state = {
+    runs: [run],
+    environments: [
+      {
+        id: run.environmentId,
+        providerEnvironmentId: run.controlRef.environmentId,
+      },
+    ],
+    checkpoints: [{ id: 'checkpoint-live-09-partial', operationId: 'op-live-09-fork' }],
+  }
+
+  const recovered = sourceIdentityForRun(state, run.id)
+  assert.equal(recovered?.run, run)
+  assert.equal(recovered?.providerId, run.controlRef.environmentId)
+  assert.equal(checkpointIdForOperation(state, 'op-live-09-fork'), 'checkpoint-live-09-partial')
+  assert.equal(sourceIdentityForRun(state, 'missing-run'), undefined)
+  assert.equal(
+    sourceIdentityForRun(
+      {
+        ...state,
+        environments: [{ ...state.environments[0], providerEnvironmentId: 'wrong-source' }],
+      },
+      run.id,
+    ),
+    undefined,
+  )
+})
+
+test('LIVE-09 fault cleanup releases a partial checkpoint and source run', async () => {
+  const sourceRun = {
+    id: 'run-live-09-cleanup',
+    environmentId: 'environment-local-source',
+    status: 'running',
+    complete: false,
+  }
+  let state = {
+    runs: [sourceRun],
+    checkpoints: [{ id: 'checkpoint-live-09-cleanup', operationId: 'op-live-09-fork' }],
+  }
+  const events = []
+  const cleanupInputs = []
+  let sourceExists = true
+  const app = {
+    state: () => state,
+    cancelRun: async (input) => {
+      events.push('source-cancel')
+      assert.equal(input.runId, sourceRun.id)
+      state = {
+        ...state,
+        runs: [{ ...sourceRun, status: input.terminalStatus, complete: true }],
+      }
+      return { completion: Promise.resolve() }
+    },
+    conversations: {
+      branches: {
+        cleanup: async (input) => {
+          events.push('checkpoint-cleanup')
+          cleanupInputs.push(input)
+          return { checkpoint: 'deleted', environment: 'not_requested' }
+        },
+      },
+    },
+  }
+  const adapters = {
+    freshEnvironment: async (environmentId) => {
+      assert.equal(environmentId, 'sandbox-source')
+      if (!sourceExists) return null
+      return {
+        destroy: async () => {
+          events.push('source-destroy')
+          sourceExists = false
+        },
+      }
+    },
+  }
+
+  const result = await cleanupWorkspaceProofResources({
+    cleanupOwner: { app },
+    adapters,
+    source: { run: sourceRun, providerId: 'sandbox-source' },
+    branchOperationId: 'op-live-09-fork',
+    proofId: 'live-09-cleanup',
+  })
+
+  assert.deepEqual(events, ['checkpoint-cleanup', 'source-cancel', 'source-destroy'])
+  assert.deepEqual(cleanupInputs, [
+    {
+      operationId: 'op-live-required-live-09-cleanup-cleanup',
+      checkpointId: 'checkpoint-live-09-cleanup',
+    },
+  ])
+  assert.equal(result.cleanupResult?.checkpoint, 'deleted')
+  assert.equal(result.sourceDestroyed, true)
+  assert.equal(sourceExists, false)
+  assert.equal(state.runs[0].status, 'aborted')
 })
 
 test('LIVE-10 policy parsing is typed, bounded, and immutable', () => {
