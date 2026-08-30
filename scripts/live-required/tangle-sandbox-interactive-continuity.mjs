@@ -798,8 +798,7 @@ export async function runInteractiveContinuityProof({
     checks.push(
       checkRecord('stale-identity-rejected', box.id, ref, {
         rejectedIncarnationId: staleRef.incarnationId,
-        statusErrorCode:
-          typeof staleStatusError?.code === 'string' ? staleStatusError.code : null,
+        statusErrorCode: typeof staleStatusError?.code === 'string' ? staleStatusError.code : null,
       }),
     )
 
