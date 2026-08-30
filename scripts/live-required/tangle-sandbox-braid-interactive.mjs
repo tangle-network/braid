@@ -36,6 +36,7 @@ import {
   rpcState,
 } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { waitForProviderObservation } from './provider-observation.mjs'
 import {
   accountIdentity,
   assertSingleExecutionAttemptLedger,
@@ -263,7 +264,7 @@ export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironme
 }
 
 async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
-  const observation = await waitFor(
+  const observation = await waitForProviderObservation(
     `${label} provider readback`,
     () =>
       readRetainedWorkspaceFile(client, controlRef, path, { label, allowMissing: true }).then(
@@ -281,7 +282,7 @@ async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt
   const expectedValue = `${expectedAttempt}\n`
   let previousValue
   let stableReads = 0
-  const observation = await waitFor(
+  const observation = await waitForProviderObservation(
     'single provider execution attempt',
     async () => {
       const value = await readRetainedWorkspaceFile(client, controlRef, path, {
@@ -838,12 +839,20 @@ async function observeSandbox(
   expectedRunning,
   expectedGeometry,
 ) {
-  const resource = await observeInteractiveResource(client, controlRef, runId)
-  const box = await client.get(controlRef.environmentId)
+  const resource = await waitForProviderObservation(
+    'interactive Sandbox identity',
+    () => observeInteractiveResource(client, controlRef, runId),
+    timeoutMs,
+  )
+  const box = await waitForProviderObservation(
+    'interactive Sandbox client',
+    () => client.get(controlRef.environmentId),
+    timeoutMs,
+  )
   assert.equal(box?.id, resource.id, 'Sandbox observation changed environment identity')
   assert.ok(box.terminals && typeof box.terminals.get === 'function')
   let terminal
-  await waitFor(
+  await waitForProviderObservation(
     expectedRunning ? 'retained interactive terminal' : 'stopped retained interactive terminal',
     async () => {
       terminal = await box.terminals.get(controlRef.sessionId)

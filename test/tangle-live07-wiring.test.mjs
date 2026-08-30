@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
+import { AuthError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
 import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
@@ -9,6 +10,10 @@ import {
   DEFAULT_TANGLE_ROUTER_MODEL_ID,
 } from '../scripts/live-required/model-defaults.mjs'
 import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
+import {
+  PROVIDER_OBSERVATION_INTERVAL_MS,
+  waitForProviderObservation,
+} from '../scripts/live-required/provider-observation.mjs'
 import { supervisorProfile } from '../scripts/live-required/supervisor.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
 import { sandboxEnvironment } from '../scripts/live-required/tangle-sandbox-braid-execution-soak.mjs'
@@ -526,6 +531,49 @@ test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () 
     `!!printf '%s\\n' 'RECONNECT_VALUE' >> '.braid-live/proof-quote/reconnect'"'"'s file.txt'`,
   )
   assert.equal(commands.filter((command) => command.startsWith('!!')).length, 2)
+})
+
+test('LIVE-08 provider observation honors typed rate limits within one deadline', async () => {
+  let clock = 0
+  let attempts = 0
+  const pauses = []
+  const result = await waitForProviderObservation(
+    'provider readback',
+    async () => {
+      attempts += 1
+      if (attempts === 1) {
+        throw new QuotaError('rate_limit', 'Too many requests', undefined, undefined, {
+          retryAfterMs: 750,
+        })
+      }
+      return attempts === 3 ? { observed: true } : undefined
+    },
+    2_000,
+    {
+      now: () => clock,
+      pause: async (milliseconds) => {
+        pauses.push(milliseconds)
+        clock += milliseconds
+      },
+    },
+  )
+
+  assert.deepEqual(result, { observed: true })
+  assert.deepEqual(pauses, [750, PROVIDER_OBSERVATION_INTERVAL_MS])
+})
+
+test('LIVE-08 provider observation fails immediately for non-transient errors', async () => {
+  let pauses = 0
+  const error = new AuthError('invalid test credential')
+  await assert.rejects(
+    waitForProviderObservation('provider readback', async () => Promise.reject(error), 2_000, {
+      pause: async () => {
+        pauses += 1
+      },
+    }),
+    (candidate) => candidate === error,
+  )
+  assert.equal(pauses, 0)
 })
 
 test('LIVE-08 cancels a streaming run before exact cleanup after an early flow failure', async () => {
