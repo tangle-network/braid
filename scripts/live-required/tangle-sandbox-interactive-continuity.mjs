@@ -259,10 +259,14 @@ export function buildExactInteractiveStart({
   proofId,
   runner,
   model,
-  modelProvider = 'tangle',
+  modelProvider,
   cols = DEFAULT_COLS,
   rows = DEFAULT_ROWS,
 }) {
+  if (typeof modelProvider !== 'string' || modelProvider.trim().length === 0) {
+    throw new Error('Interactive start requires an explicit model provider')
+  }
+  const selectedModelProvider = modelProvider.trim()
   const exactEnvironmentId = safeIdentifier(environmentId, 'environmentId')
   const exactSessionId = safeIdentifier(sessionId, 'sessionId')
   const exactExecutionId = safeIdentifier(executionId, 'executionId')
@@ -272,7 +276,7 @@ export function buildExactInteractiveStart({
     harness: runner,
     model: {
       default: model,
-      provider: modelProvider,
+      provider: selectedModelProvider,
     },
   }
   const requestedProfileDigest = interfaceModule.canonicalAgentProfileDigest(profile)
@@ -882,7 +886,7 @@ export async function runInteractiveContinuityProof({
         credentialConfigured: true,
         model: values.model,
         runner: values.runner,
-        provider: values.provider,
+        modelProvider: values.modelProvider,
       },
       run: {
         environmentId: box.id,

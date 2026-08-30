@@ -66,9 +66,6 @@ export function sandboxEnvironment(environment) {
     BRAID_TANGLE_SANDBOX_MODEL:
       environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || DEFAULT_TANGLE_ROUTER_MODEL,
     BRAID_TANGLE_SANDBOX_RUNNER: environment.BRAID_TANGLE_SANDBOX_RUNNER?.trim() || 'opencode',
-    BRAID_TANGLE_SANDBOX_PROVIDER: environment.BRAID_TANGLE_SANDBOX_PROVIDER?.trim() || 'tangle',
-    BRAID_TANGLE_SANDBOX_MODEL_PROVIDER:
-      environment.BRAID_TANGLE_SANDBOX_MODEL_PROVIDER?.trim() || 'tangle-router',
     ...(!environment.BRAID_TANGLE_SANDBOX_API_KEY && environment.TANGLE_API_KEY
       ? { BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
       : {}),
@@ -365,7 +362,7 @@ export async function runBraidSandboxExecutionSoak({
         credentialConfigured: true,
         profile: { model: { default: values.model }, harness: values.runner },
       }),
-      provider: values.provider,
+      modelProvider: values.modelProvider,
     },
     account: {
       stable: failures.includes('Sandbox account identity changed during the cohort') === false,

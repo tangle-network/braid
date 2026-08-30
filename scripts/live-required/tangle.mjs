@@ -50,6 +50,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
     modelNames: ['BRAID_TANGLE_INFERENCE_MODEL'],
     runnerNames: ['BRAID_TANGLE_INFERENCE_RUNNER'],
     providerNames: ['BRAID_TANGLE_INFERENCE_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
     fallbackRunner: 'cli-base',
   })
   const config = await prepareProductionWorkspace({

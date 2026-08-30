@@ -24,7 +24,6 @@ import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
 const DEFAULT_RUNNER = 'opencode'
-const DEFAULT_PROVIDER = 'tangle'
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DEFAULT_ABSENCE_ATTEMPTS = 6
 const DEFAULT_ABSENCE_DELAY_MS = 500
@@ -54,7 +53,6 @@ export function sandboxConfiguration(environment) {
     fallbackEndpoint: DEFAULT_ENDPOINT,
     fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: DEFAULT_RUNNER,
-    fallbackProvider: DEFAULT_PROVIDER,
     fallbackModelProvider: 'tangle-router',
   })
 }
@@ -601,7 +599,6 @@ async function runWorkspaceProof({
     endpoint: values.endpoint,
     model: values.model,
     runner: values.runner,
-    provider: values.provider,
     modelProvider: values.modelProvider,
     credentialRef: values.credentialRef,
     credentialValue: values.credentialValue,

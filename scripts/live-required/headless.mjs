@@ -12,6 +12,7 @@ import {
   stateForRun,
   terminalMessage,
 } from '../live-bridge/protocol.mjs'
+import { resolveModelProvider } from './configuration.mjs'
 import { endpointEvidence, protectedUnavailable, safeMessage } from './contracts.mjs'
 
 const AUTH_ENVIRONMENT_NAMES = Object.freeze([
@@ -43,7 +44,14 @@ function validCredentialId(value) {
   return candidate
 }
 
-function profileFor({ kind, model, runner, modelProvider }) {
+export function profileFor({ kind, model, runner, modelProvider }) {
+  const provider = resolveModelProvider({ override: modelProvider })
+  if (provider === undefined) {
+    throw protectedUnavailable(
+      'PROTECTED_MODEL_PROVIDER_REQUIRED',
+      `The ${kind} live check requires an explicit model provider for model '${model}'`,
+    )
+  }
   return {
     name: `Braid live ${kind}`,
     description: 'Protected release flow profile',
@@ -246,8 +254,7 @@ export async function prepareProductionWorkspace({
   endpoint,
   model,
   runner,
-  provider,
-  modelProvider = provider,
+  modelProvider,
   connectionName,
   providerOptions = {},
   confidentialAttestationPolicy,
@@ -571,12 +578,14 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
 
 export function configEvidence(config) {
   const providerOptions = config.connection.providerOptions ?? {}
+  const modelProvider = config.profile.model.provider
   return {
     endpoint: config.endpoint,
     connectionId: config.connection.id,
     connectionKind: config.connection.kind,
     credentialConfigured: config.credentialConfigured,
     model: config.profile.model.default,
+    ...(modelProvider === undefined ? {} : { modelProvider }),
     runner: config.profile.harness,
     ...(providerOptions.lifecycle === undefined ? {} : { lifecycle: providerOptions.lifecycle }),
     ...(providerOptions.idleTtlSeconds === undefined

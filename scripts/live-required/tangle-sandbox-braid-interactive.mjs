@@ -146,7 +146,6 @@ export function sandboxConfiguration(environment) {
     fallbackEndpoint: 'https://sandbox.tangle.tools',
     fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: 'pi',
-    fallbackProvider: 'tangle',
     fallbackModelProvider: 'tangle-router',
   })
 }
@@ -1119,7 +1118,6 @@ async function runProof({
       endpoint: values.endpoint,
       model: values.model,
       runner: values.runner,
-      provider: values.provider,
       modelProvider: values.modelProvider,
       providerOptions: { lifecycle: 'retained', idleTtlSeconds },
       credentialRef: values.credentialRef,

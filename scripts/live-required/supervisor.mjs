@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { resolveModelProvider } from './configuration.mjs'
 import {
   PROOF_OPERATIONS,
   proofInvocation,
@@ -314,14 +315,16 @@ function proofConfig(environment) {
 export function supervisorProfile(environment) {
   const runner = environment.BRAID_SUPERVISOR_RUNNER?.trim() || DEFAULT_SUPERVISOR_RUNNER
   const model = environment.BRAID_SUPERVISOR_MODEL?.trim() || DEFAULT_SUPERVISOR_MODEL
-  const provider =
-    environment.BRAID_SUPERVISOR_MODEL_PROVIDER?.trim() || DEFAULT_SUPERVISOR_MODEL_PROVIDER
+  const modelProvider = resolveModelProvider({
+    override: environment.BRAID_SUPERVISOR_MODEL_PROVIDER,
+    fallback: DEFAULT_SUPERVISOR_MODEL_PROVIDER,
+  })
   return {
     name: 'Braid live supervisor',
     description: 'Protected LIVE-11 supervisor profile',
     version: '1.0.0',
     harness: runner,
-    model: { provider, default: model, reasoningEffort: 'none' },
+    model: { provider: modelProvider, default: model, reasoningEffort: 'none' },
     prompt: {
       instructions: ['Remain available for the protected LIVE-11 supervisor proof.'],
     },

@@ -39,23 +39,18 @@ test('active Tangle Sandbox checks share the current router model default', () =
   const expectedProfileModel = DEFAULT_TANGLE_ROUTER_MODEL
   assert.equal(DEFAULT_TANGLE_ROUTER_MODEL_ID, 'glm-5.3')
   assert.equal(workspaceSandboxConfiguration(environment).model, expectedProfileModel)
-  assert.equal(workspaceSandboxConfiguration(environment).provider, 'tangle')
   assert.equal(workspaceSandboxConfiguration(environment).modelProvider, 'tangle-router')
   assert.equal(multirunSandboxConfiguration(environment).model, expectedProfileModel)
-  assert.equal(multirunSandboxConfiguration(environment).provider, 'tangle')
   assert.equal(multirunSandboxConfiguration(environment).modelProvider, 'tangle-router')
   assert.equal(interactiveSandboxConfiguration(environment).model, expectedProfileModel)
-  assert.equal(interactiveSandboxConfiguration(environment).provider, 'tangle')
   assert.equal(interactiveSandboxConfiguration(environment).modelProvider, 'tangle-router')
   assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_MODEL, expectedProfileModel)
-  assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_PROVIDER, 'tangle')
-  assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_MODEL_PROVIDER, 'tangle-router')
   assert.equal(workerBackendConfiguration(environment).model.model, DEFAULT_TANGLE_ROUTER_MODEL_ID)
   assert.equal(workerBackendConfiguration(environment).profile.model.default, expectedProfileModel)
   assert.equal(supervisorProfile({}).model.default, expectedProfileModel)
 })
 
-test('Tangle Sandbox workspace profiles keep transport and model providers distinct', async () => {
+test('Tangle Sandbox workspace profiles pin model identity separately from connection kind', async () => {
   const values = interactiveSandboxConfiguration({
     BRAID_TANGLE_SANDBOX_CREDENTIAL_REF: 'credential-ref-live-provider-split',
   })

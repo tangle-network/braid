@@ -75,6 +75,7 @@ export async function runTraceAnalysis({ repository, environment }) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
     fallbackRunner: 'cli-base',
     credentialFallbacks: ['BRAID_TANGLE_CREDENTIAL_REF'],
   })

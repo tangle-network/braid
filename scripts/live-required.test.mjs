@@ -25,6 +25,7 @@ import {
   configEvidence,
   initializedSession,
   prepareProductionWorkspace,
+  profileFor,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
 import {
@@ -50,6 +51,7 @@ import {
   runStressProof,
 } from './live-required/tangle-sandbox-stress.mjs'
 import { runWorker } from './live-required/tangle-sandbox-worker.mjs'
+import { sandboxConfiguration as workspaceSandboxConfiguration } from './live-required/tangle-workspace-proof.mjs'
 import './live-required/tangle-sandbox-braid-multirun.test.mjs'
 import { MULTIRUN_REQUIRED_PHASES } from './live-required/multirun-contract.mjs'
 import { readLiveTangleProof } from './release/live-tangle-proof.mjs'
@@ -89,6 +91,105 @@ test('config evidence accepts connections without optional provider options', ()
   )
 })
 
+test('live model-provider resolution preserves qualified and unqualified model ids', () => {
+  const options = {
+    prefix: 'BRAID_TANGLE',
+    kind: 'tangle-inference',
+    fallbackRunner: 'cli-base',
+    fallbackModelProvider: 'tangle-router',
+    providerNames: ['BRAID_TANGLE_PROVIDER'],
+  }
+  const qualified = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'zai/glm-5.3',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-qualified',
+    },
+    options,
+  )
+  assert.equal(qualified.model, 'zai/glm-5.3')
+  assert.equal(qualified.modelProvider, 'tangle-router')
+
+  const unqualified = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'glm-5.3',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-unqualified',
+    },
+    options,
+  )
+  assert.equal(unqualified.model, 'glm-5.3')
+  assert.equal(unqualified.modelProvider, 'tangle-router')
+
+  const explicit = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'zai/glm-5.3',
+      BRAID_TANGLE_MODEL_PROVIDER: 'custom-router',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-explicit',
+    },
+    options,
+  )
+  assert.equal(explicit.model, 'zai/glm-5.3')
+  assert.equal(explicit.modelProvider, 'custom-router')
+
+  const currentAlias = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'glm-5.3',
+      BRAID_TANGLE_PROVIDER: 'legacy-router-alias',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-alias',
+    },
+    options,
+  )
+  assert.equal(currentAlias.model, 'glm-5.3')
+  assert.equal(currentAlias.modelProvider, 'legacy-router-alias')
+
+  const sandboxDefault = workspaceSandboxConfiguration({
+    BRAID_TANGLE_SANDBOX_CREDENTIAL_REF: 'credential-ref-model-provider-sandbox-default',
+  })
+  assert.equal(sandboxDefault.model, 'tangle-router/glm-5.3')
+  assert.equal(sandboxDefault.modelProvider, 'tangle-router')
+})
+
+test('generic unqualified live profiles fail closed without a model provider', () => {
+  assert.throws(
+    () => profileFor({ kind: 'generic', model: 'glm-5.3', runner: 'pi' }),
+    (error) => {
+      assert.equal(error.code, 'PROTECTED_MODEL_PROVIDER_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('live profile and evidence preserve the full portable model id', () => {
+  const profile = profileFor({
+    kind: 'tangle-sandbox',
+    model: 'zai/glm-5.3',
+    runner: 'opencode',
+    modelProvider: 'tangle-router',
+  })
+  assert.equal(profile.model.default, 'zai/glm-5.3')
+  assert.equal(profile.model.provider, 'tangle-router')
+  assert.deepEqual(
+    configEvidence({
+      endpoint: { scheme: 'https', host: 'sandbox.tangle.tools' },
+      connection: { id: 'connection-model-provider', kind: 'tangle-sandbox' },
+      credentialConfigured: true,
+      profile,
+    }),
+    {
+      endpoint: { scheme: 'https', host: 'sandbox.tangle.tools' },
+      connectionId: 'connection-model-provider',
+      connectionKind: 'tangle-sandbox',
+      credentialConfigured: true,
+      model: 'zai/glm-5.3',
+      modelProvider: 'tangle-router',
+      runner: 'opencode',
+    },
+  )
+})
+
 function protectedEnvironment() {
   const environment = { ...process.env }
   for (const name of [
@@ -101,6 +202,8 @@ function protectedEnvironment() {
     'BRAID_ANALYSIS_BEARER',
     'BRAID_TANGLE_ENDPOINT',
     'BRAID_TANGLE_MODEL',
+    'BRAID_TANGLE_MODEL_PROVIDER',
+    'BRAID_TANGLE_INFERENCE_MODEL_PROVIDER',
     'BRAID_TANGLE_RUNNER',
     'BRAID_TANGLE_CREDENTIAL_REF',
     'BRAID_TANGLE_AUTH',
@@ -108,6 +211,7 @@ function protectedEnvironment() {
     'BRAID_TANGLE_BEARER',
     'BRAID_TANGLE_SANDBOX_ENDPOINT',
     'BRAID_TANGLE_SANDBOX_MODEL',
+    'BRAID_TANGLE_SANDBOX_MODEL_PROVIDER',
     'BRAID_TANGLE_SANDBOX_RUNNER',
     'BRAID_TANGLE_SANDBOX_CREDENTIAL_REF',
     'BRAID_TANGLE_SANDBOX_AUTH',
@@ -1454,7 +1558,7 @@ test('configured headless checks execute the real Braid RPC process and validate
     endpoint: 'http://127.0.0.1:3344',
     model: 'openai-codex/gpt-5.6-luna',
     runner: 'pi',
-    provider: 'openai-codex',
+    modelProvider: 'openai-codex',
   })
   try {
     const turn = await runHeadlessTurn({
@@ -1495,7 +1599,7 @@ test('production live workspaces remove every raw authentication alias from chil
     endpoint: 'https://router.tangle.tools',
     model: 'openai/gpt-5',
     runner: 'pi',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialRef: 'credential-ref-live-required-test',
   })
   try {
@@ -1515,7 +1619,7 @@ test('generated live credentials use the same protected store as production Brai
     endpoint: 'https://router.tangle.tools',
     model: 'glm-5.2',
     runner: 'cli-base',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialValue: secret,
   })
   let session
@@ -1548,7 +1652,7 @@ test('generated credential cleanup disposes failed removal, cleans root, and ret
     endpoint: 'https://router.tangle.tools',
     model: 'glm-5.2',
     runner: 'cli-base',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialValue: secret,
     credentialContextFactory: () => ({
       store: {
@@ -1624,7 +1728,7 @@ test('temporary-root cleanup retries after a transient failure without repeating
     endpoint: 'https://router.tangle.tools',
     model: 'glm-5.2',
     runner: 'cli-base',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialValue: 'live-required-root-cleanup-canary-154d',
     credentialContextFactory: () => ({
       store: {

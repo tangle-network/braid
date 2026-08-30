@@ -97,7 +97,6 @@ export function sandboxConfiguration(environment) {
     fallbackEndpoint: 'https://sandbox.tangle.tools',
     fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: 'opencode',
-    fallbackProvider: 'tangle',
     fallbackModelProvider: 'tangle-router',
   })
 }
@@ -679,7 +678,6 @@ export async function runProof({
         endpoint: values.endpoint,
         model: values.model,
         runner: values.runner,
-        provider: values.provider,
         modelProvider: values.modelProvider,
         providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
         credentialRef: values.credentialRef,
@@ -1047,6 +1045,7 @@ export async function runProof({
       endpoint: values.endpoint,
       runner: values.runner,
       model: values.model,
+      modelProvider: values.modelProvider,
       lifecycle: 'retained',
       credentialConfigured: Boolean(values.credentialValue || values.credentialRef),
     },

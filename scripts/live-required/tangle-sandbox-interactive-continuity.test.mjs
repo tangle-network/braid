@@ -165,6 +165,7 @@ test('exact start material binds one run to one profile and session', () => {
     proofId: 'proof-1',
     runner: 'pi',
     model: 'test-model',
+    modelProvider: 'tangle-router',
   })
   assert.equal(exact.start.run.environmentId, 'sandbox-1')
   assert.equal(exact.start.run.sessionId, 'session-1')

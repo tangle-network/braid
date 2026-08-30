@@ -1,9 +1,24 @@
 import { protectedUnavailable } from './contracts.mjs'
 
+function textValue(value) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
 function firstValue(environment, names) {
   return names
     .map((name) => environment[name])
-    .find((value) => typeof value === 'string' && value.trim())
+    .map(textValue)
+    .find((value) => value !== undefined)
+}
+
+/**
+ * Resolve the model provider without changing the portable model id.
+ *
+ * The caller supplies the owning path's fallback because a model prefix can
+ * identify an upstream model, not the connection's provider.
+ */
+export function resolveModelProvider({ override, fallback } = {}) {
+  return textValue(override) ?? textValue(fallback)
 }
 
 function credential(environment, prefix, fallbacks = []) {
@@ -34,7 +49,6 @@ export function connectionConfiguration(
     fallbackEndpoint,
     fallbackModel,
     fallbackRunner,
-    fallbackProvider = 'tangle',
     fallbackModelProvider,
     credentialFallbacks = [],
   },
@@ -43,12 +57,15 @@ export function connectionConfiguration(
     firstValue(environment, [`${prefix}_ENDPOINT`, ...endpointNames]) ?? fallbackEndpoint
   const model = firstValue(environment, [`${prefix}_MODEL`, ...modelNames]) ?? fallbackModel
   const runner = firstValue(environment, [`${prefix}_RUNNER`, ...runnerNames]) ?? fallbackRunner
-  const provider =
-    firstValue(environment, [`${prefix}_PROVIDER`, ...providerNames]) ?? fallbackProvider
-  const modelProvider =
-    firstValue(environment, [`${prefix}_MODEL_PROVIDER`, ...modelProviderNames]) ??
-    fallbackModelProvider ??
-    provider
+  const modelProvider = resolveModelProvider({
+    override: firstValue(environment, [
+      `${prefix}_MODEL_PROVIDER`,
+      ...modelProviderNames,
+      `${prefix}_PROVIDER`,
+      ...providerNames,
+    ]),
+    fallback: fallbackModelProvider,
+  })
   const missing = [
     [endpoint, `${prefix}_ENDPOINT`, 'provider endpoint'],
     [model, `${prefix}_MODEL`, 'profile model'],
@@ -67,8 +84,7 @@ export function connectionConfiguration(
     endpoint,
     model,
     runner,
-    provider,
-    modelProvider,
+    ...(modelProvider === undefined ? {} : { modelProvider }),
     ...credential(environment, prefix, credentialFallbacks),
   }
 }
