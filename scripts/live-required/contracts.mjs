@@ -204,6 +204,7 @@ const PROOF_CONNECTION_KEYS = Object.freeze([
   'connectionKind',
   'credentialConfigured',
   'model',
+  'modelProvider',
   'runner',
 ])
 const PROOF_RUN_KEYS = Object.freeze(['ids', 'environmentId', 'materializationDigest'])
@@ -819,6 +820,7 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   )
     throw new Error('Live proof credentialConfigured must be boolean or null')
   validNullableString(receipt.connection.model, 'Live proof model')
+  validNullableString(receipt.connection.modelProvider, 'Live proof modelProvider')
   validNullableString(receipt.connection.runner, 'Live proof runner')
   validateObservations(receipt.observations)
   exactKeys(receipt.run, PROOF_RUN_KEYS, 'Live proof run')
@@ -901,6 +903,7 @@ export function proofReceipt({
       credentialConfigured:
         typeof config?.credentialConfigured === 'boolean' ? config.credentialConfigured : null,
       model: config?.model ?? null,
+      modelProvider: config?.modelProvider ?? null,
       runner: config?.runner ?? null,
     },
     run: {

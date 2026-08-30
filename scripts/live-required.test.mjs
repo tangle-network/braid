@@ -453,6 +453,7 @@ function validTangleSandboxReceiptInput(overrides = {}) {
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'pi',
     },
     runIds: ['local-run-1', 'local-run-follow-up', 'local-run-cancelled'],
@@ -723,6 +724,7 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'pi',
     },
     runIds: ['run-live-test'],
@@ -742,6 +744,7 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
     checks: ['marker', 'environment-id'],
   })
   assert.equal(receipt.schema, PUBLIC_EVIDENCE_SCHEMA)
+  assert.equal(receipt.connection.modelProvider, 'tangle-router')
   assert.deepEqual(Object.keys(receipt).sort(), [
     'checks',
     'completedAt',
@@ -763,6 +766,14 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
         { invocationId, operation: receipt.operation },
       ),
     /outside the public schema/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        connection: { ...receipt.connection, modelProvider: 42 },
+      }),
+    /modelProvider must be a non-empty string or null/u,
   )
   assert.throws(
     () =>

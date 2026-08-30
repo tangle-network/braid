@@ -78,6 +78,7 @@ function passedStressProof() {
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'pi',
     },
     runs: {
@@ -281,6 +282,7 @@ function passedInteractiveProof(
         connectionKind: 'tangle-sandbox',
         credentialConfigured: true,
         model: 'tangle-router/glm-5.2',
+        modelProvider: 'tangle-router',
         runner,
       },
       runIds: ['run-interactive'],

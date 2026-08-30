@@ -15,8 +15,8 @@ import {
 } from '../scripts/live-required/contracts.mjs'
 import {
   checkpointIdForOperation,
-  confidentialNegativeChecks,
   cleanupWorkspaceProofResources,
+  confidentialNegativeChecks,
   parseConfidentialTrustPolicy,
   sourceIdentityForRun,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
@@ -300,6 +300,7 @@ test('LIVE-10 passed receipts require external verification and every negative c
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'opencode',
     },
     runIds: ['run-live-10'],
