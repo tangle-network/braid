@@ -343,7 +343,7 @@ export function interactiveMaterializationEvidence(record) {
 
 function interactiveResourceName(runId) {
   if (typeof runId !== 'string' || !/^[A-Za-z0-9._:-]{1,95}$/u.test(runId)) {
-    throw new Error('Interactive pre-environment cleanup requires a bounded Braid run identity')
+    throw new Error('Interactive run-derived cleanup requires a bounded Braid run identity')
   }
   return `braid-interactive-${runId}`
 }
@@ -362,12 +362,12 @@ function sameNameInteractiveResources(resources, expectedName, predicate) {
   const matches = resources.filter((resource) => resource?.name === expectedName)
   if (matches.length > 1) {
     throw new Error(
-      `Interactive pre-environment cleanup found ${String(matches.length)} same-name Sandbox resources; cleanup refused`,
+      `Interactive run-derived cleanup found ${String(matches.length)} same-name Sandbox resources; cleanup refused`,
     )
   }
   if (matches.length === 1 && !predicate(matches[0])) {
     throw new Error(
-      `Interactive pre-environment resource ${String(matches[0]?.id ?? 'without-id')} failed exact ownership validation`,
+      `Interactive run-derived resource ${String(matches[0]?.id ?? 'without-id')} failed exact ownership validation`,
     )
   }
   return matches
@@ -392,7 +392,7 @@ async function listAllSandboxResources(client) {
   }
 }
 
-async function cleanupInteractiveBeforeEnvironment(client, materialization) {
+async function cleanupInteractiveByRunId(client, materialization) {
   const runId = materialization?.runId
   const expectedName = interactiveResourceName(runId)
   const predicate = (resource) => isOwnedInteractiveResource(resource, expectedName)
@@ -417,12 +417,12 @@ async function cleanupInteractiveBeforeEnvironment(client, materialization) {
     }
     if (!predicate(exact)) {
       throw new Error(
-        `Interactive pre-environment resource ${resource.id} failed exact ownership validation`,
+        `Interactive run-derived resource ${resource.id} failed exact ownership validation`,
       )
     }
     await exact.delete()
     if ((await client.get(resource.id)) !== null) {
-      throw new Error(`Interactive pre-environment resource ${resource.id} remained after delete`)
+      throw new Error(`Interactive run-derived resource ${resource.id} remained after delete`)
     }
     removedIds.push(resource.id)
     deletions.push({
@@ -440,12 +440,12 @@ async function cleanupInteractiveBeforeEnvironment(client, materialization) {
   )
   if (remaining.length > 0) {
     throw new Error(
-      `Interactive pre-environment cleanup left ${String(remaining.length)} same-name Sandbox resources`,
+      `Interactive run-derived cleanup left ${String(remaining.length)} same-name Sandbox resources`,
     )
   }
   return {
     confirmed: true,
-    mode: listed.length === 0 ? 'pre-environment-absence' : 'pre-environment-owned-resource-set',
+    mode: listed.length === 0 ? 'run-derived-absence' : 'run-derived-owned-resource-set',
     phase: materialization.phase,
     runId,
     expectedName,
@@ -885,12 +885,12 @@ export async function finalizeInteractiveProof({
       if (client === undefined) {
         errors.push(
           new Error(
-            'Sandbox observation client was unavailable; pre-environment absence could not be confirmed',
+            'Sandbox observation client was unavailable; run-derived absence could not be confirmed',
           ),
         )
       } else {
         const observed = await attemptCleanup(errors, 'run-derived Sandbox cleanup', () =>
-          cleanupInteractiveBeforeEnvironment(client, materialization),
+          cleanupInteractiveByRunId(client, materialization),
         )
         if (observed.ok) providerMaterialization = observed.value
       }

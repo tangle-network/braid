@@ -613,7 +613,7 @@ test('LIVE-08 confirms Sandbox absence for a provider rejection before interacti
   assert.equal(listCalls, 2)
   assert.deepEqual(result.providerMaterialization, {
     confirmed: true,
-    mode: 'pre-environment-absence',
+    mode: 'run-derived-absence',
     phase: 'interactive_intent',
     runId: 'run-pre-environment',
     expectedName: 'braid-interactive-run-pre-environment',
@@ -658,7 +658,7 @@ test('LIVE-08 deletes and confirms one exact resource when the Runtime phase is 
   assert.equal(resource.deleted, true)
   assert.deepEqual(result.providerMaterialization, {
     confirmed: true,
-    mode: 'pre-environment-owned-resource-set',
+    mode: 'run-derived-owned-resource-set',
     phase: null,
     runId: 'run-pre-environment',
     expectedName: 'braid-interactive-run-pre-environment',
@@ -727,7 +727,7 @@ test('LIVE-08 deletes the run-derived resource when provider materialization exi
   assert.equal(getCalls, 2)
   assert.deepEqual(result.providerMaterialization, {
     confirmed: true,
-    mode: 'pre-environment-owned-resource-set',
+    mode: 'run-derived-owned-resource-set',
     phase: null,
     runId: 'run-materialized-without-record',
     expectedName: 'braid-interactive-run-materialized-without-record',
@@ -774,7 +774,7 @@ test('LIVE-08 confirms absence when the observed resource races away before dele
   })
   assert.deepEqual(result.providerMaterialization, {
     confirmed: true,
-    mode: 'pre-environment-owned-resource-set',
+    mode: 'run-derived-owned-resource-set',
     phase: null,
     runId: 'run-pre-environment',
     expectedName: 'braid-interactive-run-pre-environment',
