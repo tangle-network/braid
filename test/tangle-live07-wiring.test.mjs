@@ -21,6 +21,7 @@ import {
   interactiveProofCommandSequence,
   sandboxConfiguration as interactiveSandboxConfiguration,
   waitForInteractiveIdentityFrame,
+  waitForTerminalOutputStability,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
 import { assertSingleExecutionAttemptLedger } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
@@ -518,6 +519,30 @@ test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () 
     `!!printf '%s\\n' 'RECONNECT_VALUE' >> '.braid-live/proof-quote/reconnect'"'"'s file.txt'`,
   )
   assert.equal(commands.filter((command) => command.startsWith('!!')).length, 2)
+})
+
+test('LIVE-08 waits for Pi terminal output to settle before native shell input', async () => {
+  let clock = 0
+  let outputSize = 0
+  let nextSpinnerAt = 80
+  const result = await waitForTerminalOutputStability({
+    readOutputSize: () => outputSize,
+    timeoutMs: 2_000,
+    quietMs: 250,
+    pollMs: 25,
+    now: () => clock,
+    pause: async (milliseconds) => {
+      clock += milliseconds
+      while (nextSpinnerAt <= clock && nextSpinnerAt <= 400) {
+        outputSize += 1
+        nextSpinnerAt += 80
+      }
+    },
+  })
+
+  assert.equal(outputSize, 5)
+  assert.equal(result.quietMs, 250)
+  assert.ok(result.waitedMs >= 650)
 })
 
 test('LIVE-08 waits past streamed output until retained admission is durable', async () => {
