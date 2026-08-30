@@ -52,7 +52,11 @@ import {
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
-import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
+import {
+  createTerminalOutputTracker,
+  waitForPiTerminalReady,
+  waitForTerminalQuiescence,
+} from './terminal-quiescence.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -592,6 +596,16 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
     },
     waitForTerminalQuiescence(timeoutMs, afterRevision) {
       return waitForTerminalQuiescence(outputTracker, { timeoutMs, afterRevision, pause: sleep })
+    },
+    waitForPiTerminalReady(timeoutMs, afterRevision, beforeScreen) {
+      return waitForPiTerminalReady({
+        tracker: outputTracker,
+        readScreen: () => terminalText(terminal),
+        timeoutMs,
+        afterRevision,
+        beforeScreen,
+        pause: sleep,
+      })
     },
     write(value) {
       child.write(value)
@@ -1301,6 +1315,8 @@ async function runProof({
     const [interactiveCommand, inputCommand, detach, , attach, reconnectCommand] =
       interactiveProofCommandSequence(markers)
     const promptCount = occurrences(runtime.output, markers.output)
+    const interactiveBeforeScreen = runtime.screen
+    const interactiveActionRevision = runtime.terminalOutputRevision
     runtime.write(`${interactiveCommand}\r`)
     await waitFor(
       'native interactive output',
@@ -1314,7 +1330,11 @@ async function runProof({
       },
       timeoutMs,
     )
-    await runtime.waitForTerminalQuiescence(timeoutMs)
+    await runtime.waitForPiTerminalReady(
+      timeoutMs,
+      interactiveActionRevision,
+      interactiveBeforeScreen,
+    )
     const { frame: initialFrame, identity: initialIdentity } =
       await waitForInteractiveIdentityFrame({
         captureFrame: () => captureStateFrame(runtime, recordPath, timeoutMs),
@@ -1329,6 +1349,8 @@ async function runProof({
       true,
       { cols: 120, rows: 36 },
     )
+    const inputBeforeScreen = runtime.screen
+    const inputActionRevision = runtime.terminalOutputRevision
     runtime.write(`${inputCommand}\r`)
     const inputEvidence = await waitForProviderReadback(
       client,
@@ -1338,12 +1360,14 @@ async function runProof({
       timeoutMs,
       'interactive input',
     )
+    await runtime.waitForPiTerminalReady(timeoutMs, inputActionRevision, inputBeforeScreen)
 
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
     const attachOutputRevision = runtime.terminalOutputRevision
+    const attachBeforeScreen = runtime.screen
     runtime.write(`${attach}\r`)
-    await runtime.waitForTerminalQuiescence(timeoutMs, attachOutputRevision)
+    await runtime.waitForPiTerminalReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
     const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
     await runtime.waitForTerminalQuiescence(timeoutMs, resizeOutputRevision)
@@ -1368,6 +1392,8 @@ async function runProof({
       reconnectedIdentity.controlRef,
       'native reconnect provider control reference',
     )
+    const reconnectBeforeScreen = runtime.screen
+    const reconnectActionRevision = runtime.terminalOutputRevision
     runtime.write(`${reconnectCommand}\r`)
     const reconnectEvidence = await waitForProviderReadback(
       client,
@@ -1377,6 +1403,7 @@ async function runProof({
       timeoutMs,
       'interactive reconnect input',
     )
+    await runtime.waitForPiTerminalReady(timeoutMs, reconnectActionRevision, reconnectBeforeScreen)
     const executionAttempt = await waitForExecutionAttempt(
       client,
       initialIdentity.controlRef,

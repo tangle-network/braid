@@ -39,7 +39,9 @@ import { sandboxConfiguration as workspaceSandboxConfiguration } from '../script
 import {
   createTerminalOutputTracker,
   PI_LOADER_INTERVAL_MS,
+  piTerminalScreenState,
   TERMINAL_QUIET_INTERVAL_MS,
+  waitForPiTerminalReady,
   waitForTerminalQuiescence,
 } from '../scripts/live-required/terminal-quiescence.mjs'
 
@@ -792,6 +794,95 @@ test('LIVE-08 waits for renderer quiescence instead of guessing a sleep', async 
   assert.equal(waited.pendingWrites, 0)
   assert.ok(waited.revision > markerRevision)
   assert.equal(waited.quietIntervalMs, TERMINAL_QUIET_INTERVAL_MS)
+})
+
+function piScreen(status = '') {
+  const rule = '─'.repeat(40)
+  return [
+    'assistant response',
+    ...(status.length === 0 ? [] : [status]),
+    'marker',
+    rule,
+    ' '.repeat(40),
+    ' '.repeat(40),
+    rule,
+    '/home/agent',
+    '[tmux status]',
+  ].join('\n')
+}
+
+function advanceUntilTimeout(clock, tracker, screen, beforeScreen) {
+  return waitForPiTerminalReady({
+    tracker,
+    readScreen: () => screen,
+    timeoutMs: TERMINAL_QUIET_INTERVAL_MS,
+    afterRevision: 0,
+    beforeScreen,
+    now: () => clock.value,
+    pause: async (milliseconds) => {
+      clock.value += milliseconds
+    },
+  })
+}
+
+test('LIVE-08 rejects a quiet Pi screen while the model status still says Working', async () => {
+  const clock = { value: 0 }
+  const screen = piScreen('⠋ Working...')
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('completed renderer write', (settle) => settle())
+  assert.equal(piTerminalScreenState(screen).state, 'working')
+  await assert.rejects(
+    advanceUntilTimeout(clock, tracker, screen, screen),
+    /did not become ready/iu,
+  )
+  assert.equal(tracker.isQuiescent(), true, 'the failure must be semantic, not renderer output')
+})
+
+test('LIVE-08 rejects a stale ready Pi screen with no rendered transition', async () => {
+  const clock = { value: 0 }
+  const screen = piScreen()
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('action output with unchanged screen', (settle) => settle())
+  assert.equal(piTerminalScreenState(screen).state, 'ready')
+  await assert.rejects(
+    advanceUntilTimeout(clock, tracker, screen, screen),
+    /did not become ready/iu,
+  )
+})
+
+test('LIVE-08 accepts the ready Pi composer after a working-to-complete transition', async () => {
+  const clock = { value: 0 }
+  let screen = piScreen('⠋ Working...')
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('working render', (settle) => settle())
+  let completed = false
+  const result = await waitForPiTerminalReady({
+    tracker,
+    readScreen: () => screen,
+    timeoutMs: 2_000,
+    afterRevision: 0,
+    beforeScreen: screen,
+    now: () => clock.value,
+    pause: async (milliseconds) => {
+      clock.value += milliseconds
+      if (!completed) {
+        completed = true
+        screen = piScreen()
+        tracker.observe('completed render', (settle) => settle())
+      }
+    },
+  })
+  assert.equal(result.readiness.state, 'ready')
+  assert.equal(result.transitioned, true)
+  assert.equal(result.pendingWrites, 0)
+})
+
+test('LIVE-08 times out closed when Pi never renders its ready composer', async () => {
+  const clock = { value: 0 }
+  const screen = 'Pi output without the composer or cwd footer'
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('action output', (settle) => settle())
+  await assert.rejects(advanceUntilTimeout(clock, tracker, screen, ''), /did not become ready/iu)
 })
 
 test('LIVE-08 waits past streamed output until retained admission is durable', async () => {
