@@ -796,11 +796,12 @@ test('LIVE-08 waits for renderer quiescence instead of guessing a sleep', async 
   assert.equal(waited.quietIntervalMs, TERMINAL_QUIET_INTERVAL_MS)
 })
 
-function piScreen(status = '') {
+function piScreen(status = '', { statusSpacing = 0 } = {}) {
   const rule = '─'.repeat(40)
   return [
     'assistant response',
     ...(status.length === 0 ? [] : [status]),
+    ...Array.from({ length: statusSpacing }, () => ''),
     'marker',
     rule,
     ' '.repeat(40),
@@ -836,6 +837,23 @@ test('LIVE-08 rejects a quiet Pi screen while the model status still says Workin
     /did not become ready/iu,
   )
   assert.equal(tracker.isQuiescent(), true, 'the failure must be semantic, not renderer output')
+})
+
+test('LIVE-08 ignores transcript text that mentions Working without the status prefix', () => {
+  const screen = piScreen('The transcript says Working... before the last tool call')
+  assert.equal(piTerminalScreenState(screen).state, 'ready')
+})
+
+test('LIVE-08 ignores unknown spinner-prefixed transcript text', () => {
+  const screen = piScreen('⠋ Working on the release notes')
+  assert.equal(piTerminalScreenState(screen).state, 'ready')
+})
+
+test('LIVE-08 finds the active status across Pi’s ten-line widget region', () => {
+  const screen = piScreen('⠋ Working...', { statusSpacing: 8 })
+  const state = piTerminalScreenState(screen)
+  assert.equal(state.state, 'working')
+  assert.equal(state.status, '⠋ Working...')
 })
 
 test('LIVE-08 rejects a stale ready Pi screen with no rendered transition', async () => {

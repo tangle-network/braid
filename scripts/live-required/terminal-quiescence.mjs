@@ -12,9 +12,9 @@ export const TERMINAL_QUIET_POLL_INTERVAL_MS = 25
 
 const PI_EDITOR_RULE_PATTERN = /^─{8,}$/u
 const PI_FOOTER_PATH_PATTERN = /^(?:~|\/)[^\n]*$/u
-const PI_WORKING_STATUS_PATTERN =
-  /\b(?:Working(?:\.\.\.|…)|Retrying\b|Compacting\b|Summarizing branch\b)/iu
-const PI_SPINNER_PATTERN = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s/u
+const PI_WIDGET_REGION_ROWS = 10
+const PI_ACTIVE_STATUS_ROW_PATTERN =
+  /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+(?:Working(?:\.\.\.|…)|Retrying\b|Compacting\b|Auto-compacting\b|Context overflow detected,\s+Auto-compacting\b|Summarizing branch\b)/iu
 const TERMINAL_ESCAPE = String.fromCharCode(27)
 const TERMINAL_BELL = String.fromCharCode(7)
 const OSC_TERMINAL_SEQUENCE = new RegExp(
@@ -60,7 +60,7 @@ function piComposerBounds(rows) {
 }
 
 function piStatusRows(rows, top) {
-  const start = Math.max(0, top - 8)
+  const start = Math.max(0, top - PI_WIDGET_REGION_ROWS)
   return rows
     .slice(start, top)
     .map((line) => line.trim())
@@ -84,9 +84,7 @@ export function piTerminalScreenState(screen) {
   const composer = piComposerBounds(rows)
   if (composer === undefined) return { state: 'unknown', reason: 'composer-not-visible' }
   const status = piStatusRows(rows, composer.top)
-  const working = status.find(
-    (line) => PI_WORKING_STATUS_PATTERN.test(line) || PI_SPINNER_PATTERN.test(line),
-  )
+  const working = status.find((line) => PI_ACTIVE_STATUS_ROW_PATTERN.test(line))
   if (working !== undefined) {
     return { state: 'working', composer, status: working }
   }
