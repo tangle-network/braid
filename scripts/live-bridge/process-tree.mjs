@@ -422,6 +422,33 @@ class PosixProcessGroupTracker {
   constructor(child) {
     this.child = child
     this.rootPid = numericPid(child.pid)
+    // A detached group remains owned after its leader exits until the kernel removes the group.
+    this.groupState = 'unobserved'
+    this.groupObserved = false
+    if (this.rootPid !== undefined && !childHasExited(this.child)) {
+      const present = processGroupPresent(this.rootPid)
+      if (present === true) {
+        this.groupState = 'present'
+        this.groupObserved = true
+      }
+    }
+  }
+
+  statusForGroupState() {
+    const present = this.groupState === 'present'
+    const ownerActive = !childHasExited(this.child)
+    return {
+      supported: true,
+      gone: !present,
+      present,
+      pids: [],
+      roots: present && ownerActive ? [this.rootPid] : [],
+      version: present ? 0 : 1,
+      mechanism: 'posix-process-group',
+      ownership: 'kernel-process-group',
+      observed: this.groupObserved,
+      escaped: false,
+    }
   }
 
   status() {
@@ -430,31 +457,40 @@ class PosixProcessGroupTracker {
         ...unsupported('The POSIX process has no valid owner PID'),
         mechanism: 'posix-process-group',
       }
+    if (this.groupState === 'gone') return this.statusForGroupState()
     const present = processGroupPresent(this.rootPid)
     if (present === undefined)
       return {
         ...unsupported('The POSIX process group could not be inspected'),
         mechanism: 'posix-process-group',
       }
-    if (childHasExited(this.child) && present)
-      return {
-        ...unsupported(
-          `The POSIX process group for ${this.rootPid} remained after its owner process exited`,
-        ),
-        mechanism: 'posix-process-group',
+    if (this.groupState === 'unobserved') {
+      if (present) {
+        if (childHasExited(this.child))
+          return {
+            ...unsupported(
+              `The POSIX process group for ${this.rootPid} remained before its owner was observed`,
+            ),
+            mechanism: 'posix-process-group',
+          }
+        this.groupState = 'present'
+        this.groupObserved = true
+      } else if (childHasExited(this.child)) {
+        this.groupState = 'gone'
+        return this.statusForGroupState()
+      } else {
+        return {
+          ...unsupported('The POSIX process group was not observed while its owner was active'),
+          pending: true,
+          mechanism: 'posix-process-group',
+          ownership: 'kernel-process-group',
+          observed: false,
+        }
       }
-    return {
-      supported: true,
-      gone: !present,
-      present,
-      pids: [],
-      roots: present ? [this.rootPid] : [],
-      version: present ? 0 : 1,
-      mechanism: 'posix-process-group',
-      ownership: 'kernel-process-group',
-      observed: true,
-      escaped: false,
+    } else if (!present) {
+      this.groupState = 'gone'
     }
+    return this.statusForGroupState()
   }
 
   signal(signal) {
@@ -465,7 +501,10 @@ class PosixProcessGroupTracker {
       process.kill(-this.rootPid, signal)
       return { method: 'process-group', sent: true }
     } catch (error) {
-      if (error?.code === 'ESRCH') return { method: 'already-exited', sent: false }
+      if (error?.code === 'ESRCH') {
+        this.groupState = 'gone'
+        return { method: 'already-exited', sent: false }
+      }
       return { method: 'failed', sent: false, error: errorMessage(error) }
     }
   }

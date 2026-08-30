@@ -9,6 +9,7 @@ import { managedSpawn, RpcSession, terminateProcess } from './process.mjs'
 import {
   processTreeEnvironment,
   processTreeStatus,
+  releaseProcessTree,
   sendTreeSignal,
   terminateTrackedProcessTree,
   trackProcessTree,
@@ -305,5 +306,60 @@ test('refuses to signal a reused process group without an observed owner', {
     assert.deepEqual(groupSignals, [])
   } finally {
     killMock.mock.restore()
+  }
+})
+
+test('retains detached POSIX group ownership after leader exit and latches absence', async () => {
+  const originalPlatform = process.platform
+  const originalKill = process.kill
+  const child = { pid: 42_424, exitCode: null, signalCode: null }
+  let groupPresent = true
+  const groupCalls = []
+
+  Object.defineProperty(process, 'platform', { value: 'darwin' })
+  const killMock = mock.method(process, 'kill', (pid, signal) => {
+    if (pid !== -child.pid) return originalKill.call(process, pid, signal)
+    groupCalls.push({ pid, signal })
+    if (groupPresent) return true
+    const error = new Error('process group is absent')
+    error.code = 'ESRCH'
+    throw error
+  })
+  try {
+    trackProcessTree(child)
+    assert.deepEqual(groupCalls, [{ pid: -child.pid, signal: 0 }])
+
+    child.exitCode = 0
+    const leaderExited = processTreeStatus(child)
+    assert.equal(leaderExited.supported, true, JSON.stringify(leaderExited))
+    assert.equal(leaderExited.gone, false, JSON.stringify(leaderExited))
+    assert.deepEqual(leaderExited.roots, [])
+
+    const signal = await sendTreeSignal(child, 'SIGKILL')
+    assert.deepEqual(signal, { method: 'process-group', sent: true })
+
+    groupPresent = false
+    const gone = processTreeStatus(child)
+    assert.equal(gone.supported, true, JSON.stringify(gone))
+    assert.equal(gone.gone, true, JSON.stringify(gone))
+    const callsAtAbsence = groupCalls.length
+
+    groupPresent = true
+    const reused = processTreeStatus(child)
+    assert.equal(reused.supported, true, JSON.stringify(reused))
+    assert.equal(reused.gone, true, JSON.stringify(reused))
+    assert.deepEqual(await sendTreeSignal(child, 'SIGKILL'), {
+      method: 'already-exited',
+      sent: false,
+    })
+    assert.equal(groupCalls.length, callsAtAbsence)
+    assert.deepEqual(
+      groupCalls.filter(({ signal: value }) => value !== 0),
+      [{ pid: -child.pid, signal: 'SIGKILL' }],
+    )
+  } finally {
+    releaseProcessTree(child)
+    killMock.mock.restore()
+    Object.defineProperty(process, 'platform', { value: originalPlatform })
   }
 })
