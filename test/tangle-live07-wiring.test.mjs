@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
-import { AuthError, QuotaError } from '@tangle-network/sandbox'
+import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
 import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
@@ -30,7 +30,10 @@ import {
   waitForInteractiveIdentityFrame,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
-import { assertSingleExecutionAttemptLedger } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
+import {
+  assertSingleExecutionAttemptLedger,
+  readRetainedWorkspaceFile,
+} from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 import { backendConfiguration as workerBackendConfiguration } from '../scripts/live-required/tangle-sandbox-worker.mjs'
 import { sandboxConfiguration as workspaceSandboxConfiguration } from '../scripts/live-required/tangle-workspace-proof.mjs'
 import {
@@ -574,6 +577,42 @@ test('LIVE-08 provider observation fails immediately for non-transient errors', 
     (candidate) => candidate === error,
   )
   assert.equal(pauses, 0)
+})
+
+test('LIVE-08 missing-file polling never hides a provider failure', async () => {
+  const controlRef = {
+    environmentId: 'sandbox-live-08-readback',
+    sessionId: 'session-live-08-readback',
+  }
+  const error = new AuthError('invalid test credential')
+  const box = {
+    id: controlRef.environmentId,
+    name: `braid-${controlRef.sessionId}`,
+    metadata: {
+      owner: 'braid',
+      lifecycle: 'retained',
+      providerSessionId: controlRef.sessionId,
+    },
+    async read() {
+      throw error
+    },
+  }
+  await assert.rejects(
+    readRetainedWorkspaceFile({}, controlRef, 'proof.txt', {
+      allowMissing: true,
+      box,
+    }),
+    (candidate) => candidate === error,
+  )
+
+  box.read = async () => Promise.reject(new NotFoundError('file', 'proof.txt'))
+  assert.equal(
+    await readRetainedWorkspaceFile({}, controlRef, 'proof.txt', {
+      allowMissing: true,
+      box,
+    }),
+    undefined,
+  )
 })
 
 test('LIVE-08 cancels a streaming run before exact cleanup after an early flow failure', async () => {

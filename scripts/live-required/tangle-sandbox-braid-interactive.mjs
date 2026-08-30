@@ -46,6 +46,7 @@ import {
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
   readRetainedWorkspaceFile,
+  retainedBox,
   singleRunSpendDisclosure,
   telemetryDisclosure,
   usage,
@@ -264,12 +265,19 @@ export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironme
 }
 
 async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
+  const box = await waitForProviderObservation(
+    `${label} retained Sandbox`,
+    () => retainedBox(client, controlRef, label),
+    timeoutMs,
+  )
   const observation = await waitForProviderObservation(
     `${label} provider readback`,
     () =>
-      readRetainedWorkspaceFile(client, controlRef, path, { label, allowMissing: true }).then(
-        (value) => (value?.value === expectedValue ? value : undefined),
-      ),
+      readRetainedWorkspaceFile(client, controlRef, path, {
+        label,
+        allowMissing: true,
+        box,
+      }).then((value) => (value?.value === expectedValue ? value : undefined)),
     timeoutMs,
   )
   return assertProviderBoundEvidence(
@@ -280,6 +288,11 @@ async function waitForProviderReadback(client, controlRef, path, expectedValue, 
 
 async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt, timeoutMs) {
   const expectedValue = `${expectedAttempt}\n`
+  const box = await waitForProviderObservation(
+    'Execution-attempt retained Sandbox',
+    () => retainedBox(client, controlRef, 'Execution-attempt ledger'),
+    timeoutMs,
+  )
   let previousValue
   let stableReads = 0
   const observation = await waitForProviderObservation(
@@ -288,6 +301,7 @@ async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt
       const value = await readRetainedWorkspaceFile(client, controlRef, path, {
         label: 'Execution-attempt ledger',
         allowMissing: true,
+        box,
       })
       if (value?.value === undefined) return undefined
       assertSingleExecutionAttemptLedger(value.value, expectedAttempt)
@@ -418,9 +432,10 @@ async function listAllSandboxResources(client) {
   }
 }
 
-async function observeInteractiveResource(client, controlRef, runId) {
+async function observeInteractiveResource(client, controlRef, runId, { box: providedBox } = {}) {
   const expectedName = interactiveResourceName(runId)
-  const box = await client.get(controlRef.environmentId)
+  const box =
+    providedBox ?? (await retainedBox(client, controlRef, 'Interactive Sandbox observation'))
   if (box === null) {
     throw new Error(`Interactive Sandbox ${controlRef.environmentId} was not visible`)
   }
@@ -839,17 +854,17 @@ async function observeSandbox(
   expectedRunning,
   expectedGeometry,
 ) {
-  const resource = await waitForProviderObservation(
-    'interactive Sandbox identity',
-    () => observeInteractiveResource(client, controlRef, runId),
-    timeoutMs,
-  )
   const box = await waitForProviderObservation(
-    'interactive Sandbox client',
-    () => client.get(controlRef.environmentId),
+    'interactive Sandbox identity',
+    () => retainedBox(client, controlRef, 'Interactive Sandbox observation'),
     timeoutMs,
   )
-  assert.equal(box?.id, resource.id, 'Sandbox observation changed environment identity')
+  const resource = await waitForProviderObservation(
+    'interactive Sandbox ownership',
+    () => observeInteractiveResource(client, controlRef, runId, { box }),
+    timeoutMs,
+  )
+  assert.equal(box.id, resource.id, 'Sandbox observation changed environment identity')
   assert.ok(box.terminals && typeof box.terminals.get === 'function')
   let terminal
   await waitForProviderObservation(
