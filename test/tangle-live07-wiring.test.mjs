@@ -11,6 +11,7 @@ import {
 } from '../scripts/live-required/model-defaults.mjs'
 import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
 import {
+  createProviderObservationDeadline,
   PROVIDER_OBSERVATION_INTERVAL_MS,
   waitForProviderObservation,
 } from '../scripts/live-required/provider-observation.mjs'
@@ -565,6 +566,86 @@ test('LIVE-08 provider observation honors typed rate limits within one deadline'
 
   assert.deepEqual(result, { observed: true })
   assert.deepEqual(pauses, [750, PROVIDER_OBSERVATION_INTERVAL_MS])
+})
+
+test('LIVE-08 provider observation treats only undefined as pending', async () => {
+  for (const expected of [false, 0, '', null]) {
+    let attempts = 0
+    const observed = await waitForProviderObservation(
+      `provider value ${String(expected)}`,
+      async () => {
+        attempts += 1
+        return expected
+      },
+      100,
+      { now: () => 0 },
+    )
+    assert.strictEqual(observed, expected)
+    assert.equal(attempts, 1)
+  }
+})
+
+test('LIVE-08 provider observation shares one absolute deadline across nested phases', async () => {
+  let clock = 0
+  const deadline = createProviderObservationDeadline('shared provider phase', 100, {
+    now: () => clock,
+  })
+  assert.equal(
+    await waitForProviderObservation('first nested read', async () => 'ready', 100, { deadline }),
+    'ready',
+  )
+
+  clock = 100
+  let secondReadCalls = 0
+  await assert.rejects(
+    waitForProviderObservation(
+      'second nested read',
+      async () => {
+        secondReadCalls += 1
+        return 'late'
+      },
+      100,
+      { deadline },
+    ),
+    (error) => error?.code === 'PROVIDER_OBSERVATION_TIMEOUT',
+  )
+  assert.equal(secondReadCalls, 0)
+})
+
+test('LIVE-08 provider observation rejects before and after a deadline-overrun operation', async () => {
+  let clock = 0
+  const beforeDeadline = createProviderObservationDeadline('before operation', 100, {
+    now: () => clock,
+  })
+  clock = 100
+  let beforeCalls = 0
+  await assert.rejects(
+    waitForProviderObservation(
+      'before operation',
+      async () => {
+        beforeCalls += 1
+        return true
+      },
+      100,
+      { deadline: beforeDeadline },
+    ),
+    (error) => error?.code === 'PROVIDER_OBSERVATION_TIMEOUT',
+  )
+  assert.equal(beforeCalls, 0)
+
+  clock = 0
+  await assert.rejects(
+    waitForProviderObservation(
+      'after operation',
+      async () => {
+        clock = 100
+        return true
+      },
+      100,
+      { now: () => clock },
+    ),
+    (error) => error?.code === 'PROVIDER_OBSERVATION_TIMEOUT',
+  )
 })
 
 test('LIVE-08 provider observation fails immediately for non-transient errors', async () => {

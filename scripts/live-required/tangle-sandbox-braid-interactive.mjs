@@ -35,7 +35,11 @@ import {
   rpcState,
 } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
-import { waitForProviderObservation } from './provider-observation.mjs'
+import {
+  assertProviderObservationDeadline,
+  createProviderObservationDeadline,
+  waitForProviderObservation,
+} from './provider-observation.mjs'
 import {
   accountIdentity,
   assertSingleExecutionAttemptLedger,
@@ -268,10 +272,12 @@ export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironme
 }
 
 async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
+  const deadline = createProviderObservationDeadline(label, timeoutMs)
   const box = await waitForProviderObservation(
     `${label} retained Sandbox`,
     () => retainedBox(client, controlRef, label),
     timeoutMs,
+    { deadline },
   )
   const observation = await waitForProviderObservation(
     `${label} provider readback`,
@@ -282,6 +288,7 @@ async function waitForProviderReadback(client, controlRef, path, expectedValue, 
         box,
       }).then((value) => (value?.value === expectedValue ? value : undefined)),
     timeoutMs,
+    { deadline },
   )
   return assertProviderBoundEvidence(
     providerWorkspaceReadbackEvidence(observation, expectedValue, `provider-bound ${label}`),
@@ -291,10 +298,12 @@ async function waitForProviderReadback(client, controlRef, path, expectedValue, 
 
 async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt, timeoutMs) {
   const expectedValue = `${expectedAttempt}\n`
+  const deadline = createProviderObservationDeadline('execution attempt', timeoutMs)
   const box = await waitForProviderObservation(
     'Execution-attempt retained Sandbox',
     () => retainedBox(client, controlRef, 'Execution-attempt ledger'),
     timeoutMs,
+    { deadline },
   )
   let previousValue
   let stableReads = 0
@@ -316,6 +325,7 @@ async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt
       return stableReads >= 3 ? value : undefined
     },
     timeoutMs,
+    { deadline },
   )
   const ledger = assertSingleExecutionAttemptLedger(observation.value, expectedAttempt)
   return {
@@ -416,12 +426,25 @@ function sameNameInteractiveResources(resources, expectedName, predicate) {
   return matches
 }
 
-async function listAllSandboxResources(client) {
+async function listAllSandboxResources(
+  client,
+  {
+    deadline: providedDeadline,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    label = 'Sandbox resource list',
+  } = {},
+) {
+  const deadline = providedDeadline ?? createProviderObservationDeadline(label, timeoutMs)
   const resources = []
   const seenIds = new Set()
   let offset = 0
   for (;;) {
-    const page = await client.list({ limit: SANDBOX_LIST_PAGE_SIZE, offset })
+    const page = await waitForProviderObservation(
+      `${label} page ${offset}`,
+      () => client.list({ limit: SANDBOX_LIST_PAGE_SIZE, offset }),
+      timeoutMs,
+      { deadline },
+    )
     if (!Array.isArray(page)) throw new Error('Sandbox list returned an invalid page')
     for (const resource of page) {
       if (typeof resource?.id === 'string') {
@@ -435,10 +458,24 @@ async function listAllSandboxResources(client) {
   }
 }
 
-async function observeInteractiveResource(client, controlRef, runId, { box: providedBox } = {}) {
+async function observeInteractiveResource(
+  client,
+  controlRef,
+  runId,
+  { box: providedBox, deadline: providedDeadline, timeoutMs = DEFAULT_TIMEOUT_MS } = {},
+) {
+  const deadline =
+    providedDeadline ??
+    createProviderObservationDeadline('Interactive Sandbox observation', timeoutMs)
   const expectedName = interactiveResourceName(runId)
   const box =
-    providedBox ?? (await retainedBox(client, controlRef, 'Interactive Sandbox observation'))
+    providedBox ??
+    (await waitForProviderObservation(
+      'Interactive Sandbox identity',
+      () => retainedBox(client, controlRef, 'Interactive Sandbox observation'),
+      timeoutMs,
+      { deadline },
+    ))
   if (box === null) {
     throw new Error(`Interactive Sandbox ${controlRef.environmentId} was not visible`)
   }
@@ -448,7 +485,11 @@ async function observeInteractiveResource(client, controlRef, runId, { box: prov
     )
   }
   const matches = sameNameInteractiveResources(
-    await listAllSandboxResources(client),
+    await listAllSandboxResources(client, {
+      deadline,
+      timeoutMs,
+      label: 'Interactive Sandbox resource census',
+    }),
     expectedName,
     (resource) => isOwnedInteractiveResource(resource, expectedName),
   )
@@ -467,19 +508,34 @@ async function observeInteractiveResource(client, controlRef, runId, { box: prov
   }
 }
 
-async function cleanupInteractiveByRunId(client, materialization) {
+async function cleanupInteractiveByRunId(
+  client,
+  materialization,
+  { deadline: providedDeadline, timeoutMs = DEFAULT_TIMEOUT_MS } = {},
+) {
+  const deadline =
+    providedDeadline ?? createProviderObservationDeadline('Interactive Sandbox cleanup', timeoutMs)
   const runId = materialization?.runId
   const expectedName = interactiveResourceName(runId)
   const predicate = (resource) => isOwnedInteractiveResource(resource, expectedName)
   const listed = sameNameInteractiveResources(
-    await listAllSandboxResources(client),
+    await listAllSandboxResources(client, {
+      deadline,
+      timeoutMs,
+      label: 'Interactive Sandbox cleanup resource census',
+    }),
     expectedName,
     predicate,
   )
   const deletions = []
   const removedIds = []
   for (const resource of listed) {
-    const exact = await client.get(resource.id)
+    const exact = await waitForProviderObservation(
+      `Interactive Sandbox cleanup identity ${resource.id}`,
+      () => client.get(resource.id),
+      timeoutMs,
+      { deadline },
+    )
     if (exact === null) {
       deletions.push({
         id: resource.id,
@@ -495,8 +551,24 @@ async function cleanupInteractiveByRunId(client, materialization) {
         `Interactive run-derived resource ${resource.id} failed exact ownership validation`,
       )
     }
+    assertProviderObservationDeadline(
+      deadline,
+      `Interactive Sandbox deletion ${resource.id}`,
+      'delete',
+    )
     await exact.delete()
-    if ((await client.get(resource.id)) !== null) {
+    assertProviderObservationDeadline(
+      deadline,
+      `Interactive Sandbox deletion ${resource.id}`,
+      'delete',
+    )
+    const remaining = await waitForProviderObservation(
+      `Interactive Sandbox deletion verification ${resource.id}`,
+      () => client.get(resource.id),
+      timeoutMs,
+      { deadline },
+    )
+    if (remaining !== null) {
       throw new Error(`Interactive run-derived resource ${resource.id} remained after delete`)
     }
     removedIds.push(resource.id)
@@ -509,7 +581,11 @@ async function cleanupInteractiveByRunId(client, materialization) {
     })
   }
   const remaining = sameNameInteractiveResources(
-    await listAllSandboxResources(client),
+    await listAllSandboxResources(client, {
+      deadline,
+      timeoutMs,
+      label: 'Interactive Sandbox cleanup final census',
+    }),
     expectedName,
     predicate,
   )
@@ -867,15 +943,18 @@ async function observeSandbox(
   expectedRunning,
   expectedGeometry,
 ) {
+  const deadline = createProviderObservationDeadline('interactive Sandbox observation', timeoutMs)
   const box = await waitForProviderObservation(
     'interactive Sandbox identity',
     () => retainedBox(client, controlRef, 'Interactive Sandbox observation'),
     timeoutMs,
+    { deadline },
   )
   const resource = await waitForProviderObservation(
     'interactive Sandbox ownership',
-    () => observeInteractiveResource(client, controlRef, runId, { box }),
+    () => observeInteractiveResource(client, controlRef, runId, { box, deadline, timeoutMs }),
     timeoutMs,
+    { deadline },
   )
   assert.equal(box.id, resource.id, 'Sandbox observation changed environment identity')
   assert.ok(box.terminals && typeof box.terminals.get === 'function')
@@ -886,15 +965,16 @@ async function observeSandbox(
       terminal = await box.terminals.get(controlRef.sessionId)
       if (terminal !== null) assert.equal(terminal.sessionId, controlRef.sessionId)
       if (expectedRunning) {
-        return (
+        const ready =
           terminal?.isRunning === true &&
           (expectedGeometry === undefined ||
             (terminal.cols === expectedGeometry.cols && terminal.rows === expectedGeometry.rows))
-        )
+        return ready ? terminal : undefined
       }
-      return terminal === null || terminal?.isRunning === false
+      return terminal === null || terminal?.isRunning === false ? terminal : undefined
     },
     timeoutMs,
+    { deadline },
   )
   const stopped = expectedRunning ? undefined : assertStoppedTerminal(terminal)
   if (expectedGeometry !== undefined) {
@@ -911,7 +991,13 @@ async function observeSandbox(
     if (typeof box.resourceUsage !== 'function') {
       resourceSample = undefined
     } else {
-      resourceSample = await box.resourceUsage()
+      const sample = await waitForProviderObservation(
+        'interactive Sandbox resource usage',
+        async () => ({ value: await box.resourceUsage() }),
+        timeoutMs,
+        { deadline },
+      )
+      resourceSample = sample.value
     }
   } catch (error) {
     resourceSampleError = safeMessage(error)
@@ -933,12 +1019,20 @@ async function observeSandbox(
   }
 }
 
-async function cleanupExactSandbox(client, identity) {
-  const observed = await observeInteractiveResource(client, identity.controlRef, identity.run.id)
-  const cleanup = await cleanupInteractiveByRunId(client, {
-    runId: identity.run.id,
-    phase: 'interactive_started',
+async function cleanupExactSandbox(client, identity, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const deadline = createProviderObservationDeadline('Interactive Sandbox cleanup', timeoutMs)
+  const observed = await observeInteractiveResource(client, identity.controlRef, identity.run.id, {
+    deadline,
+    timeoutMs,
   })
+  const cleanup = await cleanupInteractiveByRunId(
+    client,
+    {
+      runId: identity.run.id,
+      phase: 'interactive_started',
+    },
+    { deadline, timeoutMs },
+  )
   return assertInteractiveOwnedResourceCleanup(cleanup, observed.id)
 }
 
@@ -1059,7 +1153,7 @@ export async function finalizeInteractiveProof({
         )
       } else {
         const observed = await attemptCleanup(errors, 'run-derived Sandbox cleanup', () =>
-          cleanupInteractiveByRunId(client, materialization),
+          cleanupInteractiveByRunId(client, materialization, { timeoutMs }),
         )
         if (observed.ok) providerMaterialization = observed.value
       }
@@ -1117,7 +1211,7 @@ export async function finalizeInteractiveProof({
       if (observed.ok) {
         afterStop = observed.value
         const deleted = await attemptCleanup(errors, 'exact Sandbox deletion', () =>
-          cleanupSandbox(client, resolvedIdentity),
+          cleanupSandbox(client, resolvedIdentity, timeoutMs),
         )
         if (deleted.ok) {
           cleanup = deleted.value
