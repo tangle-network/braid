@@ -25,6 +25,7 @@ import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
 } from './tangle-sandbox-braid-stress.mjs'
+import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -176,8 +177,7 @@ function createTerminal(
   let output = ''
   let exited = false
   let exitResult
-  let pendingWrites = 0
-  let lastOutputAt = performance.now()
+  const outputTracker = createTerminalOutputTracker({ quietIntervalMs: 100 })
   let lastFrame
   let lastFrameError
   let processCleanup
@@ -190,19 +190,10 @@ function createTerminal(
   })
   child.onData((data) => {
     output += data
-    lastOutputAt = performance.now()
-    pendingWrites += 1
-    terminal.write(data, () => {
-      pendingWrites -= 1
-    })
+    outputTracker.observe(data, (settle) => terminal.write(data, settle))
   })
   const waitForStable = async (timeoutMs = 10_000) => {
-    const deadline = performance.now() + timeoutMs
-    for (;;) {
-      if (pendingWrites === 0 && performance.now() - lastOutputAt >= 100) return
-      if (performance.now() >= deadline) throw new Error('terminal output did not become stable')
-      await pause(25)
-    }
+    await waitForTerminalQuiescence(outputTracker, { timeoutMs, pause })
   }
   const captureState = async (timeoutMs = 10_000) => {
     // A live provider can keep writing stream frames without a quiet interval.

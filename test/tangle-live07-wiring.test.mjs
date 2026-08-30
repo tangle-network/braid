@@ -23,12 +23,17 @@ import {
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
   waitForInteractiveIdentityFrame,
-  waitForTerminalOutputStability,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
 import { assertSingleExecutionAttemptLedger } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 import { backendConfiguration as workerBackendConfiguration } from '../scripts/live-required/tangle-sandbox-worker.mjs'
 import { sandboxConfiguration as workspaceSandboxConfiguration } from '../scripts/live-required/tangle-workspace-proof.mjs'
+import {
+  createTerminalOutputTracker,
+  PI_LOADER_INTERVAL_MS,
+  TERMINAL_QUIET_INTERVAL_MS,
+  waitForTerminalQuiescence,
+} from '../scripts/live-required/terminal-quiescence.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 
@@ -523,30 +528,6 @@ test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () 
   assert.equal(commands.filter((command) => command.startsWith('!!')).length, 2)
 })
 
-test('LIVE-08 waits for Pi terminal output to settle before native shell input', async () => {
-  let clock = 0
-  let outputSize = 0
-  let nextSpinnerAt = 80
-  const result = await waitForTerminalOutputStability({
-    readOutputSize: () => outputSize,
-    timeoutMs: 2_000,
-    quietMs: 250,
-    pollMs: 25,
-    now: () => clock,
-    pause: async (milliseconds) => {
-      clock += milliseconds
-      while (nextSpinnerAt <= clock && nextSpinnerAt <= 400) {
-        outputSize += 1
-        nextSpinnerAt += 80
-      }
-    },
-  })
-
-  assert.equal(outputSize, 5)
-  assert.equal(result.quietMs, 250)
-  assert.ok(result.waitedMs >= 650)
-})
-
 test('LIVE-08 cancels a streaming run before exact cleanup after an early flow failure', async () => {
   const controlRef = {
     provider: 'tangle-sandbox',
@@ -659,6 +640,71 @@ test('LIVE-08 reads the stopped run from the terminal state response', () => {
     undefined,
   )
   assert.equal(stoppedRunFromState({ type: 'event', state: { runs: [run] } }, run.id), undefined)
+})
+
+test('LIVE-08 waits for renderer quiescence instead of guessing a sleep', async () => {
+  let now = 0
+  const tracker = createTerminalOutputTracker({ now: () => now })
+  tracker.observe('model output', (settle) => {
+    settle()
+  })
+
+  assert.equal(PI_LOADER_INTERVAL_MS, 80)
+  assert.equal(TERMINAL_QUIET_INTERVAL_MS, 240)
+  const markerRevision = tracker.snapshot().revision
+  let pendingNow = 0
+  const pendingTracker = createTerminalOutputTracker({ now: () => pendingNow })
+  let settlePending
+  pendingTracker.observe('renderer frame', (settle) => {
+    settlePending = settle
+  })
+  pendingNow = TERMINAL_QUIET_INTERVAL_MS
+  assert.equal(pendingTracker.isQuiescent(), false, 'an incomplete renderer write must block input')
+  settlePending()
+  assert.equal(pendingTracker.isQuiescent(), true)
+
+  let staleNow = 0
+  const staleTracker = createTerminalOutputTracker({ now: () => staleNow })
+  staleTracker.observe('previous action output', (settle) => {
+    settle()
+  })
+  await assert.rejects(
+    waitForTerminalQuiescence(staleTracker, {
+      timeoutMs: TERMINAL_QUIET_INTERVAL_MS,
+      afterRevision: staleTracker.snapshot().revision,
+      now: () => staleNow,
+      pause: async (milliseconds) => {
+        staleNow += milliseconds
+      },
+    }),
+    /did not become quiescent/iu,
+    'stale output must not satisfy a post-action readiness check',
+  )
+
+  let spinnerFrames = 0
+  let nextSpinnerAt = PI_LOADER_INTERVAL_MS
+  const waited = await waitForTerminalQuiescence(tracker, {
+    timeoutMs: 2_000,
+    afterRevision: markerRevision,
+    now: () => now,
+    pause: async (milliseconds) => {
+      const end = now + milliseconds
+      while (nextSpinnerAt <= end && nextSpinnerAt <= PI_LOADER_INTERVAL_MS * 5) {
+        now = nextSpinnerAt
+        spinnerFrames += 1
+        tracker.observe('spinner frame', (settle) => {
+          settle()
+        })
+        nextSpinnerAt += PI_LOADER_INTERVAL_MS
+      }
+      now = end
+    },
+  })
+  assert.equal(spinnerFrames, 5, 'the waiter must remain open across every spinner interval')
+  assert.ok(now >= 640, 'the waiter must observe three quiet intervals after the final frame')
+  assert.equal(waited.pendingWrites, 0)
+  assert.ok(waited.revision > markerRevision)
+  assert.equal(waited.quietIntervalMs, TERMINAL_QUIET_INTERVAL_MS)
 })
 
 test('LIVE-08 waits past streamed output until retained admission is durable', async () => {

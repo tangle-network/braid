@@ -50,14 +50,13 @@ import {
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 10_000
-const DEFAULT_TERMINAL_QUIET_MS = 250
-const DEFAULT_TERMINAL_POLL_MS = 25
 const SANDBOX_LIST_PAGE_SIZE = 100
 const DETACH = '\u001d'
 const RUN_STATUS_AFTER_STOP = new Set(['aborted', 'cancelled'])
@@ -524,40 +523,6 @@ async function waitFor(label, predicate, timeoutMs) {
   }
 }
 
-export async function waitForTerminalOutputStability({
-  readOutputSize,
-  timeoutMs,
-  quietMs = DEFAULT_TERMINAL_QUIET_MS,
-  pollMs = DEFAULT_TERMINAL_POLL_MS,
-  now = () => performance.now(),
-  pause = sleep,
-}) {
-  assert.equal(typeof readOutputSize, 'function', 'terminal output reader must be a function')
-  assert.ok(
-    Number.isFinite(timeoutMs) && timeoutMs > 0,
-    'terminal stability timeout must be positive',
-  )
-  assert.ok(Number.isFinite(quietMs) && quietMs > 0, 'terminal quiet interval must be positive')
-  assert.ok(Number.isFinite(pollMs) && pollMs > 0, 'terminal stability poll must be positive')
-  const startedAt = now()
-  const deadline = startedAt + timeoutMs
-  let lastOutputSize = readOutputSize()
-  let lastOutputAt = startedAt
-  for (;;) {
-    const observedAt = now()
-    const outputSize = readOutputSize()
-    if (outputSize !== lastOutputSize) {
-      lastOutputSize = outputSize
-      lastOutputAt = observedAt
-    } else if (observedAt - lastOutputAt >= quietMs) {
-      return { outputBytes: outputSize, quietMs, waitedMs: observedAt - startedAt }
-    }
-    if (observedAt >= deadline)
-      throw new Error(`terminal output did not stabilize after ${timeoutMs}ms`)
-    await pause(Math.min(pollMs, Math.max(1, deadline - observedAt)))
-  }
-}
-
 function createPty(binary, config, statePath, exitTimeoutMs) {
   const terminal = new xterm.Terminal({ cols: 120, rows: 36, allowProposedApi: true })
   const environment = processTreeEnvironment({
@@ -578,13 +543,14 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
   let exited = false
   let exitResult
   let processCleanup
+  const outputTracker = createTerminalOutputTracker()
   const waitForProcessCleanup = async () => {
     processCleanup ??= await waitForTreeGone(child, exitTimeoutMs)
     return processCleanup
   }
   child.onData((chunk) => {
     output += chunk
-    terminal.write(chunk)
+    outputTracker.observe(chunk, (settle) => terminal.write(chunk, settle))
   })
   child.onExit((result) => {
     exited = true
@@ -604,6 +570,12 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
     },
     get processCleanup() {
       return processCleanup
+    },
+    get terminalOutputRevision() {
+      return outputTracker.snapshot().revision
+    },
+    waitForTerminalQuiescence(timeoutMs, afterRevision) {
+      return waitForTerminalQuiescence(outputTracker, { timeoutMs, afterRevision, pause: sleep })
     },
     write(value) {
       child.write(value)
@@ -1318,10 +1290,7 @@ async function runProof({
       },
       timeoutMs,
     )
-    await waitForTerminalOutputStability({
-      readOutputSize: () => runtime.output.length,
-      timeoutMs,
-    })
+    await runtime.waitForTerminalQuiescence(timeoutMs)
     const { frame: initialFrame, identity: initialIdentity } =
       await waitForInteractiveIdentityFrame({
         captureFrame: () => captureStateFrame(runtime, recordPath, timeoutMs),
@@ -1348,9 +1317,12 @@ async function runProof({
 
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
+    const attachOutputRevision = runtime.terminalOutputRevision
     runtime.write(`${attach}\r`)
-    await sleep(250)
+    await runtime.waitForTerminalQuiescence(timeoutMs, attachOutputRevision)
+    const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
+    await runtime.waitForTerminalQuiescence(timeoutMs, resizeOutputRevision)
     const resized = await observeSandbox(
       client,
       initialIdentity.controlRef,
