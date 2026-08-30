@@ -13,6 +13,7 @@ import {
   type ExecutionPort,
   UNKNOWN_RUN_CAPABILITIES,
 } from '../src/ports/execution.js'
+import type { BraidUiController } from '../src/views/shared/intents.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { MAX_RPC_LINE_BYTES } from '../src/views/headless/protocol-limits.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
@@ -143,6 +144,96 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   assert.equal(typeof finalState.state.runs[0]?.durationMs, 'number')
   assert.equal(typeof finalState.state.runs[0]?.tokensKnown, 'boolean')
   assert.equal(typeof finalState.state.runs[0]?.usdKnown, 'boolean')
+})
+
+test('JSONL shutdown acknowledges only after application completion and close', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const realController = controllerFor(app)
+  const completion = deferred()
+  const closeCompletion = deferred()
+  const shutdownDispatched = deferred()
+  const order: string[] = []
+  const responses: BraidResponse[] = []
+  const controller: BraidUiController = {
+    view: () => realController.view(),
+    state: () => realController.state(),
+    events: () => realController.events(),
+    subscribe: (subscriber, options) => realController.subscribe(subscriber, options),
+    initialize: (workspace) => realController.initialize(workspace),
+    waitForIdle: () => realController.waitForIdle(),
+    dispatch: async (intent) => {
+      const result = await realController.dispatch(intent)
+      if (intent.type !== 'shutdown' || result.kind !== 'accepted') return result
+      order.push('shutdown-dispatched')
+      shutdownDispatched.resolve()
+      const realCompletion = result.completion ?? Promise.resolve()
+      return {
+        ...result,
+        completion: Promise.all([realCompletion, completion.promise]).then(() => undefined),
+      }
+    },
+    close: async () => {
+      order.push('close-start')
+      const realClose = realController.close()
+      await closeCompletion.promise
+      await realClose
+      order.push('close-finish')
+    },
+  }
+
+  const running = runRpc(
+    controller,
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-order-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-order-shutdown',
+        operationId: 'op-order-shutdown',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        const response = JSON.parse(chunk) as BraidResponse
+        responses.push(response)
+        if (response.type === 'ack' && response.requestId === 'req-order-shutdown')
+          order.push('shutdown-ack')
+        return true
+      },
+    },
+  )
+
+  await shutdownDispatched.promise
+  assert.equal(
+    responses.some(
+      (response) => response.type === 'ack' && response.requestId === 'req-order-shutdown',
+    ),
+    false,
+  )
+  order.push('completion-finish')
+  completion.resolve()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(order.includes('close-start'), true)
+  assert.equal(
+    responses.some(
+      (response) => response.type === 'ack' && response.requestId === 'req-order-shutdown',
+    ),
+    false,
+  )
+  closeCompletion.resolve()
+  assert.equal(await running, 0)
+  assert.deepEqual(order, [
+    'shutdown-dispatched',
+    'completion-finish',
+    'close-start',
+    'close-finish',
+    'shutdown-ack',
+  ])
 })
 
 test('JSONL drives the complete canonical conversation lifecycle', async () => {

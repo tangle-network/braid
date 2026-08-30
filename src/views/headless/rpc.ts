@@ -381,6 +381,8 @@ export async function runRpc(
               await respond(errorResponse(result, request.requestId))
               break
             }
+            if (result.completion) await result.completion
+            await closeApplication()
             await respond({
               version: BRAID_PROTOCOL_VERSION,
               type: 'ack',
@@ -389,8 +391,6 @@ export async function runRpc(
               operationId: request.operationId,
               command: request.command,
             })
-            if (result.completion) await result.completion
-            await closeApplication()
             await outputQueue.flush()
             if (outputFailure !== undefined) throw outputFailure
             return 0
