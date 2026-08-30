@@ -28,7 +28,6 @@ import {
   scalarMeasurement,
 } from './contracts.mjs'
 import {
-  closeSession,
   configEvidence,
   initializedSession,
   prepareProductionWorkspace,
@@ -41,7 +40,7 @@ import {
   accountIdentity,
   assertSingleExecutionAttemptLedger,
   assertStableAccountIdentity,
-  assertVerifiedProcessCleanup,
+  closeBraidWithProof,
   executionAttemptLedgerPath,
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
@@ -1228,9 +1227,8 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
       result = { operationId, acknowledgement, run: stoppedRun, controlRef }
     }
   } finally {
-    const closed = await closeSession(initialized.session)
-    const processCleanup = assertVerifiedProcessCleanup(
-      closed?.termination,
+    const processCleanup = await closeBraidWithProof(
+      initialized.session,
       'Braid interactive stop RPC process',
     )
     if (result !== undefined) result = { ...result, processCleanup }
