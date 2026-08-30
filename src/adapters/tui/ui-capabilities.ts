@@ -40,6 +40,8 @@ export function capabilityMap(
     ? state.runs.find((run) => run.id === state.focusedRunId)
     : undefined
   const focusedActive = focusedRun !== undefined && isLiveRunStatus(focusedRun.status)
+  const focusedDetachedCancellation =
+    focusedRun?.status === 'detached' && focusedRun.capabilities.controls.cancel
   const deterministicFixture = state.profile.model?.default === 'fixture/deterministic'
   const configuredConnection = state.selectedConnectionId !== null
   const capabilities: Record<
@@ -200,14 +202,16 @@ export function capabilityMap(
         }
   }
   capabilities['run.cancel'] =
-    focusedActive && canCancel
+    (focusedActive && canCancel) || focusedDetachedCancellation
       ? { available: true, source: 'runtime' }
       : {
           available: false,
           source: 'runtime',
           reason: focusedActive
             ? 'The current runtime does not acknowledge provider cancellation'
-            : 'There is no active run to cancel',
+            : focusedRun?.status === 'detached'
+              ? 'The detached run does not advertise remote cancellation'
+              : 'There is no active run to cancel',
         }
   const focusedRecoverable =
     focusedRun !== undefined && isRecoverableRun(focusedRun) ? focusedRun : undefined

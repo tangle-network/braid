@@ -1,6 +1,7 @@
 import { matchesKey, type TUI } from '@earendil-works/pi-tui'
 import { commandAvailability } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import { liveRunId } from '../shared/run-selection.js'
 import type { ComposerMode } from './composer-view.js'
 import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
@@ -223,17 +224,4 @@ export class TerminalInputController {
     this.#quitTimer = undefined
     this.#stateChanged()
   }
-}
-
-function liveRunId(view: ReturnType<BraidUiController['view']>): string | undefined {
-  for (const runId of [view.focusedRunId, view.activeRunId]) {
-    if (runId === undefined) continue
-    const run = view.runs.find((candidate) => candidate.id === runId)
-    if (
-      run !== undefined &&
-      !['completed', 'cancelled', 'failed', 'expired', 'unknown', 'detached'].includes(run.status)
-    )
-      return runId
-  }
-  return undefined
 }

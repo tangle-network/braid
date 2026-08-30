@@ -1,7 +1,8 @@
-import { commandAvailability, isMutatingCommand } from '../../views/shared/command-registry.js'
 import { isRecoverableRun } from '../../domain/state.js'
+import { commandAvailability, isMutatingCommand } from '../../views/shared/command-registry.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../../views/shared/models.js'
+import { runIdForControl } from '../../views/shared/run-selection.js'
 import { dispatchAutomationCommand } from './ui-automation-command.js'
 import { dispatchConversationRunCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
@@ -32,15 +33,12 @@ export async function dispatchCommandIntent(
   }
   if (intent.command === 'cancel') {
     const view = context.view()
+    const runId = runIdForControl(view, { allowDetached: true })
     return dispatchCoreIntent(
       {
         type: 'cancel-run',
         operationId: intent.operationId ?? '',
-        ...(view.activeRunId === undefined
-          ? view.focusedRunId === undefined
-            ? {}
-            : { runId: view.focusedRunId }
-          : { runId: view.activeRunId }),
+        ...(runId === undefined ? {} : { runId }),
       },
       context,
     )

@@ -702,6 +702,96 @@ test('an empty live supervisor snapshot is normal before any worker activity exi
   await app.close()
 })
 
+test('nested worker actions return to the activity browser after submission', async () => {
+  const raw = createSupervisionSnapshot({
+    root: '/workspace',
+    supervisors: [
+      {
+        id: 'runtime-supervisor-nested-action',
+        workers: [{ id: 'runtime-worker-nested-action', label: 'worker-nested-action' }],
+      },
+    ],
+  })
+  const watcher = new RuntimeSupervisorWatcher(() => raw)
+  const runtimeController = new RuntimeSupervisorController({
+    watcher,
+    write: (_rootDir, _supervisorId, worker, options) => ({
+      worker,
+      file: '/workspace/.agent/inbox/request.json',
+      request: {
+        schemaVersion: 1,
+        operationId: options.operationId,
+        requestDigest: `sha256:${'a'.repeat(64)}`,
+        at: NOW,
+        worker,
+        message: options.message,
+        source: options.source ?? 'braid',
+        interrupt: options.interrupt === true,
+      },
+      replayed: false,
+    }),
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: {
+      supervisorWatcher: watcher,
+      supervisorController: runtimeController,
+    },
+  })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app)
+  const refreshed = await controller.dispatch({ type: 'refresh-supervision' })
+  assert.equal(refreshed.kind, 'accepted')
+
+  const terminal = new VirtualTerminal(100, 30)
+  const tui = new TuiMainScreen(terminal)
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'op-nested-worker-action',
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('/activity')
+    terminal.sendInput('\r')
+    await terminal.waitForRender()
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (/^\s*workers\b/iu.test(terminal.getViewport()[0] ?? '')) break
+      terminal.sendInput('\t')
+      await terminal.waitForRender()
+    }
+    assert.match(terminal.getViewport().join('\n'), /^\s*workers\b/mu)
+
+    terminal.sendInput('s')
+    await terminal.waitForRender()
+    assert.match(terminal.getViewport().join('\n'), /steer worker/u)
+    terminal.sendInput('continue safely')
+    terminal.sendInput('\r')
+    await waitUntil(
+      () =>
+        /^\s*workers\b/mu.test(terminal.getViewport().join('\n')) &&
+        !/steer worker/u.test(terminal.getViewport().join('\n')),
+    )
+    const afterSteer = terminal.getViewport().join('\n')
+    assert.match(afterSteer, /s steer/u)
+    assert.doesNotMatch(afterSteer, /steer worker/u)
+
+    terminal.sendInput('x')
+    await terminal.waitForRender()
+    assert.match(terminal.getViewport().join('\n'), /cancel worker/u)
+    terminal.sendInput('n')
+    await waitUntil(() => /^\s*workers\b/mu.test(terminal.getViewport().join('\n')))
+    await terminal.waitForRender()
+    assert.doesNotMatch(terminal.getViewport().join('\n'), /cancel worker/u)
+  } finally {
+    view.stop()
+    await done
+    await app.close()
+  }
+})
+
 test('the terminal opens saved ask and comparison results instead of reducing them to notices', async () => {
   const app = createTestApplication()
   const baselineRunId = await createCompletedRun(app, 'terminal baseline')

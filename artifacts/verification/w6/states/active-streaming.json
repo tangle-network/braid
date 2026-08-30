@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "2ff0d7cf65eb929cc55b1669821b23c5381f401eb271002c0a16679a450efbe9"
+    "tarballSha256": "7945e73863a9cd764dd4d80a258af49faff0233718162e89e7d731e5b342add7"
   },
   "dimensions": {
     "columns": 80,
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 5,
       "sequence": 5,
-      "workspace": "/home/drew/code/.worktrees/braid-10-complete",
+      "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -171,7 +171,7 @@
     },
     "view": {
       "revision": 5,
-      "workspace": "/home/drew/code/.worktrees/braid-10-complete",
+      "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-08-29T18:49:16.505Z",
+          "occurredAt": "2026-08-30T01:58:01.170Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -585,7 +585,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-10-complete"
+            "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix"
           }
         }
       },
@@ -697,10 +697,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-384ad0e49fd4fa9cd2f39550",
+              "id": "effect-op-terminal-000002-7157e62077a4d509410071b5",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "384ad0e49fd4fa9cd2f395509b8c735ea1efe909192cfc3300f4a250d4f387f4",
+              "requestDigest": "7157e62077a4d509410071b5c2a6a9850f6901ef9e508c8792e90dbbc23c2412",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -719,13 +719,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-08-29T18:49:16.505Z",
+            "occurredAt": "2026-08-30T01:58:01.170Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-97b7e310-3db8-42ec-94d3-f108d406e483",
+              "id": "turn-60d0823b-561e-4135-ae12-78539348502d",
               "intent": "W6 active streaming",
               "metadata": {
                 "identity": {
@@ -735,11 +735,11 @@
               }
             },
             "session": {
-              "id": "50f1dbda-ac67-4d26-ace8-961ede571f25",
+              "id": "e71aaa92-0529-414f-9748-268367dde511",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-08-29T18:49:16.505Z",
-              "updatedAt": "2026-08-29T18:49:16.505Z",
+              "createdAt": "2026-08-30T01:58:01.170Z",
+              "updatedAt": "2026-08-30T01:58:01.170Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -761,16 +761,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-97b7e310-3db8-42ec-94d3-f108d406e483"
+                  "id": "turn-60d0823b-561e-4135-ae12-78539348502d"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-97b7e310-3db8-42ec-94d3-f108d406e483:attempt:96894925-0be1-41ec-96f2-44cc1ce8211d",
-                  "materializationReceiptDigest": "sha256:a63914682a3f6212d6a1f19fc5d502d858c3740c5edfca9a20d38d4b9e5b117f",
-                  "bindingDigest": "sha256:b625a98a0d03b9d7cfd3ecb14ca9d943a4740d3dea2c9b66b36a8afa6d9aa880",
+                  "attemptId": "turn-60d0823b-561e-4135-ae12-78539348502d:attempt:5d00fbfd-42ba-461f-a300-6f5358758ce5",
+                  "materializationReceiptDigest": "sha256:46f5e809a9bd69d915ad69aaaaf7a9b1aaadaae30b422f784aa6431b77d4ad9f",
+                  "bindingDigest": "sha256:7a208eb1a90c51ce7206583ea18beffc6814409992b3f4674cf07827984ee4a0",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -782,10 +782,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-08-29T18:49:16.503Z"
+                "startedAt": "2026-08-30T01:58:01.166Z"
               }
             },
-            "timestamp": "2026-08-29T18:49:16.505Z"
+            "timestamp": "2026-08-30T01:58:01.170Z"
           }
         }
       }

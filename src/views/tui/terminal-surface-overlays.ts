@@ -290,7 +290,7 @@ export class TerminalSurfaceOverlays {
           })
       },
     })
-    this.#options.modals.open(prompt, { anchor: 'center', width: '72%', maxHeight: 10 })
+    this.#options.modals.open(prompt, { anchor: 'center', width: '72%', maxHeight: 10 }, false)
   }
 
   #openActivityCancel(selected: ActivityItemView): void {
@@ -333,7 +333,11 @@ export class TerminalSurfaceOverlays {
           })
       },
     })
-    this.#options.modals.open(confirmation, { anchor: 'center', width: '78%', maxHeight: 10 })
+    this.#options.modals.open(
+      confirmation,
+      { anchor: 'center', width: '78%', maxHeight: 10 },
+      false,
+    )
   }
 
   async #attachWorker(selected: ActivityItemView): Promise<void> {
@@ -417,7 +421,7 @@ export class TerminalSurfaceOverlays {
           })
       },
     })
-    this.#options.modals.open(selector, { anchor: 'center', width: '84%', maxHeight: '80%' })
+    this.#options.modals.open(selector, { anchor: 'center', width: '84%', maxHeight: '80%' }, false)
   }
 
   #hasActivity(id: string): boolean {

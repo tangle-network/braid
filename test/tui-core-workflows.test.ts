@@ -9,9 +9,10 @@ import { createApplicationUiController } from '../src/adapters/tui/application-u
 import { capabilityMap } from '../src/adapters/tui/ui-capabilities.js'
 import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-contracts.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import { type BraidState, initialState } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
-import { initialState, type BraidState } from '../src/domain/state.js'
 import type { BraidViewModel, InteractionView } from '../src/views/shared/models.js'
+import { liveRunId, runIdForControl } from '../src/views/shared/run-selection.js'
 import { ActivityBrowserPanel } from '../src/views/tui/activity-browser.js'
 import { AnalysisViewPanel } from '../src/views/tui/analysis.js'
 import {
@@ -65,6 +66,35 @@ test('background recoverable runs remain available while another branch is activ
   } as unknown as BraidState
 
   assert.equal(capabilityMap(viewState)['run.reconnect']?.available, true)
+  const detachedFocused = {
+    ...viewState,
+    focusedRunId: 'run-background',
+    activeRunId: 'run-background',
+  }
+  assert.equal(capabilityMap(detachedFocused)['run.cancel']?.available, true)
+})
+
+test('local interrupt selection skips detached work while cancel preserves remote focus', () => {
+  const view = {
+    focusedRunId: 'run-detached',
+    activeRunId: 'run-live',
+    runs: [
+      { id: 'run-detached', status: 'detached', completeness: 'streaming' },
+      { id: 'run-live', status: 'running', completeness: 'streaming' },
+    ],
+  } as unknown as Pick<BraidViewModel, 'focusedRunId' | 'activeRunId' | 'runs'>
+
+  assert.equal(liveRunId(view), 'run-live')
+  assert.equal(runIdForControl(view, { allowDetached: true }), 'run-detached')
+  const detachedRun = view.runs.find((run) => run.id === 'run-detached')
+  assert.ok(detachedRun)
+  assert.equal(
+    runIdForControl(
+      { ...view, activeRunId: 'run-detached', runs: [detachedRun] },
+      { allowDetached: true },
+    ),
+    'run-detached',
+  )
 })
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
