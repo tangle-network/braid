@@ -212,6 +212,8 @@ function configuration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
   })
   if (!values.credentialValue?.trim()) {
     throw capabilityUnavailable(
@@ -567,7 +569,7 @@ export async function runInteractiveContinuityProof({
     harness: values.runner,
     model: {
       default: values.model,
-      provider: values.provider,
+      provider: values.modelProvider,
     },
   }
   const options = createOptions(values, createProfile, exactProofId)
@@ -620,7 +622,7 @@ export async function runInteractiveContinuityProof({
       proofId: exactProofId,
       runner: values.runner,
       model: values.model,
-      modelProvider: values.provider,
+      modelProvider: values.modelProvider,
     })
     startInfo = await bounded(
       `Interactive start [${identityText(exact.start)}]`,

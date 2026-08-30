@@ -30,10 +30,12 @@ export function connectionConfiguration(
     modelNames = [],
     runnerNames = [],
     providerNames = [],
+    modelProviderNames = [],
     fallbackEndpoint,
     fallbackModel,
     fallbackRunner,
     fallbackProvider = 'tangle',
+    fallbackModelProvider,
     credentialFallbacks = [],
   },
 ) {
@@ -43,6 +45,10 @@ export function connectionConfiguration(
   const runner = firstValue(environment, [`${prefix}_RUNNER`, ...runnerNames]) ?? fallbackRunner
   const provider =
     firstValue(environment, [`${prefix}_PROVIDER`, ...providerNames]) ?? fallbackProvider
+  const modelProvider =
+    firstValue(environment, [`${prefix}_MODEL_PROVIDER`, ...modelProviderNames]) ??
+    fallbackModelProvider ??
+    provider
   const missing = [
     [endpoint, `${prefix}_ENDPOINT`, 'provider endpoint'],
     [model, `${prefix}_MODEL`, 'profile model'],
@@ -62,6 +68,7 @@ export function connectionConfiguration(
     model,
     runner,
     provider,
+    modelProvider,
     ...credential(environment, prefix, credentialFallbacks),
   }
 }

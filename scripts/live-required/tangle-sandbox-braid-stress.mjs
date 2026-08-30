@@ -101,6 +101,8 @@ function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
   })
 }
 

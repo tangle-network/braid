@@ -2,12 +2,15 @@ import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
-import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
+import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
 import {
   DEFAULT_TANGLE_ROUTER_MODEL,
   DEFAULT_TANGLE_ROUTER_MODEL_ID,
 } from '../scripts/live-required/model-defaults.mjs'
+import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
+import { supervisorProfile } from '../scripts/live-required/supervisor.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
+import { sandboxEnvironment } from '../scripts/live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
   assertInteractiveOwnedResourceCleanup,
   assertInteractiveTelemetry,
@@ -18,15 +21,13 @@ import {
   sandboxConfiguration as interactiveSandboxConfiguration,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
-import { sandboxEnvironment } from '../scripts/live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
   assertSingleExecutionAttemptLedger,
   cleanupOwnedRetainedResources,
   cleanupRetainedResourceByRunId,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
-import { sandboxConfiguration as workspaceSandboxConfiguration } from '../scripts/live-required/tangle-workspace-proof.mjs'
 import { backendConfiguration as workerBackendConfiguration } from '../scripts/live-required/tangle-sandbox-worker.mjs'
-import { supervisorProfile } from '../scripts/live-required/supervisor.mjs'
+import { sandboxConfiguration as workspaceSandboxConfiguration } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 
@@ -38,12 +39,38 @@ test('active Tangle Sandbox checks share the current router model default', () =
   const expectedProfileModel = DEFAULT_TANGLE_ROUTER_MODEL
   assert.equal(DEFAULT_TANGLE_ROUTER_MODEL_ID, 'glm-5.3')
   assert.equal(workspaceSandboxConfiguration(environment).model, expectedProfileModel)
+  assert.equal(workspaceSandboxConfiguration(environment).provider, 'tangle')
+  assert.equal(workspaceSandboxConfiguration(environment).modelProvider, 'tangle-router')
   assert.equal(multirunSandboxConfiguration(environment).model, expectedProfileModel)
+  assert.equal(multirunSandboxConfiguration(environment).provider, 'tangle')
+  assert.equal(multirunSandboxConfiguration(environment).modelProvider, 'tangle-router')
   assert.equal(interactiveSandboxConfiguration(environment).model, expectedProfileModel)
+  assert.equal(interactiveSandboxConfiguration(environment).provider, 'tangle')
+  assert.equal(interactiveSandboxConfiguration(environment).modelProvider, 'tangle-router')
   assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_MODEL, expectedProfileModel)
+  assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_PROVIDER, 'tangle')
+  assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_MODEL_PROVIDER, 'tangle-router')
   assert.equal(workerBackendConfiguration(environment).model.model, DEFAULT_TANGLE_ROUTER_MODEL_ID)
   assert.equal(workerBackendConfiguration(environment).profile.model.default, expectedProfileModel)
   assert.equal(supervisorProfile({}).model.default, expectedProfileModel)
+})
+
+test('Tangle Sandbox workspace profiles keep transport and model providers distinct', async () => {
+  const values = interactiveSandboxConfiguration({
+    BRAID_TANGLE_SANDBOX_CREDENTIAL_REF: 'credential-ref-live-provider-split',
+  })
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment: {},
+    ...values,
+  })
+  try {
+    assert.equal(config.connection.kind, 'tangle-sandbox')
+    assert.equal(config.profile.model.provider, 'tangle-router')
+    assert.equal(config.profile.model.default, DEFAULT_TANGLE_ROUTER_MODEL)
+  } finally {
+    await config.cleanup()
+  }
 })
 
 function passedStressProof() {

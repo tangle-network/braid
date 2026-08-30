@@ -13,12 +13,12 @@ import {
   resolveBinary,
   runHeadlessTurn,
 } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import {
   environmentForRun,
   resourceDelta,
   runObservations,
 } from './tangle-sandbox-braid-stress-support.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_RUNS = 3
@@ -66,8 +66,9 @@ export function sandboxEnvironment(environment) {
     BRAID_TANGLE_SANDBOX_MODEL:
       environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || DEFAULT_TANGLE_ROUTER_MODEL,
     BRAID_TANGLE_SANDBOX_RUNNER: environment.BRAID_TANGLE_SANDBOX_RUNNER?.trim() || 'opencode',
-    BRAID_TANGLE_SANDBOX_PROVIDER:
-      environment.BRAID_TANGLE_SANDBOX_PROVIDER?.trim() || 'tangle-router',
+    BRAID_TANGLE_SANDBOX_PROVIDER: environment.BRAID_TANGLE_SANDBOX_PROVIDER?.trim() || 'tangle',
+    BRAID_TANGLE_SANDBOX_MODEL_PROVIDER:
+      environment.BRAID_TANGLE_SANDBOX_MODEL_PROVIDER?.trim() || 'tangle-router',
     ...(!environment.BRAID_TANGLE_SANDBOX_API_KEY && environment.TANGLE_API_KEY
       ? { BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
       : {}),
@@ -82,6 +83,8 @@ function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
   })
 }
 

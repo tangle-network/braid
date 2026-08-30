@@ -38,6 +38,7 @@ import {
   rpcRequest,
   rpcState,
 } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import {
   accountIdentity,
   assertSingleExecutionAttemptLedger,
@@ -54,7 +55,6 @@ import {
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -142,10 +142,12 @@ export function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
     fallbackEndpoint: 'https://sandbox.tangle.tools',
     fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: 'pi',
     fallbackProvider: 'tangle',
+    fallbackModelProvider: 'tangle-router',
   })
 }
 
@@ -1118,6 +1120,7 @@ async function runProof({
       model: values.model,
       runner: values.runner,
       provider: values.provider,
+      modelProvider: values.modelProvider,
       providerOptions: { lifecycle: 'retained', idleTtlSeconds },
       credentialRef: values.credentialRef,
       credentialValue: values.credentialValue,

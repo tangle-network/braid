@@ -50,10 +50,12 @@ export function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
     fallbackEndpoint: DEFAULT_ENDPOINT,
     fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: DEFAULT_RUNNER,
     fallbackProvider: DEFAULT_PROVIDER,
+    fallbackModelProvider: 'tangle-router',
   })
 }
 
@@ -600,6 +602,7 @@ async function runWorkspaceProof({
     model: values.model,
     runner: values.runner,
     provider: values.provider,
+    modelProvider: values.modelProvider,
     credentialRef: values.credentialRef,
     credentialValue: values.credentialValue,
     providerOptions: {

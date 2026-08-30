@@ -43,13 +43,13 @@ function validCredentialId(value) {
   return candidate
 }
 
-function profileFor({ kind, model, runner, provider }) {
+function profileFor({ kind, model, runner, modelProvider }) {
   return {
     name: `Braid live ${kind}`,
     description: 'Protected release flow profile',
     version: '1.0.0',
     harness: runner,
-    model: { provider, default: model, reasoningEffort: 'none' },
+    model: { provider: modelProvider, default: model, reasoningEffort: 'none' },
     prompt: {
       instructions: ['Follow the release prompt exactly and return the requested marker.'],
     },
@@ -247,6 +247,7 @@ export async function prepareProductionWorkspace({
   model,
   runner,
   provider,
+  modelProvider = provider,
   connectionName,
   providerOptions = {},
   confidentialAttestationPolicy,
@@ -271,7 +272,7 @@ export async function prepareProductionWorkspace({
         : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
     const selectedCredentialId = generatedCredentialId ?? credentialRef
     if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
-    const profile = profileFor({ kind, model, runner, provider })
+    const profile = profileFor({ kind, model, runner, modelProvider })
     const profileFile = `profile-${kindId}.json`
     const profilePath = join(profileDirectory, profileFile)
     const now = timestamp()

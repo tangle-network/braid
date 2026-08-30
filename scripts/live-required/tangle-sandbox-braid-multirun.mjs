@@ -19,12 +19,12 @@ import { pause } from '../live-demo/terminal.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
 } from './tangle-sandbox-braid-stress.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -93,10 +93,12 @@ export function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
     fallbackEndpoint: 'https://sandbox.tangle.tools',
     fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
     fallbackRunner: 'opencode',
     fallbackProvider: 'tangle',
+    fallbackModelProvider: 'tangle-router',
   })
 }
 
@@ -678,6 +680,7 @@ export async function runProof({
         model: values.model,
         runner: values.runner,
         provider: values.provider,
+        modelProvider: values.modelProvider,
         providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
         credentialRef: values.credentialRef,
         credentialValue: values.credentialValue,
