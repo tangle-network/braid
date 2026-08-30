@@ -607,7 +607,7 @@ test('release subprocesses and recorded paths are portable to Windows', async ()
     'utf8',
   )
   assert.match(candidatePreparation, /pnpmInvocation\(\['run', 'build'\]\)/u)
-  assert.match(candidatePreparation, /readRegularFileNoFollow/u)
+  assert.match(candidatePreparation, /readCandidateIdentity/u)
   assert.doesNotMatch(candidatePreparation, /run\('pnpm'/u)
 })
 
@@ -967,6 +967,7 @@ test('release keys stay isolated while publication uses the installed product', 
   const publish = job('publish', 'post-publish-smoke')
   assert.doesNotMatch(publish, /already exists; checking|if npm view/iu)
   assert.match(publish, /node scripts\/release\/check-registry-collision\.mjs/u)
+  assert.match(publish, /node scripts\/release\/verify-candidate-identity\.mjs/u)
   assert.match(publish, /if: steps\.registry\.outputs\.status == 'available'/u)
 
   const candidateSmoke = job('platform-smoke', 'publish')

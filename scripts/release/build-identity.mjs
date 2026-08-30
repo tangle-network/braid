@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readdir } from 'node:fs/promises'
+import { lstat, readdir, realpath } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { REQUIREMENT_PATTERN } from '../release-check-catalog.mjs'
@@ -38,6 +38,11 @@ function sourceTreeChanges(repository) {
     if (path) changed.add(path)
   }
   return [...changed].sort()
+}
+
+function inside(root, target) {
+  const path = relative(root, target)
+  return path === '' || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`))
 }
 
 async function filesBelow(root) {
@@ -299,4 +304,49 @@ export async function readBuildIdentity({
     requirementIds: [...ids].sort(),
     tarballPath: tarballRelative,
   }
+}
+
+export async function readCandidateIdentity({
+  repository,
+  artifactRoot,
+  expectedCommit,
+  expectedVersion,
+} = {}) {
+  const root = resolve(repository)
+  const evidenceRoot = resolve(artifactRoot)
+  assert(!inside(root, evidenceRoot), 'Release artifacts must be outside the source checkout')
+  const evidenceInfo = await lstat(evidenceRoot)
+  assert(
+    evidenceInfo.isDirectory() && !evidenceInfo.isSymbolicLink(),
+    'Release artifact root is not real',
+  )
+  assert(
+    (await realpath(evidenceRoot)) === evidenceRoot,
+    'Release artifact root resolves indirectly',
+  )
+  const packageProofPath = join(evidenceRoot, 'w6', 'package-proof.json')
+  const packageProof = await readPackageProof({
+    repository: root,
+    packageProofRoot: evidenceRoot,
+    packageProofPath: 'w6/package-proof.json',
+  })
+  assert(
+    packageProof && typeof packageProof === 'object' && !Array.isArray(packageProof),
+    'Package proof is not an object',
+  )
+  assert(
+    typeof packageProof.tarball === 'string' && packageProof.tarball.length > 0,
+    'Package proof has no tarball filename',
+  )
+  const identity = await readBuildIdentity({
+    repository: root,
+    artifactRoot: evidenceRoot,
+    tarballPath: join(evidenceRoot, 'candidate', packageProof.tarball),
+    packageProof,
+  })
+  if (expectedCommit !== undefined)
+    assert(identity.gitCommit === expectedCommit, 'Candidate commit differs from expectation')
+  if (expectedVersion !== undefined)
+    assert(identity.braidVersion === expectedVersion, 'Candidate version differs from expectation')
+  return { identity, packageProof, packageProofPath }
 }

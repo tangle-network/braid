@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -10,7 +10,12 @@ import { test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 
 import { writeJsonAtomic } from './atomic-storage.mjs'
-import { bindingForCheck, readBuildIdentity, readRequirementIds } from './build-identity.mjs'
+import {
+  bindingForCheck,
+  readBuildIdentity,
+  readCandidateIdentity,
+  readRequirementIds,
+} from './build-identity.mjs'
 import { releaseChildEnvironment } from './child-environment.mjs'
 import { structuredChildEvidence } from './collection-contract.mjs'
 import { collectReleaseEvidence } from './collector.mjs'
@@ -722,6 +727,30 @@ test('build identity binds clean HEAD, explicit Git-tree algorithm, tarball dige
     await expectRejectAsync(
       () => readBuildIdentity({ repository: root, artifactRoot, tarballPath, packageProof: proof }),
       /tarball digest differs/iu,
+    )
+  })
+})
+
+test('candidate identity rejects restored proof metadata tampering', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    await mkdir(join(artifactRoot, 'candidate'), { recursive: true })
+    await mkdir(join(artifactRoot, 'w6'), { recursive: true })
+    await copyFile(tarballPath, join(artifactRoot, 'candidate', proof.tarball))
+    const proofPath = join(artifactRoot, 'w6', 'package-proof.json')
+    await writeFile(proofPath, `${JSON.stringify(proof)}\n`)
+
+    const candidate = await readCandidateIdentity({
+      repository: root,
+      artifactRoot,
+      expectedCommit: proof.gitCommit,
+      expectedVersion: proof.version,
+    })
+    assert.equal(candidate.identity.tarballSha256, proof.sha256)
+
+    await writeFile(proofPath, `${JSON.stringify({ ...proof, sourceDigest: '0'.repeat(64) })}\n`)
+    await expectRejectAsync(
+      () => readCandidateIdentity({ repository: root, artifactRoot }),
+      /source digest differs/iu,
     )
   })
 })

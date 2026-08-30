@@ -233,6 +233,14 @@ jobs:
           INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
           grep -Fx "index_sha256=$INDEX_SHA256" "$ENDORSEMENT/statement.txt"
 
+      - name: Re-verify exact candidate source and archive identity
+        env:
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+          BRAID_RELEASE_EXPECT_VERSION: ${{ needs.candidate.outputs.version }}
+        run: node scripts/release/verify-candidate-identity.mjs
+
       - name: Install the pinned npm client
         run: |
           npm install --global npm@11.18.0

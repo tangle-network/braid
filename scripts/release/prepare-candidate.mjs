@@ -1,10 +1,9 @@
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { lstat, mkdir, readFile, realpath } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { readCandidateIdentity } from './build-identity.mjs'
 import { pnpmInvocation } from './platform.mjs'
-import { readRegularFileNoFollow } from '../release-files.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -30,12 +29,6 @@ async function run(file, args, options = {}) {
         reject(new Error(`${file} exited with code ${String(code)} and signal ${String(signal)}`))
     })
   })
-}
-
-async function sha256(path) {
-  return createHash('sha256')
-    .update(await readRegularFileNoFollow(path))
-    .digest('hex')
 }
 
 const repository = resolve(new URL('../../', import.meta.url).pathname)
@@ -92,36 +85,19 @@ if (!existingTarball) {
   )
 }
 
-const packageProof = JSON.parse((await readRegularFileNoFollow(packageProofPath)).toString('utf8'))
-const head = await new Promise((resolvePromise, reject) => {
-  let stdout = ''
-  const child = spawn('git', ['rev-parse', 'HEAD'], {
-    cwd: repository,
-    shell: false,
-    stdio: ['ignore', 'pipe', 'inherit'],
-  })
-  child.stdout.setEncoding('utf8')
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk
-  })
-  child.once('error', reject)
-  child.once('close', (code) =>
-    code === 0 ? resolvePromise(stdout.trim()) : reject(new Error(`git rev-parse exited ${code}`)),
-  )
+const { identity } = await readCandidateIdentity({
+  repository,
+  artifactRoot,
+  expectedVersion: packageJson.version,
 })
-assert(packageProof.version === packageJson.version, 'Package proof version differs')
-assert(packageProof.gitCommit === head, 'Restored candidate commit differs')
-assert(packageProof.tarball === basename(tarballPath), 'Package proof archive name differs')
-assert(packageProof.sha256 === (await sha256(tarballPath)), 'Package proof archive digest differs')
-assert(packageProof.packageFileManifest?.entries?.length > 0, 'Package proof has no file manifest')
 
 process.stdout.write(
   `${JSON.stringify(
     {
       version: packageJson.version,
-      commit: packageProof.gitCommit,
+      commit: identity.gitCommit,
       tarball: tarballPath,
-      tarballSha256: packageProof.sha256,
+      tarballSha256: identity.tarballSha256,
       packageProof: packageProofPath,
     },
     null,
