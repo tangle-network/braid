@@ -388,6 +388,10 @@ The current Pi route advertises interaction-only responses, so Braid disables se
 
 The protected command calls Runtime `provisionSupervisor` when no complete external supervisor binding is configured.
 
+The shared protected `TANGLE_API_KEY` may authenticate both the Tangle Sandbox and Runtime supervisor paths.
+
+The release collector passes that key only to `live-tangle` and `live-supervisor`; analysis and unrelated checks remain isolated.
+
 Runtime creates the root, worker, acknowledger, and provider-owned process binding through its public APIs.
 
 The command discovers exact identifiers from the returned Runtime receipt instead of requiring pre-existing `BRAID_SUPERVISOR_*` identifiers.
