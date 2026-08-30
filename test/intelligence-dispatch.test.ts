@@ -702,7 +702,7 @@ test('an empty live supervisor snapshot is normal before any worker activity exi
   await app.close()
 })
 
-test('nested worker actions return to the activity browser after submission', async () => {
+test('nested worker actions return to the activity browser after each action', async () => {
   const raw = createSupervisionSnapshot({
     root: '/workspace',
     supervisors: [
@@ -777,6 +777,16 @@ test('nested worker actions return to the activity browser after submission', as
     const afterSteer = terminal.getViewport().join('\n')
     assert.match(afterSteer, /s steer/u)
     assert.doesNotMatch(afterSteer, /steer worker/u)
+
+    terminal.sendInput('s')
+    await terminal.waitForRender()
+    assert.match(terminal.getViewport().join('\n'), /steer worker/u)
+    terminal.sendInput('\u001b')
+    await waitUntil(
+      () =>
+        /^\s*workers\b/mu.test(terminal.getViewport().join('\n')) &&
+        !/steer worker/u.test(terminal.getViewport().join('\n')),
+    )
 
     terminal.sendInput('x')
     await terminal.waitForRender()
