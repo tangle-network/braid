@@ -40,7 +40,7 @@ Conversation destruction writes a non-sensitive tombstone in the same transactio
 
 Post-commit key-cleanup failures are recorded as unknown outcomes and repaired only through startup reconciliation; they are never replayed blindly under a new operation identifier.
 
-The production credential adapters use `@napi-rs/keyring@1.3.0` to access macOS Keychain, Linux Secret Service, and Windows Credential Manager through native APIs.
+The production credential adapters use `@napi-rs/keyring@2.0.0` to access macOS Keychain, Linux Secret Service, and Windows Credential Manager through native APIs.
 
 Credential bytes never enter shell commands, process arguments, or environment variables, and temporary native buffers are erased after each operation.
 

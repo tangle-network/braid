@@ -1,8 +1,8 @@
 overrides:
   '@tangle-network/agent-interface': 2.0.0
   '@tangle-network/agent-knowledge': 10.8.0
-  hono: 4.13.0
-  undici: 7.29.0
+  hono: 4.13.5
+  undici: 8.10.1
 allowBuilds:
   '@dataiku/uv': true
   better-sqlite3-multiple-ciphers: true
@@ -19,7 +19,7 @@ minimumReleaseAgeExclude:
   - '@tangle-network/agent-provider-cli-bridge@0.4.2 || 0.4.3 || 0.5.0 || 0.6.0 || 0.6.4 || 0.7.1 || 0.7.2 || 0.7.3 || 0.7.6 || 0.8.0 || 0.8.1 || 0.9.0 || 0.9.2 || 0.9.3 || 0.9.4 || 0.9.5 || 0.9.6 || 0.10.0 || 0.11.0 || 0.11.1 || 1.0.0'
   - '@tangle-network/agent-provider-tangle@0.13.0 || 0.13.1 || 0.13.3 || 0.14.0 || 0.14.1 || 0.14.2 || 0.14.3 || 0.14.4 || 1.0.0 || 1.0.1 || 1.0.2'
   - '@tangle-network/sandbox@0.30.1 || 0.31.0 || 0.34.0 || 0.34.3 || 0.34.4 || 0.34.6'
-  - hono@4.13.0
+  - hono@4.13.5
   - '@esbuild/aix-ppc64@0.28.2'
   - '@esbuild/android-arm64@0.28.2'
   - '@esbuild/android-arm@0.28.2'
@@ -49,3 +49,17 @@ minimumReleaseAgeExclude:
   - esbuild@0.28.2
   - '@tangle-network/agent-core@0.5.4 || 0.6.0 || 0.6.1 || 0.7.1 || 0.8.0 || 0.8.1 || 0.9.0 || 0.9.4'
   - '@earendil-works/pi-tui@0.84.2 || 0.84.3 || 0.84.4'
+  - '@napi-rs/keyring-darwin-arm64@2.0.0'
+  - '@napi-rs/keyring-darwin-x64@2.0.0'
+  - '@napi-rs/keyring-freebsd-x64@2.0.0'
+  - '@napi-rs/keyring-linux-arm-gnueabihf@2.0.0'
+  - '@napi-rs/keyring-linux-arm64-gnu@2.0.0'
+  - '@napi-rs/keyring-linux-arm64-musl@2.0.0'
+  - '@napi-rs/keyring-linux-riscv64-gnu@2.0.0'
+  - '@napi-rs/keyring-linux-x64-gnu@2.0.0'
+  - '@napi-rs/keyring-linux-x64-musl@2.0.0'
+  - '@napi-rs/keyring-win32-arm64-msvc@2.0.0'
+  - '@napi-rs/keyring-win32-ia32-msvc@2.0.0'
+  - '@napi-rs/keyring-win32-x64-msvc@2.0.0'
+  - '@napi-rs/keyring@2.0.0'
+  - undici@8.10.1

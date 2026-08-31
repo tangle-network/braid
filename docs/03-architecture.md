@@ -200,7 +200,7 @@ The exact `better-sqlite3-multiple-ciphers@13.0.3` binding is required and must 
 
 Each conversation has a random content key stored only through `CredentialPort`, separate from the encrypted database key.
 
-The production credential implementation calls the operating-system stores through `@napi-rs/keyring@1.3.0`; it does not place secret bytes in a child process, command argument, or environment variable.
+The production credential implementation calls the operating-system stores through `@napi-rs/keyring@2.0.0`; it does not place secret bytes in a child process, command argument, or environment variable.
 
 `MemoryJournal` and `MemoryStorage` implement the same ports only for deterministic tests and are not selected by non-fixture composition.
 
