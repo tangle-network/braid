@@ -377,8 +377,19 @@ export type {
 
 export function providerEventKey(event: BraidEvent): string | undefined {
   const provider = providerMetaForEvent(event)
-  if (provider === undefined || !('runId' in event)) return undefined
-  return `${event.runId}:${provider.eventId}`
+  if (provider === undefined || !('runId' in event) || typeof event.runId !== 'string')
+    return undefined
+  return providerEventKeyFor(event.runId, provider.eventId)
+}
+
+/**
+ * Build an in-memory key for the provider event identity tuple.
+ *
+ * The run length makes the boundary explicit, so distinct `(runId, eventId)`
+ * pairs cannot collapse into the same deduplication key.
+ */
+export function providerEventKeyFor(runId: string, eventId: string): string {
+  return `${runId.length}:${runId}${eventId}`
 }
 
 export function providerMetaForEvent(event: BraidEvent): ProviderEventMeta | undefined {

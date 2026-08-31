@@ -212,6 +212,8 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
       active.cancellation = preparedExecution?.cancellation
       const backend = isPreparedExecution(execution) ? execution.backend : execution
       const observation = isPreparedExecution(execution) ? execution.observation : undefined
+      const cleanupExpected =
+        preparedExecution?.materializationReceipt.cleanup === 'delete-after-turn'
       const runtimeBackend =
         active.cancellation === undefined
           ? backend
@@ -241,7 +243,11 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         if (observed !== undefined) yield observed
         if (terminal !== undefined) {
           yield redactedTerminal(
-            terminalAfterCleanup(terminalAfterInteractionRequest(terminal), observed),
+            terminalAfterCleanup(
+              terminalAfterInteractionRequest(terminal),
+              observed,
+              cleanupExpected,
+            ),
           )
         }
       } catch (error) {
@@ -332,11 +338,14 @@ function terminalAfterInteractionRequest(
 function terminalAfterCleanup(
   terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
   observed: Extract<BraidRuntimeEvent, { readonly type: 'braid.execution.observed' }> | undefined,
+  cleanupExpected: boolean,
 ): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+  const cleanupRequired = cleanupExpected || observed?.observation.cleanup === 'delete-after-turn'
   if (
     terminal.status !== 'completed' ||
-    observed?.observation.cleanup !== 'delete-after-turn' ||
-    observed.observation.lifecycle === 'destroyed'
+    !cleanupRequired ||
+    (observed?.observation.cleanup === 'delete-after-turn' &&
+      observed.observation.lifecycle === 'destroyed')
   )
     return terminal
   return {

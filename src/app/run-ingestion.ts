@@ -1,4 +1,4 @@
-import type { ProviderEventMeta } from '../domain/events.js'
+import { type ProviderEventMeta, providerEventKeyFor } from '../domain/events.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
 import type { IngestionPort, RuntimeEventIngestionResult } from './application-ports.js'
@@ -20,7 +20,7 @@ export function ingestRuntimeEvent(
     (envelope.occurredAt !== undefined && !isCanonicalIsoDateTime(envelope.occurredAt))
   )
     throw new AppError('INVALID_PROVIDER_EVENT', 'Provider event identity or timestamp is invalid')
-  const key = `${envelope.runId}:${envelope.eventId}`
+  const key = providerEventKeyFor(envelope.runId, envelope.eventId)
   if (context.ledger.hasProviderEvent(key)) return { accepted: false, duplicate: true }
   const run = context.findRun(envelope.runId)
   const expected = run.lastProviderSequence + 1

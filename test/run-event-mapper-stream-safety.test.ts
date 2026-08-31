@@ -11,6 +11,7 @@ import {
   ApplicationStreamSanitizer,
   MAX_ACTIVE_RUNTIME_STREAMS,
 } from '../src/app/run-stream-sanitizer.js'
+import { providerEventKey, providerEventKeyFor } from '../src/domain/events.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { redactSensitiveText } from '../src/domain/secret-sanitizer.js'
 import { initialState } from '../src/domain/state.js'
@@ -107,9 +108,31 @@ test('provider interaction identities map to stable local ids without changing r
   assert.equal(cancelled.interactionId, first.request.id)
 })
 
+test('provider event deduplication keeps the run and event identity tuple distinct', () => {
+  const first = {
+    kind: 'run.text.delta' as const,
+    runId: 'run-a',
+    text: 'first',
+    provider: { eventId: 'b:c', providerSequence: 1 },
+  }
+  const second = {
+    kind: 'run.text.delta' as const,
+    runId: 'run-a:b',
+    text: 'second',
+    provider: { eventId: 'c', providerSequence: 1 },
+  }
+
+  assert.equal(providerEventKeyFor(first.runId, first.provider.eventId), '5:run-ab:c')
+  assert.notEqual(providerEventKey(first), providerEventKey(second))
+})
+
 test('incremental mapper redaction matches complete redaction at every credential boundary', () => {
   const values = [
     `prefix Bearer ${BEARER_CANARY} suffix`,
+    `prefix authorization: Basic ${ASSIGNMENT_CANARY} suffix`,
+    `prefix authorization=Bearer ${ASSIGNMENT_CANARY} suffix`,
+    `prefix token: Basic ${ASSIGNMENT_CANARY} suffix`,
+    `prefix x=Bearer ${ASSIGNMENT_CANARY} suffix`,
     `prefix token=${ASSIGNMENT_CANARY} suffix`,
     `prefix API___key: ${ASSIGNMENT_CANARY} suffix`,
     `prefix client   secret=${ASSIGNMENT_CANARY} suffix`,

@@ -8,6 +8,8 @@ const BIDI_CONTROLS = /\p{Bidi_Control}/gu
 const BIDI_CHARACTER = /\p{Bidi_Control}/u
 const SECRET_ASSIGNMENT =
   /(^|[\s,;{[(])(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_ -]*key|access[_ -]*key|private[_ -]*key|client[_ -]*secret|signature|cookie|header|query|fragment)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;}\])}]*)/giu
+const SECRET_AUTH_SCHEME_ASSIGNMENT =
+  /(^|[\s,;{[(])(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_ -]*key|access[_ -]*key|private[_ -]*key|client[_ -]*secret|signature|cookie|header|query|fragment)\s*[:=]\s*(?:Bearer|Basic)(?:\s+|\s*=\s*)[^\s,;}\])}]+/giu
 const BEARER_ASSIGNMENT = /\bBearer(?:\s+|\s*=\s*)[^\s,;]*/giu
 const BARE_CREDENTIAL =
   /(?:sk-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,})/gu
@@ -75,6 +77,8 @@ type IncrementalRedactionState =
   | 'candidate'
   | 'assignment-gap'
   | 'assignment-value'
+  | 'assignment-scheme-gap'
+  | 'assignment-scheme-token'
   | 'bearer-gap'
   | 'bearer-discard'
   | 'bare-token'
@@ -221,6 +225,10 @@ function redactUrl(candidate: string): string {
 
 function redactStable(value: string): string {
   return redactUrls(value)
+    .replace(
+      SECRET_AUTH_SCHEME_ASSIGNMENT,
+      (_match, prefix: string) => `${prefix}[redacted secret]`,
+    )
     .replace(BEARER_ASSIGNMENT, '[redacted bearer]')
     .replace(SECRET_ASSIGNMENT, (_match, prefix: string) => `${prefix}[redacted secret]`)
     .replace(BARE_CREDENTIAL, '[redacted credential]')
@@ -401,6 +409,7 @@ export class IncrementalSecretTextSanitizer {
   #assignmentEligible = false
   #assignmentQuote: string | undefined
   #assignmentValueStarted = false
+  #assignmentToken = ''
   #bareMinimumBodyBytes = 0
   #bareBodyBytes = 0
   #outputBytes = 0
@@ -478,7 +487,10 @@ export class IncrementalSecretTextSanitizer {
         return
       }
       if (this.#state === 'candidate') {
-        if (!this.#assignmentEligible && /\s/u.test(character)) {
+        const isBearerCandidate =
+          this.#pending.toLowerCase() === STREAM_BEARER_PREFIX &&
+          isStreamBearerBoundary(this.#lastCharacter)
+        if (!this.#assignmentEligible && /\s/u.test(character) && !isBearerCandidate) {
           this.#emitLiteral(output, this.#pending)
           this.#clearPending()
           this.#state = 'normal'
@@ -510,10 +522,7 @@ export class IncrementalSecretTextSanitizer {
             return
           }
         }
-        if (
-          this.#pending.toLowerCase() === STREAM_BEARER_PREFIX &&
-          isStreamBearerBoundary(this.#lastCharacter)
-        ) {
+        if (isBearerCandidate) {
           if (/\s|=/u.test(character)) {
             this.#pending += character
             this.#pendingBytes += Buffer.byteLength(character, 'utf8')
@@ -555,12 +564,38 @@ export class IncrementalSecretTextSanitizer {
             continue
           }
           this.#assignmentValueStarted = true
+          this.#assignmentToken = character
           return
         }
         if (this.#assignmentQuote !== undefined) {
           if (character === this.#assignmentQuote) this.#resetRedactionState()
           return
         }
+        if (
+          (character === '=' || /\s/u.test(character)) &&
+          (this.#assignmentToken.toLowerCase() === 'bearer' ||
+            this.#assignmentToken.toLowerCase() === 'basic')
+        ) {
+          this.#state = 'assignment-scheme-gap'
+          return
+        }
+        if (isStreamAssignmentDelimiter(character)) {
+          this.#resetRedactionState()
+          continue
+        }
+        if (this.#assignmentToken.length < 8) this.#assignmentToken += character
+        return
+      }
+      if (this.#state === 'assignment-scheme-gap') {
+        if (/\s/u.test(character) || character === '=') return
+        if (isStreamAssignmentDelimiter(character)) {
+          this.#resetRedactionState()
+          continue
+        }
+        this.#state = 'assignment-scheme-token'
+        return
+      }
+      if (this.#state === 'assignment-scheme-token') {
         if (isStreamAssignmentDelimiter(character)) {
           this.#resetRedactionState()
           continue
@@ -650,6 +685,7 @@ export class IncrementalSecretTextSanitizer {
     this.#state = 'assignment-value'
     this.#assignmentQuote = undefined
     this.#assignmentValueStarted = false
+    this.#assignmentToken = ''
   }
 
   #beginBearerDiscard(output: string[]): void {
@@ -682,6 +718,8 @@ export class IncrementalSecretTextSanitizer {
         this.#beginAssignment(output)
         break
       case 'assignment-value':
+      case 'assignment-scheme-gap':
+      case 'assignment-scheme-token':
       case 'bearer-discard':
       case 'bare-discard':
       case 'url-discard':
@@ -738,6 +776,7 @@ export class IncrementalSecretTextSanitizer {
     this.#state = 'normal'
     this.#assignmentQuote = undefined
     this.#assignmentValueStarted = false
+    this.#assignmentToken = ''
   }
 }
 
