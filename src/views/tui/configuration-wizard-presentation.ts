@@ -228,7 +228,9 @@ function effectiveValues(
     effort: profile.model?.reasoningEffort ?? 'provider default',
     workdir:
       selection.connection.kind === 'tangle-sandbox'
-        ? (selection.workspaceRequest?.cwd ?? 'provider-selected sandbox workdir')
+        ? selection.workspaceRequest?.cwd === undefined
+          ? 'repository root (provider default)'
+          : selection.workspaceRequest.cwd
         : 'workspace-selected workdir',
     ...(selection.workspaceRequest === undefined
       ? {}
@@ -264,7 +266,7 @@ function workspaceRequestSummary(
     workspace.image === undefined ? undefined : `image ${workspace.image}`,
     workspace.repoUrl === undefined ? undefined : `repo ${workspace.repoUrl}`,
     workspace.gitRef === undefined ? undefined : `ref ${workspace.gitRef}`,
-    workspace.cwd === undefined ? undefined : `start in ${workspace.cwd}`,
+    workspace.cwd === undefined ? undefined : `start in repo ${workspace.cwd}`,
   ].filter((value): value is string => value !== undefined)
   return values.length === 0
     ? ['cloud workspace: provider defaults']
@@ -280,7 +282,7 @@ function compactWorkspaceRequestSummary(
     workspace.image === undefined ? undefined : `image ${workspace.image}`,
     workspace.repoUrl === undefined ? undefined : `repo ${workspace.repoUrl}`,
     workspace.gitRef === undefined ? undefined : `ref ${workspace.gitRef}`,
-    workspace.cwd === undefined ? undefined : `start in ${workspace.cwd}`,
+    workspace.cwd === undefined ? undefined : `start in repo ${workspace.cwd}`,
   ].filter((value): value is string => value !== undefined)
   return [
     `cloud: ${values.length > 0 ? values.map((value) => shortValue(value, 18)).join(' · ') : 'defaults'}`,

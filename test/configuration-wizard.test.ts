@@ -425,8 +425,8 @@ test('cloud workspace setup accepts edits, reports invalid refs, and preserves b
   wizard.handleInput('\r')
   const initial = wizard.render(40)
   assert.match(initial.join('\n'), /workspace · cloud sandbox/u)
-  assert.match(initial.join('\n'), /blank = provider default/u)
-  assert.match(initial.join('\n'), /start in/u)
+  assert.match(initial.join('\n'), /blank = repository root/u)
+  assert.match(initial.join('\n'), /start in \(repo-relative\)/u)
   assert.match(initial.join('\n'), /tab\/enter continues/u)
   assert.doesNotMatch(initial.join('\n'), /braid setup/u)
   assert.ok(initial.every((line) => visibleWidth(line) <= 40))
@@ -450,6 +450,7 @@ test('cloud workspace setup accepts edits, reports invalid refs, and preserves b
   assert.match(review, /cloud workspace/u)
   assert.match(review, /github\.com\/tangle-network\/braid/u)
   assert.match(review, /ref main/u)
+  assert.match(review, /start in repo src/u)
 
   // The review action returns to the form with edits intact.
   wizard.handleInput('\u001b[B')

@@ -83,7 +83,7 @@ test('configuration session chooses a profile and connection without persisting 
   session.submitWorkspace({
     repoUrl: 'https://github.com/acme/repository',
     gitRef: 'main',
-    cwd: '/workspace/src',
+    cwd: 'src',
   })
   assert.equal(session.state.step, 'confirm')
   const selected = session.confirm()
@@ -125,6 +125,11 @@ test('workspace validation keeps the session open and reports the bounded field 
   assert.equal(failed.step, 'workspace')
   assert.equal(failed.error?.code, 'WORKSPACE_INVALID')
   assert.equal(failed.error?.message, 'gitRef requires repoUrl')
+
+  const failedCwd = session.submitWorkspace({ cwd: '/workspace/src' })
+  assert.equal(failedCwd.step, 'workspace')
+  assert.equal(failedCwd.error?.code, 'WORKSPACE_INVALID')
+  assert.equal(failedCwd.error?.message, 'start in must be a repository-relative path')
 })
 
 test('configuration session supports back navigation and fails closed on empty catalogs', () => {

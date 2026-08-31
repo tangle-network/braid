@@ -263,7 +263,7 @@ async function fillWorkspace(terminal) {
   terminal.input('\t')
   terminal.input('main')
   terminal.input('\t')
-  terminal.input('/workspace/src')
+  terminal.input('src')
   await terminal.stable('filled workspace form')
 }
 
@@ -313,6 +313,7 @@ async function captureKeyboardFlow(binary, endpoint) {
     terminal.input('https://github.com/tangle-network/braid')
     terminal.input('\t')
     terminal.input('\t')
+    terminal.input('src')
     terminal.input('\r')
     await terminal.waitForScreen(
       (screen) =>

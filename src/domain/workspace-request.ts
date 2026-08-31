@@ -48,6 +48,12 @@ export function workspaceRequestDigest(request: WorkspaceRequest | undefined): s
 /** Return one bounded validation message without echoing untrusted input. */
 export function workspaceRequestErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
+  if (
+    /Workspace cwd (?:must be relative|must use POSIX separators|cannot leave the workspace root|cannot contain control characters)/iu.test(
+      message,
+    )
+  )
+    return 'start in must be a repository-relative path'
   if (/gitRef requires repoUrl/iu.test(message)) return 'gitRef requires repoUrl'
   if (
     /Workspace repoUrl must use HTTPS|Workspace repoUrl must use an allowed URL protocol/iu.test(

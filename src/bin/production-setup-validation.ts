@@ -197,7 +197,10 @@ export function describeProductionSelection(
       runner,
       model,
       effort,
-      workdir: selection.workspaceRequest?.cwd ?? 'provider-selected sandbox workdir',
+      workdir:
+        selection.workspaceRequest?.cwd === undefined
+          ? 'repository root (provider default)'
+          : selection.workspaceRequest.cwd,
       ...(selection.workspaceRequest === undefined
         ? {}
         : { workspaceRequest: workspaceSummary(selection.workspaceRequest) }),

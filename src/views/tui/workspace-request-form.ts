@@ -24,7 +24,7 @@ const WORKSPACE_FIELDS: readonly WorkspaceField[] = ['repoUrl', 'gitRef', 'cwd']
 const WORKSPACE_LABELS: Readonly<Record<WorkspaceField, string>> = {
   repoUrl: 'repo url',
   gitRef: 'git ref',
-  cwd: 'start in',
+  cwd: 'start in (repo-relative)',
 }
 
 export interface WorkspaceRequestFormOptions {
@@ -163,7 +163,7 @@ export class WorkspaceRequestForm extends Container implements Focusable {
     this.#syncFocus()
     this.clear()
     this.addChild(new Text(this.#theme.brand('workspace · cloud sandbox'), 1, 0))
-    this.addChild(new Text(this.#theme.muted('blank = provider default'), 1, 0))
+    this.addChild(new Text(this.#theme.muted('blank = repository root'), 1, 0))
     for (const [index, field] of WORKSPACE_FIELDS.entries()) {
       this.addChild(new Text(this.#theme.muted(WORKSPACE_LABELS[field]), 1, 0))
       const input = this.#inputs.get(field)
@@ -196,7 +196,7 @@ export class WorkspaceRequestForm extends Container implements Focusable {
 function errorFieldIndex(message: string): number {
   if (message.startsWith('repoUrl')) return 0
   if (message.startsWith('gitRef')) return 1
-  if (message.startsWith('cwd')) return 2
+  if (message.startsWith('cwd') || message.startsWith('start in')) return 2
   return WORKSPACE_FIELDS.length - 1
 }
 

@@ -18,7 +18,7 @@ import { DEFAULT_RUN_CAPABILITIES, type ExecuteTurnInput } from '../src/ports/ex
 const validRequest = {
   repoUrl: 'https://github.com/acme/repository',
   gitRef: 'main',
-  cwd: '/workspace/src',
+  cwd: 'src',
 } as const
 
 function thrownMessage(request: unknown): string {
@@ -38,6 +38,7 @@ test('workspace requests use the canonical schema and immutable snapshots', () =
   assert.deepEqual(snapshotWorkspaceRequest({ image: 'ubuntu:24.04' }), {
     image: 'ubuntu:24.04',
   })
+  assert.deepEqual(snapshotWorkspaceRequest({ cwd: './src' }), { cwd: 'src' })
   const input = {
     ...validRequest,
     providerOptions: {},
@@ -103,6 +104,32 @@ test('canonical workspace validation reports bounded actionable messages', () =>
     )
   }
   assert.equal(thrownMessage({ repoUrl: 'https://github.com/acme/repository' }), '')
+})
+
+test('portable Sandbox cwd failures use the start-in field message', () => {
+  for (const message of [
+    'Workspace cwd must be relative',
+    'Workspace cwd must use POSIX separators',
+    'Workspace cwd cannot leave the workspace root',
+    'Workspace cwd cannot contain control characters',
+  ]) {
+    assert.equal(
+      workspaceRequestErrorMessage(new Error(message)),
+      'start in must be a repository-relative path',
+    )
+  }
+})
+
+test('portable Sandbox cwd validation rejects paths that leave the repository', () => {
+  for (const cwd of [
+    '/workspace/src',
+    '../outside',
+    'src/../../outside',
+    'src\\win',
+    'src\u0000bad',
+  ]) {
+    assert.equal(thrownMessage({ cwd }), 'start in must be a repository-relative path')
+  }
 })
 
 test('workspace display strips URL credentials and query material', () => {
@@ -200,7 +227,7 @@ test('admission binds workspace selection and local root without receipt shadow 
   assert.notEqual(
     digest,
     exactAdmissionRequestDigest(
-      { ...input, workspaceRequest: { ...validRequest, cwd: '/workspace/other' } },
+      { ...input, workspaceRequest: { ...validRequest, cwd: 'other' } },
       snapshot.conversationId,
       snapshot.branchId,
     ),
