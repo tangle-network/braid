@@ -4,7 +4,7 @@ import { assertPublicUrl } from './invariants-base.js'
 
 export type { WorkspaceRequest }
 
-/** Validate and snapshot the canonical provider-neutral workspace request. */
+/** Validate and snapshot the shared workspace request. */
 export function snapshotWorkspaceRequest(
   request: WorkspaceRequest | undefined,
 ): Readonly<WorkspaceRequest> | undefined {
