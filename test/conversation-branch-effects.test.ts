@@ -15,8 +15,11 @@ import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/
 import { createBraidApplication } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
-import type { ConnectionRecord } from '../src/domain/entities.js'
+import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
+import type { BraidState } from '../src/domain/state.js'
+import type { ConnectionRecord, OperationRecord } from '../src/domain/entities.js'
 import { createConnectionId, createOperationId } from '../src/domain/ids.js'
+import { replayEvents } from '../src/domain/reducer.js'
 import { FixedClock } from '../src/ports/clock.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
@@ -38,6 +41,40 @@ function deferred<T = void>(): {
     resolve = complete
   })
   return { promise, resolve }
+}
+
+class CleanupBoundaryCrashJournal extends MemoryJournal {
+  #operationId: string | undefined
+
+  crashAfterCleanupProgress(operationId: string): void {
+    this.#operationId = operationId
+  }
+
+  override append(envelope: BraidEventEnvelope) {
+    const result = super.append(envelope)
+    const operation =
+      envelope.event.kind === 'operation.updated' ? envelope.event.operation : undefined
+    if (
+      this.#operationId !== undefined &&
+      operation?.id === this.#operationId &&
+      operation.result?.environment === 'deleted'
+    ) {
+      this.#operationId = undefined
+      throw new Error('simulated crash between fork and checkpoint cleanup')
+    }
+    return result
+  }
+}
+
+function appendSeededEvent(
+  journal: MemoryJournal,
+  state: BraidState,
+  event: BraidEvent,
+): BraidState {
+  const envelope = journal.envelope(state, event)
+  const result = journal.append(envelope)
+  assert.equal(result.appended, true)
+  return replayEvents(state, [envelope])
 }
 
 interface WorkspaceProviderState {
@@ -909,6 +946,139 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   assert.deepEqual(cleanupReplay, cleanup)
   assert.equal(provider.state.cleanupRequests.length, 2)
   assert.deepEqual(sourceLookups, ['provider-source-environment', 'provider-source-environment'])
+})
+
+test('workspace cleanup restarts between fork and checkpoint cleanup without repeating a terminal result', async () => {
+  const operationId = createOperationId('op-cleanup-workspace-restart-boundary')
+  const provider = workspaceProvider({ requireForkBeforeCheckpoint: true })
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+  })
+  const journal = new CleanupBoundaryCrashJournal(new FixedClock(AT))
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-workspace-restart', text: 'checkpoint source' })
+    .completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-workspace-restart-fork',
+    kind: 'workspace',
+  })
+  const branch = await app.conversations.branches.execute({
+    operationId: 'op-workspace-restart-fork',
+    kind: 'workspace',
+    planDigest: plan.digest,
+  })
+  const checkpoint = app.state().checkpoints[0]
+  assert(checkpoint)
+  const destination = app
+    .state()
+    .environments.find((environment) => environment.id === branch.environmentId)
+  assert(destination)
+  assert.equal(destination.providerEnvironmentId, 'provider-destination-environment')
+  const cleanupDigest = canonicalDigest({
+    command: 'cleanup_workspace_fork',
+    operationId,
+    checkpointId: checkpoint.id,
+    providerCheckpointId: 'provider-checkpoint-1',
+    environmentId: destination.id,
+    providerEnvironmentId: destination.providerEnvironmentId,
+  })
+  const cleanupOperation: OperationRecord = {
+    id: operationId,
+    kind: 'conversation-fork',
+    requestDigest: cleanupDigest,
+    status: 'pending',
+    createdAt: AT,
+    updatedAt: AT,
+  }
+  let seededState = app.state()
+  seededState = appendSeededEvent(journal, seededState, {
+    kind: 'operation.requested',
+    operation: cleanupOperation,
+  })
+  seededState = appendSeededEvent(journal, seededState, {
+    kind: 'checkpoint.upserted',
+    checkpoint: { ...checkpoint, status: 'deleted' },
+  })
+  appendSeededEvent(journal, seededState, {
+    kind: 'operation.updated',
+    operation: {
+      ...cleanupOperation,
+      result: { checkpoint: 'deleted', environment: 'not_requested' },
+      updatedAt: AT,
+    },
+  })
+
+  journal.crashAfterCleanupProgress(String(operationId))
+  const crashed = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+  })
+  await assert.rejects(
+    () =>
+      crashed.conversations.branches.cleanup({
+        operationId: String(operationId),
+        checkpointId: String(checkpoint.id),
+        environmentId: String(destination.id),
+      }),
+    /simulated crash between fork and checkpoint cleanup/u,
+  )
+  const progress = journal
+    .all()
+    .map(({ event }) => event)
+    .filter(
+      (event) => event.kind === 'operation.updated' && event.operation.id === String(operationId),
+    )
+    .at(-1)
+  assert(progress)
+  assert.equal(progress.kind, 'operation.updated')
+  assert.deepEqual(progress.operation.result, {
+    checkpoint: 'deleted',
+    environment: 'deleted',
+  })
+  assert.deepEqual(
+    crashed.state().operations.find((operation) => operation.id === operationId)?.result,
+    {
+      checkpoint: 'deleted',
+      environment: 'not_requested',
+    },
+  )
+
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+  })
+  const cleanup = await restarted.conversations.branches.cleanup({
+    operationId: String(operationId),
+    checkpointId: String(checkpoint.id),
+    environmentId: String(destination.id),
+  })
+  assert.deepEqual(cleanup, { checkpoint: 'deleted', environment: 'deleted' })
+  assert.equal(provider.state.cleanupRequests.length, 1)
+  assert.deepEqual(
+    provider.state.cleanupRequests.map(({ kind, targetId }) => ({ kind, targetId })),
+    [{ kind: 'fork', targetId: 'provider-destination-environment' }],
+  )
+  assert.equal(typeof provider.state.cleanupRequests[0]?.operationId, 'string')
+  assert.notEqual(provider.state.cleanupRequests[0]?.operationId, String(operationId))
+  assert.equal(
+    restarted.state().operations.find((operation) => operation.id === operationId)?.status,
+    'acknowledged',
+  )
 })
 
 test('confidential workspace fork records verification only after canonical attestation checks', async () => {

@@ -173,7 +173,10 @@ export async function cleanupWorkspaceFork(
           )
   await updateOperation(host, operationId, digest, {
     status: 'pending',
-    result: { checkpoint: 'not_requested', environment: environmentOutcome },
+    result: {
+      checkpoint: previous?.checkpoint ?? 'not_requested',
+      environment: environmentOutcome,
+    },
   })
   const checkpointOutcome =
     checkpoint === undefined
