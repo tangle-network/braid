@@ -3,7 +3,13 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Sandbox } from '@tangle-network/sandbox'
+import {
+  NetworkError,
+  QuotaError,
+  Sandbox,
+  ServerError,
+  TimeoutError,
+} from '@tangle-network/sandbox'
 import { sleep } from '../live-bridge/process.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson } from './contracts.mjs'
@@ -46,6 +52,9 @@ const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_HOLD_MS = 30_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const SANDBOX_LIST_PAGE_SIZE = 100
+const CLEANUP_RETRY_ATTEMPTS = 5
+const CLEANUP_RETRY_DELAY_MS = 1_000
+const CLEANUP_RETRY_MAX_DELAY_MS = 5_000
 const BRAID_RESOURCE_OWNER = 'braid'
 const RETAINED_LIFECYCLE = 'retained'
 const SECRET_ENVIRONMENT_NAMES = [
@@ -186,7 +195,7 @@ function proofPrompts(coordinates, holdMs) {
     first: [
       'Use the current Tangle Sandbox working directory for every command in this turn.',
       `Create ${path} and write exactly ${coordinates.marker} followed by a newline.`,
-      `Run a shell command with append redirection (>>) that writes exactly ${coordinates.executionAttempt} followed by a newline to ${attemptPath}; never overwrite this file.`,
+      `Run exactly once, with no retry, this shell command: printf '%s\\n' '${coordinates.executionAttempt}' >> '${attemptPath}'. Do not use a file tool or any other command on ${attemptPath}; never overwrite this file.`,
       `Read ${path}, print its contents, and prove the workspace is usable with a shell command.`,
       'Run git -C . rev-parse --is-inside-work-tree. If it fails, run git -C . init.',
       'Then run git -C . rev-parse --is-inside-work-tree again and print its result.',
@@ -194,11 +203,10 @@ function proofPrompts(coordinates, holdMs) {
       `Reply with exactly ${coordinates.marker}.`,
     ].join(' '),
     followUp: [
-      'Use a shell command in the existing Tangle Sandbox workspace.',
-      `Compute the SHA-256 digest of the exact bytes in ${challengePath}.`,
-      `Write only the lowercase 64-character digest followed by a newline to ${responsePath}.`,
-      `Read ${path} too, but do not include its contents in the response.`,
-      'Reply with only the computed digest.',
+      'Use the existing Tangle Sandbox workspace.',
+      `Perform exactly these two actions, in order, with no other command or file change: run this one shell command once: test -f '${path}' && sha256sum -- '${challengePath}' | awk '{print $1}' > '${responsePath}'; then read ${responsePath} once.`,
+      `Do not read, write, truncate, rename, or delete ${challengePath}; do not run the shell command again.`,
+      'Reply with only the lowercase 64-character digest from the response file.',
     ].join(' '),
     cancel: [
       'Keep working in the same Tangle Sandbox workspace.',
@@ -310,6 +318,36 @@ async function listAllSandboxes(client) {
     if (page.length < SANDBOX_LIST_PAGE_SIZE) return boxes
     offset += page.length
   }
+}
+
+function transientCleanupDelay(error) {
+  if (error instanceof QuotaError) {
+    const retryAfterMs =
+      Number.isFinite(error.retryAfterMs) && error.retryAfterMs >= 0
+        ? error.retryAfterMs
+        : CLEANUP_RETRY_DELAY_MS
+    return Math.min(Math.max(CLEANUP_RETRY_DELAY_MS, retryAfterMs), CLEANUP_RETRY_MAX_DELAY_MS)
+  }
+  if (error instanceof NetworkError || error instanceof TimeoutError) {
+    return CLEANUP_RETRY_DELAY_MS
+  }
+  if (error instanceof ServerError && [502, 503, 504].includes(error.status)) {
+    return CLEANUP_RETRY_DELAY_MS
+  }
+  return undefined
+}
+
+async function cleanupProviderCall(operation) {
+  for (let attempt = 1; attempt <= CLEANUP_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      const delayMs = transientCleanupDelay(error)
+      if (delayMs === undefined || attempt === CLEANUP_RETRY_ATTEMPTS) throw error
+      await sleep(delayMs)
+    }
+  }
+  throw new Error('cleanup provider call exhausted its retry budget')
 }
 
 async function verifyRetainedWorkspace(client, controlRef, coordinates, continuity) {
@@ -540,7 +578,7 @@ export async function observeRetainedResource(client, controlRef) {
       { required: ['controlRef.environmentId', 'controlRef.sessionId'] },
     )
   }
-  const box = await client.get(controlRef.environmentId)
+  const box = await cleanupProviderCall(() => client.get(controlRef.environmentId))
   if (!box) {
     throw new MissingIntegrationError(
       `Sandbox environment ${controlRef.environmentId} was not visible to the cleanup client`,
@@ -562,7 +600,7 @@ export async function observeRetainedResource(client, controlRef) {
 /** Delete the exact Braid-owned retained Sandbox named by one control reference. */
 export async function cleanupRetainedResourceByControlRef(client, controlRef) {
   const observed = await observeRetainedResource(client, controlRef)
-  const box = await client.get(controlRef.environmentId)
+  const box = await cleanupProviderCall(() => client.get(controlRef.environmentId))
   if (box === null) {
     throw new MissingIntegrationError(
       `Sandbox environment ${controlRef.environmentId} disappeared before exact cleanup`,
@@ -593,7 +631,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
   }
   const providerSessionId = `session-braid-${safeExecutionId(firstRunId)}`
   const expected = expectedResourceIdentityForSession(providerSessionId)
-  const matches = (await listAllSandboxes(client)).filter((box) =>
+  const matches = (await cleanupProviderCall(() => listAllSandboxes(client))).filter((box) =>
     matchesResourceIdentity(box, expected),
   )
   if (matches.length !== 1) {
@@ -606,7 +644,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
     )
   }
   const listed = matches[0]
-  const exact = await client.get(listed.id)
+  const exact = await cleanupProviderCall(() => client.get(listed.id))
   const exactExpected = expectedResourceIdentityForSession(providerSessionId, listed.id)
   if (!exact || !matchesResourceIdentity(exact, exactExpected)) {
     throw new MissingIntegrationError(
@@ -618,7 +656,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
     )
   }
   await exact.delete()
-  const remaining = await client.get(listed.id)
+  const remaining = await cleanupProviderCall(() => client.get(listed.id))
   if (remaining !== null) {
     throw new Error(`Fail-safe retained Braid Sandbox ${listed.id} remained after delete`)
   }
@@ -641,7 +679,7 @@ function ownedByOperation(box, operationId) {
 async function deleteOwnedResource(client, box, predicate) {
   const attempts = []
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const exact = await client.get(box.id)
+    const exact = await cleanupProviderCall(() => client.get(box.id))
     if (exact === null) return { id: box.id, attempts, confirmed: true }
     if (!predicate(exact)) {
       throw new MissingIntegrationError(
@@ -657,7 +695,9 @@ async function deleteOwnedResource(client, box, predicate) {
     }
     const deadline = performance.now() + 5_000
     while (performance.now() < deadline) {
-      if ((await client.get(box.id)) === null) return { id: box.id, attempts, confirmed: true }
+      if ((await cleanupProviderCall(() => client.get(box.id))) === null) {
+        return { id: box.id, attempts, confirmed: true }
+      }
       await sleep(100)
     }
   }
@@ -681,9 +721,9 @@ export async function cleanupOwnedRetainedResources(
     (expectedSessionId !== undefined &&
       matchesResourceIdentity(box, expectedResourceIdentityForSession(expectedSessionId))) ||
     ownedByOperation(box, operationId)
-  const listed = (await listAllSandboxes(client)).filter(predicate)
+  const listed = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
   if (controlRef?.environmentId) {
-    const exact = await client.get(controlRef.environmentId)
+    const exact = await cleanupProviderCall(() => client.get(controlRef.environmentId))
     if (exact && !listed.some((box) => box.id === exact.id)) {
       if (!predicate(exact)) {
         throw new MissingIntegrationError(
@@ -698,7 +738,7 @@ export async function cleanupOwnedRetainedResources(
   }
   const deletions = []
   for (const box of listed) deletions.push(await deleteOwnedResource(client, box, predicate))
-  const remaining = (await listAllSandboxes(client)).filter(predicate)
+  const remaining = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
   const confirmed = deletions.every((entry) => entry.confirmed) && remaining.length === 0
   if (!confirmed) {
     throw new MissingIntegrationError('Exact retained Sandbox cleanup did not converge', {

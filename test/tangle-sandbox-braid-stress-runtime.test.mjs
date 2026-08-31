@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { NetworkError } from '@tangle-network/sandbox'
 
 import {
   assertExactRemoteStatus,
   assertRestartedCancellationRun,
   assertVerifiedProcessCleanup,
   closeBraidWithProof,
+  cleanupOwnedRetainedResources,
   telemetryDisclosure,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 
@@ -154,6 +156,41 @@ test('shutdown failures retain verified process-tree cleanup evidence', async ()
       return true
     },
   )
+})
+
+test('retained cleanup retries transient provider reads before deleting the exact resource', async () => {
+  let listCalls = 0
+  let deleted = false
+  const resource = {
+    id: controlRef.environmentId,
+    name: `braid-${controlRef.sessionId}`,
+    metadata: {
+      owner: 'braid',
+      lifecycle: 'retained',
+      providerSessionId: controlRef.sessionId,
+    },
+    async delete() {
+      deleted = true
+    },
+  }
+  const client = {
+    async list() {
+      listCalls += 1
+      if (listCalls === 1) throw new NetworkError('temporary provider outage')
+      return deleted ? [] : [resource]
+    },
+    async get(id) {
+      assert.equal(id, controlRef.environmentId)
+      return deleted ? null : resource
+    },
+  }
+
+  const result = await cleanupOwnedRetainedResources(client, { controlRef })
+
+  assert.equal(result.confirmed, true)
+  assert.equal(deleted, true)
+  assert.equal(listCalls, 3)
+  assert.deepEqual(result.remainingIds, [])
 })
 
 test('every telemetry field is observed, unavailable, provider-default, or explicitly in flight', () => {
