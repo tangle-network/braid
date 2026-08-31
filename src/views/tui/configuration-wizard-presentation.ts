@@ -1,5 +1,4 @@
 import type { SelectItem } from '@earendil-works/pi-tui'
-import type { WorkspaceRequest } from '@tangle-network/agent-interface'
 import type {
   ConfigurationEffectiveValues,
   ConfigurationSelection,
@@ -8,6 +7,10 @@ import type {
 } from '../../app/configuration-session.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { shortDigest } from './configuration-presenters.js'
+import {
+  compactWorkspaceRequestSummary,
+  workspaceRequestSummary,
+} from './workspace-request-presentation.js'
 
 export const BACK_TO_PROFILE = '__braid_back_profile__'
 export const BACK_TO_CONNECTION = '__braid_back_connection__'
@@ -255,38 +258,6 @@ function withWorkspaceRequest(
       ? { workdir: workspaceRequest.cwd }
       : {}),
   }
-}
-
-function workspaceRequestSummary(
-  workspace: Readonly<WorkspaceRequest> | undefined,
-): readonly string[] {
-  if (workspace === undefined) return []
-  const values = [
-    workspace.environment === undefined ? undefined : `environment ${workspace.environment}`,
-    workspace.image === undefined ? undefined : `image ${workspace.image}`,
-    workspace.repoUrl === undefined ? undefined : `repo ${workspace.repoUrl}`,
-    workspace.gitRef === undefined ? undefined : `ref ${workspace.gitRef}`,
-    workspace.cwd === undefined ? undefined : `start in repo ${workspace.cwd}`,
-  ].filter((value): value is string => value !== undefined)
-  return values.length === 0
-    ? ['cloud workspace: provider defaults']
-    : [`cloud workspace · ${values.join(' · ')}`]
-}
-
-function compactWorkspaceRequestSummary(
-  workspace: Readonly<WorkspaceRequest> | undefined,
-): readonly string[] {
-  if (workspace === undefined) return []
-  const values = [
-    workspace.environment === undefined ? undefined : `env ${workspace.environment}`,
-    workspace.image === undefined ? undefined : `image ${workspace.image}`,
-    workspace.repoUrl === undefined ? undefined : `repo ${workspace.repoUrl}`,
-    workspace.gitRef === undefined ? undefined : `ref ${workspace.gitRef}`,
-    workspace.cwd === undefined ? undefined : `start in repo ${workspace.cwd}`,
-  ].filter((value): value is string => value !== undefined)
-  return [
-    `cloud: ${values.length > 0 ? values.map((value) => shortValue(value, 18)).join(' · ') : 'defaults'}`,
-  ]
 }
 
 function compactDigest(value: string): string {

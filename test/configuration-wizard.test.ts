@@ -445,6 +445,7 @@ test('cloud workspace setup accepts edits, reports invalid refs, and preserves b
   wizard.handleInput('https://github.com/tangle-network/braid')
   wizard.handleInput('\t')
   wizard.handleInput('\t')
+  wizard.handleInput('src')
   wizard.handleInput('\r')
   const review = wizard.render(80).join('\n')
   assert.match(review, /cloud workspace/u)

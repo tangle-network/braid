@@ -139,13 +139,17 @@ async function spawnTerminal(binary, columns, rows, root, endpoint) {
   }
   delete environment.NO_COLOR
   delete environment.FORCE_COLOR
-  const session = pty.spawn(process.execPath, [binary, '--workspace', workspace], {
-    name: 'xterm-256color',
-    cols: columns,
-    rows,
-    cwd: workspace,
-    env: environment,
-  })
+  const session = pty.spawn(
+    process.execPath,
+    [binary, '--workspace', workspace, '--profile', '.braid/profile.json'],
+    {
+      name: 'xterm-256color',
+      cols: columns,
+      rows,
+      cwd: workspace,
+      env: environment,
+    },
+  )
   const startedAt = performance.now()
   const events = []
   let output = ''
