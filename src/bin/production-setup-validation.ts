@@ -199,7 +199,7 @@ export function describeProductionSelection(
       effort,
       workdir:
         selection.workspaceRequest?.cwd === undefined
-          ? 'repository root (provider default)'
+          ? 'repository root'
           : selection.workspaceRequest.cwd,
       ...(selection.workspaceRequest === undefined
         ? {}

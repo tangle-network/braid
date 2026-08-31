@@ -466,6 +466,45 @@ test('cloud workspace setup accepts edits, reports invalid refs, and preserves b
   assert.match(wizard.render(80).join('\n'), /choose a connection/u)
 })
 
+test('blank Sandbox cwd is submitted as the repository root', () => {
+  const record = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'test:workspace-root-form',
+      label: 'workspace root profile',
+      writable: false,
+      trusted: true,
+    },
+    makeProfile(),
+  )
+  const cloud = makeConnectionVariant('tangle-sandbox', 'workspace-root-cloud')
+  let submitted: unknown
+  const wizard = new ConfigurationWizard({
+    theme,
+    profiles: [record],
+    connections: [cloud],
+    onCommit: (selection) => {
+      submitted = selection.workspaceRequest
+    },
+    onComplete: () => {},
+    onCancel: () => {},
+  })
+  wizard.focused = true
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  wizard.handleInput('https://github.com/tangle-network/braid')
+  wizard.handleInput('\t')
+  wizard.handleInput('main')
+  wizard.handleInput('\t')
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  assert.deepEqual(submitted, {
+    repoUrl: 'https://github.com/tangle-network/braid',
+    gitRef: 'main',
+    cwd: '.',
+  })
+})
+
 test('mounted setup redraws when a long asynchronous apply finishes', async () => {
   const record = createProfileRecord(
     {

@@ -42,7 +42,7 @@ export function configurationExplanation(state: ConfigurationSessionState): stri
   if (state.step === 'profile') return 'Choose the AgentProfile for this run.'
   if (state.step === 'connection') return 'Choose where this profile should run.'
   if (state.step === 'workspace')
-    return 'Set the repository and working directory for the cloud sandbox.'
+    return 'Set the repository and repo-relative directory for the cloud sandbox.'
   return 'No changes were made.'
 }
 
@@ -112,7 +112,7 @@ export function configurationItems(
               {
                 value: BACK_TO_WORKSPACE,
                 label: '← change workspace',
-                description: 'edit repository and working folder',
+                description: 'edit repository and repo-relative folder',
               },
             ]
           : []
@@ -229,7 +229,7 @@ function effectiveValues(
     workdir:
       selection.connection.kind === 'tangle-sandbox'
         ? selection.workspaceRequest?.cwd === undefined
-          ? 'repository root (provider default)'
+          ? 'repository root'
           : selection.workspaceRequest.cwd
         : 'workspace-selected workdir',
     ...(selection.workspaceRequest === undefined

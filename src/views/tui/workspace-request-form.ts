@@ -130,11 +130,16 @@ export class WorkspaceRequestForm extends Container implements Focusable {
   }
 
   #submit(): void {
+    const repoUrl = this.#trimmed('repoUrl')
+    const gitRef = this.#trimmed('gitRef')
+    const cwd = this.#trimmed('cwd')
+    const hasWorkspaceSource =
+      repoUrl !== '' || gitRef !== '' || Object.keys(this.#fixedRequest).length > 0
     const request = {
       ...this.#fixedRequest,
-      ...(this.#trimmed('repoUrl') === '' ? {} : { repoUrl: this.#trimmed('repoUrl') }),
-      ...(this.#trimmed('gitRef') === '' ? {} : { gitRef: this.#trimmed('gitRef') }),
-      ...(this.#trimmed('cwd') === '' ? {} : { cwd: this.#trimmed('cwd') }),
+      ...(repoUrl === '' ? {} : { repoUrl }),
+      ...(gitRef === '' ? {} : { gitRef }),
+      ...(cwd === '' ? (hasWorkspaceSource ? { cwd: '.' } : {}) : { cwd }),
     }
     try {
       this.#onSubmit(snapshotWorkspaceRequest(request))
