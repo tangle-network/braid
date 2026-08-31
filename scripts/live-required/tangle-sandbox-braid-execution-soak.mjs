@@ -19,6 +19,7 @@ import {
   resourceDelta,
   runObservations,
 } from './tangle-sandbox-braid-stress-support.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_RUNS = 3
@@ -181,6 +182,7 @@ async function runAttempt({ index, proofId, client, binary, values, environment 
       environment,
       ...values,
       connectionName,
+      workspaceRequest: workspaceRequestFor(environment),
     })
     turn = await runHeadlessTurn({
       binary,

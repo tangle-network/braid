@@ -93,11 +93,17 @@ test('Tangle Sandbox workspace profiles pin model identity separately from conne
     repository,
     environment: {},
     ...values,
+    workspaceRequest: workspaceRequestFor({}),
   })
   try {
     assert.equal(config.connection.kind, 'tangle-sandbox')
     assert.equal(config.profile.model.provider, 'tangle-router')
     assert.equal(config.profile.model.default, DEFAULT_TANGLE_ROUTER_MODEL)
+    assert.deepEqual(config.workspaceRequest, {
+      repoUrl: 'https://github.com/tangle-network/braid.git',
+      gitRef: 'main',
+      cwd: '.',
+    })
   } finally {
     await config.cleanup()
   }

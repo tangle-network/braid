@@ -5,9 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   confidentialExecutionVerified,
   forkedEnvironmentConfidentialityVerified,
-  workspaceCleanupAcknowledgementMatches,
   workspaceCheckpointRequestDigest,
   workspaceCheckpointResultMatchesRequest,
+  workspaceCleanupAcknowledgementMatches,
   workspaceCleanupRequestDigest,
   workspaceForkRequestDigest,
   workspaceForkResultMatchesRequest,
@@ -891,6 +891,7 @@ async function runWorkspaceProof({
     model: values.model,
     runner: values.runner,
     modelProvider: values.modelProvider,
+    workspaceRequest: workspaceRequestFor(environment),
     credentialRef: values.credentialRef,
     credentialValue: values.credentialValue,
     providerOptions: {

@@ -671,6 +671,7 @@ export async function runProof({
         model: values.model,
         runner: values.runner,
         modelProvider: values.modelProvider,
+        workspaceRequest: workspaceRequestFor(environment),
         providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
         credentialRef: values.credentialRef,
         credentialValue: values.credentialValue,
