@@ -354,6 +354,15 @@ function markerPath(proofId) {
   return `.braid-live/${proofId}/workspace-marker.txt`
 }
 
+function workspaceRequestFor(environment) {
+  return {
+    repoUrl:
+      environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? 'https://github.com/tangle-network/braid.git',
+    gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? 'main',
+    cwd: environment.BRAID_TANGLE_SANDBOX_CWD ?? '/workspace/braid',
+  }
+}
+
 function sourcePrompt(marker, path) {
   return [
     'Use the current Tangle Sandbox working directory for every command in this turn.',
@@ -890,6 +899,7 @@ async function runWorkspaceProof({
     model: values.model,
     runner: values.runner,
     modelProvider: values.modelProvider,
+    workspaceRequest: workspaceRequestFor(environment),
     credentialRef: values.credentialRef,
     credentialValue: values.credentialValue,
     providerOptions: {

@@ -13,6 +13,7 @@ const REQUIRED_PHASES = Object.freeze([
   'cancel-b.dispatch',
   'cancel-b',
   'branch-a.complete',
+  'branch-a.provider-proof',
   'remote.status',
   'terminal.first.close',
   'terminal.restart',
@@ -188,6 +189,41 @@ export function assertMultirunProof(proof) {
     new Set(proof.overlap.streamEventCounts.map((entry) => entry.runId)).size === 2 &&
       proof.overlap.streamEventCounts.every((entry) => runIds.has(entry.runId)),
     'LIVE-07 multirun stream evidence does not map to both runs',
+  )
+
+  assert(object(proof.markers), 'LIVE-07 multirun marker evidence is missing')
+  assert(text(proof.markers.branchA), 'LIVE-07 branch A marker is missing')
+  assert(text(proof.markers.branchB), 'LIVE-07 branch B marker is missing')
+  assert(
+    proof.markers.branchA !== proof.markers.branchB,
+    'LIVE-07 branch markers are not independent',
+  )
+  assert(object(proof.workspace?.branchA), 'LIVE-07 branch A workspace proof is missing')
+  assert(
+    proof.workspace.branchA.marker === proof.markers.branchA,
+    'LIVE-07 branch A workspace proof used the wrong marker',
+  )
+  assert(
+    proof.workspace.branchA.transcriptMarkerLineCount === 1 &&
+      proof.workspace.branchA.transcriptMarkerMatched === true &&
+      proof.workspace.branchA.failedToolPartCount === 0,
+    'LIVE-07 branch A transcript did not contain one exact marker line',
+  )
+  assert(
+    text(proof.workspace.branchA.providerEnvironmentId),
+    'LIVE-07 branch A workspace proof has no provider environment',
+  )
+  assert(text(proof.workspace.branchA.path), 'LIVE-07 branch A workspace proof has no file path')
+  assert(
+    proof.workspace.branchA.readValueJson === JSON.stringify(`${proof.markers.branchA}\n`) &&
+      proof.workspace.branchA.readValueBytesBase64 ===
+        Buffer.from(`${proof.markers.branchA}\n`, 'utf8').toString('base64') &&
+      proof.workspace.branchA.readMatched === true,
+    'LIVE-07 branch A provider file did not contain the exact marker bytes',
+  )
+  assert(
+    proof.workspace.branchA.gitExitCode === 0 && proof.workspace.branchA.gitWorktree === true,
+    'LIVE-07 branch A provider workspace did not prove a Git worktree',
   )
 
   assert(object(proof.focus), 'LIVE-07 focus evidence is missing')

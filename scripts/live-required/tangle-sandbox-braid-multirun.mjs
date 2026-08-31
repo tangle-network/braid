@@ -24,6 +24,8 @@ import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
+  retainedBox,
+  sandboxWorkspaceRelativePath,
 } from './tangle-sandbox-braid-stress.mjs'
 import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
 
@@ -119,6 +121,15 @@ function promptFor(marker, holdSeconds) {
     `Run sleep ${holdSeconds} before the final response so another branch can stream concurrently.`,
     `Reply with exactly ${marker}.`,
   ].join(' ')
+}
+
+function workspaceRequestFor(environment) {
+  return {
+    repoUrl:
+      environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? 'https://github.com/tangle-network/braid.git',
+    gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? 'main',
+    cwd: environment.BRAID_TANGLE_SANDBOX_CWD ?? '/workspace/braid',
+  }
 }
 
 function screenFrom(terminal) {
@@ -340,6 +351,24 @@ export async function sendCancellationAfterActivityBrowserDismissal(runtime, lab
     await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
   }
   runtime.input('\u0003')
+}
+
+async function focusRunFromActivityBrowser(runtime, runId, label, timeoutMs) {
+  runtime.input('\u001bOQ')
+  await waitFor(`${label} activity browser`, () => /activity/iu.test(runtime.screen()), timeoutMs)
+  runtime.input('\t')
+  await pause(100)
+  runtime.input('\u001b[B')
+  runtime.input('\r')
+  const frame = await waitForFrame(
+    runtime,
+    `${label} focus`,
+    (candidate) => candidate.view.focusedRunId === runId,
+    timeoutMs,
+  )
+  runtime.input('\u001b')
+  await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
+  return frame
 }
 
 async function typeAndSubmit(runtime, value) {
@@ -567,6 +596,83 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
   return true
 }
 
+export function assistantTranscriptForRun(frame, runId) {
+  return (Array.isArray(frame?.state?.messages) ? frame.state.messages : [])
+    .filter((message) => message?.runId === runId && message?.role === 'assistant')
+    .map((message) => (typeof message.text === 'string' ? message.text : ''))
+    .filter((text) => text.length > 0)
+    .join('\n')
+}
+
+export function exactTranscriptMarkerLineCount(frame, runId, marker) {
+  if (typeof marker !== 'string' || marker.length === 0) return 0
+  return assistantTranscriptForRun(frame, runId)
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .filter((line) => line === marker).length
+}
+
+export function failedToolPartCountForRun(frame, runId) {
+  return (Array.isArray(frame?.state?.messages) ? frame.state.messages : [])
+    .filter((message) => message?.runId === runId)
+    .flatMap((message) => (Array.isArray(message.parts) ? message.parts : []))
+    .filter(
+      (part) =>
+        (part?.kind === 'tool-call' || part?.kind === 'tool-result') &&
+        (part?.status === 'failed' || typeof part?.error === 'string'),
+    ).length
+}
+
+export function assertBranchATranscript(frame, runId, marker) {
+  const transcript = assistantTranscriptForRun(frame, runId)
+  const transcriptMarkerLineCount = exactTranscriptMarkerLineCount(frame, runId, marker)
+  const failedToolPartCount = failedToolPartCountForRun(frame, runId)
+  assert.equal(
+    transcriptMarkerLineCount,
+    1,
+    `branch A transcript must contain one exact marker line (bytes=${Buffer.byteLength(transcript)})`,
+  )
+  assert.equal(
+    failedToolPartCount,
+    0,
+    `branch A transcript contains ${String(failedToolPartCount)} failed tool parts`,
+  )
+  return {
+    marker,
+    transcriptMarkerLineCount,
+    transcriptMarkerMatched: true,
+    transcriptBytes: Buffer.byteLength(transcript),
+    failedToolPartCount,
+  }
+}
+
+async function assertBranchAWorkspace(client, controlRef, marker) {
+  const box = await retainedBox(client, controlRef, 'Branch A workspace proof')
+  const path = `.braid-live/${marker}/marker.txt`
+  const readValue = await box.read(sandboxWorkspaceRelativePath(path))
+  const expectedValue = `${marker}\n`
+  assert.equal(readValue, expectedValue, 'branch A provider file did not contain the exact marker')
+  const git = await box.exec('git -C . rev-parse --is-inside-work-tree')
+  const gitExitCode = Number.isInteger(git?.exitCode)
+    ? git.exitCode
+    : Number.isInteger(git?.code)
+      ? git.code
+      : undefined
+  assert.equal(gitExitCode, 0, 'branch A provider Git check exited unsuccessfully')
+  const gitStdout = typeof git?.stdout === 'string' ? git.stdout : ''
+  assert.equal(gitStdout.trim(), 'true', 'branch A provider Git check did not return true')
+  return {
+    providerEnvironmentId: box.id,
+    path,
+    readValueJson: JSON.stringify(readValue),
+    readValueBytesBase64: Buffer.from(readValue, 'utf8').toString('base64'),
+    readMatched: readValue === expectedValue,
+    gitExitCode,
+    gitStdout: gitStdout.trim(),
+    gitWorktree: gitStdout.trim() === 'true',
+  }
+}
+
 export async function runProof({
   targetRepository = process.env.BRAID_LIVE_REPOSITORY ?? repository,
   environment = process.env,
@@ -626,6 +732,8 @@ export async function runProof({
   let cancelFrame
   let finalFrame
   let restartedFrame
+  let branchATranscriptProof
+  let branchAWorkspaceProof
   let runAId
   let runBId
   let proofError
@@ -670,6 +778,7 @@ export async function runProof({
         model: values.model,
         runner: values.runner,
         modelProvider: values.modelProvider,
+        workspaceRequest: workspaceRequestFor(environment),
         providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
         credentialRef: values.credentialRef,
         credentialValue: values.credentialValue,
@@ -866,8 +975,18 @@ export async function runProof({
       )
       const finalA = runFromFrame(finalFrame, runAId).viewRun
       assert.ok((finalA.contentBytes ?? 0) > 0, 'branch A completed without transcript content')
+      finalFrame = await focusRunFromActivityBrowser(
+        runtime,
+        runAId,
+        'branch A transcript',
+        timeoutMs,
+      )
+      branchATranscriptProof = assertBranchATranscript(finalFrame, runAId, markerA)
       assertUniqueEventIds(finalFrame, runAId, 'branch A completion')
       assertUniqueEventIds(finalFrame, runBId, 'branch B terminal state')
+    })
+    await phase('branch-a.provider-proof', async () => {
+      branchAWorkspaceProof = await assertBranchAWorkspace(client, controlA, markerA)
     })
     await phase('remote.status', async () => {
       await remoteStatus(client, controlA, 'completed', timeoutMs)
@@ -1040,6 +1159,10 @@ export async function runProof({
       lifecycle: 'retained',
       credentialConfigured: Boolean(values.credentialValue || values.credentialRef),
     },
+    markers: {
+      branchA: markerA,
+      branchB: markerB,
+    },
     conversations: {
       first: {
         conversationId: firstFrame?.state?.conversationId ?? null,
@@ -1088,6 +1211,27 @@ export async function runProof({
       renderedWorkStripCount: renderedWorkStripCount(terminalEvidence.concurrent?.screen ?? ''),
       independentConversations:
         firstFrame?.state?.conversationId !== secondFrame?.state?.conversationId,
+    },
+    workspace: {
+      branchA: {
+        ...(branchATranscriptProof ?? {
+          marker: markerA,
+          transcriptMarkerLineCount: 0,
+          transcriptMarkerMatched: false,
+          transcriptBytes: null,
+          failedToolPartCount: null,
+        }),
+        ...(branchAWorkspaceProof ?? {
+          providerEnvironmentId: null,
+          path: `.braid-live/${markerA}/marker.txt`,
+          readValueJson: null,
+          readValueBytesBase64: null,
+          readMatched: false,
+          gitExitCode: null,
+          gitStdout: null,
+          gitWorktree: false,
+        }),
+      },
     },
     focus: {
       beforeRunId: secondFrame?.view?.focusedRunId ?? null,

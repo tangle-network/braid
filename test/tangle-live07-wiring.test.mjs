@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
+import { parseOperationId } from '../dist/domain/ids.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
 import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
 import {
@@ -23,6 +24,7 @@ import {
   assertProviderBoundEvidence,
   finalizeInteractiveProof,
   interactiveFailureMessages,
+  interactiveStopOperationId,
   interactiveMaterializationEvidence,
   interactiveProofCommandSequence,
   sandboxConfiguration as interactiveSandboxConfiguration,
@@ -192,6 +194,7 @@ function passedMultirunProof() {
       lifecycle: 'retained',
       credentialConfigured: true,
     },
+    markers: { branchA: 'MARKER_A', branchB: 'MARKER_B' },
     conversations: {
       first: { conversationId: 'conversation-a', branchId: 'branch-a' },
       second: { conversationId: 'conversation-b', branchId: 'branch-b' },
@@ -203,6 +206,23 @@ function passedMultirunProof() {
       workStripCount: 2,
       renderedWorkStripCount: 2,
       independentConversations: true,
+    },
+    workspace: {
+      branchA: {
+        marker: 'MARKER_A',
+        transcriptMarkerLineCount: 1,
+        transcriptMarkerMatched: true,
+        transcriptBytes: 8,
+        failedToolPartCount: 0,
+        providerEnvironmentId: 'environment-a',
+        path: '.braid-live/MARKER_A/marker.txt',
+        readValueJson: JSON.stringify('MARKER_A\n'),
+        readValueBytesBase64: Buffer.from('MARKER_A\n', 'utf8').toString('base64'),
+        readMatched: true,
+        gitExitCode: 0,
+        gitStdout: 'true',
+        gitWorktree: true,
+      },
     },
     focus: {
       beforeRunId: 'multirun-b',
@@ -796,6 +816,10 @@ test('LIVE-08 only permits active public run statuses for cancellation cleanup',
   assert.equal(isCancellableInteractiveRunStatus('failed'), false)
   assert.equal(isCancellableInteractiveRunStatus('unknown'), false)
   assert.equal(isCancellableInteractiveRunStatus(undefined), false)
+})
+
+test('LIVE-08 stop operations use the canonical durable operation identifier', () => {
+  assert.doesNotThrow(() => parseOperationId(interactiveStopOperationId()))
 })
 
 test('LIVE-08 reads the stopped run from the terminal state response', () => {

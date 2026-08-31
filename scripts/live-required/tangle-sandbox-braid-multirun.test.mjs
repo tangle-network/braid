@@ -5,7 +5,11 @@ import {
   activityBrowserOpen,
   assertFrameHasConcurrentRuns,
   assertSuccessfulTerminalExit,
+  assertBranchATranscript,
+  assistantTranscriptForRun,
   cancellationDispatchVisible,
+  exactTranscriptMarkerLineCount,
+  failedToolPartCountForRun,
   frameCancellationDispatch,
   frameEventIds,
   renderedWorkStripCount,
@@ -199,6 +203,61 @@ test('multirun frame guard rejects a terminal or underpowered run', () => {
 test('event extraction preserves duplicates for the live replay assertion', () => {
   const duplicated = frame({ duplicate: true })
   assert.deepEqual(frameEventIds(duplicated, 'run-a'), ['provider-a-1', 'provider-a-1'])
+})
+
+test('branch A transcript proof rejects tool failures and requires one exact marker line', () => {
+  const frame = {
+    state: {
+      messages: [
+        {
+          runId: 'run-a',
+          role: 'assistant',
+          text: 'tool failed\nMARKER_A',
+          parts: [{ kind: 'tool-result', text: 'tool result', status: 'completed' }],
+        },
+        {
+          runId: 'run-b',
+          role: 'assistant',
+          text: 'MARKER_B',
+          parts: [],
+        },
+      ],
+    },
+  }
+  assert.equal(assistantTranscriptForRun(frame, 'run-a'), 'tool failed\nMARKER_A')
+  assert.equal(exactTranscriptMarkerLineCount(frame, 'run-a', 'MARKER_A'), 1)
+  assert.equal(failedToolPartCountForRun(frame, 'run-a'), 0)
+  assert.deepEqual(assertBranchATranscript(frame, 'run-a', 'MARKER_A'), {
+    marker: 'MARKER_A',
+    transcriptMarkerLineCount: 1,
+    transcriptMarkerMatched: true,
+    transcriptBytes: Buffer.byteLength('tool failed\nMARKER_A'),
+    failedToolPartCount: 0,
+  })
+  assert.throws(
+    () =>
+      assertBranchATranscript(
+        {
+          state: {
+            messages: [
+              {
+                runId: 'run-a',
+                role: 'assistant',
+                text: 'MARKER_A',
+                parts: [{ kind: 'tool-result', status: 'failed', error: 'RUNTIME_TOOL_ERROR' }],
+              },
+            ],
+          },
+        },
+        'run-a',
+        'MARKER_A',
+      ),
+    /failed tool parts/u,
+  )
+  assert.throws(
+    () => assertBranchATranscript({ state: { messages: [] } }, 'run-a', 'MARKER_A'),
+    /one exact marker line/u,
+  )
 })
 
 test('multirun failure evidence retains the latest semantic frame and capture error', () => {

@@ -149,6 +149,15 @@ function sanitizedEnvironment(environment) {
   return child
 }
 
+function workspaceRequestFor(environment) {
+  return {
+    repoUrl:
+      environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? 'https://github.com/tangle-network/braid.git',
+    gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? 'main',
+    cwd: environment.BRAID_TANGLE_SANDBOX_CWD ?? '/workspace/braid',
+  }
+}
+
 export function sandboxConfiguration(environment) {
   return connectionConfiguration(configurationEnvironment(environment), {
     prefix: 'BRAID_TANGLE_SANDBOX',
@@ -173,6 +182,10 @@ export function stoppedRunFromState(response, runId) {
   if (!stateForRun(response, runId)) return undefined
   const run = runFromState(response.state, runId)
   return run !== undefined && RUN_STATUS_AFTER_STOP.has(run.status) ? run : undefined
+}
+
+export function interactiveStopOperationId() {
+  return `op-live-interactive-stop-${randomUUID()}`
 }
 
 export function interactiveProofCommandSequence(markers) {
@@ -713,7 +726,7 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
       processCleanup = termination.tree
       if (!termination.descendantsVerified) {
         throw new Error(
-          `forced Braid terminal cleanup did not remove the tracked process tree (${termination.cleanupStatus})`,
+          `forced Braid terminal cleanup did not remove the tracked process tree (${termination.cleanupStatus}: ${termination.tree.reason ?? 'no reason'})`,
         )
       }
       return { ...exitResult, processCleanup, termination }
@@ -1294,7 +1307,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
         isCancellableInteractiveRunStatus(beforeRun?.status),
         `Braid stop cannot target run status ${beforeRun?.status ?? 'missing'}`,
       )
-      const operationId = `live-interactive-stop-${randomUUID()}`
+      const operationId = interactiveStopOperationId()
       const acknowledgement = await rpcRequest(
         initialized.session,
         'cancel_run',
@@ -1303,7 +1316,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
       )
       assert.ok(
         acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'replayed',
-        'Braid stop did not return an accepted or replayed outcome',
+        `Braid stop did not return an accepted or replayed outcome: ${JSON.stringify(acknowledgement)}`,
       )
       const terminal = await initialized.session.waitFor(
         'Braid interactive stop state',
@@ -1379,6 +1392,7 @@ async function runProof({
       model: values.model,
       runner: values.runner,
       modelProvider: values.modelProvider,
+      workspaceRequest: workspaceRequestFor(environment),
       providerOptions: { lifecycle: 'retained', idleTtlSeconds },
       credentialRef: values.credentialRef,
       credentialValue: values.credentialValue,
