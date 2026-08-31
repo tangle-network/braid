@@ -60,6 +60,7 @@ import {
   waitForPiTerminalReady,
   waitForTerminalQuiescence,
 } from './terminal-quiescence.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')

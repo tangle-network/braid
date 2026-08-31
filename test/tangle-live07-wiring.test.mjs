@@ -45,6 +45,10 @@ import {
   waitForPiTerminalReady,
   waitForTerminalQuiescence,
 } from '../scripts/live-required/terminal-quiescence.mjs'
+import {
+  DEFAULT_WORKSPACE_CWD,
+  workspaceRequestFor,
+} from '../scripts/live-required/workspace-request.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 
@@ -65,6 +69,20 @@ test('active Tangle Sandbox checks share the current router model default', () =
   assert.equal(workerBackendConfiguration(environment).model.model, DEFAULT_TANGLE_ROUTER_MODEL_ID)
   assert.equal(workerBackendConfiguration(environment).profile.model.default, expectedProfileModel)
   assert.equal(supervisorProfile({}).model.default, expectedProfileModel)
+})
+
+test('live Tangle Sandbox proofs request the repository root with a portable cwd', () => {
+  assert.equal(DEFAULT_WORKSPACE_CWD, '.')
+  assert.deepEqual(workspaceRequestFor({}), {
+    repoUrl: 'https://github.com/tangle-network/braid.git',
+    gitRef: 'main',
+    cwd: '.',
+  })
+  assert.equal(
+    workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: 'packages/braid' }).cwd,
+    'packages/braid',
+  )
+  assert.equal(workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: '  ' }).cwd, '.')
 })
 
 test('Tangle Sandbox workspace profiles pin model identity separately from connection kind', async () => {

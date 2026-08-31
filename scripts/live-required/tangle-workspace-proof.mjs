@@ -24,6 +24,7 @@ import {
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
