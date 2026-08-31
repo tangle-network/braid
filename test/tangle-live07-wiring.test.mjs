@@ -25,6 +25,7 @@ import {
   interactiveFailureMessages,
   interactiveMaterializationEvidence,
   interactiveProofCommandSequence,
+  interactiveRetainedBox,
   sandboxConfiguration as interactiveSandboxConfiguration,
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
@@ -32,7 +33,8 @@ import {
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
 import {
-  assertSingleExecutionAttemptLedger,
+  assertExactSessionExecutions,
+  providerExecutionLedgerEvidence,
   readRetainedWorkspaceFile,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 import { backendConfiguration as workerBackendConfiguration } from '../scripts/live-required/tangle-sandbox-worker.mjs'
@@ -51,6 +53,42 @@ import {
 } from '../scripts/live-required/workspace-request.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+function executionRecord(
+  executionId,
+  sessionId = 'session-1',
+  status = 'completed',
+  eventCount = 2,
+) {
+  return {
+    executionId,
+    sessionId,
+    status,
+    startedAt: 1_000,
+    completedAt: 2_000,
+    eventCount,
+    lastEventId: `event-${executionId}`,
+  }
+}
+
+function executionExpectation(executionId, sessionId = 'session-1', status = 'completed', name) {
+  return {
+    name: name ?? executionId,
+    controlRef: { sessionId, executionId },
+    status,
+  }
+}
+
+const exactSessionExecutionRecords = [
+  executionRecord('execution-1'),
+  executionRecord('execution-2'),
+  executionRecord('execution-3', 'session-1', 'cancelled'),
+]
+const exactSessionExecutionExpected = [
+  executionExpectation('execution-1', 'session-1', 'completed', 'first-and-reconnected'),
+  executionExpectation('execution-2', 'session-1', 'completed', 'follow-up'),
+  executionExpectation('execution-3', 'session-1', 'cancelled', 'cancelled'),
+]
 
 test('active Tangle Sandbox checks share the current router model default', () => {
   const environment = {
@@ -293,7 +331,7 @@ function passedInteractiveProof(
       identityContinuity: {},
       processCleanup: {},
       providerEvidence: {},
-      executionAttempt: {},
+      providerExecution: {},
       usage: {},
       accountIdentities: {},
       accountIdentityConsistency: {},
@@ -342,7 +380,7 @@ function passedInteractiveProof(
         processGroupExitedBeforeWorkspaceCleanup: true,
         providerInput: true,
         providerReconnect: true,
-        singleProviderExecutionAttempt: true,
+        singleProviderExecution: true,
         exactOwnedResourceSetCleanup: true,
         accountIdentityStable: true,
         activeResourceDelta: 0,
@@ -367,7 +405,7 @@ function passedInteractiveProof(
         'process-group-exited-before-cleanup',
         'provider-bound-input',
         'provider-bound-reconnect',
-        'single-provider-execution-attempt',
+        'single-provider-execution',
         'exact-owned-resource-set-cleanup',
         'account-identity-stable',
         'active-resource-delta',
@@ -550,8 +588,6 @@ test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () 
     reconnect: 'RECONNECT_VALUE',
     inputPath: '.braid-live/proof-quote/input file.txt',
     reconnectPath: ".braid-live/proof-quote/reconnect's file.txt",
-    attemptPath: '.braid-live/proof-quote/attempts/one.txt',
-    executionAttempt: 'ATTEMPT_VALUE',
   })
 
   assert.match(commands[0], /\/interactive/iu)
@@ -1119,10 +1155,193 @@ test('LIVE-08 rejects missing telemetry and latency status', () => {
   )
 })
 
-test('LIVE-07 and LIVE-08 reject duplicate provider execution attempts', () => {
-  assert.throws(
-    () => assertSingleExecutionAttemptLedger('attempt-1\nattempt-1\n', 'attempt-1'),
-    /exactly one/u,
+test('LIVE-08 resolves the exact interactive resource identity before provider reads', async () => {
+  const controlRef = {
+    environmentId: 'environment-interactive',
+    sessionId: 'session-interactive',
+    runId: 'run-interactive',
+  }
+  const box = {
+    id: controlRef.environmentId,
+    name: 'braid-interactive-run-interactive',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+  }
+  const client = { get: async () => box }
+  assert.equal(
+    await interactiveRetainedBox(client, controlRef, controlRef.runId, 'interactive proof'),
+    box,
+  )
+  await assert.rejects(
+    interactiveRetainedBox(
+      { get: async () => ({ ...box, name: 'braid-session-interactive' }) },
+      controlRef,
+      controlRef.runId,
+      'interactive proof',
+    ),
+    /exact retained interactive Sandbox/u,
+  )
+})
+
+test('LIVE-07 accepts the exact provider session execution set', () => {
+  const evidence = assertExactSessionExecutions(
+    exactSessionExecutionRecords,
+    exactSessionExecutionExpected,
+  )
+  assert.equal(evidence.source, 'sandbox-session-runs')
+  assert.equal(evidence.executionCount, 3)
+  assert.deepEqual(
+    evidence.executions.map(({ executionId, status, eventCount }) => ({
+      executionId,
+      status,
+      eventCount,
+    })),
+    [
+      { executionId: 'execution-1', status: 'completed', eventCount: 2 },
+      { executionId: 'execution-2', status: 'completed', eventCount: 2 },
+      { executionId: 'execution-3', status: 'cancelled', eventCount: 2 },
+    ],
+  )
+})
+
+test('provider execution evidence reads the public session ledger exactly once', async () => {
+  const controlRef = {
+    environmentId: 'environment-1',
+    sessionId: 'session-1',
+    executionId: 'execution-1',
+  }
+  let sessionCalls = 0
+  let runsCalls = 0
+  const box = {
+    id: controlRef.environmentId,
+    session(sessionId) {
+      sessionCalls += 1
+      assert.equal(sessionId, controlRef.sessionId)
+      return {
+        async runs() {
+          runsCalls += 1
+          return [executionRecord(controlRef.executionId)]
+        },
+      }
+    },
+  }
+  const evidence = await providerExecutionLedgerEvidence(
+    undefined,
+    controlRef,
+    [executionExpectation(controlRef.executionId)],
+    'provider ledger test',
+    { box },
+  )
+  assert.equal(sessionCalls, 1)
+  assert.equal(runsCalls, 1)
+  assert.equal(evidence.providerObserved, true)
+  assert.equal(evidence.localEchoOnly, false)
+})
+
+test('LIVE-07 rejects duplicate, extra, cross-session, wrong-status, and empty-event records', () => {
+  const cases = [
+    {
+      name: 'duplicate ID',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], executionId: 'execution-1' },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /duplicate execution identity/u,
+    },
+    {
+      name: 'extra ID',
+      records: [
+        exactSessionExecutionRecords[0],
+        exactSessionExecutionRecords[1],
+        executionRecord('unexpected-execution'),
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /did not return exactly one record/u,
+    },
+    {
+      name: 'cross-session record',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], sessionId: 'other-session' },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /another provider session/u,
+    },
+    {
+      name: 'wrong status',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], status: 'failed' },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /wrong status/u,
+    },
+    {
+      name: 'zero events',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], eventCount: 0 },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /no provider event evidence/u,
+    },
+    {
+      name: 'missing terminal completion time',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], completedAt: undefined },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /omitted terminal completion time/u,
+    },
+    {
+      name: 'terminal completion before start',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], completedAt: 999 },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /completed before it started/u,
+    },
+  ]
+  for (const item of cases) {
+    assert.throws(
+      () => assertExactSessionExecutions(item.records, item.expected),
+      item.message,
+      item.name,
+    )
+  }
+})
+
+test('LIVE-07 fails closed when the public session runs API is missing', async () => {
+  const controlRef = {
+    environmentId: 'environment-1',
+    sessionId: 'session-1',
+    executionId: 'execution-1',
+  }
+  const client = {
+    get: async () => ({
+      id: controlRef.environmentId,
+      name: 'braid-session-1',
+      metadata: {
+        owner: 'braid',
+        lifecycle: 'retained',
+        providerSessionId: controlRef.sessionId,
+      },
+      session: () => ({}),
+    }),
+  }
+  await assert.rejects(
+    providerExecutionLedgerEvidence(client, controlRef, [
+      executionExpectation(controlRef.executionId),
+    ]),
+    /SandboxSession\.runs\(\)/u,
   )
 })
 

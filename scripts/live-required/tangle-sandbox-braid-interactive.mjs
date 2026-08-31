@@ -42,19 +42,17 @@ import {
 } from './provider-observation.mjs'
 import {
   accountIdentity,
-  assertSingleExecutionAttemptLedger,
   assertStableAccountIdentity,
   closeBraidWithProof,
-  executionAttemptLedgerPath,
+  providerExecutionLedgerEvidence,
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
-  readRetainedWorkspaceFile,
-  retainedBox,
+  sandboxWorkspaceRelativePath,
   singleRunSpendDisclosure,
   telemetryDisclosure,
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
-import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import { MissingIntegrationError, resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
 import {
   createTerminalOutputTracker,
   waitForPiTerminalReady,
@@ -105,7 +103,7 @@ const INTERACTIVE_PROOF_CHECKS = Object.freeze([
   'process-group-exited-before-cleanup',
   'provider-bound-input',
   'provider-bound-reconnect',
-  'single-provider-execution-attempt',
+  'single-provider-execution',
   'exact-owned-resource-set-cleanup',
   'account-identity-stable',
   'active-resource-delta',
@@ -182,10 +180,8 @@ export function interactiveProofCommandSequence(markers) {
   const proofId = markers.proofId ?? `interactive-${markers.outputSeed ?? 'proof'}`
   const inputPath = markers.inputPath ?? `.braid-live/${proofId}/native-input.txt`
   const reconnectPath = markers.reconnectPath ?? `.braid-live/${proofId}/native-reconnect.txt`
-  const attemptPath = markers.attemptPath ?? executionAttemptLedgerPath(proofId)
-  const attempt = markers.executionAttempt ?? `ATTEMPT_${proofId.replaceAll(/[^A-Za-z0-9]/gu, '_')}`
   return [
-    `/interactive Use a shell command with append redirection (>>) in the current Tangle Sandbox workspace to write exactly ${attempt} followed by a newline to ${attemptPath}; never overwrite this file. Then reply with exactly the uppercase version of ${markers.outputSeed}.`,
+    `/interactive Use the current Tangle Sandbox workspace and reply with exactly the uppercase version of ${markers.outputSeed}.`,
     interactiveShellMutationCommand(input, inputPath),
     DETACH,
     '/help',
@@ -272,22 +268,60 @@ export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironme
   return cleanup
 }
 
+export async function interactiveRetainedBox(client, controlRef, runId, label) {
+  if (!client) {
+    throw new MissingIntegrationError(`${label} requires the Sandbox verification client`, {
+      required: 'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY',
+    })
+  }
+  const expectedName = interactiveResourceName(runId)
+  const box = await client.get(controlRef.environmentId)
+  if (
+    !box ||
+    box.id !== controlRef.environmentId ||
+    !isOwnedInteractiveResource(box, expectedName)
+  ) {
+    throw new MissingIntegrationError(
+      `${label} did not resolve the exact retained interactive Sandbox`,
+      {
+        environmentId: controlRef.environmentId,
+        expectedName,
+      },
+    )
+  }
+  return box
+}
+
 async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
   const deadline = createProviderObservationDeadline(label, timeoutMs)
   const box = await waitForProviderObservation(
     `${label} retained Sandbox`,
-    () => retainedBox(client, controlRef, label),
+    () => interactiveRetainedBox(client, controlRef, controlRef.runId, label),
     timeoutMs,
     { deadline },
   )
+  const relativePath = sandboxWorkspaceRelativePath(path)
   const observation = await waitForProviderObservation(
     `${label} provider readback`,
-    () =>
-      readRetainedWorkspaceFile(client, controlRef, path, {
-        label,
-        allowMissing: true,
-        box,
-      }).then((value) => (value?.value === expectedValue ? value : undefined)),
+    async () => {
+      try {
+        const value = await box.read(relativePath)
+        return value === expectedValue
+          ? { environmentId: box.id, path: relativePath, value }
+          : undefined
+      } catch (error) {
+        const status = error?.status ?? error?.statusCode
+        if (
+          status === 404 ||
+          status === '404' ||
+          error?.code === 'NOT_FOUND' ||
+          error?.name === 'NotFoundError' ||
+          /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
+        )
+          return undefined
+        throw error
+      }
+    },
     timeoutMs,
     { deadline },
   )
@@ -295,52 +329,6 @@ async function waitForProviderReadback(client, controlRef, path, expectedValue, 
     providerWorkspaceReadbackEvidence(observation, expectedValue, `provider-bound ${label}`),
     label,
   )
-}
-
-async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt, timeoutMs) {
-  const expectedValue = `${expectedAttempt}\n`
-  const deadline = createProviderObservationDeadline('execution attempt', timeoutMs)
-  const box = await waitForProviderObservation(
-    'Execution-attempt retained Sandbox',
-    () => retainedBox(client, controlRef, 'Execution-attempt ledger'),
-    timeoutMs,
-    { deadline },
-  )
-  let previousValue
-  let stableReads = 0
-  const observation = await waitForProviderObservation(
-    'single provider execution attempt',
-    async () => {
-      const value = await readRetainedWorkspaceFile(client, controlRef, path, {
-        label: 'Execution-attempt ledger',
-        allowMissing: true,
-        box,
-      })
-      if (value?.value === undefined) return undefined
-      assertSingleExecutionAttemptLedger(value.value, expectedAttempt)
-      if (value.value === previousValue) stableReads += 1
-      else {
-        previousValue = value.value
-        stableReads = 1
-      }
-      return stableReads >= 3 ? value : undefined
-    },
-    timeoutMs,
-    { deadline },
-  )
-  const ledger = assertSingleExecutionAttemptLedger(observation.value, expectedAttempt)
-  return {
-    ...assertProviderBoundEvidence(
-      providerWorkspaceReadbackEvidence(
-        observation,
-        expectedValue,
-        'provider-bound execution attempt',
-      ),
-      'execution attempt',
-    ),
-    path: observation.path,
-    ...ledger,
-  }
 }
 
 function terminalText(terminal) {
@@ -473,7 +461,7 @@ async function observeInteractiveResource(
     providedBox ??
     (await waitForProviderObservation(
       'Interactive Sandbox identity',
-      () => retainedBox(client, controlRef, 'Interactive Sandbox observation'),
+      () => interactiveRetainedBox(client, controlRef, runId, 'Interactive Sandbox observation'),
       timeoutMs,
       { deadline },
     ))
@@ -947,7 +935,7 @@ async function observeSandbox(
   const deadline = createProviderObservationDeadline('interactive Sandbox observation', timeoutMs)
   const box = await waitForProviderObservation(
     'interactive Sandbox identity',
-    () => retainedBox(client, controlRef, 'Interactive Sandbox observation'),
+    () => interactiveRetainedBox(client, controlRef, runId, 'Interactive Sandbox observation'),
     timeoutMs,
     { deadline },
   )
@@ -1004,6 +992,7 @@ async function observeSandbox(
     resourceSampleError = safeMessage(error)
   }
   return {
+    box,
     resource,
     terminal,
     resourceSample:
@@ -1397,14 +1386,12 @@ async function runProof({
       outputSeed: `braid_interactive_output_${randomUUID().replaceAll('-', '')}`,
       inputSeed: `braid_interactive_input_${randomUUID().replaceAll('-', '')}`,
       reconnectSeed: `braid_interactive_reconnect_${randomUUID().replaceAll('-', '')}`,
-      executionAttempt: `ATTEMPT_${randomUUID().replaceAll('-', '')}`,
     }
     markers.output = markers.outputSeed.toUpperCase()
     markers.input = markers.inputSeed.toUpperCase()
     markers.reconnect = markers.reconnectSeed.toUpperCase()
     markers.inputPath = `.braid-live/${markers.proofId}/native-input.txt`
     markers.reconnectPath = `.braid-live/${markers.proofId}/native-reconnect.txt`
-    markers.attemptPath = executionAttemptLedgerPath(markers.proofId)
 
     const [interactiveCommand, inputCommand, detach, , attach, reconnectCommand] =
       interactiveProofCommandSequence(markers)
@@ -1498,13 +1485,6 @@ async function runProof({
       'interactive reconnect input',
     )
     await runtime.waitForPiTerminalReady(timeoutMs, reconnectActionRevision, reconnectBeforeScreen)
-    const executionAttempt = await waitForExecutionAttempt(
-      client,
-      initialIdentity.controlRef,
-      markers.attemptPath,
-      markers.executionAttempt,
-      timeoutMs,
-    )
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive reconnect detach')
     const exit = await runtime.close()
@@ -1530,7 +1510,7 @@ async function runProof({
         initialIdentity.controlRef[field] === reconnectedIdentity.controlRef[field] &&
         initialIdentity.controlRef[field] === identity.controlRef[field],
     )
-    const beforeStop = await observeSandbox(
+    const beforeStopObservation = await observeSandbox(
       client,
       identity.controlRef,
       identity.run.id,
@@ -1540,6 +1520,15 @@ async function runProof({
     )
     const stop = await stopThroughBraid(packed.binary, config, identity.run.id, timeoutMs)
     stopped = true
+    const providerExecution = await providerExecutionLedgerEvidence(
+      client,
+      identity.controlRef,
+      [{ name: 'interactive', controlRef: identity.controlRef, status: 'cancelled' }],
+      'LIVE-08 provider execution inventory',
+      { box: beforeStopObservation.box },
+    )
+    const beforeStop = { ...beforeStopObservation }
+    delete beforeStop.box
     proofData = {
       markers,
       initialAttach,
@@ -1549,7 +1538,7 @@ async function runProof({
       recordState: record.state,
       inputEvidence,
       reconnectEvidence,
-      executionAttempt,
+      providerExecution,
       sameLocalRun,
       sameProviderControlRef,
       identityContinuity: {
@@ -1705,7 +1694,7 @@ async function runProof({
       reconnect: true,
       providerBoundInput: proofData.inputEvidence?.matched === true,
       providerBoundReconnect: proofData.reconnectEvidence?.matched === true,
-      singleProviderExecutionAttempt: proofData.executionAttempt?.lineCount === 1,
+      singleProviderExecution: proofData.providerExecution?.matched === true,
       terminalResize:
         proofData.resized.geometry?.cols === 100 && proofData.resized.geometry?.rows === 30,
       sameLocalRun: proofData.sameLocalRun === true,
@@ -1745,7 +1734,7 @@ async function runProof({
       input: proofData.inputEvidence,
       reconnect: proofData.reconnectEvidence,
     },
-    executionAttempt: proofData.executionAttempt,
+    providerExecution: proofData.providerExecution,
     usage: metrics.usage,
     accountIdentities: metrics.accountIdentities,
     accountIdentityConsistency: metrics.accountIdentityConsistency,
@@ -1784,7 +1773,7 @@ export async function runInteractiveProof({
         proof.checks.processGroupExitedBeforeWorkspaceCleanup,
       providerInput: proof.checks.providerBoundInput,
       providerReconnect: proof.checks.providerBoundReconnect,
-      singleProviderExecutionAttempt: proof.checks.singleProviderExecutionAttempt,
+      singleProviderExecution: proof.checks.singleProviderExecution,
       exactOwnedResourceSetCleanup: proof.checks.exactOwnedResourceSetCleanup,
       accountIdentityStable: proof.checks.accountIdentityStable,
       activeResourceDelta: proof.usageDelta.activeSandboxes,

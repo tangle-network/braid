@@ -521,18 +521,80 @@ export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
 
   const workspace = proof.workspaceVerification
   const continuity = proof.followUpEvidence?.continuity
+  const providerExecution = workspace?.providerExecution
   if (
     workspace?.readMatched !== true ||
     workspace?.continuity?.matched !== true ||
     workspace?.git?.exitCode !== 0 ||
-    workspace?.executionAttempt?.matched !== true ||
-    workspace?.executionAttempt?.lineCount !== 1 ||
-    !nonEmptyString(workspace?.executionAttempt?.path) ||
+    workspace?.providerExecution?.matched !== true ||
+    workspace?.providerExecution?.providerObserved !== true ||
+    workspace?.providerExecution?.localEchoOnly !== false ||
+    workspace?.providerExecution?.executionCount !== 3 ||
+    !Array.isArray(workspace?.providerExecution?.executions) ||
+    workspace.providerExecution.executions.length !== 3 ||
     continuity?.matched !== true ||
     !Number.isSafeInteger(proof.followUpEvidence?.visibleProviderEvents) ||
     proof.followUpEvidence.visibleProviderEvents < 1
   ) {
-    failures.push('retained workspace continuity or exactly-once proof was incomplete')
+    failures.push('retained workspace continuity or provider execution inventory was incomplete')
+  }
+  const expectedProviderExecutions = [
+    {
+      name: 'first-and-reconnected',
+      controlRef: firstControlRef,
+      status: 'completed',
+    },
+    {
+      name: 'follow-up',
+      controlRef: runs?.followUp?.controlRef,
+      status: 'completed',
+    },
+    {
+      name: 'cancelled',
+      controlRef: runs?.cancelled?.controlRef,
+      status: 'cancelled',
+    },
+  ]
+  const observedProviderExecutions = Array.isArray(providerExecution?.executions)
+    ? providerExecution.executions
+    : []
+  const expectedProviderIds = expectedProviderExecutions.map(
+    (entry) => entry.controlRef?.executionId,
+  )
+  if (
+    expectedProviderIds.some((executionId) => !nonEmptyString(executionId)) ||
+    new Set(expectedProviderIds).size !== expectedProviderIds.length
+  ) {
+    failures.push('provider execution expectations were not exact')
+  } else {
+    const observedProviderIds = observedProviderExecutions.map((entry) => entry?.executionId)
+    if (
+      observedProviderIds.length !== expectedProviderIds.length ||
+      new Set(observedProviderIds).size !== observedProviderIds.length ||
+      observedProviderIds.some((executionId) => !expectedProviderIds.includes(executionId))
+    ) {
+      failures.push('provider execution inventory contained an extra or duplicate execution')
+    }
+    for (const expectedExecution of expectedProviderExecutions) {
+      const observed = observedProviderExecutions.filter(
+        (entry) => entry?.executionId === expectedExecution.controlRef?.executionId,
+      )
+      if (
+        observed.length !== 1 ||
+        observed[0]?.sessionId !== expectedExecution.controlRef?.sessionId
+      ) {
+        failures.push(
+          `provider execution ${expectedExecution.name} was not session-bound exactly once`,
+        )
+      } else {
+        if (observed[0].status !== expectedExecution.status) {
+          failures.push(`provider execution ${expectedExecution.name} had the wrong status`)
+        }
+        if (!Number.isSafeInteger(observed[0].eventCount) || observed[0].eventCount < 1) {
+          failures.push(`provider execution ${expectedExecution.name} had no event evidence`)
+        }
+      }
+    }
   }
 
   const resourceIdentity = proof.resourceIdentity

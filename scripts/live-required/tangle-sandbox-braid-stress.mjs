@@ -128,13 +128,6 @@ function continuityResponsePath(coordinates) {
   return `.braid-live/${coordinates.proofId}/continuity-response.txt`
 }
 
-export function executionAttemptLedgerPath(proofId) {
-  if (typeof proofId !== 'string' || proofId.length === 0) {
-    throw new Error('Execution-attempt ledger paths require a proof ID')
-  }
-  return `.braid-live/${proofId}/execution-attempts.log`
-}
-
 export function sandboxWorkspaceRelativePath(path) {
   const normalized = path.startsWith('./') ? path.slice(2) : path
   const segments = normalized.split('/')
@@ -153,28 +146,174 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
-export function assertSingleExecutionAttemptLedger(value, expectedAttempt) {
-  assert.equal(typeof value, 'string', 'Execution-attempt ledger was not readable')
-  assert.equal(typeof expectedAttempt, 'string', 'Execution-attempt ledger has no expected attempt')
-  const normalized = value.replaceAll('\r\n', '\n')
-  assert.equal(
-    normalized.endsWith('\n'),
-    true,
-    'Execution-attempt ledger did not end with a newline',
+const PROVIDER_EXECUTION_STATUSES = new Set(['active', 'completed', 'failed', 'cancelled'])
+
+function providerExecutionRecord(value, index, label) {
+  assert.ok(
+    value && typeof value === 'object' && !Array.isArray(value),
+    `${label}[${index}] is invalid`,
   )
-  const lines = normalized.slice(0, -1).split('\n')
-  assert.equal(
-    lines.length,
-    1,
-    `Execution-attempt ledger recorded ${lines.length} attempts; expected exactly one`,
+  assert.ok(
+    typeof value.executionId === 'string' && value.executionId.length > 0,
+    `${label}[${index}] omitted execution identity`,
   )
-  assert.equal(lines[0], expectedAttempt, 'Execution-attempt ledger recorded the wrong attempt')
-  return {
-    lineCount: lines.length,
-    expectedDigest: `sha256:${sha256(`${expectedAttempt}\n`)}`,
-    observedDigest: `sha256:${sha256(normalized)}`,
-    matched: true,
+  assert.ok(
+    typeof value.sessionId === 'string' && value.sessionId.length > 0,
+    `${label}[${index}] omitted session identity`,
+  )
+  assert.ok(
+    PROVIDER_EXECUTION_STATUSES.has(value.status),
+    `${label}[${index}] has an unknown status`,
+  )
+  assert.ok(Number.isFinite(value.startedAt), `${label}[${index}] omitted startedAt`)
+  if (value.status !== 'active') {
+    assert.ok(
+      Number.isFinite(value.completedAt),
+      `${label}[${index}] omitted terminal completion time`,
+    )
+    assert.ok(
+      value.completedAt >= value.startedAt,
+      `${label}[${index}] completed before it started`,
+    )
   }
+  assert.ok(
+    Number.isSafeInteger(value.eventCount) && value.eventCount > 0,
+    `${label}[${index}] has no provider event evidence`,
+  )
+  assert.ok(
+    typeof value.lastEventId === 'string' && value.lastEventId.length > 0,
+    `${label}[${index}] omitted the provider event cursor`,
+  )
+  if (value.completedAt !== undefined) {
+    assert.ok(Number.isFinite(value.completedAt), `${label}[${index}] has an invalid completedAt`)
+  }
+  return {
+    executionId: value.executionId,
+    sessionId: value.sessionId,
+    status: value.status,
+    startedAt: value.startedAt,
+    ...(value.completedAt === undefined ? {} : { completedAt: value.completedAt }),
+    eventCount: value.eventCount,
+    lastEventId: value.lastEventId,
+  }
+}
+
+export function assertExactSessionExecutions(
+  records,
+  expected,
+  label = 'Provider execution ledger',
+) {
+  assert.ok(
+    Array.isArray(records),
+    `${label} was not returned by the public SandboxSession.runs() API`,
+  )
+  assert.ok(Array.isArray(expected) && expected.length > 0, `${label} has no expected executions`)
+  const expectedRecords = expected.map((entry, index) => {
+    assert.ok(entry && typeof entry === 'object', `${label} expectation ${index} is invalid`)
+    const controlRef = entry.controlRef
+    assert.ok(
+      typeof controlRef?.sessionId === 'string' && controlRef.sessionId.length > 0,
+      `${label} expectation ${index} omitted session identity`,
+    )
+    assert.ok(
+      typeof controlRef?.executionId === 'string' && controlRef.executionId.length > 0,
+      `${label} expectation ${index} omitted execution identity`,
+    )
+    assert.ok(
+      PROVIDER_EXECUTION_STATUSES.has(entry.status),
+      `${label} expectation ${index} has an unknown status`,
+    )
+    return {
+      name:
+        typeof entry.name === 'string' && entry.name.length > 0 ? entry.name : `execution-${index}`,
+      sessionId: controlRef.sessionId,
+      executionId: controlRef.executionId,
+      status: entry.status,
+    }
+  })
+  const expectedIds = new Set(expectedRecords.map((entry) => entry.executionId))
+  assert.equal(
+    expectedIds.size,
+    expectedRecords.length,
+    `${label} expectations contain duplicate execution identities`,
+  )
+  const sessionIds = new Set(expectedRecords.map((entry) => entry.sessionId))
+  assert.equal(sessionIds.size, 1, `${label} expectations span more than one provider session`)
+  assert.equal(
+    records.length,
+    expectedRecords.length,
+    `${label} returned ${records.length} executions; expected exactly ${expectedRecords.length}`,
+  )
+  const observed = records.map((execution, index) =>
+    providerExecutionRecord(execution, index, label),
+  )
+  const observedIds = new Set(observed.map((execution) => execution.executionId))
+  assert.equal(
+    observedIds.size,
+    observed.length,
+    `${label} returned a duplicate execution identity`,
+  )
+  const expectedSessionId = expectedRecords[0].sessionId
+  for (const execution of observed) {
+    assert.equal(
+      execution.sessionId,
+      expectedSessionId,
+      `${label} returned an execution from another provider session`,
+    )
+  }
+  for (const expectedRecord of expectedRecords) {
+    const matches = observed.filter(
+      (execution) => execution.executionId === expectedRecord.executionId,
+    )
+    assert.equal(
+      matches.length,
+      1,
+      `${label} did not return exactly one record for ${expectedRecord.name}`,
+    )
+    assert.equal(
+      matches[0].status,
+      expectedRecord.status,
+      `${label} returned the wrong status for ${expectedRecord.name}`,
+    )
+  }
+  return {
+    provider: 'tangle-sandbox',
+    source: 'sandbox-session-runs',
+    sessionId: expectedSessionId,
+    executionCount: observed.length,
+    expected: expectedRecords,
+    executions: observed,
+    matched: true,
+    providerObserved: true,
+    localEchoOnly: false,
+  }
+}
+
+export async function providerExecutionLedgerEvidence(
+  client,
+  controlRef,
+  expected,
+  label = 'Provider execution ledger',
+  { box: providedBox } = {},
+) {
+  const box = providedBox ?? (await retainedBox(client, controlRef, label))
+  if (!box || box.id !== controlRef.environmentId) {
+    throw new MissingIntegrationError(`${label} did not resolve the exact Sandbox`, {
+      environmentId: controlRef.environmentId,
+    })
+  }
+  if (typeof box.session !== 'function') {
+    throw new MissingIntegrationError(`${label} requires the public SandboxSession API`, {
+      required: 'SandboxBox.session(sessionId)',
+    })
+  }
+  const session = box.session(controlRef.sessionId)
+  if (!session || typeof session.runs !== 'function') {
+    throw new MissingIntegrationError(`${label} requires SandboxSession.runs()`, {
+      required: 'SandboxSession.runs()',
+    })
+  }
+  return assertExactSessionExecutions(await session.runs(), expected, label)
 }
 
 export function continuityDigestMatches(value, expectedDigest) {
@@ -189,13 +328,11 @@ function proofPrompts(coordinates, holdMs) {
   const path = workspaceMarkerPath(coordinates)
   const challengePath = continuityChallengePath(coordinates)
   const responsePath = continuityResponsePath(coordinates)
-  const attemptPath = executionAttemptLedgerPath(coordinates.proofId)
   const holdSeconds = Math.max(5, Math.ceil(holdMs / 1000))
   return {
     first: [
       'Use the current Tangle Sandbox working directory for every command in this turn.',
       `Create ${path} and write exactly ${coordinates.marker} followed by a newline.`,
-      `Run exactly once, with no retry, this shell command: printf '%s\\n' '${coordinates.executionAttempt}' >> '${attemptPath}'. Do not use a file tool or any other command on ${attemptPath}; never overwrite this file.`,
       `Read ${path}, print its contents, and prove the workspace is usable with a shell command.`,
       'Run git -C . rev-parse --is-inside-work-tree. If it fails, run git -C . init.',
       'Then run git -C . rev-parse --is-inside-work-tree again and print its result.',
@@ -350,20 +487,20 @@ async function cleanupProviderCall(operation) {
   throw new Error('cleanup provider call exhausted its retry budget')
 }
 
-async function verifyRetainedWorkspace(client, controlRef, coordinates, continuity) {
+async function verifyRetainedWorkspace(
+  client,
+  controlRef,
+  coordinates,
+  continuity,
+  providerExecution,
+) {
   const box = await retainedBox(client, controlRef, 'Workspace verification')
   const markerPath = workspaceMarkerPath(coordinates)
-  const attemptPath = executionAttemptLedgerPath(coordinates.proofId)
   const expectedMarker = `${coordinates.marker}\n`
-  const [readValue, continuityResponse, attemptValue] = await Promise.all([
+  const [readValue, continuityResponse] = await Promise.all([
     box.read(sandboxWorkspaceRelativePath(markerPath)),
     box.read(sandboxWorkspaceRelativePath(continuity.responsePath)),
-    box.read(sandboxWorkspaceRelativePath(attemptPath)),
   ])
-  const executionAttempt = assertSingleExecutionAttemptLedger(
-    attemptValue,
-    coordinates.executionAttempt,
-  )
   const git = await box.exec(
     `set -eu; test "$(cat -- ${shellQuote(markerPath)})" = ${shellQuote(coordinates.marker)}; test "$(cat -- ${shellQuote(continuity.responsePath)})" = ${shellQuote(continuity.expectedDigest)}; test "$(git -C . rev-parse --is-inside-work-tree)" = true; git -C . status --short --untracked-files=no`,
   )
@@ -390,10 +527,7 @@ async function verifyRetainedWorkspace(client, controlRef, coordinates, continui
     markerPath,
     readValue,
     readMatched: readValue === expectedMarker,
-    executionAttempt: {
-      path: attemptPath,
-      ...executionAttempt,
-    },
+    providerExecution,
     continuity: {
       challengePath: continuity.path,
       responsePath: continuity.responsePath,
@@ -1239,10 +1373,7 @@ export async function runBraidSandboxStress({
 } = {}) {
   const startedAt = performance.now()
   const baseCoordinates = proofCoordinates()
-  const coordinates = {
-    ...baseCoordinates,
-    executionAttempt: `ATTEMPT_${baseCoordinates.proofId.replaceAll(/[^A-Za-z0-9]/gu, '_')}`,
-  }
+  const coordinates = baseCoordinates
   const ids = operationIds(coordinates.proofId)
   const holdMs = numberEnvironment(
     environment,
@@ -1282,6 +1413,7 @@ export async function runBraidSandboxStress({
   let firstResponses
   let firstVisible
   let freshVisible
+  let providerExecution
   let workspaceVerification
   let continuity
   let account
@@ -1543,16 +1675,6 @@ export async function runBraidSandboxStress({
     )
     assertNonVacuousVisibleEvents(followUpVisible, 'follow-up run')
     toolEvidence(followUpVisible, 'Follow-up run')
-    workspaceVerification = await phase('followUp.verifyWorkspace', () =>
-      verifyRetainedWorkspace(client, followUpObservation.controlRef, coordinates, continuity),
-    )
-    assert.equal(workspaceVerification.readMatched, true, 'SDK read did not match the marker')
-    assert.equal(
-      workspaceVerification.continuity.matched,
-      true,
-      'follow-up did not materialize the hidden continuity challenge',
-    )
-    assert.equal(workspaceVerification.git.exitCode, 0, 'SDK Git/read verification failed')
     account = assertSameAccount(
       followUpTerminal.response.state,
       followUpTerminal.run,
@@ -1612,6 +1734,46 @@ export async function runBraidSandboxStress({
         timeoutMs,
       ),
     )
+    providerExecution = await phase('cancel.verifySessionExecutions', () =>
+      providerExecutionLedgerEvidence(
+        client,
+        firstObservation.controlRef,
+        [
+          {
+            name: 'first-and-reconnected',
+            controlRef: firstObservation.controlRef,
+            status: 'completed',
+          },
+          {
+            name: 'follow-up',
+            controlRef: followUpObservation.controlRef,
+            status: 'completed',
+          },
+          {
+            name: 'cancelled',
+            controlRef: cancelObservation.controlRef,
+            status: 'cancelled',
+          },
+        ],
+        'LIVE-07 provider execution inventory',
+      ),
+    )
+    workspaceVerification = await phase('followUp.verifyWorkspace', () =>
+      verifyRetainedWorkspace(
+        client,
+        followUpObservation.controlRef,
+        coordinates,
+        continuity,
+        providerExecution,
+      ),
+    )
+    assert.equal(workspaceVerification.readMatched, true, 'SDK read did not match the marker')
+    assert.equal(
+      workspaceVerification.continuity.matched,
+      true,
+      'follow-up did not materialize the hidden continuity challenge',
+    )
+    assert.equal(workspaceVerification.git.exitCode, 0, 'SDK Git/read verification failed')
 
     cancelledProcessCleanup = await phase('cancel.restart.closeFirstProcess', () =>
       closeBraidWithProof(freshSession, 'pre-retry cancellation process'),

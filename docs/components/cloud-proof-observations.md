@@ -28,7 +28,7 @@ The public receipt contains digests, statuses, counts, paths, and timings withou
 
 ## State and invariants
 
-The execution-attempt ledger is append-only and must contain exactly one expected line after replay and reconnect.
+The provider session execution inventory must contain exactly the expected first, follow-up, and cancelled executions after replay and reconnect.
 
 Input and reconnect checks pass only after the provider workspace contains the expected bytes.
 
@@ -50,7 +50,7 @@ Provider-bound mutation evidence stores digests instead of raw file bytes, and d
 
 ## Tests
 
-Focused tests reject local-only input, duplicate owned resources, duplicate execution lines, and missing telemetry.
+Focused tests reject local-only input, duplicate owned resources, duplicate or extra provider executions, and missing telemetry.
 
 The complete local verification command covers receipt validation, replay, cancellation, terminal behavior, and projections.
 

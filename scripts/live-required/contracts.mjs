@@ -54,7 +54,7 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'process-group-exited-before-cleanup',
     'provider-bound-input',
     'provider-bound-reconnect',
-    'single-provider-execution-attempt',
+    'single-provider-execution',
     'exact-owned-resource-set-cleanup',
     'account-identity-stable',
     'active-resource-delta',
@@ -125,7 +125,7 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'processGroupExitedBeforeWorkspaceCleanup',
     'providerInput',
     'providerReconnect',
-    'singleProviderExecutionAttempt',
+    'singleProviderExecution',
     'exactOwnedResourceSetCleanup',
     'accountIdentityStable',
     'activeResourceDelta',
@@ -477,7 +477,7 @@ function validateProofFacts(operation, status, facts) {
       key === 'processGroupExitedBeforeWorkspaceCleanup' ||
       key === 'providerInput' ||
       key === 'providerReconnect' ||
-      key === 'singleProviderExecutionAttempt' ||
+      key === 'singleProviderExecution' ||
       key === 'exactOwnedResourceSetCleanup' ||
       key === 'accountIdentityStable' ||
       key === 'telemetryComplete' ||
@@ -675,7 +675,7 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
   for (const field of [
     'providerInput',
     'providerReconnect',
-    'singleProviderExecutionAttempt',
+    'singleProviderExecution',
     'exactOwnedResourceSetCleanup',
     'accountIdentityStable',
     'telemetryComplete',
@@ -697,7 +697,7 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     'identityContinuity',
     'processCleanup',
     'providerEvidence',
-    'executionAttempt',
+    'providerExecution',
     'usage',
     'accountIdentities',
     'accountIdentityConsistency',
