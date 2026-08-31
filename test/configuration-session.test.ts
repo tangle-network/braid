@@ -79,6 +79,12 @@ test('configuration session chooses a profile and connection without persisting 
   session.selectProfile(reviewer.id)
   assert.equal(session.state.step, 'connection')
   session.selectConnection(sandbox.id)
+  assert.equal(session.state.step, 'workspace')
+  session.submitWorkspace({
+    repoUrl: 'https://github.com/acme/repository',
+    gitRef: 'main',
+    cwd: '/workspace/src',
+  })
   assert.equal(session.state.step, 'confirm')
   const selected = session.confirm()
 
@@ -86,9 +92,39 @@ test('configuration session chooses a profile and connection without persisting 
   assert.equal(selected.profile.id, reviewer.id)
   assert.equal(selected.connection.id, sandbox.id)
   assert.equal(selected.connection.credentialRef, 'credential-sandbox-ref')
+  assert.equal(selected.workspaceRequest?.repoUrl, 'https://github.com/acme/repository')
+  assert.equal(Object.isFrozen(selected.workspaceRequest), true)
   assert.equal(Object.isFrozen(selected), true)
   assert.equal('error' in session.state, false)
   assert.throws(() => session.selectProfile(coder.id), ConfigurationSessionError)
+})
+
+test('local and inference connections skip cloud workspace setup', () => {
+  const record = profileRecord('reviewer', 'openai/gpt-5.6')
+  const session = new ConfigurationSession({
+    profiles: [record],
+    connections: [
+      connection('cli-bridge', 'local-cli'),
+      connection('tangle-inference', 'inference'),
+    ],
+  })
+  session.selectProfile(record.id)
+  session.selectConnection(session.state.connections[0]?.id ?? '')
+  assert.equal(session.state.step, 'confirm')
+  const failed = session.submitWorkspace({ cwd: '/workspace' })
+  assert.equal(failed.error?.code, 'CONNECTION_REQUIRED')
+})
+
+test('workspace validation keeps the session open and reports the bounded field error', () => {
+  const record = profileRecord('reviewer', 'openai/gpt-5.6')
+  const cloud = connection('tangle-sandbox', 'remote-sandbox')
+  const session = new ConfigurationSession({ profiles: [record], connections: [cloud] })
+  session.selectProfile(record.id)
+  session.selectConnection(cloud.id)
+  const failed = session.submitWorkspace({ gitRef: 'main' })
+  assert.equal(failed.step, 'workspace')
+  assert.equal(failed.error?.code, 'WORKSPACE_INVALID')
+  assert.equal(failed.error?.message, 'gitRef requires repoUrl')
 })
 
 test('configuration session supports back navigation and fails closed on empty catalogs', () => {

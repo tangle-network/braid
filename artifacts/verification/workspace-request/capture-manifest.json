@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-31T01:54:23.433Z",
+  "command": "pnpm capture:workspace",
+  "binary": "clean npm install from generated tarball",
+  "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+  "tarball": "tangle-network-braid-0.3.0.tgz",
+  "tarballSha256": "fc8f2ff2dca42436c226afa643c0a70a347d0427da1d2fc02b15451d96bca947",
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.4",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.18.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "flow": [
+    "open cloud workspace step",
+    "submit git ref without repository",
+    "shift-tab to repository and enter URL",
+    "submit and review effective values",
+    "back to workspace with edits intact",
+    "shift-tab to connection and return with edits intact"
+  ],
+  "artifacts": [
+    {
+      "path": "40x12.txt",
+      "sha256": "6afe2c78a729cc35958372d31b94a746f3e0c7894e45e31bad80efb8be7f3df0",
+      "kind": "terminal-frame",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12.png",
+      "sha256": "e57f1354ef9012b66fe9ad55802d063aeb60e85dc07f1c0329db2099afdd651f",
+      "kind": "png",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24.txt",
+      "sha256": "adf851a1d104dc9ad09cf0042fcd85e44759d070e739221bcb5dffa4fafeccf0",
+      "kind": "terminal-frame",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24.png",
+      "sha256": "642609a750b020afb669dffffe25c22cd353eac927bc3d414cd9e1532ce5ac76",
+      "kind": "png",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40.txt",
+      "sha256": "4fe2f084af450526506e1ac12397825bfec997733dd40b382e7c3230f868a13a",
+      "kind": "terminal-frame",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40.png",
+      "sha256": "ac77458d39b17fcb5d8f2d239e69c1e82597928a81c5946f1691279a1d34de15",
+      "kind": "png",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60.txt",
+      "sha256": "cfc88ea6498373c6441bcb98c0fb1258d8568a0c59a74c8f54d9c036a416de2c",
+      "kind": "terminal-frame",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60.png",
+      "sha256": "6fb83480e7deabf67a0208c9e436d61251be73cb423a2d925142649470b561f9",
+      "kind": "png",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/workspace-request-keyboard.cast",
+      "sha256": "45231fca16e468bc85703610816bb5896440025d15bd819e07d6397194526e67",
+      "kind": "keyboard-asciicast",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-workspace-request-keyboard.gif",
+      "sha256": "693098882e81a70a72ff250c145d0e4d5a8a8c699fae408b2ec6692550a520e3",
+      "kind": "keyboard-flow",
+      "columns": 80,
+      "rows": 24
+    }
+  ]
+}

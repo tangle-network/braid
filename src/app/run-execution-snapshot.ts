@@ -13,6 +13,7 @@ import type {
 import type { BraidState } from '../domain/state.js'
 import type { SendInput } from './application-types.js'
 import { continuationSessionFor } from './run-continuation.js'
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
 /**
  * The private execution payload captured before a run can cross an async
@@ -28,6 +29,8 @@ export interface RunExecutionSnapshot {
   readonly profile: Readonly<AgentProfile>
   readonly mode?: string
   readonly connectionId?: string
+  /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
   readonly sessionId?: string
   /** Distinguishes the private linear continuation from caller-supplied reuse. */
@@ -46,7 +49,9 @@ export function snapshotRunExecution(
   profile: Readonly<AgentProfile>,
   connectionId: string | undefined,
   mode?: string,
+  workspaceRequest?: WorkspaceRequest,
 ): RunExecutionSnapshot {
+  const workspaceSnapshot = snapshotWorkspaceRequest(workspaceRequest)
   const snapshot = {
     operationId: input.operationId,
     text: input.text,
@@ -55,6 +60,7 @@ export function snapshotRunExecution(
     profile: snapshotAgentProfile(profile),
     ...(mode === undefined ? {} : { mode }),
     ...(connectionId === undefined ? {} : { connectionId }),
+    ...(workspaceSnapshot === undefined ? {} : { workspaceRequest: workspaceSnapshot }),
     ...(state.workspace === null ? {} : { workspaceRoot: state.workspace }),
     ...(input.sessionId === undefined
       ? (() => {

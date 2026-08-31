@@ -135,6 +135,8 @@ test('selected mode survives the snapshot, effect request, receipt, and retry id
       profileDigest: receipt.profileDigest,
       connectionId: null,
       mode: 'plan',
+      workspaceRequest: null,
+      workspaceRoot: null,
       interactions: { plan: true },
       contextPlanDigest: null,
     }),

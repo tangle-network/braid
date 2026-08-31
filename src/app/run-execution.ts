@@ -26,7 +26,12 @@ export async function executeRun(
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       interactions: admission.requested.interactions ?? {},
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
-      ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(admission.requested.workspaceRequest === undefined
+        ? {}
+        : { workspaceRequest: admission.requested.workspaceRequest }),
+      ...(admission.requested.workspaceRoot === undefined
+        ? {}
+        : { workspaceRoot: admission.requested.workspaceRoot }),
       signal: abort.signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(currentRun?.lastCursor === undefined ? {} : { after: currentRun.lastCursor }),

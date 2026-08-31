@@ -15,6 +15,7 @@ import {
   readProfileFile,
   validateProfileShape,
 } from '../app/profiles.js'
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from '../app/workspace-request.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { redactProviderError } from '../domain/redaction.js'
 import { recoverPendingConnectionCredentialRemoval } from './production-connection-credential-cleanup.js'
@@ -115,6 +116,7 @@ export interface ProductionStartupDocument {
   readonly connectionId?: string
   readonly databaseKeyFile?: string
   readonly connections?: readonly unknown[]
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,6 +186,18 @@ function parseConfig(bytes: Buffer, path: string): ProductionStartupDocument {
       'Production configuration connections must be an array',
     )
   }
+  let workspaceRequest: Readonly<WorkspaceRequest> | undefined
+  if (parsed.workspaceRequest !== undefined) {
+    try {
+      workspaceRequest = snapshotWorkspaceRequest(parsed.workspaceRequest as WorkspaceRequest)
+    } catch (error) {
+      throw new ProductionStartupError(
+        'PRODUCTION_CONFIGURATION_INVALID',
+        'Production configuration workspaceRequest is invalid or contains unsafe URL data',
+        error,
+      )
+    }
+  }
   return {
     schemaVersion,
     ...(parsed.profile === undefined ? {} : { profile: parsed.profile }),
@@ -197,6 +211,7 @@ function parseConfig(bytes: Buffer, path: string): ProductionStartupDocument {
       ? {}
       : { databaseKeyFile: requiredStringValue(parsed.databaseKeyFile, 'databaseKeyFile') }),
     ...(connections === undefined ? {} : { connections }),
+    ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
   }
 }
 
@@ -419,10 +434,23 @@ export async function loadProductionStartup(
       ? {}
       : { bridgeModelCredential: options.bridgeModelCredential }),
   }
+  let workspaceRequest: Readonly<WorkspaceRequest> | undefined
+  try {
+    workspaceRequest = snapshotWorkspaceRequest(
+      options.workspaceRequest ?? document.workspaceRequest,
+    )
+  } catch (error) {
+    throw new ProductionStartupError(
+      'PRODUCTION_CONFIGURATION_INVALID',
+      'Production startup workspaceRequest is invalid or contains unsafe URL data',
+      error,
+    )
+  }
   return {
     profile,
     connections,
     connectionId: selectedConnectionId,
+    ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(databaseKeyFile === undefined ? {} : { databaseKeyFile }),
     ...(Object.keys(connectionOptions).length === 0 ? {} : { connectionOptions }),
   }

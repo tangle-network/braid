@@ -128,7 +128,14 @@ export function nativeContinuationInputFromRecovery(
     ...(receipt.requested.connectionId === undefined
       ? {}
       : { connectionId: receipt.requested.connectionId }),
-    ...(recovery.workspaceRoot === undefined ? {} : { workspaceRoot: recovery.workspaceRoot }),
+    ...(receipt.requested.workspaceRequest === undefined
+      ? {}
+      : { workspaceRequest: receipt.requested.workspaceRequest }),
+    ...(receipt.requested.workspaceRoot === undefined
+      ? recovery.workspaceRoot === undefined
+        ? {}
+        : { workspaceRoot: recovery.workspaceRoot }
+      : { workspaceRoot: receipt.requested.workspaceRoot }),
     sessionId: proof.sessionId,
     signal,
     nativeContextBoundaryProof: proof,

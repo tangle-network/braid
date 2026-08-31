@@ -6,6 +6,24 @@ Workspace branching creates an isolated provider environment from an exact sourc
 
 It supports checkpoint, lookup, fork, restart replay, destination mutation, source preservation, and resource cleanup.
 
+## Workspace request boundary
+
+The startup `WorkspaceRequest` selects a provider-neutral remote workspace for a run.
+
+The local Braid `workspaceRoot` remains separate and never becomes the provider workspace cwd.
+
+Admission freezes the request inside `receipt.requested` and includes it in the exact request digest.
+
+Retained and ephemeral Tangle starts receive that frozen request through the runtime environment boundary.
+
+Recovery reads the request from the receipt and does not infer it from current setup configuration.
+
+Legacy receipts without a request replay with provider defaults.
+
+Branching records source environment identity separately from startup workspace selection.
+
+Provider-native options remain outside Braid persistence and branch records.
+
 ## Component map
 
 | Component | Responsibility |

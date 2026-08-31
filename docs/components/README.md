@@ -133,6 +133,7 @@ Helpers remain in the same document as the component whose behavior they serve.
 | `UnavailablePanel` | `src/views/tui/terminal-shell.ts` | [help-and-capability-states.md](help-and-capability-states.md) |
 | `TerminalSurfaceOverlays` | `src/views/tui/terminal-surface-overlays.ts` | [modal-coordination.md](modal-coordination.md) |
 | `TranscriptView` | `src/views/tui/transcript.ts` | [transcript-composer.md](transcript-composer.md) |
+| `WorkspaceRequestForm` | `src/views/tui/workspace-request-form.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
 
 ## Change rule
 

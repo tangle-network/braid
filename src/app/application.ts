@@ -67,6 +67,7 @@ import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
 import { shutdownApplication } from './shutdown-controller.js'
+import { snapshotWorkspaceRequest } from './workspace-request.js'
 
 export type { SendInput, SendReceipt } from './application-types.js'
 export { AppError } from './errors.js'
@@ -121,6 +122,9 @@ export class BraidApplication {
   readonly runtimeSelection: RuntimeSelection
   readonly #execution: ExecutionPort
   readonly #executionProfile: Readonly<AgentProfile>
+  readonly #workspaceRequest:
+    | Readonly<import('@tangle-network/agent-interface').WorkspaceRequest>
+    | undefined
   readonly #ids: IdSource
   readonly #clock: Clock
   readonly #journal: ApplicationJournal
@@ -146,6 +150,7 @@ export class BraidApplication {
   constructor(options: BraidApplicationOptions) {
     this.#execution = options.execution
     this.#executionProfile = structuredClone(options.profile)
+    this.#workspaceRequest = snapshotWorkspaceRequest(options.workspaceRequest)
     this.runtimeSelection = new RuntimeSelection(this.#executionProfile)
     this.#ids = options.ids
     this.#clock = options.clock
@@ -424,6 +429,7 @@ export class BraidApplication {
       configuration.profile,
       configuration.connectionId,
       configuration.mode,
+      this.#workspaceRequest,
     )
     validateNativeProof(this.#portViews.admission, snapshot)
     if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {

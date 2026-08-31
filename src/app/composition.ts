@@ -25,8 +25,8 @@ export {
   type DurableCompositionOptions,
   type DurableStartupStage,
 } from '../startup/durable-runtime.js'
-export { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
 export type { CompositionOptions } from './composition-options.js'
+export { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
 
 export type ProductionBraidApplicationOptions = Omit<CompositionOptions, 'fixture'>
 
@@ -111,6 +111,9 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
       options.profile ??
       production?.profile ??
       (isFixture ? DETERMINISTIC_PROFILE : STARTER_PROFILE),
+    ...(options.production?.workspaceRequest === undefined
+      ? {}
+      : { workspaceRequest: options.production.workspaceRequest }),
     execution,
     clock,
     ids: options.ids ?? (isFixture ? new SequenceIds() : new RandomIds()),

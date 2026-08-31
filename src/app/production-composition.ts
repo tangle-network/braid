@@ -1,4 +1,4 @@
-import { harnessTypeSchema, type AgentProfile } from '@tangle-network/agent-interface'
+import { type AgentProfile, harnessTypeSchema } from '@tangle-network/agent-interface'
 import { materializeBridgeModelRoute } from '../adapters/connections/cli-bridge-model-route.js'
 import { nitroVerifiersForConnection } from '../adapters/connections/nitro-confidential-attestation.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
@@ -36,6 +36,7 @@ import type { NativeInteractiveExecutionControl } from '../ports/native-interact
 import { ConnectionError } from './connection-errors.js'
 import { ConnectionRegistry } from './connections.js'
 import { assertValidProfile } from './profile-validation.js'
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
 export type ProductionCompositionErrorCode =
   | 'PRODUCTION_CONFIGURATION_REQUIRED'
@@ -65,6 +66,8 @@ export interface ProductionCompositionConfig {
   readonly connectionId: string
   /** Canonical workspace root used by provider environment creation. */
   readonly workspaceRoot?: string
+  /** Provider-neutral remote workspace request. Separate from workspaceRoot. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   /** Protected headless SQLite key-file path, absolute or relative to the config directory. */
   readonly databaseKeyFile?: string
   /** Published provider construction options, including credential resolution. */
@@ -186,6 +189,13 @@ export function createProductionComposition(
     )
   }
 
+  if (config.workspaceRequest !== undefined && connection.kind !== 'tangle-sandbox') {
+    throw new ProductionCompositionError(
+      'PRODUCTION_CONNECTION_UNSUPPORTED',
+      'A provider-neutral workspace request requires a tangle-sandbox connection',
+    )
+  }
+
   const resolverOptionsBase: ProductionBackendResolverOptions = {
     ...(config.connectionOptions ?? {}),
     connections,
@@ -198,6 +208,7 @@ export function createProductionComposition(
       },
     }),
   }
+  snapshotWorkspaceRequest(config.workspaceRequest)
   const confidential = nitroVerifiersForConnection(connection, resolverOptionsBase)
   const resolverOptions: ProductionBackendResolverOptions = {
     ...resolverOptionsBase,
@@ -229,7 +240,12 @@ export function createProductionComposition(
     const requested = recovery.receipt?.requested
     const admissionSessionId = retainedAdmissionSessionId(recovery.retainedAdmission)
     const sessionId = providerSessionId ?? admissionSessionId
-    const workspaceRoot = recovery.workspaceRoot ?? config.workspaceRoot
+    const workspaceRoot =
+      recovery.receipt?.requested.workspaceRoot ?? recovery.workspaceRoot ?? config.workspaceRoot
+    const workspaceRequest =
+      recovery.receipt === undefined
+        ? recovery.workspaceRequest
+        : recovery.receipt.requested.workspaceRequest
     return {
       operationId: recovery.receipt?.operationId ?? `recover-${runId}`,
       runId,
@@ -240,6 +256,7 @@ export function createProductionComposition(
       connectionId: requested?.connectionId ?? connection.id,
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+      ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
       signal: signal ?? new AbortController().signal,
     }
   }

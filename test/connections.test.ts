@@ -427,6 +427,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
     canonicalDigest({
       kind: 'tangle-sandbox-environment-request',
       idempotencyKey: 'env-braid-run-connection-test',
+      workspaceRequest: null,
     }),
   )
   assert.deepEqual(sandboxBackend.backend.profile, profile())

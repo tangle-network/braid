@@ -3,6 +3,7 @@ import type {
   AgentProfile,
   NativeContextBoundaryProof,
   RequestedInteractions,
+  WorkspaceRequest,
 } from '@tangle-network/agent-interface'
 import type {
   RetainedInteractiveAdmission,
@@ -136,6 +137,9 @@ export interface RunAdmissionReceipt {
     readonly profile: Readonly<AgentProfile>
     readonly connectionId?: string
     readonly mode?: string
+    readonly workspaceRequest?: Readonly<WorkspaceRequest>
+    /** Local Braid checkout root captured with the admission request. */
+    readonly workspaceRoot?: string
     readonly interactions?: RequestedInteractions
     readonly model?: string
     readonly runner?: string

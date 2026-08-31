@@ -421,6 +421,8 @@ function admissionKey(input: ExecuteTurnInput, profileDigest: string): string {
     profileDigest,
     connectionId: input.connectionId ?? null,
     mode: input.mode ?? null,
+    workspaceRequest: input.workspaceRequest ?? null,
+    workspaceRoot: input.workspaceRoot ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
     contextTransfer: input.contextTransfer ?? null,

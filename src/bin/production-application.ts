@@ -54,6 +54,9 @@ export function productionConfigForSelection(
     connections: productionConnectionsForSelection(selection, connections),
     connectionId: selection.connection.id,
     workspaceRoot: resolve(options.workspace),
+    ...(selection.workspaceRequest === undefined
+      ? {}
+      : { workspaceRequest: selection.workspaceRequest }),
     ...(options.databaseKeyFile === undefined ? {} : { databaseKeyFile: options.databaseKeyFile }),
     ...(Object.keys(connectionOptions).length === 0 ? {} : { connectionOptions }),
   }

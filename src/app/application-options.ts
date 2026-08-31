@@ -1,4 +1,4 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { AgentProfile, WorkspaceRequest } from '@tangle-network/agent-interface'
 import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
@@ -18,6 +18,8 @@ export type CancelReceipt = Omit<SendReceipt, 'admission'> & { readonly replayed
 
 export interface BraidApplicationOptions {
   readonly profile: Readonly<AgentProfile>
+  /** Provider-neutral remote workspace selected at startup. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly execution: ExecutionPort
   readonly clock: import('../ports/clock.js').Clock
   readonly ids: IdSource

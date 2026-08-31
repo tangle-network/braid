@@ -4,6 +4,7 @@ import type {
   RetainedInteractiveAdmissionHook,
   RetainedInteractiveStartedAdmission,
 } from '@tangle-network/agent-runtime/kernel'
+import { workspaceRequestDigest } from '../../app/workspace-request.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
 import type { RunAdmissionReceipt } from '../../domain/receipts.js'
@@ -56,6 +57,7 @@ export function interactiveRunCapabilities(
 export function interactiveMaterializationReceipt(
   prepared: PreparedTangleRetainedConnection,
 ): Readonly<Record<string, unknown>> {
+  const workspaceRequestDigestValue = workspaceRequestDigest(prepared.workspaceRequest)
   return publicMaterializationReceipt({
     provider: prepared.provider.name,
     backend: 'environment-provider',
@@ -67,6 +69,9 @@ export function interactiveMaterializationReceipt(
     idleTtlSeconds: prepared.idleTtlSeconds,
     model: prepared.model,
     runner: prepared.runner,
+    ...(workspaceRequestDigestValue === undefined
+      ? {}
+      : { workspaceRequestDigest: workspaceRequestDigestValue }),
   })
 }
 
@@ -85,6 +90,7 @@ export function interactiveEnvironment(
       lifecycle: 'retained',
       surface: 'interactive-agent',
     },
+    ...(prepared.workspaceRequest === undefined ? {} : { workspace: prepared.workspaceRequest }),
     idempotencyKey,
   }
 }

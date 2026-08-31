@@ -1,12 +1,12 @@
+import type { ContextTransferReceipt } from '../domain/receipts.js'
+import { activeRunForBranch } from '../domain/state.js'
 import type { AdmissionPort, AsyncAdmissionPort } from './application-ports.js'
 import type { SendReceipt } from './application-types.js'
-import type { ContextTransferReceipt } from '../domain/receipts.js'
 import { AppError } from './errors.js'
 import { admitRun, admitRunAsync } from './run-admission-receipt.js'
 import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission-request.js'
 import { validateContextPlan, validateNativeProof } from './run-admission-validation.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
-import { activeRunForBranch } from '../domain/state.js'
 
 export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): SendReceipt {
   const state = context.currentState()
@@ -49,6 +49,7 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
       signal: new AbortController().signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(input.contextPlan === undefined
@@ -144,6 +145,7 @@ export async function sendRunAsync(
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
       signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(input.contextPlan === undefined

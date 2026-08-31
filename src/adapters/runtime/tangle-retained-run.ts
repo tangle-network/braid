@@ -147,6 +147,9 @@ export async function startTangleRetainedRun(
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
+      ...(plan.prepared.workspaceRequest === undefined
+        ? {}
+        : { workspace: plan.prepared.workspaceRequest }),
       name: plan.prepared.environmentName,
       metadata: plan.prepared.environmentMetadata,
       idempotencyKey: plan.environmentIdempotencyKey,
@@ -182,6 +185,9 @@ async function recoverTangleRetainedRun(
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,
+          ...(plan.prepared.workspaceRequest === undefined
+            ? {}
+            : { workspace: plan.prepared.workspaceRequest }),
           name: plan.prepared.environmentName,
           metadata: plan.prepared.environmentMetadata,
           idempotencyKey: admission.idempotencyKey,

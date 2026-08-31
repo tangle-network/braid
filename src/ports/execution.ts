@@ -11,6 +11,7 @@ import type {
   NativeContextBoundaryProof,
   PortableContextPlanRequest,
   PortableContextPlanResult,
+  WorkspaceRequest,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
@@ -35,6 +36,8 @@ export interface ExecuteTurnInput {
   /** Exact per-turn interaction posture derived from admitted capabilities. */
   readonly interactions?: RequestedInteractions
   readonly connectionId?: string
+  /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
   readonly signal: AbortSignal
   readonly sessionId?: string
@@ -90,6 +93,8 @@ export interface ProviderRunSnapshot {
 export interface RetainedExecutionRecoveryContext {
   readonly retainedAdmission?: RetainedRunAdmissionRecord
   readonly receipt?: RunAdmissionReceipt
+  /** Receipt-bound remote workspace request; absent on legacy receipts. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
 }
 

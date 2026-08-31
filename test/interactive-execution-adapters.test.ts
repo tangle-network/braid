@@ -22,7 +22,10 @@ import {
   stableProviderId,
 } from '../src/adapters/runtime/production-backend-common.js'
 import type { PreparedTangleRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
-import { assertInteractiveProvider } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import {
+  assertInteractiveProvider,
+  interactiveEnvironment,
+} from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
 import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
@@ -518,6 +521,22 @@ test('interactive provider admission requires terminal and prompt capabilities',
     },
   } as PreparedTangleRetainedConnection
   assert.throws(() => assertInteractiveProvider(incomplete), /exact interactive agents/u)
+})
+
+test('retained runtime receives the canonical workspace request without a provider cwd shim', () => {
+  const fixture = interactiveFixture()
+  const workspaceRequest = {
+    environment: 'universal',
+    repoUrl: 'https://github.com/acme/repository',
+    gitRef: 'main',
+    cwd: '/workspace/src',
+  } as const
+  const prepared = { ...fixture.prepared, workspaceRequest } as PreparedTangleRetainedConnection
+
+  const environment = interactiveEnvironment(prepared, 'run/workspace-request')
+
+  assert.deepEqual(environment.workspace, workspaceRequest)
+  assert.equal(Object.hasOwn(environment, 'cwd'), false)
 })
 
 test('native interactive admission does not advertise structured responses it cannot route', async () => {

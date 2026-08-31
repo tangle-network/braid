@@ -15,6 +15,7 @@ import {
 } from '../adapters/persistence/safe-file.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
 import { ConnectionRegistry } from '../app/connections.js'
+import { snapshotWorkspaceRequest } from '../app/workspace-request.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import {
   assertProductionConfigMutationLock,
@@ -213,6 +214,9 @@ function serializedSelection(
     profile: persistableProductionProfile(selection.profile.profile),
     connectionId: selection.connection.id,
     connections: productionConnectionsForSelection(selection, connections),
+    ...(selection.workspaceRequest === undefined
+      ? {}
+      : { workspaceRequest: snapshotWorkspaceRequest(selection.workspaceRequest) }),
     ...(databaseKeyFile === undefined ? {} : { databaseKeyFile }),
   })}\n`
 }

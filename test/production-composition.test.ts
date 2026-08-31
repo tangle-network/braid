@@ -560,6 +560,70 @@ test('bin startup loads a canonical profile and exact connection from a bounded 
   assert.equal(parseArgs(['--config', configPath], root).config, configPath)
 })
 
+test('startup persists the workspace request, reloads it, and preserves legacy absence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-workspace-request-'))
+  const configPath = join(root, '.braid', 'config.json')
+  const profileRecord = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'test:workspace-request',
+      label: 'workspace request profile',
+      writable: false,
+      trusted: true,
+    },
+    profile(),
+  )
+  const sandbox = connection('tangle-sandbox', 'workspace-request', 'https://sandbox.test')
+  const selection = {
+    profile: profileRecord,
+    connection: sandbox,
+    profileDigest: profileRecord.digest,
+    connectionDigest:
+      'sha256:0000000000000000000000000000000000000000000000000000000000000000' as const,
+    workspaceRequest: {
+      repoUrl: 'https://github.com/acme/repository',
+      gitRef: 'main',
+      cwd: '/workspace/src',
+      providerOptions: {},
+    },
+  }
+  await saveProductionStartupSelection(configPath, selection)
+  const saved = JSON.parse(await readFile(configPath, 'utf8')) as {
+    [key: string]: unknown
+    workspaceRequest?: Record<string, unknown>
+  }
+  assert.deepEqual(saved.workspaceRequest, {
+    repoUrl: 'https://github.com/acme/repository',
+    gitRef: 'main',
+    cwd: '/workspace/src',
+  })
+  assert.ok(saved.workspaceRequest)
+  assert.equal('providerOptions' in saved.workspaceRequest, false)
+
+  const restarted = await loadProductionStartup({ workspace: root })
+  assert.deepEqual(restarted.workspaceRequest, saved.workspaceRequest)
+  assert.equal(Object.isFrozen(restarted.workspaceRequest), true)
+
+  const legacy = { ...saved, schemaVersion: 1 }
+  delete legacy.workspaceRequest
+  await writeFile(configPath, `${JSON.stringify(legacy)}\n`, { mode: 0o600 })
+  const legacyStartup = await loadProductionStartup({ workspace: root })
+  assert.equal(legacyStartup.workspaceRequest, undefined)
+
+  await writeFile(
+    configPath,
+    `${JSON.stringify({ ...legacy, schemaVersion: 2, workspaceRequest: { gitRef: 'main' } })}\n`,
+    { mode: 0o600 },
+  )
+  await assert.rejects(
+    () => loadProductionStartup({ workspace: root }),
+    (error: unknown) =>
+      error instanceof ProductionStartupError &&
+      error.code === 'PRODUCTION_CONFIGURATION_INVALID' &&
+      /gitRef requires repoUrl/iu.test(String(error.cause)),
+  )
+})
+
 test('CLI routing overrides agree with the canonical profile passed to runtime', async () => {
   const cases = [
     {

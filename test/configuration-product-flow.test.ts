@@ -274,7 +274,7 @@ test('first-run review keeps exact effective values and credential boundaries le
   const narrowLines = wizard.render(40)
   assert.ok(narrowLines.every((line) => visibleWidth(line) <= 40))
   assert.match(narrowLines.join('\n'), /runner:/u)
-  assert.match(narrowLines.join('\n'), /cwd:/u)
+  assert.match(narrowLines.join('\n'), /start in:/u)
   assert.match(narrowLines.join('\n'), /cred hidden/u)
 
   wizard.handleInput('\r')

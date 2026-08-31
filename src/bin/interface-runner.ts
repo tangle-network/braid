@@ -111,6 +111,9 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
           ...(setup.initialProfileId === undefined
             ? {}
             : { initialProfileId: setup.initialProfileId }),
+          ...(setup.workspaceRequest === undefined
+            ? {}
+            : { workspaceRequest: setup.workspaceRequest }),
           diagnostics: setup.diagnostics,
           openOnStart: true,
           requiresCredential: (connection) =>

@@ -145,6 +145,9 @@ export async function createDurableBraidApplication(
           }
     const app = new BraidApplication({
       profile: options.profile ?? productionConfig?.profile ?? STARTER_PROFILE,
+      ...(productionConfig?.workspaceRequest === undefined
+        ? {}
+        : { workspaceRequest: productionConfig.workspaceRequest }),
       execution:
         options.execution ??
         production?.execution ??

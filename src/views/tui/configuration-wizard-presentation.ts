@@ -1,4 +1,5 @@
 import type { SelectItem } from '@earendil-works/pi-tui'
+import type { WorkspaceRequest } from '@tangle-network/agent-interface'
 import type {
   ConfigurationEffectiveValues,
   ConfigurationSelection,
@@ -10,6 +11,7 @@ import { shortDigest } from './configuration-presenters.js'
 
 export const BACK_TO_PROFILE = '__braid_back_profile__'
 export const BACK_TO_CONNECTION = '__braid_back_connection__'
+export const BACK_TO_WORKSPACE = '__braid_back_workspace__'
 export const APPLY_SELECTION = '__braid_apply_selection__'
 export const CANCEL_CONFIGURATION = '__braid_cancel_configuration__'
 export const DOWN_ARROW = '\u001b[B'
@@ -25,6 +27,8 @@ export function configurationTitle(
       return 'profile · choose an AgentProfile'
     case 'connection':
       return 'connection · choose a connection'
+    case 'workspace':
+      return 'workspace · choose remote files'
     case 'confirm':
       return 'review and start'
     case 'complete':
@@ -37,11 +41,14 @@ export function configurationTitle(
 export function configurationExplanation(state: ConfigurationSessionState): string {
   if (state.step === 'profile') return 'Choose the AgentProfile for this run.'
   if (state.step === 'connection') return 'Choose where this profile should run.'
+  if (state.step === 'workspace')
+    return 'Set the repository and working directory for the cloud sandbox.'
   return 'No changes were made.'
 }
 
 export function configurationFooter(state: ConfigurationSessionState, busy: boolean): string {
   if (busy) return 'waiting for the selected connection'
+  if (state.step === 'workspace') return 'tab next · shift-tab back · esc cancel'
   if (state.step === 'confirm') return 'enter apply · arrows · ←/esc cancel'
   return 'filter · enter choose · ←/esc cancel'
 }
@@ -98,6 +105,18 @@ export function configurationItems(
         label: busy ? 'Applying…' : 'Apply and start',
         description: 'use this profile and connection for Braid',
       },
+      ...(state.step === 'confirm' && state.selectedConnectionId !== undefined
+        ? state.connections.find((connection) => connection.id === state.selectedConnectionId)
+            ?.kind === 'tangle-sandbox'
+          ? [
+              {
+                value: BACK_TO_WORKSPACE,
+                label: '← change workspace',
+                description: 'edit repository and working folder',
+              },
+            ]
+          : []
+        : []),
       {
         value: BACK_TO_CONNECTION,
         label: '← change connection',
@@ -134,6 +153,7 @@ export function reviewSummary(
       `profile digest ${shortDigest(selection.profileDigest)} · connection ${selection.connection.kind}`,
       `runner: ${sanitizeTerminalText(effective.runner)} · model: ${sanitizeTerminalText(effective.model)}`,
       `effort: ${sanitizeTerminalText(effective.effort)} · workdir: ${sanitizeTerminalText(effective.workdir)}`,
+      ...workspaceRequestSummary(effective.workspaceRequest),
       `verification: ${sanitizeTerminalText(effective.verification)}`,
       `unsupported: ${
         effective.unsupported.length > 0
@@ -163,7 +183,8 @@ export function compactReviewSummary(
       `profile ${profile?.label ?? selection.profile.displayName} → ${connection?.label ?? selection.connection.name}`,
       `cred ${compactCredentialStatus(selection, credentialPrepared)} · conn ${selection.connection.kind} · digest ${compactDigest(selection.profileDigest)}`,
       `runner: ${shortValue(effective.runner, 14)} · model: ${shortValue(effective.model, 16)}`,
-      `effort: ${shortValue(effective.effort, 12)} · cwd: ${shortValue(effective.workdir, 18)}`,
+      `effort: ${shortValue(effective.effort, 12)} · start in: ${shortValue(effective.workdir, 18)}`,
+      ...compactWorkspaceRequestSummary(effective.workspaceRequest),
       `verify: ${shortValue(effective.verification, 18)} · unsupported: ${shortValue(unsupported, 12)}`,
     ].map(sanitizeTerminalText)
   } catch {
@@ -176,10 +197,10 @@ export function configurationReviewSummaries(
   state: ConfigurationSessionState,
   confirmation: ((selection: ConfigurationSelection) => ConfigurationEffectiveValues) | undefined,
   credentialPrepared: boolean,
-): { readonly summary: readonly string[]; readonly compact: readonly string[] } {
+): { readonly summary: readonly string[]; readonly compactSummary: readonly string[] } {
   return {
     summary: reviewSummary(session, state, confirmation, credentialPrepared),
-    compact: compactReviewSummary(session, state, confirmation, credentialPrepared),
+    compactSummary: compactReviewSummary(session, state, confirmation, credentialPrepared),
   }
 }
 
@@ -199,7 +220,7 @@ function effectiveValues(
   selection: ConfigurationSelection,
   confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues,
 ): ConfigurationEffectiveValues {
-  if (confirmation !== undefined) return confirmation(selection)
+  if (confirmation !== undefined) return withWorkspaceRequest(selection, confirmation(selection))
   const profile = selection.profile.profile
   return {
     runner: profile.harness ?? 'provider default',
@@ -207,11 +228,63 @@ function effectiveValues(
     effort: profile.model?.reasoningEffort ?? 'provider default',
     workdir:
       selection.connection.kind === 'tangle-sandbox'
-        ? 'provider-selected sandbox workdir'
+        ? (selection.workspaceRequest?.cwd ?? 'provider-selected sandbox workdir')
         : 'workspace-selected workdir',
+    ...(selection.workspaceRequest === undefined
+      ? {}
+      : {
+          workspaceRequest: selection.workspaceRequest,
+        }),
     verification: `${selection.connection.lastHealth.status}: unverified`,
     unsupported: [],
   }
+}
+
+function withWorkspaceRequest(
+  selection: ConfigurationSelection,
+  confirmed: ConfigurationEffectiveValues,
+): ConfigurationEffectiveValues {
+  const workspaceRequest = selection.workspaceRequest
+  if (workspaceRequest === undefined) return confirmed
+  return {
+    ...confirmed,
+    workspaceRequest: { ...(confirmed.workspaceRequest ?? {}), ...workspaceRequest },
+    ...(selection.connection.kind === 'tangle-sandbox' && workspaceRequest.cwd !== undefined
+      ? { workdir: workspaceRequest.cwd }
+      : {}),
+  }
+}
+
+function workspaceRequestSummary(
+  workspace: Readonly<WorkspaceRequest> | undefined,
+): readonly string[] {
+  if (workspace === undefined) return []
+  const values = [
+    workspace.environment === undefined ? undefined : `environment ${workspace.environment}`,
+    workspace.image === undefined ? undefined : `image ${workspace.image}`,
+    workspace.repoUrl === undefined ? undefined : `repo ${workspace.repoUrl}`,
+    workspace.gitRef === undefined ? undefined : `ref ${workspace.gitRef}`,
+    workspace.cwd === undefined ? undefined : `start in ${workspace.cwd}`,
+  ].filter((value): value is string => value !== undefined)
+  return values.length === 0
+    ? ['cloud workspace: provider defaults']
+    : [`cloud workspace · ${values.join(' · ')}`]
+}
+
+function compactWorkspaceRequestSummary(
+  workspace: Readonly<WorkspaceRequest> | undefined,
+): readonly string[] {
+  if (workspace === undefined) return []
+  const values = [
+    workspace.environment === undefined ? undefined : `env ${workspace.environment}`,
+    workspace.image === undefined ? undefined : `image ${workspace.image}`,
+    workspace.repoUrl === undefined ? undefined : `repo ${workspace.repoUrl}`,
+    workspace.gitRef === undefined ? undefined : `ref ${workspace.gitRef}`,
+    workspace.cwd === undefined ? undefined : `start in ${workspace.cwd}`,
+  ].filter((value): value is string => value !== undefined)
+  return [
+    `cloud: ${values.length > 0 ? values.map((value) => shortValue(value, 18)).join(' · ') : 'defaults'}`,
+  ]
 }
 
 function compactDigest(value: string): string {

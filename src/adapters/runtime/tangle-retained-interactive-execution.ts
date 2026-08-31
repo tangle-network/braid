@@ -554,7 +554,18 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       ...(receipt?.requested.connectionId === undefined
         ? {}
         : { connectionId: receipt.requested.connectionId }),
-      ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(receipt === undefined
+        ? input.workspaceRequest === undefined
+          ? {}
+          : { workspaceRequest: input.workspaceRequest }
+        : receipt.requested.workspaceRequest === undefined
+          ? {}
+          : { workspaceRequest: receipt.requested.workspaceRequest }),
+      ...(receipt?.requested.workspaceRoot === undefined
+        ? input.workspaceRoot === undefined
+          ? {}
+          : { workspaceRoot: input.workspaceRoot }
+        : { workspaceRoot: receipt.requested.workspaceRoot }),
       signal: input.signal ?? new AbortController().signal,
     }
     return (this.#recover ?? this.#resolve)(recoveredInput)
