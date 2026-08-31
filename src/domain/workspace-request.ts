@@ -49,7 +49,7 @@ export function workspaceRequestDigest(request: WorkspaceRequest | undefined): s
 export function workspaceRequestErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   if (
-    /Workspace cwd (?:must be relative|must use POSIX separators|cannot leave the workspace root|cannot contain control characters)/iu.test(
+    /Workspace cwd (?:must be relative|must use POSIX separators|cannot leave the workspace root|cannot contain control characters|must contain well-formed Unicode)|supports workspace cwd base/iu.test(
       message,
     )
   )

@@ -233,7 +233,7 @@ function effectiveValues(
       selection.connection.kind === 'tangle-sandbox'
         ? selection.workspaceRequest?.cwd === undefined
           ? 'repository root'
-          : selection.workspaceRequest.cwd
+          : selection.workspaceRequest.cwd.path
         : 'workspace-selected workdir',
     ...(selection.workspaceRequest === undefined
       ? {}
@@ -255,7 +255,7 @@ function withWorkspaceRequest(
     ...confirmed,
     workspaceRequest: { ...(confirmed.workspaceRequest ?? {}), ...workspaceRequest },
     ...(selection.connection.kind === 'tangle-sandbox' && workspaceRequest.cwd !== undefined
-      ? { workdir: workspaceRequest.cwd }
+      ? { workdir: workspaceRequest.cwd.path }
       : {}),
   }
 }

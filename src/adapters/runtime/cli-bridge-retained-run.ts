@@ -1,4 +1,4 @@
-import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
+import type { AgentExactRunControlRef, WorkspaceRequest } from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import {
   type RetainedRunHandle,
@@ -138,7 +138,7 @@ export async function startCliBridgeRetainedRun(
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
-      workspace: { cwd: plan.prepared.workspace },
+      workspace: cliBridgeWorkspace(plan),
       idempotencyKey: plan.environmentIdempotencyKey,
       ...(input.contextTransfer === undefined
         ? {}
@@ -185,7 +185,7 @@ async function recoverCliBridgeRetainedRun(
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,
-          workspace: { cwd: plan.prepared.workspace },
+          workspace: cliBridgeWorkspace(plan),
           idempotencyKey: admission.idempotencyKey,
           ...(plan.prepared.contextTransfer === undefined
             ? {}
@@ -240,6 +240,13 @@ export async function discoverCliBridgeControlRef(
 /** One provider session keeps one Bridge environment across every retained turn. */
 function retainedEnvironmentIdempotencyKey(providerSessionId: string): string {
   return stableProviderId('environment-braid-', providerSessionId)
+}
+
+function cliBridgeWorkspace(plan: CliBridgeRetainedPlan): WorkspaceRequest {
+  if (plan.prepared.capabilities.workspace.cwdBases?.host !== true) {
+    throw new Error('CLI Bridge does not advertise host workspace cwd support')
+  }
+  return { cwd: { base: 'host', path: plan.prepared.workspace } }
 }
 
 function headlessRetainedAdmission(

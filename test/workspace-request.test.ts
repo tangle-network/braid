@@ -18,7 +18,7 @@ import { DEFAULT_RUN_CAPABILITIES, type ExecuteTurnInput } from '../src/ports/ex
 const validRequest = {
   repoUrl: 'https://github.com/acme/repository',
   gitRef: 'main',
-  cwd: 'src',
+  cwd: { base: 'repository', path: 'src' },
 } as const
 
 function thrownMessage(request: unknown): string {
@@ -38,21 +38,28 @@ test('workspace requests use the canonical schema and immutable snapshots', () =
   assert.deepEqual(snapshotWorkspaceRequest({ image: 'ubuntu:24.04' }), {
     image: 'ubuntu:24.04',
   })
-  assert.deepEqual(snapshotWorkspaceRequest({ cwd: './src' }), { cwd: 'src' })
+  assert.deepEqual(snapshotWorkspaceRequest({ cwd: { base: 'repository', path: './src' } }), {
+    cwd: { base: 'repository', path: 'src' },
+  })
   const input = {
     ...validRequest,
     providerOptions: {},
-  } as { repoUrl: string; gitRef: string; cwd: string; providerOptions: Record<string, never> }
+  } as {
+    repoUrl: string
+    gitRef: string
+    cwd: { base: 'repository'; path: string }
+    providerOptions: Record<string, never>
+  }
   const snapshot = snapshotWorkspaceRequest(input)
   const digestBeforeMutation = workspaceRequestDigest(input)
   assert.deepEqual(snapshot, validRequest)
   assert.equal(Object.isFrozen(snapshot), true)
   assert.throws(() => {
-    ;(snapshot as { cwd: string }).cwd = '/mutated'
+    ;(snapshot as { cwd: unknown }).cwd = '/mutated'
   }, TypeError)
 
-  input.cwd = '/changed-after-snapshot'
-  assert.equal(snapshot?.cwd, validRequest.cwd)
+  input.cwd = { base: 'repository', path: '/changed-after-snapshot' }
+  assert.deepEqual(snapshot?.cwd, validRequest.cwd)
   assert.equal(digestBeforeMutation, workspaceRequestDigest(snapshot))
 })
 
@@ -112,6 +119,7 @@ test('portable Sandbox cwd failures use the start-in field message', () => {
     'Workspace cwd must use POSIX separators',
     'Workspace cwd cannot leave the workspace root',
     'Workspace cwd cannot contain control characters',
+    'Workspace cwd must contain well-formed Unicode',
   ]) {
     assert.equal(
       workspaceRequestErrorMessage(new Error(message)),
@@ -128,7 +136,10 @@ test('portable Sandbox cwd validation rejects paths that leave the repository', 
     'src\\win',
     'src\u0000bad',
   ]) {
-    assert.equal(thrownMessage({ cwd }), 'start in must be a repository-relative path')
+    assert.equal(
+      thrownMessage({ cwd: { base: 'repository', path: cwd } }),
+      'start in must be a repository-relative path',
+    )
   }
 })
 
@@ -227,7 +238,10 @@ test('admission binds workspace selection and local root without receipt shadow 
   assert.notEqual(
     digest,
     exactAdmissionRequestDigest(
-      { ...input, workspaceRequest: { ...validRequest, cwd: 'other' } },
+      {
+        ...input,
+        workspaceRequest: { ...validRequest, cwd: { base: 'repository', path: 'other' } },
+      },
       snapshot.conversationId,
       snapshot.branchId,
     ),

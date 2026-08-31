@@ -6,6 +6,7 @@ import { capabilitiesForConnection } from '../src/adapters/connections/productio
 import { createTangleRetainedControlLookup } from '../src/adapters/connections/tangle-retained-control-lookup.js'
 import { safeExecutionId } from '../src/adapters/runtime/production-backend-common.js'
 import {
+  assertTangleWorkspaceCwdCapability,
   resolveTangleSandboxBackend,
   resolveTangleSandboxRetainedConnection,
 } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
@@ -212,6 +213,39 @@ test('retained capability and resolution fail closed without exact lookup method
   await assert.rejects(
     resolveTangleSandboxBackend(options, input, selection, connection.id),
     /retained execution port/u,
+  )
+})
+
+test('Tangle workspace cwd requires the advertised repository base', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const configured = setup(sandbox)
+  const { connection, input, selection } = configured
+  const prepared = await resolveTangleSandboxRetainedConnection(
+    configured.options,
+    input,
+    selection,
+    connection.id,
+  )
+  const unsupported = {
+    ...prepared.capabilities,
+    workspace: {
+      ...prepared.capabilities.workspace,
+      cwdBases: { repository: false, host: false },
+    },
+  }
+
+  assert.throws(
+    () =>
+      assertTangleWorkspaceCwdCapability({ cwd: { base: 'repository', path: 'src' } }, unsupported),
+    /does not advertise repository workspace cwd support/u,
+  )
+  assert.throws(
+    () =>
+      assertTangleWorkspaceCwdCapability(
+        { cwd: { base: 'host', path: '/workspace' } },
+        prepared.capabilities,
+      ),
+    /supports workspace cwd base "repository", not "host"/u,
   )
 })
 

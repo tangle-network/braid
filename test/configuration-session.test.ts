@@ -83,7 +83,7 @@ test('configuration session chooses a profile and connection without persisting 
   session.submitWorkspace({
     repoUrl: 'https://github.com/acme/repository',
     gitRef: 'main',
-    cwd: 'src',
+    cwd: { base: 'repository', path: 'src' },
   })
   assert.equal(session.state.step, 'confirm')
   const selected = session.confirm()
@@ -111,7 +111,7 @@ test('local and inference connections skip cloud workspace setup', () => {
   session.selectProfile(record.id)
   session.selectConnection(session.state.connections[0]?.id ?? '')
   assert.equal(session.state.step, 'confirm')
-  const failed = session.submitWorkspace({ cwd: '/workspace' })
+  const failed = session.submitWorkspace({ cwd: { base: 'repository', path: '/workspace' } })
   assert.equal(failed.error?.code, 'CONNECTION_REQUIRED')
 })
 
@@ -126,7 +126,9 @@ test('workspace validation keeps the session open and reports the bounded field 
   assert.equal(failed.error?.code, 'WORKSPACE_INVALID')
   assert.equal(failed.error?.message, 'gitRef requires repoUrl')
 
-  const failedCwd = session.submitWorkspace({ cwd: '/workspace/src' })
+  const failedCwd = session.submitWorkspace({
+    cwd: { base: 'repository', path: '/workspace/src' },
+  })
   assert.equal(failedCwd.step, 'workspace')
   assert.equal(failedCwd.error?.code, 'WORKSPACE_INVALID')
   assert.equal(failedCwd.error?.message, 'start in must be a repository-relative path')

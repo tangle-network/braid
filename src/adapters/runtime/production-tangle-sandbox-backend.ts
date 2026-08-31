@@ -1,4 +1,9 @@
-import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
+import {
+  type AgentExactRunControlRef,
+  type AgentProfile,
+  type WorkspaceRequest,
+  workspaceCwdPathForBase,
+} from '@tangle-network/agent-interface'
 import type {
   AgentEnvironmentCapabilities,
   AgentEnvironmentProvider,
@@ -93,6 +98,7 @@ export async function resolveTangleSandboxBackend(
   })
   const runtimeProvider = providerWithoutSandboxOptions(sdkProvider)
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
+  assertTangleWorkspaceCwdCapability(workspaceRequest, capabilities)
   const providerSessionId = providerSessionFor(input, capabilities)
   const backend = Object.freeze({
     kind: 'executor' as const,
@@ -225,6 +231,7 @@ export async function resolveTangleSandboxRetainedConnection(
       : { confidentialAttestationVerifier: confidential.tangle }),
   })
   const reportedCapabilities = await provider.capabilities()
+  assertTangleWorkspaceCwdCapability(workspaceRequest, reportedCapabilities)
   const retained = reportedCapabilities.retainedControl
   if (
     retained?.exactRunIdentity !== true ||
@@ -290,6 +297,22 @@ export async function resolveTangleSandboxRetainedConnection(
       runner,
     },
   })
+}
+
+/** Reject a workspace path before Tangle can allocate an environment. */
+export function assertTangleWorkspaceCwdCapability(
+  workspaceRequest: Readonly<WorkspaceRequest> | undefined,
+  capabilities: AgentEnvironmentCapabilities,
+): void {
+  const cwd = workspaceRequest?.cwd
+  if (cwd === undefined) return
+  workspaceCwdPathForBase(cwd, 'repository', 'Tangle')
+  if (capabilities.workspace.cwdBases?.repository !== true) {
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'Tangle does not advertise repository workspace cwd support',
+    )
+  }
 }
 
 function sandboxLifecycle(): SandboxLifecyclePolicy {

@@ -76,13 +76,16 @@ test('live Tangle Sandbox proofs request the repository root with a portable cwd
   assert.deepEqual(workspaceRequestFor({}), {
     repoUrl: 'https://github.com/tangle-network/braid.git',
     gitRef: 'main',
-    cwd: '.',
+    cwd: { base: 'repository', path: '.' },
   })
-  assert.equal(
-    workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: 'packages/braid' }).cwd,
-    'packages/braid',
-  )
-  assert.equal(workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: '  ' }).cwd, '.')
+  assert.deepEqual(workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: 'packages/braid' }).cwd, {
+    base: 'repository',
+    path: 'packages/braid',
+  })
+  assert.deepEqual(workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: '  ' }).cwd, {
+    base: 'repository',
+    path: '.',
+  })
 })
 
 test('Tangle Sandbox workspace profiles pin model identity separately from connection kind', async () => {
@@ -102,7 +105,7 @@ test('Tangle Sandbox workspace profiles pin model identity separately from conne
     assert.deepEqual(config.workspaceRequest, {
       repoUrl: 'https://github.com/tangle-network/braid.git',
       gitRef: 'main',
-      cwd: '.',
+      cwd: { base: 'repository', path: '.' },
     })
   } finally {
     await config.cleanup()

@@ -529,7 +529,7 @@ test('retained runtime receives the canonical workspace request without a provid
     environment: 'universal',
     repoUrl: 'https://github.com/acme/repository',
     gitRef: 'main',
-    cwd: 'src',
+    cwd: { base: 'repository', path: 'src' },
   } as const
   const prepared = { ...fixture.prepared, workspaceRequest } as PreparedTangleRetainedConnection
 

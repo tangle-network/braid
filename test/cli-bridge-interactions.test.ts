@@ -76,6 +76,30 @@ test('fresh CLI Bridge plans keep provider identity unknown until Runtime admiss
     assert.equal(recovered.environmentId, exact.environmentId)
     assert.equal(recovered.environmentIdempotencyKey, 'environment-braid-session-cli-identity')
     assert.notEqual(recovered.environmentId, recovered.environmentIdempotencyKey)
+
+    assert.equal(prepared.capabilities.workspace.cwdBases?.host, true)
+    const unsupported = {
+      ...prepared,
+      capabilities: {
+        ...prepared.capabilities,
+        workspace: {
+          ...prepared.capabilities.workspace,
+          cwdBases: { repository: false, host: false },
+        },
+      },
+    }
+    await assert.rejects(
+      startCliBridgeRetainedRun(
+        await createCliBridgeRetainedPlan(unsupported, 'run-cli-identity-unsupported'),
+        {
+          ...input,
+          runId: 'run-cli-identity-unsupported',
+          onRetainedAdmission: async () => {},
+        },
+      ),
+      /does not advertise host workspace cwd support/u,
+    )
+    assert.equal(bridge.requests.length, 0)
   } finally {
     await bridge.close()
   }

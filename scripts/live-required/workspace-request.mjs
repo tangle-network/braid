@@ -9,6 +9,9 @@ export function workspaceRequestFor(environment = {}) {
   return {
     repoUrl: environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? DEFAULT_REPOSITORY,
     gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? DEFAULT_GIT_REF,
-    cwd: environment.BRAID_TANGLE_SANDBOX_CWD?.trim() || DEFAULT_WORKSPACE_CWD,
+    cwd: {
+      base: 'repository',
+      path: environment.BRAID_TANGLE_SANDBOX_CWD?.trim() || DEFAULT_WORKSPACE_CWD,
+    },
   }
 }

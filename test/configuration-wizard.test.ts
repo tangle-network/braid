@@ -502,7 +502,7 @@ test('blank Sandbox cwd is submitted as the repository root', () => {
   assert.deepEqual(submitted, {
     repoUrl: 'https://github.com/tangle-network/braid',
     gitRef: 'main',
-    cwd: '.',
+    cwd: { base: 'repository', path: '.' },
   })
 })
 

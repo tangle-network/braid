@@ -583,7 +583,7 @@ test('startup persists the workspace request, reloads it, and preserves legacy a
     workspaceRequest: {
       repoUrl: 'https://github.com/acme/repository',
       gitRef: 'main',
-      cwd: 'src',
+      cwd: { base: 'repository' as const, path: 'src' },
       providerOptions: {},
     },
   }
@@ -595,7 +595,7 @@ test('startup persists the workspace request, reloads it, and preserves legacy a
   assert.deepEqual(saved.workspaceRequest, {
     repoUrl: 'https://github.com/acme/repository',
     gitRef: 'main',
-    cwd: 'src',
+    cwd: { base: 'repository', path: 'src' },
   })
   assert.ok(saved.workspaceRequest)
   assert.equal('providerOptions' in saved.workspaceRequest, false)

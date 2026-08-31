@@ -200,7 +200,7 @@ export function describeProductionSelection(
       workdir:
         selection.workspaceRequest?.cwd === undefined
           ? 'repository root'
-          : selection.workspaceRequest.cwd,
+          : selection.workspaceRequest.cwd.path,
       ...(selection.workspaceRequest === undefined
         ? {}
         : { workspaceRequest: workspaceSummary(selection.workspaceRequest) }),

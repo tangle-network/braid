@@ -18,6 +18,8 @@ Use one staged configuration workflow with explicit review and commit.
 
 Show a blank Sandbox cwd as the repository root.
 
+Represent a non-blank Sandbox cwd as a canonical repository-relative POSIX path.
+
 ## Component map
 
 | Component | Responsibility |
@@ -26,7 +28,7 @@ Show a blank Sandbox cwd as the repository root.
 | `ConfigurationCredential` | Collect a required credential through a bounded secret path. |
 | `PreparedCredential` | Hold the commit or rollback capability for a staged secret write. |
 | `ConfigurationReview` | Show the effective selection before durable activation. |
-| `WorkspaceRequestForm` | Edit the bounded provider-neutral cloud workspace request. |
+| `WorkspaceRequestForm` | Edit the repository URL, ref, and repository-relative cwd for a cloud workspace request. |
 | `ResponsiveText` | Present configuration detail without breaking narrow layouts. |
 | `ProfileEditorViewPanel` | Create or edit canonical profile fields. |
 | `ProfileCompatibilityPanel` | Explain supported, ignored, or blocking fields from real capability data. |
@@ -42,9 +44,11 @@ A connection contains secret-free transport and account metadata plus a credenti
 
 Credential bytes live only in the operating-system credential facility or their bounded setup path.
 
-`WorkspaceRequest` is an immutable provider-neutral startup selection, not connection metadata.
+`WorkspaceRequest` is an immutable startup selection, not connection metadata.
 
-Sandbox `cwd` is a canonical POSIX path relative to the repository root; `.` selects that root.
+Sandbox `cwd` uses the shared explicit repository base and a canonical POSIX path relative to the repository root; `.` selects that root.
+
+The form stores this repository-relative value. The selected adapter checks its advertised cwd base before it constructs a provider request.
 
 The local `workspaceRoot` remains separate from the remote provider workspace request.
 
