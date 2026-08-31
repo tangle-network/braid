@@ -16,6 +16,8 @@ Ask the provider for current capabilities and show exact incompatibilities befor
 
 Use one staged configuration workflow with explicit review and commit.
 
+Show a blank Sandbox cwd as the repository root.
+
 ## Component map
 
 | Component | Responsibility |
@@ -42,9 +44,11 @@ Credential bytes live only in the operating-system credential facility or their 
 
 `WorkspaceRequest` is an immutable provider-neutral startup selection, not connection metadata.
 
+Sandbox `cwd` is a canonical POSIX path relative to the repository root; `.` selects that root.
+
 The local `workspaceRoot` remains separate from the remote provider workspace request.
 
-Only a cloud-workspace provider exposes repository URL, git ref, and remote cwd in setup review.
+Only a cloud-workspace provider exposes repository URL, git ref, and repository-relative cwd in setup review.
 
 Repository URLs require HTTPS, contain no credentials, query, or fragment data, and reject literal private hosts.
 
