@@ -141,7 +141,10 @@ function contextResult(request: ContextTransferRequest): ContextTransferResult {
 }
 
 function workspaceProvider(
-  options: { readonly beforeFork?: (request: WorkspaceForkRequest) => void } = {},
+  options: {
+    readonly beforeFork?: (request: WorkspaceForkRequest) => void
+    readonly requireForkBeforeCheckpoint?: boolean
+  } = {},
 ): {
   readonly branching: NonNullable<ExecutionPort['workspaceBranching']>
   readonly state: WorkspaceProviderState
@@ -185,6 +188,20 @@ function workspaceProvider(
         targetId: request.targetId,
         operationId: request.operationId,
       })
+      if (options.requireForkBeforeCheckpoint && state.forks.size > 0) {
+        return {
+          operationId: request.operationId,
+          kind: 'checkpoint' as const,
+          targetId: request.targetId,
+          provider: request.provider,
+          requestDigest: request.requestDigest,
+          status: 'in_use' as const,
+          blockingTargetIds: [...state.forks.values()].map(
+            (fork) => fork.environment.environmentId,
+          ),
+          message: 'Checkpoint is still referenced by a fork',
+        }
+      }
       return {
         operationId: request.operationId,
         kind: 'checkpoint' as const,
@@ -253,6 +270,9 @@ function workspaceProvider(
         targetId: request.targetId,
         operationId: request.operationId,
       })
+      for (const [key, fork] of state.forks) {
+        if (fork.environment.environmentId === request.targetId) state.forks.delete(key)
+      }
       return {
         operationId: request.operationId,
         kind: 'fork' as const,
@@ -760,6 +780,7 @@ test('workspace fork uses exact provider operations, isolates destination, and c
     | ReturnType<ReturnType<typeof createBraidApplication>['state']>['operations'][number]
     | undefined
   const provider = workspaceProvider({
+    requireForkBeforeCheckpoint: true,
     beforeFork: () => {
       operationAtFork = app
         ?.state()
@@ -857,8 +878,8 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   assert.deepEqual(
     provider.state.cleanupRequests.map(({ kind, targetId }) => ({ kind, targetId })),
     [
-      { kind: 'checkpoint', targetId: 'provider-checkpoint-1' },
       { kind: 'fork', targetId: 'provider-destination-environment' },
+      { kind: 'checkpoint', targetId: 'provider-checkpoint-1' },
     ],
   )
   assert.notEqual(

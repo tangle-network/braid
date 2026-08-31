@@ -158,21 +158,8 @@ export async function cleanupWorkspaceFork(
   if (!hasWorkspaceBranching(branching))
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Workspace cleanup is unavailable')
 
-  const checkpointOutcome =
-    checkpoint === undefined
-      ? 'not_requested'
-      : previous?.checkpoint === 'deleted' || previous?.checkpoint === 'already_absent'
-        ? previous.checkpoint
-        : await cleanupCheckpoint(
-            host,
-            branching,
-            derivedOperationId(String(operationId), 'checkpoint-cleanup'),
-            checkpoint,
-          )
-  await updateOperation(host, operationId, digest, {
-    status: 'pending',
-    result: { checkpoint: checkpointOutcome, environment: 'not_requested' },
-  })
+  // Destroy the dependent fork before its source checkpoint.
+  // Providers may refuse checkpoint deletion while any fork still references it.
   const environmentOutcome =
     environment === undefined
       ? 'not_requested'
@@ -183,6 +170,21 @@ export async function cleanupWorkspaceFork(
             branching,
             derivedOperationId(String(operationId), 'fork-cleanup'),
             environment,
+          )
+  await updateOperation(host, operationId, digest, {
+    status: 'pending',
+    result: { checkpoint: 'not_requested', environment: environmentOutcome },
+  })
+  const checkpointOutcome =
+    checkpoint === undefined
+      ? 'not_requested'
+      : previous?.checkpoint === 'deleted' || previous?.checkpoint === 'already_absent'
+        ? previous.checkpoint
+        : await cleanupCheckpoint(
+            host,
+            branching,
+            derivedOperationId(String(operationId), 'checkpoint-cleanup'),
+            checkpoint,
           )
   const result: WorkspaceForkCleanupResult = {
     checkpoint: checkpointOutcome,
