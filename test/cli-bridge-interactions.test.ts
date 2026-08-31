@@ -39,6 +39,7 @@ test('fresh CLI Bridge plans keep provider identity unknown until Runtime admiss
   const input: ExecuteTurnInput = {
     operationId: 'operation-cli-identity',
     runId: 'run-cli-identity',
+    turnId: 'turn-cli-identity',
     text: 'Retain this exact provider identity.',
     profile,
     connectionId: connection.id,
@@ -125,6 +126,7 @@ test('retained CLI Bridge replays a persisted intent through Runtime', async () 
   const input: ExecuteTurnInput = {
     operationId: 'operation-cli-replay',
     runId: 'run-cli-replay',
+    turnId: 'turn-cli-replay',
     text: 'Replay this retained intent exactly.',
     profile,
     connectionId: connection.id,
@@ -167,7 +169,7 @@ test('retained CLI Bridge replays a persisted intent through Runtime', async () 
     const receipt: RunAdmissionReceipt = {
       version: 1,
       runId: input.runId,
-      turnId: input.operationId,
+      turnId: 'turn-cli-replay',
       operationId: input.operationId,
       conversationId: 'conversation-cli-replay',
       branchId: 'branch-cli-replay',
@@ -224,6 +226,7 @@ test('retained CLI Bridge receives the exact admitted interaction map', async ()
   const input: ExecuteTurnInput = {
     operationId: 'operation-cli-interactions',
     runId: 'run-cli-interactions',
+    turnId: 'turn-cli-interactions',
     text: 'Continue with the approved interaction posture.',
     profile,
     connectionId: connection.id,

@@ -115,6 +115,7 @@ test('selected mode survives the snapshot, effect request, receipt, and retry id
   const base: ExecuteTurnInput = {
     operationId: 'operation-retry',
     runId: 'run-retry',
+    turnId: 'turn-retry',
     text: 'retry this',
     profile: PROFILE,
     signal: new AbortController().signal,

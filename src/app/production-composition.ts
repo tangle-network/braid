@@ -246,9 +246,14 @@ export function createProductionComposition(
       recovery.receipt === undefined
         ? recovery.workspaceRequest
         : recovery.receipt.requested.workspaceRequest
+    const turnId = recovery.receipt?.turnId ?? retainedAdmissionTurnId(recovery.retainedAdmission)
+    if (turnId === undefined) {
+      throw new Error('Retained recovery requires the persisted turn identity')
+    }
     return {
       operationId: recovery.receipt?.operationId ?? `recover-${runId}`,
       runId,
+      turnId,
       text: requested?.text ?? '',
       profile: requested?.profile ?? profile,
       ...(requested?.mode === undefined ? {} : { mode: requested.mode }),
@@ -353,6 +358,19 @@ function retainedAdmissionSessionId(
       return admission.request.run.sessionId
     case 'interactive_started':
       return admission.ref.run.sessionId
+    default:
+      return undefined
+  }
+}
+
+function retainedAdmissionTurnId(
+  admission: RetainedRunAdmissionRecord | undefined,
+): string | undefined {
+  switch (admission?.phase) {
+    case 'intent':
+    case 'environment':
+    case 'dispatched':
+      return admission.turnId
     default:
       return undefined
   }

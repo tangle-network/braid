@@ -85,6 +85,7 @@ function turnInput(profileValue: AgentProfile): ExecuteTurnInput {
   return {
     operationId: 'operation-connection-test',
     runId: 'run-connection-test',
+    turnId: 'turn-connection-test',
     text: 'say hello',
     profile: profileValue,
     signal: new AbortController().signal,

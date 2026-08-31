@@ -394,6 +394,7 @@ test('restart discovery preserves a continued provider session before the contro
     const input = {
       operationId: 'operation-retained-crash-window',
       runId,
+      turnId: 'turn-retained-crash-window',
       text: 'Continue the existing conversation.',
       profile: configuration.profile,
       connectionId: configuration.connectionId,
@@ -470,6 +471,7 @@ test('restart discovery rejects a status response for another CLI Bridge run', a
     const input = {
       operationId: 'operation-retained-foreign-identity',
       runId,
+      turnId: 'turn-retained-foreign-identity',
       text: 'Keep this exact run isolated.',
       profile: configuration.profile,
       connectionId: configuration.connectionId,
@@ -520,6 +522,7 @@ test('detach during execution-observation persistence stops the retained reader'
     const input = {
       operationId: 'operation-retained-detach-race',
       runId: 'run-retained-detach-race',
+      turnId: 'turn-retained-detach-race',
       text: 'Keep this run alive while Braid persists its control reference.',
       profile: configuration.profile,
       connectionId: configuration.connectionId,
@@ -572,6 +575,7 @@ test('retained control keeps provider-owned identity separate from the Braid run
     const input = {
       operationId: 'operation-retained-provider-identity',
       runId,
+      turnId: 'turn-retained-provider-identity',
       text: 'Keep the provider identity exact.',
       profile: configuration.profile,
       connectionId: configuration.connectionId,
@@ -642,6 +646,7 @@ test('cancel_requested remains an unconfirmed Braid outcome', async () => {
     const input = {
       operationId: 'operation-retained-cancel-requested',
       runId: 'run-retained-cancel-requested',
+      turnId: 'turn-retained-cancel-requested',
       text: 'Remain live until cancellation is confirmed.',
       profile: configuration.profile,
       connectionId: configuration.connectionId,

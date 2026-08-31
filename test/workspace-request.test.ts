@@ -175,6 +175,7 @@ test('admission binds workspace selection and local root without receipt shadow 
   const input: ExecuteTurnInput = {
     operationId: snapshot.operationId,
     runId: 'run-workspace-admission',
+    turnId: 'turn-workspace-admission',
     text: snapshot.text,
     profile: snapshot.profile,
     connectionId,

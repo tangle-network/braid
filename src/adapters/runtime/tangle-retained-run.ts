@@ -15,7 +15,7 @@ import type {
   RetainedRunAdmissionRecord,
   RetainedRunAdmissionRecorder,
 } from '../../ports/execution.js'
-import { safeExecutionId } from './production-backend-common.js'
+import { exactTurnId, safeExecutionId } from './production-backend-common.js'
 import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 import type {
   RetainedExecutionPlan,
@@ -138,7 +138,7 @@ export async function startTangleRetainedRun(
   // Do not destroy it after an ambiguous dispatch failure without a provider-issued creation receipt.
   const turn = {
     prompt: input.text,
-    turnId: safeExecutionId(input.operationId),
+    turnId: exactTurnId(input),
     interactions: input.interactions ?? {},
     signal: input.signal,
   }

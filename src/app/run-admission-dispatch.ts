@@ -44,6 +44,7 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
     {
       operationId: input.operationId,
       runId,
+      turnId,
       text: input.text,
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
@@ -140,6 +141,7 @@ export async function sendRunAsync(
     {
       operationId: input.operationId,
       runId: ids.runId,
+      turnId: ids.turnId,
       text: input.text,
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),

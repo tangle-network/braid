@@ -21,6 +21,7 @@ export async function executeRun(
     const runtimeInput: ExecuteTurnInput = {
       operationId: input.operationId,
       runId: admission.runId,
+      turnId: admission.turnId,
       text: input.text,
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),

@@ -698,6 +698,7 @@ function executionInput(
   return {
     operationId: `operation-${runId}`,
     runId,
+    turnId: `turn-${runId}`,
     text: 'Inspect this workspace.',
     profile: PROFILE,
     mode: 'interactive',

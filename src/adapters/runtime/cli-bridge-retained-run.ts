@@ -15,7 +15,7 @@ import type {
   RetainedRunAdmissionRecord,
   RetainedRunAdmissionRecorder,
 } from '../../ports/execution.js'
-import { safeExecutionId, stableProviderId } from './production-backend-common.js'
+import { exactTurnId, safeExecutionId, stableProviderId } from './production-backend-common.js'
 import type { PreparedCliBridgeConnection } from './production-cli-bridge-backend.js'
 import type {
   RetainedExecutionPlan,
@@ -146,7 +146,7 @@ export async function startCliBridgeRetainedRun(
     },
     turn: {
       prompt: input.text,
-      turnId: safeExecutionId(input.operationId),
+      turnId: exactTurnId(input),
       interactions: input.interactions ?? {},
       signal: input.signal,
       ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),

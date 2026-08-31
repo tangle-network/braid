@@ -44,6 +44,7 @@ function input(suffix: string): ExecuteTurnInput {
   return {
     operationId: `operation-${suffix}`,
     runId: `run-${suffix}`,
+    turnId: `turn-${suffix}`,
     text: 'Continue the retained task.',
     profile,
     signal: new AbortController().signal,

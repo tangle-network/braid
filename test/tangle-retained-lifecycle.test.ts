@@ -64,6 +64,7 @@ function setup(sandbox: FakeTangleRetainedSandbox, providerSessionId?: string) {
   const input = {
     operationId: 'operation-tangle-retained',
     runId: 'run/tangle-retained',
+    turnId: 'turn/tangle-retained',
     text: 'Prove retained cloud execution.',
     profile,
     connectionId: connection.id,
@@ -358,6 +359,7 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.name, prepared.environmentName)
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
+  assert.equal(sandbox.dispatches[0]?.turnId, input.turnId)
   // Runtime writes the ownership key only. Turn and process identity stay in the
   // durable admission and in the session's own run control reference.
   assert.deepEqual(sandbox.createCalls[0]?.metadata, {

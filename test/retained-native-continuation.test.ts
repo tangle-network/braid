@@ -303,6 +303,7 @@ function fixture(
   const input: ExecuteTurnInput = {
     operationId: 'operation-native-next',
     runId: 'braid-run-next',
+    turnId: 'turn-native-next',
     text: 'Continue this exact Pi chat.',
     profile,
     connectionId: 'connection-native',

@@ -4,9 +4,17 @@ import type { ConnectionCatalog, ConnectionSelectionInput } from '../../app/conn
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { ConnectionId } from '../../domain/ids.js'
-import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
 import type { ProductionConnectionOptions } from '../connections/production-connection-types.js'
+import type { ExecuteTurnInput } from '../../ports/execution.js'
+
+/** Require the admission identity before a provider can dispatch a retained turn. */
+export function exactTurnId(input: Pick<ExecuteTurnInput, 'turnId'>): string {
+  if (typeof input.turnId !== 'string' || input.turnId.trim().length === 0) {
+    throw new Error('Retained execution requires the canonical admitted turn identity')
+  }
+  return input.turnId
+}
 
 export interface ProductionExecutionSelection {
   readonly connection: ConnectionSelectionInput

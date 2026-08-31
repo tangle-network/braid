@@ -496,6 +496,7 @@ test('retained Tangle composition routes interactive admission without creating 
   const interactiveTurn = {
     operationId: 'operation-interactive-routing',
     runId: 'run-interactive-routing',
+    turnId: 'turn-interactive-routing',
     text: 'Inspect this workspace.',
     profile: selectedProfile,
     connectionId: record.id,
@@ -696,6 +697,7 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
       const admission = await composition.execution.admit?.({
         operationId: `operation-routing-${candidate.name}`,
         runId: `run-routing-${candidate.name}`,
+        turnId: `turn-routing-${candidate.name}`,
         text: 'verify routing override',
         profile: composition.profile,
         workspaceRoot: root,
@@ -767,6 +769,7 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
         {
           operationId: `operation-v1-${candidate.runner}`,
           runId: `run-v1-${candidate.runner}`,
+          turnId: `turn-v1-${candidate.runner}`,
           text: 'verify prior profile',
           profile: startup.profile,
           signal: new AbortController().signal,
@@ -799,6 +802,7 @@ test('runner-only CLI Bridge models execute without an invented provider', async
       {
         operationId: 'operation-runner-model',
         runId: 'run-runner-model',
+        turnId: 'turn-runner-model',
         text: 'verify runner alias',
         profile: runnerProfile,
         signal: new AbortController().signal,
@@ -1916,6 +1920,7 @@ test('configured restart keeps alternate profiles and routes each run from its A
   const admission = await composition.execution.admit?.({
     operationId: 'operation-restart-profile-route',
     runId: 'run-restart-profile-route',
+    turnId: 'turn-restart-profile-route',
     text: 'Review the retained run.',
     profile: analyst,
     connectionId: selectedConnection.id,

@@ -119,6 +119,7 @@ export function nativeContinuationInputFromRecovery(
   return {
     operationId: receipt.operationId,
     runId,
+    turnId: receipt.turnId,
     text: receipt.requested.text,
     profile: receipt.requested.profile,
     ...(receipt.requested.mode === undefined ? {} : { mode: receipt.requested.mode }),

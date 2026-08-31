@@ -548,6 +548,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     const recoveredInput: ExecuteTurnInput = {
       operationId: `recover-${safeExecutionId(input.runId)}`,
       runId: input.runId,
+      ...(receipt?.turnId === undefined ? {} : { turnId: receipt.turnId }),
       text,
       profile,
       mode: 'interactive',

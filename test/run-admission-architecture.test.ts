@@ -89,6 +89,7 @@ function executionInput(
   return {
     operationId: overrides.operationId ?? 'op-architecture',
     runId: overrides.runId ?? 'run-architecture',
+    turnId: `turn-${overrides.runId ?? 'run-architecture'}`,
     text: overrides.text ?? 'test admission',
     profile: overrides.profile ?? PROFILE,
     signal: new AbortController().signal,

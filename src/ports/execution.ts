@@ -29,6 +29,8 @@ export type { RequestedInteractions, RunCapabilities } from '../domain/receipts.
 export interface ExecuteTurnInput {
   readonly operationId: string
   readonly runId: string
+  /** The durable turn identity shared by initial dispatch and recovery, when admitted. */
+  readonly turnId?: string
   readonly text: string
   readonly profile: Readonly<AgentProfile>
   /** Selected branch mode captured before admission. */

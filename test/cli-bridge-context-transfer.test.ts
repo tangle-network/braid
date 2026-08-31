@@ -52,6 +52,7 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
     const input: ExecuteTurnInput = {
       operationId: 'operation-context-destination',
       runId: 'run-braid-context-destination',
+      turnId: 'turn-context-destination',
       text: 'Continue with the transferred marker.',
       profile,
       connectionId: connection.id,

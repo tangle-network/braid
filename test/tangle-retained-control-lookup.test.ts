@@ -124,6 +124,7 @@ test('two Tangle provider instances recover Runtime environment admissions', asy
   const input = {
     operationId: 'operation/provider-reconstruction',
     runId: 'run/provider-reconstruction',
+    turnId: 'turn/provider-reconstruction',
     text: 'Recover this retained run.',
     profile,
     signal: new AbortController().signal,
