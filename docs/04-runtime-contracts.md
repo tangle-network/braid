@@ -15,7 +15,7 @@ The following published versions were resolved in this worktree, and their insta
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
 | [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `1.9.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, and interaction contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.182.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.184.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.170.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `0.11.1` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, and explicit cancel |
 | `@tangle-network/agent-provider-tangle` | `0.14.4` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, workspace branching, and interactive-agent operations |
