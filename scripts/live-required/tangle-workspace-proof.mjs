@@ -24,6 +24,7 @@ import {
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
@@ -352,15 +353,6 @@ function markerFor(proofId, label) {
 
 function markerPath(proofId) {
   return `.braid-live/${proofId}/workspace-marker.txt`
-}
-
-function workspaceRequestFor(environment) {
-  return {
-    repoUrl:
-      environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? 'https://github.com/tangle-network/braid.git',
-    gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? 'main',
-    cwd: environment.BRAID_TANGLE_SANDBOX_CWD ?? '/workspace/braid',
-  }
 }
 
 function sourcePrompt(marker, path) {

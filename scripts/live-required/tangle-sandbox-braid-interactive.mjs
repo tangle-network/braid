@@ -60,6 +60,7 @@ import {
   waitForPiTerminalReady,
   waitForTerminalQuiescence,
 } from './terminal-quiescence.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -147,15 +148,6 @@ function sanitizedEnvironment(environment) {
   const child = { ...environment }
   for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
   return child
-}
-
-function workspaceRequestFor(environment) {
-  return {
-    repoUrl:
-      environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? 'https://github.com/tangle-network/braid.git',
-    gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? 'main',
-    cwd: environment.BRAID_TANGLE_SANDBOX_CWD ?? '/workspace/braid',
-  }
 }
 
 export function sandboxConfiguration(environment) {

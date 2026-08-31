@@ -28,6 +28,7 @@ import {
   sandboxWorkspaceRelativePath,
 } from './tangle-sandbox-braid-stress.mjs'
 import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -121,15 +122,6 @@ function promptFor(marker, holdSeconds) {
     `Run sleep ${holdSeconds} before the final response so another branch can stream concurrently.`,
     `Reply with exactly ${marker}.`,
   ].join(' ')
-}
-
-function workspaceRequestFor(environment) {
-  return {
-    repoUrl:
-      environment.BRAID_TANGLE_SANDBOX_REPOSITORY ?? 'https://github.com/tangle-network/braid.git',
-    gitRef: environment.BRAID_TANGLE_SANDBOX_GIT_REF ?? 'main',
-    cwd: environment.BRAID_TANGLE_SANDBOX_CWD ?? '/workspace/braid',
-  }
 }
 
 function screenFrom(terminal) {
