@@ -36,7 +36,12 @@ function receipt(environment) {
     startedAt: '2026-09-01T00:00:00.000Z',
     completedAt: '2026-09-01T00:00:01.000Z',
     runIds: ['run-1', 'run-2'],
-    facts: { normalRunId: 'run-1', cancelledRunId: 'run-2' },
+    facts: {
+      normalRunId: 'run-1',
+      cancelledRunId: 'run-2',
+      cancellationStatus: 'confirmed',
+      cancellationResponseCode: null,
+    },
     checks: ['normal-turn', 'cancelled-turn', 'materialization-receipt'],
     observations: { provider: 'real' },
     environment,

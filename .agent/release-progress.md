@@ -6,6 +6,20 @@ This file tracks one candidate and its matching public release cohort.
 Populate every `not recorded` value from the same release artifact and verification run.
 Do not copy a version, integrity value, or live result from an earlier cohort.
 
+### Current release attempt
+
+- Target: Braid release proof and cancellation-safety pull request.
+- Environment: local safety worktree, GitHub Actions, and protected live checks.
+- Live URL: none; Braid is not being published in this attempt.
+- Live service/process: none; the package is a terminal client and has no deployed service.
+- Artifact path: release candidate artifacts will remain in an external release-artifact directory.
+- Rollback path: keep npm `latest` unchanged and close or revert the pull request.
+- Credential files: protected CI secrets and `gh-drew`; no credential values enter the repository.
+- Current branch: `fix/braid-release-safety`.
+- Current commit: `0df777fea` plus the local LIVE-06 receipt contract fix.
+- Dirty files: LIVE-06 receipt contract tests and release ledger; the main worktree's `.agent/skill-runs.jsonl` is unrelated.
+- Planned gates: focused tests, full checks, terminal captures, CI, review, and exact-head merge.
+
 - Candidate Braid package and version: `not recorded`
 - Candidate Braid commit: `not recorded`
 - Runtime package and version: `not recorded`
@@ -99,6 +113,7 @@ Use `not recorded` until the check runs against the release record above.
 - Merge reusable product and proof improvements when their exact checks pass.
 - Do not replace provider proof with fixtures, local Sidecar runs, or host-agent sandboxes.
 - Do not describe an unavailable confidential path as shipped.
+- Do not publish Braid while LIVE-10 lacks real AWS Nitro infrastructure.
 
 ## Timeline
 
@@ -109,3 +124,6 @@ Use `not recorded` until the check runs against the release record above.
 - 2026-08-28: Proved two retained Tangle multirun cohorts with exact cleanup.
 - 2026-08-28: Confirmed that Base Sepolia has zero blueprint-12 services and no reachable Nitro operator.
 - 2026-09-01: Passed production LIVE-07 with two concurrent Tangle Sandbox runs, restart replay, targeted cancellation, and exact cleanup.
+- 2026-09-01: Safety branch passed 319 of 319 unit tests before proof-worker integration.
+- 2026-09-01: Cherry-picked proof-worker release binding at `56c5e5d80`.
+- 2026-09-01: Added mutually exclusive confirmed and unavailable LIVE-06 receipt validation; focused receipt checks passed 115 of 115.

@@ -193,7 +193,12 @@ function proofReceiptForRow(row, environment, multirun) {
       ...common,
       operation: PROOF_OPERATIONS.tangleInference,
       runIds: ['run-live-06', 'run-live-06-cancelled'],
-      facts: { normalRunId: 'run-live-06', cancelledRunId: 'run-live-06-cancelled' },
+      facts: {
+        normalRunId: 'run-live-06',
+        cancelledRunId: 'run-live-06-cancelled',
+        cancellationStatus: 'confirmed',
+        cancellationResponseCode: null,
+      },
       checks: ['normal-turn', 'cancelled-turn', 'materialization-receipt'],
     })
   if (row === 'LIVE-07')
