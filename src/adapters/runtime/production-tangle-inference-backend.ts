@@ -53,7 +53,6 @@ export async function resolveTangleInferenceBackend(
   return freezeExecution({
     kind: 'prepared-execution' as const,
     backend,
-    cancellation: { kind: 'runtime-executor-teardown' },
     observation: staticExecutionObservation({
       kind: 'remote-service',
       provider: 'tangle-inference',

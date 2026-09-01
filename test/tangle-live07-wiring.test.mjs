@@ -4,7 +4,10 @@ import test from 'node:test'
 import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
-import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
+import {
+  prepareProductionWorkspace,
+  verifyUnavailableCancellation,
+} from '../scripts/live-required/headless.mjs'
 import {
   DEFAULT_TANGLE_ROUTER_MODEL,
   DEFAULT_TANGLE_ROUTER_MODEL_ID,
@@ -53,6 +56,43 @@ import {
 } from '../scripts/live-required/workspace-request.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+test('direct inference proves unavailable cancellation without another generation', async () => {
+  const requests = []
+  const session = {
+    send(request) {
+      requests.push(request)
+    },
+    async waitFor(_label, predicate) {
+      const response = {
+        type: 'error',
+        requestId: requests[0].requestId,
+        code: 'UNKNOWN_RUN',
+        message: 'The completed run is not active',
+      }
+      assert.equal(predicate(response), true)
+      return response
+    },
+  }
+  const result = await verifyUnavailableCancellation({
+    session,
+    run: {
+      id: 'run-completed-inference',
+      status: 'completed',
+      capabilities: { controls: { cancel: false } },
+    },
+    marker: 'TANGLE_INFERENCE_CANCEL',
+  })
+
+  assert.deepEqual(result, {
+    status: 'reported-unavailable',
+    runId: 'run-completed-inference',
+    code: 'UNKNOWN_RUN',
+  })
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].command, 'cancel')
+  assert.equal(requests[0].params.runId, 'run-completed-inference')
+})
 
 function executionRecord(
   executionId,

@@ -415,6 +415,9 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 - Run `pnpm check` once against the exact main commit.
 - Build one immutable package with `pnpm release:prepare` and use its installed CLI, RPC, and terminal flows.
 - Keep live, performance, semantic, soak, and complete-manifest audits available as explicit product audits.
+- Run the protected `Release Live Evidence` workflow against the exact main commit and candidate Release run.
+- Require a passed `LIVE-10` check, aggregate Tangle receipts, and the separate `LIVE-07` multirun artifact bound to the candidate commit, tarball, dependency digest, and Runtime version.
+- Require the publish job to reject missing, stale, tampered, or source-checkout live evidence.
 - Require a passed `LIVE-07` multirun artifact before release completion; provider or sandbox availability may still block that completion rather than becoming an unavailable claim.
 - Endorse the exact candidate package and package manifest in an isolated code-free job.
 - Publish `@tangle-network/braid` with npm provenance.
@@ -427,6 +430,8 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 ### Done when
 
 The exact main commit passes `pnpm check` and `pnpm release:prepare`.
+
+The protected live-evidence workflow passes `LIVE-06` through `LIVE-10` against the exact candidate tarball.
 
 Both candidate checks and both registry checks must pass.
 

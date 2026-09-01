@@ -1,6 +1,7 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { discoverBridge, releaseTargetDefinitions, selectBridgeTargets } from './bridge.mjs'
 import { loadProviderCapabilities, probePackedAnalysisReadiness } from './config.mjs'
 import {
@@ -31,6 +32,7 @@ function createEvidence(policy, requireCompleteReleaseProof) {
     process.env.BRAID_CLI_BRIDGE_URL ??
     process.env.CLI_BRIDGE_URL ??
     `http://127.0.0.1:${process.env.BRIDGE_PORT ?? '3344'}`
+  const releaseBinding = liveEvidenceBindingFromEnvironment()
   return {
     schemaVersion: 1,
     command: requireCompleteReleaseProof
@@ -52,6 +54,7 @@ function createEvidence(policy, requireCompleteReleaseProof) {
     },
     targetPolicy: targetPolicyEvidence(policy),
     targets: [],
+    ...(releaseBinding === undefined ? {} : { releaseBinding }),
     ...(requireCompleteReleaseProof ? { releaseProofs: [], releaseOperations: [] } : {}),
   }
 }

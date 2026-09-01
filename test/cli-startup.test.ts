@@ -90,6 +90,13 @@ test('expected command-line mistakes remain actionable without echoing arbitrary
       .uiFixture,
     'supervision',
   )
+  assert.equal(
+    parseArgs(
+      ['--fixture', 'deterministic', '--ui-fixture', 'cancellation-unavailable'],
+      '/workspace',
+    ).uiFixture,
+    'cancellation-unavailable',
+  )
 })
 
 test('startup responsibilities stay split into bounded modules', async () => {

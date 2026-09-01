@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
-
+import {
+  liveEvidenceBindingFromEnvironment,
+  parseLiveEvidenceBinding,
+} from '../release/live-evidence-binding.mjs'
 import { collectCredentialSecrets, redactText } from '../release/redaction.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 
@@ -10,6 +13,7 @@ export const EXIT_CODES = Object.freeze({
 })
 
 export const PUBLIC_EVIDENCE_SCHEMA = 'braid.live-required.evidence.v1'
+export const TANGLE_RECEIPTS_SCHEMA = 'braid.live-required.tangle-receipts.v1'
 
 export const PROOF_OPERATIONS = Object.freeze({
   tangleInference: 'tangle.inference.turn',
@@ -25,6 +29,7 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
   [PROOF_OPERATIONS.tangleInference]: Object.freeze([
     'normal-turn',
     'cancelled-turn',
+    'cancellation-reported-unavailable',
     'materialization-receipt',
   ]),
   [PROOF_OPERATIONS.tangleSandbox]: Object.freeze([
@@ -101,8 +106,20 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
   ]),
 })
 
+const PROOF_OPERATION_CHECK_VARIANTS = Object.freeze({
+  [PROOF_OPERATIONS.tangleInference]: Object.freeze([
+    Object.freeze(['normal-turn', 'cancelled-turn', 'materialization-receipt']),
+    Object.freeze(['normal-turn', 'cancellation-reported-unavailable', 'materialization-receipt']),
+  ]),
+})
+
 const PROOF_OPERATION_FACT_KEYS = Object.freeze({
-  [PROOF_OPERATIONS.tangleInference]: Object.freeze(['normalRunId', 'cancelledRunId']),
+  [PROOF_OPERATIONS.tangleInference]: Object.freeze([
+    'normalRunId',
+    'cancelledRunId',
+    'cancellationStatus',
+    'cancellationResponseCode',
+  ]),
   [PROOF_OPERATIONS.tangleSandbox]: Object.freeze([
     'environmentId',
     'resumedRunId',
@@ -198,6 +215,7 @@ const PROOF_EVIDENCE_KEYS = Object.freeze([
   'checks',
   'observations',
 ])
+const PROOF_EVIDENCE_OPTIONAL_KEYS = Object.freeze(['releaseBinding'])
 const PROOF_CONNECTION_KEYS = Object.freeze([
   'endpoint',
   'connectionId',
@@ -366,10 +384,12 @@ function sanitizePublicValue(value, environment, secrets, seen = new Set(), dept
   return output
 }
 
-function exactKeys(value, expected, label) {
+function exactKeys(value, expected, label, optional = []) {
   const actual = Object.keys(value).sort()
-  const required = [...expected].sort()
-  if (actual.length !== required.length || actual.some((key, index) => key !== required[index]))
+  const allowed = new Set([...expected, ...optional])
+  if (actual.some((key) => !allowed.has(key)))
+    throw new Error(`${label} contains fields outside the public schema`)
+  if (expected.some((key) => !actual.includes(key)))
     throw new Error(`${label} contains fields outside the public schema`)
 }
 
@@ -501,6 +521,20 @@ function validateProofFacts(operation, status, facts) {
       validateCloudControl(value)
       continue
     }
+    if (key === 'cancellationStatus') {
+      if (value !== null && !['confirmed', 'reported-unavailable'].includes(value))
+        throw new Error(
+          'Live proof cancellationStatus must be confirmed, reported-unavailable, or null',
+        )
+      continue
+    }
+    if (key === 'cancellationResponseCode') {
+      if (value !== null && !['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(value))
+        throw new Error(
+          'Live proof cancellationResponseCode must be CAPABILITY_UNAVAILABLE, UNKNOWN_RUN, or null',
+        )
+      continue
+    }
     validNullableString(value, `Live proof ${key}`)
   }
   if (operation === PROOF_OPERATIONS.traceAnalysis && status === 'passed') {
@@ -513,6 +547,40 @@ function validateProofFacts(operation, status, facts) {
     if (facts.usage.tokensKnown !== true)
       throw new Error('Passed trace-analysis proof requires known token usage')
   }
+}
+
+function validatePassedTangleInferenceReceipt(receipt) {
+  const { facts, run } = receipt
+  const checks = new Set(receipt.checks)
+  validRequiredString(facts.normalRunId, 'Passed Tangle inference facts.normalRunId')
+  if (facts.cancellationStatus === 'confirmed') {
+    if (!checks.has('cancelled-turn') || checks.has('cancellation-reported-unavailable'))
+      throw new Error('Confirmed Tangle inference proof requires the cancelled-turn check')
+    if (facts.cancellationResponseCode !== null)
+      throw new Error('Confirmed Tangle inference cancellation must have no response code')
+    validRequiredString(facts.cancelledRunId, 'Passed Tangle inference facts.cancelledRunId')
+    if (facts.cancelledRunId === facts.normalRunId)
+      throw new Error('Confirmed Tangle inference cancellation must use a distinct run ID')
+    if (run.ids.length !== 2)
+      throw new Error('Confirmed Tangle inference proof requires normal and cancelled run IDs')
+    if (!run.ids.includes(facts.normalRunId) || !run.ids.includes(facts.cancelledRunId))
+      throw new Error('Confirmed Tangle inference proof is missing a referenced run ID')
+    return
+  }
+  if (facts.cancellationStatus !== 'reported-unavailable')
+    throw new Error(
+      'Passed Tangle inference proof requires confirmed or reported-unavailable cancellation',
+    )
+  if (!checks.has('cancellation-reported-unavailable') || checks.has('cancelled-turn'))
+    throw new Error(
+      'Unavailable Tangle inference proof requires the cancellation-reported-unavailable check',
+    )
+  if (facts.cancelledRunId !== null)
+    throw new Error('Unavailable Tangle inference cancellation cannot have a cancelled run ID')
+  if (!['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(facts.cancellationResponseCode))
+    throw new Error('Unavailable Tangle inference cancellation requires a recognized response code')
+  if (run.ids.length !== 1 || run.ids[0] !== facts.normalRunId)
+    throw new Error('Unavailable Tangle inference proof requires only the normal run ID')
 }
 
 function validatePassedSupervisorReceipt(receipt) {
@@ -791,7 +859,7 @@ export function proofInvocation(scope) {
 export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   if (receipt === null || typeof receipt !== 'object' || Array.isArray(receipt))
     throw new Error('Live proof receipt must be an object')
-  exactKeys(receipt, PROOF_EVIDENCE_KEYS, 'Live proof receipt')
+  exactKeys(receipt, PROOF_EVIDENCE_KEYS, 'Live proof receipt', PROOF_EVIDENCE_OPTIONAL_KEYS)
   if (receipt.schema !== PUBLIC_EVIDENCE_SCHEMA)
     throw new Error('Live proof receipt has an unsupported schema')
   if (typeof receipt.invocationId !== 'string' || receipt.invocationId.length === 0)
@@ -823,6 +891,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   validNullableString(receipt.connection.modelProvider, 'Live proof modelProvider')
   validNullableString(receipt.connection.runner, 'Live proof runner')
   validateObservations(receipt.observations)
+  if (receipt.releaseBinding !== undefined)
+    parseLiveEvidenceBinding(receipt.releaseBinding, 'Live proof release binding')
   exactKeys(receipt.run, PROOF_RUN_KEYS, 'Live proof run')
   if (
     !Array.isArray(receipt.run.ids) ||
@@ -834,6 +904,7 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   validNullableString(receipt.run.materializationDigest, 'Live proof materializationDigest')
   validateProofFacts(receipt.operation, receipt.status, receipt.facts)
   const requiredChecks = PROOF_OPERATION_CHECKS[receipt.operation]
+  const checkVariants = PROOF_OPERATION_CHECK_VARIANTS[receipt.operation] ?? [requiredChecks]
   if (
     !Array.isArray(receipt.checks) ||
     receipt.checks.length === 0 ||
@@ -844,12 +915,17 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     )
   )
     throw new Error('Live proof checks are not part of the named operation')
-  if (
-    receipt.status === 'passed' &&
-    (receipt.checks.length !== requiredChecks.length ||
-      requiredChecks.some((check) => !receipt.checks.includes(check)))
-  )
-    throw new Error('Passed live proof must include every check for the named operation')
+  if (receipt.status === 'passed') {
+    const matchesVariant = checkVariants.some(
+      (variant) =>
+        receipt.checks.length === variant.length &&
+        variant.every((check) => receipt.checks.includes(check)),
+    )
+    if (!matchesVariant)
+      throw new Error('Passed live proof must include every check from one complete variant')
+  }
+  if (receipt.operation === PROOF_OPERATIONS.tangleInference && receipt.status === 'passed')
+    validatePassedTangleInferenceReceipt(receipt)
   if (receipt.operation === PROOF_OPERATIONS.tangleSandbox && receipt.status === 'passed')
     validatePassedTangleSandboxReceipt(receipt)
   if (
@@ -889,6 +965,7 @@ export function proofReceipt({
           environment,
           redactionSecretsFor(observations, environment),
         )
+  const releaseBinding = liveEvidenceBindingFromEnvironment(environment)
   const receipt = {
     schema: PUBLIC_EVIDENCE_SCHEMA,
     invocationId,
@@ -914,6 +991,7 @@ export function proofReceipt({
     facts,
     checks: [...checks],
     observations: publicObservations,
+    ...(releaseBinding === undefined ? {} : { releaseBinding }),
   }
   assertProofReceipt(receipt, { invocationId, operation })
   return Object.freeze({
@@ -983,6 +1061,19 @@ export function endpointEvidence(value) {
 
 export function scalarMeasurement(name, value = 1) {
   return { kind: 'scalar', name, unit: 'verified-flow', value }
+}
+
+export function tangleReceiptsArtifact(flows) {
+  if (!Array.isArray(flows)) throw new Error('Tangle receipt flows must be an array')
+  return {
+    schema: TANGLE_RECEIPTS_SCHEMA,
+    flows: flows.map((flow) => ({
+      row: flow.row,
+      status: flow.status,
+      ...(flow.reason === undefined ? {} : { reason: flow.reason }),
+      ...(flow.evidence === undefined ? {} : { evidence: flow.evidence }),
+    })),
+  }
 }
 
 export function requiredEnvironment(environment, entries, label) {

@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "7945e73863a9cd764dd4d80a258af49faff0233718162e89e7d731e5b342add7"
+    "tarballSha256": "073e9599f703dea61105504d060612eb9f33fb97aa0e3199b1180aca28e13d70"
   },
   "dimensions": {
     "columns": 80,
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 12,
       "sequence": 12,
-      "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
+      "workspace": "/home/drew/code/.worktrees/braid-release-safety",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -122,7 +122,7 @@
     },
     "view": {
       "revision": 12,
-      "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
+      "workspace": "/home/drew/code/.worktrees/braid-release-safety",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -196,7 +196,7 @@
       "interactions": [],
       "activity": [
         {
-          "id": "supervisor:supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+          "id": "supervisor:supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
           "kind": "supervisor",
           "title": "prove the Braid release",
           "status": "running",
@@ -204,11 +204,11 @@
           "startedAt": "2026-08-28T19:59:53.800Z",
           "occurredAt": "2026-08-28T20:00:00.000Z",
           "entityType": "supervisor",
-          "entityId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+          "entityId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
           "depth": 0
         },
         {
-          "id": "worker:worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7",
+          "id": "worker:worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461",
           "kind": "worker",
           "title": "stream and replay",
           "status": "running",
@@ -217,13 +217,13 @@
           "startedAt": "2026-08-28T19:59:55.800Z",
           "occurredAt": "2026-08-28T20:00:00.000Z",
           "entityType": "worker",
-          "entityId": "worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7",
-          "parentId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+          "entityId": "worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461",
+          "parentId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
           "depth": 1,
-          "supervisorId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129"
+          "supervisorId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113"
         },
         {
-          "id": "worker:worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+          "id": "worker:worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
           "kind": "worker",
           "title": "terminal proof",
           "status": "running",
@@ -232,13 +232,13 @@
           "startedAt": "2026-08-28T19:59:56.900Z",
           "occurredAt": "2026-08-28T20:00:00.000Z",
           "entityType": "worker",
-          "entityId": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
-          "parentId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+          "entityId": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
+          "parentId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
           "depth": 1,
-          "supervisorId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129"
+          "supervisorId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113"
         },
         {
-          "id": "worker:worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c",
+          "id": "worker:worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1",
           "kind": "worker",
           "title": "release review",
           "status": "running",
@@ -247,10 +247,10 @@
           "startedAt": "2026-08-28T19:59:58.800Z",
           "occurredAt": "2026-08-28T20:00:00.000Z",
           "entityType": "worker",
-          "entityId": "worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c",
-          "parentId": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+          "entityId": "worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1",
+          "parentId": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
           "depth": 2,
-          "supervisorId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129"
+          "supervisorId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113"
         }
       ],
       "graph": [
@@ -276,7 +276,7 @@
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+          "id": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
           "type": "supervisor",
           "title": "prove the Braid release",
           "status": "running",
@@ -284,42 +284,42 @@
           "startedAt": "2026-08-28T19:59:53.800Z"
         },
         {
-          "id": "worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7",
+          "id": "worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461",
           "type": "worker",
           "title": "stream and replay",
           "status": "running",
           "depth": 1,
           "edgeLabel": "spawned",
           "parentIds": [
-            "supervisor:supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129"
+            "supervisor:supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113"
           ],
           "elapsedMs": 4200,
           "startedAt": "2026-08-28T19:59:55.800Z",
           "costUsd": 0.021
         },
         {
-          "id": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+          "id": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
           "type": "worker",
           "title": "terminal proof",
           "status": "running",
           "depth": 1,
           "edgeLabel": "spawned",
           "parentIds": [
-            "supervisor:supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129"
+            "supervisor:supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113"
           ],
           "elapsedMs": 3100,
           "startedAt": "2026-08-28T19:59:56.900Z",
           "costUsd": 0.028
         },
         {
-          "id": "worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c",
+          "id": "worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1",
           "type": "worker",
           "title": "release review",
           "status": "running",
           "depth": 2,
           "edgeLabel": "spawned",
           "parentIds": [
-            "worker:worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150"
+            "worker:worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7"
           ],
           "elapsedMs": 1200,
           "startedAt": "2026-08-28T19:59:58.800Z",
@@ -330,11 +330,11 @@
       "entityDetails": [
         {
           "entityType": "supervisor",
-          "entityId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+          "entityId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
           "title": "prove the Braid release",
           "status": "running",
           "lines": [
-            "id: supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+            "id: supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
             "runtime id: runtime-supervisor-release",
             "run: unbound workspace activity",
             "status: running",
@@ -347,14 +347,14 @@
         },
         {
           "entityType": "worker",
-          "entityId": "worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7",
+          "entityId": "worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461",
           "title": "stream and replay",
           "status": "running",
           "lines": [
-            "id: worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7",
+            "id: worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461",
             "runtime id: runtime-worker-stream",
             "status: running",
-            "supervisor: supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+            "supervisor: supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
             "cost: ≥$0.0210",
             "input tokens: ≥1104",
             "output tokens: ≥736",
@@ -364,14 +364,14 @@
         },
         {
           "entityType": "worker",
-          "entityId": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+          "entityId": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
           "title": "terminal proof",
           "status": "running",
           "lines": [
-            "id: worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+            "id: worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
             "runtime id: runtime-worker-ui",
             "status: running",
-            "supervisor: supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+            "supervisor: supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
             "cost: ≥$0.0280",
             "input tokens: ≥1386",
             "output tokens: ≥924",
@@ -381,16 +381,16 @@
         },
         {
           "entityType": "worker",
-          "entityId": "worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c",
+          "entityId": "worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1",
           "title": "release review",
           "status": "running",
           "lines": [
-            "id: worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c",
+            "id: worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1",
             "runtime id: runtime-worker-review",
             "status: running",
-            "supervisor: supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+            "supervisor: supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
             "runtime parent: terminal proof",
-            "parent worker: worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+            "parent worker: worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
             "cost: ≥$0.0120",
             "input tokens: ≥564",
             "output tokens: ≥376",
@@ -584,7 +584,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix"
+            "workspace": "/home/drew/code/.worktrees/braid-release-safety"
           }
         }
       },
@@ -596,9 +596,9 @@
           "value": {
             "kind": "supervisor.upserted",
             "supervisor": {
-              "id": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+              "id": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
               "runtimeId": "runtime-supervisor-release",
-              "runtimeRoot": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
+              "runtimeRoot": "/home/drew/code/.worktrees/braid-release-safety",
               "status": "running",
               "title": "prove the Braid release",
               "driverUsage": {
@@ -631,9 +631,9 @@
           "value": {
             "kind": "worker.upserted",
             "worker": {
-              "id": "worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7",
+              "id": "worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461",
               "runtimeId": "runtime-worker-stream",
-              "supervisorId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+              "supervisorId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
               "status": "running",
               "spendUsd": 0.021,
               "inputTokens": "[redacted]",
@@ -656,9 +656,9 @@
           "value": {
             "kind": "worker.upserted",
             "worker": {
-              "id": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+              "id": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
               "runtimeId": "runtime-worker-ui",
-              "supervisorId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+              "supervisorId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
               "status": "running",
               "spendUsd": 0.028,
               "inputTokens": "[redacted]",
@@ -681,11 +681,11 @@
           "value": {
             "kind": "worker.upserted",
             "worker": {
-              "id": "worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c",
+              "id": "worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1",
               "runtimeId": "runtime-worker-review",
-              "supervisorId": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129",
+              "supervisorId": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113",
               "parentRuntimeRef": "terminal proof",
-              "parentWorkerId": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150",
+              "parentWorkerId": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7",
               "status": "running",
               "spendUsd": 0.012,
               "inputTokens": "[redacted]",
@@ -708,10 +708,10 @@
           "value": {
             "kind": "graph.node.upserted",
             "node": {
-              "id": "node-f3c8aa000066c566c2195c1b80b51696",
+              "id": "node-f3b8443704293e7b6922941a44fe339e",
               "reference": {
                 "kind": "supervisor",
-                "id": "supervisor-runtime-76deaf63157fd7bba58c59f7df98ae45a27fd129"
+                "id": "supervisor-runtime-c58f2459c1d645e4d64ca7950854b4d98f728113"
               },
               "title": "prove the Braid release",
               "createdAt": "2026-08-28T19:59:53.800Z",
@@ -729,10 +729,10 @@
           "value": {
             "kind": "graph.node.upserted",
             "node": {
-              "id": "node-77d651a814c8a9f7e1da525eedd84e08",
+              "id": "node-ff4f2928205846dcd90a6953162f909f",
               "reference": {
                 "kind": "worker",
-                "id": "worker-runtime-b1864da9f9a7c3cc04f70aed544514566797a1f7"
+                "id": "worker-runtime-9f523aee41d60b84e1d01d1253f9469363638461"
               },
               "title": "stream and replay",
               "createdAt": "2026-08-28T19:59:55.800Z",
@@ -750,10 +750,10 @@
           "value": {
             "kind": "graph.node.upserted",
             "node": {
-              "id": "node-7d8451b335e542fc632390c19a06f958",
+              "id": "node-5b0a2b6db29b3cd97c801f4f1cbc0eca",
               "reference": {
                 "kind": "worker",
-                "id": "worker-runtime-8f73d7a11d4753defb1be0895111d9d766a21150"
+                "id": "worker-runtime-668b9bc4e16330ccc3d43144643dd99265bc32b7"
               },
               "title": "terminal proof",
               "createdAt": "2026-08-28T19:59:56.900Z",
@@ -771,10 +771,10 @@
           "value": {
             "kind": "graph.node.upserted",
             "node": {
-              "id": "node-eb56cb37bfbb47fd4e6cb4822c5f2c50",
+              "id": "node-e8db1c613892c7a268cbadaf82055ab2",
               "reference": {
                 "kind": "worker",
-                "id": "worker-runtime-babd8b83dd224161a13130b0005c8fa0878b947c"
+                "id": "worker-runtime-418e59cc21cbd5095f195eca4a61d9c0b87bd6f1"
               },
               "title": "release review",
               "createdAt": "2026-08-28T19:59:58.800Z",
@@ -792,10 +792,10 @@
           "value": {
             "kind": "graph.edge.upserted",
             "edge": {
-              "id": "edge-550d907d7b945aac1ec985cf7d7ca97e",
+              "id": "edge-a907e0ab5fc3d59a39bb1a7e6a701bae",
               "kind": "spawned",
-              "source": "node-f3c8aa000066c566c2195c1b80b51696",
-              "destination": "node-77d651a814c8a9f7e1da525eedd84e08",
+              "source": "node-f3b8443704293e7b6922941a44fe339e",
+              "destination": "node-ff4f2928205846dcd90a6953162f909f",
               "provenance": {},
               "createdAt": "2026-08-28T19:59:55.800Z"
             }
@@ -810,10 +810,10 @@
           "value": {
             "kind": "graph.edge.upserted",
             "edge": {
-              "id": "edge-18b8e0b93cdf87c316f048b024a5bd98",
+              "id": "edge-4e5509152eb89ef7ad7d06864a908694",
               "kind": "spawned",
-              "source": "node-f3c8aa000066c566c2195c1b80b51696",
-              "destination": "node-7d8451b335e542fc632390c19a06f958",
+              "source": "node-f3b8443704293e7b6922941a44fe339e",
+              "destination": "node-5b0a2b6db29b3cd97c801f4f1cbc0eca",
               "provenance": {},
               "createdAt": "2026-08-28T19:59:56.900Z"
             }
@@ -828,10 +828,10 @@
           "value": {
             "kind": "graph.edge.upserted",
             "edge": {
-              "id": "edge-6f48af364fc6369e76f6fd904248dfda",
+              "id": "edge-576a247af601d6f1242574a25f8b4ba7",
               "kind": "spawned",
-              "source": "node-7d8451b335e542fc632390c19a06f958",
-              "destination": "node-eb56cb37bfbb47fd4e6cb4822c5f2c50",
+              "source": "node-5b0a2b6db29b3cd97c801f4f1cbc0eca",
+              "destination": "node-e8db1c613892c7a268cbadaf82055ab2",
               "provenance": {},
               "createdAt": "2026-08-28T19:59:58.800Z"
             }

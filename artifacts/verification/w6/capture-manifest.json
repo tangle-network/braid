@@ -1,11 +1,11 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-30T01:58:27.105Z",
+  "generatedAt": "2026-09-01T14:57:06.860Z",
   "command": "pnpm capture:visual",
   "binary": "clean npm install from generated tarball",
   "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
   "tarball": "tangle-network-braid-0.3.0.tgz",
-  "tarballSha256": "7945e73863a9cd764dd4d80a258af49faff0233718162e89e7d731e5b342add7",
+  "tarballSha256": "073e9599f703dea61105504d060612eb9f33fb97aa0e3199b1180aca28e13d70",
   "stateFixture": "deterministic",
   "liveDemoCommand": "pnpm capture:demo:live",
   "terminal": "node-pty/xterm-256color",
@@ -86,6 +86,54 @@
         "asciicast": "raw/command-palette-120.cast",
         "ansi": "states/command-palette-120.ansi",
         "png": "states/command-palette-120.png"
+      }
+    },
+    {
+      "name": "cancellation-unavailable-40",
+      "columns": 40,
+      "rows": 12,
+      "artifacts": {
+        "semantic-state": "states/cancellation-unavailable-40.json",
+        "plain-frame": "states/cancellation-unavailable-40.txt",
+        "asciicast": "raw/cancellation-unavailable-40.cast",
+        "ansi": "states/cancellation-unavailable-40.ansi",
+        "png": "states/cancellation-unavailable-40.png"
+      }
+    },
+    {
+      "name": "cancellation-unavailable-80",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/cancellation-unavailable-80.json",
+        "plain-frame": "states/cancellation-unavailable-80.txt",
+        "asciicast": "raw/cancellation-unavailable-80.cast",
+        "ansi": "states/cancellation-unavailable-80.ansi",
+        "png": "states/cancellation-unavailable-80.png"
+      }
+    },
+    {
+      "name": "cancellation-unavailable-120",
+      "columns": 120,
+      "rows": 40,
+      "artifacts": {
+        "semantic-state": "states/cancellation-unavailable-120.json",
+        "plain-frame": "states/cancellation-unavailable-120.txt",
+        "asciicast": "raw/cancellation-unavailable-120.cast",
+        "ansi": "states/cancellation-unavailable-120.ansi",
+        "png": "states/cancellation-unavailable-120.png"
+      }
+    },
+    {
+      "name": "cancellation-unavailable-200",
+      "columns": 200,
+      "rows": 60,
+      "artifacts": {
+        "semantic-state": "states/cancellation-unavailable-200.json",
+        "plain-frame": "states/cancellation-unavailable-200.txt",
+        "asciicast": "raw/cancellation-unavailable-200.cast",
+        "ansi": "states/cancellation-unavailable-200.ansi",
+        "png": "states/cancellation-unavailable-200.png"
       }
     },
     {
@@ -255,14 +303,14 @@
     },
     {
       "path": "40x12-plain.txt",
-      "sha256": "f6738d2d40b7b3f04c64809530ae99cbdce7b701ef2c02eb5a04da99cc8a7924",
+      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
       "kind": "plain-frame",
       "columns": 40,
       "rows": 12
     },
     {
       "path": "40x12.png",
-      "sha256": "4be490c7924cc119db0511d0edd59c703354552f1e81b72e6aff132bd9302ae7",
+      "sha256": "d78b1ae0f6eebbd98470c5872d89903660f11fa4e5e224aded36f1fb89c130f9",
       "kind": "png",
       "columns": 40,
       "rows": 12
@@ -276,14 +324,14 @@
     },
     {
       "path": "80x24-plain.txt",
-      "sha256": "f6738d2d40b7b3f04c64809530ae99cbdce7b701ef2c02eb5a04da99cc8a7924",
+      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
       "kind": "plain-frame",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24.png",
-      "sha256": "21580d87d315f4010eccb04ded27650a1fbd2a2aa096a006f2b5e9fac4ac3188",
+      "sha256": "ca0be84c7f3a987e1ccc29400f09463c584e6547717927c3bbe105f098f1f055",
       "kind": "png",
       "columns": 80,
       "rows": 24
@@ -297,14 +345,14 @@
     },
     {
       "path": "120x40-plain.txt",
-      "sha256": "f6738d2d40b7b3f04c64809530ae99cbdce7b701ef2c02eb5a04da99cc8a7924",
+      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
       "kind": "plain-frame",
       "columns": 120,
       "rows": 40
     },
     {
       "path": "120x40.png",
-      "sha256": "43466897b66b8d849528dc6503553112da5ff98b094062937a08977fc218ac5e",
+      "sha256": "c694d4d0928cf4dafd7b7ddaf43d98436e70341f71eb2044017702843ef1bb96",
       "kind": "png",
       "columns": 120,
       "rows": 40
@@ -318,21 +366,21 @@
     },
     {
       "path": "200x60-plain.txt",
-      "sha256": "f6738d2d40b7b3f04c64809530ae99cbdce7b701ef2c02eb5a04da99cc8a7924",
+      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
       "kind": "plain-frame",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "200x60.png",
-      "sha256": "84a3e39e6c8ee10a0e79dd4e335e0f2aea9cf8cfd516817ae9b3856958e09906",
+      "sha256": "1068aeccca2411d69994a81b4d59901b92da1293649529cae023c14c35f61682",
       "kind": "png",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "states/command-palette-40.json",
-      "sha256": "0be6083e4b654bde73269982e088495e945d34d2dab50929b35de4e84b072d8e",
+      "sha256": "57fc500a637fd800ade3bf9df38aecad8a633ce2802aef16c6434dcc04b61276",
       "kind": "semantic-state",
       "state": "command-palette-40",
       "columns": 40,
@@ -348,7 +396,7 @@
     },
     {
       "path": "raw/command-palette-40.cast",
-      "sha256": "48f43d5ffab94acb4776e0854cfadc759bbd6c69b5792a6b0c1977c1adbbda28",
+      "sha256": "fb6bc7f9183e104ed2ec6e43bedb1880094bc87b756d398e75196f32c61d83e9",
       "kind": "asciicast",
       "state": "command-palette-40",
       "columns": 40,
@@ -356,7 +404,7 @@
     },
     {
       "path": "states/command-palette-40.ansi",
-      "sha256": "4a1bf884d4773f44dd243f81ef778d1540cc7f9fa94bec4bb6a074b43d211bad",
+      "sha256": "1ad82e65cf8e6723b935b44a50862b61746cb9811ccbf871be96833e43e104b8",
       "kind": "ansi",
       "state": "command-palette-40",
       "columns": 40,
@@ -364,7 +412,7 @@
     },
     {
       "path": "states/command-palette-40.png",
-      "sha256": "dd738b530c4396c7331d5e2d7c8a293b06f607bfbe18d575f78f025b2771974f",
+      "sha256": "6e4c652c40c9e8cef821485c0e3aef86871fc6f111162ddfc9309c8bfccfb75b",
       "kind": "png",
       "state": "command-palette-40",
       "columns": 40,
@@ -372,7 +420,7 @@
     },
     {
       "path": "states/command-palette-80.json",
-      "sha256": "999f89767981b760e4aec43f681117709b078dffee21aec99020aa71e4b88504",
+      "sha256": "5d26250ebdeeb07158717b3c9b172bc79ede525311fada128bc63257066c6c51",
       "kind": "semantic-state",
       "state": "command-palette-80",
       "columns": 80,
@@ -388,7 +436,7 @@
     },
     {
       "path": "raw/command-palette-80.cast",
-      "sha256": "6f1ca089e21062fda27b4062b0a21edc2e900dcb423973c832670eaa3574547f",
+      "sha256": "3ebf42f8479de093db4e7541ef7d00c3bdd3aa53dc484259e31e0762f5b01fc1",
       "kind": "asciicast",
       "state": "command-palette-80",
       "columns": 80,
@@ -396,7 +444,7 @@
     },
     {
       "path": "states/command-palette-80.ansi",
-      "sha256": "89498b1a701a8990585e385cf3ba2aa19354bcd68e27c3b8fbd5eb97e13ff615",
+      "sha256": "0b4ae302438613793f6580d4c55c33054a979421281c6276f4e11db37964afea",
       "kind": "ansi",
       "state": "command-palette-80",
       "columns": 80,
@@ -404,7 +452,7 @@
     },
     {
       "path": "states/command-palette-80.png",
-      "sha256": "dc6cf9d8c40b6adcd347e0f4e8efff5a8bba5bb09843733cd7c9806dc7aee1e4",
+      "sha256": "f8d5de408f3c31733fd34dd0e69d25212902840d05addf522879a336255ab5e0",
       "kind": "png",
       "state": "command-palette-80",
       "columns": 80,
@@ -412,7 +460,7 @@
     },
     {
       "path": "states/command-palette-120.json",
-      "sha256": "2b17900ea7b132768652acd648587bddf1bbb0476de34e423aec99a55c3d191f",
+      "sha256": "f6a60f6bb709196841dc2eafd9d6e142d9beb57c9a1681babb955c80ff454c9b",
       "kind": "semantic-state",
       "state": "command-palette-120",
       "columns": 120,
@@ -428,7 +476,7 @@
     },
     {
       "path": "raw/command-palette-120.cast",
-      "sha256": "259760eb0f8d7bbcd206dd948618a3820217b68616137df2acc7783cabb04e08",
+      "sha256": "6ddf1a3ceacbfa59766cf4dab458e1b825ad416e645ecc481324325e7996f66e",
       "kind": "asciicast",
       "state": "command-palette-120",
       "columns": 120,
@@ -436,7 +484,7 @@
     },
     {
       "path": "states/command-palette-120.ansi",
-      "sha256": "000bdc1eb2836b9f85f11ef378df014810e3b5e7e12d1eaf58acb218e612d586",
+      "sha256": "c2ba619ed265f0a9fdb2114170e5b4041a99a70743ef99ba2a45f1cf2adf1da0",
       "kind": "ansi",
       "state": "command-palette-120",
       "columns": 120,
@@ -444,15 +492,175 @@
     },
     {
       "path": "states/command-palette-120.png",
-      "sha256": "2c3dac0a3b15babf42d4e2feea036d4e6a2a0fe4ff84ce0d3e0cf861f9557adf",
+      "sha256": "119c80e8aa349d256bc4f81686800680472d105931ad69ec68531dce26d5afbb",
       "kind": "png",
       "state": "command-palette-120",
       "columns": 120,
       "rows": 24
     },
     {
+      "path": "states/cancellation-unavailable-40.json",
+      "sha256": "ca95a376fa2d3b36758f4e9a6af520e5123d5d3aa39b0126f7b7c04371113672",
+      "kind": "semantic-state",
+      "state": "cancellation-unavailable-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/cancellation-unavailable-40.txt",
+      "sha256": "e4d7665835bf7e754efb6acb9ddca367de0a01447709381ee613d21d23344584",
+      "kind": "plain-frame",
+      "state": "cancellation-unavailable-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/cancellation-unavailable-40.cast",
+      "sha256": "2388b6d0dea0217e6fb90f968f7a9def3a52ef4c5a97db7c5733c5abe154245a",
+      "kind": "asciicast",
+      "state": "cancellation-unavailable-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/cancellation-unavailable-40.ansi",
+      "sha256": "c6c7bc2df99393a12144f976560d4e4b972187dc1e0a90b4e620ede52f67d354",
+      "kind": "ansi",
+      "state": "cancellation-unavailable-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/cancellation-unavailable-40.png",
+      "sha256": "5e078195bcb9f78dd88aca07b3e1fc364746e0b25714239ce9c70b85b4ad8f37",
+      "kind": "png",
+      "state": "cancellation-unavailable-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/cancellation-unavailable-80.json",
+      "sha256": "300e2b12cabe6506611680820555f64340b2ef024b51a4b437d099a86682494b",
+      "kind": "semantic-state",
+      "state": "cancellation-unavailable-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/cancellation-unavailable-80.txt",
+      "sha256": "dbd98766afe0c7fdd7f3a6cb5b27ca9db2e795717ff8d0115d0119935587ed27",
+      "kind": "plain-frame",
+      "state": "cancellation-unavailable-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/cancellation-unavailable-80.cast",
+      "sha256": "2efe716fad1743aa6cd57f1919938c27d24ca93baa370f00b521b365700186fd",
+      "kind": "asciicast",
+      "state": "cancellation-unavailable-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/cancellation-unavailable-80.ansi",
+      "sha256": "835de0d50258a90a1a0fd4bb190923cdb7fdde80c552d79740296f6064b95637",
+      "kind": "ansi",
+      "state": "cancellation-unavailable-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/cancellation-unavailable-80.png",
+      "sha256": "e7ce612ce11c3882a71e33c971630894d8ba8bf13ffcec1ed80233a551c0a721",
+      "kind": "png",
+      "state": "cancellation-unavailable-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/cancellation-unavailable-120.json",
+      "sha256": "acb57ed88a6ce8f67154e3282bc1679b0a60f104eca25a79f87a4946ff453820",
+      "kind": "semantic-state",
+      "state": "cancellation-unavailable-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/cancellation-unavailable-120.txt",
+      "sha256": "3eb7c8c0c1f926135599ced6a33d2a36e6bbf7ab45044ddfea0b851e78d87499",
+      "kind": "plain-frame",
+      "state": "cancellation-unavailable-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/cancellation-unavailable-120.cast",
+      "sha256": "4f1c6a84e83301dca5c27cd9b693039f56e1cb749523c977b563fdd066e6d9e6",
+      "kind": "asciicast",
+      "state": "cancellation-unavailable-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/cancellation-unavailable-120.ansi",
+      "sha256": "74c1780ba0cefbb2dd520c275025f07ef2232ab99233afd8108e56b2993fef2a",
+      "kind": "ansi",
+      "state": "cancellation-unavailable-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/cancellation-unavailable-120.png",
+      "sha256": "dc9a955d5ae4c39eb14fca49b9c0fa96e4fc6b6109786557d0e17196defba628",
+      "kind": "png",
+      "state": "cancellation-unavailable-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/cancellation-unavailable-200.json",
+      "sha256": "2c95e65c7f0bf10f447264e0172ba7176448beab7097908b25dfd31b3c321f7f",
+      "kind": "semantic-state",
+      "state": "cancellation-unavailable-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/cancellation-unavailable-200.txt",
+      "sha256": "668d95f06eb2cdb1dd1fb72c4206b766dd5aa3f3d5f0844936ff94bd2ae8d0ef",
+      "kind": "plain-frame",
+      "state": "cancellation-unavailable-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/cancellation-unavailable-200.cast",
+      "sha256": "c39574c8225df052d7f98054af81a11e2bb910208330b271c805365f7f65e55f",
+      "kind": "asciicast",
+      "state": "cancellation-unavailable-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/cancellation-unavailable-200.ansi",
+      "sha256": "f7624d8ebaffe2eafa2d1e541f01b4c889671b96f1d071416eec05eeb72ec12a",
+      "kind": "ansi",
+      "state": "cancellation-unavailable-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/cancellation-unavailable-200.png",
+      "sha256": "364e29d08a0928b6d894937d5e55981ed76b997c6e7d8f7028ac964a778633b8",
+      "kind": "png",
+      "state": "cancellation-unavailable-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
       "path": "states/empty.json",
-      "sha256": "032d8fb7fc50bbb1ddfe81d57f351a4b19fd9030e0696d94380339746e10208f",
+      "sha256": "a7ce15a76964111bfb6d8b8f96884bdb602ca63348751cefcec597e031026835",
       "kind": "semantic-state",
       "state": "empty",
       "columns": 80,
@@ -468,7 +676,7 @@
     },
     {
       "path": "raw/empty.cast",
-      "sha256": "0ab9ba958f5d7f0e09a34805c6524b5be4153ee8dc1d322c9c3a5b0110fd16a5",
+      "sha256": "ea1cc46f534e4c4b2a9bec1303911de3f21f3ee2419391d88d8580f564810e66",
       "kind": "asciicast",
       "state": "empty",
       "columns": 80,
@@ -476,7 +684,7 @@
     },
     {
       "path": "states/empty.ansi",
-      "sha256": "de80c2a0fbaec53ceecd1bc6cd5e22f63a7627983bd5fe7f609fabcb9dbace39",
+      "sha256": "8598b78f445f01136c1be47d3fad5464e11a61971f03138d98605340e4662fc6",
       "kind": "ansi",
       "state": "empty",
       "columns": 80,
@@ -484,7 +692,7 @@
     },
     {
       "path": "states/empty.png",
-      "sha256": "8e153b8bed8dfac8521a2b2cf55d605d302257418d7a4007bdbaebf9fc7306a9",
+      "sha256": "a9ed7029cb6c36e032b9e6827c6d50d74f0492b049d54a88c5381767b9ff87c0",
       "kind": "png",
       "state": "empty",
       "columns": 80,
@@ -492,7 +700,7 @@
     },
     {
       "path": "states/active-streaming.json",
-      "sha256": "f232dbcca8a358baf49eba2201d2f6e9984bd84193bf070f809c11a8d9572ab4",
+      "sha256": "d203290898e018196cd7155228374acea1a64fbe759ac14746beb4d45ece883c",
       "kind": "semantic-state",
       "state": "active-streaming",
       "columns": 80,
@@ -508,7 +716,7 @@
     },
     {
       "path": "raw/active-streaming.cast",
-      "sha256": "70ea4486d0402e11f402ea67b98d670801b2ccd6d1dbece3d22071b6b26b5ae7",
+      "sha256": "8ccff018c212238e0a3dfd3cd6b6f4f974c53a134c315f57fbec00f92ba3b9c9",
       "kind": "asciicast",
       "state": "active-streaming",
       "columns": 80,
@@ -516,7 +724,7 @@
     },
     {
       "path": "states/active-streaming.ansi",
-      "sha256": "3da9013952f7c12a97464accad9c32d49e5726de2c8931e34763ec2fbd20c0b4",
+      "sha256": "f2118863bb15ef759c553f6866cdd94e6d70421e34486c6395e90cfff492fbc7",
       "kind": "ansi",
       "state": "active-streaming",
       "columns": 80,
@@ -524,7 +732,7 @@
     },
     {
       "path": "states/active-streaming.png",
-      "sha256": "04a93a58783b6c4aa5a30f80ced64cd0480271bf23fb91f60252a301d355ef74",
+      "sha256": "93f79c59272f6f3ff22cc185471683863018463a985348c2fb1571eee544afde",
       "kind": "png",
       "state": "active-streaming",
       "columns": 80,
@@ -532,7 +740,7 @@
     },
     {
       "path": "states/multi-run.json",
-      "sha256": "8433d90b0afcc439f343ba1e14ba24531982aa3d6ab447d98d4f05588348f590",
+      "sha256": "6ddb38a61a38d4cd0a29822607c99327446bb6cfc334f4b45f5b5a4916e90f42",
       "kind": "semantic-state",
       "state": "multi-run",
       "columns": 80,
@@ -548,7 +756,7 @@
     },
     {
       "path": "raw/multi-run.cast",
-      "sha256": "460d24038fa54a66beb3c22f6b8708aea9c01a890e8bc324f7064461195b6b24",
+      "sha256": "796b22202ae9e5663adb4a1bf435aa1cd600ddab4289d4013588a956810e5889",
       "kind": "asciicast",
       "state": "multi-run",
       "columns": 80,
@@ -556,7 +764,7 @@
     },
     {
       "path": "states/multi-run.ansi",
-      "sha256": "1717494819d35fd929583b425e82668f0fcefe4e5f99fcc5ded6b67c14bb1476",
+      "sha256": "d6e1bcf5c0a955ab4ad133d4633803ab13af75a20dba425b9275cf982dcbef5c",
       "kind": "ansi",
       "state": "multi-run",
       "columns": 80,
@@ -564,7 +772,7 @@
     },
     {
       "path": "states/multi-run.png",
-      "sha256": "02339b72433be97fdc030478529f218c7384eb5d041648e50e0823b1f28f2409",
+      "sha256": "52017541fc46789ca4e55dbc585d7a886ead3a657d5bbb3278940fa46d1624ca",
       "kind": "png",
       "state": "multi-run",
       "columns": 80,
@@ -572,7 +780,7 @@
     },
     {
       "path": "states/supervision.json",
-      "sha256": "24d4cc6a0fd3f941403ebd02ab8df4343af0fa5bfafdbaa14ce54d35f5c8f095",
+      "sha256": "b04f2973b2bc1f2327fa8a276462b33f84f6d7dd6827b69e76ef1cc932c40b11",
       "kind": "semantic-state",
       "state": "supervision",
       "columns": 80,
@@ -588,7 +796,7 @@
     },
     {
       "path": "raw/supervision.cast",
-      "sha256": "ed769f8e1a6efbf0e53a0662e2936d571dac6f6360565f07ca5b3570fe0d265e",
+      "sha256": "de433721dc54e1ed6762e0d6ffa53c2ff37cac0f1dcbe338d4211a00b2ff3c87",
       "kind": "asciicast",
       "state": "supervision",
       "columns": 80,
@@ -596,7 +804,7 @@
     },
     {
       "path": "states/supervision.ansi",
-      "sha256": "609fdfbddfa529d94f108bcba91f3a9563d4b7be79d20be02b0646d5eb3eacb1",
+      "sha256": "d6c03785067c6131009e5e29c5f06251bc53e6ec9f16463eebf472317298e293",
       "kind": "ansi",
       "state": "supervision",
       "columns": 80,
@@ -604,7 +812,7 @@
     },
     {
       "path": "states/supervision.png",
-      "sha256": "a8bd4cd852ecb2142ee3c4c7dcbc6c890379add160d827d95e9f013b8f5213e0",
+      "sha256": "48124884510f318b36e3a3bc452931858fc7e32ef530be70b33cc9aad36bc6c1",
       "kind": "png",
       "state": "supervision",
       "columns": 80,
@@ -612,7 +820,7 @@
     },
     {
       "path": "states/interaction.json",
-      "sha256": "1f207085bc0974b5020bbf5b857ff60a296572dc6bdf923ce8cfa38d7200b7d9",
+      "sha256": "379a3ece57a99ac328b58789d4ccfe7503f7ab8ea339e8a26f71931a2bc55d69",
       "kind": "semantic-state",
       "state": "interaction",
       "columns": 80,
@@ -628,7 +836,7 @@
     },
     {
       "path": "raw/interaction.cast",
-      "sha256": "a3d95fa21515c8608fbb39c298c3c2d1eb74cf4b98e083f965517643f740bd3a",
+      "sha256": "3d2623070d45f0c9be383cb7f1ba115ef4a7cfe5571b1a98423e32b33f28c330",
       "kind": "asciicast",
       "state": "interaction",
       "columns": 80,
@@ -636,7 +844,7 @@
     },
     {
       "path": "states/interaction.ansi",
-      "sha256": "c49d758dac4fc4d97ef17708abb1634a945aae5098cada80ed6b2476b1710fcd",
+      "sha256": "0ad9d15bbdbdc2bc0df7669e425359909ce8c2338fcbe1495dd57f03ffc82110",
       "kind": "ansi",
       "state": "interaction",
       "columns": 80,
@@ -644,7 +852,7 @@
     },
     {
       "path": "states/interaction.png",
-      "sha256": "b8a819550cfc520f5c16aab2372211ad9d18794b3b0d6e5563eec6379ae8ff98",
+      "sha256": "ebfaed830015b44fa309e3d12f2b90f55ab3593fa56d61a61f9a013b1aa0e03c",
       "kind": "png",
       "state": "interaction",
       "columns": 80,
@@ -652,7 +860,7 @@
     },
     {
       "path": "states/automation.json",
-      "sha256": "1f8338093c08cf703e2f3bc171a7037a39eaceaf8a4b3ce7ea2de5bc03b02891",
+      "sha256": "19709458786197b2c804f1c9b91f10814f6b213e25b2931f401ad69e7a2b25a9",
       "kind": "semantic-state",
       "state": "automation",
       "columns": 80,
@@ -668,7 +876,7 @@
     },
     {
       "path": "raw/automation.cast",
-      "sha256": "d8d4de391af21be4408cb93199e67c0fbc8cd5f780ebc49ca77f5b44b99451eb",
+      "sha256": "f017b6bed655baafedf5a141622070b8b72bc3bee896748eac65e41e267b3f89",
       "kind": "asciicast",
       "state": "automation",
       "columns": 80,
@@ -676,7 +884,7 @@
     },
     {
       "path": "states/automation.ansi",
-      "sha256": "66d2b98519ab6b8b229794f80adfd9a74777276499d82350279632a48a699d04",
+      "sha256": "b326619be32d599cc2b0866a7adb6fe2d70c7dfe27df344197d082e8d0eaf149",
       "kind": "ansi",
       "state": "automation",
       "columns": 80,
@@ -684,7 +892,7 @@
     },
     {
       "path": "states/automation.png",
-      "sha256": "d8023c1952a6d66a15c2cb1ae3c8ee053520da48121769e7d91d6cf0e3cfdff4",
+      "sha256": "6624f779e60f25689b910f755a21eb4acb844499036531a13618600d3db02d92",
       "kind": "png",
       "state": "automation",
       "columns": 80,
@@ -692,7 +900,7 @@
     },
     {
       "path": "states/fork-preview.json",
-      "sha256": "94374294de2e84dedb620e42c97bfb34b75a79906c5cbc7d49bb08302675ad7c",
+      "sha256": "a5f36f534ce34355ab1bfabbce0c8978c12c2e8569a047e026dfe1595f58b804",
       "kind": "semantic-state",
       "state": "fork-preview",
       "columns": 80,
@@ -708,7 +916,7 @@
     },
     {
       "path": "raw/fork-preview.cast",
-      "sha256": "dd4bdf325ead57b2293293c7009f5b128f1a9944e8b6267dba2f22542bc6a086",
+      "sha256": "e225e40974628a0cab1b5975d07ecc6fa3f4c4527e2a185ec4fa7016b30430c6",
       "kind": "asciicast",
       "state": "fork-preview",
       "columns": 80,
@@ -716,7 +924,7 @@
     },
     {
       "path": "states/fork-preview.ansi",
-      "sha256": "b57bd9120c828993340bf5d91dcbb87d635ec406ddb91f90d488eb98334b5983",
+      "sha256": "7a29ec5869756149c0496bd0b75c761d929013ad865ae30bc62ed19224ecaf57",
       "kind": "ansi",
       "state": "fork-preview",
       "columns": 80,
@@ -724,7 +932,7 @@
     },
     {
       "path": "states/fork-preview.png",
-      "sha256": "0720eb99aac7c8311fe17fb070228aedd23f30cdeca06d4d044a06fcaa22d706",
+      "sha256": "c486bec858b85bda5203559695fe34eedf0e043b26ca587a8fab9d9cd03c1408",
       "kind": "png",
       "state": "fork-preview",
       "columns": 80,
@@ -732,7 +940,7 @@
     },
     {
       "path": "states/graph-or-analysis.json",
-      "sha256": "ac62660d394084c6c680871a073450d788e2625394b4fb9d6d346d15b4d3e49a",
+      "sha256": "16f937529b17b71f3dfaca1af70a41809e7eedb50a7706d98ed0003117c09a1f",
       "kind": "semantic-state",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -748,7 +956,7 @@
     },
     {
       "path": "raw/graph-or-analysis.cast",
-      "sha256": "d14a9cecf7a62c868546be71bb6f5aad81e55e9a77858a2198b85dc7faf369c2",
+      "sha256": "5b037dc9398c7e27ce250bb4f6823949d35fed4ecab95b57aa1848cf5684d69a",
       "kind": "asciicast",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -756,7 +964,7 @@
     },
     {
       "path": "states/graph-or-analysis.ansi",
-      "sha256": "8dffae3bad44b74c817b773a600208072ac8f5a1fd1774e9c10c4d114ddb2b42",
+      "sha256": "6de57dc1a2d14bd690d4d75f7afc38a1c2224d1c9608686cf52c11675f3833de",
       "kind": "ansi",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -764,7 +972,7 @@
     },
     {
       "path": "states/graph-or-analysis.png",
-      "sha256": "b2b4afc12c3c5ea0b77ed4f7792ea0f315893796e3e0622d4bbe689412436ed4",
+      "sha256": "d1bf7f220d1c671522660ce5a28337c63c27507d6cba0ec8d8d041b4ce344410",
       "kind": "png",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -772,7 +980,7 @@
     },
     {
       "path": "states/analysis.json",
-      "sha256": "9ec9d295ab4880e9d415e52bd000483bbb8dc7c034238144a704d55226342569",
+      "sha256": "8c63d3c65bd3f7b52d5e3564a4c347631b6c4bba54c9c10a3bdd29df0b548c0e",
       "kind": "semantic-state",
       "state": "analysis",
       "columns": 80,
@@ -788,7 +996,7 @@
     },
     {
       "path": "raw/analysis.cast",
-      "sha256": "95e6669e62d7d6d778a28793bea5aae0d9fdb3a68b2a58512421633a268d71e9",
+      "sha256": "6a3b9303ca4620bc0de24056db9c6219962ef32aa7d9939c1f857d4b6948bd09",
       "kind": "asciicast",
       "state": "analysis",
       "columns": 80,
@@ -796,7 +1004,7 @@
     },
     {
       "path": "states/analysis.ansi",
-      "sha256": "db6aeb76bc267dde79a21ca6cc9de8f859ea44c75065c6652570228801cb7197",
+      "sha256": "d457847db805c320f7b87848ba72f3961838fd6ec06d327021e0cb7ae3e2e5e4",
       "kind": "ansi",
       "state": "analysis",
       "columns": 80,
@@ -804,7 +1012,7 @@
     },
     {
       "path": "states/analysis.png",
-      "sha256": "b791527c394aeb10e20635b467bfab98b13293a58ebbb4d6245d0852e20bc6f5",
+      "sha256": "98befe1228c0eee13799472cfcbd3a2a936a04f5bc6c6e64d3c061e63101b884",
       "kind": "png",
       "state": "analysis",
       "columns": 80,
@@ -812,7 +1020,7 @@
     },
     {
       "path": "states/comparison.json",
-      "sha256": "2a1c6893cf09a186f9c15e7a165fcd8a772ebf676f5ac674831ac5cc31a85b91",
+      "sha256": "43f75dc648c006f1f1f0597cc2911ba8e6e928dd4b26b4fb38309d3cf6d5f888",
       "kind": "semantic-state",
       "state": "comparison",
       "columns": 80,
@@ -828,7 +1036,7 @@
     },
     {
       "path": "raw/comparison.cast",
-      "sha256": "3582e3e8796fcf8b190f48d23a3d8c17bffebd7cac53c02af43641c99914a5ca",
+      "sha256": "dff88d944bf470445e277667d7fd6ada241cef47d9223a645885c2521de5daf0",
       "kind": "asciicast",
       "state": "comparison",
       "columns": 80,
@@ -836,7 +1044,7 @@
     },
     {
       "path": "states/comparison.ansi",
-      "sha256": "cb2f4b4f15ddde18a30d004822a90efa924effeda9128bee7e3133167910219a",
+      "sha256": "b32a4c5a76e40f0611b97b6d6853ac45b6b7b11ab4dbe3f50c448996d1c0822e",
       "kind": "ansi",
       "state": "comparison",
       "columns": 80,
@@ -844,7 +1052,7 @@
     },
     {
       "path": "states/comparison.png",
-      "sha256": "5c2f3fdb02184b1884d5709776b1a44f88cdfff9a6409e0fce599a8a1156263c",
+      "sha256": "7bce5d689a113a0d0faaa0e7db0171ef5d7586550a8e01abcbf9415ddcb858f6",
       "kind": "png",
       "state": "comparison",
       "columns": 80,
@@ -852,7 +1060,7 @@
     },
     {
       "path": "states/profile.json",
-      "sha256": "ace9a9d3990233181c0a2f69259952d104f2cda2b98c374eb739833fbf8c080d",
+      "sha256": "2b08045847f634aee472cf47352bff932097bcec3f733af8769e95e3b9e70343",
       "kind": "semantic-state",
       "state": "profile",
       "columns": 80,
@@ -868,7 +1076,7 @@
     },
     {
       "path": "raw/profile.cast",
-      "sha256": "0ef5c6e6e726f1cd7108d274866710855aef01724c4d761f6f4f6b065913faa3",
+      "sha256": "fe1e75ac4846ceaf34c6001d595b5786f6dfd08a94b75b01f5562e49a3153b01",
       "kind": "asciicast",
       "state": "profile",
       "columns": 80,
@@ -876,7 +1084,7 @@
     },
     {
       "path": "states/profile.ansi",
-      "sha256": "c3e26b310abad6c77acec67b4e8eeb201845ed86e5610c69de7e2ac16ec5e8f3",
+      "sha256": "b00497081393a6315ee3e06c2aa5ad031b593b329a550df51f07ceeaa0823328",
       "kind": "ansi",
       "state": "profile",
       "columns": 80,
@@ -884,7 +1092,7 @@
     },
     {
       "path": "states/profile.png",
-      "sha256": "e489e002fe90431213dddfa02ffcc2c7ffa7ce31ba1152103eeee94c107a8af9",
+      "sha256": "31745c0913d22d8f04d2ea7581e3448be0436a4448700bd051119385148d9aa7",
       "kind": "png",
       "state": "profile",
       "columns": 80,
@@ -892,7 +1100,7 @@
     },
     {
       "path": "states/narrow.json",
-      "sha256": "607492c46a2ff0880d35085d3816af121209473369ba4954c9f1c1140be8472a",
+      "sha256": "19b8206111845b85da599691bc4ffdaa59f91f54463542c77640f57d325829fa",
       "kind": "semantic-state",
       "state": "narrow",
       "columns": 40,
@@ -908,7 +1116,7 @@
     },
     {
       "path": "raw/narrow.cast",
-      "sha256": "bb5bf8f408ab80ed89f73284f39e7d28fa9cdf99f72efb857849e30d87f66662",
+      "sha256": "9c6d75de5415dc303d47cc237e2c65542af2df5986dc6b87cc82c25ce02c620c",
       "kind": "asciicast",
       "state": "narrow",
       "columns": 40,
@@ -916,7 +1124,7 @@
     },
     {
       "path": "states/narrow.ansi",
-      "sha256": "cd0bea7f91d925fbd68f9f3d99857613601dc780f578a43c52c7b63c2760fec9",
+      "sha256": "ac889ea60e1fce02a41f712edbcacece75f09887c7a62c6b5fde2832da8ab33c",
       "kind": "ansi",
       "state": "narrow",
       "columns": 40,
@@ -924,7 +1132,7 @@
     },
     {
       "path": "states/narrow.png",
-      "sha256": "7a3dbc37f30a52afe57951f09bd2db379f3bdcf9f6229c41d3fabcfb354e0834",
+      "sha256": "8a14e3d8e314f49a97d8e4518f7d5ad3250fe4eb39ca92644542b1a1fc6c0242",
       "kind": "png",
       "state": "narrow",
       "columns": 40,
@@ -932,7 +1140,7 @@
     },
     {
       "path": "states/failure-or-reconnect.json",
-      "sha256": "a459c49dfa17154e20b75780c7f457c1c8edbb753c8991500783f71db298641d",
+      "sha256": "fc27f5444e13c31dda8b0e520517a39ba79e7cc537dee9652674aa5db12ffa5b",
       "kind": "semantic-state",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -948,7 +1156,7 @@
     },
     {
       "path": "raw/failure-or-reconnect.cast",
-      "sha256": "051a94cb6c19a4a683e11c9a90d74fc539fbcc448d5e291ac5302263e4269363",
+      "sha256": "d4a9184554ac3cef4e1e502096d65fdd0c687e5b177c40ba73e24354d8ea79ab",
       "kind": "asciicast",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -956,7 +1164,7 @@
     },
     {
       "path": "states/failure-or-reconnect.ansi",
-      "sha256": "1a6a60ac0080c486ed5ad6b6fa47b80d6b3a6d0f328ab85079244467eb08f1f9",
+      "sha256": "f9e494498b63f50285c9946b39da881d5d9fa623d288fc7981fd276bfc3d63b0",
       "kind": "ansi",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -964,7 +1172,7 @@
     },
     {
       "path": "states/failure-or-reconnect.png",
-      "sha256": "5a431a83ff5392bb23cddbbfc5071595244849bcbfbc8061156758a0df676471",
+      "sha256": "4a2af6a82eb5327c55710008a6a7118478bc9f86e0c08f62c46f1a9aa1e8d2c5",
       "kind": "png",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -979,7 +1187,7 @@
     },
     {
       "path": "80x24-automation.gif",
-      "sha256": "78b04b71c3244e051057381adeb6c92c8b2ea22e129ecf8e17de0c3fb868f889",
+      "sha256": "6b65d358dc3fa98836d15658566f12d985f3b7237fa59e6d1a270d56a9ebd953",
       "kind": "automation-flow",
       "state": "automation",
       "columns": 80,
@@ -987,7 +1195,7 @@
     },
     {
       "path": "80x24-multirun.gif",
-      "sha256": "5df706e380804174ddfd05c57688065e0903fff3ca8ad7ee4d5dd6262dddb64b",
+      "sha256": "3e77e680c33de56f26025e9a5023315c115c2d26fa45c2fb851b1227f2b88fc7",
       "kind": "multi-run-flow",
       "state": "multi-run",
       "columns": 80,
@@ -995,14 +1203,14 @@
     },
     {
       "path": "raw/transcript-keyboard.cast",
-      "sha256": "d8f07e9bd51fbc0e8f3e43e33409e1ef28a37b25d0adb0093b1261fb5856537a",
+      "sha256": "6c63b5d57836eaf1e509d9d03b8cbbf852b83a486a1311f0bfd70b0a636259b3",
       "kind": "keyboard-asciicast",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24-transcript-keyboard.gif",
-      "sha256": "408fec6fd99590436ea74313cf4229767fc91cb8f8b4cee97d721c77cdb8fe79",
+      "sha256": "ca1cea0f418cfd5a6151fd4fb30066eddecbfc8ad83fae4b4cc65859eee4c8f6",
       "kind": "keyboard-flow",
       "columns": 80,
       "rows": 24

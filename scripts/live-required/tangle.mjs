@@ -13,6 +13,7 @@ import {
   resolveBinary,
   runHeadlessCancellation,
   runHeadlessTurn,
+  verifyUnavailableCancellation,
 } from './headless.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
@@ -60,6 +61,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
   })
   let normal
   let cancelled
+  let cancellation
   try {
     normal = await runHeadlessTurn({
       binary,
@@ -67,13 +69,23 @@ async function runInference({ repository, environment, binary, invocationId }) {
       marker: tokenMarker('TANGLE_INFERENCE'),
       prompt: `Reply with exactly ${tokenMarker('TANGLE_INFERENCE')}.`,
     })
-    cancelled = await runHeadlessCancellation({
-      binary,
-      config,
-      marker: 'TANGLE_INFERENCE_CANCEL',
-      prompt:
-        'Produce a numbered list from 1 to 10000, one short word per line, until Braid cancels this run.',
-    })
+    if (normal.run.capabilities?.controls?.cancel === true) {
+      cancelled = await runHeadlessCancellation({
+        binary,
+        config,
+        marker: 'TANGLE_INFERENCE_CANCEL',
+        prompt:
+          'Produce a numbered list from 1 to 10000, one short word per line, until Braid cancels this run.',
+      })
+      cancellation = { status: 'confirmed', runId: cancelled.run.id }
+    } else {
+      cancellation = await verifyUnavailableCancellation({
+        session: normal.session,
+        run: normal.run,
+        marker: 'TANGLE_INFERENCE_CANCEL',
+      })
+    }
+    const runIds = [normal.run.id, cancelled?.run.id].filter((runId) => typeof runId === 'string')
     return {
       status: 'passed',
       measurement: scalarMeasurement('LIVE-06'),
@@ -83,13 +95,21 @@ async function runInference({ repository, environment, binary, invocationId }) {
         startedAt,
         completedAt: new Date().toISOString(),
         config: configEvidence(config),
-        runIds: [normal.run.id, cancelled.run.id],
+        runIds,
         materializationDigest: normal.run.materializationDigest,
         facts: {
           normalRunId: normal.run.id,
-          cancelledRunId: cancelled.run.id,
+          cancelledRunId: cancelled?.run.id ?? null,
+          cancellationStatus: cancellation.status,
+          cancellationResponseCode: cancellation.code ?? null,
         },
-        checks: ['normal-turn', 'cancelled-turn', 'materialization-receipt'],
+        checks: [
+          'normal-turn',
+          cancellation.status === 'confirmed'
+            ? 'cancelled-turn'
+            : 'cancellation-reported-unavailable',
+          'materialization-receipt',
+        ],
       }),
     }
   } finally {

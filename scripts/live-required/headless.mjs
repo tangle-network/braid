@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { RpcSession } from '../live-bridge/process.mjs'
@@ -232,9 +232,31 @@ function childEnvironment(environment, root, statePath) {
 }
 
 export async function resolveBinary(repository, environment) {
-  const candidate = resolve(
-    environment.BRAID_LIVE_BINARY ?? join(repository, 'dist', 'bin', 'braid.js'),
-  )
+  const bound =
+    typeof environment.BRAID_RELEASE_LIVE_EVIDENCE_BINDING === 'string' &&
+    environment.BRAID_RELEASE_LIVE_EVIDENCE_BINDING.length > 0
+  const binaryValue = environment.BRAID_LIVE_BINARY
+  if (bound && (typeof binaryValue !== 'string' || binaryValue.trim().length === 0)) {
+    throw protectedUnavailable(
+      'BRAID_PACKED_BINARY_REQUIRED',
+      'Candidate live evidence requires a binary installed from the candidate tarball',
+    )
+  }
+  const candidate = resolve(binaryValue ?? join(repository, 'dist', 'bin', 'braid.js'))
+  if (bound) {
+    const repositoryRoot = resolve(repository)
+    const relativeCandidate = relative(repositoryRoot, candidate)
+    const candidateInsideRepository =
+      relativeCandidate === '' ||
+      (!isAbsolute(relativeCandidate) &&
+        relativeCandidate !== '..' &&
+        !relativeCandidate.startsWith(`..${sep}`))
+    if (candidateInsideRepository)
+      throw protectedUnavailable(
+        'BRAID_PACKED_BINARY_REQUIRED',
+        'Candidate live evidence cannot execute the source checkout binary',
+      )
+  }
   try {
     await access(candidate)
   } catch (error) {
@@ -576,6 +598,41 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
   } catch (error) {
     await closeSession(session)
     throw error
+  }
+}
+
+export async function verifyUnavailableCancellation({ session, run, marker }) {
+  if (run?.capabilities?.controls?.cancel !== false) {
+    throw new Error(`turn ${run?.id ?? 'missing'} did not report cancellation as unavailable`)
+  }
+  const request = {
+    ...requestBase(
+      requestId('cancel-unavailable'),
+      'cancel',
+      `op-live-required-cancel-unavailable-${randomUUID()}`,
+    ),
+    params: {
+      runId: run.id,
+      reason: `live required ${marker}`,
+    },
+  }
+  session.send(request)
+  const response = await session.waitFor(
+    'unavailable cancellation response',
+    (candidate) =>
+      candidate.requestId === request.requestId &&
+      (candidate.type === 'ack' || candidate.type === 'error'),
+  )
+  if (response.type !== 'error') {
+    throw new Error('a run without cancellation support accepted cancellation')
+  }
+  if (!['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(response.code)) {
+    throw new Error(`unavailable cancellation returned ${response.code}: ${response.message}`)
+  }
+  return {
+    status: 'reported-unavailable',
+    runId: run.id,
+    code: response.code,
   }
 }
 

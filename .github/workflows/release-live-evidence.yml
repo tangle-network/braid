@@ -1,0 +1,114 @@
+name: Release Live Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full main commit whose candidate must be checked
+        required: true
+        type: string
+      candidate_run_id:
+        description: Successful Release workflow run containing the candidate artifact
+        required: true
+        type: string
+
+concurrency:
+  group: release-live-evidence-${{ inputs.commit }}
+  cancel-in-progress: false
+
+jobs:
+  live-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: release-live
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit }}
+
+      - name: Confirm the exact protected main commit
+        env:
+          REQUESTED_COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_COMMIT"
+          test "$REQUESTED_COMMIT" = "$GITHUB_SHA"
+          test "$(printf '%s' "$REQUESTED_COMMIT" | wc -c)" = 40
+          git fetch origin main
+          git merge-base --is-ancestor "$REQUESTED_COMMIT" origin/main
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Verify the candidate workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRAID_RELEASE_RUN_ID: ${{ inputs.candidate_run_id }}
+          BRAID_RELEASE_EXPECT_WORKFLOW: .github/workflows/release.yml
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+          BRAID_RELEASE_EXPECT_BRANCH: main
+        run: node scripts/release/verify-workflow-run.mjs
+
+      - name: Download the exact candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-candidate-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-live-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Install the exact source dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the exact source checkout
+        run: pnpm run build
+
+      - name: Verify the downloaded candidate archive
+        id: candidate
+        env:
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-live-evidence
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          BRAID_RELEASE_EXPECT_VERSION="$VERSION" node scripts/release/verify-candidate-identity.mjs
+
+      - name: Collect protected Tangle live evidence
+        env:
+          BRAID_LIVE_TANGLE_ENV_JSON: ${{ secrets.BRAID_LIVE_TANGLE_ENV_JSON }}
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-live-evidence
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+        run: |
+          ARCHIVE=$(node -p "require('./package.json').name.replace(/^@/, '').replace('/', '-') + '-' + require('./package.json').version + '.tgz'")
+          node scripts/release/collect-live-evidence.mjs \
+            --artifact-root "$BRAID_RELEASE_ARTIFACT_ROOT" \
+            --tarball "candidate/$ARCHIVE" \
+            --checks "live-tangle,LIVE-06,LIVE-07,LIVE-08,LIVE-09,LIVE-10"
+
+      - name: Verify the checked live-evidence bundle
+        env:
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_CANDIDATE_ROOT: ${{ runner.temp }}/braid-live-evidence
+          BRAID_RELEASE_LIVE_EVIDENCE_ROOT: ${{ runner.temp }}/braid-live-evidence
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+          BRAID_RELEASE_EXPECT_VERSION: ${{ steps.candidate.outputs.version }}
+        run: node scripts/release/verify-publish-gate.mjs
+
+      - name: Upload the fixed live-evidence bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-live-evidence-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-live-evidence
+          if-no-files-found: error
+          retention-days: 90

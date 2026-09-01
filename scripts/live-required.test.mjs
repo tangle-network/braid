@@ -26,6 +26,7 @@ import {
   initializedSession,
   prepareProductionWorkspace,
   profileFor,
+  resolveBinary,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
 import {
@@ -160,6 +161,28 @@ test('generic unqualified live profiles fail closed without a model provider', (
       return true
     },
   )
+})
+
+test('candidate live evidence cannot fall back to the source checkout binary', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-live-binary-'))
+  try {
+    const sourceBinary = join(root, 'dist', 'bin', 'braid.js')
+    await mkdir(join(root, 'dist', 'bin'), { recursive: true })
+    await writeFile(sourceBinary, '#!/usr/bin/env node\n')
+    await assert.rejects(
+      () =>
+        resolveBinary(root, {
+          BRAID_RELEASE_LIVE_EVIDENCE_BINDING: '{"schema":"binding"}',
+          BRAID_LIVE_BINARY: sourceBinary,
+        }),
+      (error) => {
+        assert.equal(error.code, 'BRAID_PACKED_BINARY_REQUIRED')
+        return true
+      },
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('live profile and evidence preserve the full portable model id', () => {
@@ -803,6 +826,97 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
   assert.equal(
     'evidence' in resultSummary('live-tangle', { status: 'partial', evidence: 'fake' }),
     false,
+  )
+})
+
+test('Tangle inference receipts accept confirmed cancellation as one complete check variant', () => {
+  const receipt = proofReceipt({
+    invocationId: 'live-required-inference-confirmed',
+    operation: PROOF_OPERATIONS.tangleInference,
+    startedAt: '2026-08-10T00:00:00.000Z',
+    completedAt: '2026-08-10T00:00:01.000Z',
+    runIds: ['run-normal', 'run-cancelled'],
+    facts: {
+      normalRunId: 'run-normal',
+      cancelledRunId: 'run-cancelled',
+      cancellationStatus: 'confirmed',
+      cancellationResponseCode: null,
+    },
+    checks: ['normal-turn', 'cancelled-turn', 'materialization-receipt'],
+  })
+
+  assert.doesNotThrow(() => assertProofReceipt(receipt))
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        checks: [
+          'normal-turn',
+          'cancelled-turn',
+          'cancellation-reported-unavailable',
+          'materialization-receipt',
+        ],
+      }),
+    /one complete variant/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        facts: { ...receipt.facts, cancellationResponseCode: 'UNKNOWN_RUN' },
+      }),
+    /no response code/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        checks: ['normal-turn', 'cancellation-reported-unavailable', 'materialization-receipt'],
+      }),
+    /requires the cancelled-turn check/u,
+  )
+})
+
+test('Tangle inference receipts accept unavailable cancellation with matching facts', () => {
+  const receipt = proofReceipt({
+    invocationId: 'live-required-inference-unavailable',
+    operation: PROOF_OPERATIONS.tangleInference,
+    startedAt: '2026-08-10T00:00:00.000Z',
+    completedAt: '2026-08-10T00:00:01.000Z',
+    runIds: ['run-normal'],
+    facts: {
+      normalRunId: 'run-normal',
+      cancelledRunId: null,
+      cancellationStatus: 'reported-unavailable',
+      cancellationResponseCode: 'CAPABILITY_UNAVAILABLE',
+    },
+    checks: ['normal-turn', 'cancellation-reported-unavailable', 'materialization-receipt'],
+  })
+
+  assert.doesNotThrow(() => assertProofReceipt(receipt))
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        facts: { ...receipt.facts, cancelledRunId: 'run-cancelled' },
+      }),
+    /cannot have a cancelled run ID/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        facts: { ...receipt.facts, cancellationResponseCode: null },
+      }),
+    /requires a recognized response code/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        checks: ['normal-turn', 'cancelled-turn', 'materialization-receipt'],
+      }),
+    /requires the cancellation-reported-unavailable check/u,
   )
 })
 

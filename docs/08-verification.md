@@ -370,7 +370,7 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-03 | CLI Bridge interactive protocol | Real question or permission pauses the runner, reaches Braid, receives a response in an advertised scope, resumes, and rejects a stale duplicate |
 | LIVE-04 | CLI Bridge restart | Run state becomes honestly unknown or recovers according to retained state; Braid never labels it cancelled or resubmits unsafely |
 | LIVE-05 | Every advertised interactive bridge runner | Common conformance flow at a pinned minimum runner version; failures remove the interactive capability claim |
-| LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, cancellation, and immutable receipt |
+| LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, immutable receipt, and either confirmed cancellation or an unavailable control |
 | LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, two-conversation concurrent streaming with focus switching, and confirmed cleanup |
 | LIVE-08 | Tangle interaction | A retained cloud interaction remains answerable after Braid reconnect and continues once from the acknowledged response |
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |
@@ -703,6 +703,22 @@ The collector executes 25 distinct prerequisite commands and materializes 43 exa
 Publication uses a smaller direct acceptance path.
 
 The candidate job runs `pnpm check` once, then `pnpm release:prepare` builds and uses one immutable package.
+
+Publication requires a successful run of the protected `Release Live Evidence` workflow for the same main commit.
+
+That workflow verifies the candidate Release run metadata, downloads the fixed candidate archive, and checks out the same commit.
+
+It installs the downloaded candidate tarball once, runs every selected live command with its installed binary and package modules, and verifies its digest against the candidate identity.
+
+The protected workflow persists aggregate Tangle receipts and the separate `LIVE-07` multirun artifact, each with the commit, tarball, dependency, and Runtime identity.
+
+It verifies `LIVE-10` directly from its check record, stdout receipt, aggregate receipt, and retained `LIVE-07` artifact, then uploads `braid-live-evidence-<commit>`.
+
+The publish job accepts only that fixed artifact after it verifies the producer workflow path, manual-dispatch event, successful conclusion, main branch, and exact head commit.
+
+A missing, stale, tampered, or unavailable protected live-evidence run fails the publish job and leaves publication blocked.
+
+The protected `release-live` environment supplies `BRAID_LIVE_TANGLE_ENV_JSON`; the regular Release workflow never receives live-provider credentials.
 
 A code-free job endorses that exact package before publication.
 
