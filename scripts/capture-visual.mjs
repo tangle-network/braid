@@ -521,6 +521,18 @@ try {
         !normalized(result.point.screen).includes('trusted · read-only')
       )
         throw new Error('profile capture did not contain the active profile editor')
+      if (definition.name.startsWith('cancellation-unavailable-')) {
+        const cancellation = result.record.view?.capabilities?.['run.cancel']
+        if (cancellation?.available !== false) {
+          throw new Error('cancellation-unavailable capture advertised cancellation')
+        }
+        if (
+          !normalized(result.point.screen).includes('/cancel') ||
+          !normalized(result.point.screen).includes('unavailable')
+        ) {
+          throw new Error('cancellation-unavailable capture did not show the unavailable action')
+        }
+      }
       const stateRootName = definition.name.replaceAll('/', '-')
       const semanticPath = join(stateRoot, `${stateRootName}.json`)
       const plainPath = join(stateRoot, `${stateRootName}.txt`)

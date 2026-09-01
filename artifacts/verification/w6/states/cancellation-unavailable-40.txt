@@ -1,0 +1,6 @@
+ /cancel
+ The current runtime does not
+ acknowledge provider cancellation
+ This action is unavailable with the
+ selected connection.
+ ←/esc close

@@ -5,6 +5,7 @@ export function isRunningWorkStripRow(line) {
 export function createStateDefinitions(normalized) {
   return [
     ...[40, 80, 120].map((columns) => commandPaletteDefinition(columns, normalized)),
+    ...[40, 80, 120, 200].map((columns) => cancellationUnavailableDefinition(columns, normalized)),
     {
       name: 'empty',
       columns: 80,
@@ -287,6 +288,36 @@ export function createStateDefinitions(normalized) {
       },
     },
   ]
+}
+
+function cancellationUnavailableDefinition(columns, normalized) {
+  return {
+    name: `cancellation-unavailable-${columns}`,
+    columns,
+    rows: columns === 40 ? 12 : columns === 80 ? 24 : columns === 120 ? 40 : 60,
+    environment: { BRAID_FIXTURE_CHUNK_DELAY_MS: '10000' },
+    uiFixture: 'cancellation-unavailable',
+    run: async (terminal) => {
+      terminal.input('W6 provider cancellation unavailable')
+      terminal.input('\r')
+      await terminal.waitFor(
+        () => normalized(terminal.screen()).includes('working'),
+        'active work with provider cancellation unavailable',
+      )
+      terminal.input('/cancel')
+      terminal.input('\r')
+      await terminal.waitFor(
+        () =>
+          normalized(terminal.screen()).includes('/cancel') &&
+          normalized(terminal.screen()).includes('provider cancellation') &&
+          normalized(terminal.screen()).includes('unavailable'),
+        `provider cancellation unavailable notice screen=${normalized(terminal.screen())}`,
+      )
+      const { point, record } = await terminal.captureState()
+      await terminal.closeWithSignal()
+      return { point, record }
+    },
+  }
 }
 
 function commandPaletteDefinition(columns, normalized) {

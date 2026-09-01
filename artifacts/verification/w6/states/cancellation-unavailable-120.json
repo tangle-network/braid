@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "state": "failure-or-reconnect",
+  "state": "cancellation-unavailable-120",
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
@@ -8,8 +8,8 @@
     "tarballSha256": "e837849a4610010667f6996ddd0988a4d9d5e3b496b457a1493e79ed9b52629b"
   },
   "dimensions": {
-    "columns": 80,
-    "rows": 24
+    "columns": 120,
+    "rows": 40
   },
   "terminal": "node-pty/xterm-256color",
   "provenance": {
@@ -29,15 +29,15 @@
     }
   },
   "capturePhase": "atomic-signal-frame",
-  "captureRevision": 8,
-  "frame": " › W6 failure state\n\n error · unknown\n RUNTIME_BACKEND_ERROR\n failed\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› new message\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via local         failed · /activity details · /new\n",
+  "captureRevision": 6,
+  "frame": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n             /cancel\n             The current runtime does not acknowledge provider cancellation\n             This action is unavailable with the selected connection.\n             ←/esc close\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
     "state": {
       "schemaVersion": 2,
-      "revision": 8,
-      "sequence": 8,
+      "revision": 6,
+      "sequence": 6,
       "workspace": "/home/drew/code/.worktrees/braid-release-safety",
       "conversationId": "conv-1",
       "branchId": "branch-1",
@@ -72,14 +72,14 @@
         {
           "id": "message-000003",
           "role": "user",
-          "text": "W6 failure state",
+          "text": "W6 provider cancellation unavailable",
           "status": "complete",
           "runId": "run-000001",
           "parts": [
             {
               "id": "part-message-000003",
               "kind": "text",
-              "text": "W6 failure state"
+              "text": "W6 provider cancellation unavailable"
             }
           ]
         },
@@ -87,16 +87,9 @@
           "id": "message-000004",
           "role": "assistant",
           "text": "",
-          "status": "failed",
+          "status": "streaming",
           "runId": "run-000001",
-          "parts": [
-            {
-              "id": "run-000001:error:run-000001:runtime:2",
-              "kind": "error",
-              "text": "RUNTIME_BACKEND_ERROR",
-              "sourceEventId": "run-000001:runtime:2"
-            }
-          ]
+          "parts": []
         }
       ],
       "runs": [
@@ -104,11 +97,9 @@
           "id": "run-000001",
           "turnId": "turn-000002",
           "operationId": "op-terminal-000002",
-          "status": "failed",
+          "status": "streaming",
           "startedAt": "2026-08-01T00:00:00.000Z",
           "updatedAt": "2026-08-01T00:00:00.000Z",
-          "terminalAt": "2026-08-01T00:00:00.000Z",
-          "durationMs": 0,
           "inputTokens": 0,
           "outputTokens": 0,
           "tokensKnown": false,
@@ -118,10 +109,8 @@
           "model": "fixture/deterministic",
           "provider": "agent-runtime",
           "runner": "pi",
-          "error": "RUNTIME_FINAL_ERROR",
-          "completeness": "failed",
-          "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-          "contentBytes": 60
+          "completeness": "incomplete",
+          "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671"
         }
       ],
       "sessionUsage": {
@@ -169,13 +158,19 @@
       "environments": [],
       "interactions": [],
       "queue": [],
-      "activeRunId": null,
+      "activeRunId": "run-000001",
       "focusedRunId": "run-000001",
-      "activeRuns": [],
-      "lastError": "RUNTIME_FINAL_ERROR"
+      "activeRuns": [
+        {
+          "runId": "run-000001",
+          "conversationId": "conv-1",
+          "branchId": "branch-1"
+        }
+      ],
+      "lastError": null
     },
     "view": {
-      "revision": 8,
+      "revision": 6,
       "workspace": "/home/drew/code/.worktrees/braid-release-safety",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
@@ -197,22 +192,22 @@
         }
       ],
       "branch": "branch-1",
-      "status": "failed",
-      "statusText": "RUNTIME_FINAL_ERROR",
+      "status": "running",
+      "statusText": "streaming",
       "queueCount": 0,
       "queue": [],
       "messages": [
         {
           "id": "message-000003",
           "role": "user",
-          "text": "W6 failure state",
+          "text": "W6 provider cancellation unavailable",
           "status": "complete",
           "runId": "run-000001",
           "parts": [
             {
               "id": "part-message-000003",
               "kind": "text",
-              "text": "W6 failure state"
+              "text": "W6 provider cancellation unavailable"
             }
           ]
         },
@@ -220,16 +215,9 @@
           "id": "message-000004",
           "role": "assistant",
           "text": "",
-          "status": "failed",
+          "status": "streaming",
           "runId": "run-000001",
-          "parts": [
-            {
-              "id": "run-000001:error:run-000001:runtime:2",
-              "kind": "error",
-              "text": "RUNTIME_BACKEND_ERROR",
-              "sourceEventId": "run-000001:runtime:2"
-            }
-          ]
+          "parts": []
         }
       ],
       "hiddenMessageCount": 0,
@@ -240,24 +228,21 @@
           "conversationId": "conv-1",
           "branchId": "branch-1",
           "operationId": "op-terminal-000002",
-          "status": "failed",
+          "status": "running",
           "profileName": "Braid starter",
           "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
           "model": "fixture/deterministic",
           "effort": "none",
-          "error": "RUNTIME_FINAL_ERROR",
           "usage": {
             "input": 0,
             "output": 0,
             "tokenStatus": "unknown",
             "costStatus": "unknown",
-            "model": "fixture/deterministic",
-            "elapsedMs": 0
+            "model": "fixture/deterministic"
           },
           "runner": "pi",
           "provider": "agent-runtime",
-          "completeness": "failed",
-          "contentBytes": 60
+          "completeness": "incomplete"
         }
       ],
       "sessionUsage": {
@@ -303,6 +288,7 @@
         "attribution": "complete"
       },
       "environments": [],
+      "activeRunId": "run-000001",
       "focusedRunId": "run-000001",
       "interactions": [],
       "activity": [
@@ -310,9 +296,7 @@
           "id": "run:run-000001",
           "kind": "run",
           "title": "run run-000001",
-          "status": "failed",
-          "detail": "RUNTIME_FINAL_ERROR",
-          "elapsedMs": 0,
+          "status": "running",
           "startedAt": "2026-08-01T00:00:00.000Z",
           "occurredAt": "2026-08-01T00:00:00.000Z",
           "runId": "run-000001",
@@ -323,7 +307,7 @@
           "id": "activity:run-000001:admission:local:admitted",
           "kind": "system",
           "title": "admitted",
-          "status": "failed",
+          "status": "running",
           "detail": "profile 44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
           "occurredAt": "2026-08-01T00:00:00.000Z",
           "runId": "run-000001",
@@ -334,22 +318,10 @@
           "id": "event:run-000001:run-000001:runtime:1",
           "kind": "system",
           "title": "event backend_start",
-          "status": "failed",
+          "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-01T14:37:34.842Z",
+          "occurredAt": "2026-09-01T14:37:08.711Z",
           "sourceEventId": "run-000001:runtime:1",
-          "runId": "run-000001",
-          "entityType": "run",
-          "entityId": "run-000001"
-        },
-        {
-          "id": "activity:run-000001:run.error:run-000001:runtime:2:error",
-          "kind": "system",
-          "title": "error",
-          "status": "failed",
-          "detail": "RUNTIME_BACKEND_ERROR",
-          "occurredAt": "2026-09-01T14:37:34.853Z",
-          "sourceEventId": "run-000001:runtime:2",
           "runId": "run-000001",
           "entityType": "run",
           "entityId": "run-000001"
@@ -381,7 +353,7 @@
           "id": "turn-000002",
           "type": "turn",
           "title": "Turn",
-          "status": "failed",
+          "status": "running",
           "depth": 2,
           "edgeLabel": "continued",
           "parentIds": [
@@ -393,14 +365,13 @@
           "id": "run-000001",
           "type": "run",
           "title": "Run",
-          "status": "failed",
+          "status": "running",
           "depth": 3,
           "edgeLabel": "attached",
           "parentIds": [
             "turn:turn-000002"
           ],
           "runner": "pi",
-          "elapsedMs": 0,
           "startedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
@@ -411,7 +382,7 @@
         "fields": [
           {
             "label": "status",
-            "value": "failed"
+            "value": "streaming"
           },
           {
             "label": "input tokens",
@@ -461,12 +432,14 @@
           "source": "application"
         },
         "analysis.ask": {
-          "available": true,
-          "source": "application"
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
         },
         "analysis.recipe": {
-          "available": true,
-          "source": "application"
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
         },
         "analysis.compare": {
           "available": false,
@@ -563,38 +536,38 @@
           "source": "application"
         },
         "run.send": {
-          "available": true,
-          "source": "provider"
+          "available": false,
+          "source": "application",
+          "reason": "A run is already active"
         },
         "run.cancel": {
           "available": false,
           "source": "runtime",
-          "reason": "There is no active run to cancel"
+          "reason": "The current runtime does not acknowledge provider cancellation"
         },
         "run.queue": {
-          "available": false,
-          "source": "provider",
-          "reason": "There is no active run"
+          "available": true,
+          "source": "provider"
         },
         "run.steer": {
           "available": false,
           "source": "provider",
-          "reason": "There is no active run"
+          "reason": "The current runtime does not report steering support"
         },
         "run.detach": {
           "available": false,
           "source": "provider",
-          "reason": "There is no active run"
+          "reason": "The current runtime does not report detach support"
         },
         "run.reconnect": {
           "available": false,
           "source": "provider",
-          "reason": "There is no recoverable run to reconnect"
+          "reason": "There is no recoverable run to reconnect while another run is active"
         },
         "run.reconcile": {
           "available": false,
           "source": "provider",
-          "reason": "There is no recoverable run to reconcile"
+          "reason": "There is no recoverable run to reconcile while another run is active"
         }
       },
       "draft": "",
@@ -627,13 +600,13 @@
             "draft": {
               "id": "draft-branch-1",
               "branchId": "branch-1",
-              "text": "W6 failure state",
+              "text": "W6 provider cancellation unavailable",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "operation": {
               "id": "op-terminal-000001",
               "kind": "draft-update",
-              "requestDigest": "65a924286ea2c8f6c5ff3e0223a576c834e806ca53e738685ecec2fb6ca9608a",
+              "requestDigest": "1e2611aa3923b9c141739294cf9199035778eb4fc903ca9dd57858c24a7068f7",
               "status": "acknowledged",
               "target": {
                 "kind": "branch",
@@ -652,7 +625,7 @@
         "kind": "run.requested",
         "payload": {
           "runId": "run-000001",
-          "text": "W6 failure state",
+          "text": "W6 provider cancellation unavailable",
           "admission": {
             "version": 1,
             "runId": "run-000001",
@@ -663,7 +636,7 @@
             "admittedAt": "2026-08-01T00:00:00.000Z",
             "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
             "requested": {
-              "text": "W6 failure state",
+              "text": "W6 provider cancellation unavailable",
               "profile": {
                 "name": "Braid starter",
                 "description": "A portable starter profile for the Braid terminal",
@@ -690,7 +663,7 @@
                 "messages": false
               },
               "controls": {
-                "cancel": true,
+                "cancel": false,
                 "steer": false,
                 "queue": true,
                 "status": false,
@@ -709,10 +682,10 @@
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "3449bfd3698fe90c904d4d131b554e20282f4c2da5415c81a10ad8a2e8223719",
-            "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
+            "requestDigest": "68a075c59b37766db05bbbad8741ed0d3717b14fdf1b8eaa84c7f73cf470c00d",
+            "capabilitiesDigest": "34f74481bbc016dda8db96c63dc5895e62f6054b9f68b314e6c98d33cdd4fcbe",
             "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-            "digest": "a7a3af8c85c9cdcc5a903d8cc682914084171c342b124307606e4ec5beed6b60"
+            "digest": "d815607eb5d953b1480b5a9c38534a577165dcb19cdc13978c6657e4e6c8d925"
           },
           "status": "admitted"
         }
@@ -725,10 +698,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-5bdaea44f48831b9f685342a",
+              "id": "effect-op-terminal-000002-63389d30cf21806e31f89974",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "5bdaea44f48831b9f685342a284c9132f96e01beecbdefdc63bfcd9d8a400441",
+              "requestDigest": "63389d30cf21806e31f89974f8b6977f37fbef917c904eed21cf1a139fb7e08a",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -747,34 +720,34 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-01T14:37:34.842Z",
+            "occurredAt": "2026-09-01T14:37:08.711Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-a7732345-84ec-4164-a86e-7cda57b88d18",
-              "intent": "W6 failure state",
+              "id": "turn-feafc810-e391-4475-87ce-dc675b823d0c",
+              "intent": "W6 provider cancellation unavailable",
               "metadata": {
                 "identity": {
                   "profileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
-                  "taskDigest": "sha256:c9905665e2dfc0797a1e676126240ca528d13f202f3254f328f039c0de60f196"
+                  "taskDigest": "sha256:a01e02bed0c0ca1c0f37d4f8ce3650e5166ec36997f81fb8468c46b6cd751142"
                 }
               }
             },
             "session": {
-              "id": "116237d6-6c35-4f24-b6d1-26f9abe2dec4",
+              "id": "b2aec8b0-adf7-48bd-bff8-fc189b027d43",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-01T14:37:34.841Z",
-              "updatedAt": "2026-09-01T14:37:34.841Z",
+              "createdAt": "2026-09-01T14:37:08.711Z",
+              "updatedAt": "2026-09-01T14:37:08.711Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
             "metadata": {
               "identity": {
                 "profileDigest": "sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983",
-                "taskDigest": "sha256:c9905665e2dfc0797a1e676126240ca528d13f202f3254f328f039c0de60f196"
+                "taskDigest": "sha256:a01e02bed0c0ca1c0f37d4f8ce3650e5166ec36997f81fb8468c46b6cd751142"
               },
               "materialization": {
                 "status": "known",
@@ -789,16 +762,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-a7732345-84ec-4164-a86e-7cda57b88d18"
+                  "id": "turn-feafc810-e391-4475-87ce-dc675b823d0c"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-a7732345-84ec-4164-a86e-7cda57b88d18:attempt:eaee217c-fa88-4346-ba28-bec638f19a8e",
-                  "materializationReceiptDigest": "sha256:b83c9bc70702720d8ae9a2608048c238fd3df8d70736b2f61f32feeaaa86fb70",
-                  "bindingDigest": "sha256:8cc30e082f8a7c2bf0f8f208b2a6617b837379f3a0a2a23d9c4ca4199129e621",
+                  "attemptId": "turn-feafc810-e391-4475-87ce-dc675b823d0c:attempt:fde4fd61-b7d2-4657-b375-6c547b49760b",
+                  "materializationReceiptDigest": "sha256:9fe0c2b4c000a497f85dce1f517e66aa27f973206ea38f2f6d6cad1b3858aea6",
+                  "bindingDigest": "sha256:2a5eb30f94e62b7e9b3411788e8daef05de48992984285f711c8f03217448e3b",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -810,75 +783,38 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-01T14:37:34.829Z"
+                "startedAt": "2026-09-01T14:37:08.708Z"
               }
             },
-            "timestamp": "2026-09-01T14:37:34.842Z"
+            "timestamp": "2026-09-01T14:37:08.711Z"
           }
         }
       },
       {
         "sequence": 6,
         "revision": 6,
-        "kind": "run.error",
-        "payload": {
-          "runId": "run-000001",
-          "source": {
-            "eventId": "run-000001:runtime:2",
-            "providerSequence": 2,
-            "occurredAt": "2026-09-01T14:37:34.853Z",
-            "receivedAt": "2026-08-01T00:00:00.000Z"
-          },
-          "error": {
-            "message": "RUNTIME_BACKEND_ERROR",
-            "recoverable": true
-          },
-          "text": "RUNTIME_BACKEND_ERROR"
-        }
-      },
-      {
-        "sequence": 7,
-        "revision": 7,
-        "kind": "run.finished",
-        "payload": {
-          "runId": "run-000001",
-          "source": {
-            "eventId": "run-000001:runtime:3",
-            "providerSequence": 3,
-            "occurredAt": "2026-09-01T14:37:34.859Z",
-            "receivedAt": "2026-08-01T00:00:00.000Z"
-          },
-          "status": "failed",
-          "completeness": "complete",
-          "finalText": "",
-          "usage": {
-            "input": 0,
-            "output": 0,
-            "tokensKnown": false,
-            "usdKnown": false
-          },
-          "reason": "RUNTIME_FINAL_REASON",
-          "error": "RUNTIME_FINAL_ERROR"
-        }
-      },
-      {
-        "sequence": 8,
-        "revision": 8,
-        "kind": "effect.upserted",
+        "kind": "draft.recorded",
         "payload": {
           "value": {
-            "kind": "effect.upserted",
-            "effect": {
-              "id": "effect-op-terminal-000002-5bdaea44f48831b9f685342a",
-              "operationId": "op-terminal-000002",
-              "effectKind": "run.execute",
-              "requestDigest": "5bdaea44f48831b9f685342a284c9132f96e01beecbdefdc63bfcd9d8a400441",
-              "kind": "send",
-              "status": "failed",
-              "attempt": 1,
-              "outcomeDigest": "2d2acf569882146ba42c49e3553984f716d39e5c29483aa9dd35daa8fb1f60bc",
-              "createdAt": "2026-08-01T00:00:00.000Z",
+            "kind": "draft.recorded",
+            "draft": {
+              "id": "draft-branch-1",
+              "branchId": "branch-1",
+              "text": "",
               "updatedAt": "2026-08-01T00:00:00.000Z"
+            },
+            "operation": {
+              "id": "op-terminal-000003",
+              "kind": "draft-update",
+              "requestDigest": "5047a045e4c339a7598847f36d4f31a4192d5c2b83606eb77a3a146984803700",
+              "status": "acknowledged",
+              "target": {
+                "kind": "branch",
+                "id": "branch-1"
+              },
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z",
+              "acknowledgedAt": "2026-08-01T00:00:00.000Z"
             }
           }
         }

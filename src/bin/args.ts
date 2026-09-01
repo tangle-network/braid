@@ -9,6 +9,7 @@ export interface CliOptions {
     | 'comparison'
     | 'product-demo'
     | 'supervision'
+    | 'cancellation-unavailable'
   readonly inline: boolean
   readonly noColor: boolean
   readonly highContrast: boolean
@@ -118,10 +119,11 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
         value !== 'analysis' &&
         value !== 'comparison' &&
         value !== 'product-demo' &&
-        value !== 'supervision'
+        value !== 'supervision' &&
+        value !== 'cancellation-unavailable'
       )
         throw new CliUsageError(
-          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", or "supervision"',
+          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", "supervision", or "cancellation-unavailable"',
         )
       uiFixture = value
       index += 1
