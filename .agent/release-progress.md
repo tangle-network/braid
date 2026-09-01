@@ -18,7 +18,7 @@ Do not copy a version, integrity value, or live result from an earlier cohort.
 - Current branch: `fix/braid-release-safety`.
 - Current commit: `f7f802020` (`docs(release): align runtime contract versions`).
 - Dirty files: none in this safety worktree; the main worktree's `.agent/skill-runs.jsonl` is unrelated.
-- Planned gates: CI, latest review, agent-profile-materialize `0.19.0`, and exact-head merge.
+- Planned gates: CI, latest review, a Runtime release that widens the materializer cap, and exact-head merge.
 
 - Candidate Braid package and version: `@tangle-network/braid@0.3.0`
 - Candidate Braid commit: `f7f802020`
@@ -101,7 +101,7 @@ Use `not recorded` until the check runs against the release record above.
 
 ## Remaining Sequence
 
-1. Adopt agent-profile-materialize `0.19.0` when the registry release is live, then rerun the required final dependency check and exact candidate captures.
+1. Adopt the next Runtime release that widens its materializer cap together with agent-profile-materialize `0.19.0`, then rerun the required final dependency check and exact candidate captures.
 2. Re-read the newest PR CI and review state, fix valid findings, and merge the exact green head.
 3. Keep Braid publication blocked until LIVE-10 passes against real AWS Nitro infrastructure, then compare any published package with its approved candidate.
 
