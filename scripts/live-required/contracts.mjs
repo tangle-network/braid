@@ -109,11 +109,7 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
 const PROOF_OPERATION_CHECK_VARIANTS = Object.freeze({
   [PROOF_OPERATIONS.tangleInference]: Object.freeze([
     Object.freeze(['normal-turn', 'cancelled-turn', 'materialization-receipt']),
-    Object.freeze([
-      'normal-turn',
-      'cancellation-reported-unavailable',
-      'materialization-receipt',
-    ]),
+    Object.freeze(['normal-turn', 'cancellation-reported-unavailable', 'materialization-receipt']),
   ]),
 })
 
@@ -533,10 +529,7 @@ function validateProofFacts(operation, status, facts) {
       continue
     }
     if (key === 'cancellationResponseCode') {
-      if (
-        value !== null &&
-        !['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(value)
-      )
+      if (value !== null && !['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(value))
         throw new Error(
           'Live proof cancellationResponseCode must be CAPABILITY_UNAVAILABLE, UNKNOWN_RUN, or null',
         )
@@ -561,10 +554,7 @@ function validatePassedTangleInferenceReceipt(receipt) {
   const checks = new Set(receipt.checks)
   validRequiredString(facts.normalRunId, 'Passed Tangle inference facts.normalRunId')
   if (facts.cancellationStatus === 'confirmed') {
-    if (
-      !checks.has('cancelled-turn') ||
-      checks.has('cancellation-reported-unavailable')
-    )
+    if (!checks.has('cancelled-turn') || checks.has('cancellation-reported-unavailable'))
       throw new Error('Confirmed Tangle inference proof requires the cancelled-turn check')
     if (facts.cancellationResponseCode !== null)
       throw new Error('Confirmed Tangle inference cancellation must have no response code')
@@ -581,19 +571,14 @@ function validatePassedTangleInferenceReceipt(receipt) {
     throw new Error(
       'Passed Tangle inference proof requires confirmed or reported-unavailable cancellation',
     )
-  if (
-    !checks.has('cancellation-reported-unavailable') ||
-    checks.has('cancelled-turn')
-  )
+  if (!checks.has('cancellation-reported-unavailable') || checks.has('cancelled-turn'))
     throw new Error(
       'Unavailable Tangle inference proof requires the cancellation-reported-unavailable check',
     )
   if (facts.cancelledRunId !== null)
     throw new Error('Unavailable Tangle inference cancellation cannot have a cancelled run ID')
   if (!['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(facts.cancellationResponseCode))
-    throw new Error(
-      'Unavailable Tangle inference cancellation requires a recognized response code',
-    )
+    throw new Error('Unavailable Tangle inference cancellation requires a recognized response code')
   if (run.ids.length !== 1 || run.ids[0] !== facts.normalRunId)
     throw new Error('Unavailable Tangle inference proof requires only the normal run ID')
 }
