@@ -267,6 +267,55 @@ test('prepared Runtime cancellation preserves an unconfirmed Router cancellation
   assert.equal(terminal.status, 'aborted')
 })
 
+test('prepared Runtime cancellation gives the terminal effect precedence over rejection', async () => {
+  let cancellationCalls = 0
+  const execution = new AgentRuntimeExecutionPort(async (input) => {
+    const backend = await deterministicBackend(input, { chunkDelayMs: 5 })
+    const factory = backend.factory
+    return {
+      kind: 'prepared-execution' as const,
+      backend: {
+        ...backend,
+        factory: (spec, context) => {
+          const executor = factory(spec, context)
+          executor.cancel = async () => {
+            cancellationCalls += 1
+            return {
+              status: 'rejected' as const,
+              effect: 'cancelled' as const,
+              observedAt: '2026-09-01T00:00:00.000Z',
+            }
+          }
+          return executor
+        },
+      },
+      cancellation: { kind: 'runtime-executor-cancel' as const },
+      materializationReceipt: { provider: 'tangle-inference', backend: 'executor' },
+    }
+  })
+  const input = executionInput({ runId: 'run-runtime-rejection' })
+  const admission = await execution.admit(input)
+  assert.equal(admission.capabilities?.controls.cancel, true)
+
+  const stream = execution.streamTurn(input)
+  const first = await stream.next()
+  assert.equal(first.done, false)
+  const acknowledgement = await execution.cancelRun({
+    runId: input.runId,
+    operationId: 'operation-runtime-rejection',
+  })
+
+  assert.equal(cancellationCalls, 1)
+  assert.deepEqual(acknowledgement, {
+    operationId: 'operation-runtime-rejection',
+    outcome: 'already-applied',
+    detail: 'Provider cancellation acknowledged',
+  })
+  for await (const _event of stream) {
+    // Drain the provider stream after its rejection.
+  }
+})
+
 test('ephemeral cleanup cannot report completed when its observation is unavailable', async () => {
   const execution = new AgentRuntimeExecutionPort(async (input) => ({
     kind: 'prepared-execution' as const,
