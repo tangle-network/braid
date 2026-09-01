@@ -334,7 +334,7 @@ test('normal composition streams a configured Tangle inference turn through agen
     JSON.stringify({ state: result.state, url: result.url }),
   )
   assert.equal(calls.length, 1)
-  assert.equal(calls[0]?.model, 'openai/gpt-5')
+  assert.equal(calls[0]?.model, 'gpt-5')
   assert.equal(result.state.environments.length, 1)
   assert.equal(result.state.environments[0]?.kind, 'remote-service')
   assert.equal(result.state.environments[0]?.placement.provider, 'tangle-inference')
