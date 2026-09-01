@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "1b64e9ae41a4dc4773954d5745b5e5721bce975fa7cee9044975b6cd4344593b"
+    "tarballSha256": "073e9599f703dea61105504d060612eb9f33fb97aa0e3199b1180aca28e13d70"
   },
   "dimensions": {
     "columns": 120,
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-01T14:43:16.524Z",
+          "occurredAt": "2026-09-01T14:56:34.387Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -698,10 +698,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-ad557d2bdf421a457e137af5",
+              "id": "effect-op-terminal-000002-fe86c61ef6bf2e38c2bf444e",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "ad557d2bdf421a457e137af5a9a7b93123687a77aae2cce88fe89b2a85072611",
+              "requestDigest": "fe86c61ef6bf2e38c2bf444ee94681b5e1e1f8fda6c0643f7dca6b5ffa2cf551",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -720,13 +720,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-01T14:43:16.524Z",
+            "occurredAt": "2026-09-01T14:56:34.387Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-746bb318-1b41-4bfb-8116-6a15d11cca26",
+              "id": "turn-3dde7fec-f298-4694-af50-2692af392476",
               "intent": "W6 provider cancellation unavailable",
               "metadata": {
                 "identity": {
@@ -736,11 +736,11 @@
               }
             },
             "session": {
-              "id": "838799c1-2571-4cbc-905a-669b805d2f7e",
+              "id": "187f72d0-b19f-4aae-b9eb-10bec07962d4",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-01T14:43:16.524Z",
-              "updatedAt": "2026-09-01T14:43:16.524Z",
+              "createdAt": "2026-09-01T14:56:34.387Z",
+              "updatedAt": "2026-09-01T14:56:34.387Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -762,16 +762,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-746bb318-1b41-4bfb-8116-6a15d11cca26"
+                  "id": "turn-3dde7fec-f298-4694-af50-2692af392476"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-746bb318-1b41-4bfb-8116-6a15d11cca26:attempt:40eafbfe-9bd7-4511-9725-6e9c74c70e1d",
-                  "materializationReceiptDigest": "sha256:c933f217447995719c27534b0052a4dcee0e7e281afb49af50027e564c1f137e",
-                  "bindingDigest": "sha256:7e568b8284890581fee696f592db53d3b12756cf91ebab10f0909b394ce43d11",
+                  "attemptId": "turn-3dde7fec-f298-4694-af50-2692af392476:attempt:0bfe6405-1cd4-4187-a660-6d4fe80e91fd",
+                  "materializationReceiptDigest": "sha256:9071166ad993464221301999d0c2c9ae30ea69d39c1684a1087321ad0e207d5b",
+                  "bindingDigest": "sha256:bd3517d5bd927ffe551797f10458b8893219b6891783c374e1014330ba61bcd2",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -783,10 +783,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-01T14:43:16.522Z"
+                "startedAt": "2026-09-01T14:56:34.385Z"
               }
             },
-            "timestamp": "2026-09-01T14:43:16.524Z"
+            "timestamp": "2026-09-01T14:56:34.387Z"
           }
         }
       },

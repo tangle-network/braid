@@ -6,7 +6,7 @@ appearance: none; high contrast off; reduced motion off
 event 2: draft.changed; status: ready for a message
 event 3: run.requested; status: admitted: W6 plain proof
 event 4: effect.upserted; status: streaming
-event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-f1a744ed-c9bd-4020-a0be-98af40db481b","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:d36c141186589fc69f020dd03cda71443909176c6bbf640d87724c3ad0297c66"}}},"session":{"id":"7b1d5214-2bb9-4c2d-9303-e8cd4be851a2","backend":"executor","status":"active","createdAt":"2026-09-01T14:42:59.077Z","updatedAt":"2026-09-01T14:42:59.077Z","metadata":"[unavailable]"},"
+event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-6d000c39-cc8c-4b76-9139-29e6c01d9aa8","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:d36c141186589fc69f020dd03cda71443909176c6bbf640d87724c3ad0297c66"}}},"session":{"id":"8470faf6-98fa-4979-bcec-093a91e49ffc","backend":"executor","status":"active","createdAt":"2026-09-01T14:56:16.865Z","updatedAt":"2026-09-01T14:56:16.865Z","metadata":"[unavailable]"},"
 event 6: run.usage; status: streaming
 event 7: run.artifact; status: streaming: agent-turn-result
 event 8: run.finished; status: completed: Fixture response through pi: W6 plain proof
