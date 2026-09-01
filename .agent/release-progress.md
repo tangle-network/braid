@@ -12,13 +12,13 @@ Do not copy a version, integrity value, or live result from an earlier cohort.
 - Environment: local safety worktree, GitHub Actions, and protected live checks.
 - Live URL: none; Braid is not being published in this attempt.
 - Live service/process: none; the package is a terminal client and has no deployed service.
-- Artifact path: release candidate artifacts will remain in an external release-artifact directory.
+- Artifact path: `artifacts/verification/w6` contains the tracked W6 frames and receipts.
 - Rollback path: keep npm `latest` unchanged and close or revert the pull request.
 - Credential files: protected CI secrets and `gh-drew`; no credential values enter the repository.
 - Current branch: `fix/braid-release-safety`.
-- Current commit: `0df777fea` plus the local LIVE-06 receipt contract fix.
-- Dirty files: LIVE-06 receipt contract tests and release ledger; the main worktree's `.agent/skill-runs.jsonl` is unrelated.
-- Planned gates: focused tests, full checks, terminal captures, CI, review, and exact-head merge.
+- Current commit: `4437301a4` (`test(release): capture provider cancellation availability`).
+- Dirty files: none in this safety worktree; the main worktree's `.agent/skill-runs.jsonl` is unrelated.
+- Planned gates: final dependency-cohort check, CI, review, and exact-head merge.
 
 - Candidate Braid package and version: `not recorded`
 - Candidate Braid commit: `not recorded`
@@ -72,7 +72,9 @@ They are historical evidence and do not describe the current release candidate.
 Record each result with its candidate commit, command, date, and artifact path.
 Use `not recorded` until the check runs against the release record above.
 
-- Local package and terminal checks: `not recorded`.
+- Local package and terminal checks: `pnpm check` passed with 894 of 896 tests passing, 2 skipped, and 0 failures at `d9d56ea58`; rerun after the final dependency update.
+- Visual captures: `pnpm capture:visual` passed with 117 artifacts across 20 states at `4437301a4`; cancellation-unavailable states passed at 40×12, 80×24, 120×40, and 200×60.
+- Packed keyboard flow: `pnpm test:pty` passed at 40×12, 80×24, 120×40, and 200×60 at `4437301a4`.
 - Provider and Sandbox LIVE-07 check: passed on 2026-09-01 with `pnpm run test:live:tangle:sandbox:multirun`; artifact `artifacts/verification/live/tangle-sandbox-braid-multirun-production-1788260107206.json`.
 - Restart and concurrent-session checks: passed in the LIVE-07 artifact above; it proves two independent runs, focus in both directions, targeted cancellation, stable restart replay, two provider executions, and exact cleanup.
 - Interaction checks: `not recorded`.
@@ -127,3 +129,4 @@ Use `not recorded` until the check runs against the release record above.
 - 2026-09-01: Safety branch passed 319 of 319 unit tests before proof-worker integration.
 - 2026-09-01: Cherry-picked proof-worker release binding at `56c5e5d80`.
 - 2026-09-01: Added mutually exclusive confirmed and unavailable LIVE-06 receipt validation; focused receipt checks passed 115 of 115.
+- 2026-09-01: Added the provider-reported cancellation-unavailable visual fixture and captured four required sizes plus the packed keyboard flow.
