@@ -101,13 +101,9 @@ Use `not recorded` until the check runs against the release record above.
 
 ## Remaining Sequence
 
-1. Finish and verify warm-start performance against the published dependency cohort.
-2. Regenerate stable visual captures and inspect every corrected flow.
-3. Run the complete local, package, property, performance, and live-provider checks.
-4. Run independent architecture, security, UI, and release reviews and fix each valid finding.
-5. Merge one Braid pull request after current checks and reviews pass.
-6. Publish the candidate package recorded above only after every required live row, including LIVE-10, passes.
-7. Download the public Braid package and compare it with the approved candidate.
+1. Adopt agent-profile-materialize `0.19.0` when the registry release is live, then rerun the required final dependency check and exact candidate captures.
+2. Re-read the newest PR CI and review state, fix valid findings, and merge the exact green head.
+3. Keep Braid publication blocked until LIVE-10 passes against real AWS Nitro infrastructure, then compare any published package with its approved candidate.
 
 ## Decision
 
