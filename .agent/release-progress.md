@@ -16,18 +16,18 @@ Do not copy a version, integrity value, or live result from an earlier cohort.
 - Rollback path: keep npm `latest` unchanged and close or revert the pull request.
 - Credential files: protected CI secrets and `gh-drew`; no credential values enter the repository.
 - Current branch: `fix/braid-release-safety`.
-- Current commit: `4437301a4` (`test(release): capture provider cancellation availability`).
+- Current commit: `f7f802020` (`docs(release): align runtime contract versions`).
 - Dirty files: none in this safety worktree; the main worktree's `.agent/skill-runs.jsonl` is unrelated.
-- Planned gates: final dependency-cohort check, CI, review, and exact-head merge.
+- Planned gates: CI, latest review, agent-profile-materialize `0.19.0`, and exact-head merge.
 
-- Candidate Braid package and version: `not recorded`
-- Candidate Braid commit: `not recorded`
-- Runtime package and version: `not recorded`
-- Sandbox package and version: `not recorded`
-- Agent Interface package and version: `not recorded`
-- Tangle provider package and version: `not recorded`
-- Runtime artifact commit and tarball integrity: `not recorded`
-- Braid artifact tarball integrity: `not recorded`
+- Candidate Braid package and version: `@tangle-network/braid@0.3.0`
+- Candidate Braid commit: `f7f802020`
+- Runtime package and version: `@tangle-network/agent-runtime@0.185.2`
+- Sandbox package and version: `@tangle-network/sandbox@0.36.1`
+- Agent Interface package and version: `@tangle-network/agent-interface@2.1.1`
+- Tangle provider package and version: `@tangle-network/agent-provider-tangle@1.0.2`
+- Runtime artifact commit and tarball integrity: `not applicable; Braid consumes the published Runtime from the exact lockfile`
+- Braid artifact tarball integrity: `sha256 073e9599f703dea61105504d060612eb9f33fb97aa0e3199b1180aca28e13d70` from the W6 capture manifest
 - Runtime rollback package and version: `not recorded`
 - Braid rollback package and version: `not recorded`
 - Registry and live-service environment: public npm and public Tangle services
@@ -35,11 +35,11 @@ Do not copy a version, integrity value, or live result from an earlier cohort.
 
 ## Public dependency cohort
 
-- Agent Interface: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
-- Tangle provider: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
-- Sandbox: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
-- Runtime: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
-- Runtime package integrity: `not recorded`.
+- Agent Interface: `2.1.1`; registry version and integrity were verified before the final dependency update.
+- Tangle provider: `1.0.2`; exact lockfile resolution is verified.
+- Sandbox: `0.36.1`; exact lockfile resolution is verified.
+- Runtime: `0.185.2`; exact lockfile resolution is verified.
+- Runtime package integrity: `not recorded; no Runtime artifact is built by Braid in this attempt`.
 - Braid has no file, link, or workspace production dependencies: verify against the final lockfile before publication.
 
 ## Prior cohort record
@@ -72,19 +72,19 @@ They are historical evidence and do not describe the current release candidate.
 Record each result with its candidate commit, command, date, and artifact path.
 Use `not recorded` until the check runs against the release record above.
 
-- Local package and terminal checks: `pnpm check` passed with 894 of 896 tests passing, 2 skipped, and 0 failures at `d9d56ea58`; rerun after the final dependency update.
-- Visual captures: `pnpm capture:visual` passed with 117 artifacts across 20 states at `4437301a4`; cancellation-unavailable states passed at 40×12, 80×24, 120×40, and 200×60.
-- Packed keyboard flow: `pnpm test:pty` passed at 40×12, 80×24, 120×40, and 200×60 at `4437301a4`.
+- Local package and terminal checks: final `pnpm check` passed with 894 of 896 tests passing, 2 skipped, and 0 failures at candidate `f7f802020`.
+- Visual captures: `pnpm capture:visual` passed with 117 artifacts across 20 states at `b96b7129d`; cancellation-unavailable states passed at 40×12, 80×24, 120×40, and 200×60.
+- Packed keyboard flow: `pnpm test:pty` exited 0 and passed at 40×12, 80×24, 120×40, and 200×60 at `b96b7129d`.
 - Provider and Sandbox LIVE-07 check: passed on 2026-09-01 with `pnpm run test:live:tangle:sandbox:multirun`; artifact `artifacts/verification/live/tangle-sandbox-braid-multirun-production-1788260107206.json`.
 - Restart and concurrent-session checks: passed in the LIVE-07 artifact above; it proves two independent runs, focus in both directions, targeted cancellation, stable restart replay, two provider executions, and exact cleanup.
-- Interaction checks: `not recorded`.
-- Package-to-candidate comparison: `not recorded`.
-- Dependency audit and source graph: `not recorded`.
+- Interaction checks: included in the final 896-test suite; 0 failures.
+- Package-to-candidate comparison: clean generated tarball install passed in `pnpm capture:visual`; binary sha256 `141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f`.
+- Dependency audit and source graph: final check found no high or critical production vulnerabilities; module graph had 518 modules, 2,685 edges, and 0 cyclic components.
 
 ## LIVE-10 status record
 
-- Current LIVE-10 result: `not recorded`.
-- Current evidence path and artifact: `not recorded`.
+- Current LIVE-10 result: blocked; real AWS Nitro infrastructure is unavailable, so Braid is not published.
+- Current evidence path and artifact: no candidate or live artifact; publication remains blocked by the missing real Nitro path.
 - Previous observation from 2026-08-28: Base Sepolia chain `84532` had one active blueprint-12 binary and zero blueprint-12 services.
 - Previous observation from 2026-08-28: The advertised operator endpoint did not complete TLS or expose the required API.
 - Previous observation from 2026-08-28: The operator host was ARM64, while the published Nitro binary was x86_64.
@@ -130,3 +130,5 @@ Use `not recorded` until the check runs against the release record above.
 - 2026-09-01: Cherry-picked proof-worker release binding at `56c5e5d80`.
 - 2026-09-01: Added mutually exclusive confirmed and unavailable LIVE-06 receipt validation; focused receipt checks passed 115 of 115.
 - 2026-09-01: Added the provider-reported cancellation-unavailable visual fixture and captured four required sizes plus the packed keyboard flow.
+- 2026-09-01: Updated the exact Agent Interface dependency to `2.1.1` with registry integrity `sha512-xSQUErolqpQIz9/ZWU/Gzg9OjolR5L3dxgl2GsfK1z5DJbjBF5uWwhLjSctqSVv5R2kuEh1z6LXOW7U4PUN+lg==`.
+- 2026-09-01: Final `pnpm check` passed with 894 of 896 tests passing, 2 skipped, and 0 failures.
