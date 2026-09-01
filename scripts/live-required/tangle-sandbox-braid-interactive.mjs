@@ -1360,7 +1360,14 @@ async function runProof({
   const identityRecords = []
   let metrics
   try {
-    packed = await installPackedBraid(targetRepository)
+    packed = await installPackedBraid(targetRepository, {
+      tarballPath: environment.BRAID_RELEASE_TARBALL,
+    })
+    if (
+      typeof environment.BRAID_LIVE_TARBALL_SHA256 === 'string' &&
+      packed.tarballSha256 !== environment.BRAID_LIVE_TARBALL_SHA256
+    )
+      throw new Error('LIVE-08 installed another tarball than the release candidate')
     config = await prepareProductionWorkspace({
       repository: targetRepository,
       environment: sanitizedEnvironment(configurationEnvironment(environment)),

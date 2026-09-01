@@ -704,6 +704,22 @@ Publication uses a smaller direct acceptance path.
 
 The candidate job runs `pnpm check` once, then `pnpm release:prepare` builds and uses one immutable package.
 
+Publication requires a successful run of the protected `Release Live Evidence` workflow for the same main commit.
+
+That workflow verifies the candidate Release run metadata, downloads the fixed candidate archive, and checks out the same commit.
+
+It installs the downloaded candidate tarball once, runs every selected live command with its installed binary and package modules, and verifies its digest against the candidate identity.
+
+The protected workflow persists aggregate Tangle receipts and the separate `LIVE-07` multirun artifact, each with the commit, tarball, dependency, and Runtime identity.
+
+It verifies `LIVE-10` directly from its check record, stdout receipt, aggregate receipt, and retained `LIVE-07` artifact, then uploads `braid-live-evidence-<commit>`.
+
+The publish job accepts only that fixed artifact after it verifies the producer workflow path, manual-dispatch event, successful conclusion, main branch, and exact head commit.
+
+A missing, stale, tampered, or unavailable protected live-evidence run fails the publish job and leaves publication blocked.
+
+The protected `release-live` environment supplies `BRAID_LIVE_TANGLE_ENV_JSON`; the regular Release workflow never receives live-provider credentials.
+
 A code-free job endorses that exact package before publication.
 
 After npm publication, the same clean-install, plain-flow, encrypted-storage, digest, architecture, and cleanup smoke runs for the candidate and registry package on Linux x64 and macOS arm64.

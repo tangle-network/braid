@@ -54,8 +54,10 @@ export async function installPackedBraid(repository, options = {}) {
       '.bin',
       process.platform === 'win32' ? 'braid.cmd' : 'braid',
     )
+    const packageRoot = join(installRoot, 'node_modules', '@tangle-network', 'braid')
     return {
       binary,
+      packageRoot,
       installRoot,
       tarball,
       tarballName,

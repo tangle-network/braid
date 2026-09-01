@@ -92,6 +92,8 @@
     "release:check": "pnpm run check:release",
     "release:prepare": "node scripts/release/prepare-candidate.mjs",
     "release:collect": "node scripts/release/collect-release-evidence.mjs",
+    "release:collect-live": "node scripts/release/collect-live-evidence.mjs",
+    "release:verify-live-10": "node scripts/release/verify-publish-gate.mjs",
     "release:record-publication": "node scripts/release/record-publication.mjs",
     "release:smoke": "node scripts/release/smoke-package.mjs",
     "verify:candidate": "node scripts/verify-candidate.mjs",

@@ -26,6 +26,7 @@ import {
   initializedSession,
   prepareProductionWorkspace,
   profileFor,
+  resolveBinary,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
 import {
@@ -160,6 +161,28 @@ test('generic unqualified live profiles fail closed without a model provider', (
       return true
     },
   )
+})
+
+test('candidate live evidence cannot fall back to the source checkout binary', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-live-binary-'))
+  try {
+    const sourceBinary = join(root, 'dist', 'bin', 'braid.js')
+    await mkdir(join(root, 'dist', 'bin'), { recursive: true })
+    await writeFile(sourceBinary, '#!/usr/bin/env node\n')
+    await assert.rejects(
+      () =>
+        resolveBinary(root, {
+          BRAID_RELEASE_LIVE_EVIDENCE_BINDING: '{"schema":"binding"}',
+          BRAID_LIVE_BINARY: sourceBinary,
+        }),
+      (error) => {
+        assert.equal(error.code, 'BRAID_PACKED_BINARY_REQUIRED')
+        return true
+      },
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('live profile and evidence preserve the full portable model id', () => {

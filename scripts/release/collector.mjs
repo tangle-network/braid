@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { join, relative, resolve } from 'node:path'
-
+import { assertMultirunProof } from '../live-required/multirun-contract.mjs'
+import { installPackedBraid } from '../packed-binary.mjs'
 import { releaseCheckEntry, requiredEvidenceCheckIds } from '../release-check-catalog.mjs'
 import { canonicalJson } from '../release-evidence.mjs'
 import { readRegularFileNoFollow } from '../release-files.mjs'
@@ -37,7 +38,12 @@ import {
   sanitizeEnvironment,
 } from './command-runner.mjs'
 import { readLiveBridgeProof } from './live-bridge-proof.mjs'
-import { readLiveTangleProof } from './live-tangle-proof.mjs'
+import {
+  assertLiveEvidenceBinding,
+  RUNTIME_PACKAGE_NAME,
+  serializedLiveEvidenceBinding,
+} from './live-evidence-binding.mjs'
+import { assertTangleReceipts, readLiveTangleProof } from './live-tangle-proof.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -74,6 +80,33 @@ function artifactId(checkId, attempt, stream, bytes) {
 
 function artifactMap(artifacts) {
   return new Map(artifacts.map((artifact) => [artifact.id, artifact]))
+}
+
+function liveEvidencePaths(checkId) {
+  if (checkId === 'live-bridge' || /^LIVE-0[1-5]$/u.test(checkId))
+    return ['live/bridge/evidence.json']
+  if (checkId === 'live-tangle' || /^LIVE-(?:0[6-9]|10)$/u.test(checkId))
+    return ['live/tangle/evidence.json', 'live/tangle/receipts.json']
+  if (checkId === 'live-supervisor' || checkId === 'LIVE-11')
+    return ['live/supervisor/evidence.json']
+  if (checkId === 'live-analysis' || checkId === 'LIVE-12') return ['live/analysis/evidence.json']
+  return []
+}
+
+async function validateLiveEvidenceFile({ artifactRoot, checkId, identity }) {
+  for (const path of liveEvidencePaths(checkId)) {
+    let value
+    try {
+      value = JSON.parse((await readRegularFileNoFollow(join(artifactRoot, path))).toString('utf8'))
+    } catch (error) {
+      throw new Error(`${checkId} live evidence ${path} is missing or invalid`, { cause: error })
+    }
+    if (path === 'live/tangle/evidence.json') {
+      assertMultirunProof(value)
+      assertLiveEvidenceBinding(value.releaseBinding, identity, 'LIVE-07 multirun evidence')
+    } else if (path === 'live/tangle/receipts.json') assertTangleReceipts(value, identity)
+    else assertLiveEvidenceBinding(value.releaseBinding, identity, `${checkId} live evidence`)
+  }
 }
 
 function stateEnvelope({
@@ -208,7 +241,7 @@ export async function collectReleaseEvidence({
       `Release check ${id} has no requirement binding`,
     )
   const plan = checkpointPlan({
-    checkIds: selected,
+    checkIds: [...selected].sort(),
     requirementBindings: checkBindings,
   })
   const outputRoot = join(evidenceRoot, 'release')
@@ -281,186 +314,226 @@ export async function collectReleaseEvidence({
       environments,
     })
   }
-  let executedCheck = false
-  const executions = new Map()
-  const checkEnvironment = {
-    ...environment,
-    BRAID_RELEASE_ARTIFACT_ROOT: evidenceRoot,
-    BRAID_RELEASE_TARBALL: resolve(evidenceRoot, identity.tarballPath),
-    BRAID_EVAL_OUTPUT_DIR: join(evidenceRoot, 'eval'),
-    BRAID_LIVE_ANALYSIS_EVIDENCE: join(evidenceRoot, 'live', 'analysis', 'evidence.json'),
-    BRAID_LIVE_BRIDGE_EVIDENCE: join(evidenceRoot, 'live', 'bridge', 'evidence.json'),
-    BRAID_LIVE_SUPERVISOR_EVIDENCE: join(evidenceRoot, 'live', 'supervisor', 'evidence.json'),
-    BRAID_LIVE_TANGLE_EVIDENCE: join(evidenceRoot, 'live', 'tangle', 'evidence.json'),
-    BRAID_PERFORMANCE_OUTPUT_DIR: join(evidenceRoot, 'performance'),
-  }
-  for (const checkId of selected) {
-    if (checks.has(checkId)) continue
-    const entry = releaseCheckEntry(checkId)
-    const requirementIds = requirementIdsForPlan(plan, checkId)
-    const commandEnvironment = releaseChildEnvironment(checkEnvironment, entry.command)
-    let result = executions.get(entry.command)
-    if (!result) {
-      executedCheck = true
-      result = await runCheck({
-        checkId,
-        cwd: root,
-        environment: commandEnvironment,
-        timeoutMs,
-        maxLogBytes,
-        redactionSecrets,
-      })
-      assert(result.checkId === checkId, `Runner returned another check: ${result.checkId}`)
-      executions.set(entry.command, result)
-    } else result = { ...result, checkId, category: entry.category, command: entry.command }
-    assert(
-      result.command === entry.command && result.category === entry.category,
-      `Runner drifted from catalog for ${checkId}`,
+  for (const [checkId, check] of checks)
+    if (check.result === 'passed')
+      await validateLiveEvidenceFile({ artifactRoot: evidenceRoot, checkId, identity })
+  let packed
+  try {
+    const runtimeDependency = identity.dependencies.find(
+      ({ name }) => name === RUNTIME_PACKAGE_NAME,
     )
-    const secrets = collectRedactionSecrets(commandEnvironment, redactionSecrets)
-    const sanitizedArgv = result.sanitizedArgv ?? sanitizeArgv(result.argv, secrets)
-    const sanitizedEnvironment =
-      result.sanitizedEnvironment ?? sanitizeEnvironment(commandEnvironment)
-    const boundary = boundaryForCheck({
-      cwd: root,
-      processResult: result,
-      identity,
-      requirementIds,
-    })
-    const environmentValue = environmentRecord({
-      cwd: root,
-      argv: sanitizedArgv,
-      environment: sanitizedEnvironment,
-      boundary,
-    })
-    environments.set(environmentValue.id, environmentValue)
-    const attempt = (previousAttempts.get(checkId) ?? 0) + 1
-    previousAttempts.set(checkId, attempt)
-    const bridgeEvidence = await readLiveBridgeProof({
-      artifactRoot: evidenceRoot,
-      checkId,
-      processResult: result,
-    })
-    const structuredEvidenceOverride =
-      bridgeEvidence ??
-      (await readLiveTangleProof({
+    const needsPackedBinary =
+      selected.some((id) => releaseCheckEntry(id).category === 'live' && !checks.has(id)) &&
+      runtimeDependency !== undefined
+    if (needsPackedBinary) {
+      packed = await installPackedBraid(root, {
+        tarballPath: resolve(evidenceRoot, identity.tarballPath),
+      })
+      assert(
+        packed.tarballSha256 === identity.tarballSha256,
+        'Installed live-check tarball differs from the candidate identity',
+      )
+    }
+    let executedCheck = false
+    const executions = new Map()
+    const releaseBinding =
+      runtimeDependency === undefined ? undefined : serializedLiveEvidenceBinding(identity)
+    const checkEnvironment = {
+      ...environment,
+      BRAID_RELEASE_ARTIFACT_ROOT: evidenceRoot,
+      BRAID_RELEASE_TARBALL: resolve(evidenceRoot, identity.tarballPath),
+      BRAID_EVAL_OUTPUT_DIR: join(evidenceRoot, 'eval'),
+      BRAID_LIVE_ANALYSIS_EVIDENCE: join(evidenceRoot, 'live', 'analysis', 'evidence.json'),
+      BRAID_LIVE_BRIDGE_EVIDENCE: join(evidenceRoot, 'live', 'bridge', 'evidence.json'),
+      BRAID_LIVE_SUPERVISOR_EVIDENCE: join(evidenceRoot, 'live', 'supervisor', 'evidence.json'),
+      BRAID_LIVE_TANGLE_EVIDENCE: join(evidenceRoot, 'live', 'tangle', 'evidence.json'),
+      BRAID_LIVE_TANGLE_RECEIPTS: join(evidenceRoot, 'live', 'tangle', 'receipts.json'),
+      ...(releaseBinding === undefined
+        ? {}
+        : { BRAID_RELEASE_LIVE_EVIDENCE_BINDING: releaseBinding }),
+      ...(packed === undefined
+        ? {}
+        : {
+            BRAID_LIVE_BINARY: packed.binary,
+            BRAID_LIVE_PACKAGE_ROOT: packed.packageRoot,
+            BRAID_LIVE_TARBALL_SHA256: identity.tarballSha256,
+          }),
+      BRAID_PERFORMANCE_OUTPUT_DIR: join(evidenceRoot, 'performance'),
+    }
+    for (const checkId of selected) {
+      if (checks.has(checkId)) continue
+      const entry = releaseCheckEntry(checkId)
+      const requirementIds = requirementIdsForPlan(plan, checkId)
+      const commandEnvironment = releaseChildEnvironment(checkEnvironment, entry.command)
+      let result = executions.get(entry.command)
+      if (!result) {
+        executedCheck = true
+        result = await runCheck({
+          checkId,
+          cwd: root,
+          environment: commandEnvironment,
+          timeoutMs,
+          maxLogBytes,
+          redactionSecrets,
+        })
+        assert(result.checkId === checkId, `Runner returned another check: ${result.checkId}`)
+        executions.set(entry.command, result)
+      } else result = { ...result, checkId, category: entry.category, command: entry.command }
+      assert(
+        result.command === entry.command && result.category === entry.category,
+        `Runner drifted from catalog for ${checkId}`,
+      )
+      const secrets = collectRedactionSecrets(commandEnvironment, redactionSecrets)
+      const sanitizedArgv = result.sanitizedArgv ?? sanitizeArgv(result.argv, secrets)
+      const sanitizedEnvironment =
+        result.sanitizedEnvironment ?? sanitizeEnvironment(commandEnvironment)
+      const boundary = boundaryForCheck({
+        cwd: root,
+        processResult: result,
+        identity,
+        requirementIds,
+      })
+      const environmentValue = environmentRecord({
+        cwd: root,
+        argv: sanitizedArgv,
+        environment: sanitizedEnvironment,
+        boundary,
+      })
+      environments.set(environmentValue.id, environmentValue)
+      const attempt = (previousAttempts.get(checkId) ?? 0) + 1
+      previousAttempts.set(checkId, attempt)
+      const bridgeEvidence = await readLiveBridgeProof({
         artifactRoot: evidenceRoot,
         checkId,
         processResult: result,
-        redactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
-      }))
-    const record = buildCheckRecord({
-      checkId,
-      category: result.category,
-      command: result.command,
-      cwd: root,
-      attempt,
-      identity,
-      requirementIds,
-      processResult: result,
-      sanitizedArgv,
-      sanitizedEnvironment,
-      environmentId: environmentValue.id,
-      structuredRedactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
-      structuredEvidenceOverride,
-    })
-    const outputBytes = record.__outputBytes
-    const stdoutArtifact = await store.put({
-      id: artifactId(checkId, attempt, 'stdout', outputBytes.stdout),
-      bytes: outputBytes.stdout,
-      mediaType: 'text/plain; charset=utf-8',
-    })
-    const stderrArtifact = await store.put({
-      id: artifactId(checkId, attempt, 'stderr', outputBytes.stderr),
-      bytes: outputBytes.stderr,
-      mediaType: 'text/plain; charset=utf-8',
-    })
-    artifacts.set(stdoutArtifact.id, stdoutArtifact)
-    artifacts.set(stderrArtifact.id, stderrArtifact)
-    record.stdout = { artifactId: stdoutArtifact.id, sha256: stdoutArtifact.sha256 }
-    record.stderr = { artifactId: stderrArtifact.id, sha256: stderrArtifact.sha256 }
-    delete record.__outputBytes
-    checks.set(checkId, record)
-    const generatedArtifacts = await registerCheckArtifacts({
-      checkId,
-      attempt,
-      artifactRoot: evidenceRoot,
-      store,
-    })
-    for (const artifact of generatedArtifacts) artifacts.set(artifact.id, artifact)
-    checkArtifacts.set(
-      checkId,
-      generatedArtifacts.map(({ id }) => id),
-    )
+        identity,
+      })
+      const structuredEvidenceOverride =
+        bridgeEvidence ??
+        (await readLiveTangleProof({
+          artifactRoot: evidenceRoot,
+          checkId,
+          processResult: result,
+          redactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
+          identity,
+        }))
+      const record = buildCheckRecord({
+        checkId,
+        category: result.category,
+        command: result.command,
+        cwd: root,
+        attempt,
+        identity,
+        requirementIds,
+        processResult: result,
+        sanitizedArgv,
+        sanitizedEnvironment,
+        environmentId: environmentValue.id,
+        structuredRedactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
+        structuredEvidenceOverride,
+      })
+      if (record.result === 'passed')
+        await validateLiveEvidenceFile({ artifactRoot: evidenceRoot, checkId, identity })
+      const outputBytes = record.__outputBytes
+      const stdoutArtifact = await store.put({
+        id: artifactId(checkId, attempt, 'stdout', outputBytes.stdout),
+        bytes: outputBytes.stdout,
+        mediaType: 'text/plain; charset=utf-8',
+      })
+      const stderrArtifact = await store.put({
+        id: artifactId(checkId, attempt, 'stderr', outputBytes.stderr),
+        bytes: outputBytes.stderr,
+        mediaType: 'text/plain; charset=utf-8',
+      })
+      artifacts.set(stdoutArtifact.id, stdoutArtifact)
+      artifacts.set(stderrArtifact.id, stderrArtifact)
+      record.stdout = { artifactId: stdoutArtifact.id, sha256: stdoutArtifact.sha256 }
+      record.stderr = { artifactId: stderrArtifact.id, sha256: stderrArtifact.sha256 }
+      delete record.__outputBytes
+      checks.set(checkId, record)
+      const generatedArtifacts = await registerCheckArtifacts({
+        checkId,
+        attempt,
+        artifactRoot: evidenceRoot,
+        store,
+      })
+      for (const artifact of generatedArtifacts) artifacts.set(artifact.id, artifact)
+      checkArtifacts.set(
+        checkId,
+        generatedArtifacts.map(({ id }) => id),
+      )
+      const envelope = stateEnvelope({
+        identity,
+        startedAt,
+        finishedAt: timestamp(now()),
+        checks,
+        environments,
+        artifacts,
+        checkArtifacts,
+        requirementBindings: checkBindings,
+      })
+      const value = checkpoint({ identity, plan, envelope })
+      await validateCheckpoint(value, {
+        artifactRoot: evidenceRoot,
+        identity,
+        plan,
+      })
+      await writeCheckpoint(paths.partial, value, writeOptions)
+      checkpointFinishedAt = envelope.finishedAt
+    }
     const envelope = stateEnvelope({
       identity,
       startedAt,
-      finishedAt: timestamp(now()),
+      finishedAt:
+        !executedCheck && resumeEnvelope?.finishedAt
+          ? resumeEnvelope.finishedAt
+          : (checkpointFinishedAt ?? timestamp(now())),
       checks,
       environments,
       artifacts,
       checkArtifacts,
       requirementBindings: checkBindings,
     })
-    const value = checkpoint({ identity, plan, envelope })
-    await validateCheckpoint(value, {
-      artifactRoot: evidenceRoot,
+    const complete = selected.every((id) => checks.has(id))
+    const passed = complete && selected.every((id) => checks.get(id).result === 'passed')
+    const final = await optionalJson(paths.checks)
+    if (final?.checks.every((check) => check.result === 'passed'))
+      assert(
+        canonicalJson(final) === canonicalJson(envelope),
+        'Existing passed final release evidence differs',
+      )
+    else await writeJsonAtomic(paths.checks, envelope, writeOptions)
+    const checksBytes = Buffer.from(`${JSON.stringify(envelope, null, 2)}\n`)
+    const collectionManifest = {
+      schema: COLLECTION_MANIFEST_SCHEMA,
+      schemaVersion: 1,
+      braidVersion: identity.braidVersion,
+      gitCommit: identity.gitCommit,
+      gitTree: identity.gitTree,
+      treeSha256: identity.treeSha256,
+      tarballSha256: identity.tarballSha256,
+      packageIntegrity: identity.packageIntegrity,
+      packageFileManifestDigest: identity.packageFileManifestDigest,
+      dependencyDigest: identity.dependencyDigest,
+      requirementIds: Object.keys(plan.requirements).sort(),
+      checkIds: [...selected].sort(),
+      checkCount: checks.size,
+      result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
+      startedAt,
+      finishedAt: envelope.finishedAt,
+      checksPath: relative(evidenceRoot, paths.checks),
+      checksSha256: await sha256(checksBytes),
+      signatures: [],
+    }
+    await preserveCollectionManifest(paths.manifest, collectionManifest)
+    return {
       identity,
-      plan,
-    })
-    await writeCheckpoint(paths.partial, value, writeOptions)
-    checkpointFinishedAt = envelope.finishedAt
-  }
-  const envelope = stateEnvelope({
-    identity,
-    startedAt,
-    finishedAt:
-      !executedCheck && resumeEnvelope?.finishedAt
-        ? resumeEnvelope.finishedAt
-        : (checkpointFinishedAt ?? timestamp(now())),
-    checks,
-    environments,
-    artifacts,
-    checkArtifacts,
-    requirementBindings: checkBindings,
-  })
-  const complete = selected.every((id) => checks.has(id))
-  const passed = complete && selected.every((id) => checks.get(id).result === 'passed')
-  const final = await optionalJson(paths.checks)
-  if (final?.checks.every((check) => check.result === 'passed'))
-    assert(
-      canonicalJson(final) === canonicalJson(envelope),
-      'Existing passed final release evidence differs',
-    )
-  else await writeJsonAtomic(paths.checks, envelope, writeOptions)
-  const checksBytes = Buffer.from(`${JSON.stringify(envelope, null, 2)}\n`)
-  const collectionManifest = {
-    schema: COLLECTION_MANIFEST_SCHEMA,
-    schemaVersion: 1,
-    braidVersion: identity.braidVersion,
-    gitCommit: identity.gitCommit,
-    gitTree: identity.gitTree,
-    treeSha256: identity.treeSha256,
-    tarballSha256: identity.tarballSha256,
-    packageIntegrity: identity.packageIntegrity,
-    packageFileManifestDigest: identity.packageFileManifestDigest,
-    dependencyDigest: identity.dependencyDigest,
-    requirementIds: Object.keys(plan.requirements).sort(),
-    checkIds: selected,
-    checkCount: checks.size,
-    result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
-    startedAt,
-    finishedAt: envelope.finishedAt,
-    checksPath: relative(evidenceRoot, paths.checks),
-    checksSha256: await sha256(checksBytes),
-    signatures: [],
-  }
-  await preserveCollectionManifest(paths.manifest, collectionManifest)
-  return {
-    identity,
-    result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
-    envelope,
-    manifest: collectionManifest,
-    paths,
+      result: passed ? 'passed' : complete ? 'failed' : 'incomplete',
+      envelope,
+      manifest: collectionManifest,
+      paths,
+    }
+  } finally {
+    await packed?.cleanup()
   }
 }

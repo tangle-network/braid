@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
@@ -232,8 +232,34 @@ function sourceRunFor(state, runId) {
   return run
 }
 
-async function runtimeModules(repository) {
-  const dist = resolve(repository, 'dist')
+export function runtimeModuleRoot(repository, environment = process.env) {
+  const sourceRoot = resolve(repository, 'dist')
+  const binding = environment?.BRAID_RELEASE_LIVE_EVIDENCE_BINDING
+  if (typeof binding !== 'string' || binding.length === 0) return sourceRoot
+  const packageRoot = environment?.BRAID_LIVE_PACKAGE_ROOT
+  if (typeof packageRoot !== 'string' || packageRoot.trim().length === 0)
+    throw unavailable(
+      'BRAID_PACKED_PACKAGE_REQUIRED',
+      'Candidate live evidence requires Runtime modules from the installed candidate package',
+    )
+  const resolvedPackageRoot = resolve(packageRoot)
+  const repositoryRoot = resolve(repository)
+  const relativePackageRoot = relative(repositoryRoot, resolvedPackageRoot)
+  const packageRootInsideRepository =
+    relativePackageRoot === '' ||
+    (!isAbsolute(relativePackageRoot) &&
+      relativePackageRoot !== '..' &&
+      !relativePackageRoot.startsWith(`..${sep}`))
+  if (packageRootInsideRepository)
+    throw unavailable(
+      'BRAID_PACKED_PACKAGE_REQUIRED',
+      'Candidate live evidence cannot load Runtime modules from the source checkout',
+    )
+  return join(resolvedPackageRoot, 'dist')
+}
+
+async function runtimeModules(repository, environment) {
+  const dist = runtimeModuleRoot(repository, environment)
   const [startup, application, credentials, connections, profiles] = await Promise.all([
     import(pathToFileURL(join(dist, 'bin', 'production-startup.js')).href),
     import(pathToFileURL(join(dist, 'bin', 'production-application.js')).href),
@@ -244,8 +270,8 @@ async function runtimeModules(repository) {
   return { startup, application, credentials, connections, profiles }
 }
 
-async function openProofApplication({ repository, config }) {
-  const modules = await runtimeModules(repository)
+async function openProofApplication({ repository, config, environment }) {
+  const modules = await runtimeModules(repository, environment)
   let context
   try {
     context = modules.credentials.createProductionCredentialContext({
@@ -918,7 +944,7 @@ async function runWorkspaceProof({
   let completedResult
   let cleanupFailure
   try {
-    opened = await openProofApplication({ repository, config })
+    opened = await openProofApplication({ repository, config, environment })
     const verifier = confidential ? confidentialVerifiersFor(opened) : undefined
     if (trust !== undefined) {
       assertCondition(
@@ -1029,7 +1055,7 @@ async function runWorkspaceProof({
 
     await opened.close()
     opened = undefined
-    restarted = await openProofApplication({ repository, config })
+    restarted = await openProofApplication({ repository, config, environment })
     const restartedVerifier = confidential ? confidentialVerifiersFor(restarted) : undefined
     const restartedAdapters = providerAdapters(restarted)
     const replayBranch = await restarted.app.conversations.branches.execute({
@@ -1245,7 +1271,7 @@ async function runWorkspaceProof({
     if (source !== undefined) {
       if (cleanupOwner === undefined) {
         try {
-          cleanupOwner = await openProofApplication({ repository, config })
+          cleanupOwner = await openProofApplication({ repository, config, environment })
           rescueOwner = true
         } catch (error) {
           cleanupError ??= error

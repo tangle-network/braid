@@ -16,6 +16,7 @@ import {
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
 import { pause } from '../live-demo/terminal.mjs'
+import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
@@ -591,6 +592,7 @@ export async function runProof({
     ),
   )
   const values = sandboxConfiguration(environment)
+  const releaseBinding = liveEvidenceBindingFromEnvironment(environment)
   assert.equal(values.runner, 'opencode', 'multi-run proof uses the proven OpenCode harness')
   assert.ok(values.credentialValue, 'multi-run proof needs a raw Sandbox credential for cleanup')
   const proof = proofId()
@@ -1029,6 +1031,7 @@ export async function runProof({
   const result = {
     schemaVersion: MULTIRUN_PROOF_SCHEMA,
     status: passed ? 'passed' : 'failed',
+    ...(releaseBinding === undefined ? {} : { releaseBinding }),
     proofId: proof,
     startedAt,
     completedAt,

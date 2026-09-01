@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
-
+import {
+  liveEvidenceBindingFromEnvironment,
+  parseLiveEvidenceBinding,
+} from '../release/live-evidence-binding.mjs'
 import { collectCredentialSecrets, redactText } from '../release/redaction.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 
@@ -10,6 +13,7 @@ export const EXIT_CODES = Object.freeze({
 })
 
 export const PUBLIC_EVIDENCE_SCHEMA = 'braid.live-required.evidence.v1'
+export const TANGLE_RECEIPTS_SCHEMA = 'braid.live-required.tangle-receipts.v1'
 
 export const PROOF_OPERATIONS = Object.freeze({
   tangleInference: 'tangle.inference.turn',
@@ -198,6 +202,7 @@ const PROOF_EVIDENCE_KEYS = Object.freeze([
   'checks',
   'observations',
 ])
+const PROOF_EVIDENCE_OPTIONAL_KEYS = Object.freeze(['releaseBinding'])
 const PROOF_CONNECTION_KEYS = Object.freeze([
   'endpoint',
   'connectionId',
@@ -366,10 +371,12 @@ function sanitizePublicValue(value, environment, secrets, seen = new Set(), dept
   return output
 }
 
-function exactKeys(value, expected, label) {
+function exactKeys(value, expected, label, optional = []) {
   const actual = Object.keys(value).sort()
-  const required = [...expected].sort()
-  if (actual.length !== required.length || actual.some((key, index) => key !== required[index]))
+  const allowed = new Set([...expected, ...optional])
+  if (actual.some((key) => !allowed.has(key)))
+    throw new Error(`${label} contains fields outside the public schema`)
+  if (expected.some((key) => !actual.includes(key)))
     throw new Error(`${label} contains fields outside the public schema`)
 }
 
@@ -791,7 +798,7 @@ export function proofInvocation(scope) {
 export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   if (receipt === null || typeof receipt !== 'object' || Array.isArray(receipt))
     throw new Error('Live proof receipt must be an object')
-  exactKeys(receipt, PROOF_EVIDENCE_KEYS, 'Live proof receipt')
+  exactKeys(receipt, PROOF_EVIDENCE_KEYS, 'Live proof receipt', PROOF_EVIDENCE_OPTIONAL_KEYS)
   if (receipt.schema !== PUBLIC_EVIDENCE_SCHEMA)
     throw new Error('Live proof receipt has an unsupported schema')
   if (typeof receipt.invocationId !== 'string' || receipt.invocationId.length === 0)
@@ -823,6 +830,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   validNullableString(receipt.connection.modelProvider, 'Live proof modelProvider')
   validNullableString(receipt.connection.runner, 'Live proof runner')
   validateObservations(receipt.observations)
+  if (receipt.releaseBinding !== undefined)
+    parseLiveEvidenceBinding(receipt.releaseBinding, 'Live proof release binding')
   exactKeys(receipt.run, PROOF_RUN_KEYS, 'Live proof run')
   if (
     !Array.isArray(receipt.run.ids) ||
@@ -889,6 +898,7 @@ export function proofReceipt({
           environment,
           redactionSecretsFor(observations, environment),
         )
+  const releaseBinding = liveEvidenceBindingFromEnvironment(environment)
   const receipt = {
     schema: PUBLIC_EVIDENCE_SCHEMA,
     invocationId,
@@ -914,6 +924,7 @@ export function proofReceipt({
     facts,
     checks: [...checks],
     observations: publicObservations,
+    ...(releaseBinding === undefined ? {} : { releaseBinding }),
   }
   assertProofReceipt(receipt, { invocationId, operation })
   return Object.freeze({
@@ -983,6 +994,19 @@ export function endpointEvidence(value) {
 
 export function scalarMeasurement(name, value = 1) {
   return { kind: 'scalar', name, unit: 'verified-flow', value }
+}
+
+export function tangleReceiptsArtifact(flows) {
+  if (!Array.isArray(flows)) throw new Error('Tangle receipt flows must be an array')
+  return {
+    schema: TANGLE_RECEIPTS_SCHEMA,
+    flows: flows.map((flow) => ({
+      row: flow.row,
+      status: flow.status,
+      ...(flow.reason === undefined ? {} : { reason: flow.reason }),
+      ...(flow.evidence === undefined ? {} : { evidence: flow.evidence }),
+    })),
+  }
 }
 
 export function requiredEnvironment(environment, entries, label) {

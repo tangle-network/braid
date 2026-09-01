@@ -2,6 +2,7 @@ import { join } from 'node:path'
 
 import { LIVE_BRIDGE_RELEASE_PROOFS } from '../release-check-catalog.mjs'
 import { readRegularFileNoFollow } from '../release-files.mjs'
+import { assertLiveEvidenceBinding } from './live-evidence-binding.mjs'
 
 const MEASUREMENT_UNIT = 'successful-packed-live-operation'
 
@@ -250,7 +251,7 @@ function resultMarkerStatus(stdoutBytes) {
 }
 
 /** Reads the live artifact only after the catalog command itself completed successfully. */
-export async function readLiveBridgeProof({ artifactRoot, checkId, processResult } = {}) {
+export async function readLiveBridgeProof({ artifactRoot, checkId, processResult, identity } = {}) {
   if (LIVE_BRIDGE_RELEASE_PROOFS[checkId] === undefined) return undefined
   if (
     processResult?.exitCode !== 0 ||
@@ -281,6 +282,16 @@ export async function readLiveBridgeProof({ artifactRoot, checkId, processResult
     )
   } catch {
     return unavailable(checkId, 'The packed CLI Bridge evidence artifact is missing or invalid')
+  }
+  if (identity !== undefined) {
+    try {
+      assertLiveEvidenceBinding(evidence.releaseBinding, identity, `${checkId} live evidence`)
+    } catch (error) {
+      return unavailable(
+        checkId,
+        error instanceof Error ? error.message : `${checkId} live evidence binding is invalid`,
+      )
+    }
   }
   return evaluateLiveBridgeProof(evidence, checkId)
 }

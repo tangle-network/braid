@@ -1,4 +1,5 @@
-import { resolve } from 'node:path'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 
 import { runTraceAnalysis } from './live-required/analysis.mjs'
 import {
@@ -9,6 +10,7 @@ import {
   resultSummary,
   safeJson,
   safeMessage,
+  tangleReceiptsArtifact,
 } from './live-required/contracts.mjs'
 import { runSupervisorCheck } from './live-required/supervisor.mjs'
 import { runTangleFlows } from './live-required/tangle.mjs'
@@ -51,6 +53,22 @@ function emit(scopeName, result) {
   return outcome.exitCode
 }
 
+async function writeReleaseEvidence(scopeName, result) {
+  const destination =
+    scopeName === 'live-tangle'
+      ? process.env.BRAID_LIVE_TANGLE_RECEIPTS
+      : scopeName === 'live-supervisor'
+        ? process.env.BRAID_LIVE_SUPERVISOR_EVIDENCE
+        : scopeName === 'live-analysis'
+          ? process.env.BRAID_LIVE_ANALYSIS_EVIDENCE
+          : undefined
+  const evidence =
+    scopeName === 'live-tangle' ? tangleReceiptsArtifact(result?.flows) : result?.evidence
+  if (destination === undefined || evidence === undefined) return
+  await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
+  await writeFile(destination, `${safeJson(evidence)}\n`, { mode: 0o600 })
+}
+
 async function run() {
   if (scope === 'live-bridge') {
     if (process.env.BRAID_LIVE_BRIDGE !== '1') {
@@ -85,7 +103,10 @@ async function run() {
 try {
   const result = await run()
   if (result === undefined) process.exitCode = EXIT_CODES.passed
-  else process.exitCode = emit(scope, result)
+  else {
+    await writeReleaseEvidence(scope, result)
+    process.exitCode = emit(scope, result)
+  }
 } catch (error) {
   const result = failureResult(scope, error)
   process.stderr.write(`${safeMessage(result.reason)}\n`)

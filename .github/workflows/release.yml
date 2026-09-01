@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+      live_evidence_run_id:
+        description: Protected live-evidence workflow run ID for this candidate
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: release-${{ inputs.commit }}
@@ -184,9 +189,59 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  publish:
+  verify-live-10:
     needs: [candidate, endorse-candidate, platform-smoke]
     if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-release
+
+      - name: Verify the protected live-evidence run
+        if: inputs.live_evidence_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRAID_RELEASE_RUN_ID: ${{ inputs.live_evidence_run_id }}
+          BRAID_RELEASE_EXPECT_WORKFLOW: .github/workflows/release-live-evidence.yml
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+          BRAID_RELEASE_EXPECT_BRANCH: main
+        run: node scripts/release/verify-workflow-run.mjs
+
+      - name: Download checked live evidence
+        if: inputs.live_evidence_run_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-live-evidence-${{ inputs.commit }}
+          path: ${{ runner.temp }}/braid-live-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.live_evidence_run_id }}
+
+      - name: Require passed LIVE-10 evidence for this candidate
+        env:
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_CANDIDATE_ROOT: ${{ runner.temp }}/braid-release
+          BRAID_RELEASE_LIVE_EVIDENCE_ROOT: ${{ runner.temp }}/braid-live-evidence
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+          BRAID_RELEASE_EXPECT_VERSION: ${{ needs.candidate.outputs.version }}
+        run: node scripts/release/verify-publish-gate.mjs
+
+  publish:
+    needs: [candidate, endorse-candidate, platform-smoke, verify-live-10]
+    if: ${{ inputs.publish && needs.verify-live-10.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: npm

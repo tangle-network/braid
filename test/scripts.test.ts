@@ -903,6 +903,7 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
 
 test('release keys stay isolated while publication uses the installed product', async () => {
   const workflow = await readFile('.github/workflows/release.yml', 'utf8')
+  const liveEvidenceWorkflow = await readFile('.github/workflows/release-live-evidence.yml', 'utf8')
   assert.deepEqual(packageJson.os, ['darwin', 'linux'])
   assert.deepEqual(REQUIRED_RELEASE_TARGETS, [
     { id: 'linux-x64', platform: 'linux', architecture: 'x64' },
@@ -965,6 +966,23 @@ test('release keys stay isolated while publication uses the installed product', 
   )
 
   const publish = job('publish', 'post-publish-smoke')
+  const liveGate = job('verify-live-10', 'publish')
+  assert.match(liveGate, /node scripts\/release\/verify-publish-gate\.mjs/u)
+  assert.match(liveGate, /run-id: \$\{\{ inputs\.live_evidence_run_id \}\}/u)
+  assert.match(publish, /needs: \[candidate, endorse-candidate, platform-smoke, verify-live-10\]/u)
+  assert.match(
+    publish,
+    /if: \$\{\{ inputs\.publish && needs\.verify-live-10\.result == 'success' \}\}/u,
+  )
+  assert.match(liveEvidenceWorkflow, /environment: release-live/u)
+  assert.match(liveEvidenceWorkflow, /verify-workflow-run\.mjs/u)
+  assert.match(liveEvidenceWorkflow, /collect-live-evidence\.mjs/u)
+  assert.match(liveEvidenceWorkflow, /BRAID_LIVE_TANGLE_ENV_JSON/u)
+  assert.match(liveEvidenceWorkflow, /name: braid-live-evidence-\$\{\{ inputs\.commit \}\}/u)
+  assert.doesNotMatch(liveEvidenceWorkflow, /steps\.package\.outputs\.version/u)
+  const liveCollector = await readFile('scripts/release/collector.mjs', 'utf8')
+  assert.match(liveCollector, /BRAID_LIVE_BINARY: packed\.binary/u)
+  assert.match(liveCollector, /BRAID_LIVE_PACKAGE_ROOT: packed\.packageRoot/u)
   assert.doesNotMatch(publish, /already exists; checking|if npm view/iu)
   assert.match(publish, /node scripts\/release\/check-registry-collision\.mjs/u)
   assert.match(publish, /node scripts\/release\/verify-candidate-identity\.mjs/u)
