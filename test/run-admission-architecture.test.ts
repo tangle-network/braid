@@ -232,6 +232,40 @@ test('runtime admission hashes the same secret-safe materialization receipt that
   assert.match(receipt.materializationDigest ?? '', /^[0-9a-f]{64}$/u)
 })
 
+test('prepared Runtime cancellation controls admission and tears down the active executor', async () => {
+  const execution = new AgentRuntimeExecutionPort(async (input) => ({
+    kind: 'prepared-execution' as const,
+    backend: await deterministicBackend(input, { chunkDelayMs: 1_000 }),
+    cancellation: { kind: 'runtime-executor-teardown' as const },
+    materializationReceipt: { provider: 'tangle-inference', backend: 'executor' },
+  }))
+  const input = executionInput({ runId: 'run-runtime-cancellation' })
+  const admission = await execution.admit(input)
+
+  assert.equal(admission.capabilities?.controls.cancel, true)
+
+  const stream = execution.streamTurn(input)
+  const first = await stream.next()
+  assert.equal(first.done, false)
+  const acknowledgement = await execution.cancelRun({
+    runId: input.runId,
+    operationId: 'operation-runtime-cancellation',
+  })
+
+  assert.deepEqual(acknowledgement, {
+    operationId: 'operation-runtime-cancellation',
+    outcome: 'accepted',
+    detail: 'Provider cancellation acknowledged',
+  })
+
+  const remaining = []
+  for await (const event of stream) remaining.push(event)
+  const terminal = remaining.find((event) => event.type === 'final')
+  assert.equal(terminal?.type, 'final')
+  if (terminal?.type !== 'final') assert.fail('missing cancelled Runtime terminal event')
+  assert.equal(terminal.status, 'aborted')
+})
+
 test('ephemeral cleanup cannot report completed when its observation is unavailable', async () => {
   const execution = new AgentRuntimeExecutionPort(async (input) => ({
     kind: 'prepared-execution' as const,

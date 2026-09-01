@@ -110,7 +110,12 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
     const capabilities =
       prepared && execution.capabilities !== undefined
         ? capabilitiesFromEnvironment(execution.capabilities, execution.cancellation !== undefined)
-        : this.#capabilitySnapshot
+        : prepared && execution.cancellation !== undefined
+          ? {
+              ...this.#capabilitySnapshot,
+              controls: { ...this.#capabilitySnapshot.controls, cancel: true },
+            }
+          : this.#capabilitySnapshot
     const materializationReceipt = publicMaterializationReceipt(
       prepared
         ? execution.materializationReceipt
