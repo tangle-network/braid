@@ -548,7 +548,7 @@ In that snapshot, `LIVE-03` and `LIVE-08` were attempted through their built-in 
 
 In that snapshot, `LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` were also unavailable for the same reason, and no live claim in that record came from a simulated provider.
 
-Current dependency evidence (2026-08-29) is documented in the machine-checked table in [Runtime contracts](04-runtime-contracts.md).
+Current dependency evidence (2026-09-01) is documented in the machine-checked table in [Runtime contracts](04-runtime-contracts.md).
 
 The historical test counts above do not represent verification of this current cohort.
 
