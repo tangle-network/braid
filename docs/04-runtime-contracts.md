@@ -15,7 +15,7 @@ The following published versions were resolved in this worktree, and their insta
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
 | [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.0.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.185.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.185.1` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.171.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `1.0.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
 | `@tangle-network/agent-provider-tangle` | `1.0.2` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
@@ -23,11 +23,11 @@ The following published versions were resolved in this worktree, and their insta
 
 The effective local Runtime installation resolves `agent-eval >=0.171.0 <0.172.0`, `agent-interface 2.0.0`, and `sandbox >=0.36.1 <0.37.0` through the exact workspace lockfile.
 
-Published Runtime `0.185.0` declares `agent-interface ^2.0.0`, `agent-eval >=0.171.0 <0.172.0`, and `sandbox >=0.36.1 <0.37.0`.
+Published Runtime `0.185.1` declares `agent-interface ^2.0.0`, `agent-eval >=0.171.0 <0.172.0`, and `sandbox >=0.36.1 <0.37.0`.
 
 The published Runtime compatibility rerelease now matches Braid's Interface and provider dependency contracts.
 
-The Runtime compatibility blocker is resolved by `0.185.0`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
+The Runtime compatibility blocker is resolved by `0.185.1`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
 
 The installed Tangle provider publishes `sandbox >=0.34.6 <1.0.0` as a peer range.
 

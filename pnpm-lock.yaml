@@ -36,8 +36,8 @@ importers:
         specifier: 1.0.2
         version: 1.0.2(@tangle-network/sandbox@0.36.1)
       '@tangle-network/agent-runtime':
-        specifier: 0.185.0
-        version: 0.185.0(@tangle-network/agent-eval@0.171.0)(@tangle-network/agent-interface@2.0.0)(@tangle-network/sandbox@0.36.1)
+        specifier: 0.185.1
+        version: 0.185.1(@tangle-network/agent-eval@0.171.0)(@tangle-network/agent-interface@2.0.0)(@tangle-network/sandbox@0.36.1)
       '@tangle-network/sandbox':
         specifier: 0.36.1
         version: 0.36.1
@@ -547,17 +547,14 @@ packages:
     peerDependencies:
       '@tangle-network/sandbox': '>=0.34.6 <1.0.0'
 
-  '@tangle-network/agent-runtime@0.185.0':
-    resolution: {integrity: sha512-zD4tzdgQQJ4lT2H3Q2GcE0Adeb1X0W251uUkCYd+7kcKHs7KiP8j+piIJUL6RySoelRVNjpLhWMiuRzRV/TVMw==}
+  '@tangle-network/agent-runtime@0.185.1':
+    resolution: {integrity: sha512-3NQ2a7aROOdVPM3rNP1Jcw2iTTuWv4bQogbtVnhRitB+mFm+7O3HTMnUmIoePJp7XEaywqN5qcATUg4RDP32vA==}
     engines: {node: '>=22.13.0'}
     hasBin: true
     peerDependencies:
       '@tangle-network/agent-eval': '>=0.171.0 <0.172.0'
       '@tangle-network/agent-interface': 2.0.0
       '@tangle-network/sandbox': '>=0.36.1 <0.37.0'
-    peerDependenciesMeta:
-      '@tangle-network/sandbox':
-        optional: true
 
   '@tangle-network/agent-trace-contract@1.0.2':
     resolution: {integrity: sha512-v7uMh56jkEp4vckevEU9xKsIatbs5dqzGPp69dFLSSXUVit0RP6VD6EANMXVlTCUk+6wVKBLHJx23XspVCEiIA==}
@@ -1207,7 +1204,7 @@ snapshots:
       '@tangle-network/agent-interface': 2.0.0
       '@tangle-network/sandbox': 0.36.1
 
-  '@tangle-network/agent-runtime@0.185.0(@tangle-network/agent-eval@0.171.0)(@tangle-network/agent-interface@2.0.0)(@tangle-network/sandbox@0.36.1)':
+  '@tangle-network/agent-runtime@0.185.1(@tangle-network/agent-eval@0.171.0)(@tangle-network/agent-interface@2.0.0)(@tangle-network/sandbox@0.36.1)':
     dependencies:
       '@tangle-network/agent-core': 0.9.6
       '@tangle-network/agent-eval': 0.171.0
@@ -1215,9 +1212,8 @@ snapshots:
       '@tangle-network/agent-knowledge': 11.0.0(@tangle-network/agent-eval@0.171.0)(@tangle-network/agent-interface@2.0.0)
       '@tangle-network/agent-profile-materialize': 0.18.1(@tangle-network/agent-interface@2.0.0)
       '@tangle-network/agent-trace-contract': 1.0.2
-      tar-stream: 3.2.1
-    optionalDependencies:
       '@tangle-network/sandbox': 0.36.1
+      tar-stream: 3.2.1
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - bare-abort-controller
