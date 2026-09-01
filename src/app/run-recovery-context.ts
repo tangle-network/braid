@@ -11,6 +11,13 @@ export function retainedExecutionRecoveryContext(
       ? {}
       : { retainedAdmission: structuredClone(run.retainedAdmission) }),
     receipt: structuredClone(run.receipt),
-    ...(workspaceRoot === null ? {} : { workspaceRoot }),
+    ...(run.receipt.requested.workspaceRequest === undefined
+      ? {}
+      : { workspaceRequest: structuredClone(run.receipt.requested.workspaceRequest) }),
+    ...(run.receipt.requested.workspaceRoot === undefined
+      ? workspaceRoot === null
+        ? {}
+        : { workspaceRoot }
+      : { workspaceRoot: run.receipt.requested.workspaceRoot }),
   }
 }

@@ -30,13 +30,24 @@ export function analysisViewForRecord(record: AnalysisRecord): AnalysisView {
   const citationCheck = (record.checks ?? record.provenance?.checks ?? []).find(
     (check) => check.id === 'citation-support',
   )
+  const budgetUsd = analysisBudgetUsd(record)
   return {
     source: String(record.source.digest),
     ...(record.question === undefined ? {} : { question: sanitizeTerminalText(record.question) }),
     analyst: String(record.analystProfileId ?? 'configured analyst'),
     recipe: record.recipe ?? (record.question === undefined ? 'analysis' : 'ask'),
+    ...(typeof budgetUsd === 'number' && Number.isFinite(budgetUsd)
+      ? { budget: `$${budgetUsd.toFixed(4)}` }
+      : {}),
     status:
       record.status === 'preparing' || record.status === 'running' ? 'running' : record.status,
+    analysts: (record.analysts ?? []).map((analyst) => ({
+      id: sanitizeTerminalText(analyst.analystId),
+      status: analyst.status,
+      ...(analyst.findingsCount === undefined ? {} : { findingsCount: analyst.findingsCount }),
+      ...(analyst.latencyMs === undefined ? {} : { latencyMs: analyst.latencyMs }),
+      ...(analyst.detail === undefined ? {} : { detail: sanitizeTerminalText(analyst.detail) }),
+    })),
     findings: record.findings.map((finding) => ({
       id: finding.id,
       title: finding.text,
@@ -132,6 +143,23 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
     details.push(sanitizeTerminalText(analysis.question))
   }
 
+  const analysts = analysis.analysts ?? []
+  if (analysts.length > 0) {
+    details.push(section('analysts'))
+    for (const [index, analyst] of analysts.entries()) {
+      const receipt = [
+        ...(analyst.findingsCount === undefined ? [] : [`${analyst.findingsCount} finding(s)`]),
+        ...(analyst.latencyMs === undefined ? [] : [`${Math.round(analyst.latencyMs)}ms`]),
+      ]
+      details.push(
+        `${index + 1}. ${sanitizeTerminalText(analyst.id)} · ${analyst.status}${
+          receipt.length === 0 ? '' : ` · ${receipt.join(' · ')}`
+        }`,
+      )
+      if (analyst.detail !== undefined) details.push(`↳ ${sanitizeTerminalText(analyst.detail)}`)
+    }
+  }
+
   details.push(section('findings'))
   for (const [index, finding] of analysis.findings.entries()) {
     const severity = finding.severity ? ` · ${sanitizeTerminalText(finding.severity)}` : ''
@@ -148,19 +176,22 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
       referenced.add(citationId)
       const citation = citations.get(citationId)
       const number = citationNumbers.get(citationId) ?? '?'
-      details.push(
-        citation === undefined
-          ? `! evidence [${number}] unavailable · citation ${shortDigest(citationId)}`
-          : `↳ [${number}] ${sanitizeTerminalText(citation.text)} · event ${shortDigest(citation.eventId)}`,
-      )
+      if (citation === undefined) {
+        details.push(`! evidence [${number}] unavailable`)
+        details.push(`  source: ${shortDigest(citationId)}`)
+      } else {
+        details.push(`↳ [${number}] ${sanitizeTerminalText(citation.text)}`)
+        details.push(`  source: ${shortDigest(citation.eventId)}`)
+      }
     }
   }
   if (analysis.findings.length === 0) details.push('No findings were returned.')
   for (const citation of analysis.citations) {
     if (referenced.has(citation.id)) continue
     details.push(
-      `↳ [${citationNumbers.get(citation.id) ?? '?'}] ${sanitizeTerminalText(citation.text)} · event ${shortDigest(citation.eventId)}`,
+      `↳ [${citationNumbers.get(citation.id) ?? '?'}] ${sanitizeTerminalText(citation.text)}`,
     )
+    details.push(`  source: ${shortDigest(citation.eventId)}`)
   }
 
   const nextAction = analysisNextAction(analysis, mode)
@@ -190,10 +221,20 @@ export function analysisDocument(analysis: AnalysisView): AnalysisDocument {
     context: [
       `source: ${shortDigest(analysis.source)} · frozen`,
       `analyst: ${sanitizeTerminalText(analysis.analyst)} · ${sanitizeTerminalText(analysis.status)}`,
+      `recipe: ${sanitizeTerminalText(analysis.recipe)}${
+        analysis.budget === undefined ? '' : ` · budget ${sanitizeTerminalText(analysis.budget)}`
+      }`,
       ...(route === undefined ? [] : [route]),
     ],
     details,
   }
+}
+
+function analysisBudgetUsd(record: AnalysisRecord): number | undefined {
+  const request = record.request
+  if (request === null || typeof request !== 'object' || Array.isArray(request)) return undefined
+  const budget = (request as Readonly<Record<string, unknown>>).budgetUsd
+  return typeof budget === 'number' && Number.isFinite(budget) ? budget : undefined
 }
 
 function analysisRouteLine(execution: AnalysisView['execution']): string | undefined {

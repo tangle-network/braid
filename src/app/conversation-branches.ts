@@ -1,3 +1,4 @@
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BranchRecord, ConversationRecord, MessageRecord } from '../domain/entities.js'
 import { graphEdge, graphNode } from '../domain/graph-records.js'
@@ -7,10 +8,18 @@ import {
   type OperationId,
   parseBranchId,
   parseConversationId,
+  parseEnvironmentId,
   parseMessageId,
+  parseOperationId,
 } from '../domain/ids.js'
-import type { BraidState } from '../domain/state.js'
-import { messagesVisibleOnBranch, portablePlanForState } from './conversation-context.js'
+import { type BraidState, isActiveRunStatus } from '../domain/state.js'
+import type { ExecutionPort } from '../ports/execution.js'
+import { cleanupWorkspaceFork, executeBranchEffect } from './conversation-branch-effects.js'
+import {
+  canonicalPortableContextPlanForState,
+  messagesVisibleOnBranch,
+  portablePlanForState,
+} from './conversation-context.js'
 import {
   conversationBundle,
   draftRecord,
@@ -24,13 +33,13 @@ import {
   operationReplay,
   parseOperation,
   requestDigest,
-  requireIdle,
   requireWorkspace,
   stableBranchIds,
   stableConversationIds,
 } from './conversation-support.js'
 import type {
   CloneConversationInput,
+  ConfidentialExecutionRequest,
   ConversationHost,
   CreateBranchInput,
   ForkPlan,
@@ -38,6 +47,7 @@ import type {
   SetRunOverridesInput,
 } from './conversation-types.js'
 import { AppError } from './errors.js'
+import { resolveEffectiveProfile } from './profile-selection.js'
 
 interface ResolvedSource {
   readonly conversation: ConversationRecord
@@ -60,7 +70,6 @@ export class ConversationBranches {
 
   async #setRunOverrides(input: SetRunOverridesInput): Promise<BranchRecord> {
     const state = this.#host.state()
-    requireIdle(state, 'Changing run configuration')
     const source = resolveBranch(state, input)
     const operationId = parseOperation(input.operationId, 'set_run_override')
     const hasOverride = [input.runner, input.model, input.effort, input.mode].some(
@@ -117,14 +126,20 @@ export class ConversationBranches {
 
   async #create(input: CreateBranchInput): Promise<BranchRecord> {
     const state = this.#host.state()
-    requireIdle(state, 'Creating a branch')
     const source = resolveSource(state, input)
     const operationId = parseOperation(input.operationId, 'branch')
     const normalized = branchRequest(source, input)
     const digest = requestDigest('branch', normalized)
     const replay = operationReplay(state, operationId, 'branch-create', digest)
     if (replay) return branchForOperation(state, replay)
-    const ids = stableBranchIds(operationId, digest)
+    const ids =
+      input.destinationBranchId === undefined
+        ? stableBranchIds(operationId, digest)
+        : {
+            branchId: parseBranchId(input.destinationBranchId),
+            draftId: stableBranchIds(operationId, digest).draftId,
+            queueId: stableBranchIds(operationId, digest).queueId,
+          }
     const at = this.#host.now()
     const draft = draftRecord(ids.draftId, ids.branchId, at, input.text)
     const queue = queueRecord(ids.queueId, ids.branchId, at)
@@ -152,8 +167,12 @@ export class ConversationBranches {
         ...(input.mode === undefined ? {} : { mode: input.mode }),
       }),
       ...(source.branch.environmentId === undefined
-        ? {}
-        : { environmentId: source.branch.environmentId }),
+        ? input.environmentId === undefined
+          ? {}
+          : { environmentId: parseEnvironmentId(input.environmentId) }
+        : input.environmentId === undefined
+          ? { environmentId: source.branch.environmentId }
+          : { environmentId: parseEnvironmentId(input.environmentId) }),
       draftId: draft.id,
       queueId: queue.id,
       ...(source.through === undefined ? {} : { tipMessageId: source.through.id }),
@@ -205,7 +224,6 @@ export class ConversationBranches {
   async #clone(input: CloneConversationInput): Promise<ConversationRecord> {
     const state = this.#host.state()
     const workspaceId = requireWorkspace(state)
-    requireIdle(state, 'Cloning a conversation')
     const source = resolveSource(state, input)
     const operationId = parseOperation(input.operationId, 'clone')
     const title = normalizedTitle(input.title, `${source.conversation.title} copy`)
@@ -263,14 +281,72 @@ export class ConversationBranches {
     const normalized = branchRequest(source, input)
     const branchDigest = requestDigest('branch', normalized)
     const destinationBranchId = stableBranchIds(operationId, branchDigest).branchId
-    const kind = input.kind ?? 'conversation'
+    const sourceRunner = source.branch.overrides.runner ?? state.profile.harness
+    const targetOverrides = runOverrides({
+      inherited: source.branch.overrides,
+      ...(input.runner === undefined ? {} : { runner: input.runner }),
+      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.effort === undefined ? {} : { effort: input.effort }),
+      ...(input.mode === undefined ? {} : { mode: input.mode }),
+    })
+    const requestedRunner = targetOverrides.runner ?? sourceRunner
+    const targetProfile = resolveEffectiveProfile({
+      profile: { profile: this.#host.profile?.() ?? state.profile },
+      branchOverrides: {
+        ...(targetOverrides.runner === undefined ? {} : { harness: targetOverrides.runner }),
+        ...(targetOverrides.model === undefined ? {} : { model: targetOverrides.model }),
+        ...(targetOverrides.effort === undefined ? {} : { effort: targetOverrides.effort }),
+      },
+    }).effectiveProfile
+    const sourceRun = sourceRunForBranch(state, source.branch.id, source.through?.runId)
+    const sourceEnvironmentId = source.branch.environmentId ?? sourceRun?.environmentId
+    const kind =
+      input.kind ??
+      (input.runner !== undefined && input.runner !== sourceRunner
+        ? ('cross-runner' as const)
+        : ('conversation' as const))
     const context = portablePlanForState(state, {
       branchId: source.branch.id,
       ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
       ...(input.runner === undefined ? {} : { destinationRunner: input.runner }),
     })
-    const workspaceAvailable = workspaceForkReported(state, source.branch)
-    const allowed = kind === 'conversation'
+    const workspaceAvailable = workspaceForkReported(
+      state,
+      sourceRun,
+      this.#host.execution,
+      sourceEnvironmentId,
+      input.confidential?.requested === true,
+    )
+    const portableContextPlan =
+      kind === 'cross-runner'
+        ? canonicalPortableContextPlanForState(state, {
+            operationId,
+            branchId: source.branch.id,
+            ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
+            destinationRunner: requestedRunner ?? 'unknown-runner',
+            ...(input.destinationProvider === undefined
+              ? {}
+              : { destinationProvider: input.destinationProvider }),
+            ...(targetProfile.model?.default === undefined
+              ? {}
+              : { destinationModel: targetProfile.model.default }),
+            profileDigest: canonicalAgentProfileDigestHex(targetProfile),
+          })
+        : undefined
+    const contextPort = contextTransferPort(this.#host.execution)
+    const crossRunnerAvailable =
+      kind === 'cross-runner' &&
+      portableContextPlan !== undefined &&
+      sourceEnvironmentId !== undefined &&
+      state.environments.some(
+        (environment) =>
+          environment.id === sourceEnvironmentId &&
+          environment.providerEnvironmentId === portableContextPlan.source.source.environmentId &&
+          environment.placement.provider === portableContextPlan.source.source.provider,
+      ) &&
+      contextPort?.transfer !== undefined
+    const allowed =
+      kind === 'conversation' || (kind === 'workspace' ? workspaceAvailable : crossRunnerAvailable)
     const plan = {
       kind,
       operationId,
@@ -279,15 +355,31 @@ export class ConversationBranches {
       ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
       destinationBranchId,
       context,
+      ...(portableContextPlan === undefined ? {} : { portableContextPlan }),
+      ...(sourceRun === undefined ? {} : { sourceRunId: sourceRun.id }),
+      ...(sourceEnvironmentId === undefined ? {} : { sourceEnvironmentId }),
+      ...(portableContextPlan === undefined
+        ? {}
+        : { destinationEnvironmentId: portableContextPlan.destination.environmentId }),
+      ...(input.placement === undefined ? {} : { placement: input.placement }),
+      ...(input.text === undefined ? {} : { text: input.text }),
+      ...(input.destinationProvider === undefined
+        ? {}
+        : { destinationProvider: input.destinationProvider }),
+      ...(input.confidential === undefined ? {} : { confidential: input.confidential }),
       environment:
         kind === 'conversation'
           ? ('shared' as const)
-          : workspaceAvailable
-            ? ('new' as const)
-            : ('unavailable' as const),
+          : kind === 'workspace'
+            ? workspaceAvailable
+              ? ('new' as const)
+              : ('unavailable' as const)
+            : crossRunnerAvailable
+              ? ('new' as const)
+              : ('unavailable' as const),
       providerSession: 'new' as const,
       checkpoint:
-        kind === 'conversation'
+        kind !== 'workspace'
           ? ('none' as const)
           : workspaceAvailable
             ? ('required' as const)
@@ -296,9 +388,14 @@ export class ConversationBranches {
       ...(allowed
         ? {}
         : {
-            reason: workspaceAvailable
-              ? 'The current runtime does not expose retry-safe environment fork execution to Braid'
-              : 'The selected run does not report retry-safe checkpoint and environment fork support',
+            reason:
+              kind === 'workspace'
+                ? workspaceAvailable
+                  ? 'The current runtime does not expose retry-safe environment fork execution to Braid'
+                  : input.confidential?.requested === true
+                    ? 'The selected run does not expose confidential placement and attestation verification'
+                    : 'The selected run does not report retry-safe checkpoint and environment fork support'
+                : 'The selected connection does not expose canonical fresh-session context transfer',
           }),
     }
     return { ...plan, digest: canonicalDigest(plan) }
@@ -311,6 +408,17 @@ export class ConversationBranches {
   }
 
   async #execute(input: ForkPlanInput & { readonly planDigest: string }): Promise<BranchRecord> {
+    const existing = this.#host
+      .state()
+      .operations.find((operation) => operation.id === parseOperationId(input.operationId))
+    if (existing?.kind === 'conversation-fork' && existing.status === 'acknowledged') {
+      if (existing.result?.planDigest !== input.planDigest)
+        throw new AppError(
+          'FORK_PLAN_CONFLICT',
+          'The accepted fork plan no longer matches the operation',
+        )
+      return branchForOperation(this.#host.state(), existing)
+    }
     const plan = this.plan(input)
     if (plan.digest !== input.planDigest) {
       throw new AppError(
@@ -321,11 +429,22 @@ export class ConversationBranches {
     if (!plan.allowed) {
       throw new AppError('CAPABILITY_UNAVAILABLE', plan.reason ?? 'Workspace fork is unavailable')
     }
-    const branch = await this.#create(input)
+    const branch =
+      plan.kind === 'conversation'
+        ? await this.#create(input)
+        : await executeBranchEffect(this.#host, input, plan, (branchInput) =>
+            this.#create(branchInput),
+          )
     if (branch.id !== plan.destinationBranchId) {
       throw new AppError('FORK_PLAN_CONFLICT', 'Fork execution produced an unexpected branch')
     }
     return branch
+  }
+
+  async cleanup(input: import('./conversation-types.js').WorkspaceForkCleanupInput) {
+    return coordinateConversationOperation(this.#host, 'cleanup_fork', input, () =>
+      cleanupWorkspaceFork(this.#host, input),
+    )
   }
 }
 
@@ -368,7 +487,11 @@ function resolveBranch(
   return { conversation, branch }
 }
 
-function branchRequest(source: ResolvedSource, input: CreateBranchInput) {
+function branchRequest(
+  source: ResolvedSource,
+  input: CreateBranchInput & { readonly confidential?: ConfidentialExecutionRequest },
+) {
+  const confidential = input.confidential
   return {
     conversationId: source.conversation.id,
     branchId: source.branch.id,
@@ -378,6 +501,7 @@ function branchRequest(source: ResolvedSource, input: CreateBranchInput) {
     model: input.model ?? source.branch.overrides.model ?? null,
     effort: input.effort ?? source.branch.overrides.effort ?? null,
     mode: input.mode ?? source.branch.overrides.mode ?? null,
+    ...(confidential === undefined ? {} : { confidential }),
   }
 }
 
@@ -418,16 +542,88 @@ function conversationForOperation(
   return conversation
 }
 
-function workspaceForkReported(state: BraidState, branch: BranchRecord): boolean {
-  if (branch.environmentId === undefined) return false
-  const run = state.runs.filter((candidate) => candidate.branchId === branch.id).at(-1)
+function workspaceForkReported(
+  state: BraidState,
+  run: BraidState['runs'][number] | undefined,
+  execution: ExecutionPort | undefined,
+  sourceEnvironmentId: string | undefined,
+  confidentialRequested: boolean,
+): boolean {
+  if (sourceEnvironmentId === undefined || run?.environmentId !== sourceEnvironmentId) return false
+  if (
+    run === undefined ||
+    !run.complete ||
+    isActiveRunStatus(run.status) ||
+    run.status === 'unknown'
+  )
+    return false
+  const environment = state.environments.find((candidate) => candidate.id === sourceEnvironmentId)
+  if (environment?.providerEnvironmentId === undefined) return false
+  if (run?.controlRef?.environmentId !== environment.providerEnvironmentId) return false
+  if (run.controlRef.provider !== environment.placement.provider) return false
   const branching = run?.capabilities.environment?.branching
-  return Boolean(
-    branching?.checkpoint &&
+  const supported = Boolean(
+    hasWorkspaceBranchingMethods(execution) &&
+      branching?.checkpoint &&
       branching.fork &&
       branching.retrySafe &&
       branching.lookup &&
       branching.cleanup,
+  )
+  if (!supported) return false
+  return (
+    !confidentialRequested ||
+    (run?.capabilities.environment?.confidential === true &&
+      typeof execution?.confidentialAttestationVerifier === 'function')
+  )
+}
+
+function sourceRunForBranch(
+  state: BraidState,
+  branchId: BranchRecord['id'],
+  preferredRunId: MessageRecord['runId'],
+): BraidState['runs'][number] | undefined {
+  const branch = state.branches.find((candidate) => candidate.id === branchId)
+  if (branch === undefined) return undefined
+  const visibleRunIds = new Set(
+    messagesVisibleOnBranch(state, branchId)
+      .map((message) => message.runId)
+      .filter((runId): runId is string => runId !== undefined),
+  )
+  if (preferredRunId !== undefined) {
+    const preferred = state.runs.find(
+      (candidate) =>
+        candidate.id === preferredRunId &&
+        candidate.conversationId === branch.conversationId &&
+        visibleRunIds.has(candidate.id),
+    )
+    if (preferred !== undefined) return preferred
+  }
+  return state.runs
+    .filter(
+      (candidate) =>
+        candidate.conversationId === branch.conversationId && visibleRunIds.has(candidate.id),
+    )
+    .at(-1)
+}
+
+function contextTransferPort(
+  execution: ExecutionPort | undefined,
+): NonNullable<ExecutionPort['context']> | undefined {
+  return execution?.context ?? execution?.contextTransfer
+}
+
+function hasWorkspaceBranchingMethods(execution: ExecutionPort | undefined): boolean {
+  const branching = execution?.workspaceBranching
+  if (typeof execution?.workspaceBranchingProvider?.forEnvironment === 'function') return true
+  return Boolean(
+    branching !== undefined &&
+      typeof branching.checkpoint === 'function' &&
+      typeof branching.lookupCheckpoint === 'function' &&
+      typeof branching.deleteCheckpoint === 'function' &&
+      typeof branching.fork === 'function' &&
+      typeof branching.lookupFork === 'function' &&
+      typeof branching.destroyFork === 'function',
   )
 }
 

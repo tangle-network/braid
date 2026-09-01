@@ -12,6 +12,7 @@ import {
   stateForRun,
   terminalMessage,
 } from '../live-bridge/protocol.mjs'
+import { resolveModelProvider } from './configuration.mjs'
 import { endpointEvidence, protectedUnavailable, safeMessage } from './contracts.mjs'
 
 const AUTH_ENVIRONMENT_NAMES = Object.freeze([
@@ -43,13 +44,20 @@ function validCredentialId(value) {
   return candidate
 }
 
-function profileFor({ kind, model, runner, provider }) {
+export function profileFor({ kind, model, runner, modelProvider }) {
+  const provider = resolveModelProvider({ override: modelProvider })
+  if (provider === undefined) {
+    throw protectedUnavailable(
+      'PROTECTED_MODEL_PROVIDER_REQUIRED',
+      `The ${kind} live check requires an explicit model provider for model '${model}'`,
+    )
+  }
   return {
     name: `Braid live ${kind}`,
     description: 'Protected release flow profile',
     version: '1.0.0',
     harness: runner,
-    model: { provider, default: model, reasoningEffort: 'none' },
+    model: { provider: modelProvider, default: model, reasoningEffort: 'none' },
     prompt: {
       instructions: ['Follow the release prompt exactly and return the requested marker.'],
     },
@@ -246,9 +254,11 @@ export async function prepareProductionWorkspace({
   endpoint,
   model,
   runner,
-  provider,
+  modelProvider,
   connectionName,
+  workspaceRequest,
   providerOptions = {},
+  confidentialAttestationPolicy,
   credentialRef,
   credentialValue,
   credentialContextFactory,
@@ -270,7 +280,7 @@ export async function prepareProductionWorkspace({
         : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
     const selectedCredentialId = generatedCredentialId ?? credentialRef
     if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
-    const profile = profileFor({ kind, model, runner, provider })
+    const profile = profileFor({ kind, model, runner, modelProvider })
     const profileFile = `profile-${kindId}.json`
     const profilePath = join(profileDirectory, profileFile)
     const now = timestamp()
@@ -280,6 +290,7 @@ export async function prepareProductionWorkspace({
       name: connectionName ?? `Live ${kind}`,
       endpoint,
       ...(selectedCredentialId === undefined ? {} : { credentialRef: selectedCredentialId }),
+      ...(confidentialAttestationPolicy === undefined ? {} : { confidentialAttestationPolicy }),
       providerOptions: { ...providerOptions, transport: 'https' },
       createdAt: now,
       updatedAt: now,
@@ -298,6 +309,7 @@ export async function prepareProductionWorkspace({
           profile: `profiles/${profileFile}`,
           connectionId: connection.id,
           connections: [connection],
+          ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
         },
         null,
       )}\n`,
@@ -329,6 +341,7 @@ export async function prepareProductionWorkspace({
       statePath: join(root, 'state.sqlite'),
       connection,
       profile,
+      ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
       endpoint: endpointEvidence(endpoint),
       credentialConfigured: selectedCredentialId !== undefined,
       environment: childEnvironment(environment, root, join(root, 'state.sqlite')),
@@ -492,8 +505,19 @@ export async function runHeadlessTurn({ binary, config, marker, prompt, fixture 
       Number(process.env.BRAID_LIVE_REQUIRED_TIMEOUT_MS ?? 180_000),
     )
     const run = runFromState(terminal.state, response.runId)
-    if (run?.status !== 'completed')
-      throw new Error(`turn ${response.runId} ended with status ${run?.status ?? 'missing'}`)
+    if (run?.status !== 'completed') {
+      const diagnostics = [
+        typeof run?.error === 'string' && run.error.length > 0
+          ? `error=${JSON.stringify(safeMessage(run.error, config.environment))}`
+          : undefined,
+        typeof run?.model === 'string' && run.model.length > 0
+          ? `model=${JSON.stringify(safeMessage(run.model, config.environment))}`
+          : undefined,
+      ].filter(Boolean)
+      throw new Error(
+        `turn ${response.runId} ended with status ${run?.status ?? 'missing'}${diagnostics.length === 0 ? '' : `; ${diagnostics.join('; ')}`}`,
+      )
+    }
     const message = terminalMessage(terminal.state, response.runId)
     if (!exactMarker(message?.text, marker)) {
       throw new Error(
@@ -557,12 +581,15 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
 
 export function configEvidence(config) {
   const providerOptions = config.connection.providerOptions ?? {}
+  const modelProvider = config.profile.model.provider
   return {
     endpoint: config.endpoint,
     connectionId: config.connection.id,
     connectionKind: config.connection.kind,
+    ...(config.workspaceRequest === undefined ? {} : { workspaceRequest: config.workspaceRequest }),
     credentialConfigured: config.credentialConfigured,
     model: config.profile.model.default,
+    ...(modelProvider === undefined ? {} : { modelProvider }),
     runner: config.profile.harness,
     ...(providerOptions.lifecycle === undefined ? {} : { lifecycle: providerOptions.lifecycle }),
     ...(providerOptions.idleTtlSeconds === undefined

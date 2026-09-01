@@ -26,9 +26,11 @@ export function retainedExecutionKey(
     interactions:
       input.interactions ??
       (capabilities === undefined ? {} : requestedInteractionsForRun(input.mode, capabilities)),
+    workspaceRequest: input.workspaceRequest ?? null,
     workspaceRoot: input.workspaceRoot ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
+    nativeContextBoundaryProof: input.nativeContextBoundaryProof ?? null,
   })
 }
 

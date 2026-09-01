@@ -62,6 +62,14 @@ function identityText(ref) {
     .join('/')
 }
 
+/**
+ * Accept the explicit identity conflict returned by the Sandbox sidecar.
+ * A mismatched incarnation is a rejected lookup, not an absent session.
+ */
+export function isStaleInteractiveIdentityError(error) {
+  return error?.code === 'STALE_INCARNATION'
+}
+
 function directCredentialEnvironment(environment) {
   const hasSandboxCredential = [
     'BRAID_TANGLE_SANDBOX_AUTH',
@@ -204,6 +212,8 @@ function configuration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
   })
   if (!values.credentialValue?.trim()) {
     throw capabilityUnavailable(
@@ -249,10 +259,14 @@ export function buildExactInteractiveStart({
   proofId,
   runner,
   model,
-  modelProvider = 'tangle',
+  modelProvider,
   cols = DEFAULT_COLS,
   rows = DEFAULT_ROWS,
 }) {
+  if (typeof modelProvider !== 'string' || modelProvider.trim().length === 0) {
+    throw new Error('Interactive start requires an explicit model provider')
+  }
+  const selectedModelProvider = modelProvider.trim()
   const exactEnvironmentId = safeIdentifier(environmentId, 'environmentId')
   const exactSessionId = safeIdentifier(sessionId, 'sessionId')
   const exactExecutionId = safeIdentifier(executionId, 'executionId')
@@ -262,7 +276,7 @@ export function buildExactInteractiveStart({
     harness: runner,
     model: {
       default: model,
-      provider: modelProvider,
+      provider: selectedModelProvider,
     },
   }
   const requestedProfileDigest = interfaceModule.canonicalAgentProfileDigest(profile)
@@ -559,7 +573,7 @@ export async function runInteractiveContinuityProof({
     harness: values.runner,
     model: {
       default: values.model,
-      provider: values.provider,
+      provider: values.modelProvider,
     },
   }
   const options = createOptions(values, createProfile, exactProofId)
@@ -612,7 +626,7 @@ export async function runInteractiveContinuityProof({
       proofId: exactProofId,
       runner: values.runner,
       model: values.model,
-      modelProvider: values.provider,
+      modelProvider: values.modelProvider,
     })
     startInfo = await bounded(
       `Interactive start [${identityText(exact.start)}]`,
@@ -763,26 +777,34 @@ export async function runInteractiveContinuityProof({
       incarnationId: `${ref.incarnationId}-stale`,
     }
     const staleHandle = session.interactive({ ref: staleRef, control: startInfo.control })
-    const staleStatus = await bounded(
-      `Stale identity status [${identityText(staleRef)}]`,
-      () => staleHandle.status(),
-      timeoutMs,
-    )
-    assert.equal(
-      staleStatus,
-      null,
-      `Stale identity [${identityText(staleRef)}] resolved to a live process`,
+    let staleStatusError
+    await assert.rejects(
+      () =>
+        bounded(
+          `Stale identity status [${identityText(staleRef)}]`,
+          () => staleHandle.status(),
+          timeoutMs,
+        ),
+      (error) => {
+        staleStatusError = error
+        assert.equal(
+          isStaleInteractiveIdentityError(error),
+          true,
+          `Stale identity [${identityText(staleRef)}] returned an unrelated status error`,
+        )
+        return true
+      },
     )
     await assert.rejects(
       () => staleHandle.attach({ cols: DEFAULT_COLS, rows: DEFAULT_ROWS }),
       (error) => {
-        const message = safeMessage(error, environment)
-        return /stale|identity|not running|exists/iu.test(message)
+        return isStaleInteractiveIdentityError(error)
       },
     )
     checks.push(
       checkRecord('stale-identity-rejected', box.id, ref, {
         rejectedIncarnationId: staleRef.incarnationId,
+        statusErrorCode: typeof staleStatusError?.code === 'string' ? staleStatusError.code : null,
       }),
     )
 
@@ -864,7 +886,7 @@ export async function runInteractiveContinuityProof({
         credentialConfigured: true,
         model: values.model,
         runner: values.runner,
-        provider: values.provider,
+        modelProvider: values.modelProvider,
       },
       run: {
         environmentId: box.id,

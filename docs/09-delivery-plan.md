@@ -294,6 +294,7 @@ A repository search and dependency test must prove no Braid-owned runner/model m
 - Implement shutdown behavior that distinguishes detachable and non-detachable runs.
 - Run the packed Braid binary against CLI Bridge, Tangle inference, and Tangle sandbox.
 - Run one Tangle Sandbox canary before a bounded three-proof durability cohort.
+- Run the retained two-conversation multirun proof with concurrent streams, focus switching, targeted cancellation, restart replay, and exact cleanup as part of `LIVE-07`.
 - Record exact cleanup, account identity, latency distributions, tokens, costs, placement, and resource observations for every cloud proof.
 
 ### Done when
@@ -301,6 +302,10 @@ A repository search and dependency test must prove no Braid-owned runner/model m
 `PR-04`, `UX-04`, `UX-09`, `AR-04`, `AR-05`, `LIVE-01`, `LIVE-02`, `LIVE-04`, `LIVE-06`, `LIVE-07`, and every replay, cancel, and terminal-state reliability row pass.
 
 The event ledger must show zero duplicate displayed part and zero lost committed event across forced disconnect and restart cases.
+
+`LIVE-07` cannot pass without the multirun artifact proving two independent conversations, both streamed runs, both focus switches, targeted cancellation, restart replay, and exact cleanup.
+
+The artifact must record the canonical cancellation operation while branch B is still active after the activity browser closes.
 
 The Tangle Sandbox cohort must leave zero resources owned by its exact operation identities.
 
@@ -362,13 +367,17 @@ The UI proof includes the source and destination file state of a real cloud envi
 - Implement `/ask`, failure, cost, tools, improvement, paired comparison, citation validation, finding promotion, and fork from analysis.
 - Implement feedback trajectory export from structured decisions.
 - Implement the complete graph with conversation, branch, turn, run, analysis, environment, checkpoint, supervisor, and worker nodes and named edges.
-- Implement runtime-owned supervisor snapshot watch, activity, log tail, typed steering, typed cancellation, and reconnect.
+- Implement runtime-owned supervisor snapshot watch, activity, log tail, typed steering, typed cancellation, and reconnect through the published Runtime APIs.
+- Make the `LIVE-11` release proof provision an owned Runtime root and worker, validate complete observation, changed spend, acknowledged steering, proven cancellation, stable operation retries, fresh reconnect, and exact cleanup.
+- Record exact terminal takeover only when Runtime returns an opaque handle for a registered provider; preserve the explicit unavailable capability otherwise.
 - Keep direct-turn, trace-analysis, and delegated-worker usage separate until Runtime exports stable shared call identity.
 - Add calibrated semantic cases and raw evidence capture.
 
 ### Done when
 
 `PR-07`, `PR-08`, `AN-01` through `AN-10`, `LIVE-11`, `LIVE-12`, and `EVAL-01` through `EVAL-06` pass.
+
+`LIVE-11` cannot pass from a queued request, an incomplete snapshot, an unacknowledged effect, or a partial result.
 
 An analysis cannot pass if its source branch journal changes before explicit promotion or any cited reference fails deterministic resolution.
 
@@ -406,7 +415,7 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 - Run `pnpm check` once against the exact main commit.
 - Build one immutable package with `pnpm release:prepare` and use its installed CLI, RPC, and terminal flows.
 - Keep live, performance, semantic, soak, and complete-manifest audits available as explicit product audits.
-- Do not make provider or sandbox availability an npm publication prerequisite.
+- Require a passed `LIVE-07` multirun artifact before release completion; provider or sandbox availability may still block that completion rather than becoming an unavailable claim.
 - Endorse the exact candidate package and package manifest in an isolated code-free job.
 - Publish `@tangle-network/braid` with npm provenance.
 - Download the registry package in clean supported environments and repeat the post-publication smoke.

@@ -1,0 +1,2 @@
+export const DEFAULT_TANGLE_ROUTER_MODEL_ID = 'glm-5.3'
+export const DEFAULT_TANGLE_ROUTER_MODEL = `tangle-router/${DEFAULT_TANGLE_ROUTER_MODEL_ID}`

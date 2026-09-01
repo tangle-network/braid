@@ -1,11 +1,154 @@
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
+import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
+import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
+import { prepareProductionWorkspace } from '../scripts/live-required/headless.mjs'
+import {
+  DEFAULT_TANGLE_ROUTER_MODEL,
+  DEFAULT_TANGLE_ROUTER_MODEL_ID,
+} from '../scripts/live-required/model-defaults.mjs'
+import { MULTIRUN_REQUIRED_PHASES } from '../scripts/live-required/multirun-contract.mjs'
+import {
+  createProviderObservationDeadline,
+  PROVIDER_OBSERVATION_INTERVAL_MS,
+  waitForProviderObservation,
+} from '../scripts/live-required/provider-observation.mjs'
+import { supervisorProfile } from '../scripts/live-required/supervisor.mjs'
 import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
-import { cleanupRetainedResourceByRunId } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
+import { sandboxEnvironment } from '../scripts/live-required/tangle-sandbox-braid-execution-soak.mjs'
+import {
+  assertInteractiveTelemetry,
+  assertProviderBoundEvidence,
+  finalizeInteractiveProof,
+  interactiveFailureMessages,
+  interactiveMaterializationEvidence,
+  interactiveProofCommandSequence,
+  interactiveRetainedBox,
+  sandboxConfiguration as interactiveSandboxConfiguration,
+  isCancellableInteractiveRunStatus,
+  stoppedRunFromState,
+  waitForInteractiveIdentityFrame,
+} from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
+import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
+import {
+  assertExactSessionExecutions,
+  providerExecutionLedgerEvidence,
+  readRetainedWorkspaceFile,
+} from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
+import { backendConfiguration as workerBackendConfiguration } from '../scripts/live-required/tangle-sandbox-worker.mjs'
+import { sandboxConfiguration as workspaceSandboxConfiguration } from '../scripts/live-required/tangle-workspace-proof.mjs'
+import {
+  createTerminalOutputTracker,
+  PI_LOADER_INTERVAL_MS,
+  piTerminalScreenState,
+  TERMINAL_QUIET_INTERVAL_MS,
+  waitForPiTerminalReady,
+  waitForTerminalQuiescence,
+} from '../scripts/live-required/terminal-quiescence.mjs'
+import {
+  DEFAULT_WORKSPACE_CWD,
+  workspaceRequestFor,
+} from '../scripts/live-required/workspace-request.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+function executionRecord(
+  executionId,
+  sessionId = 'session-1',
+  status = 'completed',
+  eventCount = 2,
+) {
+  return {
+    executionId,
+    sessionId,
+    status,
+    startedAt: 1_000,
+    completedAt: 2_000,
+    eventCount,
+    lastEventId: `event-${executionId}`,
+  }
+}
+
+function executionExpectation(executionId, sessionId = 'session-1', status = 'completed', name) {
+  return {
+    name: name ?? executionId,
+    controlRef: { sessionId, executionId },
+    status,
+  }
+}
+
+const exactSessionExecutionRecords = [
+  executionRecord('execution-1'),
+  executionRecord('execution-2'),
+  executionRecord('execution-3', 'session-1', 'cancelled'),
+]
+const exactSessionExecutionExpected = [
+  executionExpectation('execution-1', 'session-1', 'completed', 'first-and-reconnected'),
+  executionExpectation('execution-2', 'session-1', 'completed', 'follow-up'),
+  executionExpectation('execution-3', 'session-1', 'cancelled', 'cancelled'),
+]
+
+test('active Tangle Sandbox checks share the current router model default', () => {
+  const environment = {
+    BRAID_TANGLE_SANDBOX_API_KEY: 'test-only-placeholder',
+    BRAID_TANGLE_SANDBOX_MODEL_API_KEY: 'test-only-placeholder',
+  }
+  const expectedProfileModel = DEFAULT_TANGLE_ROUTER_MODEL
+  assert.equal(DEFAULT_TANGLE_ROUTER_MODEL_ID, 'glm-5.3')
+  assert.equal(workspaceSandboxConfiguration(environment).model, expectedProfileModel)
+  assert.equal(workspaceSandboxConfiguration(environment).modelProvider, 'tangle-router')
+  assert.equal(multirunSandboxConfiguration(environment).model, expectedProfileModel)
+  assert.equal(multirunSandboxConfiguration(environment).modelProvider, 'tangle-router')
+  assert.equal(interactiveSandboxConfiguration(environment).model, expectedProfileModel)
+  assert.equal(interactiveSandboxConfiguration(environment).modelProvider, 'tangle-router')
+  assert.equal(sandboxEnvironment({}).BRAID_TANGLE_SANDBOX_MODEL, expectedProfileModel)
+  assert.equal(workerBackendConfiguration(environment).model.model, DEFAULT_TANGLE_ROUTER_MODEL_ID)
+  assert.equal(workerBackendConfiguration(environment).profile.model.default, expectedProfileModel)
+  assert.equal(supervisorProfile({}).model.default, expectedProfileModel)
+})
+
+test('live Tangle Sandbox proofs request the repository root with a portable cwd', () => {
+  assert.equal(DEFAULT_WORKSPACE_CWD, '.')
+  assert.deepEqual(workspaceRequestFor({}), {
+    repoUrl: 'https://github.com/tangle-network/braid.git',
+    gitRef: 'main',
+    cwd: { base: 'repository', path: '.' },
+  })
+  assert.deepEqual(workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: 'packages/braid' }).cwd, {
+    base: 'repository',
+    path: 'packages/braid',
+  })
+  assert.deepEqual(workspaceRequestFor({ BRAID_TANGLE_SANDBOX_CWD: '  ' }).cwd, {
+    base: 'repository',
+    path: '.',
+  })
+})
+
+test('Tangle Sandbox workspace profiles pin model identity separately from connection kind', async () => {
+  const values = interactiveSandboxConfiguration({
+    BRAID_TANGLE_SANDBOX_CREDENTIAL_REF: 'credential-ref-live-provider-split',
+  })
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment: {},
+    ...values,
+    workspaceRequest: workspaceRequestFor({}),
+  })
+  try {
+    assert.equal(config.connection.kind, 'tangle-sandbox')
+    assert.equal(config.profile.model.provider, 'tangle-router')
+    assert.equal(config.profile.model.default, DEFAULT_TANGLE_ROUTER_MODEL)
+    assert.deepEqual(config.workspaceRequest, {
+      repoUrl: 'https://github.com/tangle-network/braid.git',
+      gitRef: 'main',
+      cwd: { base: 'repository', path: '.' },
+    })
+  } finally {
+    await config.cleanup()
+  }
+})
 
 function passedStressProof() {
   const first = { id: 'run-first', environmentId: 'environment-local' }
@@ -17,6 +160,7 @@ function passedStressProof() {
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'pi',
     },
     runs: {
@@ -68,6 +212,113 @@ function passedStressCohort() {
   }
 }
 
+function passedMultirunProof() {
+  const runs = [
+    {
+      runId: 'multirun-a',
+      conversationId: 'conversation-a',
+      branchId: 'branch-a',
+      eventCount: 2,
+      eventIdsUnique: true,
+      localEnvironmentId: 'local-environment-a',
+      providerEnvironmentId: 'environment-a',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-a' },
+        { kind: 'provider-session', id: 'session-a' },
+        { kind: 'provider-execution', id: 'execution-a' },
+        { kind: 'provider-run', id: 'multirun-a' },
+      ],
+      status: 'completed',
+    },
+    {
+      runId: 'multirun-b',
+      conversationId: 'conversation-b',
+      branchId: 'branch-b',
+      eventCount: 2,
+      eventIdsUnique: true,
+      localEnvironmentId: 'local-environment-b',
+      providerEnvironmentId: 'environment-b',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-b' },
+        { kind: 'provider-session', id: 'session-b' },
+        { kind: 'provider-execution', id: 'execution-b' },
+        { kind: 'provider-run', id: 'multirun-b' },
+      ],
+      status: 'cancelled',
+    },
+  ]
+  return {
+    schemaVersion: 'braid.live-required.multirun.v2',
+    status: 'passed',
+    provider: {
+      endpoint: 'https://sandbox.tangle.tools',
+      runner: 'opencode',
+      model: 'tangle-router/glm-5.2',
+      lifecycle: 'retained',
+      credentialConfigured: true,
+    },
+    conversations: {
+      first: { conversationId: 'conversation-a', branchId: 'branch-a' },
+      second: { conversationId: 'conversation-b', branchId: 'branch-b' },
+    },
+    runs,
+    overlap: {
+      activeRunCount: 2,
+      streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
+      workStripCount: 2,
+      renderedWorkStripCount: 2,
+      independentConversations: true,
+    },
+    focus: {
+      beforeRunId: 'multirun-b',
+      firstSwitchRunId: 'multirun-a',
+      secondSwitchRunId: 'multirun-b',
+      firstSwitchPreservedStatuses: true,
+      secondSwitchPreservedStatuses: true,
+    },
+    cancellation: {
+      dispatch: {
+        eventKind: 'run.control.requested',
+        control: 'cancel',
+        runId: 'multirun-b',
+        operationId: 'operation-cancel-b',
+        sequence: 3,
+      },
+      targetRunId: 'multirun-b',
+      targetStatus: 'cancelled',
+      unaffectedRunId: 'multirun-a',
+      unaffectedStatusAtAck: 'streaming',
+      unaffectedFinalStatus: 'completed',
+    },
+    replay: { restartedRunCount: 2, noDuplicateEventIds: true, eventSetsStable: true },
+    cleanup: {
+      exact: true,
+      errors: [],
+      resources: [
+        {
+          runId: 'multirun-a',
+          providerEnvironmentId: 'environment-a',
+          id: 'resource-a',
+          confirmed: true,
+        },
+        {
+          runId: 'multirun-b',
+          providerEnvironmentId: 'environment-b',
+          id: 'resource-b',
+          confirmed: true,
+        },
+      ],
+      activeResourceDelta: 0,
+      accountStable: true,
+      workspace: { protectedStoreClean: true, temporaryRootRemoved: true },
+    },
+    error: null,
+    phases: Object.fromEntries(
+      MULTIRUN_REQUIRED_PHASES.map((name) => [name, { status: 'passed' }]),
+    ),
+  }
+}
+
 function passedInteractiveProof(
   invocationId,
   {
@@ -79,6 +330,15 @@ function passedInteractiveProof(
       sandbox: {},
       identityContinuity: {},
       processCleanup: {},
+      providerEvidence: {},
+      providerExecution: {},
+      usage: {},
+      accountIdentities: {},
+      accountIdentityConsistency: {},
+      usageDelta: {},
+      telemetry: {},
+      spend: {},
+      timing: {},
     },
   } = {},
 ) {
@@ -104,6 +364,7 @@ function passedInteractiveProof(
         connectionKind: 'tangle-sandbox',
         credentialConfigured: true,
         model: 'tangle-router/glm-5.2',
+        modelProvider: 'tangle-router',
         runner,
       },
       runIds: ['run-interactive'],
@@ -117,6 +378,15 @@ function passedInteractiveProof(
         processExitedBeforeWorkspaceCleanup: true,
         terminalResize: true,
         processGroupExitedBeforeWorkspaceCleanup: true,
+        providerInput: true,
+        providerReconnect: true,
+        singleProviderExecution: true,
+        exactOwnedResourceSetCleanup: true,
+        accountIdentityStable: true,
+        activeResourceDelta: 0,
+        telemetryComplete: true,
+        spendDisclosed: true,
+        latencyObserved: true,
       },
       checks: [
         'packed-binary',
@@ -133,6 +403,15 @@ function passedInteractiveProof(
         'exact-resource-cleanup',
         'process-exited-before-cleanup',
         'process-group-exited-before-cleanup',
+        'provider-bound-input',
+        'provider-bound-reconnect',
+        'single-provider-execution',
+        'exact-owned-resource-set-cleanup',
+        'account-identity-stable',
+        'active-resource-delta',
+        'telemetry-complete',
+        'spend-disclosed',
+        'latency-observed',
       ],
       observations,
     }),
@@ -148,6 +427,7 @@ test('built-in LIVE-07 and LIVE-08 wiring emits evidence and deduped dispatch', 
     binary: 'unused-injected-binary',
     invocationId: 'live-required-test-invocation',
     stressRunner,
+    multirunRunner: async () => passedMultirunProof(),
   })
 
   assert.equal(sandbox.status, 'passed')
@@ -163,7 +443,8 @@ test('built-in LIVE-07 and LIVE-08 wiring emits evidence and deduped dispatch', 
       measurement: { kind: 'scalar', name: 'LIVE-06', unit: 'verified-flow', value: 1 },
       evidence: null,
     }),
-    sandboxRunner: (input) => runSandbox({ ...input, stressRunner }),
+    sandboxRunner: (input) =>
+      runSandbox({ ...input, stressRunner, multirunRunner: async () => passedMultirunProof() }),
     interactiveRunner: async (input) => {
       dispatches.push(input)
       return passedInteractiveProof(input.invocationId)
@@ -183,6 +464,57 @@ test('built-in LIVE-07 and LIVE-08 wiring emits evidence and deduped dispatch', 
   assert.deepEqual(
     flows.unavailable.map((entry) => entry.row),
     ['LIVE-09', 'LIVE-10'],
+  )
+})
+
+test('Tangle aggregate records unavailable rows and rejects invalid passed rows', async () => {
+  const unavailable = await runTangleFlows({
+    repository,
+    environment: {},
+    inferenceRunner: async () => ({ status: 'unavailable', reason: 'inference unavailable' }),
+    sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+    interactiveRunner: async () => ({ status: 'unavailable', reason: 'interactive unavailable' }),
+    matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+  })
+
+  assert.equal(unavailable.status, 'partial')
+  assert.deepEqual(unavailable.measurements, [])
+  assert.deepEqual(
+    unavailable.unavailable.map((entry) => entry.row),
+    ['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'],
+  )
+
+  await assert.rejects(
+    runTangleFlows({
+      repository,
+      environment: {},
+      inferenceRunner: async () => ({
+        status: 'failed',
+        measurement: { kind: 'scalar', name: 'LIVE-06', unit: 'verified-flow', value: 1 },
+      }),
+      sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+      interactiveRunner: async () => ({
+        status: 'unavailable',
+        reason: 'interactive unavailable',
+      }),
+      matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+    }),
+    /LIVE-06 live proof returned invalid status failed/u,
+  )
+
+  await assert.rejects(
+    runTangleFlows({
+      repository,
+      environment: {},
+      inferenceRunner: async () => ({ status: 'passed', evidence: null }),
+      sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+      interactiveRunner: async () => ({
+        status: 'unavailable',
+        reason: 'interactive unavailable',
+      }),
+      matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+    }),
+    /LIVE-06 live proof passed without its required measurement/u,
   )
 })
 
@@ -207,11 +539,582 @@ test('LIVE-07 rejects a passing canary presented as a stress cohort', async () =
   )
 })
 
+test('LIVE-07 requires passed, complete, and exact multirun evidence', async () => {
+  const cases = [
+    ['missing', undefined, /multirun evidence is missing/u],
+    ['failed', { ...passedMultirunProof(), status: 'failed' }, /multirun evidence did not pass/u],
+    [
+      'unclean',
+      { ...passedMultirunProof(), cleanup: { ...passedMultirunProof().cleanup, exact: false } },
+      /multirun cleanup was not exact/u,
+    ],
+    [
+      'missing cancellation dispatch',
+      {
+        ...passedMultirunProof(),
+        cancellation: { ...passedMultirunProof().cancellation, dispatch: null },
+      },
+      /cancellation dispatch evidence is missing/u,
+    ],
+  ]
+  for (const [label, multirun, expected] of cases) {
+    await assert.rejects(
+      runSandbox({
+        repository,
+        environment: {},
+        binary: 'unused-injected-binary',
+        invocationId: `live-required-test-${label}`,
+        stressRunner: async () => passedStressCohort(),
+        multirunRunner: async () => multirun,
+      }),
+      expected,
+      label,
+    )
+  }
+})
+
 test('LIVE-08 rejects a non-Pi runner from the native interactive proof', () => {
   assert.throws(
     () => passedInteractiveProof('live-required-non-pi-runner', { runner: 'codex' }),
     /native Pi harness/u,
   )
+})
+
+test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () => {
+  const commands = interactiveProofCommandSequence({
+    proofId: 'proof-quote',
+    outputSeed: 'output-seed',
+    input: 'INPUT_VALUE',
+    reconnect: 'RECONNECT_VALUE',
+    inputPath: '.braid-live/proof-quote/input file.txt',
+    reconnectPath: ".braid-live/proof-quote/reconnect's file.txt",
+  })
+
+  assert.match(commands[0], /\/interactive/iu)
+  assert.equal(
+    commands[1],
+    "!!printf '%s\\n' 'INPUT_VALUE' >> '.braid-live/proof-quote/input file.txt'",
+  )
+  assert.equal(
+    commands[5],
+    `!!printf '%s\\n' 'RECONNECT_VALUE' >> '.braid-live/proof-quote/reconnect'"'"'s file.txt'`,
+  )
+  assert.equal(commands.filter((command) => command.startsWith('!!')).length, 2)
+})
+
+test('LIVE-08 provider observation honors typed rate limits within one deadline', async () => {
+  let clock = 0
+  let attempts = 0
+  const pauses = []
+  const result = await waitForProviderObservation(
+    'provider readback',
+    async () => {
+      attempts += 1
+      if (attempts === 1) {
+        throw new QuotaError('rate_limit', 'Too many requests', undefined, undefined, {
+          retryAfterMs: 750,
+        })
+      }
+      return attempts === 3 ? { observed: true } : undefined
+    },
+    2_000,
+    {
+      now: () => clock,
+      pause: async (milliseconds) => {
+        pauses.push(milliseconds)
+        clock += milliseconds
+      },
+    },
+  )
+
+  assert.deepEqual(result, { observed: true })
+  assert.deepEqual(pauses, [750, PROVIDER_OBSERVATION_INTERVAL_MS])
+})
+
+test('LIVE-08 provider observation treats only undefined as pending', async () => {
+  for (const expected of [false, 0, '', null]) {
+    let attempts = 0
+    const observed = await waitForProviderObservation(
+      `provider value ${String(expected)}`,
+      async () => {
+        attempts += 1
+        return expected
+      },
+      100,
+      { now: () => 0 },
+    )
+    assert.strictEqual(observed, expected)
+    assert.equal(attempts, 1)
+  }
+})
+
+test('LIVE-08 provider observation shares one absolute deadline across nested phases', async () => {
+  let clock = 0
+  const deadline = createProviderObservationDeadline('shared provider phase', 100, {
+    now: () => clock,
+  })
+  assert.equal(
+    await waitForProviderObservation('first nested read', async () => 'ready', 100, { deadline }),
+    'ready',
+  )
+
+  clock = 100
+  let secondReadCalls = 0
+  await assert.rejects(
+    waitForProviderObservation(
+      'second nested read',
+      async () => {
+        secondReadCalls += 1
+        return 'late'
+      },
+      100,
+      { deadline },
+    ),
+    (error) => error?.code === 'PROVIDER_OBSERVATION_TIMEOUT',
+  )
+  assert.equal(secondReadCalls, 0)
+})
+
+test('LIVE-08 provider observation rejects before and after a deadline-overrun operation', async () => {
+  let clock = 0
+  const beforeDeadline = createProviderObservationDeadline('before operation', 100, {
+    now: () => clock,
+  })
+  clock = 100
+  let beforeCalls = 0
+  await assert.rejects(
+    waitForProviderObservation(
+      'before operation',
+      async () => {
+        beforeCalls += 1
+        return true
+      },
+      100,
+      { deadline: beforeDeadline },
+    ),
+    (error) => error?.code === 'PROVIDER_OBSERVATION_TIMEOUT',
+  )
+  assert.equal(beforeCalls, 0)
+
+  clock = 0
+  await assert.rejects(
+    waitForProviderObservation(
+      'after operation',
+      async () => {
+        clock = 100
+        return true
+      },
+      100,
+      { now: () => clock },
+    ),
+    (error) => error?.code === 'PROVIDER_OBSERVATION_TIMEOUT',
+  )
+})
+
+test('LIVE-08 provider observation fails immediately for non-transient errors', async () => {
+  let pauses = 0
+  const error = new AuthError('invalid test credential')
+  await assert.rejects(
+    waitForProviderObservation('provider readback', async () => Promise.reject(error), 2_000, {
+      pause: async () => {
+        pauses += 1
+      },
+    }),
+    (candidate) => candidate === error,
+  )
+  assert.equal(pauses, 0)
+})
+
+test('LIVE-08 missing-file polling never hides a provider failure', async () => {
+  const controlRef = {
+    environmentId: 'sandbox-live-08-readback',
+    sessionId: 'session-live-08-readback',
+  }
+  const error = new AuthError('invalid test credential')
+  const box = {
+    id: controlRef.environmentId,
+    name: `braid-${controlRef.sessionId}`,
+    metadata: {
+      owner: 'braid',
+      lifecycle: 'retained',
+      providerSessionId: controlRef.sessionId,
+    },
+    async read() {
+      throw error
+    },
+  }
+  await assert.rejects(
+    readRetainedWorkspaceFile({}, controlRef, 'proof.txt', {
+      allowMissing: true,
+      box,
+    }),
+    (candidate) => candidate === error,
+  )
+
+  box.read = async () => Promise.reject(new NotFoundError('file', 'proof.txt'))
+  assert.equal(
+    await readRetainedWorkspaceFile({}, controlRef, 'proof.txt', {
+      allowMissing: true,
+      box,
+    }),
+    undefined,
+  )
+})
+
+test('LIVE-08 cancels a streaming run before exact cleanup after an early flow failure', async () => {
+  const controlRef = {
+    provider: 'tangle-sandbox',
+    environmentId: 'environment-live-08-streaming-failure',
+    sessionId: 'session-live-08-streaming-failure',
+    executionId: 'execution-live-08-streaming-failure',
+    runId: 'provider-run-live-08-streaming-failure',
+    requestDigest: `sha256:${'b'.repeat(64)}`,
+  }
+  const identity = {
+    run: { id: 'run-live-08-streaming-failure', status: 'streaming', controlRef },
+    controlRef,
+  }
+  const events = []
+  let processExited = false
+  let processGroupExited = false
+  const runtime = {
+    get exited() {
+      return processExited
+    },
+    get processCleanup() {
+      return processGroupExited ? { supported: true, gone: true } : undefined
+    },
+    async forceClose() {
+      events.push('process-exit')
+      processExited = true
+      processGroupExited = true
+    },
+    dispose() {
+      events.push('terminal-dispose')
+    },
+  }
+  const stoppedRun = { ...identity.run, status: 'cancelled' }
+  const cleanup = {
+    confirmed: true,
+    removedIds: [controlRef.environmentId],
+    remainingIds: [],
+    matchedCount: 1,
+  }
+  const result = await finalizeInteractiveProof({
+    packed: {
+      binary: '/tmp/braid',
+      cleanup: async () => {
+        events.push('packed-cleanup')
+      },
+    },
+    config: {
+      cleanup: async () => {
+        events.push('workspace-cleanup')
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    },
+    runtime,
+    executionStarted: true,
+    identity,
+    client: {},
+    stop: async ({ runId }) => {
+      events.push(`cancel:${runId}`)
+      assert.equal(runId, identity.run.id)
+      return { run: stoppedRun, controlRef }
+    },
+    observe: async (_client, observedRef, runId) => {
+      events.push('stopped-observation')
+      assert.equal(runId, identity.run.id)
+      assert.deepEqual(observedRef, controlRef)
+      return { stopped: true }
+    },
+    cleanupSandbox: async (_client, cleanupIdentity) => {
+      events.push('exact-delete')
+      assert.equal(cleanupIdentity.run.id, identity.run.id)
+      assert.deepEqual(cleanupIdentity.controlRef, controlRef)
+      return cleanup
+    },
+  })
+
+  assert.deepEqual(events, [
+    'process-exit',
+    'terminal-dispose',
+    `cancel:${identity.run.id}`,
+    'stopped-observation',
+    'exact-delete',
+    'workspace-cleanup',
+    'packed-cleanup',
+  ])
+  assert.equal(result.processExited, true)
+  assert.equal(result.processGroupExited, true)
+  assert.equal(result.stop.run.status, 'cancelled')
+  assert.deepEqual(result.cleanup, cleanup)
+})
+
+test('LIVE-08 only permits active public run statuses for cancellation cleanup', () => {
+  assert.equal(isCancellableInteractiveRunStatus('streaming'), true)
+  assert.equal(isCancellableInteractiveRunStatus('detached'), true)
+  assert.equal(isCancellableInteractiveRunStatus('running'), true)
+  assert.equal(isCancellableInteractiveRunStatus('completed'), false)
+  assert.equal(isCancellableInteractiveRunStatus('failed'), false)
+  assert.equal(isCancellableInteractiveRunStatus('unknown'), false)
+  assert.equal(isCancellableInteractiveRunStatus(undefined), false)
+})
+
+test('LIVE-08 reads the stopped run from the terminal state response', () => {
+  const run = { id: 'run-live-08-stopped', status: 'cancelled' }
+  const response = { type: 'state', state: { runs: [run] } }
+  assert.deepEqual(stoppedRunFromState(response, run.id), run)
+  assert.equal(
+    stoppedRunFromState(
+      { type: 'state', state: { runs: [{ ...run, status: 'streaming' }] } },
+      run.id,
+    ),
+    undefined,
+  )
+  assert.equal(stoppedRunFromState({ type: 'event', state: { runs: [run] } }, run.id), undefined)
+})
+
+test('LIVE-08 waits for renderer quiescence instead of guessing a sleep', async () => {
+  let now = 0
+  const tracker = createTerminalOutputTracker({ now: () => now })
+  tracker.observe('model output', (settle) => {
+    settle()
+  })
+
+  assert.equal(PI_LOADER_INTERVAL_MS, 80)
+  assert.equal(TERMINAL_QUIET_INTERVAL_MS, 240)
+  const markerRevision = tracker.snapshot().revision
+  let pendingNow = 0
+  const pendingTracker = createTerminalOutputTracker({ now: () => pendingNow })
+  let settlePending
+  pendingTracker.observe('renderer frame', (settle) => {
+    settlePending = settle
+  })
+  pendingNow = TERMINAL_QUIET_INTERVAL_MS
+  assert.equal(pendingTracker.isQuiescent(), false, 'an incomplete renderer write must block input')
+  settlePending()
+  assert.equal(pendingTracker.isQuiescent(), true)
+
+  let staleNow = 0
+  const staleTracker = createTerminalOutputTracker({ now: () => staleNow })
+  staleTracker.observe('previous action output', (settle) => {
+    settle()
+  })
+  await assert.rejects(
+    waitForTerminalQuiescence(staleTracker, {
+      timeoutMs: TERMINAL_QUIET_INTERVAL_MS,
+      afterRevision: staleTracker.snapshot().revision,
+      now: () => staleNow,
+      pause: async (milliseconds) => {
+        staleNow += milliseconds
+      },
+    }),
+    /did not become quiescent/iu,
+    'stale output must not satisfy a post-action readiness check',
+  )
+
+  let spinnerFrames = 0
+  let nextSpinnerAt = PI_LOADER_INTERVAL_MS
+  const waited = await waitForTerminalQuiescence(tracker, {
+    timeoutMs: 2_000,
+    afterRevision: markerRevision,
+    now: () => now,
+    pause: async (milliseconds) => {
+      const end = now + milliseconds
+      while (nextSpinnerAt <= end && nextSpinnerAt <= PI_LOADER_INTERVAL_MS * 5) {
+        now = nextSpinnerAt
+        spinnerFrames += 1
+        tracker.observe('spinner frame', (settle) => {
+          settle()
+        })
+        nextSpinnerAt += PI_LOADER_INTERVAL_MS
+      }
+      now = end
+    },
+  })
+  assert.equal(spinnerFrames, 5, 'the waiter must remain open across every spinner interval')
+  assert.ok(now >= 640, 'the waiter must observe three quiet intervals after the final frame')
+  assert.equal(waited.pendingWrites, 0)
+  assert.ok(waited.revision > markerRevision)
+  assert.equal(waited.quietIntervalMs, TERMINAL_QUIET_INTERVAL_MS)
+})
+
+function piScreen(status = '', { statusSpacing = 0 } = {}) {
+  const rule = '─'.repeat(40)
+  return [
+    'assistant response',
+    ...(status.length === 0 ? [] : [status]),
+    ...Array.from({ length: statusSpacing }, () => ''),
+    'marker',
+    rule,
+    ' '.repeat(40),
+    ' '.repeat(40),
+    rule,
+    '/home/agent',
+    '[tmux status]',
+  ].join('\n')
+}
+
+function advanceUntilTimeout(clock, tracker, screen, beforeScreen) {
+  return waitForPiTerminalReady({
+    tracker,
+    readScreen: () => screen,
+    timeoutMs: TERMINAL_QUIET_INTERVAL_MS,
+    afterRevision: 0,
+    beforeScreen,
+    now: () => clock.value,
+    pause: async (milliseconds) => {
+      clock.value += milliseconds
+    },
+  })
+}
+
+test('LIVE-08 rejects a quiet Pi screen while the model status still says Working', async () => {
+  const clock = { value: 0 }
+  const screen = piScreen('⠋ Working...')
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('completed renderer write', (settle) => settle())
+  assert.equal(piTerminalScreenState(screen).state, 'working')
+  await assert.rejects(
+    advanceUntilTimeout(clock, tracker, screen, screen),
+    /did not become ready/iu,
+  )
+  assert.equal(tracker.isQuiescent(), true, 'the failure must be semantic, not renderer output')
+})
+
+test('LIVE-08 ignores transcript text that mentions Working without the status prefix', () => {
+  const screen = piScreen('The transcript says Working... before the last tool call')
+  assert.equal(piTerminalScreenState(screen).state, 'ready')
+})
+
+test('LIVE-08 ignores unknown spinner-prefixed transcript text', () => {
+  const screen = piScreen('⠋ Working on the release notes')
+  assert.equal(piTerminalScreenState(screen).state, 'ready')
+})
+
+test('LIVE-08 finds the active status across Pi’s ten-line widget region', () => {
+  const screen = piScreen('⠋ Working...', { statusSpacing: 8 })
+  const state = piTerminalScreenState(screen)
+  assert.equal(state.state, 'working')
+  assert.equal(state.status, '⠋ Working...')
+})
+
+test('LIVE-08 rejects a stale ready Pi screen with no rendered transition', async () => {
+  const clock = { value: 0 }
+  const screen = piScreen()
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('action output with unchanged screen', (settle) => settle())
+  assert.equal(piTerminalScreenState(screen).state, 'ready')
+  await assert.rejects(
+    advanceUntilTimeout(clock, tracker, screen, screen),
+    /did not become ready/iu,
+  )
+})
+
+test('LIVE-08 accepts the ready Pi composer after a working-to-complete transition', async () => {
+  const clock = { value: 0 }
+  let screen = piScreen('⠋ Working...')
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('working render', (settle) => settle())
+  let completed = false
+  const result = await waitForPiTerminalReady({
+    tracker,
+    readScreen: () => screen,
+    timeoutMs: 2_000,
+    afterRevision: 0,
+    beforeScreen: screen,
+    now: () => clock.value,
+    pause: async (milliseconds) => {
+      clock.value += milliseconds
+      if (!completed) {
+        completed = true
+        screen = piScreen()
+        tracker.observe('completed render', (settle) => settle())
+      }
+    },
+  })
+  assert.equal(result.readiness.state, 'ready')
+  assert.equal(result.transitioned, true)
+  assert.equal(result.pendingWrites, 0)
+})
+
+test('LIVE-08 times out closed when Pi never renders its ready composer', async () => {
+  const clock = { value: 0 }
+  const screen = 'Pi output without the composer or cwd footer'
+  const tracker = createTerminalOutputTracker({ now: () => clock.value })
+  tracker.observe('action output', (settle) => settle())
+  await assert.rejects(advanceUntilTimeout(clock, tracker, screen, ''), /did not become ready/iu)
+})
+
+test('LIVE-08 waits past streamed output until retained admission is durable', async () => {
+  const controlRef = {
+    provider: 'tangle-sandbox',
+    environmentId: 'environment-live-08-admission',
+    sessionId: 'session-live-08-admission',
+    executionId: 'execution-live-08-admission',
+    runId: 'provider-run-live-08-admission',
+    requestDigest: `sha256:${'a'.repeat(64)}`,
+  }
+  const incomplete = {
+    state: {
+      runs: [{ id: 'local-run-live-08-admission', status: 'streaming' }],
+    },
+  }
+  const admitted = {
+    state: {
+      runs: [
+        {
+          id: 'local-run-live-08-admission',
+          status: 'streaming',
+          controlRef,
+          providerSessionId: controlRef.sessionId,
+        },
+      ],
+    },
+    events: [
+      toEvent({
+        sequence: 1,
+        revision: 1,
+        event: {
+          kind: 'run.retained.admitted',
+          runId: 'local-run-live-08-admission',
+          admission: { phase: 'interactive_intent' },
+        },
+      }),
+      toEvent({
+        sequence: 2,
+        revision: 2,
+        event: {
+          kind: 'run.retained.admitted',
+          runId: 'local-run-live-08-admission',
+          admission: { phase: 'interactive_environment' },
+        },
+      }),
+      toEvent({
+        sequence: 3,
+        revision: 3,
+        event: {
+          kind: 'run.retained.admitted',
+          runId: 'local-run-live-08-admission',
+          admission: { phase: 'interactive_started', ref: { run: controlRef } },
+        },
+      }),
+    ],
+  }
+  const frames = [incomplete, admitted]
+  let captures = 0
+  const result = await waitForInteractiveIdentityFrame({
+    captureFrame: async () => {
+      captures += 1
+      return frames.shift()
+    },
+    timeoutMs: 1_000,
+  })
+  assert.equal(captures, 2)
+  assert.equal(result.frame, admitted)
+  assert.equal(result.identity.run.id, 'local-run-live-08-admission')
+  assert.deepEqual(result.identity.controlRef, controlRef)
 })
 
 test('LIVE-08 rejects status-only observations from a passed receipt', () => {
@@ -224,41 +1127,679 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
   )
 })
 
-test('fail-safe cleanup derives one exact Braid resource from the first local run ID', async () => {
-  const firstRunId = 'local/run-1'
+test('LIVE-08 rejects input evidence that only observed local terminal echo', () => {
+  assert.throws(
+    () =>
+      assertProviderBoundEvidence(
+        {
+          provider: 'tangle-sandbox',
+          source: 'sandbox-workspace-read',
+          providerObserved: false,
+          localEchoOnly: true,
+        },
+        'interactive input',
+      ),
+    /provider-bound/u,
+  )
+})
+
+test('LIVE-08 rejects missing telemetry and latency status', () => {
+  assert.throws(
+    () =>
+      assertInteractiveTelemetry(
+        { completeDisclosure: true, fields: { environment: { status: 'missing' } } },
+        undefined,
+        undefined,
+      ),
+    /missing fields/u,
+  )
+})
+
+test('LIVE-08 resolves the exact interactive resource identity before provider reads', async () => {
+  const controlRef = {
+    environmentId: 'environment-interactive',
+    sessionId: 'session-interactive',
+    runId: 'run-interactive',
+  }
   const box = {
-    id: 'environment-fallback',
-    name: 'braid-session-braid-local-run-1',
-    metadata: {
-      owner: 'braid',
-      lifecycle: 'retained',
-      providerSessionId: 'session-braid-local-run-1',
+    id: controlRef.environmentId,
+    name: 'braid-interactive-run-interactive',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+  }
+  const client = { get: async () => box }
+  assert.equal(
+    await interactiveRetainedBox(client, controlRef, controlRef.runId, 'interactive proof'),
+    box,
+  )
+  await assert.rejects(
+    interactiveRetainedBox(
+      { get: async () => ({ ...box, name: 'braid-session-interactive' }) },
+      controlRef,
+      controlRef.runId,
+      'interactive proof',
+    ),
+    /exact retained interactive Sandbox/u,
+  )
+})
+
+test('LIVE-07 accepts the exact provider session execution set', () => {
+  const evidence = assertExactSessionExecutions(
+    exactSessionExecutionRecords,
+    exactSessionExecutionExpected,
+  )
+  assert.equal(evidence.source, 'sandbox-session-runs')
+  assert.equal(evidence.executionCount, 3)
+  assert.deepEqual(
+    evidence.executions.map(({ executionId, status, eventCount }) => ({
+      executionId,
+      status,
+      eventCount,
+    })),
+    [
+      { executionId: 'execution-1', status: 'completed', eventCount: 2 },
+      { executionId: 'execution-2', status: 'completed', eventCount: 2 },
+      { executionId: 'execution-3', status: 'cancelled', eventCount: 2 },
+    ],
+  )
+})
+
+test('provider execution evidence reads the public session ledger exactly once', async () => {
+  const controlRef = {
+    environmentId: 'environment-1',
+    sessionId: 'session-1',
+    executionId: 'execution-1',
+  }
+  let sessionCalls = 0
+  let runsCalls = 0
+  const box = {
+    id: controlRef.environmentId,
+    session(sessionId) {
+      sessionCalls += 1
+      assert.equal(sessionId, controlRef.sessionId)
+      return {
+        async runs() {
+          runsCalls += 1
+          return [executionRecord(controlRef.executionId)]
+        },
+      }
     },
+  }
+  const evidence = await providerExecutionLedgerEvidence(
+    undefined,
+    controlRef,
+    [executionExpectation(controlRef.executionId)],
+    'provider ledger test',
+    { box },
+  )
+  assert.equal(sessionCalls, 1)
+  assert.equal(runsCalls, 1)
+  assert.equal(evidence.providerObserved, true)
+  assert.equal(evidence.localEchoOnly, false)
+})
+
+test('LIVE-07 rejects duplicate, extra, cross-session, wrong-status, and empty-event records', () => {
+  const cases = [
+    {
+      name: 'duplicate ID',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], executionId: 'execution-1' },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /duplicate execution identity/u,
+    },
+    {
+      name: 'extra ID',
+      records: [
+        exactSessionExecutionRecords[0],
+        exactSessionExecutionRecords[1],
+        executionRecord('unexpected-execution'),
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /did not return exactly one record/u,
+    },
+    {
+      name: 'cross-session record',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], sessionId: 'other-session' },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /another provider session/u,
+    },
+    {
+      name: 'wrong status',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], status: 'failed' },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /wrong status/u,
+    },
+    {
+      name: 'zero events',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], eventCount: 0 },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /no provider event evidence/u,
+    },
+    {
+      name: 'missing terminal completion time',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], completedAt: undefined },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /omitted terminal completion time/u,
+    },
+    {
+      name: 'terminal completion before start',
+      records: [
+        exactSessionExecutionRecords[0],
+        { ...exactSessionExecutionRecords[1], completedAt: 999 },
+        exactSessionExecutionRecords[2],
+      ],
+      expected: exactSessionExecutionExpected,
+      message: /completed before it started/u,
+    },
+  ]
+  for (const item of cases) {
+    assert.throws(
+      () => assertExactSessionExecutions(item.records, item.expected),
+      item.message,
+      item.name,
+    )
+  }
+})
+
+test('LIVE-07 fails closed when the public session runs API is missing', async () => {
+  const controlRef = {
+    environmentId: 'environment-1',
+    sessionId: 'session-1',
+    executionId: 'execution-1',
+  }
+  const client = {
+    get: async () => ({
+      id: controlRef.environmentId,
+      name: 'braid-session-1',
+      metadata: {
+        owner: 'braid',
+        lifecycle: 'retained',
+        providerSessionId: controlRef.sessionId,
+      },
+      session: () => ({}),
+    }),
+  }
+  await assert.rejects(
+    providerExecutionLedgerEvidence(client, controlRef, [
+      executionExpectation(controlRef.executionId),
+    ]),
+    /SandboxSession\.runs\(\)/u,
+  )
+})
+
+test('LIVE-08 reports sanitized nested proof and cleanup failures', () => {
+  const secret = 'live-interactive-secret'
+  const failure = new AggregateError(
+    [
+      new Error(`interaction failed with ${secret}`),
+      new AggregateError([new Error('exact cleanup failed')], 'cleanup incomplete'),
+    ],
+    'interactive proof failed',
+  )
+  assert.deepEqual(interactiveFailureMessages(failure, { TANGLE_API_KEY: secret }), [
+    'interactive proof failed',
+    'interaction failed with [REDACTED]',
+    'cleanup incomplete',
+    'exact cleanup failed',
+  ])
+})
+
+test('LIVE-08 cleans local resources without inventing a cloud leak before admission', async () => {
+  let workspaceCleanup = 0
+  let packedCleanup = 0
+  const result = await finalizeInteractiveProof({
+    packed: {
+      binary: '/tmp/braid',
+      cleanup: async () => {
+        packedCleanup += 1
+      },
+    },
+    config: {
+      cleanup: async () => {
+        workspaceCleanup += 1
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    },
+    recordPath: '/does/not/exist/without-an-admitted-run.json',
+    executionStarted: false,
+  })
+  assert.equal(result.identity, undefined)
+  assert.equal(workspaceCleanup, 1)
+  assert.equal(packedCleanup, 1)
+})
+
+test('LIVE-08 confirms Sandbox absence for a provider rejection before interactive_environment', async () => {
+  let listCalls = 0
+  let workspaceCleanup = 0
+  let packedCleanup = 0
+  const materialization = interactiveMaterializationEvidence({
+    state: {
+      runs: [
+        {
+          id: 'run-pre-environment',
+          status: 'streaming',
+        },
+      ],
+    },
+    events: [
+      toEvent({
+        sequence: 1,
+        revision: 1,
+        event: {
+          kind: 'run.retained.admitted',
+          runId: 'run-pre-environment',
+          admission: { phase: 'interactive_intent' },
+        },
+      }),
+    ],
+  })
+  assert.deepEqual(materialization, {
+    runId: 'run-pre-environment',
+    phase: 'interactive_intent',
+    materialized: false,
+    boundary: 'before-interactive_environment',
+  })
+  const result = await finalizeInteractiveProof({
+    packed: {
+      binary: '/tmp/braid',
+      cleanup: async () => {
+        packedCleanup += 1
+      },
+    },
+    config: {
+      cleanup: async () => {
+        workspaceCleanup += 1
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    },
+    client: {
+      async list() {
+        listCalls += 1
+        return []
+      },
+    },
+    executionStarted: true,
+    recordPath: '/does/not/exist/without-an-exact-run-identity.json',
+    materialization,
+  })
+  assert.equal(listCalls, 2)
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'run-derived-absence',
+    phase: 'interactive_intent',
+    runId: 'run-pre-environment',
+    expectedName: 'braid-interactive-run-pre-environment',
+    matchedCount: 0,
+    observedIds: [],
+    removedIds: [],
+    deletions: [],
+    remainingIds: [],
+  })
+  assert.equal(workspaceCleanup, 1)
+  assert.equal(packedCleanup, 1)
+})
+
+test('LIVE-08 ignores internal retained admission state absent from projected events', () => {
+  const state = {
+    state: {
+      runs: [
+        {
+          id: 'run-hidden-admission',
+          status: 'streaming',
+          retainedAdmission: { phase: 'interactive_intent' },
+        },
+      ],
+    },
+  }
+  assert.deepEqual(interactiveMaterializationEvidence(state), {
+    runId: 'run-hidden-admission',
+    phase: null,
+    materialized: false,
+    boundary: 'unknown',
+  })
+  assert.deepEqual(
+    interactiveMaterializationEvidence({
+      state: state.state,
+      events: [
+        {
+          kind: 'run.retained.admitted',
+          runId: 'run-hidden-admission',
+          admission: { phase: 'interactive_intent' },
+        },
+      ],
+    }),
+    {
+      runId: 'run-hidden-admission',
+      phase: null,
+      materialized: false,
+      boundary: 'unknown',
+    },
+  )
+})
+
+test('LIVE-08 deletes and confirms one exact resource when the Runtime phase is unavailable', async () => {
+  const resource = {
+    id: 'sandbox-pre-environment',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
     deleted: false,
     async delete() {
       this.deleted = true
     },
   }
-  const other = {
-    id: 'environment-other',
-    name: box.name,
-    metadata: {
-      owner: 'other',
-      lifecycle: 'retained',
-      providerSessionId: box.metadata.providerSessionId,
-    },
-  }
   const client = {
     async list() {
-      return [other, box]
+      return resource.deleted ? [] : [resource]
     },
     async get(id) {
-      return id === box.id && !box.deleted ? box : null
+      return id === resource.id && !resource.deleted ? resource : null
     },
   }
+  const result = await finalizeInteractiveProof({
+    client,
+    executionStarted: true,
+    materialization: {
+      runId: 'run-pre-environment',
+      phase: null,
+      materialized: false,
+      boundary: 'unknown',
+    },
+  })
+  assert.equal(resource.deleted, true)
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'run-derived-owned-resource-set',
+    phase: null,
+    runId: 'run-pre-environment',
+    expectedName: 'braid-interactive-run-pre-environment',
+    matchedCount: 1,
+    observedIds: ['sandbox-pre-environment'],
+    removedIds: ['sandbox-pre-environment'],
+    deletions: [
+      {
+        id: 'sandbox-pre-environment',
+        observed: true,
+        resolved: true,
+        deleted: true,
+        confirmed: true,
+      },
+    ],
+    remainingIds: [],
+  })
+})
 
-  const cleanup = await cleanupRetainedResourceByRunId(client, firstRunId)
-  assert.equal(cleanup.confirmed, true)
-  assert.equal(cleanup.id, box.id)
-  assert.equal(box.deleted, true)
+test('LIVE-08 deletes the run-derived resource when provider materialization exists without a record', async () => {
+  let listCalls = 0
+  let getCalls = 0
+  const materialization = interactiveMaterializationEvidence({
+    state: {
+      runs: [
+        {
+          id: 'run-materialized-without-record',
+          status: 'detached',
+          controlRef: { environmentId: 'sandbox-materialized-without-record' },
+        },
+      ],
+    },
+  })
+  assert.deepEqual(materialization, {
+    runId: 'run-materialized-without-record',
+    phase: null,
+    materialized: true,
+    boundary: 'provider-environment-identity',
+  })
+  const resource = {
+    id: 'sandbox-materialized-without-record',
+    name: 'braid-interactive-run-materialized-without-record',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+    deleted: false,
+    async delete() {
+      this.deleted = true
+    },
+  }
+  const result = await finalizeInteractiveProof({
+    client: {
+      async list() {
+        listCalls += 1
+        return resource.deleted ? [] : [resource]
+      },
+      async get(id) {
+        getCalls += 1
+        return id === resource.id && !resource.deleted ? resource : null
+      },
+    },
+    executionStarted: true,
+    recordPath: '/does/not/exist/without-a-persisted-run.json',
+    materialization,
+  })
+  assert.equal(resource.deleted, true)
+  assert.equal(listCalls, 2)
+  assert.equal(getCalls, 2)
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'run-derived-owned-resource-set',
+    phase: null,
+    runId: 'run-materialized-without-record',
+    expectedName: 'braid-interactive-run-materialized-without-record',
+    matchedCount: 1,
+    observedIds: ['sandbox-materialized-without-record'],
+    removedIds: ['sandbox-materialized-without-record'],
+    deletions: [
+      {
+        id: 'sandbox-materialized-without-record',
+        observed: true,
+        resolved: true,
+        deleted: true,
+        confirmed: true,
+      },
+    ],
+    remainingIds: [],
+  })
+})
+
+test('LIVE-08 confirms absence when the observed resource races away before deletion', async () => {
+  let listCalls = 0
+  const resource = {
+    id: 'sandbox-pre-environment',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+  }
+  const result = await finalizeInteractiveProof({
+    client: {
+      async list() {
+        listCalls += 1
+        return listCalls === 1 ? [resource] : []
+      },
+      async get() {
+        return null
+      },
+    },
+    executionStarted: true,
+    materialization: {
+      runId: 'run-pre-environment',
+      phase: null,
+      materialized: false,
+      boundary: 'unknown',
+    },
+  })
+  assert.deepEqual(result.providerMaterialization, {
+    confirmed: true,
+    mode: 'run-derived-owned-resource-set',
+    phase: null,
+    runId: 'run-pre-environment',
+    expectedName: 'braid-interactive-run-pre-environment',
+    matchedCount: 1,
+    observedIds: ['sandbox-pre-environment'],
+    removedIds: [],
+    deletions: [
+      {
+        id: 'sandbox-pre-environment',
+        observed: true,
+        resolved: true,
+        deleted: false,
+        confirmed: true,
+      },
+    ],
+    remainingIds: [],
+  })
+})
+
+test('LIVE-08 refuses cleanup when more than one exact pre-environment resource matches', async () => {
+  let deleteCalls = 0
+  const resources = ['sandbox-pre-environment-a', 'sandbox-pre-environment-b'].map((id) => ({
+    id,
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+    async delete() {
+      deleteCalls += 1
+    },
+  }))
+  await assert.rejects(
+    () =>
+      finalizeInteractiveProof({
+        client: {
+          async list() {
+            return resources
+          },
+        },
+        executionStarted: true,
+        recordPath: '/does/not/exist/without-an-exact-run-identity.json',
+        materialization: {
+          runId: 'run-pre-environment',
+          phase: null,
+          materialized: false,
+          boundary: 'unknown',
+        },
+      }),
+    (error) => {
+      const messages = interactiveFailureMessages(error)
+      assert.ok(messages.some((message) => /identity recovery/u.test(message)))
+      assert.ok(
+        messages.some((message) => /same-name Sandbox resources; cleanup refused/u.test(message)),
+      )
+      return true
+    },
+  )
+  assert.equal(deleteCalls, 0)
+})
+
+test('LIVE-08 refuses a same-name resource with non-Braid ownership', async () => {
+  let getCalls = 0
+  let deleteCalls = 0
+  const resource = {
+    id: 'sandbox-pre-environment-collision',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'other', lifecycle: 'retained', surface: 'interactive-agent' },
+    async delete() {
+      deleteCalls += 1
+    },
+  }
+  await assert.rejects(
+    () =>
+      finalizeInteractiveProof({
+        client: {
+          async list() {
+            return [resource]
+          },
+          async get() {
+            getCalls += 1
+            return resource
+          },
+        },
+        executionStarted: true,
+        materialization: {
+          runId: 'run-pre-environment',
+          phase: null,
+          materialized: false,
+          boundary: 'unknown',
+        },
+      }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /failed exact ownership validation/u.test(message),
+        ),
+      )
+      return true
+    },
+  )
+  assert.equal(getCalls, 0)
+  assert.equal(deleteCalls, 0)
+})
+
+test('LIVE-08 leaves a resource untouched when its ownership changes before deletion', async () => {
+  let deleteCalls = 0
+  const listed = {
+    id: 'sandbox-pre-environment',
+    name: 'braid-interactive-run-pre-environment',
+    metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+  }
+  const changed = {
+    ...listed,
+    metadata: { owner: 'other', lifecycle: 'retained', surface: 'interactive-agent' },
+    async delete() {
+      deleteCalls += 1
+    },
+  }
+  await assert.rejects(
+    () =>
+      finalizeInteractiveProof({
+        client: {
+          async list() {
+            return [listed]
+          },
+          async get() {
+            return changed
+          },
+        },
+        executionStarted: true,
+        materialization: {
+          runId: 'run-pre-environment',
+          phase: null,
+          materialized: false,
+          boundary: 'unknown',
+        },
+      }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /failed exact ownership validation/u.test(message),
+        ),
+      )
+      return true
+    },
+  )
+  assert.equal(deleteCalls, 0)
+})
+
+test('LIVE-08 refuses cloud cleanup when a run existed without exact identity', async () => {
+  await assert.rejects(
+    () => finalizeInteractiveProof({ executionStarted: true }),
+    (error) => {
+      assert.ok(
+        interactiveFailureMessages(error).some((message) =>
+          /run identity was unavailable/u.test(message),
+        ),
+      )
+      return true
+    },
+  )
 })

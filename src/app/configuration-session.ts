@@ -3,16 +3,28 @@ import type { ConnectionHealth, ConnectionKind, ConnectionRecord } from '../doma
 import type { Digest } from '../domain/ids.js'
 import { ConnectionRegistry } from './connections.js'
 import type { ProfileRecord } from './profile-types.js'
+import {
+  snapshotWorkspaceRequest,
+  type WorkspaceRequest,
+  workspaceRequestErrorMessage,
+} from './workspace-request.js'
 
-export type ConfigurationStep = 'profile' | 'connection' | 'confirm' | 'complete' | 'cancelled'
+export type ConfigurationStep =
+  | 'profile'
+  | 'connection'
+  | 'workspace'
+  | 'confirm'
+  | 'complete'
+  | 'cancelled'
 
-export type ConfigurationBackTarget = 'profile' | 'connection'
+export type ConfigurationBackTarget = 'profile' | 'connection' | 'workspace'
 
 export type ConfigurationErrorCode =
   | 'PROFILE_NOT_FOUND'
   | 'CONNECTION_NOT_FOUND'
   | 'PROFILE_REQUIRED'
   | 'CONNECTION_REQUIRED'
+  | 'WORKSPACE_INVALID'
   | 'NO_PROFILES'
   | 'NO_CONNECTIONS'
   | 'ALREADY_FINISHED'
@@ -50,6 +62,7 @@ export interface ConfigurationSelection {
   readonly connection: ConnectionRecord
   readonly profileDigest: Digest
   readonly connectionDigest: Digest
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
 }
 
 export interface ConfigurationEffectiveValues {
@@ -57,6 +70,7 @@ export interface ConfigurationEffectiveValues {
   readonly model: string
   readonly effort: string
   readonly workdir: string
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly verification: string
   readonly unsupported: readonly string[]
 }
@@ -76,6 +90,8 @@ export interface ConfigurationSessionOptions {
   readonly connections: readonly ConnectionRecord[]
   readonly initialProfileId?: ProfileRecord['id']
   readonly initialConnectionId?: ConnectionRecord['id']
+  /** Optional provider-neutral request selected for cloud-workspace connections. */
+  readonly workspaceRequest?: WorkspaceRequest
 }
 
 function kindLabel(kind: ConnectionKind): string {
@@ -171,6 +187,7 @@ export class ConfigurationSession {
   readonly #profiles: readonly ProfileChoice[]
   readonly #connections: readonly ConnectionChoice[]
   readonly #connectionRegistry: ConnectionRegistry
+  #workspaceRequest: Readonly<WorkspaceRequest> | undefined
   #state: ConfigurationSessionState
 
   constructor(options: ConfigurationSessionOptions) {
@@ -181,6 +198,7 @@ export class ConfigurationSession {
     this.#connectionRegistry = new ConnectionRegistry(
       connections.map((choice) => choice.connection),
     )
+    this.#workspaceRequest = snapshotWorkspaceRequest(options.workspaceRequest)
     this.#state = freezeState({
       step: 'profile',
       profiles: this.#profiles,
@@ -227,7 +245,7 @@ export class ConfigurationSession {
     this.#state = clearError(
       clearSelection({
         ...this.#state,
-        step: 'confirm',
+        step: connection.connection.kind === 'tangle-sandbox' ? 'workspace' : 'confirm',
         selectedConnectionId: connection.id,
       }),
     )
@@ -236,7 +254,11 @@ export class ConfigurationSession {
 
   back(): ConfigurationSessionState {
     const target =
-      this.#state.step === 'confirm' || this.#state.step === 'complete' ? 'connection' : 'profile'
+      this.#state.step === 'workspace'
+        ? 'connection'
+        : this.#state.step === 'confirm' || this.#state.step === 'complete'
+          ? this.#workspaceTarget()
+          : 'profile'
     return this.backTo(target)
   }
 
@@ -245,7 +267,30 @@ export class ConfigurationSession {
     if (target === 'connection' && this.#state.selectedProfileId === undefined) {
       return this.#fail('PROFILE_REQUIRED', 'Choose an AgentProfile before continuing')
     }
+    if (target === 'workspace') {
+      const selectedConnection = this.#selectedConnection()
+      if (selectedConnection === undefined) {
+        return this.#fail('CONNECTION_REQUIRED', 'Choose a connection before continuing')
+      }
+      if (selectedConnection.connection.kind !== 'tangle-sandbox') {
+        return this.#fail('CONNECTION_REQUIRED', 'The selected connection has no cloud workspace')
+      }
+    }
     this.#state = clearError(clearSelection({ ...this.#state, step: target }))
+    return this.#state
+  }
+
+  submitWorkspace(request: WorkspaceRequest | undefined): ConfigurationSessionState {
+    this.#assertSelectable()
+    if (this.#state.step !== 'workspace') {
+      return this.#fail('CONNECTION_REQUIRED', 'Choose a cloud workspace connection first')
+    }
+    try {
+      this.#workspaceRequest = snapshotWorkspaceRequest(request)
+    } catch (error) {
+      return this.#fail('WORKSPACE_INVALID', workspaceRequestErrorMessage(error))
+    }
+    this.#state = clearError({ ...this.#state, step: 'confirm' })
     return this.#state
   }
 
@@ -290,6 +335,9 @@ export class ConfigurationSession {
       connection: connection.connection,
       profileDigest: profile.digest,
       connectionDigest: this.#connectionRegistry.select({ connectionId }).digest,
+      ...(this.#workspaceRequest === undefined || connection.connection.kind !== 'tangle-sandbox'
+        ? {}
+        : { workspaceRequest: this.#workspaceRequest }),
     })
     return selected
   }
@@ -309,6 +357,17 @@ export class ConfigurationSession {
     const error = new ConfigurationSessionError(code, message)
     this.#state = freezeState({ ...this.#state, error })
     return this.#state
+  }
+
+  #selectedConnection(): ConnectionChoice | undefined {
+    const id = this.#state.selectedConnectionId
+    return id === undefined ? undefined : this.#connections.find((choice) => choice.id === id)
+  }
+
+  #workspaceTarget(): ConfigurationBackTarget {
+    return this.#selectedConnection()?.connection.kind === 'tangle-sandbox'
+      ? 'workspace'
+      : 'connection'
   }
 
   #assertOpen(): void {

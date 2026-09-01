@@ -1,5 +1,5 @@
-import type { Component } from '@earendil-works/pi-tui'
-import type { BraidViewModel, EnvironmentView } from '../shared/models.js'
+import { type Component, sliceByColumn, visibleWidth } from '@earendil-works/pi-tui'
+import type { BraidViewModel, EnvironmentView, WorkStripItemView } from '../shared/models.js'
 import { sanitizeNotification } from '../shared/sanitize.js'
 import type { ComposerMode } from './composer-view.js'
 import { type ExecutionTargetView, executionTargetFor } from './execution-target.js'
@@ -53,8 +53,12 @@ export class TerminalChrome implements Component {
     const mode = terminalContextModeForColumns(safeWidth)
     const target = executionTargetFor(view)
     const transientNotice = state.quitArmed ? undefined : transientNoticeFor(view)
+    const workStrip = renderWorkStrip(this.#theme, view, mode, safeWidth)
     if (mode === 'narrow' && transientNotice !== undefined) {
-      return boundedTerminalRows([statusText(this.#theme, view, transientNotice)], safeWidth)
+      return boundedTerminalRows(
+        [statusText(this.#theme, view, transientNotice), ...workStrip],
+        safeWidth,
+      )
     }
     const statusValue = transientNotice ?? conciseStatus(view, state.quitArmed, mode)
     const status = statusText(this.#theme, view, statusValue)
@@ -106,14 +110,81 @@ export class TerminalChrome implements Component {
       mode === 'narrow' || state.quitArmed ? 'right' : 'left',
     )
     const identityRows = noticeRow === undefined ? [identityRow] : [identityRow, noticeRow]
-    if (mode !== 'wide') return boundedTerminalRows(identityRows, safeWidth)
+    if (mode !== 'wide') return boundedTerminalRows([...identityRows, ...workStrip], safeWidth)
     const detailFacts = executionFacts.map((fact) => terminalValuePart(this.#theme, fact))
     if (detailFacts.length === 0 && measured.length === 0) {
-      return boundedTerminalRows(identityRows, safeWidth)
+      return boundedTerminalRows([...identityRows, ...workStrip], safeWidth)
     }
     const detailRow = fitTerminalColumns(detailFacts, measured, safeWidth, 'right')
-    return boundedTerminalRows([...identityRows, ...(detailRow ? [detailRow] : [])], safeWidth)
+    return boundedTerminalRows(
+      [...identityRows, ...workStrip, ...(detailRow ? [detailRow] : [])],
+      safeWidth,
+    )
   }
+}
+
+function renderWorkStrip(
+  theme: BraidTheme,
+  view: BraidViewModel,
+  mode: ReturnType<typeof terminalContextModeForColumns>,
+  width: number,
+): readonly string[] {
+  const items = view.workStrip
+  if (items === undefined || items.length < 2) return []
+  if (mode === 'narrow') {
+    return [fitTerminalAtomic(theme.muted(`work ${items.length} · /activity to switch`), width)]
+  }
+  const limit = mode === 'wide' ? Math.min(items.length, 8) : Math.min(items.length, 3)
+  const rows = items.slice(0, limit).map((item) => workStripItem(theme, item, mode, width))
+  if (items.length > limit) {
+    rows.push(theme.muted(`work +${items.length - limit} more · /activity to browse`))
+  }
+  return rows
+}
+
+function workStripItem(
+  theme: BraidTheme,
+  item: WorkStripItemView,
+  mode: Exclude<ReturnType<typeof terminalContextModeForColumns>, 'narrow'>,
+  width: number,
+): string {
+  const marker = item.focused ? theme.accent('focus') : theme.muted('work')
+  const state = sanitizeNotification(item.state)
+  const runner = sanitizeNotification(item.runner ?? '?')
+  const model = sanitizeNotification(item.model ?? '?')
+  const branchWidth = Math.max(12, Math.min(mode === 'wide' ? 44 : 28, Math.floor(width / 3)))
+  const branch = compactWorkIdentity(item.label, branchWidth)
+  const actionEntries = Object.entries(item.actions)
+  const actions = (
+    mode === 'wide'
+      ? actionEntries.map(([name, available]) => `${available ? '' : '!'}${name}`)
+      : actionEntries.flatMap(([name, available]) => (available ? [name] : []))
+  ).join('/')
+  const waiting =
+    item.interactionCount === 0
+      ? ''
+      : theme.warning(
+          `${item.interactionCount} waiting interaction${item.interactionCount === 1 ? '' : 's'}`,
+        )
+  const actionText = actions.length === 0 ? '' : theme.muted(`actions ${actions}`)
+  const left = [`${marker} ${branch}`, theme.muted(state), theme.muted(`${runner}/${model}`)]
+  const full = fitTerminalColumns(left, [waiting, actionText], width, 'left')
+  if (item.focused && actionText.length > 0 && !full.includes('actions ')) {
+    return fitTerminalColumns(left, [actionText], width, 'left')
+  }
+  return full
+}
+
+function compactWorkIdentity(value: string, maxWidth: number): string {
+  const safe = sanitizeNotification(value)
+  const width = visibleWidth(safe)
+  if (width <= maxWidth) return safe
+  const contentWidth = Math.max(2, maxWidth - 1)
+  const prefixWidth = Math.ceil(contentWidth * 0.65)
+  const suffixWidth = contentWidth - prefixWidth
+  const prefix = sliceByColumn(safe, 0, prefixWidth, true)
+  const suffix = sliceByColumn(safe, Math.max(0, width - suffixWidth), suffixWidth, true)
+  return `${prefix}…${suffix}`
 }
 
 function boundedTerminalRows(rows: readonly string[], width: number): string[] {

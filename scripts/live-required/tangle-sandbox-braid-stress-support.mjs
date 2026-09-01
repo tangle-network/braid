@@ -773,12 +773,40 @@ export function proofCoordinates() {
 }
 
 export function errorDetails(error) {
+  const fingerprint = errorFingerprint(error)
   return {
     name: error instanceof Error ? error.name : 'Error',
     message: error instanceof Error ? error.message : String(error),
+    ...(fingerprint === undefined ? {} : { fingerprint }),
     ...(error instanceof MissingIntegrationError
       ? { code: error.code, details: error.details }
       : {}),
+  }
+}
+
+function errorFingerprint(error, depth = 0) {
+  if (depth > 4 || error === null || typeof error !== 'object') return undefined
+  const code =
+    typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{1,127}$/u.test(error.code)
+      ? error.code
+      : undefined
+  const status =
+    Number.isSafeInteger(error.status) && error.status >= 100 && error.status <= 599
+      ? error.status
+      : undefined
+  const name =
+    typeof error.name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,79}$/u.test(error.name)
+      ? error.name
+      : undefined
+  const cause = errorFingerprint(error.cause, depth + 1)
+  if (code === undefined && status === undefined && name === undefined && cause === undefined) {
+    return undefined
+  }
+  return {
+    ...(name === undefined ? {} : { name }),
+    ...(code === undefined ? {} : { code }),
+    ...(status === undefined ? {} : { status }),
+    ...(cause === undefined ? {} : { cause }),
   }
 }
 

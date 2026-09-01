@@ -35,6 +35,14 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   readonly admissionMode: 'sync' | 'async'
   readonly capabilities: NonNullable<ExecutionPort['capabilities']>
   readonly environmentCapabilities?: NonNullable<ExecutionPort['environmentCapabilities']>
+  readonly context?: NonNullable<ExecutionPort['context']>
+  readonly contextTransfer?: NonNullable<ExecutionPort['contextTransfer']>
+  readonly workspaceBranching?: NonNullable<ExecutionPort['workspaceBranching']>
+  readonly workspaceBranchingProvider?: NonNullable<ExecutionPort['workspaceBranchingProvider']>
+  readonly confidentialAttestationVerifier?: NonNullable<
+    ExecutionPort['confidentialAttestationVerifier']
+  >
+  readonly provider?: string
 
   constructor(options: ModeRoutingExecutionOptions) {
     this.#headless = options.headless
@@ -48,6 +56,24 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
     if (options.headless.environmentCapabilities !== undefined) {
       this.environmentCapabilities = options.headless.environmentCapabilities.bind(options.headless)
     }
+    const context = options.headless.context ?? options.interactive.context
+    if (context !== undefined) this.context = context
+    const contextTransfer = options.headless.contextTransfer ?? options.interactive.contextTransfer
+    if (contextTransfer !== undefined) this.contextTransfer = contextTransfer
+    const workspaceBranching =
+      options.headless.workspaceBranching ?? options.interactive.workspaceBranching
+    if (workspaceBranching !== undefined) this.workspaceBranching = workspaceBranching
+    const workspaceBranchingProvider =
+      options.headless.workspaceBranchingProvider ?? options.interactive.workspaceBranchingProvider
+    if (workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = workspaceBranchingProvider
+    const confidentialAttestationVerifier =
+      options.headless.confidentialAttestationVerifier ??
+      options.interactive.confidentialAttestationVerifier
+    if (confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = confidentialAttestationVerifier
+    const provider = options.headless.provider ?? options.interactive.provider
+    if (provider !== undefined) this.provider = provider
   }
 
   async admit(input: ExecuteTurnInput) {

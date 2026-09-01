@@ -8,13 +8,27 @@ import type {
   ProductionConnectionOptions,
 } from './production-connection-types.js'
 
+export type {
+  NitroConfidentialAttestationTrustPolicy,
+  NitroConfidentialAttestationVerifierOptions,
+  NitroConfidentialAttestationVerifiers,
+} from './nitro-confidential-attestation.js'
+export {
+  createNitroConfidentialAttestationVerifiers,
+  normalizeNitroConfidentialAttestationTrustPolicy,
+} from './nitro-confidential-attestation.js'
 export { readConnectionCredential } from './production-connection-credentials.js'
 export {
   connectionEndpoint,
   DEFAULT_TANGLE_INFERENCE_ENDPOINT,
   normalizeCliBridgeRuntimeBaseUrl,
 } from './production-connection-endpoints.js'
-export { createTangleSandboxClient } from './production-connection-providers.js'
+export {
+  createTangleEnvironmentProvider,
+  createTangleSandboxClient,
+  createTangleWorkspaceBranchingProvider,
+  getTangleSandboxEnvironment,
+} from './production-connection-providers.js'
 export {
   type ConnectionCapabilityAction,
   type ConnectionCapabilityReport,
@@ -27,6 +41,7 @@ export {
   type ProductionConnectionOptions,
   type SandboxClientFactory,
   type SandboxClientFactoryInput,
+  type TangleConfidentialAttestationVerifier,
   type TangleRetainedControlLookup,
   type TangleRetainedControlLookupInput,
 } from './production-connection-types.js'

@@ -1,3 +1,12 @@
+export type {
+  NitroConfidentialAttestationTrustPolicy,
+  NitroConfidentialAttestationVerifierOptions,
+  NitroConfidentialAttestationVerifiers,
+} from './adapters/connections/production-connections.js'
+export {
+  createNitroConfidentialAttestationVerifiers,
+  normalizeNitroConfidentialAttestationTrustPolicy,
+} from './adapters/connections/production-connections.js'
 export {
   closeHeadlessKeyFile,
   openHeadlessKeyFile,
@@ -43,6 +52,21 @@ export {
   type DurableCompositionOptions,
   STARTER_PROFILE,
 } from './app/composition.js'
+export type {
+  CloneConversationInput,
+  ConfidentialExecutionRequest,
+  ConversationListQuery,
+  CreateBranchInput,
+  CreateConversationInput,
+  ForkPlan,
+  ForkPlanInput,
+  OpenConversationInput,
+  PlanContextInput,
+  SetRunOverridesInput,
+  UpdateConversationInput,
+  WorkspaceForkCleanupInput,
+  WorkspaceForkCleanupResult,
+} from './app/conversations.js'
 export {
   type EffectContext,
   EffectCoordinator,
@@ -131,6 +155,7 @@ export type {
   JournalPort,
 } from './ports/effect-storage.js'
 export type {
+  ContextTransferExecutionPort,
   ControlAcknowledgement,
   ExecuteTurnInput,
   ExecutionAdmission,
@@ -212,6 +237,8 @@ export type {
   NativeInteractiveCommand,
   NativeInteractiveCommandResult,
   NativeInteractiveUiActions,
+  NativeInteractiveWorkerCommand,
+  NativeInteractiveWorkerResult,
 } from './views/shared/native-interactive-actions.js'
 export {
   sanitizeClipboardText,

@@ -41,6 +41,8 @@ export function queueRunInput(
     operationId: input.operationId,
     text: input.text,
     position,
+    conversationId: run.conversationId,
+    branchId: run.branchId,
   })
   return {
     operationId: input.operationId,
@@ -330,15 +332,17 @@ async function control(
     }
     context.ledger.clearDetached(request.runId)
     if (ack.outcome === 'unknown' && !context.isTerminal(context.findRun(request.runId).status)) {
-      const unknown = context.commitAndWait({
-        kind: 'run.unknown',
-        runId: request.runId,
-        detail:
+      const unknown = context.commitAndWait(
+        unknownEventWithPendingText(
+          context,
+          request.runId,
           controlKind === 'cancel'
             ? unknownCancellationDetail(ack.detail)
             : (ack.detail ?? 'Control outcome is unknown'),
-      })
+        ),
+      )
       if (unknown !== undefined) await unknown
+      context.streamSanitizer.reset(request.runId)
     }
     resolveCompletion(structuredClone(context.currentState()))
   })()
@@ -396,12 +400,15 @@ async function settleLateControl(
         context.ledger.clearCancellationPending(request.runId)
         context.ledger.clearCancelStatus(request.runId)
         if (!context.isTerminal(context.findRun(request.runId).status)) {
-          const unknown = context.commitAndWait({
-            kind: 'run.unknown',
-            runId: request.runId,
-            detail: unknownCancellationDetail(acknowledgement.detail),
-          })
+          const unknown = context.commitAndWait(
+            unknownEventWithPendingText(
+              context,
+              request.runId,
+              unknownCancellationDetail(acknowledgement.detail),
+            ),
+          )
           if (unknown !== undefined) await unknown
+          context.streamSanitizer.reset(request.runId)
         }
       }
     }
@@ -451,19 +458,36 @@ async function applyAcceptedCancellation(
     })
     if (reconciled !== undefined) await reconciled
   } else if (!context.isTerminal(run.status)) {
+    const pendingText = context.streamSanitizer.finish(request.runId, 'text')
     const finished = context.commitAndWait({
       kind: 'run.finished',
       runId: request.runId,
       status,
-      finalText: '',
+      finalText: pendingText,
+      ...(pendingText.length === 0 ? {} : { finalTextMode: 'append' as const }),
       usage: usageSnapshotForRun(originalRun),
       reason: terminalReason,
     })
     if (finished !== undefined) await finished
+    context.streamSanitizer.reset(request.runId)
   }
   context.ledger.clearExplicitlyCancelled(request.runId)
   context.ledger.clearCancellationPending(request.runId)
   context.ledger.clearCancelStatus(request.runId)
+}
+
+function unknownEventWithPendingText(
+  context: ControlPort,
+  runId: string,
+  detail: string,
+): BraidEvent {
+  const pendingText = context.streamSanitizer.finish(runId, 'text')
+  return {
+    kind: 'run.unknown',
+    runId,
+    detail,
+    ...(pendingText.length === 0 ? {} : { pendingText }),
+  }
 }
 
 function confirmedCancellationDetail(detail: string | undefined): string {

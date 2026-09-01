@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import {
+  contextTransferRequestDigest,
+  defineAgentProfile,
+  portableContextPlanDigest,
+  portableConversationContextDigest,
+} from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { validateContextPlan } from '../src/app/run-admission-validation.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import { createPortableContextPlan } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
@@ -13,6 +21,7 @@ import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { runtimeContractEnvelopes } from '../src/testing/runtime-contract-fixtures.js'
+import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 
 const REPLAY_CAPABILITIES = {
   ...DEFAULT_RUN_CAPABILITIES,
@@ -20,6 +29,19 @@ const REPLAY_CAPABILITIES = {
   sessions: { continue: true, messages: true },
   controls: { cancel: true, steer: true, queue: true, status: true, recreate: true },
   events: { stableIdentity: true, sequence: true, cursor: true },
+} as const
+
+const NATIVE_REPLAY_CAPABILITIES = {
+  ...REPLAY_CAPABILITIES,
+  environment: {
+    ...RETAINED_RUN_HANDLE_CAPABILITIES,
+    sessions: { continue: true, list: false, messages: false },
+    nativeContinuation: {
+      atomicBoundary: true,
+      requestIdempotency: true,
+      admissionControl: true,
+    },
+  },
 } as const
 
 function finalEvent(text: string): RuntimeStreamEvent {
@@ -110,6 +132,100 @@ test('admission receipt binds portable context and is deeply immutable', async (
   assert.equal(Object.isFrozen(plan.messages), true)
 })
 
+test('canonical transfer receipts cannot bypass their request binding', () => {
+  assert.throws(
+    () =>
+      validateContextPlan({
+        operationId: 'op-unbound-context-receipt',
+        text: 'next',
+        portableContextTransferReceipt: {} as never,
+      }),
+    /requires its exact request/u,
+  )
+})
+
+test('canonical context transfer binds admission to its destination session', () => {
+  const source = {
+    source: {
+      runId: 'source-run',
+      messageId: 'source-message',
+      provider: 'source-provider',
+      environmentId: 'source-environment',
+      sessionId: 'source-session',
+      executionId: 'source-execution',
+      requestDigest: `sha256:${'a'.repeat(64)}` as const,
+    },
+    completeness: 'complete' as const,
+    messages: [
+      {
+        id: 'source-message',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'prior context' }],
+        timestamp: '2026-08-01T00:00:00.000Z',
+      },
+    ],
+    attachments: [],
+  }
+  const sourceContext = { ...source, digest: portableConversationContextDigest(source) }
+  const destination = {
+    runner: 'codex',
+    provider: 'target-provider',
+    environmentId: 'target-environment',
+    sessionId: 'target-session',
+    runId: 'target-run',
+    executionId: 'target-execution',
+    profileDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
+  const planMaterial = {
+    planId: 'context-plan-session-binding',
+    source: sourceContext,
+    destination,
+    messages: [
+      {
+        messageId: 'source-message',
+        action: 'include' as const,
+        parts: [{ partIndex: 0, action: 'include' as const }],
+      },
+    ],
+    context: { ...sourceContext, messages: source.messages },
+    requiresAcceptance: false,
+  }
+  const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
+  const requestMaterial = {
+    operationId: 'op-session-binding',
+    plan,
+    acceptance: {
+      planDigest: plan.digest,
+      acceptedAt: '2026-08-01T00:00:00.000Z',
+      acceptedBy: 'policy' as const,
+    },
+  }
+  const request = {
+    ...requestMaterial,
+    requestDigest: contextTransferRequestDigest(requestMaterial),
+  }
+  assert.throws(
+    () =>
+      validateContextPlan({
+        operationId: request.operationId,
+        text: 'next',
+        sessionId: 'unrelated-session',
+        portableContextPlan: plan,
+        portableContextTransferRequest: request,
+      }),
+    /destination/u,
+  )
+  assert.doesNotThrow(() =>
+    validateContextPlan({
+      operationId: request.operationId,
+      text: 'next',
+      sessionId: destination.sessionId,
+      portableContextPlan: plan,
+      portableContextTransferRequest: request,
+    }),
+  )
+})
+
 test('contract fixtures preserve parts, tools, reasoning, artifacts, proposals, warnings, usage, cost, and interactions', async () => {
   const execution: ExecutionPort = {
     capabilities: () => REPLAY_CAPABILITIES,
@@ -134,7 +250,7 @@ test('contract fixtures preserve parts, tools, reasoning, artifacts, proposals, 
   assert.equal(run.inputTokens, 3)
   assert.equal(run.outputTokens, 4)
   assert.equal(run.costUsd, 0.01)
-  assert.equal(run.interactions[0]?.request.id, 'interaction-1')
+  assert.equal(run.interactions[0]?.request.id, localInteractionId(run.id, 'interaction-1'))
   assert.equal(run.eventDetails.length, 0)
   assert.equal(new Set(app.events().flatMap((envelope) => envelope.event.kind)).size > 1, true)
 })
@@ -270,6 +386,27 @@ test('failed dispatch preserves its typed diagnostic when exact status is unavai
   assert.equal(state.lastError, 'CLOUD_PROVISION_REJECTED')
 })
 
+test('reconnect preserves its typed diagnostic when replay itself fails', async () => {
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    streamTurn: () => failedAsyncIterable(new Error('transport disconnected')),
+    reconnect: () =>
+      failedAsyncIterable(
+        Object.assign(new Error('[{"unrecognized":"runControlRef"}]'), {
+          code: 'RETAINED_CONTROL_REF_REJECTED',
+        }),
+      ),
+    status: async () => null,
+  }
+  const app = appFor(execution)
+
+  const state = await app.send({ operationId: 'op-reconnect-diagnostic', text: 'resume once' })
+    .completion
+
+  assert.equal(state.runs[0]?.status, 'unknown')
+  assert.equal(state.lastError, 'RETAINED_CONTROL_REF_REJECTED')
+})
+
 test('explicit cancellation is acknowledged and reaches cancelled, while legacy abort remains distinct', async () => {
   let release: (() => void) | undefined
   const execution: ExecutionPort = {
@@ -366,15 +503,56 @@ test('status reconciliation never regresses a committed terminal run from a stal
 })
 
 test('native continuation requires and records a matching provider boundary proof', async () => {
+  const controlRef = {
+    runId: 'provider-run-native',
+    provider: 'native-test',
+    environmentId: 'environment-native',
+    sessionId: 'session-native',
+    executionId: 'execution-native',
+    requestDigest: `sha256:${'a'.repeat(64)}` as const,
+  }
   const execution: ExecutionPort = {
-    capabilities: () => REPLAY_CAPABILITIES,
-    admit: () => ({ capabilities: REPLAY_CAPABILITIES, providerSessionId: 'session-native' }),
-    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
-      yield finalEvent('native')
+    capabilities: () => NATIVE_REPLAY_CAPABILITIES,
+    admit: () => ({
+      capabilities: NATIVE_REPLAY_CAPABILITIES,
+      providerSessionId: 'session-native',
+    }),
+    async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope | RuntimeStreamEvent> {
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}:observed`,
+        sequence: 1,
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          type: 'braid.execution.observed',
+          observation: {
+            kind: 'local-process',
+            provider: 'native-test',
+            lifecycle: 'ready',
+            lifecycleMode: 'retained',
+            cleanup: 'explicit',
+            continuity: 'session',
+            location: 'local',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            observedAt: '2026-08-01T00:00:00.000Z',
+            unavailable: [],
+          },
+          controlRef,
+          timestamp: '2026-08-01T00:00:00.000Z',
+        },
+      }
+      yield {
+        runId: input.runId,
+        eventId: `${input.runId}:final`,
+        sequence: 2,
+        receivedAt: '2026-08-01T00:00:00.000Z',
+        event: finalEvent('native'),
+      }
     },
-    nativeBoundary: async (input) => ({
-      boundary: 'boundary-native',
-      digest: `${input.sessionId}:proof`,
+    nativeBoundary: async () => ({
+      ...controlRef,
+      boundary: { kind: 'revision', revision: 'boundary-native' },
+      observedAt: '2026-08-01T00:00:01.000Z',
     }),
   }
   const app = appFor(execution)
@@ -387,10 +565,10 @@ test('native continuation requires and records a matching provider boundary proo
         text: 'forged',
         sessionId: 'session-other',
         nativeContextBoundaryProof: {
-          runId: first.runs[0]?.id ?? '',
-          providerSessionId: 'session-other',
-          boundary: 'boundary-native',
-          digest: 'forged-proof',
+          ...controlRef,
+          sessionId: 'session-other',
+          boundary: { kind: 'revision', revision: 'boundary-native' },
+          observedAt: '2026-08-01T00:00:01.000Z',
         },
       }),
     (error: unknown) =>
@@ -402,7 +580,10 @@ test('native continuation requires and records a matching provider boundary proo
     text: 'continue',
   })
   const state = await continued.completion
-  assert.equal(continued.admission.nativeContextBoundaryProof?.boundary, 'boundary-native')
+  assert.deepEqual(continued.admission.nativeContextBoundaryProof?.boundary, {
+    kind: 'revision',
+    revision: 'boundary-native',
+  })
   assert.equal(state.runs.length, 2)
   assert.equal(state.runs[1]?.status, 'completed')
 })
@@ -563,6 +744,10 @@ test('restart keeps a replayable run reconnecting until replay proves its outcom
   assert.equal(
     restarted.events().some((entry) => entry.event.kind === 'run.unknown'),
     false,
+  )
+  assert.equal(
+    createApplicationUiController(restarted).view().capabilities['run.reconnect']?.available,
+    true,
   )
 
   const recovered = await restarted.reconnectRun({

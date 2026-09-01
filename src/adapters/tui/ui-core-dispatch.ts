@@ -21,12 +21,23 @@ export async function dispatchCoreIntent(
 ): Promise<UiDispatchResult> {
   switch (intent.type) {
     case 'send': {
-      const receipt = context.app.send({
-        operationId: intent.operationId,
-        text: intent.text,
+      const continuationRunId = context.app.nativeContinuationRunId({
         ...(intent.conversationId ? { conversationId: intent.conversationId } : {}),
         ...(intent.branchId ? { branchId: intent.branchId } : {}),
       })
+      const receipt =
+        continuationRunId === undefined
+          ? context.app.send({
+              operationId: intent.operationId,
+              text: intent.text,
+              ...(intent.conversationId ? { conversationId: intent.conversationId } : {}),
+              ...(intent.branchId ? { branchId: intent.branchId } : {}),
+            })
+          : await context.app.continueNative({
+              operationId: intent.operationId,
+              text: intent.text,
+              runId: continuationRunId,
+            })
       if (receipt.admissionReady !== undefined) await receipt.admissionReady
       return {
         kind: 'accepted',
@@ -54,6 +65,18 @@ export async function dispatchCoreIntent(
         outcome: receipt.acknowledgement.outcome,
         revision: context.app.state().revision,
         completion: receipt.completion.then(() => undefined),
+      }
+    }
+    case 'focus-run': {
+      const state = context.app.focusRun({
+        operationId: intent.operationId,
+        runId: intent.runId,
+      })
+      return {
+        kind: 'accepted',
+        operationId: intent.operationId,
+        runId: intent.runId,
+        revision: state.revision,
       }
     }
     case 'open-surface':
@@ -109,6 +132,7 @@ export async function dispatchCoreIntent(
       const receipt = context.app.queueInput({
         operationId: intent.operationId,
         text: intent.text,
+        ...(intent.runId === undefined ? {} : { runId: intent.runId }),
       })
       if (receipt.completion !== undefined) await receipt.completion
       return {
@@ -127,6 +151,7 @@ export async function dispatchCoreIntent(
       const receipt = await context.app.steer({
         operationId: intent.operationId,
         text: intent.text,
+        ...(intent.runId === undefined ? {} : { runId: intent.runId }),
       })
       return {
         kind: 'accepted',

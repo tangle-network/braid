@@ -14,6 +14,8 @@ The initial comparison used source, package metadata, licenses, application inst
 
 The core terminal references were refreshed from their live default branches on 2026-08-10 before and during the production UX pass.
 
+The Pi TUI runtime dependency was revalidated at npm `0.84.4` and source commit `b79e4cc834970cca69daebffab7df1da7d1e52c4` on 2026-08-29.
+
 DeepSeek Harness and Cordis were inspected at their live default branches on 2026-08-13.
 
 The Pi repository head was `cd6852a`, with no newer change below `packages/tui` after `87142a8`.
@@ -32,7 +34,7 @@ The deciding question was how much source can be reused while preserving `AgentP
 
 | Source | Commit or version | License | Measured relevant TypeScript | Role in decision |
 | --- | --- | --- | ---: | --- |
-| [Pi TUI](https://github.com/earendil-works/pi/tree/main/packages/tui) | repository `cd6852a`; TUI `87142a8d50640e93d43fcb35123439d642bc0304`; npm `0.84.1` | MIT | 32,585 lines | Selected renderer dependency |
+| [Pi TUI](https://github.com/earendil-works/pi/tree/main/packages/tui) | repository `cd6852a`; TUI `87142a8d50640e93d43fcb35123439d642bc0304`; npm `0.84.4` | MIT | 32,585 lines | Selected renderer dependency |
 | [Pi coding-agent interactive mode](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive) | repository `cd6852a`; interactive mode `87142a8d50640e93d43fcb35123439d642bc0304` | MIT | 17,379 lines, including a 6,399-line coordinator | Selective behavior and component source |
 | [Kimi Code terminal app](https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code/src/tui) | `0401ec4286f37929d1d298527c05f5351850bf8a` | MIT | No refreshed size claim | Selective interaction and controller source |
 | [Kimi private Pi TUI fork](https://github.com/MoonshotAI/kimi-code/tree/main/packages/pi-tui) | `0401ec4286f37929d1d298527c05f5351850bf8a` | MIT | Included in repository inspection | Patch and regression reference only |
@@ -53,7 +55,7 @@ The Kimi SDK coupling count selected terminal files that directly import `@moons
 
 Pi TUI provides main-screen and alternate-screen rendering, differential frame output, cell-width calculation, viewport and scrolling, containers, overlays, focus, editor input, autocomplete, history, undo, kill ring behavior, selection lists, settings lists, markdown, images, IME handling, keyboard decoding, and a public terminal interface.
 
-The Pi repository includes a useful `packages/tui/test/virtual-terminal.ts` helper, but `@earendil-works/pi-tui@0.84.1` does not publish or export it.
+The Pi repository includes a useful `packages/tui/test/virtual-terminal.ts` helper, but `@earendil-works/pi-tui@0.84.4` does not publish or export it.
 
 Braid will adapt that test-only helper with attribution unless Pi first publishes a supported testing export.
 

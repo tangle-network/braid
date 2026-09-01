@@ -33,6 +33,7 @@ const SAFE_NUMERIC_FIELDS = new Set([
   'tokenestimate',
 ])
 const SAFE_BOOLEAN_FIELDS = new Set(['tokensknown'])
+const SAFE_NAME_LIST_FIELDS = new Set(['secretnames'])
 
 export function isSafeNumericTelemetryField(key: string, value: unknown): value is number {
   const normalized = key.replace(/[^a-z0-9]/giu, '').toLowerCase()
@@ -221,6 +222,9 @@ function sanitize(
   if (context.preserveNumericTelemetry && key && isSafeNumericTelemetryField(key, value)) {
     return value
   }
+  if (key && isSafeNameListField(key, value)) {
+    return sanitizeNameList(value, context)
+  }
   if (key) {
     const tokenUsage = safeTokenUsageRecord(key, value)
     if (tokenUsage !== undefined) return tokenUsage
@@ -286,6 +290,26 @@ function sanitize(
   } finally {
     context.seen.delete(value)
   }
+}
+
+function isSafeNameListField(key: string, value: unknown): value is readonly unknown[] {
+  return (
+    SAFE_NAME_LIST_FIELDS.has(key.replace(/[^a-z0-9]/giu, '').toLowerCase()) && Array.isArray(value)
+  )
+}
+
+function sanitizeNameList(
+  values: readonly unknown[],
+  context: RedactionContext,
+): readonly string[] {
+  const output: string[] = []
+  for (const value of values) {
+    if (context.remainingItems <= 0) break
+    context.remainingItems -= 1
+    if (typeof value !== 'string') continue
+    output.push(boundedString(value, context))
+  }
+  return output
 }
 
 function isSafeOpaqueReference(key: string, value: string): boolean {

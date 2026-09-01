@@ -6,6 +6,10 @@ import type {
   ExactAnalystRunResult,
 } from '@tangle-network/agent-eval'
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  RetainedInteractiveRunHandle,
+  WorkerInteractiveProviderSource,
+} from '@tangle-network/agent-runtime/kernel'
 import { mapAnalystFinding } from '../src/adapters/analysis/citations.js'
 import {
   AgentEvalAnalystAdapter,
@@ -399,6 +403,14 @@ test('eval adapter routes exact streaming and reports missing named analysts', a
   assert.deepEqual((received.options as { analystIds: string[] }).analystIds, [
     'efficiency-behavioral',
   ])
+  assert.deepEqual(adapter.resolveAnalystIds({ recipe: 'cost,tools' }), ['efficiency-behavioral'])
+  assert.deepEqual(adapter.resolveAnalystIds({ recipe: 'all' }), ['efficiency-behavioral'])
+  assert.deepEqual(
+    adapter.resolveAnalystIds({
+      analystIds: ['efficiency-behavioral', 'efficiency-behavioral'],
+    }),
+    ['efficiency-behavioral'],
+  )
   assert.throws(
     () => new AgentEvalAnalystAdapter().resolveAnalystIds({ recipe: 'failure' }),
     (error: unknown) => error instanceof Error && 'issue' in error,
@@ -589,8 +601,23 @@ test('analysis service persists only analysis events, emits progress, and preser
     applicationHost.committed
       .filter((event) => event.kind.startsWith('analysis.'))
       .map((event) => event.kind),
-    ['analysis.created', 'analysis.updated', 'analysis.completed'],
+    [
+      'analysis.created',
+      'analysis.updated',
+      'analysis.updated',
+      'analysis.updated',
+      'analysis.completed',
+    ],
   )
+  assert.deepEqual(result.analysis.analysts, [
+    {
+      analystId: 'efficiency-behavioral',
+      status: 'completed',
+      findingsCount: 1,
+      latencyMs: 1,
+      startedAt: NOW,
+    },
+  ])
   const analyzed = applicationHost.committed.find((event) => event.kind === 'graph.edge.upserted')
   assert.equal(analyzed?.kind, 'graph.edge.upserted')
   if (analyzed?.kind === 'graph.edge.upserted') {
@@ -758,7 +785,7 @@ test('promotion records selected finding provenance as a graph attachment', asyn
     assert.equal(edge.edge.provenance.sourceDigest, evidence.source.digest)
 })
 
-test('runtime supervisor adapter reads snapshots, persists projections, and leaves worker cancel unavailable', async () => {
+test('runtime supervisor adapter persists projections and routes exact cancel operation ids', async () => {
   const spend = { iterations: 1, tokensInput: 2, tokensOutput: 3, usd: 0.01, ms: 4 }
   const raw = {
     root: '/tmp/braid',
@@ -804,20 +831,65 @@ test('runtime supervisor adapter reads snapshots, persists projections, and leav
     ],
   } as unknown as TopSnapshot
   const watcher = new RuntimeSupervisorWatcher(() => raw)
+  let workerCancelInput:
+    | { readonly eventDir: string; readonly worker: string; readonly operationId: string }
+    | undefined
+  let runCancelInput: { readonly eventDir: string; readonly operationId: string } | undefined
+  let workerAttachInput:
+    | {
+        readonly eventDir: string
+        readonly worker: string
+        readonly providers: WorkerInteractiveProviderSource
+      }
+    | undefined
+  const interactiveProvider = {} as WorkerInteractiveProviderSource
+  const interactiveHandle = {} as RetainedInteractiveRunHandle
   const controller = new RuntimeSupervisorController({
     watcher,
-    write: (_rootDir, supervisorId, workerLabel, message, source) => ({
-      worker: workerLabel,
+    write: (_rootDir, _supervisorId, workerId, options) => ({
+      worker: workerId,
       file: '/tmp/braid/.agent/inbox/request.json',
       request: {
-        id: 'request-1',
+        schemaVersion: 1,
+        operationId: options.operationId,
+        requestDigest: `sha256:${'a'.repeat(64)}`,
         at: NOW,
-        supervisorId,
-        worker: workerLabel,
-        message,
-        source: source ?? 'braid',
+        worker: workerId,
+        message: options.message,
+        source: options.source ?? 'braid',
+        interrupt: options.interrupt === true,
       },
+      replayed: false,
     }),
+    cancelWorker: (eventDir, worker, operationId, options) => {
+      workerCancelInput = { eventDir, worker, operationId }
+      return {
+        operationId,
+        worker,
+        effect: 'cancel_requested',
+        requestedAt: NOW,
+        observedAt: NOW,
+        ...(options?.reason === undefined ? {} : { reason: options.reason }),
+        detail: 'runtime accepted worker cancellation',
+        terminated: [],
+      }
+    },
+    cancelRun: (eventDir, operationId, options) => {
+      runCancelInput = { eventDir, operationId }
+      return {
+        operationId,
+        effect: 'cancel_requested',
+        requestedAt: NOW,
+        observedAt: NOW,
+        ...(options?.reason === undefined ? {} : { reason: options.reason }),
+        detail: 'runtime accepted supervisor cancellation',
+      }
+    },
+    providers: async () => interactiveProvider,
+    attachWorker: async (eventDir, worker, options) => {
+      workerAttachInput = { eventDir, worker, providers: options.providers }
+      return { status: 'available', handle: interactiveHandle }
+    },
   })
   const first = history()
   const applicationHost = host(first.state, first.events)
@@ -840,11 +912,45 @@ test('runtime supervisor adapter reads snapshots, persists projections, and leav
     '/tmp/braid',
     'runtime-supervisor-1',
     'worker-one',
+    'op-steer-worker-1',
     'inspect this',
   )
   assert.equal(queued.status, 'queued')
-  if (queued.status === 'queued') assert.equal(queued.requestId, 'request-1')
-  const unavailable = await service.cancelWorker('runtime-worker-1')
-  assert.equal(unavailable.status, 'unavailable')
-  assert.equal(unavailable.issue.capability, 'supervisor.worker.cancel')
+  if (queued.status === 'queued') assert.equal(queued.operationId, 'op-steer-worker-1')
+  const cancelledWorker = await service.cancelWorker(
+    '/tmp/braid',
+    'runtime-supervisor-1',
+    'runtime-worker-1',
+    'op-cancel-worker-1',
+  )
+  assert.equal(cancelledWorker.status, 'acknowledged')
+  assert.equal(cancelledWorker.effect, 'cancel_requested')
+  assert.deepEqual(workerCancelInput, {
+    eventDir: '/tmp/braid/.agent',
+    worker: 'runtime-worker-1',
+    operationId: 'op-cancel-worker-1',
+  })
+  const cancelledSupervisor = await service.cancelSupervisor(
+    '/tmp/braid',
+    'runtime-supervisor-1',
+    'op-cancel-supervisor-1',
+  )
+  assert.equal(cancelledSupervisor.status, 'acknowledged')
+  assert.equal(cancelledSupervisor.effect, 'cancel_requested')
+  assert.deepEqual(runCancelInput, {
+    eventDir: '/tmp/braid/.agent',
+    operationId: 'op-cancel-supervisor-1',
+  })
+  const attached = await service.attachWorker(
+    '/tmp/braid',
+    'runtime-supervisor-1',
+    'runtime-worker-1',
+  )
+  assert.equal(attached.status, 'available')
+  if (attached.status === 'available') assert.equal(attached.handle, interactiveHandle)
+  assert.deepEqual(workerAttachInput, {
+    eventDir: '/tmp/braid/.agent',
+    worker: 'runtime-worker-1',
+    providers: interactiveProvider,
+  })
 })

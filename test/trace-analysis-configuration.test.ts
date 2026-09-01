@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import test from 'node:test'
 import type {
   ExternalOptimizerModelCallRequest,
@@ -9,6 +10,7 @@ import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.j
 import {
   MANAGED_AGENT_EVAL_RPC_VERSION,
   MANAGED_ANALYSIS_PYTHON_VERSION,
+  MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
   MANAGED_ANALYSIS_RUNTIME_PROBE,
   managedAnalysisRunner,
 } from '../src/adapters/analysis/managed-analysis-runtime.js'
@@ -64,7 +66,7 @@ test('managed analysis uses bundled uv with exact isolated runtime versions', ()
     '--with',
     `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
     '--exclude-newer',
-    '2026-08-11T05:00:00Z',
+    MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
     '--default-index',
     'https://pypi.org/simple',
     '--keyring-provider',
@@ -90,7 +92,7 @@ test('managed analysis uses bundled uv with exact isolated runtime versions', ()
     '--with',
     `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
     '--exclude-newer',
-    '2026-08-11T05:00:00Z',
+    MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
     '--default-index',
     'https://pypi.org/simple',
     '--keyring-provider',
@@ -179,8 +181,11 @@ test('managed runtime readiness isolates cancellation across concurrent first us
 test('managed runtime resolution failure is typed before analysis starts', async () => {
   const previous = process.env.BRAID_PYTHON
   delete process.env.BRAID_PYTHON
-  const probe: PythonCommandProbe = async (_command, args) =>
-    args.includes('run') ? { status: 'failed', exitCode: 1 } : { status: 'not-found' }
+  const calls: string[][] = []
+  const probe: PythonCommandProbe = async (_command, args) => {
+    calls.push([...args])
+    return args.includes('run') ? { status: 'failed', exitCode: 1 } : { status: 'ok', exitCode: 0 }
+  }
   try {
     const result = await resolvePythonRunner({
       probe,
@@ -188,6 +193,8 @@ test('managed runtime resolution failure is typed before analysis starts', async
     })
     assert.equal(result.status, 'python-probe-failed')
     assert.match(result.message, /could not resolve Python 3\.12/u)
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0]?.includes('run'), true)
   } finally {
     if (previous === undefined) delete process.env.BRAID_PYTHON
     else process.env.BRAID_PYTHON = previous
@@ -617,7 +624,110 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
   assert.doesNotMatch(execution, /private analyst instruction/u)
   assert.doesNotMatch(execution, /private trace question/u)
   assert.match(execution, /streamAgentTurn/u)
-  assert.match(execution, /"maxAttempts":1/u)
+  assert.match(execution, /"maxAttempts":2/u)
+})
+
+test('runtime-owned trace model retries one transient Router failure with the same call', async () => {
+  let attempts = 0
+  const idempotencyKeys: string[] = []
+  const server = createServer((request, response) => {
+    attempts += 1
+    const key = request.headers['idempotency-key']
+    if (typeof key === 'string') idempotencyKeys.push(key)
+    if (attempts === 1) {
+      response.statusCode = 502
+      response.end('temporary router failure')
+      return
+    }
+    response.setHeader('content-type', 'application/json')
+    response.end(
+      JSON.stringify({
+        model: 'pi/tangle-router/glm-5.2',
+        choices: [{ message: { content: '{"answer":"recovered"}' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      }),
+    )
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  try {
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('test server has no port')
+    const selected = connection(
+      'tangle-inference',
+      'runtime-owner-retry',
+      `http://127.0.0.1:${address.port}/v1`,
+      true,
+    )
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        harness: 'cli-base',
+        model: {
+          default: 'pi/tangle-router/glm-5.2',
+          provider: 'tangle-router',
+          reasoningEffort: 'high',
+        },
+      },
+      connection: selected,
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      credential: 'credential-never-recorded',
+      model: 'pi/tangle-router/glm-5.2',
+      pricing: PRICING,
+      retry: { initialBackoffMs: 0, maxBackoffMs: 0, jitter: 0 },
+    })
+
+    const result = await owner.call(optimizerRequest())
+    assert.equal(result.succeeded, true)
+    assert.equal(attempts, 2)
+    assert.deepEqual(idempotencyKeys, ['analysis-model-call-1', 'analysis-model-call-1'])
+    assert.equal(result.succeeded ? result.response.content : undefined, '{"answer":"recovered"}')
+    assert.match(JSON.stringify(result.execution), /"maxAttempts":2/u)
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error === undefined ? resolve() : reject(error)))
+    })
+  }
+})
+
+test('runtime-owned trace model lowers visible and aggregate ceilings without an unenforceable reasoning ceiling', async () => {
+  let receivedBody: Record<string, unknown> | undefined
+  const selected = connection(
+    'tangle-inference',
+    'runtime-owner-bounded',
+    'https://router.test',
+    true,
+  )
+  const owner = createRuntimeTraceModelOwner({
+    profile: {
+      harness: 'cli-base',
+      model: {
+        default: 'pi/tangle-router/glm-5.2',
+        provider: 'tangle-router',
+        reasoningEffort: 'high',
+      },
+    },
+    connection: selected,
+    baseUrl: 'http://127.0.0.1:3344/v1',
+    credential: 'credential-never-recorded',
+    model: 'pi/tangle-router/glm-5.2',
+    pricing: PRICING,
+    maxReasoningTokens: 256,
+    complete: async (body) => {
+      receivedBody = body
+      return {
+        model: 'pi/tangle-router/glm-5.2',
+        choices: [{ message: { content: '{"answer":"ok"}' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      }
+    },
+  })
+
+  const result = await owner.call(optimizerRequest())
+  assert.equal(result.succeeded, true)
+  assert.equal(receivedBody?.max_tokens, 64)
+  assert.equal(receivedBody?.max_completion_tokens, 320)
 })
 
 test('runtime-owned CLI Bridge analysis uses the harness executor with portable profile authority', async () => {
@@ -693,8 +803,8 @@ test('runtime-owned CLI Bridge analysis uses the harness executor with portable 
     assert.equal(executionProfile.model?.default, 'tangle-router/glm-5.2')
     assert.equal(executionProfile.model?.provider, 'tangle-router')
     assert.equal(executionProfile.model?.reasoningEffort, 'none')
-    assert.equal(executionProfile.model?.maxVisibleOutputTokens, 64)
-    assert.equal(executionProfile.model?.maxReasoningTokens, 256)
+    assert.equal(executionProfile.model?.maxVisibleOutputTokens, undefined)
+    assert.equal(executionProfile.model?.maxReasoningTokens, undefined)
     assert.equal(executionProfile.model?.maxTotalOutputTokens, 384)
     assert.equal(Object.hasOwn(executionProfile.model?.metadata ?? {}, 'maxTokens'), false)
     assert.equal(executionProfile.model?.metadata?.retry, undefined)

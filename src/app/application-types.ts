@@ -1,3 +1,8 @@
+import type {
+  PortableContextPlan as CanonicalPortableContextPlan,
+  ContextTransferReceipt as PortableContextTransferReceipt,
+  ContextTransferRequest as PortableContextTransferRequest,
+} from '@tangle-network/agent-interface'
 import type { BraidControlKind, BraidEventEnvelope } from '../domain/events.js'
 import type {
   ContextTransferReceipt,
@@ -20,6 +25,11 @@ export interface SendInput {
   readonly sessionId?: string
   readonly contextPlan?: PortableContextPlan
   readonly contextTransfer?: ContextTransferReceipt
+  /** Canonical context plan used by a provider-owned fresh session. */
+  readonly portableContextPlan?: CanonicalPortableContextPlan
+  /** Canonical request and receipt are kept separate from Braid's compact receipt. */
+  readonly portableContextTransferRequest?: PortableContextTransferRequest
+  readonly portableContextTransferReceipt?: PortableContextTransferReceipt
   readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
 }
 

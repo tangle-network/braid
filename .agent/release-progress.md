@@ -1,0 +1,103 @@
+# Release Progress
+
+## Release record
+
+This file tracks one candidate and its matching public release cohort.
+Populate every `not recorded` value from the same release artifact and verification run.
+Do not copy a version, integrity value, or live result from an earlier cohort.
+
+- Candidate Braid package and version: `not recorded`
+- Candidate Braid commit: `not recorded`
+- Runtime package and version: `not recorded`
+- Sandbox package and version: `not recorded`
+- Agent Interface package and version: `not recorded`
+- Tangle provider package and version: `not recorded`
+- Runtime artifact commit and tarball integrity: `not recorded`
+- Braid artifact tarball integrity: `not recorded`
+- Runtime rollback package and version: `not recorded`
+- Braid rollback package and version: `not recorded`
+- Registry and live-service environment: public npm and public Tangle services
+- Release credentials: protected release environments and `gh-drew`
+
+## Public dependency cohort
+
+- Agent Interface: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
+- Tangle provider: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
+- Sandbox: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
+- Runtime: `not recorded`; registry version, owning-repository checks, and publication proof are pending.
+- Runtime package integrity: `not recorded`.
+- Braid has no file, link, or workspace production dependencies: verify against the final lockfile before publication.
+
+## Prior cohort record
+
+The entries below describe the 2026-08-28 checkpoint only.
+They are historical evidence and do not describe the current release candidate.
+
+- Agent Interface `1.7.1` passed 478 of 478 tests before publication.
+- Tangle provider `0.14.1` passed 170 of 170 tests before publication.
+- Sandbox `0.34.0` came from merged commit `c2abc576520f6303fb26528391c706a150419a33`.
+- Runtime `0.177.0` came from merged commit `4b6ff007`.
+- Runtime package integrity was `sha512-6UYAtUEmhzluJYe6VL4ECKyNCQD0HAx9sch2W5BTcA5R/ddrlANy5jJ3Sq7TPmm07JeeMq3iolTEfrGgbDPQEw==`.
+- Runtime provenance, tag, source, workflow, and isolated installation were verified after publication.
+
+## Completed Product Work
+
+- The Work Strip supports concurrent runs, explicit focus, switching, and targeted cancellation.
+- Native continuation resumes the selected provider session.
+- Cross-runner and cross-workspace forks create new branches without changing agent identity.
+- Interaction views support typed answers, acceptance, decline, timeout, cancel, and restart recovery.
+- Analysis freezes one run, records cited findings, and preserves promotion decisions.
+- Supervisor views project the Runtime worker tree and route steer, cancel, and exact terminal attach.
+- Braid suspends its screen during worker attach and delegates terminal transport to Runtime.
+- All 51 exported terminal components map to 25 component documents.
+- Every component document states its best simple general implementation.
+- The UI captures 16 product states and 21 keyboard frames at all four required terminal sizes.
+
+## Current proof record
+
+Record each result with its candidate commit, command, date, and artifact path.
+Use `not recorded` until the check runs against the release record above.
+
+- Local package and terminal checks: `not recorded`.
+- Provider and Sandbox live checks: `not recorded`.
+- Restart, concurrent-session, and interaction checks: `not recorded`.
+- Package-to-candidate comparison: `not recorded`.
+- Dependency audit and source graph: `not recorded`.
+
+## LIVE-10 status record
+
+- Current LIVE-10 result: `not recorded`.
+- Current evidence path and artifact: `not recorded`.
+- Previous observation from 2026-08-28: Base Sepolia chain `84532` had one active blueprint-12 binary and zero blueprint-12 services.
+- Previous observation from 2026-08-28: The advertised operator endpoint did not complete TLS or expose the required API.
+- Previous observation from 2026-08-28: The operator host was ARM64, while the published Nitro binary was x86_64.
+- Previous observation from 2026-08-28: The host had no Nitro process, Nitro routing, or AWS deployment credentials.
+- Previous observation from 2026-08-28: Production Sandbox had no Nitro driver allowlist or Nitro target configuration.
+- Previous observation from 2026-08-28: Four temporary host-agent sandboxes were deleted and excluded from confidential proof.
+- Release decision: block publication until LIVE-10 passes against the release record above.
+
+## Remaining Sequence
+
+1. Finish and verify warm-start performance against the published dependency cohort.
+2. Regenerate stable visual captures and inspect every corrected flow.
+3. Run the complete local, package, property, performance, and live-provider checks.
+4. Run independent architecture, security, UI, and release reviews and fix each valid finding.
+5. Merge one Braid pull request after current checks and reviews pass.
+6. Publish the candidate package recorded above only after every required live row, including LIVE-10, passes.
+7. Download the public Braid package and compare it with the approved candidate.
+
+## Decision
+
+- Keep npm `latest` on the last verified release while any required live check is unavailable.
+- Merge reusable product and proof improvements when their exact checks pass.
+- Do not replace provider proof with fixtures, local Sidecar runs, or host-agent sandboxes.
+- Do not describe an unavailable confidential path as shipped.
+
+## Timeline
+
+- 2026-08-28: Proved retained Tangle reconnect after forced Braid process termination.
+- 2026-08-28: Implemented multi-run focus, continuation, forks, interactions, analysis, and supervisor controls.
+- 2026-08-28: Published Agent Interface `1.7.1`, Tangle provider `0.14.1`, Sandbox `0.34.0`, and Runtime `0.177.0`.
+- 2026-08-28: Proved the public Sandbox Sidecar input, detach, reconnect, replay, and interaction flow.
+- 2026-08-28: Proved two retained Tangle multirun cohorts with exact cleanup.
+- 2026-08-28: Confirmed that Base Sepolia has zero blueprint-12 services and no reachable Nitro operator.

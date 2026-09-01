@@ -101,6 +101,7 @@ function input(value: string, runId: string): ExecuteTurnInput {
   return {
     operationId: `operation-${runId}`,
     runId,
+    turnId: `turn-${runId}`,
     text: value,
     profile,
     connectionId: contractConnection.id,

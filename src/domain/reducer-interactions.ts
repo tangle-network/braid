@@ -14,7 +14,6 @@ import {
   MAX_RUN_INTERACTIONS,
   type ReducerBase,
   sourceFromProvider,
-  TERMINAL_RUN_STATES,
   terminalMessageStatus,
   terminalPartStatus,
   updateMessage,
@@ -143,6 +142,7 @@ export function reduceInteractionEvent(
         responseOperation: {
           operationId: createOperationId(event.operationId),
           outcome: event.outcome,
+          requestedOutcome: event.outcome,
           ...(event.dataDigest === undefined ? {} : { dataDigest: event.dataDigest }),
           containsSecret: event.containsSecret,
           ...(event.automationRule === undefined ? {} : { automationRule: event.automationRule }),
@@ -171,13 +171,14 @@ export function reduceInteractionEvent(
                 : {}),
             }
           }
+          if (!canResolveUnknownResponse(current, event))
+            throw interactionInvariant(
+              `Interaction ${event.interactionId} has a different response result`,
+            )
+        } else
           throw interactionInvariant(
-            `Interaction ${event.interactionId} has a different response result`,
+            `Interaction ${event.interactionId} cannot be resolved from ${current.status}`,
           )
-        }
-        throw interactionInvariant(
-          `Interaction ${event.interactionId} cannot be resolved from ${current.status}`,
-        )
       }
       const responseOperation = current.responseOperation
       if (responseOperation === undefined)
@@ -210,12 +211,6 @@ export function reduceInteractionEvent(
       return {
         ...state,
         ...base,
-        activeRunId:
-          event.status === 'detached' || TERMINAL_RUN_STATES.includes(event.status)
-            ? state.activeRunId === event.runId
-              ? null
-              : state.activeRunId
-            : event.runId,
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...withProviderProgress({ ...run, status: event.status }, event.provider) },
@@ -306,7 +301,7 @@ function sameResponseRequest(
   return (
     response !== undefined &&
     response.operationId === createOperationId(event.operationId) &&
-    response.outcome === event.outcome &&
+    (response.requestedOutcome ?? response.outcome) === event.outcome &&
     (response.dataDigest ?? undefined) === (event.dataDigest ?? undefined) &&
     response.containsSecret === event.containsSecret &&
     canonicalDigest(response.automationRule ?? null) ===
@@ -329,13 +324,31 @@ function sameResponseResult(
   )
 }
 
+function canResolveUnknownResponse(
+  current: BraidInteraction,
+  event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
+): boolean {
+  const response = current.responseOperation
+  return (
+    current.status === 'unknown' &&
+    event.outcome !== 'unknown' &&
+    response !== undefined &&
+    response.outcome === 'unknown' &&
+    response.requestedOutcome === event.outcome &&
+    response.operationId === createOperationId(event.operationId) &&
+    (response.dataDigest ?? undefined) === (event.dataDigest ?? undefined) &&
+    response.containsSecret === event.containsSecret
+  )
+}
+
 function assertResponseMatches(
   response: NonNullable<BraidInteraction['responseOperation']>,
   event: Extract<BraidEvent, { kind: 'run.interaction.responded' }>,
 ): void {
   if (
     response.operationId !== createOperationId(event.operationId) ||
-    (event.outcome !== 'unknown' && response.outcome !== event.outcome) ||
+    (event.outcome !== 'unknown' &&
+      (response.requestedOutcome ?? response.outcome) !== event.outcome) ||
     (response.dataDigest ?? undefined) !== (event.dataDigest ?? undefined) ||
     response.containsSecret !== event.containsSecret
   ) {
@@ -416,22 +429,25 @@ function reduceFinishedEvent(
   return {
     ...state,
     ...base,
-    activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
     lastError: errorReservation?.value ?? (event.status === 'failed' ? state.lastError : null),
     messages: updateMessage(state, event.runId, (message) => {
       const source = sourceFromProvider(event.provider)
       const existingTextPart = message.parts.find((part) => part.kind === 'text')
-      const withFinalPart = event.finalText
+      const finalText =
+        event.finalTextMode === 'append'
+          ? `${message.text}${finalReservation.value}`
+          : finalReservation.value
+      const withFinalPart = finalText
         ? upsertPart(message, {
             id: existingTextPart?.id ?? `${event.runId}:text`,
             kind: 'text',
-            text: finalReservation.value,
+            text: finalText,
             ...(source === undefined ? {} : { source }),
           })
         : message
       return {
         ...withFinalPart,
-        text: finalReservation.value || withFinalPart.text,
+        text: finalText || withFinalPart.text,
         status: messageStatus,
         complete: event.status !== 'unknown' && !hasMissingHistory,
         parts: withFinalPart.parts.map((part) =>

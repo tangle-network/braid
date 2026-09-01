@@ -1,3 +1,4 @@
+import type { WorkspaceRequest } from '@tangle-network/agent-interface'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import type { ProfileRecord } from '../app/profile-types.js'
 import type { ConnectionRecord } from '../domain/entities.js'
@@ -6,6 +7,8 @@ import type { ProductionCredentialContext } from './production-credential-contex
 
 export interface ProductionStartupLoadOptions {
   readonly workspace: string
+  /** Provider-neutral cloud workspace request. It is never copied into a connection record. */
+  readonly workspaceRequest?: WorkspaceRequest
   readonly configPath?: string
   readonly profileReference?: string
   readonly connectionId?: string
@@ -44,5 +47,7 @@ export interface ProductionStartupSetup {
   readonly connections: readonly ConnectionRecord[]
   readonly diagnostics: readonly string[]
   readonly initialProfileId?: ProfileRecord['id']
+  /** Request shown in setup review when the selected provider supports cloud workspaces. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly verification: ProductionSetupVerification
 }

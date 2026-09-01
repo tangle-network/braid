@@ -115,6 +115,7 @@ test('selected mode survives the snapshot, effect request, receipt, and retry id
   const base: ExecuteTurnInput = {
     operationId: 'operation-retry',
     runId: 'run-retry',
+    turnId: 'turn-retry',
     text: 'retry this',
     profile: PROFILE,
     signal: new AbortController().signal,
@@ -135,6 +136,8 @@ test('selected mode survives the snapshot, effect request, receipt, and retry id
       profileDigest: receipt.profileDigest,
       connectionId: null,
       mode: 'plan',
+      workspaceRequest: null,
+      workspaceRoot: null,
       interactions: { plan: true },
       contextPlanDigest: null,
     }),

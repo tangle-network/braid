@@ -1,0 +1,24 @@
+ › parallel run B
+
+ working…
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+› queue #1
+
+
+─────────────────── type / for commands · Alt+Enter · paste ────────────────────
+profile Braid starter · pi · via local                             Ctrl+C cancel
+focus Parallel run A · running · pi/fixture/deterministic  actions switch/cancel
+work Parallel run B · running · pi/fixture/deterministic   actions switch/cancel

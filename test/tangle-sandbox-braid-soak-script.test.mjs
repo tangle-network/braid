@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import { runBraidSandboxSoak } from '../scripts/live-required/tangle-sandbox-braid-soak.mjs'
+import {
+  proofFailures,
+  runBraidSandboxSoak,
+} from '../scripts/live-required/tangle-sandbox-braid-soak.mjs'
 
 function mergeRecords(base, override) {
   if (
@@ -50,6 +53,35 @@ function passedProof(index, overrides = {}) {
     runId: `cancel-provider-run-${index}`,
     requestDigest: `sha256:${'c'.repeat(64)}`,
   }
+  const providerExecutions = [
+    {
+      executionId: firstControlRef.executionId,
+      sessionId,
+      status: 'completed',
+      startedAt: 1_000 + index,
+      completedAt: 2_000 + index,
+      eventCount: 4,
+      lastEventId: `provider-event-first-${index}`,
+    },
+    {
+      executionId: followUpControlRef.executionId,
+      sessionId,
+      status: 'completed',
+      startedAt: 3_000 + index,
+      completedAt: 4_000 + index,
+      eventCount: 3,
+      lastEventId: `provider-event-follow-up-${index}`,
+    },
+    {
+      executionId: cancelControlRef.executionId,
+      sessionId,
+      status: 'cancelled',
+      startedAt: 5_000 + index,
+      completedAt: 6_000 + index,
+      eventCount: 2,
+      lastEventId: `provider-event-cancelled-${index}`,
+    },
+  ]
   const snapshot = ({ id, operationId, status, controlRef, cursor }) => ({
     id,
     operationId,
@@ -269,6 +301,36 @@ function passedProof(index, overrides = {}) {
         readMatched: true,
         continuity: { matched: true },
         git: { exitCode: 0 },
+        providerExecution: {
+          provider: 'tangle-sandbox',
+          source: 'sandbox-session-runs',
+          sessionId,
+          executionCount: 3,
+          expected: [
+            {
+              name: 'first-and-reconnected',
+              sessionId,
+              executionId: firstControlRef.executionId,
+              status: 'completed',
+            },
+            {
+              name: 'follow-up',
+              sessionId,
+              executionId: followUpControlRef.executionId,
+              status: 'completed',
+            },
+            {
+              name: 'cancelled',
+              sessionId,
+              executionId: cancelControlRef.executionId,
+              status: 'cancelled',
+            },
+          ],
+          executions: providerExecutions,
+          matched: true,
+          providerObserved: true,
+          localEchoOnly: false,
+        },
         resourceSample: { status: 'observed', value: { activeSandboxes: 0 } },
       },
       followUpEvidence: {
@@ -467,6 +529,29 @@ test('sandbox soak rejects a passed proof with missing durable retained fields',
   assert.equal(result.status, 'failed')
   assert.ok(result.failures.some((failure) => /freshControlRef.*incomplete/u.test(failure)))
   assert.ok(result.failures.some((failure) => /replay\.resumeFromCursor/u.test(failure)))
+})
+
+test('sandbox soak rejects duplicate or extra provider session executions', () => {
+  const failures = proofFailures(
+    mergeRecords(passedProof(0), {
+      workspaceVerification: {
+        providerExecution: {
+          executionCount: 4,
+          executions: [
+            ...passedProof(0).workspaceVerification.providerExecution.executions,
+            {
+              executionId: 'unexpected-execution',
+              sessionId: 'session-0',
+              status: 'completed',
+              eventCount: 1,
+            },
+          ],
+          matched: false,
+        },
+      },
+    }),
+  )
+  assert.ok(failures.some((failure) => /extra or duplicate/u.test(failure)))
 })
 
 test('sandbox soak does not attribute shared account churn to exact owned resources', async () => {

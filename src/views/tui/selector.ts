@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2025 Mario Zechner
+ *
+ * @derived-from https://github.com/earendil-works/pi
+ * @source-commit a6f7317dfca61e357aee65faafe012a1be6c3734
+ * @source-path packages/tui/src/components/select-list.ts
+ * @source-license MIT
+ * @adaptation Reuses Pi's pinned column math to mark description overflow while preserving its list behavior.
+ */
+
 import {
   type Component,
   Container,
@@ -8,6 +18,8 @@ import {
   type SelectItem,
   SelectList,
   Text,
+  truncateToWidth,
+  visibleWidth,
 } from '@earendil-works/pi-tui'
 import type { SelectorView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
@@ -24,6 +36,7 @@ export interface SearchableSelectorOptions {
   readonly emptyText?: string
   readonly noMatchText?: string
   readonly hideInputWhenEmpty?: boolean
+  readonly markDescriptionOverflow?: boolean
   readonly embedded?: boolean
   readonly onAction?: (key: string, item: SelectItem | null) => void
   readonly onSelect: (item: SelectItem) => void
@@ -54,6 +67,7 @@ export class SearchableSelector extends Container implements Focusable {
   readonly #emptyText: string | undefined
   readonly #noMatchText: string | undefined
   readonly #inputHidden: boolean
+  readonly #markDescriptionOverflow: boolean
   #focused = false
   readonly #selectedValue: string | undefined
 
@@ -65,6 +79,7 @@ export class SearchableSelector extends Container implements Focusable {
     this.#emptyText = safeOptionalText(options.emptyText)
     this.#noMatchText = safeOptionalText(options.noMatchText)
     this.#inputHidden = options.hideInputWhenEmpty === true && this.#items.length === 0
+    this.#markDescriptionOverflow = options.markDescriptionOverflow === true
     this.#selectedValue = options.selectedValue
     this.#onSelect = options.onSelect
     this.#onCancel = options.onCancel
@@ -186,11 +201,82 @@ export class SearchableSelector extends Container implements Focusable {
       message === undefined
         ? this.#theme.select
         : { ...this.#theme.select, noMatch: () => this.#theme.select.noMatch(`  ${message}`) }
-    const list = new SelectList([...items], this.#maxVisible, selectTheme)
+    const list = new DescriptionOverflowSelectList(
+      [...items],
+      this.#maxVisible,
+      selectTheme,
+      this.#markDescriptionOverflow,
+    )
     list.onSelect = (item) => this.#onSelect(item)
     list.onCancel = () => this.#onCancel()
     return list
   }
+}
+
+const DEFAULT_PRIMARY_COLUMN_WIDTH = 32
+const PRIMARY_COLUMN_GAP = 2
+const MIN_DESCRIPTION_WIDTH = 10
+
+/** Adds an explicit overflow marker before delegating row layout to Pi TUI. */
+class DescriptionOverflowSelectList extends SelectList {
+  readonly #items: SelectItem[]
+  readonly #markDescriptionOverflow: boolean
+
+  constructor(
+    items: SelectItem[],
+    maxVisible: number,
+    theme: SearchableSelectorOptions['theme']['select'],
+    markDescriptionOverflow: boolean,
+  ) {
+    super(items, maxVisible, theme)
+    this.#items = items
+    this.#markDescriptionOverflow = markDescriptionOverflow
+  }
+
+  override render(width: number): string[] {
+    if (!this.#markDescriptionOverflow) return super.render(width)
+
+    const originalDescriptions = this.#items.map((item) => item.description)
+    try {
+      for (const item of this.#items) {
+        if (item.description === undefined) continue
+        item.description = truncateDescription(
+          item.description,
+          item.label || item.value,
+          width,
+          DEFAULT_PRIMARY_COLUMN_WIDTH,
+        )
+      }
+      return super.render(width)
+    } finally {
+      this.#items.forEach((item, index) => {
+        const original = originalDescriptions[index]
+        if (original === undefined) delete item.description
+        else item.description = original
+      })
+    }
+  }
+}
+
+function truncateDescription(
+  description: string,
+  primary: string,
+  width: number,
+  primaryColumnWidth: number,
+): string {
+  if (width <= 40) return description
+
+  const prefixWidth = 2
+  const effectivePrimaryColumnWidth = Math.max(
+    1,
+    Math.min(primaryColumnWidth, width - prefixWidth - 4),
+  )
+  const maxPrimaryWidth = Math.max(1, effectivePrimaryColumnWidth - PRIMARY_COLUMN_GAP)
+  const truncatedPrimary = truncateToWidth(primary, maxPrimaryWidth, '')
+  const spacing = Math.max(1, effectivePrimaryColumnWidth - visibleWidth(truncatedPrimary))
+  const remainingWidth = width - prefixWidth - visibleWidth(truncatedPrimary) - spacing - 2
+  if (remainingWidth <= MIN_DESCRIPTION_WIDTH) return description
+  return truncateToWidth(description, remainingWidth, '…')
 }
 
 class SelectorRule implements Component {

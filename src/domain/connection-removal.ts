@@ -1,5 +1,5 @@
 import type { ConnectionId } from './ids.js'
-import type { BraidState } from './state.js'
+import { isActiveRunStatus, type BraidState } from './state.js'
 
 export type ConnectionRemovalBlockerKind =
   | 'selected'
@@ -43,15 +43,14 @@ export function connectionRemovalBlockers(
   for (const run of state.runs) {
     const runConnectionId = run.connectionId ?? run.receipt.requested.connectionId
     if (runConnectionId !== connectionId) continue
-    if (isProvenTerminal(run) && state.activeRunId !== run.id) continue
+    if (isProvenTerminal(run)) continue
     blockers.push({
       kind: 'run',
       id: run.id,
       status: run.status,
-      action:
-        state.activeRunId === run.id
-          ? 'Reconcile the active run before removing this connection'
-          : 'Wait for the run to reach a proven terminal status before removing this connection',
+      action: isActiveRunStatus(run.status)
+        ? 'Reconcile the active run before removing this connection'
+        : 'Wait for the run to reach a proven terminal status before removing this connection',
     })
   }
 

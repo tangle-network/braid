@@ -1,8 +1,12 @@
 import type { AgentInteractiveTerminalSession } from '@tangle-network/agent-interface'
-import { claimRetainedInteractiveControl } from '@tangle-network/agent-runtime/kernel'
+import {
+  claimRetainedInteractiveControl,
+  type RetainedInteractiveRunHandle,
+} from '@tangle-network/agent-runtime/kernel'
 import { createNativeTerminalTransport } from '../adapters/tui/native-terminal-transport.js'
 import type { BraidApplication } from '../app/application.js'
-import type { BraidRun } from '../domain/state.js'
+import { runtimeWorkerReference } from '../app/supervisor-projection.js'
+import { activeRunForBranch, type BraidRun, type BraidState } from '../domain/state.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import type {
   NativeTerminalHost,
@@ -14,10 +18,13 @@ import type {
   NativeInteractiveCommand,
   NativeInteractiveCommandResult,
   NativeInteractiveUiActions,
+  NativeInteractiveWorkerCommand,
+  NativeInteractiveWorkerResult,
 } from '../views/shared/native-interactive-actions.js'
 
 interface InteractiveApplicationHandle {
-  readonly app: Pick<BraidApplication, 'detachRun' | 'reconnectRun' | 'send' | 'state'>
+  readonly app: Pick<BraidApplication, 'detachRun' | 'reconnectRun' | 'send' | 'state'> &
+    Partial<Pick<BraidApplication, 'intelligence'>>
   readonly nativeInteractive?: NativeInteractiveExecutionControl
 }
 
@@ -54,8 +61,42 @@ export function createNativeInteractiveUiActions(
         busy = false
       }
     },
+    workerAvailability: (workerId?: string) =>
+      workerAvailability(options.current(), workerId, busy),
+    attachWorker: async (
+      command: NativeInteractiveWorkerCommand,
+    ): Promise<NativeInteractiveWorkerResult> => {
+      if (busy) return { kind: 'unavailable', reason: 'A native terminal is already open' }
+      const available = workerAvailability(options.current(), command.workerId, false)
+      if (!available.available) {
+        return { kind: 'unavailable', reason: available.reason ?? 'Worker terminal unavailable' }
+      }
+      busy = true
+      try {
+        return await attachWorker(options, command)
+      } catch (error) {
+        return { kind: 'error', message: errorMessage(error) }
+      } finally {
+        busy = false
+      }
+    },
   }
   return Object.freeze(actions)
+}
+
+function workerAvailability(
+  current: InteractiveApplicationHandle,
+  workerId: string | undefined,
+  busy: boolean,
+): NativeInteractiveAvailability {
+  if (busy) return { available: false, reason: 'A native terminal is already open' }
+  const running = current.app.state().workers.filter((worker) => worker.status === 'running')
+  if (workerId !== undefined && !running.some((worker) => String(worker.id) === workerId)) {
+    return { available: false, reason: 'The selected worker is not running' }
+  }
+  return running.length === 0
+    ? { available: false, reason: 'There is no running supervised worker to attach' }
+    : { available: true }
 }
 
 function availability(
@@ -72,13 +113,19 @@ function availability(
   }
   const state = current.app.state()
   if (action === 'start') {
-    return state.activeRunId === null
+    return !selectedBranchHasActiveRun(state)
       ? { available: true }
       : { available: false, reason: 'Detach or finish the active run first' }
   }
   return latestAttachableRun(state.runs) === undefined
     ? { available: false, reason: 'No retained native session is available' }
     : { available: true }
+}
+
+function selectedBranchHasActiveRun(state: BraidState): boolean {
+  if (typeof state.conversationId !== 'string' || typeof state.branchId !== 'string')
+    return state.activeRunId !== null
+  return activeRunForBranch(state, state.conversationId, state.branchId) !== undefined
 }
 
 async function runCommand(
@@ -126,32 +173,12 @@ async function present(
 ): Promise<NativeInteractiveCommandResult> {
   void runCompletion.catch(() => undefined)
   const handle = await execution.waitForHandle(runId)
-  let terminalSession: AgentInteractiveTerminalSession
+  let result: NativeTerminalTransportResult
   try {
-    const control = await claimRetainedInteractiveControl({
-      handle,
-      holderId: options.holderId,
-    })
-    terminalSession = await handle.attach({
-      control,
-      cols: positiveDimension(options.terminal.columns),
-      rows: positiveDimension(options.terminal.rows),
-    })
+    result = await presentHandle(options, handle)
   } catch (error) {
     await detachAfterViewerFailure(current.app, runId, options.nextOperationId, error)
     throw error
-  }
-
-  options.suspend()
-  let result: NativeTerminalTransportResult
-  try {
-    result = await createNativeTerminalTransport({
-      session: terminalSession,
-      terminal: options.terminal,
-      signals: options.signals(),
-    }).run()
-  } finally {
-    options.resume()
   }
 
   const outcome = result.outcome
@@ -183,6 +210,104 @@ async function present(
         ? `Native terminal ${outcome.phase} failed: ${outcome.message}`
         : 'Native terminal closed after an interrupt',
   }
+}
+
+async function attachWorker(
+  options: NativeInteractiveActionsOptions,
+  command: NativeInteractiveWorkerCommand,
+): Promise<NativeInteractiveWorkerResult> {
+  const current = options.current()
+  if (current.app.intelligence === undefined) {
+    return { kind: 'unavailable', reason: 'Runtime worker control is unavailable' }
+  }
+  const reference = runtimeWorkerReference(
+    current.app.state(),
+    command.supervisorId,
+    command.workerId,
+  )
+  if (reference === undefined) {
+    return {
+      kind: 'unavailable',
+      reason: 'The selected worker is not present under the selected supervisor',
+    }
+  }
+  const attached = await current.app.intelligence.supervisor.attachWorker(
+    reference.rootDir,
+    reference.runtimeSupervisorId,
+    reference.runtimeWorkerId,
+  )
+  if (attached.status === 'unavailable') {
+    return {
+      kind: 'unavailable',
+      reason: attached.issue?.reason ?? workerUnavailableReason(attached.reason),
+    }
+  }
+  const result = await presentHandle(options, attached.handle)
+  const cleanup = cleanupMessage(result)
+  if (cleanup !== undefined) return { kind: 'error', message: cleanup }
+  if (result.outcome.kind === 'remote-exit') {
+    return {
+      kind: 'returned',
+      operationId: command.operationId,
+      workerId: command.workerId,
+      outcome: 'exited',
+    }
+  }
+  if (result.outcome.kind === 'detached') {
+    return {
+      kind: 'returned',
+      operationId: command.operationId,
+      workerId: command.workerId,
+      outcome: 'detached',
+    }
+  }
+  return {
+    kind: 'error',
+    message:
+      result.outcome.kind === 'transport-error'
+        ? `Native worker terminal ${result.outcome.phase} failed: ${result.outcome.message}`
+        : 'Native worker terminal closed after an interrupt',
+  }
+}
+
+async function presentHandle(
+  options: NativeInteractiveActionsOptions,
+  handle: RetainedInteractiveRunHandle,
+): Promise<NativeTerminalTransportResult> {
+  const control = await claimRetainedInteractiveControl({
+    handle,
+    holderId: options.holderId,
+  })
+  const terminalSession: AgentInteractiveTerminalSession = await handle.attach({
+    control,
+    cols: positiveDimension(options.terminal.columns),
+    rows: positiveDimension(options.terminal.rows),
+  })
+  options.suspend()
+  try {
+    return await createNativeTerminalTransport({
+      session: terminalSession,
+      terminal: options.terminal,
+      signals: options.signals(),
+    }).run()
+  } finally {
+    options.resume()
+  }
+}
+
+function workerUnavailableReason(reason: string): string {
+  const descriptions: Readonly<Record<string, string>> = {
+    'unknown-node': 'Runtime no longer reports the selected worker',
+    'not-live': 'The selected worker is no longer running',
+    'executor-exposes-no-interactive-session': 'The selected worker runs without a terminal',
+    'provider-has-no-interactive-contract': 'The worker provider cannot attach a terminal',
+    'interactive-session-not-started': 'The worker did not start an interactive terminal',
+    'interactive-binding-not-found': 'The worker has no retained terminal binding',
+    'interactive-binding-stale': 'The retained worker terminal is no longer available',
+    'interactive-provider-not-registered': 'The worker provider is not selected in Braid',
+    'interactive-provider-not-configured': "Select the worker's Tangle Sandbox connection first",
+  }
+  return descriptions[reason] ?? `Worker terminal unavailable: ${reason}`
 }
 
 async function detachAfterViewerFailure(

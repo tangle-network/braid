@@ -41,6 +41,7 @@ export async function installPackedBraid(repository, options = {}) {
       '--no-audit',
       '--no-fund',
       '--package-lock=false',
+      '--legacy-peer-deps',
       tarball,
     ])
     await run(npm.file, npm.args, {

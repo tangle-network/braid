@@ -1,4 +1,4 @@
-Braid ready — /home/drew/code/.worktrees/braid-exact-interactive-20260816
+Braid ready — /home/drew/code/.worktrees/braid-keyboard-flow-fix
 status: ready for a message
 conversation: New conversation; branch: branch-1
 profile: Braid starter; runner: pi; connection: deterministic fixture
@@ -6,7 +6,7 @@ appearance: none; high contrast off; reduced motion off
 event 2: draft.changed; status: ready for a message
 event 3: run.requested; status: admitted: W6 plain proof
 event 4: effect.upserted; status: streaming
-event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-f464b334-bc5f-406b-aed7-ac801fbd20e3","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:f75eb08b6c6a3120e5297421baed1e5e2553899395ec5981e0fda4c9ce725300"}}},"session":{"id":"05bb45e5-a6c1-40e3-b260-359bc2bd56c2","backend":"executor","status":"active","createdAt":"2026-08-16T11:04:57.315Z","updatedAt":"2026-08-16T11:04:57.315Z","metadata":"[unavailable]"},"
+event 5: run.provider.event; status: streaming: {"type":"backend_start","task":{"id":"turn-65367645-2b6b-46ae-a6c2-4603a5b288f8","intent":"W6 plain proof","metadata":{"identity":{"profileDigest":"sha256:8344a03c82d5cb9207910fe0cb05ef0757b58b8cea9a7cc82f36055694d58983","taskDigest":"sha256:d36c141186589fc69f020dd03cda71443909176c6bbf640d87724c3ad0297c66"}}},"session":{"id":"47f133db-f726-48c9-baf1-703b9a04a47a","backend":"executor","status":"active","createdAt":"2026-08-30T01:57:41.242Z","updatedAt":"2026-08-30T01:57:41.242Z","metadata":"[unavailable]"},"
 event 6: run.usage; status: streaming
 event 7: run.artifact; status: streaming: agent-turn-result
 event 8: run.finished; status: completed: Fixture response through pi: W6 plain proof

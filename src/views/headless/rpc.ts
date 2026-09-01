@@ -102,6 +102,8 @@ function stateResponse(
         queue: view.queue ?? [],
         queueCount: view.queueCount,
         activeRunId: state.activeRunId,
+        ...(state.focusedRunId === undefined ? {} : { focusedRunId: state.focusedRunId }),
+        ...(state.activeRuns === undefined ? {} : { activeRuns: state.activeRuns }),
         lastError: state.lastError,
       },
     }
@@ -172,6 +174,18 @@ export async function runRpc(
     closePromise ??= controller.close?.() ?? boundedDrain(pendingCompletions).then(() => undefined)
     await closePromise
     applicationClosed = true
+  }
+  const trackCompletion = (
+    completion: Promise<unknown>,
+    onFulfilled?: () => void | Promise<void>,
+  ): void => {
+    let tracked: Promise<void>
+    tracked = completion
+      .then(() => onFulfilled?.())
+      .then(() => undefined)
+      .finally(() => pendingCompletions.delete(tracked))
+    pendingCompletions.add(tracked)
+    void tracked.catch(() => undefined)
   }
   const trimReplayHistory = () => {
     while (requests.size > RPC_REPLAY_MAX_ENTRIES || replayBytes > RPC_REPLAY_MAX_BYTES) {
@@ -347,15 +361,10 @@ export async function runRpc(
             bufferedEvents = undefined
             if (admissionState) await respond(admissionState)
             if (result.completion) {
-              let tracked: Promise<void>
-              tracked = result.completion.finally(() => pendingCompletions.delete(tracked))
-              pendingCompletions.add(tracked)
-              void tracked
-                .then(() => {
-                  if (applicationClosed) return
-                  return respond(stateResponse(controller, request.requestId))
-                })
-                .catch(() => undefined)
+              trackCompletion(result.completion, () => {
+                if (applicationClosed) return
+                return respond(stateResponse(controller, request.requestId))
+              })
             } else {
               await respond(stateResponse(controller, request.requestId))
             }
@@ -372,6 +381,8 @@ export async function runRpc(
               await respond(errorResponse(result, request.requestId))
               break
             }
+            if (result.completion) await result.completion
+            await closeApplication()
             await respond({
               version: BRAID_PROTOCOL_VERSION,
               type: 'ack',
@@ -380,15 +391,15 @@ export async function runRpc(
               operationId: request.operationId,
               command: request.command,
             })
-            if (result.completion) await result.completion
-            await closeApplication()
             await outputQueue.flush()
             if (outputFailure !== undefined) throw outputFailure
             return 0
           }
           default: {
             const generic = request as GenericRpcRequest
-            if (generic.command === 'cancel_run') bufferedEvents = []
+            const awaitControlCompletion =
+              generic.command === 'cancel_run' || generic.command === 'detach'
+            if (awaitControlCompletion) bufferedEvents = []
             const result = await controller.dispatch({
               type: 'headless-command',
               command: generic.command,
@@ -414,11 +425,16 @@ export async function runRpc(
               ...(result.admission === undefined ? {} : { admission: result.admission }),
               ...(result.data === undefined ? {} : { result: result.data }),
             })
-            if (generic.command === 'cancel_run') {
+            if (awaitControlCompletion) {
+              if (result.completion) await result.completion
               for (const event of bufferedEvents ?? []) await respond(eventResponse(event))
               bufferedEvents = undefined
-              if (result.completion) await result.completion
               await respond(stateResponse(controller, request.requestId))
+            } else if (result.completion) {
+              trackCompletion(result.completion, () => {
+                if (applicationClosed) return
+                return respond(stateResponse(controller, request.requestId))
+              })
             }
             break
           }

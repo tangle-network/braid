@@ -12,7 +12,13 @@ import {
 } from '../../domain/ids.js'
 import type { ForkPreviewView, InteractionView } from '../../views/shared/models.js'
 
-export type UiFixture = 'interaction' | 'fork' | 'analysis' | 'comparison' | 'product-demo'
+export type UiFixture =
+  | 'interaction'
+  | 'fork'
+  | 'analysis'
+  | 'comparison'
+  | 'product-demo'
+  | 'supervision'
 
 export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   runId: 'fixture-run-1',
@@ -41,6 +47,10 @@ export const FIXTURE_FORK: ForkPreviewView = Object.freeze({
   kind: 'workspace',
   source: 'workspace:/workspace',
   destination: 'workspace:/workspace-fork',
+  execution: Object.freeze({
+    operationId: 'operation-fixture-fork',
+    planDigest: 'digest:fixture-fork-plan',
+  }),
   fields: Object.freeze([
     {
       label: 'conversation context',
@@ -56,16 +66,6 @@ export const FIXTURE_FORK: ForkPreviewView = Object.freeze({
       label: 'workspace state',
       source: 'checkpoint:fixture-1',
       destination: 'checkpoint:fixture-1',
-    },
-    {
-      label: 'operation id',
-      source: 'operation-fixture-fork',
-      destination: 'operation-fixture-fork',
-    },
-    {
-      label: 'plan digest',
-      source: 'digest:fixture-fork-plan',
-      destination: 'digest:fixture-fork-plan',
     },
   ]),
   allowed: true,

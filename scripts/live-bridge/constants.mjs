@@ -46,16 +46,45 @@ export const targetDefinitions = Object.freeze([
   },
 ])
 
+export const releaseRunnerTargetDefinitions = Object.freeze([
+  {
+    key: 'pi-tangle-router-deepseek-v4-flash',
+    label: 'Pi with Tangle Router DeepSeek V4 Flash',
+    modelId: 'pi/tangle-router/deepseek-v4-flash',
+    backend: 'pi',
+  },
+  {
+    key: 'codex-default',
+    label: 'Codex default',
+    modelId: 'codex/default',
+    backend: 'codex',
+  },
+])
+
+function marker(key, suffix) {
+  return `LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_${suffix}`
+}
+
+export const liveMarkers = Object.freeze({
+  normal: (key) => marker(key, 'OK'),
+  cancel: (key) => marker(key, 'CANCEL'),
+  handoffSource: (key) => marker(key, 'HANDOFF_SOURCE_OK'),
+  handoffDestination: (key) => marker(key, 'HANDOFF_OK'),
+  interactive: (key) => marker(key, 'INTERACTIVE_OK'),
+  restart: (key) => marker(key, 'RESTART'),
+})
+
 export const livePrompts = Object.freeze({
-  normal: (key) => `Reply with exactly LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_OK.`,
+  normal: (key) =>
+    `Output only this token, with no punctuation or explanation: ${liveMarkers.normal(key)}`,
   cancel: (key) =>
-    `For LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_CANCEL, produce a numbered list from 1 to 1000 with one short word per line.`,
+    `For ${liveMarkers.cancel(key)}, produce a numbered list from 1 to 1000 with one short word per line.`,
   handoffSource: (key) =>
-    `Reply with exactly LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_HANDOFF_SOURCE_OK.`,
+    `Output only this token, with no punctuation or explanation: ${liveMarkers.handoffSource(key)}`,
   handoffDestination: (key) =>
-    `Reply with exactly LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_HANDOFF_OK.`,
+    `Output only this token, with no punctuation or explanation: ${liveMarkers.handoffDestination(key)}`,
   interactive: (key) =>
-    `Ask one user-visible permission question before completing LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_INTERACTIVE_OK.`,
+    `Use the read tool now to read ./interaction-proof-${key}.txt. Do not guess its contents or answer without the tool call. After the permission response, report what happened.`,
   restart: (key) =>
-    `For LIVE_BRAID_${key.toUpperCase().replaceAll('.', '_')}_RESTART, produce a numbered list from 1 to 1000 with one short word per line.`,
+    `Do not use tools. Reply directly with ${liveMarkers.restart(key)}, then count from 1 to 1000 with one integer per line.`,
 })

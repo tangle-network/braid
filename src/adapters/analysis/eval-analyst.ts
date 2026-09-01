@@ -114,10 +114,11 @@ export class AgentEvalAnalystAdapter {
     const available = this.#registry.list()
     const availableIds = new Set(available.map((entry) => entry.id))
     if (request.analystIds !== undefined) {
-      const unknown = request.analystIds.filter((id) => !availableIds.has(id))
+      const selected = [...new Set(request.analystIds.map((id) => id.trim()).filter(Boolean))]
+      const unknown = selected.filter((id) => !availableIds.has(id))
       if (unknown.length > 0) throw unavailable(unknown[0] ?? 'custom', available)
-      if (request.analystIds.length === 0) throw unavailable('custom', available)
-      return [...request.analystIds]
+      if (selected.length === 0) throw unavailable('custom', available)
+      return selected
     }
 
     const recipe = request.recipe ?? 'ask'
@@ -126,10 +127,26 @@ export class AgentEvalAnalystAdapter {
       return [BRAID_QUESTION_ANALYST_ID]
     }
 
-    const candidates = RECIPE_ALIASES[recipe] ?? [recipe]
-    const selected = candidates.find((candidate) => availableIds.has(candidate))
-    if (selected === undefined) throw unavailable(recipe, available)
-    return [selected]
+    const recipes = recipe
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+    if (recipes.includes('all')) {
+      const selected = available
+        .map((entry) => entry.id)
+        .filter((id) => id !== BRAID_QUESTION_ANALYST_ID)
+      if (selected.length === 0) throw unavailable('all', available)
+      return selected
+    }
+    const selected: string[] = []
+    for (const item of recipes) {
+      const candidates = RECIPE_ALIASES[item] ?? [item]
+      const analystId = candidates.find((candidate) => availableIds.has(candidate))
+      if (analystId === undefined) throw unavailable(item, available)
+      if (!selected.includes(analystId)) selected.push(analystId)
+    }
+    if (selected.length === 0) throw unavailable(recipe, available)
+    return selected
   }
 
   async *stream(request: EvalAnalystRequest): AsyncGenerator<EvalAnalystStreamEvent, void, void> {

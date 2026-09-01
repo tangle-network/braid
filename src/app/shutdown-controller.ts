@@ -1,5 +1,5 @@
 import type { BraidEvent } from '../domain/events.js'
-import type { BraidRun, BraidState } from '../domain/state.js'
+import { isLiveRunStatus, type BraidRun, type BraidState } from '../domain/state.js'
 import type { ShutdownReceipt } from './application-types.js'
 import { AppError } from './errors.js'
 import { shutdownRequestDigest } from './operation-ledger.js'
@@ -43,9 +43,9 @@ export function shutdownApplication(input: ShutdownControllerInput): ShutdownRec
   }
   input.commit({ kind: 'application.shutdown.requested', operationId: input.operationId })
   const state = input.state()
-  const runId = state.activeRunId ?? undefined
-  const run = runId ? state.runs.find((candidate) => candidate.id === runId) : undefined
-  const completion = completeShutdown(input, runId, run)
+  const activeRuns = state.runs.filter((candidate) => isLiveRunStatus(candidate.status))
+  const runId = state.activeRunId ?? activeRuns[0]?.id
+  const completion = completeShutdown(input, activeRuns)
   input.ledger.setShutdown(input.operationId, { digest, completion })
   return {
     operationId: input.operationId,
@@ -60,23 +60,35 @@ export function shutdownApplication(input: ShutdownControllerInput): ShutdownRec
 
 async function completeShutdown(
   input: ShutdownControllerInput,
-  runId: string | undefined,
-  run: BraidRun | undefined,
+  runs: readonly BraidRun[],
 ): Promise<BraidState> {
-  if (!runId || !run) return input.state()
+  if (runs.length === 0) return input.state()
   if (input.mode === 'cancel') {
-    const receipt = await input.cancelRun({
-      operationId: `${input.operationId}:cancel`,
-      runId,
-      reason: 'Braid is shutting down',
-      terminalStatus: 'aborted',
-      legacy: true,
-    })
-    return receipt.completion
+    await Promise.all(
+      runs.map(async (run) => {
+        const receipt = await input.cancelRun({
+          operationId: `${input.operationId}:cancel:${run.id}`,
+          runId: run.id,
+          reason: 'Braid is shutting down',
+          terminalStatus: 'aborted',
+          legacy: true,
+        })
+        await receipt.completion
+      }),
+    )
+    return input.state()
   }
   if (input.mode === 'detach') {
-    const receipt = await input.detachRun({ operationId: `${input.operationId}:detach`, runId })
-    return receipt.completion
+    await Promise.all(
+      runs.map(async (run) => {
+        const receipt = await input.detachRun({
+          operationId: `${input.operationId}:detach:${run.id}`,
+          runId: run.id,
+        })
+        await receipt.completion
+      }),
+    )
+    return input.state()
   }
   return input.waitForIdle()
 }

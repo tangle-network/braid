@@ -8,6 +8,7 @@ import type {
   ConfigurationEffectiveValues,
   ConfigurationSelection,
 } from '../app/configuration-session.js'
+import { compactWorkspaceRepositoryUrl } from '../app/workspace-request.js'
 import {
   DEFAULT_MODEL_VALIDATION_TIMEOUT_MS,
   displayBridgeEndpoint,
@@ -196,7 +197,13 @@ export function describeProductionSelection(
       runner,
       model,
       effort,
-      workdir: 'provider-selected sandbox workdir',
+      workdir:
+        selection.workspaceRequest?.cwd === undefined
+          ? 'repository root'
+          : selection.workspaceRequest.cwd.path,
+      ...(selection.workspaceRequest === undefined
+        ? {}
+        : { workspaceRequest: workspaceSummary(selection.workspaceRequest) }),
       verification: `${verification.status}: ${verification.detail}`,
       unsupported,
     }
@@ -209,5 +216,20 @@ export function describeProductionSelection(
     workdir: workspace,
     verification: `${verification.status}: ${verification.detail}`,
     unsupported,
+  }
+}
+
+function workspaceSummary(
+  request: ConfigurationSelection['workspaceRequest'],
+): NonNullable<ConfigurationEffectiveValues['workspaceRequest']> {
+  if (request === undefined) return {}
+  const repoUrl =
+    request.repoUrl === undefined ? undefined : compactWorkspaceRepositoryUrl(request.repoUrl)
+  return {
+    ...(request.environment === undefined ? {} : { environment: request.environment }),
+    ...(request.image === undefined ? {} : { image: request.image }),
+    ...(repoUrl === undefined ? {} : { repoUrl }),
+    ...(request.gitRef === undefined ? {} : { gitRef: request.gitRef }),
+    ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
   }
 }

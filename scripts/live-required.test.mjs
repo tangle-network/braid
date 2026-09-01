@@ -25,8 +25,17 @@ import {
   configEvidence,
   initializedSession,
   prepareProductionWorkspace,
+  profileFor,
   runHeadlessTurn,
 } from './live-required/headless.mjs'
+import {
+  createSupervisorProofFixture,
+  runSupervisorFlow,
+  supervisorConnection,
+  supervisorProfile,
+  supervisorTask,
+  supervisorWorkerEnvironment,
+} from './live-required/supervisor.mjs'
 import { runMatrixAdapter, runSandbox } from './live-required/tangle.mjs'
 import { executionLatencyDistribution } from './live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
@@ -42,6 +51,10 @@ import {
   runStressProof,
 } from './live-required/tangle-sandbox-stress.mjs'
 import { runWorker } from './live-required/tangle-sandbox-worker.mjs'
+import { sandboxConfiguration as workspaceSandboxConfiguration } from './live-required/tangle-workspace-proof.mjs'
+import './live-required/tangle-sandbox-braid-multirun.test.mjs'
+import { MULTIRUN_REQUIRED_PHASES } from './live-required/multirun-contract.mjs'
+import { readLiveTangleProof } from './release/live-tangle-proof.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
 
@@ -78,6 +91,105 @@ test('config evidence accepts connections without optional provider options', ()
   )
 })
 
+test('live model-provider resolution preserves qualified and unqualified model ids', () => {
+  const options = {
+    prefix: 'BRAID_TANGLE',
+    kind: 'tangle-inference',
+    fallbackRunner: 'cli-base',
+    fallbackModelProvider: 'tangle-router',
+    providerNames: ['BRAID_TANGLE_PROVIDER'],
+  }
+  const qualified = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'zai/glm-5.3',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-qualified',
+    },
+    options,
+  )
+  assert.equal(qualified.model, 'zai/glm-5.3')
+  assert.equal(qualified.modelProvider, 'tangle-router')
+
+  const unqualified = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'glm-5.3',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-unqualified',
+    },
+    options,
+  )
+  assert.equal(unqualified.model, 'glm-5.3')
+  assert.equal(unqualified.modelProvider, 'tangle-router')
+
+  const explicit = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'zai/glm-5.3',
+      BRAID_TANGLE_MODEL_PROVIDER: 'custom-router',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-explicit',
+    },
+    options,
+  )
+  assert.equal(explicit.model, 'zai/glm-5.3')
+  assert.equal(explicit.modelProvider, 'custom-router')
+
+  const currentAlias = connectionConfiguration(
+    {
+      BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools',
+      BRAID_TANGLE_MODEL: 'glm-5.3',
+      BRAID_TANGLE_PROVIDER: 'legacy-router-alias',
+      BRAID_TANGLE_CREDENTIAL_REF: 'credential-ref-model-provider-alias',
+    },
+    options,
+  )
+  assert.equal(currentAlias.model, 'glm-5.3')
+  assert.equal(currentAlias.modelProvider, 'legacy-router-alias')
+
+  const sandboxDefault = workspaceSandboxConfiguration({
+    BRAID_TANGLE_SANDBOX_CREDENTIAL_REF: 'credential-ref-model-provider-sandbox-default',
+  })
+  assert.equal(sandboxDefault.model, 'tangle-router/glm-5.3')
+  assert.equal(sandboxDefault.modelProvider, 'tangle-router')
+})
+
+test('generic unqualified live profiles fail closed without a model provider', () => {
+  assert.throws(
+    () => profileFor({ kind: 'generic', model: 'glm-5.3', runner: 'pi' }),
+    (error) => {
+      assert.equal(error.code, 'PROTECTED_MODEL_PROVIDER_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('live profile and evidence preserve the full portable model id', () => {
+  const profile = profileFor({
+    kind: 'tangle-sandbox',
+    model: 'zai/glm-5.3',
+    runner: 'opencode',
+    modelProvider: 'tangle-router',
+  })
+  assert.equal(profile.model.default, 'zai/glm-5.3')
+  assert.equal(profile.model.provider, 'tangle-router')
+  assert.deepEqual(
+    configEvidence({
+      endpoint: { scheme: 'https', host: 'sandbox.tangle.tools' },
+      connection: { id: 'connection-model-provider', kind: 'tangle-sandbox' },
+      credentialConfigured: true,
+      profile,
+    }),
+    {
+      endpoint: { scheme: 'https', host: 'sandbox.tangle.tools' },
+      connectionId: 'connection-model-provider',
+      connectionKind: 'tangle-sandbox',
+      credentialConfigured: true,
+      model: 'zai/glm-5.3',
+      modelProvider: 'tangle-router',
+      runner: 'opencode',
+    },
+  )
+})
+
 function protectedEnvironment() {
   const environment = { ...process.env }
   for (const name of [
@@ -90,6 +202,8 @@ function protectedEnvironment() {
     'BRAID_ANALYSIS_BEARER',
     'BRAID_TANGLE_ENDPOINT',
     'BRAID_TANGLE_MODEL',
+    'BRAID_TANGLE_MODEL_PROVIDER',
+    'BRAID_TANGLE_INFERENCE_MODEL_PROVIDER',
     'BRAID_TANGLE_RUNNER',
     'BRAID_TANGLE_CREDENTIAL_REF',
     'BRAID_TANGLE_AUTH',
@@ -97,6 +211,7 @@ function protectedEnvironment() {
     'BRAID_TANGLE_BEARER',
     'BRAID_TANGLE_SANDBOX_ENDPOINT',
     'BRAID_TANGLE_SANDBOX_MODEL',
+    'BRAID_TANGLE_SANDBOX_MODEL_PROVIDER',
     'BRAID_TANGLE_SANDBOX_RUNNER',
     'BRAID_TANGLE_SANDBOX_CREDENTIAL_REF',
     'BRAID_TANGLE_SANDBOX_AUTH',
@@ -106,7 +221,21 @@ function protectedEnvironment() {
     'BRAID_SUPERVISOR_ROOT',
     'BRAID_SUPERVISOR_ID',
     'BRAID_SUPERVISOR_WORKER',
+    'BRAID_SUPERVISOR_WORKSPACE',
+    'BRAID_SUPERVISOR_ENDPOINT',
+    'BRAID_SUPERVISOR_CONNECTION_ID',
+    'BRAID_SUPERVISOR_CONNECTION_KIND',
+    'BRAID_SUPERVISOR_CREDENTIAL_CONFIGURED',
+    'BRAID_SUPERVISOR_API_KEY',
+    'BRAID_SUPERVISOR_AUTH',
+    'BRAID_SUPERVISOR_BEARER',
+    'BRAID_SUPERVISOR_MODEL',
+    'BRAID_SUPERVISOR_MODEL_PROVIDER',
+    'BRAID_SUPERVISOR_RUNNER',
+    'BRAID_SUPERVISOR_TASK',
+    'BRAID_SUPERVISOR_WORKER_NAME',
     'BRAID_SUPERVISOR_LIVE_ADAPTER',
+    'TANGLE_API_KEY',
   ])
     delete environment[name]
   return environment
@@ -122,6 +251,186 @@ const TANGLE_SANDBOX_CHECKS = [
   'cancel-retry-conflict',
   'exact-resource-cleanup',
 ]
+
+function validMultirunProof() {
+  const runs = [
+    {
+      runId: 'multirun-a',
+      conversationId: 'conversation-a',
+      branchId: 'branch-a',
+      eventCount: 2,
+      eventIdsUnique: true,
+      localEnvironmentId: 'local-environment-a',
+      providerEnvironmentId: 'environment-a',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-a' },
+        { kind: 'provider-session', id: 'session-a' },
+        { kind: 'provider-execution', id: 'execution-a' },
+        { kind: 'provider-run', id: 'multirun-a' },
+      ],
+      status: 'completed',
+    },
+    {
+      runId: 'multirun-b',
+      conversationId: 'conversation-b',
+      branchId: 'branch-b',
+      eventCount: 2,
+      eventIdsUnique: true,
+      localEnvironmentId: 'local-environment-b',
+      providerEnvironmentId: 'environment-b',
+      identifiers: [
+        { kind: 'provider-environment', id: 'environment-b' },
+        { kind: 'provider-session', id: 'session-b' },
+        { kind: 'provider-execution', id: 'execution-b' },
+        { kind: 'provider-run', id: 'multirun-b' },
+      ],
+      status: 'cancelled',
+    },
+  ]
+  return {
+    schemaVersion: 'braid.live-required.multirun.v2',
+    status: 'passed',
+    provider: {
+      endpoint: 'https://sandbox.tangle.tools',
+      runner: 'opencode',
+      model: 'tangle-router/glm-5.2',
+      lifecycle: 'retained',
+      credentialConfigured: true,
+    },
+    conversations: {
+      first: { conversationId: 'conversation-a', branchId: 'branch-a' },
+      second: { conversationId: 'conversation-b', branchId: 'branch-b' },
+    },
+    runs,
+    overlap: {
+      activeRunCount: 2,
+      streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
+      workStripCount: 2,
+      renderedWorkStripCount: 2,
+      independentConversations: true,
+    },
+    focus: {
+      beforeRunId: 'multirun-b',
+      firstSwitchRunId: 'multirun-a',
+      secondSwitchRunId: 'multirun-b',
+      firstSwitchPreservedStatuses: true,
+      secondSwitchPreservedStatuses: true,
+    },
+    cancellation: {
+      dispatch: {
+        eventKind: 'run.control.requested',
+        control: 'cancel',
+        runId: 'multirun-b',
+        operationId: 'operation-cancel-b',
+        sequence: 3,
+      },
+      targetRunId: 'multirun-b',
+      targetStatus: 'cancelled',
+      unaffectedRunId: 'multirun-a',
+      unaffectedStatusAtAck: 'streaming',
+      unaffectedFinalStatus: 'completed',
+    },
+    replay: {
+      restartedRunCount: 2,
+      noDuplicateEventIds: true,
+      eventSetsStable: true,
+    },
+    cleanup: {
+      exact: true,
+      errors: [],
+      resources: [
+        {
+          runId: 'multirun-a',
+          providerEnvironmentId: 'environment-a',
+          id: 'resource-a',
+          confirmed: true,
+        },
+        {
+          runId: 'multirun-b',
+          providerEnvironmentId: 'environment-b',
+          id: 'resource-b',
+          confirmed: true,
+        },
+      ],
+      activeResourceDelta: 0,
+      accountStable: true,
+      workspace: { protectedStoreClean: true, temporaryRootRemoved: true },
+    },
+    error: null,
+    phases: Object.fromEntries(
+      MULTIRUN_REQUIRED_PHASES.map((name) => [name, { status: 'passed' }]),
+    ),
+  }
+}
+
+function passingTangleProcess() {
+  const measurements = Array.from({ length: 5 }, (_, index) => ({
+    kind: 'scalar',
+    name: `LIVE-${String(index + 6).padStart(2, '0')}`,
+    unit: 'verified-flow',
+    value: 1,
+  }))
+  const structuredStdout = Buffer.from(
+    `BRAID_RELEASE_RESULT_JSON={"status":"passed"}\nBRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({ measurements })}\n`,
+  )
+  return {
+    exitCode: 0,
+    signal: null,
+    timedOut: false,
+    spawnError: null,
+    cleanupConfirmed: true,
+    durationMs: 1,
+    stdout: { redactionFailClosed: false, bytes: structuredStdout },
+    stderr: { redactionFailClosed: false, bytes: Buffer.alloc(0) },
+    structuredStdout: { bytes: structuredStdout, error: null },
+  }
+}
+
+test('LIVE-07 release artifact validation requires complete multirun evidence and exact cleanup', async () => {
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-live-tangle-proof-'))
+  const artifactPath = join(artifactRoot, 'live', 'tangle', 'evidence.json')
+  try {
+    await mkdir(join(artifactRoot, 'live', 'tangle'), { recursive: true })
+    await writeFile(artifactPath, `${JSON.stringify(validMultirunProof())}\n`)
+    const passed = await readLiveTangleProof({
+      artifactRoot,
+      checkId: 'live-tangle',
+      processResult: passingTangleProcess(),
+    })
+    assert.equal(passed.result, 'passed')
+
+    await rm(artifactPath)
+    const missing = await readLiveTangleProof({
+      artifactRoot,
+      checkId: 'live-tangle',
+      processResult: passingTangleProcess(),
+    })
+    assert.equal(missing.result, 'uncaptured')
+    assert.match(missing.reason, /artifact is missing/u)
+
+    for (const proof of [
+      { ...validMultirunProof(), status: 'failed' },
+      {
+        ...validMultirunProof(),
+        cleanup: { ...validMultirunProof().cleanup, exact: false },
+      },
+      {
+        ...validMultirunProof(),
+        cancellation: { ...validMultirunProof().cancellation, dispatch: null },
+      },
+    ]) {
+      await writeFile(artifactPath, `${JSON.stringify(proof)}\n`)
+      const invalid = await readLiveTangleProof({
+        artifactRoot,
+        checkId: 'live-tangle',
+        processResult: passingTangleProcess(),
+      })
+      assert.equal(invalid.result, 'uncaptured')
+    }
+  } finally {
+    await rm(artifactRoot, { recursive: true, force: true })
+  }
+})
 
 function validTangleSandboxReceiptInput(overrides = {}) {
   const cloudControl = {
@@ -144,6 +453,7 @@ function validTangleSandboxReceiptInput(overrides = {}) {
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'pi',
     },
     runIds: ['local-run-1', 'local-run-follow-up', 'local-run-cancelled'],
@@ -163,50 +473,11 @@ function validTangleSandboxReceiptInput(overrides = {}) {
       phase: 'completed',
       cloudControl,
       usage: { inputTokens: 12, outputTokens: 8, costUsd: 0.001 },
+      multirun: validMultirunProof(),
     },
     checks: TANGLE_SANDBOX_CHECKS,
     ...overrides,
   }
-}
-
-function expectedFailureOutput(scope, environment, expectedStatus = 1) {
-  let failure
-  try {
-    execFileSync(process.execPath, ['scripts/live-required.mjs', scope], {
-      cwd: repository,
-      env: environment,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-  } catch (error) {
-    failure = error
-  }
-  assert(failure, `${scope} unexpectedly passed`)
-  assert.equal(failure.status, expectedStatus)
-  return `${failure.stdout ?? ''}${failure.stderr ?? ''}`
-}
-
-async function createSupervisorFixture(root) {
-  const supervisorId = 'supervisor-live-required'
-  const workerId = 'worker-live-required'
-  const runDir = join(root, '.agent', 'supervisor', supervisorId)
-  await mkdir(runDir, { recursive: true })
-  await writeFile(
-    join(runDir, 'state.json'),
-    `${JSON.stringify({
-      id: supervisorId,
-      status: 'running',
-      task: 'live-required test',
-      workspaceDir: root,
-      budget: 1,
-    })}\n`,
-  )
-  const now = '2026-08-10T00:00:00.000Z'
-  await writeFile(
-    join(runDir, 'spawn-journal.jsonl'),
-    `${JSON.stringify({ kind: 'spawned', id: supervisorId, label: 'root', at: now })}\n${JSON.stringify({ kind: 'spawned', id: workerId, label: workerId, parent: supervisorId, at: now })}\n`,
-  )
-  return { supervisorId, workerId }
 }
 
 test('protected live scopes emit unavailable release evidence without credentials', () => {
@@ -239,6 +510,123 @@ test('protected live scopes emit unavailable release evidence without credential
     )
   }
 })
+
+test('live wrappers preserve provider unavailability', () => {
+  const providerError = Object.assign(new Error('provider credential is unavailable'), {
+    unavailable: true,
+  })
+  const normalized = normalizeExternalFailure(providerError, 'live-supervisor', {})
+  assert.equal(normalized.code, 'LIVE_PROTECTED_PATH_UNAVAILABLE')
+  assert.equal(normalized.unavailable, true)
+  assert.equal(normalized.message, 'provider credential is unavailable')
+})
+
+test('live wrappers retain redacted nested external failure causes', () => {
+  const secret = 'live-nested-failure-secret'
+  const failure = new AggregateError(
+    [
+      new Error(`provider request failed with ${secret}`),
+      new AggregateError([new Error('exact cloud cleanup failed')], 'cleanup incomplete'),
+    ],
+    'interactive proof failed',
+  )
+  const normalized = normalizeExternalFailure(failure, 'live-tangle', {
+    TANGLE_API_KEY: secret,
+  })
+  assert.match(normalized.message, /interactive proof failed/u)
+  assert.match(normalized.message, /provider request failed with \[REDACTED\]/u)
+  assert.match(normalized.message, /cleanup incomplete/u)
+  assert.match(normalized.message, /exact cloud cleanup failed/u)
+  assert.doesNotMatch(normalized.message, new RegExp(secret, 'u'))
+})
+
+test('LIVE-11 composes a complete canonical profile by default', () => {
+  assert.deepEqual(supervisorProfile({}), {
+    name: 'Braid live supervisor',
+    description: 'Protected LIVE-11 supervisor profile',
+    version: '1.0.0',
+    harness: 'opencode',
+    model: {
+      provider: 'tangle-router',
+      default: 'tangle-router/glm-5.3',
+      reasoningEffort: 'none',
+    },
+    prompt: {
+      instructions: ['Remain available for the protected LIVE-11 supervisor proof.'],
+    },
+  })
+  assert.deepEqual(
+    supervisorProfile({
+      BRAID_SUPERVISOR_MODEL: 'custom/model',
+      BRAID_SUPERVISOR_MODEL_PROVIDER: 'custom-provider',
+      BRAID_SUPERVISOR_RUNNER: 'pi',
+    }),
+    {
+      name: 'Braid live supervisor',
+      description: 'Protected LIVE-11 supervisor profile',
+      version: '1.0.0',
+      harness: 'pi',
+      model: { provider: 'custom-provider', default: 'custom/model', reasoningEffort: 'none' },
+      prompt: {
+        instructions: ['Remain available for the protected LIVE-11 supervisor proof.'],
+      },
+    },
+  )
+})
+
+test('LIVE-11 resolves caller-owned task, connection, and generic worker input', () => {
+  const environment = {
+    BRAID_SUPERVISOR_TASK: 'Inspect the retained worker workspace',
+    BRAID_SUPERVISOR_ENDPOINT: 'https://sandbox.example/v1',
+    BRAID_SUPERVISOR_API_KEY: 'supervisor-api-key-fixture',
+    BRAID_SUPERVISOR_CONNECTION_KIND: 'tangle-sandbox',
+    BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-fixture-workspace',
+    BRAID_SUPERVISOR_WORKER_NAME: 'retained-worker-fixture',
+  }
+  assert.equal(supervisorTask(environment), 'Inspect the retained worker workspace')
+  assert.deepEqual(supervisorConnection(environment), {
+    endpoint: 'https://sandbox.example/v1',
+    apiKey: 'supervisor-api-key-fixture',
+    kind: 'tangle-sandbox',
+  })
+  assert.deepEqual(supervisorWorkerEnvironment(environment, 'invocation-fixture'), {
+    workspace: { cwd: '/tmp/supervisor-fixture-workspace' },
+    name: 'retained-worker-fixture',
+    metadata: {
+      owner: 'braid-live-supervisor',
+      proof: 'LIVE-11',
+      invocationId: 'invocation-fixture',
+    },
+  })
+})
+
+test('LIVE-11 requires a caller-owned provider credential for a new run', () => {
+  assert.throws(
+    () => supervisorConnection({}),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'PROTECTED_CREDENTIAL_REQUIRED')
+      assert.match(error.message, /BRAID_SUPERVISOR_API_KEY/u)
+      return true
+    },
+  )
+})
+
+function supervisorProvisionInputs(invocationId) {
+  return {
+    task: `fixture supervisor task ${invocationId}`,
+    profile: supervisorProfile({}),
+    connection: {
+      endpoint: 'https://sandbox.example/v1',
+      apiKey: 'fixture-supervisor-api-key',
+      kind: 'tangle-sandbox',
+    },
+    workerEnvironment: {
+      name: `fixture-supervisor-${invocationId}`,
+      metadata: { owner: 'braid-live-supervisor-test', invocationId },
+    },
+  }
+}
 
 test('only explicit protected configuration failures remain unavailable', () => {
   const unavailable = normalizeExternalFailure(
@@ -355,6 +743,7 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
       connectionKind: 'tangle-sandbox',
       credentialConfigured: true,
       model: 'glm-5.2',
+      modelProvider: 'tangle-router',
       runner: 'pi',
     },
     runIds: ['run-live-test'],
@@ -374,6 +763,7 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
     checks: ['marker', 'environment-id'],
   })
   assert.equal(receipt.schema, PUBLIC_EVIDENCE_SCHEMA)
+  assert.equal(receipt.connection.modelProvider, 'tangle-router')
   assert.deepEqual(Object.keys(receipt).sort(), [
     'checks',
     'completedAt',
@@ -395,6 +785,14 @@ test('receipts use a fixed schema and bind to one operation and invocation', () 
         { invocationId, operation: receipt.operation },
       ),
     /outside the public schema/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        connection: { ...receipt.connection, modelProvider: 42 },
+      }),
+    /modelProvider must be a non-empty string or null/u,
   )
   assert.throws(
     () =>
@@ -488,13 +886,14 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
     binary: 'unused-injected-binary',
     invocationId: input.invocationId,
     stressRunner: async () => cohort,
+    multirunRunner: async () => validMultirunProof(),
   })
 
   assert.equal(result.evidence.status, 'passed')
   assert.deepEqual(result.evidence.facts.cloudControl, input.facts.cloudControl)
   assert.equal(result.evidence.facts.exactResource, true)
   assert.equal(result.evidence.facts.activeResourceDelta, 0)
-  assert.equal(result.evidence.observations.detailed, true)
+  assert.equal(result.evidence.observations.stress.detailed, true)
 })
 
 test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {
@@ -651,72 +1050,521 @@ test('nested credential fields and error text are redacted before public output'
   assert.match(nestedMessage, /\[REDACTED\]/u)
 })
 
+test('public JSON redaction preserves field names', () => {
+  const output = safeJson(
+    {
+      status: 'completed',
+      startedAt: '2026-08-28T00:00:00.000Z',
+      completedAt: '2026-08-28T00:00:01.000Z',
+    },
+    { TANGLE_API_KEY: 'completed' },
+  )
+  const parsed = JSON.parse(output)
+  assert.equal(parsed.status, '[REDACTED]')
+  assert.equal(parsed.startedAt, '2026-08-28T00:00:00.000Z')
+  assert.equal(parsed.completedAt, '2026-08-28T00:00:01.000Z')
+})
+
 test('retained Sandbox error details are safe for direct proof output', () => {
   const secret = 'retained-sandbox-error-secret-canary-4f8c'
+  const networkError = Object.assign(new Error(`transport failed ${secret}`), {
+    name: 'NetworkError',
+    code: 'NETWORK_ERROR',
+    status: 503,
+  })
   const rawDetails = errorDetails(
-    new MissingIntegrationError('provider rejected the request', {
-      authorization: secret,
-      nested: { token: secret },
-    }),
+    Object.assign(
+      new MissingIntegrationError('provider rejected the request', {
+        authorization: secret,
+        nested: { token: secret },
+      }),
+      {
+        cause: Object.assign(new Error(`runtime failed ${secret}`), {
+          code: 'RETAINED_RESULT_READ_FAILED',
+          cause: networkError,
+        }),
+      },
+    ),
   )
   const output = safeJson({ status: 'failed', failure: rawDetails }, { TANGLE_API_KEY: secret })
   assert.doesNotMatch(output, new RegExp(secret, 'u'))
   assert.match(output, /\[REDACTED\]/u)
+  assert.deepEqual(rawDetails.fingerprint, {
+    name: 'MissingIntegrationError',
+    code: 'BRAID_LIVE_INTEGRATION_MISSING',
+    cause: {
+      name: 'Error',
+      code: 'RETAINED_RESULT_READ_FAILED',
+      cause: { name: 'NetworkError', code: 'NETWORK_ERROR', status: 503 },
+    },
+  })
 })
 
-test('configured supervisor failures stay unavailable and redact environment credentials', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'braid-live-required-supervisor-test-'))
-  const missingRoot = join(root, 'missing-runtime-root')
-  const common = {
+test('supervisor proof proves public observation, effects, replay, and reconnect', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'attached' })
+  const environment = {
+    BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+    BRAID_SUPERVISOR_ID: fixture.supervisorId,
+    BRAID_SUPERVISOR_WORKER: fixture.workerId,
+    BRAID_SUPERVISOR_STEER_OPERATION_ID: 'supervisor-steer-test-1',
+    BRAID_SUPERVISOR_CANCEL_OPERATION_ID: 'supervisor-cancel-test-1',
+    BRAID_SUPERVISOR_MESSAGE: 'inspect the deterministic worker',
+    BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+    BRAID_SUPERVISOR_POLL_MS: '1',
+  }
+  const result = await runSupervisorFlow({
+    environment,
+    invocationId: 'live-required-supervisor-test',
+    runtime: fixture.api,
+    providers: {},
+  })
+  assert.equal(result.status, 'passed')
+  assert.deepEqual(result.measurements, [
+    { kind: 'scalar', name: 'LIVE-11', unit: 'verified-flow', value: 1 },
+  ])
+  assert.equal(result.steering.effect, 'delivered')
+  assert.equal(result.steering.replayed, true)
+  assert.equal(result.cancellation.effect, 'cancelled')
+  assert.equal(result.terminalTakeover.status, 'attached')
+  assert.equal(result.proof.facts.spendObserved, true)
+  assert.equal(result.proof.facts.statusObserved, true)
+  assert.equal(result.proof.facts.reconnectable, true)
+  assert.equal(result.proof.facts.cancellationAvailable, true)
+  assert.equal(assertProofReceipt(result.proof), result.proof)
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...result.proof,
+        facts: { ...result.proof.facts, cancellationEffect: 'not_live' },
+      }),
+    /cancelled worker effect/u,
+  )
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...result.proof,
+        status: 'partial',
+        checks: ['snapshot'],
+      }),
+    /cannot have a partial status/u,
+  )
+  assert.equal(fixture.calls.filter((call) => call.name === 'writeWorkerSteer').length, 2)
+  assert.equal(fixture.calls.filter((call) => call.name === 'cancelWorker').length, 2)
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'supervisorRunDir'),
+    true,
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'readWorkerCancellation'),
+    true,
+  )
+})
+
+test('supervisor proof fails closed when a required runtime effect is absent or unclean', async () => {
+  const cases = [
+    [
+      'missing steering acknowledgement',
+      { steerAcknowledgement: false },
+      /worker steer acknowledgement was not acknowledged/u,
+    ],
+    ['refused steering effect', { steerEffect: 'refused' }, /did not report delivered effect/u],
+    [
+      'missing cancellation acknowledgement',
+      { cancellationAcknowledgement: false },
+      /worker cancellation acknowledgement was not acknowledged/u,
+    ],
+    [
+      'unclean cancellation effect',
+      { cancellationEffect: 'not_live' },
+      /did not report a proven effect/u,
+    ],
+  ]
+  for (const [label, options, expected] of cases) {
+    const fixture = createSupervisorProofFixture(options)
+    await assert.rejects(
+      () =>
+        runSupervisorFlow({
+          environment: {
+            BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+            BRAID_SUPERVISOR_ID: fixture.supervisorId,
+            BRAID_SUPERVISOR_WORKER: fixture.workerId,
+            BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+            BRAID_SUPERVISOR_POLL_MS: '1',
+          },
+          invocationId: `live-required-supervisor-${label.replaceAll(' ', '-')}`,
+          runtime: fixture.api,
+        }),
+      expected,
+      label,
+    )
+  }
+})
+
+test('supervisor proof rejects incomplete public snapshots before control', async () => {
+  const fixture = createSupervisorProofFixture({ snapshotCompleteness: 'partial' })
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+          BRAID_SUPERVISOR_ID: fixture.supervisorId,
+          BRAID_SUPERVISOR_WORKER: fixture.workerId,
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        runtime: fixture.api,
+      }),
+    /runtime supervisor snapshot is incomplete/u,
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'writeWorkerSteer'),
+    false,
+  )
+  assert.equal(
+    fixture.calls.some((call) => call.name === 'cancelWorker'),
+    false,
+  )
+})
+
+test('supervisor proof fails unavailable when a required Runtime API is missing', async () => {
+  const fixture = createSupervisorProofFixture()
+  const runtime = { ...fixture.api }
+  delete runtime.cancelWorker
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+          BRAID_SUPERVISOR_ID: fixture.supervisorId,
+          BRAID_SUPERVISOR_WORKER: fixture.workerId,
+        },
+        runtime,
+      }),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'RUNTIME_SUPERVISOR_API_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('supervisor proof records unsupported terminal takeover without claiming attachment', async () => {
+  const fixture = createSupervisorProofFixture()
+  const result = await runSupervisorFlow({
+    environment: {
+      BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+      BRAID_SUPERVISOR_ID: fixture.supervisorId,
+      BRAID_SUPERVISOR_WORKER: fixture.workerId,
+      BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+      BRAID_SUPERVISOR_POLL_MS: '1',
+    },
+    runtime: fixture.api,
+  })
+  assert.equal(result.status, 'passed')
+  assert.deepEqual(result.terminalTakeover, {
+    status: 'unavailable',
+    reason: 'No environment provider source was supplied for exact terminal takeover',
+  })
+  assert.equal(result.proof.facts.terminalTakeover, 'unavailable')
+})
+
+test('supervisor proof provisions an owned Runtime run and validates cleanup', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'attached' })
+  const environment = {
     ...protectedEnvironment(),
-    BRAID_SUPERVISOR_ROOT: missingRoot,
-    BRAID_SUPERVISOR_ID: 'configured-supervisor',
-    BRAID_SUPERVISOR_WORKER: 'configured-worker',
+    BRAID_SUPERVISOR_ENDPOINT: 'https://router.example/v1',
+    BRAID_SUPERVISOR_WORKSPACE: '/tmp/supervisor-proof-workspace',
+    BRAID_SUPERVISOR_TASK: 'Inspect the provisioned worker',
+    BRAID_SUPERVISOR_API_KEY: 'must-not-cross-the-provision-boundary',
+    BRAID_SUPERVISOR_AUTH: 'must-not-cross-the-provision-boundary',
+    BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+    BRAID_SUPERVISOR_POLL_MS: '1',
+    BRAID_SUPERVISOR_MESSAGE: 'inspect the provisioned worker',
   }
-  try {
-    let output = expectedFailureOutput('live-supervisor', common)
-    assert.match(output, /failed against the configured live path/u)
-    assert.doesNotMatch(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
-
-    const { supervisorId, workerId } = await createSupervisorFixture(root)
-    const wrongShape = join(root, 'wrong-supervisor-adapter.mjs')
-    await writeFile(wrongShape, 'export default 42\n')
-    output = expectedFailureOutput(
-      'live-supervisor',
-      {
-        ...common,
-        BRAID_SUPERVISOR_ROOT: root,
-        BRAID_SUPERVISOR_ID: supervisorId,
-        BRAID_SUPERVISOR_WORKER: workerId,
-        BRAID_SUPERVISOR_LIVE_ADAPTER: wrongShape,
+  let provisionRequest
+  let cleanupCalls = 0
+  const result = await runSupervisorFlow({
+    environment,
+    invocationId: 'live-required-supervisor-provisioned',
+    runtime: {
+      ...fixture.api,
+      provisionSupervisor: async (request) => {
+        provisionRequest = request
+        return {
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          providers: {},
+          terminalTakeover: 'required',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: [],
+            }
+          },
+        }
       },
-      2,
-    )
-    assert.match(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
+    },
+  })
+  assert.equal(result.status, 'passed')
+  assert.equal(result.provisioning.mode, 'provisioned')
+  assert.equal(result.provisioning.terminalTakeover, 'required')
+  assert.equal(result.cleanup.status, 'completed')
+  assert.equal(cleanupCalls, 1)
+  assert.equal(provisionRequest.invocationId, 'live-required-supervisor-provisioned')
+  assert.equal(provisionRequest.task, 'Inspect the provisioned worker')
+  assert.equal(provisionRequest.timeoutMs, 1000)
+  assert.equal(provisionRequest.pollMs, 1)
+  assert.equal(provisionRequest.workspaceDir, '/tmp/supervisor-proof-workspace')
+  assert.deepEqual(provisionRequest.profile, supervisorProfile(environment))
+  assert.deepEqual(provisionRequest.connection, {
+    endpoint: 'https://router.example/v1',
+    apiKey: 'must-not-cross-the-provision-boundary',
+    kind: 'tangle-sandbox',
+  })
+  assert.deepEqual(provisionRequest.workerEnvironment, {
+    workspace: { cwd: '/tmp/supervisor-proof-workspace' },
+    name: 'braid-live-supervisor-live-required-supervisor-provisioned',
+    metadata: {
+      owner: 'braid-live-supervisor',
+      proof: 'LIVE-11',
+      invocationId: 'live-required-supervisor-provisioned',
+    },
+  })
+  assert.equal('environment' in provisionRequest, false)
+  assert.equal('BRAID_SUPERVISOR_API_KEY' in provisionRequest.workerEnvironment, false)
+  assert.deepEqual(result.proof.run.ids, [fixture.supervisorId, fixture.workerId])
+  assert.equal(result.proof.facts.provisioned, true)
+  assert.equal(result.proof.facts.cleanupVerified, true)
+  assert.equal(result.proof.facts.terminalTakeoverRequired, true)
+  assert.equal(assertProofReceipt(result.proof), result.proof)
+})
 
-    const secret = 'live-required-secret-7e5d'
-    const throwingAdapter = join(root, 'throwing-supervisor-adapter.mjs')
-    await writeFile(
-      throwingAdapter,
-      'process.stdout.write(process.env.BRAID_TANGLE_API_KEY)\nthrow new Error(process.env.BRAID_TANGLE_API_KEY)\n',
-    )
-    const configured = {
-      ...common,
-      BRAID_SUPERVISOR_ROOT: root,
-      BRAID_SUPERVISOR_ID: supervisorId,
-      BRAID_SUPERVISOR_WORKER: workerId,
-      BRAID_SUPERVISOR_LIVE_ADAPTER: throwingAdapter,
-      BRAID_TANGLE_API_KEY: secret,
-    }
-    const direct = safeMessage(new Error(`provider rejected ${secret}`), configured)
-    assert.doesNotMatch(direct, new RegExp(secret, 'u'))
-    assert.match(direct, /\[REDACTED\]/u)
-    output = expectedFailureOutput('live-supervisor', configured, 2)
-    assert.equal(output.includes(secret), false)
-    assert.match(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
-  } finally {
-    await rm(root, { recursive: true, force: true })
+test('supervisor proof cleans an owned Runtime run after an observation failure', async () => {
+  const fixture = createSupervisorProofFixture({ snapshotCompleteness: 'partial' })
+  let cleanupCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        invocationId: 'live-required-supervisor-cleanup-on-failure',
+        runtime: fixture.api,
+        ...supervisorProvisionInputs('live-required-supervisor-cleanup-on-failure'),
+        provision: async () => ({
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          terminalTakeover: 'unsupported',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: [],
+            }
+          },
+        }),
+      }),
+    /runtime supervisor snapshot is incomplete/u,
+  )
+  assert.equal(cleanupCalls, 1)
+})
+
+test('supervisor proof rejects a supported terminal takeover without a real attachment', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'unavailable' })
+  let cleanupCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        invocationId: 'live-required-supervisor-required-attach',
+        runtime: fixture.api,
+        ...supervisorProvisionInputs('live-required-supervisor-required-attach'),
+        provision: async () => ({
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          providers: {},
+          terminalTakeover: 'required',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: [],
+            }
+          },
+        }),
+      }),
+    /supports terminal takeover/u,
+  )
+  assert.equal(cleanupCalls, 1)
+})
+
+test('supervisor proof refuses an incomplete owned cleanup receipt', async () => {
+  const fixture = createSupervisorProofFixture()
+  let cleanupCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '1000',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        invocationId: 'live-required-supervisor-incomplete-cleanup',
+        runtime: fixture.api,
+        ...supervisorProvisionInputs('live-required-supervisor-incomplete-cleanup'),
+        provision: async () => ({
+          rootDir: fixture.rootDir,
+          supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId,
+          terminalTakeover: 'unsupported',
+          cleanup: async () => {
+            cleanupCalls += 1
+            return {
+              status: 'completed',
+              rootDir: fixture.rootDir,
+              supervisorId: fixture.supervisorId,
+              workerId: fixture.workerId,
+              supervisorStatus: 'cancelled',
+              workerStatus: 'cancelled',
+              resourcesReleased: true,
+              remainingResources: ['worker-process'],
+            }
+          },
+        }),
+      }),
+    /left unconfirmed resources/u,
+  )
+  assert.equal(cleanupCalls, 1)
+})
+
+test('supervisor proof requires Runtime provisioning when no external run is configured', async () => {
+  const fixture = createSupervisorProofFixture()
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        runtime: fixture.api,
+      }),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'RUNTIME_SUPERVISOR_PROVISION_REQUIRED')
+      return true
+    },
+  )
+})
+
+test('supervisor provisioning failures retain the provider cause', async () => {
+  const fixture = createSupervisorProofFixture()
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+          BRAID_SUPERVISOR_POLL_MS: '1',
+        },
+        runtime: {
+          ...fixture.api,
+          provisionSupervisor: async () => {
+            throw new Error('SESSION_DELETING')
+          },
+        },
+        ...supervisorProvisionInputs('fixture-provisioning-failure'),
+      }),
+    (error) => {
+      assert.match(
+        error.message,
+        /Runtime supervisor provisioning failed before LIVE-11 controls: SESSION_DELETING/u,
+      )
+      return true
+    },
+  )
+})
+
+test('supervisor proof rejects a partial external binding before provisioning', async () => {
+  const fixture = createSupervisorProofFixture()
+  let provisionCalls = 0
+  await assert.rejects(
+    () =>
+      runSupervisorFlow({
+        environment: {
+          ...protectedEnvironment(),
+          BRAID_SUPERVISOR_ROOT: fixture.rootDir,
+        },
+        runtime: {
+          ...fixture.api,
+          provisionSupervisor: async () => {
+            provisionCalls += 1
+            throw new Error('provisioning must not run for a partial override')
+          },
+        },
+      }),
+    (error) => {
+      assert.equal(error.unavailable, true)
+      assert.equal(error.code, 'PROTECTED_SUPERVISOR_CONFIGURATION_INVALID')
+      return true
+    },
+  )
+  assert.equal(provisionCalls, 0)
+})
+
+test('configured supervisor failures are failed and never reported as partial', () => {
+  let failure
+  try {
+    execFileSync(process.execPath, ['scripts/live-required.mjs', 'live-supervisor'], {
+      cwd: repository,
+      env: {
+        ...protectedEnvironment(),
+        BRAID_SUPERVISOR_ROOT: join(tmpdir(), 'missing-braid-supervisor-root'),
+        BRAID_SUPERVISOR_ID: 'configured-supervisor',
+        BRAID_SUPERVISOR_WORKER: 'configured-worker',
+        BRAID_SUPERVISOR_TIMEOUT_MS: '5',
+        BRAID_SUPERVISOR_POLL_MS: '1',
+      },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch (error) {
+    failure = error
   }
+  assert(failure, 'configured supervisor unexpectedly passed')
+  assert.equal(failure.status, 1)
+  const output = `${failure.stdout ?? ''}${failure.stderr ?? ''}`
+  assert.match(output, /failed against the configured live path/u)
+  assert.doesNotMatch(output, /status":"partial/u)
+  assert.doesNotMatch(output, /BRAID_RELEASE_RESULT_JSON=\{"status":"unavailable"/u)
 })
 
 test('configured headless checks execute the real Braid RPC process and validate its marker', async () => {
@@ -740,7 +1588,7 @@ test('configured headless checks execute the real Braid RPC process and validate
     endpoint: 'http://127.0.0.1:3344',
     model: 'openai-codex/gpt-5.6-luna',
     runner: 'pi',
-    provider: 'openai-codex',
+    modelProvider: 'openai-codex',
   })
   try {
     const turn = await runHeadlessTurn({
@@ -781,7 +1629,7 @@ test('production live workspaces remove every raw authentication alias from chil
     endpoint: 'https://router.tangle.tools',
     model: 'openai/gpt-5',
     runner: 'pi',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialRef: 'credential-ref-live-required-test',
   })
   try {
@@ -801,7 +1649,7 @@ test('generated live credentials use the same protected store as production Brai
     endpoint: 'https://router.tangle.tools',
     model: 'glm-5.2',
     runner: 'cli-base',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialValue: secret,
   })
   let session
@@ -834,7 +1682,7 @@ test('generated credential cleanup disposes failed removal, cleans root, and ret
     endpoint: 'https://router.tangle.tools',
     model: 'glm-5.2',
     runner: 'cli-base',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialValue: secret,
     credentialContextFactory: () => ({
       store: {
@@ -910,7 +1758,7 @@ test('temporary-root cleanup retries after a transient failure without repeating
     endpoint: 'https://router.tangle.tools',
     model: 'glm-5.2',
     runner: 'cli-base',
-    provider: 'tangle',
+    modelProvider: 'tangle-router',
     credentialValue: 'live-required-root-cleanup-canary-154d',
     credentialContextFactory: () => ({
       store: {

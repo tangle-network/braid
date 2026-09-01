@@ -20,5 +20,5 @@
 › queue #1
 
 
-─────────────── type / for commands · Alt+Enter newline · paste ────────────────
-profile Braid starter · pi · via not connected                     Ctrl+C cancel
+─────────────────── type / for commands · Alt+Enter · paste ────────────────────
+profile Braid starter · pi · via local                             Ctrl+C cancel

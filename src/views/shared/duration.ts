@@ -10,13 +10,14 @@ export function effectiveElapsedMs(
   recorded: number | undefined,
   now = Date.now(),
 ): number | undefined {
+  if (recorded !== undefined && Number.isFinite(recorded) && recorded >= 0) return recorded
   if (
     (status === 'running' || status === 'starting' || status === 'reconnecting') &&
     startedAt !== undefined
   ) {
     return elapsedSince(startedAt, now)
   }
-  return recorded
+  return undefined
 }
 
 export function formatDuration(milliseconds: number): string {

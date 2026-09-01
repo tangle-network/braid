@@ -103,7 +103,7 @@ function readCompatibilityState(
 function supportedLines(values: SupportedValues): readonly string[] {
   return [
     'profile compatibility',
-    `supported pair: harness=${values.runner} · model=${values.model}`,
+    `supported pair: runner=${values.runner} · model=${values.model}`,
     `authored profile "${values.profileName}" remains unchanged`,
   ]
 }
@@ -111,7 +111,7 @@ function supportedLines(values: SupportedValues): readonly string[] {
 function incompatibleLines(values: UnsupportedValues): readonly string[] {
   return [
     'profile compatibility',
-    `unsupported pair: harness=${values.runner} · model=${values.model}`,
+    `unsupported pair: runner=${values.runner} · model=${values.model}`,
     `authored profile "${values.profileName}" remains unchanged`,
     'choose one explicit change:',
     `1. change runner to ${values.suggestedRunner} to keep model ${values.model}`,

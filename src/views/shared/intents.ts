@@ -26,13 +26,28 @@ export type BraidIntent =
       readonly conversationId?: string
       readonly branchId?: string
     }
-  | { readonly type: 'queue'; readonly operationId: string; readonly text: string }
-  | { readonly type: 'steer'; readonly operationId: string; readonly text: string }
+  | {
+      readonly type: 'queue'
+      readonly operationId: string
+      readonly text: string
+      readonly runId?: string
+    }
+  | {
+      readonly type: 'steer'
+      readonly operationId: string
+      readonly text: string
+      readonly runId?: string
+    }
   | {
       readonly type: 'cancel-run'
       readonly operationId: string
       readonly runId?: string
       readonly reason?: string
+    }
+  | {
+      readonly type: 'focus-run'
+      readonly operationId: string
+      readonly runId: string
     }
   | {
       readonly type: 'respond-interaction'

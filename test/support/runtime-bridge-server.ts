@@ -5,8 +5,11 @@ import type { AddressInfo } from 'node:net'
 import {
   type AgentEnvironmentCapabilities,
   type AgentProfile,
+  type ContextTransferReceipt,
   canonicalAgentProfileDigest,
   canonicalCandidateDigest,
+  ContextTransferReceiptSchema,
+  ContextTransferRequestSchema,
 } from '@tangle-network/agent-interface'
 
 const PROFILE_MATERIALIZATION_SCHEMA = 'cli-bridge.profile-materialization.v2'
@@ -184,7 +187,12 @@ const PI_NATIVE_CAPABILITIES: AgentEnvironmentCapabilities = {
     eventIdentity: true,
     cancellationIdempotency: true,
   },
-  nativeContinuation: { atomicBoundary: true, requestIdempotency: true },
+  contextTransfer: { freshSession: true, requestIdempotency: true, lookup: true },
+  nativeContinuation: {
+    atomicBoundary: true,
+    requestIdempotency: true,
+    admissionControl: true,
+  },
   sessions: { continue: true, list: true, messages: true },
   interactions: {
     kinds: ['permission'],
@@ -239,6 +247,7 @@ const GENERIC_CAPABILITIES: AgentEnvironmentCapabilities = {
     eventIdentity: true,
     cancellationIdempotency: true,
   },
+  contextTransfer: { freshSession: true, requestIdempotency: true, lookup: true },
   workspace: {
     read: false,
     write: false,
@@ -399,6 +408,7 @@ export async function startRuntimeBridgeServer(
   }
   const runs = new Map<string, RetainedFixtureRun>()
   const nativeSessions = new Map<string, RuntimeBridgeSession>()
+  const contextTransfers = new Map<string, ContextTransferReceipt>()
 
   /** Exact run coordinates travel on every run response, as cli-bridge 0.9 requires. */
   const coordinateHeaders = (run: RetainedFixtureRun) => ({
@@ -565,6 +575,86 @@ export async function startRuntimeBridgeServer(
       }
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(JSON.stringify(document))
+      return
+    }
+    if (request.method === 'POST' && path === '/v1/context-transfers') {
+      const parsed = ContextTransferRequestSchema.safeParse(JSON.parse(await readBody(request)))
+      if (!parsed.success) {
+        writeJson(response, 400, { error: { type: 'invalid_request_error' } })
+        return
+      }
+      const transfer = parsed.data
+      const existing = contextTransfers.get(transfer.operationId)
+      if (existing !== undefined) {
+        writeJson(
+          response,
+          200,
+          ContextTransferReceiptSchema.parse({ ...existing, status: 'replayed' }),
+        )
+        return
+      }
+      const admittedAt = new Date(
+        Math.max(Date.now(), Date.parse(transfer.acceptance.acceptedAt)),
+      ).toISOString()
+      const receipt = ContextTransferReceiptSchema.parse({
+        status: 'accepted',
+        operationId: transfer.operationId,
+        requestDigest: transfer.requestDigest,
+        planDigest: transfer.plan.digest,
+        contextDigest: transfer.plan.context.digest,
+        source: transfer.plan.source.source,
+        destination: transfer.plan.destination,
+        provider: transfer.plan.destination.provider,
+        environmentId: transfer.plan.destination.environmentId,
+        sessionId: transfer.plan.destination.sessionId,
+        runId: transfer.plan.destination.runId,
+        executionId: transfer.plan.destination.executionId,
+        sessionCreatedForOperationId: transfer.operationId,
+        sessionCreatedAt: admittedAt,
+        transferredMessageIds: transfer.plan.messages
+          .filter((message) => message.action === 'include')
+          .map((message) => message.messageId),
+        omittedMessageIds: transfer.plan.messages
+          .filter((message) => message.action === 'omit')
+          .map((message) => message.messageId),
+        admittedAt,
+      })
+      contextTransfers.set(transfer.operationId, receipt)
+      writeJson(response, 200, receipt)
+      return
+    }
+    const contextTransferMatch = /^\/v1\/context-transfers\/([^/]+)$/u.exec(path)
+    if (request.method === 'GET' && contextTransferMatch !== null) {
+      const receipt = contextTransfers.get(decodeURIComponent(contextTransferMatch[1] ?? ''))
+      if (
+        receipt === undefined ||
+        url.searchParams.get('request_digest') !== receipt.requestDigest
+      ) {
+        writeJson(response, 404, { error: { type: 'not_found_error' } })
+        return
+      }
+      writeJson(
+        response,
+        200,
+        ContextTransferReceiptSchema.parse({ ...receipt, status: 'replayed' }),
+      )
+      return
+    }
+    const contextEnvironmentMatch = /^\/v1\/context-transfer-environments\/([^/]+)$/u.exec(path)
+    if (request.method === 'GET' && contextEnvironmentMatch !== null) {
+      const environmentId = decodeURIComponent(contextEnvironmentMatch[1] ?? '')
+      const receipt = Array.from(contextTransfers.values()).find(
+        (candidate) => candidate.environmentId === environmentId,
+      )
+      if (receipt === undefined) {
+        writeJson(response, 404, { error: { type: 'not_found_error' } })
+        return
+      }
+      writeJson(
+        response,
+        200,
+        ContextTransferReceiptSchema.parse({ ...receipt, status: 'replayed' }),
+      )
       return
     }
     const eventsMatch = /^\/v1\/runs\/([^/]+)\/events$/u.exec(path)

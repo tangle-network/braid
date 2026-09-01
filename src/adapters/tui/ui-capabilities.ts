@@ -1,4 +1,9 @@
-import type { BraidState } from '../../domain/state.js'
+import {
+  activeRunForBranch,
+  type BraidState,
+  isLiveRunStatus,
+  isRecoverableRun,
+} from '../../domain/state.js'
 import type { CapabilityMap } from '../../views/shared/models.js'
 import type { UiFixture } from './ui-fixtures.js'
 
@@ -18,6 +23,8 @@ export const UNSUPPORTED = Object.freeze({
   'interaction.automation': 'Interaction automation requires the shared response contract',
   'run.interactive': 'Native terminal mode requires an interactive TUI and a supported provider',
   'run.attach': 'Native terminal attachment requires an interactive TUI and a retained session',
+  'supervisor.worker.attach':
+    'Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
 } satisfies Readonly<Record<string, string>>)
 
@@ -27,7 +34,14 @@ export function capabilityMap(
   fixture?: UiFixture,
   canRespond = false,
 ): CapabilityMap {
-  const active = state.activeRunId !== null
+  const selectedActive = activeRunForBranch(state, state.conversationId, state.branchId)
+  const active = selectedActive !== undefined
+  const focusedRun = state.focusedRunId
+    ? state.runs.find((run) => run.id === state.focusedRunId)
+    : undefined
+  const focusedActive = focusedRun !== undefined && isLiveRunStatus(focusedRun.status)
+  const focusedDetachedCancellation =
+    focusedRun?.status === 'detached' && focusedRun.capabilities.controls.cancel
   const deterministicFixture = state.profile.model?.default === 'fixture/deterministic'
   const configuredConnection = state.selectedConnectionId !== null
   const capabilities: Record<
@@ -64,6 +78,15 @@ export function capabilityMap(
           reason: 'Two completed or failed runs are required for comparison',
         }
       : { available: true, source: 'application' }
+  capabilities['analysis.cancel'] = state.analyses.some(
+    (analysis) => analysis.status === 'preparing' || analysis.status === 'running',
+  )
+    ? { available: true, source: 'application' }
+    : {
+        available: false,
+        source: 'application',
+        reason: 'There is no running analysis to cancel',
+      }
   capabilities['application.quit'] = { available: true, source: 'local' }
   capabilities['help.read'] = { available: true, source: 'local' }
   capabilities['profile.select'] = { available: true, source: 'application' }
@@ -72,6 +95,44 @@ export function capabilityMap(
   capabilities['activity.read'] = { available: true, source: 'local' }
   capabilities['graph.read'] = { available: true, source: 'local' }
   capabilities['details.read'] = { available: true, source: 'local' }
+  const hasWorkspace = state.workspace !== null
+  const hasRunningWorker = state.workers.some((worker) => worker.status === 'running')
+  const hasRunningSupervisor = state.supervisors.some(
+    (supervisor) => supervisor.status === 'running',
+  )
+  capabilities['supervisor.refresh'] = hasWorkspace
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'Initialize a workspace before refreshing runtime supervision',
+      }
+  capabilities['supervisor.worker.steer'] = hasRunningWorker
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'There is no running supervised worker to steer',
+      }
+  capabilities['supervisor.worker.cancel'] = hasRunningWorker
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'There is no running supervised worker to cancel',
+      }
+  capabilities['supervisor.cancel'] = hasRunningSupervisor
+    ? { available: true, source: 'runtime' }
+    : {
+        available: false,
+        source: 'runtime',
+        reason: 'There is no running supervisor to cancel',
+      }
+  capabilities['supervisor.worker.attach'] = {
+    available: false,
+    source: 'runtime',
+    reason: UNSUPPORTED['supervisor.worker.attach'],
+  }
   capabilities['interaction.respond'] = canRespond
     ? { available: true, source: 'runtime' }
     : {
@@ -94,7 +155,7 @@ export function capabilityMap(
           reason: 'Initialize a workspace before editing a draft',
         }
       : { available: true, source: 'application' }
-  const conversationsAvailable = state.workspace !== null && !active
+  const conversationsAvailable = state.workspace !== null
   for (const capability of [
     'conversation.create',
     'conversation.open',
@@ -111,7 +172,7 @@ export function capabilityMap(
           reason:
             state.workspace === null
               ? 'Initialize a workspace first'
-              : 'Finish or cancel the active run first',
+              : 'The workspace is not ready for conversation changes',
         }
   }
   capabilities['run.send'] =
@@ -127,41 +188,35 @@ export function capabilityMap(
               : 'Configure a connection before sending',
         }
   const runConfigurationAvailable =
-    state.workspace !== null && !active && (deterministicFixture || configuredConnection)
+    state.workspace !== null && (deterministicFixture || configuredConnection)
   for (const capability of ['run.runner', 'run.model', 'run.effort']) {
     capabilities[capability] = runConfigurationAvailable
       ? { available: true, source: 'application' }
       : {
           available: false,
           source: 'application',
-          reason: active
-            ? 'Finish or cancel the active run first'
-            : state.workspace === null
+          reason:
+            state.workspace === null
               ? 'Initialize a workspace first'
               : 'Configure a connection before changing run settings',
         }
   }
   capabilities['run.cancel'] =
-    active && canCancel
+    (focusedActive && canCancel) || focusedDetachedCancellation
       ? { available: true, source: 'runtime' }
       : {
           available: false,
           source: 'runtime',
-          reason: active
+          reason: focusedActive
             ? 'The current runtime does not acknowledge provider cancellation'
-            : 'There is no active run to cancel',
+            : focusedRun?.status === 'detached'
+              ? 'The detached run does not advertise remote cancellation'
+              : 'There is no active run to cancel',
         }
-  const activeRun = state.activeRunId
-    ? state.runs.find((run) => run.id === state.activeRunId)
-    : undefined
-  const recoverableRun = activeRun
-    ? undefined
-    : [...state.runs]
-        .reverse()
-        .find(
-          (run) =>
-            (run.status === 'detached' || run.status === 'unknown') && run.controlRef !== undefined,
-        )
+  const focusedRecoverable =
+    focusedRun !== undefined && isRecoverableRun(focusedRun) ? focusedRun : undefined
+  const activeRun = focusedActive && focusedRecoverable === undefined ? focusedRun : undefined
+  const recoverableRun = focusedRecoverable ?? [...state.runs].reverse().find(isRecoverableRun)
   capabilities['run.queue'] = activeRun?.capabilities.controls.queue
     ? { available: true, source: 'provider' }
     : {
@@ -190,27 +245,29 @@ export function capabilityMap(
           : 'There is no active run',
       }
   capabilities['run.reconnect'] =
-    recoverableRun?.capabilities.streaming.replay && recoverableRun.capabilities.controls.recreate
+    recoverableRun?.capabilities.streaming.replay &&
+    recoverableRun.capabilities.events.cursor &&
+    recoverableRun.capabilities.controls.recreate
       ? { available: true, source: 'provider' }
       : {
           available: false,
           source: 'provider',
-          reason: active
-            ? 'Detach the active run before reconnecting it'
-            : recoverableRun
-              ? 'The detached run cannot be recreated by this provider'
-              : 'There is no detached run to reconnect',
+          reason: recoverableRun
+            ? 'The detached run cannot be recreated by this provider'
+            : active
+              ? 'There is no recoverable run to reconnect while another run is active'
+              : 'There is no recoverable run to reconnect',
         }
   capabilities['run.reconcile'] = recoverableRun?.capabilities.controls.status
     ? { available: true, source: 'provider' }
     : {
         available: false,
         source: 'provider',
-        reason: active
-          ? 'Detach the active run before reconciling it'
-          : recoverableRun
-            ? 'The detached run does not expose provider status'
-            : 'There is no detached run to reconcile',
+        reason: recoverableRun
+          ? 'The detached run does not expose provider status'
+          : active
+            ? 'There is no recoverable run to reconcile while another run is active'
+            : 'There is no recoverable run to reconcile',
       }
   if (fixture === 'interaction') {
     capabilities['interaction.respond'] = { available: true, source: 'provider' }

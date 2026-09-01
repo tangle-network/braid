@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { AgentInteractiveSessionRef, AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AgentInteractiveSessionRef,
+  AgentInteractiveSessionStart,
+  AgentProfile,
+} from '@tangle-network/agent-interface'
 import {
   AgentInteractiveSessionRefSchema,
   canonicalCandidateDigest,
@@ -18,7 +22,10 @@ import {
   stableProviderId,
 } from '../src/adapters/runtime/production-backend-common.js'
 import type { PreparedTangleRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
-import { assertInteractiveProvider } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import {
+  assertInteractiveProvider,
+  interactiveEnvironment,
+} from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
 import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
@@ -84,9 +91,12 @@ test('starts one native process, records Runtime identity, and emits replayable 
   const broker = new NativeInteractiveRunBroker()
   const port = interactivePort(fixture, broker)
   const admissions: RetainedInteractiveAdmission[] = []
-  const input = executionInput('run/start', async (admission) => {
-    admissions.push(admission)
-  })
+  const input = {
+    ...executionInput('run/start', async (admission) => {
+      admissions.push(admission)
+    }),
+    workspaceRoot: '/client-only/braid-workspace',
+  }
 
   const admission = await port.admit(input)
   assert.equal(admission.providerSessionId, undefined)
@@ -105,6 +115,7 @@ test('starts one native process, records Runtime identity, and emits replayable 
   assert.equal(admission.capabilities?.events.cursor, true)
   assert.equal(observed.cursor, `${input.runId}:interactive:${handle.ref.incarnationId}:1`)
   assert.equal(observed.eventId, `${input.runId}:interactive:${handle.ref.incarnationId}:observed`)
+  assert.equal(fixture.stats.startRequests[0]?.cwd, undefined)
   assert.equal(fixture.lastCreateMetadata?.providerSessionId, undefined)
   assert.equal(fixture.lastCreateMetadata?.surface, 'interactive-agent')
 
@@ -256,6 +267,7 @@ test('reconnect recovers a persisted interactive intent exactly once', async () 
       retainedAdmission: intent,
       receipt: receiptFor(input),
       onRetainedAdmission: input.onRetainedAdmission,
+      workspaceRoot: '/client-only/restarted-braid-workspace',
       signal: input.signal,
     } as Parameters<typeof recovered.reconnect>[0])
     [Symbol.asyncIterator]()
@@ -264,6 +276,7 @@ test('reconnect recovers a persisted interactive intent exactly once', async () 
   assert.equal(handle.ref.run.sessionId, intent.sessionId)
   assert.equal(fixture.stats.createCalls, 1)
   assert.equal(fixture.stats.processStarts, 1)
+  assert.equal(fixture.stats.startRequests[0]?.cwd, undefined)
   assert.equal(fixture.stats.dispatchCalls, 0)
   assert.equal(fixture.resolveInputs.at(-1)?.sessionId, undefined)
   await finish(reconnectIterator, broker, input.runId)
@@ -510,6 +523,22 @@ test('interactive provider admission requires terminal and prompt capabilities',
   assert.throws(() => assertInteractiveProvider(incomplete), /exact interactive agents/u)
 })
 
+test('retained runtime receives the canonical workspace request without a provider cwd shim', () => {
+  const fixture = interactiveFixture()
+  const workspaceRequest = {
+    environment: 'universal',
+    repoUrl: 'https://github.com/acme/repository',
+    gitRef: 'main',
+    cwd: { base: 'repository', path: 'src' },
+  } as const
+  const prepared = { ...fixture.prepared, workspaceRequest } as PreparedTangleRetainedConnection
+
+  const environment = interactiveEnvironment(prepared, 'run/workspace-request')
+
+  assert.deepEqual(environment.workspace, workspaceRequest)
+  assert.equal(Object.hasOwn(environment, 'cwd'), false)
+})
+
 test('native interactive admission does not advertise structured responses it cannot route', async () => {
   const fixture = interactiveFixture()
   const port = new TangleRetainedInteractiveExecutionPort({
@@ -549,6 +578,7 @@ interface InteractiveFixture {
     getCalls: number
     startCalls: number
     processStarts: number
+    startRequests: AgentInteractiveSessionStart[]
     dispatchCalls: number
     stopCalls: number
     stopSignals: (AbortSignal | undefined)[]
@@ -564,6 +594,7 @@ function interactiveFixture(): InteractiveFixture {
     getCalls: 0,
     startCalls: 0,
     processStarts: 0,
+    startRequests: [] as AgentInteractiveSessionStart[],
     dispatchCalls: 0,
     stopCalls: 0,
     stopSignals: [],
@@ -584,6 +615,7 @@ function interactiveFixture(): InteractiveFixture {
     },
     startInteractive: async (request) => {
       stats.startCalls += 1
+      stats.startRequests.push(request)
       if (state.ref === undefined) {
         stats.processStarts += 1
         state.ref = interactiveRef(request)
@@ -666,6 +698,7 @@ function executionInput(
   return {
     operationId: `operation-${runId}`,
     runId,
+    turnId: `turn-${runId}`,
     text: 'Inspect this workspace.',
     profile: PROFILE,
     mode: 'interactive',

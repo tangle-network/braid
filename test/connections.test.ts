@@ -85,6 +85,7 @@ function turnInput(profileValue: AgentProfile): ExecuteTurnInput {
   return {
     operationId: 'operation-connection-test',
     runId: 'run-connection-test',
+    turnId: 'turn-connection-test',
     text: 'say hello',
     profile: profileValue,
     signal: new AbortController().signal,
@@ -427,6 +428,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
     canonicalDigest({
       kind: 'tangle-sandbox-environment-request',
       idempotencyKey: 'env-braid-run-connection-test',
+      workspaceRequest: null,
     }),
   )
   assert.deepEqual(sandboxBackend.backend.profile, profile())

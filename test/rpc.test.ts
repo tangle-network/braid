@@ -13,6 +13,7 @@ import {
   type ExecutionPort,
   UNKNOWN_RUN_CAPABILITIES,
 } from '../src/ports/execution.js'
+import type { BraidUiController } from '../src/views/shared/intents.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { MAX_RPC_LINE_BYTES } from '../src/views/headless/protocol-limits.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
@@ -143,6 +144,96 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   assert.equal(typeof finalState.state.runs[0]?.durationMs, 'number')
   assert.equal(typeof finalState.state.runs[0]?.tokensKnown, 'boolean')
   assert.equal(typeof finalState.state.runs[0]?.usdKnown, 'boolean')
+})
+
+test('JSONL shutdown acknowledges only after application completion and close', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const realController = controllerFor(app)
+  const completion = deferred()
+  const closeCompletion = deferred()
+  const shutdownDispatched = deferred()
+  const order: string[] = []
+  const responses: BraidResponse[] = []
+  const controller: BraidUiController = {
+    view: () => realController.view(),
+    state: () => realController.state(),
+    events: () => realController.events(),
+    subscribe: (subscriber, options) => realController.subscribe(subscriber, options),
+    initialize: (workspace) => realController.initialize(workspace),
+    waitForIdle: () => realController.waitForIdle(),
+    dispatch: async (intent) => {
+      const result = await realController.dispatch(intent)
+      if (intent.type !== 'shutdown' || result.kind !== 'accepted') return result
+      order.push('shutdown-dispatched')
+      shutdownDispatched.resolve()
+      const realCompletion = result.completion ?? Promise.resolve()
+      return {
+        ...result,
+        completion: Promise.all([realCompletion, completion.promise]).then(() => undefined),
+      }
+    },
+    close: async () => {
+      order.push('close-start')
+      const realClose = realController.close()
+      await closeCompletion.promise
+      await realClose
+      order.push('close-finish')
+    },
+  }
+
+  const running = runRpc(
+    controller,
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-order-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'req-order-shutdown',
+        operationId: 'op-order-shutdown',
+        command: 'shutdown',
+      },
+    ]),
+    {
+      write: (chunk) => {
+        const response = JSON.parse(chunk) as BraidResponse
+        responses.push(response)
+        if (response.type === 'ack' && response.requestId === 'req-order-shutdown')
+          order.push('shutdown-ack')
+        return true
+      },
+    },
+  )
+
+  await shutdownDispatched.promise
+  assert.equal(
+    responses.some(
+      (response) => response.type === 'ack' && response.requestId === 'req-order-shutdown',
+    ),
+    false,
+  )
+  order.push('completion-finish')
+  completion.resolve()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(order.includes('close-start'), true)
+  assert.equal(
+    responses.some(
+      (response) => response.type === 'ack' && response.requestId === 'req-order-shutdown',
+    ),
+    false,
+  )
+  closeCompletion.resolve()
+  assert.equal(await running, 0)
+  assert.deepEqual(order, [
+    'shutdown-dispatched',
+    'completion-finish',
+    'close-start',
+    'close-finish',
+    'shutdown-ack',
+  ])
 })
 
 test('JSONL drives the complete canonical conversation lifecycle', async () => {
@@ -488,7 +579,6 @@ test('JSONL run configuration is replay safe, visible, and reaches Runtime', asy
     ...DETERMINISTIC_PROFILE,
     harness: 'codex',
     model: {
-      ...DETERMINISTIC_PROFILE.model,
       default: 'openai/gpt-5.6',
       reasoningEffort: 'xhigh',
     },
@@ -690,6 +780,76 @@ test('JSONL cancel interrupts an active send and reports the terminal state', as
   if (cancelReplay?.type !== 'ack') assert.fail('missing cancellation replay acknowledgement')
   assert.equal(cancelReplay.replayed, true)
   assert.equal(cancelReplay.outcome, 'accepted')
+})
+
+test('JSONL detach retains its completion and reports the detached event and state', async () => {
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => ({
+      ...DEFAULT_RUN_CAPABILITIES,
+      streaming: { ...DEFAULT_RUN_CAPABILITIES.streaming, replay: true, detach: true },
+      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, recreate: true },
+    }),
+    async *streamTurn(input) {
+      yield { type: 'text_delta', text: 'waiting for detach' }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    detachRun: async (input) => {
+      releaseStream?.()
+      return { operationId: input.operationId, outcome: 'accepted', detail: 'detached' }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  const responses: BraidResponse[] = []
+  const code = await runRpc(
+    controllerFor(app),
+    requestInput([
+      {
+        version: 1,
+        requestId: 'req-detach-init',
+        command: 'initialize',
+        params: { workspace: '/workspace', subscribe: true },
+      },
+      {
+        version: 1,
+        requestId: 'req-detach-send',
+        operationId: 'op-detach-send',
+        command: 'send',
+        params: { text: 'detach this active turn' },
+      },
+      {
+        version: 1,
+        requestId: 'req-detach',
+        operationId: 'op-detach-active',
+        command: 'detach',
+        params: { runId: 'run-000001' },
+      },
+      {
+        version: 1,
+        requestId: 'req-detach-stop',
+        operationId: 'op-detach-stop',
+        command: 'shutdown',
+        params: { mode: 'detach' },
+      },
+    ]),
+    { write: responseWriter(responses) },
+  )
+
+  assert.equal(code, 0)
+  assert.ok(
+    responses.some(
+      (response) => response.type === 'event' && response.event.kind === 'run.detached',
+    ),
+  )
+  const state = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'req-detach',
+  )
+  assert.equal(state?.type, 'state')
+  if (state?.type !== 'state' || state.projection !== 'full') assert.fail('missing detach state')
+  assert.equal(state.state.runs[0]?.status, 'detached')
 })
 
 test('RPC and plain shutdown exit at the drain deadline for a never-ending iterator', async () => {

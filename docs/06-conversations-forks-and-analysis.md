@@ -308,6 +308,16 @@ The analyst uses canonical bounded trace tools and cannot mutate the source work
 
 Analysis runs in a separate runtime execution context and has its own cancellation and cost.
 
+One request can select explicit analyst identifiers, comma-separated recipe aliases, or every available trace analyst with `all`.
+
+Braid validates and removes duplicate selections before dispatch.
+
+The exact registry reports analyst start and completion events in its defined serial order.
+
+Braid stores those events as pending, running, completed, skipped, or failed progress under the analysis record.
+
+Restart replay restores the last committed analyst state before terminal reconciliation.
+
 ### Analysis result
 
 The result stores analyst identity, source digest, question or recipe, findings, exact citations, uncertainty, deterministic checks, errors, usage, cost, latency, and package versions.
@@ -330,6 +340,8 @@ The destination agent sees that the content is an external analysis rather than 
 
 Promotion is a user action and never follows automatically from analyst completion.
 
+The activity browser lets the user repeat `p` to promote supported cited findings one at a time.
+
 ## Named analyses
 
 `/analyze failure` runs deterministic trace checks and the configured failure-mode analyst.
@@ -343,6 +355,10 @@ Promotion is a user action and never follows automatically from analyst completi
 Recipes are registered through `agent-eval` and versioned by exact identifier.
 
 Braid may add presentation aliases but cannot duplicate analyst logic in a command handler.
+
+Comma-separated aliases can select several analysts without creating separate analysis records.
+
+`/analyze all` selects every available trace analyst except the dedicated free-form question analyst.
 
 ## Comparison
 

@@ -7,6 +7,7 @@ import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from '../adapters/connections/product
 import type { ProductionCompositionConfig } from '../app/production-composition.js'
 import type { ProfileRecord } from '../app/profile-types.js'
 import { discoverProfiles } from '../app/profiles.js'
+import { snapshotWorkspaceRequest } from '../app/workspace-request.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { createConnectionId } from '../domain/ids.js'
 import { productionActiveProfile } from './production-active-profile.js'
@@ -130,6 +131,7 @@ export async function loadProductionSetup(
   ])
   const profiles = projectSetupProfiles(options, endpoint, bridge.models, discovered)
   const now = new Date().toISOString()
+  const workspaceRequest = snapshotWorkspaceRequest(options.workspaceRequest)
   return {
     configPath,
     profiles: profiles.profiles,
@@ -142,6 +144,7 @@ export async function loadProductionSetup(
     ...(profiles.initialProfileId === undefined
       ? {}
       : { initialProfileId: profiles.initialProfileId }),
+    ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     verification: {
       status: 'unverified',
       detail:

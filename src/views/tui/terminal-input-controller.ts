@@ -1,6 +1,7 @@
 import { matchesKey, type TUI } from '@earendil-works/pi-tui'
 import { commandAvailability } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
+import { liveRunId } from '../shared/run-selection.js'
 import type { ComposerMode } from './composer-view.js'
 import { type BraidKeymap, isTextInputSequence, matchesKeyAction } from './keyboard.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
@@ -152,7 +153,7 @@ export class TerminalInputController {
       matchesKeyAction(data, this.#keymap, 'exit') &&
       !this.#tui.hasOverlay() &&
       !this.#shell.editor.getText() &&
-      !this.#controller.view().activeRunId
+      liveRunId(this.#controller.view()) === undefined
     ) {
       this.#requestShutdown()
       return { consume: true }
@@ -162,8 +163,14 @@ export class TerminalInputController {
         this.#shell.editor.setText('')
         return { consume: true }
       }
-      if (this.#controller.view().activeRunId) {
-        void this.#dispatch({ type: 'cancel-run', operationId: this.#nextOperationId() })
+      const view = this.#controller.view()
+      const runId = liveRunId(view)
+      if (runId) {
+        void this.#dispatch({
+          type: 'cancel-run',
+          operationId: this.#nextOperationId(),
+          runId,
+        })
         return { consume: true }
       }
       if (this.#quitArmed) this.#requestShutdown()

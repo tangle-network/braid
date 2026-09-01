@@ -10,7 +10,12 @@ import type {
   ProfileSnapshotRecord,
   WorkspaceRecord,
 } from './entities.js'
-import { MAX_RETAINED_IDLE_TTL_SECONDS, MIN_RETAINED_IDLE_TTL_SECONDS } from './entities-core.js'
+import {
+  MAX_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS,
+  MAX_RETAINED_IDLE_TTL_SECONDS,
+  MIN_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS,
+  MIN_RETAINED_IDLE_TTL_SECONDS,
+} from './entities-core.js'
 import {
   assertDate,
   assertDigest,
@@ -148,4 +153,56 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
   assertDate(record.updatedAt, 'connection.updatedAt')
   if (record.credentialRef !== undefined)
     assertEntityId('credentialRef', record.credentialRef, 'connection.credentialRef')
+  if (record.confidentialAttestationPolicy !== undefined) {
+    if (record.kind !== 'tangle-sandbox') {
+      fail('connection.confidentialAttestationPolicy is available only for tangle-sandbox')
+    }
+    const policy = record.confidentialAttestationPolicy
+    const keys = Object.keys(policy)
+    if (
+      keys.some(
+        (key) =>
+          key !== 'acceptedMeasurements' && key !== 'acceptedPolicyIds' && key !== 'maxAgeSeconds',
+      )
+    ) {
+      fail('connection.confidentialAttestationPolicy contains an unsupported field')
+    }
+    if (
+      !Array.isArray(policy.acceptedMeasurements) ||
+      policy.acceptedMeasurements.length === 0 ||
+      policy.acceptedMeasurements.length > 256 ||
+      policy.acceptedMeasurements.some((measurement) => !/^sha256:[0-9a-f]{64}$/u.test(measurement))
+    ) {
+      fail(
+        'connection.confidentialAttestationPolicy.acceptedMeasurements must contain one to 256 canonical SHA-256 digests',
+      )
+    }
+    if (new Set(policy.acceptedMeasurements).size !== policy.acceptedMeasurements.length) {
+      fail(
+        'connection.confidentialAttestationPolicy.acceptedMeasurements must not contain duplicates',
+      )
+    }
+    if (
+      !Array.isArray(policy.acceptedPolicyIds) ||
+      policy.acceptedPolicyIds.length === 0 ||
+      policy.acceptedPolicyIds.length > 256 ||
+      policy.acceptedPolicyIds.some((value) => !/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u.test(value))
+    ) {
+      fail(
+        'connection.confidentialAttestationPolicy.acceptedPolicyIds must contain one to 256 canonical ids',
+      )
+    }
+    if (new Set(policy.acceptedPolicyIds).size !== policy.acceptedPolicyIds.length) {
+      fail('connection.confidentialAttestationPolicy.acceptedPolicyIds must not contain duplicates')
+    }
+    if (
+      !Number.isSafeInteger(policy.maxAgeSeconds) ||
+      policy.maxAgeSeconds < MIN_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS ||
+      policy.maxAgeSeconds > MAX_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS
+    ) {
+      fail(
+        `connection.confidentialAttestationPolicy.maxAgeSeconds must be an integer from ${MIN_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS} to ${MAX_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS}`,
+      )
+    }
+  }
 }

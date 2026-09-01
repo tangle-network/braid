@@ -49,21 +49,25 @@ export interface InteractionControllerInput {
 export async function respondInteraction(
   input: InteractionControllerInput,
 ): Promise<InteractionReceipt> {
-  const run = findRun(input.state, input.runId)
-  const interaction = run.interactions.find(
+  let run = findRun(input.state, input.runId)
+  let interaction = run.interactions.find(
     (candidate) => candidate.request.id === input.interactionId,
   )
   if (!interaction)
     throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
   const checked = checkInteractionResponse(interaction.request, input.response)
+  const providerResponse = {
+    ...checked.response,
+    id: interaction.responseBinding.interactionId,
+  }
   const request: InteractionEffectRequest = createInteractionResponseCommand(
     interaction.responseBinding,
     input.operationId,
-    checked.response,
+    providerResponse,
   )
   const digest = effectRequestDigest({ effectKind: 'interaction.respond', request })
   assertBinding(input, run, interaction.responseBinding)
-  const recorded = recordedInteractionOperation(input.events(), input.operationId)
+  let recorded = recordedInteractionOperation(input.events(), input.operationId)
   if (recorded.conflict) throw new AppError('OPERATION_CONFLICT', recorded.conflict)
   if (recorded.requested !== undefined)
     assertRecordedInteractionMatchesInput(
@@ -79,42 +83,81 @@ export async function respondInteraction(
       input.interactionId,
       input.operationId,
     )
+  let durableRequest = interaction.responseOperation
+  let retryUnknown = durableRequest?.outcome === 'unknown'
   const previous = input.ledger.getInteraction(input.operationId)
   if (previous) {
     if (previous.digest !== digest)
       throw new AppError('OPERATION_CONFLICT', `Operation ${input.operationId} has different input`)
-    return {
-      operationId: input.operationId,
-      runId: input.runId,
-      interactionId: input.interactionId,
-      replayed: true,
-      acknowledgement: { operationId: input.operationId, outcome: 'already-applied' },
-      completion: previous.completion,
+    await previous.completion
+    run = findRun(input.state, input.runId)
+    interaction = run.interactions.find((candidate) => candidate.request.id === input.interactionId)
+    if (!interaction)
+      throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
+    durableRequest = interaction.responseOperation
+    retryUnknown = durableRequest?.outcome === 'unknown'
+    recorded = recordedInteractionOperation(input.events(), input.operationId)
+    if (recorded.conflict) throw new AppError('OPERATION_CONFLICT', recorded.conflict)
+    if (recorded.requested !== undefined)
+      assertRecordedInteractionMatchesInput(
+        recorded.requested,
+        input.runId,
+        input.interactionId,
+        input.operationId,
+      )
+    if (recorded.responded !== undefined)
+      assertRecordedInteractionMatchesInput(
+        recorded.responded,
+        input.runId,
+        input.interactionId,
+        input.operationId,
+      )
+    if (recorded.responded === undefined)
+      throw new AppError(
+        'OPERATION_REQUIRES_RECONCILIATION',
+        `Operation ${input.operationId} has no durable interaction result`,
+      )
+    if (recorded.responded.outcome !== 'unknown') {
+      assertRecordedResponseMatches(recorded.responded, checked, input.operationId)
+      return {
+        operationId: input.operationId,
+        runId: input.runId,
+        interactionId: input.interactionId,
+        replayed: true,
+        acknowledgement: { operationId: input.operationId, outcome: 'already-applied' },
+        completion: previous.completion,
+      }
     }
+    retryUnknown = true
   }
   const existing = input.effects.current(input.operationId)
   if (existing && existing.requestDigest !== digest)
     throw new AppError('OPERATION_CONFLICT', `Operation ${input.operationId} has different input`)
+  const requestedOutcome = recorded.requested?.outcome ?? durableRequest?.requestedOutcome
   if (recorded.responded !== undefined) {
-    assertRecordedResponseMatches(recorded.responded, checked, input.operationId)
-    const completion = Promise.resolve(input.state.currentState())
-    input.ledger.setInteraction(input.operationId, { digest, completion })
-    return {
-      operationId: input.operationId,
-      runId: input.runId,
-      interactionId: input.interactionId,
-      replayed: true,
-      acknowledgement:
-        recorded.responded.outcome === 'unknown'
-          ? {
-              operationId: input.operationId,
-              outcome: 'unknown' as const,
-              detail: recorded.responded.detail ?? 'INTERACTION_RESPONSE_REQUIRES_RECONCILIATION',
-            }
-          : { operationId: input.operationId, outcome: 'already-applied' as const },
-      completion,
+    retryUnknown ||= recorded.responded.outcome === 'unknown'
+    assertRecordedResponseMatches(recorded.responded, checked, input.operationId, {
+      allowUnknownOutcome: retryUnknown,
+      ...(requestedOutcome === undefined ? {} : { requestedOutcome }),
+    })
+    if (recorded.responded.outcome !== 'unknown') {
+      const completion = Promise.resolve(input.state.currentState())
+      input.ledger.setInteraction(input.operationId, { digest, completion })
+      return {
+        operationId: input.operationId,
+        runId: input.runId,
+        interactionId: input.interactionId,
+        replayed: true,
+        acknowledgement: { operationId: input.operationId, outcome: 'already-applied' as const },
+        completion,
+      }
     }
   }
+  if (durableRequest !== undefined && durableRequest.operationId === input.operationId)
+    assertDurableResponseMatches(durableRequest, checked, input.operationId, {
+      allowUnknownOutcome: retryUnknown,
+      ...(requestedOutcome === undefined ? {} : { requestedOutcome }),
+    })
   if (!supportsInteractionResponse(run.receipt.capabilities))
     throw new AppError(
       'CAPABILITY_UNAVAILABLE',
@@ -125,14 +168,11 @@ export async function respondInteraction(
       'CAPABILITY_UNAVAILABLE',
       'The current runtime cannot acknowledge interaction responses',
     )
-  const durableRequest = interaction.responseOperation
-  if (durableRequest !== undefined && durableRequest.operationId === input.operationId)
-    assertDurableResponseMatches(durableRequest, checked, input.operationId)
   const alreadyRequested =
     recorded.requested !== undefined || durableRequest?.operationId === input.operationId
   if (recorded.requested !== undefined)
     assertRecordedResponseMatches(recorded.requested, checked, input.operationId)
-  assertInteractionIsOpen(input, run, interaction.status)
+  assertInteractionIsOpen(input, run, interaction.status, retryUnknown)
   const owner =
     durableRequest?.operationId ??
     recordedInteractionOwner(input.events(), input.runId, input.interactionId)
@@ -204,12 +244,21 @@ function assertBinding(
   run: ReturnType<typeof findRun>,
   binding: import('@tangle-network/agent-interface').InteractionBinding,
 ): void {
+  const exact = run.controlRef
   if (
     binding.runId !== input.runId ||
-    binding.interactionId !== input.interactionId ||
-    (run.providerSessionId !== undefined && binding.sessionId !== run.providerSessionId) ||
-    (run.environmentId !== undefined && binding.environmentId !== run.environmentId) ||
-    (run.receipt.provider !== undefined && binding.provider !== run.receipt.provider) ||
+    (exact !== undefined &&
+      (binding.runId !== exact.runId ||
+        binding.provider !== exact.provider ||
+        binding.environmentId !== exact.environmentId ||
+        binding.sessionId !== exact.sessionId ||
+        binding.executionId !== exact.executionId)) ||
+    (exact === undefined &&
+      run.providerSessionId !== undefined &&
+      binding.sessionId !== run.providerSessionId) ||
+    (exact === undefined &&
+      run.receipt.provider !== undefined &&
+      binding.provider !== run.receipt.provider) ||
     (input.providerSessionId !== undefined && binding.sessionId !== input.providerSessionId)
   ) {
     throw new AppError(
@@ -223,10 +272,15 @@ function assertInteractionIsOpen(
   input: InteractionControllerInput,
   run: ReturnType<typeof findRun>,
   status: string,
+  allowUnknownResponseRetry = false,
 ): void {
   if (currentInteractionExpired(input, run))
     throw new AppError('INTERACTION_EXPIRED', 'The interaction response window has expired')
-  if (status !== 'pending' && status !== 'responding')
+  if (
+    status !== 'pending' &&
+    status !== 'responding' &&
+    !(allowUnknownResponseRetry && status === 'unknown')
+  )
     throw new AppError('INTERACTION_STALE', `The interaction is already ${status}`)
   if (run.status === 'unknown' || run.status === 'expired' || run.status === 'cancelled')
     throw new AppError('INTERACTION_STALE', 'The run can no longer accept an interaction response')

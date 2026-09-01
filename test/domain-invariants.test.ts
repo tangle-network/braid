@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
 import { STARTER_PROFILE } from '../src/app/composition.js'
-import {
-  createInteractionRequest,
-  interactionResponseBinding,
-} from '../src/app/interaction-request.js'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import type { ConnectionRecord, RunRecord } from '../src/domain/entities.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
 import type { Digest } from '../src/domain/ids.js'
@@ -25,6 +22,7 @@ import {
   createTurnId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
+import { localInteractionId } from '../src/domain/interaction-identity.js'
 import { assertConnectionRecord, assertRunRecord } from '../src/domain/invariants.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import { reduceEvent } from '../src/domain/reducer.js'
@@ -273,9 +271,10 @@ function canonicalRunInteraction(
     readonly bindingRunId?: string
   } = {},
 ): BraidInteraction {
-  const interactionId = createInteractionId(
+  const providerInteractionId = createInteractionId(
     `interaction-run-invariant-${options.idSuffix ?? 'future'}`,
   )
+  const interactionId = localInteractionId(run.id, providerInteractionId)
   const controlRef = run.controlRef
   const request = createInteractionRequest({
     id: interactionId,
@@ -295,7 +294,11 @@ function canonicalRunInteraction(
   })
   return {
     request,
-    responseBinding: interactionResponseBinding(request),
+    responseBinding: {
+      ...request.binding,
+      interactionId: providerInteractionId,
+      requestDigest: request.requestDigest,
+    },
     runId: run.id,
     source: { occurredAt: at },
     status: 'pending',

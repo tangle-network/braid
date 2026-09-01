@@ -6,8 +6,8 @@
  boundary: conv-1 / branch-1 → conv-fork-1 / branch-1
  profile snapshot: digest:fixture-source → digest:fixture-copy
  workspace state: checkpoint:fixture-1 → checkpoint:fixture-1
- operation id: operation-fixture-fork → operation-fixture-fork
- plan digest: digest:fixture-fork-plan → digest:fixture-fork-plan
+
+
 
 
 

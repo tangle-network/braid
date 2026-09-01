@@ -67,11 +67,17 @@ export async function dispatchConversationRunCommand(
     }
     case 'fork': {
       const workspace = intent.args.includes('--workspace')
-      const throughMessageId = intent.args.find((argument) => argument !== '--workspace')
+      const runner = flagValue(intent.args, '--runner')
+      const destinationProvider = flagValue(intent.args, '--provider')
+      const throughMessageId = intent.args.find((argument) => argument.startsWith('message-'))
+      const text = forkText(intent.args, throughMessageId)
       const plan = context.app.conversations.branches.plan({
         operationId,
-        kind: workspace ? 'workspace' : 'conversation',
+        kind: workspace ? 'workspace' : runner === undefined ? 'conversation' : 'cross-runner',
         ...(throughMessageId === undefined ? {} : { throughMessageId }),
+        ...(runner === undefined ? {} : { runner }),
+        ...(destinationProvider === undefined ? {} : { destinationProvider }),
+        ...(text === undefined ? {} : { text }),
       })
       context.setForkPreview(forkPreview(plan))
       return accepted(
@@ -282,16 +288,49 @@ export async function dispatchConversationHeadlessCommand(
 
 function forkInput(params: Readonly<Record<string, unknown>>, operationId: string) {
   const workspace = params.workspace === true || params.workspace === 'true'
+  const runner = optionalStringValue(params.runner)
   return {
     operationId,
-    kind: workspace ? ('workspace' as const) : ('conversation' as const),
+    kind: workspace
+      ? ('workspace' as const)
+      : runner === undefined
+        ? ('conversation' as const)
+        : ('cross-runner' as const),
     ...optionalString(params, 'conversationId'),
     ...optionalString(params, 'branchId'),
     ...renamedOptionalString(params, 'messageId', 'throughMessageId'),
     ...optionalString(params, 'runner'),
     ...optionalString(params, 'model'),
     ...optionalString(params, 'effort'),
+    ...optionalString(params, 'text'),
+    ...optionalString(params, 'acceptedDigest'),
+    ...optionalString(params, 'destinationProvider'),
   }
+}
+
+function flagValue(args: readonly string[], flag: string): string | undefined {
+  const inline = args.find((argument) => argument.startsWith(`${flag}=`))
+  if (inline !== undefined) return inline.slice(flag.length + 1) || undefined
+  const index = args.indexOf(flag)
+  const value = index < 0 ? undefined : args[index + 1]
+  return value === undefined || value.startsWith('--') ? undefined : value
+}
+
+function forkText(args: readonly string[], boundary: string | undefined): string | undefined {
+  const values: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index]
+    if (value === undefined) continue
+    if (value === '--workspace' || value === boundary) continue
+    if (value === '--runner' || value === '--provider') {
+      index += 1
+      continue
+    }
+    if (value.startsWith('--runner=') || value.startsWith('--provider=')) continue
+    values.push(value)
+  }
+  const text = values.join(' ').trim()
+  return text === '' ? undefined : text
 }
 
 function forkPreview(plan: ForkPlan): ForkPreviewView {
@@ -300,9 +339,11 @@ function forkPreview(plan: ForkPlan): ForkPreviewView {
     source: `${plan.sourceConversationId} / ${plan.sourceBranchId}`,
     destination: `${plan.sourceConversationId} / ${plan.destinationBranchId}`,
     kind: plan.kind,
+    execution: {
+      operationId: plan.operationId,
+      planDigest: plan.digest,
+    },
     fields: [
-      { label: 'operation id', source: plan.operationId, destination: plan.operationId },
-      { label: 'plan digest', source: plan.digest, destination: plan.digest },
       {
         label: 'conversation context',
         source: plan.context.sourceBoundary,

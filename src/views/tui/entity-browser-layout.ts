@@ -69,10 +69,15 @@ function candidates(
   page: string | undefined,
   filters: readonly (string | undefined)[],
 ): string[] {
-  return keys.flatMap((key) => [
-    ...(page === undefined ? [] : filters.map((filter) => joinParts(key, page, filter))),
-    ...filters.map((filter) => joinParts(key, undefined, filter)),
-  ])
+  const contextual = filters.filter((filter): filter is string => filter !== undefined)
+  return [
+    ...(page === undefined
+      ? []
+      : contextual.flatMap((filter) => keys.map((key) => joinParts(key, page, filter)))),
+    ...contextual.flatMap((filter) => keys.map((key) => joinParts(key, undefined, filter))),
+    ...(page === undefined ? [] : keys.map((key) => joinParts(key, page))),
+    ...keys,
+  ]
 }
 
 function joinParts(...parts: readonly (string | undefined)[]): string {

@@ -91,10 +91,7 @@ test('terminal control sanitization remains safe when hostile sequences split ac
   const sanitizer = new TerminalControlSanitizer()
   assert.equal(sanitizer.push('before\u001b]0;owned'), 'before')
   assert.equal(sanitizer.push('\u0007after'), 'after')
-  assert.equal(
-    sanitizer.push(`before\u001bP${'x'.repeat(5_000)}visible`),
-    `before${'x'.repeat(905)}visible`,
-  )
+  assert.equal(sanitizer.push(`before\u001bP${'x'.repeat(5_000)}visible`), 'before')
   assert.equal(sanitizer.finish(), '')
 })
 
@@ -902,6 +899,25 @@ test('secret-designated interaction values are rejected before journal persisten
       credentialRef: 'cred:v1:opaque-reference',
       credentialKind: 'keychain',
     }),
+  )
+  assert.doesNotThrow(() =>
+    assertPersistablePayload({
+      __braidEvent: {
+        environment: { secretNames: ['OPENAI_API_KEY', 'workspace-token'] },
+      },
+    }),
+  )
+  assert.throws(
+    () =>
+      assertPersistablePayload({
+        __braidEvent: {
+          environment: { secretNames: ['not a bounded identifier'] },
+        },
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'StorageError' &&
+      error.message.includes('Secret-bearing'),
   )
   assert.doesNotThrow(() =>
     assertPersistablePayload({ inputTokens: 12, outputTokens: 7, reasoningTokens: 3 }),

@@ -41,7 +41,7 @@ function incompatibleResult(
 test('names the exact unsupported pair, preserves the profile, and offers both choices', () => {
   const text = profileCompatibilityTextLines(incompatibleResult(), 80).join('\n')
 
-  assert.match(text, /harness=codex/)
+  assert.match(text, /runner=codex/)
   assert.match(text, /model=zai\/glm-5\.2/)
   assert.match(text, /authored profile "release profile" remains unchanged/)
   assert.match(text, /change runner to opencode to keep model zai\/glm-5\.2/)
@@ -74,7 +74,7 @@ test('wraps all output without losing exact values at 40 and 80 columns', () => 
     assert.ok(lines.length > 0)
     assert.ok(lines.every((line) => visibleWidth(line) <= width))
     const text = lines.join('\n')
-    assert.match(text, /harness=codex/)
+    assert.match(text, /runner=codex/)
     assert.match(text, /model=zai\/glm-5\.2/)
     assert.match(text, /change runner to opencode/)
     assert.match(text, /change model to openai\/gpt-5\.6-luna/)
@@ -112,7 +112,7 @@ test('does not offer recovery choices when the pair is already supported', () =>
     80,
   ).join('\n')
 
-  assert.match(text, /supported pair: harness=codex · model=zai\/glm-5\.2/)
+  assert.match(text, /supported pair: runner=codex · model=zai\/glm-5\.2/)
   assert.match(text, /authored profile "release profile" remains unchanged/)
   assert.doesNotMatch(text, /change runner to/)
   assert.doesNotMatch(text, /change model to/)
@@ -172,7 +172,7 @@ test('profile validation reaches the same mismatch presenter through real termin
   terminal.sendInput('\u0016')
   await waitUntil(() => terminal.getViewport().join('\n').includes('unsupported pair'))
   const screen = terminal.getViewport().join('\n')
-  assert.match(screen, /harness=codex · model=zai\/glm-5\.2/u)
+  assert.match(screen, /runner=codex · model=zai\/glm-5\.2/u)
   assert.match(screen, /authored profile "GLM through Codex" remains unchanged/u)
   assert.match(screen, /change runner to opencode/u)
   assert.match(screen, /change model to openai\/gpt-5\.6-luna/u)

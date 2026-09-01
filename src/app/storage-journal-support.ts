@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
+import { type BraidEvent, type BraidEventEnvelope, eventRunId } from '../domain/events.js'
 import {
   type ConversationId,
   createEventId,
@@ -152,6 +152,8 @@ export function runOperationId(event: BraidEvent): OperationId | undefined {
 
 export function conversationIdForEvent(state: BraidState, event: BraidEvent): ConversationId {
   switch (event.kind) {
+    case 'run.requested':
+      return event.receipt?.conversationId ?? state.conversationId
     case 'conversation.created':
     case 'conversation.imported':
     case 'conversation.updated':
@@ -189,9 +191,12 @@ export function conversationIdForEvent(state: BraidState, event: BraidEvent): Co
         event.operation.target?.kind === 'conversation'
         ? event.operation.target.id
         : state.conversationId
-    default:
-      return state.conversationId
   }
+  const runId = eventRunId(event)
+  if (runId !== undefined) {
+    return state.runs.find((run) => run.id === runId)?.conversationId ?? state.conversationId
+  }
+  return state.conversationId
 }
 
 function isPersistedEnvelope(value: unknown): value is PersistedEnvelope {

@@ -15,8 +15,10 @@ import {
   requestBase,
   responseForRequest,
   runFromState,
+  stateForRequest,
   stateForRun,
 } from './protocol.mjs'
+import { closeOwnedProviderSessions } from './provider-session-cleanup.mjs'
 import {
   evidenceValue,
   redactString,
@@ -30,6 +32,7 @@ import {
 } from './release-proof-validation.mjs'
 import {
   assertTargetSemantics,
+  cancelFailedTarget,
   finishTarget,
   initializeTarget,
   runNormalTurn,
@@ -119,7 +122,9 @@ export async function executeTarget(
         provider: targetProof.provider,
       }
       result.runIds = assertUniqueRunIds(
-        [runId, result.cancel?.runId, result.interaction?.runId],
+        [runId, result.cancel?.runId, result.interaction?.runId].filter(
+          (candidate) => typeof candidate === 'string',
+        ),
         new Set(),
         operation,
       )
@@ -160,6 +165,7 @@ export async function executeTarget(
         ? 'unavailable'
         : 'failed'
   } finally {
+    const providerResponses = session?.responses ?? []
     const processResult =
       session === undefined
         ? { started: false }
@@ -187,6 +193,7 @@ export async function executeTarget(
         ),
       )
     }
+    await recordProviderSessionCleanup(result, endpoint, providerResponses, token, timeoutMs)
     if (credentialInstallation !== undefined) {
       try {
         result.credentialLifecycle = evidenceValue(await credentialInstallation.cleanup())
@@ -216,6 +223,7 @@ export async function executeTarget(
 
 function targetResult(config, target, providerCapabilities, credential, operation) {
   return {
+    operationNamespace: config.operationNamespace,
     targetKey: target.key,
     workspace: config.workspace,
     label: target.definition.label,
@@ -375,7 +383,18 @@ export async function executeNamedOperation({
       normalizedError.exitCode === exitCodes.unavailable
         ? 'unavailable'
         : 'failed'
+    if (session !== undefined) {
+      try {
+        result.failureCleanup = await cancelFailedTarget(session, result, {
+          operationPrefix,
+          timeoutMs: Math.min(timeoutMs, 30_000),
+        })
+      } catch (cleanupError) {
+        result.failureCleanupError = errorEvidence(cleanupError)
+      }
+    }
   } finally {
+    const providerResponses = session?.responses ?? []
     const processResult =
       session === undefined
         ? { started: false }
@@ -399,6 +418,7 @@ export async function executeNamedOperation({
         ),
       )
     }
+    await recordProviderSessionCleanup(result, endpoint, providerResponses, token, timeoutMs)
     if (credentialInstallation !== undefined) {
       try {
         const lifecycle = evidenceValue(await credentialInstallation.cleanup())
@@ -438,8 +458,27 @@ export async function executeNamedOperation({
   return evidenceValue(result)
 }
 
+async function recordProviderSessionCleanup(result, endpoint, responses, token, timeoutMs) {
+  try {
+    result.providerSessionCleanup = evidenceValue(
+      await closeOwnedProviderSessions({ endpoint, responses, token, timeoutMs }),
+    )
+  } catch (error) {
+    result.providerSessionCleanup = { complete: false, error: errorEvidence(error) }
+    result.status = 'failed'
+    if (result.error === undefined) result.error = errorEvidence(error)
+  }
+}
+
 export function operationRequest(result, prefix, action, command, params, suffix) {
-  const stem = `${prefix}-${action}${suffix === undefined ? '' : `-${suffix}`}-${result.targetKey}`
+  if (typeof result.operationNamespace !== 'string' || result.operationNamespace.length === 0) {
+    throw new LiveBridgeError(
+      'LIVE_RELEASE_OPERATION_NAMESPACE_MISSING',
+      'The release operation has no stable execution namespace',
+      exitCodes.failed,
+    )
+  }
+  const stem = `${prefix}-${result.operationNamespace}-${action}${suffix === undefined ? '' : `-${suffix}`}-${result.targetKey}`
   return {
     ...requestBase(stem, command, command === 'get_state' ? undefined : `op-${stem}`),
     params,
@@ -485,11 +524,11 @@ export async function operationState(session, result, prefix, suffix, timeoutMs)
     { projection: 'full' },
     suffix,
   )
-  const response = await sendOperationRequest(
-    session,
-    result,
-    request,
+  result.requests.push(evidenceValue(request))
+  session.send(request)
+  const response = await session.waitFor(
     'release operation state',
+    stateForRequest(request.requestId),
     Math.min(timeoutMs, 15_000),
   )
   if (response.type !== 'state') {

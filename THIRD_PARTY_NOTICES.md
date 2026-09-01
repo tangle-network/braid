@@ -13,8 +13,8 @@ The implementation is expected to depend on and adapt behavior from the followin
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent/tree/main/ui-tui) | Client/runtime separation and workflow reference only | `NousResearch/hermes-agent@f88ed6c71768cdc7ea3bfa8cf62d16654792fd2a` | MIT |
 | [Microsoft Aspire](https://github.com/dotnet/aspire) | Windows Job Object creation and cleanup pattern for portable release proof | `dotnet/aspire@be77aa36daf995fae0e72091141410c7082fcba3` | MIT |
 | [`better-sqlite3-multiple-ciphers`](https://github.com/m4heshd/better-sqlite3-multiple-ciphers) | Pinned production SQLite binding with SQLCipher-compatible encryption | `better-sqlite3-multiple-ciphers@13.0.3` | MIT |
-| [`@napi-rs/keyring`](https://github.com/Brooooooklyn/keyring-node) | Native macOS Keychain, Linux Secret Service, and Windows Credential Manager access without passing secrets through command arguments | `@napi-rs/keyring@1.3.0` | MIT |
-| [Koffi](https://github.com/Koromix/koffi) | Prebuilt Node FFI for operating system `openat`, `mkdirat`, `linkat`, `renameat`, and `unlinkat` calls | `koffi@3.1.4` | MIT |
+| [`@napi-rs/keyring`](https://github.com/Brooooooklyn/keyring-node) | Native macOS Keychain, Linux Secret Service, and Windows Credential Manager access without passing secrets through command arguments | `@napi-rs/keyring@2.0.0` | MIT |
+| [Koffi](https://github.com/Koromix/koffi) | Prebuilt Node FFI for operating system `openat`, `mkdirat`, `linkat`, `renameat`, and `unlinkat` calls | `koffi@3.1.6` | MIT |
 
 ## Attribution rule
 
@@ -23,13 +23,15 @@ Before copied or substantially adapted code is committed, add one row below with
 | Braid path | Upstream source | Source commit | License | Adaptation |
 | --- | --- | --- | --- | --- |
 | `test/support/virtual-terminal.ts` | [`earendil-works/pi`, `packages/tui/test/virtual-terminal.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/test/virtual-terminal.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Changed imports to the published Pi TUI package and applied Braid formatting; production code does not include this file. |
+| `src/views/tui/selector.ts` | [`earendil-works/pi`, `packages/tui/src/components/select-list.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/src/components/select-list.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Reuses Pi's pinned column-width and truncation calculations to mark description overflow while preserving the shared selector behavior. |
 | `scripts/live-bridge/windows-job-host-source.mjs` | [`dotnet/aspire`, `src/Aspire.Cli/Processes/WindowsConsoleProcessJob.cs` and `WindowsProcessInterop.cs`](https://github.com/dotnet/aspire/tree/be77aa36daf995fae0e72091141410c7082fcba3/src/Aspire.Cli/Processes) | `be77aa36daf995fae0e72091141410c7082fcba3` | MIT, Copyright (c) .NET Foundation and contributors | Adapted atomic Job Object attachment, kill-on-close containment, and active-process drain checks for Braid's Windows release proof. |
+| `test/fixtures/aws-nitro-document.cbor` | [`anchorageoss/awsnitroverifier`, `testdata/aws_nitro_document.cbor`](https://github.com/anchorageoss/awsnitroverifier/blob/2605f002296b40eadfee3c832c4826237147fa29/testdata/aws_nitro_document.cbor) | `2605f002296b40eadfee3c832c4826237147fa29` | Apache-2.0 (the upstream repository's full license text applies; it publishes no additional NOTICE file) | Public AWS Nitro COSE_Sign1 fixture used for deterministic adapter verification and mutation tests. |
 
 The original copyright and license notice must remain with every substantial copied portion.
 
 A dependency declared in `package.json` does not require a file-level source header, but its license must remain represented in the generated release license inventory.
 
-W5 adds the pinned `better-sqlite3-multiple-ciphers@13.0.3`, `@napi-rs/keyring@1.3.0`, and `koffi@3.1.4` production dependencies.
+W5 adds the pinned `better-sqlite3-multiple-ciphers@13.0.3`, `@napi-rs/keyring@2.0.0`, and `koffi@3.1.6` production dependencies.
 
 It contains no copied source from these packages.
 

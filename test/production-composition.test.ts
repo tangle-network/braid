@@ -454,6 +454,7 @@ test('retained Tangle composition exposes one native control through durable sta
   )
   const composed = createProductionComposition(selected)
   assert.notEqual(composed.nativeInteractive, undefined)
+  assert.notEqual(composed.supervisorController, undefined)
 
   const durable = await createDurableBraidApplication({
     path: join(root, 'braid.db'),
@@ -495,18 +496,25 @@ test('retained Tangle composition routes interactive admission without creating 
   const interactiveTurn = {
     operationId: 'operation-interactive-routing',
     runId: 'run-interactive-routing',
+    turnId: 'turn-interactive-routing',
     text: 'Inspect this workspace.',
     profile: selectedProfile,
     connectionId: record.id,
     signal: new AbortController().signal,
   }
-  // Sandbox 0.30.1 exposes no claimControl or validateControl, so the provider
-  // proves no exact interactive agent and the interactive route refuses before
-  // any billable environment exists. Sandbox 0.31 turns this into an admission.
-  await assert.rejects(
-    async () => composed.execution.admit?.({ ...interactiveTurn, mode: 'interactive' }),
-    /does not support exact interactive agents/u,
+  const interactive = await composed.execution.admit?.({
+    ...interactiveTurn,
+    mode: 'interactive',
+  })
+  assert.equal(interactive?.provider, 'tangle-sandbox')
+  assert.equal(
+    interactive?.providerSessionId,
+    undefined,
+    'interactive admission must leave session identity to agent-runtime',
   )
+  assert.equal(interactive?.materializationReceipt?.surface, 'interactive-agent')
+  assert.equal(interactive?.capabilities?.environment?.interactiveAgent?.start, true)
+  assert.equal(sandbox.createCalls.length, 0)
   const headless = await composed.execution.admit?.({
     ...interactiveTurn,
     operationId: 'operation-headless-routing',
@@ -551,6 +559,70 @@ test('bin startup loads a canonical profile and exact connection from a bounded 
     'cred:v1:credential-config',
   )
   assert.equal(parseArgs(['--config', configPath], root).config, configPath)
+})
+
+test('startup persists the workspace request, reloads it, and preserves legacy absence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-workspace-request-'))
+  const configPath = join(root, '.braid', 'config.json')
+  const profileRecord = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'test:workspace-request',
+      label: 'workspace request profile',
+      writable: false,
+      trusted: true,
+    },
+    profile(),
+  )
+  const sandbox = connection('tangle-sandbox', 'workspace-request', 'https://sandbox.test')
+  const selection = {
+    profile: profileRecord,
+    connection: sandbox,
+    profileDigest: profileRecord.digest,
+    connectionDigest:
+      'sha256:0000000000000000000000000000000000000000000000000000000000000000' as const,
+    workspaceRequest: {
+      repoUrl: 'https://github.com/acme/repository',
+      gitRef: 'main',
+      cwd: { base: 'repository' as const, path: 'src' },
+      providerOptions: {},
+    },
+  }
+  await saveProductionStartupSelection(configPath, selection)
+  const saved = JSON.parse(await readFile(configPath, 'utf8')) as {
+    [key: string]: unknown
+    workspaceRequest?: Record<string, unknown>
+  }
+  assert.deepEqual(saved.workspaceRequest, {
+    repoUrl: 'https://github.com/acme/repository',
+    gitRef: 'main',
+    cwd: { base: 'repository', path: 'src' },
+  })
+  assert.ok(saved.workspaceRequest)
+  assert.equal('providerOptions' in saved.workspaceRequest, false)
+
+  const restarted = await loadProductionStartup({ workspace: root })
+  assert.deepEqual(restarted.workspaceRequest, saved.workspaceRequest)
+  assert.equal(Object.isFrozen(restarted.workspaceRequest), true)
+
+  const legacy = { ...saved, schemaVersion: 1 }
+  delete legacy.workspaceRequest
+  await writeFile(configPath, `${JSON.stringify(legacy)}\n`, { mode: 0o600 })
+  const legacyStartup = await loadProductionStartup({ workspace: root })
+  assert.equal(legacyStartup.workspaceRequest, undefined)
+
+  await writeFile(
+    configPath,
+    `${JSON.stringify({ ...legacy, schemaVersion: 2, workspaceRequest: { gitRef: 'main' } })}\n`,
+    { mode: 0o600 },
+  )
+  await assert.rejects(
+    () => loadProductionStartup({ workspace: root }),
+    (error: unknown) =>
+      error instanceof ProductionStartupError &&
+      error.code === 'PRODUCTION_CONFIGURATION_INVALID' &&
+      /gitRef requires repoUrl/iu.test(String(error.cause)),
+  )
 })
 
 test('CLI routing overrides agree with the canonical profile passed to runtime', async () => {
@@ -625,6 +697,7 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
       const admission = await composition.execution.admit?.({
         operationId: `operation-routing-${candidate.name}`,
         runId: `run-routing-${candidate.name}`,
+        turnId: `turn-routing-${candidate.name}`,
         text: 'verify routing override',
         profile: composition.profile,
         workspaceRoot: root,
@@ -696,6 +769,7 @@ test('schema-v1 CLI Bridge profiles load as portable models and dispatch one run
         {
           operationId: `operation-v1-${candidate.runner}`,
           runId: `run-v1-${candidate.runner}`,
+          turnId: `turn-v1-${candidate.runner}`,
           text: 'verify prior profile',
           profile: startup.profile,
           signal: new AbortController().signal,
@@ -728,6 +802,7 @@ test('runner-only CLI Bridge models execute without an invented provider', async
       {
         operationId: 'operation-runner-model',
         runId: 'run-runner-model',
+        turnId: 'turn-runner-model',
         text: 'verify runner alias',
         profile: runnerProfile,
         signal: new AbortController().signal,
@@ -1845,6 +1920,7 @@ test('configured restart keeps alternate profiles and routes each run from its A
   const admission = await composition.execution.admit?.({
     operationId: 'operation-restart-profile-route',
     runId: 'run-restart-profile-route',
+    turnId: 'turn-restart-profile-route',
     text: 'Review the retained run.',
     profile: analyst,
     connectionId: selectedConnection.id,

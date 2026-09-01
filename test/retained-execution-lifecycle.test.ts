@@ -10,6 +10,7 @@ import {
   type RetainedExecutionPlan,
   RetainedExecutionPort,
 } from '../src/adapters/runtime/retained-execution.js'
+import { retainedCapabilities } from '../src/adapters/runtime/retained-execution-projection.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
   type ExecuteTurnInput,
@@ -43,6 +44,7 @@ function input(suffix: string): ExecuteTurnInput {
   return {
     operationId: `operation-${suffix}`,
     runId: `run-${suffix}`,
+    turnId: `turn-${suffix}`,
     text: 'Continue the retained task.',
     profile,
     signal: new AbortController().signal,
@@ -80,6 +82,9 @@ function handle(
       }),
     async contextBoundary() {
       return null
+    },
+    beginNativeContinuation() {
+      throw new Error('native continuation is not part of this test')
     },
     async continueNative() {
       throw new Error('native continuation is not part of this test')
@@ -126,6 +131,73 @@ function plan(
     },
   }
 }
+
+test('retained controls follow complete provider capabilities', () => {
+  const unavailable = retainedCapabilities(RETAINED_RUN_HANDLE_CAPABILITIES)
+  assert.deepEqual(unavailable.controls, {
+    cancel: false,
+    steer: false,
+    queue: true,
+    status: false,
+    recreate: false,
+  })
+
+  const capableEnvironment = {
+    ...RETAINED_RUN_HANDLE_CAPABILITIES,
+    retainedControl: {
+      exactRunIdentity: true,
+      resultIdentity: true,
+      eventIdentity: true,
+      cancellationIdempotency: true,
+    },
+  }
+  const available = retainedCapabilities(capableEnvironment)
+  assert.deepEqual(available.controls, {
+    cancel: true,
+    steer: false,
+    queue: true,
+    status: true,
+    recreate: true,
+  })
+  assert.equal(
+    retainedCapabilities(capableEnvironment, { exactStatus: false }).controls.status,
+    false,
+  )
+})
+
+test('retained observations use the exact provider environment identity', async () => {
+  const exact = controlRef('observation')
+  const retainedPlan: RetainedExecutionPlan = {
+    ...plan(exact, async () => handle(exact)),
+    observe: async () => ({
+      kind: 'remote-service',
+      provider: exact.provider,
+      lifecycle: 'ready',
+      lifecycleMode: 'retained',
+      cleanup: 'explicit',
+      continuity: 'session',
+      location: 'remote',
+      createdAt: now,
+      observedAt: now,
+      unavailable: [],
+    }),
+  }
+  const execution = executionFor(async () => retainedPlan)
+  const runInput = input('observation')
+
+  await execution.admit(runInput)
+  const stream = execution.streamTurn(runInput)[Symbol.asyncIterator]()
+  const first = await stream.next()
+
+  assert.equal(first.done, false)
+  assert.equal(first.value?.event.type, 'braid.execution.observed')
+  if (first.value?.event.type !== 'braid.execution.observed') {
+    throw new Error('expected the retained execution observation')
+  }
+  assert.equal(first.value.event.observation.providerEnvironmentId, exact.environmentId)
+  assert.deepEqual(first.value.event.controlRef, exact)
+  await stream.return?.(undefined as never)
+})
 
 function executionFor(
   resolve: (input: ExecuteTurnInput) => Promise<RetainedExecutionPlan>,
@@ -374,6 +446,62 @@ test('in-flight detach starts the cloud run but never opens a local event reader
   )
 })
 
+test('active retained controls reject a provider session not bound to the handle', async () => {
+  const exact = controlRef('active-session')
+  let cancelCalls = 0
+  let statusCalls = 0
+  const retainedHandle = handle(exact, {
+    cancel: async (request) => {
+      cancelCalls += 1
+      return {
+        operationId: request.operationId,
+        requestDigest: exact.requestDigest,
+        status: 'accepted',
+        effect: 'cancelled',
+        snapshot: {
+          runId: exact.runId,
+          controlRef: exact,
+          status: 'cancelled',
+          effect: 'cancelled',
+          observedAt: now,
+        },
+      }
+    },
+    status: async () => {
+      statusCalls += 1
+      return {
+        runId: exact.runId,
+        controlRef: exact,
+        status: 'running',
+        effect: 'unknown',
+        observedAt: now,
+      }
+    },
+  })
+  const resolvedPlan = plan(exact, async () => retainedHandle, retainedHandle)
+  const { providerSessionId: _providerSessionId, ...unboundPlan } = resolvedPlan
+  const execution = executionFor(async () => unboundPlan)
+  const runInput = input('active-session')
+  await execution.admit(runInput)
+  const stream = execution.streamTurn(runInput)[Symbol.asyncIterator]()
+  await stream.next().catch(() => undefined)
+
+  await assert.rejects(
+    execution.cancelRun({
+      operationId: 'operation-active-session-cancel',
+      runId: runInput.runId,
+      providerSessionId: 'session-other',
+    }),
+    /active run/u,
+  )
+  await assert.rejects(
+    execution.status({ runId: runInput.runId, providerSessionId: 'session-other' }),
+    /active run/u,
+  )
+  assert.equal(cancelCalls, 0)
+  assert.equal(statusCalls, 0)
+})
+
 test('ambiguous cancellation effects reconcile or remain unknown', async () => {
   for (const effect of ['unknown', 'not_live'] as const) {
     const exact = controlRef(`ambiguous-${effect}`)
@@ -424,52 +552,55 @@ test('ambiguous cancellation effects reconcile or remain unknown', async () => {
   }
 })
 
-test('a reconciled cancelled snapshot confirms an ambiguous cancellation', async () => {
-  const exact = controlRef('reconciled')
-  let statusCalls = 0
-  const retainedHandle = handle(exact, {
-    status: async () => {
-      statusCalls += 1
-      return {
-        runId: exact.runId,
-        controlRef: exact,
-        status: 'cancelled',
-        effect: 'cancelled',
-        observedAt: now,
-      }
-    },
-    cancel: async (request) => ({
-      operationId: request.operationId,
-      requestDigest: exact.requestDigest,
-      status: 'accepted',
-      effect: 'unknown',
-      snapshot: {
-        runId: exact.runId,
-        controlRef: exact,
-        status: 'running',
-        effect: 'unknown',
-        observedAt: now,
+test('a terminal snapshot confirms ambiguous and pending cancellations', async () => {
+  for (const effect of ['unknown', 'cancel_requested'] as const) {
+    const exact = controlRef(`reconciled-${effect}`)
+    const statusWaits: Array<number | undefined> = []
+    const retainedHandle = handle(exact, {
+      status: async (options) => {
+        statusWaits.push(options?.waitMs)
+        return {
+          runId: exact.runId,
+          controlRef: exact,
+          status: 'cancelled',
+          effect: 'cancelled',
+          observedAt: now,
+        }
       },
-    }),
-  })
-  const execution = executionFor(async () =>
-    plan(exact, async () => retainedHandle, retainedHandle),
-  )
-  const runInput = input('reconciled')
-  await execution.admit(runInput)
-  const stream = execution.streamTurn(runInput)[Symbol.asyncIterator]()
-  await stream.next().catch(() => undefined)
+      cancel: async (request) => ({
+        operationId: request.operationId,
+        requestDigest: exact.requestDigest,
+        status: 'accepted',
+        effect,
+        snapshot: {
+          runId: exact.runId,
+          controlRef: exact,
+          status: 'running',
+          effect,
+          observedAt: now,
+        },
+      }),
+    })
+    const execution = executionFor(async () =>
+      plan(exact, async () => retainedHandle, retainedHandle),
+    )
+    const runInput = input(`reconciled-${effect}`)
+    await execution.admit(runInput)
+    const stream = execution.streamTurn(runInput)[Symbol.asyncIterator]()
+    await stream.next().catch(() => undefined)
 
-  const acknowledgement = await execution.cancelRun({
-    operationId: 'operation-reconciled-cancel',
-    runId: runInput.runId,
-  })
-  assert.deepEqual(acknowledgement, {
-    operationId: 'operation-reconciled-cancel',
-    outcome: 'accepted',
-    detail: 'cancelled',
-  })
-  assert.equal(statusCalls, 1)
+    const operationId = `operation-reconciled-${effect}`
+    const acknowledgement = await execution.cancelRun({
+      operationId,
+      runId: runInput.runId,
+    })
+    assert.deepEqual(acknowledgement, {
+      operationId,
+      outcome: 'accepted',
+      detail: 'cancelled',
+    })
+    assert.deepEqual(statusWaits, [effect === 'cancel_requested' ? 30_000 : undefined])
+  }
 })
 
 test('interaction response recovers the retained handle and preserves retry acknowledgement', async () => {

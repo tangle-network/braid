@@ -1,4 +1,4 @@
-import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
+import type { AgentExactRunControlRef, WorkspaceRequest } from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import {
   type RetainedRunHandle,
@@ -15,7 +15,7 @@ import type {
   RetainedRunAdmissionRecord,
   RetainedRunAdmissionRecorder,
 } from '../../ports/execution.js'
-import { safeExecutionId, stableProviderId } from './production-backend-common.js'
+import { exactTurnId, safeExecutionId, stableProviderId } from './production-backend-common.js'
 import type { PreparedCliBridgeConnection } from './production-cli-bridge-backend.js'
 import type {
   RetainedExecutionPlan,
@@ -63,14 +63,18 @@ export async function createCliBridgeRetainedPlan(
     throw new Error('retained CLI Bridge control reference conflicts with the persisted run')
   }
   const exactControlRef = controlRef ?? persistedControlRef
+  const contextDestination = prepared.contextTransfer?.plan.destination
   const environmentId =
     exactControlRef?.environmentId ??
-    (admission?.phase === 'environment' ? admission.environmentId : undefined)
+    (admission?.phase === 'environment' ? admission.environmentId : undefined) ??
+    contextDestination?.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
-      : safeExecutionId(runId))
+      : undefined) ??
+    contextDestination?.executionId ??
+    safeExecutionId(runId)
   const providerSessionId =
     exactControlRef?.sessionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
@@ -134,14 +138,18 @@ export async function startCliBridgeRetainedRun(
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
-      workspace: { cwd: plan.prepared.workspace },
+      workspace: cliBridgeWorkspace(plan),
       idempotencyKey: plan.environmentIdempotencyKey,
+      ...(input.contextTransfer === undefined
+        ? {}
+        : { requestedId: input.contextTransfer.plan.destination.environmentId }),
     },
     turn: {
       prompt: input.text,
-      turnId: safeExecutionId(input.operationId),
+      turnId: exactTurnId(input),
       interactions: input.interactions ?? {},
       signal: input.signal,
+      ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
     },
     identity: {
       sessionId: plan.prepared.providerSessionId,
@@ -177,14 +185,22 @@ async function recoverCliBridgeRetainedRun(
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,
-          workspace: { cwd: plan.prepared.workspace },
+          workspace: cliBridgeWorkspace(plan),
           idempotencyKey: admission.idempotencyKey,
+          ...(plan.prepared.contextTransfer === undefined
+            ? {}
+            : {
+                requestedId: plan.prepared.contextTransfer.plan.destination.environmentId,
+              }),
         },
         turn: {
           prompt: input.receipt.requested.text,
           turnId: admission.turnId,
           interactions: input.receipt.requested.interactions ?? {},
           ...(input.signal === undefined ? {} : { signal: input.signal }),
+          ...(plan.prepared.contextTransfer === undefined
+            ? {}
+            : { contextTransfer: plan.prepared.contextTransfer }),
         },
         identity: {
           sessionId: admission.sessionId,
@@ -224,6 +240,13 @@ export async function discoverCliBridgeControlRef(
 /** One provider session keeps one Bridge environment across every retained turn. */
 function retainedEnvironmentIdempotencyKey(providerSessionId: string): string {
   return stableProviderId('environment-braid-', providerSessionId)
+}
+
+function cliBridgeWorkspace(plan: CliBridgeRetainedPlan): WorkspaceRequest {
+  if (plan.prepared.capabilities.workspace.cwdBases?.host !== true) {
+    throw new Error('CLI Bridge does not advertise host workspace cwd support')
+  }
+  return { cwd: { base: 'host', path: plan.prepared.workspace } }
 }
 
 function headlessRetainedAdmission(

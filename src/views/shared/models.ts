@@ -230,6 +230,26 @@ export interface RunView {
   readonly interactionsTruncated?: boolean
 }
 
+export interface WorkStripItemView {
+  readonly id: string
+  readonly runId: string
+  readonly conversationId: string
+  readonly branchId: string
+  readonly label: string
+  readonly state: ViewStatus | 'queued'
+  readonly runner?: string
+  readonly model?: string
+  readonly interactionCount: number
+  readonly focused: boolean
+  readonly queueOperationId?: string
+  readonly actions: Readonly<{
+    readonly switch: boolean
+    readonly ask: boolean
+    readonly steer: boolean
+    readonly cancel: boolean
+  }>
+}
+
 export interface SubjectView {
   readonly type: string
   readonly title: string
@@ -359,6 +379,12 @@ export interface ActivityItemView {
   readonly entityId?: string
   readonly parentId?: string
   readonly depth?: number
+  readonly supervisorId?: string
+  readonly analysisFindings?: readonly {
+    readonly id: string
+    readonly title: string
+    readonly supported: boolean
+  }[]
 }
 
 export type GraphNodeType =
@@ -465,12 +491,22 @@ export interface AnalysisExecutionView {
   readonly wallTimeMs?: number
 }
 
+export interface AnalysisAnalystProgressView {
+  readonly id: string
+  readonly status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed'
+  readonly findingsCount?: number
+  readonly latencyMs?: number
+  readonly detail?: string
+}
+
 export interface AnalysisView {
   readonly source: string
   readonly question?: string
   readonly analyst: string
   readonly recipe: string
+  readonly budget?: string
   readonly status: ViewStatus
+  readonly analysts?: readonly AnalysisAnalystProgressView[]
   readonly findings: readonly AnalysisFindingView[]
   readonly citations: readonly {
     readonly id: string
@@ -520,6 +556,11 @@ export interface ForkPreviewView {
   readonly source: string
   readonly destination: string
   readonly kind: 'conversation' | 'workspace' | 'cross-runner'
+  /** Exact retry-safe identity consumed by the controller, never rendered as decision copy. */
+  readonly execution?: {
+    readonly operationId: string
+    readonly planDigest: string
+  }
   readonly fields: readonly {
     readonly label: string
     readonly source: string
@@ -573,6 +614,9 @@ export interface BraidViewModel {
   readonly sessionUsage: SessionUsageView
   readonly environments: readonly EnvironmentView[]
   readonly activeRunId?: string
+  readonly focusedRunId?: string
+  /** Present only when multiple runs or queued continuations need attention. */
+  readonly workStrip?: readonly WorkStripItemView[]
   readonly interactions: readonly InteractionView[]
   readonly activity: readonly ActivityItemView[]
   readonly graph: readonly GraphNodeView[]
@@ -703,6 +747,12 @@ export interface HeadlessState {
     readonly status: 'queued' | 'blocked' | 'unknown'
   }[]
   readonly activeRunId: string | null
+  readonly focusedRunId?: string | null
+  readonly activeRuns?: readonly {
+    readonly runId: string
+    readonly conversationId: string
+    readonly branchId: string
+  }[]
   readonly lastError: string | null
   readonly storageFailure?: string
   readonly cleanupUncertain?: string
@@ -729,6 +779,12 @@ export interface HeadlessSummary {
   }[]
   readonly queueCount: number
   readonly activeRunId: string | null
+  readonly focusedRunId?: string | null
+  readonly activeRuns?: readonly {
+    readonly runId: string
+    readonly conversationId: string
+    readonly branchId: string
+  }[]
   readonly lastError: string | null
 }
 

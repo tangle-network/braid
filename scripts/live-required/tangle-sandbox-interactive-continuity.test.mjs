@@ -7,6 +7,7 @@ import {
   assertSameInteractiveRef,
   assertStatusForRef,
   buildExactInteractiveStart,
+  isStaleInteractiveIdentityError,
   safeErrorRecord,
 } from './tangle-sandbox-interactive-continuity.mjs'
 
@@ -121,6 +122,8 @@ class FakeTerminalWebSocket {
   }
 }
 
+const EXACT_INCARNATION_ID = '00000000-0000-4000-8000-000000000001'
+
 test('missing exact public methods are a hard unavailable result', () => {
   assert.throws(
     () =>
@@ -162,6 +165,7 @@ test('exact start material binds one run to one profile and session', () => {
     proofId: 'proof-1',
     runner: 'pi',
     model: 'test-model',
+    modelProvider: 'tangle-router',
   })
   assert.equal(exact.start.run.environmentId, 'sandbox-1')
   assert.equal(exact.start.run.sessionId, 'session-1')
@@ -197,6 +201,30 @@ test('same-ref assertions reject a changed incarnation and accept an exact repla
         'stale identity',
       ),
     /changed its exact process reference/u,
+  )
+})
+
+test('stale identity requires the explicit sidecar conflict code', () => {
+  const stale = Object.assign(new Error('Interactive session incarnation is stale'), {
+    code: 'STALE_INCARNATION',
+  })
+  assert.equal(isStaleInteractiveIdentityError(stale), true)
+  assert.equal(
+    isStaleInteractiveIdentityError(new Error('Interactive session identity is stale')),
+    false,
+  )
+  assert.equal(
+    isStaleInteractiveIdentityError(
+      Object.assign(new Error('stale'), { code: 'stale_incarnation' }),
+    ),
+    false,
+  )
+  assert.equal(isStaleInteractiveIdentityError(new Error('Interactive session not found')), false)
+  assert.equal(
+    isStaleInteractiveIdentityError(
+      Object.assign(new Error('identity service unavailable'), { code: 'TRANSPORT' }),
+    ),
+    false,
   )
 })
 
@@ -253,7 +281,7 @@ test('public TerminalStream proves input, detach, and same-connection replay wit
       url: 'https://sandbox.test/terminals/session-unit/ws',
       token: 'unit-token',
       connectionId: 'session-unit',
-      incarnationId: 'incarnation-unit',
+      incarnationId: EXACT_INCARNATION_ID,
       control,
       handlers: {
         onData(data) {
@@ -301,9 +329,9 @@ test('public TerminalStream proves input, detach, and same-connection replay wit
       true,
     )
     if (Object.hasOwn(initFrames[0].frame, 'incarnationId')) {
-      assert.equal(initFrames[0].frame.incarnationId, 'incarnation-unit')
+      assert.equal(initFrames[0].frame.incarnationId, EXACT_INCARNATION_ID)
       assert.deepEqual(initFrames[0].frame.control, control)
-      assert.equal(initFrames[1].frame.incarnationId, 'incarnation-unit')
+      assert.equal(initFrames[1].frame.incarnationId, EXACT_INCARNATION_ID)
       assert.deepEqual(initFrames[1].frame.control, control)
     }
   } finally {

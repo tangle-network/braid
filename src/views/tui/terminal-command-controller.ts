@@ -115,8 +115,13 @@ export class TerminalCommandController {
     const intent: BraidIntent = !active
       ? { type: 'send', operationId, text: parsed.text }
       : steerSelected
-        ? steerIntent(operationId, parsed.text)
-        : { type: 'queue', operationId, text: parsed.text }
+        ? steerIntent(operationId, parsed.text, view.activeRunId)
+        : {
+            type: 'queue',
+            operationId,
+            text: parsed.text,
+            ...(view.activeRunId === undefined ? {} : { runId: view.activeRunId }),
+          }
     void this.#dispatch(intent, rawText)
   }
 
@@ -184,7 +189,9 @@ export class TerminalCommandController {
         this.#overlays.openUnavailable('/steer', 'Steering requires an operation identifier')
         return
       }
-      void this.#dispatch(steerIntent(operationId, args.join(' ')))
+      void this.#dispatch(
+        steerIntent(operationId, args.join(' '), this.#controller.view().activeRunId),
+      )
       return
     }
     const intent = commandIntent(command, args, operationId)
@@ -262,8 +269,12 @@ export class TerminalCommandController {
   }
 }
 
-function steerIntent(operationId: string, text: string): Extract<BraidIntent, { type: 'steer' }> {
-  return { type: 'steer', operationId, text }
+function steerIntent(
+  operationId: string,
+  text: string,
+  runId: string | undefined,
+): Extract<BraidIntent, { type: 'steer' }> {
+  return { type: 'steer', operationId, text, ...(runId === undefined ? {} : { runId }) }
 }
 
 function isExplicitAnalysisSource(value: string | undefined): boolean {

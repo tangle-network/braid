@@ -109,6 +109,9 @@ test('Escape from credential input returns to connection choice without committi
   wizard.focused = true
   wizard.handleInput('\r')
   wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
   wizard.handleInput('discarded-secret')
   wizard.handleInput('\u001b')
   assert.match(wizard.render(80).join('\n'), /choose a connection/u)

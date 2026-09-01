@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { npmInvocation, portableEvidencePath } from './platform.mjs'
+import { readRegularFileNoFollow } from '../release-files.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -127,7 +128,7 @@ async function runPlainFlow(binary, cwd) {
 
 async function sha256(path) {
   return createHash('sha256')
-    .update(await readFile(path))
+    .update(await readRegularFileNoFollow(path))
     .digest('hex')
 }
 
@@ -140,7 +141,9 @@ const expectedArchitecture =
   option('--expect-architecture') ?? process.env.BRAID_EXPECT_ARCHITECTURE
 assert(artifactRootValue, '--artifact-root is required')
 const artifactRoot = resolve(artifactRootValue)
-const proof = JSON.parse(await readFile(join(artifactRoot, 'w6', 'package-proof.json'), 'utf8'))
+const proof = JSON.parse(
+  (await readRegularFileNoFollow(join(artifactRoot, 'w6', 'package-proof.json'))).toString('utf8'),
+)
 const smokeRoot = await realpath(await mkdtemp(join(tmpdir(), 'braid-platform-smoke-')))
 let smokeResult
 

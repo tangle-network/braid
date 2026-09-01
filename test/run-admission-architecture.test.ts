@@ -20,6 +20,7 @@ import {
   validateNativeProof,
 } from '../src/app/run-admission.js'
 import type { RunExecutionSnapshot } from '../src/app/run-execution-snapshot.js'
+import { BRAID_SANDBOX_CLEANUP_UNCONFIRMED } from '../src/domain/runtime-diagnostics.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import {
@@ -40,6 +41,7 @@ const PROFILE = defineAgentProfile({
 const MODULES = [
   'run-admission.ts',
   'run-admission-request.ts',
+  'run-admission-context.ts',
   'run-admission-validation.ts',
   'run-admission-receipt.ts',
   'run-admission-dispatch.ts',
@@ -88,6 +90,7 @@ function executionInput(
   return {
     operationId: overrides.operationId ?? 'op-architecture',
     runId: overrides.runId ?? 'run-architecture',
+    turnId: `turn-${overrides.runId ?? 'run-architecture'}`,
     text: overrides.text ?? 'test admission',
     profile: overrides.profile ?? PROFILE,
     signal: new AbortController().signal,
@@ -227,6 +230,31 @@ test('runtime admission hashes the same secret-safe materialization receipt that
 
   assert.equal(receipt.materializationReceipt?.idempotencyKey, '[redacted]')
   assert.match(receipt.materializationDigest ?? '', /^[0-9a-f]{64}$/u)
+})
+
+test('ephemeral cleanup cannot report completed when its observation is unavailable', async () => {
+  const execution = new AgentRuntimeExecutionPort(async (input) => ({
+    kind: 'prepared-execution' as const,
+    backend: await deterministicBackend(input),
+    observation: {
+      snapshot: async () => {
+        throw new Error('provider observation unavailable')
+      },
+    },
+    materializationReceipt: {
+      provider: 'tangle-sandbox',
+      cleanup: 'delete-after-turn',
+    },
+  }))
+  const events = []
+  for await (const event of execution.streamTurn(executionInput({ runId: 'run-cleanup-proof' })))
+    events.push(event)
+
+  const terminal = events.at(-1)
+  assert.equal(terminal?.type, 'final')
+  if (terminal?.type !== 'final') assert.fail('missing terminal event')
+  assert.equal(terminal.status, 'failed')
+  assert.equal(terminal.reason, BRAID_SANDBOX_CLEANUP_UNCONFIRMED)
 })
 
 test('native session reuse remains fail-closed at the validation and continuation boundaries', async () => {

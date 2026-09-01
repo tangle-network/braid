@@ -1,7 +1,7 @@
 import { selectedRunConfiguration } from '../../app/effective-run-configuration.js'
 import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { canonicalDigest } from '../../domain/canonical.js'
-import type { BraidState } from '../../domain/state.js'
+import { activeRunForBranch, type BraidState } from '../../domain/state.js'
 import { type ColorMode, resolveColorMode } from '../../views/shared/appearance.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import { type BraidViewModel, freezeView } from '../../views/shared/models.js'
@@ -19,6 +19,7 @@ import {
   queueViews,
   runViews,
   statusFor,
+  workStripFor,
 } from './ui-projection.js'
 import { uiSemanticState } from './ui-semantic-state.js'
 
@@ -35,10 +36,28 @@ interface SemanticViewProjection {
   readonly hiddenGraphNodeCount: number
 }
 
+interface ViewModelCacheEntry {
+  readonly selectedSurface: BraidViewModel['selectedSurface']
+  readonly color: ColorMode
+  readonly highContrast: boolean
+  readonly reducedMotion: boolean
+  readonly canCancel: boolean
+  readonly storageFailure: string | undefined
+  readonly cleanupUncertain: string | undefined
+  readonly canRespond: boolean
+  readonly graphQuery: string
+  readonly value: BraidViewModel
+}
+
 const semanticViewCache = new WeakMap<
   BraidState,
   { readonly graphQuery: string; readonly projection: SemanticViewProjection }
 >()
+/*
+ * State identity changes on every durable revision, so one completed view is safe to retain.
+ * Pending interactions contain wall-clock countdowns, so those views must rebuild.
+ */
+const viewModelCache = new WeakMap<BraidState, ViewModelCacheEntry>()
 
 function semanticViewFor(state: BraidState, graphQuery: string): SemanticViewProjection {
   const cached = semanticViewCache.get(state)
@@ -66,6 +85,29 @@ export function buildBraidViewModel(
   canRespond = false,
   graphQuery = '',
 ): BraidViewModel {
+  const color =
+    appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
+  const highContrast = appearance.highContrast ?? false
+  const reducedMotion = appearance.reducedMotion ?? false
+  const hasPendingInteraction = state.runs.some((run) =>
+    run.interactions.some((interaction) => interaction.status === 'pending'),
+  )
+  const cached = viewModelCache.get(state)
+  if (
+    cached !== undefined &&
+    !hasPendingInteraction &&
+    cached.selectedSurface === selectedSurface &&
+    cached.color === color &&
+    cached.highContrast === highContrast &&
+    cached.reducedMotion === reducedMotion &&
+    cached.canCancel === canCancel &&
+    cached.storageFailure === storageFailure &&
+    cached.cleanupUncertain === cleanupUncertain &&
+    cached.canRespond === canRespond &&
+    cached.graphQuery === graphQuery
+  ) {
+    return cached.value
+  }
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
   const latestUsage = latest === undefined ? undefined : usageForRun(latest)
@@ -97,10 +139,10 @@ export function buildBraidViewModel(
                 ? 'cancelled'
                 : status
   const model = profile.model?.default ?? 'automatic'
-  const color =
-    appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
   const semantic = semanticViewFor(state, graphQuery)
-  return freezeView({
+  const selectedActiveRun = activeRunForBranch(state, state.conversationId, state.branchId)
+  const workStrip = workStripFor(state)
+  const view = freezeView({
     revision: state.revision,
     workspace: state.workspace ? sanitizeTerminalText(state.workspace) : null,
     profileName: sanitizeTerminalText(profile.name ?? 'Unnamed profile'),
@@ -166,7 +208,9 @@ export function buildBraidViewModel(
     runs: Object.freeze(runViews(state)),
     sessionUsage: sessionUsageFor(state),
     environments: Object.freeze(state.environments.map(environmentView)),
-    ...(state.activeRunId ? { activeRunId: state.activeRunId } : {}),
+    ...(selectedActiveRun ? { activeRunId: selectedActiveRun.id } : {}),
+    ...(state.focusedRunId ? { focusedRunId: state.focusedRunId } : {}),
+    ...(workStrip === undefined ? {} : { workStrip }),
     interactions: Object.freeze(interactionViews(state)),
     activity: semantic.activity,
     graph: semantic.graph,
@@ -201,8 +245,23 @@ export function buildBraidViewModel(
     selectedSurface,
     appearance: Object.freeze({
       color,
-      highContrast: appearance.highContrast ?? false,
-      reducedMotion: appearance.reducedMotion ?? false,
+      highContrast,
+      reducedMotion,
     }),
   })
+  if (!hasPendingInteraction) {
+    viewModelCache.set(state, {
+      selectedSurface,
+      color,
+      highContrast,
+      reducedMotion,
+      canCancel,
+      storageFailure,
+      cleanupUncertain,
+      canRespond,
+      graphQuery,
+      value: view,
+    })
+  }
+  return view
 }

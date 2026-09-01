@@ -1,5 +1,6 @@
 import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
 import { isRuntimeEventEnvelope } from '../domain/runtime-events.js'
+import { activeRunForBranch } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
@@ -20,17 +21,30 @@ export async function executeRun(
     const runtimeInput: ExecuteTurnInput = {
       operationId: input.operationId,
       runId: admission.runId,
+      turnId: admission.turnId,
       text: input.text,
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       interactions: admission.requested.interactions ?? {},
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
-      ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(admission.requested.workspaceRequest === undefined
+        ? {}
+        : { workspaceRequest: admission.requested.workspaceRequest }),
+      ...(admission.requested.workspaceRoot === undefined
+        ? {}
+        : { workspaceRoot: admission.requested.workspaceRoot }),
       signal: abort.signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(currentRun?.lastCursor === undefined ? {} : { after: currentRun.lastCursor }),
       ...(currentRun === undefined ? {} : { afterSequence: currentRun.lastProviderSequence }),
-      ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.contextPlan === undefined
+        ? input.portableContextPlan === undefined
+          ? {}
+          : { contextBoundary: input.portableContextPlan.digest }
+        : { contextBoundary: input.contextPlan.digest }),
+      ...(input.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: input.portableContextTransferRequest }),
       onRetainedAdmission: async (retainedAdmission) => {
         const committed = context.commitAndWait({
           kind: 'run.retained.admitted',
@@ -50,6 +64,7 @@ export async function executeRun(
         if (result.accepted && runtimeEvent.event.type === 'final') {
           terminalSeen = true
           await context.flush()
+          break
         }
         continue
       }
@@ -68,6 +83,7 @@ export async function executeRun(
       if (result.accepted && runtimeEvent.type === 'final') {
         terminalSeen = true
         await context.flush()
+        break
       }
     }
     if (context.ledger.isDetached(admission.runId)) return
@@ -139,7 +155,7 @@ async function finishWithoutTerminal(
         abort.signal.reason instanceof Error ? abort.signal.reason.message : 'Cancelled by user',
     })
   } else {
-    await context.commitAndWait({
+    await commitRequiredRecovery(context, {
       kind: 'run.unknown',
       runId: admission.runId,
       detail: 'The normalized event stream ended without a terminal event',
@@ -211,15 +227,37 @@ async function commitRequiredRecovery(
   context: ExecutionRunPort,
   event: import('../domain/events.js').BraidEvent,
 ): Promise<void> {
+  let durableEvent = event
+  if (event.kind === 'run.finished' && event.finalText.length === 0) {
+    const pending = finishPendingText(context, event.runId)
+    if (pending.length > 0) durableEvent = { ...event, finalText: pending, finalTextMode: 'append' }
+  } else if (event.kind === 'run.unknown') {
+    const pending = finishPendingText(context, event.runId)
+    if (pending.length > 0) durableEvent = { ...event, pendingText: pending }
+  }
   const commit = context.commitAndWaitRecovery ?? context.commitAndWait
-  const result = commit(event)
+  const result = commit(durableEvent)
   if (result !== undefined) await result
+  if (event.kind === 'run.finished' || event.kind === 'run.unknown')
+    context.streamSanitizer.reset(event.runId)
+}
+
+function finishPendingText(context: ExecutionRunPort, runId: string): string {
+  const pending = context.streamSanitizer.finish(runId, 'text')
+  return pending
 }
 
 export async function drainQueue(context: ExecutionRunPort & SendAccess): Promise<void> {
-  const next = context.currentState().queuedInputs[0]
-  if (!next || context.currentState().activeRunId) return
-  if (context.currentState().missingHistory.some((range) => range.runId === next.runId)) return
+  const state = context.currentState()
+  const next = state.queuedInputs.find((candidate) => {
+    const completed = state.runs.find((run) => run.id === candidate.runId)
+    if (!completed) return false
+    const conversationId = candidate.conversationId ?? completed.conversationId
+    const branchId = candidate.branchId ?? completed.branchId
+    return activeRunForBranch(state, conversationId, branchId) === undefined
+  })
+  if (!next) return
+  if (state.missingHistory.some((range) => range.runId === next.runId)) return
   const completed = context.findRun(next.runId)
   if (
     (completed.status === 'unknown' &&
@@ -229,7 +267,12 @@ export async function drainQueue(context: ExecutionRunPort & SendAccess): Promis
     return
   if (!context.ledger.claimQueueDrain(next.operationId)) return
   try {
-    const receipt = context.send({ operationId: next.operationId, text: next.text })
+    const receipt = context.send({
+      operationId: next.operationId,
+      text: next.text,
+      conversationId: next.conversationId ?? completed.conversationId,
+      branchId: next.branchId ?? completed.branchId,
+    })
     if (receipt.admissionReady !== undefined) await receipt.admissionReady
     const removed = context.commitAndWait({
       kind: 'run.queue.removed',

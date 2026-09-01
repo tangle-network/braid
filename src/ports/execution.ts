@@ -2,7 +2,16 @@ import type {
   AgentEnvironmentCapabilities,
   AgentExactRunControlRef,
   AgentProfile,
+  AgentWorkspaceBranching,
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
+  ContextTransferRequest,
+  ContextTransferResult,
   InteractionResponseCommand,
+  NativeContextBoundaryProof,
+  PortableContextPlanRequest,
+  PortableContextPlanResult,
+  WorkspaceRequest,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
@@ -20,6 +29,8 @@ export type { RequestedInteractions, RunCapabilities } from '../domain/receipts.
 export interface ExecuteTurnInput {
   readonly operationId: string
   readonly runId: string
+  /** The durable turn identity shared by initial dispatch and recovery, when admitted. */
+  readonly turnId?: string
   readonly text: string
   readonly profile: Readonly<AgentProfile>
   /** Selected branch mode captured before admission. */
@@ -27,12 +38,18 @@ export interface ExecuteTurnInput {
   /** Exact per-turn interaction posture derived from admitted capabilities. */
   readonly interactions?: RequestedInteractions
   readonly connectionId?: string
+  /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
   readonly signal: AbortSignal
   readonly sessionId?: string
   readonly after?: string
   readonly afterSequence?: number
   readonly contextBoundary?: string
+  /** Exact provider proof required for one retry-safe same-session turn. */
+  readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
+  /** Canonical context transfer request for a fresh destination session. */
+  readonly contextTransfer?: ContextTransferRequest
   readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
 }
 
@@ -51,6 +68,18 @@ export interface ExecutionAdmission {
   readonly materializationDigest?: string
 }
 
+/**
+ * Optional provider-owned context planning and transfer operations.
+ *
+ * The payloads remain the canonical agent-interface contracts; this port only
+ * describes how Braid reaches an adapter that implements them.
+ */
+export interface ContextTransferExecutionPort {
+  readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>
+  readonly transfer?: (input: ContextTransferRequest) => Promise<ContextTransferResult>
+  readonly lookup?: (input: ContextTransferRequest) => Promise<ContextTransferResult | undefined>
+}
+
 export interface ProviderRunSnapshot {
   readonly runId: string
   readonly status: RunStatus
@@ -66,6 +95,8 @@ export interface ProviderRunSnapshot {
 export interface RetainedExecutionRecoveryContext {
   readonly retainedAdmission?: RetainedRunAdmissionRecord
   readonly receipt?: RunAdmissionReceipt
+  /** Receipt-bound remote workspace request; absent on legacy receipts. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
 }
 
@@ -143,16 +174,27 @@ export interface ExecutionPort {
       readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
     } & RetainedExecutionRecoveryContext,
   ): AsyncIterable<RuntimeEventEnvelope>
-  nativeBoundary?(input: {
-    readonly runId: string
-    readonly sessionId: string
-    readonly signal?: AbortSignal
-  }): Promise<{
-    readonly boundary: string
-    readonly digest: string
-    readonly revision?: string
-  } | null>
+  nativeBoundary?(
+    input: {
+      readonly runId: string
+      readonly sessionId: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & RetainedExecutionRecoveryContext,
+  ): Promise<NativeContextBoundaryProof | null>
   environmentCapabilities?(): AgentEnvironmentCapabilities | Promise<AgentEnvironmentCapabilities>
+  /** Provider-owned context planning and fresh-session transfer, when supported. */
+  readonly context?: ContextTransferExecutionPort | undefined
+  /** Alias retained for adapters that name the capability after its operation. */
+  readonly contextTransfer?: ContextTransferExecutionPort | undefined
+  /** Retry-safe checkpoint, fork, lookup, and cleanup operations, when supported. */
+  readonly workspaceBranching?: AgentWorkspaceBranching | undefined
+  /** Provider-owned source lookup used to reconstruct branching after restart. */
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider | undefined
+  /** External verifier required before Braid marks a confidential fork verified. */
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier | undefined
+  /** Provider identity used when Braid builds a destination context plan. */
+  readonly provider?: string | undefined
 }
 
 export const DEFAULT_RUN_CAPABILITIES: RunCapabilities = Object.freeze({
@@ -184,6 +226,22 @@ export function environmentSupportsInteractionResponse(
 
 export function supportsInteractionResponse(capabilities: RunCapabilities): boolean {
   return environmentSupportsInteractionResponse(capabilities.environment)
+}
+
+export function supportsNativeContinuation(capabilities: AgentEnvironmentCapabilities): boolean {
+  return (
+    capabilities.sessions.continue &&
+    capabilities.nativeContinuation?.atomicBoundary === true &&
+    capabilities.nativeContinuation.requestIdempotency === true &&
+    capabilities.nativeContinuation.admissionControl === true
+  )
+}
+
+/** A run can continue natively only when its environment proves safe replay and early control. */
+export function runSupportsNativeContinuation(capabilities: RunCapabilities): boolean {
+  return (
+    capabilities.environment !== undefined && supportsNativeContinuation(capabilities.environment)
+  )
 }
 
 export function capabilitiesFromEnvironment(

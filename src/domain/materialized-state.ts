@@ -28,6 +28,7 @@ import type {
   WorkerRecord,
   WorkspaceRecord,
 } from './entities.js'
+import type { ActiveRunRef } from './state.js'
 import type { BranchId, ConversationId, RunId, WorkspaceId } from './ids.js'
 import type { BraidState } from './state.js'
 
@@ -44,6 +45,10 @@ export interface MaterializedState {
   readonly messages: readonly BraidMessage[]
   readonly messageParts: readonly MessagePartRecord[]
   readonly runs: readonly BraidRun[]
+  /** Optional so snapshots written before concurrent-run support remain readable. */
+  readonly activeRuns?: readonly ActiveRunRef[]
+  /** Optional so snapshots written before concurrent-run support remain readable. */
+  readonly focusedRunId?: RunId | null
   readonly activeRunId: RunId | null
   readonly queuedInputs: BraidState['queuedInputs']
   readonly lastError: string | null

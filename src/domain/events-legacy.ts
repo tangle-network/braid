@@ -174,6 +174,8 @@ export type LegacyBraidEvent =
       readonly runId: string
       readonly status: RunTerminalStatus
       readonly finalText: string
+      /** Appends a sanitized terminal suffix to already persisted stream text. */
+      readonly finalTextMode?: 'append'
       readonly usage: TurnUsage
       readonly error?: string
       readonly reason?: string
@@ -202,6 +204,8 @@ export type LegacyBraidEvent =
       readonly operationId: string
       readonly text: string
       readonly position: number
+      readonly conversationId?: string
+      readonly branchId?: string
     }
   | {
       readonly kind: 'run.queue.removed'
@@ -223,6 +227,7 @@ export type LegacyBraidEvent =
       readonly kind: 'run.unknown'
       readonly runId: string
       readonly detail: string
+      readonly pendingText?: string
     }
   | {
       readonly kind: 'application.shutdown.requested'

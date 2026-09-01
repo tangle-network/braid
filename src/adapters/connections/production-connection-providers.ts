@@ -1,4 +1,12 @@
-import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
+import type {
+  AgentWorkspaceBranching,
+  AgentWorkspaceBranchingProvider,
+} from '@tangle-network/agent-interface'
+import type {
+  AgentEnvironment,
+  AgentEnvironmentCapabilities,
+  AgentEnvironmentProvider,
+} from '@tangle-network/agent-interface/environment-provider'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import {
   createTangleProvider,
@@ -9,6 +17,7 @@ import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { environmentSupportsInteractionResponse } from '../../ports/execution.js'
+import { nitroVerifiersForConnection } from './nitro-confidential-attestation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
 import type {
@@ -44,6 +53,58 @@ export async function createTangleSandboxClient(
   return new Sandbox({ baseUrl: endpoint, apiKey }) as unknown as SandboxClientLike
 }
 
+/** Construct the selected Tangle provider without creating or retaining an environment. */
+export async function createTangleEnvironmentProvider(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+  signal?: AbortSignal,
+): Promise<AgentEnvironmentProvider> {
+  const client = await createTangleSandboxClient(record, options, signal)
+  const confidential = nitroVerifiersForConnection(record, options)
+  return createTangleProvider({
+    client,
+    name: 'tangle-sandbox',
+    ...(confidential?.tangle === undefined
+      ? {}
+      : { confidentialAttestationVerifier: confidential.tangle }),
+  })
+}
+
+/**
+ * Create a restart-safe source lookup without retaining a live environment.
+ *
+ * The provider constructs the source-scoped handle and owns every Sandbox call.
+ * Braid retains only this lazy factory, so restart recovery cannot use stale state.
+ */
+export function createTangleWorkspaceBranchingProvider(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+): AgentWorkspaceBranchingProvider {
+  return Object.freeze({
+    async forEnvironment(
+      sourceEnvironmentId: string,
+      operation?: { readonly signal?: AbortSignal },
+    ): Promise<AgentWorkspaceBranching | null> {
+      const provider = await createTangleEnvironmentProvider(record, options, operation?.signal)
+      const branching = provider.workspaceBranching
+      if (branching === undefined) return null
+      return branching.forEnvironment(sourceEnvironmentId, operation)
+    },
+  })
+}
+
+/** Reconstruct one provider environment for an independent workspace check. */
+export async function getTangleSandboxEnvironment(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+  environmentId: string,
+  signal?: AbortSignal,
+): Promise<AgentEnvironment | null> {
+  const provider = await createTangleEnvironmentProvider(record, options, signal)
+  if (provider.get === undefined) return null
+  return provider.get(environmentId, signal === undefined ? undefined : { signal })
+}
+
 export async function capabilitiesForConnection(
   record: ConnectionRecord,
   options: ProductionConnectionOptions,
@@ -67,9 +128,28 @@ export async function capabilitiesForConnection(
         list: false,
       })
     case 'tangle-sandbox': {
-      const reported = options.sandboxClient
-        ? await createTangleProvider({ client: options.sandboxClient }).capabilities()
-        : defaultTangleSandboxCapabilities()
+      const confidential = nitroVerifiersForConnection(record, options)
+      const reported =
+        options.sandboxClient === undefined
+          ? {
+              ...defaultTangleSandboxCapabilities(),
+              branching: {
+                checkpoint: false,
+                fork: false,
+                retrySafe: false,
+                lookup: false,
+                cleanup: false,
+              },
+              confidential: false,
+            }
+          : await createTangleProvider({
+              client: options.sandboxClient,
+              ...(confidential?.tangle === undefined
+                ? {}
+                : {
+                    confidentialAttestationVerifier: confidential.tangle,
+                  }),
+            }).capabilities()
       const environment = tangleConnectionCapabilities(
         record,
         reported,

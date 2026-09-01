@@ -1,6 +1,6 @@
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
-import type { RetainedExecutionPlan } from './retained-execution-contract.js'
+import type { RetainedExecutionPlan, RetainedTurnResult } from './retained-execution-contract.js'
 import type { RetainedExecutionState } from './retained-execution-state.js'
 
 export async function* streamRetainedExecution(input: {
@@ -12,6 +12,7 @@ export async function* streamRetainedExecution(input: {
   readonly includeObservation: boolean
   readonly afterSequence: number
   readonly after?: string
+  readonly terminalResult?: Promise<RetainedTurnResult>
 }): AsyncGenerator<RuntimeEventEnvelope> {
   const reader = new AbortController()
   const previous = input.state.replaceReader(input.runId, reader)
@@ -26,6 +27,12 @@ export async function* streamRetainedExecution(input: {
       if (observation === undefined) {
         throw new Error('Retained execution observation is unavailable')
       }
+      if (
+        observation.providerEnvironmentId !== undefined &&
+        observation.providerEnvironmentId !== input.handle.controlRef.environmentId
+      ) {
+        throw new Error('Retained execution observation conflicts with its exact control reference')
+      }
       yield {
         runId: input.runId,
         eventId: `${input.runId}:execution-bound`,
@@ -33,7 +40,13 @@ export async function* streamRetainedExecution(input: {
         receivedAt: observedAt,
         event: {
           type: 'braid.execution.observed',
-          observation,
+          observation:
+            observation.providerEnvironmentId === undefined
+              ? {
+                  ...observation,
+                  providerEnvironmentId: input.handle.controlRef.environmentId,
+                }
+              : observation,
           controlRef: input.handle.controlRef,
           timestamp: observedAt,
         },
@@ -50,7 +63,8 @@ export async function* streamRetainedExecution(input: {
       sequence = envelope.sequence + 1
       yield { ...envelope, runId: input.runId, sequence }
     }
-    const result = await input.handle.result()
+    const result =
+      input.terminalResult === undefined ? await input.handle.result() : await input.terminalResult
     sequence += 1
     yield input.plan.projectFinal({ runId: input.runId, sequence, result })
   } finally {

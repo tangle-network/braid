@@ -9,14 +9,17 @@ if (!databasePath || !workspaceRoot || !keyPath || !credentialRoot || !packageRo
   )
 
 const indexUrl = (relativePath) => pathToFileURL(join(packageRoot, relativePath)).href
-const [tui, composition] = await Promise.all([
-  import(indexUrl('dist/adapters/tui/application-ui-controller.js')),
-  import(indexUrl('dist/app/composition.js')),
-])
+if (typeof globalThis.gc === 'function') globalThis.gc()
+const processStartRssMiB = process.memoryUsage().rss / (1024 * 1024)
+const composition = await import(indexUrl('dist/startup/durable-runtime.js'))
+if (typeof globalThis.gc === 'function') globalThis.gc()
+const durableRuntimeRssMiB = process.memoryUsage().rss / (1024 * 1024)
+const tui = await import(indexUrl('dist/adapters/tui/application-ui-controller.js'))
 const profile = { name: 'Braid performance profile', harness: 'pi' }
 const credentials = new FileCredentialStore(credentialRoot)
 if (typeof globalThis.gc === 'function') globalThis.gc()
-const baselineRssMiB = process.memoryUsage().rss / (1024 * 1024)
+const viewRuntimeRssMiB = process.memoryUsage().rss / (1024 * 1024)
+const baselineRssMiB = viewRuntimeRssMiB
 const durable = await composition.createDurableBraidApplication({
   path: databasePath,
   workspaceRoot,
@@ -31,6 +34,9 @@ try {
   process.stdout.write(
     `${JSON.stringify({
       baselineRssMiB,
+      processStartRssMiB,
+      durableRuntimeRssMiB,
+      viewRuntimeRssMiB,
       rssMiB: process.memoryUsage().rss / (1024 * 1024),
       eventCount: state.sequence,
       loadedTailEventCount: durable.app.events().length,

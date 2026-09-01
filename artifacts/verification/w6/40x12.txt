@@ -8,5 +8,5 @@
 › new message
 
 
- type / for commands · Alt+Enter newlin…
+─── type / for commands · Alt+Enter ────
 Braid starter

@@ -16,6 +16,7 @@ import type {
   RunAdmissionReceipt,
   RunCapabilities,
 } from './run-contracts.js'
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
 export type {
   ContextTransferReceipt,
@@ -123,6 +124,8 @@ export function createAdmissionReceipt(input: {
   readonly profile: Readonly<AgentProfile>
   readonly connectionId?: string
   readonly mode?: string
+  readonly workspaceRequest?: WorkspaceRequest
+  readonly workspaceRoot?: string
   readonly interactions?: RequestedInteractions
   readonly text: string
   readonly sessionId?: string
@@ -153,11 +156,14 @@ export function createAdmissionReceipt(input: {
       : publicMaterializationReceipt(input.materializationReceipt)
   const warnings = boundedWarnings(input.warnings)
   const contextPlanDigest = input.contextPlanDigest ?? input.contextTransfer?.planDigest
+  const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const requested = {
     text,
     profile: structuredClone(profile),
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
+    ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
+    ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
     ...(input.interactions === undefined ? {} : { interactions: input.interactions }),
     ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
     ...(profile.harness === undefined ? {} : { runner: profile.harness }),
@@ -173,6 +179,8 @@ export function createAdmissionReceipt(input: {
     profileDigest,
     connectionId: input.connectionId ?? null,
     mode: input.mode ?? null,
+    workspaceRequest: workspaceRequest ?? null,
+    workspaceRoot: input.workspaceRoot ?? null,
     interactions: input.interactions ?? {},
     contextPlanDigest: contextPlanDigest ?? null,
   })

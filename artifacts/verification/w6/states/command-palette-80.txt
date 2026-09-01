@@ -8,7 +8,7 @@
   /runner                         Set the runner for this branch
   /model                          Set the model for this branch
   /effort                         Set reasoning effort for this branch
-  /branch                         Create a branch at a message boundary
-  (1/29)
+  /branch                         Create and open a branch at a message bound…
+  (1/31)
 ────────────────────────────────────────────────────────────────────────────────
  type to filter · enter to choose · ←/esc close

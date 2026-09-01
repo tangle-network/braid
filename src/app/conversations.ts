@@ -44,6 +44,7 @@ export type {
   ImportConversationResult,
 } from './conversation-imports.js'
 export type {
+  ConfidentialExecutionRequest,
   CloneConversationInput,
   ConversationListQuery,
   CreateBranchInput,
@@ -54,4 +55,6 @@ export type {
   PlanContextInput,
   SetRunOverridesInput,
   UpdateConversationInput,
+  WorkspaceForkCleanupInput,
+  WorkspaceForkCleanupResult,
 } from './conversation-types.js'

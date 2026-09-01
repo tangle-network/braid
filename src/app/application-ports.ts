@@ -13,6 +13,7 @@ import type { IdSource } from '../ports/ids.js'
 import type { SendInput, SendReceipt } from './application-types.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import type { RunLedger } from './run-ledger.js'
+import type { RuntimeStreamSanitizer } from './run-stream-sanitizer.js'
 
 export interface StateReader {
   readonly currentState: () => BraidState
@@ -128,19 +129,28 @@ export type ExecutionRunPort = StateReader &
   LedgerAccess &
   RuntimeIngestionAccess &
   ReconnectAccess &
-  SendAccess
+  SendAccess &
+  RuntimeStreamSanitizerAccess
 
 export type ControlPort = StateReader &
   JournalWriter &
   ExecutionAccess &
   LedgerAccess &
+  RuntimeStreamSanitizerAccess &
   ControlDispatchAccess & {
     readonly currentEffect: (operationId: string) => EffectRecord | undefined
   }
 
 export type QueuePort = StateReader & JournalWriter
 
-export type IngestionPort = StateReader & JournalWriter & LedgerAccess
+export type IngestionPort = StateReader &
+  JournalWriter &
+  LedgerAccess &
+  RuntimeStreamSanitizerAccess
+
+export interface RuntimeStreamSanitizerAccess {
+  readonly streamSanitizer: RuntimeStreamSanitizer
+}
 
 export type ReplayPort = StateReader &
   JournalWriter &

@@ -13,11 +13,13 @@ import {
   resolveBinary,
   runHeadlessTurn,
 } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import {
   environmentForRun,
   resourceDelta,
   runObservations,
 } from './tangle-sandbox-braid-stress-support.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_RUNS = 3
@@ -57,16 +59,14 @@ export function executionLatencyDistribution(attempts) {
   }
 }
 
-function sandboxEnvironment(environment) {
+export function sandboxEnvironment(environment) {
   return {
     ...environment,
     BRAID_TANGLE_SANDBOX_ENDPOINT:
       environment.BRAID_TANGLE_SANDBOX_ENDPOINT?.trim() || 'https://sandbox.tangle.tools',
     BRAID_TANGLE_SANDBOX_MODEL:
-      environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || 'tangle-router/glm-5.2',
+      environment.BRAID_TANGLE_SANDBOX_MODEL?.trim() || DEFAULT_TANGLE_ROUTER_MODEL,
     BRAID_TANGLE_SANDBOX_RUNNER: environment.BRAID_TANGLE_SANDBOX_RUNNER?.trim() || 'opencode',
-    BRAID_TANGLE_SANDBOX_PROVIDER:
-      environment.BRAID_TANGLE_SANDBOX_PROVIDER?.trim() || 'tangle-router',
     ...(!environment.BRAID_TANGLE_SANDBOX_API_KEY && environment.TANGLE_API_KEY
       ? { BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
       : {}),
@@ -81,6 +81,8 @@ function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
   })
 }
 
@@ -180,6 +182,7 @@ async function runAttempt({ index, proofId, client, binary, values, environment 
       environment,
       ...values,
       connectionName,
+      workspaceRequest: workspaceRequestFor(environment),
     })
     turn = await runHeadlessTurn({
       binary,
@@ -361,7 +364,7 @@ export async function runBraidSandboxExecutionSoak({
         credentialConfigured: true,
         profile: { model: { default: values.model }, harness: values.runner },
       }),
-      provider: values.provider,
+      modelProvider: values.modelProvider,
     },
     account: {
       stable: failures.includes('Sandbox account identity changed during the cohort') === false,

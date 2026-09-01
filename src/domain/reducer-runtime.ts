@@ -3,6 +3,7 @@ import { reduceContentEvent } from './reducer-content.js'
 import { applyExecutionObservation } from './reducer-execution-observation.js'
 import { reduceInteractionEvent } from './reducer-interactions.js'
 import { reduceLifecycleEvent } from './reducer-lifecycle.js'
+import { terminalMessageStatus } from './reducer-support.js'
 import type { BraidState } from './state.js'
 
 type RuntimeEventKind =
@@ -102,19 +103,15 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
   const next =
     missingHistory.length === timed.missingHistory.length ? timed : { ...timed, missingHistory }
   const incompleteRuns = new Set(missingHistory.map((range) => range.runId))
-  const completedRunIds = new Set(
-    next.runs
-      .filter(
-        (candidate) =>
-          !candidate.complete &&
-          candidate.status !== 'unknown' &&
-          ['completed', 'failed', 'aborted', 'cancelled', 'blocked', 'expired'].includes(
-            candidate.status,
-          ) &&
-          !incompleteRuns.has(candidate.id),
-      )
-      .map((candidate) => candidate.id),
+  const completedRunStatuses = new Map(
+    next.runs.flatMap((candidate) => {
+      const messageStatus = completableTerminalMessageStatus(candidate.status)
+      return !candidate.complete && messageStatus !== undefined && !incompleteRuns.has(candidate.id)
+        ? [[candidate.id, messageStatus] as const]
+        : []
+    }),
   )
+  const completedRunIds = new Set(completedRunStatuses.keys())
   if (completedRunIds.size === 0) return next
   return {
     ...next,
@@ -123,18 +120,29 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
         ? {
             ...message,
             complete: true,
-            status:
-              next.runs.find((candidate) => candidate.id === message.runId)?.status === 'completed'
-                ? 'complete'
-                : next.runs.find((candidate) => candidate.id === message.runId)?.status === 'failed'
-                  ? 'failed'
-                  : message.status,
+            status: completedRunStatuses.get(message.runId) ?? message.status,
           }
         : message,
     ),
     runs: next.runs.map((candidate) =>
       completedRunIds.has(candidate.id) ? { ...candidate, complete: true } : candidate,
     ),
+  }
+}
+
+function completableTerminalMessageStatus(
+  status: BraidState['runs'][number]['status'],
+): BraidState['messages'][number]['status'] | undefined {
+  switch (status) {
+    case 'completed':
+    case 'failed':
+    case 'aborted':
+    case 'cancelled':
+    case 'blocked':
+    case 'expired':
+      return terminalMessageStatus(status)
+    default:
+      return undefined
   }
 }
 

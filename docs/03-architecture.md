@@ -200,7 +200,7 @@ The exact `better-sqlite3-multiple-ciphers@13.0.3` binding is required and must 
 
 Each conversation has a random content key stored only through `CredentialPort`, separate from the encrypted database key.
 
-The production credential implementation calls the operating-system stores through `@napi-rs/keyring@1.3.0`; it does not place secret bytes in a child process, command argument, or environment variable.
+The production credential implementation calls the operating-system stores through `@napi-rs/keyring@2.0.0`; it does not place secret bytes in a child process, command argument, or environment variable.
 
 `MemoryJournal` and `MemoryStorage` implement the same ports only for deterministic tests and are not selected by non-fixture composition.
 
@@ -234,8 +234,9 @@ interface AnalysisPort {
 
 interface SupervisorPort {
   snapshots(input: SupervisorWatchInput): AsyncIterable<SupervisorSnapshot>
-  steer(input: WorkerSteerInput): Promise<ControlAck>
-  cancel(input: WorkerCancelInput): Promise<ControlAck>
+  steerWorker(input: WorkerSteerInput): Promise<ControlAck>
+  cancelWorker(input: WorkerCancelInput): Promise<ControlAck>
+  cancelSupervisor(input: SupervisorCancelInput): Promise<ControlAck>
 }
 
 interface StoragePort {
@@ -580,7 +581,11 @@ Every headless request carries a connection-local client request identifier.
 
 Every side-effecting headless command also carries a caller-created, globally stable operation identifier that survives reconnect and process restart.
 
-The protocol supports initialization, workspace open, conversation navigation, profile and connection selection, send, queue, steer, interaction response, cancel, branch, clone, fork, ask, compare, query, subscribe, export, and shutdown.
+The protocol supports initialization, workspace open, conversation navigation, profile and connection selection, send, queue, steer, interaction response, and cancel.
+
+It also supports branch, clone, fork, ask, analyze, compare, activity queries, analysis cancellation, supervisor refresh, worker steering, and supervisor cancellation.
+
+Every supervisor mutation resolves a public Braid identifier to one runtime identifier before it calls the runtime-owned API.
 
 The protocol never exposes a provider client object or allows arbitrary method invocation.
 
@@ -605,6 +610,14 @@ A modal coordinator owns the overlay stack and interaction preemption.
 A layout function maps width and height to narrow, standard, or wide composition without changing application state.
 
 The activity rail and focused activity browser consume the same activity document projection, so filtering and event status do not diverge between layouts.
+
+`AnalysisLifecycle` reduces exact analyst events into durable per-analyst progress records.
+
+`ActivityBrowserPanel` renders those records and emits typed promote, cancel, steer, attach, and refresh actions.
+
+`WorkerSteerPrompt` collects one sanitized steering instruction and does not access runtime state.
+
+`TerminalSurfaceOverlays` owns confirmations and routes each action through the application controller with a stable operation identifier.
 
 Theme tokens are semantic and views cannot use raw ANSI codes.
 

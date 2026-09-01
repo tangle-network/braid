@@ -1,4 +1,8 @@
-import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
+} from '@tangle-network/agent-interface'
 import type { ExecuteTurnInput, RetainedExecutionRecoveryContext } from '../../ports/execution.js'
 import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 import { RetainedExecutionPort } from './retained-execution.js'
@@ -14,13 +18,20 @@ export interface TangleRetainedExecutionOptions {
       readonly signal?: AbortSignal
     } & RetainedExecutionRecoveryContext,
   ) => Promise<PreparedTangleRetainedConnection>
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 }
 
 /** The cloud owns the retained sandbox; Braid owns readers and exact recovery state. */
 export class TangleRetainedExecutionPort extends RetainedExecutionPort {
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
+
   constructor(options: TangleRetainedExecutionOptions) {
     super({
       resolve: async (input) => createTangleRetainedPlan(await options.resolve(input), input.runId),
+      continue: async (input, controlRef) =>
+        createTangleRetainedPlan(await options.resolve(input), input.runId, controlRef),
       recover: async ({ runId, providerSessionId, controlRef, signal, ...recovery }) =>
         createTangleRetainedPlan(
           await options.recover({
@@ -32,7 +43,12 @@ export class TangleRetainedExecutionPort extends RetainedExecutionPort {
           }),
           runId,
           controlRef,
+          recovery,
         ),
     })
+    if (options.workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 }

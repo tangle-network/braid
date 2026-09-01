@@ -1,12 +1,19 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { profileForBridgeTarget } from './config.mjs'
-import { exitCodes, livePrompts } from './constants.mjs'
+import { exitCodes, liveMarkers, livePrompts } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { RpcSession } from './process.mjs'
 import {
   classifyPackedStartup,
+  eventPayload,
+  exactMarker,
   interactionFromResponse,
   requestBase,
+  runEventPayload,
   runFromState,
+  runWithAdmissionReceipt,
   terminalMessage,
 } from './protocol.mjs'
 import { evidenceValue } from './redaction.mjs'
@@ -87,7 +94,7 @@ export async function executeCrossRunnerHandoff(
       const sourceTurn = await runNormalTurn(session, result, sourceTarget, timeoutMs, {
         operationPrefix: `${operationPrefix}-source`,
         prompt: livePrompts.handoffSource(sourceTarget.key),
-        marker: 'LIVE_BRAID_PI_HANDOFF_SOURCE_OK',
+        marker: liveMarkers.handoffSource(sourceTarget.key),
       })
       const sourceMessage = terminalMessage(sourceTurn.terminal.state, sourceTurn.runId)
       if (typeof sourceMessage?.id !== 'string') {
@@ -101,10 +108,13 @@ export async function executeCrossRunnerHandoff(
       const sourceProof = assertTargetRunIdentity(sourceTurn.finalRun, sourceTarget)
       const sourceUsage = assertObservedUsage(sourceTurn.finalRun)
       const destinationProfile = profileForBridgeTarget(destinationTarget)
+      const destinationPrompt = livePrompts.handoffDestination(destinationTarget.key)
+      const destinationMarker = liveMarkers.handoffDestination(destinationTarget.key)
       const forkParams = {
         conversationId: result.conversationId,
         branchId: result.branchId,
         messageId: sourceMessage.id,
+        text: destinationPrompt,
         workspace: false,
         runner: destinationTarget.definition.backend,
         model: destinationProfile.model.default,
@@ -127,17 +137,22 @@ export async function executeCrossRunnerHandoff(
         timeoutMs,
       )
       const plan = planResponse.type === 'ack' ? planResponse.result : undefined
+      const portablePlan = plan?.portableContextPlan
       if (
         planResponse.type === 'error' ||
         plan?.allowed !== true ||
         plan.providerSession !== 'new' ||
         typeof plan.digest !== 'string' ||
+        typeof portablePlan?.digest !== 'string' ||
+        typeof portablePlan.requiresAcceptance !== 'boolean' ||
         typeof plan.destinationBranchId !== 'string' ||
         !Array.isArray(plan.context?.messages) ||
         plan.throughMessageId !== sourceMessage.id ||
         plan.context?.sourceRunId !== sourceTurn.runId ||
         plan.context?.sourceBoundary !== sourceMessage.id ||
-        typeof plan.context?.digest !== 'string'
+        typeof plan.context?.digest !== 'string' ||
+        portablePlan.source?.source?.runId !== sourceTurn.runId ||
+        portablePlan.source?.source?.messageId !== sourceMessage.id
       ) {
         throw new LiveBridgeError(
           'LIVE_RELEASE_HANDOFF_PLAN_INVALID',
@@ -154,8 +169,15 @@ export async function executeCrossRunnerHandoff(
           'execute_fork',
           forkOperationId,
         ),
-        params: { ...forkParams, planDigest: plan.digest },
+        params: {
+          ...forkParams,
+          planDigest: plan.digest,
+          ...(portablePlan.requiresAcceptance === true
+            ? { acceptedDigest: portablePlan.digest }
+            : {}),
+        },
       }
+      const executeResponseStartIndex = session.responses.length
       const executeResponse = await sendOperationRequest(
         session,
         result,
@@ -188,12 +210,55 @@ export async function executeCrossRunnerHandoff(
       result.sourceRunId = sourceTurn.runId
       result.branchId = plan.destinationBranchId
       applyTargetReceipt(result, config, destinationTarget)
-      const destinationTurn = await runNormalTurn(session, result, destinationTarget, timeoutMs, {
-        operationPrefix: `${operationPrefix}-destination`,
-        prompt: livePrompts.handoffDestination(destinationTarget.key),
-        marker: 'LIVE_BRAID_CODEX_HANDOFF_OK',
-      })
-      const destinationSessionId = providerSessionId(destinationTurn.finalRun)
+      const destinationAdmissionResponse = await session.waitFor(
+        'cross-runner destination admission',
+        (response) => {
+          const payload = eventPayload(response)
+          return (
+            session.responses.indexOf(response) >= executeResponseStartIndex &&
+            response?.event?.kind === 'run.requested' &&
+            payload?.status === 'admitted' &&
+            typeof payload.runId === 'string' &&
+            payload.admission?.runId === payload.runId &&
+            payload.admission?.branchId === plan.destinationBranchId
+          )
+        },
+        timeoutMs,
+      )
+      const destinationAdmission = eventPayload(destinationAdmissionResponse)
+      const destinationRunId = destinationAdmission.runId
+      const destinationTerminal = await terminalOperationState(
+        session,
+        result,
+        `${operationPrefix}-destination`,
+        destinationRunId,
+        timeoutMs,
+      )
+      const destinationRun = runWithAdmissionReceipt(
+        destinationTerminal.run,
+        destinationAdmission.admission,
+      )
+      const destinationMessage = terminalMessage(
+        destinationTerminal.response.state,
+        destinationRunId,
+      )
+      const destinationMarkerObserved = exactMarker(destinationMessage?.text, destinationMarker)
+      if (
+        destinationRun?.status !== 'completed' ||
+        typeof destinationMessage?.text !== 'string' ||
+        destinationMessage.text.trim() === '' ||
+        !destinationMarkerObserved
+      ) {
+        throw new LiveBridgeError(
+          destinationMarkerObserved ? 'LIVE_FINAL_OUTPUT_MISSING' : 'LIVE_FINAL_OUTPUT_MISMATCH',
+          destinationMarkerObserved
+            ? 'The cross-runner destination did not retain a completed assistant message'
+            : 'The cross-runner destination completed without the expected response marker',
+          exitCodes.failed,
+          { run: destinationRun, assistant: destinationMessage },
+        )
+      }
+      const destinationSessionId = providerSessionId(destinationRun)
       if (
         typeof destinationSessionId !== 'string' ||
         destinationSessionId.length === 0 ||
@@ -203,20 +268,20 @@ export async function executeCrossRunnerHandoff(
           'LIVE_RELEASE_DESTINATION_RECEIPT_INVALID',
           'The Codex destination run did not prove a distinct runner and provider session',
           exitCodes.failed,
-          { run: destinationTurn.finalRun, sourceSessionId },
+          { run: destinationRun, sourceSessionId },
         )
       }
-      const destinationProof = assertTargetRunIdentity(destinationTurn.finalRun, destinationTarget)
-      const destinationUsage = assertObservedUsage(destinationTurn.finalRun)
+      const destinationProof = assertTargetRunIdentity(destinationRun, destinationTarget)
+      const destinationUsage = assertObservedUsage(destinationRun)
       const transfer = assertContextTransfer({
         sourceRunId: sourceTurn.runId,
         sourceMessageId: sourceMessage.id,
         plan,
-        destinationRun: destinationTurn.finalRun,
+        destinationRun,
       })
       return {
-        runId: destinationTurn.runId,
-        runIds: [sourceTurn.runId, destinationTurn.runId],
+        runId: destinationRunId,
+        runIds: [sourceTurn.runId, destinationRunId],
         targetProof: destinationProof,
         evidence: {
           sourceRunner: sourceProof.harness,
@@ -224,11 +289,11 @@ export async function executeCrossRunnerHandoff(
           sourceProvider: sourceProof.provider,
           destinationProvider: destinationProof.provider,
           sourceRun: evidenceValue(sourceRun),
-          destinationRun: evidenceValue(destinationTurn.finalRun),
+          destinationRun: evidenceValue(destinationRun),
           sourceUsage,
           destinationUsage,
           sourceRunId: sourceTurn.runId,
-          destinationRunId: destinationTurn.runId,
+          destinationRunId,
           sourceProviderSessionId: sourceSessionId,
           destinationProviderSessionId: destinationSessionId,
           sourceMessageId: sourceMessage.id,
@@ -237,9 +302,17 @@ export async function executeCrossRunnerHandoff(
           planDigest: plan.digest,
           contextPlanDigest: plan.context.digest,
           providerSession: plan.providerSession,
+          acceptance:
+            portablePlan.requiresAcceptance === true
+              ? { required: true, acceptedDigest: portablePlan.digest }
+              : { required: false },
           transfer: evidenceValue(transfer),
           plan: evidenceValue(plan),
           execution: evidenceValue(branch),
+          destinationAdmission: evidenceValue(destinationAdmissionResponse),
+          destinationPrompt,
+          destinationMarker,
+          destinationMarkerObserved,
         },
       }
     },
@@ -276,8 +349,13 @@ export async function executeInteractiveProtocol(
     timeoutMs,
     operation,
     operationPrefix,
-    execute: async ({ result, getSession }) => {
+    execute: async ({ result, config, getSession }) => {
       const session = getSession()
+      await writeFile(
+        join(config.workspace, `interaction-proof-${target.key}.txt`),
+        `${liveMarkers.interactive(target.key)}\n`,
+        { mode: 0o600 },
+      )
       const started = await admitOperationTurn(
         session,
         result,
@@ -293,9 +371,11 @@ export async function executeInteractiveProtocol(
         timeoutMs,
       )
       const interaction = interactionFromResponse(interactionResponse, started.runId)
+      const interactionPayload = runEventPayload(interactionResponse, started.runId)
       if (
         typeof interaction?.interactionId !== 'string' ||
-        interaction.interactionId.length === 0
+        interaction.interactionId.length === 0 ||
+        !Number.isSafeInteger(interactionPayload?.source?.providerSequence)
       ) {
         throw new LiveBridgeError(
           'LIVE_RELEASE_INTERACTION_INVALID',
@@ -347,6 +427,7 @@ export async function executeInteractiveProtocol(
       const staleCodes = new Set([
         'INTERACTION_RESPONSE_IN_PROGRESS',
         'INTERACTION_RESPONSE_CONFLICT',
+        'INTERACTION_STALE',
       ])
       if (duplicateResponse.type !== 'error' || !staleCodes.has(duplicateResponse.code)) {
         throw new LiveBridgeError(
@@ -355,6 +436,56 @@ export async function executeInteractiveProtocol(
           exitCodes.failed,
           { response: duplicateResponse },
         )
+      }
+      const responseIndex = session.responses.indexOf(responseAck)
+      const providerProgress = await session.waitFor(
+        'post-response provider progress',
+        (response) => {
+          const payload = runEventPayload(response, started.runId)
+          return (
+            session.responses.indexOf(response) > responseIndex &&
+            Number.isSafeInteger(payload?.source?.providerSequence) &&
+            payload.source.providerSequence > interactionPayload.source.providerSequence
+          )
+        },
+        timeoutMs,
+      )
+      const providerProgressPayload = runEventPayload(providerProgress, started.runId)
+      const postResponseState = await operationState(
+        session,
+        result,
+        operationPrefix,
+        'post-response',
+        timeoutMs,
+      )
+      const postResponseRun = runFromState(postResponseState.state, started.runId)
+      let cleanupCancel
+      if (['running', 'waiting', 'streaming', 'reconnecting'].includes(postResponseRun?.status)) {
+        const cancelRequest = operationRequest(
+          result,
+          operationPrefix,
+          'cleanup-cancel',
+          'cancel_run',
+          {
+            runId: started.runId,
+            reason: 'live interactive proof completed',
+          },
+        )
+        cleanupCancel = await sendOperationRequest(
+          session,
+          result,
+          cancelRequest,
+          'interactive proof cleanup cancellation',
+          timeoutMs,
+        )
+        if (cleanupCancel.type !== 'ack') {
+          throw new LiveBridgeError(
+            'LIVE_RELEASE_INTERACTION_CLEANUP_FAILED',
+            'The named interactive operation did not acknowledge cleanup cancellation',
+            exitCodes.failed,
+            { response: cleanupCancel },
+          )
+        }
       }
       const terminal = await terminalOperationState(
         session,
@@ -378,11 +509,13 @@ export async function executeInteractiveProtocol(
           { run: terminal.run, interaction: interactionState },
         )
       }
-      const targetProof = assertTargetRunIdentity(terminal.run, target)
-      const usage = assertObservedUsage(terminal.run)
+      const verifiedRun = runWithAdmissionReceipt(terminal.run, started.response.admission)
+      const targetProof = assertTargetRunIdentity(verifiedRun, target)
       const retainedInteraction = assertRetainedInteraction(
-        terminal.run,
+        session.responses,
+        started.runId,
         interaction.interactionId,
+        responseRequest.operationId,
         responseAck,
       )
       return {
@@ -395,10 +528,27 @@ export async function executeInteractiveProtocol(
           interaction: evidenceValue(interaction),
           response: evidenceValue(responseAck),
           staleDuplicate: evidenceValue(duplicateResponse),
-          terminalRun: evidenceValue(terminal.run),
+          providerProgress: evidenceValue({
+            kind: providerProgress.event.kind,
+            sequence: providerProgress.sequence,
+            revision: providerProgress.revision,
+            providerSequence: providerProgressPayload.source.providerSequence,
+            cursor: providerProgressPayload.source.cursor ?? null,
+          }),
+          postResponseStatus: postResponseRun?.status ?? null,
+          ...(cleanupCancel === undefined ? {} : { cleanupCancel: evidenceValue(cleanupCancel) }),
+          terminalRun: evidenceValue(verifiedRun),
           interactionStatus: retainedInteraction.status,
           responseOutcome: retainedInteraction.responseOperation.outcome,
-          usage,
+          usage: evidenceValue({
+            terminalStatus: verifiedRun.status,
+            input: verifiedRun.inputTokens,
+            output: verifiedRun.outputTokens,
+            tokenStatus: verifiedRun.tokenStatus,
+            costStatus: verifiedRun.costStatus,
+            settled: false,
+            reason: 'The interactive proof cancels after provider progress',
+          }),
         },
       }
     },
@@ -466,24 +616,28 @@ export async function executeRestartReconciliation(
       }
       const activeStream = await getSession().waitFor(
         'restart operation streamed active run event',
-        (response) =>
-          response.type === 'event' &&
-          response.event?.runId === started.runId &&
-          getSession().responses.indexOf(response) > admissionResponseIndex &&
-          [
-            'run.text.delta',
-            'run.part.updated',
-            'run.reasoning.delta',
-            'run.tool.call',
-            'run.tool.result',
-            'run.artifact',
-            'run.proposal',
-            'run.interaction',
-          ].includes(response.event.kind) &&
-          Number.isSafeInteger(response.event?.provider?.providerSequence) &&
-          response.event.provider.providerSequence > 0,
+        (response) => {
+          const payload = runEventPayload(response, started.runId)
+          return (
+            payload !== undefined &&
+            getSession().responses.indexOf(response) > admissionResponseIndex &&
+            [
+              'run.text.delta',
+              'run.part.updated',
+              'run.reasoning.delta',
+              'run.tool.call',
+              'run.tool.result',
+              'run.artifact',
+              'run.proposal',
+              'run.interaction',
+            ].includes(response.event.kind) &&
+            Number.isSafeInteger(payload.source?.providerSequence) &&
+            payload.source.providerSequence > 0
+          )
+        },
         timeoutMs,
       )
+      const activeStreamPayload = runEventPayload(activeStream, started.runId)
       const streamedState = await operationState(
         getSession(),
         result,
@@ -492,6 +646,23 @@ export async function executeRestartReconciliation(
         timeoutMs,
       )
       const streamedRun = runFromState(streamedState.state, started.runId)
+      if (!['running', 'waiting', 'streaming'].includes(streamedRun?.status)) {
+        throw new LiveBridgeError(
+          'LIVE_RELEASE_RESTART_STREAM_ENDED',
+          'The selected run reached a terminal state before Braid could disconnect',
+          exitCodes.failed,
+          {
+            run: streamedRun,
+            progress: {
+              kind: activeStream.event.kind,
+              sequence: activeStream.sequence,
+              revision: activeStream.revision,
+              providerSequence: activeStreamPayload.source.providerSequence,
+              cursor: activeStreamPayload.source.cursor ?? null,
+            },
+          },
+        )
+      }
       const activeStateResponseIndex = getSession().responses.indexOf(activeState)
       const activeStreamResponseIndex = getSession().responses.indexOf(activeStream)
       const activeModel = {
@@ -515,12 +686,32 @@ export async function executeRestartReconciliation(
           responseIndex: activeStreamResponseIndex,
           sequence: activeStream.sequence,
           revision: activeStream.revision,
-          providerSequence: activeStream.event.provider.providerSequence,
-          cursor: activeStream.event.provider.cursor ?? null,
+          providerSequence: activeStreamPayload.source.providerSequence,
+          cursor: activeStreamPayload.source.cursor ?? null,
         },
       }
-      const savedCursor = streamedRun?.lastCursor
-      const savedProviderSequence = streamedRun?.lastProviderSequence
+      const savedCursor = streamedRun?.cursor
+      const savedCursorCommittedSequence = streamedRun?.cursorCommittedSequence
+      const savedCursorResponse = getSession().responses.findLast((response) => {
+        const payload = runEventPayload(response, started.runId)
+        return (
+          response.type === 'event' &&
+          response.sequence === savedCursorCommittedSequence &&
+          payload?.source?.cursor === savedCursor &&
+          Number.isSafeInteger(payload.source.providerSequence)
+        )
+      })
+      const savedCursorPayload = runEventPayload(savedCursorResponse, started.runId)
+      const savedProviderSequence = savedCursorPayload?.source?.providerSequence
+      const savedCursorBoundary = {
+        runId: started.runId,
+        kind: savedCursorResponse?.event?.kind,
+        responseIndex: getSession().responses.indexOf(savedCursorResponse),
+        sequence: savedCursorResponse?.sequence,
+        revision: savedCursorResponse?.revision,
+        cursor: savedCursorPayload?.source?.cursor,
+        providerSequence: savedProviderSequence,
+      }
       const detachRequest = operationRequest(result, operationPrefix, 'detach', 'detach', {
         runId: started.runId,
       })
@@ -547,7 +738,7 @@ export async function executeRestartReconciliation(
         (response) =>
           response.type === 'event' &&
           response.event?.kind === 'run.detached' &&
-          response.event?.runId === started.runId,
+          runEventPayload(response, started.runId) !== undefined,
         timeoutMs,
       )
       const detachedState = await operationState(
@@ -615,7 +806,7 @@ export async function executeRestartReconciliation(
           restarted.responses.indexOf(response) >= responseCountBeforeReconnect &&
           response.type === 'event' &&
           response.event?.kind === 'run.reconnecting' &&
-          response.event?.runId === started.runId &&
+          runEventPayload(response, started.runId) !== undefined &&
           Number.isSafeInteger(response.sequence) &&
           response.sequence > 0 &&
           Number.isSafeInteger(response.revision) &&
@@ -623,25 +814,87 @@ export async function executeRestartReconciliation(
         timeoutMs,
       )
       const reconnectBoundaryResponseIndex = restarted.responses.indexOf(reconnectBoundaryResponse)
-      const replayEvent = await restarted.waitFor(
-        'restart replayed post-cursor event',
-        (response) =>
-          restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
-          response.type === 'event' &&
-          response.event?.runId === started.runId &&
-          response.event?.kind !== 'run.reconnecting' &&
-          Number.isSafeInteger(response.sequence) &&
-          response.sequence > reconnectBoundaryResponse.sequence &&
-          Number.isSafeInteger(response.revision) &&
-          response.revision > reconnectBoundaryResponse.revision &&
-          Number.isSafeInteger(response.event?.provider?.providerSequence) &&
-          Number.isSafeInteger(savedProviderSequence) &&
-          savedProviderSequence > 0 &&
-          response.event.provider.providerSequence === savedProviderSequence + 1 &&
-          response.sequence <= reconnectResponse.revision &&
-          response.revision <= reconnectResponse.revision,
-        timeoutMs,
-      )
+      const reconnectBoundaryPayload = runEventPayload(reconnectBoundaryResponse, started.runId)
+      let replayEvent
+      try {
+        replayEvent = await restarted.waitFor(
+          'restart replayed post-cursor event',
+          (response) => {
+            const payload = runEventPayload(response, started.runId)
+            return (
+              restarted.responses.indexOf(response) > reconnectBoundaryResponseIndex &&
+              payload !== undefined &&
+              response.event?.kind !== 'run.reconnecting' &&
+              Number.isSafeInteger(response.sequence) &&
+              response.sequence > reconnectBoundaryResponse.sequence &&
+              Number.isSafeInteger(response.revision) &&
+              response.revision > reconnectBoundaryResponse.revision &&
+              Number.isSafeInteger(payload.source?.providerSequence) &&
+              Number.isSafeInteger(savedProviderSequence) &&
+              savedProviderSequence > 0 &&
+              payload.source.providerSequence > savedProviderSequence &&
+              response.sequence <= reconnectResponse.revision &&
+              response.revision <= reconnectResponse.revision
+            )
+          },
+          timeoutMs,
+        )
+      } catch (error) {
+        const postReconnectResponses = restarted.responses
+          .slice(responseCountBeforeReconnect)
+          .map((response, responseOffset) => {
+            const payload = runEventPayload(response, started.runId)
+            return {
+              responseIndex: responseCountBeforeReconnect + responseOffset,
+              type: response.type,
+              ...(response.requestId === undefined ? {} : { requestId: response.requestId }),
+              ...(response.sequence === undefined ? {} : { sequence: response.sequence }),
+              ...(response.revision === undefined ? {} : { revision: response.revision }),
+              ...(response.event?.kind === undefined ? {} : { kind: response.event.kind }),
+              ...(payload === undefined
+                ? {}
+                : {
+                    run: {
+                      runId: payload.runId,
+                      ...(payload.status === undefined ? {} : { status: payload.status }),
+                      ...(payload.cursor === undefined ? {} : { cursor: payload.cursor }),
+                      ...(payload.source?.providerSequence === undefined
+                        ? {}
+                        : { providerSequence: payload.source.providerSequence }),
+                      ...(payload.source?.cursor === undefined
+                        ? {}
+                        : { providerCursor: payload.source.cursor }),
+                    },
+                  }),
+              ...(response.type !== 'error'
+                ? {}
+                : { error: { code: response.code, message: response.message } }),
+            }
+          })
+        const postReconnect = {
+          count: postReconnectResponses.length,
+          first: postReconnectResponses.slice(0, 8),
+          last: postReconnectResponses.slice(-8),
+        }
+        throw new LiveBridgeError(
+          'LIVE_RELEASE_REPLAY_TIMEOUT',
+          'The restart operation did not retain a provider event after its saved cursor',
+          exitCodes.failed,
+          {
+            cause:
+              error instanceof LiveBridgeError
+                ? { code: error.code, message: error.message, details: error.details }
+                : { message: error instanceof Error ? error.message : String(error) },
+            savedCursor,
+            savedProviderSequence,
+            reopenedRun,
+            reconnectResponse,
+            reconnectBoundary: reconnectBoundaryResponse,
+            postReconnect,
+          },
+        )
+      }
+      const replayPayload = runEventPayload(replayEvent, started.runId)
       const terminal = await terminalOperationState(
         restarted,
         result,
@@ -674,19 +927,20 @@ export async function executeRestartReconciliation(
         newProcess,
         forcedProcess,
         activeModel,
+        savedCursorBoundary,
         reopenedRevision: reopenedState.revision,
         reconnectRequest,
         reconnectResponse,
         reconnectBoundary: {
-          runId: reconnectBoundaryResponse.event.runId,
+          runId: reconnectBoundaryPayload.runId,
           kind: reconnectBoundaryResponse.event.kind,
           responseIndex: reconnectBoundaryResponseIndex,
           sequence: reconnectBoundaryResponse.sequence,
           revision: reconnectBoundaryResponse.revision,
-          savedCursor: reconnectBoundaryResponse.event.after ?? null,
+          savedCursor: reconnectBoundaryPayload.cursor ?? null,
         },
         replayEvent: {
-          event: replayEvent.event,
+          event: replayPayload,
           kind: replayEvent.event.kind,
           responseIndex: restarted.responses.indexOf(replayEvent),
           sequence: replayEvent.sequence,
@@ -696,8 +950,9 @@ export async function executeRestartReconciliation(
         finalState: terminal.response,
         terminalSession: newProcess.instanceId,
       })
-      const targetProof = assertTargetRunIdentity(terminal.run, target)
-      const usage = assertObservedUsage(terminal.run)
+      const verifiedRun = runWithAdmissionReceipt(terminal.run, started.response.admission)
+      const targetProof = assertTargetRunIdentity(verifiedRun, target)
+      const usage = assertObservedUsage(verifiedRun)
       return {
         runId: started.runId,
         runIds: [started.runId],
@@ -714,6 +969,7 @@ export async function executeRestartReconciliation(
           detachedState: evidenceValue(detachedState),
           savedCursor,
           savedProviderSequence,
+          savedCursorBoundary: evidenceValue(savedCursorBoundary),
           reopenedState: evidenceValue(reopenedState),
           detach: evidenceValue(detachResponse),
           reconnect: evidenceValue(reconnectResponse),

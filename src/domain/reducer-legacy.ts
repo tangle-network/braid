@@ -20,7 +20,7 @@ import {
 import { attachRequestedRunToConversation } from './reducer-run-graph.js'
 import { terminalPartStatus } from './reducer-support.js'
 import { finalizeRunUsage } from './run-usage.js'
-import type { BraidState } from './state.js'
+import { activeRunForBranch, isActiveRunStatus, type BraidState } from './state.js'
 
 function legacyOperation(
   state: BraidState,
@@ -78,8 +78,8 @@ export function reduceLegacyEvent(
       const operationId = parseOperationId(event.operationId)
       const userMessageId = parseMessageId(event.userMessageId)
       const assistantMessageId = parseMessageId(event.assistantMessageId)
-      if (state.activeRunId !== null)
-        throw new DomainInvariantError(`Run ${state.activeRunId} is already active`)
+      const existing = activeRunForBranch(state, state.conversationId, state.branchId)
+      if (existing) throw new DomainInvariantError(`Run ${existing.id} is already active`)
       const userMessage = legacyMessage(
         state,
         userMessageId,
@@ -136,6 +136,7 @@ export function reduceLegacyEvent(
           drafts: state.drafts.map((draft) =>
             draft.branchId === state.branchId ? { ...draft, text: '', updatedAt: at } : draft,
           ),
+          focusedRunId: runId,
           activeRunId: runId,
           lastError: null,
           messages: upsert(upsert(state.messages, userMessage), assistantMessage),
@@ -149,7 +150,8 @@ export function reduceLegacyEvent(
     }
     case 'run.text.delta': {
       const runId = parseRunId(event.runId)
-      if (state.activeRunId !== runId)
+      const run = state.runs.find((candidate) => candidate.id === runId)
+      if (!run || !isActiveRunStatus(run.status))
         throw new DomainInvariantError(`Text arrived for inactive run ${runId}`)
       return updateMessageText(state, runId, event.text, at)
     }
@@ -203,6 +205,7 @@ export function reduceLegacyEvent(
         messageStatus,
         terminalPartStatus(event.status),
         at,
+        event.finalTextMode === 'append' ? 'append' : 'replace',
       )
       const turn = next.turns.find((entry) => entry.id === run.turnId)
       if (turn)

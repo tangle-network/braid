@@ -1,4 +1,9 @@
-import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  AgentProfile,
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
+} from '@tangle-network/agent-interface'
 import {
   agentInteractiveSessionStopRequestDigest,
   canonicalCandidateDigest,
@@ -59,6 +64,8 @@ export interface TangleRetainedInteractiveExecutionOptions {
   readonly recover?: (input: ExecuteTurnInput) => Promise<PreparedTangleRetainedConnection>
   readonly broker: Pick<NativeInteractiveRunBroker, 'open' | 'settle'>
   readonly holderId?: string
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 }
 
 interface PreparedInteractiveConnection {
@@ -79,12 +86,18 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #activeRuns = new Set<string>()
   readonly #detachRequested = new Set<string>()
   readonly #cancelledRuns = new Set<string>()
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 
   constructor(options: TangleRetainedInteractiveExecutionOptions) {
     this.#resolve = options.resolve
     this.#recover = options.recover
     this.#broker = options.broker
     this.#holderId = options.holderId ?? 'braid'
+    if (options.workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 
   capabilities = (input: ExecuteTurnInput): RunCapabilities | Promise<RunCapabilities> =>
@@ -406,7 +419,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       environment: interactiveEnvironment(prepared, input.runId),
       interactiveIdempotencyKey: interactiveIdempotencyKey(input.runId),
       ...(input.text.trim() === '' ? {} : { initialPrompt: input.text }),
-      ...(input.workspaceRoot === undefined ? {} : { cwd: input.workspaceRoot }),
+      // workspaceRoot identifies Braid's local checkout. The provider owns its remote cwd.
       onAdmission,
       signal: input.signal,
     })
@@ -482,7 +495,6 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
         ),
         interactiveIdempotencyKey: admission.interactiveIdempotencyKey,
         ...(receipt.requested.text.trim() === '' ? {} : { initialPrompt: receipt.requested.text }),
-        ...(input.workspaceRoot === undefined ? {} : { cwd: input.workspaceRoot }),
       },
       onAdmission,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
@@ -536,13 +548,25 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     const recoveredInput: ExecuteTurnInput = {
       operationId: `recover-${safeExecutionId(input.runId)}`,
       runId: input.runId,
+      ...(receipt?.turnId === undefined ? {} : { turnId: receipt.turnId }),
       text,
       profile,
       mode: 'interactive',
       ...(receipt?.requested.connectionId === undefined
         ? {}
         : { connectionId: receipt.requested.connectionId }),
-      ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(receipt === undefined
+        ? input.workspaceRequest === undefined
+          ? {}
+          : { workspaceRequest: input.workspaceRequest }
+        : receipt.requested.workspaceRequest === undefined
+          ? {}
+          : { workspaceRequest: receipt.requested.workspaceRequest }),
+      ...(receipt?.requested.workspaceRoot === undefined
+        ? input.workspaceRoot === undefined
+          ? {}
+          : { workspaceRoot: input.workspaceRoot }
+        : { workspaceRoot: receipt.requested.workspaceRoot }),
       signal: input.signal ?? new AbortController().signal,
     }
     return (this.#recover ?? this.#resolve)(recoveredInput)

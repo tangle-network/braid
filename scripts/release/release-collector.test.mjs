@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -10,7 +10,12 @@ import { test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 
 import { writeJsonAtomic } from './atomic-storage.mjs'
-import { bindingForCheck, readBuildIdentity, readRequirementIds } from './build-identity.mjs'
+import {
+  bindingForCheck,
+  readBuildIdentity,
+  readCandidateIdentity,
+  readRequirementIds,
+} from './build-identity.mjs'
 import { releaseChildEnvironment } from './child-environment.mjs'
 import { structuredChildEvidence } from './collection-contract.mjs'
 import { collectReleaseEvidence } from './collector.mjs'
@@ -71,7 +76,7 @@ async function makeRepo({
     `${JSON.stringify({
       name: '@example/braid',
       version: '1.0.0',
-      packageManager: 'pnpm@11.18.0',
+      packageManager: 'pnpm@11.24.0',
       dependencies: {},
     })}\n`,
   )
@@ -337,6 +342,7 @@ test('release children receive only credentials for their exact provider command
     BRAID_CLI_BRIDGE_URL: 'http://127.0.0.1:4010',
     BRAID_EVAL_API_KEY: 'eval-secret',
     BRAID_EVAL_BASE_URL: 'https://router.example/v1',
+    TANGLE_API_KEY: 'shared-tangle-secret',
     BRAID_TANGLE_API_KEY: 'tangle-secret',
     BRAID_TANGLE_ENDPOINT: 'https://router.tangle.example',
     BRAID_TANGLE_SANDBOX_API_KEY: 'sandbox-secret',
@@ -360,17 +366,21 @@ test('release children receive only credentials for their exact provider command
   assert.equal(evaluation.BRAID_EVAL_BASE_URL, 'https://router.example/v1')
   assert.equal(evaluation.BRAID_CLI_BRIDGE_BEARER, undefined)
   assert.equal(evaluation.BRAID_TANGLE_API_KEY, undefined)
+  assert.equal(evaluation.TANGLE_API_KEY, undefined)
   const tangle = releaseChildEnvironment(environment, 'pnpm test:live:tangle')
+  assert.equal(tangle.TANGLE_API_KEY, 'shared-tangle-secret')
   assert.equal(tangle.BRAID_TANGLE_API_KEY, 'tangle-secret')
   assert.equal(tangle.BRAID_TANGLE_ENDPOINT, 'https://router.tangle.example')
   assert.equal(tangle.BRAID_TANGLE_SANDBOX_API_KEY, 'sandbox-secret')
   assert.equal(tangle.BRAID_ANALYSIS_API_KEY, undefined)
   assert.equal(tangle.BRAID_SUPERVISOR_ROOT, undefined)
   const analysis = releaseChildEnvironment(environment, 'pnpm test:live:analysis')
+  assert.equal(analysis.TANGLE_API_KEY, undefined)
   assert.equal(analysis.BRAID_ANALYSIS_API_KEY, 'analysis-secret')
   assert.equal(analysis.BRAID_ANALYSIS_ENDPOINT, 'https://analysis.tangle.example')
   assert.equal(analysis.BRAID_TANGLE_API_KEY, undefined)
   const supervisor = releaseChildEnvironment(environment, 'pnpm test:live:supervisor')
+  assert.equal(supervisor.TANGLE_API_KEY, 'shared-tangle-secret')
   assert.equal(supervisor.BRAID_SUPERVISOR_ROOT, '/runtime-root')
   assert.equal(supervisor.BRAID_SUPERVISOR_ID, 'supervisor-1')
   assert.equal(supervisor.BRAID_ANALYSIS_API_KEY, undefined)
@@ -726,6 +736,30 @@ test('build identity binds clean HEAD, explicit Git-tree algorithm, tarball dige
   })
 })
 
+test('candidate identity rejects restored proof metadata tampering', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    await mkdir(join(artifactRoot, 'candidate'), { recursive: true })
+    await mkdir(join(artifactRoot, 'w6'), { recursive: true })
+    await copyFile(tarballPath, join(artifactRoot, 'candidate', proof.tarball))
+    const proofPath = join(artifactRoot, 'w6', 'package-proof.json')
+    await writeFile(proofPath, `${JSON.stringify(proof)}\n`)
+
+    const candidate = await readCandidateIdentity({
+      repository: root,
+      artifactRoot,
+      expectedCommit: proof.gitCommit,
+      expectedVersion: proof.version,
+    })
+    assert.equal(candidate.identity.tarballSha256, proof.sha256)
+
+    await writeFile(proofPath, `${JSON.stringify({ ...proof, sourceDigest: '0'.repeat(64) })}\n`)
+    await expectRejectAsync(
+      () => readCandidateIdentity({ repository: root, artifactRoot }),
+      /source digest differs/iu,
+    )
+  })
+})
+
 test('atomic interruption leaves no partial file and permits a clean retry', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-atomic-'))
   try {
@@ -820,6 +854,53 @@ test('one local catalog check produces redacted artifacts and an immutable colle
     } finally {
       await rm(bin, { recursive: true, force: true })
     }
+  })
+})
+
+test('Tangle release collection rejects a passing command without the multirun artifact', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    const measurements = Array.from({ length: 5 }, (_, index) => ({
+      kind: 'scalar',
+      name: `LIVE-${String(index + 6).padStart(2, '0')}`,
+      unit: 'verified-flow',
+      value: 1,
+    }))
+    const output =
+      'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
+      `BRAID_RELEASE_MEASUREMENTS_JSON=${JSON.stringify({ measurements })}\n`
+    const result = await collectReleaseEvidence({
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['live-tangle'] } },
+      checkIds: ['live-tangle'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck: async ({ checkId, cwd, environment }) => {
+        const evidenceRoot = join(artifactRoot, 'live', 'tangle')
+        await mkdir(evidenceRoot, { recursive: true })
+        await writeFile(join(evidenceRoot, 'stale.json'), '{}\n')
+        const processResult = await executeArgv({
+          file: process.execPath,
+          args: ['-e', `process.stdout.write(${JSON.stringify(output)})`],
+          cwd,
+          environment,
+        })
+        return {
+          checkId,
+          category: 'live',
+          command: 'pnpm test:live:tangle',
+          argv: ['pnpm', 'test:live:tangle'],
+          ...processResult,
+        }
+      },
+    })
+    assert.notEqual(result.result, 'passed')
+    assert.equal(result.envelope.checks[0].result, 'uncaptured')
+    assert.match(
+      result.envelope.checks[0].failureDetails.reason,
+      /multirun artifact is missing or invalid/u,
+    )
   })
 })
 

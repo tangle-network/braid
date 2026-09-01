@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { collectCredentialSecrets, redactText } from '../release/redaction.mjs'
+import { assertMultirunProof } from './multirun-contract.mjs'
 
 export const EXIT_CODES = Object.freeze({
   passed: 0,
@@ -14,6 +15,8 @@ export const PROOF_OPERATIONS = Object.freeze({
   tangleInference: 'tangle.inference.turn',
   tangleSandbox: 'tangle.sandbox.turn',
   tangleSandboxInteractive: 'tangle.sandbox.interactive',
+  tangleWorkspaceFork: 'tangle.sandbox.workspace-fork',
+  tangleConfidential: 'tangle.sandbox.confidential',
   traceAnalysis: 'trace.analysis.ask-promote',
   supervisor: 'supervisor.snapshot-reconnect-steer',
 })
@@ -49,6 +52,37 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'exact-resource-cleanup',
     'process-exited-before-cleanup',
     'process-group-exited-before-cleanup',
+    'provider-bound-input',
+    'provider-bound-reconnect',
+    'single-provider-execution',
+    'exact-owned-resource-set-cleanup',
+    'account-identity-stable',
+    'active-resource-delta',
+    'telemetry-complete',
+    'spend-disclosed',
+    'latency-observed',
+  ]),
+  [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
+    'configuration',
+    'source-run',
+    'plan',
+    'execute',
+    'retry',
+    'restart',
+    'independent-destination',
+    'source-unchanged',
+    'cleanup-checkpoint',
+    'cleanup-environment',
+  ]),
+  [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
+    'configuration',
+    'nitro-attestation',
+    'requested-unverified-binding',
+    'missing-attestation',
+    'valid-attestation',
+    'wrong-nonce',
+    'wrong-measurement',
+    'cleanup',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'source-frozen',
@@ -56,7 +90,15 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'restart-restored',
     'promoted',
   ]),
-  [PROOF_OPERATIONS.supervisor]: Object.freeze(['snapshot', 'reconnect', 'steering']),
+  [PROOF_OPERATIONS.supervisor]: Object.freeze([
+    'snapshot',
+    'spend-status',
+    'steering',
+    'steering-acknowledged',
+    'cancellation',
+    'reconnect',
+    'terminal-takeover',
+  ]),
 })
 
 const PROOF_OPERATION_FACT_KEYS = Object.freeze({
@@ -81,6 +123,38 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'processExitedBeforeWorkspaceCleanup',
     'terminalResize',
     'processGroupExitedBeforeWorkspaceCleanup',
+    'providerInput',
+    'providerReconnect',
+    'singleProviderExecution',
+    'exactOwnedResourceSetCleanup',
+    'accountIdentityStable',
+    'activeResourceDelta',
+    'telemetryComplete',
+    'spendDisclosed',
+    'latencyObserved',
+  ]),
+  [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
+    'sourceProviderEnvironmentId',
+    'destinationProviderEnvironmentId',
+    'checkpointRetried',
+    'forkRetried',
+    'restarted',
+    'sourceDigestBefore',
+    'sourceDigestAfter',
+    'destinationDigest',
+    'cleanupCheckpoint',
+    'cleanupEnvironment',
+  ]),
+  [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
+    'sourceProviderEnvironmentId',
+    'destinationProviderEnvironmentId',
+    'confidentialRequested',
+    'confidentialVerified',
+    'missingAttestationRejected',
+    'wrongNonceRejected',
+    'wrongMeasurementRejected',
+    'cleanupCheckpoint',
+    'cleanupEnvironment',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
     'analysisId',
@@ -93,7 +167,20 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'supervisorId',
     'workerId',
     'steeringRequestId',
+    'steeringOperationId',
+    'steeringEffect',
+    'cancellationOperationId',
+    'cancellationEffect',
+    'initialStatus',
+    'finalStatus',
+    'spendObserved',
+    'statusObserved',
+    'reconnectable',
+    'terminalTakeover',
+    'terminalTakeoverRequired',
     'cancellationAvailable',
+    'provisioned',
+    'cleanupVerified',
   ]),
 })
 
@@ -117,6 +204,7 @@ const PROOF_CONNECTION_KEYS = Object.freeze([
   'connectionKind',
   'credentialConfigured',
   'model',
+  'modelProvider',
   'runner',
 ])
 const PROOF_RUN_KEYS = Object.freeze(['ids', 'environmentId', 'materializationDigest'])
@@ -370,9 +458,31 @@ function validateProofFacts(operation, status, facts) {
     if (
       key === 'promoted' ||
       key === 'cancellationAvailable' ||
+      key === 'terminalTakeoverRequired' ||
+      key === 'spendObserved' ||
+      key === 'statusObserved' ||
+      key === 'reconnectable' ||
+      key === 'provisioned' ||
+      key === 'cleanupVerified' ||
+      key === 'checkpointRetried' ||
+      key === 'forkRetried' ||
+      key === 'restarted' ||
+      key === 'confidentialRequested' ||
+      key === 'confidentialVerified' ||
+      key === 'missingAttestationRejected' ||
+      key === 'wrongNonceRejected' ||
+      key === 'wrongMeasurementRejected' ||
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
-      key === 'processGroupExitedBeforeWorkspaceCleanup'
+      key === 'processGroupExitedBeforeWorkspaceCleanup' ||
+      key === 'providerInput' ||
+      key === 'providerReconnect' ||
+      key === 'singleProviderExecution' ||
+      key === 'exactOwnedResourceSetCleanup' ||
+      key === 'accountIdentityStable' ||
+      key === 'telemetryComplete' ||
+      key === 'spendDisclosed' ||
+      key === 'latencyObserved'
     ) {
       if (typeof value !== 'boolean') throw new Error(`Live proof ${key} must be boolean`)
       continue
@@ -402,6 +512,80 @@ function validateProofFacts(operation, status, facts) {
       throw new Error('Passed trace-analysis proof requires successful promotion')
     if (facts.usage.tokensKnown !== true)
       throw new Error('Passed trace-analysis proof requires known token usage')
+  }
+}
+
+function validatePassedSupervisorReceipt(receipt) {
+  const { facts } = receipt
+  for (const key of ['spendObserved', 'statusObserved', 'reconnectable', 'cancellationAvailable']) {
+    if (facts[key] !== true) throw new Error(`Passed supervisor proof requires ${key} to be true`)
+  }
+  if (facts.initialStatus !== 'running')
+    throw new Error('Passed supervisor proof requires a running worker at the first snapshot')
+  if (!['cancelled', 'down'].includes(facts.finalStatus))
+    throw new Error('Passed supervisor proof requires a terminal cancelled worker snapshot')
+  if (facts.steeringEffect !== 'delivered')
+    throw new Error('Passed supervisor proof requires a delivered steering effect')
+  if (facts.cancellationEffect !== 'cancelled')
+    throw new Error('Passed supervisor proof requires a cancelled worker effect')
+  if (!['attached', 'unavailable'].includes(facts.terminalTakeover))
+    throw new Error('Passed supervisor proof requires an attached or unavailable terminal takeover')
+  if (facts.provisioned === true && facts.cleanupVerified !== true)
+    throw new Error('Passed provisioned supervisor proof requires verified cleanup')
+  if (facts.terminalTakeoverRequired === true && facts.terminalTakeover !== 'attached')
+    throw new Error(
+      'Passed supervisor proof requires terminal takeover when the provider supports it',
+    )
+  if (receipt.observations === null || typeof receipt.observations !== 'object')
+    throw new Error('Passed supervisor proof requires provisioning and cleanup observations')
+  const provisioning = receipt.observations.provisioning
+  const cleanup = receipt.observations.cleanup
+  if (provisioning === undefined || cleanup === undefined)
+    throw new Error('Passed supervisor proof requires provisioning and cleanup observations')
+  if (typeof provisioning !== 'object' || Array.isArray(provisioning))
+    throw new Error('Passed supervisor provisioning observation must be an object')
+  if (typeof cleanup !== 'object' || Array.isArray(cleanup))
+    throw new Error('Passed supervisor cleanup observation must be an object')
+  const provisioningKeys = ['mode', 'rootDir', 'supervisorId', 'workerId', 'terminalTakeover']
+  exactKeys(provisioning, provisioningKeys, 'Passed supervisor provisioning observation')
+  if (!['configured', 'provisioned'].includes(provisioning.mode))
+    throw new Error('Passed supervisor provisioning mode is invalid')
+  for (const key of ['rootDir', 'supervisorId', 'workerId'])
+    validRequiredString(provisioning[key], `Passed supervisor provisioning ${key}`)
+  if (!['required', 'unsupported', 'unspecified'].includes(provisioning.terminalTakeover))
+    throw new Error('Passed supervisor provisioning terminal takeover requirement is invalid')
+  const cleanupKeys = [
+    'status',
+    'rootDir',
+    'supervisorId',
+    'workerId',
+    'supervisorStatus',
+    'workerStatus',
+    'resourcesReleased',
+    'remainingResources',
+  ]
+  exactKeys(cleanup, cleanupKeys, 'Passed supervisor cleanup observation')
+  if (!['completed', 'not-owned'].includes(cleanup.status))
+    throw new Error('Passed supervisor cleanup status is invalid')
+  for (const key of ['rootDir', 'supervisorId', 'workerId'])
+    validRequiredString(cleanup[key], `Passed supervisor cleanup ${key}`)
+  if (cleanup.supervisorStatus !== null && typeof cleanup.supervisorStatus !== 'string')
+    throw new Error('Passed supervisor cleanup supervisorStatus must be a string or null')
+  if (cleanup.workerStatus !== null && typeof cleanup.workerStatus !== 'string')
+    throw new Error('Passed supervisor cleanup workerStatus must be a string or null')
+  if (cleanup.resourcesReleased !== null && typeof cleanup.resourcesReleased !== 'boolean')
+    throw new Error('Passed supervisor cleanup resourcesReleased must be boolean or null')
+  if (cleanup.remainingResources !== null && !Array.isArray(cleanup.remainingResources))
+    throw new Error('Passed supervisor cleanup remainingResources must be an array or null')
+  if (facts.provisioned === true) {
+    if (provisioning.mode !== 'provisioned')
+      throw new Error('Passed provisioned supervisor proof has a configured provisioning mode')
+    if (cleanup.status !== 'completed' || cleanup.resourcesReleased !== true)
+      throw new Error('Passed provisioned supervisor proof requires completed resource cleanup')
+    if (!Array.isArray(cleanup.remainingResources) || cleanup.remainingResources.length !== 0)
+      throw new Error('Passed provisioned supervisor proof left resources behind')
+  } else if (provisioning.mode !== 'configured' || cleanup.status !== 'not-owned') {
+    throw new Error('Passed configured supervisor proof has an invalid ownership receipt')
   }
 }
 
@@ -447,6 +631,7 @@ function validatePassedTangleSandboxReceipt(receipt) {
     throw new Error('Passed Tangle Sandbox proof requires numeric activeResourceDelta=0')
   if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
     throw new Error('Passed Tangle Sandbox proof requires redacted observations')
+  assertMultirunProof(receipt.observations.multirun)
 }
 
 function validatePassedTangleSandboxInteractiveReceipt(receipt) {
@@ -487,6 +672,21 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     throw new Error('Passed Tangle interactive proof requires terminal resize evidence')
   if (receipt.facts.processGroupExitedBeforeWorkspaceCleanup !== true)
     throw new Error('Passed Tangle interactive proof requires process-group exit before cleanup')
+  for (const field of [
+    'providerInput',
+    'providerReconnect',
+    'singleProviderExecution',
+    'exactOwnedResourceSetCleanup',
+    'accountIdentityStable',
+    'telemetryComplete',
+    'spendDisclosed',
+    'latencyObserved',
+  ]) {
+    if (receipt.facts[field] !== true)
+      throw new Error(`Passed Tangle interactive proof requires ${field}=true`)
+  }
+  if (receipt.facts.activeResourceDelta !== 0)
+    throw new Error('Passed Tangle interactive proof requires activeResourceDelta=0')
   if (!record(receipt.observations) || Object.keys(receipt.observations).length === 0)
     throw new Error('Passed Tangle interactive proof requires redacted observations')
   for (const field of [
@@ -496,10 +696,90 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     'sandbox',
     'identityContinuity',
     'processCleanup',
+    'providerEvidence',
+    'providerExecution',
+    'usage',
+    'accountIdentities',
+    'accountIdentityConsistency',
+    'usageDelta',
+    'telemetry',
+    'spend',
+    'timing',
   ]) {
     if (!record(receipt.observations[field]))
       throw new Error(`Passed Tangle interactive proof requires observations.${field}`)
   }
+}
+
+function validatePassedTangleWorkspaceForkReceipt(receipt) {
+  const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
+  for (const field of requiredConnectionFields)
+    validRequiredString(
+      receipt.connection[field],
+      `Passed Tangle workspace-fork connection.${field}`,
+    )
+  if (receipt.connection.connectionKind !== 'tangle-sandbox')
+    throw new Error('Passed Tangle workspace-fork proof requires a tangle-sandbox connection')
+  if (receipt.connection.credentialConfigured !== true)
+    throw new Error('Passed Tangle workspace-fork proof requires configured credentials')
+  if (receipt.run.ids.length !== 1)
+    throw new Error('Passed Tangle workspace-fork proof requires one source run ID')
+  validRequiredString(receipt.run.environmentId, 'Passed Tangle workspace-fork environmentId')
+  for (const field of [
+    'sourceProviderEnvironmentId',
+    'destinationProviderEnvironmentId',
+    'sourceDigestBefore',
+    'sourceDigestAfter',
+    'destinationDigest',
+  ])
+    validRequiredString(receipt.facts[field], `Passed Tangle workspace-fork ${field}`)
+  if (receipt.facts.sourceProviderEnvironmentId === receipt.facts.destinationProviderEnvironmentId)
+    throw new Error('Passed Tangle workspace-fork proof reused its source environment')
+  if (receipt.facts.sourceDigestBefore !== receipt.facts.sourceDigestAfter)
+    throw new Error('Passed Tangle workspace-fork proof changed the source workspace')
+  for (const field of ['checkpointRetried', 'forkRetried', 'restarted']) {
+    if (receipt.facts[field] !== true)
+      throw new Error(`Passed Tangle workspace-fork proof requires ${field}=true`)
+  }
+  for (const field of ['cleanupCheckpoint', 'cleanupEnvironment']) {
+    if (!['deleted', 'already_absent'].includes(receipt.facts[field]))
+      throw new Error(`Passed Tangle workspace-fork proof requires ${field} cleanup`)
+  }
+  if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
+    throw new Error('Passed Tangle workspace-fork proof requires redacted observations')
+}
+
+function validatePassedTangleConfidentialReceipt(receipt) {
+  const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
+  for (const field of requiredConnectionFields)
+    validRequiredString(receipt.connection[field], `Passed Tangle confidential connection.${field}`)
+  if (receipt.connection.connectionKind !== 'tangle-sandbox')
+    throw new Error('Passed Tangle confidential proof requires a tangle-sandbox connection')
+  if (receipt.connection.credentialConfigured !== true)
+    throw new Error('Passed Tangle confidential proof requires configured credentials')
+  if (receipt.run.ids.length !== 1)
+    throw new Error('Passed Tangle confidential proof requires one source run ID')
+  validRequiredString(receipt.run.environmentId, 'Passed Tangle confidential environmentId')
+  if (receipt.facts.confidentialRequested !== true)
+    throw new Error('Passed Tangle confidential proof requires a requested confidential fork')
+  if (receipt.facts.confidentialVerified !== true)
+    throw new Error('Passed Tangle confidential proof requires an externally verified attestation')
+  if (
+    receipt.facts.missingAttestationRejected !== true ||
+    receipt.facts.wrongNonceRejected !== true ||
+    receipt.facts.wrongMeasurementRejected !== true
+  )
+    throw new Error('Passed Tangle confidential proof requires all negative checks')
+  for (const field of ['sourceProviderEnvironmentId', 'destinationProviderEnvironmentId'])
+    validRequiredString(receipt.facts[field], `Passed Tangle confidential ${field}`)
+  if (receipt.facts.sourceProviderEnvironmentId === receipt.facts.destinationProviderEnvironmentId)
+    throw new Error('Passed Tangle confidential proof reused its source environment')
+  for (const field of ['cleanupCheckpoint', 'cleanupEnvironment']) {
+    if (!['deleted', 'already_absent'].includes(receipt.facts[field]))
+      throw new Error(`Passed Tangle confidential proof requires ${field} cleanup`)
+  }
+  if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
+    throw new Error('Passed Tangle confidential proof requires redacted observations')
 }
 
 export function proofInvocation(scope) {
@@ -524,6 +804,8 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     throw new Error('Live proof receipt belongs to a different operation')
   if (!PROOF_STATUSES.has(receipt.status))
     throw new Error('Live proof receipt has an invalid status')
+  if (receipt.operation === PROOF_OPERATIONS.supervisor && receipt.status === 'partial')
+    throw new Error('LIVE-11 supervisor proof cannot have a partial status')
   validTimestamp(receipt.startedAt, 'Live proof startedAt')
   validTimestamp(receipt.completedAt, 'Live proof completedAt')
   if (Date.parse(receipt.completedAt) < Date.parse(receipt.startedAt))
@@ -538,6 +820,7 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
   )
     throw new Error('Live proof credentialConfigured must be boolean or null')
   validNullableString(receipt.connection.model, 'Live proof model')
+  validNullableString(receipt.connection.modelProvider, 'Live proof modelProvider')
   validNullableString(receipt.connection.runner, 'Live proof runner')
   validateObservations(receipt.observations)
   exactKeys(receipt.run, PROOF_RUN_KEYS, 'Live proof run')
@@ -574,6 +857,12 @@ export function assertProofReceipt(receipt, { invocationId, operation } = {}) {
     receipt.status === 'passed'
   )
     validatePassedTangleSandboxInteractiveReceipt(receipt)
+  if (receipt.operation === PROOF_OPERATIONS.tangleWorkspaceFork && receipt.status === 'passed')
+    validatePassedTangleWorkspaceForkReceipt(receipt)
+  if (receipt.operation === PROOF_OPERATIONS.tangleConfidential && receipt.status === 'passed')
+    validatePassedTangleConfidentialReceipt(receipt)
+  if (receipt.operation === PROOF_OPERATIONS.supervisor && receipt.status === 'passed')
+    validatePassedSupervisorReceipt(receipt)
   return receipt
 }
 
@@ -614,6 +903,7 @@ export function proofReceipt({
       credentialConfigured:
         typeof config?.credentialConfigured === 'boolean' ? config.credentialConfigured : null,
       model: config?.model ?? null,
+      modelProvider: config?.modelProvider ?? null,
       runner: config?.runner ?? null,
     },
     run: {
@@ -641,6 +931,35 @@ export function safeMessage(error, environment = process.env) {
   return safeText(value, environment, credentialFieldSecrets(error)).slice(0, 1_024)
 }
 
+const MAX_EXTERNAL_FAILURE_MESSAGES = 8
+const MAX_EXTERNAL_FAILURE_MESSAGE_LENGTH = 4_096
+
+function externalFailureMessages(error, environment, messages = [], seen = new Set()) {
+  if (
+    error === null ||
+    (typeof error !== 'object' && typeof error !== 'function') ||
+    seen.has(error) ||
+    messages.length >= MAX_EXTERNAL_FAILURE_MESSAGES
+  )
+    return messages
+  seen.add(error)
+  const message = safeMessage(error, environment)
+  if (message.length > 0 && !messages.includes(message)) messages.push(message)
+  if (error instanceof AggregateError) {
+    for (const nested of error.errors) {
+      externalFailureMessages(nested, environment, messages, seen)
+      if (messages.length >= MAX_EXTERNAL_FAILURE_MESSAGES) break
+    }
+  }
+  externalFailureMessages(error.cause, environment, messages, seen)
+  return messages
+}
+
+function externalFailureMessage(error, environment) {
+  const messages = externalFailureMessages(error, environment)
+  return messages.join('; ').slice(0, MAX_EXTERNAL_FAILURE_MESSAGE_LENGTH)
+}
+
 export function safeJson(value, environment = process.env) {
   const secrets = redactionSecretsFor(value, environment)
   const sanitized = sanitizePublicValue(value, environment, secrets)
@@ -650,7 +969,7 @@ export function safeJson(value, environment = process.env) {
   } catch {
     serialized = JSON.stringify({ status: 'unavailable', reason: '[UNAVAILABLE]' })
   }
-  return redactText(serialized === undefined ? 'null' : serialized, secrets)
+  return serialized === undefined ? 'null' : serialized
 }
 
 export function endpointEvidence(value) {
@@ -680,10 +999,16 @@ export function requiredEnvironment(environment, entries, label) {
 }
 
 export function normalizeExternalFailure(error, label, environment = process.env) {
-  const message = safeMessage(error, environment)
+  const message =
+    error instanceof LiveRequiredError
+      ? safeMessage(error, environment)
+      : externalFailureMessage(error, environment)
   if (error instanceof LiveRequiredError) {
     if (error.message === message) return error
     return new LiveRequiredError(error.code, message, { unavailable: error.unavailable })
+  }
+  if (error?.unavailable === true) {
+    return new LiveRequiredError('LIVE_PROTECTED_PATH_UNAVAILABLE', message, { unavailable: true })
   }
   return new LiveRequiredError(
     'LIVE_REAL_PATH_FAILED',

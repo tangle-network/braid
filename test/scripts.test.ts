@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -39,8 +39,13 @@ const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
 const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { renderVerificationReport } = await import('../scripts/release/verification-report.mjs')
+const processMeasurementsPath = '../scripts/performance/process-measurements.mjs'
+const { interactiveReadyFramePredicate } = await import(processMeasurementsPath)
+const packageProofTracePath = '../scripts/package-proof-trace.mjs'
+const { firstTerminalTrace } = await import(packageProofTracePath)
 // @ts-expect-error The visual definitions are an executable JavaScript release helper.
-const { createStateDefinitions } = await import('../scripts/capture-visual-definitions.mjs')
+const visualDefinitions = await import('../scripts/capture-visual-definitions.mjs')
+const { createStateDefinitions, isRunningWorkStripRow } = visualDefinitions
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -94,6 +99,73 @@ test('deterministic visual capture stays separate from the explicit live demo', 
   assert.match(liveDemoSource, /assertPublicCapture/u)
 })
 
+test('packed startup readiness uses visible profile and composer contracts', () => {
+  const marker = 'Completed Braid performance conversation (10000 committed events)'
+  const ready = interactiveReadyFramePredicate(marker)
+  const frame = [
+    marker,
+    'braid',
+    'profile Braid performance profile · pi · via Performance local bridge',
+    '──────── type / for commands · Alt+Enter newline · paste ────────',
+  ]
+
+  assert.equal(ready(frame, frame.join('\n')), true)
+  assert.equal(
+    ready(
+      frame.filter((line) => !line.includes('profile ')),
+      frame.join('\n'),
+    ),
+    false,
+  )
+  assert.equal(
+    ready(
+      frame.filter((line) => !line.includes('type / for commands')),
+      frame.join('\n'),
+    ),
+    false,
+  )
+  assert.equal(ready(frame, `${frame.join('\n')}\nstartup error`), false)
+})
+
+test('terminal package parity restores baseline focus from the complete keyboard trace', () => {
+  const trace = firstTerminalTrace({
+    state: {
+      revision: 9,
+      sequence: 9,
+      messages: [{ id: 'message-1' }, { id: 'message-2' }, { id: 'message-9' }],
+      runs: [{ id: 'run-000001' }, { id: 'run-000009' }],
+      focusedRunId: 'run-000009',
+      activeRunId: 'run-000009',
+      lastError: 'later failure',
+    },
+    events: [
+      {
+        kind: 'run.requested',
+        revision: 1,
+        sequence: 1,
+        payload: { operationId: 'op-baseline' },
+      },
+      {
+        kind: 'run.finished',
+        revision: 2,
+        sequence: 2,
+        payload: { status: 'completed' },
+      },
+      {
+        kind: 'run.requested',
+        revision: 3,
+        sequence: 3,
+        payload: { operationId: 'op-later' },
+      },
+    ],
+  })
+
+  assert.equal(trace.state.focusedRunId, 'run-000001')
+  assert.equal(trace.state.activeRunId, null)
+  assert.equal(trace.state.revision, 2)
+  assert.equal(trace.events.length, 2)
+})
+
 test('active streaming capture waits for a terminal run state before exiting', async () => {
   let screen = 'working'
   let cancelled = false
@@ -129,6 +201,54 @@ test('active streaming capture waits for a terminal run state before exiting', a
   })
 
   assert.equal(closed, true)
+})
+
+test('supervision capture reaches the worker Activity scope from the default scope', async () => {
+  const definition = createStateDefinitions((value: string) => value).find(
+    (candidate: { readonly name: string }) => candidate.name === 'supervision',
+  )
+  assert.ok(definition)
+
+  let screen = 'activity · 4\nstream and replay'
+  const inputs: string[] = []
+  let closed = false
+  await definition.run({
+    input(data: string) {
+      inputs.push(data)
+      const tabCount = inputs.filter((item) => item === '\t').length
+      if (tabCount > 0 && tabCount < 3) screen = `${['runs', 'analyses'][tabCount - 1]} · 0`
+      if (tabCount === 3) screen = 'workers · 3\na/r'
+    },
+    screen: () => screen,
+    async waitFor(predicate: () => boolean, label: string) {
+      assert.equal(predicate(), true, label)
+    },
+    async waitForStable() {},
+    async captureState() {
+      return {
+        point: { screen },
+        record: { view: { activity: [{ kind: 'worker' }] } },
+      }
+    },
+    async closeNormally() {
+      closed = true
+    },
+  })
+
+  assert.deepEqual(inputs, ['/activity', '\r', '\t', '\t', '\t'])
+  assert.equal(closed, true)
+})
+
+test('multi-run capture recognizes responsive Work Strip rows without requiring lower-priority fields', () => {
+  assert.equal(
+    isRunningWorkStripRow(
+      'focus branch-0123456789ab…345-terminal · running  actions switch/cancel',
+    ),
+    true,
+  )
+  assert.equal(isRunningWorkStripRow('work branch-background · running · pi/fixture/model'), true)
+  assert.equal(isRunningWorkStripRow('work branch-background · queued'), false)
+  assert.equal(isRunningWorkStripRow('Fixture response includes work branch · running'), false)
 })
 
 test('the scoped test runner rejects an unregistered scope instead of silently running the wrong suite', async () => {
@@ -208,6 +328,8 @@ test('every scoped package alias forwards its declared file set', () => {
       'application.test.js',
       'canonical.test.js',
       'cli-startup.test.js',
+      'component-docs.test.js',
+      'conversation-branch-effects.test.js',
       'conversations.test.js',
       'coordination.test.js',
       'domain-ids.test.js',
@@ -217,12 +339,15 @@ test('every scoped package alias forwards its declared file set', () => {
       'eval.test.js',
       'native-interactive-actions.test.js',
       'native-interactive-run-broker.test.js',
+      'nitro-confidential-attestation.test.js',
       'observability.test.js',
       'plain-accessibility.test.js',
       'property.test.js',
       'reducer.test.js',
+      'run-event-mapper-stream-safety.test.js',
       'sanitize.test.js',
       'scripts.test.js',
+      'storage-journal-routing.test.js',
       'terminal-usage-status.test.js',
       'usage-projection.test.js',
       'w6-ui.test.js',
@@ -232,13 +357,16 @@ test('every scoped package alias forwards its declared file set', () => {
       'analysis-model-call-observability.test.js',
       'analysis-model-call-roundtrip.test.js',
       'application.test.js',
+      'cli-bridge-context-transfer.test.js',
       'cli-bridge-interactions.test.js',
       'cli-bridge-profile-contract.test.js',
       'cli-bridge-retained-restart.test.js',
+      'conversation-branch-effects.test.js',
       'conversations.test.js',
       'coordination.test.js',
       'domain-invariants.test.js',
       'domain-reducer.test.js',
+      'nitro-confidential-attestation.test.js',
       'observability.test.js',
       'reducer.test.js',
       'scripts.test.js',
@@ -284,6 +412,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'domain-reducer.test.js',
       'effect-admission.test.js',
       'storage-crash.test.js',
+      'storage-journal-routing.test.js',
       'storage-snapshots.test.js',
       'storage.test.js',
     ],
@@ -299,12 +428,15 @@ test('every scoped package alias forwards its declared file set', () => {
       'analysis-model-call-roundtrip.test.js',
       'cli-startup.test.js',
       'configuration-product-flow.test.js',
+      'conversation-branch-effects.test.js',
       'conversations.test.js',
       'coordination.test.js',
+      'nitro-confidential-attestation.test.js',
       'observability.test.js',
       'plain-accessibility.test.js',
       'profile-connection-actions.test.js',
       'profile-save-recovery.test.js',
+      'run-event-mapper-stream-safety.test.js',
       'sanitize.test.js',
       'security.test.js',
       'storage-snapshots.test.js',
@@ -330,6 +462,7 @@ test('every scoped package alias forwards its declared file set', () => {
     'cli-bridge-retained-restart.test.js',
     'cli-startup.test.js',
     'configuration-product-flow.test.js',
+    'nitro-confidential-attestation.test.js',
     'observability.test.js',
     'plain-accessibility.test.js',
     'profile-connection-actions.test.js',
@@ -474,7 +607,43 @@ test('release subprocesses and recorded paths are portable to Windows', async ()
     'utf8',
   )
   assert.match(candidatePreparation, /pnpmInvocation\(\['run', 'build'\]\)/u)
+  assert.match(candidatePreparation, /readCandidateIdentity/u)
   assert.doesNotMatch(candidatePreparation, /run\('pnpm'/u)
+})
+
+test('package smoke rejects symlinked restored candidate archives', async () => {
+  const artifactRoot = await mkdtemp(join(tmpdir(), 'braid-release-symlink-'))
+  const outsideRoot = await mkdtemp(join(tmpdir(), 'braid-release-symlink-target-'))
+  const archive = 'tangle-network-braid-0.3.0.tgz'
+  const archiveBytes = Buffer.from('candidate archive')
+  try {
+    await mkdir(join(artifactRoot, 'candidate'), { recursive: true })
+    await mkdir(join(artifactRoot, 'w6'), { recursive: true })
+    const target = join(outsideRoot, archive)
+    await writeFile(target, archiveBytes)
+    await symlink(target, join(artifactRoot, 'candidate', archive))
+    await writeFile(
+      join(artifactRoot, 'w6', 'package-proof.json'),
+      `${JSON.stringify({
+        version: '0.3.0',
+        tarball: archive,
+        sha256: createHash('sha256').update(archiveBytes).digest('hex'),
+      })}\n`,
+    )
+    assert.throws(
+      () =>
+        execFileSync(process.execPath, ['scripts/release/smoke-package.mjs'], {
+          cwd: process.cwd(),
+          env: { ...process.env, BRAID_RELEASE_ARTIFACT_ROOT: artifactRoot },
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      /Regular non-symlink file required/u,
+    )
+  } finally {
+    await rm(artifactRoot, { recursive: true, force: true })
+    await rm(outsideRoot, { recursive: true, force: true })
+  }
 })
 
 test('upstream requirements require successful owning-repository checks', () => {
@@ -798,6 +967,7 @@ test('release keys stay isolated while publication uses the installed product', 
   const publish = job('publish', 'post-publish-smoke')
   assert.doesNotMatch(publish, /already exists; checking|if npm view/iu)
   assert.match(publish, /node scripts\/release\/check-registry-collision\.mjs/u)
+  assert.match(publish, /node scripts\/release\/verify-candidate-identity\.mjs/u)
   assert.match(publish, /if: steps\.registry\.outputs\.status == 'available'/u)
 
   const candidateSmoke = job('platform-smoke', 'publish')
@@ -836,7 +1006,7 @@ test('the final release proof requires matching candidate and registry smokes on
     version: '0.1.0',
     gitCommit: 'a'.repeat(40),
     tarball: 'tangle-network-braid-0.1.0.tgz',
-    sha256: 'b'.repeat(64),
+    sha256: createHash('sha256').update(Buffer.from('candidate archive bytes')).digest('hex'),
   }
   const completedAt = '2026-08-09T01:00:00.000Z'
   try {
@@ -964,6 +1134,13 @@ test('the final release proof requires matching candidate and registry smokes on
     assert.equal(augmented.evidence.finishedAt, completedAt)
     assert.equal(augmented.evidence.requirements['VR-10'].artifacts.length, 7)
     assert.equal(augmented.evidence.artifacts.length, 7)
+
+    await writeFile(join(candidateDirectory, packageProof.tarball), Buffer.from('tampered archive'))
+    await assert.rejects(
+      createPublicationProof({ artifactRoot, packageProof, completedAt }),
+      /Candidate package archive digest differs/u,
+    )
+    await writeFile(join(candidateDirectory, packageProof.tarball), candidateBytes)
 
     const registryPath = join(artifactRoot, 'publication', 'registry', 'linux-x64.json')
     const mismatched = JSON.parse(await readFile(registryPath, 'utf8'))

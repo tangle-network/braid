@@ -8,6 +8,7 @@ import {
   exitCodes,
   liveProofScope,
   liveReleaseProofScope,
+  releaseRunnerTargetDefinitions,
   repository,
 } from './constants.mjs'
 import {
@@ -142,10 +143,21 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
     bridgeCleanup = bridge.cleanup
     let selected = bridge.selected
     if (discoverFromHealth) {
-      const releaseDefinitions = releaseTargetDefinitions(
-        policy.definitions,
+      const preferredDefinitions = [...policy.definitions, ...releaseRunnerTargetDefinitions]
+      const requiredDefinitions = requireCompleteReleaseProof
+        ? preferredDefinitions
+        : policy.definitions
+      const discoveredDefinitions = releaseTargetDefinitions(
+        preferredDefinitions,
         bridgeEvidence.models,
         bridge.health,
+      )
+      const releaseDefinitions = [
+        ...(requireCompleteReleaseProof ? requiredDefinitions : []),
+        ...discoveredDefinitions,
+      ].filter(
+        (definition, index, definitions) =>
+          definitions.findIndex(({ modelId }) => modelId === definition.modelId) === index,
       )
       if (releaseDefinitions.length === 0) {
         throw new LiveBridgeError(
@@ -169,10 +181,17 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
     }
     evidence.selectedTargets = bridgeEvidence.selectedTargets
     const packed = await buildPackedBinary(evidence, repository, (path) => tempPaths.push(path))
-    const providerCapabilities = await loadProviderCapabilities(packed.installRoot)
+    const providerCapabilitiesByBackend = Object.fromEntries(
+      await Promise.all(
+        [...new Set(selected.map(({ backend }) => backend))].map(async (backend) => [
+          backend,
+          await loadProviderCapabilities(packed.installRoot, backend),
+        ]),
+      ),
+    )
     evidence.provider = {
       package: '@tangle-network/agent-provider-cli-bridge',
-      capabilities: evidenceValue(providerCapabilities),
+      capabilitiesByBackend: evidenceValue(providerCapabilitiesByBackend),
     }
     evidence.analysis = await probePackedAnalysisReadiness(
       packed.installRoot,
@@ -190,7 +209,7 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
           packed.installRoot,
           targetRoot,
           endpoint,
-          providerCapabilities,
+          providerCapabilitiesByBackend[target.backend],
           target,
           token,
           Number(process.env.BRAID_LIVE_BRIDGE_TIMEOUT_MS ?? defaultTimeoutMs),
@@ -229,7 +248,7 @@ export async function main({ requireCompleteReleaseProof = false } = {}) {
         installRoot: packed.installRoot,
         root: targetRoot,
         endpoint,
-        providerCapabilities,
+        providerCapabilitiesByBackend,
         targets: selected,
         targetRecords: evidence.targets,
         token,

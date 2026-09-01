@@ -48,7 +48,7 @@ export function legacyCancel(host: LegacyCancelHost, input: CancelInput): Cancel
     }
   }
 
-  if (!run || state.activeRunId !== runId || isTerminal(run.status)) {
+  if (!run || isTerminal(run.status)) {
     throw new AppError('UNKNOWN_RUN', `Run ${runId} is not active`)
   }
   const completion = host

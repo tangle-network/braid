@@ -620,6 +620,133 @@ test('conversation commands work through the real terminal input path', async ()
   await done
 })
 
+test('cancel command follows the focused live run across conversations', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 10_000 })
+  app.initialize('/workspace')
+  await app.conversations.lifecycle.create({
+    operationId: 'op-tui-focus-cancel-create-first',
+    title: 'Parallel run A',
+  })
+  const firstRun = app.send({
+    operationId: 'op-tui-focus-cancel-first',
+    text: 'parallel run A',
+  })
+  await firstRun.admissionReady
+  await waitUntil(() => app.state().activeRuns.length === 1)
+
+  const second = await app.conversations.lifecycle.create({
+    operationId: 'op-tui-focus-cancel-create-second',
+    title: 'Parallel run B',
+  })
+  const secondRun = app.send({
+    operationId: 'op-tui-focus-cancel-second',
+    text: 'parallel run B',
+  })
+  await secondRun.admissionReady
+  await waitUntil(() => app.state().activeRuns.length === 2)
+  app.focusRun({ operationId: 'op-tui-focus-cancel-focus-first', runId: firstRun.runId })
+
+  const controller = createApplicationUiController(app)
+  const before = controller.view()
+  assert.equal(before.conversationId, second.id)
+  assert.equal(before.conversationTitle, second.title)
+  assert.equal(before.activeRunId, secondRun.runId)
+  assert.equal(before.focusedRunId, firstRun.runId)
+
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'op-tui-focus-cancel-command',
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('/cancel')
+    terminal.sendInput('\r')
+    await waitUntil(
+      () => app.state().runs.find((run) => run.id === firstRun.runId)?.status === 'aborted',
+    )
+    assert.equal(app.state().runs.find((run) => run.id === secondRun.runId)?.status, 'streaming')
+  } finally {
+    view.stop()
+    await done
+    if (app.state().runs.find((run) => run.id === secondRun.runId)?.status === 'streaming') {
+      const cleanup = await app.cancelRun({
+        operationId: 'op-tui-focus-cancel-cleanup',
+        runId: secondRun.runId,
+        terminalStatus: 'aborted',
+      })
+      await cleanup.completion
+    }
+    await app.close()
+  }
+})
+
+test('cancel command preserves a focused detached run for remote cancellation', async () => {
+  let releaseStream: (() => void) | undefined
+  let cancellationCalls = 0
+  const execution: ExecutionPort = {
+    capabilities: () => ({
+      ...DEFAULT_RUN_CAPABILITIES,
+      streaming: { ...DEFAULT_RUN_CAPABILITIES.streaming, replay: true, detach: true },
+      controls: { ...DEFAULT_RUN_CAPABILITIES.controls, recreate: true },
+    }),
+    async *streamTurn(input): AsyncIterable<never> {
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+        if (input.signal.aborted) resolve()
+        else input.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield* []
+    },
+    detachRun: async (input) => {
+      releaseStream?.()
+      return { operationId: input.operationId, outcome: 'accepted' as const }
+    },
+    cancelRun: async (input) => {
+      cancellationCalls += 1
+      return { operationId: input.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  app.initialize('/workspace')
+  const active = app.send({ operationId: 'op-tui-detached-send', text: 'retain this run' })
+  await active.admissionReady
+  await waitUntil(() => app.state().activeRunId !== null)
+  const detached = await app.detachRun({
+    operationId: 'op-tui-detached-detach',
+    runId: active.runId,
+  })
+  await detached.completion
+  assert.equal(app.state().runs.find((run) => run.id === active.runId)?.status, 'detached')
+
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TuiMainScreen(terminal)
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'op-tui-detached-cancel',
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('/cancel')
+    terminal.sendInput('\r')
+    await waitUntil(
+      () => app.state().runs.find((run) => run.id === active.runId)?.status === 'aborted',
+    )
+    assert.equal(cancellationCalls, 1)
+  } finally {
+    view.stop()
+    await done
+    await app.close()
+  }
+})
+
 test('the terminal saves and restores independent unsent conversation drafts', async () => {
   const terminal = new VirtualTerminal(100, 30)
   const tui = new TuiMainScreen(terminal)

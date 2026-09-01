@@ -12,7 +12,7 @@ import type {
 import { redactSensitiveText } from '../domain/redaction.js'
 import { replayEvents } from '../domain/reducer.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
-import { type BraidState, initialState } from '../domain/state.js'
+import { type BraidState, initialState, isLiveRunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
@@ -59,6 +59,7 @@ import {
   sendRunAsync,
   validateNativeProof,
 } from './run-admission.js'
+import { resolveNativeContinuationRun } from './run-continuation.js'
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { snapshotRunExecution } from './run-execution-snapshot.js'
@@ -66,6 +67,7 @@ import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
 import { shutdownApplication } from './shutdown-controller.js'
+import { snapshotWorkspaceRequest } from './workspace-request.js'
 
 export type { SendInput, SendReceipt } from './application-types.js'
 export { AppError } from './errors.js'
@@ -96,6 +98,22 @@ export type { BraidApplicationOptions, CancelInput, CancelReceipt } from './appl
 const MAX_MESSAGE_BYTES = 1024 * 1024
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
 
+interface Deferred<T> {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T | PromiseLike<T>) => void
+  readonly reject: (reason?: unknown) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: Deferred<T>['resolve']
+  let reject!: Deferred<T>['reject']
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
@@ -104,6 +122,9 @@ export class BraidApplication {
   readonly runtimeSelection: RuntimeSelection
   readonly #execution: ExecutionPort
   readonly #executionProfile: Readonly<AgentProfile>
+  readonly #workspaceRequest:
+    | Readonly<import('@tangle-network/agent-interface').WorkspaceRequest>
+    | undefined
   readonly #ids: IdSource
   readonly #clock: Clock
   readonly #journal: ApplicationJournal
@@ -129,6 +150,7 @@ export class BraidApplication {
   constructor(options: BraidApplicationOptions) {
     this.#execution = options.execution
     this.#executionProfile = structuredClone(options.profile)
+    this.#workspaceRequest = snapshotWorkspaceRequest(options.workspaceRequest)
     this.runtimeSelection = new RuntimeSelection(this.#executionProfile)
     this.#ids = options.ids
     this.#clock = options.clock
@@ -170,6 +192,10 @@ export class BraidApplication {
     this.#state = replayEvents(baseState, persisted)
     assertBraidState(this.#state)
     this.runtimeSelection.syncFromState(this.#state)
+    const interactionReconciliation = deferred<void>()
+    // Keep startup failures observable to callers without creating an unhandled rejection when
+    // no interaction action consumes the barrier.
+    void interactionReconciliation.promise.catch(() => undefined)
     this.#interactions = new ApplicationInteractionActions({
       state: () => this.#state,
       events: () => this.#journal.all(),
@@ -185,6 +211,7 @@ export class BraidApplication {
       owner: this.#controlOwner,
       ports: () => this.#portViews,
       whenDurable: () => this.whenDurable(),
+      startupReconciliation: interactionReconciliation.promise,
       ...(options.interactionResponseTimeoutMs === undefined
         ? {}
         : { responseTimeoutMs: options.interactionResponseTimeoutMs }),
@@ -289,6 +316,9 @@ export class BraidApplication {
       },
       coordinate: (input, action) =>
         this.#conversationOperations.run(input.operationId, input.digest, action),
+      profile: () => this.runtimeSelection.profile(),
+      execution: this.#execution,
+      send: (input) => this.send(input),
       ...(options.conversationStorage === undefined
         ? {}
         : { storage: options.conversationStorage }),
@@ -305,7 +335,11 @@ export class BraidApplication {
         throw error
       })
     this.#automationReconciliation = this.#restartReconciliation.then(() =>
-      this.#interactions.reconcile(),
+      this.#interactions.reconcile({ bypassStartupReconciliation: true }),
+    )
+    void this.#automationReconciliation.then(
+      () => interactionReconciliation.resolve(),
+      (error: unknown) => interactionReconciliation.reject(error),
     )
     this.#durableSender = createDurableSender({
       currentState: () => this.#state,
@@ -351,8 +385,9 @@ export class BraidApplication {
 
   markCleanupUncertain(reason: string): void {
     this.#cleanupUncertain = redactSensitiveText(reason).slice(0, 512)
-    const runId = this.#state.activeRunId
-    if (runId) this.#ledger.getAbort(runId)?.abort(new Error('Cleanup deadline exceeded'))
+    for (const run of this.#state.activeRuns) {
+      this.#ledger.getAbort(run.runId)?.abort(new Error('Cleanup deadline exceeded'))
+    }
   }
 
   async whenDurable(): Promise<void> {
@@ -394,6 +429,7 @@ export class BraidApplication {
       configuration.profile,
       configuration.connectionId,
       configuration.mode,
+      this.#workspaceRequest,
     )
     validateNativeProof(this.#portViews.admission, snapshot)
     if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {
@@ -412,6 +448,25 @@ export class BraidApplication {
       this.#trackOperation(receipt)
       return receipt
     }
+  }
+
+  nativeContinuationRunId(
+    input: Pick<SendInput, 'conversationId' | 'branchId'> = {},
+  ): string | undefined {
+    const configuration = effectiveRunConfiguration(
+      this.#state,
+      this.runtimeSelection.profile(),
+      input,
+    )
+    return resolveNativeContinuationRun({
+      state: this.#state,
+      conversationId: input.conversationId ?? this.#state.conversationId,
+      branchId: input.branchId ?? this.#state.branchId,
+      profile: configuration.profile,
+      ...(configuration.connectionId === undefined
+        ? {}
+        : { connectionId: configuration.connectionId }),
+    })?.id
   }
 
   queueInput(input: {
@@ -471,6 +526,15 @@ export class BraidApplication {
     } catch {
       return false
     }
+  }
+
+  focusRun(input: { readonly operationId: string; readonly runId: string }): BraidState {
+    operationId(input.operationId, 'focus-run')
+    const run = this.#state.runs.find((candidate) => candidate.id === input.runId)
+    if (!run) throw new AppError('UNKNOWN_RUN', `Run ${input.runId} is unknown`)
+    if (this.#state.focusedRunId === run.id) return this.state()
+    this.#commit({ kind: 'run.focused', runId: run.id })
+    return this.state()
   }
 
   canCancel(): boolean {
@@ -542,9 +606,17 @@ export class BraidApplication {
     readonly text: string
     readonly runId?: string
   }): Promise<SendReceipt> {
+    const configuration = effectiveRunConfiguration(
+      this.#state,
+      this.runtimeSelection.profile(),
+      {},
+    )
     return continueNative(this.#portViews.nativeContinuation, {
       ...input,
       operationId: operationId(input.operationId, 'continue'),
+      ...(configuration.connectionId === undefined
+        ? {}
+        : { connectionId: configuration.connectionId }),
     })
   }
 
@@ -578,6 +650,10 @@ export class BraidApplication {
     try {
       await this.#lifecycle.settleActive({
         runIds: this.#activeRunIds(),
+        shouldSettleRun: (runId) => {
+          const run = this.#state.runs.find((candidate) => candidate.id === runId)
+          return run !== undefined && isLiveRunStatus(run.status)
+        },
         timeoutMs: this.#cancelTimeoutMs,
         cancel: (runId) => this.#cancelForClose(runId),
         markUnknown: (runId) => this.#markRunUnknownAfterCloseDeadline(runId),
@@ -653,9 +729,20 @@ export class BraidApplication {
   }
 
   #activeRunIds(): readonly string[] {
-    const active = this.#lifecycle.activeOperations().map((operation) => operation.runId)
-    const current = this.#state.activeRunId
-    return current === null ? active : [...active, current]
+    const active = this.#lifecycle
+      .activeOperations()
+      .filter((operation) => {
+        const run = this.#state.runs.find((candidate) => candidate.id === operation.runId)
+        return run !== undefined && isLiveRunStatus(run.status)
+      })
+      .map((operation) => operation.runId)
+    const current = this.#state.activeRuns
+      .filter((run) => {
+        const record = this.#state.runs.find((candidate) => candidate.id === run.runId)
+        return record !== undefined && isLiveRunStatus(record.status)
+      })
+      .map((run) => run.runId)
+    return [...new Set([...active, ...current])]
   }
 
   async #cancelForClose(runId: string): Promise<void> {

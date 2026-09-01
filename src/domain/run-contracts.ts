@@ -1,14 +1,19 @@
 import type {
   AgentEnvironmentCapabilities,
   AgentProfile,
+  NativeContextBoundaryProof,
   RequestedInteractions,
+  WorkspaceRequest,
 } from '@tangle-network/agent-interface'
 import type {
   RetainedInteractiveAdmission,
   RetainedRunAdmission,
 } from '@tangle-network/agent-runtime/kernel'
 
-export type { RequestedInteractions } from '@tangle-network/agent-interface'
+export type {
+  NativeContextBoundaryProof,
+  RequestedInteractions,
+} from '@tangle-network/agent-interface'
 
 /** Canonical Runtime recovery data that Braid persists before Runtime may proceed. */
 export type RetainedRunAdmissionRecord = RetainedRunAdmission | RetainedInteractiveAdmission
@@ -118,14 +123,6 @@ export interface ContextTransferReceipt {
   readonly acceptedAt: string
 }
 
-export interface NativeContextBoundaryProof {
-  readonly runId: string
-  readonly providerSessionId: string
-  readonly boundary: string
-  readonly revision?: string
-  readonly digest: string
-}
-
 export interface RunAdmissionReceipt {
   readonly version: 1
   readonly runId: string
@@ -140,6 +137,9 @@ export interface RunAdmissionReceipt {
     readonly profile: Readonly<AgentProfile>
     readonly connectionId?: string
     readonly mode?: string
+    readonly workspaceRequest?: Readonly<WorkspaceRequest>
+    /** Local Braid checkout root captured with the admission request. */
+    readonly workspaceRoot?: string
     readonly interactions?: RequestedInteractions
     readonly model?: string
     readonly runner?: string

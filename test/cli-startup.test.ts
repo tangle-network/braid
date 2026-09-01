@@ -3,10 +3,12 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
 import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
+import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
 import { createStartupPreview } from '../src/startup/preview-runtime.js'
 import { BRAID_VERSION } from '../src/version.js'
 import type { BraidUiController } from '../src/views/shared/intents.js'
@@ -83,6 +85,11 @@ test('expected command-line mistakes remain actionable without echoing arbitrary
       .uiFixture,
     'product-demo',
   )
+  assert.equal(
+    parseArgs(['--fixture', 'deterministic', '--ui-fixture', 'supervision'], '/workspace')
+      .uiFixture,
+    'supervision',
+  )
 })
 
 test('startup responsibilities stay split into bounded modules', async () => {
@@ -123,12 +130,61 @@ test('startup responsibilities stay split into bounded modules', async () => {
   assert.match(startupBuild, /['"]koffi['"]/u)
 })
 
-test('verification signals capture more than one atomic semantic frame', async () => {
+test('lazy execution defers provider loading and reuses the loaded port', async () => {
+  let loads = 0
+  let streamCalls = 0
+  const admission = { provider: 'test-provider' }
+  const context = {} as NonNullable<ExecutionPort['context']>
+  const contextTransfer = {} as NonNullable<ExecutionPort['contextTransfer']>
+  const workspaceBranching = {} as NonNullable<ExecutionPort['workspaceBranching']>
+  const workspaceBranchingProvider = {} as NonNullable<ExecutionPort['workspaceBranchingProvider']>
+  const confidentialAttestationVerifier = (() => true) as NonNullable<
+    ExecutionPort['confidentialAttestationVerifier']
+  >
+  const execution = new LazyExecutionPort({
+    load: async () => {
+      loads += 1
+      return {
+        admit: async () => admission,
+        async *streamTurn() {
+          streamCalls += 1
+          yield* []
+        },
+        context,
+        contextTransfer,
+        workspaceBranching,
+        workspaceBranchingProvider,
+        confidentialAttestationVerifier,
+        provider: 'test-provider',
+      } satisfies ExecutionPort
+    },
+  })
+  const input = {} as ExecuteTurnInput
+
+  assert.equal(loads, 0)
+  assert.equal(execution.context, undefined)
+  assert.deepEqual(await execution.admit(input), admission)
+  assert.equal(loads, 1)
+  assert.equal(execution.context, context)
+  assert.equal(execution.contextTransfer, contextTransfer)
+  assert.equal(execution.workspaceBranching, workspaceBranching)
+  assert.equal(execution.workspaceBranchingProvider, workspaceBranchingProvider)
+  assert.equal(execution.confidentialAttestationVerifier, confidentialAttestationVerifier)
+  assert.equal(execution.provider, 'test-provider')
+  for await (const _event of execution.streamTurn(input)) {
+    // The test provider emits no events.
+  }
+  assert.equal(streamCalls, 1)
+  assert.deepEqual(await execution.admit(input), admission)
+  assert.equal(loads, 1)
+})
+
+test('repeated verification signals capture frames during streaming', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-signal-frames-'))
   const recordPath = join(root, 'state.json')
   let revision = 1
   const controller = {
-    state: () => ({ revision }),
+    state: () => ({ revision, status: 'streaming' }),
     view: () => ({ revision }),
     events: () => [],
   } as unknown as BraidUiController
@@ -147,11 +203,10 @@ test('verification signals capture more than one atomic semantic frame', async (
   try {
     frameSignal('SIGUSR2')
     await waitForRecordedRevision(`${recordPath}.frame`, 1)
-    await rm(`${recordPath}.frame`)
     revision = 2
-    frameSignal('SIGUSR2')
-    await waitForRecordedRevision(`${recordPath}.frame`, 2)
+    for (let signal = 0; signal < 8; signal += 1) frameSignal('SIGUSR2')
     await lifecycle.settle()
+    await waitForRecordedRevision(`${recordPath}.frame`, 2)
   } finally {
     lifecycle.dispose()
     await rm(root, { force: true, recursive: true })

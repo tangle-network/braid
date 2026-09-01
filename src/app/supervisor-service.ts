@@ -1,6 +1,7 @@
 import type {
   RuntimeSupervisorController,
   SupervisorCancelResult,
+  SupervisorWorkerAttachResult,
   SupervisorWorkerCancelResult,
   SupervisorWorkerSteerResult,
 } from '../adapters/runtime/supervisor-control.js'
@@ -75,21 +76,61 @@ export class SupervisorService {
     rootDir: string,
     supervisorId: string,
     workerIdOrLabel: string,
+    operationId: string,
     message: string,
     source?: string,
+    interrupt?: boolean,
   ): Promise<SupervisorWorkerSteerResult> {
     const controller = await this.#loadController()
-    return controller.steerWorker(rootDir, supervisorId, workerIdOrLabel, message, source)
+    return controller.steerWorker(
+      rootDir,
+      supervisorId,
+      workerIdOrLabel,
+      operationId,
+      message,
+      source,
+      interrupt,
+    )
   }
 
-  async cancelWorker(worker: string): Promise<SupervisorWorkerCancelResult> {
+  async cancelWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    operationId: string,
+    reason?: string,
+    source?: string,
+  ): Promise<SupervisorWorkerCancelResult> {
     const controller = await this.#loadController()
-    return controller.cancelWorker(worker)
+    return controller.cancelWorker(
+      rootDir,
+      supervisorId,
+      workerIdOrLabel,
+      operationId,
+      reason,
+      source,
+    )
   }
 
-  async cancelSupervisor(reason?: string): Promise<SupervisorCancelResult> {
+  async cancelSupervisor(
+    rootDir: string,
+    supervisorId: string,
+    operationId: string,
+    reason?: string,
+    source?: string,
+  ): Promise<SupervisorCancelResult> {
     const controller = await this.#loadController()
-    return controller.cancelSupervisor(reason)
+    return controller.cancelSupervisor(rootDir, supervisorId, operationId, reason, source)
+  }
+
+  async attachWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    signal?: AbortSignal,
+  ): Promise<SupervisorWorkerAttachResult> {
+    const controller = await this.#loadController()
+    return controller.attachWorker(rootDir, supervisorId, workerIdOrLabel, signal)
   }
 
   #loadWatcher(): Promise<RuntimeSupervisorSnapshotPort> {
@@ -126,4 +167,9 @@ export type {
   SupervisorSnapshotRequest,
   SupervisorWatchRequest,
 } from './supervisor-projection.js'
-export type { SupervisorCancelResult, SupervisorWorkerCancelResult, SupervisorWorkerSteerResult }
+export type {
+  SupervisorCancelResult,
+  SupervisorWorkerAttachResult,
+  SupervisorWorkerCancelResult,
+  SupervisorWorkerSteerResult,
+}

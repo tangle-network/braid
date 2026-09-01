@@ -4,6 +4,7 @@ import type { ProviderRunSnapshot } from '../ports/execution.js'
 import type { ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
 import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
+import { safeRuntimeDiagnostic } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 interface RecoveryReconnectInput extends ReconnectInput {
@@ -26,11 +27,13 @@ export async function reconnectRun(
       'CAPABILITY_UNAVAILABLE',
       'The selected execution path does not report replay with a stable cursor',
     )
-  await context.commitAndWait({
-    kind: 'run.reconnecting',
-    runId: run.id,
-    ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
-  })
+  if (run.status !== 'reconnecting') {
+    await context.commitAndWait({
+      kind: 'run.reconnecting',
+      runId: run.id,
+      ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
+    })
+  }
   const abort = context.ledger.getAbort(run.id) ?? new AbortController()
   context.ledger.setAbort(run.id, abort)
   context.ledger.clearDetached(run.id)
@@ -69,10 +72,7 @@ export async function reconnectRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: safeSnapshotDetail(
-          error instanceof Error ? error.message : error,
-          'RUNTIME_RECONCILIATION_ERROR',
-        ),
+        detail: safeRuntimeDiagnostic(error, 'RUNTIME_RECONCILIATION_ERROR'),
       })
   }
   return structuredClone(context.currentState())

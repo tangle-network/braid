@@ -32,6 +32,24 @@ export function runFromState(state, runId) {
   return state?.runs?.find((run) => run.id === runId)
 }
 
+export function runWithAdmissionReceipt(run, admission) {
+  if (run === undefined || admission?.runId !== run.id) return run
+  return { ...run, receipt: structuredClone(admission) }
+}
+
+export function eventPayload(response) {
+  if (response?.type !== 'event') return undefined
+  const payload = response.event?.payload
+  return payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload
+    : undefined
+}
+
+export function runEventPayload(response, runId) {
+  const payload = eventPayload(response)
+  return payload?.runId === runId ? payload : undefined
+}
+
 export function terminalMessage(state, runId) {
   return (
     state?.messages?.findLast?.(
@@ -60,13 +78,14 @@ export function interactionFromResponse(response, runId) {
     }
   }
   if (response?.type === 'event' && response.event?.kind === 'run.interaction') {
-    if (response.event.runId !== runId) return undefined
-    const interactionId = response.event.interactionId ?? response.event.request?.id
+    const payload = runEventPayload(response, runId)
+    const request = payload?.interaction
+    const interactionId = request?.id
     if (typeof interactionId !== 'string' || interactionId.length === 0) return undefined
     return {
       runId,
       interactionId,
-      request: response.event.request ?? response.event,
+      request,
     }
   }
   return undefined
@@ -97,6 +116,16 @@ export function capabilityAvailability(providerValue, effectiveValue) {
     advertisedByProvider: capabilityAdvertised(providerValue),
     advertised: capabilityAdvertised(effectiveValue),
   }
+}
+
+export function retainedCancellationAdvertised(capabilities) {
+  const retained = capabilities?.retainedControl
+  return (
+    retained?.exactRunIdentity === true &&
+    retained.resultIdentity === true &&
+    retained.eventIdentity === true &&
+    retained.cancellationIdempotency === true
+  )
 }
 
 export function assertSemanticOutcome(name, status, advertised, details = {}) {

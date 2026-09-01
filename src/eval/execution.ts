@@ -10,7 +10,7 @@ import { evalSha256, redactEvalValue } from './records.js'
 import type { EvalProviderIdentity, RecordedJudgeCall } from './types.js'
 
 export const DEFAULT_EVAL_BASE_URL = 'https://router.tangle.tools/v1'
-export const DEFAULT_EVAL_MODEL = 'glm-5.2'
+export const DEFAULT_EVAL_MODEL = 'glm-5.3'
 export const EVAL_TOTAL_COMPLETION_TOKENS = 2_048
 export const DEFAULT_EVAL_CALL_TIMEOUT_MS = 120_000
 export const DEFAULT_EVAL_TOTAL_TIMEOUT_MS = 15 * 60_000

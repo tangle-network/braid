@@ -64,6 +64,8 @@ export interface BraidInteraction {
   readonly responseOperation?: {
     readonly operationId: OperationId
     readonly outcome: 'accepted' | 'declined' | 'cancelled' | 'unknown'
+    /** The user-selected outcome remains bound while provider status is unknown. */
+    readonly requestedOutcome?: 'accepted' | 'declined' | 'cancelled'
     readonly dataDigest?: Digest
     readonly containsSecret: boolean
     readonly automationRule?: AutomationRuleRecord
@@ -82,6 +84,9 @@ export interface BraidActivity {
 export interface QueuedInput {
   readonly operationId: string
   readonly runId: string
+  /** The continuation scope remains stable if the user switches branches. */
+  readonly conversationId?: string
+  readonly branchId?: string
   readonly text: string
   readonly position: number
 }

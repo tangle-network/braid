@@ -90,7 +90,7 @@ export async function runPackedFirstRun(binary, repository) {
     let completed = false
     try {
       await waitFor(
-        () => (expectSetup ? output.includes('braid setup') : output.includes('Ctrl+P commands')),
+        () => (expectSetup ? output.includes('braid setup') : output.includes('new message')),
         'packed TUI startup surface',
         15_000,
         () => output,
@@ -133,7 +133,7 @@ export async function runPackedFirstRun(binary, repository) {
             const replyOffset = output.indexOf(expectedResponse, responseOffset)
             if (replyOffset < 0) return false
             const completedOutput = output.slice(replyOffset + expectedResponse.length)
-            return completedOutput.includes('Ctrl+E') || completedOutput.includes('Ctrl+P')
+            return completedOutput.includes('new message')
           },
           'packed real response',
           120_000,

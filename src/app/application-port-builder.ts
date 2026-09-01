@@ -25,6 +25,7 @@ import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { ingestRuntimeEvent } from './run-ingestion.js'
 import type { RunLedger } from './run-ledger.js'
 import { reconnectRun } from './run-replay.js'
+import { ApplicationStreamSanitizer } from './run-stream-sanitizer.js'
 
 export interface PortViews {
   readonly state: StateReader
@@ -72,6 +73,7 @@ export interface PortBuilderInput {
 }
 
 export function buildPortViews(input: PortBuilderInput): PortViews {
+  const streamSanitizer = new ApplicationStreamSanitizer()
   const restart: RestartPort = {
     ...input.state,
     ...input.journal,
@@ -83,6 +85,7 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     ...input.journal,
     execution: input.execution,
     ledger: input.ledger,
+    streamSanitizer,
     executeControl: input.executeControl,
     currentEffect: (operationId) => input.effects.current(operationId),
   }
@@ -90,6 +93,7 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     ...input.state,
     ...input.journal,
     ledger: input.ledger,
+    streamSanitizer,
   }
   const ingest = (
     envelope: RuntimeEventEnvelopeLike,
@@ -123,6 +127,7 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     clock: input.clock,
     execution: input.execution,
     ledger: input.ledger,
+    streamSanitizer,
     ingestRuntimeEvent: ingestion.ingestRuntimeEvent,
     reconnectRun: (request) => reconnectRun(replay, request),
     send: input.send,

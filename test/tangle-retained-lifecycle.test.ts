@@ -6,6 +6,7 @@ import { capabilitiesForConnection } from '../src/adapters/connections/productio
 import { createTangleRetainedControlLookup } from '../src/adapters/connections/tangle-retained-control-lookup.js'
 import { safeExecutionId } from '../src/adapters/runtime/production-backend-common.js'
 import {
+  assertTangleWorkspaceCwdCapability,
   resolveTangleSandboxBackend,
   resolveTangleSandboxRetainedConnection,
 } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
@@ -63,6 +64,7 @@ function setup(sandbox: FakeTangleRetainedSandbox, providerSessionId?: string) {
   const input = {
     operationId: 'operation-tangle-retained',
     runId: 'run/tangle-retained',
+    turnId: 'turn/tangle-retained',
     text: 'Prove retained cloud execution.',
     profile,
     connectionId: connection.id,
@@ -215,6 +217,39 @@ test('retained capability and resolution fail closed without exact lookup method
   )
 })
 
+test('Tangle workspace cwd requires the advertised repository base', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const configured = setup(sandbox)
+  const { connection, input, selection } = configured
+  const prepared = await resolveTangleSandboxRetainedConnection(
+    configured.options,
+    input,
+    selection,
+    connection.id,
+  )
+  const unsupported = {
+    ...prepared.capabilities,
+    workspace: {
+      ...prepared.capabilities.workspace,
+      cwdBases: { repository: false, host: false },
+    },
+  }
+
+  assert.throws(
+    () =>
+      assertTangleWorkspaceCwdCapability({ cwd: { base: 'repository', path: 'src' } }, unsupported),
+    /does not advertise repository workspace cwd support/u,
+  )
+  assert.throws(
+    () =>
+      assertTangleWorkspaceCwdCapability(
+        { cwd: { base: 'host', path: '/workspace' } },
+        prepared.capabilities,
+      ),
+    /supports workspace cwd base "repository", not "host"/u,
+  )
+})
+
 test('published Sandbox methods recover the exact retained dispatch without an injected lookup', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
   const { connection, options, input, selection } = setup(sandbox)
@@ -324,6 +359,7 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.name, prepared.environmentName)
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
+  assert.equal(sandbox.dispatches[0]?.turnId, input.turnId)
   // Runtime writes the ownership key only. Turn and process identity stay in the
   // durable admission and in the session's own run control reference.
   assert.deepEqual(sandbox.createCalls[0]?.metadata, {

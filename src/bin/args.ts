@@ -2,7 +2,13 @@ export interface CliOptions {
   readonly mode: 'tui' | 'rpc'
   readonly plain: boolean
   readonly fixture?: 'deterministic'
-  readonly uiFixture?: 'interaction' | 'fork' | 'analysis' | 'comparison' | 'product-demo'
+  readonly uiFixture?:
+    | 'interaction'
+    | 'fork'
+    | 'analysis'
+    | 'comparison'
+    | 'product-demo'
+    | 'supervision'
   readonly inline: boolean
   readonly noColor: boolean
   readonly highContrast: boolean
@@ -111,10 +117,11 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
         value !== 'fork' &&
         value !== 'analysis' &&
         value !== 'comparison' &&
-        value !== 'product-demo'
+        value !== 'product-demo' &&
+        value !== 'supervision'
       )
         throw new CliUsageError(
-          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", or "product-demo"',
+          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", or "supervision"',
         )
       uiFixture = value
       index += 1

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TuiMainScreen } from '@earendil-works/pi-tui'
+import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
@@ -320,9 +320,14 @@ test('mounted first-run setup preserves choices and fits keyboard guidance at na
       terminal.sendInput('\u001b[B')
       terminal.sendInput('\r')
       await terminal.waitForRender()
+      terminal.sendInput('\r')
+      terminal.sendInput('\r')
+      terminal.sendInput('\r')
+      await terminal.waitForRender()
       assert.match(frame('confirm'), /reviewer → remote-sandbox/u)
       assert.doesNotMatch(frame('confirm'), /credential-secret-ref/u)
 
+      terminal.sendInput('\u001b[B')
       terminal.sendInput('\u001b[B')
       terminal.sendInput('\u001b[B')
       await terminal.waitForRender()
@@ -393,6 +398,112 @@ test('mounted setup exposes apply errors with retry and cancel controls', async 
     await done
     await app.close()
   }
+})
+
+test('cloud workspace setup accepts edits, reports invalid refs, and preserves back navigation', () => {
+  const record = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'test:workspace-form',
+      label: 'workspace profile',
+      writable: false,
+      trusted: true,
+    },
+    makeProfile(),
+  )
+  const cloud = makeConnectionVariant('tangle-sandbox', 'workspace-form-cloud')
+  const wizard = new ConfigurationWizard({
+    theme,
+    profiles: [record],
+    connections: [cloud],
+    onCommit: () => {},
+    onComplete: () => {},
+    onCancel: () => {},
+  })
+  wizard.focused = true
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  const initial = wizard.render(40)
+  assert.match(initial.join('\n'), /workspace · cloud sandbox/u)
+  assert.match(initial.join('\n'), /blank = repository root/u)
+  assert.match(initial.join('\n'), /start in \(repo-relative\)/u)
+  assert.match(initial.join('\n'), /tab\/enter continues/u)
+  assert.doesNotMatch(initial.join('\n'), /braid setup/u)
+  assert.ok(initial.every((line) => visibleWidth(line) <= 40))
+
+  // Submit an invalid ref first. The form keeps the field values and points back to git ref.
+  wizard.handleInput('\r')
+  wizard.handleInput('main')
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  const invalidFrame = wizard.render(40)
+  assert.match(invalidFrame.join('\n'), /gitRef requires repoUrl/u)
+  assert.ok(invalidFrame.every((line) => visibleWidth(line) <= 40))
+
+  // Shift-tab returns to the repository field, then the valid request reaches review.
+  wizard.handleInput('\u001b[Z')
+  wizard.handleInput('https://github.com/tangle-network/braid')
+  wizard.handleInput('\t')
+  wizard.handleInput('\t')
+  wizard.handleInput('src')
+  wizard.handleInput('\r')
+  const review = wizard.render(80).join('\n')
+  assert.match(review, /cloud workspace/u)
+  assert.match(review, /github\.com\/tangle-network\/braid/u)
+  assert.match(review, /ref main/u)
+  assert.match(review, /start in repo src/u)
+
+  // The review action returns to the form with edits intact.
+  wizard.handleInput('\u001b[B')
+  wizard.handleInput('\r')
+  const restored = wizard.render(80).join('\n')
+  assert.match(restored, /github\.com\/tangle-network\/braid/u)
+  assert.match(restored, /main/u)
+  wizard.handleInput('\u001b[Z')
+  assert.match(wizard.render(80).join('\n'), /choose a connection/u)
+  wizard.handleInput('\r')
+  assert.match(wizard.render(80).join('\n'), /github\.com\/tangle-network\/braid/u)
+  wizard.handleInput('\u001b')
+  assert.match(wizard.render(80).join('\n'), /choose a connection/u)
+})
+
+test('blank Sandbox cwd is submitted as the repository root', () => {
+  const record = createProfileRecord(
+    {
+      kind: 'inline',
+      reference: 'test:workspace-root-form',
+      label: 'workspace root profile',
+      writable: false,
+      trusted: true,
+    },
+    makeProfile(),
+  )
+  const cloud = makeConnectionVariant('tangle-sandbox', 'workspace-root-cloud')
+  let submitted: unknown
+  const wizard = new ConfigurationWizard({
+    theme,
+    profiles: [record],
+    connections: [cloud],
+    onCommit: (selection) => {
+      submitted = selection.workspaceRequest
+    },
+    onComplete: () => {},
+    onCancel: () => {},
+  })
+  wizard.focused = true
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  wizard.handleInput('https://github.com/tangle-network/braid')
+  wizard.handleInput('\t')
+  wizard.handleInput('main')
+  wizard.handleInput('\t')
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  assert.deepEqual(submitted, {
+    repoUrl: 'https://github.com/tangle-network/braid',
+    gitRef: 'main',
+    cwd: { base: 'repository', path: '.' },
+  })
 })
 
 test('mounted setup redraws when a long asynchronous apply finishes', async () => {

@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { join, resolve } from 'node:path'
@@ -21,9 +22,25 @@ export const smokeReportPath = join(outputDirectory, 'smoke.json')
 export const releaseReportPath = join(outputDirectory, 'release-measurements.json')
 export const command = process.env.BRAID_PERFORMANCE_COMMAND ?? 'pnpm run test:performance'
 export const FULL_REPETITIONS = 20
-export const processTerminal =
-  'node-pty@1.1.0 + @xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1'
-export const virtualTerminal = '@xterm/headless@6.0.0 + @earendil-works/pi-tui@0.84.1'
+function loadPackageManifest() {
+  for (const path of [join(repository, 'package.json'), join(process.cwd(), 'package.json')]) {
+    try {
+      return JSON.parse(readFileSync(path, 'utf8'))
+    } catch {
+      // A compiled test copy may not include package metadata beside its scripts.
+    }
+  }
+  return {}
+}
+
+const packageManifest = loadPackageManifest()
+const dependencyVersion = (name) =>
+  packageManifest.dependencies?.[name] ?? packageManifest.devDependencies?.[name] ?? 'unknown'
+const piTuiVersion = dependencyVersion('@earendil-works/pi-tui')
+const xtermHeadlessVersion = dependencyVersion('@xterm/headless')
+const nodePtyVersion = dependencyVersion('node-pty')
+export const processTerminal = `node-pty@${nodePtyVersion} + @xterm/headless@${xtermHeadlessVersion} + @earendil-works/pi-tui@${piTuiVersion}`
+export const virtualTerminal = `@xterm/headless@${xtermHeadlessVersion} + @earendil-works/pi-tui@${piTuiVersion}`
 const packedProductionTuiChild = new URL('./packed-production-tui-child.mjs', import.meta.url)
 
 export function errorReason(error) {

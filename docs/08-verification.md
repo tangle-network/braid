@@ -261,7 +261,7 @@ No test imports an internal controller to claim headless protocol proof.
 
 Braid's test-only implementation of Pi TUI's public `Terminal` interface renders the real root component and application core at 40×12, 80×24, 120×40, and 200×60.
 
-The adapter is derived from Pi's test helper with immutable source and license attribution because `@earendil-works/pi-tui@0.84.1` does not publish that helper.
+The adapter is derived from Pi's test helper with immutable source and license attribution because `@earendil-works/pi-tui@0.84.4` does not publish that helper.
 
 The output assertion includes cell character, width, semantic style, cursor, focus, overlay bounds, clipped rows, and hidden content.
 
@@ -339,7 +339,7 @@ The judge executes through Runtime with one exact `AgentProfile` and a direct Ta
 
 `BRAID_EVAL_API_KEY` supplies the protected credential.
 
-`BRAID_EVAL_BASE_URL` defaults to `https://router.tangle.tools/v1`, and `BRAID_EVAL_MODEL` defaults to `glm-5.2`.
+`BRAID_EVAL_BASE_URL` defaults to `https://router.tangle.tools/v1`, and `BRAID_EVAL_MODEL` defaults to `glm-5.3`.
 
 The profile sets a 2,048-token total completion limit through `max_completion_tokens`.
 
@@ -367,11 +367,11 @@ Model discovery does not make every advertised model a release gate.
 | --- | --- | --- |
 | LIVE-01 | CLI Bridge with Pi | Exact profile materialization, text, reasoning, tool, usage, native session continuation, event replay, explicit cancel, and terminal receipt |
 | LIVE-02 | CLI Bridge with Codex | The same cross-family flow and a cross-runner handoff from the Pi source context |
-| LIVE-03 | CLI Bridge interactive protocol | Real question or permission pauses the runner, reaches Braid, receives once and session responses, resumes, and rejects a stale duplicate |
+| LIVE-03 | CLI Bridge interactive protocol | Real question or permission pauses the runner, reaches Braid, receives a response in an advertised scope, resumes, and rejects a stale duplicate |
 | LIVE-04 | CLI Bridge restart | Run state becomes honestly unknown or recovers according to retained state; Braid never labels it cancelled or resubmits unsafely |
 | LIVE-05 | Every advertised interactive bridge runner | Common conformance flow at a pinned minimum runner version; failures remove the interactive capability claim |
 | LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, cancellation, and immutable receipt |
-| LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, and confirmed cleanup |
+| LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, two-conversation concurrent streaming with focus switching, and confirmed cleanup |
 | LIVE-08 | Tangle interaction | A retained cloud interaction remains answerable after Braid reconnect and continues once from the acknowledged response |
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |
 | LIVE-10 | Confidential Tangle path | Requested placement remains unverified until valid attestation is checked; negative nonce and measurement tests fail |
@@ -380,9 +380,55 @@ Model discovery does not make every advertised model a release gate.
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
 
+The live interaction check must not invent a broader response scope than the provider advertises.
+
+The current Pi route advertises interaction-only responses, so Braid disables session and persistent choices for that route.
+
+`LIVE-11` uses one reusable flow over the published `@tangle-network/agent-runtime/kernel` and `@tangle-network/agent-runtime/tui` APIs.
+
+The protected command calls Runtime `provisionSupervisor` when no complete external supervisor binding is configured.
+
+The shared protected `TANGLE_API_KEY` may authenticate both the Tangle Sandbox and Runtime supervisor paths.
+
+The release collector passes that key only to `live-tangle` and `live-supervisor`; analysis and unrelated checks remain isolated.
+
+Runtime creates the root, worker, acknowledger, and provider-owned process binding through its public APIs.
+
+The command discovers exact identifiers from the returned Runtime receipt instead of requiring pre-existing `BRAID_SUPERVISOR_*` identifiers.
+
+The three `BRAID_SUPERVISOR_ROOT`, `BRAID_SUPERVISOR_ID`, and `BRAID_SUPERVISOR_WORKER` values remain an all-or-nothing override for an externally managed run.
+
+The flow rejects incomplete snapshots and requires an exact supervisor identifier, exact worker identifier, root status, worker status, and complete spend fields.
+
+It observes a spend change while the worker remains running before it admits any control operation.
+
+It retries one stable steering operation identifier, then requires a matching request digest, exact worker, and `delivered` Runtime acknowledgement.
+
+It retries one stable worker-cancellation operation identifier, then requires a `cancelled` acknowledgement that names the terminated worker.
+
+It reloads the snapshot after cancellation and rereads the same cancellation acknowledgement to prove reconnect persistence.
+
+When a provider supplies the exact interactive reconnect contract, the flow records the opaque terminal takeover handle.
+
+When no provider supplies that contract, the flow records the explicit unavailable reason and makes no attachment claim.
+
+When Runtime reports that the provider supports terminal takeover, an unavailable attachment fails the check.
+
+An owned run always invokes its Runtime cleanup function after success or failure.
+
+Cleanup must return the exact root, supervisor, and worker identifiers, terminal statuses, `resourcesReleased: true`, and an empty `remainingResources` list.
+
+The receipt validator rejects mismatched identifiers, incomplete cleanup, and leaked resources.
+
+The check returns the `LIVE-11` measurement only after every required effect and reconnect assertion passes; it never returns a partial result.
+
 ### Tangle Sandbox durability stress
 
 Run `pnpm test:live:tangle:sandbox:stress` against the public Sandbox endpoint.
+
+The aggregate `pnpm test:live:tangle` command also runs `tangle-sandbox-braid-multirun.mjs` as part of `LIVE-07`.
+
+The direct `pnpm test:live:tangle:sandbox:multirun` command runs the same proof when an operator needs only the concurrent-session path.
 
 The command runs one canary before it starts the remaining cohort.
 
@@ -411,6 +457,24 @@ The cohort reports each result and the minimum, median, p90, and maximum latency
 The cohort also reports observed tokens, costs, active-resource deltas, and explicit unavailable values.
 
 The command fails when a cloud identity repeats, an account changes, evidence is missing, or one owned resource remains.
+
+The multirun proof creates two independent conversations, streams both retained runs concurrently, and switches focus to each run.
+
+It closes the activity browser before sending cancellation to the selected run.
+
+It records the canonical cancellation dispatch event and operation before waiting for provider acknowledgement.
+
+It cancels only the selected run, closes Braid, replays both runs after restart, and confirms exact cleanup.
+
+The proof holds each provider turn for 180 seconds and allows 300 seconds per phase by default to absorb public startup variance.
+
+When a phase fails, its artifact retains the latest semantic terminal frame and the latest frame-capture error.
+
+The multi-run proof reads active ownership from `BraidState.activeRuns` and Work Strip items from the real `BraidViewModel`.
+
+It also requires two actionable Work Strip rows in the packed terminal frame.
+
+The release collector registers the multirun artifact below `live/tangle/evidence.json` and rejects `LIVE-07` when that artifact is absent, failed, incomplete, or not exactly clean.
 
 ### Current core-path observations
 
@@ -476,13 +540,17 @@ This cohort satisfies the retained create, process-loss recovery, replay, cancel
 
 The August 12 failure artifacts remain diagnostic history and are superseded by this passing cohort.
 
-On 2026-08-21, this branch upgraded the provider cohort to interface `1.3.0`, runtime `0.143.0`, eval `0.149.0`, CLI Bridge adapter `0.9.4`, Tangle adapter `0.13.0`, and sandbox `0.31.0`.
+Historical verification snapshot (2026-08-21): this branch used interface `1.3.0`, runtime `0.143.0`, eval `0.149.0`, CLI Bridge adapter `0.9.4`, Tangle adapter `0.13.0`, and sandbox `0.31.0`.
 
-The automated suite passed 782 of 782 tests on Linux, and the release self-check passed 32 of 32 tests, both with the deleted second sandbox parser and the published Sandbox run outcome as the only terminal result source.
+Historical result for that cohort: the automated suite passed 782 of 782 tests on Linux, and the release self-check passed 32 of 32 tests, both with the deleted second sandbox parser and the published Sandbox run outcome as the only terminal result source.
 
-`LIVE-03` and `LIVE-08` were attempted through their built-in checks: both emit `unavailable` because this environment holds no CLI Bridge interaction credential and no Tangle Sandbox credential, and the built-in check refuses to claim a row it cannot execute.
+In that snapshot, `LIVE-03` and `LIVE-08` were attempted through their built-in checks: both emitted `unavailable` because the environment held no CLI Bridge interaction credential and no Tangle Sandbox credential, and the built-in check refused to claim a row it could not execute.
 
-`LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` remain unavailable in this environment for the same reason, and no live claim in this record comes from a simulated provider.
+In that snapshot, `LIVE-06`, `LIVE-07`, `LIVE-09`, and `LIVE-10` were also unavailable for the same reason, and no live claim in that record came from a simulated provider.
+
+Current dependency evidence (2026-08-29) is documented in the machine-checked table in [Runtime contracts](04-runtime-contracts.md).
+
+The historical test counts above do not represent verification of this current cohort.
 
 ## Runner conformance
 

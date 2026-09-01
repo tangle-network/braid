@@ -1,10 +1,17 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
-import { connectionEndpoint } from '../adapters/connections/production-connection-endpoints.js'
+import { type AgentProfile, harnessTypeSchema } from '@tangle-network/agent-interface'
+import { materializeBridgeModelRoute } from '../adapters/connections/cli-bridge-model-route.js'
+import { nitroVerifiersForConnection } from '../adapters/connections/nitro-confidential-attestation.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
+import {
+  connectionEndpoint,
+  createTangleEnvironmentProvider,
+  createTangleWorkspaceBranchingProvider,
+} from '../adapters/connections/production-connections.js'
 import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
+import { createCliBridgeContextTransferPort } from '../adapters/runtime/cli-bridge-context-transfer.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
 import { NativeInteractiveRunBroker } from '../adapters/runtime/native-interactive-run-broker.js'
@@ -14,6 +21,8 @@ import {
   resolveProductionCliBridgeConnection,
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
+import { prepareCliBridgeProviderRoute } from '../adapters/runtime/production-cli-bridge-backend.js'
+import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
 import type { ConnectionRecord } from '../domain/entities.js'
@@ -27,6 +36,7 @@ import type { NativeInteractiveExecutionControl } from '../ports/native-interact
 import { ConnectionError } from './connection-errors.js'
 import { ConnectionRegistry } from './connections.js'
 import { assertValidProfile } from './profile-validation.js'
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
 export type ProductionCompositionErrorCode =
   | 'PRODUCTION_CONFIGURATION_REQUIRED'
@@ -56,6 +66,8 @@ export interface ProductionCompositionConfig {
   readonly connectionId: string
   /** Canonical workspace root used by provider environment creation. */
   readonly workspaceRoot?: string
+  /** Provider-neutral remote workspace request. Separate from workspaceRoot. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   /** Protected headless SQLite key-file path, absolute or relative to the config directory. */
   readonly databaseKeyFile?: string
   /** Published provider construction options, including credential resolution. */
@@ -68,6 +80,7 @@ export interface ProductionComposition {
   readonly connection: ConnectionRecord
   readonly execution: ExecutionPort
   readonly nativeInteractive?: NativeInteractiveExecutionControl
+  readonly supervisorController?: RuntimeSupervisorController
   readonly backendResolver: AgentTurnBackendResolver
 }
 
@@ -176,7 +189,14 @@ export function createProductionComposition(
     )
   }
 
-  const resolverOptions: ProductionBackendResolverOptions = {
+  if (config.workspaceRequest !== undefined && connection.kind !== 'tangle-sandbox') {
+    throw new ProductionCompositionError(
+      'PRODUCTION_CONNECTION_UNSUPPORTED',
+      'A provider-neutral workspace request requires a tangle-sandbox connection',
+    )
+  }
+
+  const resolverOptionsBase: ProductionBackendResolverOptions = {
     ...(config.connectionOptions ?? {}),
     connections,
     ...(config.workspaceRoot === undefined ? {} : { workspaceCwd: config.workspaceRoot }),
@@ -188,7 +208,29 @@ export function createProductionComposition(
       },
     }),
   }
+  snapshotWorkspaceRequest(config.workspaceRequest)
+  const confidential = nitroVerifiersForConnection(connection, resolverOptionsBase)
+  const resolverOptions: ProductionBackendResolverOptions = {
+    ...resolverOptionsBase,
+    ...(confidential?.tangle === undefined
+      ? {}
+      : { tangleConfidentialAttestationVerifier: confidential.tangle }),
+    ...(confidential?.canonical === undefined
+      ? {}
+      : { confidentialAttestationVerifier: confidential.canonical }),
+  }
   const backendResolver = createProductionBackendResolver(resolverOptions)
+  const supervisorController =
+    connection.kind === 'tangle-sandbox'
+      ? new RuntimeSupervisorController({
+          providers: (signal) =>
+            createTangleEnvironmentProvider(connection, resolverOptions, signal),
+        })
+      : undefined
+  const workspaceBranchingProvider =
+    connection.kind === 'tangle-sandbox'
+      ? createTangleWorkspaceBranchingProvider(connection, resolverOptions)
+      : undefined
   const recoveryInput = (
     runId: string,
     providerSessionId: string | undefined,
@@ -198,10 +240,20 @@ export function createProductionComposition(
     const requested = recovery.receipt?.requested
     const admissionSessionId = retainedAdmissionSessionId(recovery.retainedAdmission)
     const sessionId = providerSessionId ?? admissionSessionId
-    const workspaceRoot = recovery.workspaceRoot ?? config.workspaceRoot
+    const workspaceRoot =
+      recovery.receipt?.requested.workspaceRoot ?? recovery.workspaceRoot ?? config.workspaceRoot
+    const workspaceRequest =
+      recovery.receipt === undefined
+        ? recovery.workspaceRequest
+        : recovery.receipt.requested.workspaceRequest
+    const turnId = recovery.receipt?.turnId ?? retainedAdmissionTurnId(recovery.retainedAdmission)
+    if (turnId === undefined) {
+      throw new Error('Retained recovery requires the persisted turn identity')
+    }
     return {
       operationId: recovery.receipt?.operationId ?? `recover-${runId}`,
       runId,
+      turnId,
       text: requested?.text ?? '',
       profile: requested?.profile ?? profile,
       ...(requested?.mode === undefined ? {} : { mode: requested.mode }),
@@ -209,13 +261,33 @@ export function createProductionComposition(
       connectionId: requested?.connectionId ?? connection.id,
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+      ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
       signal: signal ?? new AbortController().signal,
     }
   }
   let nativeInteractive: NativeInteractiveExecutionControl | undefined
   const execution = (() => {
     if (connection.kind === 'cli-bridge') {
+      const context = createCliBridgeContextTransferPort({
+        resolve: (request) => {
+          const destination = request.plan.destination
+          const runner = harnessTypeSchema.safeParse(destination.runner)
+          if (!runner.success || destination.model === undefined) {
+            throw new Error(
+              'The portable context destination requires a supported runner and exact model',
+            )
+          }
+          return prepareCliBridgeProviderRoute(
+            resolverOptions,
+            connection.id,
+            connectionEndpoint(connection, resolverOptions),
+            runner.data,
+            materializeBridgeModelRoute(runner.data, destination.model),
+          )
+        },
+      })
       return new CliBridgeRetainedExecutionPort({
+        context,
         resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionCliBridgeConnection(
@@ -235,17 +307,30 @@ export function createProductionComposition(
             resolverOptions,
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
+        ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(resolverOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
       })
       const broker = new NativeInteractiveRunBroker()
       const interactive = new TangleRetainedInteractiveExecutionPort({
         resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
         recover: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
         broker,
+        ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(resolverOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
       })
       nativeInteractive = broker
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
-    return new AgentRuntimeExecutionPort(backendResolver)
+    return new AgentRuntimeExecutionPort(backendResolver, undefined, {
+      ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+      ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ? {}
+        : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+    })
   })()
 
   return Object.freeze({
@@ -254,6 +339,7 @@ export function createProductionComposition(
     connection,
     execution,
     ...(nativeInteractive === undefined ? {} : { nativeInteractive }),
+    ...(supervisorController === undefined ? {} : { supervisorController }),
     backendResolver,
   })
 }
@@ -272,6 +358,19 @@ function retainedAdmissionSessionId(
       return admission.request.run.sessionId
     case 'interactive_started':
       return admission.ref.run.sessionId
+    default:
+      return undefined
+  }
+}
+
+function retainedAdmissionTurnId(
+  admission: RetainedRunAdmissionRecord | undefined,
+): string | undefined {
+  switch (admission?.phase) {
+    case 'intent':
+    case 'environment':
+    case 'dispatched':
+      return admission.turnId
     default:
       return undefined
   }

@@ -1,0 +1,1309 @@
+import { createHash, randomUUID } from 'node:crypto'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+import {
+  confidentialExecutionVerified,
+  forkedEnvironmentConfidentialityVerified,
+  workspaceCheckpointRequestDigest,
+  workspaceCheckpointResultMatchesRequest,
+  workspaceCleanupAcknowledgementMatches,
+  workspaceCleanupRequestDigest,
+  workspaceForkRequestDigest,
+  workspaceForkResultMatchesRequest,
+} from '@tangle-network/agent-interface'
+import { generateAttestationNonce } from '@tangle-network/sandbox'
+
+import { connectionConfiguration } from './configuration.mjs'
+import {
+  PROOF_OPERATIONS,
+  proofInvocation,
+  proofReceipt,
+  protectedUnavailable,
+  scalarMeasurement,
+} from './contracts.mjs'
+import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
+
+const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
+const DEFAULT_RUNNER = 'opencode'
+const DEFAULT_IDLE_TTL_SECONDS = 1_800
+const DEFAULT_ABSENCE_ATTEMPTS = 6
+const DEFAULT_ABSENCE_DELAY_MS = 500
+const SOURCE_TERMINAL_STATUSES = new Set([
+  'completed',
+  'failed',
+  'aborted',
+  'cancelled',
+  'blocked',
+  'expired',
+  'unknown',
+])
+
+function configurationEnvironment(environment) {
+  if (
+    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
+    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
+    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
+    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
+    environment.TANGLE_API_KEY
+  ) {
+    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
+  }
+  return environment
+}
+
+export function sandboxConfiguration(environment) {
+  return connectionConfiguration(configurationEnvironment(environment), {
+    prefix: 'BRAID_TANGLE_SANDBOX',
+    kind: 'tangle-sandbox',
+    endpointNames: ['BRAID_TANGLE_ENDPOINT'],
+    modelNames: ['BRAID_TANGLE_MODEL'],
+    runnerNames: ['BRAID_TANGLE_RUNNER'],
+    providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackEndpoint: DEFAULT_ENDPOINT,
+    fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
+    fallbackRunner: DEFAULT_RUNNER,
+    fallbackModelProvider: 'tangle-router',
+  })
+}
+
+function idleTtlSeconds(environment) {
+  const candidate = Number(environment.BRAID_TANGLE_SANDBOX_IDLE_TTL_SECONDS)
+  if (!Number.isSafeInteger(candidate) || candidate < 60 || candidate > 604_800)
+    return DEFAULT_IDLE_TTL_SECONDS
+  return candidate
+}
+
+const MAX_CONFIDENTIAL_POLICY_ITEMS = 256
+const MAX_CONFIDENTIAL_ATTESTATION_AGE_SECONDS = 86_400
+const SHA256_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
+const POLICY_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u
+
+function configuredList(environment, name) {
+  const value = environment[name]
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_REQUIRED',
+      `LIVE-10 requires ${name} as a comma-separated non-secret allowlist`,
+    )
+  }
+  const values = value.split(',').map((entry) => entry.trim())
+  if (
+    values.length === 0 ||
+    values.length > MAX_CONFIDENTIAL_POLICY_ITEMS ||
+    values.some((entry) => entry.length === 0)
+  ) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      `${name} must contain one to ${MAX_CONFIDENTIAL_POLICY_ITEMS} values`,
+    )
+  }
+  return values
+}
+
+export function parseConfidentialTrustPolicy(environment) {
+  const acceptedMeasurements = configuredList(environment, 'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS')
+  if (acceptedMeasurements.some((entry) => !SHA256_DIGEST_PATTERN.test(entry))) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS must contain canonical sha256 digests',
+    )
+  }
+  if (new Set(acceptedMeasurements).size !== acceptedMeasurements.length) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS must not contain duplicates',
+    )
+  }
+  const acceptedPolicyIds = configuredList(environment, 'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS')
+  if (acceptedPolicyIds.some((entry) => !POLICY_ID_PATTERN.test(entry))) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS must contain canonical policy identifiers',
+    )
+  }
+  if (new Set(acceptedPolicyIds).size !== acceptedPolicyIds.length) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS must not contain duplicates',
+    )
+  }
+  const selectedPolicyId =
+    typeof environment.BRAID_TANGLE_CONFIDENTIAL_POLICY_ID === 'string'
+      ? environment.BRAID_TANGLE_CONFIDENTIAL_POLICY_ID.trim()
+      : environment.BRAID_TANGLE_CONFIDENTIAL_POLICY_ID
+  if (
+    typeof selectedPolicyId !== 'string' ||
+    !POLICY_ID_PATTERN.test(selectedPolicyId) ||
+    !acceptedPolicyIds.includes(selectedPolicyId)
+  ) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      'BRAID_TANGLE_CONFIDENTIAL_POLICY_ID must name an accepted policy id',
+    )
+  }
+  const maxAgeSeconds = Number(environment.BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS)
+  if (
+    !Number.isSafeInteger(maxAgeSeconds) ||
+    maxAgeSeconds < 1 ||
+    maxAgeSeconds > MAX_CONFIDENTIAL_ATTESTATION_AGE_SECONDS
+  ) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_INVALID',
+      `BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS must be an integer from 1 to ${MAX_CONFIDENTIAL_ATTESTATION_AGE_SECONDS}`,
+    )
+  }
+  return Object.freeze({
+    policy: Object.freeze({
+      acceptedMeasurements: Object.freeze(acceptedMeasurements),
+      acceptedPolicyIds: Object.freeze(acceptedPolicyIds),
+      maxAgeSeconds,
+    }),
+    selectedPolicyId,
+  })
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value, 'utf8').digest('hex')
+}
+
+function sha256Digest(value) {
+  if (typeof value !== 'string') throw new Error('A provider digest is missing')
+  if (/^sha256:[0-9a-f]{64}$/u.test(value)) return value
+  if (/^[0-9a-f]{64}$/u.test(value)) return `sha256:${value}`
+  throw new Error('A provider returned an invalid SHA-256 digest')
+}
+
+function assertCondition(condition, message) {
+  if (!condition) throw new Error(message)
+}
+
+function unavailable(code, message, cause) {
+  return protectedUnavailable(code, message, cause)
+}
+
+function providerEnvironmentId(record, label) {
+  const value = record?.providerEnvironmentId
+  if (typeof value !== 'string' || value.length === 0)
+    throw new Error(`${label} has no provider environment identity`)
+  return value
+}
+
+function sourceEnvironmentRecord(state, run) {
+  const environment = state.environments.find((candidate) => candidate.id === run.environmentId)
+  if (environment === undefined) throw new Error(`Source run ${run.id} has no environment record`)
+  const providerId = providerEnvironmentId(environment, 'Source environment')
+  assertCondition(
+    run.controlRef?.environmentId === providerId,
+    'Source run and environment identities do not match',
+  )
+  return { environment, providerId }
+}
+
+export function sourceIdentityForRun(state, runId) {
+  const run = state.runs.find((candidate) => candidate.id === runId)
+  if (run === undefined || run.controlRef === undefined) return undefined
+  try {
+    return Object.freeze({ run, ...sourceEnvironmentRecord(state, run) })
+  } catch {
+    return undefined
+  }
+}
+
+export function checkpointIdForOperation(state, operationId) {
+  return state.checkpoints.find((candidate) => candidate.operationId === operationId)?.id
+}
+
+function sourceRunFor(state, runId) {
+  const run = state.runs.find((candidate) => candidate.id === runId)
+  if (run === undefined) throw new Error(`Source run ${runId} is missing from durable state`)
+  if (run.status !== 'completed' || run.complete !== true)
+    throw new Error(`Source run ${runId} did not complete`)
+  if (run.controlRef === undefined)
+    throw new Error(`Source run ${runId} has no exact provider control reference`)
+  return run
+}
+
+async function runtimeModules(repository) {
+  const dist = resolve(repository, 'dist')
+  const [startup, application, credentials, connections, profiles] = await Promise.all([
+    import(pathToFileURL(join(dist, 'bin', 'production-startup.js')).href),
+    import(pathToFileURL(join(dist, 'bin', 'production-application.js')).href),
+    import(pathToFileURL(join(dist, 'bin', 'production-credential-context.js')).href),
+    import(pathToFileURL(join(dist, 'adapters', 'connections', 'production-connections.js')).href),
+    import(pathToFileURL(join(dist, 'adapters', 'agent-interface', 'profile-runtime.js')).href),
+  ])
+  return { startup, application, credentials, connections, profiles }
+}
+
+async function openProofApplication({ repository, config }) {
+  const modules = await runtimeModules(repository)
+  let context
+  try {
+    context = modules.credentials.createProductionCredentialContext({
+      workspace: config.workspace,
+      configPath: config.configPath,
+      databaseKeyFile: config.databaseKeyFile,
+      dataDirectory: config.dataDirectory,
+    })
+    if (context === undefined)
+      throw unavailable(
+        'PROTECTED_DATABASE_KEY_REQUIRED',
+        "The live proof could not create Braid's protected credential context",
+      )
+    const startupOptions = {
+      workspace: config.workspace,
+      configPath: config.configPath,
+      databaseKeyFile: config.databaseKeyFile,
+      credentialContext: context,
+      credentialStore: context.store,
+    }
+    const startup = await modules.startup.loadProductionStartup(startupOptions)
+    const connection = startup.connections.find(
+      (candidate) => candidate.id === startup.connectionId,
+    )
+    if (connection === undefined)
+      throw new Error('The live proof configuration selected no connection')
+    const connectionOptions = {
+      ...(startup.connectionOptions ?? {}),
+      credentials: context.store,
+    }
+    const production = {
+      ...startup,
+      workspaceRoot: config.workspace,
+      connectionOptions,
+    }
+    const opened = await modules.application.openProductionApplication({
+      workspace: config.workspace,
+      statePath: config.statePath,
+      startupOptions,
+      production,
+    })
+    try {
+      await modules.application.activateProductionConnection(
+        opened.app,
+        startup.connectionId,
+        startup.connections,
+      )
+    } catch (error) {
+      await opened.close().catch(() => undefined)
+      throw error
+    }
+    const confidentialVerifiers =
+      connection.confidentialAttestationPolicy === undefined
+        ? undefined
+        : modules.connections.createNitroConfidentialAttestationVerifiers(
+            connection.confidentialAttestationPolicy,
+          )
+    return Object.freeze({
+      ...opened,
+      startup,
+      production,
+      connection,
+      ...(confidentialVerifiers === undefined ? {} : { confidentialVerifiers }),
+      modules,
+    })
+  } catch (error) {
+    context?.dispose()
+    throw error
+  }
+}
+
+function confidentialVerifiersFor(opened) {
+  if (opened.confidentialVerifiers === undefined) {
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_TRUST_POLICY_REQUIRED',
+      'LIVE-10 selected a connection without a persisted Nitro trust policy',
+    )
+  }
+  return opened.confidentialVerifiers
+}
+
+function providerAdapters(opened) {
+  const { createTangleWorkspaceBranchingProvider, getTangleSandboxEnvironment } =
+    opened.modules.connections
+  const options = opened.production.connectionOptions ?? {}
+  const factory = createTangleWorkspaceBranchingProvider(opened.connection, options)
+  return Object.freeze({
+    freshBranching: async (sourceEnvironmentId) => {
+      const branching = await factory.forEnvironment(sourceEnvironmentId)
+      if (branching === null)
+        throw unavailable(
+          'PROTECTED_WORKSPACE_BRANCHING_UNAVAILABLE',
+          `Tangle Sandbox did not expose workspace branching for ${sourceEnvironmentId}`,
+        )
+      return branching
+    },
+    freshEnvironment: (environmentId) =>
+      getTangleSandboxEnvironment(opened.connection, options, environmentId),
+  })
+}
+
+function markerFor(proofId, label) {
+  return `BRAID_WORKSPACE_${proofId}_${label}`.toUpperCase()
+}
+
+function markerPath(proofId) {
+  return `.braid-live/${proofId}/workspace-marker.txt`
+}
+
+function sourcePrompt(marker, path) {
+  return [
+    'Use the current Tangle Sandbox working directory for every command in this turn.',
+    `Run mkdir -p ${shellQuote(dirname(path))}.`,
+    `Run printf '%s\\n' ${shellQuote(marker)} > ${shellQuote(path)}.`,
+    `Run cat ${shellQuote(path)} and verify the content is exactly ${shellQuote(marker)}.`,
+    `Reply with exactly ${marker}.`,
+  ].join(' ')
+}
+
+async function sendSource(app, proofId, onIdentity = () => {}) {
+  const initial = app.state()
+  const marker = markerFor(proofId, 'SOURCE')
+  const path = markerPath(proofId)
+  const operationId = `op-live-required-${proofId}-source-${randomUUID()}`
+  const receipt = app.send({
+    operationId,
+    conversationId: initial.conversationId,
+    branchId: initial.branchId,
+    text: sourcePrompt(marker, path),
+  })
+  const captureIdentity = () => {
+    const identity = sourceIdentityForRun(app.state(), receipt.runId)
+    if (identity === undefined) return
+    onIdentity(
+      Object.freeze({
+        marker,
+        path,
+        operationId,
+        receipt,
+        ...identity,
+      }),
+    )
+  }
+  let terminal
+  try {
+    await receipt.admissionReady
+    captureIdentity()
+    terminal = await receipt.completion
+  } catch (error) {
+    captureIdentity()
+    throw error
+  }
+  const run = sourceRunFor(terminal, receipt.runId)
+  const source = sourceEnvironmentRecord(terminal, run)
+  return Object.freeze({
+    marker,
+    path,
+    operationId,
+    receipt,
+    run,
+    ...source,
+  })
+}
+
+async function readWorkspace(adapters, environmentId, path, label) {
+  const environment = await adapters.freshEnvironment(environmentId)
+  if (environment === null)
+    throw new Error(`${label} provider environment ${environmentId} is missing`)
+  if (typeof environment.read !== 'function')
+    throw unavailable(
+      'PROTECTED_WORKSPACE_READ_UNAVAILABLE',
+      `Tangle Sandbox did not expose workspace read for ${label}`,
+    )
+  const content = await environment.read(path)
+  return Object.freeze({ content, digest: sha256(content) })
+}
+
+async function writeWorkspace(adapters, environmentId, path, content, label) {
+  const environment = await adapters.freshEnvironment(environmentId)
+  if (environment === null)
+    throw new Error(`${label} provider environment ${environmentId} is missing`)
+  if (typeof environment.write !== 'function')
+    throw unavailable(
+      'PROTECTED_WORKSPACE_WRITE_UNAVAILABLE',
+      `Tangle Sandbox did not expose workspace write for ${label}`,
+    )
+  await environment.write(path, content)
+}
+
+function checkpointAndForkRequests(state, plan, operationId, sourceRun, destinationId) {
+  const checkpoint = state.checkpoints.find((candidate) => candidate.operationId === operationId)
+  if (checkpoint === undefined) throw new Error('Braid did not persist the workspace checkpoint')
+  const operation = state.operations.find((candidate) => candidate.id === operationId)
+  const providerCheckpointId = operation?.result?.providerCheckpointId
+  if (typeof providerCheckpointId !== 'string' || providerCheckpointId.length === 0)
+    throw new Error('Braid did not persist the provider checkpoint identity')
+  const persistedForkDigest = operation?.result?.forkRequestDigest
+  if (typeof persistedForkDigest !== 'string' || persistedForkDigest.length === 0)
+    throw new Error('Braid did not persist the provider fork request identity')
+  const source = structuredClone(sourceRun.controlRef)
+  const checkpointMaterial = {
+    source,
+    name: `braid checkpoint ${plan.sourceBranchId}`,
+    metadata: {
+      braidOperationId: operationId,
+      sourceBranchId: String(plan.sourceBranchId),
+      ...(plan.throughMessageId === undefined ? {} : { throughMessageId: plan.throughMessageId }),
+    },
+  }
+  const checkpointRequestDigest = workspaceCheckpointRequestDigest(checkpointMaterial)
+  assertCondition(
+    sha256Digest(checkpoint.requestDigest) === checkpointRequestDigest,
+    'Persisted checkpoint digest does not match Braid request material',
+  )
+  const checkpointRef = {
+    checkpointId: providerCheckpointId,
+    provider: source.provider,
+    source,
+    idempotencyKey: `${operationId}:checkpoint`,
+    requestDigest: checkpointRequestDigest,
+    createdAt: checkpoint.createdAt,
+    metadata: checkpointMaterial.metadata,
+  }
+  const placement = plan.placement ?? { kind: 'provider' }
+  const forkMaterial = {
+    checkpoint: checkpointRef,
+    name: `braid fork ${plan.destinationBranchId}`,
+    placement,
+    ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
+    metadata: {
+      braidOperationId: operationId,
+      destinationBranchId: String(plan.destinationBranchId),
+    },
+  }
+  const forkRequestDigest = workspaceForkRequestDigest(forkMaterial)
+  assertCondition(
+    sha256Digest(persistedForkDigest) === forkRequestDigest,
+    'Persisted fork request identity does not match Braid request material',
+  )
+  const graphEdge = state.graphEdges.find((candidate) => {
+    const sourceNode = state.graphNodes.find((node) => node.id === candidate.source)
+    const destinationNode = state.graphNodes.find((node) => node.id === candidate.destination)
+    return (
+      candidate.kind === 'forked_environment' &&
+      sourceNode?.reference.kind === 'checkpoint' &&
+      sourceNode.reference.id === checkpoint.id &&
+      destinationNode?.reference.kind === 'environment' &&
+      destinationNode.reference.id === destinationId
+    )
+  })
+  assertCondition(graphEdge !== undefined, 'Braid did not persist the fork graph edge')
+  const recordedForkDigest = graphEdge.provenance.sourceDigest
+  assertCondition(recordedForkDigest !== undefined, 'Braid fork graph edge has no request digest')
+  assertCondition(
+    sha256Digest(recordedForkDigest) === forkRequestDigest,
+    'Persisted fork digest does not match Braid request material',
+  )
+  return Object.freeze({
+    checkpoint,
+    checkpointRef,
+    checkpointRequest: {
+      ...checkpointMaterial,
+      idempotencyKey: `${operationId}:checkpoint`,
+      requestDigest: checkpointRequestDigest,
+    },
+    forkRequest: {
+      ...forkMaterial,
+      idempotencyKey: `${operationId}:fork`,
+      requestDigest: forkRequestDigest,
+    },
+  })
+}
+
+async function lookupAfterRestart(adapters, sourceProviderEnvironmentId, requests) {
+  const checkpointHandle = await adapters.freshBranching(sourceProviderEnvironmentId)
+  const checkpoint = await checkpointHandle.lookupCheckpoint({
+    idempotencyKey: requests.checkpointRequest.idempotencyKey,
+    requestDigest: requests.checkpointRequest.requestDigest,
+  })
+  if (checkpoint.status !== 'found')
+    throw new Error(`Restart checkpoint lookup returned ${checkpoint.status}`)
+  assertCondition(
+    workspaceCheckpointResultMatchesRequest(requests.checkpointRequest, checkpoint),
+    'Restart checkpoint lookup returned another checkpoint request',
+  )
+  assertCondition(
+    checkpoint.checkpoint.checkpointId === requests.checkpointRef.checkpointId,
+    'Restart checkpoint lookup returned another checkpoint',
+  )
+  const forkHandle = await adapters.freshBranching(sourceProviderEnvironmentId)
+  const fork = await forkHandle.lookupFork({
+    idempotencyKey: requests.forkRequest.idempotencyKey,
+    requestDigest: requests.forkRequest.requestDigest,
+  })
+  if (fork.status !== 'found') throw new Error(`Restart fork lookup returned ${fork.status}`)
+  assertCondition(
+    workspaceForkResultMatchesRequest(requests.forkRequest, fork),
+    'Restart fork lookup returned another fork request',
+  )
+  assertCondition(
+    fork.environment.sourceEnvironmentId === sourceProviderEnvironmentId,
+    'Restart fork lookup returned another source environment',
+  )
+  return Object.freeze({ checkpoint, fork })
+}
+
+async function destroySource(adapters, sourceProviderEnvironmentId) {
+  const environment = await adapters.freshEnvironment(sourceProviderEnvironmentId)
+  if (environment === null) return true
+  if (typeof environment.destroy !== 'function')
+    throw unavailable(
+      'PROTECTED_ENVIRONMENT_CLEANUP_UNAVAILABLE',
+      'Tangle Sandbox did not expose source environment cleanup',
+    )
+  await environment.destroy()
+  for (let attempt = 0; attempt < DEFAULT_ABSENCE_ATTEMPTS; attempt += 1) {
+    if ((await adapters.freshEnvironment(sourceProviderEnvironmentId)) === null) return true
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, DEFAULT_ABSENCE_DELAY_MS))
+  }
+  throw new Error(
+    `Source provider environment ${sourceProviderEnvironmentId} remained after cleanup`,
+  )
+}
+
+async function cancelSourceRun(app, source, operationId) {
+  const run = app.state().runs.find((candidate) => candidate.id === source.run.id)
+  if (run === undefined || SOURCE_TERMINAL_STATUSES.has(run.status)) return
+  if (typeof app.cancelRun !== 'function')
+    throw new Error('Braid did not expose source-run cancellation for cleanup')
+  const cancellation = await app.cancelRun({
+    operationId: `${operationId}:source-cancel`,
+    runId: run.id,
+    reason: 'LIVE-09 proof cleanup',
+    terminalStatus: 'aborted',
+    legacy: true,
+  })
+  await cancellation.completion
+}
+
+function checkpointIdForDestination(state, destinationId) {
+  const edge = state.graphEdges.find((candidate) => {
+    const source = state.graphNodes.find((node) => node.id === candidate.source)
+    const destination = state.graphNodes.find((node) => node.id === candidate.destination)
+    return (
+      candidate.kind === 'forked_environment' &&
+      destination?.reference.kind === 'environment' &&
+      destination.reference.id === destinationId &&
+      source?.reference.kind === 'checkpoint'
+    )
+  })
+  if (edge === undefined) return undefined
+  const source = state.graphNodes.find((node) => node.id === edge.source)
+  if (source?.reference.kind !== 'checkpoint') return undefined
+  return state.checkpoints.find((candidate) => candidate.id === source.reference.id)?.id
+}
+
+function forkRequestForRecovery(state, plan, operationId, source) {
+  if (plan === undefined || operationId === undefined || source?.run?.controlRef === undefined)
+    return undefined
+  if (!Array.isArray(state.checkpoints) || !Array.isArray(state.operations)) return undefined
+  const checkpoint = state.checkpoints.find((candidate) => candidate.operationId === operationId)
+  const operation = state.operations.find((candidate) => candidate.id === operationId)
+  const providerCheckpointId = operation?.result?.providerCheckpointId
+  const persistedForkDigest = operation?.result?.forkRequestDigest
+  if (
+    checkpoint === undefined ||
+    typeof providerCheckpointId !== 'string' ||
+    providerCheckpointId.length === 0 ||
+    typeof persistedForkDigest !== 'string' ||
+    persistedForkDigest.length === 0
+  )
+    return undefined
+  const sourceRef = structuredClone(source.run.controlRef)
+  const checkpointMaterial = {
+    source: sourceRef,
+    name: `braid checkpoint ${plan.sourceBranchId}`,
+    metadata: {
+      braidOperationId: operationId,
+      sourceBranchId: String(plan.sourceBranchId),
+      ...(plan.throughMessageId === undefined ? {} : { throughMessageId: plan.throughMessageId }),
+    },
+  }
+  const checkpointRequestDigest = workspaceCheckpointRequestDigest(checkpointMaterial)
+  const checkpointRef = {
+    checkpointId: providerCheckpointId,
+    provider: sourceRef.provider,
+    source: sourceRef,
+    idempotencyKey: `${operationId}:checkpoint`,
+    requestDigest: checkpointRequestDigest,
+    createdAt: checkpoint.createdAt,
+    metadata: checkpointMaterial.metadata,
+  }
+  const forkMaterial = {
+    checkpoint: checkpointRef,
+    name: `braid fork ${plan.destinationBranchId}`,
+    placement: plan.placement ?? { kind: 'provider' },
+    ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
+    metadata: {
+      braidOperationId: operationId,
+      destinationBranchId: String(plan.destinationBranchId),
+    },
+  }
+  const requestDigest = workspaceForkRequestDigest(forkMaterial)
+  assertCondition(
+    sha256Digest(persistedForkDigest) === requestDigest,
+    'Persisted fork request identity does not match Braid request material',
+  )
+  return Object.freeze({
+    ...forkMaterial,
+    idempotencyKey: `${operationId}:fork`,
+    requestDigest,
+  })
+}
+
+async function cleanupProviderFork(
+  adapters,
+  source,
+  request,
+  cleanupOperationId,
+  providerEnvironmentId,
+) {
+  // Use provider lookup only when Braid lacks the local destination edge.
+  // Normal cleanup remains the application path and records local lifecycle state.
+  if (adapters === undefined || source?.providerId === undefined || request === undefined)
+    return undefined
+  const branching = await adapters.freshBranching(source.providerId)
+  const lookup = await branching.lookupFork({
+    idempotencyKey: request.idempotencyKey,
+    requestDigest: request.requestDigest,
+  })
+  if (lookup.status === 'not_found' && providerEnvironmentId === undefined) return 'already_absent'
+  if (lookup.status !== 'found' && lookup.status !== 'not_found')
+    throw new Error(`Fork cleanup lookup returned ${lookup.status}`)
+  if (lookup.status === 'found') {
+    assertCondition(
+      workspaceForkResultMatchesRequest(request, lookup),
+      'Fork cleanup lookup returned another fork request',
+    )
+    assertCondition(
+      lookup.environment.sourceEnvironmentId === source.providerId,
+      'Fork cleanup lookup returned another source environment',
+    )
+  }
+  const material = {
+    kind: 'fork',
+    targetId: lookup.status === 'found' ? lookup.environment.environmentId : providerEnvironmentId,
+    provider:
+      lookup.status === 'found' ? lookup.environment.provider : source.run.controlRef.provider,
+  }
+  const cleanupRequest = {
+    operationId: `${cleanupOperationId}:fork-cleanup`,
+    ...material,
+    requestDigest: workspaceCleanupRequestDigest(material),
+  }
+  const acknowledgement = await branching.destroyFork({ ...cleanupRequest, kind: 'fork' })
+  assertCondition(
+    workspaceCleanupAcknowledgementMatches(cleanupRequest, acknowledgement),
+    'Fork cleanup acknowledgement does not match its request',
+  )
+  if (acknowledgement.status === 'deleted' || acknowledgement.status === 'already_absent')
+    return acknowledgement.status
+  throw new Error(
+    `Fork cleanup returned ${acknowledgement.status}${acknowledgement.message === undefined ? '' : `: ${acknowledgement.message}`}`,
+  )
+}
+
+export async function cleanupWorkspaceProofResources({
+  cleanupOwner,
+  adapters,
+  source,
+  destination,
+  resources,
+  branchOperationId,
+  cleanupOperationId,
+  proofId,
+  cleanupResult,
+  plan,
+  sourceDestroyed = false,
+}) {
+  let cleanupError
+  let resolvedCleanupOperationId = cleanupOperationId
+  let resolvedCleanupResult = cleanupResult
+  let resolvedSourceDestroyed = sourceDestroyed
+  if (cleanupOwner !== undefined && source !== undefined) {
+    const cleanupCheckpointId =
+      resources?.checkpoint.id ??
+      (branchOperationId === undefined
+        ? undefined
+        : checkpointIdForOperation(cleanupOwner.app.state(), branchOperationId)) ??
+      (destination === undefined
+        ? undefined
+        : checkpointIdForDestination(cleanupOwner.app.state(), destination.id))
+    if (cleanupCheckpointId !== undefined && resolvedCleanupResult === undefined) {
+      resolvedCleanupOperationId ??= `op-live-required-${proofId}-cleanup`
+      try {
+        resolvedCleanupResult = await cleanupOwner.app.conversations.branches.cleanup({
+          operationId: resolvedCleanupOperationId,
+          checkpointId: String(cleanupCheckpointId),
+          ...(destination === undefined ? {} : { environmentId: String(destination.id) }),
+        })
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    const cleanupState = cleanupOwner.app.state()
+    const operation =
+      branchOperationId === undefined || !Array.isArray(cleanupState.operations)
+        ? undefined
+        : cleanupState.operations.find((candidate) => candidate.id === branchOperationId)
+    const persistedForkDigest = operation?.result?.forkRequestDigest
+    let forkRequest = resources?.forkRequest
+    const hasForkIdentity =
+      forkRequest !== undefined ||
+      typeof persistedForkDigest === 'string' ||
+      typeof operation?.result?.providerEnvironmentId === 'string'
+    const forkCleanupComplete =
+      resolvedCleanupResult?.environment === 'deleted' ||
+      resolvedCleanupResult?.environment === 'already_absent'
+    if (hasForkIdentity && !forkCleanupComplete) {
+      resolvedCleanupOperationId ??= `op-live-required-${proofId}-cleanup`
+      try {
+        forkRequest ??= forkRequestForRecovery(cleanupState, plan, branchOperationId, source)
+        if (forkRequest === undefined)
+          throw new Error('Braid did not persist enough fork identity for provider cleanup')
+        const forkOutcome = await cleanupProviderFork(
+          adapters ?? providerAdapters(cleanupOwner),
+          source,
+          forkRequest,
+          resolvedCleanupOperationId,
+          destination?.providerEnvironmentId ?? operation?.result?.providerEnvironmentId,
+        )
+        if (forkOutcome !== undefined) {
+          resolvedCleanupResult = {
+            checkpoint: resolvedCleanupResult?.checkpoint ?? 'not_requested',
+            environment: forkOutcome,
+          }
+        }
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    if (!resolvedSourceDestroyed) {
+      try {
+        await cancelSourceRun(
+          cleanupOwner.app,
+          source,
+          resolvedCleanupOperationId ?? `op-live-required-${proofId}-cleanup`,
+        )
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    if (!resolvedSourceDestroyed) {
+      try {
+        const sourceAdapters = adapters ?? providerAdapters(cleanupOwner)
+        resolvedSourceDestroyed = await destroySource(sourceAdapters, source.providerId)
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+  }
+  return {
+    cleanupError,
+    cleanupOperationId: resolvedCleanupOperationId,
+    cleanupResult: resolvedCleanupResult,
+    sourceDestroyed: resolvedSourceDestroyed,
+  }
+}
+
+function confidentialExpected(source, destinationProviderEnvironmentId, requestDigest) {
+  return {
+    provider: source.provider,
+    environmentId: destinationProviderEnvironmentId,
+    source: structuredClone(source),
+    requestDigest,
+    confidentialRequested: true,
+  }
+}
+
+/** Run the canonical negative checks used by LIVE-10 and by its deterministic test. */
+export function confidentialNegativeChecks({
+  request,
+  environment,
+  attestation,
+  verifyProviderAttestation,
+}) {
+  const wrongNonce = {
+    ...request,
+    nonce: `${request.nonce}-wrong`,
+  }
+  const wrongMeasurement = {
+    ...attestation,
+    measurement: `sha256:${'f'.repeat(64)}`,
+  }
+  const selfEcho = {
+    ...attestation,
+    providerKeyId: 'unverified',
+    providerSignature: 'unverified',
+  }
+  return Object.freeze({
+    missingAttestationRejected: !confidentialExecutionVerified({
+      request,
+      environment,
+      verifyProviderAttestation,
+    }),
+    wrongNonceRejected: !confidentialExecutionVerified({
+      request: wrongNonce,
+      environment,
+      attestation,
+      verifyProviderAttestation,
+    }),
+    wrongMeasurementRejected: !confidentialExecutionVerified({
+      request,
+      environment,
+      attestation: wrongMeasurement,
+      verifyProviderAttestation,
+    }),
+    selfEchoRejected: !confidentialExecutionVerified({
+      request,
+      environment,
+      attestation: selfEcho,
+      verifyProviderAttestation,
+    }),
+  })
+}
+
+async function runWorkspaceProof({
+  repository = DEFAULT_REPOSITORY,
+  environment = process.env,
+  invocationId = proofInvocation('live-tangle-workspace'),
+  confidential = false,
+}) {
+  const proofId = `${Date.now()}-${randomUUID().replaceAll('-', '')}`
+  const startedAt = new Date().toISOString()
+  const trust = confidential ? parseConfidentialTrustPolicy(environment) : undefined
+  const values = sandboxConfiguration(environment)
+  const config = await prepareProductionWorkspace({
+    repository,
+    environment,
+    kind: 'tangle-sandbox',
+    connectionName: confidential ? 'Live tangle confidential' : 'Live tangle workspace fork',
+    endpoint: values.endpoint,
+    model: values.model,
+    runner: values.runner,
+    modelProvider: values.modelProvider,
+    workspaceRequest: workspaceRequestFor(environment),
+    credentialRef: values.credentialRef,
+    credentialValue: values.credentialValue,
+    providerOptions: {
+      lifecycle: 'retained',
+      idleTtlSeconds: idleTtlSeconds(environment),
+    },
+    ...(trust === undefined ? {} : { confidentialAttestationPolicy: trust.policy }),
+  })
+  let opened
+  let restarted
+  let source
+  let destination
+  let destinationProviderId
+  let sourceBefore
+  let destinationAfterMutation
+  let sourceAfterCleanup
+  let branchOperationId
+  let cleanupOperationId
+  let resources
+  let cleanupResult
+  let plan
+  let sourceDestroyed = false
+  let primaryError
+  let completedResult
+  let cleanupFailure
+  try {
+    opened = await openProofApplication({ repository, config })
+    const verifier = confidential ? confidentialVerifiersFor(opened) : undefined
+    if (trust !== undefined) {
+      assertCondition(
+        opened.connection.confidentialAttestationPolicy?.acceptedPolicyIds.includes(
+          trust.selectedPolicyId,
+        ) === true,
+        'LIVE-10 did not retain the selected policy id in the connection trust policy',
+      )
+    }
+    const adapters = providerAdapters(opened)
+    source = await sendSource(opened.app, proofId, (candidate) => {
+      source ??= candidate
+    })
+    sourceBefore = await readWorkspace(adapters, source.providerId, source.path, 'source')
+    assertCondition(
+      sourceBefore.content.trim() === source.marker,
+      'Source workspace marker was not materialized exactly',
+    )
+    branchOperationId = `op-live-required-${proofId}-fork`
+    const planInput = {
+      operationId: branchOperationId,
+      conversationId: opened.app.state().conversationId,
+      branchId: opened.app.state().branchId,
+      kind: 'workspace',
+      placement: { kind: 'provider' },
+      ...(confidential
+        ? {
+            confidential: {
+              requested: true,
+              nonce: generateAttestationNonce(),
+              policy: trust.selectedPolicyId,
+              profileDigest: `sha256:${opened.modules.profiles.canonicalAgentProfileDigestHex(opened.app.state().profile)}`,
+            },
+          }
+        : {}),
+    }
+    plan = opened.app.conversations.branches.plan(planInput)
+    if (!plan.allowed)
+      throw unavailable(
+        'PROTECTED_WORKSPACE_BRANCHING_UNAVAILABLE',
+        plan.reason ?? 'Tangle Sandbox did not report retry-safe workspace branching',
+      )
+    const requestedUnverifiedBinding = confidential
+      ? !confidentialExecutionVerified({
+          request: plan.confidential,
+          environment: confidentialExpected(
+            source.run.controlRef,
+            'pending-destination',
+            `sha256:${'0'.repeat(64)}`,
+          ),
+          verifyProviderAttestation: verifier.canonical,
+        })
+      : true
+    assertCondition(
+      requestedUnverifiedBinding,
+      'Confidential placement passed without an attestation before execution',
+    )
+    const branch = await opened.app.conversations.branches.execute({
+      ...planInput,
+      planDigest: plan.digest,
+    })
+    const afterExecute = opened.app.state()
+    const sourceRun = sourceRunFor(afterExecute, source.run.id)
+    destination = afterExecute.environments.find(
+      (candidate) => candidate.id === branch.environmentId,
+    )
+    if (destination === undefined) throw new Error('Braid did not persist the forked environment')
+    destinationProviderId = providerEnvironmentId(destination, 'Destination environment')
+    assertCondition(
+      destinationProviderId !== source.providerId,
+      'Fork reused the source environment',
+    )
+    resources = checkpointAndForkRequests(
+      afterExecute,
+      plan,
+      branchOperationId,
+      sourceRun,
+      destination.id,
+    )
+    const destinationMarker = markerFor(proofId, 'DESTINATION')
+    await writeWorkspace(
+      adapters,
+      destinationProviderId,
+      source.path,
+      `${destinationMarker}\n`,
+      'destination',
+    )
+    destinationAfterMutation = await readWorkspace(
+      adapters,
+      destinationProviderId,
+      source.path,
+      'destination',
+    )
+    assertCondition(
+      destinationAfterMutation.content.trim() === destinationMarker,
+      'Destination mutation was not independently materialized',
+    )
+    const sourceAfterMutation = await readWorkspace(
+      adapters,
+      source.providerId,
+      source.path,
+      'source',
+    )
+    assertCondition(
+      sourceAfterMutation.content === sourceBefore.content,
+      'Destination mutation changed the source workspace',
+    )
+
+    await opened.close()
+    opened = undefined
+    restarted = await openProofApplication({ repository, config })
+    const restartedVerifier = confidential ? confidentialVerifiersFor(restarted) : undefined
+    const restartedAdapters = providerAdapters(restarted)
+    const replayBranch = await restarted.app.conversations.branches.execute({
+      ...planInput,
+      planDigest: plan.digest,
+    })
+    assertCondition(replayBranch.id === branch.id, 'Restart replay produced another branch')
+    const lookedUp = await lookupAfterRestart(restartedAdapters, source.providerId, resources)
+    if (confidential) {
+      const attestation = lookedUp.fork.environment.confidentialAttestation
+      if (attestation === undefined)
+        throw unavailable(
+          'PROTECTED_CONFIDENTIAL_DEPLOYMENT_UNAVAILABLE',
+          'Tangle Sandbox did not return a TEE attestation for the confidential fork',
+        )
+      assertCondition(
+        attestation.providerKeyId !== 'unverified' &&
+          attestation.providerSignature !== 'unverified',
+        'Tangle Sandbox returned an unauthenticated confidential attestation',
+      )
+      assertCondition(
+        attestation.providerSignature !== attestation.quote,
+        'Tangle Sandbox returned the quote as its provider signature',
+      )
+      const expected = confidentialExpected(
+        sourceRun.controlRef,
+        destinationProviderId,
+        resources.forkRequest.requestDigest,
+      )
+      assertCondition(
+        forkedEnvironmentConfidentialityVerified(
+          resources.forkRequest,
+          lookedUp.fork.environment,
+          restartedVerifier.canonical,
+        ),
+        'Canonical confidential attestation verification failed for the valid fork',
+      )
+      const negatives = confidentialNegativeChecks({
+        request: resources.forkRequest.confidential,
+        environment: expected,
+        attestation,
+        verifyProviderAttestation: restartedVerifier.canonical,
+      })
+      assertCondition(
+        negatives.missingAttestationRejected,
+        'Missing confidential attestation was accepted',
+      )
+      assertCondition(negatives.wrongNonceRejected, 'Wrong confidential nonce was accepted')
+      assertCondition(
+        negatives.wrongMeasurementRejected,
+        'Wrong confidential measurement was accepted',
+      )
+      assertCondition(negatives.selfEchoRejected, 'Self-echoed confidential evidence was accepted')
+      assertCondition(
+        destination.placement.confidentialRequested,
+        'Confidential request was not recorded',
+      )
+      assertCondition(
+        destination.placement.confidentialVerified,
+        'Confidential attestation was not verified',
+      )
+    }
+    cleanupOperationId = `op-live-required-${proofId}-cleanup`
+    cleanupResult = await restarted.app.conversations.branches.cleanup({
+      operationId: cleanupOperationId,
+      checkpointId: String(resources.checkpoint.id),
+      environmentId: String(destination.id),
+    })
+    assertCondition(
+      ['deleted', 'already_absent'].includes(cleanupResult.checkpoint),
+      'Checkpoint cleanup did not reach a terminal deletion status',
+    )
+    assertCondition(
+      ['deleted', 'already_absent'].includes(cleanupResult.environment),
+      'Fork cleanup did not reach a terminal deletion status',
+    )
+    const cleanupReplay = await restarted.app.conversations.branches.cleanup({
+      operationId: cleanupOperationId,
+      checkpointId: String(resources.checkpoint.id),
+      environmentId: String(destination.id),
+    })
+    assertCondition(
+      JSON.stringify(cleanupReplay) === JSON.stringify(cleanupResult),
+      'Cleanup replay returned a different durable result',
+    )
+    const finalState = restarted.app.state()
+    assertCondition(
+      finalState.checkpoints.find((candidate) => candidate.id === resources.checkpoint.id)
+        ?.status === 'deleted',
+      'Braid did not record checkpoint cleanup',
+    )
+    assertCondition(
+      finalState.environments.find((candidate) => candidate.id === destination.id)?.lifecycle ===
+        'destroyed',
+      'Braid did not record fork environment cleanup',
+    )
+    sourceAfterCleanup = await readWorkspace(
+      restartedAdapters,
+      source.providerId,
+      source.path,
+      'source',
+    )
+    assertCondition(
+      sourceAfterCleanup.digest === sourceBefore.digest,
+      'Source workspace digest changed during cleanup',
+    )
+    sourceDestroyed = await destroySource(restartedAdapters, source.providerId)
+    await restarted.close()
+    restarted = undefined
+    completedResult = {
+      status: 'passed',
+      measurement: scalarMeasurement(confidential ? 'LIVE-10' : 'LIVE-09'),
+      evidence: proofReceipt({
+        invocationId,
+        operation: confidential
+          ? PROOF_OPERATIONS.tangleConfidential
+          : PROOF_OPERATIONS.tangleWorkspaceFork,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        config: configEvidence(config),
+        runIds: [source.run.id],
+        environmentId: source.run.environmentId,
+        materializationDigest: source.run.materializationDigest ?? null,
+        facts: confidential
+          ? {
+              sourceProviderEnvironmentId: source.providerId,
+              destinationProviderEnvironmentId: destinationProviderId,
+              confidentialRequested: true,
+              confidentialVerified: true,
+              missingAttestationRejected: true,
+              wrongNonceRejected: true,
+              wrongMeasurementRejected: true,
+              cleanupCheckpoint: cleanupResult.checkpoint,
+              cleanupEnvironment: cleanupResult.environment,
+            }
+          : {
+              sourceProviderEnvironmentId: source.providerId,
+              destinationProviderEnvironmentId: destinationProviderId,
+              checkpointRetried: true,
+              forkRetried: true,
+              restarted: true,
+              sourceDigestBefore: sourceBefore.digest,
+              sourceDigestAfter: sourceAfterCleanup.digest,
+              destinationDigest: destinationAfterMutation.digest,
+              cleanupCheckpoint: cleanupResult.checkpoint,
+              cleanupEnvironment: cleanupResult.environment,
+            },
+        checks: confidential
+          ? [
+              'configuration',
+              'nitro-attestation',
+              'requested-unverified-binding',
+              'missing-attestation',
+              'valid-attestation',
+              'wrong-nonce',
+              'wrong-measurement',
+              'cleanup',
+            ]
+          : [
+              'configuration',
+              'source-run',
+              'plan',
+              'execute',
+              'retry',
+              'restart',
+              'independent-destination',
+              'source-unchanged',
+              'cleanup-checkpoint',
+              'cleanup-environment',
+            ],
+        observations: {
+          source: {
+            providerEnvironmentId: source.providerId,
+            path: source.path,
+            digestBefore: sourceBefore.digest,
+            digestAfter: sourceAfterCleanup.digest,
+            destroyed: sourceDestroyed,
+          },
+          destination: {
+            providerEnvironmentId: destinationProviderId,
+            digest: destinationAfterMutation.digest,
+            independentMutation: true,
+          },
+          recovery: {
+            checkpointLookup: 'found',
+            forkLookup: 'found',
+            branchReplay: true,
+            cleanupReplay: true,
+          },
+          ...(confidential
+            ? {
+                attestation: {
+                  providerKeyAuthenticated: true,
+                  signatureDistinctFromQuote: true,
+                  requestedUnverifiedBeforeExecution: true,
+                  wrongNonceRejected: true,
+                  wrongMeasurementRejected: true,
+                  selfEchoRejected: true,
+                },
+              }
+            : {}),
+        },
+        environment,
+      }),
+    }
+  } catch (error) {
+    primaryError = error
+    throw error
+  } finally {
+    let cleanupError
+    let cleanupOwner = restarted ?? opened
+    let rescueOwner = false
+    if (source !== undefined) {
+      if (cleanupOwner === undefined) {
+        try {
+          cleanupOwner = await openProofApplication({ repository, config })
+          rescueOwner = true
+        } catch (error) {
+          cleanupError ??= error
+        }
+      }
+      if (cleanupOwner !== undefined && !sourceDestroyed) {
+        const cleanup = await cleanupWorkspaceProofResources({
+          cleanupOwner,
+          source,
+          destination,
+          resources,
+          branchOperationId,
+          cleanupOperationId,
+          proofId,
+          cleanupResult,
+          plan,
+          sourceDestroyed,
+        })
+        cleanupError ??= cleanup.cleanupError
+        cleanupOperationId = cleanup.cleanupOperationId
+        cleanupResult = cleanup.cleanupResult
+        sourceDestroyed = cleanup.sourceDestroyed
+      }
+    }
+    if (rescueOwner && cleanupOwner !== undefined) {
+      try {
+        await cleanupOwner.close()
+      } catch (error) {
+        cleanupError ??= error
+      }
+      if (restarted === cleanupOwner) restarted = undefined
+      if (opened === cleanupOwner) opened = undefined
+    }
+    try {
+      if (restarted !== undefined) await restarted.close()
+    } catch (error) {
+      cleanupError ??= error
+    }
+    try {
+      if (opened !== undefined) await opened.close()
+    } catch (error) {
+      cleanupError ??= error
+    }
+    try {
+      await config.cleanup()
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (cleanupError !== undefined && primaryError === undefined) cleanupFailure = cleanupError
+  }
+  if (cleanupFailure !== undefined) throw cleanupFailure
+  return completedResult
+}
+
+export function runWorkspaceForkProof(input) {
+  return runWorkspaceProof({ ...input, confidential: false })
+}
+
+export function runConfidentialProof(input) {
+  return runWorkspaceProof({ ...input, confidential: true })
+}

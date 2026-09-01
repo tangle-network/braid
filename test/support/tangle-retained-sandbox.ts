@@ -69,6 +69,7 @@ export class FakeTangleRetainedSandbox {
     readonly boxId: string
     readonly sessionId: string
     readonly executionId: string
+    readonly turnId?: string
     readonly prompt: string
     readonly interactions?: RequestedInteractions
   }> = []
@@ -207,6 +208,7 @@ export class FakeTangleRetainedSandbox {
           boxId: box.id,
           sessionId,
           executionId,
+          ...(options?.turnId === undefined ? {} : { turnId: options.turnId }),
           prompt: typeof message === 'string' ? message : JSON.stringify(message),
           ...(options?.backend?.interactions === undefined
             ? {}

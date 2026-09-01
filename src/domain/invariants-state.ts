@@ -50,7 +50,7 @@ import {
   assertSupervisorRecord,
   assertWorkerRecord,
 } from './invariants-runtime.js'
-import type { BraidState } from './state.js'
+import { isActiveRunStatus, type BraidState } from './state.js'
 
 export function assertBraidState(state: BraidState): void {
   if (state.schemaVersion < 2) fail('state.schemaVersion is unsupported')
@@ -62,6 +62,7 @@ export function assertBraidState(state: BraidState): void {
     assertEntityId('conversation', state.conversationId, 'state.conversationId')
   if (state.branchId !== null) assertEntityId('branch', state.branchId, 'state.branchId')
   if (state.activeRunId !== null) assertEntityId('run', state.activeRunId, 'state.activeRunId')
+  if (state.focusedRunId !== null) assertEntityId('run', state.focusedRunId, 'state.focusedRunId')
   try {
     const snapshot = snapshotAgentProfile(state.profile)
     assertCanonicalProfile(state.profile, canonicalAgentProfileDigest(snapshot), 'state.profile')
@@ -112,6 +113,10 @@ export function assertBraidState(state: BraidState): void {
   assertUniqueIds(
     state.runs.map((record) => record.id),
     'state.runs',
+  )
+  assertUniqueIds(
+    state.activeRuns.map((record) => record.runId),
+    'state.activeRuns',
   )
   assertUniqueIds(
     state.analyses.map((record) => record.id),
@@ -187,6 +192,29 @@ export function assertBraidState(state: BraidState): void {
   )
   if (state.activeRunId !== null && !state.runs.some((run) => run.id === state.activeRunId)) {
     fail('state.activeRunId must reference a known run')
+  }
+  if (state.focusedRunId !== null && !state.runs.some((run) => run.id === state.focusedRunId)) {
+    fail('state.focusedRunId must reference a known run')
+  }
+  const activeRunIds = new Set(state.activeRuns.map((run) => run.runId))
+  for (const active of state.activeRuns) {
+    const run = state.runs.find((candidate) => candidate.id === active.runId)
+    if (!run) fail(`state.activeRuns references unknown run ${active.runId}`)
+    if (
+      run.conversationId !== active.conversationId ||
+      run.branchId !== active.branchId ||
+      !isActiveRunStatus(run.status)
+    ) {
+      fail(`state.activeRuns has stale identity for run ${active.runId}`)
+    }
+  }
+  for (const run of state.runs) {
+    if (isActiveRunStatus(run.status) && !activeRunIds.has(run.id)) {
+      fail(`state.activeRuns is missing active run ${run.id}`)
+    }
+  }
+  if (state.activeRunId !== null && state.activeRunId !== state.focusedRunId) {
+    fail('state.activeRunId must alias state.focusedRunId')
   }
   for (const record of state.workspaces) assertWorkspaceRecord(record)
   for (const record of state.profiles) assertProfileRecord(record)

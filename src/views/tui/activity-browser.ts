@@ -12,6 +12,7 @@ import { executionTargetFor } from './execution-target.js'
 import type { BraidTheme } from './theme.js'
 
 export type ActivityBrowserScope = 'all' | 'runs' | 'analyses' | 'workers'
+export type ActivityBrowserAction = 'refresh' | 'steer' | 'cancel' | 'attach' | 'promote'
 
 const ACTIVITY_SCOPES = ['all', 'runs', 'analyses', 'workers'] as const
 
@@ -19,16 +20,20 @@ export interface ActivityBrowserOptions {
   readonly view: () => BraidViewModel
   readonly rows: () => number
   readonly onClose: () => void
+  readonly onOpenSelected?: (row: EntityBrowserRow) => void
   readonly scope?: ActivityBrowserScope
   readonly selectedId?: string
   readonly openSelected?: boolean
   readonly notice?: () => string | undefined
   readonly emptyMessage?: string
   readonly pinned?: string
+  readonly workerAttachAvailable?: () => boolean
+  readonly onAction?: (action: ActivityBrowserAction, selectedId: string | undefined) => void
 }
 
 export class ActivityBrowserPanel extends EntityBrowser {
   readonly #scopeState: { scope: ActivityBrowserScope }
+  readonly #onAction: ActivityBrowserOptions['onAction']
 
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
@@ -40,13 +45,16 @@ export class ActivityBrowserPanel extends EntityBrowser {
           options.notice?.(),
           options.emptyMessage,
           options.pinned,
+          options.workerAttachAvailable?.(),
         ),
       rows: options.rows,
       onClose: options.onClose,
+      ...(options.onOpenSelected === undefined ? {} : { onOpenSelected: options.onOpenSelected }),
       ...(options.selectedId === undefined ? {} : { selectedId: options.selectedId }),
       ...(options.openSelected === undefined ? {} : { openSelected: options.openSelected }),
     })
     this.#scopeState = scopeState
+    this.#onAction = options.onAction
   }
 
   override handleInput(data: string): void {
@@ -54,6 +62,11 @@ export class ActivityBrowserPanel extends EntityBrowser {
       const current = ACTIVITY_SCOPES.indexOf(this.#scopeState.scope)
       this.#scopeState.scope = ACTIVITY_SCOPES[(current + 1) % ACTIVITY_SCOPES.length] ?? 'all'
       this.invalidate()
+      return
+    }
+    const action = activityAction(data, this.#scopeState.scope)
+    if (action !== undefined && this.#onAction !== undefined) {
+      this.#onAction(action, this.selectedId)
       return
     }
     super.handleInput(data)
@@ -66,6 +79,7 @@ export function activityDocument(
   notice?: string,
   emptyMessage?: string,
   pinned?: string,
+  workerAttachAvailable?: boolean,
 ): EntityBrowserDocument {
   const details = new Map(
     (view.entityDetails ?? []).map((detail) => [detailKey(detail), detail] as const),
@@ -77,7 +91,8 @@ export function activityDocument(
     .reverse()
   return {
     title: scope === 'all' ? 'activity' : scope,
-    filterHint: `tab filter: ${scope}`,
+    ...(scope === 'runs' ? { context: 'Enter opens details and focuses controls' } : {}),
+    filterHint: activityFooter(scope, view, workerAttachAvailable),
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
@@ -89,6 +104,36 @@ export function activityDocument(
           : 'No activity has been recorded.'),
     rows: items.map((item) => rowFor(item, details, runs, view)),
   }
+}
+
+function activityAction(
+  data: string,
+  scope: ActivityBrowserScope,
+): ActivityBrowserAction | undefined {
+  if (matchesKey(data, 'r')) return 'refresh'
+  if (scope === 'runs') return undefined
+  if (matchesKey(data, 'x')) return 'cancel'
+  if (scope === 'analyses') return matchesKey(data, 'p') ? 'promote' : undefined
+  if (matchesKey(data, 's')) return 'steer'
+  if (matchesKey(data, 'a')) return 'attach'
+  if (scope === 'all' && matchesKey(data, 'p')) return 'promote'
+  return undefined
+}
+
+function activityFooter(
+  scope: ActivityBrowserScope,
+  view: BraidViewModel,
+  workerAttachAvailable?: boolean,
+): string {
+  if (scope === 'workers') {
+    const steer = view.capabilities['supervisor.worker.steer']?.available === true
+    const attach =
+      workerAttachAvailable ?? view.capabilities['supervisor.worker.attach']?.available === true
+    return steer || attach ? 's steer · x cancel · a/r' : 's/a off · x cancel · r'
+  }
+  if (scope === 'analyses') return 'p promote · x cancel · r'
+  if (scope === 'all') return 'tab filter: selected actions s/x/a/p · r refresh'
+  return 'tab filter · r refresh'
 }
 
 function rowFor(
@@ -114,12 +159,17 @@ function rowFor(
       : [...activityLines, ...(entity?.lines ?? [])]
   if (item.kind === 'run') lines.push(...runContext(item, runs, view))
   const meta = listMeta(item, elapsed)
+  const focusedRun = item.kind === 'run' && item.runId === view.focusedRunId
+  const listMetadata = [focusedRun ? 'controls' : undefined, meta]
+    .filter((value): value is string => value !== undefined)
+    .join(' · ')
   return {
     id: item.id,
     kind: item.kind,
+    ...(item.runId === undefined ? {} : { runId: item.runId }),
     title: entity?.title ?? item.title,
     status: item.status,
-    ...(meta === undefined ? {} : { meta }),
+    ...(listMetadata.length === 0 ? {} : { meta: listMetadata }),
     ...(item.depth === undefined ? {} : { depth: Math.max(0, item.depth) }),
     detailLines: lines,
   }
@@ -239,9 +289,10 @@ function listMeta(item: ActivityDocumentItem, elapsed: number | undefined): stri
 
 function included(item: ActivityDocumentItem, scope: ActivityBrowserScope): boolean {
   if (scope === 'all') return true
+  if (scope === 'runs') return item.kind === 'run'
   if (scope === 'analyses') return item.kind === 'analysis'
   if (scope === 'workers') return item.kind === 'supervisor' || item.kind === 'worker'
-  return item.kind !== 'analysis' && item.kind !== 'supervisor' && item.kind !== 'worker'
+  return false
 }
 
 function detailKey(detail: EntityDetailView): string {

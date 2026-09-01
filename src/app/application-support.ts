@@ -6,7 +6,7 @@ import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import { redactBraidEvent } from '../domain/redaction.js'
 import { reduceEvent } from '../domain/reducer.js'
 import { usageSnapshotForRun } from '../domain/run-usage.js'
-import type { BraidState } from '../domain/state.js'
+import { isLiveRunStatus, type BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort } from '../ports/effect-storage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
@@ -176,7 +176,7 @@ export function restoreApplicationOperations(
           admission: event.receipt,
           completion: Promise.resolve(),
         })
-        if (!isTerminalStatus(run.status)) target.ledger.setAbort(run.id, new AbortController())
+        if (isLiveRunStatus(run.status)) target.ledger.setAbort(run.id, new AbortController())
       }
     } else if (event.kind === 'run.cancel.requested') {
       const restoredRun = target.state().runs.find((run) => run.id === event.runId)
@@ -250,10 +250,19 @@ export function restoreApplicationOperations(
 }
 
 export function reconcileRestartRun(context: RestartPort): Promise<void> {
-  const runId = context.currentState().activeRunId
-  if (!runId) return Promise.resolve()
+  const runIds = context
+    .currentState()
+    .runs.filter((run) => isLiveRunStatus(run.status))
+    .map((run) => run.id)
+  if (runIds.length === 0) return Promise.resolve()
+  return Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId))).then(
+    () => undefined,
+  )
+}
+
+async function reconcileRestartRunFor(context: RestartPort, runId: string): Promise<void> {
   const run = context.currentState().runs.find((candidate) => candidate.id === runId)
-  if (!run || isProvenTerminalStatus(run.status)) return Promise.resolve()
+  if (!run || isProvenTerminalStatus(run.status)) return
   if (!context.execution.status) {
     if (canReplayAfterRestart(context, run)) return markRestartReconnecting(context, runId)
     const unknown = context.commitAndWait({
@@ -264,9 +273,10 @@ export function reconcileRestartRun(context: RestartPort): Promise<void> {
       usage: usageSnapshotForRun(run),
       error: 'The execution path cannot reconcile provider state after restart',
     })
-    return Promise.resolve(unknown)
+    if (unknown !== undefined) await unknown
+    return
   }
-  return reconcileRestartSnapshot(context, runId)
+  await reconcileRestartSnapshot(context, runId)
 }
 
 async function reconcileRestartSnapshot(context: RestartPort, runId: string): Promise<void> {

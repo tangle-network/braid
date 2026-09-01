@@ -3,7 +3,13 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Sandbox } from '@tangle-network/sandbox'
+import {
+  NetworkError,
+  QuotaError,
+  Sandbox,
+  ServerError,
+  TimeoutError,
+} from '@tangle-network/sandbox'
 import { sleep } from '../live-bridge/process.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson } from './contracts.mjs'
@@ -38,6 +44,7 @@ import {
   waitForWorkspaceToolEvents,
   workspaceToolEvents,
 } from './tangle-sandbox-braid-stress-support.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -45,6 +52,9 @@ const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_HOLD_MS = 30_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const SANDBOX_LIST_PAGE_SIZE = 100
+const CLEANUP_RETRY_ATTEMPTS = 5
+const CLEANUP_RETRY_DELAY_MS = 1_000
+const CLEANUP_RETRY_MAX_DELAY_MS = 5_000
 const BRAID_RESOURCE_OWNER = 'braid'
 const RETAINED_LIFECYCLE = 'retained'
 const SECRET_ENVIRONMENT_NAMES = [
@@ -101,6 +111,8 @@ function sandboxConfiguration(environment) {
     modelNames: ['BRAID_TANGLE_MODEL'],
     runnerNames: ['BRAID_TANGLE_RUNNER'],
     providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+    fallbackModelProvider: 'tangle-router',
   })
 }
 
@@ -134,6 +146,180 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
+const PROVIDER_EXECUTION_STATUSES = new Set(['active', 'completed', 'failed', 'cancelled'])
+
+function providerExecutionRecord(value, index, label) {
+  assert.ok(
+    value && typeof value === 'object' && !Array.isArray(value),
+    `${label}[${index}] is invalid`,
+  )
+  assert.ok(
+    typeof value.executionId === 'string' && value.executionId.length > 0,
+    `${label}[${index}] omitted execution identity`,
+  )
+  assert.ok(
+    typeof value.sessionId === 'string' && value.sessionId.length > 0,
+    `${label}[${index}] omitted session identity`,
+  )
+  assert.ok(
+    PROVIDER_EXECUTION_STATUSES.has(value.status),
+    `${label}[${index}] has an unknown status`,
+  )
+  assert.ok(Number.isFinite(value.startedAt), `${label}[${index}] omitted startedAt`)
+  if (value.status !== 'active') {
+    assert.ok(
+      Number.isFinite(value.completedAt),
+      `${label}[${index}] omitted terminal completion time`,
+    )
+    assert.ok(
+      value.completedAt >= value.startedAt,
+      `${label}[${index}] completed before it started`,
+    )
+  }
+  assert.ok(
+    Number.isSafeInteger(value.eventCount) && value.eventCount > 0,
+    `${label}[${index}] has no provider event evidence`,
+  )
+  assert.ok(
+    typeof value.lastEventId === 'string' && value.lastEventId.length > 0,
+    `${label}[${index}] omitted the provider event cursor`,
+  )
+  if (value.completedAt !== undefined) {
+    assert.ok(Number.isFinite(value.completedAt), `${label}[${index}] has an invalid completedAt`)
+  }
+  return {
+    executionId: value.executionId,
+    sessionId: value.sessionId,
+    status: value.status,
+    startedAt: value.startedAt,
+    ...(value.completedAt === undefined ? {} : { completedAt: value.completedAt }),
+    eventCount: value.eventCount,
+    lastEventId: value.lastEventId,
+  }
+}
+
+export function assertExactSessionExecutions(
+  records,
+  expected,
+  label = 'Provider execution ledger',
+) {
+  assert.ok(
+    Array.isArray(records),
+    `${label} was not returned by the public SandboxSession.runs() API`,
+  )
+  assert.ok(Array.isArray(expected) && expected.length > 0, `${label} has no expected executions`)
+  const expectedRecords = expected.map((entry, index) => {
+    assert.ok(entry && typeof entry === 'object', `${label} expectation ${index} is invalid`)
+    const controlRef = entry.controlRef
+    assert.ok(
+      typeof controlRef?.sessionId === 'string' && controlRef.sessionId.length > 0,
+      `${label} expectation ${index} omitted session identity`,
+    )
+    assert.ok(
+      typeof controlRef?.executionId === 'string' && controlRef.executionId.length > 0,
+      `${label} expectation ${index} omitted execution identity`,
+    )
+    assert.ok(
+      PROVIDER_EXECUTION_STATUSES.has(entry.status),
+      `${label} expectation ${index} has an unknown status`,
+    )
+    return {
+      name:
+        typeof entry.name === 'string' && entry.name.length > 0 ? entry.name : `execution-${index}`,
+      sessionId: controlRef.sessionId,
+      executionId: controlRef.executionId,
+      status: entry.status,
+    }
+  })
+  const expectedIds = new Set(expectedRecords.map((entry) => entry.executionId))
+  assert.equal(
+    expectedIds.size,
+    expectedRecords.length,
+    `${label} expectations contain duplicate execution identities`,
+  )
+  const sessionIds = new Set(expectedRecords.map((entry) => entry.sessionId))
+  assert.equal(sessionIds.size, 1, `${label} expectations span more than one provider session`)
+  assert.equal(
+    records.length,
+    expectedRecords.length,
+    `${label} returned ${records.length} executions; expected exactly ${expectedRecords.length}`,
+  )
+  const observed = records.map((execution, index) =>
+    providerExecutionRecord(execution, index, label),
+  )
+  const observedIds = new Set(observed.map((execution) => execution.executionId))
+  assert.equal(
+    observedIds.size,
+    observed.length,
+    `${label} returned a duplicate execution identity`,
+  )
+  const expectedSessionId = expectedRecords[0].sessionId
+  for (const execution of observed) {
+    assert.equal(
+      execution.sessionId,
+      expectedSessionId,
+      `${label} returned an execution from another provider session`,
+    )
+  }
+  for (const expectedRecord of expectedRecords) {
+    const matches = observed.filter(
+      (execution) => execution.executionId === expectedRecord.executionId,
+    )
+    assert.equal(
+      matches.length,
+      1,
+      `${label} did not return exactly one record for ${expectedRecord.name}`,
+    )
+    assert.equal(
+      matches[0].status,
+      expectedRecord.status,
+      `${label} returned the wrong status for ${expectedRecord.name}`,
+    )
+  }
+  return {
+    provider: 'tangle-sandbox',
+    source: 'sandbox-session-runs',
+    sessionId: expectedSessionId,
+    executionCount: observed.length,
+    expected: expectedRecords,
+    executions: observed,
+    matched: true,
+    providerObserved: true,
+    localEchoOnly: false,
+  }
+}
+
+export async function providerExecutionLedgerEvidence(
+  client,
+  controlRef,
+  expected,
+  label = 'Provider execution ledger',
+  { box: providedBox } = {},
+) {
+  const box = providedBox ?? (await retainedBox(client, controlRef, label))
+  if (!box || box.id !== controlRef.environmentId) {
+    throw new MissingIntegrationError(`${label} did not resolve the exact Sandbox`, {
+      environmentId: controlRef.environmentId,
+    })
+  }
+  if (typeof box.session !== 'function') {
+    throw new MissingIntegrationError(`${label} requires the public SandboxSession API`, {
+      required: 'SandboxBox.session(sessionId)',
+    })
+  }
+  const session = box.session(controlRef.sessionId)
+  if (!session || typeof session.runs !== 'function') {
+    throw new MissingIntegrationError(`${label} requires SandboxSession.runs()`, {
+      required: 'SandboxSession.runs()',
+    })
+  }
+  return assertExactSessionExecutions(await session.runs(), expected, label)
+}
+
+export function continuityDigestMatches(value, expectedDigest) {
+  return value === expectedDigest || value === `${expectedDigest}\n`
+}
+
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`
 }
@@ -154,11 +340,10 @@ function proofPrompts(coordinates, holdMs) {
       `Reply with exactly ${coordinates.marker}.`,
     ].join(' '),
     followUp: [
-      'Use a shell command in the existing Tangle Sandbox workspace.',
-      `Compute the SHA-256 digest of the exact bytes in ${challengePath}.`,
-      `Write only the lowercase 64-character digest followed by a newline to ${responsePath}.`,
-      `Read ${path} too, but do not include its contents in the response.`,
-      'Reply with only the computed digest.',
+      'Use the existing Tangle Sandbox workspace.',
+      `Perform exactly these two actions, in order, with no other command or file change: run this one shell command once: test -f '${path}' && sha256sum -- '${challengePath}' | awk '{print $1}' > '${responsePath}'; then read ${responsePath} once.`,
+      `Do not read, write, truncate, rename, or delete ${challengePath}; do not run the shell command again.`,
+      'Reply with only the lowercase 64-character digest from the response file.',
     ].join(' '),
     cancel: [
       'Keep working in the same Tangle Sandbox workspace.',
@@ -168,7 +353,7 @@ function proofPrompts(coordinates, holdMs) {
   }
 }
 
-async function retainedBox(client, controlRef, label) {
+export async function retainedBox(client, controlRef, label) {
   if (!client) {
     throw new MissingIntegrationError(`${label} requires the Sandbox verification client`, {
       required: 'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY',
@@ -181,6 +366,59 @@ async function retainedBox(client, controlRef, label) {
     })
   }
   return box
+}
+
+export async function readRetainedWorkspaceFile(
+  client,
+  controlRef,
+  path,
+  { label = 'Workspace file read', allowMissing = false, box: providedBox } = {},
+) {
+  const box = providedBox ?? (await retainedBox(client, controlRef, label))
+  if (!box || !retainedResourceIdentity(box, controlRef)) {
+    throw new MissingIntegrationError(`${label} did not resolve the exact retained Sandbox`, {
+      environmentId: controlRef?.environmentId,
+    })
+  }
+  const relativePath = sandboxWorkspaceRelativePath(path)
+  let value
+  try {
+    value = await box.read(relativePath)
+  } catch (error) {
+    if (allowMissing && isMissingWorkspaceFileError(error)) return undefined
+    throw error
+  }
+  return { environmentId: box.id, path: relativePath, value }
+}
+
+function isMissingWorkspaceFileError(error) {
+  const status = error?.status ?? error?.statusCode
+  if (status === 404 || status === '404') return true
+  if (error?.code === 'NOT_FOUND' || error?.name === 'NotFoundError') return true
+  return /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
+}
+
+export function providerWorkspaceReadbackEvidence(
+  observation,
+  expectedValue,
+  label = 'provider-bound readback',
+) {
+  assert.ok(observation && typeof observation === 'object', `${label} observation is missing`)
+  assert.equal(typeof observation.environmentId, 'string', `${label} omitted environment identity`)
+  assert.equal(typeof observation.path, 'string', `${label} omitted workspace path`)
+  assert.equal(typeof observation.value, 'string', `${label} did not return file bytes`)
+  assert.equal(observation.value, expectedValue, `${label} did not match the expected remote bytes`)
+  return {
+    provider: 'tangle-sandbox',
+    source: 'sandbox-workspace-read',
+    environmentId: observation.environmentId,
+    path: observation.path,
+    expectedDigest: `sha256:${sha256(expectedValue)}`,
+    observedDigest: `sha256:${sha256(observation.value)}`,
+    bytes: Buffer.byteLength(observation.value),
+    matched: true,
+    localEchoOnly: false,
+  }
 }
 
 async function prepareContinuityChallenge(client, controlRef, coordinates) {
@@ -219,7 +457,43 @@ async function listAllSandboxes(client) {
   }
 }
 
-async function verifyRetainedWorkspace(client, controlRef, coordinates, continuity) {
+function transientCleanupDelay(error) {
+  if (error instanceof QuotaError) {
+    const retryAfterMs =
+      Number.isFinite(error.retryAfterMs) && error.retryAfterMs >= 0
+        ? error.retryAfterMs
+        : CLEANUP_RETRY_DELAY_MS
+    return Math.min(Math.max(CLEANUP_RETRY_DELAY_MS, retryAfterMs), CLEANUP_RETRY_MAX_DELAY_MS)
+  }
+  if (error instanceof NetworkError || error instanceof TimeoutError) {
+    return CLEANUP_RETRY_DELAY_MS
+  }
+  if (error instanceof ServerError && [502, 503, 504].includes(error.status)) {
+    return CLEANUP_RETRY_DELAY_MS
+  }
+  return undefined
+}
+
+async function cleanupProviderCall(operation) {
+  for (let attempt = 1; attempt <= CLEANUP_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      const delayMs = transientCleanupDelay(error)
+      if (delayMs === undefined || attempt === CLEANUP_RETRY_ATTEMPTS) throw error
+      await sleep(delayMs)
+    }
+  }
+  throw new Error('cleanup provider call exhausted its retry budget')
+}
+
+async function verifyRetainedWorkspace(
+  client,
+  controlRef,
+  coordinates,
+  continuity,
+  providerExecution,
+) {
   const box = await retainedBox(client, controlRef, 'Workspace verification')
   const markerPath = workspaceMarkerPath(coordinates)
   const expectedMarker = `${coordinates.marker}\n`
@@ -253,13 +527,16 @@ async function verifyRetainedWorkspace(client, controlRef, coordinates, continui
     markerPath,
     readValue,
     readMatched: readValue === expectedMarker,
+    providerExecution,
     continuity: {
       challengePath: continuity.path,
       responsePath: continuity.responsePath,
       challengeBytes: continuity.bytes,
       expectedDigest: continuity.expectedDigest,
-      responseDigest: continuityResponse.trim(),
-      matched: continuityResponse === `${continuity.expectedDigest}\n`,
+      responseDigest: continuityDigestMatches(continuityResponse, continuity.expectedDigest)
+        ? continuity.expectedDigest
+        : null,
+      matched: continuityDigestMatches(continuityResponse, continuity.expectedDigest),
     },
     git: {
       exitCode: gitExitCode,
@@ -435,7 +712,7 @@ export async function observeRetainedResource(client, controlRef) {
       { required: ['controlRef.environmentId', 'controlRef.sessionId'] },
     )
   }
-  const box = await client.get(controlRef.environmentId)
+  const box = await cleanupProviderCall(() => client.get(controlRef.environmentId))
   if (!box) {
     throw new MissingIntegrationError(
       `Sandbox environment ${controlRef.environmentId} was not visible to the cleanup client`,
@@ -457,7 +734,7 @@ export async function observeRetainedResource(client, controlRef) {
 /** Delete the exact Braid-owned retained Sandbox named by one control reference. */
 export async function cleanupRetainedResourceByControlRef(client, controlRef) {
   const observed = await observeRetainedResource(client, controlRef)
-  const box = await client.get(controlRef.environmentId)
+  const box = await cleanupProviderCall(() => client.get(controlRef.environmentId))
   if (box === null) {
     throw new MissingIntegrationError(
       `Sandbox environment ${controlRef.environmentId} disappeared before exact cleanup`,
@@ -488,7 +765,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
   }
   const providerSessionId = `session-braid-${safeExecutionId(firstRunId)}`
   const expected = expectedResourceIdentityForSession(providerSessionId)
-  const matches = (await listAllSandboxes(client)).filter((box) =>
+  const matches = (await cleanupProviderCall(() => listAllSandboxes(client))).filter((box) =>
     matchesResourceIdentity(box, expected),
   )
   if (matches.length !== 1) {
@@ -501,7 +778,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
     )
   }
   const listed = matches[0]
-  const exact = await client.get(listed.id)
+  const exact = await cleanupProviderCall(() => client.get(listed.id))
   const exactExpected = expectedResourceIdentityForSession(providerSessionId, listed.id)
   if (!exact || !matchesResourceIdentity(exact, exactExpected)) {
     throw new MissingIntegrationError(
@@ -513,7 +790,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
     )
   }
   await exact.delete()
-  const remaining = await client.get(listed.id)
+  const remaining = await cleanupProviderCall(() => client.get(listed.id))
   if (remaining !== null) {
     throw new Error(`Fail-safe retained Braid Sandbox ${listed.id} remained after delete`)
   }
@@ -536,7 +813,7 @@ function ownedByOperation(box, operationId) {
 async function deleteOwnedResource(client, box, predicate) {
   const attempts = []
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const exact = await client.get(box.id)
+    const exact = await cleanupProviderCall(() => client.get(box.id))
     if (exact === null) return { id: box.id, attempts, confirmed: true }
     if (!predicate(exact)) {
       throw new MissingIntegrationError(
@@ -552,29 +829,35 @@ async function deleteOwnedResource(client, box, predicate) {
     }
     const deadline = performance.now() + 5_000
     while (performance.now() < deadline) {
-      if ((await client.get(box.id)) === null) return { id: box.id, attempts, confirmed: true }
+      if ((await cleanupProviderCall(() => client.get(box.id))) === null) {
+        return { id: box.id, attempts, confirmed: true }
+      }
       await sleep(100)
     }
   }
   return { id: box.id, attempts, confirmed: false }
 }
 
-async function cleanupOwnedRetainedResources(client, { controlRef, firstRunId, operationId }) {
+export async function cleanupOwnedRetainedResources(
+  client,
+  { controlRef, firstRunId, operationId } = {},
+) {
   if (!client) {
     throw new MissingIntegrationError('Retained Sandbox cleanup has no authenticated client', {
       required: 'the execution Sandbox credential',
     })
   }
   const expectedSessionId =
-    typeof firstRunId === 'string' ? `session-braid-${safeExecutionId(firstRunId)}` : undefined
+    controlRef?.sessionId ??
+    (typeof firstRunId === 'string' ? `session-braid-${safeExecutionId(firstRunId)}` : undefined)
   const predicate = (box) =>
     (controlRef !== undefined && retainedResourceIdentity(box, controlRef)) ||
     (expectedSessionId !== undefined &&
       matchesResourceIdentity(box, expectedResourceIdentityForSession(expectedSessionId))) ||
     ownedByOperation(box, operationId)
-  const listed = (await listAllSandboxes(client)).filter(predicate)
+  const listed = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
   if (controlRef?.environmentId) {
-    const exact = await client.get(controlRef.environmentId)
+    const exact = await cleanupProviderCall(() => client.get(controlRef.environmentId))
     if (exact && !listed.some((box) => box.id === exact.id)) {
       if (!predicate(exact)) {
         throw new MissingIntegrationError(
@@ -589,7 +872,7 @@ async function cleanupOwnedRetainedResources(client, { controlRef, firstRunId, o
   }
   const deletions = []
   for (const box of listed) deletions.push(await deleteOwnedResource(client, box, predicate))
-  const remaining = (await listAllSandboxes(client)).filter(predicate)
+  const remaining = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
   const confirmed = deletions.every((entry) => entry.confirmed) && remaining.length === 0
   if (!confirmed) {
     throw new MissingIntegrationError('Exact retained Sandbox cleanup did not converge', {
@@ -607,7 +890,7 @@ async function cleanupOwnedRetainedResources(client, { controlRef, firstRunId, o
   }
 }
 
-async function usage(client, phase) {
+export async function usage(client, phase) {
   if (!client) return { phase, value: undefined, error: undefined }
   try {
     return { phase, value: await client.usage(), error: undefined }
@@ -634,7 +917,7 @@ function accountIdentityDigest(value) {
   return createHash('sha256').update(`${value.customerId}:${value.billingOwnerId}`).digest('hex')
 }
 
-function publicAccountIdentityEvidence(value) {
+export function publicAccountIdentityEvidence(value) {
   return {
     identityDigest: accountIdentityDigest(value),
     ...(typeof value.billingDelegationAuthorized === 'boolean'
@@ -643,7 +926,7 @@ function publicAccountIdentityEvidence(value) {
   }
 }
 
-async function accountIdentity(client, phase) {
+export async function accountIdentity(client, phase) {
   if (!client) return { phase, value: undefined, error: undefined }
   try {
     return { phase, value: publicAccountIdentity(await client.getIdentity()), error: undefined }
@@ -652,7 +935,7 @@ async function accountIdentity(client, phase) {
   }
 }
 
-function assertStableAccountIdentity(records) {
+export function assertStableAccountIdentity(records) {
   const before = records.find((entry) => entry.phase === 'before')
   const after = records.find((entry) => entry.phase === 'after')
   if (!before?.value?.customerId || !before.value.billingOwnerId) {
@@ -867,6 +1150,29 @@ export function spendDisclosure(runs) {
   }
 }
 
+export function singleRunSpendDisclosure(run, label = 'interactive-run') {
+  const row = runSpend(run, label)
+  return {
+    scope: 'the unique local run in this cloud proof',
+    rows: [row],
+    totals: {
+      tokens: {
+        observedRuns: row.tokens.status === 'observed' ? 1 : 0,
+        unavailableRuns: row.tokens.status === 'unavailable' ? 1 : 0,
+        missingRuns: row.tokens.status === 'missing' ? 1 : 0,
+        input: row.tokens.status === 'observed' ? row.tokens.input : 0,
+        output: row.tokens.status === 'observed' ? row.tokens.output : 0,
+      },
+      cost: {
+        observedRuns: row.cost.status === 'observed' ? 1 : 0,
+        unavailableRuns: row.cost.status === 'unavailable' ? 1 : 0,
+        missingRuns: row.cost.status === 'missing' ? 1 : 0,
+        usd: row.cost.status === 'observed' ? row.cost.usd : 0,
+      },
+    },
+  }
+}
+
 export function telemetryDisclosure(
   run,
   state,
@@ -1066,7 +1372,8 @@ export async function runBraidSandboxStress({
   requireZeroActiveResourceDelta = false,
 } = {}) {
   const startedAt = performance.now()
-  const coordinates = proofCoordinates()
+  const baseCoordinates = proofCoordinates()
+  const coordinates = baseCoordinates
   const ids = operationIds(coordinates.proofId)
   const holdMs = numberEnvironment(
     environment,
@@ -1106,6 +1413,7 @@ export async function runBraidSandboxStress({
   let firstResponses
   let firstVisible
   let freshVisible
+  let providerExecution
   let workspaceVerification
   let continuity
   let account
@@ -1163,6 +1471,7 @@ export async function runBraidSandboxStress({
         repository: suppliedRepository,
         environment: sanitizedEnvironment(environment),
         ...values,
+        workspaceRequest: workspaceRequestFor(environment),
         providerOptions: { lifecycle: RETAINED_LIFECYCLE, idleTtlSeconds },
       }),
     )
@@ -1366,16 +1675,6 @@ export async function runBraidSandboxStress({
     )
     assertNonVacuousVisibleEvents(followUpVisible, 'follow-up run')
     toolEvidence(followUpVisible, 'Follow-up run')
-    workspaceVerification = await phase('followUp.verifyWorkspace', () =>
-      verifyRetainedWorkspace(client, followUpObservation.controlRef, coordinates, continuity),
-    )
-    assert.equal(workspaceVerification.readMatched, true, 'SDK read did not match the marker')
-    assert.equal(
-      workspaceVerification.continuity.matched,
-      true,
-      'follow-up did not materialize the hidden continuity challenge',
-    )
-    assert.equal(workspaceVerification.git.exitCode, 0, 'SDK Git/read verification failed')
     account = assertSameAccount(
       followUpTerminal.response.state,
       followUpTerminal.run,
@@ -1435,6 +1734,46 @@ export async function runBraidSandboxStress({
         timeoutMs,
       ),
     )
+    providerExecution = await phase('cancel.verifySessionExecutions', () =>
+      providerExecutionLedgerEvidence(
+        client,
+        firstObservation.controlRef,
+        [
+          {
+            name: 'first-and-reconnected',
+            controlRef: firstObservation.controlRef,
+            status: 'completed',
+          },
+          {
+            name: 'follow-up',
+            controlRef: followUpObservation.controlRef,
+            status: 'completed',
+          },
+          {
+            name: 'cancelled',
+            controlRef: cancelObservation.controlRef,
+            status: 'cancelled',
+          },
+        ],
+        'LIVE-07 provider execution inventory',
+      ),
+    )
+    workspaceVerification = await phase('followUp.verifyWorkspace', () =>
+      verifyRetainedWorkspace(
+        client,
+        followUpObservation.controlRef,
+        coordinates,
+        continuity,
+        providerExecution,
+      ),
+    )
+    assert.equal(workspaceVerification.readMatched, true, 'SDK read did not match the marker')
+    assert.equal(
+      workspaceVerification.continuity.matched,
+      true,
+      'follow-up did not materialize the hidden continuity challenge',
+    )
+    assert.equal(workspaceVerification.git.exitCode, 0, 'SDK Git/read verification failed')
 
     cancelledProcessCleanup = await phase('cancel.restart.closeFirstProcess', () =>
       closeBraidWithProof(freshSession, 'pre-retry cancellation process'),
@@ -1753,6 +2092,10 @@ export async function runBraidSandboxStress({
       config: config ? configEvidence(config) : undefined,
       timing: phases,
     }),
+    processes: {
+      ...(result?.processes ?? {}),
+      binarySha256: result?.processes?.binarySha256 ?? binarySha256 ?? null,
+    },
     status:
       failure === undefined &&
       cleanupError === undefined &&

@@ -139,6 +139,7 @@ function activityForAnalysis(analysis: BraidState['analyses'][number]): Semantic
 function activityForSupervisor(
   supervisor: BraidState['supervisors'][number],
 ): SemanticActivityItem {
+  const wallElapsedMs = elapsedMs(supervisor.createdAt, supervisor.updatedAt)
   return {
     id: `supervisor:${supervisor.id}`,
     kind: 'supervisor',
@@ -149,6 +150,7 @@ function activityForSupervisor(
     entityType: 'supervisor',
     entityId: supervisor.id,
     startedAt: supervisor.createdAt,
+    ...(wallElapsedMs === undefined ? {} : { elapsedMs: wallElapsedMs }),
   }
 }
 
@@ -157,6 +159,7 @@ function activityForWorker(
   rootRunId: string | undefined,
 ): SemanticActivityItem {
   const runId = worker.runId ?? rootRunId
+  const wallElapsedMs = elapsedMs(worker.createdAt, worker.updatedAt)
   return {
     id: `worker:${worker.id}`,
     kind: 'worker',
@@ -168,7 +171,7 @@ function activityForWorker(
     entityType: 'worker',
     entityId: worker.id,
     startedAt: worker.createdAt,
-    ...(worker.latencyMs === undefined ? {} : { elapsedMs: worker.latencyMs }),
+    ...(wallElapsedMs === undefined ? {} : { elapsedMs: wallElapsedMs }),
   }
 }
 

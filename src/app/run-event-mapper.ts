@@ -13,6 +13,7 @@ import type {
   TurnUsage,
 } from '../domain/events.js'
 import type { ExecutionEnvironmentObservation } from '../domain/execution-observation.js'
+import { localInteractionId } from '../domain/interaction-identity.js'
 import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.js'
 import { publicRuntimeDiagnostic } from '../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
@@ -31,6 +32,7 @@ import {
   safeProviderDiagnostic,
   safePublicIdentifier,
 } from './provider-values.js'
+import type { RuntimeStreamSanitizer } from './run-stream-sanitizer.js'
 
 function safeText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? redactSensitiveText(value) : fallback
@@ -51,17 +53,23 @@ interface SafeInteractionRequest {
 
 function safeInteractionRequest(value: unknown, runId: string): SafeInteractionRequest {
   const parsed = parseInteractionRequest(value)
-  if (parsed === undefined || parsed.binding.runId !== runId)
+  if (
+    parsed === undefined ||
+    parsed.binding.runId !== runId ||
+    safePublicIdentifier(parsed.id) !== parsed.id
+  )
     return invalidInteractionRequest(runId)
-  const material = safeValue(interactionRequestMaterial(parsed))
+  const responseBinding = interactionResponseBinding(parsed)
+  const interactionId = localInteractionId(runId, parsed.id)
+  const material = safeValue({
+    ...interactionRequestMaterial(parsed, { ...parsed.binding, interactionId }),
+    id: interactionId,
+  })
   if (material === null || typeof material !== 'object' || Array.isArray(material))
     return invalidInteractionRequest(runId)
   try {
-    const request = createInteractionRequest({
-      ...(material as InteractionRequestMaterial),
-      binding: { ...parsed.binding },
-    })
-    return { request, responseBinding: interactionResponseBinding(parsed) }
+    const request = createInteractionRequest(material as InteractionRequestMaterial)
+    return { request, responseBinding }
   } catch {
     return invalidInteractionRequest(runId)
   }
@@ -69,7 +77,7 @@ function safeInteractionRequest(value: unknown, runId: string): SafeInteractionR
 
 function invalidInteractionRequest(runId: string): SafeInteractionRequest {
   const exactRunId = safePublicIdentifier(runId) ?? 'run-invalid'
-  const interactionId = `${exactRunId}:interaction:invalid`
+  const interactionId = localInteractionId(exactRunId, 'invalid')
   const request = createInteractionRequest({
     id: interactionId,
     kind: 'provider.invalid.interaction',
@@ -326,6 +334,7 @@ export function providerEventFor(
   runId: string,
   event: BraidRuntimeEvent,
   provider: ProviderEventMeta,
+  streamSanitizer?: RuntimeStreamSanitizer,
 ): BraidEvent {
   const detailEvent =
     event.type === 'raw'
@@ -335,13 +344,18 @@ export function providerEventFor(
         : event
   switch (event.type) {
     case 'text_delta':
-      return { kind: 'run.text.delta', runId, text: safeText(event.text), provider }
+      return {
+        kind: 'run.text.delta',
+        runId,
+        text: streamSanitizer?.push(runId, 'text', event.text) ?? safeText(event.text),
+        provider,
+      }
     case 'reasoning_delta':
       return {
         kind: 'run.reasoning.delta',
         runId,
         partId: `${runId}:reasoning`,
-        text: safeText(event.text),
+        text: streamSanitizer?.push(runId, 'reasoning', event.text) ?? safeText(event.text),
         provider,
       }
     case 'tool_call':
@@ -409,7 +423,10 @@ export function providerEventFor(
         kind: 'run.finished',
         runId,
         status: terminalStatus(event.status),
-        finalText: safeText(event.text),
+        finalText:
+          typeof event.text !== 'string' || event.text.length === 0
+            ? (streamSanitizer?.finish(runId, 'text') ?? safeText(event.text))
+            : (streamSanitizer?.complete(runId, 'final', event.text) ?? safeText(event.text)),
         usage: usageFromMetadata(event.metadata),
         ...(event.error === undefined
           ? {}
@@ -429,7 +446,16 @@ export function providerEventFor(
         kind: 'run.part.updated',
         runId,
         part,
-        ...(event.delta === undefined ? {} : { delta: safeText(event.delta) }),
+        ...(typeof event.delta !== 'string'
+          ? {}
+          : {
+              delta:
+                streamSanitizer?.push(
+                  runId,
+                  `part:${safePublicIdentifier(event.part.id) ?? 'part-unknown'}`,
+                  event.delta,
+                ) ?? safeText(event.delta),
+            }),
         provider,
       }
     }
@@ -444,7 +470,7 @@ export function providerEventFor(
       return {
         kind: 'run.interaction.cancelled',
         runId,
-        interactionId: safePublicIdentifier(event.id) ?? `${runId}:interaction`,
+        interactionId: localInteractionId(runId, safePublicIdentifier(event.id) ?? 'invalid'),
         ...(event.reason === undefined ? {} : { reason: safeText(event.reason) }),
         provider,
       }

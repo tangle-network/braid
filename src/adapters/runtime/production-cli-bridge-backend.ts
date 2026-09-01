@@ -3,6 +3,7 @@ import type {
   AgentProfile,
   HarnessType,
 } from '@tangle-network/agent-interface'
+import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import type { BridgeModelCredential } from '@tangle-network/agent-runtime/kernel'
 import { ConnectionError } from '../../app/connection-errors.js'
@@ -47,8 +48,16 @@ export interface PreparedCliBridgeConnection {
   readonly providerSessionId: string
   readonly provider: CliBridgeProvider
   readonly capabilities: AgentEnvironmentCapabilities
+  readonly contextTransfer?: ExecuteTurnInput['contextTransfer']
   readonly observation: NonNullable<PreparedExecution['observation']>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
+}
+
+export interface PreparedCliBridgeProviderRoute {
+  readonly bridgeUrl: string
+  readonly bearerToken: string
+  readonly provider: CliBridgeProvider
+  readonly capabilities: AgentEnvironmentCapabilities
 }
 
 export async function prepareCliBridgeConnection(
@@ -76,14 +85,87 @@ export async function prepareCliBridgeConnection(
     )
   }
 
-  const record = connectionRecord(connectionId, options)
-  const credential = await readConnectionCredential(record, options, endpoint)
   const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
   const route = materializeBridgeModelRoute(runner, model, profile.model?.provider)
   const workspace = requiredWorkspaceCwd(input.workspaceRoot, options.workspaceCwd)
-  const bridgeUrl = normalizeCliBridgeProviderBaseUrl(endpoint, connectionId)
-  const bridgeLocation = endpointLocation(bridgeUrl)
+  const preparedProvider = await prepareCliBridgeProviderRoute(
+    options,
+    connectionId,
+    endpoint,
+    runner,
+    route,
+  )
+  const bridgeLocation = endpointLocation(preparedProvider.bridgeUrl)
   const createdAt = new Date().toISOString()
+  const { provider, capabilities } = preparedProvider
+  assertContextTransferDestination(input, provider.name, profile, runner, model)
+  return freezeExecution({
+    profile,
+    model,
+    runner,
+    route,
+    workspace,
+    bridgeUrl: preparedProvider.bridgeUrl,
+    bearerToken: preparedProvider.bearerToken,
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    provider,
+    capabilities,
+    ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    providerSessionId,
+    observation: staticExecutionObservation({
+      kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',
+      provider: 'cli-bridge',
+      lifecycle: 'ready',
+      lifecycleMode: 'retained',
+      cleanup: 'explicit',
+      continuity: 'session',
+      ...bridgeLocation,
+      createdAt,
+      unavailable: [
+        'cli-subscription-and-quota:not-exposed-by-provider',
+        'effective-resources:not-exposed-by-provider',
+        'machine-specs:not-exposed-by-provider',
+        'runtime-cpu-memory-usage:not-exposed-by-provider',
+      ],
+    }),
+    materializationReceipt: {
+      provider: 'cli-bridge',
+      backend: 'executor',
+      connectionId,
+      sessionId: providerSessionId,
+      lifecycle: 'retained-session',
+      cleanup: 'explicit',
+      portableContext:
+        capabilities.contextTransfer?.freshSession === true &&
+        capabilities.contextTransfer.requestIdempotency === true &&
+        capabilities.contextTransfer.lookup === true
+          ? 'provider-owned'
+          : 'unavailable',
+      workspace,
+      model,
+      route,
+      runner,
+    },
+  })
+}
+
+/** Resolve one exact Bridge route without requiring an AgentProfile. */
+export async function prepareCliBridgeProviderRoute(
+  options: ProductionBackendResolverOptions,
+  connectionId: ConnectionId,
+  endpoint: string,
+  runner: HarnessType,
+  route: string,
+): Promise<PreparedCliBridgeProviderRoute> {
+  const record = connectionRecord(connectionId, options)
+  if (record.kind !== 'cli-bridge') {
+    throw new Error('The CLI Bridge provider route received another connection kind')
+  }
+  const credential = await readConnectionCredential(record, options, endpoint)
+  const bridgeUrl = normalizeCliBridgeProviderBaseUrl(endpoint, connectionId)
   const { createCliBridgeProvider } = await import('@tangle-network/agent-provider-cli-bridge')
   const providerFetch =
     options.bridgeModelCredential === undefined
@@ -110,50 +192,34 @@ export async function prepareCliBridgeConnection(
   const provider = createCliBridgeProvider(providerOptions)
   const capabilities = await provider.capabilities()
   return freezeExecution({
-    profile,
-    model,
-    runner,
-    route,
-    workspace,
     bridgeUrl,
     bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
-    ...(options.bridgeModelCredential === undefined
-      ? {}
-      : { bridgeModelCredential: options.bridgeModelCredential }),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     provider,
     capabilities,
-    providerSessionId,
-    observation: staticExecutionObservation({
-      kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',
-      provider: 'cli-bridge',
-      lifecycle: 'ready',
-      lifecycleMode: 'retained',
-      cleanup: 'explicit',
-      continuity: 'session',
-      ...bridgeLocation,
-      createdAt,
-      unavailable: [
-        'cli-subscription-and-quota:not-exposed-by-provider',
-        'effective-resources:not-exposed-by-provider',
-        'machine-specs:not-exposed-by-provider',
-        'runtime-cpu-memory-usage:not-exposed-by-provider',
-      ],
-    }),
-    materializationReceipt: {
-      provider: 'cli-bridge',
-      backend: 'executor',
-      connectionId,
-      sessionId: providerSessionId,
-      lifecycle: 'retained-session',
-      cleanup: 'explicit',
-      portableContext: 'unavailable',
-      workspace,
-      model,
-      route,
-      runner,
-    },
   })
+}
+
+function assertContextTransferDestination(
+  input: ExecuteTurnInput,
+  providerName: string,
+  profile: AgentProfile,
+  runner: HarnessType,
+  model: string,
+): void {
+  const transfer = input.contextTransfer
+  if (transfer === undefined) return
+  const destination = transfer.plan.destination
+  if (
+    destination.provider !== providerName ||
+    destination.runner !== runner ||
+    destination.model !== model ||
+    destination.profileDigest !== canonicalAgentProfileDigest(profile) ||
+    destination.sessionId !== input.sessionId
+  ) {
+    throw new Error(
+      'The portable context destination does not match the selected provider, runner, model, profile, or session',
+    )
+  }
 }
 
 function bridgeCredentialFetch(

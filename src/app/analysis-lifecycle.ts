@@ -1,4 +1,5 @@
 import type { AnalysisRecord } from '../domain/entities.js'
+import type { ExactAnalystRunEvent } from '@tangle-network/agent-eval'
 import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
 import {
   type AnalysisIdentity,
@@ -53,10 +54,27 @@ export class AnalysisLifecycle {
     await commitAnalysisEvent(this.#host, { kind: 'analysis.created', analysis: record })
   }
 
-  async running(record: AnalysisRecord): Promise<AnalysisRecord> {
-    const running: AnalysisRecord = { ...record, status: 'running', updatedAt: this.#host.now() }
+  async running(record: AnalysisRecord, analystIds: readonly string[]): Promise<AnalysisRecord> {
+    const running: AnalysisRecord = {
+      ...record,
+      status: 'running',
+      analysts: analystIds.map((analystId) => ({ analystId, status: 'pending' })),
+      updatedAt: this.#host.now(),
+    }
     await commitAnalysisEvent(this.#host, { kind: 'analysis.updated', analysis: running })
     return running
+  }
+
+  async progress(record: AnalysisRecord, event: ExactAnalystRunEvent): Promise<AnalysisRecord> {
+    const analysts = analystProgress(record, event)
+    if (sameAnalystProgress(record.analysts ?? [], analysts)) return record
+    const next: AnalysisRecord = {
+      ...record,
+      analysts,
+      updatedAt: this.#host.now(),
+    }
+    await commitAnalysisEvent(this.#host, { kind: 'analysis.updated', analysis: next })
+    return next
   }
 
   async recordRetainedAdmission(
@@ -144,4 +162,72 @@ export class AnalysisLifecycle {
       replayed: true,
     }
   }
+}
+
+function analystProgress(
+  record: AnalysisRecord,
+  event: ExactAnalystRunEvent,
+): NonNullable<AnalysisRecord['analysts']> {
+  if (event.type === 'run-started') {
+    return event.analyst_ids.map((analystId) => ({ analystId, status: 'pending' }))
+  }
+  if (event.type === 'run-completed') {
+    return event.result.per_analyst.map((summary) =>
+      progressFromSummary(
+        summary,
+        record.analysts?.find((candidate) => candidate.analystId === summary.analyst_id),
+      ),
+    )
+  }
+  const analystId = event.type === 'analyst-started' ? event.analyst_id : event.summary.analyst_id
+  const current = record.analysts ?? []
+  const update =
+    event.type === 'analyst-started'
+      ? { analystId, status: 'running' as const, startedAt: event.started_at }
+      : progressFromSummary(
+          event.summary,
+          current.find((candidate) => candidate.analystId === analystId),
+        )
+  const found = current.some((candidate) => candidate.analystId === analystId)
+  return found
+    ? current.map((candidate) => (candidate.analystId === analystId ? update : candidate))
+    : [...current, update]
+}
+
+function progressFromSummary(
+  summary: Extract<ExactAnalystRunEvent, { type: 'analyst-completed' }>['summary'],
+  previous?: NonNullable<AnalysisRecord['analysts']>[number],
+): NonNullable<AnalysisRecord['analysts']>[number] {
+  return {
+    analystId: summary.analyst_id,
+    status:
+      summary.status === 'ok' ? 'completed' : summary.status === 'skipped' ? 'skipped' : 'failed',
+    findingsCount: summary.findings_count,
+    latencyMs: summary.latency_ms,
+    ...(previous?.startedAt === undefined ? {} : { startedAt: previous.startedAt }),
+    ...(summary.reason === undefined
+      ? summary.error === undefined
+        ? {}
+        : { detail: summary.error.message }
+      : { detail: summary.reason }),
+  }
+}
+
+function sameAnalystProgress(
+  left: readonly NonNullable<AnalysisRecord['analysts']>[number][],
+  right: readonly NonNullable<AnalysisRecord['analysts']>[number][],
+): boolean {
+  if (left.length !== right.length) return false
+  return left.every((analyst, index) => {
+    const candidate = right[index]
+    return (
+      candidate !== undefined &&
+      analyst.analystId === candidate.analystId &&
+      analyst.status === candidate.status &&
+      analyst.startedAt === candidate.startedAt &&
+      analyst.findingsCount === candidate.findingsCount &&
+      analyst.latencyMs === candidate.latencyMs &&
+      analyst.detail === candidate.detail
+    )
+  })
 }

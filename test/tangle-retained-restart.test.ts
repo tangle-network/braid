@@ -90,6 +90,7 @@ test('one retained cloud session survives restart and continues in the same sand
       return run?.controlRef !== undefined && (run.lastProviderSequence ?? 0) >= 2
     })
     const firstRun = first.app.state().runs.find((candidate) => candidate.id === turn.runId)
+    assert.equal(sandbox.dispatches[0]?.turnId, firstRun?.turnId)
     assert.equal(firstRun?.capabilities.sessions.continue, true)
     assert.equal(firstRun?.capabilities.controls.status, false)
     assert.equal(firstRun?.capabilities.streaming.replay, true)
@@ -244,6 +245,7 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
     const input = {
       operationId: 'operation-tangle-crash-window',
       runId,
+      turnId: 'turn-tangle-crash-window',
       text: 'Continue the existing retained conversation.',
       profile,
       workspaceRoot: root,

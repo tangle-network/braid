@@ -1,3 +1,7 @@
+import type {
+  AgentWorkspaceBranchingProvider,
+  ConfidentialAttestationVerifier,
+} from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { AgentTurnBackend, Executor } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
@@ -43,6 +47,8 @@ export type AgentTurnCancelResolver = (
 
 export interface AgentRuntimeExecutionOptions {
   readonly admissionMode?: 'sync' | 'async'
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 }
 
 export class AgentRuntimeExecutionPort implements ExecutionPort {
@@ -56,6 +62,8 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
   >()
   readonly #preparedOrder: string[] = []
   readonly #capabilitySnapshot: RunCapabilities
+  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
+  readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 
   static readonly #MAX_PREPARED = 128
 
@@ -78,6 +86,10 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         streaming: { ...UNKNOWN_RUN_CAPABILITIES.streaming, live: true },
       }
     }
+    if (options.workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 
   capabilities(): RunCapabilities {
@@ -200,6 +212,8 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
       active.cancellation = preparedExecution?.cancellation
       const backend = isPreparedExecution(execution) ? execution.backend : execution
       const observation = isPreparedExecution(execution) ? execution.observation : undefined
+      const cleanupExpected =
+        preparedExecution?.materializationReceipt.cleanup === 'delete-after-turn'
       const runtimeBackend =
         active.cancellation === undefined
           ? backend
@@ -211,7 +225,12 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         let terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }> | undefined
         for await (const event of streamAgentTurn(
           runtimeBackend,
-          { prompt: input.text },
+          {
+            prompt: input.text,
+            ...(input.contextTransfer === undefined
+              ? {}
+              : { contextTransfer: input.contextTransfer }),
+          },
           {
             signal: localAbort.signal,
             preserveToolParts: true,
@@ -224,7 +243,11 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         if (observed !== undefined) yield observed
         if (terminal !== undefined) {
           yield redactedTerminal(
-            terminalAfterCleanup(terminalAfterInteractionRequest(terminal), observed),
+            terminalAfterCleanup(
+              terminalAfterInteractionRequest(terminal),
+              observed,
+              cleanupExpected,
+            ),
           )
         }
       } catch (error) {
@@ -315,11 +338,14 @@ function terminalAfterInteractionRequest(
 function terminalAfterCleanup(
   terminal: Extract<RuntimeStreamEvent, { readonly type: 'final' }>,
   observed: Extract<BraidRuntimeEvent, { readonly type: 'braid.execution.observed' }> | undefined,
+  cleanupExpected: boolean,
 ): Extract<RuntimeStreamEvent, { readonly type: 'final' }> {
+  const cleanupRequired = cleanupExpected || observed?.observation.cleanup === 'delete-after-turn'
   if (
     terminal.status !== 'completed' ||
-    observed?.observation.cleanup !== 'delete-after-turn' ||
-    observed.observation.lifecycle === 'destroyed'
+    !cleanupRequired ||
+    (observed?.observation.cleanup === 'delete-after-turn' &&
+      observed.observation.lifecycle === 'destroyed')
   )
     return terminal
   return {
@@ -404,7 +430,10 @@ function admissionKey(input: ExecuteTurnInput, profileDigest: string): string {
     profileDigest,
     connectionId: input.connectionId ?? null,
     mode: input.mode ?? null,
+    workspaceRequest: input.workspaceRequest ?? null,
+    workspaceRoot: input.workspaceRoot ?? null,
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
+    contextTransfer: input.contextTransfer ?? null,
   })
 }

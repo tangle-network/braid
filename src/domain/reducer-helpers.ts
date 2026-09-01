@@ -27,7 +27,7 @@ import {
 import { DomainInvariantError } from './invariants.js'
 import { createAdmissionReceipt } from './receipts.js'
 import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
-import type { BraidMessagePart, BraidState } from './state.js'
+import { normalizeActiveRuns, type BraidMessagePart, type BraidState } from './state.js'
 
 export class SequenceGapError extends Error {
   readonly code = 'SEQUENCE_GAP'
@@ -197,12 +197,16 @@ export function legacyMessage(
   turnId: import('./ids.js').TurnId,
   status: BraidMessage['status'],
   at: string,
+  identity: {
+    readonly conversationId?: BraidMessage['conversationId']
+    readonly branchId?: BraidMessage['branchId']
+  } = {},
 ): MessageRecord {
   const partId = defaultPartId(id)
   return {
     id,
-    conversationId: state.conversationId,
-    branchId: state.branchId,
+    conversationId: identity.conversationId ?? state.conversationId,
+    branchId: identity.branchId ?? state.branchId,
     role,
     text,
     partIds: [partId],
@@ -374,12 +378,10 @@ export function updateRun(state: BraidState, run: RunRecord, at: string): BraidS
     updatedAt: at,
     ...(terminal && run.terminalAt === undefined ? { terminalAt: at } : {}),
   }
-  const activeRunId = terminal && state.activeRunId === run.id ? null : state.activeRunId
-  return {
+  return normalizeActiveRuns({
     ...state,
     runs: upsert(state.runs, nextRun),
-    activeRunId,
-  }
+  })
 }
 
 export function updateMessage(state: BraidState, message: MessageRecord): BraidState {
@@ -419,14 +421,16 @@ export function updateMessageFinal(
   status: BraidMessage['status'],
   partStatus: NonNullable<BraidMessagePart['status']>,
   at: string,
+  mode: 'replace' | 'append' = 'replace',
 ): BraidState {
   const message = state.messages.find(
     (entry) => entry.runId === runId && entry.role === 'assistant',
   )
   if (!message) throw new DomainInvariantError(`Assistant message for run ${runId} does not exist`)
+  const nextText = mode === 'append' ? `${message.text}${text}` : text
   const nextMessage = {
     ...message,
-    text: text || message.text,
+    text: nextText || message.text,
     status,
     complete: status === 'complete',
     parts: message.parts.map((part) =>

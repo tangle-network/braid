@@ -78,3 +78,26 @@ test('phrase-form credential assignments are removed across stream boundaries', 
     )
   }
 })
+
+test('authorization schemes redact the credential after the scheme across stream boundaries', () => {
+  const sources = [
+    'authorization: Basic BASIC-ASSIGNMENT-CANARY suffix',
+    'authorization=Bearer BEARER-ASSIGNMENT-CANARY suffix',
+    'token: Bearer TOKEN-ASSIGNMENT-CANARY suffix',
+    'x=Bearer STANDALONE-BEARER-CANARY suffix',
+  ]
+  for (const source of sources) {
+    const expected = redactSensitiveText(source)
+    assert.doesNotMatch(
+      expected,
+      /(?:BASIC|BEARER|TOKEN)-ASSIGNMENT-CANARY|STANDALONE-BEARER-CANARY/u,
+    )
+    for (let boundary = 0; boundary <= source.length; boundary += 1) {
+      assert.equal(
+        sanitizeTextChunks([source.slice(0, boundary), source.slice(boundary)]),
+        expected,
+        `${source.slice(0, 24)} at ${boundary}`,
+      )
+    }
+  }
+})

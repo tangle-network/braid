@@ -12,6 +12,7 @@ import type {
 } from './entities.js'
 import type { AutomationRuleRecord } from './entities-runtime.js'
 import { isReplayCursor } from './ids.js'
+import { localInteractionId } from './interaction-identity.js'
 import {
   assertDate,
   assertDigest,
@@ -25,7 +26,10 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
-import { assertRetainedRunAdmission } from './invariants-retained-admission.js'
+import {
+  assertProviderSessionIdentifier,
+  assertRetainedRunAdmission,
+} from './invariants-retained-admission.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
 import { safePublicIdentifier } from './provider-values.js'
 
@@ -55,7 +59,7 @@ export function assertRunRecord(record: RunRecord): void {
   if (record.connectionId !== undefined)
     assertEntityId('connection', record.connectionId, 'run.connectionId')
   if (record.providerSessionId !== undefined)
-    assertEntityId('providerSession', record.providerSessionId, 'run.providerSessionId')
+    assertProviderSessionIdentifier(record.providerSessionId, 'run.providerSessionId')
   if (record.harnessSessionId !== undefined) {
     nonEmpty(record.harnessSessionId, 'run.harnessSessionId')
     assertPublicReference(record.harnessSessionId, 'run.harnessSessionId')
@@ -161,9 +165,12 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
   if (value.runId !== runId) fail(`${label}.runId must match run.id`)
   if (request.binding.runId !== runId) fail(`${label}.request.binding.runId must match run.id`)
   if (responseBinding.runId !== runId) fail(`${label}.responseBinding.runId must match run.id`)
+  if (request.binding.interactionId !== request.id)
+    fail(`${label}.request.binding.interactionId must match request.id`)
   // Redaction recomputes the display request digest but preserves the response binding digest.
-  if (responseBinding.interactionId !== request.id)
-    fail(`${label}.responseBinding.interactionId must match request.id`)
+  assertPublicIdentifier(responseBinding.interactionId, `${label}.responseBinding.interactionId`)
+  if (localInteractionId(runId, responseBinding.interactionId) !== request.id)
+    fail(`${label}.responseBinding.interactionId does not map to request.id`)
   for (const key of ['provider', 'environmentId', 'sessionId', 'executionId'] as const) {
     if (responseBinding[key] !== request.binding[key])
       fail(`${label}.responseBinding.${key} must match request.binding.${key}`)
@@ -191,6 +198,13 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
   if (typeof responseOperation.containsSecret !== 'boolean')
     fail(`${label}.responseOperation.containsSecret must be boolean`)
   if (
+    responseOperation.requestedOutcome !== undefined &&
+    responseOperation.requestedOutcome !== 'accepted' &&
+    responseOperation.requestedOutcome !== 'declined' &&
+    responseOperation.requestedOutcome !== 'cancelled'
+  )
+    fail(`${label}.responseOperation.requestedOutcome is invalid`)
+  if (
     responseOperation.outcome !== 'accepted' &&
     responseOperation.outcome !== 'declined' &&
     responseOperation.outcome !== 'cancelled' &&
@@ -217,6 +231,18 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
     !request.allowedOutcomes.includes(responseOperation.outcome)
   )
     fail(`${label}.responseOperation.outcome is not allowed by request`)
+  if (
+    responseOperation.requestedOutcome !== undefined &&
+    request.allowedOutcomes !== undefined &&
+    !request.allowedOutcomes.includes(responseOperation.requestedOutcome)
+  )
+    fail(`${label}.responseOperation.requestedOutcome is not allowed by request`)
+  if (
+    responseOperation.outcome !== 'unknown' &&
+    responseOperation.requestedOutcome !== undefined &&
+    responseOperation.outcome !== responseOperation.requestedOutcome
+  )
+    fail(`${label}.responseOperation outcome does not match requestedOutcome`)
   if (responseOperation.containsSecret && responseOperation.dataDigest !== undefined)
     fail(`${label}.secret responseOperation cannot retain dataDigest`)
   if (
@@ -259,6 +285,17 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
     if (finding.confidence !== undefined)
       finiteRatio(finding.confidence, 'analysis.finding.confidence')
     for (const citation of finding.citations) assertAnalysisCitation(citation)
+  }
+  for (const analyst of record.analysts ?? []) {
+    nonEmpty(analyst.analystId, 'analysis.analysts.analystId')
+    if (!['pending', 'running', 'completed', 'skipped', 'failed'].includes(analyst.status))
+      fail('analysis.analysts.status is invalid')
+    if (analyst.startedAt !== undefined)
+      assertDate(analyst.startedAt, 'analysis.analysts.startedAt')
+    if (analyst.findingsCount !== undefined)
+      finiteNonNegative(analyst.findingsCount, 'analysis.analysts.findingsCount')
+    if (analyst.latencyMs !== undefined)
+      finiteNonNegative(analyst.latencyMs, 'analysis.analysts.latencyMs')
   }
   if (record.sourceRange !== undefined) {
     for (const eventId of record.sourceRange.eventIds)

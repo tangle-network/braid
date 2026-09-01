@@ -1,7 +1,7 @@
 import type { BraidEvent } from './events.js'
 import { DomainInvariantError } from './invariants-base.js'
 import { find, upsert } from './reducer-helpers.js'
-import type { BraidState } from './state.js'
+import { activeRunForBranch, normalizeActiveRuns, type BraidState } from './state.js'
 
 type ConversationEvent = Extract<
   BraidEvent,
@@ -54,8 +54,6 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
         graphEdges: upsertMany(state.graphEdges, event.graphEdges),
         feedbackDecisions: upsertMany(state.feedbackDecisions, event.feedbackDecisions),
         operations: upsert(state.operations, event.operation),
-        activeRunId: null,
-        queuedInputs: [],
         draft:
           event.drafts.find((draft) => draft.branchId === event.conversation.activeBranchId)
             ?.text ?? '',
@@ -73,7 +71,7 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
       const conversation = event.conversation ?? previous
       const branchId = event.branchId ?? conversation.activeBranchId
       find(state.branches, branchId, 'Branch')
-      return {
+      return focusSelectedBranch({
         ...state,
         conversationId: event.conversationId,
         branchId,
@@ -82,7 +80,7 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
         ...(event.operation === undefined
           ? {}
           : { operations: upsert(state.operations, event.operation) }),
-      }
+      })
     }
     case 'conversation.deleted':
       return applyConversationDeletion(state, event)
@@ -123,7 +121,7 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
     }
     case 'branch.selected':
       find(state.branches, event.branchId, 'Branch')
-      return {
+      return focusSelectedBranch({
         ...state,
         conversationId: event.conversationId,
         branchId: event.branchId,
@@ -131,8 +129,13 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
         ...(event.operation === undefined
           ? {}
           : { operations: upsert(state.operations, event.operation) }),
-      }
+      })
   }
+}
+
+function focusSelectedBranch(state: BraidState): BraidState {
+  const active = activeRunForBranch(state, state.conversationId, state.branchId)
+  return normalizeActiveRuns(state, active?.id)
 }
 
 function applyConversationDeletion(

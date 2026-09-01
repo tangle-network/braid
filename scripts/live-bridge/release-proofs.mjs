@@ -24,6 +24,38 @@ function targetForHarness(targets, harness) {
   return (targets ?? []).find((target) => target.definition.backend === harness)
 }
 
+function capabilitiesForTarget(capabilitiesByBackend, target) {
+  return target === undefined ? undefined : capabilitiesByBackend?.[target.definition.backend]
+}
+
+function interactionTarget(targets, capabilitiesByBackend) {
+  return (targets ?? []).find(
+    (target) => capabilitiesForTarget(capabilitiesByBackend, target)?.interactions !== undefined,
+  )
+}
+
+function observedCommittedSequence(target, targetRecords) {
+  const record = (targetRecords ?? []).find(
+    (candidate) =>
+      candidate?.status === 'passed' &&
+      candidate?.targetProof?.key === target?.key &&
+      candidate?.targetProof?.route === target?.modelId,
+  )
+  const sequence = record?.normal?.run?.cursorCommittedSequence
+  return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : 0
+}
+
+/** Select the runner that has already proved the richest incremental delivery. */
+export function selectRestartTarget(targets, targetRecords) {
+  return (targets ?? []).reduce((selected, candidate) => {
+    if (selected === undefined) return candidate
+    return observedCommittedSequence(candidate, targetRecords) >
+      observedCommittedSequence(selected, targetRecords)
+      ? candidate
+      : selected
+  }, undefined)
+}
+
 function proofTarget(target, operationResult) {
   const proof = operationResult?.targetProof
   if (
@@ -69,7 +101,13 @@ function passedProof(requirementId, operation, target, operationResult, targetRe
       'LIVE_RELEASE_OPERATION_EVIDENCE_MISSING',
       `${operation} did not return a passed packed operation receipt`,
       exitCodes.failed,
-      { requirementId, operation },
+      {
+        requirementId,
+        operation,
+        status: operationResult?.status,
+        error: operationResult?.error,
+        receipt: operationResult?.operationReceipt,
+      },
     )
   }
   const descriptor = proofTarget(target, operationResult)
@@ -141,6 +179,31 @@ function operationFailure(requirementId, operation, target, error) {
   }
 }
 
+function operationResultFailure(requirementId, operation, target, result) {
+  const missing = errorEvidence(
+    new LiveBridgeError(
+      'LIVE_RELEASE_OPERATION_EVIDENCE_MISSING',
+      `${operation} returned no failure evidence`,
+      exitCodes.failed,
+      { requirementId, operation },
+    ),
+  )
+  return evidenceValue({
+    requirementId,
+    operation,
+    target: {
+      key: target.key,
+      modelId: target.modelId,
+      harness: target.definition.backend,
+    },
+    status: result?.status === 'unavailable' ? 'unavailable' : 'failed',
+    error: result?.error ?? missing,
+    ...(typeof result?.stderr === 'string' && result.stderr.length > 0
+      ? { stderr: result.stderr }
+      : {}),
+  })
+}
+
 function missingTarget(requirementId, operation, harness, targets) {
   return operationFailure(
     requirementId,
@@ -167,7 +230,7 @@ export async function executeReleaseProofs({
   installRoot,
   root,
   endpoint,
-  providerCapabilities,
+  providerCapabilitiesByBackend = {},
   targets = [],
   targetRecords = [],
   token,
@@ -212,6 +275,12 @@ export async function executeReleaseProofs({
     }
     try {
       const operationResult = await action(target)
+      if (operationResult?.status !== 'passed') {
+        const failure = operationResultFailure(requirementId, operation, target, operationResult)
+        releaseOperations.push(failure)
+        failures.push(failure)
+        return
+      }
       const proof = passedProof(
         requirementId,
         operation,
@@ -249,7 +318,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, target),
         target,
         token,
         timeoutMs,
@@ -272,7 +341,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, piTarget),
         piTarget,
         target,
         token,
@@ -280,7 +349,7 @@ export async function executeReleaseProofs({
       ),
   )
 
-  const interactiveTarget = targets[0]
+  const interactiveTarget = interactionTarget(targets, providerCapabilitiesByBackend)
   await execute(
     REQUIREMENTS.interactive,
     liveReleaseProofOperations.interactive,
@@ -291,21 +360,21 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, target),
         target,
         token,
         timeoutMs,
       ),
   )
 
-  const restartTarget = targets[0]
+  const restartTarget = selectRestartTarget(targets, targetRecords)
   await execute(REQUIREMENTS.restart, liveReleaseProofOperations.restart, restartTarget, (target) =>
     executeRestartReconciliation(
       binary,
       installRoot,
       root,
       endpoint,
-      providerCapabilities,
+      capabilitiesForTarget(providerCapabilitiesByBackend, target),
       target,
       token,
       timeoutMs,
@@ -319,7 +388,7 @@ export async function executeReleaseProofs({
         installRoot,
         root,
         endpoint,
-        providerCapabilities,
+        capabilitiesForTarget(providerCapabilitiesByBackend, candidate),
         candidate,
         token,
         timeoutMs,

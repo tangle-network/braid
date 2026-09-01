@@ -1,4 +1,4 @@
-import { Container, type Focusable, Text } from '@earendil-works/pi-tui'
+import { Container, type Focusable } from '@earendil-works/pi-tui'
 import {
   type ConfigurationEffectiveValues,
   type ConfigurationSelection,
@@ -6,7 +6,6 @@ import {
   type ConfigurationSessionOptions,
   type ConfigurationSessionState,
 } from '../../app/configuration-session.js'
-import { sanitizeTerminalText } from '../shared/sanitize.js'
 import {
   type ConfigurationCommit,
   ConfigurationCredential,
@@ -14,23 +13,25 @@ import {
   mountConfigurationCredential,
   PreparedCredential,
 } from './configuration-credential.js'
-import { ConfigurationReview } from './configuration-review.js'
+import type { ConfigurationReview } from './configuration-review.js'
 import {
   APPLY_SELECTION,
   BACK_TO_CONNECTION,
   BACK_TO_PROFILE,
+  BACK_TO_WORKSPACE,
   CANCEL_CONFIGURATION,
-  configurationExplanation,
-  configurationFooter,
-  configurationItems,
-  configurationReviewSummaries,
-  configurationTitle,
-  DOWN_ARROW,
 } from './configuration-wizard-presentation.js'
 import { SearchableSelector } from './selector.js'
+import { renderConfigurationStage } from './setup-stage-rendering.js'
 import type { BraidTheme } from './theme.js'
+import type { WorkspaceRequestForm } from './workspace-request-form.js'
+import { mountWorkspaceRequestForm } from './workspace-request-workflow.js'
 
-type ConfigurationControl = SearchableSelector | ConfigurationReview | ConfigurationCredential
+type ConfigurationControl =
+  | SearchableSelector
+  | ConfigurationReview
+  | ConfigurationCredential
+  | WorkspaceRequestForm
 
 export interface ConfigurationWizardOptions extends ConfigurationSessionOptions {
   readonly theme: BraidTheme
@@ -103,73 +104,21 @@ export class ConfigurationWizard extends Container implements Focusable {
   }
 
   #renderStage(state: ConfigurationSessionState): void {
-    this.clear()
-    const applied = state.step === 'complete' && !this.#busy && this.#commitError === undefined
-    const heading = new Text(this.#theme.brand('braid setup'), 1, 0)
-    this.addChild(heading)
-    if (state.step !== 'confirm' && state.step !== 'complete') {
-      this.addChild(new Text(this.#theme.muted(configurationExplanation(state)), 1, 0))
-      for (const diagnostic of this.#diagnostics) {
-        this.addChild(
-          new Text(this.#theme.warning(`notice · ${sanitizeTerminalText(diagnostic)}`), 1, 0),
-        )
-      }
-    }
-    if (this.#commitError !== undefined && state.step !== 'confirm' && state.step !== 'complete') {
-      this.addChild(new Text(this.#theme.danger(sanitizeTerminalText(this.#commitError)), 1, 0))
-    }
-    if (state.step === 'confirm' || state.step === 'complete') {
-      const summaries = configurationReviewSummaries(
-        this.#session,
-        state,
-        this.#confirmation,
-        this.#credential.prepared,
-      )
-      this.#selector = new ConfigurationReview({
-        theme: this.#theme,
-        summary: summaries.summary,
-        compactSummary: summaries.compact,
-        title: applied
-          ? 'selection applied'
-          : configurationTitle(state, this.#busy, this.#commitError),
-        ...(this.#commitError === undefined ? {} : { error: this.#commitError }),
-        items: applied
-          ? [{ value: CANCEL_CONFIGURATION, label: 'Close', description: '←/esc close' }]
-          : configurationItems(state, this.#busy, this.#commitError),
-        onSelect: (item) => this.#select(item.value),
-        onCancel: () => this.#cancel(),
-      })
-    } else {
-      this.#selector = new SearchableSelector({
-        title: configurationTitle(state, this.#busy, this.#commitError),
-        items: configurationItems(state, this.#busy, this.#commitError),
-        maxVisible: 4,
-        theme: this.#theme,
-        footer: configurationFooter(state, this.#busy),
-        onSelect: (item) => this.#select(item.value),
-        onCancel: () => this.#cancel(),
-      })
-    }
-    this.#selector.focused = this.#focused
-    this.#restoreSelection(state)
-    this.addChild(this.#selector)
-    this.invalidate()
-    this.#requestRender?.()
-  }
-
-  #restoreSelection(state: ConfigurationSessionState): void {
-    if (!(this.#selector instanceof SearchableSelector)) return
-    const selectedValue =
-      state.step === 'profile'
-        ? state.selectedProfileId
-        : state.step === 'connection'
-          ? state.selectedConnectionId
-          : undefined
-    if (selectedValue === undefined) return
-    const index = configurationItems(state, this.#busy, this.#commitError).findIndex(
-      (item) => item.value === selectedValue,
-    )
-    for (let offset = 0; offset < index; offset += 1) this.#selector.handleInput(DOWN_ARROW)
+    this.#selector = renderConfigurationStage({
+      container: this,
+      session: this.#session,
+      state,
+      theme: this.#theme,
+      ...(this.#confirmation === undefined ? {} : { confirmation: this.#confirmation }),
+      credentialPrepared: this.#credential.prepared,
+      diagnostics: this.#diagnostics,
+      busy: this.#busy,
+      ...(this.#commitError === undefined ? {} : { commitError: this.#commitError }),
+      focused: this.#focused,
+      onSelect: (value) => this.#select(value),
+      onCancel: () => this.#cancel(),
+      ...(this.#requestRender === undefined ? {} : { requestRender: this.#requestRender }),
+    })
   }
 
   #select(value: string): void {
@@ -203,7 +152,8 @@ export class ConfigurationWizard extends Container implements Focusable {
       }
       const next = this.#session.selectConnection(value)
       this.#commitError = next.error?.message
-      if (
+      if (next.error === undefined && next.step === 'workspace') this.#renderWorkspace()
+      else if (
         next.error === undefined &&
         configurationNeedsCredential(this.#session, this.#requiresCredential)
       )
@@ -211,11 +161,19 @@ export class ConfigurationWizard extends Container implements Focusable {
       else this.#renderStage(next)
       return
     }
+    if (state.step === 'workspace') return
     if (state.step !== 'confirm' && state.step !== 'complete') return
     if (value === BACK_TO_CONNECTION) {
       this.#clearCredential()
       this.#commitError = undefined
       this.#renderStage(this.#session.backTo('connection'))
+      return
+    }
+    if (value === BACK_TO_WORKSPACE) {
+      this.#clearCredential()
+      this.#commitError = undefined
+      this.#session.backTo('workspace')
+      this.#renderWorkspace()
       return
     }
     if (value === BACK_TO_PROFILE) {
@@ -290,6 +248,36 @@ export class ConfigurationWizard extends Container implements Focusable {
         this.#renderStage(this.#session.backTo('connection'))
       },
     })
+  }
+
+  #renderWorkspace(): void {
+    this.clear()
+    this.#selector = mountWorkspaceRequestForm({
+      session: this.#session,
+      theme: this.#theme,
+      focused: this.#focused,
+      ...(this.#requestRender === undefined ? {} : { requestRender: this.#requestRender }),
+      ...(this.#requiresCredential === undefined
+        ? {}
+        : { requiresCredential: this.#requiresCredential }),
+      onInvalid: (next) => {
+        this.#commitError = next.error?.message
+        this.#renderWorkspace()
+      },
+      onCredential: (next) => this.#renderCredential(next),
+      onComplete: (next) => {
+        this.#commitError = undefined
+        this.#renderStage(next)
+      },
+      onCancel: () => {
+        this.#commitError = undefined
+        this.#renderStage(this.#session.backTo('connection'))
+      },
+    })
+    this.#selector.focused = this.#focused
+    this.addChild(this.#selector)
+    this.invalidate()
+    this.#requestRender?.()
   }
 
   #clearCredential(): void {

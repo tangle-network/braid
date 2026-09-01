@@ -105,6 +105,7 @@ jobs:
           KEY="$RUNNER_TEMP/braid-release-key.pem"
           mkdir -p "$ENDORSEMENT"
           trap 'rm -f "$KEY"' EXIT
+          test -z "$(find "$ROOT" -type l -print -quit)"
           printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEY"
           chmod 600 "$KEY"
           find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
@@ -213,6 +214,7 @@ jobs:
           set -euo pipefail
           ROOT="$RUNNER_TEMP/braid-release"
           ENDORSEMENT="$ROOT/endorsement/candidate"
+          test -z "$(find "$ROOT" -type l -print -quit)"
           cmp release/endorsement-public-key.pem "$ENDORSEMENT/public-key.pem"
           openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
             -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"
@@ -230,6 +232,14 @@ jobs:
           cmp "$RUNNER_TEMP/candidate-files.sha256" "$ENDORSEMENT/files.sha256"
           INDEX_SHA256="$(sha256sum "$ENDORSEMENT/files.sha256" | cut -d ' ' -f 1)"
           grep -Fx "index_sha256=$INDEX_SHA256" "$ENDORSEMENT/statement.txt"
+
+      - name: Re-verify exact candidate source and archive identity
+        env:
+          BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-release
+          BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
+          BRAID_RELEASE_EXPECT_COMMIT: ${{ inputs.commit }}
+          BRAID_RELEASE_EXPECT_VERSION: ${{ needs.candidate.outputs.version }}
+        run: node scripts/release/verify-candidate-identity.mjs
 
       - name: Install the pinned npm client
         run: |
@@ -402,6 +412,7 @@ jobs:
           KEY="$RUNNER_TEMP/braid-release-key.pem"
           mkdir -p "$ENDORSEMENT"
           trap 'rm -f "$KEY"' EXIT
+          test -z "$(find "$ROOT" -type l -print -quit)"
           printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEY"
           chmod 600 "$KEY"
           find "$ROOT" -type f ! -path "$ENDORSEMENT/*" -print0 |
@@ -456,6 +467,7 @@ jobs:
           set -euo pipefail
           ROOT="$RUNNER_TEMP/braid-release"
           ENDORSEMENT="$ROOT/endorsement/final"
+          test -z "$(find "$ROOT" -type l -print -quit)"
           cmp release/endorsement-public-key.pem "$ENDORSEMENT/public-key.pem"
           openssl pkeyutl -verify -rawin -pubin -inkey "$ENDORSEMENT/public-key.pem" \
             -in "$ENDORSEMENT/statement.txt" -sigfile "$ENDORSEMENT/signature.bin"

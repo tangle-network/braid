@@ -96,7 +96,7 @@ The transcript begins at the top of the viewport and remains visually primary.
 
 The calm context rail uses one compact identity/status row from 60 through 99 columns.
 
-At 100 columns and above, the first row labels the profile, harness, model, and backend.
+At 100 columns and above, the first row labels the profile, runner, model, and backend.
 
 It adds a distinct connection, configured reasoning and caps, known sandbox facts, and measured values when they fit.
 
@@ -163,7 +163,7 @@ Headless state retains complete measurement status, including unavailable fields
  › _
 
 
- profile reviewer · harness codex · model openai/gpt-5.6 · backend Sandbox · think xhigh
+ profile reviewer · runner codex · model openai/gpt-5.6 · backend Sandbox · think xhigh
  working · Ctrl+C cancel
 ```
 
@@ -172,6 +172,14 @@ The main shell has no activity pane, including while a run is active.
 F2 opens the focused activity browser for active and historical work.
 
 The activity browser uses one list/detail surface and keeps direct turns, analyses, and workers distinct.
+
+Each running analysis lists the selected analysts and their exact registry progress.
+
+The analysis scope exposes promote, cancel, and refresh keys without hiding the current result.
+
+The worker scope exposes steer, cancel, attach, and refresh keys only through reported runtime capabilities.
+
+An unavailable attach action explains the missing runtime contract and does not create a replacement run.
 
 Graph, details, and workspace views use focused overlays.
 
@@ -280,10 +288,10 @@ An unknown slash command is not sent to the agent and opens a correction list.
 | `/effort [level]` | Set or clear reasoning effort using canonical allowed values |
 | `/branch [message]` | Create a new conversation branch at the selected or named message boundary |
 | `/clone` | Duplicate the active branch into a new conversation with fresh execution identity |
-| `/fork [--workspace]` | Preview and create a conversation fork, optionally with a real environment checkpoint and fork |
+| `/fork [message] [--workspace \| --runner name [--provider name]]` | Preview a conversation, cross-runner, or real workspace fork |
 | `/graph` | Open the conversation, analysis, run, environment, and worker graph |
 | `/ask <question>` | Run a cited trace analysis against the selected frozen source |
-| `/analyze <failure|cost|tools|improvement>` | Run a named trace-analysis recipe against the selected source |
+| `/analyze <failure|cost|tools|improvement|all>` | Run one or all trace-analysis recipes against the selected source |
 | `/compare <left> <right>` | Create a paired comparison of two frozen run or branch sources |
 | `/approve [scope]` | Accept the focused pending interaction using an allowed scope |
 | `/reject [feedback]` | Decline the focused pending interaction with optional feedback when accepted by its schema |

@@ -5,13 +5,27 @@ import {
 } from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
 import type { RunRecord } from './entities.js'
-import { fail, nonEmpty } from './invariants-base.js'
+import { assertPublicReference, fail, nonEmpty } from './invariants-base.js'
+import { containsUnsafeControlCharacter } from './text.js'
 
 function assertControlRef(value: unknown, label: string): void {
   if (!AgentExactRunControlRefSchema.safeParse(value).success) fail(`${label} is invalid`)
 }
 
+export function assertProviderSessionIdentifier(
+  value: unknown,
+  label: string,
+): asserts value is string {
+  const parsed = AgentExactRunControlRefSchema.shape.sessionId.safeParse(value)
+  if (!parsed.success) fail(`${label} is not a valid provider session identifier`)
+  if (containsUnsafeControlCharacter(parsed.data)) {
+    fail(`${label} cannot contain terminal control characters`)
+  }
+  assertPublicReference(parsed.data, label)
+}
+
 function assertProviderSession(record: RunRecord, sessionId: string): void {
+  assertProviderSessionIdentifier(sessionId, 'run.retainedAdmission session')
   if (record.providerSessionId !== undefined && sessionId !== record.providerSessionId) {
     fail('run.retainedAdmission session must match run.providerSessionId')
   }

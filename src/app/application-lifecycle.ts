@@ -13,6 +13,7 @@ export const DEFAULT_APPLICATION_DRAIN_TIMEOUT_MS = 5_000
 
 export interface LifecycleCloseOptions {
   readonly runIds: readonly string[]
+  readonly shouldSettleRun?: (runId: string) => boolean
   readonly timeoutMs: number
   readonly cancel: (runId: string) => Promise<void>
   readonly markUnknown: (runId: string) => Promise<void>
@@ -86,7 +87,10 @@ export class ApplicationLifecycle {
   async settleActive(options: LifecycleCloseOptions): Promise<readonly string[]> {
     this.#abortAdmissions()
     const deadline = Date.now() + Math.max(0, options.timeoutMs)
-    const runIds = [...new Set([...options.runIds, ...this.#active.keys()])]
+    const trackedRunIds = [...this.#active.keys()].filter(
+      (runId) => options.shouldSettleRun?.(runId) ?? true,
+    )
+    const runIds = [...new Set([...options.runIds, ...trackedRunIds])]
     await untilDeadline(Promise.allSettled(runIds.map((runId) => options.cancel(runId))), deadline)
 
     const operations = this.activeOperations()

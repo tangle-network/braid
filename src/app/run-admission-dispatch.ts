@@ -1,3 +1,5 @@
+import type { ContextTransferReceipt } from '../domain/receipts.js'
+import { activeRunForBranch } from '../domain/state.js'
 import type { AdmissionPort, AsyncAdmissionPort } from './application-ports.js'
 import type { SendReceipt } from './application-types.js'
 import { AppError } from './errors.js'
@@ -14,24 +16,25 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
   if (!input.text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
   const conversationId = input.conversationId
   const branchId = input.branchId
-  if (conversationId !== state.conversationId || branchId !== state.branchId)
-    throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is not open')
+  assertTargetBranch(state, conversationId, branchId)
   validateNativeProof(context, input)
 
   const request = runEffectRequest(input)
   const digest = context.fingerprint({ effectKind: RUN_EFFECT_KIND, request })
   const persisted = context.admitPersistedSend(input.operationId, digest)
   if (persisted) return persisted
-  if (state.activeRunId)
+  const active = activeRunForBranch(state, conversationId, branchId)
+  if (active)
     throw new AppError(
       'RUN_ACTIVE',
-      `Run ${state.activeRunId} is still active; queue the next input explicitly`,
+      `Run ${active.id} is still active on this branch; queue the next input explicitly`,
     )
   validateContextPlan(input)
 
   const runId = context.ids.next('run')
   const turnId = context.ids.next('turn')
-  if (input.contextTransfer && input.contextTransfer.destinationRunId !== runId)
+  const contextTransfer = localContextTransfer(input, runId)
+  if (contextTransfer && contextTransfer.destinationRunId !== runId)
     throw new AppError(
       'CONTEXT_RECEIPT_CONFLICT',
       'The context transfer receipt names a different destination run',
@@ -41,24 +44,34 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
     {
       operationId: input.operationId,
       runId,
+      turnId,
       text: input.text,
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
       signal: new AbortController().signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.contextPlan === undefined
+        ? input.portableContextPlan === undefined
+          ? {}
+          : { contextBoundary: input.portableContextPlan.digest }
+        : { contextBoundary: input.contextPlan.digest }),
+      ...(input.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: input.portableContextTransferRequest }),
     },
     conversationId,
     branchId,
-    input.contextTransfer,
+    contextTransfer,
     turnId,
-    input.contextPlan?.digest,
+    input.contextPlan?.digest ?? input.portableContextPlan?.digest,
     input.nativeContextBoundaryProof,
     input.contextPlan,
   )
-  if (state.draft !== input.text) context.commit({ kind: 'draft.changed', text: input.text })
+  if (state.branchId === branchId && state.draft !== input.text)
+    context.commit({ kind: 'draft.changed', text: input.text })
   context.commit({
     kind: 'run.requested',
     operationId: input.operationId,
@@ -104,20 +117,21 @@ export async function sendRunAsync(
     throw new AppError('OPERATION_ID_REQUIRED', 'send requires a valid operationId')
   const conversationId = input.conversationId
   const branchId = input.branchId
-  if (conversationId !== state.conversationId || branchId !== state.branchId)
-    throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is not open')
+  assertTargetBranch(state, conversationId, branchId)
   validateNativeProof(context, input)
   validateContextPlan(input)
   const request = runEffectRequest(input)
   const digest = context.fingerprint({ effectKind: RUN_EFFECT_KIND, request })
   const persisted = context.admitPersistedSend(input.operationId, digest)
   if (persisted) return persisted
-  if (state.activeRunId)
+  const active = activeRunForBranch(state, conversationId, branchId)
+  if (active)
     throw new AppError(
       'RUN_ACTIVE',
-      `Run ${state.activeRunId} is still active; queue the next input explicitly`,
+      `Run ${active.id} is still active on this branch; queue the next input explicitly`,
     )
-  if (input.contextTransfer && input.contextTransfer.destinationRunId !== ids.runId)
+  const contextTransfer = localContextTransfer(input, ids.runId)
+  if (contextTransfer && contextTransfer.destinationRunId !== ids.runId)
     throw new AppError(
       'CONTEXT_RECEIPT_CONFLICT',
       'The context transfer receipt names a different destination run',
@@ -127,25 +141,34 @@ export async function sendRunAsync(
     {
       operationId: input.operationId,
       runId: ids.runId,
+      turnId: ids.turnId,
       text: input.text,
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+      ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
       signal,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      ...(input.contextPlan === undefined ? {} : { contextBoundary: input.contextPlan.digest }),
+      ...(input.contextPlan === undefined
+        ? input.portableContextPlan === undefined
+          ? {}
+          : { contextBoundary: input.portableContextPlan.digest }
+        : { contextBoundary: input.contextPlan.digest }),
+      ...(input.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: input.portableContextTransferRequest }),
     },
     conversationId,
     branchId,
-    input.contextTransfer,
+    contextTransfer,
     ids.turnId,
-    input.contextPlan?.digest,
+    input.contextPlan?.digest ?? input.portableContextPlan?.digest,
     input.nativeContextBoundaryProof,
     input.contextPlan,
   )
   assertAdmissionActive(signal)
-  if (state.draft !== input.text)
+  if (state.branchId === branchId && state.draft !== input.text)
     await context.commitAndWait({ kind: 'draft.changed', text: input.text })
   assertAdmissionActive(signal)
   await context.commitAndWait({
@@ -183,4 +206,38 @@ export async function sendRunAsync(
 function assertAdmissionActive(signal: AbortSignal): void {
   if (signal.aborted)
     throw new AppError('APPLICATION_CLOSING', 'Braid is closing and cannot materialize a run')
+}
+
+function assertTargetBranch(
+  state: ReturnType<AdmissionPort['currentState']>,
+  conversationId: string,
+  branchId: string,
+): void {
+  if (conversationId === state.conversationId && branchId === state.branchId) return
+  const conversation = state.conversations.find(
+    (candidate) => candidate.id === conversationId && candidate.deletedAt === undefined,
+  )
+  const branch = state.branches.find(
+    (candidate) => candidate.id === branchId && candidate.conversationId === conversationId,
+  )
+  if (!conversation || !branch) {
+    throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is unavailable')
+  }
+}
+
+function localContextTransfer(
+  input: RunExecutionSnapshot,
+  runId: string,
+): ContextTransferReceipt | undefined {
+  if (input.contextTransfer !== undefined) return input.contextTransfer
+  const receipt = input.portableContextTransferReceipt
+  if (receipt === undefined || (receipt.status !== 'accepted' && receipt.status !== 'replayed'))
+    return undefined
+  return {
+    planDigest: receipt.planDigest,
+    sourceRunId: receipt.source.runId,
+    destinationRunId: runId,
+    destinationSessionId: receipt.sessionId,
+    acceptedAt: receipt.admittedAt,
+  }
 }

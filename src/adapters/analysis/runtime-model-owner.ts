@@ -608,6 +608,11 @@ function analystCallProfile(
       'Trace analysis execution limits exceed AgentProfile.model.maxTotalOutputTokens',
     )
   }
+  const enforceableTotalOutputTokens =
+    maxTotalOutputTokens ??
+    (maxVisibleOutputTokens === undefined || maxReasoningTokens === undefined
+      ? undefined
+      : maxVisibleOutputTokens + maxReasoningTokens)
   return snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
@@ -624,11 +629,10 @@ function analystCallProfile(
       default: model,
       ...(provider === undefined ? {} : { provider }),
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-      ...(maxVisibleOutputTokens === undefined ? {} : { maxVisibleOutputTokens }),
-      ...(maxReasoningTokens === undefined || maxReasoningTokens <= 0
+      ...(bridge || maxVisibleOutputTokens === undefined ? {} : { maxVisibleOutputTokens }),
+      ...(enforceableTotalOutputTokens === undefined
         ? {}
-        : { maxReasoningTokens }),
-      ...(maxTotalOutputTokens === undefined ? {} : { maxTotalOutputTokens }),
+        : { maxTotalOutputTokens: enforceableTotalOutputTokens }),
       metadata: {
         ...(bridge ? {} : { retry }),
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
@@ -653,9 +657,8 @@ function analystModelPrompt(harness: NonNullable<AgentProfile['harness']>): Agen
 export function createRuntimeTraceModelOwner(
   options: RuntimeTraceModelOwnerOptions,
 ): RuntimeTraceModelOwner {
-  // Analyst calls settle one receipt per invocation. Keep retries explicit so a
-  // single recorded invocation cannot conceal multiple paid provider requests.
-  const retry = Object.freeze({ maxAttempts: 1, ...options.retry })
+  // Runtime retries one transient transport failure with the same idempotent call identity.
+  const retry = Object.freeze({ maxAttempts: 2, ...options.retry })
   const sourceProfileDigest = canonicalAgentProfileDigestHex(options.profile)
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({

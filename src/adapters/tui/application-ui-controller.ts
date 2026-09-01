@@ -43,6 +43,20 @@ interface CachedViewState {
   readonly state: BraidState
 }
 
+interface CachedViewProjection {
+  readonly app: BraidApplication
+  readonly state: BraidState
+  readonly storageFailure: string | undefined
+  readonly cleanupUncertain: string | undefined
+  readonly selectedSurface: BraidViewModel['selectedSurface']
+  readonly graphQuery: string
+  readonly interactionResolved: boolean
+  readonly notice: string | undefined
+  readonly forkPreview: BraidViewModel['forkPreview'] | undefined
+  readonly selectedIntelligenceData: unknown
+  readonly value: BraidViewModel
+}
+
 export class ApplicationUiController implements BraidUiController {
   #app: BraidApplication
   readonly #subscribers = new Set<UiSubscriber>()
@@ -64,6 +78,7 @@ export class ApplicationUiController implements BraidUiController {
   #forkPreview: BraidViewModel['forkPreview'] | undefined
   #selectedIntelligenceData: unknown
   #viewStateCache: CachedViewState | undefined
+  #viewProjectionCache: CachedViewProjection | undefined
 
   constructor(
     app: BraidApplication,
@@ -87,19 +102,59 @@ export class ApplicationUiController implements BraidUiController {
     ) {
       this.#viewStateCache = { app, revision, state: app.state() }
     }
-    return this.#project(this.#viewStateCache.state, app)
+    const state = this.#viewStateCache.state
+    const storageFailure = app.storageFailure()
+    const cleanupUncertain = app.cleanupUncertain()
+    const cached = this.#viewProjectionCache
+    if (
+      cached !== undefined &&
+      cached.app === app &&
+      cached.state === state &&
+      cached.storageFailure === storageFailure &&
+      cached.cleanupUncertain === cleanupUncertain &&
+      cached.selectedSurface === this.#selectedSurface &&
+      cached.graphQuery === this.#graphQuery &&
+      cached.interactionResolved === this.#interactionResolved &&
+      cached.notice === this.#notice &&
+      cached.forkPreview === this.#forkPreview &&
+      cached.selectedIntelligenceData === this.#selectedIntelligenceData
+    ) {
+      return cached.value
+    }
+    const value = this.#project(state, app, storageFailure, cleanupUncertain)
+    this.#viewProjectionCache = {
+      app,
+      state,
+      storageFailure,
+      cleanupUncertain,
+      selectedSurface: this.#selectedSurface,
+      graphQuery: this.#graphQuery,
+      interactionResolved: this.#interactionResolved,
+      notice: this.#notice,
+      forkPreview: this.#forkPreview,
+      selectedIntelligenceData: this.#selectedIntelligenceData,
+      value,
+    }
+    return value
   }
 
-  #project(state: BraidState, app: BraidApplication): BraidViewModel {
-    const canRespond = app.canRespondToInteractions(interactionViews(state)[0]?.runId)
+  #project(
+    state: BraidState,
+    app: BraidApplication,
+    storageFailure: string | undefined,
+    cleanupUncertain: string | undefined,
+  ): BraidViewModel {
+    const canRespond = interactionViews(state).some((interaction) =>
+      app.canRespondToInteractions(interaction.runId),
+    )
     const view = withRunUsage(
       buildBraidViewModel(
         state,
         this.#selectedSurface,
         this.#appearance,
         app.canCancel(),
-        app.storageFailure(),
-        app.cleanupUncertain(),
+        storageFailure,
+        cleanupUncertain,
         canRespond,
         this.#graphQuery,
       ),
@@ -191,6 +246,7 @@ export class ApplicationUiController implements BraidUiController {
     this.#app = next
     this.#profileConnections = undefined
     this.#viewStateCache = undefined
+    this.#viewProjectionCache = undefined
     this.#selectedIntelligenceData = undefined
     this.#graphQuery = ''
     this.#interactionResolved = false
@@ -314,7 +370,7 @@ export class ApplicationUiController implements BraidUiController {
       subscriber,
       options,
       currentView: () => this.view(),
-      project: (state) => this.#project(state, app),
+      project: (state) => this.#project(state, app, app.storageFailure(), app.cleanupUncertain()),
     })
     const unsubscribeApp = app.subscribe((state, envelope) => {
       delivery.push(state, toEvent(envelope))

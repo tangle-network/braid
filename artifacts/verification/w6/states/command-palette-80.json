@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.2.0.tgz",
-    "tarballSha256": "50e56ffd482a1cdd0ecd6c2a9630a4d9171fe8bacee35cfdbc58977695e815b1"
+    "tarball": "tangle-network-braid-0.3.0.tgz",
+    "tarballSha256": "7945e73863a9cd764dd4d80a258af49faff0233718162e89e7d731e5b342add7"
   },
   "dimensions": {
     "columns": 80,
@@ -14,10 +14,10 @@
   "terminal": "node-pty/xterm-256color",
   "provenance": {
     "renderer": {
-      "package": "@earendil-works/pi-tui@0.84.2",
+      "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": " Commands\n────────────────────────────────────────────────────────────────────────────────\n>\n→ /new                            Create an empty conversation\n  /open                           Search and open conversations\n  /profile                        Inspect, select, import, or edit a profile\n  /connection                     Inspect and manage connections\n  /runner                         Set the runner for this branch\n  /model                          Set the model for this branch\n  /effort                         Set reasoning effort for this branch\n  /branch                         Create a branch at a message boundary\n  (1/29)\n────────────────────────────────────────────────────────────────────────────────\n type to filter · enter to choose · ←/esc close\n",
+  "frame": " Commands\n────────────────────────────────────────────────────────────────────────────────\n>\n→ /new                            Create an empty conversation\n  /open                           Search and open conversations\n  /profile                        Inspect, select, import, or edit a profile\n  /connection                     Inspect and manage connections\n  /runner                         Set the runner for this branch\n  /model                          Set the model for this branch\n  /effort                         Set reasoning effort for this branch\n  /branch                         Create and open a branch at a message bound…\n  (1/31)\n────────────────────────────────────────────────────────────────────────────────\n type to filter · enter to choose · ←/esc close\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 1,
       "sequence": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
+      "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -116,11 +116,13 @@
       "interactions": [],
       "queue": [],
       "activeRunId": null,
+      "focusedRunId": null,
+      "activeRuns": [],
       "lastError": null
     },
     "view": {
       "revision": 1,
-      "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816",
+      "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -276,9 +278,29 @@
           "source": "application",
           "reason": "Interaction automation requires the shared response contract"
         },
+        "run.interactive": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal mode requires an interactive TUI and a supported provider"
+        },
+        "run.attach": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal attachment requires an interactive TUI and a retained session"
+        },
+        "supervisor.worker.attach": {
+          "available": false,
+          "source": "runtime",
+          "reason": "Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding"
+        },
         "export.create": {
           "available": true,
           "source": "application"
+        },
+        "analysis.cancel": {
+          "available": false,
+          "source": "application",
+          "reason": "There is no running analysis to cancel"
         },
         "application.quit": {
           "available": true,
@@ -312,6 +334,25 @@
           "available": true,
           "source": "local"
         },
+        "supervisor.refresh": {
+          "available": true,
+          "source": "runtime"
+        },
+        "supervisor.worker.steer": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to steer"
+        },
+        "supervisor.worker.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to cancel"
+        },
+        "supervisor.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervisor to cancel"
+        },
         "draft.write": {
           "available": true,
           "source": "application"
@@ -343,12 +384,12 @@
         "run.reconnect": {
           "available": false,
           "source": "provider",
-          "reason": "There is no detached run to reconnect"
+          "reason": "There is no recoverable run to reconnect"
         },
         "run.reconcile": {
           "available": false,
           "source": "provider",
-          "reason": "There is no detached run to reconcile"
+          "reason": "There is no recoverable run to reconcile"
         }
       },
       "draft": "",
@@ -367,7 +408,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-exact-interactive-20260816"
+            "workspace": "/home/drew/code/.worktrees/braid-keyboard-flow-fix"
           }
         }
       }

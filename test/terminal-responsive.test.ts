@@ -10,7 +10,12 @@ import {
 } from '@earendil-works/pi-tui'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
-import type { BraidViewModel, EnvironmentView } from '../src/views/shared/models.js'
+import { effectiveElapsedMs } from '../src/views/shared/duration.js'
+import type {
+  BraidViewModel,
+  EnvironmentView,
+  WorkStripItemView,
+} from '../src/views/shared/models.js'
 import {
   composerBorderLine,
   composerProjectionFor,
@@ -31,6 +36,7 @@ const sizes = [
   [120, 40],
   [200, 60],
 ] as const
+const sgrPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu')
 
 function viewForChrome(): BraidViewModel {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -115,7 +121,7 @@ test('chrome uses complete responsive groups at every reference width', () => {
   assert.match(wide, /Release engineer/u)
   assert.match(
     wide,
-    /profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
+    /profile Release engineer · runner pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
   )
   assert.match(wide, / · think high/u)
   assert.doesNotMatch(wide, /caps/u)
@@ -133,7 +139,7 @@ test('chrome uses complete responsive groups at every reference width', () => {
   assert.equal(spaciousLines.length, 2)
   assert.match(
     spaciousLines[0] ?? '',
-    /^profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge · think high · caps vis 8\.2k · reas 4\.1k · total 12k$/u,
+    /^profile Release engineer · runner pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge · think high · caps vis 8\.2k · reas 4\.1k · total 12k$/u,
   )
   assert.match(spaciousLines[1] ?? '', /^in 1\.2k · out 567 · \$0\.0312 · latency 842ms$/u)
   assert.doesNotMatch(spaciousLines.join('\n'), /(?:^|\n)rofile\b/u)
@@ -144,6 +150,109 @@ test('chrome uses complete responsive groups at every reference width', () => {
       assert.doesNotMatch(line, /[\r\n]/u)
     }
   }
+})
+
+test('authoritative elapsed measurements beat the terminal host clock', () => {
+  assert.equal(
+    effectiveElapsedMs('running', '2026-08-28T20:00:00.000Z', 1_840, Date.parse('2027-01-01')),
+    1_840,
+  )
+  assert.equal(
+    effectiveElapsedMs(
+      'running',
+      '2026-08-28T20:00:00.000Z',
+      undefined,
+      Date.parse('2026-08-28T20:00:05.000Z'),
+    ),
+    5_000,
+  )
+})
+
+test('work strip is conditional and exposes branch work controls', () => {
+  const base = viewForChrome()
+  const item = (overrides: Partial<WorkStripItemView>): WorkStripItemView => ({
+    id: 'run-background',
+    runId: 'run-background',
+    conversationId: 'conversation-1',
+    branchId: 'branch-background',
+    label: 'Background review',
+    state: 'running',
+    runner: 'pi',
+    model: 'fixture/model',
+    interactionCount: 1,
+    focused: false,
+    actions: { switch: true, ask: true, steer: true, cancel: true },
+    ...overrides,
+  })
+  const chrome = new TerminalChrome(theme)
+  const state = {
+    quitArmed: false,
+    activityVisible: false,
+    navigationHint: '/ commands · Ctrl+P',
+    composerMode: 'queue' as const,
+  }
+  chrome.setState({ view: base, ...state })
+  assert.doesNotMatch(chrome.render(120).join('\n'), /work 2|\/activity to switch/u)
+
+  chrome.setState({
+    view: {
+      ...base,
+      focusedRunId: 'run-metrics',
+      workStrip: Object.freeze([
+        item({
+          id: 'run-metrics',
+          runId: 'run-metrics',
+          branchId: 'branch-focused',
+          label: 'Focused release',
+          focused: true,
+        }),
+        item({}),
+      ]),
+    },
+    ...state,
+  })
+  const wide = chrome.render(120).join('\n')
+  assert.match(
+    wide,
+    /focus Focused release · running · pi\/fixture\/model\s+1 waiting interaction · actions switch\/ask\/steer\/cancel/u,
+  )
+  assert.match(wide, /work Background review · running · pi\/fixture\/model/u)
+  const standardLines = chrome.render(80)
+  const standard = standardLines.join('\n')
+  assert.match(standard, /focus Focused release · running/u)
+  assert.match(standard, /1 waiting interaction/u)
+  assert.match(standard, /actions switch\/ask\/steer\/cancel/u)
+  assert.match(standardLines[1] ?? '', /actions switch\/ask\/steer\/cancel/u)
+  assert.match(standardLines[2] ?? '', /1 waiting interaction/u)
+
+  chrome.setState({
+    view: {
+      ...base,
+      focusedRunId: 'run-metrics',
+      workStrip: Object.freeze([
+        item({
+          id: 'run-metrics',
+          runId: 'run-metrics',
+          branchId: 'branch-0123456789abcdef0123456789abcdef-terminal',
+          label: 'Release 0123456789abcdef0123456789abcdef terminal',
+          interactionCount: 0,
+          focused: true,
+          actions: { switch: true, ask: false, steer: true, cancel: true },
+        }),
+        item({ interactionCount: 0 }),
+      ]),
+    },
+    ...state,
+  })
+  const generatedIdentityRow = chrome.render(80)[1] ?? ''
+  assert.match(generatedIdentityRow, /focus Release 012345678…terminal · running/u)
+  assert.match(generatedIdentityRow, /actions switch\/steer\/cancel/u)
+  assert.doesNotMatch(generatedIdentityRow, /!ask|0123456789abcdef0123456789abcdef/u)
+  const narrow = chrome.render(40)
+  assert.equal(narrow.length, 2)
+  assert.match(narrow[1] ?? '', /work 2 · \/activity to switch/u)
+  for (const line of narrow) assert.ok(visibleWidth(line) <= 40)
+  for (const line of chrome.render(120)) assert.ok(visibleWidth(line) <= 120)
 })
 
 test('composer hint chooses a complete slash affordance before narrow truncation', () => {
@@ -190,6 +299,9 @@ test('command palette stays isolated and keeps close controls at narrow and wide
       assert.match(screen, /←\/esc close/u)
       assert.doesNotMatch(screen, /profile Braid starter/u)
       if (columns >= 80) assert.match(screen, /Inspect and manage connections/u)
+      const plainScreen = screen.replace(sgrPattern, '')
+      if (columns === 80) assert.match(plainScreen, /message bound…/u)
+      if (columns === 120) assert.doesNotMatch(plainScreen, /message bound…/u)
       for (const line of terminal.getViewport()) assert.ok(visibleWidth(line) <= columns)
     } finally {
       view.stop()
@@ -368,7 +480,7 @@ test('completed notices preserve the persistent route and measured context', () 
   const wide = chrome.render(120).join('\n')
   assert.match(
     wide,
-    /profile Release engineer · harness pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
+    /profile Release engineer · runner pi · model openai-codex\/gpt-5\.6-luna · backend Local CLI Bridge/u,
   )
   assert.match(wide, /Prepared markdown export/u)
   assert.match(wide, /in 1\.2k/u)

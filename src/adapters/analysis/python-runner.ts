@@ -271,8 +271,6 @@ export async function resolvePythonRunner(
     return probeRunner(runner, probe, timeoutMs)
   }
 
-  let packageMissing: PythonRunnerResolution | undefined
-  let probeFailed: PythonRunnerResolution | undefined
   if (options.candidates === undefined && !process.env.BRAID_PYTHON?.trim()) {
     const managed = managedAnalysisRunner()
     if (managed !== undefined) {
@@ -300,7 +298,7 @@ export async function resolvePythonRunner(
           },
         }
       }
-      probeFailed = {
+      return {
         status: 'python-probe-failed',
         runner: {
           command: managed.command,
@@ -315,6 +313,8 @@ export async function resolvePythonRunner(
     }
   }
 
+  let packageMissing: PythonRunnerResolution | undefined
+  let probeFailed: PythonRunnerResolution | undefined
   for (const candidate of options.candidates ?? defaultCandidates()) {
     const runner = normalizedRunner({ command: candidate }, 'detected')
     if (runner === undefined) continue

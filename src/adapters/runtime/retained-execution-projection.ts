@@ -1,13 +1,10 @@
-import type { TokenUsage } from '@tangle-network/agent-interface'
-import type {
-  AgentEnvironmentCapabilities,
-  AgentTurnResult,
-} from '@tangle-network/agent-interface/environment-provider'
+import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import type { TurnUsage } from '../../domain/entities.js'
 import { redactSensitiveText } from '../../domain/redaction.js'
 import type { BraidFinalRuntimeEvent, RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RunStatus } from '../../domain/state.js'
 import type { RunCapabilities } from '../../ports/execution.js'
+import type { RetainedTurnResult } from './retained-execution-contract.js'
 
 export function retainedCapabilities(
   environment: AgentEnvironmentCapabilities,
@@ -16,6 +13,12 @@ export function retainedCapabilities(
     readonly exactStatus?: boolean
   } = {},
 ): RunCapabilities {
+  const retainedControl =
+    environment.retainedControl?.exactRunIdentity === true &&
+    environment.retainedControl.resultIdentity === true &&
+    environment.retainedControl.eventIdentity === true &&
+    environment.retainedControl.cancellationIdempotency === true
+  const exactStatus = retainedControl && (options.exactStatus ?? true)
   return Object.freeze({
     streaming: {
       live: environment.streaming.live,
@@ -28,11 +31,11 @@ export function retainedCapabilities(
       messages: false,
     },
     controls: {
-      cancel: true,
+      cancel: retainedControl,
       steer: false,
       queue: true,
-      status: options.exactStatus ?? true,
-      recreate: true,
+      status: exactStatus,
+      recreate: retainedControl,
     },
     events: { stableIdentity: true, sequence: true, cursor: true },
     usage: environment.usage,
@@ -68,7 +71,7 @@ export function isTerminalRetainedStatus(status: RunStatus): boolean {
 }
 
 export function retainedTurnUsage(
-  usage: TokenUsage | undefined,
+  usage: RetainedTurnResult['usage'],
   model: string | undefined,
   calls?: number,
 ): TurnUsage {
@@ -88,7 +91,7 @@ export function finalRetainedEnvelope(
   runId: string,
   sequence: number,
   model: string,
-  result: AgentTurnResult,
+  result: RetainedTurnResult,
   intent: string,
 ): RuntimeEventEnvelope {
   const timestamp = new Date().toISOString()
@@ -137,7 +140,7 @@ export function finalRetainedEnvelope(
   }
 }
 
-export function modelRequestsFromResult(result: AgentTurnResult): number | undefined {
+export function modelRequestsFromResult(result: RetainedTurnResult): number | undefined {
   const value = result.metadata?.modelRequests
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }

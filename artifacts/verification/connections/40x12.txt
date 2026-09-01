@@ -3,10 +3,3 @@
  manager; Braid keeps only a reference.
 > •••••••••••••••••••••••••••••••••••••
  enter continue · esc back
-
-
-────────────────────────────────────────
-
-────────────────────────────────────────
-ready for a message
-Connection workflow proof

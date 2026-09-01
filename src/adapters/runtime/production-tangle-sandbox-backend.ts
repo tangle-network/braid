@@ -1,16 +1,22 @@
-import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
+import {
+  type AgentExactRunControlRef,
+  type AgentProfile,
+  type WorkspaceRequest,
+  workspaceCwdPathForBase,
+} from '@tangle-network/agent-interface'
 import type {
   AgentEnvironmentCapabilities,
   AgentEnvironmentProvider,
 } from '@tangle-network/agent-interface/environment-provider'
-import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
-import type { ExecutorFactory, SandboxClient } from '@tangle-network/agent-runtime/kernel'
-import type { BackendType, CreateSandboxOptions, SandboxInstance } from '@tangle-network/sandbox'
+import type { ExecutorFactory } from '@tangle-network/agent-runtime/kernel'
+import type { BackendType } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
+import { snapshotWorkspaceRequest, workspaceRequestDigest } from '../../app/workspace-request.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
+import { nitroVerifiersForConnection } from '../connections/nitro-confidential-attestation.js'
 import {
   createTangleRetainedControlLookup,
   supportsTangleRetainedControlLookup,
@@ -61,38 +67,55 @@ export async function resolveTangleSandboxBackend(
   }
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
 
-  const [{ createTangleSandboxClient }, { createTangleProvider }, { createExecutor }] =
-    await Promise.all([
-      import('../connections/production-connection-providers.js'),
-      import('@tangle-network/agent-provider-tangle'),
-      import('@tangle-network/agent-runtime/kernel'),
-    ])
+  const [
+    { createTangleSandboxClient },
+    { createTangleProvider },
+    { createExecutor, providerAsSandboxClient },
+  ] = await Promise.all([
+    import('../connections/production-connection-providers.js'),
+    import('@tangle-network/agent-provider-tangle'),
+    import('@tangle-network/agent-runtime/kernel'),
+  ])
   const lifecycle = sandboxLifecycle()
   const idempotencyKey = stableProviderId('env-braid-', input.runId)
+  const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
+  const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-sandbox-environment-request',
     idempotencyKey,
+    workspaceRequest: workspaceRequest ?? null,
   })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
+  const confidential = nitroVerifiersForConnection(record, options)
   const sdkProvider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
+    ...(confidential?.tangle === undefined
+      ? {}
+      : { confidentialAttestationVerifier: confidential.tangle }),
   })
+  const runtimeProvider = providerWithoutSandboxOptions(sdkProvider)
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
+  assertTangleWorkspaceCwdCapability(workspaceRequest, capabilities)
   const providerSessionId = providerSessionFor(input, capabilities)
   const backend = Object.freeze({
     kind: 'executor' as const,
     factory: ((spec, context) =>
       createExecutor({
         backend: 'sandbox',
-        sandboxClient: runtimeSandboxClient(
-          observedClient.client,
-          record.name,
-          idempotencyKey,
-          context.signal,
-        ),
+        sandboxClient: providerAsSandboxClient(runtimeProvider, {
+          defaults: {
+            profile,
+            backend: runner,
+            ...(workspaceRequest === undefined ? {} : { workspace: workspaceRequest }),
+            name: record.name,
+            idempotencyKey,
+            signal: context.signal,
+          },
+          requireTerminalEvent: true,
+        }),
         maxIterations: 1,
       })(spec, context)) satisfies ExecutorFactory<unknown>,
     profile,
@@ -109,6 +132,9 @@ export async function resolveTangleSandboxBackend(
       backend: 'executor',
       connectionId,
       environmentRequestDigest,
+      ...(workspaceRequestDigestValue === undefined
+        ? {}
+        : { workspaceRequestDigest: workspaceRequestDigestValue }),
       lifecycle: lifecycle.mode,
       cleanup: lifecycle.cleanup,
       continuity: lifecycle.continuity,
@@ -128,6 +154,7 @@ export interface PreparedTangleRetainedConnection {
   readonly capabilities: AgentEnvironmentCapabilities
   readonly observation: ExecutionObservationSource
   readonly providerSessionId: string
+  readonly workspaceRequest?: Readonly<import('@tangle-network/agent-interface').WorkspaceRequest>
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
@@ -135,6 +162,7 @@ export interface PreparedTangleRetainedConnection {
   readonly discoverControlRef: (
     braidRunId: string,
     signal?: AbortSignal,
+    executionId?: string,
   ) => Promise<AgentExactRunControlRef | null>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
 }
@@ -156,6 +184,7 @@ export async function resolveTangleSandboxRetainedConnection(
     )
   }
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
+  const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
   if (!providerSessionId.startsWith('session-braid-')) {
     throw new ConnectionError(
@@ -192,12 +221,17 @@ export async function resolveTangleSandboxRetainedConnection(
   const observedClient = observeSandboxClient(boundedClient, lifecycle)
   const retainedControlLookup =
     options.tangleRetainedControlLookup ?? createTangleRetainedControlLookup(observedClient.client)
+  const confidential = nitroVerifiersForConnection(record, options)
   const provider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
+    ...(confidential?.tangle === undefined
+      ? {}
+      : { confidentialAttestationVerifier: confidential.tangle }),
   })
   const reportedCapabilities = await provider.capabilities()
+  assertTangleWorkspaceCwdCapability(workspaceRequest, reportedCapabilities)
   const retained = reportedCapabilities.retainedControl
   if (
     retained?.exactRunIdentity !== true ||
@@ -221,7 +255,9 @@ export async function resolveTangleSandboxRetainedConnection(
     name: identity.name,
     metadata: identity.metadata,
     idleTtlSeconds,
+    workspaceRequest: workspaceRequest ?? null,
   })
+  const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   return freezeExecution({
     profile,
     model,
@@ -230,16 +266,17 @@ export async function resolveTangleSandboxRetainedConnection(
     capabilities,
     observation: observedClient.observation,
     providerSessionId,
+    ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,
     environmentName: identity.name,
     environmentMetadata: identity.metadata,
     idleTtlSeconds,
-    discoverControlRef: (braidRunId, signal) =>
+    discoverControlRef: (braidRunId, signal, executionId = safeExecutionId(braidRunId)) =>
       retainedControlLookup({
         connectionId,
         braidRunId,
         providerSessionId,
-        executionId: safeExecutionId(braidRunId),
+        executionId,
         environmentIdempotencyKey: identity.environmentIdempotencyKey,
         ...(signal === undefined ? {} : { signal }),
       }),
@@ -248,6 +285,9 @@ export async function resolveTangleSandboxRetainedConnection(
       backend: 'environment-provider',
       connectionId,
       environmentRequestDigest,
+      ...(workspaceRequestDigestValue === undefined
+        ? {}
+        : { workspaceRequestDigest: workspaceRequestDigestValue }),
       lifecycle: lifecycle.mode,
       cleanup: lifecycle.cleanup,
       continuity: lifecycle.continuity,
@@ -259,24 +299,20 @@ export async function resolveTangleSandboxRetainedConnection(
   })
 }
 
-function runtimeSandboxClient(
-  client: SandboxClientLike,
-  name: string,
-  idempotencyKey: string,
-  signal: AbortSignal,
-): SandboxClient {
-  return Object.freeze({
-    async create(createOptions?: CreateSandboxOptions) {
-      return (await client.create(
-        {
-          ...createOptions,
-          name,
-          idempotencyKey,
-        },
-        { signal },
-      )) as unknown as SandboxInstance
-    },
-  })
+/** Reject a workspace path before Tangle can allocate an environment. */
+export function assertTangleWorkspaceCwdCapability(
+  workspaceRequest: Readonly<WorkspaceRequest> | undefined,
+  capabilities: AgentEnvironmentCapabilities,
+): void {
+  const cwd = workspaceRequest?.cwd
+  if (cwd === undefined) return
+  workspaceCwdPathForBase(cwd, 'repository', 'Tangle')
+  if (capabilities.workspace.cwdBases?.repository !== true) {
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'Tangle does not advertise repository workspace cwd support',
+    )
+  }
 }
 
 function sandboxLifecycle(): SandboxLifecyclePolicy {
@@ -285,6 +321,18 @@ function sandboxLifecycle(): SandboxLifecyclePolicy {
     cleanup: 'delete-after-turn',
     continuity: 'unavailable',
     reason: 'Retained Tangle environment recovery is not exposed by the current Braid port',
+  }
+}
+
+function providerWithoutSandboxOptions(
+  provider: AgentEnvironmentProvider,
+): AgentEnvironmentProvider {
+  return {
+    ...provider,
+    async create(input) {
+      const { providerOptions: _providerOptions, ...neutralInput } = input
+      return provider.create(neutralInput)
+    },
   }
 }
 

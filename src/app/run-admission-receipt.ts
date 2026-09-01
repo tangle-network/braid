@@ -36,7 +36,7 @@ export function admitRun(
   validateProfile(input.profile)
   const rawAdmission = resolveSyncAdmission(context, input)
   const resolved = rawAdmission ?? {}
-  validateExecutionContext(context.currentState(), input, resolved)
+  validateExecutionContext(context.currentState(), input, resolved, conversationId, branchId)
   const capabilities = resolved.capabilities ?? resolveSyncCapabilities(context, input)
   const interactions = requestedInteractionsForRun(input.mode, capabilities)
   const receipt = createAdmissionReceipt({
@@ -49,6 +49,8 @@ export function admitRun(
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
+    ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
+    ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
     interactions,
     text: input.text,
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
@@ -88,7 +90,7 @@ export async function admitRunAsync(
 ): Promise<RunAdmissionReceipt> {
   validateProfile(input.profile)
   const resolved = await resolveAsyncAdmission(context, input)
-  validateExecutionContext(context.currentState(), input, resolved)
+  validateExecutionContext(context.currentState(), input, resolved, conversationId, branchId)
   const capabilities = resolved?.capabilities ?? (await resolveAsyncCapabilities(context, input))
   const interactions = requestedInteractionsForRun(input.mode, capabilities)
   const receipt = createAdmissionReceipt({
@@ -101,6 +103,8 @@ export async function admitRunAsync(
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
+    ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
+    ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
     interactions,
     text: input.text,
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
@@ -143,6 +147,8 @@ export function pendingAdmissionReceipt(
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
+    ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
+    ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
     interactions: {},
     text: input.text,
     capabilities: UNKNOWN_RUN_CAPABILITIES,

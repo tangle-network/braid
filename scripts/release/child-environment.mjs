@@ -9,6 +9,11 @@ const PROVIDER_GROUPS = Object.freeze([
   }),
   Object.freeze({ commands: new Set(['pnpm test:eval']), name: /^BRAID_EVAL_/u }),
   Object.freeze({
+    commands: new Set(['pnpm test:live:tangle', 'pnpm test:live:supervisor']),
+    name: /^TANGLE_API_KEY$/u,
+  }),
+  // LIVE-11 accepts the shared Sandbox credential through this fallback.
+  Object.freeze({
     commands: new Set(['pnpm test:live:tangle']),
     name: /^(?:BRAID_(?:LIVE_)?TANGLE|TANGLE)(?:_|$)/u,
   }),

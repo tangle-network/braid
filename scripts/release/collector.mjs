@@ -37,6 +37,7 @@ import {
   sanitizeEnvironment,
 } from './command-runner.mjs'
 import { readLiveBridgeProof } from './live-bridge-proof.mjs'
+import { readLiveTangleProof } from './live-tangle-proof.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -335,11 +336,19 @@ export async function collectReleaseEvidence({
     environments.set(environmentValue.id, environmentValue)
     const attempt = (previousAttempts.get(checkId) ?? 0) + 1
     previousAttempts.set(checkId, attempt)
-    const structuredEvidenceOverride = await readLiveBridgeProof({
+    const bridgeEvidence = await readLiveBridgeProof({
       artifactRoot: evidenceRoot,
       checkId,
       processResult: result,
     })
+    const structuredEvidenceOverride =
+      bridgeEvidence ??
+      (await readLiveTangleProof({
+        artifactRoot: evidenceRoot,
+        checkId,
+        processResult: result,
+        redactionSecrets: collectCredentialSecrets(commandEnvironment, redactionSecrets),
+      }))
     const record = buildCheckRecord({
       checkId,
       category: result.category,
