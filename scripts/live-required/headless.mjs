@@ -579,6 +579,41 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
   }
 }
 
+export async function verifyUnavailableCancellation({ session, run, marker }) {
+  if (run?.capabilities?.controls?.cancel !== false) {
+    throw new Error(`turn ${run?.id ?? 'missing'} did not report cancellation as unavailable`)
+  }
+  const request = {
+    ...requestBase(
+      requestId('cancel-unavailable'),
+      'cancel',
+      `op-live-required-cancel-unavailable-${randomUUID()}`,
+    ),
+    params: {
+      runId: run.id,
+      reason: `live required ${marker}`,
+    },
+  }
+  session.send(request)
+  const response = await session.waitFor(
+    'unavailable cancellation response',
+    (candidate) =>
+      candidate.requestId === request.requestId &&
+      (candidate.type === 'ack' || candidate.type === 'error'),
+  )
+  if (response.type !== 'error') {
+    throw new Error('a run without cancellation support accepted cancellation')
+  }
+  if (!['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(response.code)) {
+    throw new Error(`unavailable cancellation returned ${response.code}: ${response.message}`)
+  }
+  return {
+    status: 'reported-unavailable',
+    runId: run.id,
+    code: response.code,
+  }
+}
+
 export function configEvidence(config) {
   const providerOptions = config.connection.providerOptions ?? {}
   const modelProvider = config.profile.model.provider

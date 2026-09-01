@@ -370,7 +370,7 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-03 | CLI Bridge interactive protocol | Real question or permission pauses the runner, reaches Braid, receives a response in an advertised scope, resumes, and rejects a stale duplicate |
 | LIVE-04 | CLI Bridge restart | Run state becomes honestly unknown or recovers according to retained state; Braid never labels it cancelled or resubmits unsafely |
 | LIVE-05 | Every advertised interactive bridge runner | Common conformance flow at a pinned minimum runner version; failures remove the interactive capability claim |
-| LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, cancellation, and immutable receipt |
+| LIVE-06 | Tangle inference | Real profile-backed inference route, streaming, usage, immutable receipt, and either confirmed cancellation or an unavailable control |
 | LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, two-conversation concurrent streaming with focus switching, and confirmed cleanup |
 | LIVE-08 | Tangle interaction | A retained cloud interaction remains answerable after Braid reconnect and continues once from the acknowledged response |
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |

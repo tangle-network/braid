@@ -355,7 +355,7 @@ test('production resolver routes chat connections through agent-runtime', async 
     turnInput(profile('openai/gpt-5', 'cli-base')),
   )
   assert.equal(backend.kind, 'prepared-execution')
-  assert.deepEqual(backend.cancellation, { kind: 'runtime-executor-cancel' })
+  assert.equal(backend.cancellation, undefined)
   const events = []
   for await (const event of streamAgentTurn(backend.backend, { prompt: 'hello' }))
     events.push(event)
