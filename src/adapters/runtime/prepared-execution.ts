@@ -18,11 +18,11 @@ export interface ExecutionObservationSource {
  * Runtime owns the executor and its provider cancellation operation.
  *
  * The capability is intentionally a tag rather than a provider callback.
- * Braid invokes the public Runtime `Executor.teardown` port after Runtime
+ * Braid invokes the public Runtime `Executor.cancel` port after Runtime
  * creates the executor for the turn.
  */
 export interface RuntimeCancellationCapability {
-  readonly kind: 'runtime-executor-teardown'
+  readonly kind: 'runtime-executor-cancel'
 }
 
 /**

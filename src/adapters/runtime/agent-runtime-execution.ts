@@ -170,7 +170,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         outcome: 'unknown',
         detail: 'The provider did not acknowledge cancellation',
       }
-    if (active.cancellation?.kind !== 'runtime-executor-teardown') {
+    if (active.cancellation?.kind !== 'runtime-executor-cancel') {
       active.localAbort.abort(new Error(input.reason ?? 'Cancelled by user'))
       return {
         operationId: input.operationId,
@@ -187,7 +187,12 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
       }
     }
 
-    const acknowledgement = await cancelRuntimeExecutor(active.executor, input.operationId)
+    const acknowledgement = await cancelRuntimeExecutor(
+      active.executor,
+      input.operationId,
+      input.reason,
+      input.signal,
+    )
     if (acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'already-applied') {
       active.localAbort.abort(new Error(input.reason ?? 'Cancelled by user'))
     } else if (acknowledgement.outcome === 'unknown') {
@@ -387,27 +392,57 @@ function captureExecutor(
 async function cancelRuntimeExecutor(
   executor: Executor<unknown>,
   operationId: string,
+  reason: string | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<ControlAcknowledgement> {
-  return Promise.resolve()
-    .then(() => executor.teardown('infinity'))
-    .then(({ destroyed }) =>
-      destroyed
-        ? {
-            operationId,
-            outcome: 'accepted' as const,
-            detail: 'Provider cancellation acknowledged',
-          }
-        : {
-            operationId,
-            outcome: 'unknown' as const,
-            detail: 'Runtime did not confirm executor teardown; provider state is unknown',
-          },
-    )
-    .catch(() => ({
+  const cancel = executor.cancel
+  if (cancel === undefined) {
+    return {
       operationId,
-      outcome: 'unknown' as const,
+      outcome: 'unknown',
+      detail: 'Runtime does not expose provider cancellation for this execution',
+    }
+  }
+  try {
+    const result = await cancel.call(executor, {
+      operationId,
+      ...(reason === undefined ? {} : { reason }),
+      ...(signal === undefined ? {} : { signal }),
+    })
+    if (result.effect === 'cancelled') {
+      return {
+        operationId,
+        outcome: result.status === 'accepted' ? 'accepted' : 'already-applied',
+        detail: 'Provider cancellation acknowledged',
+      }
+    }
+    if (result.status === 'rejected') {
+      return {
+        operationId,
+        outcome: 'rejected',
+        detail: 'Provider rejected cancellation; the run may still be active',
+      }
+    }
+    if (result.effect === 'cancel_requested') {
+      return {
+        operationId,
+        outcome: 'unknown',
+        detail:
+          'Provider did not confirm cancellation; the local request stopped and remote work may continue',
+      }
+    }
+    return {
+      operationId,
+      outcome: 'unknown',
+      detail: 'Provider did not confirm a terminal cancellation state',
+    }
+  } catch {
+    return {
+      operationId,
+      outcome: 'unknown',
       detail: 'Provider cancellation failed before acknowledgement',
-    }))
+    }
+  }
 }
 
 async function observationEvent(

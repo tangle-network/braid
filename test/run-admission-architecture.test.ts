@@ -232,11 +232,11 @@ test('runtime admission hashes the same secret-safe materialization receipt that
   assert.match(receipt.materializationDigest ?? '', /^[0-9a-f]{64}$/u)
 })
 
-test('prepared Runtime cancellation controls admission and tears down the active executor', async () => {
+test('prepared Runtime cancellation preserves an unconfirmed Router cancellation', async () => {
   const execution = new AgentRuntimeExecutionPort(async (input) => ({
     kind: 'prepared-execution' as const,
     backend: await deterministicBackend(input, { chunkDelayMs: 1_000 }),
-    cancellation: { kind: 'runtime-executor-teardown' as const },
+    cancellation: { kind: 'runtime-executor-cancel' as const },
     materializationReceipt: { provider: 'tangle-inference', backend: 'executor' },
   }))
   const input = executionInput({ runId: 'run-runtime-cancellation' })
@@ -254,8 +254,9 @@ test('prepared Runtime cancellation controls admission and tears down the active
 
   assert.deepEqual(acknowledgement, {
     operationId: 'operation-runtime-cancellation',
-    outcome: 'accepted',
-    detail: 'Provider cancellation acknowledged',
+    outcome: 'unknown',
+    detail:
+      'Provider did not confirm cancellation; the local request stopped and remote work may continue',
   })
 
   const remaining = []

@@ -191,64 +191,57 @@ The capability is a typed Runtime-executor tag, not a provider-specific callback
 
 `AgentRuntimeExecutionPort` wraps the Runtime `AgentTurnBackend.factory` only to retain the executor that Runtime creates for that run.
 
-When the tag is present, `/cancel` calls the public Runtime `Executor.teardown('infinity')` operation and waits for its result before committing control state.
+When the tag is present, `/cancel` calls Runtime `Executor.cancel` with the stable operation identifier, reason, and caller signal.
 
-Historical snapshot: the installed Runtime `0.132.12` bridge executor implemented that operation by posting `POST /v1/runs/:id/cancel` and waiting for a terminal bridge snapshot.
+Braid accepts cancellation only when Runtime reports the `cancelled` effect.
 
-`destroyed: true` becomes an accepted cancellation, while `destroyed: false`, a thrown error, or a control deadline becomes unknown.
+An accepted Runtime request becomes `accepted` only with that terminal effect.
+
+Another Runtime status with the `cancelled` effect becomes `already-applied`.
+
+An explicit refusal remains `rejected`.
+
+`cancel_requested`, `not_live`, `unknown`, a missing method, a thrown error, or a deadline remains `unknown`.
 
 Braid may abort its local iterator after an accepted or unknown result to release local resources, but local abort never proves provider cancellation.
 
+Runtime `Executor.teardown` remains a cleanup operation.
+
+Its `destroyed` result never becomes a cancellation acknowledgement.
+
+The direct Tangle inference adapter uses Runtime's Router executor cancellation operation.
+
+The Router API has no remote cancellation operation, so Runtime aborts the local request and returns `unknown` with `cancel_requested`.
+
+Braid preserves that unknown result and warns that remote work can continue or incur cost.
+
 The CLI Bridge and retained Tangle production adapters supply cancellation through their exact retained control paths.
 
-The ephemeral Tangle sandbox path and direct Tangle inference adapter omit it.
+The ephemeral Tangle sandbox adapter omits the cancellation tag.
 
-The installed Runtime sandbox executor returns `destroyed: true` after aborting its local controller, while the Tangle session cancel method requires an exact `executionId` in a retained control reference.
+Its turn path does not receive the exact remote execution reference required for cancellation.
 
-The ephemeral sandbox turn path passes only an `AbortSignal` to `streamPrompt`, and its published capability surface does not provide that exact control reference for this path.
+Braid therefore reports that path as unsupported instead of treating environment destruction or local stream closure as provider cancellation.
 
-Braid therefore reports ephemeral sandbox cancellation as unsupported or unknown instead of treating environment destruction or local stream closure as provider cancellation.
+### Runtime cancellation contract
 
-The upstream Runtime change required to expand this support is recorded below with the exact installed source and type evidence.
-
-### Required upstream Runtime issue
-
-Title: `Expose typed, signal-aware provider cancellation acknowledgement from Executor`
-
-Historical snapshot: Runtime `0.132.12` exposed `Executor.teardown(grace): Promise<{ destroyed: boolean }>` in its published declaration bundle.
-
-The bridge executor's `teardown('infinity')` posts `POST /v1/runs/:id/cancel` and waits for a terminal bridge snapshot in `dist/supervisor-BI6Z-8Yi.js:6973-6977,7529-7570`.
-
-The public result collapses explicit provider rejection, transport failure, lost run identity, and timeout into either a generic thrown error or `destroyed: false`.
-
-The public method also accepts no `AbortSignal`, so a caller deadline can stop waiting in Braid but cannot stop Runtime's in-flight cancellation request.
-
-Please add a stable, provider-neutral cancellation operation, or extend teardown without breaking existing callers:
+Runtime `0.185.2` publishes the following provider-neutral operation:
 
 ```ts
-type ExecutorCancellationAcknowledgement =
-  | { outcome: 'accepted' | 'already-applied'; runId: string; terminal: true }
-  | { outcome: 'rejected'; runId: string; reason: string }
-  | { outcome: 'unknown'; runId: string; reason: string }
-
-cancel(options?: {
-  grace?: number | 'brutalKill' | 'infinity'
+cancel(request: {
+  operationId: string
   reason?: string
   signal?: AbortSignal
-}): Promise<ExecutorCancellationAcknowledgement>
+}): Promise<{
+  status: 'accepted' | 'rejected' | 'already-terminal' | 'unknown'
+  effect: 'cancel_requested' | 'cancelled' | 'not_live' | 'unknown'
+  observedAt: string
+  detail?: string
+  evidence?: unknown
+}>
 ```
 
-The accepted result must require a provider terminal cancellation acknowledgement.
-
-An explicit provider refusal must remain `rejected`.
-
-A transport error, missing run, lost identity, or deadline must remain `unknown`.
-
-The operation must preserve the provider run identifier and request digest, remain idempotent, and stop its wait when the caller signal aborts.
-
-Braid's production reproduction is `test/cli-bridge-profile-contract.test.ts`, where a Runtime-owned bridge executor receives a bridge `409` cancellation response.
-
-Braid currently records that response as `unknown` because the installed public Runtime API does not expose the refusal separately.
+`test/run-admission-architecture.test.ts` uses the real Runtime Router executor and proves that its local abort remains unknown.
 
 ### Live root handle
 
