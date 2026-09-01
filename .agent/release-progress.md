@@ -59,8 +59,9 @@ Record each result with its candidate commit, command, date, and artifact path.
 Use `not recorded` until the check runs against the release record above.
 
 - Local package and terminal checks: `not recorded`.
-- Provider and Sandbox live checks: `not recorded`.
-- Restart, concurrent-session, and interaction checks: `not recorded`.
+- Provider and Sandbox LIVE-07 check: passed on 2026-09-01 with `pnpm run test:live:tangle:sandbox:multirun`; artifact `artifacts/verification/live/tangle-sandbox-braid-multirun-production-1788260107206.json`.
+- Restart and concurrent-session checks: passed in the LIVE-07 artifact above; it proves two independent runs, focus in both directions, targeted cancellation, stable restart replay, two provider executions, and exact cleanup.
+- Interaction checks: `not recorded`.
 - Package-to-candidate comparison: `not recorded`.
 - Dependency audit and source graph: `not recorded`.
 
@@ -75,6 +76,12 @@ Use `not recorded` until the check runs against the release record above.
 - Previous observation from 2026-08-28: Production Sandbox had no Nitro driver allowlist or Nitro target configuration.
 - Previous observation from 2026-08-28: Four temporary host-agent sandboxes were deleted and excluded from confidential proof.
 - Release decision: block publication until LIVE-10 passes against the release record above.
+
+## Current LIVE-07 evidence
+
+- Production LIVE-07 passed on 2026-09-01 from the release worktree.
+- The artifact records two independent conversations, concurrent streaming, bidirectional focus, targeted cancellation, restart replay, two provider executions, and exact cleanup with active resource delta `0`.
+- The artifact is retained at `artifacts/verification/live/tangle-sandbox-braid-multirun-production-1788260107206.json`.
 
 ## Remaining Sequence
 
@@ -101,3 +108,4 @@ Use `not recorded` until the check runs against the release record above.
 - 2026-08-28: Proved the public Sandbox Sidecar input, detach, reconnect, replay, and interaction flow.
 - 2026-08-28: Proved two retained Tangle multirun cohorts with exact cleanup.
 - 2026-08-28: Confirmed that Base Sepolia has zero blueprint-12 services and no reachable Nitro operator.
+- 2026-09-01: Passed production LIVE-07 with two concurrent Tangle Sandbox runs, restart replay, targeted cancellation, and exact cleanup.
