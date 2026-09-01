@@ -106,7 +106,7 @@
     "@earendil-works/pi-tui": "0.84.4",
     "@napi-rs/keyring": "2.0.0",
     "@tangle-network/agent-eval": "0.171.0",
-    "@tangle-network/agent-interface": "2.1.0",
+    "@tangle-network/agent-interface": "2.1.1",
     "@tangle-network/agent-provider-cli-bridge": "1.0.0",
     "@tangle-network/agent-provider-tangle": "1.0.2",
     "@tangle-network/agent-runtime": "0.185.2",
