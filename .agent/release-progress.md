@@ -16,12 +16,12 @@ Do not copy a version, integrity value, or live result from an earlier cohort.
 - Rollback path: keep npm `latest` unchanged and close or revert the pull request.
 - Credential files: protected CI secrets and `gh-drew`; no credential values enter the repository.
 - Current branch: `fix/braid-release-safety`.
-- Current commit: `f7f802020` (`docs(release): align runtime contract versions`).
+- Current commit: read the exact PR #37 head from GitHub before merge.
 - Dirty files: none in this safety worktree; the main worktree's `.agent/skill-runs.jsonl` is unrelated.
-- Planned gates: CI, latest review, a Runtime release that widens the materializer cap, and exact-head merge.
+- Planned gates: exact-head CI, latest review, and merge.
 
 - Candidate Braid package and version: `@tangle-network/braid@0.3.0`
-- Candidate Braid commit: `f7f802020`
+- Candidate Braid commit: `not recorded; this attempt merges the change but does not publish it`
 - Runtime package and version: `@tangle-network/agent-runtime@0.185.2`
 - Sandbox package and version: `@tangle-network/sandbox@0.36.1`
 - Agent Interface package and version: `@tangle-network/agent-interface@2.1.1`
@@ -101,9 +101,8 @@ Use `not recorded` until the check runs against the release record above.
 
 ## Remaining Sequence
 
-1. Adopt the next Runtime release that widens its materializer cap together with agent-profile-materialize `0.19.0`, then rerun the required final dependency check and exact candidate captures.
-2. Re-read the newest PR CI and review state, fix valid findings, and merge the exact green head.
-3. Keep Braid publication blocked until LIVE-10 passes against real AWS Nitro infrastructure, then compare any published package with its approved candidate.
+1. Re-read the newest PR CI and review state, fix valid findings, and merge the exact green head.
+2. Keep Braid publication blocked until LIVE-10 passes against real AWS Nitro infrastructure, then compare any published package with its approved candidate.
 
 ## Decision
 
