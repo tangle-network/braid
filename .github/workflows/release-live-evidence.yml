@@ -94,6 +94,7 @@ jobs:
           node scripts/release/collect-live-evidence.mjs \
             --artifact-root "$BRAID_RELEASE_ARTIFACT_ROOT" \
             --tarball "candidate/$ARCHIVE" \
+            --package-proof "w6/package-proof.json" \
             --checks "live-tangle,LIVE-06,LIVE-07,LIVE-08,LIVE-09,LIVE-10"
 
       - name: Verify the checked live-evidence bundle

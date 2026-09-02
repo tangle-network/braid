@@ -994,6 +994,7 @@ test('release keys stay isolated while publication uses the installed product', 
   assert.match(liveEvidenceWorkflow, /environment: release-live/u)
   assert.match(liveEvidenceWorkflow, /verify-workflow-run\.mjs/u)
   assert.match(liveEvidenceWorkflow, /collect-live-evidence\.mjs/u)
+  assert.match(liveEvidenceWorkflow, /--package-proof "w6\/package-proof\.json"/u)
   assert.match(liveEvidenceWorkflow, /BRAID_LIVE_TANGLE_ENV_JSON/u)
   assert.match(liveEvidenceWorkflow, /name: braid-live-evidence-\$\{\{ inputs\.commit \}\}/u)
   assert.doesNotMatch(liveEvidenceWorkflow, /steps\.package\.outputs\.version/u)
