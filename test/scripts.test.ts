@@ -997,6 +997,10 @@ test('release keys stay isolated while publication uses the installed product', 
   assert.match(liveEvidenceWorkflow, /--package-proof "w6\/package-proof\.json"/u)
   assert.match(liveEvidenceWorkflow, /BRAID_LIVE_TANGLE_ENV_JSON/u)
   assert.match(liveEvidenceWorkflow, /name: braid-live-evidence-\$\{\{ inputs\.commit \}\}/u)
+  assert.match(
+    liveEvidenceWorkflow,
+    /name: Upload sanitized collection diagnostics after failure[\s\S]*?if: \$\{\{ failure\(\) \}\}[\s\S]*?name: braid-live-evidence-diagnostic-\$\{\{ inputs\.commit \}\}[\s\S]*?path: \$\{\{ runner\.temp \}\}\/braid-live-evidence\/release[\s\S]*?if-no-files-found: error/u,
+  )
   assert.doesNotMatch(liveEvidenceWorkflow, /steps\.package\.outputs\.version/u)
   const liveCollector = await readFile('scripts/release/collector.mjs', 'utf8')
   assert.match(liveCollector, /BRAID_LIVE_BINARY: packed\.binary/u)

@@ -904,6 +904,84 @@ test('Tangle release collection rejects a passing command without the multirun a
   })
 })
 
+test('failed live checks without evidence retain their command failure', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    const result = await collectReleaseEvidence({
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['live-tangle'] } },
+      checkIds: ['live-tangle'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck: async ({ checkId, cwd, environment }) => {
+        const processResult = await executeArgv({
+          file: process.execPath,
+          args: [
+            '-e',
+            "process.stdout.write('child stdout'); process.stderr.write('child stderr'); process.exit(9)",
+          ],
+          cwd,
+          environment,
+        })
+        return {
+          checkId,
+          category: 'live',
+          command: 'pnpm test:live:tangle',
+          argv: ['pnpm', 'test:live:tangle'],
+          ...processResult,
+        }
+      },
+    })
+    assert.equal(result.result, 'failed')
+    const check = result.envelope.checks[0]
+    assert.equal(check.result, 'failed')
+    assert.match(check.failureDetails.reason, /status 9/u)
+    const stdout = result.envelope.artifacts.find(({ id }) => id === check.stdout.artifactId)
+    const stderr = result.envelope.artifacts.find(({ id }) => id === check.stderr.artifactId)
+    assert(stdout)
+    assert(stderr)
+    assert.equal(await readFile(join(artifactRoot, stdout.path), 'utf8'), 'child stdout')
+    assert.equal(await readFile(join(artifactRoot, stderr.path), 'utf8'), 'child stderr')
+  })
+})
+
+test('failed manifest checks without evidence retain their command failure', async () => {
+  await withRepo(async ({ root, artifactRoot, tarballPath, proof }) => {
+    const result = await collectReleaseEvidence({
+      repository: root,
+      artifactRoot,
+      tarballPath,
+      packageProof: proof,
+      requirementBindings: { 'PR-01': { checks: ['capture'] } },
+      checkIds: ['capture'],
+      environment: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      runCheck: async ({ checkId, cwd, environment }) => {
+        const processResult = await executeArgv({
+          file: process.execPath,
+          args: ['-e', 'process.stderr.write("capture failed"); process.exit(9)'],
+          cwd,
+          environment,
+        })
+        return {
+          checkId,
+          category: 'terminal',
+          command: 'pnpm test:capture',
+          argv: ['pnpm', 'test:capture'],
+          ...processResult,
+        }
+      },
+    })
+    assert.equal(result.result, 'failed')
+    const check = result.envelope.checks[0]
+    assert.equal(check.result, 'failed')
+    assert.match(check.failureDetails.reason, /status 9/u)
+    const stderr = result.envelope.artifacts.find(({ id }) => id === check.stderr.artifactId)
+    assert(stderr)
+    assert.equal(await readFile(join(artifactRoot, stderr.path), 'utf8'), 'capture failed')
+  })
+})
+
 test('a selected check reports only requirements covered by that check', async () => {
   await withRepo(
     async ({ root, artifactRoot, tarballPath, proof }) => {

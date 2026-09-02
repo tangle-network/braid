@@ -455,6 +455,7 @@ export async function collectReleaseEvidence({
         checkId,
         attempt,
         artifactRoot: evidenceRoot,
+        requireEvidence: record.result === 'passed',
         store,
       })
       for (const artifact of generatedArtifacts) artifacts.set(artifact.id, artifact)

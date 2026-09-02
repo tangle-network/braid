@@ -42,9 +42,15 @@ function evidenceDirectory(checkId) {
   return undefined
 }
 
-async function filesUnder(artifactRoot, directory) {
+async function filesUnder(artifactRoot, directory, { allowMissing = false } = {}) {
   const root = join(artifactRoot, directory)
-  const rootInfo = await lstat(root)
+  let rootInfo
+  try {
+    rootInfo = await lstat(root)
+  } catch (error) {
+    if (allowMissing && error?.code === 'ENOENT') return []
+    throw error
+  }
   assert(
     rootInfo.isDirectory() && !rootInfo.isSymbolicLink(),
     `${directory} is not a real directory`,
@@ -72,7 +78,13 @@ export function restoredCheckArtifacts(check, artifacts) {
   return artifacts.filter(({ id }) => id.startsWith(prefix)).map(({ id }) => id)
 }
 
-export async function registerCheckArtifacts({ checkId, attempt, artifactRoot, store }) {
+export async function registerCheckArtifacts({
+  checkId,
+  attempt,
+  artifactRoot,
+  store,
+  requireEvidence = true,
+}) {
   const manifestPath =
     checkId === 'capture'
       ? 'w0/capture-manifest.json'
@@ -83,7 +95,9 @@ export async function registerCheckArtifacts({ checkId, attempt, artifactRoot, s
     const directory = evidenceDirectory(checkId)
     if (!directory) return []
     const registered = []
-    for (const [index, path] of (await filesUnder(artifactRoot, directory)).entries())
+    for (const [index, path] of (
+      await filesUnder(artifactRoot, directory, { allowMissing: !requireEvidence })
+    ).entries())
       registered.push(
         await store.snapshot({
           idPrefix: `${artifactPrefix(checkId, attempt)}${String(index + 1).padStart(5, '0')}`,
@@ -92,12 +106,18 @@ export async function registerCheckArtifacts({ checkId, attempt, artifactRoot, s
           extension: extname(path) || '.bin',
         }),
       )
-    assert(registered.length > 0, `${checkId} produced no retained evidence files`)
+    if (requireEvidence)
+      assert(registered.length > 0, `${checkId} produced no retained evidence files`)
     return registered
   }
-  const manifest = JSON.parse(
-    (await readRegularFileNoFollow(join(artifactRoot, manifestPath))).toString('utf8'),
-  )
+  let manifestBytes
+  try {
+    manifestBytes = await readRegularFileNoFollow(join(artifactRoot, manifestPath))
+  } catch (error) {
+    if (error?.code === 'ENOENT' && !requireEvidence) return []
+    throw error
+  }
+  const manifest = JSON.parse(manifestBytes.toString('utf8'))
   assert(Array.isArray(manifest.artifacts), `${checkId} manifest has no artifact list`)
   const entries = [
     { path: manifestPath, mediaType: 'application/json' },
