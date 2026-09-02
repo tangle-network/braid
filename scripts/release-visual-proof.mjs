@@ -4,11 +4,29 @@ import { assert } from './release-evidence.mjs'
 import { containedArtifactPath, readRegularFileNoFollow } from './release-files.mjs'
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u
+const FORK_PREVIEW_STEPS = [
+  'type /fork',
+  'open the fork preview',
+  'review confidential workspace fields',
+]
+const FORK_PREVIEW_ARTIFACTS = ['fork-preview.cast', '80x24-fork-preview.gif']
 
 async function sha256(path) {
   return createHash('sha256')
     .update(await readRegularFileNoFollow(path))
     .digest('hex')
+}
+
+export function assertForkPreviewFlow(visualProof) {
+  assert(
+    JSON.stringify(visualProof.forkPreviewFlow?.steps) === JSON.stringify(FORK_PREVIEW_STEPS),
+    'Visual proof fork-preview steps differ',
+  )
+  assert(
+    JSON.stringify(visualProof.forkPreviewFlow?.artifacts) ===
+      JSON.stringify(FORK_PREVIEW_ARTIFACTS),
+    'Visual proof fork-preview artifacts differ',
+  )
 }
 
 export async function validateVisualProof({ packageProof, visualProof, artifactRoot, repository }) {
@@ -129,20 +147,7 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
     ),
     'Visual proof is missing the fork-preview GIF',
   )
-  assert(
-    JSON.stringify(visualProof.forkPreviewFlow?.steps) ===
-      JSON.stringify([
-        'type /fork',
-        'open the fork preview',
-        'review confidential workspace fields',
-      ]),
-    'Visual proof fork-preview steps differ',
-  )
-  assert(
-    JSON.stringify(visualProof.forkPreviewFlow?.artifacts) ===
-      JSON.stringify(['fork-preview.cast', '80x24-fork-preview.gif']),
-    'Visual proof fork-preview artifacts differ',
-  )
+  assertForkPreviewFlow(visualProof)
   assert(
     JSON.stringify(visualProof.keyboardFlow?.steps) ===
       JSON.stringify(['8 completed turns', 'Page Up', 'Alt+Home', 'Page Down', 'Alt+End']),
