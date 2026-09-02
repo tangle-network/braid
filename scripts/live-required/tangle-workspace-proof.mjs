@@ -974,6 +974,7 @@ async function runWorkspaceProof({
         ? {
             confidential: {
               requested: true,
+              tee: 'nitro',
               nonce: generateAttestationNonce(),
               policy: trust.selectedPolicyId,
               profileDigest: `sha256:${opened.modules.profiles.canonicalAgentProfileDigestHex(opened.app.state().profile)}`,

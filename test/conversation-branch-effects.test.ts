@@ -129,7 +129,7 @@ function exactControl(input: {
   }
 }
 
-function branchCapabilities(workspace = false): RunCapabilities {
+function branchCapabilities(workspace = false, confidential = false): RunCapabilities {
   return {
     ...DEFAULT_RUN_CAPABILITIES,
     streaming: { ...DEFAULT_RUN_CAPABILITIES.streaming, replay: true },
@@ -139,6 +139,7 @@ function branchCapabilities(workspace = false): RunCapabilities {
       branching: {
         checkpoint: workspace,
         fork: workspace,
+        confidential,
         retrySafe: workspace,
         lookup: workspace,
         cleanup: workspace,
@@ -1084,7 +1085,7 @@ test('workspace cleanup restarts between fork and checkpoint cleanup without rep
 test('confidential workspace fork records verification only after canonical attestation checks', async () => {
   const provider = workspaceProvider()
   const execution = executionFor({
-    capabilities: branchCapabilities(true),
+    capabilities: branchCapabilities(true, true),
     workspaceBranchingProvider: {
       async forEnvironment(sourceEnvironmentId) {
         return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
@@ -1160,6 +1161,63 @@ test('confidential workspace planning stays unavailable without an external veri
   })
   assert.equal(plan.allowed, false)
   assert.match(plan.reason ?? '', /confidential placement and attestation verification/u)
+})
+
+test('confidential workspace planning stays unavailable when branching lacks confidential support', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+    confidentialAttestationVerifier: () => true,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-capability', text: 'source' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-confidential-capability',
+    kind: 'workspace',
+    confidential: {
+      requested: true,
+      nonce: 'confidential-nonce',
+      policy: 'confidential-policy',
+      profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+    },
+  })
+  assert.equal(plan.allowed, false)
+  assert.match(plan.reason ?? '', /confidential placement and attestation verification/u)
+  assert.equal(provider.state.checkpointRequests.length, 0)
+})
+
+test('ordinary workspace planning remains available without confidential branching support', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-ordinary-capability', text: 'source' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-ordinary-capability',
+    kind: 'workspace',
+  })
+  assert.equal(plan.allowed, true)
 })
 
 test('cross-runner planning stays unavailable without a provider transfer method', async () => {

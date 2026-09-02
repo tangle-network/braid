@@ -573,7 +573,8 @@ function workspaceForkReported(
   if (!supported) return false
   return (
     !confidentialRequested ||
-    (run?.capabilities.environment?.confidential === true &&
+    (branching?.confidential === true &&
+      run?.capabilities.environment?.confidential === true &&
       typeof execution?.confidentialAttestationVerifier === 'function')
   )
 }

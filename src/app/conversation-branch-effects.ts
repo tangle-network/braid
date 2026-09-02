@@ -376,6 +376,11 @@ async function executeWorkspace(
       'CAPABILITY_UNAVAILABLE',
       'The selected run does not report retry-safe checkpoint and environment fork support',
     )
+  if (plan.confidential?.requested === true && capabilities.confidential !== true)
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'The selected run does not expose confidential placement and attestation verification',
+    )
 
   const digest = canonicalDigest({
     command: 'execute_workspace_fork',

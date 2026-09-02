@@ -14,14 +14,14 @@ The following published versions were resolved in this worktree, and their insta
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.2.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.3.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.189.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.172.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `1.0.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `1.0.2` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
+| `@tangle-network/agent-provider-tangle` | `1.1.2` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
 | `@tangle-network/sandbox` | `0.36.3` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-The effective local Runtime installation resolves `agent-eval >=0.172.1 <0.173.0`, `agent-interface ^2.2.0`, and `sandbox >=0.36.3 <0.37.0` through the exact workspace lockfile.
+The effective local Runtime installation resolves `agent-eval >=0.172.1 <0.173.0`, `agent-interface ^2.3.0`, and `sandbox >=0.36.3 <0.37.0` through the exact workspace lockfile.
 
 Published Runtime `0.189.0` declares `agent-interface ^2.2.0`, `agent-eval >=0.172.1 <0.173.0`, and `sandbox >=0.36.3 <0.37.0`.
 
@@ -43,7 +43,7 @@ The lockfile pins the registry integrity for every installed package.
 
 `pnpm outdated --format json` returns `{}` for this worktree.
 
-The workspace overrides pin Interface `2.2.0` and Knowledge `13.0.0`, keeping the public Runtime peer ranges compatible with Braid's dependency graph.
+The workspace overrides pin Interface `2.3.0` and Knowledge `13.0.0`, keeping the public Runtime peer ranges compatible with Braid's dependency graph.
 
 Historical snapshot: [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
 

@@ -199,7 +199,11 @@ if (nativeStorageRequired) {
   }
 }
 
-const isolatedPerformanceFiles = new Set(['performance.test.js', 'storage-performance.test.js'])
+const isolatedPerformanceFiles = new Set([
+  'performance.test.js',
+  'storage-performance.test.js',
+  'security.test.js',
+])
 const isolatedTests = selectedTests.filter((path) =>
   isolatedPerformanceFiles.has(relative(root, path)),
 )
