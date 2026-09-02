@@ -6,6 +6,8 @@ Workspace branching creates an isolated provider environment from an exact sourc
 
 It supports checkpoint, lookup, fork, restart replay, destination mutation, source preservation, and resource cleanup.
 
+Confidential placement is an additional workspace-fork request and is available only when the provider reports that capability.
+
 ## Workspace request boundary
 
 The startup `WorkspaceRequest` selects a provider-neutral remote workspace for a run.
@@ -38,6 +40,8 @@ Provider-native options remain outside Braid persistence and branch records.
 
 Braid stores the source control reference, operation digest, provider checkpoint identity, and provider environment identity.
 
+Braid keeps conversation, branch, turn, run, operation, and Braid environment identifiers separate from provider session, environment, checkpoint, and execution identifiers.
+
 Braid stores no live provider environment handle in durable state.
 
 The provider exposes `forEnvironment(sourceEnvironmentId)` and creates a fresh operation handle for each recovery path.
@@ -56,7 +60,15 @@ The application refuses source cleanup when the target is the source environment
 
 The request records `requested` placement separately from provider evidence.
 
-The Tangle adapter calls `getTeeAttestation` on the forked Sandbox child.
+The adapter's child-response path requests `getTeeAttestation` only after a provider creates a child.
+
+The installed Tangle provider `1.1.3` with Sandbox `0.36.4` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
+
+This is installed-provider behavior, not a live capability observation.
+
+That provider path therefore refuses a new confidential workspace fork before child creation until those inputs are available.
+
+Braid keeps that request unavailable and does not downgrade it to an ordinary workspace fork.
 
 The selected `tangle-sandbox` connection carries an immutable, public Nitro trust policy.
 
@@ -96,13 +108,15 @@ The request and attestation remain unverified when either verifier or attestatio
 6. Reconstruct the provider handle from the persisted source environment identifier.
 7. Look up both resources before cleanup.
 8. Delete the checkpoint and destroy the destination environment with separate requests.
-9. Verify the source contents and destroy the source environment through a fresh provider environment handle.
+9. Verify the source contents; only the source owner may then destroy the source environment through a fresh provider handle.
 
 ## Production proof
 
 `LIVE-09` requires source materialization, checkpoint lookup, fork lookup, restart replay, independent destination mutation, unchanged source content, and exact cleanup.
 
 `LIVE-10` requires the typed Nitro policy, a valid attestation, missing-attestation rejection, wrong-nonce rejection, wrong-measurement rejection, and exact cleanup.
+
+The current LIVE-10 path has no live artifact because the deployed provider refuses new confidential workspace forks and real Nitro infrastructure is unavailable.
 
 The built-in proofs run through Braid application and connection adapters.
 
@@ -128,13 +142,13 @@ Configured provider failures remain failed and never become simulated passes.
 
 ## Tests
 
-`test/conversation-branch-effects.test.ts` proves exact requests, provider reconstruction, restart cleanup, idempotent replay, and source protection.
+`test/conversation-branch-effects.test.ts` proves exact requests, provider reconstruction, restart cleanup, idempotent replay, source protection, confidential capability gates, and canonical attestation verification.
 
 `test/tangle-workspace-proof.test.mjs` proves the confidential negative checks reject nonce, measurement, and self-echo mutations.
 
 `test/nitro-confidential-attestation.test.ts` proves COSE verification, identity derivation, mutation rejection, freshness, persistence, migration, replay, and secret-free snapshots.
 
-The protected live matrix validates both receipts against the public evidence schema.
+The protected live matrix validates both receipts against the public evidence schema when the required live infrastructure is available.
 
 ## Non-goals
 

@@ -98,7 +98,7 @@ export class ForkPreviewPanel extends Container implements Focusable {
             : sanitizeTerminalText(confidential.tee),
           ...(confidential.sealed === true ? ['sealed'] : []),
         ]
-        this.addChild(this.#line(`confidential: requested · ${requirements.join(' · ')}`))
+        this.addChild(this.#line(`confidential request: ${requirements.join(' · ')}`))
       }
       this.addChild(this.#error)
       if (!this.#canConfirm) {

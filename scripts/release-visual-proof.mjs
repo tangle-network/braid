@@ -108,6 +108,42 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
     'Visual proof is missing the transcript keyboard GIF',
   )
   assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === 'fork-preview.cast' &&
+        artifact.kind === 'fork-preview-asciicast' &&
+        artifact.state === 'fork-preview' &&
+        artifact.columns === 80 &&
+        artifact.rows === 24,
+    ),
+    'Visual proof is missing the fork-preview asciicast',
+  )
+  assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === '80x24-fork-preview.gif' &&
+        artifact.kind === 'fork-preview-flow' &&
+        artifact.state === 'fork-preview' &&
+        artifact.columns === 80 &&
+        artifact.rows === 24,
+    ),
+    'Visual proof is missing the fork-preview GIF',
+  )
+  assert(
+    JSON.stringify(visualProof.forkPreviewFlow?.steps) ===
+      JSON.stringify([
+        'type /fork',
+        'open the fork preview',
+        'review confidential workspace fields',
+      ]),
+    'Visual proof fork-preview steps differ',
+  )
+  assert(
+    JSON.stringify(visualProof.forkPreviewFlow?.artifacts) ===
+      JSON.stringify(['fork-preview.cast', '80x24-fork-preview.gif']),
+    'Visual proof fork-preview artifacts differ',
+  )
+  assert(
     JSON.stringify(visualProof.keyboardFlow?.steps) ===
       JSON.stringify(['8 completed turns', 'Page Up', 'Alt+Home', 'Page Down', 'Alt+End']),
     'Visual proof transcript keyboard steps differ',
@@ -189,11 +225,15 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
         'Interaction answer spec is not real',
       )
     }
-    if (name === 'fork-preview') {
+    if (name.startsWith('fork-preview')) {
       assert(semantic.packedState?.view?.forkPreview?.allowed === true, 'Fork state is unavailable')
       assert(
         typeof semantic.packedState.view.forkPreview.destination === 'string',
         'Fork destination is missing',
+      )
+      assert(
+        !JSON.stringify(semantic).includes('fixture-confidential-'),
+        'Fork evidence serialized confidential request details',
       )
     }
   }

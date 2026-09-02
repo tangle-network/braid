@@ -252,3 +252,31 @@ test('the production terminal does not turn a fast profile command into unknown 
     await done
   }
 })
+
+test('a bare slash command submits through a visible autocomplete row on the first Enter', async () => {
+  const terminal = new VirtualTerminal(40, 12)
+  const tui = new TuiMainScreen(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const controller = createApplicationUiController(app, {}, 'fork')
+  const view = new BraidTerminalApp({
+    controller,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'op-autocomplete-fork',
+  })
+  const done = view.start()
+  try {
+    assert.doesNotMatch(terminal.getViewport().join('\n'), /enter\/y create fork/u)
+    terminal.sendInput('/fork')
+    await waitUntil(() => view.editor.isShowingAutocomplete())
+    assert.doesNotMatch(terminal.getViewport().join('\n'), /enter\/y create fork/u)
+    terminal.sendInput('\r')
+    await waitUntil(() => terminal.getViewport().join('\n').includes('enter/y create fork'))
+    assert.match(terminal.getViewport().join('\n'), /confidential request: nitro · sealed/u)
+  } finally {
+    view.stop()
+    await done
+  }
+})

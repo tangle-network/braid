@@ -19,6 +19,8 @@ const {
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { canonicalJson } = await import('../scripts/release-evidence.mjs')
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const { validateVisualProof } = await import('../scripts/release-visual-proof.mjs')
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const visualCaptureSupport = await import('../scripts/capture-visual-support.mjs')
 const { assertFlowFrameIntegrity, captureProvenance } = visualCaptureSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
@@ -97,6 +99,24 @@ test('deterministic visual capture stays separate from the explicit live demo', 
   assert.doesNotMatch(visualSource, /capture-product-demo|productDemo/u)
   assert.match(liveDemoSource, /BRAID_LIVE_DEMO_ENDPOINT/u)
   assert.match(liveDemoSource, /assertPublicCapture/u)
+})
+
+test('visual proof binds the fork preview flow to its exact artifact pair', async () => {
+  const artifactRoot = join(process.cwd(), 'artifacts', 'verification')
+  const [packageProof, visualProof] = await Promise.all([
+    readFile(join(artifactRoot, 'w6', 'package-proof.json'), 'utf8').then(JSON.parse),
+    readFile(join(artifactRoot, 'w6', 'capture-manifest.json'), 'utf8').then(JSON.parse),
+  ])
+  const options = { packageProof, artifactRoot, repository: process.cwd() }
+
+  await validateVisualProof({ ...options, visualProof })
+
+  const tampered = structuredClone(visualProof)
+  tampered.forkPreviewFlow.artifacts = ['states/empty.txt', '80x24-fork-preview.gif']
+  await assert.rejects(
+    validateVisualProof({ ...options, visualProof: tampered }),
+    /fork-preview artifacts differ/u,
+  )
 })
 
 test('packed startup readiness uses visible profile and composer contracts', () => {

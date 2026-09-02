@@ -32,11 +32,15 @@ The panel receives a frozen plan with source conversation, branch, turn, run, pr
 
 Unknown values remain explicit.
 
-The TUI accepts the canonical request as one JSON value after `--confidential`.
+The TUI accepts one canonical confidential request as a JSON value after `--confidential` or `--confidential=`.
 
-For example, `/fork --workspace --confidential '{"requested":true,"tee":"nitro","nonce":"nonce-2026-09-01","policy":"nitro-policy-v1","profileDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'` requests Nitro placement.
+The request uses the strict `ConfidentialExecutionRequestSchema` fields `requested`, `tee`, `sealed`, `nonce`, `policy`, and `profileDigest`.
 
-The application validates that value with `ConfidentialExecutionRequestSchema` before planning.
+Duplicate flags, missing JSON, or invalid fields fail before planning.
+
+Headless `plan_fork` and `execute_fork` accept the same `confidential` record and use the same parser.
+
+The application validates the request before planning and includes the normalized request in the plan digest.
 
 Confirmation emits the plan digest and a stable operation identifier.
 
@@ -52,7 +56,23 @@ A workspace fork creates a destination environment from a checkpoint.
 
 A cross-runner fork starts a new run from portable history and workspace state without claiming native provider continuity.
 
+Confidential placement is an option on a workspace fork, not a separate fork kind.
+
 The preview names the selected kind and its omitted state.
+
+## Confidential availability
+
+A requested confidential fork is allowed only when the selected completed run reports workspace branching, confidential branching, and confidential environment support, and the execution port provides an external attestation verifier.
+
+Braid does not downgrade a confidential request to an ordinary workspace fork when any requirement is absent.
+
+The installed Tangle provider `1.1.3` with Sandbox `0.36.4` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
+
+This is installed-provider behavior, not a live capability observation.
+
+The same provider path refuses a new confidential workspace fork before child creation until those inputs are available.
+
+Deterministic tests can supply the capability and verifier ports to exercise the success path, but they are not live provider evidence.
 
 ## Algorithms
 
@@ -60,11 +80,13 @@ Planning asks the selected provider for current capabilities.
 
 Planning freezes source identity and the latest eligible checkpoint.
 
-Execution recomputes the plan digest and refuses any changed source or destination.
+The plan keeps Braid conversation, branch, turn, run, and operation identifiers separate from provider session, environment, and checkpoint identifiers.
 
-Execution uses one stable idempotency key for destination creation.
+Execution recomputes the plan digest and refuses any changed source, destination, or confidential request.
 
-Restart first looks up that key before another external mutation.
+Execution derives stable idempotency keys for checkpoint and destination creation from the operation identifier.
+
+Restart first looks up each key before another external mutation.
 
 Successful execution records destination identity and independent cleanup ownership.
 
@@ -75,6 +97,12 @@ Unsupported checkpoint or fork capability disables confirmation with one reason.
 A confidential request also requires workspace branching, confidential environment support, and an attestation verifier.
 
 The preview shows only the requested TEE and sealed requirement; it never renders nonce, policy, or profile-digest values.
+
+The request is not proof of placement.
+
+`confidentialVerified` becomes true only after the canonical attestation verifier accepts the provider evidence and its bindings.
+
+Missing, mismatched, copied, or explicitly unverified attestation identity remains unverified.
 
 A source change after preview returns a conflict and requires a new preview.
 
@@ -92,9 +120,13 @@ Workspace data moves through the provider or Sandbox implementation, not through
 
 ## Proof
 
-Tests cover branch, clone, workspace fork, cross-runner fork, changed-plan conflict, restart lookup, independent mutation, source preservation, cancellation, and cleanup.
+`test/conversation-branch-effects.test.ts` covers branch, clone, workspace fork, cross-runner fork, changed-plan conflict, restart lookup, independent mutation, source preservation, cancellation, cleanup, confidential capability gates, canonical attestation verification, and request propagation.
 
-The terminal recording reviews and executes a real plan through the same panel.
+`test/rpc.test.ts` covers the headless confidential schema and rejects unknown request fields.
+
+`test/tui-autocomplete.test.ts` and `test/tui-core-workflows.test.ts` cover the TUI command path and safe preview rendering.
+
+The packed keyboard flow exercises the same panel with local fixtures; it is not live provider proof.
 
 ## Non-goals
 

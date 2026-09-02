@@ -1,21 +1,21 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-09-01T14:57:06.860Z",
+  "generatedAt": "2026-09-02T04:41:58.474Z",
   "command": "pnpm capture:visual",
   "binary": "clean npm install from generated tarball",
   "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
   "tarball": "tangle-network-braid-0.3.0.tgz",
-  "tarballSha256": "073e9599f703dea61105504d060612eb9f33fb97aa0e3199b1180aca28e13d70",
+  "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2",
   "stateFixture": "deterministic",
   "liveDemoCommand": "pnpm capture:demo:live",
   "terminal": "node-pty/xterm-256color",
-  "node": "v24.18.0",
+  "node": "v24.13.0",
   "provenance": {
     "renderer": {
       "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.18.0",
+      "node": "v24.13.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -49,6 +49,17 @@
     ],
     "artifacts": [
       "80x24-multirun.gif"
+    ]
+  },
+  "forkPreviewFlow": {
+    "steps": [
+      "type /fork",
+      "open the fork preview",
+      "review confidential workspace fields"
+    ],
+    "artifacts": [
+      "fork-preview.cast",
+      "80x24-fork-preview.gif"
     ]
   },
   "states": [
@@ -137,6 +148,54 @@
       }
     },
     {
+      "name": "fork-preview-40",
+      "columns": 40,
+      "rows": 12,
+      "artifacts": {
+        "semantic-state": "states/fork-preview-40.json",
+        "plain-frame": "states/fork-preview-40.txt",
+        "asciicast": "raw/fork-preview-40.cast",
+        "ansi": "states/fork-preview-40.ansi",
+        "png": "states/fork-preview-40.png"
+      }
+    },
+    {
+      "name": "fork-preview",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/fork-preview.json",
+        "plain-frame": "states/fork-preview.txt",
+        "asciicast": "raw/fork-preview.cast",
+        "ansi": "states/fork-preview.ansi",
+        "png": "states/fork-preview.png"
+      }
+    },
+    {
+      "name": "fork-preview-120",
+      "columns": 120,
+      "rows": 40,
+      "artifacts": {
+        "semantic-state": "states/fork-preview-120.json",
+        "plain-frame": "states/fork-preview-120.txt",
+        "asciicast": "raw/fork-preview-120.cast",
+        "ansi": "states/fork-preview-120.ansi",
+        "png": "states/fork-preview-120.png"
+      }
+    },
+    {
+      "name": "fork-preview-200",
+      "columns": 200,
+      "rows": 60,
+      "artifacts": {
+        "semantic-state": "states/fork-preview-200.json",
+        "plain-frame": "states/fork-preview-200.txt",
+        "asciicast": "raw/fork-preview-200.cast",
+        "ansi": "states/fork-preview-200.ansi",
+        "png": "states/fork-preview-200.png"
+      }
+    },
+    {
       "name": "empty",
       "columns": 80,
       "rows": 24,
@@ -206,18 +265,6 @@
         "asciicast": "raw/automation.cast",
         "ansi": "states/automation.ansi",
         "png": "states/automation.png"
-      }
-    },
-    {
-      "name": "fork-preview",
-      "columns": 80,
-      "rows": 24,
-      "artifacts": {
-        "semantic-state": "states/fork-preview.json",
-        "plain-frame": "states/fork-preview.txt",
-        "asciicast": "raw/fork-preview.cast",
-        "ansi": "states/fork-preview.ansi",
-        "png": "states/fork-preview.png"
       }
     },
     {
@@ -303,14 +350,14 @@
     },
     {
       "path": "40x12-plain.txt",
-      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
+      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
       "kind": "plain-frame",
       "columns": 40,
       "rows": 12
     },
     {
       "path": "40x12.png",
-      "sha256": "d78b1ae0f6eebbd98470c5872d89903660f11fa4e5e224aded36f1fb89c130f9",
+      "sha256": "5f90dabe254659a5a84b1cfbea0b768c7f5e500f3be1847bb66a917c8db7e6bb",
       "kind": "png",
       "columns": 40,
       "rows": 12
@@ -324,14 +371,14 @@
     },
     {
       "path": "80x24-plain.txt",
-      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
+      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
       "kind": "plain-frame",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24.png",
-      "sha256": "ca0be84c7f3a987e1ccc29400f09463c584e6547717927c3bbe105f098f1f055",
+      "sha256": "3cf579c3b965c68cd7536f88117a641f1122a5412bc58654ab38278a22288f2a",
       "kind": "png",
       "columns": 80,
       "rows": 24
@@ -345,14 +392,14 @@
     },
     {
       "path": "120x40-plain.txt",
-      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
+      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
       "kind": "plain-frame",
       "columns": 120,
       "rows": 40
     },
     {
       "path": "120x40.png",
-      "sha256": "c694d4d0928cf4dafd7b7ddaf43d98436e70341f71eb2044017702843ef1bb96",
+      "sha256": "84a3164aa0d2c729b87364c49c6e393cf47baa1cbe59a7a9c78ff3e795f2f259",
       "kind": "png",
       "columns": 120,
       "rows": 40
@@ -366,21 +413,21 @@
     },
     {
       "path": "200x60-plain.txt",
-      "sha256": "a10dff27899fa85ecc4b46159d69d607b9cbda344df0d78b6c07936e716a0fa1",
+      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
       "kind": "plain-frame",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "200x60.png",
-      "sha256": "1068aeccca2411d69994a81b4d59901b92da1293649529cae023c14c35f61682",
+      "sha256": "0d0a7cbd683d1f9398d9379bc41d4c7aa3c0f999cf39b04735fbeec0a9e1dcae",
       "kind": "png",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "states/command-palette-40.json",
-      "sha256": "57fc500a637fd800ade3bf9df38aecad8a633ce2802aef16c6434dcc04b61276",
+      "sha256": "3530fe9c0191c2ab1fc576a985adcc2c7ae6227838628409d7720a0c28e80dd5",
       "kind": "semantic-state",
       "state": "command-palette-40",
       "columns": 40,
@@ -396,7 +443,7 @@
     },
     {
       "path": "raw/command-palette-40.cast",
-      "sha256": "fb6bc7f9183e104ed2ec6e43bedb1880094bc87b756d398e75196f32c61d83e9",
+      "sha256": "2f65f175d121a30f05afb2562446d93ffa75e4158b90305a4829dbae03a938eb",
       "kind": "asciicast",
       "state": "command-palette-40",
       "columns": 40,
@@ -404,7 +451,7 @@
     },
     {
       "path": "states/command-palette-40.ansi",
-      "sha256": "1ad82e65cf8e6723b935b44a50862b61746cb9811ccbf871be96833e43e104b8",
+      "sha256": "0dedcdb0fb98e232c30bd28ccf8c50358edb605634cf466291f3902fefb6f02e",
       "kind": "ansi",
       "state": "command-palette-40",
       "columns": 40,
@@ -412,7 +459,7 @@
     },
     {
       "path": "states/command-palette-40.png",
-      "sha256": "6e4c652c40c9e8cef821485c0e3aef86871fc6f111162ddfc9309c8bfccfb75b",
+      "sha256": "c03a11957fee4e2572e82f14889c406aba036e8996758756a00e063f80346192",
       "kind": "png",
       "state": "command-palette-40",
       "columns": 40,
@@ -420,7 +467,7 @@
     },
     {
       "path": "states/command-palette-80.json",
-      "sha256": "5d26250ebdeeb07158717b3c9b172bc79ede525311fada128bc63257066c6c51",
+      "sha256": "db2b6c6f5277fe731d51934e359cdfd7a9bbcdf936c59718815354da80b1e215",
       "kind": "semantic-state",
       "state": "command-palette-80",
       "columns": 80,
@@ -436,7 +483,7 @@
     },
     {
       "path": "raw/command-palette-80.cast",
-      "sha256": "3ebf42f8479de093db4e7541ef7d00c3bdd3aa53dc484259e31e0762f5b01fc1",
+      "sha256": "1bdbaace2b90a5cf777e0646098727deb5882ccfc42d6893283fb0060110a524",
       "kind": "asciicast",
       "state": "command-palette-80",
       "columns": 80,
@@ -444,7 +491,7 @@
     },
     {
       "path": "states/command-palette-80.ansi",
-      "sha256": "0b4ae302438613793f6580d4c55c33054a979421281c6276f4e11db37964afea",
+      "sha256": "b78072091afbc425704071fb57f12b0c8938b1c1a133f70a1a4451ec79c2ea71",
       "kind": "ansi",
       "state": "command-palette-80",
       "columns": 80,
@@ -452,7 +499,7 @@
     },
     {
       "path": "states/command-palette-80.png",
-      "sha256": "f8d5de408f3c31733fd34dd0e69d25212902840d05addf522879a336255ab5e0",
+      "sha256": "735c966aafc6c1613174f3d2161af29c7c3222a06a38577b549a8694aa9901f0",
       "kind": "png",
       "state": "command-palette-80",
       "columns": 80,
@@ -460,7 +507,7 @@
     },
     {
       "path": "states/command-palette-120.json",
-      "sha256": "f6a60f6bb709196841dc2eafd9d6e142d9beb57c9a1681babb955c80ff454c9b",
+      "sha256": "85d815f69e37d3ee25f4ef09d303dcc569a9639eee74e8929a68bc6ece6bff2f",
       "kind": "semantic-state",
       "state": "command-palette-120",
       "columns": 120,
@@ -476,7 +523,7 @@
     },
     {
       "path": "raw/command-palette-120.cast",
-      "sha256": "6ddf1a3ceacbfa59766cf4dab458e1b825ad416e645ecc481324325e7996f66e",
+      "sha256": "af9f24311646ac0e8f6e60918e1cf1e4cd4b39c7c5c32c46da0a6b152dba0849",
       "kind": "asciicast",
       "state": "command-palette-120",
       "columns": 120,
@@ -484,7 +531,7 @@
     },
     {
       "path": "states/command-palette-120.ansi",
-      "sha256": "c2ba619ed265f0a9fdb2114170e5b4041a99a70743ef99ba2a45f1cf2adf1da0",
+      "sha256": "f210906bf6c1e409f47c8ac19d0342bec4c6f93e84cf56bf1a9eaf4e16663777",
       "kind": "ansi",
       "state": "command-palette-120",
       "columns": 120,
@@ -492,7 +539,7 @@
     },
     {
       "path": "states/command-palette-120.png",
-      "sha256": "119c80e8aa349d256bc4f81686800680472d105931ad69ec68531dce26d5afbb",
+      "sha256": "fcb10dcd65caa815d0cdd03c894ea10bc81b29b259569b493d168e71344867bf",
       "kind": "png",
       "state": "command-palette-120",
       "columns": 120,
@@ -500,7 +547,7 @@
     },
     {
       "path": "states/cancellation-unavailable-40.json",
-      "sha256": "ca95a376fa2d3b36758f4e9a6af520e5123d5d3aa39b0126f7b7c04371113672",
+      "sha256": "6336a87fac6bbc4d4ce0a95826be63225d3f7c8837d883c82ab13c7878ba8129",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -516,7 +563,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-40.cast",
-      "sha256": "2388b6d0dea0217e6fb90f968f7a9def3a52ef4c5a97db7c5733c5abe154245a",
+      "sha256": "9ff095afa03745397106e66912f7b102a58d286be5825fba83cc811d0c0893b7",
       "kind": "asciicast",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -524,7 +571,7 @@
     },
     {
       "path": "states/cancellation-unavailable-40.ansi",
-      "sha256": "c6c7bc2df99393a12144f976560d4e4b972187dc1e0a90b4e620ede52f67d354",
+      "sha256": "c9b4bc6e935b953f36cf3c68fb4f525ebe4d6091f2aca21663253219af54015b",
       "kind": "ansi",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -532,7 +579,7 @@
     },
     {
       "path": "states/cancellation-unavailable-40.png",
-      "sha256": "5e078195bcb9f78dd88aca07b3e1fc364746e0b25714239ce9c70b85b4ad8f37",
+      "sha256": "fc880d621de03ad4ae2def4f6a9943683f74d994c5f4c34000c22660dbbe3e8b",
       "kind": "png",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -540,7 +587,7 @@
     },
     {
       "path": "states/cancellation-unavailable-80.json",
-      "sha256": "300e2b12cabe6506611680820555f64340b2ef024b51a4b437d099a86682494b",
+      "sha256": "1ae1c79a8bc81a642a606f79f67fe71ecaac214d28a3d2bcadd83edc77f49160",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -556,7 +603,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-80.cast",
-      "sha256": "2efe716fad1743aa6cd57f1919938c27d24ca93baa370f00b521b365700186fd",
+      "sha256": "3a1a8533998ba5cb096d6059a4db66b505cb73ef828e4f1fc7bdf7cc8c1d9a19",
       "kind": "asciicast",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -564,7 +611,7 @@
     },
     {
       "path": "states/cancellation-unavailable-80.ansi",
-      "sha256": "835de0d50258a90a1a0fd4bb190923cdb7fdde80c552d79740296f6064b95637",
+      "sha256": "f70f5494a46be162e41478821337518335f19c9680c940188dd39997c5b39f10",
       "kind": "ansi",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -572,7 +619,7 @@
     },
     {
       "path": "states/cancellation-unavailable-80.png",
-      "sha256": "e7ce612ce11c3882a71e33c971630894d8ba8bf13ffcec1ed80233a551c0a721",
+      "sha256": "4ca1e878793e9198ccbb6aa4130fe7b908de2c19d03d8b66769c5e58a32d3086",
       "kind": "png",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -580,7 +627,7 @@
     },
     {
       "path": "states/cancellation-unavailable-120.json",
-      "sha256": "acb57ed88a6ce8f67154e3282bc1679b0a60f104eca25a79f87a4946ff453820",
+      "sha256": "a86cf3805ab8fa600db68bab753ff911d7583521281243491d273b29f26771c6",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -596,7 +643,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-120.cast",
-      "sha256": "4f1c6a84e83301dca5c27cd9b693039f56e1cb749523c977b563fdd066e6d9e6",
+      "sha256": "ddaf4d8b87981ed43e8b7974011e658f38a8bb9c80f294b17022aa3dbcebf644",
       "kind": "asciicast",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -604,7 +651,7 @@
     },
     {
       "path": "states/cancellation-unavailable-120.ansi",
-      "sha256": "74c1780ba0cefbb2dd520c275025f07ef2232ab99233afd8108e56b2993fef2a",
+      "sha256": "29cb87074cfe0e6ef471c657adad694d7a8841d10cebbc41127937b990654427",
       "kind": "ansi",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -612,7 +659,7 @@
     },
     {
       "path": "states/cancellation-unavailable-120.png",
-      "sha256": "dc9a955d5ae4c39eb14fca49b9c0fa96e4fc6b6109786557d0e17196defba628",
+      "sha256": "ab1575eea4971e28e799efdb77c9d55fed4b26497c71655d097b1bd5bc3a0c62",
       "kind": "png",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -620,7 +667,7 @@
     },
     {
       "path": "states/cancellation-unavailable-200.json",
-      "sha256": "2c95e65c7f0bf10f447264e0172ba7176448beab7097908b25dfd31b3c321f7f",
+      "sha256": "c14466cc6764e073ab20368d6a98cfe7919b4029666e4645bb3d31a0a6c3fb40",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -636,7 +683,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-200.cast",
-      "sha256": "c39574c8225df052d7f98054af81a11e2bb910208330b271c805365f7f65e55f",
+      "sha256": "3b7c453bdc59ddb3b98cc89d172b4f47af9e9c197777195ab2908ff6969593c4",
       "kind": "asciicast",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -644,7 +691,7 @@
     },
     {
       "path": "states/cancellation-unavailable-200.ansi",
-      "sha256": "f7624d8ebaffe2eafa2d1e541f01b4c889671b96f1d071416eec05eeb72ec12a",
+      "sha256": "3506b874982658880973e07708053e798209ad5ccb66425c48fafe4527190fe5",
       "kind": "ansi",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -652,15 +699,175 @@
     },
     {
       "path": "states/cancellation-unavailable-200.png",
-      "sha256": "364e29d08a0928b6d894937d5e55981ed76b997c6e7d8f7028ac964a778633b8",
+      "sha256": "50975f02cb4d2b8d0eb7f0208becb9b52aeb41703ca6b1d00af214d0a04480a5",
       "kind": "png",
       "state": "cancellation-unavailable-200",
       "columns": 200,
       "rows": 60
     },
     {
+      "path": "states/fork-preview-40.json",
+      "sha256": "84bfd4d705c380fc2fff36d57181d2129bae5d30a09f27d2cab3c1ff101547c4",
+      "kind": "semantic-state",
+      "state": "fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/fork-preview-40.txt",
+      "sha256": "7c6d1807e473c5675b8189b91f347476eeddd05cb1431fb8b64141f235f6ce69",
+      "kind": "plain-frame",
+      "state": "fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/fork-preview-40.cast",
+      "sha256": "f640bd40c5adad28941f798170fd3f4ec3ac56cbac7cc5f85e9a1007c56597a9",
+      "kind": "asciicast",
+      "state": "fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/fork-preview-40.ansi",
+      "sha256": "ab9d2590dadfdf980407ff374f263491bde846161c637459a74a558c5f82b6f8",
+      "kind": "ansi",
+      "state": "fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/fork-preview-40.png",
+      "sha256": "24e0754d317b971ecfde9d5d64a82aa6a6f9b2caa0d28cc19a87a1e4b2e2316f",
+      "kind": "png",
+      "state": "fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/fork-preview.json",
+      "sha256": "ebe718d18f188d662d5df4408327c574d3d76258b290708e11e32a78823e5652",
+      "kind": "semantic-state",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.txt",
+      "sha256": "474f22468a9679e0b5fced0a0829de7de3a51d5a06e0217582d0798223e1b060",
+      "kind": "plain-frame",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/fork-preview.cast",
+      "sha256": "cbd9fcb1a8fdc86cdbe87f591656bf34ef22f279c84a132889de79c4cfc54224",
+      "kind": "asciicast",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.ansi",
+      "sha256": "140f894d3dddd4d5ba34998209b913270ef7cb21059bb1f5b0522956b23a2c79",
+      "kind": "ansi",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview.png",
+      "sha256": "b75d3be9485f6cf134e946dff780fddf7295fe7f9d9877d79f045cc42738e79d",
+      "kind": "png",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/fork-preview-120.json",
+      "sha256": "2de5a3622b55c7eb372ef2f9717f9ada2528e738e973bc71918d5da1245db08b",
+      "kind": "semantic-state",
+      "state": "fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/fork-preview-120.txt",
+      "sha256": "b904b12f6aec89f6fe8eee19311d1e2dccf7b8bcfb2ec715b5082c3a36fb69af",
+      "kind": "plain-frame",
+      "state": "fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/fork-preview-120.cast",
+      "sha256": "f3138e266edd522a7e3a21961c23cad10940e51c0df38ff1134395b4ba703320",
+      "kind": "asciicast",
+      "state": "fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/fork-preview-120.ansi",
+      "sha256": "494920fd6a3e5718e85c20906aecaffc3d4595cd41b13f1398fec05f2539b102",
+      "kind": "ansi",
+      "state": "fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/fork-preview-120.png",
+      "sha256": "c1cea59eaf8fc405f5a527b85edecad4b481ce9f9f0020511cd67059da532d76",
+      "kind": "png",
+      "state": "fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/fork-preview-200.json",
+      "sha256": "e06d885015f0284124a6e7766b9aa8fc198d331c6d92616c6ed1f5b9cb87b14c",
+      "kind": "semantic-state",
+      "state": "fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/fork-preview-200.txt",
+      "sha256": "d559cfe78eae884535551effd046479fc6b94957e3fe976ba4c298ed40f39e36",
+      "kind": "plain-frame",
+      "state": "fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/fork-preview-200.cast",
+      "sha256": "d4247cf2ac3800e4eda887831b77d57e2b247827895b00350103d80645e6abd6",
+      "kind": "asciicast",
+      "state": "fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/fork-preview-200.ansi",
+      "sha256": "999dacef5c0fdcf754f9d3bebdd40239251001f83002cc03f59523467f7aaafe",
+      "kind": "ansi",
+      "state": "fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/fork-preview-200.png",
+      "sha256": "83725614456af770f686b070a6f2219f06a635a6102d7f34d1a091e55c441096",
+      "kind": "png",
+      "state": "fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
       "path": "states/empty.json",
-      "sha256": "a7ce15a76964111bfb6d8b8f96884bdb602ca63348751cefcec597e031026835",
+      "sha256": "6577645bde6f57ec3638a0361e02b622122d40d8f65a6d2a6c569218d984a729",
       "kind": "semantic-state",
       "state": "empty",
       "columns": 80,
@@ -676,7 +883,7 @@
     },
     {
       "path": "raw/empty.cast",
-      "sha256": "ea1cc46f534e4c4b2a9bec1303911de3f21f3ee2419391d88d8580f564810e66",
+      "sha256": "4f7ce102c3b90209c7118c01a74667e28bbf7cdcc44ad116a1facfaec692d591",
       "kind": "asciicast",
       "state": "empty",
       "columns": 80,
@@ -684,7 +891,7 @@
     },
     {
       "path": "states/empty.ansi",
-      "sha256": "8598b78f445f01136c1be47d3fad5464e11a61971f03138d98605340e4662fc6",
+      "sha256": "497ca61084e30eb9ff6eacbb5fad32d98923f0f441e0b2d454177b3db022bed0",
       "kind": "ansi",
       "state": "empty",
       "columns": 80,
@@ -692,7 +899,7 @@
     },
     {
       "path": "states/empty.png",
-      "sha256": "a9ed7029cb6c36e032b9e6827c6d50d74f0492b049d54a88c5381767b9ff87c0",
+      "sha256": "3dc0bc300853f497c62741b78d5b4c223c1ebdcee95efa26f2bbdda1a2c835fb",
       "kind": "png",
       "state": "empty",
       "columns": 80,
@@ -700,7 +907,7 @@
     },
     {
       "path": "states/active-streaming.json",
-      "sha256": "d203290898e018196cd7155228374acea1a64fbe759ac14746beb4d45ece883c",
+      "sha256": "4fcb89e9b3b5391c06827f278b87b3bd6dbde88c9b4698d1990c82e2c3e3dc6a",
       "kind": "semantic-state",
       "state": "active-streaming",
       "columns": 80,
@@ -716,7 +923,7 @@
     },
     {
       "path": "raw/active-streaming.cast",
-      "sha256": "8ccff018c212238e0a3dfd3cd6b6f4f974c53a134c315f57fbec00f92ba3b9c9",
+      "sha256": "d2ed8515d04cfac997feabbac84eb82a7a4758dbe14e39753722b2308a8d2fce",
       "kind": "asciicast",
       "state": "active-streaming",
       "columns": 80,
@@ -724,7 +931,7 @@
     },
     {
       "path": "states/active-streaming.ansi",
-      "sha256": "f2118863bb15ef759c553f6866cdd94e6d70421e34486c6395e90cfff492fbc7",
+      "sha256": "1af117ebdb8431023cb62c69876eaee32e3411464333f765a48a3207df3e2350",
       "kind": "ansi",
       "state": "active-streaming",
       "columns": 80,
@@ -732,7 +939,7 @@
     },
     {
       "path": "states/active-streaming.png",
-      "sha256": "93f79c59272f6f3ff22cc185471683863018463a985348c2fb1571eee544afde",
+      "sha256": "6608d9005f5972ee276b628e585c2f5d573672bbdebb31c3690c3e2b1c14392d",
       "kind": "png",
       "state": "active-streaming",
       "columns": 80,
@@ -740,7 +947,7 @@
     },
     {
       "path": "states/multi-run.json",
-      "sha256": "6ddb38a61a38d4cd0a29822607c99327446bb6cfc334f4b45f5b5a4916e90f42",
+      "sha256": "0c4cf539d6a950c548ded9351a42f71c52c9f24ad11fcdca2aca68b269fd2367",
       "kind": "semantic-state",
       "state": "multi-run",
       "columns": 80,
@@ -756,7 +963,7 @@
     },
     {
       "path": "raw/multi-run.cast",
-      "sha256": "796b22202ae9e5663adb4a1bf435aa1cd600ddab4289d4013588a956810e5889",
+      "sha256": "1031cbc0c31312b4825b495c3f93afed89bc134592003970aeeebe09c1d15b1b",
       "kind": "asciicast",
       "state": "multi-run",
       "columns": 80,
@@ -764,7 +971,7 @@
     },
     {
       "path": "states/multi-run.ansi",
-      "sha256": "d6e1bcf5c0a955ab4ad133d4633803ab13af75a20dba425b9275cf982dcbef5c",
+      "sha256": "afec40929e74a8b5b7b415e865d5a3aca34d80363602c3c8e3d5316dd3fe5bc5",
       "kind": "ansi",
       "state": "multi-run",
       "columns": 80,
@@ -772,7 +979,7 @@
     },
     {
       "path": "states/multi-run.png",
-      "sha256": "52017541fc46789ca4e55dbc585d7a886ead3a657d5bbb3278940fa46d1624ca",
+      "sha256": "fc973aca146b6d00566df191c70928da9ad317136d993d0a64d7a6d29b6d681b",
       "kind": "png",
       "state": "multi-run",
       "columns": 80,
@@ -780,7 +987,7 @@
     },
     {
       "path": "states/supervision.json",
-      "sha256": "b04f2973b2bc1f2327fa8a276462b33f84f6d7dd6827b69e76ef1cc932c40b11",
+      "sha256": "726724a7245a1220dfcbfe022680dae2e132af8884009a2cdb674d222a2d3812",
       "kind": "semantic-state",
       "state": "supervision",
       "columns": 80,
@@ -796,7 +1003,7 @@
     },
     {
       "path": "raw/supervision.cast",
-      "sha256": "de433721dc54e1ed6762e0d6ffa53c2ff37cac0f1dcbe338d4211a00b2ff3c87",
+      "sha256": "672d80dac542b4ffa13d990b718e3b8672a72cc794e03a5e48a2e3e287443880",
       "kind": "asciicast",
       "state": "supervision",
       "columns": 80,
@@ -804,7 +1011,7 @@
     },
     {
       "path": "states/supervision.ansi",
-      "sha256": "d6c03785067c6131009e5e29c5f06251bc53e6ec9f16463eebf472317298e293",
+      "sha256": "7d59696271b3c8db6b44f0afd16c429f42ecb3cd3e83a62e067cbf2e4c0bb102",
       "kind": "ansi",
       "state": "supervision",
       "columns": 80,
@@ -812,7 +1019,7 @@
     },
     {
       "path": "states/supervision.png",
-      "sha256": "48124884510f318b36e3a3bc452931858fc7e32ef530be70b33cc9aad36bc6c1",
+      "sha256": "44fe67fb78d2fad8bf9ffb027faa37df9ad0bf7c35a7c23d18c80607cb1bd8b6",
       "kind": "png",
       "state": "supervision",
       "columns": 80,
@@ -820,7 +1027,7 @@
     },
     {
       "path": "states/interaction.json",
-      "sha256": "379a3ece57a99ac328b58789d4ccfe7503f7ab8ea339e8a26f71931a2bc55d69",
+      "sha256": "6464e63f67850144ec6d2c6040340069459497654fad914ad667afd1f4447600",
       "kind": "semantic-state",
       "state": "interaction",
       "columns": 80,
@@ -836,7 +1043,7 @@
     },
     {
       "path": "raw/interaction.cast",
-      "sha256": "3d2623070d45f0c9be383cb7f1ba115ef4a7cfe5571b1a98423e32b33f28c330",
+      "sha256": "3e47cc5e6d2a717953888bf702d8af2da9961b0ea56ffb8fddd7ba5b125a080c",
       "kind": "asciicast",
       "state": "interaction",
       "columns": 80,
@@ -844,7 +1051,7 @@
     },
     {
       "path": "states/interaction.ansi",
-      "sha256": "0ad9d15bbdbdc2bc0df7669e425359909ce8c2338fcbe1495dd57f03ffc82110",
+      "sha256": "6e3323d5507a7127058805c2571a9fe87b94ab0a1023cffe241274c8689a4460",
       "kind": "ansi",
       "state": "interaction",
       "columns": 80,
@@ -852,7 +1059,7 @@
     },
     {
       "path": "states/interaction.png",
-      "sha256": "ebfaed830015b44fa309e3d12f2b90f55ab3593fa56d61a61f9a013b1aa0e03c",
+      "sha256": "11df539aad39face3c9ddb1c02cff49938ecb50cd8aa4a9ac0cd3bdaac70dff2",
       "kind": "png",
       "state": "interaction",
       "columns": 80,
@@ -860,7 +1067,7 @@
     },
     {
       "path": "states/automation.json",
-      "sha256": "19709458786197b2c804f1c9b91f10814f6b213e25b2931f401ad69e7a2b25a9",
+      "sha256": "7e1e8a3f633b0c1e957d9bf620dae28f7dc955282728888c95d4a44d2dc126a7",
       "kind": "semantic-state",
       "state": "automation",
       "columns": 80,
@@ -876,7 +1083,7 @@
     },
     {
       "path": "raw/automation.cast",
-      "sha256": "f017b6bed655baafedf5a141622070b8b72bc3bee896748eac65e41e267b3f89",
+      "sha256": "be0b29e0d04a32715d01521c4b6f8eb11bdfc830e0ac4f1f4f2f56246425af73",
       "kind": "asciicast",
       "state": "automation",
       "columns": 80,
@@ -884,7 +1091,7 @@
     },
     {
       "path": "states/automation.ansi",
-      "sha256": "b326619be32d599cc2b0866a7adb6fe2d70c7dfe27df344197d082e8d0eaf149",
+      "sha256": "aac283dceade3de3b63a7c2ed8f7a55c4e109d539a7e7afdeeb78b0e96708171",
       "kind": "ansi",
       "state": "automation",
       "columns": 80,
@@ -892,55 +1099,15 @@
     },
     {
       "path": "states/automation.png",
-      "sha256": "6624f779e60f25689b910f755a21eb4acb844499036531a13618600d3db02d92",
+      "sha256": "817a4c6a58e23bb7873e953212db97d04e46109f9189408fe129c1db4c5635e8",
       "kind": "png",
       "state": "automation",
       "columns": 80,
       "rows": 24
     },
     {
-      "path": "states/fork-preview.json",
-      "sha256": "a5f36f534ce34355ab1bfabbce0c8978c12c2e8569a047e026dfe1595f58b804",
-      "kind": "semantic-state",
-      "state": "fork-preview",
-      "columns": 80,
-      "rows": 24
-    },
-    {
-      "path": "states/fork-preview.txt",
-      "sha256": "bf3a769b7843aa23421e042c0653f44a2b9810bc72e4c14250a3f84e8b06f5a8",
-      "kind": "plain-frame",
-      "state": "fork-preview",
-      "columns": 80,
-      "rows": 24
-    },
-    {
-      "path": "raw/fork-preview.cast",
-      "sha256": "e225e40974628a0cab1b5975d07ecc6fa3f4c4527e2a185ec4fa7016b30430c6",
-      "kind": "asciicast",
-      "state": "fork-preview",
-      "columns": 80,
-      "rows": 24
-    },
-    {
-      "path": "states/fork-preview.ansi",
-      "sha256": "7a29ec5869756149c0496bd0b75c761d929013ad865ae30bc62ed19224ecaf57",
-      "kind": "ansi",
-      "state": "fork-preview",
-      "columns": 80,
-      "rows": 24
-    },
-    {
-      "path": "states/fork-preview.png",
-      "sha256": "c486bec858b85bda5203559695fe34eedf0e043b26ca587a8fab9d9cd03c1408",
-      "kind": "png",
-      "state": "fork-preview",
-      "columns": 80,
-      "rows": 24
-    },
-    {
       "path": "states/graph-or-analysis.json",
-      "sha256": "16f937529b17b71f3dfaca1af70a41809e7eedb50a7706d98ed0003117c09a1f",
+      "sha256": "55f487227617eaa4902e08c9ae823062c828e23c889cece135a4ad810fdc83b2",
       "kind": "semantic-state",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -956,7 +1123,7 @@
     },
     {
       "path": "raw/graph-or-analysis.cast",
-      "sha256": "5b037dc9398c7e27ce250bb4f6823949d35fed4ecab95b57aa1848cf5684d69a",
+      "sha256": "8209dae0a51ded951a7f9e55bb1331953466a5d4a3c2c1f3b5f603fc427cf4af",
       "kind": "asciicast",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -964,7 +1131,7 @@
     },
     {
       "path": "states/graph-or-analysis.ansi",
-      "sha256": "6de57dc1a2d14bd690d4d75f7afc38a1c2224d1c9608686cf52c11675f3833de",
+      "sha256": "d94610d5f65ab1dceb30250524232b6045b27f9d554022e6b00f54ed2b613387",
       "kind": "ansi",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -972,7 +1139,7 @@
     },
     {
       "path": "states/graph-or-analysis.png",
-      "sha256": "d1bf7f220d1c671522660ce5a28337c63c27507d6cba0ec8d8d041b4ce344410",
+      "sha256": "66ed37cd191ee807cb885ca31ccc592a5224d71d2de0ed05700a1cb57416321c",
       "kind": "png",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -980,7 +1147,7 @@
     },
     {
       "path": "states/analysis.json",
-      "sha256": "8c63d3c65bd3f7b52d5e3564a4c347631b6c4bba54c9c10a3bdd29df0b548c0e",
+      "sha256": "97ba4ee858599af315e40724367f590e2a35f6002686582ea88a97cf4402bf13",
       "kind": "semantic-state",
       "state": "analysis",
       "columns": 80,
@@ -996,7 +1163,7 @@
     },
     {
       "path": "raw/analysis.cast",
-      "sha256": "6a3b9303ca4620bc0de24056db9c6219962ef32aa7d9939c1f857d4b6948bd09",
+      "sha256": "3451b471f427b40592356d76d600ba755d7ef6d34e2e0ba049eef91522f01856",
       "kind": "asciicast",
       "state": "analysis",
       "columns": 80,
@@ -1004,7 +1171,7 @@
     },
     {
       "path": "states/analysis.ansi",
-      "sha256": "d457847db805c320f7b87848ba72f3961838fd6ec06d327021e0cb7ae3e2e5e4",
+      "sha256": "0ffaf26248dc24066d3026a3b72f91774bef7b58a3b44b8754c923bf56ad5a1b",
       "kind": "ansi",
       "state": "analysis",
       "columns": 80,
@@ -1012,7 +1179,7 @@
     },
     {
       "path": "states/analysis.png",
-      "sha256": "98befe1228c0eee13799472cfcbd3a2a936a04f5bc6c6e64d3c061e63101b884",
+      "sha256": "89c310127440a7b58657cab60725908c2f8f047c9bb37cfcbcbdbde8151e47c1",
       "kind": "png",
       "state": "analysis",
       "columns": 80,
@@ -1020,7 +1187,7 @@
     },
     {
       "path": "states/comparison.json",
-      "sha256": "43f75dc648c006f1f1f0597cc2911ba8e6e928dd4b26b4fb38309d3cf6d5f888",
+      "sha256": "04e6f48d76bf786d64d45dcbad4c65c4ce4ef4bc18b2a6343bc4d56d7b27d9ea",
       "kind": "semantic-state",
       "state": "comparison",
       "columns": 80,
@@ -1036,7 +1203,7 @@
     },
     {
       "path": "raw/comparison.cast",
-      "sha256": "dff88d944bf470445e277667d7fd6ada241cef47d9223a645885c2521de5daf0",
+      "sha256": "e1ee5ec2c4361d6b2a8b5132f26048e98f811e544f6352cbff2549aea818fb5d",
       "kind": "asciicast",
       "state": "comparison",
       "columns": 80,
@@ -1044,7 +1211,7 @@
     },
     {
       "path": "states/comparison.ansi",
-      "sha256": "b32a4c5a76e40f0611b97b6d6853ac45b6b7b11ab4dbe3f50c448996d1c0822e",
+      "sha256": "5a91f3d8c46f4912cab17a46a1177356819340e5320bf1918501870c208d8646",
       "kind": "ansi",
       "state": "comparison",
       "columns": 80,
@@ -1052,7 +1219,7 @@
     },
     {
       "path": "states/comparison.png",
-      "sha256": "7bce5d689a113a0d0faaa0e7db0171ef5d7586550a8e01abcbf9415ddcb858f6",
+      "sha256": "dc6a1b468927d82bcec13a80097db8aff6440d89bd47b780e8af5fd42571e7af",
       "kind": "png",
       "state": "comparison",
       "columns": 80,
@@ -1060,7 +1227,7 @@
     },
     {
       "path": "states/profile.json",
-      "sha256": "2b08045847f634aee472cf47352bff932097bcec3f733af8769e95e3b9e70343",
+      "sha256": "e653e33608025f29f5a919c975944e065043774ae1d4721ce3a620940744a265",
       "kind": "semantic-state",
       "state": "profile",
       "columns": 80,
@@ -1076,7 +1243,7 @@
     },
     {
       "path": "raw/profile.cast",
-      "sha256": "fe1e75ac4846ceaf34c6001d595b5786f6dfd08a94b75b01f5562e49a3153b01",
+      "sha256": "4b9893616337194740b41711bbf4649fca3ea2643400132f91adf83a6b7cafa6",
       "kind": "asciicast",
       "state": "profile",
       "columns": 80,
@@ -1084,7 +1251,7 @@
     },
     {
       "path": "states/profile.ansi",
-      "sha256": "b00497081393a6315ee3e06c2aa5ad031b593b329a550df51f07ceeaa0823328",
+      "sha256": "903308e3c3eb153310dc52e29ac03800173250aedd384aa5f26885963bb0c3bc",
       "kind": "ansi",
       "state": "profile",
       "columns": 80,
@@ -1092,7 +1259,7 @@
     },
     {
       "path": "states/profile.png",
-      "sha256": "31745c0913d22d8f04d2ea7581e3448be0436a4448700bd051119385148d9aa7",
+      "sha256": "bcafe4679af5d1bcdf38c852e0524ef69c2afab2f1ffb86b069aeda56d2851b4",
       "kind": "png",
       "state": "profile",
       "columns": 80,
@@ -1100,7 +1267,7 @@
     },
     {
       "path": "states/narrow.json",
-      "sha256": "19b8206111845b85da599691bc4ffdaa59f91f54463542c77640f57d325829fa",
+      "sha256": "f9c1c8b3893e0aaa2a2b722d2818a487386d09d0eb1b4fe32dbac7cae1630558",
       "kind": "semantic-state",
       "state": "narrow",
       "columns": 40,
@@ -1116,7 +1283,7 @@
     },
     {
       "path": "raw/narrow.cast",
-      "sha256": "9c6d75de5415dc303d47cc237e2c65542af2df5986dc6b87cc82c25ce02c620c",
+      "sha256": "2d390df2fb6484ba4f830224745d5cef5249fdff308b2d2c9719294ccb17a5fd",
       "kind": "asciicast",
       "state": "narrow",
       "columns": 40,
@@ -1124,7 +1291,7 @@
     },
     {
       "path": "states/narrow.ansi",
-      "sha256": "ac889ea60e1fce02a41f712edbcacece75f09887c7a62c6b5fde2832da8ab33c",
+      "sha256": "9f1e20b3023d98fe8e280a1ab5aa10905b6db2c3cbf580754c1785868370738f",
       "kind": "ansi",
       "state": "narrow",
       "columns": 40,
@@ -1132,7 +1299,7 @@
     },
     {
       "path": "states/narrow.png",
-      "sha256": "8a14e3d8e314f49a97d8e4518f7d5ad3250fe4eb39ca92644542b1a1fc6c0242",
+      "sha256": "55d137acb1a206386ad630617de73c9c51fbbc56a562f9aa3a9a92ccb4572b1d",
       "kind": "png",
       "state": "narrow",
       "columns": 40,
@@ -1140,7 +1307,7 @@
     },
     {
       "path": "states/failure-or-reconnect.json",
-      "sha256": "fc27f5444e13c31dda8b0e520517a39ba79e7cc537dee9652674aa5db12ffa5b",
+      "sha256": "cbf245272203c093bed2aebe378c0779ae9f8d0b7bbcaa64cd8cd980f145c4d1",
       "kind": "semantic-state",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1156,7 +1323,7 @@
     },
     {
       "path": "raw/failure-or-reconnect.cast",
-      "sha256": "d4a9184554ac3cef4e1e502096d65fdd0c687e5b177c40ba73e24354d8ea79ab",
+      "sha256": "a018dc59093c30c2b7c98a82d9fd4c57c55964b9abe722a8b7eae84a35de794f",
       "kind": "asciicast",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1164,7 +1331,7 @@
     },
     {
       "path": "states/failure-or-reconnect.ansi",
-      "sha256": "f9e494498b63f50285c9946b39da881d5d9fa623d288fc7981fd276bfc3d63b0",
+      "sha256": "77360f03e8adde89ab52b77c4f5823f50839afb986b447d5bf75ecfec6cb7d2a",
       "kind": "ansi",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1172,7 +1339,7 @@
     },
     {
       "path": "states/failure-or-reconnect.png",
-      "sha256": "4a2af6a82eb5327c55710008a6a7118478bc9f86e0c08f62c46f1a9aa1e8d2c5",
+      "sha256": "e10dbd4d306ea87c758cad1245c9e203635a3a8dd7ac9815a81f828613e887c6",
       "kind": "png",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1187,7 +1354,7 @@
     },
     {
       "path": "80x24-automation.gif",
-      "sha256": "6b65d358dc3fa98836d15658566f12d985f3b7237fa59e6d1a270d56a9ebd953",
+      "sha256": "fa2c98e9dd53a2eb6213fa0a6ac7488f2a95555778801d6ed2bcbcfebcdfab66",
       "kind": "automation-flow",
       "state": "automation",
       "columns": 80,
@@ -1195,22 +1362,38 @@
     },
     {
       "path": "80x24-multirun.gif",
-      "sha256": "3e77e680c33de56f26025e9a5023315c115c2d26fa45c2fb851b1227f2b88fc7",
+      "sha256": "24c417ba549c6fae8f79deb7009b0b6995b21d8917135c50b362d969ab7c8c7d",
       "kind": "multi-run-flow",
       "state": "multi-run",
       "columns": 80,
       "rows": 24
     },
     {
+      "path": "fork-preview.cast",
+      "sha256": "4667fe4e5e5e9834405ba374bb7c3feac2dc8016deeee809e884c750bccb993c",
+      "kind": "fork-preview-asciicast",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-fork-preview.gif",
+      "sha256": "ca2328917ae8d107c27cec33d67f480382df0d82c425542c39e6eb43b6e1e7d8",
+      "kind": "fork-preview-flow",
+      "state": "fork-preview",
+      "columns": 80,
+      "rows": 24
+    },
+    {
       "path": "raw/transcript-keyboard.cast",
-      "sha256": "6c63b5d57836eaf1e509d9d03b8cbbf852b83a486a1311f0bfd70b0a636259b3",
+      "sha256": "f958c02e2c97177a368f5907fec21c2bd4d4b997997888161baa27ca06c16d2c",
       "kind": "keyboard-asciicast",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24-transcript-keyboard.gif",
-      "sha256": "ca1cea0f418cfd5a6151fd4fb30066eddecbfc8ad83fae4b4cc65859eee4c8f6",
+      "sha256": "008a79bec890d70215ea1b366dc505817cd736012fa9f7d8eacfbe2a9879c8b9",
       "kind": "keyboard-flow",
       "columns": 80,
       "rows": 24

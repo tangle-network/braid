@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "state": "automation",
+  "state": "fork-preview-40",
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
@@ -8,8 +8,8 @@
     "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2"
   },
   "dimensions": {
-    "columns": 80,
-    "rows": 24
+    "columns": 40,
+    "rows": 12
   },
   "terminal": "node-pty/xterm-256color",
   "provenance": {
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 1,
-  "frame": "\n\n\n\n\n\n\n\n\n      automation rules\n     ──────────────────────────────────────────────────────────────────────\n       No saved automation rules\n     ──────────────────────────────────────────────────────────────────────\n      create from a pending request with Alt+A · ←/esc close\n",
+  "frame": " fork preview                 workspace\n────────────────────────────────────────\n will create a new workspace from th...\n source: workspace:/workspace\n destination: workspace:/workspace-fork\n boundary: conv-1 / branch-1 → conv-...\n profile snapshot: digest:fixture-so...\n workspace state: checkpoint:fixture...\n confidential request: nitro · sealed\n\n────────────────────────────────────────\n enter/y create fork · ←/esc cancel\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
@@ -144,7 +144,7 @@
       ],
       "branch": "branch-1",
       "status": "empty",
-      "statusText": "No automation rules",
+      "statusText": "ready for a message",
       "queueCount": 0,
       "queue": [],
       "messages": [],
@@ -251,7 +251,7 @@
         },
         "conversation.fork": {
           "available": true,
-          "source": "application"
+          "source": "provider"
         },
         "analysis.ask": {
           "available": false,
@@ -393,13 +393,39 @@
         }
       },
       "draft": "",
-      "selectedSurface": "transcript",
+      "selectedSurface": "fork",
       "appearance": {
         "color": "256",
         "highContrast": false,
         "reducedMotion": false
       },
-      "notice": "No automation rules"
+      "forkPreview": {
+        "kind": "workspace",
+        "source": "workspace:/workspace",
+        "destination": "workspace:/workspace-fork",
+        "execution": {
+          "operationId": "operation-fixture-fork",
+          "planDigest": "digest:fixture-fork-plan"
+        },
+        "fields": [
+          {
+            "label": "conversation context",
+            "source": "conv-1 / branch-1",
+            "destination": "conv-fork-1 / branch-1"
+          },
+          {
+            "label": "profile snapshot",
+            "source": "digest:fixture-source",
+            "destination": "digest:fixture-copy"
+          },
+          {
+            "label": "workspace state",
+            "source": "checkpoint:fixture-1",
+            "destination": "checkpoint:fixture-1"
+          }
+        ],
+        "allowed": true
+      }
     },
     "events": [
       {

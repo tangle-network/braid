@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
     "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "073e9599f703dea61105504d060612eb9f33fb97aa0e3199b1180aca28e13d70"
+    "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2"
   },
   "dimensions": {
     "columns": 80,
@@ -17,7 +17,7 @@
       "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.18.0",
+      "node": "v24.13.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 6,
       "sequence": 6,
-      "workspace": "/home/drew/code/.worktrees/braid-release-safety",
+      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -171,7 +171,7 @@
     },
     "view": {
       "revision": 6,
-      "workspace": "/home/drew/code/.worktrees/braid-release-safety",
+      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-01T14:56:33.745Z",
+          "occurredAt": "2026-09-02T04:41:23.367Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -586,7 +586,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-release-safety"
+            "workspace": "/home/drew/code/.worktrees/braid-release-live-separation"
           }
         }
       },
@@ -682,10 +682,10 @@
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "68a075c59b37766db05bbbad8741ed0d3717b14fdf1b8eaa84c7f73cf470c00d",
+            "requestDigest": "7dc562129ef66fdb1d4af0369d9ba6b47d583980967b09d1779a52bbce1f6c36",
             "capabilitiesDigest": "34f74481bbc016dda8db96c63dc5895e62f6054b9f68b314e6c98d33cdd4fcbe",
             "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-            "digest": "d815607eb5d953b1480b5a9c38534a577165dcb19cdc13978c6657e4e6c8d925"
+            "digest": "8d11453d277c6b4875849773b2d58a1ba74b9965ed420e499ab2c70149f2b200"
           },
           "status": "admitted"
         }
@@ -698,10 +698,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-c61e9985759c795e8adc3161",
+              "id": "effect-op-terminal-000002-65d8e15a0d1965277dc938a6",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "c61e9985759c795e8adc3161986467d47dd2c104d8fd56d139245e8358066fcd",
+              "requestDigest": "65d8e15a0d1965277dc938a60a8777eaab1b204bf525ae25d9110ed441484e94",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -720,13 +720,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-01T14:56:33.745Z",
+            "occurredAt": "2026-09-02T04:41:23.367Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-09448f4e-d6b2-4b7e-8bb8-b4508218724b",
+              "id": "turn-5ba9b156-2747-4a3c-9e99-da51db730140",
               "intent": "W6 provider cancellation unavailable",
               "metadata": {
                 "identity": {
@@ -736,11 +736,11 @@
               }
             },
             "session": {
-              "id": "e991c1e6-2aa8-423b-819f-8298c52dd70c",
+              "id": "4eab615a-032a-4f64-96be-ac54c722757a",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-01T14:56:33.745Z",
-              "updatedAt": "2026-09-01T14:56:33.745Z",
+              "createdAt": "2026-09-02T04:41:23.367Z",
+              "updatedAt": "2026-09-02T04:41:23.367Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -762,16 +762,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-09448f4e-d6b2-4b7e-8bb8-b4508218724b"
+                  "id": "turn-5ba9b156-2747-4a3c-9e99-da51db730140"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-09448f4e-d6b2-4b7e-8bb8-b4508218724b:attempt:f4babdcb-1764-4c4a-a729-b6e9df1abde4",
-                  "materializationReceiptDigest": "sha256:2449737bea24437700c4e30bc0b7af0da944500b7120e481357eb5a0fb102931",
-                  "bindingDigest": "sha256:f158f323efafb41f9fb1154570be8647fddadd3fe7e03528f3d5a4a0fa6dd484",
+                  "attemptId": "turn-5ba9b156-2747-4a3c-9e99-da51db730140:attempt:51b04728-ea5f-4639-8d77-e6e19f1cabca",
+                  "materializationReceiptDigest": "sha256:24dbaaa7f01564225672f879867d86e5ed6f8688a7947dba58f2157aa5f75d89",
+                  "bindingDigest": "sha256:aba4520c307656902e11fa82b0373452367e25c0dcf4a9cce061e22a206bc1e9",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -783,10 +783,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-01T14:56:33.743Z"
+                "startedAt": "2026-09-02T04:41:23.363Z"
               }
             },
-            "timestamp": "2026-09-01T14:56:33.745Z"
+            "timestamp": "2026-09-02T04:41:23.367Z"
           }
         }
       },
