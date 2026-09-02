@@ -66,7 +66,7 @@ A requested confidential fork is allowed only when the selected completed run re
 
 Braid does not downgrade a confidential request to an ordinary workspace fork when any requirement is absent.
 
-The installed Tangle provider `1.1.3` with Sandbox `0.36.4` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
+The installed Tangle provider `1.1.3` with Sandbox `0.36.5` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
 
 This is installed-provider behavior, not a live capability observation.
 

@@ -199,17 +199,14 @@ if (nativeStorageRequired) {
   }
 }
 
-const isolatedPerformanceFiles = new Set([
+const isolatedTestFiles = new Set([
   'performance.test.js',
-  'storage-performance.test.js',
+  'production-composition.test.js',
   'security.test.js',
+  'storage-performance.test.js',
 ])
-const isolatedTests = selectedTests.filter((path) =>
-  isolatedPerformanceFiles.has(relative(root, path)),
-)
-const concurrentTests = selectedTests.filter(
-  (path) => !isolatedPerformanceFiles.has(relative(root, path)),
-)
+const isolatedTests = selectedTests.filter((path) => isolatedTestFiles.has(relative(root, path)))
+const concurrentTests = selectedTests.filter((path) => !isolatedTestFiles.has(relative(root, path)))
 
 function runTestBatch(paths) {
   if (paths.length === 0) return 0
