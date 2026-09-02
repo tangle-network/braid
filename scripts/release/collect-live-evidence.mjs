@@ -27,6 +27,7 @@ const repository = resolve(
 )
 const artifactRootValue = option('--artifact-root') ?? process.env.BRAID_RELEASE_ARTIFACT_ROOT
 const tarballPath = option('--tarball')
+const packageProofPath = option('--package-proof') ?? 'w6/package-proof.json'
 const checks = option('--checks')
 const protectedEnvironment = process.env.BRAID_LIVE_TANGLE_ENV_JSON
 assert(artifactRootValue, '--artifact-root is required')
@@ -69,6 +70,7 @@ const result = await collectReleaseEvidence({
   repository,
   artifactRoot: resolve(artifactRootValue),
   tarballPath: resolve(artifactRootValue, tarballPath),
+  packageProofPath,
   requirementBindings,
   checkIds,
   environment,
