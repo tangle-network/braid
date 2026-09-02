@@ -12,14 +12,21 @@ import type {
 } from '@tangle-network/agent-interface'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
+import {
+  type ConversationDispatchContext,
+  dispatchConversationHeadlessCommand,
+  dispatchConversationRunCommand,
+} from '../src/adapters/tui/ui-conversation-dispatch.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import { executeBranchEffect } from '../src/app/conversation-branch-effects.js'
+import type { ConversationHost } from '../src/app/conversation-types.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
-import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
-import type { BraidState } from '../src/domain/state.js'
 import type { ConnectionRecord, OperationRecord } from '../src/domain/entities.js'
+import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId, createOperationId } from '../src/domain/ids.js'
 import { replayEvents } from '../src/domain/reducer.js'
+import type { BraidState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
@@ -129,7 +136,7 @@ function exactControl(input: {
   }
 }
 
-function branchCapabilities(workspace = false): RunCapabilities {
+function branchCapabilities(workspace = false, confidential = false): RunCapabilities {
   return {
     ...DEFAULT_RUN_CAPABILITIES,
     streaming: { ...DEFAULT_RUN_CAPABILITIES.streaming, replay: true },
@@ -139,6 +146,7 @@ function branchCapabilities(workspace = false): RunCapabilities {
       branching: {
         checkpoint: workspace,
         fork: workspace,
+        confidential,
         retrySafe: workspace,
         lookup: workspace,
         cleanup: workspace,
@@ -260,6 +268,7 @@ function workspaceProvider(
           ? {
               provider: request.checkpoint.provider,
               requested: true as const,
+              tee: confidential.tee,
               nonce: confidential.nonce,
               measurement: `sha256:${'a'.repeat(64)}` as `sha256:${string}`,
               environmentId: 'provider-destination-environment',
@@ -434,6 +443,19 @@ function executionFor(options: {
     ...(options.confidentialAttestationVerifier === undefined
       ? {}
       : { confidentialAttestationVerifier: options.confidentialAttestationVerifier }),
+  }
+}
+
+function stateWithRunCapabilities(
+  state: BraidState,
+  runId: string,
+  update: (capabilities: RunCapabilities) => RunCapabilities,
+): BraidState {
+  return {
+    ...state,
+    runs: state.runs.map((run) =>
+      run.id === runId ? { ...run, capabilities: update(run.capabilities) } : run,
+    ),
   }
 }
 
@@ -1084,7 +1106,7 @@ test('workspace cleanup restarts between fork and checkpoint cleanup without rep
 test('confidential workspace fork records verification only after canonical attestation checks', async () => {
   const provider = workspaceProvider()
   const execution = executionFor({
-    capabilities: branchCapabilities(true),
+    capabilities: branchCapabilities(true, true),
     workspaceBranchingProvider: {
       async forEnvironment(sourceEnvironmentId) {
         return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
@@ -1106,6 +1128,7 @@ test('confidential workspace fork records verification only after canonical atte
     .completion
   const confidential = {
     requested: true as const,
+    tee: 'nitro' as const,
     nonce: 'confidential-nonce',
     policy: 'confidential-policy',
     profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
@@ -1129,6 +1152,89 @@ test('confidential workspace fork records verification only after canonical atte
   assert.equal(destination.placement.confidentialRequested, true)
   assert.equal(destination.placement.confidentialVerified, true)
   assert.equal(provider.state.forkRequests[0]?.confidential?.requested, true)
+  assert.equal(provider.state.forkRequests[0]?.confidential?.tee, 'nitro')
+})
+
+test('TUI and headless fork surfaces preserve the canonical confidential request through execution', async () => {
+  const provider = workspaceProvider()
+  const confidential = {
+    requested: true as const,
+    tee: 'nitro',
+    nonce: 'surface-confidential-nonce',
+    policy: 'surface-confidential-policy',
+    profileDigest: `sha256:${'c'.repeat(64)}` as `sha256:${string}`,
+  }
+  const execution = executionFor({
+    capabilities: branchCapabilities(true, true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+    confidentialAttestationVerifier: () => true,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-surfaces', text: 'source' }).completion
+  let preview: Parameters<ConversationDispatchContext['setForkPreview']>[0] | undefined
+  const context = {
+    app,
+    view: () => ({}) as never,
+    setNotice: () => undefined,
+    setForkPreview: (value: Parameters<ConversationDispatchContext['setForkPreview']>[0]) => {
+      preview = value
+    },
+  } satisfies ConversationDispatchContext
+
+  const tuiResult = await dispatchConversationRunCommand(
+    {
+      type: 'run-command',
+      command: 'fork',
+      operationId: 'op-confidential-surface-tui',
+      args: ['--workspace', '--confidential', JSON.stringify(confidential), 'follow-up', 'message'],
+    },
+    context,
+  )
+  assert.equal(tuiResult?.kind, 'accepted')
+  assert.deepEqual(preview?.plan?.confidential, confidential)
+  assert.equal(preview?.plan?.text, 'follow-up message')
+  assert.equal(Object.isFrozen(preview?.execution), true)
+  const serializedPreview = JSON.stringify(preview)
+  assert.doesNotMatch(serializedPreview, /surface-confidential-nonce|surface-confidential-policy/u)
+  assert.doesNotMatch(serializedPreview, /sha256:c{64}/u)
+  assert.doesNotMatch(serializedPreview, /planDigest/u)
+
+  const headlessResult = await dispatchConversationHeadlessCommand(
+    {
+      type: 'headless-command',
+      command: 'plan_fork',
+      operationId: 'op-confidential-surface-headless',
+      params: { workspace: true, confidential },
+    },
+    context,
+  )
+  assert.equal(headlessResult?.kind, 'accepted')
+  assert(headlessResult?.kind === 'accepted')
+  const plan = headlessResult.data
+  assert(plan && typeof plan === 'object' && 'digest' in plan)
+  const planDigest = plan.digest
+  assert.equal(typeof planDigest, 'string')
+
+  const executeResult = await dispatchConversationHeadlessCommand(
+    {
+      type: 'headless-command',
+      command: 'execute_fork',
+      operationId: 'op-confidential-surface-headless',
+      params: { planDigest, workspace: true, confidential },
+    },
+    context,
+  )
+  assert.equal(executeResult?.kind, 'accepted')
+  assert.deepEqual(provider.state.forkRequests[0]?.confidential, confidential)
 })
 
 test('confidential workspace planning stays unavailable without an external verifier', async () => {
@@ -1160,6 +1266,266 @@ test('confidential workspace planning stays unavailable without an external veri
   })
   assert.equal(plan.allowed, false)
   assert.match(plan.reason ?? '', /confidential placement and attestation verification/u)
+})
+
+test('confidential workspace planning stays unavailable when branching lacks confidential support', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+    confidentialAttestationVerifier: () => true,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-capability', text: 'source' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-confidential-capability',
+    kind: 'workspace',
+    confidential: {
+      requested: true,
+      nonce: 'confidential-nonce',
+      policy: 'confidential-policy',
+      profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+    },
+  })
+  assert.equal(plan.allowed, false)
+  assert.match(plan.reason ?? '', /confidential placement and attestation verification/u)
+  assert.equal(provider.state.checkpointRequests.length, 0)
+})
+
+test('confidential workspace execution rechecks branching, environment, and verifier capabilities', async () => {
+  const provider = workspaceProvider()
+  const verifier: NonNullable<ExecutionPort['confidentialAttestationVerifier']> = () => true
+  let verifierAvailable = true
+  const execution = {
+    ...executionFor({
+      capabilities: branchCapabilities(true, true),
+      workspaceBranchingProvider: {
+        async forEnvironment(sourceEnvironmentId) {
+          return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+        },
+      },
+      confidentialAttestationVerifier: verifier,
+    }),
+    get confidentialAttestationVerifier() {
+      return verifierAvailable ? verifier : undefined
+    },
+  } as unknown as ExecutionPort
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-execution', text: 'source' }).completion
+  const planInput = {
+    operationId: 'op-confidential-execution',
+    kind: 'workspace' as const,
+    confidential: {
+      requested: true as const,
+      nonce: 'confidential-nonce',
+      policy: 'confidential-policy',
+      profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+    },
+  }
+  const plan = app.conversations.branches.plan(planInput)
+  assert.equal(plan.allowed, true)
+  assert(plan.sourceRunId)
+
+  const executeWithState = async (state: BraidState): Promise<void> => {
+    const host: ConversationHost = {
+      state: () => state,
+      now: () => AT,
+      profile: () => state.profile,
+      execution,
+      commit: async () => undefined,
+    }
+    await assert.rejects(
+      () =>
+        executeBranchEffect(host, { ...planInput, planDigest: plan.digest }, plan, async () => {
+          throw new Error('confidential execution must not create a branch')
+        }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message ===
+          'The selected run does not expose confidential placement and attestation verification',
+    )
+  }
+
+  const originalState = app.state()
+  await executeWithState(
+    stateWithRunCapabilities(originalState, plan.sourceRunId, (capabilities) => {
+      const environment = capabilities.environment
+      assert(environment)
+      return {
+        ...capabilities,
+        environment: {
+          ...environment,
+          branching: { ...environment.branching, confidential: false },
+        },
+      }
+    }),
+  )
+  await executeWithState(
+    stateWithRunCapabilities(originalState, plan.sourceRunId, (capabilities) => {
+      const environment = capabilities.environment
+      assert(environment)
+      return {
+        ...capabilities,
+        environment: { ...environment, confidential: false },
+      }
+    }),
+  )
+  verifierAvailable = false
+  await executeWithState(originalState)
+  assert.equal(provider.state.checkpointRequests.length, 0)
+  assert.equal(provider.state.forkRequests.length, 0)
+})
+
+test('ordinary workspace planning remains available without confidential branching support', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-ordinary-capability', text: 'source' }).completion
+  const plan = app.conversations.branches.plan({
+    operationId: 'op-ordinary-capability',
+    kind: 'workspace',
+  })
+  assert.equal(plan.allowed, true)
+})
+
+test('confidential placement cannot be downgraded to a conversation or cross-runner fork', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', clock: new FixedClock(AT) })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-kind', text: 'source' }).completion
+  const confidential = {
+    requested: true as const,
+    nonce: 'confidential-nonce',
+    policy: 'confidential-policy',
+    profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+  }
+  for (const kind of ['conversation', 'cross-runner'] as const) {
+    assert.throws(
+      () =>
+        app.conversations.branches.plan({
+          operationId: `op-confidential-kind-${kind}`,
+          kind,
+          confidential,
+        }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === 'Confidential placement requires a workspace fork',
+    )
+  }
+})
+
+test('confidential placement planning rejects requests that fail the Interface 2.3 schema', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic', clock: new FixedClock(AT) })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-confidential-schema', text: 'source' }).completion
+  assert.throws(
+    () =>
+      app.conversations.branches.plan({
+        operationId: 'op-confidential-schema',
+        kind: 'workspace',
+        confidential: { requested: true } as never,
+      }),
+    (error: unknown) =>
+      error instanceof Error && error.message === 'Confidential placement request is invalid',
+  )
+})
+
+test('direct fork effects reject invalid or changed confidential requests before provider work', async () => {
+  const provider = workspaceProvider()
+  const execution = executionFor({
+    capabilities: branchCapabilities(true, true),
+    workspaceBranchingProvider: {
+      async forEnvironment(sourceEnvironmentId) {
+        return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
+      },
+    },
+    confidentialAttestationVerifier: () => true,
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-direct-confidential', text: 'source' }).completion
+  const confidential = {
+    requested: true as const,
+    nonce: 'direct-confidential-nonce',
+    policy: 'direct-confidential-policy',
+    profileDigest: `sha256:${'e'.repeat(64)}` as `sha256:${string}`,
+  }
+  const planInput = {
+    operationId: 'op-direct-confidential',
+    kind: 'workspace' as const,
+    confidential,
+  }
+  const plan = app.conversations.branches.plan(planInput)
+  const host: ConversationHost = {
+    state: () => app.state(),
+    now: () => AT,
+    profile: () => app.state().profile,
+    execution,
+    commit: async () => undefined,
+  }
+
+  await assert.rejects(
+    () =>
+      executeBranchEffect(
+        host,
+        { ...planInput, confidential: { requested: true } as never, planDigest: plan.digest },
+        plan,
+        async () => {
+          throw new Error('invalid confidential input must not create a branch')
+        },
+      ),
+    (error: unknown) =>
+      error instanceof Error && error.message === 'Confidential placement request is invalid',
+  )
+  await assert.rejects(
+    () =>
+      executeBranchEffect(
+        host,
+        {
+          ...planInput,
+          confidential: { ...confidential, nonce: 'changed-confidential-nonce' },
+          planDigest: plan.digest,
+        },
+        plan,
+        async () => {
+          throw new Error('changed confidential input must not create a branch')
+        },
+      ),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'The confidential placement request no longer matches the accepted plan',
+  )
+  assert.equal(provider.state.checkpointRequests.length, 0)
+  assert.equal(provider.state.forkRequests.length, 0)
 })
 
 test('cross-runner planning stays unavailable without a provider transfer method', async () => {

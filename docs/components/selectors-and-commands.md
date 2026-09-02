@@ -16,6 +16,8 @@ Build autocomplete from the same registry and current capability map.
 
 Do not maintain a second command list inside the terminal.
 
+Keep TUI and headless dispatch on the same application command path after their surface-specific parsing.
+
 ## Component map
 
 | Component | Responsibility |
@@ -34,6 +36,14 @@ Selection emits the item's stable value rather than its display label.
 Command selection emits the same command path that typed slash input uses.
 
 Disabled commands remain visible with the exact capability reason.
+
+The fork command usage is `/fork [message] [--workspace | --runner name [--provider name]] [--confidential JSON]`.
+
+The TUI accepts one confidential JSON request with either `--confidential JSON` or `--confidential=JSON` and validates it with the shared schema.
+
+Headless `plan_fork` and `execute_fork` accept the same request as a `confidential` record.
+
+`execute_fork` also requires the reviewed `planDigest` and a stable operation identifier.
 
 ## Interaction contract
 
@@ -69,6 +79,16 @@ Paths stay under the configured workspace root.
 
 Labels, descriptions, paths, and capability reasons are sanitized before display.
 
+Confidential request fields are not copied into selector labels or the TUI preview; the preview shows only the requested TEE and sealed requirement.
+
+Invalid confidential input returns a bounded generic error without echoing the request contents.
+
+The command selector does not infer confidential support from the request; planning and execution recheck provider capabilities and the external attestation verifier.
+
+The installed Tangle provider capability path keeps confidential branching unavailable when snapshot-restore inputs are absent; this is package behavior, not a live observation.
+
+Ordinary workspace branching remains a separate capability.
+
 ## Performance
 
 Filtering operates over bounded projected collections.
@@ -79,7 +99,7 @@ Dynamic filesystem completion debounces input and discards stale work.
 
 ## Proof
 
-Tests cover Unicode filtering, narrow widths, empty lists, no matches, paging, declared actions, late autocomplete, paste, and disabled commands.
+Tests cover Unicode filtering, narrow widths, empty lists, no matches, paging, declared actions, late autocomplete, paste, disabled commands, confidential TUI parsing, and headless schema validation.
 
 The keyboard recording opens the palette, filters an action, selects it, and returns focus.
 

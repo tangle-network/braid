@@ -19,6 +19,8 @@ const {
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { canonicalJson } = await import('../scripts/release-evidence.mjs')
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
+const { assertForkPreviewFlow } = await import('../scripts/release-visual-proof.mjs')
+// @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const visualCaptureSupport = await import('../scripts/capture-visual-support.mjs')
 const { assertFlowFrameIntegrity, captureProvenance } = visualCaptureSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
@@ -97,6 +99,21 @@ test('deterministic visual capture stays separate from the explicit live demo', 
   assert.doesNotMatch(visualSource, /capture-product-demo|productDemo/u)
   assert.match(liveDemoSource, /BRAID_LIVE_DEMO_ENDPOINT/u)
   assert.match(liveDemoSource, /assertPublicCapture/u)
+})
+
+test('visual proof binds the fork preview flow to its exact artifact pair', () => {
+  const visualProof = {
+    forkPreviewFlow: {
+      steps: ['type /fork', 'open the fork preview', 'review confidential workspace fields'],
+      artifacts: ['fork-preview.cast', '80x24-fork-preview.gif'],
+    },
+  }
+
+  assert.doesNotThrow(() => assertForkPreviewFlow(visualProof))
+
+  const tampered = structuredClone(visualProof)
+  tampered.forkPreviewFlow.artifacts = ['states/empty.txt', '80x24-fork-preview.gif']
+  assert.throws(() => assertForkPreviewFlow(tampered), /fork-preview artifacts differ/u)
 })
 
 test('packed startup readiness uses visible profile and composer contracts', () => {
@@ -257,7 +274,7 @@ test('the scoped test runner rejects an unregistered scope instead of silently r
   assert.match(source, /scopeFiles/u)
   assert.match(
     source,
-    /isolatedPerformanceFiles = new Set\(\['performance\.test\.js', 'storage-performance\.test\.js'\]\)/u,
+    /isolatedPerformanceFiles = new Set\(\[[\s\S]*'performance\.test\.js',[\s\S]*'storage-performance\.test\.js',[\s\S]*'security\.test\.js',[\s\S]*\]\)/u,
   )
   assert.match(source, /runTestBatch\(\[path\]\)/u)
 })

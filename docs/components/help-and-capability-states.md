@@ -27,6 +27,8 @@ Do not advertise a command that no typed intent can dispatch.
 
 Help receives immutable command and key descriptions.
 
+Fork help exposes `--confidential JSON` as the canonical workspace-fork request.
+
 Unavailable state receives a safe title and reason.
 
 Both surfaces emit only close or navigation events.

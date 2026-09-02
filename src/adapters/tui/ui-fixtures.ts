@@ -1,4 +1,5 @@
 import type { AnalysisComparisonResult } from '../../app/analysis-comparison-contracts.js'
+import type { ForkPlan } from '../../app/conversation-types.js'
 import type { AnalysisRecord } from '../../domain/entities.js'
 import {
   createAnalysisId,
@@ -44,7 +45,37 @@ export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   secret: false,
 })
 
-export const FIXTURE_FORK: ForkPreviewView = Object.freeze({
+const FIXTURE_FORK_PLAN: ForkPlan = Object.freeze({
+  kind: 'workspace',
+  operationId: 'operation-fixture-fork',
+  sourceConversationId: 'conv-1',
+  sourceBranchId: 'branch-1',
+  destinationBranchId: 'branch-fork-1',
+  context: Object.freeze({
+    sourceRunId: 'run-fixture-fork',
+    sourceBoundary: 'conv-1 / branch-1',
+    messages: Object.freeze([]),
+    omittedPartIds: Object.freeze([]),
+    transformedPartIds: Object.freeze([]),
+    complete: true,
+    digest: 'digest:fixture-context',
+  }),
+  environment: 'new',
+  providerSession: 'new',
+  checkpoint: 'required',
+  confidential: Object.freeze({
+    requested: true,
+    tee: 'nitro',
+    sealed: true,
+    nonce: 'fixture-confidential-nonce',
+    policy: 'fixture-confidential-policy',
+    profileDigest: 'sha256:6a606b0eb2e4bb52641f1f6254266aeb88a85fa03d88d0d237a44160e566f126',
+  }),
+  allowed: true,
+  digest: 'digest:fixture-fork-plan',
+})
+
+const fixtureFork: ForkPreviewView = {
   kind: 'workspace',
   source: 'workspace:/workspace',
   destination: 'workspace:/workspace-fork',
@@ -70,7 +101,14 @@ export const FIXTURE_FORK: ForkPreviewView = Object.freeze({
     },
   ]),
   allowed: true,
+}
+Object.defineProperty(fixtureFork, 'plan', {
+  value: FIXTURE_FORK_PLAN,
+  enumerable: false,
+  writable: false,
+  configurable: false,
 })
+export const FIXTURE_FORK: ForkPreviewView = Object.freeze(fixtureFork)
 
 const FIXTURE_ANALYSIS_RECORD: AnalysisRecord = Object.freeze({
   id: createAnalysisId('analysis-fixture-1'),

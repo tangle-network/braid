@@ -292,6 +292,7 @@ test('capability reports combine published provider capabilities with runtime me
   )
   const sandboxCapabilities = await sandbox.capabilities()
   assert.equal(sandboxCapabilities.environment?.branching.fork, false)
+  assert.equal(sandboxCapabilities.environment?.branching.confidential, false)
   assert.equal(sandboxCapabilities.actions.fork, false)
   assert.equal(sandboxCapabilities.runtime.backend, 'executor')
 })
@@ -376,6 +377,7 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
       sandboxCreateOptions = options
       return {
         id: 'sandbox-test',
+        status: 'running',
         async *streamPrompt() {
           yield { type: 'token', data: { delta: 'hello from sandbox' } }
           yield {
@@ -481,6 +483,7 @@ test('sandbox success=false fails closed despite a conflicting success status', 
     sandboxClientFactory: async () => ({
       create: async () => ({
         id: 'sandbox-failed-turn',
+        status: 'running',
         async *streamPrompt() {
           yield {
             type: 'llm_call',
@@ -550,6 +553,7 @@ test('ephemeral sandboxes reject interactions that cannot survive cleanup', asyn
         sandboxClientFactory: async () => ({
           create: async () => ({
             id: `sandbox-${status}`,
+            status: 'running',
             async *streamPrompt() {
               if (status === 'blocked_on_approval') {
                 yield {

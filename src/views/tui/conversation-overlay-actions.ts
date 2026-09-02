@@ -241,6 +241,7 @@ export class ConversationOverlayActions {
         ...(plan.destinationProvider === undefined
           ? {}
           : { destinationProvider: plan.destinationProvider }),
+        ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
         ...(plan.text === undefined ? {} : { text: plan.text }),
         ...(plan.portableContextPlan?.requiresAcceptance !== true
           ? {}

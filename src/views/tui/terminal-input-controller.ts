@@ -1,5 +1,5 @@
 import { matchesKey, type TUI } from '@earendil-works/pi-tui'
-import { commandAvailability } from '../shared/command-registry.js'
+import { commandAvailability, parseCommandInput } from '../shared/command-registry.js'
 import type { BraidIntent, BraidUiController, UiDispatchResult } from '../shared/intents.js'
 import { liveRunId } from '../shared/run-selection.js'
 import type { ComposerMode } from './composer-view.js'
@@ -74,6 +74,11 @@ export class TerminalInputController {
     if (matchesKeyAction(data, this.#keymap, 'toggleSteer')) {
       if (this.#tui.hasOverlay() || this.#interactionOpen()) return undefined
       this.#toggleComposerMode()
+      return { consume: true }
+    }
+    if (this.#shouldSubmitBareCommand(data)) {
+      this.#shell.editor.handleInput('\u001b')
+      this.#shell.editor.handleInput(data)
       return { consume: true }
     }
     if (isTextInputSequence(data)) return undefined
@@ -178,6 +183,19 @@ export class TerminalInputController {
       return { consume: true }
     }
     return undefined
+  }
+
+  #shouldSubmitBareCommand(data: string): boolean {
+    if (
+      !matchesKey(data, 'enter') ||
+      !this.#shell.editor.focused ||
+      this.#tui.hasOverlay() ||
+      this.#interactionOpen()
+    )
+      return false
+    const input = this.#shell.editor.getText()
+    const parsed = parseCommandInput(input)
+    return parsed.kind === 'command' && parsed.args.length === 0 && !/\s/u.test(input)
   }
 
   #toggleComposerMode(): void {

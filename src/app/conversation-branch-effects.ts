@@ -51,6 +51,7 @@ import type {
   WorkspaceForkCleanupInput,
   WorkspaceForkCleanupResult,
 } from './conversation-types.js'
+import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { AppError } from './errors.js'
 
 type ForkExecutionInput = ForkPlanInput & { readonly planDigest: string }
@@ -63,6 +64,15 @@ export async function executeBranchEffect(
   plan: ForkPlan,
   createBranch: CreateBranch,
 ): Promise<BranchRecord> {
+  const inputConfidential = parseConfidentialWorkspaceForkRequest(input.confidential)
+  const plannedConfidential = parseConfidentialWorkspaceForkRequest(plan.confidential)
+  if (canonicalDigest(inputConfidential ?? null) !== canonicalDigest(plannedConfidential ?? null))
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The confidential placement request no longer matches the accepted plan',
+    )
+  if (plannedConfidential?.requested === true && plan.kind !== 'workspace')
+    throw new AppError('FORK_PLAN_CONFLICT', 'Confidential placement requires a workspace fork')
   if (plan.kind === 'cross-runner') return executeCrossRunner(host, input, plan, createBranch)
   if (plan.kind === 'workspace') return executeWorkspace(host, input, plan, createBranch)
   throw new AppError('FORK_PLAN_CONFLICT', 'The provider effect does not match this fork plan')
@@ -364,7 +374,8 @@ async function executeWorkspace(
       'CAPABILITY_UNAVAILABLE',
       'Workspace fork requires a completed source run boundary',
     )
-  const capabilities = sourceRun.capabilities.environment?.branching
+  const environmentCapabilities = sourceRun.capabilities.environment
+  const capabilities = environmentCapabilities?.branching
   if (
     capabilities?.checkpoint !== true ||
     capabilities.fork !== true ||
@@ -375,6 +386,16 @@ async function executeWorkspace(
     throw new AppError(
       'CAPABILITY_UNAVAILABLE',
       'The selected run does not report retry-safe checkpoint and environment fork support',
+    )
+  if (
+    plan.confidential?.requested === true &&
+    (capabilities.confidential !== true ||
+      environmentCapabilities?.confidential !== true ||
+      typeof host.execution?.confidentialAttestationVerifier !== 'function')
+  )
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'The selected run does not expose confidential placement and attestation verification',
     )
 
   const digest = canonicalDigest({

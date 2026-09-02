@@ -136,6 +136,7 @@ export async function capabilitiesForConnection(
               branching: {
                 checkpoint: false,
                 fork: false,
+                confidential: false,
                 retrySafe: false,
                 lookup: false,
                 cleanup: false,

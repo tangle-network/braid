@@ -4,11 +4,29 @@ import { assert } from './release-evidence.mjs'
 import { containedArtifactPath, readRegularFileNoFollow } from './release-files.mjs'
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u
+const FORK_PREVIEW_STEPS = [
+  'type /fork',
+  'open the fork preview',
+  'review confidential workspace fields',
+]
+const FORK_PREVIEW_ARTIFACTS = ['fork-preview.cast', '80x24-fork-preview.gif']
 
 async function sha256(path) {
   return createHash('sha256')
     .update(await readRegularFileNoFollow(path))
     .digest('hex')
+}
+
+export function assertForkPreviewFlow(visualProof) {
+  assert(
+    JSON.stringify(visualProof.forkPreviewFlow?.steps) === JSON.stringify(FORK_PREVIEW_STEPS),
+    'Visual proof fork-preview steps differ',
+  )
+  assert(
+    JSON.stringify(visualProof.forkPreviewFlow?.artifacts) ===
+      JSON.stringify(FORK_PREVIEW_ARTIFACTS),
+    'Visual proof fork-preview artifacts differ',
+  )
 }
 
 export async function validateVisualProof({ packageProof, visualProof, artifactRoot, repository }) {
@@ -108,6 +126,29 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
     'Visual proof is missing the transcript keyboard GIF',
   )
   assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === 'fork-preview.cast' &&
+        artifact.kind === 'fork-preview-asciicast' &&
+        artifact.state === 'fork-preview' &&
+        artifact.columns === 80 &&
+        artifact.rows === 24,
+    ),
+    'Visual proof is missing the fork-preview asciicast',
+  )
+  assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === '80x24-fork-preview.gif' &&
+        artifact.kind === 'fork-preview-flow' &&
+        artifact.state === 'fork-preview' &&
+        artifact.columns === 80 &&
+        artifact.rows === 24,
+    ),
+    'Visual proof is missing the fork-preview GIF',
+  )
+  assertForkPreviewFlow(visualProof)
+  assert(
     JSON.stringify(visualProof.keyboardFlow?.steps) ===
       JSON.stringify(['8 completed turns', 'Page Up', 'Alt+Home', 'Page Down', 'Alt+End']),
     'Visual proof transcript keyboard steps differ',
@@ -189,11 +230,15 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
         'Interaction answer spec is not real',
       )
     }
-    if (name === 'fork-preview') {
+    if (name.startsWith('fork-preview')) {
       assert(semantic.packedState?.view?.forkPreview?.allowed === true, 'Fork state is unavailable')
       assert(
         typeof semantic.packedState.view.forkPreview.destination === 'string',
         'Fork destination is missing',
+      )
+      assert(
+        !JSON.stringify(semantic).includes('fixture-confidential-'),
+        'Fork evidence serialized confidential request details',
       )
     }
   }

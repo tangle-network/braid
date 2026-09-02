@@ -59,7 +59,7 @@ It proves keyboard behavior and terminal output at 40×12, 80×24, 120×40, and 
 | Selectors and commands | [selectors-and-commands.md](selectors-and-commands.md) | Find an action or entity through one keyboard contract. |
 | Modal coordination | [modal-coordination.md](modal-coordination.md) | Present one bounded decision surface with reliable focus restoration. |
 | Conversation navigation | [conversation-navigation.md](conversation-navigation.md) | Create, rename, archive, switch, branch, and clone through explicit identities. |
-| Fork preview | [fork-preview.md](fork-preview.md) | Explain exactly what a fork copies before any external mutation. |
+| Fork preview | [fork-preview.md](fork-preview.md) | Explain exactly what a fork copies, including confidential placement limits, before any external mutation. |
 | Conversation branch effects | [conversation-branch-effects.md](conversation-branch-effects.md) | Execute portable context transfer and real workspace forks without hidden provider assumptions. |
 | Workspace branching | [workspace-branching.md](workspace-branching.md) | Reconstruct exact provider checkpoints and forks across restart, mutation, and cleanup. |
 | Interactions and secrets | [interactions.md](interactions.md) | Answer, decline, cancel, or automate a typed request safely. |

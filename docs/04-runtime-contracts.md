@@ -10,40 +10,42 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were resolved in this worktree, and their installed manifests, declarations, and implementations were inspected directly on 2026-09-01.
+The following published versions were resolved in this worktree.
+Their installed manifests, declarations, and implementations were inspected directly on 2026-09-02.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.2.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.189.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.172.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.3.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.190.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.173.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `1.0.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `1.0.2` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
-| `@tangle-network/sandbox` | `0.36.3` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| `@tangle-network/agent-provider-tangle` | `1.1.3` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
+| `@tangle-network/sandbox` | `0.36.4` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-The effective local Runtime installation resolves `agent-eval >=0.172.1 <0.173.0`, `agent-interface ^2.2.0`, and `sandbox >=0.36.3 <0.37.0` through the exact workspace lockfile.
+The effective local Runtime installation resolves `agent-eval >=0.173.0 <0.174.0`, `agent-interface ^2.3.0`, and `sandbox >=0.36.4 <0.37.0` through the exact workspace lockfile.
 
-Published Runtime `0.189.0` declares `agent-interface ^2.2.0`, `agent-eval >=0.172.1 <0.173.0`, and `sandbox >=0.36.3 <0.37.0`.
+Published Runtime `0.190.0` declares `agent-interface ^2.3.0`, `agent-eval >=0.173.0 <0.174.0`, and `sandbox >=0.36.4 <0.37.0`.
 
 The published Runtime compatibility rerelease now matches Braid's Interface and provider dependency contracts.
 
-The Runtime compatibility blocker is resolved by `0.189.0`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
+The Runtime compatibility blocker is resolved by `0.190.0`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
 
 The installed Tangle provider publishes `sandbox >=0.34.6 <1.0.0` as a peer range.
 
-Sandbox `0.36.3` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
+Sandbox `0.36.4` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
 
 Braid exercises the exact dependency cohort in the table above through the workspace lockfile.
 
-This cohort is a peer-compatible public package set; release acceptance still requires the checks in `docs/08-verification.md`.
+The installed set is peer-compatible.
+Runtime `0.190.0` requires Sandbox `>=0.36.4 <0.37.0`.
 
 The lockfile pins the registry integrity for every installed package.
 
-`pnpm peers check` reports no peer dependency issues for this installed set.
+`pnpm peers check` reports no peer dependency issues for this worktree.
 
 `pnpm outdated --format json` returns `{}` for this worktree.
 
-The workspace overrides pin Interface `2.2.0` and Knowledge `13.0.0`, keeping the public Runtime peer ranges compatible with Braid's dependency graph.
+The workspace overrides pin Interface `2.3.0` and Knowledge `13.0.1`, keeping the public Runtime peer ranges compatible with Braid's dependency graph.
 
 Historical snapshot: [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
 
@@ -225,7 +227,7 @@ Braid therefore reports that path as unsupported instead of treating environment
 
 ### Runtime cancellation contract
 
-Runtime `0.189.0` publishes the following provider-neutral operation:
+Runtime `0.190.0` publishes the following provider-neutral operation:
 
 ```ts
 cancel(request: {
@@ -714,7 +716,8 @@ Braid builds the following view from live provider capabilities and method prese
 | Read or edit workspace | corresponding workspace methods |
 | Conversation fork | Always available as a Braid transcript operation |
 | Workspace fork | retry-safe checkpoint and fork methods, lookup by idempotency key, and explicit cleanup |
-| Confidential run | confidential capability plus compatible profile and placement |
+| Confidential run | `environment.confidential`, compatible profile, placement, and verified attestation |
+| Confidential workspace fork | `branching.confidential`, `environment.confidential`, retry-safe workspace operations, and an attestation verifier |
 | Usage and cost | usage capability and normalized events |
 | Supervisor steer | typed runtime worker control |
 | Supervisor cancel | typed runtime cancellation with effect confirmation |

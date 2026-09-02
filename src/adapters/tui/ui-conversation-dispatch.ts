@@ -1,7 +1,12 @@
 import type { BraidApplication } from '../../app/application.js'
+import {
+  parseConfidentialWorkspaceForkArgument,
+  parseConfidentialWorkspaceForkRequest,
+} from '../../app/confidential-workspace-fork.js'
 import type { ForkPlan } from '../../app/conversation-types.js'
+import { AppError } from '../../app/errors.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
-import type { BraidViewModel, ForkPreviewView } from '../../views/shared/models.js'
+import { freezeView, type BraidViewModel, type ForkPreviewView } from '../../views/shared/models.js'
 
 type RunCommandIntent = Extract<BraidIntent, { readonly type: 'run-command' }>
 type HeadlessCommandIntent = Extract<BraidIntent, { readonly type: 'headless-command' }>
@@ -70,6 +75,7 @@ export async function dispatchConversationRunCommand(
       const runner = flagValue(intent.args, '--runner')
       const destinationProvider = flagValue(intent.args, '--provider')
       const throughMessageId = intent.args.find((argument) => argument.startsWith('message-'))
+      const confidential = confidentialRequestForForkArgs(intent.args)
       const text = forkText(intent.args, throughMessageId)
       const plan = context.app.conversations.branches.plan({
         operationId,
@@ -77,6 +83,7 @@ export async function dispatchConversationRunCommand(
         ...(throughMessageId === undefined ? {} : { throughMessageId }),
         ...(runner === undefined ? {} : { runner }),
         ...(destinationProvider === undefined ? {} : { destinationProvider }),
+        ...(confidential === undefined ? {} : { confidential }),
         ...(text === undefined ? {} : { text }),
       })
       context.setForkPreview(forkPreview(plan))
@@ -289,6 +296,7 @@ export async function dispatchConversationHeadlessCommand(
 function forkInput(params: Readonly<Record<string, unknown>>, operationId: string) {
   const workspace = params.workspace === true || params.workspace === 'true'
   const runner = optionalStringValue(params.runner)
+  const confidential = parseConfidentialWorkspaceForkRequest(params.confidential)
   return {
     operationId,
     kind: workspace
@@ -305,7 +313,28 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
     ...optionalString(params, 'text'),
     ...optionalString(params, 'acceptedDigest'),
     ...optionalString(params, 'destinationProvider'),
+    ...(confidential === undefined ? {} : { confidential }),
   }
+}
+
+function confidentialRequestForForkArgs(
+  args: readonly string[],
+): ReturnType<typeof parseConfidentialWorkspaceForkArgument> | undefined {
+  const matches: Array<{ readonly index: number; readonly inline?: string }> = []
+  for (const [index, argument] of args.entries()) {
+    if (argument === '--confidential') matches.push({ index })
+    else if (argument.startsWith('--confidential='))
+      matches.push({ index, inline: argument.slice('--confidential='.length) })
+  }
+  if (matches.length === 0) return undefined
+  if (matches.length > 1)
+    throw new AppError('INVALID_FORK_PLAN', 'Specify one confidential placement request')
+  const match = matches[0]
+  if (match === undefined) return undefined
+  const raw = match.inline ?? args[match.index + 1]
+  if (raw === undefined || raw.startsWith('--'))
+    throw new AppError('INVALID_FORK_PLAN', 'Confidential placement request requires JSON')
+  return parseConfidentialWorkspaceForkArgument(raw)
 }
 
 function flagValue(args: readonly string[], flag: string): string | undefined {
@@ -322,11 +351,16 @@ function forkText(args: readonly string[], boundary: string | undefined): string
     const value = args[index]
     if (value === undefined) continue
     if (value === '--workspace' || value === boundary) continue
-    if (value === '--runner' || value === '--provider') {
+    if (value === '--runner' || value === '--provider' || value === '--confidential') {
       index += 1
       continue
     }
-    if (value.startsWith('--runner=') || value.startsWith('--provider=')) continue
+    if (
+      value.startsWith('--runner=') ||
+      value.startsWith('--provider=') ||
+      value.startsWith('--confidential=')
+    )
+      continue
     values.push(value)
   }
   const text = values.join(' ').trim()
@@ -334,15 +368,18 @@ function forkText(args: readonly string[], boundary: string | undefined): string
 }
 
 function forkPreview(plan: ForkPlan): ForkPreviewView {
-  return {
-    plan: Object.freeze(plan),
+  const execution = Object.freeze(
+    Object.defineProperty(
+      { operationId: plan.operationId, planDigest: plan.digest },
+      'planDigest',
+      { enumerable: false, writable: false, configurable: false },
+    ),
+  )
+  const preview: ForkPreviewView = {
     source: `${plan.sourceConversationId} / ${plan.sourceBranchId}`,
     destination: `${plan.sourceConversationId} / ${plan.destinationBranchId}`,
     kind: plan.kind,
-    execution: {
-      operationId: plan.operationId,
-      planDigest: plan.digest,
-    },
+    execution,
     fields: [
       {
         label: 'conversation context',
@@ -355,6 +392,13 @@ function forkPreview(plan: ForkPlan): ForkPreviewView {
     allowed: plan.allowed,
     ...(plan.reason === undefined ? {} : { unavailableReason: plan.reason }),
   }
+  Object.defineProperty(preview, 'plan', {
+    value: freezeView(plan),
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+  return Object.freeze(preview)
 }
 
 function accepted(

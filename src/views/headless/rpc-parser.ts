@@ -1,3 +1,4 @@
+import { parseConfidentialWorkspaceForkRequest } from '../../app/confidential-workspace-fork.js'
 import {
   HEADLESS_COMMAND_NAMES,
   type HeadlessCommandName,
@@ -74,6 +75,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
     'effort',
     'text',
     'destinationProvider',
+    'confidential',
   ],
   execute_fork: [
     'planDigest',
@@ -87,6 +89,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
     'text',
     'acceptedDigest',
     'destinationProvider',
+    'confidential',
   ],
   ask: ['source', 'question', 'profileRef', 'connectionId'],
   analyze: ['source', 'recipe', 'analystIds', 'profileRef', 'connectionId'],
@@ -162,6 +165,7 @@ const PARAMETER_TYPES: Readonly<
     effort: 'string',
     text: 'string',
     destinationProvider: 'string',
+    confidential: 'record',
   },
   execute_fork: {
     planDigest: 'string',
@@ -175,6 +179,7 @@ const PARAMETER_TYPES: Readonly<
     text: 'string',
     acceptedDigest: 'string',
     destinationProvider: 'string',
+    confidential: 'record',
   },
   ask: { source: 'string', question: 'string', profileRef: 'string', connectionId: 'string' },
   analyze: {
@@ -389,6 +394,7 @@ export function parseRequest(line: string): BraidRequest {
     throw new RpcParseError('OPERATION_ID_REQUIRED', `${command} requires operationId`)
   }
   assertParameterTypes(command, params)
+  const normalizedParams = normalizeForkParameters(command, params)
 
   switch (command) {
     case 'initialize':
@@ -487,7 +493,23 @@ export function parseRequest(line: string): BraidRequest {
     default:
       if (command === 'respond_interaction' || command === 'cancel_interaction')
         validateInteractionParameters(command, params)
-      return genericRequest(parsed, command, params)
+      return genericRequest(parsed, command, normalizedParams)
+  }
+}
+
+function normalizeForkParameters(
+  command: HeadlessCommandName,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (command !== 'plan_fork' && command !== 'execute_fork') return params
+  try {
+    const confidential = parseConfidentialWorkspaceForkRequest(params.confidential)
+    return confidential === undefined ? params : { ...params, confidential }
+  } catch {
+    throw new RpcParseError(
+      'INVALID_PARAMS',
+      `${command}.params.confidential must be a valid confidential workspace-fork request`,
+    )
   }
 }
 

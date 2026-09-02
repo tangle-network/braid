@@ -15,5 +15,7 @@ artifacts/verification/**/*.cast
 artifacts/verification/**/*.ansi
 artifacts/verification/**/*.gif
 !artifacts/verification/w0/*.gif
+!artifacts/verification/w6/80x24-fork-preview.gif
+!artifacts/verification/w6/fork-preview.cast
 artifacts/verification/**/*.mp4
 artifacts/verification/performance/raw.json

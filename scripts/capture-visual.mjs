@@ -504,8 +504,16 @@ try {
         !normalized(result.point.screen).includes('automation rules')
       )
         throw new Error('automation capture did not contain the rule manager')
-      if (definition.name === 'fork-preview' && result.record.view?.forkPreview?.allowed !== true)
+      if (
+        definition.name.startsWith('fork-preview') &&
+        result.record.view?.forkPreview?.allowed !== true
+      )
         throw new Error('fork capture did not contain an allowed fork preview')
+      if (
+        definition.name.startsWith('fork-preview') &&
+        JSON.stringify(result.record).includes('fixture-confidential-')
+      )
+        throw new Error('fork capture serialized confidential request details')
       if (
         definition.name === 'analysis' &&
         !normalized(result.point.screen).includes('/ask · frozen question')
@@ -622,6 +630,16 @@ try {
   const multiRunArtifact = await artifactFor(multiRunGif, 'multi-run-flow', 80, 24, 'multi-run')
   artifacts.push(multiRunArtifact)
 
+  const forkPreviewCast = join(outputRoot, 'fork-preview.cast')
+  const forkPreviewGif = join(outputRoot, '80x24-fork-preview.gif')
+  await writeFile(forkPreviewCast, await readFile(join(rawRoot, 'fork-preview-frame.cast')))
+  await writeCastGif(forkPreviewCast, forkPreviewGif)
+  const forkPreviewArtifacts = [
+    await artifactFor(forkPreviewCast, 'fork-preview-asciicast', 80, 24, 'fork-preview'),
+    await artifactFor(forkPreviewGif, 'fork-preview-flow', 80, 24, 'fork-preview'),
+  ]
+  artifacts.push(...forkPreviewArtifacts)
+
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
   const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
@@ -664,6 +682,10 @@ try {
             'switch focus to run A',
           ],
           artifacts: [multiRunArtifact.path],
+        },
+        forkPreviewFlow: {
+          steps: ['type /fork', 'open the fork preview', 'review confidential workspace fields'],
+          artifacts: forkPreviewArtifacts.map((artifact) => artifact.path),
         },
         states: stateManifests,
         artifacts,
