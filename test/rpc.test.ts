@@ -13,10 +13,11 @@ import {
   type ExecutionPort,
   UNKNOWN_RUN_CAPABILITIES,
 } from '../src/ports/execution.js'
-import type { BraidUiController } from '../src/views/shared/intents.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { MAX_RPC_LINE_BYTES } from '../src/views/headless/protocol-limits.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
+import { parseRequest } from '../src/views/headless/rpc-parser.js'
+import type { BraidUiController } from '../src/views/shared/intents.js'
 import { queryActivity } from '../src/views/shared/semantic-activity.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 import { queryGraph } from '../src/views/shared/semantic-graph.js'
@@ -62,6 +63,51 @@ function resultFor<T>(responses: readonly BraidResponse[], requestId: string): T
   assert.notEqual(response.result, undefined, `missing result for ${requestId}`)
   return response.result as T
 }
+
+test('headless fork requests use the canonical confidential schema and reject invalid fields', () => {
+  const confidential = {
+    requested: true,
+    tee: 'nitro',
+    nonce: 'rpc-confidential-nonce',
+    policy: 'rpc-confidential-policy',
+    profileDigest: `sha256:${'d'.repeat(64)}`,
+  }
+  const parsed = parseRequest(
+    JSON.stringify({
+      version: 1,
+      requestId: 'rpc-confidential-plan',
+      operationId: 'op-rpc-confidential-plan',
+      command: 'plan_fork',
+      params: {
+        conversationId: 'conversation-source',
+        branchId: 'branch-source',
+        workspace: true,
+        confidential,
+      },
+    }),
+  )
+  assert.equal(parsed.command, 'plan_fork')
+  assert.deepEqual(parsed.params.confidential, confidential)
+
+  assert.throws(
+    () =>
+      parseRequest(
+        JSON.stringify({
+          version: 1,
+          requestId: 'rpc-confidential-invalid',
+          operationId: 'op-rpc-confidential-invalid',
+          command: 'plan_fork',
+          params: {
+            conversationId: 'conversation-source',
+            branchId: 'branch-source',
+            workspace: true,
+            confidential: { ...confidential, unsupported: true },
+          },
+        }),
+      ),
+    /valid confidential workspace-fork request/u,
+  )
+})
 
 test('JSONL send acknowledges before events and returns final semantic state', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })

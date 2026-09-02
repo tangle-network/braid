@@ -146,7 +146,7 @@ const DEFINITIONS: readonly CommandDefinition[] = [
     'fork',
     [],
     'Preview a conversation, cross-runner, or workspace fork',
-    '/fork [message] [--workspace | --runner name [--provider name]]',
+    '/fork [message] [--workspace | --runner name [--provider name]] [--confidential JSON]',
     'conversation.fork',
     'explicit',
   ],

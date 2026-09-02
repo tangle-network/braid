@@ -32,6 +32,12 @@ The panel receives a frozen plan with source conversation, branch, turn, run, pr
 
 Unknown values remain explicit.
 
+The TUI accepts the canonical request as one JSON value after `--confidential`.
+
+For example, `/fork --workspace --confidential '{"requested":true,"tee":"nitro","nonce":"nonce-2026-09-01","policy":"nitro-policy-v1","profileDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'` requests Nitro placement.
+
+The application validates that value with `ConfidentialExecutionRequestSchema` before planning.
+
 Confirmation emits the plan digest and a stable operation identifier.
 
 Cancellation emits no external mutation.
@@ -65,6 +71,10 @@ Successful execution records destination identity and independent cleanup owners
 ## Failure and safety
 
 Unsupported checkpoint or fork capability disables confirmation with one reason.
+
+A confidential request also requires workspace branching, confidential environment support, and an attestation verifier.
+
+The preview shows only the requested TEE and sealed requirement; it never renders nonce, policy, or profile-digest values.
 
 A source change after preview returns a conflict and requires a new preview.
 

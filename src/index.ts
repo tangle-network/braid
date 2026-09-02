@@ -52,6 +52,10 @@ export {
   type DurableCompositionOptions,
   STARTER_PROFILE,
 } from './app/composition.js'
+export {
+  parseConfidentialWorkspaceForkArgument,
+  parseConfidentialWorkspaceForkRequest,
+} from './app/confidential-workspace-fork.js'
 export type {
   CloneConversationInput,
   ConfidentialExecutionRequest,

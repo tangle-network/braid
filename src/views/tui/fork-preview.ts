@@ -90,6 +90,16 @@ export class ForkPreviewPanel extends Container implements Focusable {
           ),
         )
       }
+      const confidential = preview.plan?.confidential
+      if (confidential?.requested === true) {
+        const requirements = [
+          confidential.tee === undefined
+            ? 'provider-selected TEE'
+            : sanitizeTerminalText(confidential.tee),
+          ...(confidential.sealed === true ? ['sealed'] : []),
+        ]
+        this.addChild(this.#line(`confidential: requested · ${requirements.join(' · ')}`))
+      }
       this.addChild(this.#error)
       if (!this.#canConfirm) {
         this.addChild(
