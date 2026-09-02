@@ -274,7 +274,7 @@ test('the scoped test runner rejects an unregistered scope instead of silently r
   assert.match(source, /scopeFiles/u)
   assert.match(
     source,
-    /isolatedPerformanceFiles = new Set\(\[[\s\S]*'performance\.test\.js',[\s\S]*'storage-performance\.test\.js',[\s\S]*'security\.test\.js',[\s\S]*\]\)/u,
+    /isolatedTestFiles = new Set\(\[[\s\S]*'performance\.test\.js',[\s\S]*'production-composition\.test\.js',[\s\S]*'security\.test\.js',[\s\S]*'storage-performance\.test\.js',[\s\S]*\]\)/u,
   )
   assert.match(source, /runTestBatch\(\[path\]\)/u)
 })
