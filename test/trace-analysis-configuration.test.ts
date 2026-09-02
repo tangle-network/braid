@@ -9,6 +9,7 @@ import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
   MANAGED_AGENT_EVAL_RPC_VERSION,
+  MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF,
   MANAGED_ANALYSIS_PYTHON_VERSION,
   MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
   MANAGED_ANALYSIS_RUNTIME_PROBE,
@@ -67,6 +68,8 @@ test('managed analysis uses bundled uv with exact isolated runtime versions', ()
     `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
     '--exclude-newer',
     MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
+    '--exclude-newer-package',
+    `agent-eval-rpc=${MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF}`,
     '--default-index',
     'https://pypi.org/simple',
     '--keyring-provider',
@@ -93,6 +96,8 @@ test('managed analysis uses bundled uv with exact isolated runtime versions', ()
     `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
     '--exclude-newer',
     MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
+    '--exclude-newer-package',
+    `agent-eval-rpc=${MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF}`,
     '--default-index',
     'https://pypi.org/simple',
     '--keyring-provider',
