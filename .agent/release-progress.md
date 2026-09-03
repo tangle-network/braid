@@ -10,7 +10,7 @@ Use only evidence from the named source commit or its immutable release artifact
 - Target: publish `@tangle-network/braid@0.3.0` after exact candidate and protected Tangle checks pass.
 - Source branch: `chore/braid-release-current-deps-final`.
 - Source pull request: `tangle-network/braid#49`.
-- Source state: the dependency update passed local checks and exact-head CI run `33710389130`.
+- Source code commit: `6097da09305f58fe051cb3b20308bba3f36e5cf4` passed local checks and CI run `33710389130`.
 - Candidate commit: not recorded; the source pull request must merge first.
 - Candidate archive: not recorded; the candidate Release workflow must complete first.
 - Live evidence: not recorded; the protected workflow must use that candidate archive.
