@@ -4,8 +4,8 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
-  workspaceCleanupRequestDigest,
   workspaceCheckpointRequestDigest,
+  workspaceCleanupRequestDigest,
   workspaceForkRequestDigest,
 } from '@tangle-network/agent-interface'
 
@@ -17,8 +17,11 @@ import {
 import {
   checkpointIdForOperation,
   cleanupWorkspaceProofResources,
+  confidentialBranchingCapability,
   confidentialNegativeChecks,
+  confidentialRefusalChecks,
   parseConfidentialTrustPolicy,
+  resourceCensusComparison,
   sourceIdentityForRun,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
@@ -409,6 +412,67 @@ test('LIVE-10 policy parsing is typed, bounded, and immutable', () => {
   assert.equal(Object.isFrozen(parsed.policy.acceptedPolicyIds), true)
 })
 
+test('LIVE-10 requires an explicit boolean branching capability', () => {
+  assert.equal(confidentialBranchingCapability({ branching: { confidential: false } }), false)
+  assert.equal(confidentialBranchingCapability({ branching: { confidential: true } }), true)
+  assert.throws(
+    () => confidentialBranchingCapability({ branching: {} }),
+    /requires provider capabilities\.branching\.confidential as a boolean/u,
+  )
+  assert.throws(
+    () => confidentialBranchingCapability({ branching: { confidential: 'false' } }),
+    /ambiguous/u,
+  )
+})
+
+test('LIVE-10 refusal requires no durable branch mutation or census change', () => {
+  const stateDigest = 'a'.repeat(64)
+  const changedStateDigest = 'b'.repeat(64)
+  const plan = {
+    allowed: false,
+    environment: 'unavailable',
+    checkpoint: 'unavailable',
+    confidential: { requested: true },
+    destinationEnvironmentId: undefined,
+  }
+  assert.deepEqual(
+    confidentialRefusalChecks({
+      plan,
+      beforeStateDigest: stateDigest,
+      afterStateDigest: stateDigest,
+      executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+    }),
+    {
+      actionRefused: true,
+      noOrdinaryPlacementDowngrade: true,
+      noChildOrCheckpointCreated: true,
+    },
+  )
+  assert.deepEqual(
+    resourceCensusComparison(
+      { count: 1, ids: ['source'], resources: [{ id: 'source', status: 'running' }] },
+      { count: 1, ids: ['source'], resources: [{ id: 'source', status: 'stopped' }] },
+    ),
+    { activeResourceDelta: 0, unchanged: true },
+  )
+  assert.deepEqual(
+    resourceCensusComparison(
+      { count: 1, ids: ['source'], resources: [{ id: 'source', status: 'running' }] },
+      { count: 1, ids: ['replacement'], resources: [{ id: 'replacement', status: 'running' }] },
+    ),
+    { activeResourceDelta: 0, unchanged: false },
+  )
+  assert.equal(
+    confidentialRefusalChecks({
+      plan,
+      beforeStateDigest: stateDigest,
+      afterStateDigest: changedStateDigest,
+      executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+    }).noChildOrCheckpointCreated,
+    false,
+  )
+})
+
 const invalidPolicyCases = [
   ['missing measurements', { BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS: undefined }],
   ['malformed measurement', { BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS: 'not-a-digest' }],
@@ -470,26 +534,212 @@ test('LIVE-10 passed receipts require external verification and every negative c
     facts: {
       sourceProviderEnvironmentId: 'sandbox-source-live-10',
       destinationProviderEnvironmentId: 'sandbox-destination-live-10',
+      capabilityAdvertised: true,
+      capabilityConsistent: true,
       confidentialRequested: true,
       confidentialVerified: true,
+      confidentialActionRefused: false,
+      noOrdinaryPlacementDowngrade: true,
+      noChildOrCheckpointCreated: false,
       missingAttestationRejected: true,
       wrongNonceRejected: true,
       wrongMeasurementRejected: true,
+      selfEchoRejected: true,
+      activeResourceDelta: 0,
       cleanupCheckpoint: 'deleted',
       cleanupEnvironment: 'deleted',
     },
     checks: [
       'configuration',
+      'capability',
       'nitro-attestation',
       'requested-unverified-binding',
       'missing-attestation',
       'valid-attestation',
       'wrong-nonce',
       'wrong-measurement',
+      'self-echo',
+      'resource-census',
       'cleanup',
     ],
-    observations: { verified: true },
+    observations: {
+      capability: {
+        providerBranchingConfidential: true,
+        sourceBranchingConfidential: true,
+        consistent: true,
+      },
+      attestation: {
+        providerKeyAuthenticated: true,
+        signatureDistinctFromQuote: true,
+        requestedUnverifiedBeforeExecution: true,
+        wrongNonceRejected: true,
+        wrongMeasurementRejected: true,
+        selfEchoRejected: true,
+      },
+      resourceCensus: {
+        before: {
+          count: 0,
+          ids: [],
+          resources: [],
+        },
+        after: {
+          count: 0,
+          ids: [],
+          resources: [],
+        },
+        activeResourceDelta: 0,
+        unchanged: true,
+      },
+    },
     environment: {},
   })
   assert.equal(assertProofReceipt(receipt).status, 'passed')
+})
+
+test('LIVE-10 passed refusal receipts prove fail-closed capability handling', () => {
+  const receipt = proofReceipt({
+    invocationId: 'live-required-confidential-refusal-receipt',
+    operation: PROOF_OPERATIONS.tangleConfidential,
+    startedAt: '2026-08-28T00:00:00.000Z',
+    completedAt: '2026-08-28T00:00:01.000Z',
+    config: {
+      endpoint: 'https://sandbox.tangle.tools',
+      connectionId: 'connection-live-10',
+      connectionKind: 'tangle-sandbox',
+      credentialConfigured: true,
+      model: 'glm-5.2',
+      modelProvider: 'tangle-router',
+      runner: 'opencode',
+    },
+    runIds: ['run-live-10'],
+    environmentId: 'local-environment-live-10',
+    facts: {
+      sourceProviderEnvironmentId: 'sandbox-source-live-10',
+      destinationProviderEnvironmentId: null,
+      capabilityAdvertised: false,
+      capabilityConsistent: true,
+      confidentialRequested: true,
+      confidentialVerified: false,
+      confidentialActionRefused: true,
+      noOrdinaryPlacementDowngrade: true,
+      noChildOrCheckpointCreated: true,
+      missingAttestationRejected: null,
+      wrongNonceRejected: null,
+      wrongMeasurementRejected: null,
+      selfEchoRejected: null,
+      activeResourceDelta: 0,
+      cleanupCheckpoint: null,
+      cleanupEnvironment: null,
+    },
+    checks: [
+      'configuration',
+      'capability',
+      'confidential-refusal',
+      'no-ordinary-downgrade',
+      'no-child-or-checkpoint',
+      'resource-census',
+      'cleanup',
+    ],
+    observations: {
+      capability: {
+        providerBranchingConfidential: false,
+        sourceBranchingConfidential: false,
+        consistent: true,
+      },
+      refusal: {
+        executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+        stateBeforeDigest: 'a'.repeat(64),
+        stateAfterDigest: 'a'.repeat(64),
+      },
+      resourceCensus: {
+        before: { count: 0, ids: [], resources: [] },
+        after: { count: 0, ids: [], resources: [] },
+        activeResourceDelta: 0,
+        unchanged: true,
+      },
+    },
+    environment: {},
+  })
+  assert.equal(assertProofReceipt(receipt).status, 'passed')
+})
+
+test('LIVE-10 receipts reject a replaced resource id hidden by stale census summaries', () => {
+  const receipt = proofReceipt({
+    invocationId: 'live-required-confidential-census-receipt',
+    operation: PROOF_OPERATIONS.tangleConfidential,
+    startedAt: '2026-08-28T00:00:00.000Z',
+    completedAt: '2026-08-28T00:00:01.000Z',
+    config: {
+      endpoint: 'https://sandbox.tangle.tools',
+      connectionId: 'connection-live-10',
+      connectionKind: 'tangle-sandbox',
+      credentialConfigured: true,
+      model: 'glm-5.2',
+      modelProvider: 'tangle-router',
+      runner: 'opencode',
+    },
+    runIds: ['run-live-10'],
+    environmentId: 'local-environment-live-10',
+    facts: {
+      sourceProviderEnvironmentId: 'sandbox-source-live-10',
+      destinationProviderEnvironmentId: null,
+      capabilityAdvertised: false,
+      capabilityConsistent: true,
+      confidentialRequested: true,
+      confidentialVerified: false,
+      confidentialActionRefused: true,
+      noOrdinaryPlacementDowngrade: true,
+      noChildOrCheckpointCreated: true,
+      missingAttestationRejected: null,
+      wrongNonceRejected: null,
+      wrongMeasurementRejected: null,
+      selfEchoRejected: null,
+      activeResourceDelta: 0,
+      cleanupCheckpoint: null,
+      cleanupEnvironment: null,
+    },
+    checks: [
+      'configuration',
+      'capability',
+      'confidential-refusal',
+      'no-ordinary-downgrade',
+      'no-child-or-checkpoint',
+      'resource-census',
+      'cleanup',
+    ],
+    observations: {
+      capability: {
+        providerBranchingConfidential: false,
+        sourceBranchingConfidential: false,
+        consistent: true,
+      },
+      refusal: {
+        executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+        stateBeforeDigest: 'a'.repeat(64),
+        stateAfterDigest: 'a'.repeat(64),
+      },
+      resourceCensus: {
+        before: {
+          count: 1,
+          ids: ['source'],
+          resources: [{ id: 'source', status: 'running' }],
+        },
+        after: {
+          count: 1,
+          ids: ['source'],
+          resources: [{ id: 'source', status: 'running' }],
+        },
+        activeResourceDelta: 0,
+        unchanged: true,
+      },
+    },
+    environment: {},
+  })
+  const tampered = structuredClone(receipt)
+  tampered.observations.resourceCensus.after.ids = ['replacement']
+  tampered.observations.resourceCensus.after.resources = [{ id: 'replacement', status: 'running' }]
+  assert.throws(
+    () => assertProofReceipt(tampered),
+    /resource census does not match its derived result/u,
+  )
 })

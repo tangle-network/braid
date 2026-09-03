@@ -70,7 +70,7 @@ That provider path therefore refuses a new confidential workspace fork before ch
 
 Braid keeps that request unavailable and does not downgrade it to an ordinary workspace fork.
 
-The selected `tangle-sandbox` connection carries an immutable, public Nitro trust policy.
+When the provider advertises confidential branching, the selected `tangle-sandbox` connection carries an immutable, public Nitro trust policy.
 
 The policy requires non-empty SHA-256 measurement and policy identifier allowlists.
 
@@ -114,9 +114,23 @@ The request and attestation remain unverified when either verifier or attestatio
 
 `LIVE-09` requires source materialization, checkpoint lookup, fork lookup, restart replay, independent destination mutation, unchanged source content, and exact cleanup.
 
-`LIVE-10` requires the typed Nitro policy, a valid attestation, missing-attestation rejection, wrong-nonce rejection, wrong-measurement rejection, and exact cleanup.
+`LIVE-10` reads the selected connection's configured adapter `branching.confidential` capability before it creates the source proof environment.
 
-The current LIVE-10 path has no live artifact because the deployed provider refuses new confidential workspace forks and real Nitro infrastructure is unavailable.
+The provider-backed source environment must report the same capability value.
+
+When the capability is `true`, LIVE-10 requires the typed Nitro policy, nonce-bound attestation, missing-attestation rejection, wrong-nonce rejection, wrong-measurement rejection, self-echo rejection, and exact cleanup.
+
+When the capability is `false`, LIVE-10 requires Braid plan and execute refusal with `CAPABILITY_UNAVAILABLE`, no child, checkpoint, fork, or ordinary-placement downgrade, an unchanged exact provider resource census, and exact source cleanup.
+
+This is the LIVE-10 safety/refusal variant and never claims confidential execution availability.
+
+The final census compares exact resource IDs and count within the selected connection and account view.
+
+Resource status changes remain observations only, and the census does not detect an effect created and deleted between observations.
+
+The direct `ConversationBranches.plan` and `execute` test asserts zero branching-provider factory, checkpoint, and fork calls before refusal.
+
+This code-order test supports the no-transient-effect claim that a census alone cannot provide.
 
 The built-in proofs run through Braid application and connection adapters.
 
@@ -130,13 +144,13 @@ Set `BRAID_TANGLE_CONFIDENTIAL_POLICY_ID` to the selected identifier from that a
 
 Set `BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS` to the bounded freshness limit.
 
-LIVE-10 persists these values as the selected connection's typed trust policy.
+LIVE-10 persists these values as the selected connection's typed trust policy for the attested variant.
 
 The production composition constructs the same Nitro verifier factory for provider admission and replay.
 
 No arbitrary verifier module is loaded or executed.
 
-Missing credentials, deployment capability, or verifier configuration returns typed unavailable evidence.
+Missing credentials, selected adapter capability, provider-backed source agreement, provider census, or verifier configuration returns typed unavailable evidence.
 
 Configured provider failures remain failed and never become simulated passes.
 

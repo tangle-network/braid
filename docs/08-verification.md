@@ -374,11 +374,39 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-07 | Tangle sandbox | Ephemeral create, turn, observation, and deletion; retained exact lookup, forced process loss, replay, cancel retry, two-conversation concurrent streaming with focus switching, and confirmed cleanup |
 | LIVE-08 | Tangle interaction | A retained cloud interaction remains answerable after Braid reconnect and continues once from the acknowledged response |
 | LIVE-09 | Tangle workspace fork | Checkpoint, destination fork, independent destination file change, unchanged source file, and explicit cleanup of both environments |
-| LIVE-10 | Confidential Tangle path | Requested placement remains unverified until valid attestation is checked; negative nonce and measurement tests fail |
+| LIVE-10 | Confidential Tangle safety/refusal | The selected adapter capability and provider-backed source agreement decide the proof: true requires nonce-bound attestation and negative checks; false requires fail-closed refusal with no child or checkpoint and an unchanged Sandbox resource census |
 | LIVE-11 | Runtime supervisor | Real root and worker stream, spend and status update, typed steering effect, typed cancellation effect, and reconnectable control |
 | LIVE-12 | `agent-eval` trace analysis | Real source run freezes, the selected profile and connection execute analyst model calls through `agent-runtime`, usage and cost receipts settle, citations resolve, source remains unchanged, and selected finding promotion records provenance |
 
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
+
+`LIVE-10` reads `branching.confidential` from the selected connection's configured adapter before it creates the source proof environment.
+
+The provider-backed source environment must report the same capability value.
+
+The provider capability must be present, unambiguous, and a boolean.
+
+The completed source run must report the same capability value.
+
+When the capability is `true`, the proof creates a confidential workspace fork and requires a nonce-bound provider attestation.
+
+The attestation must pass Braid's configured measurement, policy, provider-key, signature, environment, and request-digest checks.
+
+The proof also rejects missing attestation, a wrong nonce, a wrong measurement, and self-echoed provider evidence.
+
+When the capability is `false`, Braid must refuse the confidential plan and the real execute path with `CAPABILITY_UNAVAILABLE`.
+
+That refusal must happen before a child environment, checkpoint, or fork operation is created.
+
+The proof must show no ordinary-placement downgrade and must compare a real provider resource census before source cleanup and after it.
+
+The census compares exact resource IDs and count within the selected connection and account view; status changes remain recorded observations.
+
+The census does not detect an effect that was created and deleted between observations.
+
+For the refusal variant, the publish gate trusts these observations from the exact candidate code and does not present them as signed provider attestation.
+
+Missing credentials, provider errors, absent or ambiguous capability, missing census, capability disagreement, and an advertised confidential capability without attestation block release.
 
 The live interaction check must not invent a broader response scope than the provider advertises.
 

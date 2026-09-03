@@ -269,7 +269,11 @@ Sandbox creation previews image or environment, repository, ref, resource limits
 
 Workspace, checkpoint, fork, run cancel, and environment destroy are separate capabilities and separate audit events.
 
-Confidential execution is shown as requested until attestation evidence is cryptographically verified.
+The selected connection's configured adapter capability must agree with the provider-backed source environment before Braid attempts confidential placement.
+
+When that capability is false, LIVE-10 proves the safety/refusal variant: Braid rejects the plan and execute request before child, checkpoint, or fork creation.
+
+That refusal variant never claims confidential execution availability.
 
 Attestation verification binds nonce, measurement, environment, profile digest, and expected policy before the interface says verified.
 

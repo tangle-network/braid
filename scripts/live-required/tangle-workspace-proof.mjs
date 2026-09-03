@@ -41,6 +41,25 @@ const SOURCE_TERMINAL_STATUSES = new Set([
   'expired',
   'unknown',
 ])
+const CONFIDENTIAL_TRUST_ENVIRONMENT_NAMES = Object.freeze([
+  'BRAID_TANGLE_CONFIDENTIAL_MEASUREMENTS',
+  'BRAID_TANGLE_CONFIDENTIAL_POLICY_IDS',
+  'BRAID_TANGLE_CONFIDENTIAL_POLICY_ID',
+  'BRAID_TANGLE_CONFIDENTIAL_MAX_AGE_SECONDS',
+])
+const CONFIDENTIAL_REFUSAL_POLICY_ID = 'live-10-capability-refused'
+
+function record(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function optionalConfidentialTrustPolicy(environment, confidential) {
+  if (!confidential) return undefined
+  const configured = CONFIDENTIAL_TRUST_ENVIRONMENT_NAMES.some(
+    (name) => environment[name] !== undefined,
+  )
+  return configured ? parseConfidentialTrustPolicy(environment) : undefined
+}
 
 function configurationEnvironment(environment) {
   if (
@@ -260,14 +279,15 @@ export function runtimeModuleRoot(repository, environment = process.env) {
 
 async function runtimeModules(repository, environment) {
   const dist = runtimeModuleRoot(repository, environment)
-  const [startup, application, credentials, connections, profiles] = await Promise.all([
+  const [startup, application, credentials, connections, profiles, canonical] = await Promise.all([
     import(pathToFileURL(join(dist, 'bin', 'production-startup.js')).href),
     import(pathToFileURL(join(dist, 'bin', 'production-application.js')).href),
     import(pathToFileURL(join(dist, 'bin', 'production-credential-context.js')).href),
     import(pathToFileURL(join(dist, 'adapters', 'connections', 'production-connections.js')).href),
     import(pathToFileURL(join(dist, 'adapters', 'agent-interface', 'profile-runtime.js')).href),
+    import(pathToFileURL(join(dist, 'domain', 'canonical.js')).href),
   ])
-  return { startup, application, credentials, connections, profiles }
+  return { startup, application, credentials, connections, profiles, canonical }
 }
 
 async function openProofApplication({ repository, config, environment }) {
@@ -353,12 +373,157 @@ function confidentialVerifiersFor(opened) {
   return opened.confidentialVerifiers
 }
 
+/** Read the selected provider's explicit confidential-branching decision. */
+export function confidentialBranchingCapability(capabilities, label = 'provider') {
+  if (
+    !record(capabilities) ||
+    !record(capabilities.branching) ||
+    !Object.hasOwn(capabilities.branching, 'confidential')
+  )
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_CAPABILITY_UNAVAILABLE',
+      `LIVE-10 requires ${label} capabilities.branching.confidential as a boolean`,
+    )
+  if (typeof capabilities.branching.confidential !== 'boolean')
+    throw unavailable(
+      'PROTECTED_CONFIDENTIAL_CAPABILITY_AMBIGUOUS',
+      `LIVE-10 received an ambiguous ${label} branching.confidential capability`,
+    )
+  return capabilities.branching.confidential
+}
+
+function normalizedResourceCensus(resources) {
+  if (!Array.isArray(resources))
+    throw unavailable(
+      'PROTECTED_RESOURCE_CENSUS_UNAVAILABLE',
+      'LIVE-10 requires a list of active Sandbox resources',
+    )
+  const entries = resources.map((resource, index) => {
+    if (!record(resource) || typeof resource.id !== 'string' || resource.id.length === 0)
+      throw unavailable(
+        'PROTECTED_RESOURCE_CENSUS_INVALID',
+        `LIVE-10 received a resource without a valid id at index ${index}`,
+      )
+    if (resource.status !== undefined && typeof resource.status !== 'string')
+      throw unavailable(
+        'PROTECTED_RESOURCE_CENSUS_INVALID',
+        `LIVE-10 received an invalid resource status for ${resource.id}`,
+      )
+    return Object.freeze({ id: resource.id, status: resource.status ?? null })
+  })
+  entries.sort((left, right) => left.id.localeCompare(right.id))
+  for (let index = 1; index < entries.length; index += 1) {
+    if (entries[index - 1].id === entries[index].id)
+      throw unavailable(
+        'PROTECTED_RESOURCE_CENSUS_INVALID',
+        `LIVE-10 received duplicate resource id ${entries[index].id}`,
+      )
+  }
+  return Object.freeze({
+    count: entries.length,
+    ids: Object.freeze(entries.map((entry) => entry.id)),
+    resources: Object.freeze(entries),
+  })
+}
+
+export function resourceCensusComparison(before, after) {
+  const activeResourceDelta = after.count - before.count
+  const unchanged =
+    activeResourceDelta === 0 && JSON.stringify(before.ids) === JSON.stringify(after.ids)
+  return Object.freeze({ activeResourceDelta, unchanged })
+}
+
+const CANONICAL_SHA256_PATTERN = /^[0-9a-f]{64}$/u
+
+function completeStateDigest(opened) {
+  const canonicalDigest = opened.modules.canonical?.canonicalDigest
+  if (typeof canonicalDigest !== 'function')
+    throw unavailable(
+      'PROTECTED_STATE_DIGEST_UNAVAILABLE',
+      'LIVE-10 could not load the candidate canonical state digest function',
+    )
+  let digest
+  try {
+    digest = canonicalDigest(opened.app.state())
+  } catch (error) {
+    throw unavailable(
+      'PROTECTED_STATE_DIGEST_UNAVAILABLE',
+      'LIVE-10 could not compute a canonical SHA-256 digest of the complete Braid state',
+      error,
+    )
+  }
+  if (typeof digest !== 'string' || !CANONICAL_SHA256_PATTERN.test(digest))
+    throw unavailable(
+      'PROTECTED_STATE_DIGEST_UNAVAILABLE',
+      'LIVE-10 could not compute a canonical SHA-256 digest of the complete Braid state',
+    )
+  return digest
+}
+
+/** Prove that a false capability caused refusal before any branch mutation. */
+export function confidentialRefusalChecks({
+  plan,
+  beforeStateDigest,
+  afterStateDigest,
+  executeErrorCode,
+}) {
+  const durableStateUnchanged =
+    typeof beforeStateDigest === 'string' &&
+    typeof afterStateDigest === 'string' &&
+    beforeStateDigest === afterStateDigest
+  const requestRetained = plan?.confidential?.requested === true
+  const actionRefused =
+    requestRetained &&
+    plan.allowed === false &&
+    plan.environment === 'unavailable' &&
+    plan.checkpoint === 'unavailable' &&
+    executeErrorCode === 'CAPABILITY_UNAVAILABLE'
+  return Object.freeze({
+    actionRefused,
+    noOrdinaryPlacementDowngrade:
+      actionRefused && plan.destinationEnvironmentId === undefined && durableStateUnchanged,
+    noChildOrCheckpointCreated: actionRefused && durableStateUnchanged,
+  })
+}
+
 function providerAdapters(opened) {
   const { createTangleWorkspaceBranchingProvider, getTangleSandboxEnvironment } =
     opened.modules.connections
   const options = opened.production.connectionOptions ?? {}
   const factory = createTangleWorkspaceBranchingProvider(opened.connection, options)
+  const createProvider = opened.modules.connections.createTangleEnvironmentProvider
+  let providerPromise
   return Object.freeze({
+    capabilities: async () => {
+      if (typeof createProvider !== 'function')
+        throw unavailable(
+          'PROTECTED_CONFIDENTIAL_CAPABILITY_UNAVAILABLE',
+          'The production connection does not expose the selected Tangle provider',
+        )
+      providerPromise ??= createProvider(opened.connection, options)
+      const provider = await providerPromise
+      if (typeof provider.capabilities !== 'function')
+        throw unavailable(
+          'PROTECTED_CONFIDENTIAL_CAPABILITY_UNAVAILABLE',
+          'The selected Tangle provider does not expose capabilities()',
+        )
+      return provider.capabilities()
+    },
+    resourceCensus: async () => {
+      if (typeof createProvider !== 'function')
+        throw unavailable(
+          'PROTECTED_RESOURCE_CENSUS_UNAVAILABLE',
+          'The production connection does not expose the selected Tangle provider',
+        )
+      providerPromise ??= createProvider(opened.connection, options)
+      const provider = await providerPromise
+      if (typeof provider.list !== 'function')
+        throw unavailable(
+          'PROTECTED_RESOURCE_CENSUS_UNAVAILABLE',
+          'The selected Tangle provider does not expose list()',
+        )
+      return normalizedResourceCensus(await provider.list())
+    },
     freshBranching: async (sourceEnvironmentId) => {
       const branching = await factory.forEnvironment(sourceEnvironmentId)
       if (branching === null)
@@ -906,7 +1071,7 @@ async function runWorkspaceProof({
 }) {
   const proofId = `${Date.now()}-${randomUUID().replaceAll('-', '')}`
   const startedAt = new Date().toISOString()
-  const trust = confidential ? parseConfidentialTrustPolicy(environment) : undefined
+  const trust = optionalConfidentialTrustPolicy(environment, confidential)
   const values = sandboxConfiguration(environment)
   const config = await prepareProductionWorkspace({
     repository,
@@ -938,6 +1103,11 @@ async function runWorkspaceProof({
   let cleanupOperationId
   let resources
   let cleanupResult
+  let providerConfidential
+  let sourceConfidential
+  let resourceCensusBefore
+  let resourceCensusAfter
+  let resourceCensusResult
   let plan
   let sourceDestroyed = false
   let primaryError
@@ -945,7 +1115,6 @@ async function runWorkspaceProof({
   let cleanupFailure
   try {
     opened = await openProofApplication({ repository, config, environment })
-    const verifier = confidential ? confidentialVerifiersFor(opened) : undefined
     if (trust !== undefined) {
       assertCondition(
         opened.connection.confidentialAttestationPolicy?.acceptedPolicyIds.includes(
@@ -955,9 +1124,30 @@ async function runWorkspaceProof({
       )
     }
     const adapters = providerAdapters(opened)
+    let verifier
+    if (confidential) {
+      const capabilities = await adapters.capabilities()
+      providerConfidential = confidentialBranchingCapability(capabilities, 'provider')
+      if (providerConfidential) {
+        // Do not create a source environment until Braid has a verifier for a
+        // provider that claims confidential branching.
+        verifier = confidentialVerifiersFor(opened)
+      }
+      resourceCensusBefore = await adapters.resourceCensus()
+    }
     source = await sendSource(opened.app, proofId, (candidate) => {
       source ??= candidate
     })
+    if (confidential) {
+      sourceConfidential = confidentialBranchingCapability(
+        source.run.capabilities.environment,
+        'source environment',
+      )
+      assertCondition(
+        sourceConfidential === providerConfidential,
+        'LIVE-10 received conflicting provider and source confidential capabilities',
+      )
+    }
     sourceBefore = await readWorkspace(adapters, source.providerId, source.path, 'source')
     assertCondition(
       sourceBefore.content.trim() === source.marker,
@@ -976,291 +1166,440 @@ async function runWorkspaceProof({
               requested: true,
               tee: 'nitro',
               nonce: generateAttestationNonce(),
-              policy: trust.selectedPolicyId,
+              policy: trust?.selectedPolicyId ?? CONFIDENTIAL_REFUSAL_POLICY_ID,
               profileDigest: `sha256:${opened.modules.profiles.canonicalAgentProfileDigestHex(opened.app.state().profile)}`,
             },
           }
         : {}),
     }
+    const refusalBeforeStateDigest =
+      confidential && providerConfidential === false ? completeStateDigest(opened) : undefined
     plan = opened.app.conversations.branches.plan(planInput)
-    if (!plan.allowed)
-      throw unavailable(
-        'PROTECTED_WORKSPACE_BRANCHING_UNAVAILABLE',
-        plan.reason ?? 'Tangle Sandbox did not report retry-safe workspace branching',
-      )
-    const requestedUnverifiedBinding = confidential
-      ? !confidentialExecutionVerified({
-          request: plan.confidential,
-          environment: confidentialExpected(
-            source.run.controlRef,
-            'pending-destination',
-            `sha256:${'0'.repeat(64)}`,
-          ),
-          verifyProviderAttestation: verifier.canonical,
+    if (confidential && providerConfidential === false) {
+      let refusalExecutionCode
+      let refusalExecutionResult
+      try {
+        refusalExecutionResult = await opened.app.conversations.branches.execute({
+          ...planInput,
+          planDigest: plan.digest,
         })
-      : true
-    assertCondition(
-      requestedUnverifiedBinding,
-      'Confidential placement passed without an attestation before execution',
-    )
-    const branch = await opened.app.conversations.branches.execute({
-      ...planInput,
-      planDigest: plan.digest,
-    })
-    const afterExecute = opened.app.state()
-    const sourceRun = sourceRunFor(afterExecute, source.run.id)
-    destination = afterExecute.environments.find(
-      (candidate) => candidate.id === branch.environmentId,
-    )
-    if (destination === undefined) throw new Error('Braid did not persist the forked environment')
-    destinationProviderId = providerEnvironmentId(destination, 'Destination environment')
-    assertCondition(
-      destinationProviderId !== source.providerId,
-      'Fork reused the source environment',
-    )
-    resources = checkpointAndForkRequests(
-      afterExecute,
-      plan,
-      branchOperationId,
-      sourceRun,
-      destination.id,
-    )
-    const destinationMarker = markerFor(proofId, 'DESTINATION')
-    await writeWorkspace(
-      adapters,
-      destinationProviderId,
-      source.path,
-      `${destinationMarker}\n`,
-      'destination',
-    )
-    destinationAfterMutation = await readWorkspace(
-      adapters,
-      destinationProviderId,
-      source.path,
-      'destination',
-    )
-    assertCondition(
-      destinationAfterMutation.content.trim() === destinationMarker,
-      'Destination mutation was not independently materialized',
-    )
-    const sourceAfterMutation = await readWorkspace(
-      adapters,
-      source.providerId,
-      source.path,
-      'source',
-    )
-    assertCondition(
-      sourceAfterMutation.content === sourceBefore.content,
-      'Destination mutation changed the source workspace',
-    )
-
-    await opened.close()
-    opened = undefined
-    restarted = await openProofApplication({ repository, config, environment })
-    const restartedVerifier = confidential ? confidentialVerifiersFor(restarted) : undefined
-    const restartedAdapters = providerAdapters(restarted)
-    const replayBranch = await restarted.app.conversations.branches.execute({
-      ...planInput,
-      planDigest: plan.digest,
-    })
-    assertCondition(replayBranch.id === branch.id, 'Restart replay produced another branch')
-    const lookedUp = await lookupAfterRestart(restartedAdapters, source.providerId, resources)
-    if (confidential) {
-      const attestation = lookedUp.fork.environment.confidentialAttestation
-      if (attestation === undefined)
-        throw unavailable(
-          'PROTECTED_CONFIDENTIAL_DEPLOYMENT_UNAVAILABLE',
-          'Tangle Sandbox did not return a TEE attestation for the confidential fork',
-        )
-      assertCondition(
-        attestation.providerKeyId !== 'unverified' &&
-          attestation.providerSignature !== 'unverified',
-        'Tangle Sandbox returned an unauthenticated confidential attestation',
-      )
-      assertCondition(
-        attestation.providerSignature !== attestation.quote,
-        'Tangle Sandbox returned the quote as its provider signature',
-      )
-      const expected = confidentialExpected(
-        sourceRun.controlRef,
-        destinationProviderId,
-        resources.forkRequest.requestDigest,
-      )
-      assertCondition(
-        forkedEnvironmentConfidentialityVerified(
-          resources.forkRequest,
-          lookedUp.fork.environment,
-          restartedVerifier.canonical,
-        ),
-        'Canonical confidential attestation verification failed for the valid fork',
-      )
-      const negatives = confidentialNegativeChecks({
-        request: resources.forkRequest.confidential,
-        environment: expected,
-        attestation,
-        verifyProviderAttestation: restartedVerifier.canonical,
+      } catch (error) {
+        refusalExecutionCode = error?.code
+      }
+      const refusalAfterStateDigest = completeStateDigest(opened)
+      if (refusalExecutionResult?.environmentId !== undefined) {
+        destination = opened.app
+          .state()
+          .environments.find((candidate) => candidate.id === refusalExecutionResult.environmentId)
+        if (destination !== undefined)
+          destinationProviderId = providerEnvironmentId(
+            destination,
+            'Unexpected destination environment',
+          )
+      }
+      const refusalChecks = confidentialRefusalChecks({
+        plan,
+        beforeStateDigest: refusalBeforeStateDigest,
+        afterStateDigest: refusalAfterStateDigest,
+        executeErrorCode: refusalExecutionCode,
       })
       assertCondition(
-        negatives.missingAttestationRejected,
-        'Missing confidential attestation was accepted',
-      )
-      assertCondition(negatives.wrongNonceRejected, 'Wrong confidential nonce was accepted')
-      assertCondition(
-        negatives.wrongMeasurementRejected,
-        'Wrong confidential measurement was accepted',
-      )
-      assertCondition(negatives.selfEchoRejected, 'Self-echoed confidential evidence was accepted')
-      assertCondition(
-        destination.placement.confidentialRequested,
-        'Confidential request was not recorded',
+        refusalChecks.actionRefused,
+        'Braid did not refuse unsupported confidential placement',
       )
       assertCondition(
-        destination.placement.confidentialVerified,
-        'Confidential attestation was not verified',
+        refusalChecks.noOrdinaryPlacementDowngrade,
+        'Braid downgraded unsupported confidential placement to ordinary placement',
       )
-    }
-    cleanupOperationId = `op-live-required-${proofId}-cleanup`
-    cleanupResult = await restarted.app.conversations.branches.cleanup({
-      operationId: cleanupOperationId,
-      checkpointId: String(resources.checkpoint.id),
-      environmentId: String(destination.id),
-    })
-    assertCondition(
-      ['deleted', 'already_absent'].includes(cleanupResult.checkpoint),
-      'Checkpoint cleanup did not reach a terminal deletion status',
-    )
-    assertCondition(
-      ['deleted', 'already_absent'].includes(cleanupResult.environment),
-      'Fork cleanup did not reach a terminal deletion status',
-    )
-    const cleanupReplay = await restarted.app.conversations.branches.cleanup({
-      operationId: cleanupOperationId,
-      checkpointId: String(resources.checkpoint.id),
-      environmentId: String(destination.id),
-    })
-    assertCondition(
-      JSON.stringify(cleanupReplay) === JSON.stringify(cleanupResult),
-      'Cleanup replay returned a different durable result',
-    )
-    const finalState = restarted.app.state()
-    assertCondition(
-      finalState.checkpoints.find((candidate) => candidate.id === resources.checkpoint.id)
-        ?.status === 'deleted',
-      'Braid did not record checkpoint cleanup',
-    )
-    assertCondition(
-      finalState.environments.find((candidate) => candidate.id === destination.id)?.lifecycle ===
-        'destroyed',
-      'Braid did not record fork environment cleanup',
-    )
-    sourceAfterCleanup = await readWorkspace(
-      restartedAdapters,
-      source.providerId,
-      source.path,
-      'source',
-    )
-    assertCondition(
-      sourceAfterCleanup.digest === sourceBefore.digest,
-      'Source workspace digest changed during cleanup',
-    )
-    sourceDestroyed = await destroySource(restartedAdapters, source.providerId)
-    await restarted.close()
-    restarted = undefined
-    completedResult = {
-      status: 'passed',
-      measurement: scalarMeasurement(confidential ? 'LIVE-10' : 'LIVE-09'),
-      evidence: proofReceipt({
-        invocationId,
-        operation: confidential
-          ? PROOF_OPERATIONS.tangleConfidential
-          : PROOF_OPERATIONS.tangleWorkspaceFork,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        config: configEvidence(config),
-        runIds: [source.run.id],
-        environmentId: source.run.environmentId,
-        materializationDigest: source.run.materializationDigest ?? null,
-        facts: confidential
-          ? {
-              sourceProviderEnvironmentId: source.providerId,
-              destinationProviderEnvironmentId: destinationProviderId,
-              confidentialRequested: true,
-              confidentialVerified: true,
-              missingAttestationRejected: true,
-              wrongNonceRejected: true,
-              wrongMeasurementRejected: true,
-              cleanupCheckpoint: cleanupResult.checkpoint,
-              cleanupEnvironment: cleanupResult.environment,
-            }
-          : {
-              sourceProviderEnvironmentId: source.providerId,
-              destinationProviderEnvironmentId: destinationProviderId,
-              checkpointRetried: true,
-              forkRetried: true,
-              restarted: true,
-              sourceDigestBefore: sourceBefore.digest,
-              sourceDigestAfter: sourceAfterCleanup.digest,
-              destinationDigest: destinationAfterMutation.digest,
-              cleanupCheckpoint: cleanupResult.checkpoint,
-              cleanupEnvironment: cleanupResult.environment,
+      assertCondition(
+        refusalChecks.noChildOrCheckpointCreated,
+        'Braid created a child, checkpoint, or branch operation before refusing confidential placement',
+      )
+      sourceDestroyed = await destroySource(adapters, source.providerId)
+      resourceCensusAfter = await adapters.resourceCensus()
+      resourceCensusResult = resourceCensusComparison(resourceCensusBefore, resourceCensusAfter)
+      assertCondition(
+        resourceCensusResult.unchanged,
+        'LIVE-10 confidential refusal changed the active Sandbox resource census',
+      )
+      await opened.close()
+      opened = undefined
+      completedResult = {
+        status: 'passed',
+        measurement: scalarMeasurement('LIVE-10'),
+        evidence: proofReceipt({
+          invocationId,
+          operation: PROOF_OPERATIONS.tangleConfidential,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          config: configEvidence(config),
+          runIds: [source.run.id],
+          environmentId: source.run.environmentId,
+          materializationDigest: source.run.materializationDigest ?? null,
+          facts: {
+            sourceProviderEnvironmentId: source.providerId,
+            destinationProviderEnvironmentId: null,
+            capabilityAdvertised: false,
+            capabilityConsistent: true,
+            confidentialRequested: true,
+            confidentialVerified: false,
+            confidentialActionRefused: refusalChecks.actionRefused,
+            noOrdinaryPlacementDowngrade: refusalChecks.noOrdinaryPlacementDowngrade,
+            noChildOrCheckpointCreated: refusalChecks.noChildOrCheckpointCreated,
+            missingAttestationRejected: null,
+            wrongNonceRejected: null,
+            wrongMeasurementRejected: null,
+            selfEchoRejected: null,
+            activeResourceDelta: resourceCensusResult.activeResourceDelta,
+            cleanupCheckpoint: null,
+            cleanupEnvironment: null,
+          },
+          checks: [
+            'configuration',
+            'capability',
+            'confidential-refusal',
+            'no-ordinary-downgrade',
+            'no-child-or-checkpoint',
+            'resource-census',
+            'cleanup',
+          ],
+          observations: {
+            source: {
+              providerEnvironmentId: source.providerId,
+              digestBefore: sourceBefore.digest,
+              destroyed: sourceDestroyed,
             },
-        checks: confidential
-          ? [
-              'configuration',
-              'nitro-attestation',
-              'requested-unverified-binding',
-              'missing-attestation',
-              'valid-attestation',
-              'wrong-nonce',
-              'wrong-measurement',
-              'cleanup',
-            ]
-          : [
-              'configuration',
-              'source-run',
-              'plan',
-              'execute',
-              'retry',
-              'restart',
-              'independent-destination',
-              'source-unchanged',
-              'cleanup-checkpoint',
-              'cleanup-environment',
-            ],
-        observations: {
-          source: {
-            providerEnvironmentId: source.providerId,
-            path: source.path,
-            digestBefore: sourceBefore.digest,
-            digestAfter: sourceAfterCleanup.digest,
-            destroyed: sourceDestroyed,
+            capability: {
+              providerBranchingConfidential: providerConfidential,
+              sourceBranchingConfidential: sourceConfidential,
+              consistent: true,
+            },
+            refusal: {
+              ...refusalChecks,
+              executeErrorCode: refusalExecutionCode,
+              stateBeforeDigest: refusalBeforeStateDigest,
+              stateAfterDigest: refusalAfterStateDigest,
+            },
+            resourceCensus: {
+              before: resourceCensusBefore,
+              after: resourceCensusAfter,
+              ...resourceCensusResult,
+            },
           },
-          destination: {
-            providerEnvironmentId: destinationProviderId,
-            digest: destinationAfterMutation.digest,
-            independentMutation: true,
-          },
-          recovery: {
-            checkpointLookup: 'found',
-            forkLookup: 'found',
-            branchReplay: true,
-            cleanupReplay: true,
-          },
-          ...(confidential
+          environment,
+        }),
+      }
+    } else {
+      if (!plan.allowed)
+        throw unavailable(
+          'PROTECTED_WORKSPACE_BRANCHING_UNAVAILABLE',
+          plan.reason ?? 'Tangle Sandbox did not report retry-safe workspace branching',
+        )
+      const requestedUnverifiedBinding = confidential
+        ? !confidentialExecutionVerified({
+            request: plan.confidential,
+            environment: confidentialExpected(
+              source.run.controlRef,
+              'pending-destination',
+              `sha256:${'0'.repeat(64)}`,
+            ),
+            verifyProviderAttestation: verifier.canonical,
+          })
+        : true
+      assertCondition(
+        requestedUnverifiedBinding,
+        'Confidential placement passed without an attestation before execution',
+      )
+      const branch = await opened.app.conversations.branches.execute({
+        ...planInput,
+        planDigest: plan.digest,
+      })
+      const afterExecute = opened.app.state()
+      const sourceRun = sourceRunFor(afterExecute, source.run.id)
+      destination = afterExecute.environments.find(
+        (candidate) => candidate.id === branch.environmentId,
+      )
+      if (destination === undefined) throw new Error('Braid did not persist the forked environment')
+      destinationProviderId = providerEnvironmentId(destination, 'Destination environment')
+      assertCondition(
+        destinationProviderId !== source.providerId,
+        'Fork reused the source environment',
+      )
+      resources = checkpointAndForkRequests(
+        afterExecute,
+        plan,
+        branchOperationId,
+        sourceRun,
+        destination.id,
+      )
+      const destinationMarker = markerFor(proofId, 'DESTINATION')
+      await writeWorkspace(
+        adapters,
+        destinationProviderId,
+        source.path,
+        `${destinationMarker}\n`,
+        'destination',
+      )
+      destinationAfterMutation = await readWorkspace(
+        adapters,
+        destinationProviderId,
+        source.path,
+        'destination',
+      )
+      assertCondition(
+        destinationAfterMutation.content.trim() === destinationMarker,
+        'Destination mutation was not independently materialized',
+      )
+      const sourceAfterMutation = await readWorkspace(
+        adapters,
+        source.providerId,
+        source.path,
+        'source',
+      )
+      assertCondition(
+        sourceAfterMutation.content === sourceBefore.content,
+        'Destination mutation changed the source workspace',
+      )
+
+      await opened.close()
+      opened = undefined
+      restarted = await openProofApplication({ repository, config, environment })
+      const restartedVerifier = confidential ? confidentialVerifiersFor(restarted) : undefined
+      const restartedAdapters = providerAdapters(restarted)
+      const replayBranch = await restarted.app.conversations.branches.execute({
+        ...planInput,
+        planDigest: plan.digest,
+      })
+      assertCondition(replayBranch.id === branch.id, 'Restart replay produced another branch')
+      const lookedUp = await lookupAfterRestart(restartedAdapters, source.providerId, resources)
+      if (confidential) {
+        const attestation = lookedUp.fork.environment.confidentialAttestation
+        if (attestation === undefined)
+          throw unavailable(
+            'PROTECTED_CONFIDENTIAL_DEPLOYMENT_UNAVAILABLE',
+            'Tangle Sandbox did not return a TEE attestation for the confidential fork',
+          )
+        assertCondition(
+          attestation.providerKeyId !== 'unverified' &&
+            attestation.providerSignature !== 'unverified',
+          'Tangle Sandbox returned an unauthenticated confidential attestation',
+        )
+        assertCondition(
+          attestation.providerSignature !== attestation.quote,
+          'Tangle Sandbox returned the quote as its provider signature',
+        )
+        const expected = confidentialExpected(
+          sourceRun.controlRef,
+          destinationProviderId,
+          resources.forkRequest.requestDigest,
+        )
+        assertCondition(
+          forkedEnvironmentConfidentialityVerified(
+            resources.forkRequest,
+            lookedUp.fork.environment,
+            restartedVerifier.canonical,
+          ),
+          'Canonical confidential attestation verification failed for the valid fork',
+        )
+        const negatives = confidentialNegativeChecks({
+          request: resources.forkRequest.confidential,
+          environment: expected,
+          attestation,
+          verifyProviderAttestation: restartedVerifier.canonical,
+        })
+        assertCondition(
+          negatives.missingAttestationRejected,
+          'Missing confidential attestation was accepted',
+        )
+        assertCondition(negatives.wrongNonceRejected, 'Wrong confidential nonce was accepted')
+        assertCondition(
+          negatives.wrongMeasurementRejected,
+          'Wrong confidential measurement was accepted',
+        )
+        assertCondition(
+          negatives.selfEchoRejected,
+          'Self-echoed confidential evidence was accepted',
+        )
+        assertCondition(
+          destination.placement.confidentialRequested,
+          'Confidential request was not recorded',
+        )
+        assertCondition(
+          destination.placement.confidentialVerified,
+          'Confidential attestation was not verified',
+        )
+      }
+      cleanupOperationId = `op-live-required-${proofId}-cleanup`
+      cleanupResult = await restarted.app.conversations.branches.cleanup({
+        operationId: cleanupOperationId,
+        checkpointId: String(resources.checkpoint.id),
+        environmentId: String(destination.id),
+      })
+      assertCondition(
+        ['deleted', 'already_absent'].includes(cleanupResult.checkpoint),
+        'Checkpoint cleanup did not reach a terminal deletion status',
+      )
+      assertCondition(
+        ['deleted', 'already_absent'].includes(cleanupResult.environment),
+        'Fork cleanup did not reach a terminal deletion status',
+      )
+      const cleanupReplay = await restarted.app.conversations.branches.cleanup({
+        operationId: cleanupOperationId,
+        checkpointId: String(resources.checkpoint.id),
+        environmentId: String(destination.id),
+      })
+      assertCondition(
+        JSON.stringify(cleanupReplay) === JSON.stringify(cleanupResult),
+        'Cleanup replay returned a different durable result',
+      )
+      const finalState = restarted.app.state()
+      assertCondition(
+        finalState.checkpoints.find((candidate) => candidate.id === resources.checkpoint.id)
+          ?.status === 'deleted',
+        'Braid did not record checkpoint cleanup',
+      )
+      assertCondition(
+        finalState.environments.find((candidate) => candidate.id === destination.id)?.lifecycle ===
+          'destroyed',
+        'Braid did not record fork environment cleanup',
+      )
+      sourceAfterCleanup = await readWorkspace(
+        restartedAdapters,
+        source.providerId,
+        source.path,
+        'source',
+      )
+      assertCondition(
+        sourceAfterCleanup.digest === sourceBefore.digest,
+        'Source workspace digest changed during cleanup',
+      )
+      sourceDestroyed = await destroySource(restartedAdapters, source.providerId)
+      if (confidential) {
+        resourceCensusAfter = await restartedAdapters.resourceCensus()
+        resourceCensusResult = resourceCensusComparison(resourceCensusBefore, resourceCensusAfter)
+        assertCondition(
+          resourceCensusResult.unchanged,
+          'LIVE-10 confidential fork changed the active Sandbox resource census after cleanup',
+        )
+      }
+      await restarted.close()
+      restarted = undefined
+      completedResult = {
+        status: 'passed',
+        measurement: scalarMeasurement(confidential ? 'LIVE-10' : 'LIVE-09'),
+        evidence: proofReceipt({
+          invocationId,
+          operation: confidential
+            ? PROOF_OPERATIONS.tangleConfidential
+            : PROOF_OPERATIONS.tangleWorkspaceFork,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          config: configEvidence(config),
+          runIds: [source.run.id],
+          environmentId: source.run.environmentId,
+          materializationDigest: source.run.materializationDigest ?? null,
+          facts: confidential
             ? {
-                attestation: {
-                  providerKeyAuthenticated: true,
-                  signatureDistinctFromQuote: true,
-                  requestedUnverifiedBeforeExecution: true,
-                  wrongNonceRejected: true,
-                  wrongMeasurementRejected: true,
-                  selfEchoRejected: true,
-                },
+                sourceProviderEnvironmentId: source.providerId,
+                destinationProviderEnvironmentId: destinationProviderId,
+                capabilityAdvertised: providerConfidential,
+                capabilityConsistent: sourceConfidential === providerConfidential,
+                confidentialRequested: true,
+                confidentialVerified: true,
+                confidentialActionRefused: false,
+                noOrdinaryPlacementDowngrade: true,
+                noChildOrCheckpointCreated: false,
+                missingAttestationRejected: true,
+                wrongNonceRejected: true,
+                wrongMeasurementRejected: true,
+                selfEchoRejected: true,
+                activeResourceDelta: resourceCensusResult.activeResourceDelta,
+                cleanupCheckpoint: cleanupResult.checkpoint,
+                cleanupEnvironment: cleanupResult.environment,
               }
-            : {}),
-        },
-        environment,
-      }),
+            : {
+                sourceProviderEnvironmentId: source.providerId,
+                destinationProviderEnvironmentId: destinationProviderId,
+                checkpointRetried: true,
+                forkRetried: true,
+                restarted: true,
+                sourceDigestBefore: sourceBefore.digest,
+                sourceDigestAfter: sourceAfterCleanup.digest,
+                destinationDigest: destinationAfterMutation.digest,
+                cleanupCheckpoint: cleanupResult.checkpoint,
+                cleanupEnvironment: cleanupResult.environment,
+              },
+          checks: confidential
+            ? [
+                'configuration',
+                'capability',
+                'nitro-attestation',
+                'requested-unverified-binding',
+                'missing-attestation',
+                'valid-attestation',
+                'wrong-nonce',
+                'wrong-measurement',
+                'self-echo',
+                'resource-census',
+                'cleanup',
+              ]
+            : [
+                'configuration',
+                'source-run',
+                'plan',
+                'execute',
+                'retry',
+                'restart',
+                'independent-destination',
+                'source-unchanged',
+                'cleanup-checkpoint',
+                'cleanup-environment',
+              ],
+          observations: {
+            source: {
+              providerEnvironmentId: source.providerId,
+              path: source.path,
+              digestBefore: sourceBefore.digest,
+              digestAfter: sourceAfterCleanup.digest,
+              destroyed: sourceDestroyed,
+            },
+            destination: {
+              providerEnvironmentId: destinationProviderId,
+              digest: destinationAfterMutation.digest,
+              independentMutation: true,
+            },
+            recovery: {
+              checkpointLookup: 'found',
+              forkLookup: 'found',
+              branchReplay: true,
+              cleanupReplay: true,
+            },
+            ...(confidential
+              ? {
+                  capability: {
+                    providerBranchingConfidential: providerConfidential,
+                    sourceBranchingConfidential: sourceConfidential,
+                    consistent: sourceConfidential === providerConfidential,
+                  },
+                  attestation: {
+                    providerKeyAuthenticated: true,
+                    signatureDistinctFromQuote: true,
+                    requestedUnverifiedBeforeExecution: true,
+                    wrongNonceRejected: true,
+                    wrongMeasurementRejected: true,
+                    selfEchoRejected: true,
+                  },
+                  resourceCensus: {
+                    before: resourceCensusBefore,
+                    after: resourceCensusAfter,
+                    ...resourceCensusResult,
+                  },
+                }
+              : {}),
+          },
+          environment,
+        }),
+      }
     }
   } catch (error) {
     primaryError = error

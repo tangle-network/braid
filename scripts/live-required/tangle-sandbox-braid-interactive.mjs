@@ -197,7 +197,7 @@ function shellLiteral(value) {
 }
 
 function interactiveShellMutationCommand(value, path) {
-  return `!!printf '%s\\n' ${shellLiteral(value)} >> ${shellLiteral(path)}`
+  return `!!mkdir -p -- ${shellLiteral(dirname(path))} && printf '%s\\n' ${shellLiteral(value)} >> ${shellLiteral(path)}`
 }
 
 function occurrences(value, marker) {

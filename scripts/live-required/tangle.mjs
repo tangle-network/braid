@@ -16,7 +16,10 @@ import {
   verifyUnavailableCancellation,
 } from './headless.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
-import { runInteractiveProof } from './tangle-sandbox-braid-interactive.mjs'
+import {
+  interactiveFailureMessages,
+  runInteractiveProof,
+} from './tangle-sandbox-braid-interactive.mjs'
 import { runProof as runMultirunProof } from './tangle-sandbox-braid-multirun.mjs'
 import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
 import { runConfidentialProof, runWorkspaceForkProof } from './tangle-workspace-proof.mjs'
@@ -349,7 +352,8 @@ export async function runTangleFlows({
     }
   } catch (error) {
     const classified = classifyExternalFailure(error, 'Tangle interactive session', environment)
-    addUnavailable('LIVE-08', classified.message)
+    const messages = interactiveFailureMessages(error, environment)
+    addUnavailable('LIVE-08', messages.join('; ') || classified.message)
   }
   try {
     const matrix = await matrixRunner({ repository, environment, binary, invocationId })

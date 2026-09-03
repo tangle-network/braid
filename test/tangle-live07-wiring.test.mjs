@@ -4,7 +4,11 @@ import test from 'node:test'
 import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { parseOperationId } from '../dist/domain/ids.js'
-import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
+import {
+  LiveRequiredError,
+  PROOF_OPERATIONS,
+  proofReceipt,
+} from '../scripts/live-required/contracts.mjs'
 import {
   prepareProductionWorkspace,
   verifyUnavailableCancellation,
@@ -561,6 +565,41 @@ test('Tangle aggregate records unavailable rows and rejects invalid passed rows'
   )
 })
 
+test('LIVE-08 aggregate preserves sanitized nested unavailable failures', async () => {
+  const secret = 'live-interactive-secret'
+  const failure = new LiveRequiredError(
+    'LIVE_PROTECTED_PATH_UNAVAILABLE',
+    'interactive proof unavailable',
+    {
+      unavailable: true,
+      cause: new AggregateError(
+        [
+          new Error(`interaction failed with ${secret}`),
+          new AggregateError([new Error('exact cleanup failed')], 'cleanup incomplete'),
+        ],
+        'interactive proof failed',
+      ),
+    },
+  )
+  const result = await runTangleFlows({
+    repository,
+    environment: { TANGLE_API_KEY: secret },
+    inferenceRunner: async () => ({ status: 'unavailable', reason: 'inference unavailable' }),
+    sandboxRunner: async () => ({ status: 'unavailable', reason: 'sandbox unavailable' }),
+    interactiveRunner: async () => {
+      throw failure
+    },
+    matrixRunner: async () => ({ status: 'unavailable', reason: 'matrix unavailable' }),
+  })
+
+  const interactive = result.unavailable.find((entry) => entry.row === 'LIVE-08')
+  assert.equal(
+    interactive?.reason,
+    'interactive proof unavailable; interactive proof failed; interaction failed with [REDACTED]; cleanup incomplete; exact cleanup failed',
+  )
+  assert.doesNotMatch(interactive?.reason ?? '', new RegExp(secret, 'u'))
+})
+
 test('LIVE-07 rejects a passing canary presented as a stress cohort', async () => {
   const cohort = passedStressCohort()
   await assert.rejects(
@@ -636,11 +675,11 @@ test('LIVE-08 uses Pi native shell input for non-model workspace mutations', () 
   assert.match(commands[0], /\/interactive/iu)
   assert.equal(
     commands[1],
-    "!!printf '%s\\n' 'INPUT_VALUE' >> '.braid-live/proof-quote/input file.txt'",
+    "!!mkdir -p -- '.braid-live/proof-quote' && printf '%s\\n' 'INPUT_VALUE' >> '.braid-live/proof-quote/input file.txt'",
   )
   assert.equal(
     commands[5],
-    `!!printf '%s\\n' 'RECONNECT_VALUE' >> '.braid-live/proof-quote/reconnect'"'"'s file.txt'`,
+    `!!mkdir -p -- '.braid-live/proof-quote' && printf '%s\\n' 'RECONNECT_VALUE' >> '.braid-live/proof-quote/reconnect'"'"'s file.txt'`,
   )
   assert.equal(commands.filter((command) => command.startsWith('!!')).length, 2)
 })
