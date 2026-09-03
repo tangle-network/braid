@@ -491,17 +491,17 @@ test('strict CLI Bridge requirements require distinct packed target and operatio
     },
     {
       status: 'passed',
-      target: 'codex/provider/model',
-      profile: { harness: 'codex', provider: 'provider', model: 'model' },
+      target: 'codex/default',
+      profile: { harness: 'codex', model: 'default' },
       process: {
         termination: { exited: true, descendantsExited: true, descendantsVerified: true },
       },
     },
   ]
-  const proof = (requirementId, operation, key, harness, model) => ({
+  const proof = (requirementId, operation, key, harness, model, provider) => ({
     requirementId,
     operation,
-    target: { key, harness, model },
+    target: { key, harness, ...(provider === undefined ? {} : { provider }), model },
     status: 'passed',
     packed: true,
     runId: `run-${requirementId}`,
@@ -521,16 +521,16 @@ test('strict CLI Bridge requirements require distinct packed target and operatio
     cleanup: { ok: true },
     selectedTargets: [
       { key: 'pi-target', modelId: 'pi/provider/model' },
-      { key: 'codex-target', modelId: 'codex/provider/model' },
+      { key: 'codex-target', modelId: 'codex/default' },
     ],
     targets,
     releaseProofs: [
-      proof('LIVE-01', 'cli-bridge.pi.conformance', 'pi-target', 'pi', 'model'),
-      proof('LIVE-02', 'cli-bridge.codex.cross-runner-handoff', 'codex-target', 'codex', 'model'),
-      proof('LIVE-03', 'cli-bridge.interactive-protocol', 'pi-target', 'pi', 'model'),
-      proof('LIVE-04', 'cli-bridge.restart-reconciliation', 'codex-target', 'codex', 'model'),
-      proof('LIVE-05', 'cli-bridge.runner-conformance', 'pi-target', 'pi', 'model'),
-      proof('LIVE-05', 'cli-bridge.runner-conformance', 'codex-target', 'codex', 'model'),
+      proof('LIVE-01', 'cli-bridge.pi.conformance', 'pi-target', 'pi', 'model', 'provider'),
+      proof('LIVE-02', 'cli-bridge.codex.cross-runner-handoff', 'codex-target', 'codex', 'default'),
+      proof('LIVE-03', 'cli-bridge.interactive-protocol', 'pi-target', 'pi', 'model', 'provider'),
+      proof('LIVE-04', 'cli-bridge.restart-reconciliation', 'codex-target', 'codex', 'default'),
+      proof('LIVE-05', 'cli-bridge.runner-conformance', 'pi-target', 'pi', 'model', 'provider'),
+      proof('LIVE-05', 'cli-bridge.runner-conformance', 'codex-target', 'codex', 'default'),
     ],
   }
 
@@ -543,6 +543,10 @@ test('strict CLI Bridge requirements require distinct packed target and operatio
   const wrongTarget = structuredClone(evidence)
   wrongTarget.releaseProofs[0].target.key = 'codex-target'
   assert.equal(evaluateLiveBridgeProof(wrongTarget, 'LIVE-01')?.result, 'uncaptured')
+
+  const wrongProvider = structuredClone(evidence)
+  wrongProvider.releaseProofs[0].target.provider = 'other-provider'
+  assert.equal(evaluateLiveBridgeProof(wrongProvider, 'LIVE-01')?.result, 'uncaptured')
 
   const excluded = structuredClone(evidence)
   excluded.scope.excludes = ['LIVE-01..05 full interactive runner conformance']
