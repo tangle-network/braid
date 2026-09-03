@@ -33,6 +33,7 @@ import {
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
   waitForInteractiveIdentityFrame,
+  waitForProviderReadback,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
 import {
@@ -1196,26 +1197,42 @@ test('LIVE-08 rejects missing telemetry and latency status', () => {
 })
 
 test('LIVE-08 resolves the exact interactive resource identity before provider reads', async () => {
+  const localRunId = 'local-run-interactive'
   const controlRef = {
     environmentId: 'environment-interactive',
     sessionId: 'session-interactive',
-    runId: 'run-interactive',
+    runId: 'provider-run-interactive',
   }
   const box = {
     id: controlRef.environmentId,
-    name: 'braid-interactive-run-interactive',
+    name: `braid-interactive-${localRunId}`,
     metadata: { owner: 'braid', lifecycle: 'retained', surface: 'interactive-agent' },
+    read: async () => 'provider-bound input\n',
   }
   const client = { get: async () => box }
   assert.equal(
-    await interactiveRetainedBox(client, controlRef, controlRef.runId, 'interactive proof'),
+    await interactiveRetainedBox(client, controlRef, localRunId, 'interactive proof'),
     box,
+  )
+  assert.equal(
+    (
+      await waitForProviderReadback(
+        client,
+        controlRef,
+        localRunId,
+        '.braid-live/input.txt',
+        'provider-bound input\n',
+        1_000,
+        'interactive proof',
+      )
+    ).matched,
+    true,
   )
   await assert.rejects(
     interactiveRetainedBox(
       { get: async () => ({ ...box, name: 'braid-session-interactive' }) },
       controlRef,
-      controlRef.runId,
+      localRunId,
       'interactive proof',
     ),
     /exact retained interactive Sandbox/u,

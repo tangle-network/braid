@@ -292,11 +292,19 @@ export async function interactiveRetainedBox(client, controlRef, runId, label) {
   return box
 }
 
-async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
+export async function waitForProviderReadback(
+  client,
+  controlRef,
+  localRunId,
+  path,
+  expectedValue,
+  timeoutMs,
+  label,
+) {
   const deadline = createProviderObservationDeadline(label, timeoutMs)
   const box = await waitForProviderObservation(
     `${label} retained Sandbox`,
-    () => interactiveRetainedBox(client, controlRef, controlRef.runId, label),
+    () => interactiveRetainedBox(client, controlRef, localRunId, label),
     timeoutMs,
     { deadline },
   )
@@ -1443,6 +1451,7 @@ async function runProof({
     const inputEvidence = await waitForProviderReadback(
       client,
       initialIdentity.controlRef,
+      initialIdentity.run.id,
       markers.inputPath,
       `${markers.input}\n`,
       timeoutMs,
@@ -1486,6 +1495,7 @@ async function runProof({
     const reconnectEvidence = await waitForProviderReadback(
       client,
       initialIdentity.controlRef,
+      initialIdentity.run.id,
       markers.reconnectPath,
       `${markers.reconnect}\n`,
       timeoutMs,
