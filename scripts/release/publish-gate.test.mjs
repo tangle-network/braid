@@ -172,7 +172,7 @@ function multirunProof(releaseBinding) {
   }
 }
 
-function proofReceiptForRow(row, environment, multirun) {
+function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}) {
   const common = {
     invocationId: `fixture-${row}`,
     startedAt: TIMESTAMP_START,
@@ -351,6 +351,59 @@ function proofReceiptForRow(row, environment, multirun) {
       ],
       observations: { fork: {} },
     })
+  if (refusal)
+    return proofReceipt({
+      ...common,
+      operation: PROOF_OPERATIONS.tangleConfidential,
+      runIds: ['run-live-10'],
+      environmentId: 'environment-live-10',
+      materializationDigest: 'materialization-live-10',
+      facts: {
+        sourceProviderEnvironmentId: 'provider-source',
+        destinationProviderEnvironmentId: null,
+        capabilityAdvertised: false,
+        capabilityConsistent: true,
+        confidentialRequested: true,
+        confidentialVerified: false,
+        confidentialActionRefused: true,
+        noOrdinaryPlacementDowngrade: true,
+        noChildOrCheckpointCreated: true,
+        missingAttestationRejected: null,
+        wrongNonceRejected: null,
+        wrongMeasurementRejected: null,
+        selfEchoRejected: null,
+        activeResourceDelta: 0,
+        cleanupCheckpoint: null,
+        cleanupEnvironment: null,
+      },
+      checks: [
+        'configuration',
+        'capability',
+        'confidential-refusal',
+        'no-ordinary-downgrade',
+        'no-child-or-checkpoint',
+        'resource-census',
+        'cleanup',
+      ],
+      observations: {
+        capability: {
+          providerBranchingConfidential: false,
+          sourceBranchingConfidential: false,
+          consistent: true,
+        },
+        refusal: {
+          executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+          stateBeforeDigest: 'a'.repeat(64),
+          stateAfterDigest: 'a'.repeat(64),
+        },
+        resourceCensus: {
+          before: { count: 0, ids: [], resources: [] },
+          after: { count: 0, ids: [], resources: [] },
+          activeResourceDelta: 0,
+          unchanged: true,
+        },
+      },
+    })
   return proofReceipt({
     ...common,
     operation: PROOF_OPERATIONS.tangleConfidential,
@@ -479,7 +532,7 @@ function releaseCheck({ id, cwd, environmentId, identity, stdout, stderr, eviden
   }
 }
 
-async function createBundle() {
+async function createBundle({ live10Refusal = false } = {}) {
   const repository = await mkdtemp(join(tmpdir(), 'braid-publish-gate-repo-'))
   const candidateRoot = await mkdtemp(join(tmpdir(), 'braid-publish-gate-candidate-'))
   const liveEvidenceRoot = await mkdtemp(join(tmpdir(), 'braid-publish-gate-live-'))
@@ -497,7 +550,7 @@ async function createBundle() {
   )
   await writeFile(
     join(repository, 'docs', 'requirements.md'),
-    '## Required live matrix\n\n| LIVE-10 | Confidential Tangle path |\n',
+    '## Required live matrix\n\n| LIVE-10 | Confidential Tangle safety/refusal |\n',
   )
   await mkdir(join(repository, 'release'), { recursive: true })
   await writeFile(
@@ -555,7 +608,9 @@ async function createBundle() {
     ...['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'].map((row) => ({
       row,
       status: 'passed',
-      evidence: proofReceiptForRow(row, bindingEnvironment, rawMultirun),
+      evidence: proofReceiptForRow(row, bindingEnvironment, rawMultirun, {
+        refusal: row === 'LIVE-10' && live10Refusal,
+      }),
     })),
   ])
   await mkdir(join(liveEvidenceRoot, 'live', 'tangle'), { recursive: true })
@@ -749,8 +804,8 @@ async function rewriteChecks(fixture, update) {
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`)
 }
 
-async function assertRejected(mutate, pattern) {
-  const fixture = await createBundle()
+async function assertRejected(mutate, pattern, bundleOptions = {}) {
+  const fixture = await createBundle(bundleOptions)
   try {
     await mutate(fixture)
     await assert.rejects(
@@ -851,4 +906,62 @@ test('publish gate accepts and rejects stale or tampered candidate-bound live ev
       envelope.artifacts.find(({ id }) => id.endsWith('evidence-live-07')).sha256 = sha256(bytes)
     })
   }, /LIVE-07 multirun evidence|differs from the candidate identity/u)
+})
+
+test('publish gate accepts the LIVE-10 safety refusal variant and rejects tampered evidence', async () => {
+  const fixture = await createBundle({ live10Refusal: true })
+  try {
+    const result = await verifyLive10Candidate({
+      repository: fixture.repository,
+      candidateRoot: fixture.candidateRoot,
+      liveEvidenceRoot: fixture.liveEvidenceRoot,
+      expectedCommit: fixture.identity.gitCommit,
+      expectedVersion: fixture.identity.braidVersion,
+    })
+    assert.equal(result.check.id, 'LIVE-10')
+  } finally {
+    await fixture.close()
+  }
+
+  await assertRejected(
+    async (fixture) => {
+      const path = join(fixture.liveEvidenceRoot, 'live', 'tangle', 'receipts.json')
+      const receipts = JSON.parse(await readFile(path, 'utf8'))
+      const refusal = receipts.flows.find(({ row }) => row === 'LIVE-10').evidence.observations
+        .refusal
+      refusal.stateAfterDigest = 'b'.repeat(64)
+      const bytes = Buffer.from(`${JSON.stringify(receipts)}\n`)
+      await writeFile(path, bytes)
+      await rewriteChecks(fixture, (envelope) => {
+        for (const artifact of envelope.artifacts)
+          if (artifact.path === 'live/tangle/receipts.json') artifact.sha256 = sha256(bytes)
+      })
+    },
+    /state digest changed during refusal/u,
+    { live10Refusal: true },
+  )
+  await assertRejected(
+    async (fixture) => {
+      const path = join(fixture.liveEvidenceRoot, 'live', 'tangle', 'receipts.json')
+      const receipts = JSON.parse(await readFile(path, 'utf8'))
+      const census = receipts.flows.find(({ row }) => row === 'LIVE-10').evidence.observations
+        .resourceCensus
+      census.before = {
+        count: 1,
+        ids: ['source'],
+        resources: [{ id: 'source', status: 'running' }],
+      }
+      census.after.count = 1
+      census.after.ids = ['replacement']
+      census.after.resources = [{ id: 'replacement', status: 'running' }]
+      const bytes = Buffer.from(`${JSON.stringify(receipts)}\n`)
+      await writeFile(path, bytes)
+      await rewriteChecks(fixture, (envelope) => {
+        for (const artifact of envelope.artifacts)
+          if (artifact.path === 'live/tangle/receipts.json') artifact.sha256 = sha256(bytes)
+      })
+    },
+    /resource census does not match its derived result/u,
+    { live10Refusal: true },
+  )
 })

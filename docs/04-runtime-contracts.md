@@ -375,7 +375,7 @@ Its default document is an upper bound, not a claim about one client or deployme
 
 Its provider-level surface includes deployment-gated retained control, interaction response, workspace branching, and interactive-agent operations.
 
-The composed environment narrows those claims against the concrete Sandbox client and deployment capability document.
+The composed environment narrows those claims against concrete Sandbox client methods and the selected connection's configured adapter capability.
 
 The provider accepts an explicit capability declaration and narrows it against the concrete client and environment methods.
 
@@ -383,7 +383,9 @@ Braid does not inject positive retained capabilities into the provider.
 
 It requires client `get`, exact control, replay, detach, turn idempotency, retry-safe cancellation, and provider-backed dispatch lookup.
 
-The provider-level report alone does not satisfy that requirement; Braid also requires per-environment capability evidence and live deployment proof.
+The provider-level report alone does not satisfy that requirement; Braid requires the selected adapter and provider-backed source environment to agree, then proves the chosen behavior through that adapter.
+
+The release proof binds these observations to the exact candidate code and does not present refusal observations as signed provider truth.
 
 The adapter exposes environment stream and dispatch, provider sessions, workspace methods, refresh, and destroy only when the sandbox instance implements them.
 
@@ -717,7 +719,7 @@ Braid builds the following view from live provider capabilities and method prese
 | Conversation fork | Always available as a Braid transcript operation |
 | Workspace fork | retry-safe checkpoint and fork methods, lookup by idempotency key, and explicit cleanup |
 | Confidential run | `environment.confidential`, compatible profile, placement, and verified attestation |
-| Confidential workspace fork | `branching.confidential`, `environment.confidential`, retry-safe workspace operations, and an attestation verifier |
+| Confidential workspace fork | `branching.confidential`, `environment.confidential`, retry-safe workspace operations, and an attestation verifier when capability is true; otherwise a fail-closed refusal |
 | Usage and cost | usage capability and normalized events |
 | Supervisor steer | typed runtime worker control |
 | Supervisor cancel | typed runtime cancellation with effect confirmation |

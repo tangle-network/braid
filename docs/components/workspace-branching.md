@@ -114,13 +114,23 @@ The request and attestation remain unverified when either verifier or attestatio
 
 `LIVE-09` requires source materialization, checkpoint lookup, fork lookup, restart replay, independent destination mutation, unchanged source content, and exact cleanup.
 
-`LIVE-10` reads the selected provider's `branching.confidential` capability before it creates the source proof environment.
+`LIVE-10` reads the selected connection's configured adapter `branching.confidential` capability before it creates the source proof environment.
+
+The provider-backed source environment must report the same capability value.
 
 When the capability is `true`, LIVE-10 requires the typed Nitro policy, nonce-bound attestation, missing-attestation rejection, wrong-nonce rejection, wrong-measurement rejection, self-echo rejection, and exact cleanup.
 
 When the capability is `false`, LIVE-10 requires Braid plan and execute refusal with `CAPABILITY_UNAVAILABLE`, no child, checkpoint, fork, or ordinary-placement downgrade, an unchanged exact provider resource census, and exact source cleanup.
 
-The refusal receipt proves fail-closed Braid behavior; it does not claim confidential execution availability.
+This is the LIVE-10 safety/refusal variant and never claims confidential execution availability.
+
+The final census compares exact resource IDs and count within the selected connection and account view.
+
+Resource status changes remain observations only, and the census does not detect an effect created and deleted between observations.
+
+The direct `ConversationBranches.plan` and `execute` test asserts zero branching-provider factory, checkpoint, and fork calls before refusal.
+
+This code-order test supports the no-transient-effect claim that a census alone cannot provide.
 
 The built-in proofs run through Braid application and connection adapters.
 
@@ -140,7 +150,7 @@ The production composition constructs the same Nitro verifier factory for provid
 
 No arbitrary verifier module is loaded or executed.
 
-Missing credentials, deployment capability, provider census, or verifier configuration returns typed unavailable evidence.
+Missing credentials, selected adapter capability, provider-backed source agreement, provider census, or verifier configuration returns typed unavailable evidence.
 
 Configured provider failures remain failed and never become simulated passes.
 

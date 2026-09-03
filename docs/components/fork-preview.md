@@ -64,13 +64,21 @@ The preview names the selected kind and its omitted state.
 
 A requested confidential fork is allowed only when the selected completed run reports workspace branching, confidential branching, and confidential environment support, and the execution port provides an external attestation verifier.
 
+The configured adapter capability must agree with the provider-backed source environment before Braid attempts the confidential fork.
+
 Braid does not downgrade a confidential request to an ordinary workspace fork when any requirement is absent.
 
-The installed Tangle provider `1.1.4` with Sandbox `0.37.0` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
+The installed Tangle provider `1.1.4` with Sandbox `0.37.0` narrows `branching.confidential` to `false` when the selected adapter configuration lacks snapshot-restore inputs.
 
 This is installed-provider behavior, not a live capability observation.
 
-The same provider path refuses a new confidential workspace fork before child creation until those inputs are available.
+The selected adapter configuration refuses a new confidential workspace fork before child creation until those inputs are available.
+
+LIVE-10's false-capability result is a safety/refusal variant, not confidential execution proof.
+
+Its final resource census compares exact IDs and count within the selected connection and account view.
+
+Resource status changes are observations only, and the census does not detect an effect created and deleted between observations.
 
 Deterministic tests can supply the capability and verifier ports to exercise the success path, but they are not live provider evidence.
 

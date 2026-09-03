@@ -279,14 +279,15 @@ export function runtimeModuleRoot(repository, environment = process.env) {
 
 async function runtimeModules(repository, environment) {
   const dist = runtimeModuleRoot(repository, environment)
-  const [startup, application, credentials, connections, profiles] = await Promise.all([
+  const [startup, application, credentials, connections, profiles, canonical] = await Promise.all([
     import(pathToFileURL(join(dist, 'bin', 'production-startup.js')).href),
     import(pathToFileURL(join(dist, 'bin', 'production-application.js')).href),
     import(pathToFileURL(join(dist, 'bin', 'production-credential-context.js')).href),
     import(pathToFileURL(join(dist, 'adapters', 'connections', 'production-connections.js')).href),
     import(pathToFileURL(join(dist, 'adapters', 'agent-interface', 'profile-runtime.js')).href),
+    import(pathToFileURL(join(dist, 'domain', 'canonical.js')).href),
   ])
-  return { startup, application, credentials, connections, profiles }
+  return { startup, application, credentials, connections, profiles, canonical }
 }
 
 async function openProofApplication({ repository, config, environment }) {
@@ -432,53 +433,44 @@ export function resourceCensusComparison(before, after) {
   return Object.freeze({ activeResourceDelta, unchanged })
 }
 
-function durableRefusalState(state) {
-  return {
-    branches: [...(state.branches ?? [])].sort((left, right) => left.id.localeCompare(right.id)),
-    environments: state.environments
-      .map((candidate) => ({
-        id: candidate.id,
-        providerEnvironmentId: candidate.providerEnvironmentId ?? null,
-        lifecycle: candidate.lifecycle,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    checkpoints: state.checkpoints
-      .map((candidate) => ({
-        id: candidate.id,
-        operationId: candidate.operationId,
-        status: candidate.status,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    graphNodes: state.graphNodes
-      .map((candidate) => ({
-        id: candidate.id,
-        reference: candidate.reference,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    graphEdges: state.graphEdges
-      .map((candidate) => ({
-        id: candidate.id,
-        kind: candidate.kind,
-        source: candidate.source,
-        destination: candidate.destination,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    operations: state.operations
-      .map((candidate) => ({
-        id: candidate.id,
-        kind: candidate.kind,
-        status: candidate.status,
-        target: candidate.target ?? null,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
+const CANONICAL_SHA256_PATTERN = /^[0-9a-f]{64}$/u
+
+function completeStateDigest(opened) {
+  const canonicalDigest = opened.modules.canonical?.canonicalDigest
+  if (typeof canonicalDigest !== 'function')
+    throw unavailable(
+      'PROTECTED_STATE_DIGEST_UNAVAILABLE',
+      'LIVE-10 could not load the candidate canonical state digest function',
+    )
+  let digest
+  try {
+    digest = canonicalDigest(opened.app.state())
+  } catch (error) {
+    throw unavailable(
+      'PROTECTED_STATE_DIGEST_UNAVAILABLE',
+      'LIVE-10 could not compute a canonical SHA-256 digest of the complete Braid state',
+      error,
+    )
   }
+  if (typeof digest !== 'string' || !CANONICAL_SHA256_PATTERN.test(digest))
+    throw unavailable(
+      'PROTECTED_STATE_DIGEST_UNAVAILABLE',
+      'LIVE-10 could not compute a canonical SHA-256 digest of the complete Braid state',
+    )
+  return digest
 }
 
 /** Prove that a false capability caused refusal before any branch mutation. */
-export function confidentialRefusalChecks({ plan, beforeState, afterState, executeErrorCode }) {
+export function confidentialRefusalChecks({
+  plan,
+  beforeStateDigest,
+  afterStateDigest,
+  executeErrorCode,
+}) {
   const durableStateUnchanged =
-    JSON.stringify(durableRefusalState(beforeState)) ===
-    JSON.stringify(durableRefusalState(afterState))
+    typeof beforeStateDigest === 'string' &&
+    typeof afterStateDigest === 'string' &&
+    beforeStateDigest === afterStateDigest
   const requestRetained = plan?.confidential?.requested === true
   const actionRefused =
     requestRetained &&
@@ -1180,8 +1172,8 @@ async function runWorkspaceProof({
           }
         : {}),
     }
-    const refusalBeforeState =
-      confidential && providerConfidential === false ? opened.app.state() : undefined
+    const refusalBeforeStateDigest =
+      confidential && providerConfidential === false ? completeStateDigest(opened) : undefined
     plan = opened.app.conversations.branches.plan(planInput)
     if (confidential && providerConfidential === false) {
       let refusalExecutionCode
@@ -1194,6 +1186,7 @@ async function runWorkspaceProof({
       } catch (error) {
         refusalExecutionCode = error?.code
       }
+      const refusalAfterStateDigest = completeStateDigest(opened)
       if (refusalExecutionResult?.environmentId !== undefined) {
         destination = opened.app
           .state()
@@ -1204,11 +1197,10 @@ async function runWorkspaceProof({
             'Unexpected destination environment',
           )
       }
-      const refusalAfterState = opened.app.state()
       const refusalChecks = confidentialRefusalChecks({
         plan,
-        beforeState: refusalBeforeState,
-        afterState: refusalAfterState,
+        beforeStateDigest: refusalBeforeStateDigest,
+        afterStateDigest: refusalAfterStateDigest,
         executeErrorCode: refusalExecutionCode,
       })
       assertCondition(
@@ -1285,6 +1277,8 @@ async function runWorkspaceProof({
             refusal: {
               ...refusalChecks,
               executeErrorCode: refusalExecutionCode,
+              stateBeforeDigest: refusalBeforeStateDigest,
+              stateAfterDigest: refusalAfterStateDigest,
             },
             resourceCensus: {
               before: resourceCensusBefore,

@@ -1270,10 +1270,12 @@ test('confidential workspace planning stays unavailable without an external veri
 
 test('confidential workspace planning stays unavailable when branching lacks confidential support', async () => {
   const provider = workspaceProvider()
+  let providerFactoryCalls = 0
   const execution = executionFor({
     capabilities: branchCapabilities(true),
     workspaceBranchingProvider: {
       async forEnvironment(sourceEnvironmentId) {
+        providerFactoryCalls += 1
         return sourceEnvironmentId === 'provider-source-environment' ? provider.branching : null
       },
     },
@@ -1298,7 +1300,38 @@ test('confidential workspace planning stays unavailable when branching lacks con
   })
   assert.equal(plan.allowed, false)
   assert.match(plan.reason ?? '', /confidential placement and attestation verification/u)
+  const beforeState = app.state()
+  const beforeStateDigest = canonicalDigest(beforeState)
+  await assert.rejects(
+    () =>
+      app.conversations.branches.execute({
+        operationId: 'op-confidential-capability',
+        kind: 'workspace',
+        confidential: {
+          requested: true,
+          nonce: 'confidential-nonce',
+          policy: 'confidential-policy',
+          profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
+        },
+        planDigest: plan.digest,
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      (error as Error & { code?: unknown }).code === 'CAPABILITY_UNAVAILABLE',
+  )
+  const afterState = app.state()
+  assert.deepEqual(afterState, beforeState)
+  assert.equal(canonicalDigest(afterState), beforeStateDigest)
   assert.equal(provider.state.checkpointRequests.length, 0)
+  assert.equal(provider.state.forkRequests.length, 0)
+  assert.equal(providerFactoryCalls, 0)
+  assert.notEqual(
+    canonicalDigest({
+      ...afterState,
+      effects: [...afterState.effects, { id: 'effect-digest-sentinel' }],
+    }),
+    beforeStateDigest,
+  )
 })
 
 test('confidential workspace execution rechecks branching, environment, and verifier capabilities', async () => {

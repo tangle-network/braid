@@ -426,13 +426,8 @@ test('LIVE-10 requires an explicit boolean branching capability', () => {
 })
 
 test('LIVE-10 refusal requires no durable branch mutation or census change', () => {
-  const state = {
-    environments: [{ id: 'source', providerEnvironmentId: 'sandbox-source', lifecycle: 'active' }],
-    checkpoints: [],
-    graphNodes: [{ id: 'node-source', reference: { kind: 'environment', id: 'source' } }],
-    graphEdges: [],
-    operations: [],
-  }
+  const stateDigest = 'a'.repeat(64)
+  const changedStateDigest = 'b'.repeat(64)
   const plan = {
     allowed: false,
     environment: 'unavailable',
@@ -443,8 +438,8 @@ test('LIVE-10 refusal requires no durable branch mutation or census change', () 
   assert.deepEqual(
     confidentialRefusalChecks({
       plan,
-      beforeState: state,
-      afterState: structuredClone(state),
+      beforeStateDigest: stateDigest,
+      afterStateDigest: stateDigest,
       executeErrorCode: 'CAPABILITY_UNAVAILABLE',
     }),
     {
@@ -470,8 +465,8 @@ test('LIVE-10 refusal requires no durable branch mutation or census change', () 
   assert.equal(
     confidentialRefusalChecks({
       plan,
-      beforeState: state,
-      afterState: { ...state, checkpoints: [{ id: 'new-checkpoint', operationId: 'fork' }] },
+      beforeStateDigest: stateDigest,
+      afterStateDigest: changedStateDigest,
       executeErrorCode: 'CAPABILITY_UNAVAILABLE',
     }).noChildOrCheckpointCreated,
     false,
@@ -651,7 +646,11 @@ test('LIVE-10 passed refusal receipts prove fail-closed capability handling', ()
         sourceBranchingConfidential: false,
         consistent: true,
       },
-      refusal: { executeErrorCode: 'CAPABILITY_UNAVAILABLE' },
+      refusal: {
+        executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+        stateBeforeDigest: 'a'.repeat(64),
+        stateAfterDigest: 'a'.repeat(64),
+      },
       resourceCensus: {
         before: { count: 0, ids: [], resources: [] },
         after: { count: 0, ids: [], resources: [] },
@@ -714,7 +713,11 @@ test('LIVE-10 receipts reject a replaced resource id hidden by stale census summ
         sourceBranchingConfidential: false,
         consistent: true,
       },
-      refusal: { executeErrorCode: 'CAPABILITY_UNAVAILABLE' },
+      refusal: {
+        executeErrorCode: 'CAPABILITY_UNAVAILABLE',
+        stateBeforeDigest: 'a'.repeat(64),
+        stateAfterDigest: 'a'.repeat(64),
+      },
       resourceCensus: {
         before: {
           count: 1,

@@ -440,6 +440,11 @@ function validRequiredString(value, label) {
     throw new Error(`${label} must be a non-empty string`)
 }
 
+function validCanonicalSha256(value, label) {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/u.test(value))
+    throw new Error(`${label} must be a canonical SHA-256 digest`)
+}
+
 function record(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -1012,6 +1017,16 @@ function validatePassedTangleConfidentialReceipt(receipt) {
     const refusal = receipt.observations.refusal
     if (!record(refusal) || refusal.executeErrorCode !== 'CAPABILITY_UNAVAILABLE')
       throw new Error('Refused Tangle confidential proof requires execution refusal evidence')
+    validCanonicalSha256(
+      refusal.stateBeforeDigest,
+      'Refused Tangle confidential proof stateBeforeDigest',
+    )
+    validCanonicalSha256(
+      refusal.stateAfterDigest,
+      'Refused Tangle confidential proof stateAfterDigest',
+    )
+    if (refusal.stateBeforeDigest !== refusal.stateAfterDigest)
+      throw new Error('Refused Tangle confidential proof state digest changed during refusal')
   }
 }
 
