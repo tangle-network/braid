@@ -16,28 +16,28 @@ Their installed manifests, declarations, and implementations were inspected dire
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
 | [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.3.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.192.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.192.2` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.173.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
 | `@tangle-network/agent-provider-cli-bridge` | `1.0.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `1.1.3` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
-| `@tangle-network/sandbox` | `0.36.5` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| `@tangle-network/agent-provider-tangle` | `1.1.4` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
+| `@tangle-network/sandbox` | `0.37.0` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-The effective local Runtime installation resolves `agent-eval >=0.173.0 <0.174.0`, `agent-interface ^2.3.0`, and `sandbox >=0.36.4 <0.37.0` through the exact workspace lockfile.
+The effective local Runtime installation resolves `agent-eval >=0.173.0 <0.174.0`, `agent-interface ^2.3.0`, and `sandbox >=0.36.4 <0.38.0` through the exact workspace lockfile.
 
-Published Runtime `0.192.0` declares `agent-interface ^2.3.0`, `agent-eval >=0.173.0 <0.174.0`, and `sandbox >=0.36.4 <0.37.0`.
+Published Runtime `0.192.2` declares `agent-interface ^2.3.0`, `agent-eval >=0.173.0 <0.174.0`, and `sandbox >=0.36.4 <0.38.0`.
 
 The published Runtime compatibility rerelease now matches Braid's Interface and provider dependency contracts.
 
-The Runtime compatibility blocker is resolved by `0.192.0`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
+The Runtime compatibility blocker is resolved by `0.192.2`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
 
 The installed Tangle provider publishes `sandbox >=0.34.6 <1.0.0` as a peer range.
 
-Sandbox `0.36.5` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
+Sandbox `0.37.0` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
 
 Braid exercises the exact dependency cohort in the table above through the workspace lockfile.
 
 The installed set is peer-compatible.
-Runtime `0.192.0` requires Sandbox `>=0.36.4 <0.37.0`.
+Runtime `0.192.2` requires Sandbox `>=0.36.4 <0.38.0`.
 
 The lockfile pins the registry integrity for every installed package.
 
@@ -227,7 +227,7 @@ Braid therefore reports that path as unsupported instead of treating environment
 
 ### Runtime cancellation contract
 
-Runtime `0.192.0` publishes the following provider-neutral operation:
+Runtime `0.192.2` publishes the following provider-neutral operation:
 
 ```ts
 cancel(request: {

@@ -62,7 +62,7 @@ The request records `requested` placement separately from provider evidence.
 
 The adapter's child-response path requests `getTeeAttestation` only after a provider creates a child.
 
-The installed Tangle provider `1.1.3` with Sandbox `0.36.5` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
+The installed Tangle provider `1.1.4` with Sandbox `0.37.0` narrows `branching.confidential` to `false` when the deployed job lacks snapshot-restore inputs.
 
 This is installed-provider behavior, not a live capability observation.
 
