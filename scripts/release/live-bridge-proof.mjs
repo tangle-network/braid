@@ -70,7 +70,7 @@ function targetRecords(evidence) {
         text(target.target) &&
         object(target.profile) &&
         text(target.profile.harness) &&
-        text(target.profile.provider) &&
+        (target.profile.provider === undefined || text(target.profile.provider)) &&
         text(target.profile.model) &&
         object(target.process) &&
         object(target.process.termination) &&
@@ -86,12 +86,13 @@ function targetRecords(evidence) {
 function targetMatches(proofTarget, target) {
   return (
     object(proofTarget) &&
-    exactKeys(proofTarget, ['key', 'harness', 'model']) &&
+    exactKeys(proofTarget, ['key', 'harness', 'model'], ['provider']) &&
     text(proofTarget.key) &&
     text(proofTarget.harness) &&
     text(proofTarget.model) &&
     proofTarget.key === target.key &&
     proofTarget.harness === target.profile.harness &&
+    proofTarget.provider === target.profile.provider &&
     proofTarget.model === target.profile.model
   )
 }
@@ -104,11 +105,12 @@ function measuredTargetRecords(evidence) {
   const measured = targets.map((target) => {
     const advertised = advertisedByModel.get(target.target)
     if (advertised === undefined) return undefined
-    if (
-      `${target.profile.harness}/${target.profile.provider}/${target.profile.model}` !==
-      target.target
-    )
-      return undefined
+    const route = [
+      target.profile.harness,
+      ...(target.profile.provider === undefined ? [] : [target.profile.provider]),
+      target.profile.model,
+    ].join('/')
+    if (route !== target.target) return undefined
     return { ...target, key: advertised.key }
   })
   if (measured.some((target) => target === undefined)) return undefined
