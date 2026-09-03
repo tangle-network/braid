@@ -7,6 +7,7 @@ import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { createOperationId } from '../../dist/domain/ids.js'
 import { sleep } from '../live-bridge/process.mjs'
 import {
   processTreeEnvironment,
@@ -932,6 +933,10 @@ export function assertStoppedTerminal(terminal) {
   return { terminal, stopped: true }
 }
 
+export function interactiveStopOperationId(uuid = randomUUID()) {
+  return createOperationId(`op-live-interactive-stop-${uuid}`)
+}
+
 async function observeSandbox(
   client,
   controlRef,
@@ -1292,7 +1297,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
         isCancellableInteractiveRunStatus(beforeRun?.status),
         `Braid stop cannot target run status ${beforeRun?.status ?? 'missing'}`,
       )
-      const operationId = `live-interactive-stop-${randomUUID()}`
+      const operationId = interactiveStopOperationId()
       const acknowledgement = await rpcRequest(
         initialized.session,
         'cancel_run',
