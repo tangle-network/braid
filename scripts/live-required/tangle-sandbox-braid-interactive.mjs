@@ -932,6 +932,10 @@ export function assertStoppedTerminal(terminal) {
   return { terminal, stopped: true }
 }
 
+export function interactiveStopOperationId(uuid = randomUUID()) {
+  return `op-live-interactive-stop-${uuid}`
+}
+
 async function observeSandbox(
   client,
   controlRef,
@@ -1292,7 +1296,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
         isCancellableInteractiveRunStatus(beforeRun?.status),
         `Braid stop cannot target run status ${beforeRun?.status ?? 'missing'}`,
       )
-      const operationId = `live-interactive-stop-${randomUUID()}`
+      const operationId = interactiveStopOperationId()
       const acknowledgement = await rpcRequest(
         initialized.session,
         'cancel_run',

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
+import { parseOperationId } from '../dist/domain/ids.js'
 import { PROOF_OPERATIONS, proofReceipt } from '../scripts/live-required/contracts.mjs'
 import {
   prepareProductionWorkspace,
@@ -29,6 +30,7 @@ import {
   interactiveMaterializationEvidence,
   interactiveProofCommandSequence,
   interactiveRetainedBox,
+  interactiveStopOperationId,
   sandboxConfiguration as interactiveSandboxConfiguration,
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
@@ -1194,6 +1196,12 @@ test('LIVE-08 rejects missing telemetry and latency status', () => {
       ),
     /missing fields/u,
   )
+})
+
+test('LIVE-08 cleanup uses one canonical Braid operation identity', () => {
+  const operationId = interactiveStopOperationId('00000000-0000-4000-8000-000000000000')
+  assert.equal(parseOperationId(operationId), operationId)
+  assert.equal(operationId, 'op-live-interactive-stop-00000000-0000-4000-8000-000000000000')
 })
 
 test('LIVE-08 resolves the exact interactive resource identity before provider reads', async () => {
