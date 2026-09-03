@@ -81,12 +81,18 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
   ]),
   [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
     'configuration',
+    'capability',
     'nitro-attestation',
     'requested-unverified-binding',
     'missing-attestation',
     'valid-attestation',
     'wrong-nonce',
     'wrong-measurement',
+    'self-echo',
+    'confidential-refusal',
+    'no-ordinary-downgrade',
+    'no-child-or-checkpoint',
+    'resource-census',
     'cleanup',
   ]),
   [PROOF_OPERATIONS.traceAnalysis]: Object.freeze([
@@ -110,6 +116,30 @@ const PROOF_OPERATION_CHECK_VARIANTS = Object.freeze({
   [PROOF_OPERATIONS.tangleInference]: Object.freeze([
     Object.freeze(['normal-turn', 'cancelled-turn', 'materialization-receipt']),
     Object.freeze(['normal-turn', 'cancellation-reported-unavailable', 'materialization-receipt']),
+  ]),
+  [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
+    Object.freeze([
+      'configuration',
+      'capability',
+      'nitro-attestation',
+      'requested-unverified-binding',
+      'missing-attestation',
+      'valid-attestation',
+      'wrong-nonce',
+      'wrong-measurement',
+      'self-echo',
+      'resource-census',
+      'cleanup',
+    ]),
+    Object.freeze([
+      'configuration',
+      'capability',
+      'confidential-refusal',
+      'no-ordinary-downgrade',
+      'no-child-or-checkpoint',
+      'resource-census',
+      'cleanup',
+    ]),
   ]),
 })
 
@@ -165,11 +195,18 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
   [PROOF_OPERATIONS.tangleConfidential]: Object.freeze([
     'sourceProviderEnvironmentId',
     'destinationProviderEnvironmentId',
+    'capabilityAdvertised',
+    'capabilityConsistent',
     'confidentialRequested',
     'confidentialVerified',
+    'confidentialActionRefused',
+    'noOrdinaryPlacementDowngrade',
+    'noChildOrCheckpointCreated',
     'missingAttestationRejected',
     'wrongNonceRejected',
     'wrongMeasurementRejected',
+    'selfEchoRejected',
+    'activeResourceDelta',
     'cleanupCheckpoint',
     'cleanupEnvironment',
   ]),
@@ -476,6 +513,16 @@ function validateProofFacts(operation, status, facts) {
       continue
     }
     if (
+      key === 'missingAttestationRejected' ||
+      key === 'wrongNonceRejected' ||
+      key === 'wrongMeasurementRejected' ||
+      key === 'selfEchoRejected'
+    ) {
+      if (value !== null && typeof value !== 'boolean')
+        throw new Error(`Live proof ${key} must be boolean or null`)
+      continue
+    }
+    if (
       key === 'promoted' ||
       key === 'cancellationAvailable' ||
       key === 'terminalTakeoverRequired' ||
@@ -487,11 +534,13 @@ function validateProofFacts(operation, status, facts) {
       key === 'checkpointRetried' ||
       key === 'forkRetried' ||
       key === 'restarted' ||
+      key === 'capabilityAdvertised' ||
+      key === 'capabilityConsistent' ||
       key === 'confidentialRequested' ||
       key === 'confidentialVerified' ||
-      key === 'missingAttestationRejected' ||
-      key === 'wrongNonceRejected' ||
-      key === 'wrongMeasurementRejected' ||
+      key === 'confidentialActionRefused' ||
+      key === 'noOrdinaryPlacementDowngrade' ||
+      key === 'noChildOrCheckpointCreated' ||
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
       key === 'processGroupExitedBeforeWorkspaceCleanup' ||
@@ -817,6 +866,45 @@ function validatePassedTangleWorkspaceForkReceipt(receipt) {
     throw new Error('Passed Tangle workspace-fork proof requires redacted observations')
 }
 
+function validateConfidentialResourceCensus(value, expectedActiveResourceDelta) {
+  if (!record(value)) throw new Error('Passed Tangle confidential proof requires a resource census')
+  for (const phase of ['before', 'after']) {
+    const census = value[phase]
+    if (!record(census))
+      throw new Error(`Passed Tangle confidential proof has no ${phase} resource census`)
+    if (!Number.isSafeInteger(census.count) || census.count < 0)
+      throw new Error(`Passed Tangle confidential ${phase} census has an invalid count`)
+    if (
+      !Array.isArray(census.ids) ||
+      census.ids.length !== census.count ||
+      census.ids.some((id) => typeof id !== 'string' || id.length === 0) ||
+      new Set(census.ids).size !== census.ids.length
+    )
+      throw new Error(`Passed Tangle confidential ${phase} census has invalid resource ids`)
+    if (!Array.isArray(census.resources) || census.resources.length !== census.count)
+      throw new Error(`Passed Tangle confidential ${phase} census has no resource records`)
+    const resourceIds = census.resources.map((resource) => {
+      if (!record(resource) || typeof resource.id !== 'string' || resource.id.length === 0)
+        throw new Error(`Passed Tangle confidential ${phase} census has an invalid resource record`)
+      if (resource.status !== null && typeof resource.status !== 'string')
+        throw new Error(`Passed Tangle confidential ${phase} census has an invalid resource status`)
+      return resource.id
+    })
+    if (JSON.stringify(resourceIds) !== JSON.stringify(census.ids))
+      throw new Error(`Passed Tangle confidential ${phase} census ids do not match its records`)
+  }
+  const activeResourceDelta = value.after.count - value.before.count
+  const unchanged =
+    activeResourceDelta === 0 &&
+    JSON.stringify(value.before.ids) === JSON.stringify(value.after.ids)
+  if (value.activeResourceDelta !== activeResourceDelta || value.unchanged !== unchanged)
+    throw new Error('Passed Tangle confidential resource census does not match its derived result')
+  if (expectedActiveResourceDelta !== activeResourceDelta)
+    throw new Error('Passed Tangle confidential census delta does not match its fact')
+  if (unchanged !== true)
+    throw new Error('Passed Tangle confidential proof requires an unchanged resource census')
+}
+
 function validatePassedTangleConfidentialReceipt(receipt) {
   const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
   for (const field of requiredConnectionFields)
@@ -828,26 +916,103 @@ function validatePassedTangleConfidentialReceipt(receipt) {
   if (receipt.run.ids.length !== 1)
     throw new Error('Passed Tangle confidential proof requires one source run ID')
   validRequiredString(receipt.run.environmentId, 'Passed Tangle confidential environmentId')
+  if (typeof receipt.facts.capabilityAdvertised !== 'boolean')
+    throw new Error('Passed Tangle confidential proof requires an advertised capability fact')
+  if (receipt.facts.capabilityConsistent !== true)
+    throw new Error(
+      'Passed Tangle confidential proof requires provider and source capability agreement',
+    )
   if (receipt.facts.confidentialRequested !== true)
     throw new Error('Passed Tangle confidential proof requires a requested confidential fork')
-  if (receipt.facts.confidentialVerified !== true)
-    throw new Error('Passed Tangle confidential proof requires an externally verified attestation')
-  if (
-    receipt.facts.missingAttestationRejected !== true ||
-    receipt.facts.wrongNonceRejected !== true ||
-    receipt.facts.wrongMeasurementRejected !== true
+  validRequiredString(
+    receipt.facts.sourceProviderEnvironmentId,
+    'Passed Tangle confidential sourceProviderEnvironmentId',
   )
-    throw new Error('Passed Tangle confidential proof requires all negative checks')
-  for (const field of ['sourceProviderEnvironmentId', 'destinationProviderEnvironmentId'])
-    validRequiredString(receipt.facts[field], `Passed Tangle confidential ${field}`)
-  if (receipt.facts.sourceProviderEnvironmentId === receipt.facts.destinationProviderEnvironmentId)
-    throw new Error('Passed Tangle confidential proof reused its source environment')
-  for (const field of ['cleanupCheckpoint', 'cleanupEnvironment']) {
-    if (!['deleted', 'already_absent'].includes(receipt.facts[field]))
-      throw new Error(`Passed Tangle confidential proof requires ${field} cleanup`)
+  if (receipt.facts.capabilityAdvertised === true) {
+    if (receipt.facts.confidentialVerified !== true)
+      throw new Error(
+        'Passed Tangle confidential proof requires an externally verified attestation',
+      )
+    if (receipt.facts.confidentialActionRefused !== false)
+      throw new Error('Attested Tangle confidential proof cannot report action refusal')
+    if (receipt.facts.noOrdinaryPlacementDowngrade !== true)
+      throw new Error('Attested Tangle confidential proof requires no ordinary-placement downgrade')
+    if (receipt.facts.noChildOrCheckpointCreated !== false)
+      throw new Error('Attested Tangle confidential proof requires its child and checkpoint')
+    if (
+      receipt.facts.missingAttestationRejected !== true ||
+      receipt.facts.wrongNonceRejected !== true ||
+      receipt.facts.wrongMeasurementRejected !== true ||
+      receipt.facts.selfEchoRejected !== true
+    )
+      throw new Error('Passed Tangle confidential proof requires all negative checks')
+    validRequiredString(
+      receipt.facts.destinationProviderEnvironmentId,
+      'Passed Tangle confidential destinationProviderEnvironmentId',
+    )
+    if (
+      receipt.facts.sourceProviderEnvironmentId === receipt.facts.destinationProviderEnvironmentId
+    )
+      throw new Error('Passed Tangle confidential proof reused its source environment')
+    for (const field of ['cleanupCheckpoint', 'cleanupEnvironment']) {
+      if (!['deleted', 'already_absent'].includes(receipt.facts[field]))
+        throw new Error(`Passed Tangle confidential proof requires ${field} cleanup`)
+    }
+  } else {
+    if (receipt.facts.confidentialVerified !== false)
+      throw new Error('Refused Tangle confidential proof cannot claim an attestation')
+    if (receipt.facts.confidentialActionRefused !== true)
+      throw new Error('Refused Tangle confidential proof requires action refusal')
+    if (receipt.facts.noOrdinaryPlacementDowngrade !== true)
+      throw new Error('Refused Tangle confidential proof requires no ordinary-placement downgrade')
+    if (receipt.facts.noChildOrCheckpointCreated !== true)
+      throw new Error('Refused Tangle confidential proof requires no child or checkpoint')
+    if (receipt.facts.destinationProviderEnvironmentId !== null)
+      throw new Error('Refused Tangle confidential proof cannot have a destination environment')
+    if (
+      receipt.facts.missingAttestationRejected !== null ||
+      receipt.facts.wrongNonceRejected !== null ||
+      receipt.facts.wrongMeasurementRejected !== null ||
+      receipt.facts.selfEchoRejected !== null
+    )
+      throw new Error('Refused Tangle confidential proof cannot claim attestation negative checks')
+    if (receipt.facts.cleanupCheckpoint !== null || receipt.facts.cleanupEnvironment !== null)
+      throw new Error('Refused Tangle confidential proof cannot claim fork cleanup')
   }
+  if (receipt.facts.activeResourceDelta !== 0)
+    throw new Error('Passed Tangle confidential proof requires activeResourceDelta=0')
   if (receipt.observations === null || Object.keys(receipt.observations).length === 0)
     throw new Error('Passed Tangle confidential proof requires redacted observations')
+  const capability = receipt.observations.capability
+  if (!record(capability))
+    throw new Error('Passed Tangle confidential proof requires capability observations')
+  if (
+    capability.providerBranchingConfidential !== receipt.facts.capabilityAdvertised ||
+    capability.sourceBranchingConfidential !== receipt.facts.capabilityAdvertised ||
+    capability.consistent !== true
+  )
+    throw new Error('Passed Tangle confidential capability observations are inconsistent')
+  validateConfidentialResourceCensus(
+    receipt.observations.resourceCensus,
+    receipt.facts.activeResourceDelta,
+  )
+  if (receipt.facts.capabilityAdvertised === true) {
+    const attestation = receipt.observations.attestation
+    if (
+      !record(attestation) ||
+      attestation.providerKeyAuthenticated !== true ||
+      attestation.signatureDistinctFromQuote !== true ||
+      attestation.requestedUnverifiedBeforeExecution !== true ||
+      attestation.wrongNonceRejected !== true ||
+      attestation.wrongMeasurementRejected !== true ||
+      attestation.selfEchoRejected !== true
+    )
+      throw new Error('Passed Tangle confidential proof requires attestation observations')
+  } else {
+    const refusal = receipt.observations.refusal
+    if (!record(refusal) || refusal.executeErrorCode !== 'CAPABILITY_UNAVAILABLE')
+      throw new Error('Refused Tangle confidential proof requires execution refusal evidence')
+  }
 }
 
 export function proofInvocation(scope) {

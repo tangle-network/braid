@@ -184,6 +184,9 @@ Closing a Braid interface and explicitly cancelling a run must produce different
 - Recover an exact retained dispatch by deterministic keys after caller death and before local reference commit.
 - Expose run cancellation separately from environment destruction.
 - Validate inline profiles and return effective capability, placement, session, usage, and confidentiality evidence.
+- Make `LIVE-10` accept only a real nonce-bound attestation when confidential branching is advertised.
+- Make `LIVE-10` accept a real fail-closed refusal when confidential branching is false, without treating unavailable confidential execution as a successful execution.
+- Require an unchanged provider resource census and no child, checkpoint, fork, or ordinary-placement downgrade on the refusal path.
 - Prove workspace read, write, exec, Git, upload, download, checkpoint, and fork methods against current deployment support.
 - Make checkpoint and fork idempotent by caller key and canonical request digest, add lookup after caller restart, and reject changed-input key reuse.
 - Return immutable checkpoint source and destination environment references plus placement metadata and expose confirmed checkpoint and destination cleanup.
@@ -193,6 +196,10 @@ Closing a Braid interface and explicitly cancelling a run must produce different
 ### Done when
 
 `UP-09`, `UP-14`, `LIVE-06` through `LIVE-10`, and `SE-09` pass against a real current deployment.
+
+`LIVE-10` passes only with a verified confidential fork or a verified provider capability refusal.
+
+The refusal variant proves Braid behavior and cleanup; it does not claim that confidential execution is available.
 
 The live cleanup report must confirm every test environment and checkpoint is destroyed after evidence capture.
 
@@ -417,6 +424,7 @@ All owning repositories for final compatible releases, then `tangle-network/brai
 - Keep live, performance, semantic, soak, and complete-manifest audits available as explicit product audits.
 - Run the protected `Release Live Evidence` workflow against the exact main commit and candidate Release run.
 - Require a passed `LIVE-10` check, aggregate Tangle receipts, and the separate `LIVE-07` multirun artifact bound to the candidate commit, tarball, dependency digest, and Runtime version.
+- Accept the `LIVE-10` refusal receipt only when it contains the real `CAPABILITY_UNAVAILABLE` execute result, no durable branch mutation, and an unchanged provider resource census.
 - Require the publish job to reject missing, stale, tampered, or source-checkout live evidence.
 - Require a passed `LIVE-07` multirun artifact before release completion; provider or sandbox availability may still block that completion rather than becoming an unavailable claim.
 - Endorse the exact candidate package and package manifest in an isolated code-free job.
