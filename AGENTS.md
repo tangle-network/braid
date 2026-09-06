@@ -1,8 +1,14 @@
 # Braid operator contract
 
-Read `README.md`, then `docs/01-product-contract.md` through `docs/10-upstream-strategy.md`, then the decision records before changing product behavior.
+Read [the product contract](docs/01-product-contract.md) before changing user-visible behavior.
+Then load the sources for the affected task:
 
-The repository-level instructions in `/home/drew/code/AGENTS.md` also apply.
+- Runtime integration: [runtime contracts](docs/04-runtime-contracts.md).
+- Agent setup: [profiles and connections](docs/05-profiles-and-connections.md).
+- Conversation state or analysis: [conversations, forks, and analysis](docs/06-conversations-forks-and-analysis.md).
+- Credentials, permissions, or terminal trust: [security and privacy](docs/07-security-and-privacy.md).
+- Component behavior: [component index](docs/components/README.md) and the relevant [decisions](docs/decisions/).
+- Release and validation: [verification](docs/08-verification.md), [delivery](docs/09-delivery-plan.md).
 
 ## Non-negotiable boundaries
 
