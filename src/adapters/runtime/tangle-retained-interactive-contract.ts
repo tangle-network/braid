@@ -79,6 +79,8 @@ export function interactiveEnvironment(
   return {
     profile,
     backend: prepared.runner,
+    ...(prepared.workspace === undefined ? {} : { workspace: prepared.workspace }),
+    ...(prepared.resources === undefined ? {} : { resources: prepared.resources }),
     name: stableProviderId('braid-interactive-', runId),
     metadata: {
       owner: 'braid',

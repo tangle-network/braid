@@ -1,11 +1,16 @@
-import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  AgentProfile,
+  ResourceRequest,
+  WorkspaceRequest,
+} from '@tangle-network/agent-interface'
 import type {
   AgentEnvironmentCapabilities,
   AgentEnvironmentProvider,
 } from '@tangle-network/agent-interface/environment-provider'
-import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
+import { providerAsSandboxClient } from '@tangle-network/agent-runtime/environment-provider'
 import type { ExecutorFactory, SandboxClient } from '@tangle-network/agent-runtime/kernel'
-import type { BackendType, CreateSandboxOptions, SandboxInstance } from '@tangle-network/sandbox'
+import type { BackendType } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionId } from '../../domain/ids.js'
@@ -73,6 +78,8 @@ export async function resolveTangleSandboxBackend(
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-sandbox-environment-request',
     idempotencyKey,
+    ...(record.workspace === undefined ? {} : { workspace: record.workspace }),
+    ...(record.resources === undefined ? {} : { resources: record.resources }),
   })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
@@ -92,12 +99,15 @@ export async function resolveTangleSandboxBackend(
     factory: ((spec, context) =>
       createExecutor({
         backend: 'sandbox',
-        sandboxClient: runtimeSandboxClient(
-          observedClient.client,
-          record.name,
+        sandboxClient: runtimeSandboxClient(sdkProvider, {
+          profile,
+          runner,
+          ...(record.workspace === undefined ? {} : { workspace: record.workspace }),
+          ...(record.resources === undefined ? {} : { resources: record.resources }),
+          name: record.name,
           idempotencyKey,
-          context.signal,
-        ),
+          signal: context.signal,
+        }),
         maxIterations: 1,
       })(spec, context)) satisfies ExecutorFactory<unknown>,
     profile,
@@ -114,6 +124,8 @@ export async function resolveTangleSandboxBackend(
       backend: 'executor',
       connectionId,
       environmentRequestDigest,
+      ...(record.workspace === undefined ? {} : { workspace: record.workspace }),
+      ...(record.resources === undefined ? {} : { resources: record.resources }),
       lifecycle: lifecycle.mode,
       cleanup: lifecycle.cleanup,
       continuity: lifecycle.continuity,
@@ -133,6 +145,8 @@ export interface PreparedTangleRetainedConnection {
   readonly capabilities: AgentEnvironmentCapabilities
   readonly observation: ExecutionObservationSource
   readonly providerSessionId: string
+  readonly workspace?: Readonly<WorkspaceRequest>
+  readonly resources?: Readonly<ResourceRequest>
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
@@ -230,6 +244,8 @@ export async function resolveTangleSandboxRetainedConnection(
     idempotencyKey: identity.environmentIdempotencyKey,
     name: identity.name,
     metadata: identity.metadata,
+    ...(record.workspace === undefined ? {} : { workspace: record.workspace }),
+    ...(record.resources === undefined ? {} : { resources: record.resources }),
     idleTtlSeconds,
   })
   return freezeExecution({
@@ -240,6 +256,8 @@ export async function resolveTangleSandboxRetainedConnection(
     capabilities,
     observation: observedClient.observation,
     providerSessionId,
+    ...(record.workspace === undefined ? {} : { workspace: record.workspace }),
+    ...(record.resources === undefined ? {} : { resources: record.resources }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,
     environmentName: identity.name,
     environmentMetadata: identity.metadata,
@@ -270,23 +288,44 @@ export async function resolveTangleSandboxRetainedConnection(
 }
 
 function runtimeSandboxClient(
-  client: SandboxClientLike,
-  name: string,
-  idempotencyKey: string,
-  signal: AbortSignal,
+  provider: AgentEnvironmentProvider,
+  input: {
+    readonly profile: Readonly<AgentProfile>
+    readonly runner: BackendType
+    readonly workspace?: Readonly<WorkspaceRequest>
+    readonly resources?: Readonly<ResourceRequest>
+    readonly name: string
+    readonly idempotencyKey: string
+    readonly signal: AbortSignal
+  },
 ): SandboxClient {
-  return Object.freeze({
-    async create(createOptions?: CreateSandboxOptions) {
-      return (await client.create(
-        {
-          ...createOptions,
-          name,
-          idempotencyKey,
-        },
-        { signal },
-      )) as unknown as SandboxInstance
+  return providerAsSandboxClientWithoutLegacyOptions(provider, {
+    defaults: {
+      profile: input.profile,
+      backend: input.runner,
+      ...(input.workspace === undefined ? {} : { workspace: input.workspace }),
+      ...(input.resources === undefined ? {} : { resources: input.resources }),
+      name: input.name,
+      idempotencyKey: input.idempotencyKey,
+      signal: input.signal,
     },
   })
+}
+
+function providerAsSandboxClientWithoutLegacyOptions(
+  provider: AgentEnvironmentProvider,
+  options: Parameters<typeof providerAsSandboxClient>[1] = {},
+): SandboxClient {
+  return providerAsSandboxClient(
+    {
+      ...provider,
+      async create(input) {
+        const { providerOptions: _providerOptions, ...canonicalInput } = input
+        return provider.create(canonicalInput)
+      },
+    },
+    { ...options, requireTerminalEvent: true },
+  )
 }
 
 function sandboxLifecycle(): SandboxLifecyclePolicy {

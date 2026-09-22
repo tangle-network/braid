@@ -388,6 +388,37 @@ test('retained Tangle dispatch receives the exact requested interaction map', as
   assert.deepEqual(sandbox.dispatches[0]?.interactions, interactions)
 })
 
+test('retained Tangle dispatch forwards the canonical workspace and resources request', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const { input } = setup(sandbox)
+  const base = await prepareFakeTangleRetainedConnection({
+    sandbox,
+    profile,
+    runId: input.runId,
+  })
+  const prepared = {
+    ...base,
+    workspace: {
+      repoUrl: 'https://github.com/tangle-network/braid.git',
+      gitRef: 'main',
+      cwd: '/workspace/braid',
+    },
+    resources: { cpu: 1, memoryMb: 512, diskMb: 1_024 },
+  }
+
+  await startTangleRetainedRun(createTangleRetainedPlan(prepared, input.runId), input)
+
+  assert.deepEqual(sandbox.createCalls[0]?.git, {
+    url: 'https://github.com/tangle-network/braid.git',
+    ref: 'main',
+  })
+  assert.deepEqual(sandbox.createCalls[0]?.resources, {
+    cpuCores: 1,
+    memoryMB: 512,
+    diskGB: 1,
+  })
+})
+
 test('ambiguous dispatch failure never deletes the retained environment', async () => {
   const sandbox = new FakeTangleRetainedSandbox()
   sandbox.failDispatch = true
