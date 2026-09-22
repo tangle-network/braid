@@ -7,6 +7,7 @@ import {
   type OperationId,
 } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
+import { allPendingInteractionIds } from '../domain/run-interactions.js'
 import { conversationBundle } from './conversation-records.js'
 import {
   acknowledgedOperation,
@@ -397,15 +398,17 @@ function conversationForOperation(
 
 function deleteBlockers(state: BraidState, conversationId: ConversationId): void {
   for (const run of state.runs.filter((candidate) => candidate.conversationId === conversationId)) {
-    if (run.interactionsTruncated && run.pendingInteractionIds === undefined) {
+    if (
+      run.interactionsTruncated &&
+      run.pendingInteractions === undefined &&
+      run.pendingInteractionIds === undefined
+    ) {
       throw new AppError(
         'DELETE_BLOCKED',
         `Interaction history for run ${run.id} is truncated; pending state is not provable`,
       )
     }
-    const pendingId =
-      run.pendingInteractionIds?.[0] ??
-      run.interactions.find((interaction) => interaction.status === 'pending')?.request.id
+    const pendingId = allPendingInteractionIds(run)[0]
     if (pendingId !== undefined)
       throw new AppError('DELETE_BLOCKED', `Interaction ${pendingId} is still pending`)
   }

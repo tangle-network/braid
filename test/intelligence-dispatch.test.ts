@@ -286,8 +286,8 @@ test('runtime supervisors stay unbound until each runtime id is explicitly assig
   await app.close()
 })
 
-test('worker steering resolves the public Braid ids back to exact runtime ids', async () => {
-  const raw = supervisionSnapshot([{ id: 'runtime-worker-control', label: 'worker-control' }])
+test('worker controls resolve public Braid ids to exact durable Runtime operations', async () => {
+  let raw = supervisionSnapshot([{ id: 'runtime-worker-control', label: 'worker-control' }])
   const watcher = new RuntimeSupervisorWatcher(() => raw)
   let writeInput:
     | {
@@ -297,6 +297,15 @@ test('worker steering resolves the public Braid ids back to exact runtime ids', 
         readonly message: string
       }
     | undefined
+  let cancelInput:
+    | {
+        readonly eventDir: string
+        readonly worker: string
+        readonly operationId: string
+        readonly reason?: string
+      }
+    | undefined
+  let cancelCalls = 0
   const runtimeController = new RuntimeSupervisorController({
     watcher,
     write: (rootDir, supervisorId, worker, message, source) => {
@@ -312,6 +321,24 @@ test('worker steering resolves the public Braid ids back to exact runtime ids', 
           message,
           source: source ?? 'braid',
         },
+      }
+    },
+    cancel: (eventDir, worker, operationId, options) => {
+      cancelCalls += 1
+      cancelInput = {
+        eventDir,
+        worker,
+        operationId,
+        ...(options?.reason === undefined ? {} : { reason: options.reason }),
+      }
+      return {
+        operationId,
+        worker: operationId === 'op-cancel-wrong-runtime-worker' ? 'runtime-worker-other' : worker,
+        effect: 'unknown',
+        requestedAt: NOW,
+        observedAt: NOW,
+        ...(options?.reason === undefined ? {} : { reason: options.reason }),
+        terminated: [],
       }
     },
   })
@@ -359,6 +386,56 @@ test('worker steering resolves the public Braid ids back to exact runtime ids', 
     assert.equal((steered.data as { readonly worker: string }).worker, worker.id)
   }
 
+  const cancelled = await controller.dispatch({
+    type: 'headless-command',
+    command: 'cancel_worker',
+    operationId: 'op-cancel-public-worker',
+    params: {
+      supervisorId: supervisor.id,
+      workerId: worker.id,
+      reason: 'stop the failed branch',
+    },
+  })
+  assert.equal(cancelled.kind, 'accepted')
+  assert.deepEqual(cancelInput, {
+    eventDir: '/workspace/.agent/supervisor/runtime-supervisor-live',
+    worker: 'runtime-worker-control',
+    operationId: 'op-cancel-public-worker',
+    reason: 'stop the failed branch',
+  })
+  if (cancelled.kind === 'accepted') {
+    assert.equal((cancelled.data as { readonly worker: string }).worker, worker.id)
+    assert.equal((cancelled.data as { readonly effect: string }).effect, 'unknown')
+  }
+
+  raw = { ...raw, supervisors: [] }
+  const afterWorkerExit = await controller.dispatch({ type: 'refresh-supervision' })
+  assert.equal(afterWorkerExit.kind, 'accepted')
+  const retriedAfterWorkerExit = await controller.dispatch({
+    type: 'headless-command',
+    command: 'cancel_worker',
+    operationId: 'op-cancel-public-worker',
+    params: {
+      supervisorId: supervisor.id,
+      workerId: worker.id,
+      reason: 'stop the failed branch',
+    },
+  })
+  assert.equal(retriedAfterWorkerExit.kind, 'accepted')
+  assert.equal(cancelCalls, 2)
+
+  const wrongWorker = await controller.dispatch({
+    type: 'headless-command',
+    command: 'cancel_worker',
+    operationId: 'op-cancel-wrong-runtime-worker',
+    params: {
+      supervisorId: supervisor.id,
+      workerId: worker.id,
+    },
+  })
+  assert.equal(wrongWorker.kind, 'unavailable')
+  if (wrongWorker.kind === 'unavailable') assert.match(wrongWorker.reason, /different worker/u)
+
   writeInput = undefined
   const rejected = await controller.dispatch({
     type: 'headless-command',
@@ -372,6 +449,39 @@ test('worker steering resolves the public Braid ids back to exact runtime ids', 
   })
   assert.equal(rejected.kind, 'unavailable')
   assert.equal(writeInput, undefined)
+  await app.close()
+})
+
+test('unsafe Runtime supervisor identities never enter Braid control state', async () => {
+  const raw = supervisionSnapshot(
+    [{ id: 'runtime-worker-unsafe-supervisor', label: 'worker-unsafe-supervisor' }],
+    Date.parse(NOW),
+    '../escape',
+  )
+  const watcher = new RuntimeSupervisorWatcher(() => raw)
+  let cancellationAttempted = false
+  const runtimeController = new RuntimeSupervisorController({
+    watcher,
+    cancel: () => {
+      cancellationAttempted = true
+      throw new Error('unsafe supervisor reached Runtime cancellation')
+    },
+  })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    intelligence: {
+      supervisorWatcher: watcher,
+      supervisorController: runtimeController,
+    },
+  })
+  const controller = createApplicationUiController(app)
+  const result = await controller.dispatch({ type: 'refresh-supervision' })
+
+  assert.equal(result.kind, 'error')
+  if (result.kind === 'error') assert.match(result.message, /safe runtime path segment/u)
+  assert.equal(app.state().supervisors.length, 0)
+  assert.equal(app.state().workers.length, 0)
+  assert.equal(cancellationAttempted, false)
   await app.close()
 })
 
@@ -844,7 +954,7 @@ test('analysis source includes inherited messages on a forked branch', async () 
   await app.close()
 })
 
-test('worker cancellation reports the runtime limitation instead of fabricating success', async () => {
+test('worker cancellation rejects a worker that is absent from the durable projection', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)
@@ -856,7 +966,7 @@ test('worker cancellation reports the runtime limitation instead of fabricating 
   })
 
   assert.equal(result.kind, 'unavailable')
-  if (result.kind === 'unavailable') assert.match(result.reason, /supervisor\.worker\.cancel/u)
+  if (result.kind === 'unavailable') assert.match(result.reason, /not present/u)
   assert.equal(app.state().supervisors.length, 0)
   await app.close()
 })

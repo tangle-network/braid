@@ -5,8 +5,8 @@
 
 
 
-
+────────────────────────────────────────
 ›
 
 
-Braid starter            Ctrl+P commands
+Braid starter

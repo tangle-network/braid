@@ -1,4 +1,9 @@
-import { type RootHandle, writeWorkerSteer } from '@tangle-network/agent-runtime/kernel'
+import {
+  type RootHandle,
+  cancelWorker as requestWorkerCancellation,
+  supervisorRunDir,
+  writeWorkerSteer,
+} from '@tangle-network/agent-runtime/kernel'
 import type { WorkerView } from '@tangle-network/agent-runtime/tui'
 import { AGENT_RUNTIME_VERSION } from './agent-runtime-version.js'
 import { type RuntimeSupervisorSnapshotPort, RuntimeSupervisorWatcher } from './supervisor-watch.js'
@@ -22,24 +27,18 @@ export interface SupervisorWorkerSteerResult {
 }
 
 export interface SupervisorWorkerCancelResult {
-  readonly status: 'unavailable'
+  readonly status: 'accepted' | 'unavailable'
   readonly worker: string
-  readonly issue: SupervisorCapabilityIssue
+  readonly operationId?: string
+  readonly effect?: 'unknown' | 'cancel_requested' | 'cancelled' | 'not_live'
+  readonly detail?: string
+  readonly terminated?: readonly string[]
+  readonly issue?: SupervisorCapabilityIssue
 }
 
 export interface SupervisorCancelResult {
   readonly status: 'accepted' | 'unavailable'
   readonly issue?: SupervisorCapabilityIssue
-}
-
-export const WORKER_CANCEL_UNAVAILABLE: SupervisorCapabilityIssue = {
-  capability: 'supervisor.worker.cancel',
-  packageName: '@tangle-network/agent-runtime',
-  packageVersion: AGENT_RUNTIME_VERSION,
-  reason:
-    'The published runtime exposes RootHandle.abort for the whole supervisor and writeWorkerSteer for a worker inbox, but no worker-scoped cancellation method.',
-  reproduction:
-    "import { writeWorkerSteer } from '@tangle-network/agent-runtime/kernel'; import { loadTopSnapshot } from '@tangle-network/agent-runtime/tui'; console.log(Object.keys({ writeWorkerSteer, loadTopSnapshot }));",
 }
 
 function missingWorkerIssue(worker: string): SupervisorCapabilityIssue {
@@ -73,17 +72,20 @@ export class RuntimeSupervisorController {
   readonly #watcher: RuntimeSupervisorSnapshotPort
   readonly #rootHandle: RootHandle<unknown> | undefined
   readonly #write: typeof writeWorkerSteer
+  readonly #cancel: typeof requestWorkerCancellation
 
   constructor(
     options: {
       readonly watcher?: RuntimeSupervisorSnapshotPort
       readonly rootHandle?: RootHandle<unknown>
       readonly write?: typeof writeWorkerSteer
+      readonly cancel?: typeof requestWorkerCancellation
     } = {},
   ) {
     this.#watcher = options.watcher ?? new RuntimeSupervisorWatcher()
     this.#rootHandle = options.rootHandle
     this.#write = options.write ?? writeWorkerSteer
+    this.#cancel = options.cancel ?? requestWorkerCancellation
   }
 
   steerWorker(
@@ -113,8 +115,34 @@ export class RuntimeSupervisorController {
     }
   }
 
-  cancelWorker(worker: string): SupervisorWorkerCancelResult {
-    return { status: 'unavailable', worker, issue: WORKER_CANCEL_UNAVAILABLE }
+  cancelWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    operationId: string,
+    reason?: string,
+    source = 'braid',
+  ): SupervisorWorkerCancelResult {
+    // Braid already resolved and durably stored the exact Runtime identities.
+    // Do not require a live snapshot here: a retry must still read Runtime's
+    // acknowledgement after the worker disappears or the monitor restarts.
+    const result = this.#cancel(
+      supervisorRunDir(rootDir, supervisorId),
+      workerIdOrLabel,
+      operationId,
+      {
+        ...(reason === undefined ? {} : { reason }),
+        source,
+      },
+    )
+    return {
+      status: 'accepted',
+      worker: result.workerId ?? result.worker,
+      operationId: result.operationId,
+      effect: result.effect,
+      ...(result.detail === undefined ? {} : { detail: result.detail }),
+      terminated: result.terminated,
+    }
   }
 
   cancelSupervisor(reason = 'cancelled by user'): SupervisorCancelResult {

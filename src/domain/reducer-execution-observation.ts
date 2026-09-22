@@ -1,7 +1,7 @@
 import { canonicalDigest } from './canonical.js'
 import type { BraidEvent } from './events.js'
 import { graphEdge, graphNode } from './graph-records.js'
-import { createConnectionId, createEnvironmentId, type ConnectionId } from './ids.js'
+import { type ConnectionId, createConnectionId, createEnvironmentId } from './ids.js'
 import { upsert } from './reducer-helpers.js'
 import { withProviderProgress } from './reducer-support.js'
 import type { BraidState } from './state.js'
@@ -18,6 +18,14 @@ export function applyExecutionObservation(
   const progressedRun = {
     ...withProviderProgress(run, event.provider),
     ...(event.controlRef === undefined ? {} : { controlRef: structuredClone(event.controlRef) }),
+    ...(event.capabilities === undefined
+      ? {}
+      : {
+          capabilities: {
+            ...run.capabilities,
+            environment: structuredClone(event.capabilities),
+          },
+        }),
   }
   const workspaceId =
     state.conversations.find((candidate) => candidate.id === run.conversationId)?.workspaceId ??

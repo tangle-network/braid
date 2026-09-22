@@ -4,6 +4,7 @@ import type { BraidEventEnvelope } from '../domain/events.js'
 import type { OperationId } from '../domain/ids.js'
 import { createOperationId } from '../domain/ids.js'
 import type { BraidInteraction } from '../domain/runtime-projection.js'
+import { interactionForRun, pendingInteractionsForRun } from '../domain/run-interactions.js'
 import type { BraidState } from '../domain/state.js'
 import { findRuleUseReservation } from './automation-rule-persistence.js'
 import { interactionRequestDigest } from './automation-rule-validation.js'
@@ -74,7 +75,9 @@ export class InteractionAutomationCoordinator {
   async reconcile(): Promise<void> {
     const targets = this.#options
       .state()
-      .runs.flatMap((run) => run.interactions as readonly InteractionAutomationTarget[])
+      .runs.flatMap(
+        (run) => pendingInteractionsForRun(run) as readonly InteractionAutomationTarget[],
+      )
     await Promise.all(targets.map((target) => this.schedule(target)))
   }
 
@@ -134,9 +137,9 @@ function findInteraction(
   interactionId: string,
 ): InteractionAutomationTarget | undefined {
   const run = state.runs.find((candidate) => candidate.id === runId)
-  return run?.interactions.find((candidate) => candidate.request.id === interactionId) as
-    | InteractionAutomationTarget
-    | undefined
+  return run === undefined
+    ? undefined
+    : (interactionForRun(run, interactionId) as InteractionAutomationTarget | undefined)
 }
 
 function operationForTarget(

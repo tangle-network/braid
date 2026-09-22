@@ -2,11 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { capturedFields } from '../src/app/analysis-comparison-evidence.js'
+import { freezeAnalysisSource } from '../src/app/analysis-source.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { createInteractionRequest } from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { runPlain } from '../src/bin/plain.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
+import { interactionsForRun } from '../src/domain/run-interactions.js'
 import { redactSensitiveText } from '../src/domain/secret-sanitizer.js'
+import { MAX_RUN_INTERACTIONS } from '../src/domain/reducer-support.js'
 import { FixedClock } from '../src/ports/clock.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
@@ -1632,6 +1637,95 @@ test('JSONL semantic queries return canonical graph, activity, and details resul
   )
   assert.equal(unknown?.type, 'error')
   if (unknown?.type === 'error') assert.equal(unknown.code, 'UNKNOWN_ENTITY')
+})
+
+test('semantic projections retain each pending interaction after visible history eviction', async () => {
+  const interactionCount = MAX_RUN_INTERACTIONS + 1
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      for (let index = 0; index < interactionCount; index += 1) {
+        const interactionId = `interaction-semantic-evicted-${index}`
+        yield {
+          type: 'interaction',
+          request: createInteractionRequest({
+            id: interactionId,
+            kind: 'question',
+            title: `Confirm semantic eviction ${index}`,
+            answerSpec: {
+              fields: [{ type: 'boolean', name: 'confirm', label: 'Confirm', required: true }],
+            },
+            binding: {
+              runId: input.runId,
+              provider: 'fixture',
+              environmentId: 'environment-semantic-eviction',
+              sessionId: 'session-semantic-eviction',
+              executionId: input.runId,
+              interactionId,
+            },
+          }),
+        }
+      }
+      yield {
+        type: 'final',
+        status: 'completed',
+        reason: 'complete',
+        text: 'finished after semantic interaction eviction',
+        metadata: { tokenUsage: { input: 1, output: 1 } },
+        task: { id: 'task-semantic-eviction', intent: 'semantic projection test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-01T00:00:00.000Z'),
+  })
+  app.initialize('/workspace')
+  const sent = app.send({
+    operationId: 'op-semantic-eviction-send',
+    text: 'finish after semantic interaction eviction',
+  })
+  await sent.completion
+
+  const state = app.state()
+  const run = state.runs.find((candidate) => candidate.id === sent.runId)
+  assert.ok(run)
+  assert.equal(run.interactions.length, MAX_RUN_INTERACTIONS)
+  assert.equal(run.pendingInteractions?.length, interactionCount)
+  const projectedInteractions = interactionsForRun(run)
+  assert.equal(projectedInteractions.length, interactionCount)
+  assert.equal(
+    projectedInteractions.filter((item) => item.request.id === 'interaction-semantic-evicted-0')
+      .length,
+    1,
+  )
+
+  const activityInteractions = queryActivity(state, { runId: sent.runId }).activity.filter((item) =>
+    item.id.startsWith('interaction:'),
+  )
+  assert.equal(activityInteractions.length, interactionCount)
+  assert.equal(new Set(activityInteractions.map((item) => item.id)).size, interactionCount)
+  assert.equal(
+    activityInteractions.filter((item) => item.id === 'interaction:interaction-semantic-evicted-0')
+      .length,
+    1,
+  )
+
+  const details = queryDetails(state, { entityType: 'run', entityId: sent.runId })
+  assert.equal(details.entityType, 'run')
+  assert.equal(
+    details.fields.find((field) => field.label === 'interactionCount')?.value,
+    String(interactionCount),
+  )
+
+  const evidence = freezeAnalysisSource({ state, runId: sent.runId, events: [] })
+  const interactionField = capturedFields(evidence, evidence).find(
+    (field) => field.name === 'run.interaction_count',
+  )
+  assert.equal(interactionField?.baseline, interactionCount)
+  assert.equal(interactionField?.candidate, interactionCount)
 })
 
 test('semantic queries enforce scope, redact details, preserve ordering, and survive replay', async () => {

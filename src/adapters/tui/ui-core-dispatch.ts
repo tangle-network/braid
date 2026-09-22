@@ -1,5 +1,6 @@
 import type { InteractionResponse } from '@tangle-network/agent-interface'
 import { checkInteractionResponse } from '../../app/interaction-response.js'
+import { interactionForRun } from '../../domain/run-interactions.js'
 import type {
   BraidIntent,
   InteractionResponseValue,
@@ -158,9 +159,7 @@ async function dispatchInteractionAutomation(
     }
   }
   const run = context.app.state().runs.find((candidate) => candidate.id === intent.runId)
-  const interaction = run?.interactions.find(
-    (candidate) => candidate.request.id === intent.interactionId,
-  )
+  const interaction = run === undefined ? undefined : interactionForRun(run, intent.interactionId)
   if (interaction === undefined) {
     return {
       kind: 'error',
@@ -234,9 +233,7 @@ async function dispatchInteractionResponse(
   }
 
   const run = context.app.state().runs.find((candidate) => candidate.id === intent.runId)
-  const interaction = run?.interactions.find(
-    (candidate) => candidate.request.id === intent.interactionId,
-  )
+  const interaction = run === undefined ? undefined : interactionForRun(run, intent.interactionId)
   if (!interaction) {
     return {
       kind: 'error',

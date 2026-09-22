@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { type AgentProfile, canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
+import {
+  type AgentProfile,
+  canonicalAgentProfileDigest,
+  canonicalCandidateDigest,
+} from '@tangle-network/agent-interface'
 
 const PROFILE_MATERIALIZATION_SCHEMA = 'cli-bridge.profile-materialization.v2'
 const USAGE_COST_SCHEMA = 'cli-bridge.usage-cost.v1'
@@ -10,9 +14,17 @@ const USAGE_COST_SCHEMA = 'cli-bridge.usage-cost.v1'
 export interface RuntimeBridgeRequest {
   readonly authorization?: string
   readonly body: Readonly<Record<string, unknown>>
+  readonly kind: 'chat-completion' | 'session-turn'
   readonly rawBody: string
   readonly runId: string
   readonly sessionId?: string
+}
+
+export interface RuntimeBridgeSessionRequest {
+  readonly authorization?: string
+  readonly body: Readonly<Record<string, unknown>>
+  readonly rawBody: string
+  readonly sessionId: string
 }
 
 export interface RuntimeBridgeServerOptions {
@@ -53,6 +65,7 @@ export interface RuntimeBridgeReplayRequest {
 export interface RuntimeBridgeServer {
   readonly endpoint: string
   readonly requests: RuntimeBridgeRequest[]
+  readonly sessionRequests: RuntimeBridgeSessionRequest[]
   readonly cancellations: RuntimeBridgeCancellationRequest[]
   readonly replays: RuntimeBridgeReplayRequest[]
   complete(runId?: string): void
@@ -136,6 +149,13 @@ interface RuntimeResponseFrame {
   readonly wire: string
 }
 
+interface RuntimeBridgeSession {
+  readonly id: string
+  readonly model: string
+  readonly createRequestDigest: string
+  readonly body: Readonly<Record<string, unknown>>
+}
+
 function runtimeResponseFrames(
   body: Readonly<Record<string, unknown>>,
   responseText: string,
@@ -173,6 +193,84 @@ function runtimeResponseFrames(
 
 function runtimeResponseStream(frames: readonly RuntimeResponseFrame[]): string {
   return `${frames.map((frame) => frame.wire).join('')}data: [DONE]\n\n`
+}
+
+function nativeRuntimeResponseFrames(
+  runId: string,
+  sessionId: string,
+  text: string,
+  estimatedCostUsd?: number,
+  usage?: RuntimeBridgeServerOptions['usage'],
+): readonly RuntimeResponseFrame[] {
+  const timestamp = '2026-08-15T00:00:00.000Z'
+  const part = {
+    id: `${runId}-text`,
+    sessionID: sessionId,
+    messageID: `${runId}-message`,
+    type: 'text',
+    text,
+  }
+  const events: ReadonlyArray<Readonly<Record<string, unknown>>> = [
+    { type: 'status', status: 'started' },
+    { type: 'message.part.updated', part, delta: text },
+    {
+      type: 'raw',
+      backend: 'pi',
+      event: {
+        type: 'usage',
+        usage: {
+          inputTokens: usage?.promptTokens ?? 2,
+          outputTokens: usage?.completionTokens ?? 3,
+          totalTokens: (usage?.promptTokens ?? 2) + (usage?.completionTokens ?? 3),
+          ...(usage?.cacheReadInputTokens === undefined
+            ? {}
+            : { cacheReadInputTokens: usage.cacheReadInputTokens }),
+          ...(usage?.cacheCreationInputTokens === undefined
+            ? {}
+            : { cacheCreationInputTokens: usage.cacheCreationInputTokens }),
+          ...(usage?.reasoningTokens === undefined
+            ? {}
+            : { reasoningTokens: usage.reasoningTokens }),
+          ...(estimatedCostUsd === undefined ? {} : { cost: estimatedCostUsd }),
+        },
+      },
+    },
+    { type: 'status', status: 'completed' },
+  ]
+  return events.map((event, index) => {
+    const sequence = index + 1
+    const envelope = {
+      runId,
+      eventId: `${runId}:${sequence}`,
+      sequence,
+      cursor: String(sequence),
+      occurredAt: timestamp,
+      receivedAt: timestamp,
+      event,
+    }
+    return {
+      id: sequence,
+      wire: `id: ${sequence}\ndata: ${JSON.stringify(envelope)}\n\n`,
+    }
+  })
+}
+
+function nativeSessionView(session: RuntimeBridgeSession): Readonly<Record<string, unknown>> {
+  return {
+    id: session.id,
+    object: 'session',
+    create_request_digest: session.createRequestDigest,
+    backend: 'pi',
+    model: session.model,
+    status: 'running',
+    run_id: null,
+    internal_session_id: null,
+    turns: 0,
+    created_at: '2026-08-15T00:00:00.000Z',
+    updated_at: '2026-08-15T00:00:00.000Z',
+    profile_materialization_receipt: null,
+    context_boundary: null,
+  }
 }
 
 function runtimeResponseResult(
@@ -221,6 +319,7 @@ export async function startRuntimeBridgeServer(
   options: RuntimeBridgeServerOptions = {},
 ): Promise<RuntimeBridgeServer> {
   const requests: RuntimeBridgeRequest[] = []
+  const sessionRequests: RuntimeBridgeSessionRequest[] = []
   const cancellations: RuntimeBridgeCancellationRequest[] = []
   const replays: RuntimeBridgeReplayRequest[] = []
   interface RetainedFixtureRun {
@@ -229,11 +328,13 @@ export async function startRuntimeBridgeServer(
     readonly body: Readonly<Record<string, unknown>>
     readonly frames: RuntimeResponseFrame[]
     readonly pendingFrames: RuntimeResponseFrame[]
+    readonly protocol: 'chat-completion' | 'session-turn'
     readonly readers: Set<ServerResponse>
     status: 'running' | 'done' | 'cancelled'
     terminal: boolean
   }
   const runs = new Map<string, RetainedFixtureRun>()
+  const sessions = new Map<string, RuntimeBridgeSession>()
 
   const runHeaders = (run: RetainedFixtureRun) => ({
     'content-type': 'text/event-stream',
@@ -252,7 +353,7 @@ export async function startRuntimeBridgeServer(
       if (frame.id > afterSequence) response.write(frame.wire)
     }
     if (run.terminal) {
-      response.end('data: [DONE]\n\n')
+      response.end(run.protocol === 'chat-completion' ? 'data: [DONE]\n\n' : undefined)
       return
     }
     run.readers.add(response)
@@ -260,7 +361,9 @@ export async function startRuntimeBridgeServer(
   }
 
   const finishReaders = (run: RetainedFixtureRun): void => {
-    for (const reader of run.readers) reader.end('data: [DONE]\n\n')
+    for (const reader of run.readers) {
+      reader.end(run.protocol === 'chat-completion' ? 'data: [DONE]\n\n' : undefined)
+    }
     run.readers.clear()
   }
 
@@ -312,6 +415,124 @@ export async function startRuntimeBridgeServer(
     if (request.method === 'GET' && path === '/v1/models') {
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(JSON.stringify({ data: options.advertisedModels ?? [] }))
+      return
+    }
+    if (request.method === 'POST' && path === '/v1/sessions') {
+      const rawBody = await readBody(request)
+      const body = JSON.parse(rawBody) as Record<string, unknown>
+      const sessionId = body.id
+      const model = body.model
+      if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof model !== 'string') {
+        response.writeHead(400, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'invalid_session' } }))
+        return
+      }
+      const existing = sessions.get(sessionId)
+      if (existing !== undefined) {
+        response.writeHead(409, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'session_exists' } }))
+        return
+      }
+      const session: RuntimeBridgeSession = {
+        id: sessionId,
+        model,
+        createRequestDigest: canonicalCandidateDigest(body),
+        body,
+      }
+      sessions.set(sessionId, session)
+      sessionRequests.push({
+        ...(authorization === undefined ? {} : { authorization }),
+        body,
+        rawBody,
+        sessionId,
+      })
+      response.writeHead(201, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(nativeSessionView(session)))
+      return
+    }
+    const sessionMatch = /^\/v1\/sessions\/([^/]+)$/u.exec(path)
+    if (request.method === 'GET' && sessionMatch !== null) {
+      const sessionId = decodeURIComponent(sessionMatch[1] ?? '')
+      const session = sessions.get(sessionId)
+      if (session === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'session_not_found' } }))
+        return
+      }
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(nativeSessionView(session)))
+      return
+    }
+    const sessionTurnsMatch = /^\/v1\/sessions\/([^/]+)\/turns$/u.exec(path)
+    if (request.method === 'POST' && sessionTurnsMatch !== null) {
+      const sessionId = decodeURIComponent(sessionTurnsMatch[1] ?? '')
+      const session = sessions.get(sessionId)
+      if (session === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'session_not_found' } }))
+        return
+      }
+      const rawBody = await readBody(request)
+      const body = JSON.parse(rawBody) as Record<string, unknown>
+      const runId = body.run_id
+      const executionId = body.execution_id
+      if (
+        typeof runId !== 'string' ||
+        runId.length === 0 ||
+        typeof executionId !== 'string' ||
+        executionId.length === 0
+      ) {
+        response.writeHead(400, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'invalid_turn_identity' } }))
+        return
+      }
+      const existing = runs.get(runId)
+      const digest = existing?.digest ?? canonicalCandidateDigest(body)
+      requests.push({
+        ...(authorization === undefined ? {} : { authorization }),
+        body,
+        kind: 'session-turn',
+        rawBody,
+        runId,
+        sessionId,
+      })
+      const text = responseText(options.responseText, body)
+      const frames = nativeRuntimeResponseFrames(
+        runId,
+        sessionId,
+        text,
+        options.estimatedCostUsd,
+        options.usage,
+      )
+      const run =
+        existing ??
+        ({
+          id: runId,
+          digest,
+          body,
+          frames: options.holdStreams ? frames.slice(0, 1) : [...frames],
+          pendingFrames: options.holdStreams ? frames.slice(1) : [],
+          protocol: 'session-turn',
+          readers: new Set<ServerResponse>(),
+          status: options.holdStreams ? 'running' : 'done',
+          terminal: !options.holdStreams,
+        } satisfies RetainedFixtureRun)
+      runs.set(runId, run)
+      response.writeHead(202, { 'content-type': 'application/json' })
+      response.end(
+        JSON.stringify({
+          session: nativeSessionView(session),
+          run: {
+            id: runId,
+            executionId,
+            sessionId,
+            requestDigest: digest,
+            status: run.status,
+            terminal: run.terminal,
+          },
+          context_boundary: null,
+        }),
+      )
       return
     }
     const eventsMatch = /^\/v1\/runs\/([^/]+)\/events$/u.exec(path)
@@ -462,6 +683,7 @@ export async function startRuntimeBridgeServer(
     requests.push({
       ...(authorization === undefined ? {} : { authorization }),
       body,
+      kind: 'chat-completion',
       rawBody,
       runId,
       ...(typeof request.headers['x-session-id'] === 'string'
@@ -489,6 +711,7 @@ export async function startRuntimeBridgeServer(
         body,
         frames: options.holdStreams ? frames.slice(0, 1) : [...frames],
         pendingFrames: options.holdStreams ? frames.slice(1) : [],
+        protocol: 'chat-completion',
         readers: new Set<ServerResponse>(),
         status: options.holdStreams ? 'running' : 'done',
         terminal: !options.holdStreams,
@@ -506,6 +729,7 @@ export async function startRuntimeBridgeServer(
   return {
     endpoint: `http://127.0.0.1:${address.port}`,
     requests,
+    sessionRequests,
     cancellations,
     replays,
     complete: (runId) => {

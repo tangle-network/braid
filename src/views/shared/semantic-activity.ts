@@ -1,4 +1,5 @@
 import type { BraidState } from '../../domain/state.js'
+import { interactionsForRun } from '../../domain/run-interactions.js'
 import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
 import { recentWorkersForActivity } from './semantic-activity-limit.js'
 import { compareSemanticText } from './semantic-graph-filters.js'
@@ -103,7 +104,7 @@ function activityForRun(run: BraidState['runs'][number], output: SemanticActivit
     })
   }
 
-  for (const interaction of run.interactions) {
+  for (const interaction of interactionsForRun(run)) {
     const id = interaction.request.id
     add(output, {
       id: `interaction:${id}`,

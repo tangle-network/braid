@@ -10,7 +10,9 @@ import {
   type RetainedExecutionPlan,
   RetainedExecutionPort,
 } from '../src/adapters/runtime/retained-execution.js'
+import type { ExecutionEnvironmentObservation } from '../src/domain/execution-observation.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecuteTurnInput } from '../src/ports/execution.js'
+import { interactionResponseEnvironmentCapabilities } from './support/run-capabilities.js'
 
 const now = '2026-08-12T12:00:00.000Z'
 const profile = defineAgentProfile({
@@ -53,6 +55,7 @@ function handle(
 ): RetainedRunHandle {
   return {
     controlRef: exact,
+    capabilities: interactionResponseEnvironmentCapabilities(),
     status:
       options.status ??
       (async () => ({
@@ -130,6 +133,39 @@ function executionFor(
     },
   })
 }
+
+test('retained execution publishes measured capabilities before provider events', async () => {
+  const exact = controlRef('measured-capabilities')
+  const retainedHandle = handle(exact)
+  const observation: ExecutionEnvironmentObservation = {
+    kind: 'sandbox',
+    provider: exact.provider,
+    lifecycle: 'ready',
+    lifecycleMode: 'retained',
+    cleanup: 'explicit',
+    continuity: 'session',
+    location: 'remote',
+    createdAt: now,
+    observedAt: now,
+    unavailable: [],
+  }
+  const retainedPlan: RetainedExecutionPlan = {
+    ...plan(exact, async () => retainedHandle),
+    observe: async () => observation,
+  }
+  const execution = executionFor(async () => retainedPlan)
+  const runInput = input('measured-capabilities')
+  await execution.admit(runInput)
+
+  const reader = execution.streamTurn(runInput)[Symbol.asyncIterator]()
+  const first = await reader.next()
+  if (first.done) throw new Error('retained execution ended before its observation')
+  assert.equal(first.value.event.type, 'braid.execution.observed')
+  if (first.value.event.type === 'braid.execution.observed') {
+    assert.deepEqual(first.value.event.capabilities, retainedHandle.capabilities)
+  }
+  await reader.return?.(undefined)
+})
 
 test('pre-start cancellation prevents the retained plan from starting', async () => {
   const exact = controlRef('pre-start')

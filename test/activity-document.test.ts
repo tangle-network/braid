@@ -8,7 +8,6 @@ import { ActivityView } from '../src/views/tui/activity.js'
 import { activityDocument } from '../src/views/tui/activity-browser.js'
 import { projectActivityDocument } from '../src/views/tui/activity-document.js'
 import { omitUnreportedCostAndLatency } from '../src/views/tui/measurement-display.js'
-import { activityVisibleFor } from '../src/views/tui/terminal-input-controller.js'
 import { BraidShell } from '../src/views/tui/terminal-shell.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
@@ -91,10 +90,7 @@ test('one activity document preserves event status, tree identity, duration, usa
     ],
   })
   const missingDetail = missingUsage.rows.find((row) => row.id === 'run-1')?.detailLines.join('\n')
-  assert.match(missingDetail ?? '', /model calls: not reported/u)
-  assert.match(missingDetail ?? '', /model latency: not reported/u)
-  assert.match(missingDetail ?? '', /token measurement: not reported/u)
-  assert.match(missingDetail ?? '', /cost measurement: not reported/u)
+  assert.doesNotMatch(missingDetail ?? '', /model calls|model latency|not reported/u)
 
   const rail = new ActivityView(theme)
   rail.setView(view)
@@ -102,14 +98,7 @@ test('one activity document preserves event status, tree identity, duration, usa
   assert.doesNotMatch(rail.render(80).join('\n'), /failed shell|permission denied/u)
 })
 
-test('the wide live-work rail uses a divider and remains explicitly opt-in', async () => {
-  const live = activityView()
-  const idle = { ...live, activity: [], messages: [] }
-  assert.equal(activityVisibleFor({ ...idle, activeRunId: 'run-1' }, 'auto'), false)
-  assert.equal(activityVisibleFor(idle, 'visible'), false)
-  assert.equal(activityVisibleFor(live, 'visible'), true)
-  assert.equal(activityVisibleFor({ ...idle, activeRunId: 'run-1' }, 'hidden'), false)
-
+test('live work stays in the focused activity surface instead of docking beside the transcript', async () => {
   const view = activityView()
   const terminal = new VirtualTerminal(120, 30)
   const tui = new TuiMainScreen(terminal)
@@ -120,16 +109,12 @@ test('the wide live-work rail uses a divider and remains explicitly opt-in', asy
     () => {},
     () => {},
   )
-  shell.setView(idle, false)
-  shell.setActivityVisible(true)
-  assert.doesNotMatch(shell.render(120).join('\n'), /│/u)
   shell.setView(view, false)
-  shell.setActivityVisible(true)
   tui.addChild(shell)
   tui.start()
   await terminal.waitForRender()
 
-  assert.match(terminal.getViewport().join('\n'), /│/u)
+  assert.doesNotMatch(terminal.getViewport().join('\n'), /│/u)
   tui.stop()
 })
 

@@ -5,6 +5,7 @@ import type {
   AnalysisSourceRange,
 } from '../domain/entities.js'
 import type { JsonValue } from '../domain/entities-base.js'
+import { interactionsForRun } from '../domain/run-interactions.js'
 import type { AnalysisComparisonResult } from './analysis-comparison-contracts.js'
 import type { FrozenAnalysisEvidence } from './analysis-types.js'
 
@@ -70,7 +71,10 @@ export function capturedFields(
       'run.terminal_reason': run?.terminalReason,
       'run.last_cursor': run?.lastCursor,
       'run.missing_sequence': run?.missingSequence,
-      'run.interaction_count': run?.interactions.length,
+      'run.interaction_count':
+        run === undefined
+          ? undefined
+          : Math.max(interactionsForRun(run).length, run.interactionIdentityDigests?.length ?? 0),
       'run.activity_count': run?.activity.length,
       'run.event_detail_count': run?.eventDetails.length,
       'run.content_bytes': run?.contentBytes,

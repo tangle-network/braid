@@ -1,0 +1,14 @@
+ Commands
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+→ /new                            Create an empty conversation
+  /open                           Search and open conversations
+  /profile                        Inspect, select, import, or edit a profile
+  /connection                     Inspect and manage connections
+  /runner                         Set the runner for this branch
+  /model                          Set the model for this branch
+  /effort                         Set reasoning effort for this branch
+  /branch                         Create a branch at a message boundary
+  (1/29)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ type to filter · enter to choose · ←/esc close

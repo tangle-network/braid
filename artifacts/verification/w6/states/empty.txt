@@ -17,8 +17,8 @@
 
 
 
-
+────────────────────────────────────────────────────────────────────────────────
 ›
 
 
-profile Braid starter · pi / deterministic                       Ctrl+P commands
+profile Braid starter · pi / deterministic · via local                / commands

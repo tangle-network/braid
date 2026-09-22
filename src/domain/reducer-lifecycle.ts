@@ -352,6 +352,8 @@ function reduceRequestedRun(
     lastProviderSequence: 0,
     eventCount: 0,
     interactions: [],
+    pendingInteractions: [],
+    interactionIdentityDigests: [],
     activity: [activity(event, 'admission', 'admitted', `profile ${receipt.profileDigest}`)],
     eventDetails: [],
   }

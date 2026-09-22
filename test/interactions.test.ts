@@ -184,6 +184,54 @@ function interactionExecution(request: InteractionRequest): {
   }
 }
 
+function pendingInteractionExecution(
+  count: number,
+  responsesEnabled: boolean,
+): {
+  readonly execution: ExecutionPort
+  readonly responses: () => number
+} {
+  let responseCount = 0
+  return {
+    execution: {
+      capabilities: () => interactionResponseRunCapabilities(),
+      async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+        for (let index = 0; index < count; index += 1) {
+          const request = questionRequest(`interaction-persisted-${index}`)
+          yield {
+            type: 'interaction',
+            request: rebindInteractionRequest(request, {
+              ...request.binding,
+              runId: input.runId,
+              executionId: input.runId,
+            }),
+          }
+        }
+        yield {
+          type: 'final',
+          task: { id: input.runId, intent: 'durable interaction restart test' },
+          status: 'completed',
+          reason: 'completed',
+          text: 'pending interactions persisted',
+          metadata: { tokenUsage: { input: 1, output: 1 } },
+          timestamp: NOW,
+        }
+      },
+      ...(responsesEnabled
+        ? {
+            respondInteraction: async (
+              input: Parameters<NonNullable<ExecutionPort['respondInteraction']>>[0],
+            ) => {
+              responseCount += 1
+              return { operationId: input.command.operationId, outcome: 'accepted' as const }
+            },
+          }
+        : {}),
+    },
+    responses: () => responseCount,
+  }
+}
+
 function automationStore(now = NOW): AutomationStoreInput & {
   readonly current: () => BraidState
   readonly allEvents: () => readonly BraidEventEnvelope[]
@@ -449,6 +497,85 @@ test('application interaction response is idempotent, conflict-safe, and survive
   provider.release()
 })
 
+test('durable pending interactions survive close and restart beyond visible history', async () => {
+  const interactionCount = 257
+  const evictedInteractionId = 'interaction-persisted-0'
+  const responseOperationId = 'operation-persisted-answer'
+  const journal = new MemoryJournal(new FixedClock(NOW))
+  const firstProvider = pendingInteractionExecution(interactionCount, false)
+  const first = applicationFor(firstProvider.execution, journal)
+  const send = first.send({
+    operationId: 'operation-persisted-send',
+    text: 'persist these requests',
+  })
+  await send.completion
+
+  const beforeRestart = first.state().runs[0]
+  assert.ok(beforeRestart)
+  assert.equal(beforeRestart.interactions.length, 256)
+  assert.equal(beforeRestart.pendingInteractions?.length, interactionCount)
+  const beforeRestartViews = interactionViews(first.state())
+  assert.equal(beforeRestartViews.length, interactionCount)
+  assert.equal(
+    beforeRestartViews.some((view) => view.interactionId === evictedInteractionId),
+    true,
+  )
+  assert.equal(firstProvider.responses(), 0)
+
+  await first.close()
+
+  const restartedProvider = pendingInteractionExecution(interactionCount, true)
+  const restarted = applicationFor(restartedProvider.execution, journal)
+  const afterRestart = restarted.state().runs[0]
+  assert.ok(afterRestart)
+  assert.equal(afterRestart.interactions.length, 256)
+  assert.equal(afterRestart.pendingInteractions?.length, interactionCount)
+  const afterRestartViews = interactionViews(restarted.state())
+  assert.equal(afterRestartViews.length, interactionCount)
+  assert.equal(
+    afterRestartViews.some((view) => view.interactionId === evictedInteractionId),
+    true,
+  )
+
+  const response: InteractionResponse = {
+    id: evictedInteractionId,
+    outcome: 'accepted',
+    data: { continue: true },
+  }
+  const firstAnswer = await restarted.respondInteraction({
+    operationId: responseOperationId,
+    runId: send.runId,
+    interactionId: evictedInteractionId,
+    response,
+  })
+  assert.equal(firstAnswer.replayed, false)
+  assert.equal(firstAnswer.acknowledgement.outcome, 'accepted')
+  await firstAnswer.completion
+  assert.equal(restartedProvider.responses(), 1)
+
+  const replay = await restarted.respondInteraction({
+    operationId: responseOperationId,
+    runId: send.runId,
+    interactionId: evictedInteractionId,
+    response,
+  })
+  assert.equal(replay.replayed, true)
+  assert.equal(replay.acknowledgement.outcome, 'already-applied')
+  await replay.completion
+  assert.equal(restartedProvider.responses(), 1)
+  assert.equal(
+    restarted.events().filter((event) => event.event.kind === 'run.interaction.response.requested')
+      .length,
+    1,
+  )
+  assert.equal(
+    restarted.events().filter((event) => event.event.kind === 'run.interaction.responded').length,
+    1,
+  )
+
+  await restarted.close()
+})
+
 test('declined and cancelled interaction outcomes remain distinct after restart', async () => {
   for (const outcome of ['declined', 'cancelled'] as const) {
     const request = questionRequest(`interaction-${outcome}`)
@@ -522,6 +649,102 @@ test('the terminal API never reports an unconfirmed interaction response as acce
   assert.equal(app.state().feedbackDecisions.length, 0)
   releaseStream?.()
   await send.completion
+})
+
+test('measured environment capabilities revoke an unsupported interaction response', async () => {
+  const request = questionRequest('interaction-measured-capability')
+  const advertised = interactionResponseRunCapabilities()
+  const environmentCapabilities = advertised.environment
+  assert.ok(environmentCapabilities)
+  const { interactions: _advertisedInteractions, ...measuredCapabilities } = environmentCapabilities
+  let responseCalls = 0
+  let releaseStream: (() => void) | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => advertised,
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      yield {
+        type: 'braid.execution.observed',
+        observation: {
+          kind: 'sandbox',
+          provider: 'test-provider',
+          lifecycle: 'ready',
+          lifecycleMode: 'retained',
+          cleanup: 'explicit',
+          continuity: 'session',
+          location: 'remote',
+          createdAt: NOW,
+          observedAt: NOW,
+          unavailable: [],
+        },
+        capabilities: measuredCapabilities,
+        timestamp: NOW,
+      }
+      yield {
+        type: 'interaction',
+        request: rebindInteractionRequest(request, {
+          ...request.binding,
+          runId: input.runId,
+          executionId: input.runId,
+        }),
+      }
+      await new Promise<void>((resolve) => {
+        releaseStream = resolve
+      })
+    },
+    respondInteraction: async (input) => {
+      responseCalls += 1
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock(NOW))
+  const app = applicationFor(execution, journal)
+  const send = app.send({
+    operationId: 'operation-send-measured-capability',
+    text: 'ask only if this environment can answer',
+  })
+  await waitFor(() => app.state().runs[0]?.interactions[0]?.status === 'pending')
+  const run = app.state().runs[0]
+  assert.ok(run)
+  assert.equal(run.receipt.capabilities.environment?.interactions?.responseIdempotency, true)
+  assert.equal(run.capabilities.environment?.interactions, undefined)
+
+  await assert.rejects(
+    app.respondInteraction({
+      operationId: 'operation-answer-measured-capability',
+      runId: run.id,
+      interactionId: request.id,
+      response: { id: request.id, outcome: 'accepted', data: { continue: true } },
+    }),
+    (error: unknown) => error instanceof AppError && error.code === 'CAPABILITY_UNAVAILABLE',
+  )
+  assert.equal(responseCalls, 0)
+  releaseStream?.()
+  await send.completion
+
+  const restarted = applicationFor(
+    {
+      capabilities: () => advertised,
+      async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {},
+      respondInteraction: async (input) => {
+        responseCalls += 1
+        return { operationId: input.command.operationId, outcome: 'accepted' as const }
+      },
+    },
+    journal,
+  )
+  const recoveredRun = restarted.state().runs[0]
+  assert.ok(recoveredRun)
+  assert.equal(recoveredRun.capabilities.environment?.interactions, undefined)
+  await assert.rejects(
+    restarted.respondInteraction({
+      operationId: 'operation-answer-measured-capability-after-restart',
+      runId: recoveredRun.id,
+      interactionId: request.id,
+      response: { id: request.id, outcome: 'accepted', data: { continue: true } },
+    }),
+    (error: unknown) => error instanceof AppError && error.code === 'CAPABILITY_UNAVAILABLE',
+  )
+  assert.equal(responseCalls, 0)
 })
 
 test('stale and expired interactions are rejected before provider dispatch', async () => {

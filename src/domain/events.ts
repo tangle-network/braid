@@ -1,4 +1,7 @@
-import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
+import type {
+  AgentEnvironmentCapabilities,
+  AgentExactRunControlRef,
+} from '@tangle-network/agent-interface'
 import type {
   AnalysisAttachmentRecord,
   AnalysisRecord,
@@ -59,8 +62,8 @@ import type {
   TurnId,
   WorkerId,
 } from './ids.js'
-import type { RunStatus } from './state.js'
 import type { RetainedRunAdmissionRecord } from './run-contracts.js'
+import type { RunStatus } from './state.js'
 
 export type { TurnUsage } from './entities.js'
 export type {
@@ -189,6 +192,7 @@ export interface DomainBraidEventMap {
     readonly runId: RunId
     readonly observation: ExecutionEnvironmentObservation
     readonly controlRef?: AgentExactRunControlRef
+    readonly capabilities?: AgentEnvironmentCapabilities
     readonly provider: ProviderEventMeta
   }
   readonly 'history.missing': { readonly range: MissingHistoryRange }

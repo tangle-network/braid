@@ -474,6 +474,9 @@ export function providerEventFor(
         ...(event.controlRef === undefined
           ? {}
           : { controlRef: structuredClone(event.controlRef) }),
+        ...(event.capabilities === undefined
+          ? {}
+          : { capabilities: structuredClone(event.capabilities) }),
         provider,
       }
     case 'unknown':

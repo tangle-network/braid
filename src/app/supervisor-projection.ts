@@ -56,6 +56,15 @@ function runtimeIdentity(value: string, name: string): string {
   if (value.length > MAX_RUNTIME_ID_LENGTH) {
     throw new Error(`${name} exceeds ${MAX_RUNTIME_ID_LENGTH} characters`)
   }
+  if (
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\0')
+  ) {
+    throw new Error(`${name} is not a safe runtime path segment`)
+  }
   return value
 }
 

@@ -181,6 +181,8 @@ function importRun(
       : { contentTruncated: booleanValue(record.contentTruncated, `${label}.contentTruncated`) }),
     ...optionalField('missingSequence', missingSequence),
     interactions: [],
+    pendingInteractions: [],
+    interactionIdentityDigests: [],
     activity: [],
     eventDetails: [],
     ...(arrayHasItems(record.interactions) || record.interactionsTruncated === true

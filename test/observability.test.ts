@@ -14,6 +14,7 @@ import { FixedClock } from '../src/ports/clock.js'
 import type { ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { sessionUsageFor } from '../src/views/shared/usage-projection.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 const at = '2026-08-09T12:00:00.000Z'
 
@@ -304,6 +305,8 @@ test('one run projects honest session usage and a linked execution environment',
     runId: 'provider-run-observed',
     requestDigest: `sha256:${'a'.repeat(64)}`,
   } as const
+  const measuredCapabilities = interactionResponseRunCapabilities().environment
+  assert.ok(measuredCapabilities)
   const execution: ExecutionPort = {
     admit: () => ({
       provider: 'tangle-sandbox',
@@ -322,7 +325,13 @@ test('one run projects honest session usage and a linked execution environment',
         latencyMs: 240,
         timestamp: at,
       }
-      yield { type: 'braid.execution.observed', observation, controlRef, timestamp: at }
+      yield {
+        type: 'braid.execution.observed',
+        observation,
+        controlRef,
+        capabilities: measuredCapabilities,
+        timestamp: at,
+      }
       yield {
         type: 'final',
         status: 'completed',
@@ -382,6 +391,7 @@ test('one run projects honest session usage and a linked execution environment',
   assert.equal(headless.sessionUsage.turns.estimatedCostUsd, 0.15)
   assert.equal(headless.environments[0]?.cleanup, 'delete-after-turn')
   assert.deepEqual(headless.runs.at(-1)?.controlRef, controlRef)
+  assert.deepEqual(run.capabilities.environment, measuredCapabilities)
   assert.equal(headless.environments[0]?.resourceSample?.cgroupVersion, 2)
   assert.equal(headless.environments[0]?.accountUsage?.maximumStorageGB, 200)
   assert.equal(controller.view().environments[0]?.runtimeEndpointHost, 'runtime.example')

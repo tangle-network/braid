@@ -8,6 +8,7 @@ import {
 } from '../src/app/interaction-request.js'
 import type { ConnectionRecord, RunRecord } from '../src/domain/entities.js'
 import type { BraidEvent, JournalEventEnvelope } from '../src/domain/events.js'
+import type { Digest } from '../src/domain/ids.js'
 import {
   createBranchId,
   createConnectionId,
@@ -27,10 +28,10 @@ import {
 import { assertConnectionRecord, assertRunRecord } from '../src/domain/invariants.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import { reduceEvent } from '../src/domain/reducer.js'
+import { interactionIdentityDigest } from '../src/domain/run-interactions.js'
 import type { BraidInteraction } from '../src/domain/runtime-projection.js'
 import { initialState } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
-import type { Digest } from '../src/domain/ids.js'
 
 const at = '2026-08-02T00:00:00.000Z'
 
@@ -326,6 +327,45 @@ test('canonical run interactions accept future kinds and reject duplicate reques
   assert.throws(
     () => assertRunRecord({ ...run, interactions: [interaction, interaction] }),
     /run\.interactions\.request contains duplicate identifier/u,
+  )
+})
+
+test('run interaction identity history is bounded and includes every retained record', () => {
+  const run = providerOwnedRun()
+  const interaction = canonicalRunInteraction(run, { idSuffix: 'identity-history' })
+  const digest = interactionIdentityDigest(interaction.request.id)
+
+  assert.doesNotThrow(() =>
+    assertRunRecord({
+      ...run,
+      interactions: [interaction],
+      interactionIdentityDigests: [digest],
+    }),
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactions: [interaction],
+        interactionIdentityDigests: [],
+      }),
+    /must include interaction/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactionIdentityDigests: [digest, digest],
+      }),
+    /contains duplicate identifier/u,
+  )
+  assert.throws(
+    () =>
+      assertRunRecord({
+        ...run,
+        interactionIdentityDigests: ['not-a-digest' as Digest],
+      }),
+    /is not a SHA-256 digest/u,
   )
 })
 

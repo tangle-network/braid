@@ -758,7 +758,7 @@ test('promotion records selected finding provenance as a graph attachment', asyn
     assert.equal(edge.edge.provenance.sourceDigest, evidence.source.digest)
 })
 
-test('runtime supervisor adapter reads snapshots, persists projections, and leaves worker cancel unavailable', async () => {
+test('runtime supervisor adapter persists projections and requests exact worker cancellation', async () => {
   const spend = { iterations: 1, tokensInput: 2, tokensOutput: 3, usd: 0.01, ms: 4 }
   const raw = {
     root: '/tmp/braid',
@@ -818,6 +818,16 @@ test('runtime supervisor adapter reads snapshots, persists projections, and leav
         source: source ?? 'braid',
       },
     }),
+    cancel: (eventDir, worker, operationId, options) => ({
+      operationId,
+      worker,
+      effect: 'unknown',
+      requestedAt: NOW,
+      observedAt: NOW,
+      ...(options?.reason === undefined ? {} : { reason: options.reason }),
+      detail: `queued in ${eventDir}`,
+      terminated: [],
+    }),
   })
   const first = history()
   const applicationHost = host(first.state, first.events)
@@ -844,7 +854,19 @@ test('runtime supervisor adapter reads snapshots, persists projections, and leav
   )
   assert.equal(queued.status, 'queued')
   if (queued.status === 'queued') assert.equal(queued.requestId, 'request-1')
-  const unavailable = await service.cancelWorker('runtime-worker-1')
-  assert.equal(unavailable.status, 'unavailable')
-  assert.equal(unavailable.issue.capability, 'supervisor.worker.cancel')
+  const cancellation = await service.cancelWorker(
+    '/tmp/braid',
+    'runtime-supervisor-1',
+    'runtime-worker-1',
+    'operation-cancel-runtime-worker-1',
+    'stop this branch',
+  )
+  assert.deepEqual(cancellation, {
+    status: 'accepted',
+    worker: 'runtime-worker-1',
+    operationId: 'operation-cancel-runtime-worker-1',
+    effect: 'unknown',
+    detail: 'queued in /tmp/braid/.agent/supervisor/runtime-supervisor-1',
+    terminated: [],
+  })
 })

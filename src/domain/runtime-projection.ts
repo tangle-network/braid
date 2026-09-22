@@ -100,11 +100,15 @@ export interface RuntimeRunFields {
   readonly contentTruncated?: boolean
   readonly missingSequence?: { readonly from: number; readonly to: number }
   readonly interactions: readonly BraidInteraction[]
+  /** Complete operational records for pending and in-flight responses. */
+  readonly pendingInteractions?: readonly BraidInteraction[]
+  /** Persisted identities prevent a completed interaction from becoming new after display eviction. */
+  readonly interactionIdentityDigests?: readonly Digest[]
   readonly activity: readonly BraidActivity[]
   readonly eventDetails: readonly RuntimeEventSummary[]
   /**
-   * Durable pending identities remain complete when the visible interaction
-   * history is bounded and older records are evicted.
+   * Legacy snapshots can contain identities without complete interaction records.
+   * New state stores complete records in pendingInteractions.
    */
   readonly pendingInteractionIds?: readonly InteractionId[]
   readonly activityTruncated?: boolean

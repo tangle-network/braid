@@ -1,4 +1,5 @@
 import type {
+  AgentEnvironmentCapabilities,
   AgentExactRunControlRef,
   InteractionRequest,
   StreamEvent,
@@ -21,6 +22,8 @@ export type BraidRuntimeEvent =
       readonly type: 'braid.execution.observed'
       readonly observation: ExecutionEnvironmentObservation
       readonly controlRef?: AgentExactRunControlRef
+      /** Capabilities measured from the exact environment that owns this run. */
+      readonly capabilities?: AgentEnvironmentCapabilities
       readonly timestamp: string
     }
   | {

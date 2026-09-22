@@ -5,8 +5,8 @@
  proof
 
 
-
+────────────────────────────────────────
 ›
 
 
-Braid starter              Ctrl+E detail
+Braid starter

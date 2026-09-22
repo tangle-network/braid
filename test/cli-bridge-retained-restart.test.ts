@@ -12,7 +12,6 @@ import {
 } from '../src/adapters/runtime/retained-execution.js'
 import { finalRetainedEnvelope } from '../src/adapters/runtime/retained-execution-projection.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
-import { providerEventFor } from '../src/app/run-event-mapper.js'
 import {
   createDurableBraidApplication,
   type DurableBraidApplication,
@@ -21,6 +20,7 @@ import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../src/app/production-composition.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { isFinalRuntimeEvent, isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
@@ -29,6 +29,7 @@ import {
   type RetainedRunAdmissionRecord,
 } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
+import { interactionResponseEnvironmentCapabilities } from './support/run-capabilities.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -131,6 +132,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
 function recoveryPlan(controlRef: AgentExactRunControlRef): RetainedExecutionPlan {
   const handle: RetainedRunHandle = {
     controlRef,
+    capabilities: interactionResponseEnvironmentCapabilities(),
     async status() {
       return {
         runId: controlRef.runId,

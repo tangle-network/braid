@@ -3,6 +3,7 @@ import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { DomainInvariantError } from '../domain/invariants-base.js'
 import { assertAutomationRuleRecord } from '../domain/invariants-runtime.js'
+import { interactionForRun } from '../domain/run-interactions.js'
 import type { BraidState } from '../domain/state.js'
 import { type ExecutionPort, supportsInteractionResponse } from '../ports/execution.js'
 import { KeyedActionQueue } from './action-serialization.js'
@@ -70,7 +71,7 @@ export class ApplicationInteractionActions {
     if (runId === undefined || this.#options.execution.respondInteraction === undefined)
       return false
     const run = this.#options.state().runs.find((candidate) => candidate.id === runId)
-    return run !== undefined && supportsInteractionResponse(run.receipt.capabilities)
+    return run !== undefined && supportsInteractionResponse(run.capabilities)
   }
 
   acceptRuntimeEvent(
@@ -84,11 +85,9 @@ export class ApplicationInteractionActions {
     )
       return
     const interactionId = envelope.event.request.id
-    const target = this.#options
-      .state()
-      .runs.find((run) => run.id === envelope.runId)
-      ?.interactions.find((interaction) => interaction.request.id === interactionId)
-    if (target !== undefined) void this.#coordinator.schedule(target)
+    const target = this.#options.state().runs.find((run) => run.id === envelope.runId)
+    const interaction = target === undefined ? undefined : interactionForRun(target, interactionId)
+    if (interaction !== undefined) void this.#coordinator.schedule(interaction)
   }
 
   respond(input: ApplicationInteractionResponseInput): Promise<InteractionReceipt> {

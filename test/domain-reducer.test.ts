@@ -25,7 +25,11 @@ import {
   replayEvents,
   SequenceGapError,
 } from '../src/domain/reducer.js'
-import { MAX_RUN_INTERACTIONS } from '../src/domain/reducer-support.js'
+import {
+  MAX_PENDING_RUN_INTERACTIONS,
+  MAX_RUN_INTERACTION_IDENTITIES,
+  MAX_RUN_INTERACTIONS,
+} from '../src/domain/reducer-support.js'
 import { initialState } from '../src/domain/state.js'
 
 const at = '2026-08-02T00:00:00.000Z'
@@ -160,6 +164,95 @@ test('replay rejects malformed persisted interaction sources and automation rule
       new RegExp(`rule\\.answer\\.${field} is secret-designated and cannot be retained`, 'u'),
     )
   }
+})
+
+test('truncated legacy runs reject replayed interaction identities without a ledger', () => {
+  const runId = createRunId('run-truncated-legacy-replay')
+  const interactionId = createInteractionId('interaction-truncated-legacy-replay')
+  const request = createInteractionRequest({
+    id: interactionId,
+    kind: 'question',
+    title: 'Continue after restart?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId,
+      provider: 'fixture',
+      environmentId: 'environment-truncated-legacy-replay',
+      sessionId: 'session-truncated-legacy-replay',
+      executionId: 'execution-truncated-legacy-replay',
+      interactionId,
+    },
+  })
+  const prefix: readonly JournalEventEnvelope[] = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-truncated-legacy-replay'),
+        runId,
+        turnId: createTurnId('turn-truncated-legacy-replay'),
+        userMessageId: createMessageId('message-truncated-legacy-user'),
+        assistantMessageId: createMessageId('message-truncated-legacy-assistant'),
+        text: 'wait for an answer',
+      },
+      2,
+    ),
+  ]
+  const afterInteraction = reduceEvent(
+    replayEvents(initialState(STARTER_PROFILE), prefix),
+    envelope(
+      {
+        kind: 'run.interaction',
+        runId,
+        request,
+        responseBinding: interactionResponseBinding(request),
+        provider: {
+          eventId: 'provider-truncated-legacy-replay',
+          providerSequence: 1,
+          occurredAt: at,
+        },
+      },
+      3,
+    ),
+  )
+  const legacyTruncated = {
+    ...afterInteraction,
+    runs: afterInteraction.runs.map((run) => {
+      if (run.id !== runId) return run
+      const {
+        interactionIdentityDigests: _interactionIdentityDigests,
+        pendingInteractionIds: _pendingInteractionIds,
+        pendingInteractions: _pendingInteractions,
+        interactions: _interactions,
+        ...legacyRun
+      } = run
+      return { ...legacyRun, interactions: [], interactionsTruncated: true }
+    }),
+  }
+
+  assert.throws(
+    () =>
+      reduceEvent(
+        legacyTruncated,
+        envelope(
+          {
+            kind: 'run.interaction',
+            runId,
+            request,
+            responseBinding: interactionResponseBinding(request),
+            provider: {
+              eventId: 'provider-truncated-legacy-replay-again',
+              providerSequence: 2,
+              occurredAt: at,
+            },
+          },
+          4,
+        ),
+      ),
+    /truncated interaction history without a complete identity ledger/u,
+  )
 })
 
 test('interaction transitions reject reorder, unknown, conflicting, terminal, and evicted events', () => {
@@ -347,27 +440,146 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
     ),
     false,
   )
-  assert.equal(evictedRun.pendingInteractionIds?.includes('interaction-evicted-0'), true)
+  assert.equal(evictedRun.pendingInteractions?.length, 257)
+  assert.equal(
+    evictedRun.pendingInteractions?.some(
+      (interaction) => interaction.request.id === 'interaction-evicted-0',
+    ),
+    true,
+  )
+  const cancelledEvicted = reduceEvent(
+    evicted,
+    envelope(
+      {
+        kind: 'run.interaction.cancelled',
+        runId,
+        interactionId: 'interaction-evicted-0',
+        provider: {
+          eventId: 'provider-transition-evicted-cancelled',
+          providerSequence: 258,
+          occurredAt: at,
+        },
+      },
+      260,
+      createEventId('event-transition-evicted-cancelled'),
+    ),
+  )
+  const cancelledRun = cancelledEvicted.runs[0]
+  assert.ok(cancelledRun)
+  assert.equal(cancelledRun.pendingInteractions?.length, 256)
+  assert.equal(
+    cancelledRun.interactions.find(
+      (interaction) => interaction.request.id === 'interaction-evicted-0',
+    )?.status,
+    'cancelled',
+  )
+  const respondingEvicted = reduceEvent(
+    cancelledEvicted,
+    envelope(
+      {
+        kind: 'run.interaction.response.requested',
+        runId,
+        interactionId: 'interaction-evicted-1',
+        operationId: createOperationId('operation-evicted-response'),
+        outcome: 'accepted',
+        containsSecret: false,
+      },
+      261,
+      createEventId('event-transition-evicted-response-requested'),
+    ),
+  )
+  assert.equal(
+    respondingEvicted.runs[0]?.pendingInteractions?.find(
+      (interaction) => interaction.request.id === 'interaction-evicted-1',
+    )?.status,
+    'responding',
+  )
+  const resolvedEvicted = reduceEvent(
+    respondingEvicted,
+    envelope(
+      {
+        kind: 'run.interaction.responded',
+        runId,
+        interactionId: 'interaction-evicted-1',
+        operationId: createOperationId('operation-evicted-response'),
+        outcome: 'accepted',
+        containsSecret: false,
+      },
+      262,
+      createEventId('event-transition-evicted-responded'),
+    ),
+  )
+  assert.equal(resolvedEvicted.runs[0]?.pendingInteractions?.length, 255)
+  assert.equal(
+    resolvedEvicted.runs[0]?.interactions.find(
+      (interaction) => interaction.request.id === 'interaction-evicted-1',
+    )?.status,
+    'resolved',
+  )
+
+  let afterTerminalEviction = resolvedEvicted
+  for (let index = 0; index < MAX_RUN_INTERACTIONS; index += 1) {
+    afterTerminalEviction = reduceEvent(
+      afterTerminalEviction,
+      interactionEvent(
+        263 + index,
+        createInteractionId(`interaction-after-terminal-${index}`),
+        259 + index,
+      ),
+    )
+  }
+  assert.equal(
+    afterTerminalEviction.runs[0]?.interactions.some(
+      (interaction) => interaction.request.id === 'interaction-evicted-1',
+    ),
+    false,
+  )
   assert.throws(
     () =>
       reduceEvent(
-        evicted,
-        envelope(
-          {
-            kind: 'run.interaction.cancelled',
-            runId,
-            interactionId: 'interaction-evicted-0',
-            provider: {
-              eventId: 'provider-transition-evicted-cancelled',
-              providerSequence: 258,
-              occurredAt: at,
-            },
-          },
-          260,
-          createEventId('event-transition-evicted-cancelled'),
+        afterTerminalEviction,
+        interactionEvent(519, createInteractionId('interaction-evicted-1'), 515),
+      ),
+    /Interaction interaction-evicted-1 is not available/u,
+  )
+
+  let atPendingCapacity = beforeInteraction
+  for (let index = 0; index < MAX_PENDING_RUN_INTERACTIONS; index += 1) {
+    atPendingCapacity = reduceEvent(
+      atPendingCapacity,
+      interactionEvent(index + 3, createInteractionId(`interaction-pending-capacity-${index}`)),
+    )
+  }
+  assert.equal(atPendingCapacity.runs[0]?.pendingInteractions?.length, MAX_PENDING_RUN_INTERACTIONS)
+  assert.throws(
+    () =>
+      reduceEvent(
+        atPendingCapacity,
+        interactionEvent(
+          MAX_PENDING_RUN_INTERACTIONS + 3,
+          createInteractionId('interaction-pending-overflow'),
         ),
       ),
-    /Interaction interaction-evicted-0 is unknown/u,
+    new RegExp(`already has ${MAX_PENDING_RUN_INTERACTIONS} unresolved interactions`, 'u'),
+  )
+
+  const atIdentityCapacity = {
+    ...beforeInteraction,
+    runs: beforeInteraction.runs.map((run) =>
+      run.id === runId
+        ? {
+            ...run,
+            interactionIdentityDigests: Array.from(
+              { length: MAX_RUN_INTERACTION_IDENTITIES },
+              (_, index) => canonicalDigest(`interaction-identity-capacity-${index}`),
+            ),
+          }
+        : run,
+    ),
+  }
+  assert.throws(
+    () => reduceEvent(atIdentityCapacity, interactionEvent(3)),
+    new RegExp(`already has ${MAX_RUN_INTERACTION_IDENTITIES} interaction identities`, 'u'),
   )
 })
 

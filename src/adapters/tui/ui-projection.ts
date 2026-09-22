@@ -8,6 +8,7 @@ import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
+import { pendingInteractionsForRun } from '../../domain/run-interactions.js'
 import type { BraidState } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
@@ -260,7 +261,7 @@ function completenessFor(
 export function interactionViews(state: BraidState, now = Date.now()): InteractionView[] {
   const views: Array<Omit<InteractionView, 'queueTotal'>> = []
   for (const run of state.runs) {
-    for (const item of run.interactions) {
+    for (const item of pendingInteractionsForRun(run)) {
       if (item.status !== 'pending') continue
       const request = item.request
       const fields = Array.isArray(request.answerSpec?.fields) ? request.answerSpec.fields : []

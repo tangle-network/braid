@@ -17,8 +17,8 @@
 
 
 
-
+────────────────────────────────────────────────────────────────────────────────
 ›
 
 
-profile Braid starter · pi / deterministic                         Ctrl+E detail
+profile Braid starter · pi / deterministic · via local            Ctrl+E details

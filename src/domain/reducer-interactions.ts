@@ -1,30 +1,38 @@
-import type { BraidEvent } from './events.js'
-import { reserveText } from './content-budget.js'
 import { canonicalDigest } from './canonical.js'
-import { DomainInvariantError } from './invariants-base.js'
-import type { BraidInteraction, BraidState } from './state.js'
+import { reserveText } from './content-budget.js'
+import type { BraidEvent } from './events.js'
 import { createOperationId } from './ids.js'
-import { safePublicIdentifier } from './provider-values.js'
-import { finalizeRunUsage } from './run-usage.js'
+import { DomainInvariantError } from './invariants-base.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
+import { safePublicIdentifier } from './provider-values.js'
 import {
   activity,
   addActivity,
   assertTerminalTransition,
   findRun,
+  MAX_PENDING_RUN_INTERACTIONS,
+  MAX_RUN_EVENT_DETAILS,
+  MAX_RUN_INTERACTION_IDENTITIES,
+  MAX_RUN_INTERACTIONS,
+  type ReducerBase,
   sourceFromProvider,
+  TERMINAL_RUN_STATES,
   terminalMessageStatus,
   terminalPartStatus,
   updateMessage,
   updateRun,
   upsertPart,
   withProviderProgress,
-  withPendingInteractionIndex,
-  MAX_RUN_EVENT_DETAILS,
-  MAX_RUN_INTERACTIONS,
-  TERMINAL_RUN_STATES,
-  type ReducerBase,
 } from './reducer-support.js'
+import {
+  interactionForRun,
+  interactionIdentityDigest,
+  interactionIdentityDigestsForRun,
+  isOpenInteraction,
+  pendingInteractionsForRun,
+} from './run-interactions.js'
+import { finalizeRunUsage } from './run-usage.js'
+import type { BraidInteraction, BraidState } from './state.js'
 
 type InteractionEvent = Extract<
   BraidEvent,
@@ -49,7 +57,7 @@ export function reduceInteractionEvent(
     case 'run.interaction': {
       const run = findRun(state, event.runId)
       const source = sourceFromProvider(event.provider) ?? {}
-      const existing = run.interactions.find((item) => item.request.id === event.request.id)
+      const existing = interactionForRun(run, event.request.id)
       if (existing !== undefined) {
         if (!sameInteractionEvent(existing, event.request, event.responseBinding, source)) {
           throw interactionInvariant(
@@ -74,26 +82,15 @@ export function reduceInteractionEvent(
         source,
         status: 'pending',
       }
-      const interactions = [...run.interactions, interaction]
-      const visibleInteractions = interactions.slice(-MAX_RUN_INTERACTIONS)
       return {
         ...state,
         ...base,
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
-            {
-              ...withPendingInteractionIndex(
-                {
-                  ...withProviderProgress(run, event.provider),
-                  status: 'waiting',
-                  ...(interactions.length > MAX_RUN_INTERACTIONS
-                    ? { interactionsTruncated: true }
-                    : {}),
-                },
-                interactions,
-              ),
-              interactions: visibleInteractions,
-            },
+            addPendingInteraction(
+              { ...withProviderProgress(run, event.provider), status: 'waiting' },
+              interaction,
+            ),
             activity(event, 'interaction', event.request.kind, event.request.title, source),
           ),
         ),
@@ -115,9 +112,10 @@ export function reduceInteractionEvent(
         ...state,
         ...base,
         runs: updateRun(state, event.runId, (candidate) =>
-          withPendingInteractionIndex(
+          transitionInteraction(
             withProviderProgress(candidate, event.provider),
-            replaceInteraction(candidate, event.interactionId, next),
+            event.interactionId,
+            next,
           ),
         ),
       }
@@ -151,10 +149,9 @@ export function reduceInteractionEvent(
       return {
         ...state,
         ...base,
-        runs: updateRun(state, event.runId, (run) => ({
-          ...run,
-          ...withPendingInteractionIndex(run, replaceInteraction(run, event.interactionId, next)),
-        })),
+        runs: updateRun(state, event.runId, (run) =>
+          transitionInteraction(run, event.interactionId, next),
+        ),
       }
     }
     case 'run.interaction.responded': {
@@ -198,10 +195,9 @@ export function reduceInteractionEvent(
           event.outcome === 'unknown'
             ? (event.detail ?? 'Interaction response is unknown')
             : state.lastError,
-        runs: updateRun(state, event.runId, (run) => ({
-          ...run,
-          ...withPendingInteractionIndex(run, replaceInteraction(run, event.interactionId, next)),
-        })),
+        runs: updateRun(state, event.runId, (run) =>
+          transitionInteraction(run, event.interactionId, next),
+        ),
       }
     }
     case 'run.status.changed': {
@@ -271,18 +267,82 @@ function withoutResponseOperation(
 }
 
 function interactionFor(run: BraidState['runs'][number], interactionId: string): BraidInteraction {
-  const interaction = run.interactions.find((item) => item.request.id === interactionId)
+  const interaction = interactionForRun(run, interactionId)
   if (interaction === undefined)
     throw interactionInvariant(`Interaction ${interactionId} is unknown`)
   return interaction
 }
 
-function replaceInteraction(
+function addPendingInteraction(
+  run: BraidState['runs'][number],
+  interaction: BraidInteraction,
+): BraidState['runs'][number] {
+  const pending = pendingInteractionsForRun(run)
+  if (pending.length >= MAX_PENDING_RUN_INTERACTIONS) {
+    throw interactionInvariant(
+      `Run ${run.id} already has ${MAX_PENDING_RUN_INTERACTIONS} unresolved interactions; reconnect and resolve them before accepting another request`,
+    )
+  }
+  const identityDigest = interactionIdentityDigest(interaction.request.id)
+  const identityDigests = interactionIdentityDigestsForRun(run)
+  if (identityDigests === undefined) {
+    throw interactionInvariant(
+      `Run ${run.id} has truncated interaction history without a complete identity ledger; reconcile before accepting another interaction`,
+    )
+  }
+  if (identityDigests.includes(identityDigest)) {
+    throw interactionInvariant(`Interaction ${interaction.request.id} is not available`)
+  }
+  if (identityDigests.length >= MAX_RUN_INTERACTION_IDENTITIES) {
+    throw interactionInvariant(
+      `Run ${run.id} already has ${MAX_RUN_INTERACTION_IDENTITIES} interaction identities; start a new run before accepting another request`,
+    )
+  }
+  const interactions = [...run.interactions, interaction]
+  return withInteractionState(
+    { ...run, interactionIdentityDigests: [...identityDigests, identityDigest] },
+    interactions.slice(-MAX_RUN_INTERACTIONS),
+    [...pending, interaction],
+    interactions.length > MAX_RUN_INTERACTIONS,
+  )
+}
+
+function transitionInteraction(
   run: BraidState['runs'][number],
   interactionId: string,
   replacement: BraidInteraction,
-): readonly BraidInteraction[] {
-  return run.interactions.map((item) => (item.request.id === interactionId ? replacement : item))
+): BraidState['runs'][number] {
+  const visible = run.interactions.some((item) => item.request.id === interactionId)
+    ? run.interactions.map((item) => (item.request.id === interactionId ? replacement : item))
+    : isOpenInteraction(replacement)
+      ? run.interactions
+      : [...run.interactions, replacement].slice(-MAX_RUN_INTERACTIONS)
+  const pending = pendingInteractionsForRun(run)
+    .map((item) => (item.request.id === interactionId ? replacement : item))
+    .filter(isOpenInteraction)
+  return withInteractionState(run, visible, pending, !visible.includes(replacement))
+}
+
+function withInteractionState(
+  run: BraidState['runs'][number],
+  interactions: readonly BraidInteraction[],
+  pendingInteractions: readonly BraidInteraction[],
+  truncated: boolean,
+): BraidState['runs'][number] {
+  const known = new Set(pendingInteractions.map((item) => item.request.id))
+  const legacyPendingIds = run.pendingInteractionIds?.filter(
+    (interactionId) => !known.has(interactionId),
+  )
+  const { pendingInteractionIds: _pendingInteractionIds, ...current } = run
+  return {
+    ...current,
+    interactions,
+    pendingInteractions,
+    ...(legacyPendingIds === undefined || legacyPendingIds.length === 0
+      ? {}
+      : { pendingInteractionIds: legacyPendingIds }),
+    ...(truncated || run.interactionsTruncated ? { interactionsTruncated: true } : {}),
+  }
 }
 
 function sameInteractionEvent(

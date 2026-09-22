@@ -214,12 +214,20 @@ test('migrates legacy interactions, rejects snapshot conflicts, and recomputes t
     restored.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
     [interactionId],
   )
+  assert.equal(
+    restored.runs
+      .find((run) => run.id === runId)
+      ?.interactionIdentityDigests?.includes(canonicalDigest(interactionId)),
+    true,
+  )
   assert.equal(restored.projectionChecksum, canonicalProjectionChecksum(restored))
 
   const topLevelOnlyState = {
     ...snapshot.state,
     runs: snapshot.state.runs.map((run) =>
-      run.id === runId ? { ...run, interactions: [], pendingInteractionIds: [] } : run,
+      run.id === runId
+        ? { ...run, interactions: [], pendingInteractions: [], pendingInteractionIds: [] }
+        : run,
     ),
     interactions: legacyState.interactions,
   }
@@ -232,20 +240,58 @@ test('migrates legacy interactions, rejects snapshot conflicts, and recomputes t
     topLevelOnly.runs.find((run) => run.id === runId)?.interactions.map((item) => item.request.id),
     [interactionId],
   )
+  assert.equal(
+    topLevelOnly.runs
+      .find((run) => run.id === runId)
+      ?.interactionIdentityDigests?.includes(canonicalDigest(interactionId)),
+    true,
+  )
   assert.equal(topLevelOnly.projectionChecksum, canonicalProjectionChecksum(topLevelOnly))
+
+  const truncatedLegacyState = {
+    ...snapshot.state,
+    runs: snapshot.state.runs.map((run) => {
+      if (run.id !== runId) return run
+      const {
+        interactionIdentityDigests: _interactionIdentityDigests,
+        pendingInteractionIds: _pendingInteractionIds,
+        pendingInteractions: _pendingInteractions,
+        ...legacyRun
+      } = run
+      return {
+        ...legacyRun,
+        interactions: [],
+        interactionsTruncated: true,
+      }
+    }),
+    interactions: legacyState.interactions,
+  }
+  const restoredTruncatedLegacy = restoreMaterializedState({
+    ...snapshot,
+    state: truncatedLegacyState,
+    stateChecksum: canonicalDigest(truncatedLegacyState),
+  })
+  const truncatedLegacyRun = restoredTruncatedLegacy.runs.find((run) => run.id === runId)
+  assert.ok(truncatedLegacyRun)
+  assert.deepEqual(
+    truncatedLegacyRun.interactions.map((item) => item.request.id),
+    [interactionId],
+  )
+  assert.equal(truncatedLegacyRun.interactionsTruncated, true)
+  assert.equal(Object.hasOwn(truncatedLegacyRun, 'interactionIdentityDigests'), false)
 
   const hiddenPendingState = {
     ...snapshot.state,
-    runs: snapshot.state.runs.map((run) =>
-      run.id === runId
-        ? {
-            ...run,
-            interactions: [],
-            interactionsTruncated: true,
-            pendingInteractionIds: [interactionId],
-          }
-        : run,
-    ),
+    runs: snapshot.state.runs.map((run) => {
+      if (run.id !== runId) return run
+      const { pendingInteractions: _pendingInteractions, ...legacyRun } = run
+      return {
+        ...legacyRun,
+        interactions: [],
+        interactionsTruncated: true,
+        pendingInteractionIds: [interactionId],
+      }
+    }),
     interactions: legacyState.interactions,
   }
   assert.throws(

@@ -1,4 +1,5 @@
 import type { AnalysisFinding, AnalysisModelCallRecord } from '../../domain/entities.js'
+import { interactionsForRun } from '../../domain/run-interactions.js'
 import type { BraidState } from '../../domain/state.js'
 import { analysisModelCallLine, analysisModelCallView } from './analysis-model-call-presentation.js'
 import { environmentView } from './environment-presentation.js'
@@ -134,6 +135,7 @@ function dataFor(
     case 'run': {
       const run = state.runs.find((candidate) => candidate.id === id)
       if (run === undefined) return undefined
+      const interactions = interactionsForRun(run)
       return {
         id: run.id,
         conversationId: run.conversationId,
@@ -225,7 +227,7 @@ function dataFor(
           : { interactionsTruncated: run.interactionsTruncated }),
         activityCount: run.activity.length,
         eventDetailCount: run.eventDetails.length,
-        interactionCount: run.interactions.length,
+        interactionCount: interactions.length,
       }
     }
     case 'analysis': {

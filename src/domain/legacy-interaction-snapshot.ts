@@ -1,16 +1,24 @@
 import {
-  InteractionRequestSchema,
-  interactionRequestDigest,
   type InteractionRequest,
   type InteractionRequestBinding,
   type InteractionRequestMaterial,
+  InteractionRequestSchema,
+  interactionRequestDigest,
 } from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
-import { MAX_RUN_INTERACTIONS, withPendingInteractionIndex } from './reducer-support.js'
+import type { Digest } from './ids.js'
+import type { MaterializedState } from './materialized-state.js'
+import { MAX_RUN_INTERACTIONS } from './reducer-support.js'
+import {
+  interactionForRun,
+  interactionIdentityDigest,
+  interactionIdentityDigestsForRun,
+  isOpenInteraction,
+  pendingInteractionsForRun,
+} from './run-interactions.js'
 import type { BraidInteraction } from './runtime-projection.js'
 import type { BraidState } from './state.js'
 import { isCanonicalIsoDateTime } from './text.js'
-import type { MaterializedState } from './materialized-state.js'
 
 interface LegacyInteractionRecord {
   readonly id?: unknown
@@ -44,9 +52,16 @@ export function migrateLegacyInteractions(state: LegacyMaterializedState): Mater
     if (runIndex === -1) throw new Error(`Legacy snapshot interaction ${id} has no run ${runId}`)
     const run = runs[runIndex]
     if (!run) throw new Error(`Legacy snapshot interaction ${id} has no run ${runId}`)
-    const existing = run.interactions.find((interaction) => interaction.request.id === id)
+    const existing = interactionForRun(run, id)
     if (existing !== undefined) {
       assertLegacyInteractionMatches(legacy, existing)
+      const interactionIdentityDigests = legacyInteractionIdentityDigests(
+        run,
+        id,
+        run.interactions.length,
+      )
+      runs[runIndex] =
+        interactionIdentityDigests === undefined ? run : { ...run, interactionIdentityDigests }
       continue
     }
     if (run.pendingInteractionIds?.includes(id)) {
@@ -54,14 +69,39 @@ export function migrateLegacyInteractions(state: LegacyMaterializedState): Mater
     }
     const migrated = migrateLegacyInteraction(legacy, run, id)
     const allInteractions = [...run.interactions, migrated]
-    const indexed = withPendingInteractionIndex(run, allInteractions)
+    const pendingInteractions = isOpenInteraction(migrated)
+      ? [...pendingInteractionsForRun(run), migrated]
+      : pendingInteractionsForRun(run)
+    const interactionIdentityDigests = legacyInteractionIdentityDigests(
+      run,
+      id,
+      allInteractions.length,
+    )
     runs[runIndex] = {
-      ...indexed,
+      ...run,
       interactions: allInteractions.slice(-MAX_RUN_INTERACTIONS),
+      pendingInteractions,
+      ...(interactionIdentityDigests === undefined ? {} : { interactionIdentityDigests }),
       ...(allInteractions.length > MAX_RUN_INTERACTIONS ? { interactionsTruncated: true } : {}),
     }
   }
   return { ...withoutLegacyInteractions, runs }
+}
+
+function legacyInteractionIdentityDigests(
+  run: BraidState['runs'][number],
+  interactionId: string,
+  interactionCount: number,
+): readonly Digest[] | undefined {
+  if (
+    run.interactionIdentityDigests === undefined &&
+    (run.interactionsTruncated || interactionCount > MAX_RUN_INTERACTIONS)
+  )
+    return undefined
+
+  const identityDigests = interactionIdentityDigestsForRun(run)
+  if (identityDigests === undefined) return undefined
+  return [...new Set([...identityDigests, interactionIdentityDigest(interactionId)])]
 }
 
 function legacyInteractionRecord(value: unknown): LegacyInteractionRecord {

@@ -1121,8 +1121,13 @@ test('conversation deletion retains pending identity after 257-entry interaction
     run.interactions.some((item) => item.request.id === 'interaction-delete-evicted-0'),
     false,
   )
-  assert.equal(run.pendingInteractionIds?.length, 257)
-  assert.equal(run.pendingInteractionIds?.includes('interaction-delete-evicted-0'), true)
+  assert.equal(run.pendingInteractions?.length, 257)
+  assert.equal(
+    run.pendingInteractions?.some(
+      (interaction) => interaction.request.id === 'interaction-delete-evicted-0',
+    ),
+    true,
+  )
 
   await assert.rejects(
     () =>
@@ -1139,7 +1144,11 @@ test('conversation deletion retains pending identity after 257-entry interaction
   const state = app.state()
   const withoutPendingIndex = state.runs.map((candidate) => {
     if (candidate.id !== run.id) return candidate
-    const { pendingInteractionIds: _pendingInteractionIds, ...legacyRun } = candidate
+    const {
+      pendingInteractions: _pendingInteractions,
+      pendingInteractionIds: _pendingInteractionIds,
+      ...legacyRun
+    } = candidate
     return legacyRun
   })
   const restoredJournal = Object.assign(

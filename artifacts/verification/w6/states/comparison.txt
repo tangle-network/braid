@@ -1,4 +1,4 @@
- activity · analyses › /compare · frozen runs · complete · 1/1
+ analyses › /compare · frozen runs   Braid starter · pi · fixture/deterministic
 ────────────────────────────────────────────────────────────────────────────────
  saved result: replayed from the local journal
  baseline run: run-route-serial
@@ -21,4 +21,4 @@
  paired.correctness.b10: 0
  paired.correctness.mcnemar.b: 0
 ────────────────────────────────────────────────────────────────────────────────
- ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab filter: analys…
+ ↑↓ previous/next · PgUp/PgDn page · ←/esc back · page 1/4 · tab: analyses

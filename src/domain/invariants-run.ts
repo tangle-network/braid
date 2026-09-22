@@ -3,6 +3,8 @@ import {
   InteractionBindingSchema,
   InteractionRequestSchema,
 } from '@tangle-network/agent-interface'
+import { isSensitiveFieldName } from './bounded-structured.js'
+import { canonicalDigest } from './canonical.js'
 import type {
   AnalysisAttachmentRecord,
   AnalysisModelCallRecord,
@@ -11,7 +13,6 @@ import type {
 } from './entities.js'
 import type { AutomationRuleRecord } from './entities-runtime.js'
 import { isReplayCursor } from './ids.js'
-import { isSensitiveFieldName } from './bounded-structured.js'
 import {
   assertDate,
   assertDigest,
@@ -25,9 +26,11 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
-import { safePublicIdentifier } from './provider-values.js'
 import { assertRetainedRunAdmission } from './invariants-retained-admission.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
+import { safePublicIdentifier } from './provider-values.js'
+import { MAX_PENDING_RUN_INTERACTIONS, MAX_RUN_INTERACTION_IDENTITIES } from './reducer-support.js'
+import { interactionIdentityDigest } from './run-interactions.js'
 
 export function assertRunRecord(record: RunRecord): void {
   assertEntityId('run', record.id, 'run.id')
@@ -97,40 +100,99 @@ export function assertRunRecord(record: RunRecord): void {
 function assertRunInteractions(record: RunRecord): void {
   if (!Array.isArray(record.interactions)) fail('run.interactions must be an array')
   const requestIds = record.interactions.map((interaction, index) =>
-    assertBraidInteraction(interaction, record.id, index),
+    assertBraidInteraction(interaction, record.id, `run.interactions[${index}]`),
   )
   assertUniqueIds(requestIds, 'run.interactions.request')
-  if (record.pendingInteractionIds === undefined) return
-  const pendingIds = record.pendingInteractionIds.map((interactionId, index) => {
-    assertEntityId('interaction', interactionId, `run.pendingInteractionIds[${index}]`)
-    return interactionId
-  })
-  assertUniqueIds(pendingIds, 'run.pendingInteractionIds')
-  const pending = new Set(pendingIds)
-  for (const interaction of record.interactions) {
-    const interactionId = interaction.request.id
-    if (interaction.status === 'pending' && !pending.has(interactionId)) {
-      fail(`run.pendingInteractionIds must include visible pending interaction ${interactionId}`)
+
+  const identityDigests = record.interactionIdentityDigests
+  if (identityDigests !== undefined) {
+    if (!Array.isArray(identityDigests)) fail('run.interactionIdentityDigests must be an array')
+    if (identityDigests.length > MAX_RUN_INTERACTION_IDENTITIES) {
+      fail(`run.interactionIdentityDigests exceeds ${MAX_RUN_INTERACTION_IDENTITIES} records`)
     }
-    if (interaction.status !== 'pending' && pending.has(interactionId)) {
-      fail(`run.pendingInteractionIds cannot include non-pending interaction ${interactionId}`)
+    for (const [index, digest] of identityDigests.entries()) {
+      assertDigest(digest, `run.interactionIdentityDigests[${index}]`)
+    }
+    assertUniqueIds(identityDigests, 'run.interactionIdentityDigests')
+  }
+
+  const legacyIds =
+    record.pendingInteractionIds?.map((interactionId, index) => {
+      assertEntityId('interaction', interactionId, `run.pendingInteractionIds[${index}]`)
+      return interactionId
+    }) ?? []
+  assertUniqueIds(legacyIds, 'run.pendingInteractionIds')
+
+  if (identityDigests !== undefined) {
+    const known = new Set(identityDigests)
+    for (const interactionId of [...requestIds, ...legacyIds]) {
+      if (!known.has(interactionIdentityDigest(interactionId))) {
+        fail(`run.interactionIdentityDigests must include interaction ${interactionId}`)
+      }
     }
   }
-  if (!record.interactionsTruncated) {
-    const visiblePending = record.interactions
-      .filter((interaction) => interaction.status === 'pending')
-      .map((interaction) => interaction.request.id)
-    if (
-      visiblePending.length !== pendingIds.length ||
-      visiblePending.some((interactionId) => !pending.has(interactionId))
-    ) {
-      fail('run.pendingInteractionIds must match all interactions when history is complete')
+
+  if (record.pendingInteractions === undefined) {
+    const pending = new Set(legacyIds)
+    for (const interaction of record.interactions) {
+      const interactionId = interaction.request.id
+      if (interaction.status === 'pending' && legacyIds.length > 0 && !pending.has(interactionId))
+        fail(`run.pendingInteractionIds must include visible pending interaction ${interactionId}`)
+      if (interaction.status !== 'pending' && pending.has(interactionId))
+        fail(`run.pendingInteractionIds cannot include non-pending interaction ${interactionId}`)
     }
+    return
+  }
+
+  if (!Array.isArray(record.pendingInteractions)) fail('run.pendingInteractions must be an array')
+  if (record.pendingInteractions.length > MAX_PENDING_RUN_INTERACTIONS) {
+    fail(`run.pendingInteractions exceeds ${MAX_PENDING_RUN_INTERACTIONS} records`)
+  }
+  const pendingIds = record.pendingInteractions.map((interaction, index) => {
+    const id = assertBraidInteraction(interaction, record.id, `run.pendingInteractions[${index}]`)
+    if (interaction.status !== 'pending' && interaction.status !== 'responding')
+      fail(`run.pendingInteractions[${index}] must be pending or responding`)
+    return id
+  })
+  assertUniqueIds(pendingIds, 'run.pendingInteractions.request')
+  if (identityDigests !== undefined) {
+    const known = new Set(identityDigests)
+    for (const interactionId of pendingIds) {
+      if (!known.has(interactionIdentityDigest(interactionId))) {
+        fail(`run.interactionIdentityDigests must include interaction ${interactionId}`)
+      }
+    }
+  }
+  const pendingById = new Map(
+    record.pendingInteractions.map((interaction) => [interaction.request.id, interaction]),
+  )
+  for (const interaction of record.interactions) {
+    const pending = pendingById.get(interaction.request.id)
+    if (interaction.status === 'pending' || interaction.status === 'responding') {
+      if (pending === undefined)
+        fail(
+          `run.pendingInteractions must include visible open interaction ${interaction.request.id}`,
+        )
+      if (canonicalDigest(pending) !== canonicalDigest(interaction))
+        fail(`run.pendingInteractions has different data for ${interaction.request.id}`)
+    } else if (pending !== undefined) {
+      fail(`run.pendingInteractions cannot include terminal interaction ${interaction.request.id}`)
+    }
+  }
+  for (const legacyId of legacyIds) {
+    if (pendingById.has(legacyId))
+      fail(`run.pendingInteractionIds duplicates complete interaction ${legacyId}`)
+  }
+  if (!record.interactionsTruncated) {
+    const visibleOpen = record.interactions.filter(
+      (interaction) => interaction.status === 'pending' || interaction.status === 'responding',
+    )
+    if (visibleOpen.length !== pendingIds.length || legacyIds.length > 0)
+      fail('run.pendingInteractions must match all interactions when history is complete')
   }
 }
 
-function assertBraidInteraction(value: unknown, runId: string, index: number): string {
-  const label = `run.interactions[${index}]`
+function assertBraidInteraction(value: unknown, runId: string, label: string): string {
   objectValue(value, label)
 
   const requestResult = InteractionRequestSchema.safeParse(value.request)

@@ -35,6 +35,7 @@ export async function* streamRetainedExecution(input: {
           type: 'braid.execution.observed',
           observation,
           controlRef: input.handle.controlRef,
+          capabilities: input.handle.capabilities,
           timestamp: observedAt,
         },
       }

@@ -6,6 +6,7 @@ import type {
 import type { AutomationRuleMatcher, AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEventEnvelope } from '../domain/events.js'
 import type { BraidInteraction } from '../domain/runtime-projection.js'
+import { interactionForRun } from '../domain/run-interactions.js'
 import type { BraidState } from '../domain/state.js'
 import { SerializedActionQueue } from './action-serialization.js'
 import type { AutomationRuleMetadata } from './automation-matching.js'
@@ -217,7 +218,7 @@ function targetFor(
       'Automation commands require both runId and interactionId when targeting a pending interaction',
     )
   const run = state.runs.find((candidate) => candidate.id === runId)
-  const target = run?.interactions.find((candidate) => candidate.request.id === interactionId)
+  const target = run === undefined ? undefined : interactionForRun(run, interactionId)
   if (target === undefined)
     throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
   return target

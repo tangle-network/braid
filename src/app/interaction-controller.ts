@@ -5,6 +5,7 @@ import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEventEnvelope } from '../domain/events.js'
 import { createFeedbackDecisionId } from '../domain/ids.js'
 import { interactionRemainingMs } from '../domain/interaction-timeout.js'
+import { interactionForRun } from '../domain/run-interactions.js'
 import { type ExecutionPort, supportsInteractionResponse } from '../ports/execution.js'
 import type { JournalWriter, StateReader } from './application-ports.js'
 import type { InteractionReceipt } from './application-types.js'
@@ -49,9 +50,7 @@ export async function respondInteraction(
   input: InteractionControllerInput,
 ): Promise<InteractionReceipt> {
   const run = findRun(input.state, input.runId)
-  const interaction = run.interactions.find(
-    (candidate) => candidate.request.id === input.interactionId,
-  )
+  const interaction = interactionForRun(run, input.interactionId)
   if (!interaction)
     throw new AppError('UNKNOWN_INTERACTION', 'The interaction is no longer available')
   const checked = checkInteractionResponse(interaction.request, input.response)
@@ -114,7 +113,7 @@ export async function respondInteraction(
       completion,
     }
   }
-  if (!supportsInteractionResponse(run.receipt.capabilities))
+  if (!supportsInteractionResponse(run.capabilities))
     throw new AppError(
       'CAPABILITY_UNAVAILABLE',
       'The current runtime cannot acknowledge interaction responses',
@@ -245,9 +244,7 @@ function currentInteractionExpired(
   input: InteractionControllerInput,
   run: ReturnType<typeof findRun>,
 ): boolean {
-  const interaction = run.interactions.find(
-    (candidate) => candidate.request.id === input.interactionId,
-  )
+  const interaction = interactionForRun(run, input.interactionId)
   return interaction === undefined ? false : isInteractionExpired(input, run, interaction)
 }
 

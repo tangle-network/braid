@@ -52,9 +52,9 @@
 
 
 
-
-
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ›
 
 
-profile Braid starter · pi / fixture/deterministic · deterministic fixture                                                                                          in 8 · out 12 · calls 1 · model 49ms
+Braid starter · pi · fixture/deterministic · local · thinking none                                                                                                                        Ctrl+E details
+in 8 · out 12 · latency 50ms

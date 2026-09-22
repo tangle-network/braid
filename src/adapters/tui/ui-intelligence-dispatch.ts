@@ -285,13 +285,33 @@ async function dispatchSupervisorWorker(
   if (typeof supervisorId !== 'string') {
     invalid('INVALID_PARAMS', `${command} requires supervisorId and workerId`)
   }
-  if (command === 'cancel_worker') {
-    const result = await context.app.intelligence.supervisor.cancelWorker(workerId)
-    return unavailable(issueReason(result.issue))
-  }
   const reference = runtimeWorkerReference(context.app.state(), supervisorId, workerId)
   if (reference === undefined) {
     return unavailable('The selected worker is not present under the selected supervisor')
+  }
+  if (command === 'cancel_worker') {
+    if (operationId === undefined)
+      invalid('INVALID_PARAMS', 'cancel_worker requires an operationId')
+    const reason = params.reason
+    if (reason !== undefined && typeof reason !== 'string')
+      invalid('INVALID_PARAMS', 'cancel_worker reason must be a string')
+    const result = await context.app.intelligence.supervisor.cancelWorker(
+      reference.rootDir,
+      reference.runtimeSupervisorId,
+      reference.runtimeWorkerId,
+      operationId,
+      reason,
+    )
+    if (result.status === 'unavailable')
+      return unavailable(
+        result.issue === undefined
+          ? 'Worker cancellation is unavailable'
+          : issueReason(result.issue),
+      )
+    if (result.worker !== reference.runtimeWorkerId) {
+      return unavailable('Runtime returned a cancellation result for a different worker')
+    }
+    return accepted(context.app, { ...result, worker: workerId }, operationId)
   }
   const text = params.text
   if (typeof text !== 'string') {

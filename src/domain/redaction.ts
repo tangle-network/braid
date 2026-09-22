@@ -1,6 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import {
-  redactStructuredValue,
   redactStructuredValueWithNumericTelemetry,
   STRUCTURED_REDACTION_MARKER,
 } from './bounded-structured.js'
@@ -19,7 +18,7 @@ export { redactSensitiveText, redactSensitiveUrls } from './secret-sanitizer.js'
 export function redactProfile(profile: Readonly<AgentProfile>): Readonly<AgentProfile> {
   const modelMetadata = publicModelMetadata(profile.model?.metadata)
   return removeProfileMetadata(
-    redactStructuredValue(profile, undefined, { maxBytes: MAX_PROFILE_BYTES }),
+    redactStructuredValueWithNumericTelemetry(profile, undefined, { maxBytes: MAX_PROFILE_BYTES }),
     [],
     modelMetadata,
   ) as Readonly<AgentProfile>
@@ -47,20 +46,9 @@ function removeProfileMetadata(
   return output
 }
 
-/** Keeps only the public output-token limit used by agent-runtime. */
-function publicModelMetadata(value: unknown): Readonly<Record<string, unknown>> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return { redacted: STRUCTURED_REDACTION_MARKER }
-  }
-  const entries = Object.entries(value)
-  const maxTokens = (value as Record<string, unknown>).maxTokens
-  const validMaxTokens =
-    typeof maxTokens === 'number' && Number.isSafeInteger(maxTokens) && maxTokens > 0
-  const hasPrivateFields = entries.some(([key]) => key !== 'maxTokens')
-  return {
-    ...(validMaxTokens ? { maxTokens } : {}),
-    ...(!validMaxTokens || hasPrivateFields ? { redacted: STRUCTURED_REDACTION_MARKER } : {}),
-  }
+/** Model metadata is private; configured limits live on the first-class model fields. */
+function publicModelMetadata(_value: unknown): Readonly<Record<string, unknown>> {
+  return { redacted: STRUCTURED_REDACTION_MARKER }
 }
 
 export function redactProviderError(error: unknown): string {

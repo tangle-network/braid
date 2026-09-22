@@ -17,8 +17,8 @@
 
 
 
-
+────────────────────────────────────────────────────────────────────────────────
 › queue #1
 
 
-profile Braid starter                     working · Ctrl+C cancel · Enter queues
+profile Braid starter · pi / deterministic · via not connected     Ctrl+C cancel
