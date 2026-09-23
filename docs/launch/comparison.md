@@ -74,8 +74,12 @@ None of them was produced for this page.
 
 - **Braid on local runners, 0.3.0.** A Braid RPC run through a private CLI Bridge (Pi, then Codex, under one profile) stalled in `reconnecting` for 240 s with no provider events.
   Transcript: [`evidence/braid-bridge/`](evidence/braid-bridge/).
-  The cause is not isolated. It may be the probe's Bridge setup or a Braid defect in the CLI Bridge retained path.
-  Do not claim 0.3.0 local multi-runner behavior until this is rerun.
+  A later diagnosis found three causes:
+  - Braid crashed with an unhandled rejection when the Bridge refused a turn. [#66](https://github.com/tangle-network/braid/pull/66) fixes this.
+  - The Bridge's `fs-jail` left Pi's session directory read-only, so Pi failed with `EROFS`. The fix is pending upstream in [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235).
+  - The probe profile pins effort `none` ([`evidence/braid-bridge/profile.json`](evidence/braid-bridge/profile.json)). Codex's default model rejects `none` and accepts only `low`, `medium`, `high`, `xhigh`, and `max`.
+
+  Do not claim 0.3.0 local multi-runner behavior until a rerun passes on 0.3.0 with the fixed Bridge.
 - **Braid through Claude Code.** `claude-code` is a valid runner name, but it has no live proof in the repository.
   The checked-in demo recording used Claude Code on 2026-08-15 with Braid 0.1.3-era code.
 
