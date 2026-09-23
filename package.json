@@ -73,7 +73,7 @@
     "test:live:bridge:release": "node scripts/live-bridge-release.mjs",
     "test:live:bridge:continuation": "node scripts/live-bridge/native-continuation.mjs",
     "test:live:bridge:matrix": "node scripts/live-bridge/matrix.mjs",
-    "test:live:required:self": "pnpm run build && node --test scripts/live-required.test.mjs test/tangle-live07-wiring.test.mjs test/tangle-workspace-proof.test.mjs",
+    "test:live:required:self": "pnpm run build && node --test scripts/live-required.test.mjs test/tangle-live07-wiring.test.mjs test/tangle-live08-cloud-interaction.test.mjs test/tangle-workspace-proof.test.mjs",
     "test:live:tangle": "node scripts/live-required.mjs live-tangle",
     "test:live:tangle:sandbox:stress": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-soak.mjs",
     "test:live:tangle:sandbox:multirun": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-multirun.mjs",

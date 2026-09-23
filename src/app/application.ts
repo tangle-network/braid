@@ -64,8 +64,8 @@ import { resolveNativeContinuationRun } from './run-continuation.js'
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { snapshotRunExecution } from './run-execution-snapshot.js'
-import { createRunLedger } from './run-ledger.js'
 import { recoverPendingFinalResults } from './run-final-recovery.js'
+import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
 import { shutdownApplication } from './shutdown-controller.js'
@@ -136,6 +136,15 @@ export class BraidApplication {
   readonly #conversationOperations = new ConversationOperationCoordinator()
   readonly #interactions: ApplicationInteractionActions
   readonly #subscribers = new Set<AppSubscriber>()
+  readonly #activeReconnects = new Map<
+    string,
+    {
+      readonly operationId: string
+      readonly completion: Promise<BraidState>
+      readonly interactionReady: () => boolean
+      readonly onInteractionReady: (callback: () => void) => void
+    }
+  >()
   readonly #controlOwner = `braid-control-${randomUUID()}`
   readonly #cancelTimeoutMs: number
   readonly #asynchronousJournal: boolean
@@ -600,8 +609,45 @@ export class BraidApplication {
     })
   }
 
-  async reconnectRun(input: ReconnectInput): Promise<BraidState> {
-    return reconnectRun(this.#portViews.replay, input)
+  reconnectRun(input: ReconnectInput): Promise<BraidState> {
+    const existing = this.#activeReconnects.get(input.runId)
+    if (existing !== undefined) {
+      if (existing.operationId !== input.operationId)
+        throw new AppError(
+          'RECONNECT_IN_PROGRESS',
+          `Run ${input.runId} already has a reconnect operation`,
+        )
+      if (input.onInteractionReady !== undefined) {
+        if (existing.interactionReady()) input.onInteractionReady()
+        else existing.onInteractionReady(input.onInteractionReady)
+      }
+      return existing.completion
+    }
+    let ready = false
+    const listeners = new Set<() => void>()
+    if (input.onInteractionReady !== undefined) listeners.add(input.onInteractionReady)
+    const completion = reconnectRun(this.#portViews.replay, {
+      ...input,
+      onInteractionReady: () => {
+        ready = true
+        for (const listener of listeners) listener()
+        listeners.clear()
+      },
+    })
+    const active = {
+      operationId: input.operationId,
+      completion,
+      interactionReady: () => ready,
+      onInteractionReady: (callback: () => void) => listeners.add(callback),
+    }
+    this.#activeReconnects.set(input.runId, active)
+    void completion
+      .finally(() => {
+        if (this.#activeReconnects.get(input.runId) === active)
+          this.#activeReconnects.delete(input.runId)
+      })
+      .catch(() => undefined)
+    return completion
   }
 
   async reconcileRun(input: ReconcileInput): Promise<BraidState> {

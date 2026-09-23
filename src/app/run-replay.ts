@@ -20,8 +20,9 @@ export async function reconnectRun(
   input: RecoveryReconnectInput,
 ): Promise<BraidState> {
   const run = context.findRun(input.runId)
-  if (context.isTerminal(run.status) && run.status !== 'unknown')
+  if (context.isTerminal(run.status) && run.status !== 'unknown') {
     return structuredClone(context.currentState())
+  }
   if (
     !run.capabilities.streaming.replay ||
     !run.capabilities.events.cursor ||
@@ -38,6 +39,17 @@ export async function reconnectRun(
       ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
     })
   }
+  let interactionReadyNotified = false
+  const notifyInteractionReady = () => {
+    if (
+      !interactionReadyNotified &&
+      context.findRun(run.id).interactions.some((interaction) => interaction.status === 'pending')
+    ) {
+      interactionReadyNotified = true
+      input.onInteractionReady?.()
+    }
+  }
+  notifyInteractionReady()
   const abort = context.ledger.getAbort(run.id) ?? new AbortController()
   context.ledger.setAbort(run.id, abort)
   context.ledger.clearDetached(run.id)
@@ -61,6 +73,7 @@ export async function reconnectRun(
       signal: abort.signal,
     })) {
       const result = await context.ingestRuntimeEvent(envelope)
+      if (result.accepted) notifyInteractionReady()
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
     }
     if (!sawTerminal && !context.isTerminal(context.findRun(run.id).status))

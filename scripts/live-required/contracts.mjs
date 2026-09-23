@@ -66,6 +66,11 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
     'telemetry-complete',
     'spend-disclosed',
     'latency-observed',
+    'cloud-question-retained',
+    'cloud-process-reconnect',
+    'cloud-response-acknowledged',
+    'cloud-continued-once',
+    'cloud-exact-resource-cleanup',
   ]),
   [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
     'configuration',
@@ -179,6 +184,12 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'telemetryComplete',
     'spendDisclosed',
     'latencyObserved',
+    'cloudInteractionRunId',
+    'cloudInteractionEnvironmentId',
+    'cloudInteractionId',
+    'cloudInteractionResponseOperationId',
+    'cloudInteractionCompleted',
+    'cloudInteractionCleanup',
   ]),
   [PROOF_OPERATIONS.tangleWorkspaceFork]: Object.freeze([
     'sourceProviderEnvironmentId',
@@ -556,7 +567,9 @@ function validateProofFacts(operation, status, facts) {
       key === 'accountIdentityStable' ||
       key === 'telemetryComplete' ||
       key === 'spendDisclosed' ||
-      key === 'latencyObserved'
+      key === 'latencyObserved' ||
+      key === 'cloudInteractionCompleted' ||
+      key === 'cloudInteractionCleanup'
     ) {
       if (typeof value !== 'boolean') throw new Error(`Live proof ${key} must be boolean`)
       continue
@@ -757,8 +770,8 @@ function validatePassedTangleSandboxReceipt(receipt) {
 }
 
 function validatePassedTangleSandboxInteractiveReceipt(receipt) {
-  if (receipt.run.ids.length !== 1)
-    throw new Error('Passed Tangle interactive proof requires one local run ID')
+  if (receipt.run.ids.length !== 2 || receipt.run.ids[0] === receipt.run.ids[1])
+    throw new Error('Passed LIVE-08 requires distinct native terminal and cloud interaction runs')
   validRequiredString(receipt.run.environmentId, 'Passed Tangle interactive local environmentId')
 
   const requiredConnectionFields = ['endpoint', 'connectionId', 'connectionKind', 'model', 'runner']
@@ -809,8 +822,69 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
   }
   if (receipt.facts.activeResourceDelta !== 0)
     throw new Error('Passed Tangle interactive proof requires activeResourceDelta=0')
+  for (const field of [
+    'cloudInteractionRunId',
+    'cloudInteractionEnvironmentId',
+    'cloudInteractionId',
+    'cloudInteractionResponseOperationId',
+  ])
+    validRequiredString(receipt.facts[field], `Passed LIVE-08 ${field}`)
+  if (receipt.facts.cloudInteractionRunId !== receipt.run.ids[1])
+    throw new Error('Passed LIVE-08 cloud interaction run identity is inconsistent')
+  if (receipt.facts.cloudInteractionEnvironmentId === receipt.facts.environmentId)
+    throw new Error('Passed LIVE-08 cloud and native proofs reused one environment')
+  if (
+    receipt.facts.cloudInteractionCompleted !== true ||
+    receipt.facts.cloudInteractionCleanup !== true
+  )
+    throw new Error('Passed LIVE-08 requires cloud continuation and cleanup')
   if (!record(receipt.observations) || Object.keys(receipt.observations).length === 0)
     throw new Error('Passed Tangle interactive proof requires redacted observations')
+  const native = receipt.observations.nativeTerminal
+  const cloud = receipt.observations.cloudInteraction
+  if (!record(native) || !record(cloud))
+    throw new Error(
+      'Passed LIVE-08 requires separate native terminal and cloud interaction evidence',
+    )
+  if (
+    cloud.status !== 'passed' ||
+    cloud.runId !== receipt.facts.cloudInteractionRunId ||
+    cloud.controlRef?.environmentId !== receipt.facts.cloudInteractionEnvironmentId ||
+    cloud.interaction?.interactionId !== receipt.facts.cloudInteractionId ||
+    cloud.interaction?.kind !== 'question' ||
+    cloud.interaction?.terminalStatus !== 'completed' ||
+    cloud.interaction?.reconnect?.runStatus !== 'reconnecting' ||
+    cloud.interaction?.reconnect?.interactionStatus !== 'pending' ||
+    cloud.response?.operationId !== receipt.facts.cloudInteractionResponseOperationId ||
+    cloud.response?.outcome !== 'accepted' ||
+    cloud.firstProcess?.exitSignal !== 'SIGKILL' ||
+    cloud.firstProcess?.descendantsVerified !== true ||
+    cloud.providerExecution?.provider !== 'tangle-sandbox' ||
+    cloud.providerExecution?.source !== 'sandbox-session-runs' ||
+    cloud.providerExecution?.executionCount !== 1 ||
+    cloud.providerExecution?.matched !== true ||
+    cloud.cleanup?.confirmed !== true
+  )
+    throw new Error('Passed LIVE-08 cloud interaction evidence is incomplete')
+  validRequiredString(
+    cloud.interaction.reconnect.operationId,
+    'Passed LIVE-08 cloud reconnect operationId',
+  )
+  if (cloud.interaction.reconnect.operationId === cloud.response.operationId)
+    throw new Error('Passed LIVE-08 cloud reconnect and response reused one operation')
+  if (
+    !Number.isSafeInteger(cloud.interaction.requestSequence) ||
+    !Number.isSafeInteger(cloud.interaction.reconnect.acknowledgedRevision) ||
+    !Number.isSafeInteger(cloud.interaction.reconnect.observedRevision) ||
+    !Number.isSafeInteger(cloud.interaction.reconnect.observedSequence) ||
+    !Number.isSafeInteger(cloud.interaction.responseRequestedSequence) ||
+    !Number.isSafeInteger(cloud.interaction.responseAcknowledgedSequence) ||
+    cloud.interaction.reconnect.acknowledgedRevision >
+      cloud.interaction.reconnect.observedRevision ||
+    cloud.interaction.reconnect.observedSequence >= cloud.interaction.responseRequestedSequence ||
+    cloud.interaction.responseRequestedSequence >= cloud.interaction.responseAcknowledgedSequence
+  )
+    throw new Error('Passed LIVE-08 cloud reconnect or response events are missing or unordered')
   for (const field of [
     'checks',
     'configuration',
@@ -826,12 +900,14 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     'spend',
     'timing',
   ]) {
-    if (!record(receipt.observations[field]))
-      throw new Error(`Passed Tangle interactive proof requires observations.${field}`)
+    if (!record(native[field]))
+      throw new Error(
+        `Passed Tangle native terminal proof requires observations.nativeTerminal.${field}`,
+      )
   }
   // Usage and account identity are sampled per phase, so they are phase-record lists.
   for (const field of ['usage', 'accountIdentities']) {
-    const samples = receipt.observations[field]
+    const samples = native[field]
     if (!Array.isArray(samples) || !samples.every(record))
       throw new Error(
         `Passed Tangle interactive proof requires observations.${field} phase records`,
@@ -851,14 +927,13 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
         validCanonicalSha256(value.identityDigest, `${label} identityDigest`)
     }
   }
-  const sample = (field, phase) =>
-    receipt.observations[field].find((entry) => entry.phase === phase).value
+  const sample = (field, phase) => native[field].find((entry) => entry.phase === phase).value
   // The sampled values must support the reported delta and identity facts, not merely coexist with them.
   const sampledDelta =
     sample('usage', 'after').activeSandboxes - sample('usage', 'before').activeSandboxes
   if (
     sampledDelta !== 0 ||
-    receipt.observations.usageDelta.activeSandboxes !== sampledDelta ||
+    native.usageDelta.activeSandboxes !== sampledDelta ||
     receipt.facts.activeResourceDelta !== sampledDelta
   )
     throw new Error(
@@ -867,8 +942,8 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
   const beforeIdentity = sample('accountIdentities', 'before').identityDigest
   if (
     sample('accountIdentities', 'after').identityDigest !== beforeIdentity ||
-    receipt.observations.accountIdentityConsistency.stable !== true ||
-    receipt.observations.accountIdentityConsistency.identityDigest !== beforeIdentity
+    native.accountIdentityConsistency.stable !== true ||
+    native.accountIdentityConsistency.identityDigest !== beforeIdentity
   )
     throw new Error('Passed Tangle interactive proof sampled an unstable account identity')
 }

@@ -190,6 +190,8 @@ export interface RuntimeEventIngestionResult {
 export interface ReconnectInput {
   readonly operationId: string
   readonly runId: string
+  /** Called when replay has committed a pending interaction that needs a response. */
+  readonly onInteractionReady?: () => void
 }
 
 export interface ReconcileInput extends ReconnectInput {
