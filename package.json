@@ -41,6 +41,7 @@
     "capture:w0": "pnpm run build && node scripts/capture-w0.mjs",
     "capture:visual": "pnpm run build && node scripts/capture-visual.mjs",
     "capture:connections": "pnpm run build && node scripts/capture-connections.mjs",
+    "capture:run-focus": "pnpm run build && pnpm exec tsc -p tsconfig.test.json --outDir .test-dist-run-focus && node scripts/capture-run-focus.mjs",
     "capture:workspace": "pnpm run build && node scripts/capture-workspace-request.mjs",
     "capture:demo:live": "pnpm run build && node scripts/live-demo.mjs",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run boundaries && pnpm run dependencies:check && pnpm run attribution && pnpm run licenses:check && pnpm run test && pnpm run test:live:required:self && pnpm run test:live:bridge:matrix && pnpm run check:release",
