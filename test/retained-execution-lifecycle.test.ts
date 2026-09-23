@@ -687,3 +687,25 @@ test('admission rejects at capacity instead of evicting a prepared plan', async 
   await firstStream.next().catch(() => undefined)
   assert.equal(starts, 1)
 })
+
+test('a rejected retained start fails the stream without an unhandled rejection', async () => {
+  const exact = controlRef('rejected-start')
+  const rejection = new Error('backend pi requires an enforced Linux fs-jail')
+  const execution = executionFor(async () =>
+    plan(exact, async () => {
+      throw rejection
+    }),
+  )
+  const runInput = input('rejected-start')
+  const unhandled: unknown[] = []
+  const onUnhandled = (reason: unknown) => unhandled.push(reason)
+  process.on('unhandledRejection', onUnhandled)
+  try {
+    await execution.admit(runInput)
+    await assert.rejects(execution.streamTurn(runInput).next(), rejection)
+    await new Promise((resolve) => setImmediate(resolve))
+  } finally {
+    process.off('unhandledRejection', onUnhandled)
+  }
+  assert.deepEqual(unhandled, [])
+})

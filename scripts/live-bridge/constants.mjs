@@ -48,9 +48,11 @@ export const targetDefinitions = Object.freeze([
 
 export const releaseRunnerTargetDefinitions = Object.freeze([
   {
-    key: 'pi-tangle-router-deepseek-v4-flash',
-    label: 'Pi with Tangle Router DeepSeek V4 Flash',
-    modelId: 'pi/tangle-router/deepseek-v4-flash',
+    // DeepSeek V4 Flash lost its router quota (409 provider_quota_exhausted, 2026-09-23); GLM 5.2
+    // passed LIVE-01..05 on the same Bridge and Braid build.
+    key: 'pi-tangle-router-glm-5.2',
+    label: 'Pi with Tangle Router GLM 5.2',
+    modelId: 'pi/tangle-router/glm-5.2',
     backend: 'pi',
   },
   {

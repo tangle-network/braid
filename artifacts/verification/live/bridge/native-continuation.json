@@ -12,16 +12,16 @@
     ],
     "provider": "real Pi through Tangle Router"
   },
-  "startedAt": "2026-08-29T04:25:26.025Z",
+  "startedAt": "2026-09-23T10:43:17.455Z",
   "runtime": {
-    "node": "v24.18.0",
+    "node": "v24.20.0",
     "platform": "linux",
     "arch": "x64"
   },
   "environment": {
-    "endpoint": "http://127.0.0.1:3478",
-    "bearerConfigured": true,
-    "model": "pi/tangle-router/deepseek-v4-flash",
+    "endpoint": "http://127.0.0.1:3346",
+    "bearerConfigured": false,
+    "model": "pi/tangle-router/glm-5.2",
     "runner": "pi",
     "provider": "tangle-router",
     "timeoutMs": 120000
@@ -106,14 +106,14 @@
   },
   "provider": {
     "name": "cli-bridge",
-    "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-    "route": "pi/tangle-router/deepseek-v4-flash",
+    "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+    "route": "pi/tangle-router/glm-5.2",
     "real": true
   },
   "cleanup": [
     {
       "scope": "session",
-      "sessionId": "braid-live-native-1787977526323-cancel-session",
+      "sessionId": "braid-live-native-1790160197695-cancel-session",
       "continuationObserved": true,
       "cancellation": {
         "attempted": false
@@ -126,7 +126,7 @@
     },
     {
       "scope": "session",
-      "sessionId": "braid-live-native-1787977526323-success-session",
+      "sessionId": "braid-live-native-1790160197695-success-session",
       "continuationObserved": true,
       "cancellation": {
         "attempted": false
@@ -139,55 +139,55 @@
     },
     {
       "scope": "environment",
-      "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
+      "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
       "destroyed": true
     }
   ],
   "cancellation": {
-    "sessionId": "braid-live-native-1787977526323-cancel-session",
+    "sessionId": "braid-live-native-1790160197695-cancel-session",
     "first": {
       "success": true,
       "status": "done",
-      "elapsedMs": 4218,
+      "elapsedMs": 8529,
       "run": {
-        "runId": "braid-live-native-1787977526323-cancel-execution-1",
+        "runId": "braid-live-native-1790160197695-cancel-execution-1",
         "provider": "cli-bridge",
-        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-        "sessionId": "braid-live-native-1787977526323-cancel-session",
-        "executionId": "braid-live-native-1787977526323-cancel-execution-1",
-        "requestDigest": "sha256:ad922cab8b37cf530e3a83877b14ae3eaa66452b970c0a23f459f2499a542912"
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+        "sessionId": "braid-live-native-1790160197695-cancel-session",
+        "executionId": "braid-live-native-1790160197695-cancel-execution-1",
+        "requestDigest": "sha256:33beed7f142c1c28f73eb9739537fad05db9b173bb609587c00c05de43aca22a"
       },
       "boundary": {
-        "runId": "braid-live-native-1787977526323-cancel-execution-1",
+        "runId": "braid-live-native-1790160197695-cancel-execution-1",
         "provider": "cli-bridge",
-        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-        "sessionId": "braid-live-native-1787977526323-cancel-session",
-        "executionId": "braid-live-native-1787977526323-cancel-execution-1",
-        "requestDigest": "sha256:ad922cab8b37cf530e3a83877b14ae3eaa66452b970c0a23f459f2499a542912",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+        "sessionId": "braid-live-native-1790160197695-cancel-session",
+        "executionId": "braid-live-native-1790160197695-cancel-execution-1",
+        "requestDigest": "sha256:33beed7f142c1c28f73eb9739537fad05db9b173bb609587c00c05de43aca22a",
         "kind": "revision",
-        "observedAt": "2026-08-29T04:25:30.533Z"
+        "observedAt": "2026-09-23T10:43:26.211Z"
       },
       "session": {
-        "id": "braid-live-native-1787977526323-cancel-session",
+        "id": "braid-live-native-1790160197695-cancel-session",
         "backend": "pi",
-        "model": "pi/tangle-router/deepseek-v4-flash",
+        "model": "pi/tangle-router/glm-5.2",
         "status": "idle",
-        "runId": "braid-live-native-1787977526323-cancel-execution-1"
+        "runId": "braid-live-native-1790160197695-cancel-execution-1"
       }
     },
     "admission": {
       "controlRef": {
-        "runId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+        "runId": "native-continuation:sha256:46bb476ff4698784bc177d2a28adb74a0c860bc2df07bb0c97949e96f69cdee8",
         "provider": "cli-bridge",
-        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-        "sessionId": "braid-live-native-1787977526323-cancel-session",
-        "executionId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
-        "requestDigest": "sha256:287f9fcf416ddcfb178be42747cf77f61255514ac713159f15b490dc6eaf2749"
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+        "sessionId": "braid-live-native-1790160197695-cancel-session",
+        "executionId": "native-continuation:sha256:46bb476ff4698784bc177d2a28adb74a0c860bc2df07bb0c97949e96f69cdee8",
+        "requestDigest": "sha256:738d15f16e601fb70f16d72104929273c7a98b838c23d9c564d88615883ba2e9"
       },
-      "elapsedMs": 39,
+      "elapsedMs": 49,
       "request": {
-        "operationId": "braid-live-native-1787977526323-cancel-continue",
-        "requestDigest": "sha256:128e00589b94fb4229e0bb62e88b84392acc32c38cdddc93b43d989d27d8b856",
+        "operationId": "braid-live-native-1790160197695-cancel-continue",
+        "requestDigest": "sha256:27ad34f0ca7a634cb73c3c0467a16a014eab0c9f4930d2767b0f07682a1578df",
         "turnDigest": "sha256:3898278147dbc94641bc32f0c7e87e3c9e2011debc7ec70840fa65302cab7875"
       }
     },
@@ -208,11 +208,11 @@
           "message.part.updated"
         ],
         "session": {
-          "id": "braid-live-native-1787977526323-cancel-session",
+          "id": "braid-live-native-1790160197695-cancel-session",
           "backend": "pi",
-          "model": "pi/tangle-router/deepseek-v4-flash",
+          "model": "pi/tangle-router/glm-5.2",
           "status": "idle",
-          "runId": "braid-live-native-1787977526323-cancel-execution-1"
+          "runId": "braid-live-native-1790160197695-cancel-execution-1"
         },
         "backends": [
           "pi"
@@ -221,14 +221,14 @@
           "tangle-router"
         ],
         "models": [
-          "deepseek-v4-flash"
+          "glm-5.2"
         ]
       }
     },
     "cancellation": {
       "request": {
-        "operationId": "braid-live-native-1787977526323-cancel-cancel",
-        "requestDigest": "sha256:1594647aa48426bcb09ed7f04ca7ee22da4942a01710d198c68c97cb54a3eb8a"
+        "operationId": "braid-live-native-1790160197695-cancel-cancel",
+        "requestDigest": "sha256:5353850888325fe7d5e7117f41b749a7bdecc05c74ead5f47dd3961734e3cb6c"
       },
       "acknowledgement": {
         "status": "accepted",
@@ -241,7 +241,7 @@
         "status": "cancelled",
         "terminal": true,
         "state": "terminal",
-        "canonicalLastSeq": 16
+        "canonicalLastSeq": 33
       },
       "acknowledgement": "accepted",
       "result": {
@@ -249,7 +249,7 @@
         "status": "cancelled",
         "error": "pi native turn aborted"
       },
-      "elapsedMs": 55
+      "elapsedMs": 47
     },
     "terminalReplay": {
       "status": 200,
@@ -270,26 +270,26 @@
       ],
       "controlRefs": [
         {
-          "runId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+          "runId": "native-continuation:sha256:46bb476ff4698784bc177d2a28adb74a0c860bc2df07bb0c97949e96f69cdee8",
           "provider": "cli-bridge",
-          "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-          "sessionId": "braid-live-native-1787977526323-cancel-session",
-          "executionId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
-          "requestDigest": "sha256:287f9fcf416ddcfb178be42747cf77f61255514ac713159f15b490dc6eaf2749"
+          "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+          "sessionId": "braid-live-native-1790160197695-cancel-session",
+          "executionId": "native-continuation:sha256:46bb476ff4698784bc177d2a28adb74a0c860bc2df07bb0c97949e96f69cdee8",
+          "requestDigest": "sha256:738d15f16e601fb70f16d72104929273c7a98b838c23d9c564d88615883ba2e9"
         },
         {
-          "runId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
+          "runId": "native-continuation:sha256:46bb476ff4698784bc177d2a28adb74a0c860bc2df07bb0c97949e96f69cdee8",
           "provider": "cli-bridge",
-          "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-          "sessionId": "braid-live-native-1787977526323-cancel-session",
-          "executionId": "native-continuation:sha256:1d7e9aaeba9c1c4a64f86778eccbe8e49e98b8c8c2cd23ae6c2fd4b6a9e763d0",
-          "requestDigest": "sha256:287f9fcf416ddcfb178be42747cf77f61255514ac713159f15b490dc6eaf2749"
+          "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+          "sessionId": "braid-live-native-1790160197695-cancel-session",
+          "executionId": "native-continuation:sha256:46bb476ff4698784bc177d2a28adb74a0c860bc2df07bb0c97949e96f69cdee8",
+          "requestDigest": "sha256:738d15f16e601fb70f16d72104929273c7a98b838c23d9c564d88615883ba2e9"
         }
       ],
       "byteIdentical": true,
       "wire": {
-        "bytes": 1528,
-        "digest": "sha256:2206cde3049f02181404deca6ecd716737a352fd6199695ed6bc567a9a1c7ffb"
+        "bytes": 1502,
+        "digest": "sha256:f3ad496bfe1edb1e4065dd761e23e9dc3a236c7f2659f299cfd2b33b05d2b67c"
       }
     },
     "assertions": {
@@ -300,58 +300,58 @@
       "cancelledTerminalReplay": true,
       "duplicateAdmissionByteIdentical": true,
       "timing": {
-        "admissionElapsedMs": 39,
+        "admissionElapsedMs": 49,
         "cancelElapsedMs": 14,
-        "terminalElapsedMs": 55,
+        "terminalElapsedMs": 47,
         "terminalObservedAfterCancel": true
       }
     }
   },
   "success": {
-    "sessionId": "braid-live-native-1787977526323-success-session",
+    "sessionId": "braid-live-native-1790160197695-success-session",
     "first": {
       "success": true,
       "status": "done",
-      "elapsedMs": 3023,
+      "elapsedMs": 3691,
       "run": {
-        "runId": "braid-live-native-1787977526323-success-execution-1",
+        "runId": "braid-live-native-1790160197695-success-execution-1",
         "provider": "cli-bridge",
-        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-        "sessionId": "braid-live-native-1787977526323-success-session",
-        "executionId": "braid-live-native-1787977526323-success-execution-1",
-        "requestDigest": "sha256:380bd3caa7da82acc325ba7a41569b3145f69be883cfb7e86663138d12e78fbd"
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+        "sessionId": "braid-live-native-1790160197695-success-session",
+        "executionId": "braid-live-native-1790160197695-success-execution-1",
+        "requestDigest": "sha256:3317de13a5ae9c1c87a8767276e81e29e9575b76a6dcb59402175f7aed08633b"
       },
       "boundary": {
-        "runId": "braid-live-native-1787977526323-success-execution-1",
+        "runId": "braid-live-native-1790160197695-success-execution-1",
         "provider": "cli-bridge",
-        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-        "sessionId": "braid-live-native-1787977526323-success-session",
-        "executionId": "braid-live-native-1787977526323-success-execution-1",
-        "requestDigest": "sha256:380bd3caa7da82acc325ba7a41569b3145f69be883cfb7e86663138d12e78fbd",
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+        "sessionId": "braid-live-native-1790160197695-success-session",
+        "executionId": "braid-live-native-1790160197695-success-execution-1",
+        "requestDigest": "sha256:3317de13a5ae9c1c87a8767276e81e29e9575b76a6dcb59402175f7aed08633b",
         "kind": "revision",
-        "observedAt": "2026-08-29T04:25:35.073Z"
+        "observedAt": "2026-09-23T10:43:33.012Z"
       },
       "session": {
-        "id": "braid-live-native-1787977526323-success-session",
+        "id": "braid-live-native-1790160197695-success-session",
         "backend": "pi",
-        "model": "pi/tangle-router/deepseek-v4-flash",
+        "model": "pi/tangle-router/glm-5.2",
         "status": "idle",
-        "runId": "braid-live-native-1787977526323-success-execution-1"
+        "runId": "braid-live-native-1790160197695-success-execution-1"
       }
     },
     "admission": {
       "controlRef": {
-        "runId": "native-continuation:sha256:d88bfaa3f984051fee54ae5844d147bc579bf92af86ab9b7035678d9bf8e0ec2",
+        "runId": "native-continuation:sha256:cc60996feb42613e08fa37e64b0ac13e6622c5cb0ab32b7b8e5c9ab5122fe029",
         "provider": "cli-bridge",
-        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZGVlcHNlZWstdjQtZmxhc2giLCJzaGEyNTY6MGMwYzRiNTY1OTU4NGQwNjM0NmZlNmQ1NjJlM2Q5M2ZmODE4ZTQ1YTA5ODFiNzEzMGE5NTQ0NDE4ZDY1N2VmZCIsIjFmNGExZTZmLWE3OTYtNDAwNC1iNmEzLTZlNWFmM2ViOTZiOCJd",
-        "sessionId": "braid-live-native-1787977526323-success-session",
-        "executionId": "native-continuation:sha256:d88bfaa3f984051fee54ae5844d147bc579bf92af86ab9b7035678d9bf8e0ec2",
-        "requestDigest": "sha256:4f33ac1f127965e28aba747378d1bc803fed5bdb234a6f66f0530bea46513bd9"
+        "environmentId": "cb1.WyJwaSIsInBpL3RhbmdsZS1yb3V0ZXIvZ2xtLTUuMiIsInNoYTI1Njo2ZGEzZTMzN2JjZWQxZGYwNWIwZGY5ZjQyMzNmNDFjYmI3ODRiMWYxNjcyOTgxYzBhMmRhZDFmM2ExMGUzODIyIiwiYjU3OTcwYjctZmI2Zi00ZDlhLThhNDMtMGUxN2M4MjQxNDIzIl0",
+        "sessionId": "braid-live-native-1790160197695-success-session",
+        "executionId": "native-continuation:sha256:cc60996feb42613e08fa37e64b0ac13e6622c5cb0ab32b7b8e5c9ab5122fe029",
+        "requestDigest": "sha256:999e0a07965303361b5b15826db6f6f8330d5ba6e2f8697dd8d25a1abeb375c2"
       },
-      "elapsedMs": 33,
+      "elapsedMs": 51,
       "request": {
-        "operationId": "braid-live-native-1787977526323-success-continue",
-        "requestDigest": "sha256:1980e5fa4847a296ee1fb6b11954078cdcb3b58887e0a2147765c7300ef378b3",
+        "operationId": "braid-live-native-1790160197695-success-continue",
+        "requestDigest": "sha256:2cb36c06315ab02e9fe7e36994b06569ebb6eefbb6e554ef3846b80df88acd70",
         "turnDigest": "sha256:80df5bc4c46ba4475450fdd8d13508ead8459e3d71a31942998cbeff9f35d39c"
       }
     },
@@ -360,7 +360,7 @@
         "status": "done",
         "terminal": true,
         "state": "terminal",
-        "canonicalLastSeq": 19
+        "canonicalLastSeq": 34
       },
       "acknowledgement": "accepted",
       "result": {
@@ -384,5 +384,5 @@
     "successfulContinuation": true
   },
   "status": "passed",
-  "finishedAt": "2026-08-29T04:25:37.348Z"
+  "finishedAt": "2026-09-23T10:43:37.469Z"
 }

@@ -4,6 +4,8 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { harnessTypeSchema } from '@tangle-network/agent-interface'
+
 import {
   bridgeLaunchEnvironment,
   bridgeSourceDirectory,
@@ -12,6 +14,7 @@ import {
   selectBridgeTargets,
 } from './bridge.mjs'
 import { createLiveCredentialId, profileForBridgeTarget, writeTargetConfig } from './config.mjs'
+import { releaseRunnerTargetDefinitions, targetDefinitions } from './constants.mjs'
 import { runAdversarialMatrix } from './matrix-adversarial.mjs'
 import {
   assertSemanticOutcome,
@@ -252,7 +255,7 @@ async function runConfigurationMatrix() {
     description: 'Opt-in packed CLI Bridge smoke profile',
     version: '0.1.0',
     harness: 'opencode',
-    model: { provider: 'zai-coding-plan', default: 'glm-5.2', reasoningEffort: 'none' },
+    model: { provider: 'zai-coding-plan', default: 'glm-5.2' },
   })
   assert.deepEqual(profileForBridgeTarget(piGlm), {
     name: `Braid live ${piGlm.modelId}`,
@@ -262,7 +265,6 @@ async function runConfigurationMatrix() {
     model: {
       provider: 'deepseek',
       default: 'deepseek-v4-flash',
-      reasoningEffort: 'none',
     },
   })
   assert.deepEqual(
@@ -277,9 +279,30 @@ async function runConfigurationMatrix() {
       description: 'Opt-in packed CLI Bridge smoke profile',
       version: '0.1.0',
       harness: 'codex',
-      model: { default: 'default', reasoningEffort: 'none' },
+      model: { default: 'default' },
     },
   )
+  assert.deepEqual(
+    profileForBridgeTarget({
+      key: 'codex-gpt-5-codex',
+      label: 'codex gpt-5-codex',
+      modelId: 'codex/gpt-5-codex',
+      backend: 'codex',
+    }).model,
+    { default: 'gpt-5-codex' },
+  )
+  // Live profiles never pin an effort: a harness-wide list cannot prove the routed model accepts it.
+  const probes = harnessTypeSchema.options.flatMap((harness) =>
+    [`${harness}/default`, `${harness}/provider/model`].map((modelId) => ({
+      key: `${harness}-probe`,
+      label: `${harness} probe`,
+      modelId,
+      backend: harness,
+    })),
+  )
+  for (const target of [...targetDefinitions, ...releaseRunnerTargetDefinitions, ...probes]) {
+    assert.equal(profileForBridgeTarget(target).model.reasoningEffort, undefined, target.modelId)
+  }
   assert.throws(
     () => profileForBridgeTarget({ ...piGlm, backend: 'codex' }),
     (error) => error.code === 'TARGET_MODEL_ROUTE_INVALID' && error.exitCode === 2,
@@ -430,7 +453,11 @@ async function runSemanticMatrix() {
       retryable: false,
     }),
   }
-  const unavailableResult = { targetKey: 'glm-5.2', requests: [] }
+  const unavailableResult = {
+    operationNamespace: 'proof-execution-a',
+    targetKey: 'glm-5.2',
+    requests: [],
+  }
   await verifyCancel(
     unavailableSession,
     unavailableResult,
@@ -479,6 +506,7 @@ async function runSemanticMatrix() {
     waitFor: async () => admittedResponses.shift(),
   }
   const admittedResult = {
+    operationNamespace: 'proof-execution-a',
     targetKey: 'glm-5.2',
     requests: [],
     send: { admission: { capabilities: { controls: { cancel: true } } } },
@@ -498,6 +526,59 @@ async function runSemanticMatrix() {
   assert.equal(admittedResult.cancel.advertisedByNormalAdmission, true)
   assert.equal(admittedResult.cancel.attemptedRun, true)
   assert.equal(admittedResult.cancel.status, 'verified')
+  assert.equal(admittedRequests[1].operationId, 'op-live-proof-execution-a-cancel-glm-5.2')
+
+  // The CLI Bridge stores each cancel operation id durably. A second proof against the same
+  // Bridge data directory must not reuse the first proof's id, or the Bridge answers `conflict`.
+  assert.notEqual(
+    await cancelOperationIdFor('proof-execution-b'),
+    await cancelOperationIdFor('proof-execution-a'),
+  )
+  assert.equal(
+    await cancelOperationIdFor('proof-execution-a'),
+    await cancelOperationIdFor('proof-execution-a'),
+  )
+  await assert.rejects(
+    cancelOperationIdFor(undefined),
+    (error) => error.code === 'LIVE_OPERATION_NAMESPACE_MISSING',
+  )
+}
+
+async function cancelOperationIdFor(operationNamespace) {
+  const sent = []
+  const responses = [
+    {
+      version: 1,
+      type: 'ack',
+      runId: 'run-cancel-live',
+      admission: { capabilities: { controls: { cancel: true } } },
+    },
+    {
+      version: 1,
+      type: 'state',
+      state: { runs: [{ id: 'run-cancel-live', status: 'streaming' }] },
+    },
+    { version: 1, type: 'ack' },
+    {
+      version: 1,
+      type: 'state',
+      state: { runs: [{ id: 'run-cancel-live', status: 'cancelled' }] },
+    },
+  ]
+  await verifyCancel(
+    { send: (request) => sent.push(request), waitFor: async () => responses.shift() },
+    {
+      ...(operationNamespace === undefined ? {} : { operationNamespace }),
+      targetKey: 'glm-5.2',
+      requests: [],
+      conversationId: 'conv-live',
+      branchId: 'branch-live',
+    },
+    defaultTargetPolicy.definitions[0],
+    { id: 'run-complete', status: 'completed' },
+    { controls: { cancel: true } },
+  )
+  return sent.find((request) => request.command === 'cancel_run').operationId
 }
 
 await runTargetPolicyMatrix()
