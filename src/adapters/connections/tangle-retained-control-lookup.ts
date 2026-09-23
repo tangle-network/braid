@@ -29,9 +29,7 @@ function matchesRetainedEnvironment(
     metadata?.owner === 'braid' &&
     metadata.lifecycle === 'retained' &&
     metadata.providerSessionId === input.providerSessionId &&
-    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey &&
-    metadata.sessionId === input.providerSessionId &&
-    metadata.executionId === input.executionId
+    metadata.retainedIdempotencyKey === input.environmentIdempotencyKey
   )
 }
 

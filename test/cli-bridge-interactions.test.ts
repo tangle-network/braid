@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { type AgentExactRunControlRef, defineAgentProfile } from '@tangle-network/agent-interface'
+import {
+  type AgentEnvironmentCapabilities,
+  AgentEnvironmentCapabilitiesSchema,
+  type AgentExactRunControlRef,
+  defineAgentProfile,
+} from '@tangle-network/agent-interface'
+import { defaultCliBridgeCapabilities } from '@tangle-network/agent-provider-cli-bridge'
 import {
   createCliBridgeRetainedPlan,
   startCliBridgeRetainedRun,
@@ -18,6 +24,16 @@ import {
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const createdAt = '2026-08-15T00:00:00.000Z'
+
+const PI_PERMISSION_INTERACTIONS: NonNullable<AgentEnvironmentCapabilities['interactions']> = {
+  kinds: ['permission'],
+  answerFieldTypes: ['select'],
+  responseScopes: ['interaction'],
+  secretAnswers: false,
+  concurrentRequests: false,
+  replay: true,
+  responseIdempotency: true,
+}
 
 test('fresh CLI Bridge plans keep provider identity unknown until Runtime admission', async () => {
   const bridge = await startRuntimeBridgeServer()
@@ -181,7 +197,14 @@ test('retained CLI Bridge replays a persisted intent through Runtime', async () 
 })
 
 test('retained CLI Bridge receives the exact admitted interaction map', async () => {
-  const bridge = await startRuntimeBridgeServer({ responseText: 'CLI_BRIDGE_INTERACTION_OK' })
+  const advertisedCapabilities: AgentEnvironmentCapabilities = {
+    ...defaultCliBridgeCapabilities('pi'),
+    interactions: PI_PERMISSION_INTERACTIONS,
+  }
+  const bridge = await startRuntimeBridgeServer({
+    responseText: 'CLI_BRIDGE_INTERACTION_OK',
+    advertisedCapabilities,
+  })
   const connection: ConnectionRecord = {
     id: createConnectionId('connection-cli-interactions'),
     kind: 'cli-bridge',
@@ -205,7 +228,7 @@ test('retained CLI Bridge receives the exact admitted interaction map', async ()
     connectionId: connection.id,
     workspaceRoot: '/workspace',
     signal: new AbortController().signal,
-    interactions: Object.freeze({ permission: true, question: true, plan: true }),
+    interactions: Object.freeze({ permission: true }),
     onRetainedAdmission: async (_admission: RetainedRunAdmissionRecord) => {},
   }
   const options = {
@@ -222,7 +245,18 @@ test('retained CLI Bridge receives the exact admitted interaction map', async ()
       connection.id,
       bridge.endpoint,
     )
-    const plan = await createCliBridgeRetainedPlan(prepared, input.runId)
+    const capabilitiesResponse = await fetch(
+      `${bridge.endpoint}/v1/capabilities?model=${encodeURIComponent(prepared.route)}`,
+    )
+    assert.equal(capabilitiesResponse.status, 200)
+    const parsedCapabilities = AgentEnvironmentCapabilitiesSchema.parse(
+      await capabilitiesResponse.json(),
+    )
+    assert.deepEqual(parsedCapabilities, advertisedCapabilities)
+    const plan = await createCliBridgeRetainedPlan(
+      { ...prepared, capabilities: advertisedCapabilities },
+      input.runId,
+    )
     await startCliBridgeRetainedRun(plan, input)
 
     assert.equal(bridge.requests.length, 1)

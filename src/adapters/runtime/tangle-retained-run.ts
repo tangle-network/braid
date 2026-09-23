@@ -104,7 +104,10 @@ export async function startTangleRetainedRun(
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
       name: plan.prepared.environmentName,
-      metadata: plan.prepared.environmentMetadata,
+      metadata: {
+        ...plan.prepared.environmentMetadata,
+        retainedIdempotencyKey: plan.prepared.environmentIdempotencyKey,
+      },
       idempotencyKey: plan.prepared.environmentIdempotencyKey,
     },
     turn,

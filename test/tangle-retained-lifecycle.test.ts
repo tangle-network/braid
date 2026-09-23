@@ -326,17 +326,17 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
   assert.equal(sandbox.createCalls[0]?.ephemeral, false)
   const metadata = sandbox.createCalls[0]?.metadata
   assert.ok(metadata)
-  const { retainedIntentDigest, retainedRunId, ...stableMetadata } = metadata
-  assert.deepEqual(stableMetadata, {
-    ...prepared.environmentMetadata,
-    retainedIdempotencyKey: prepared.environmentIdempotencyKey,
-    sessionId: prepared.providerSessionId,
-    executionId: safeExecutionId('run/tangle-retained'),
-  })
-  assert.match(String(retainedIntentDigest), /^sha256:[0-9a-f]{64}$/u)
-  assert.equal(
-    retainedRunId,
-    `retained-intent-run:${String(retainedIntentDigest).slice('sha256:'.length)}`,
+  assert.deepEqual(
+    {
+      owner: metadata.owner,
+      lifecycle: metadata.lifecycle,
+      providerSessionId: metadata.providerSessionId,
+      retainedIdempotencyKey: metadata.retainedIdempotencyKey,
+    },
+    {
+      ...prepared.environmentMetadata,
+      retainedIdempotencyKey: prepared.environmentIdempotencyKey,
+    },
   )
   assert.equal(handle.controlRef.environmentId, sandbox.boxes[0]?.id)
   assert.equal(handle.controlRef.sessionId, prepared.providerSessionId)

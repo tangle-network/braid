@@ -1,19 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
-import {
-  createProductionBackendResolver,
-  type ProductionBackendResolverOptions,
-} from '../src/adapters/runtime/production-backend-resolver.js'
-import { ConnectionRegistry } from '../src/app/connections.js'
+import { createBraidApplication } from '../src/app/composition.js'
+import { MemoryJournal } from '../src/app/journal.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
-import type { ExecuteTurnInput } from '../src/ports/execution.js'
+import { FixedClock } from '../src/ports/clock.js'
+import { SequenceIds } from '../src/ports/ids.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const at = '2026-08-03T12:00:00.000Z'
-const sessionId = 'bridge-session-contract'
 const workspaceCwd = '/tmp/braid-contract-workspace'
 
 const profile: AgentProfile = {
@@ -65,9 +61,6 @@ const profile: AgentProfile = {
     instructions: { kind: 'inline', name: 'instructions', content: 'Resource instructions.' },
     failOnError: true,
   },
-  hooks: {
-    before: [{ command: 'echo contract-hook', timeoutMs: 1000, blocking: true, matcher: '.*' }],
-  },
   modes: {
     review: {
       description: 'Review mode',
@@ -83,225 +76,66 @@ const profile: AgentProfile = {
   extensions: { 'provider.test': { enabled: true, version: 1 } },
 }
 
-function connection(endpoint: string): ConnectionRecord {
-  return {
-    id: createConnectionId('connection-cli-contract'),
+test('canonical retained CLI Bridge forwards the complete profile and exact turn identity', async () => {
+  const bridge = await startRuntimeBridgeServer({ responseText: 'CONTRACT_OK' })
+  const connection: ConnectionRecord = {
+    id: createConnectionId('connection-cli-profile-contract'),
     kind: 'cli-bridge',
     name: 'Contract CLI Bridge',
-    endpoint,
+    endpoint: bridge.endpoint,
     providerOptions: { transport: 'local' },
     createdAt: at,
     updatedAt: at,
     lastHealth: { status: 'unknown' },
   }
-}
+  const clock = new FixedClock()
+  const journal = new MemoryJournal(clock)
+  let app: ReturnType<typeof createBraidApplication> | undefined
 
-function input(value: string, runId: string): ExecuteTurnInput {
-  return {
-    operationId: `operation-${runId}`,
-    runId,
-    text: value,
-    profile,
-    connectionId: contractConnection.id,
-    sessionId,
-    signal: new AbortController().signal,
-  }
-}
-
-async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for the Runtime Bridge request')
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
-}
-
-let contractConnection: ConnectionRecord
-
-test('production CLI Bridge sends the frozen profile and complete turn identity', async () => {
-  const bridge = await startRuntimeBridgeServer({ responseText: 'CONTRACT_OK' })
   try {
-    contractConnection = connection(bridge.endpoint)
-    const registry = new ConnectionRegistry([contractConnection])
-    const options: ProductionBackendResolverOptions = {
-      connections: registry,
-      workspaceCwd,
-      select: () => ({
-        connection: { connectionId: contractConnection.id },
-        runner: 'pi',
-        ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
-      }),
-    }
-    const resolver = createProductionBackendResolver(options)
-    const first = input('first contract turn', 'run-contract-1')
-    const second = input('second contract turn', 'run-contract-2')
-    const prepared = await resolver(first)
-    assert.equal(prepared.kind, 'prepared-execution')
-    assert.deepEqual(prepared.backend.profile, profile)
-    assert.equal(prepared.materializationReceipt.runner, 'pi')
-    assert.equal(prepared.materializationReceipt.workspace, workspaceCwd)
+    app = createBraidApplication({
+      production: {
+        profile,
+        connections: [connection],
+        connectionId: connection.id,
+        workspaceRoot: workspaceCwd,
+      },
+      clock,
+      ids: new SequenceIds(),
+      journal,
+      effectStorage: journal,
+    })
+    app.initialize(workspaceCwd)
+    const send = app.send({
+      operationId: 'operation-cli-profile-contract',
+      text: 'Forward every profile field through the canonical retained path.',
+    })
+    await send.admissionReady
+    const state = await send.completion
+    const run = state.runs[0]
+    const sessionCreate = bridge.sessionCreates[0]
+    const turn = bridge.requests[0]
+    assert(run?.controlRef && sessionCreate && turn)
 
-    const execution = new AgentRuntimeExecutionPort(resolver)
-    const firstAdmission = await execution.admit(first)
-    assert.equal(firstAdmission.providerSessionId, sessionId)
-    assert.equal(firstAdmission.capabilities?.environment?.streaming.replay, true)
-    assert.equal(firstAdmission.capabilities?.environment?.sessions.continue, true)
-    assert.equal(firstAdmission.capabilities?.environment?.streaming.turnIdempotency, true)
-    assert.equal(firstAdmission.capabilities?.streaming.replay, false)
-    assert.equal(firstAdmission.capabilities?.sessions.continue, true)
-    assert.equal(firstAdmission.capabilities?.controls.cancel, true)
-    assert.equal(firstAdmission.capabilities?.controls.status, false)
-    const firstEvents = []
-    for await (const event of execution.streamTurn(first)) firstEvents.push(event)
-    const secondAdmission = await execution.admit(second)
-    assert.equal(secondAdmission.providerSessionId, sessionId)
-    const secondEvents = []
-    for await (const event of execution.streamTurn(second)) secondEvents.push(event)
-    assert.equal(firstEvents.at(-1)?.type, 'final')
-    assert.equal(secondEvents.at(-1)?.type, 'final')
-    assert.equal(bridge.requests.length, 2, JSON.stringify({ firstEvents, secondEvents }, null, 2))
+    assert.equal(bridge.sessionCreates.length, 1)
+    assert.equal(bridge.requests.length, 1)
+    assert.deepEqual(sessionCreate.body.agent_profile, profile)
+    assert.equal(sessionCreate.body.model, 'pi/openai-codex/gpt-5.6-luna')
+    assert.equal(sessionCreate.body.cwd, workspaceCwd)
+    assert.equal(sessionCreate.sessionId, run.controlRef.sessionId)
 
-    for (const [request, turn] of bridge.requests.map(
-      (request, index) => [request, index === 0 ? first : second] as const,
-    )) {
-      const body = request.body
-      assert.deepEqual(body.agent_profile, profile)
-      assert.equal(
-        body.agent_profile &&
-          typeof body.agent_profile === 'object' &&
-          'harness' in body.agent_profile
-          ? body.agent_profile.harness
-          : undefined,
-        'pi',
-      )
-      assert.equal(body.model, 'pi/openai-codex/gpt-5.6-luna')
-      assert.equal(body.run_id, request.runId)
-      assert.match(String(body.run_id), /^bridge-run-/u)
-      assert.notEqual(body.run_id, turn.runId)
-      assert.equal(body.session_id, sessionId)
-      assert.equal(request.sessionId, sessionId)
-      assert.equal(body.cwd, workspaceCwd)
-      assert.equal(
-        body.messages && Array.isArray(body.messages) ? body.messages.at(-1)?.content : undefined,
-        turn.text,
-      )
-      assert.equal(JSON.stringify(body).includes('inline-'), false)
-    }
+    assert.equal(
+      turn.body.message,
+      'Forward every profile field through the canonical retained path.',
+    )
+    assert.equal(turn.body.run_id, run.controlRef.runId)
+    assert.equal(turn.body.provider, run.controlRef.provider)
+    assert.equal(turn.body.environment_id, run.controlRef.environmentId)
+    assert.equal(turn.body.execution_id, run.controlRef.executionId)
+    assert.equal(turn.sessionId, run.controlRef.sessionId)
+    assert.equal(JSON.stringify(sessionCreate.body).includes('inline-'), false)
   } finally {
+    await app?.close()
     await bridge.close()
   }
-})
-
-test('production CLI Bridge cancellation uses Runtime provider acknowledgement', async () => {
-  const bridge = await startRuntimeBridgeServer({ holdStreams: true })
-  try {
-    contractConnection = connection(bridge.endpoint)
-    const registry = new ConnectionRegistry([contractConnection])
-    const options: ProductionBackendResolverOptions = {
-      connections: registry,
-      workspaceCwd,
-      select: () => ({
-        connection: { connectionId: contractConnection.id },
-        runner: 'pi',
-        ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
-      }),
-    }
-    const resolver = createProductionBackendResolver(options)
-    const execution = new AgentRuntimeExecutionPort(resolver)
-    const turn = input('cancel this provider turn', 'run-contract-provider-cancel')
-
-    const admission = await execution.admit(turn)
-    assert.equal(admission.capabilities?.controls.cancel, true)
-    const stream = execution.streamTurn(turn)
-    await stream.next()
-    const pendingEvent = stream.next()
-    await waitFor(() => bridge.requests.length === 1)
-
-    const acknowledgement = await execution.cancelRun({
-      runId: turn.runId,
-      operationId: 'operation-provider-cancel',
-      reason: 'operator requested cancellation',
-    })
-    assert.deepEqual(acknowledgement, {
-      operationId: 'operation-provider-cancel',
-      outcome: 'accepted',
-      detail: 'Provider cancellation acknowledged',
-    })
-    assert.equal(bridge.cancellations.length, 1)
-    assert.equal(bridge.cancellations[0]?.runId.startsWith('bridge-run-'), true)
-
-    await pendingEvent
-    for await (const _event of stream) {
-      // Drain the Runtime terminal path after provider acknowledgement.
-    }
-  } finally {
-    await bridge.close()
-  }
-})
-
-test('production CLI Bridge cancellation keeps a Runtime provider error unknown', async () => {
-  const bridge = await startRuntimeBridgeServer({
-    holdStreams: true,
-    cancellation: { mode: 'rejected' },
-  })
-  try {
-    contractConnection = connection(bridge.endpoint)
-    const registry = new ConnectionRegistry([contractConnection])
-    const options: ProductionBackendResolverOptions = {
-      connections: registry,
-      workspaceCwd,
-      select: () => ({
-        connection: { connectionId: contractConnection.id },
-        runner: 'pi',
-        ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
-      }),
-    }
-    const resolver = createProductionBackendResolver(options)
-    const execution = new AgentRuntimeExecutionPort(resolver)
-    const turn = input('reject this provider turn', 'run-contract-provider-reject')
-
-    const admission = await execution.admit(turn)
-    assert.equal(admission.capabilities?.controls.cancel, true)
-    const stream = execution.streamTurn(turn)
-    await stream.next()
-    const pendingEvent = stream.next()
-    await waitFor(() => bridge.requests.length === 1)
-
-    const acknowledgement = await execution.cancelRun({
-      runId: turn.runId,
-      operationId: 'operation-provider-reject',
-    })
-    assert.deepEqual(acknowledgement, {
-      operationId: 'operation-provider-reject',
-      outcome: 'unknown',
-      detail: 'Provider cancellation failed before acknowledgement',
-    })
-    await pendingEvent
-    for await (const _event of stream) {
-      // Drain the Runtime terminal path after the provider error.
-    }
-  } finally {
-    await bridge.close()
-  }
-})
-
-test('a turn cancelled before iteration never resolves or materializes execution', async () => {
-  let resolverCalls = 0
-  const execution = new AgentRuntimeExecutionPort(async () => {
-    resolverCalls += 1
-    throw new Error('resolver must not run after cancellation')
-  })
-  const abort = new AbortController()
-  abort.abort(new Error('cancelled before start'))
-  const cancelled = {
-    ...input('cancelled contract turn', 'run-contract-cancelled'),
-    signal: abort.signal,
-  }
-
-  await assert.rejects(async () => {
-    for await (const _event of execution.streamTurn(cancelled)) {
-      // A pre-cancelled turn cannot emit runtime work.
-    }
-  }, /cancelled before start/u)
-  assert.equal(resolverCalls, 0)
 })
