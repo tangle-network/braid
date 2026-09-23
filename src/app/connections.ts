@@ -219,6 +219,7 @@ function assertSecretFree(record: ConnectionRecord): void {
     record.providerOptions.region,
     record.providerOptions.account,
     record.providerOptions.lifecycle,
+    record.providerOptions.resources?.gpu,
     ...(record.providerOptions.capabilityHints ?? []),
     ...(record.confidentialAttestationPolicy?.acceptedMeasurements ?? []),
     ...(record.confidentialAttestationPolicy?.acceptedPolicyIds ?? []),

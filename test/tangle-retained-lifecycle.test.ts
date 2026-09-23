@@ -96,6 +96,35 @@ test('retained lifecycle configuration is explicit and bounded', () => {
   )
 })
 
+test('connection resources are a bounded provider-neutral Tangle Sandbox request', () => {
+  assert.doesNotThrow(() =>
+    assertConnectionRecord(
+      record({ resources: { cpu: 2, memoryMb: 4_096, diskMb: 10_240, gpu: 'a100' } }),
+    ),
+  )
+  for (const [resources, message] of [
+    [{}, /must request a resource/u],
+    [{ cpu: 0 }, /cpu must be a positive integer/u],
+    [{ memoryMb: 1.5 }, /memoryMb must be a positive integer/u],
+    [{ diskMb: 1_500 }, /whole number of GiB/u],
+    [{ gpu: ' ' }, /accelerator class/u],
+    [{ cpu: 1, providerOptions: { tier: 'x' } }, /resources.providerOptions is provider-native/u],
+  ] as const) {
+    assert.throws(
+      () => assertConnectionRecord(record({ resources } as unknown as ConnectionTransportOptions)),
+      message,
+    )
+  }
+  assert.throws(
+    () =>
+      assertConnectionRecord({
+        ...record({ resources: { cpu: 1 } }),
+        kind: 'tangle-inference',
+      }),
+    /resources is available only for tangle-sandbox/u,
+  )
+})
+
 test('retained policy fails closed for an ambiguous completed-turn 404', async () => {
   let responseStatus = 404
   let dispatches = 0
@@ -422,6 +451,53 @@ test('retained Tangle dispatch receives the exact requested interaction map', as
   })
 
   assert.deepEqual(sandbox.dispatches[0]?.interactions, interactions)
+})
+
+test('retained Tangle environments carry the connection resource request', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const configured = setup(sandbox)
+  const resources = { cpu: 2, memoryMb: 4_096, diskMb: 10_240 }
+  const connection = {
+    ...configured.connection,
+    providerOptions: { ...configured.connection.providerOptions, resources },
+  }
+  const options = { ...configured.options, connections: new ConnectionRegistry([connection]) }
+  const withoutResources = await resolveTangleSandboxRetainedConnection(
+    configured.options,
+    configured.input,
+    configured.selection,
+    connection.id,
+  )
+  const prepared = await resolveTangleSandboxRetainedConnection(
+    options,
+    configured.input,
+    configured.selection,
+    connection.id,
+  )
+  assert.deepEqual(prepared.resourceRequest, resources)
+  assert.equal(withoutResources.resourceRequest, undefined)
+  assert.notEqual(
+    prepared.materializationReceipt.environmentRequestDigest,
+    withoutResources.materializationReceipt.environmentRequestDigest,
+  )
+  assert.equal(sandbox.createCalls.length, 0)
+
+  await startTangleRetainedRun(
+    createTangleRetainedPlan(prepared, configured.input.runId),
+    configured.input,
+  )
+
+  assert.equal(sandbox.createCalls.length, 1)
+  assert.deepEqual(sandbox.createCalls[0]?.resources, {
+    cpuCores: 2,
+    memoryMB: 4_096,
+    diskGB: 10,
+  })
+  assert.deepEqual((await prepared.observation.snapshot())?.requestedResources, {
+    cpuCores: 2,
+    memoryMB: 4_096,
+    diskGB: 10,
+  })
 })
 
 test('ambiguous dispatch failure never deletes the retained environment', async () => {

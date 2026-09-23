@@ -470,6 +470,70 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   await bridgeServer.close()
 })
 
+test('ephemeral sandbox creates carry the connection resource request', async () => {
+  const base = connection('tangle-sandbox', 'sandbox-resources', 'https://sandbox.test', true)
+  const resources = { cpu: 4, memoryMb: 8_192, diskMb: 20_480, gpu: 'l4' }
+  const sandbox = { ...base, providerOptions: { ...base.providerOptions, resources } }
+  const credentials = new MemoryCredentialStore()
+  const portRef = credentialRef('cred:v1:sandbox-resources')
+  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  let sandboxCreateOptions: Readonly<Record<string, unknown>> | undefined
+  let creates = 0
+  const options: ProductionBackendResolverOptions = {
+    connections: new ConnectionRegistry([sandbox]),
+    credentials,
+    credentialRefResolver: () => portRef,
+    sandboxClientFactory: async () => ({
+      create: async (createOptions?: Readonly<Record<string, unknown>>) => {
+        sandboxCreateOptions = createOptions
+        creates += 1
+        return {
+          id: 'sandbox-resources',
+          status: 'running',
+          async *streamPrompt() {
+            yield {
+              type: 'done',
+              data: {
+                outcome: { type: 'completed' },
+                status: 'success',
+                success: true,
+                finalText: 'sized',
+              },
+            }
+          },
+          async delete() {},
+        }
+      },
+    }),
+    select: () => ({ connection: { connectionId: sandbox.id } }),
+  }
+
+  const prepared = await resolveProductionBackend(options, turnInput(profile()), {
+    connection: { connectionId: sandbox.id },
+  })
+  assert.equal(prepared.kind, 'prepared-execution')
+  assert.equal(
+    prepared.materializationReceipt.environmentRequestDigest,
+    canonicalDigest({
+      kind: 'tangle-sandbox-environment-request',
+      idempotencyKey: 'env-braid-run-connection-test',
+      workspaceRequest: null,
+      resourceRequest: resources,
+    }),
+  )
+  assert.equal(creates, 0, 'preparing the execution must not create an environment')
+  for await (const _event of streamAgentTurn(prepared.backend, { prompt: 'size check' })) {
+    // Drain the turn so the executor performs its single environment create.
+  }
+  assert.equal(creates, 1)
+  assert.deepEqual(sandboxCreateOptions?.resources, {
+    cpuCores: 4,
+    memoryMB: 8_192,
+    diskGB: 20,
+    accelerator: { kind: 'l4', count: 1 },
+  })
+})
+
 test('sandbox success=false fails closed despite a conflicting success status', async () => {
   const sandbox = connection('tangle-sandbox', 'failed-turn', 'https://sandbox.test', true)
   const credentials = new MemoryCredentialStore()

@@ -91,6 +91,7 @@ export function interactiveEnvironment(
       surface: 'interactive-agent',
     },
     ...(prepared.workspaceRequest === undefined ? {} : { workspace: prepared.workspaceRequest }),
+    ...(prepared.resourceRequest === undefined ? {} : { resources: prepared.resourceRequest }),
     idempotencyKey,
   }
 }

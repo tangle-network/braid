@@ -13,6 +13,7 @@ import type { BackendType } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import { snapshotWorkspaceRequest, workspaceRequestDigest } from '../../app/workspace-request.js'
 import { canonicalDigest } from '../../domain/canonical.js'
+import type { ConnectionRecord, ConnectionResourceRequest } from '../../domain/entities.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
@@ -80,10 +81,12 @@ export async function resolveTangleSandboxBackend(
   const idempotencyKey = stableProviderId('env-braid-', input.runId)
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
+  const resourceRequest = connectionResourceRequest(record)
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-sandbox-environment-request',
     idempotencyKey,
     workspaceRequest: workspaceRequest ?? null,
+    ...(resourceRequest === undefined ? {} : { resourceRequest }),
   })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
@@ -110,6 +113,7 @@ export async function resolveTangleSandboxBackend(
             profile,
             backend: runner,
             ...(workspaceRequest === undefined ? {} : { workspace: workspaceRequest }),
+            ...(resourceRequest === undefined ? {} : { resources: resourceRequest }),
             name: record.name,
             idempotencyKey,
             signal: context.signal,
@@ -154,7 +158,9 @@ export interface PreparedTangleRetainedConnection {
   readonly capabilities: AgentEnvironmentCapabilities
   readonly observation: ExecutionObservationSource
   readonly providerSessionId: string
-  readonly workspaceRequest?: Readonly<import('@tangle-network/agent-interface').WorkspaceRequest>
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
+  /** Connection-owned compute request sent with every environment create. */
+  readonly resourceRequest?: ConnectionResourceRequest
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
@@ -185,6 +191,7 @@ export async function resolveTangleSandboxRetainedConnection(
   }
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
+  const resourceRequest = connectionResourceRequest(record)
   const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
   if (!providerSessionId.startsWith('session-braid-')) {
     throw new ConnectionError(
@@ -256,6 +263,7 @@ export async function resolveTangleSandboxRetainedConnection(
     metadata: identity.metadata,
     idleTtlSeconds,
     workspaceRequest: workspaceRequest ?? null,
+    ...(resourceRequest === undefined ? {} : { resourceRequest }),
   })
   const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   return freezeExecution({
@@ -267,6 +275,7 @@ export async function resolveTangleSandboxRetainedConnection(
     observation: observedClient.observation,
     providerSessionId,
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
+    ...(resourceRequest === undefined ? {} : { resourceRequest }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,
     environmentName: identity.name,
     environmentMetadata: identity.metadata,
@@ -296,6 +305,23 @@ export async function resolveTangleSandboxRetainedConnection(
       model,
       runner,
     },
+  })
+}
+
+/**
+ * Copy the saved compute request so a later registry change cannot alter a prepared run.
+ * Digests omit the field when absent, so runs without resources keep their prior identity.
+ */
+function connectionResourceRequest(
+  record: ConnectionRecord,
+): ConnectionResourceRequest | undefined {
+  const resources = record.providerOptions.resources
+  if (resources === undefined) return undefined
+  return Object.freeze({
+    ...(resources.cpu === undefined ? {} : { cpu: resources.cpu }),
+    ...(resources.memoryMb === undefined ? {} : { memoryMb: resources.memoryMb }),
+    ...(resources.diskMb === undefined ? {} : { diskMb: resources.diskMb }),
+    ...(resources.gpu === undefined ? {} : { gpu: resources.gpu }),
   })
 }
 
