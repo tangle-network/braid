@@ -32,15 +32,26 @@ export async function waitForRun(context: StatusPort, runId: string): Promise<Br
 }
 
 /**
- * Waits for local run operations to settle.
- * A detached retained run keeps its remote work but has no local operation to wait on.
- * Each completion is awaited once: a settled completion whose run still looks active cannot
- * make further progress, and awaiting it again would spin on microtasks and starve timers.
+ * Waits until no live run remains.
+ * A detached retained run keeps its remote work but is not live, so it never holds the wait.
+ * A live run whose local operation has settled, or that has no operation, can still be
+ * advanced by provider reconciliation, so the wait resumes on the next state transition.
+ * Every iteration awaits an unsettled operation or a state transition; re-awaiting a settled
+ * promise would loop on microtasks and starve timers.
  */
 export async function waitForIdle(context: StatusPort): Promise<BraidState> {
   await Promise.resolve()
-  const awaited = new Set<Promise<unknown>>()
+  const settled = new WeakSet<Promise<unknown>>()
+  const observed = new WeakSet<Promise<unknown>>()
+  const observe = (completion: Promise<unknown>): void => {
+    if (observed.has(completion)) return
+    observed.add(completion)
+    const markSettled = () => settled.add(completion)
+    completion.then(markSettled, markSettled)
+  }
   for (;;) {
+    // Subscribe before reading so a transition during the checks below still wakes the wait.
+    const stateChanged = context.nextStateChange()
     const state = context.currentState()
     const isLive = (runId: string): boolean => {
       const record = state.runs.find((candidate) => candidate.id === runId)
@@ -52,18 +63,23 @@ export async function waitForIdle(context: StatusPort): Promise<BraidState> {
     if (runIds.size === 0 && state.activeRunId !== null && isLive(state.activeRunId))
       runIds.add(state.activeRunId)
     const waits: Promise<unknown>[] = []
+    let awaitsStateChange = false
     for (const runId of runIds) {
       const control = context.ledger.controlForRun(runId)
       if (control) {
         await control.acknowledgement
         const controlledRun = context.currentState().runs.find((run) => run.id === runId)
-        if (controlledRun === undefined || isTerminal(controlledRun.status)) continue
+        if (controlledRun === undefined || !isLiveRunStatus(controlledRun.status)) continue
       }
       const operation = context.ledger.operationForRun(runId)
-      if (operation && !awaited.has(operation.completion)) waits.push(operation.completion)
+      if (operation === undefined || settled.has(operation.completion)) {
+        awaitsStateChange = true
+        continue
+      }
+      observe(operation.completion)
+      waits.push(operation.completion)
     }
-    if (waits.length === 0) return structuredClone(context.currentState())
-    for (const wait of waits) awaited.add(wait)
-    await Promise.all(waits)
+    if (waits.length === 0 && !awaitsStateChange) return structuredClone(context.currentState())
+    await Promise.race([...waits, stateChanged])
   }
 }

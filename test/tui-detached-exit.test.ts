@@ -8,6 +8,7 @@ import { createBraidApplication } from '../src/app/composition.js'
 import { createRunLedger } from '../src/app/run-ledger.js'
 import { isTerminal, waitForIdle } from '../src/app/run-status.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import { isLiveRunStatus } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { TuiMainScreen } from '../src/startup/terminal-runtime.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
@@ -124,10 +125,66 @@ test('waiting for idle returns for a detached retained run instead of spinning',
     },
     ledger,
     isTerminal,
+    nextStateChange: () => new Promise<void>(() => undefined),
   } as unknown as StatusPort
   const idle = await waitForIdle(context)
   assert.equal(idle.runs[0]?.status, 'detached')
   assert.ok(reads <= 3, `waitForIdle read state ${String(reads)} times`)
+  await app.close()
+})
+
+test('waiting for idle holds a live run whose local operation settled until it turns terminal', async () => {
+  let statusCalls = 0
+  const execution: ExecutionPort = {
+    capabilities: () => RETAINED_CAPABILITIES,
+    admit: () => ({ capabilities: RETAINED_CAPABILITIES, providerSessionId: 'session-retained' }),
+    // The stream disconnects without a terminal event; the provider still reports the run live.
+    async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope> {
+      yield observed(input.runId, 1)
+    },
+    reconnect: () => ({
+      async *[Symbol.asyncIterator](): AsyncIterator<RuntimeEventEnvelope> {
+        yield* []
+      },
+    }),
+    status: async (input) => {
+      statusCalls += 1
+      return { runId: input.runId, sessionId: 'session-retained', status: 'running' }
+    },
+  }
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
+  app.initialize('/workspace')
+  const send = app.send({ operationId: 'op-provider-live', text: 'keep working remotely' })
+  await send.completion
+  const run = app.state().runs[0]
+  assert.ok(statusCalls > 0)
+  assert.ok(run !== undefined && isLiveRunStatus(run.status), `run status ${String(run?.status)}`)
+
+  let idle = false
+  const waiting = app.waitForIdle().then((state) => {
+    idle = true
+    return state
+  })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal(idle, false, 'waitForIdle returned while the provider still reports the run live')
+
+  app.ingestRuntimeEvent({
+    runId: send.runId,
+    eventId: 'provider-final',
+    sequence: 2,
+    cursor: 'cursor-2',
+    receivedAt: '2026-08-01T00:00:01.000Z',
+    event: {
+      type: 'final',
+      status: 'completed',
+      reason: 'complete',
+      text: 'done remotely',
+      task: { id: 'task-test', intent: 'test' },
+      timestamp: '2026-08-01T00:00:01.000Z',
+    } as RuntimeStreamEvent,
+  })
+  const settled = await waiting
+  assert.equal(settled.runs[0]?.status, 'completed')
   await app.close()
 })
 

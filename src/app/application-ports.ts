@@ -158,7 +158,12 @@ export type ReplayPort = StateReader &
   LedgerAccess &
   RuntimeIngestionAccess
 
-export type StatusPort = StateReader & LedgerAccess
+export interface StateChangeAccess {
+  /** Resolves after the next committed state transition has replaced the current state. */
+  readonly nextStateChange: () => Promise<void>
+}
+
+export type StatusPort = StateReader & LedgerAccess & StateChangeAccess
 
 export type RestartPort = StateReader & JournalWriter & ExecutionAccess
 
