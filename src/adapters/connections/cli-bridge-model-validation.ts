@@ -8,6 +8,7 @@ export const CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS = 1
  *
  * This does not claim that every field in the selected profile was materialized.
  * It keeps the reasoning request separate from the one-token output limit.
+ * Pi exposes only a total completion cap, so its profile cannot request a visible-only cap.
  */
 export function cliBridgeModelValidationRequest(profile: Readonly<AgentProfile>): {
   readonly model: string
@@ -37,7 +38,9 @@ export function cliBridgeModelValidationRequest(profile: Readonly<AgentProfile>)
         ...(profile.model?.reasoningEffort === undefined
           ? {}
           : { reasoningEffort: profile.model.reasoningEffort }),
-        maxVisibleOutputTokens: CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS,
+        ...(runner === 'pi'
+          ? {}
+          : { maxVisibleOutputTokens: CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS }),
         maxTotalOutputTokens: CLI_BRIDGE_MODEL_VALIDATION_MAX_TOKENS,
       },
     },
