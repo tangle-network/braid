@@ -118,9 +118,11 @@ export async function executeCrossRunnerHandoff(
         workspace: false,
         runner: destinationTarget.definition.backend,
         model: destinationProfile.model.default,
-        effort: 'none',
+        ...(destinationProfile.model.reasoningEffort === undefined
+          ? {}
+          : { effort: destinationProfile.model.reasoningEffort }),
       }
-      const forkOperationId = `op-${operationPrefix}-fork-${sourceTarget.key}-${destinationTarget.key}`
+      const forkOperationId = `op-${operationPrefix}-${result.operationNamespace}-fork-${sourceTarget.key}-${destinationTarget.key}`
       const planRequest = {
         ...requestBase(
           `${operationPrefix}-plan-${sourceTarget.key}-${destinationTarget.key}`,

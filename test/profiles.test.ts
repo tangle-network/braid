@@ -366,6 +366,39 @@ test('selection precedence and run overrides never mutate the source profile', (
   )
 })
 
+test('a run that replaces runner and model does not inherit the authored effort', () => {
+  const pi = {
+    profile: {
+      name: 'pi-no-thinking',
+      harness: 'pi',
+      model: { provider: 'tangle-router', default: 'deepseek-v4-flash', reasoningEffort: 'none' },
+    } satisfies AgentProfile,
+  }
+  const handoff = resolveEffectiveProfile({
+    profile: pi,
+    branchOverrides: { harness: 'codex', model: 'default' },
+  })
+  assert.equal(handoff.runner, 'codex')
+  assert.equal(handoff.effort, undefined)
+  assert.equal(handoff.effectiveProfile.model?.reasoningEffort, undefined)
+  assert.equal(handoff.effectiveProfile.model?.provider, undefined)
+
+  const pinned = resolveEffectiveProfile({
+    profile: pi,
+    branchOverrides: { harness: 'codex', model: 'default', effort: 'low' },
+  })
+  assert.equal(pinned.effort, 'low')
+  assert.equal(pinned.effectiveProfile.model?.reasoningEffort, 'low')
+
+  const sameRunner = resolveEffectiveProfile({
+    profile: pi,
+    branchOverrides: { model: 'deepseek-v4-pro' },
+  })
+  assert.equal(sameRunner.effort, 'none')
+  assert.equal(sameRunner.effectiveProfile.model?.reasoningEffort, 'none')
+  assert.equal(pi.profile.model.reasoningEffort, 'none')
+})
+
 test('drafts validate raw and structured edits immediately and produce canonical diffs', () => {
   const draft = new ProfileDraft(fullProfile)
   assert.equal(draft.valid, true)
