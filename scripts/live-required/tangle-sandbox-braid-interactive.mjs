@@ -759,7 +759,7 @@ async function proveTuiReturned(runtime, timeoutMs, label) {
     false,
     `${label} started with the Braid help surface already open`,
   )
-  runtime.write('/help\r')
+  await submitBraidCommand(runtime, '/help', timeoutMs)
   await waitFor(
     `${label} returned to Braid`,
     () => isBraidHelpSurfaceVisible(runtime.screen),
@@ -772,6 +772,20 @@ async function proveTuiReturned(runtime, timeoutMs, label) {
     timeoutMs,
   )
   return { outputBytes: runtime.output.length - before }
+}
+
+/**
+ * Submits a Braid slash command the way a person types it: text first, Enter after it renders.
+ * One `/help\r` write lets the slash-command autocomplete consume Enter, so the command never runs.
+ */
+export async function submitBraidCommand(runtime, command, timeoutMs) {
+  if (typeof command !== 'string' || !command.startsWith('/') || /[\r\n]/u.test(command)) {
+    throw new TypeError('Braid command must be one slash-command line without Enter')
+  }
+  const revision = runtime.terminalOutputRevision
+  runtime.write(command)
+  await runtime.waitForTerminalQuiescence(timeoutMs, revision)
+  runtime.write('\r')
 }
 
 /** Detects the help panel without matching the permanent `type / for commands` footer. */
@@ -1482,7 +1496,7 @@ async function runProof({
     await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
     const attachOutputRevision = runtime.terminalOutputRevision
     const attachBeforeScreen = runtime.screen
-    runtime.write(`${attach}\r`)
+    await submitBraidCommand(runtime, attach, timeoutMs)
     await runtime.waitForPiTerminalReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
     const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
