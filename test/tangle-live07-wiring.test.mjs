@@ -494,7 +494,7 @@ function passedMultirunProof() {
     },
   ]
   return {
-    schemaVersion: 'braid.live-required.multirun.v2',
+    schemaVersion: 'braid.live-required.multirun.v3',
     status: 'passed',
     provider: {
       endpoint: 'https://sandbox.tangle.tools',
@@ -508,6 +508,24 @@ function passedMultirunProof() {
       second: { conversationId: 'conversation-b', branchId: 'branch-b' },
     },
     runs,
+    markers: { branchA: 'MARKER_A', branchB: 'MARKER_B' },
+    workspace: {
+      branchA: {
+        marker: 'MARKER_A',
+        transcriptMarkerLineCount: 1,
+        transcriptMarkerMatched: true,
+        transcriptBytes: 8,
+        failedToolPartCount: 0,
+        providerEnvironmentId: 'environment-a',
+        path: '.braid-live/MARKER_A/marker.txt',
+        readValueJson: JSON.stringify('MARKER_A\n'),
+        readValueBytesBase64: Buffer.from('MARKER_A\n', 'utf8').toString('base64'),
+        readMatched: true,
+        gitExitCode: 0,
+        gitStdout: 'true',
+        gitWorktree: true,
+      },
+    },
     overlap: {
       activeRunCount: 2,
       streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
@@ -872,6 +890,14 @@ test('LIVE-07 rejects a passing canary presented as a stress cohort', async () =
   )
 })
 
+function withBranchAWorkspace(overrides) {
+  const proof = passedMultirunProof()
+  return {
+    ...proof,
+    workspace: { branchA: { ...proof.workspace.branchA, ...overrides } },
+  }
+}
+
 test('LIVE-07 requires passed, complete, and exact multirun evidence', async () => {
   const cases = [
     ['missing', undefined, /multirun evidence is missing/u],
@@ -888,6 +914,31 @@ test('LIVE-07 requires passed, complete, and exact multirun evidence', async () 
         cancellation: { ...passedMultirunProof().cancellation, dispatch: null },
       },
       /cancellation dispatch evidence is missing/u,
+    ],
+    [
+      'missing workspace proof',
+      { ...passedMultirunProof(), workspace: undefined },
+      /branch A workspace proof is missing/u,
+    ],
+    [
+      'wrong provider environment',
+      withBranchAWorkspace({ providerEnvironmentId: 'environment-b' }),
+      /not bound to the branch A provider environment/u,
+    ],
+    [
+      'transcript without marker',
+      withBranchAWorkspace({ transcriptMarkerLineCount: 0 }),
+      /one exact marker line/u,
+    ],
+    [
+      'unmatched provider bytes',
+      withBranchAWorkspace({ readValueJson: JSON.stringify('MARKER_A') }),
+      /exact marker bytes/u,
+    ],
+    [
+      'no git worktree',
+      withBranchAWorkspace({ gitExitCode: 128, gitWorktree: false }),
+      /did not prove a Git worktree/u,
     ],
   ]
   for (const [label, multirun, expected] of cases) {

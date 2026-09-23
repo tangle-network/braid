@@ -25,7 +25,9 @@ import type { PreparedTangleRetainedConnection } from '../src/adapters/runtime/p
 import {
   assertInteractiveProvider,
   interactiveEnvironment,
+  interactiveMaterializationReceipt,
 } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
@@ -280,6 +282,66 @@ test('reconnect recovers a persisted interactive intent exactly once', async () 
   assert.equal(fixture.stats.dispatchCalls, 0)
   assert.equal(fixture.resolveInputs.at(-1)?.sessionId, undefined)
   await finish(reconnectIterator, broker, input.runId)
+})
+
+test('interactive intent recovery rejects a changed resource request before create', async () => {
+  const fixture = interactiveFixture()
+  const broker = new NativeInteractiveRunBroker()
+  const resources = { cpu: 2, memoryMb: 4_096 }
+  const originalPrepared = { ...fixture.prepared, resourceRequest: resources }
+  const admissions: RetainedInteractiveAdmission[] = []
+  const input = executionInput('run/resource-recovery', async (admission) => {
+    admissions.push(admission)
+    if (admission.phase === 'interactive_intent') throw new Error('simulated intent crash')
+  })
+  const original = new TangleRetainedInteractiveExecutionPort({
+    broker,
+    resolve: async () => originalPrepared,
+  })
+  const admitted = await original.admit(input)
+  assert.ok(admitted.materializationReceipt)
+  const receipt = { ...receiptFor(input), materializationReceipt: admitted.materializationReceipt }
+  await assert.rejects(() => original.streamTurn(input)[Symbol.asyncIterator]().next())
+  const intent = admissions[0]
+  assert.ok(intent?.phase === 'interactive_intent')
+  assert.equal(fixture.stats.createCalls, 0)
+
+  const changed = new TangleRetainedInteractiveExecutionPort({
+    broker,
+    resolve: async () => ({ ...originalPrepared, resourceRequest: { cpu: 4, memoryMb: 4_096 } }),
+  })
+  await assert.rejects(
+    () =>
+      changed
+        .reconnect({
+          runId: input.runId,
+          retainedAdmission: intent,
+          receipt,
+          onRetainedAdmission: async () => {},
+          signal: input.signal,
+        })
+        [Symbol.asyncIterator]()
+        .next(),
+    /interactive intent conflicts with replay material/u,
+  )
+  assert.equal(fixture.stats.createCalls, 0)
+
+  const matching = new TangleRetainedInteractiveExecutionPort({
+    broker,
+    resolve: async () => originalPrepared,
+  })
+  const iterator = matching
+    .reconnect({
+      runId: input.runId,
+      retainedAdmission: intent,
+      receipt,
+      onRetainedAdmission: async () => {},
+      signal: input.signal,
+    })
+    [Symbol.asyncIterator]()
+  await next(iterator)
+  assert.equal(fixture.stats.createCalls, 1)
+  await finish(iterator, broker, input.runId)
 })
 
 test('reconnect rejects a provider session mismatch before attaching', async () => {
@@ -537,6 +599,27 @@ test('retained runtime receives the canonical workspace request without a provid
 
   assert.deepEqual(environment.workspace, workspaceRequest)
   assert.equal(Object.hasOwn(environment, 'cwd'), false)
+})
+
+test('interactive admission binds the requested resources to its materialization digest', async () => {
+  const fixture = interactiveFixture()
+  const resources = { cpu: 2, memoryMb: 4_096, diskMb: 10_240, gpu: 'l4' }
+  const prepared = { ...fixture.prepared, resourceRequest: resources }
+  const input = executionInput('run/resources', async () => {})
+  const withoutResources = await interactivePort(fixture, new NativeInteractiveRunBroker()).admit(
+    input,
+  )
+  const withResources = await new TangleRetainedInteractiveExecutionPort({
+    broker: new NativeInteractiveRunBroker(),
+    resolve: async () => prepared,
+  }).admit(input)
+
+  assert.deepEqual(interactiveEnvironment(prepared, input.runId).resources, resources)
+  assert.equal(
+    interactiveMaterializationReceipt(prepared).resourceRequestDigest,
+    canonicalDigest(resources),
+  )
+  assert.notEqual(withResources.materializationDigest, withoutResources.materializationDigest)
 })
 
 test('native interactive admission does not advertise structured responses it cannot route', async () => {

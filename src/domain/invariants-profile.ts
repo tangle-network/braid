@@ -100,6 +100,7 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
     'capabilityHints',
     'lifecycle',
     'idleTtlSeconds',
+    'resources',
   ])
   for (const [key, value] of Object.entries(record.providerOptions)) {
     if (!allowedOptions.has(key)) fail(`connection.providerOptions.${key} is provider-native state`)
@@ -124,6 +125,8 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
           `connection.providerOptions.idleTtlSeconds must be an integer from ${MIN_RETAINED_IDLE_TTL_SECONDS} to ${MAX_RETAINED_IDLE_TTL_SECONDS}`,
         )
       }
+    } else if (key === 'resources') {
+      assertConnectionResources(value)
     } else if (typeof value !== 'string' || value.length === 0) {
       fail(`connection.providerOptions.${key} must be a non-empty string`)
     }
@@ -148,6 +151,9 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
       record.providerOptions.idleTtlSeconds !== undefined)
   ) {
     fail('connection.providerOptions lifecycle is available only for tangle-sandbox')
+  }
+  if (record.kind !== 'tangle-sandbox' && record.providerOptions.resources !== undefined) {
+    fail('connection.providerOptions.resources is available only for tangle-sandbox')
   }
   assertDate(record.createdAt, 'connection.createdAt')
   assertDate(record.updatedAt, 'connection.updatedAt')
@@ -203,6 +209,37 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
       fail(
         `connection.confidentialAttestationPolicy.maxAgeSeconds must be an integer from ${MIN_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS} to ${MAX_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS}`,
       )
+    }
+  }
+}
+
+const MB_PER_GIB = 1_024
+
+/**
+ * Only tangle-sandbox connections accept resources, and Tangle Sandbox provisions disk in
+ * whole gibibytes. Rejecting other sizes here keeps an unfulfillable request out of the
+ * saved connection instead of failing each later environment create.
+ */
+function assertConnectionResources(value: unknown): void {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    fail('connection.providerOptions.resources must be an object')
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length === 0) fail('connection.providerOptions.resources must request a resource')
+  for (const [key, amount] of entries) {
+    if (key === 'gpu') {
+      if (typeof amount !== 'string' || amount.trim().length === 0 || amount.length > 128) {
+        fail('connection.providerOptions.resources.gpu must be a non-empty accelerator class')
+      }
+    } else if (key === 'cpu' || key === 'memoryMb' || key === 'diskMb') {
+      if (!Number.isSafeInteger(amount) || (amount as number) < 1) {
+        fail(`connection.providerOptions.resources.${key} must be a positive integer`)
+      }
+      if (key === 'diskMb' && (amount as number) % MB_PER_GIB !== 0) {
+        fail('connection.providerOptions.resources.diskMb must be a whole number of GiB')
+      }
+    } else {
+      fail(`connection.providerOptions.resources.${key} is provider-native state`)
     }
   }
 }
