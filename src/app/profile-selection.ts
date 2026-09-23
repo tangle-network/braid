@@ -76,18 +76,10 @@ function applyProfileOverrides(
     overrides.harness !== undefined &&
     overrides.harness !== profile.harness &&
     overrides.model !== undefined
-  // The authored provider and effort were chosen for the authored runner and model. A run that
-  // replaces both must not inherit them: another runner can reject the effort outright, as
-  // Codex's default model rejects `none`. An explicit effort override still applies below.
   const baseProfile = (() => {
-    if (
-      !changesRunnerAndModel ||
-      (profile.model?.provider === undefined && profile.model?.reasoningEffort === undefined)
-    )
-      return profile
+    if (!changesRunnerAndModel || profile.model?.provider === undefined) return profile
     const model = { ...profile.model }
     delete model.provider
-    delete model.reasoningEffort
     return { ...profile, model }
   })()
   const overlay: AgentProfile = {
@@ -145,6 +137,7 @@ export function resolveEffectiveProfile(input: EffectiveProfileInput): Effective
   const profile = input.profile.profile
   const overrides = selectedOverrides(input)
   const model = overrides.model ?? input.profile.profile.model?.default
+  const effort = overrides.effort ?? input.profile.profile.model?.reasoningEffort
   const runner =
     overrides.harness ??
     input.branchOverrides?.harness ??
@@ -157,7 +150,6 @@ export function resolveEffectiveProfile(input: EffectiveProfileInput): Effective
     (input.workspaceTrusted === true ? input.workspaceConnectionId : undefined) ??
     input.userConnectionId
   const effectiveProfile = applyProfileOverrides(profile, overrides)
-  const effort = effectiveProfile.model?.reasoningEffort
   return Object.freeze({
     authoredProfile: profile,
     effectiveProfile,

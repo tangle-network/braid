@@ -3,27 +3,10 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { harnessHonorsEffort, reasoningEffortsFor } from '@tangle-network/agent-interface'
-
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { errorEvidence } from './evidence.mjs'
 import { evidenceValue } from './redaction.mjs'
-
-/**
- * The reasoning effort a live smoke profile pins for one target, or `undefined` to leave the
- * harness default in place.
- *
- * `default` is the Bridge sentinel for "the harness picks the model". Braid cannot know which
- * efforts that model accepts, and the harness-level set overstates it: Codex lists `none`, but
- * its current default model rejects `none`. The harness default is the only value that is valid
- * for whatever model it picks. A harness that drops the effort control gets no pin either.
- * Otherwise the profile pins the cheapest rung the shared capability data lists for the harness.
- */
-export function liveReasoningEffort(harness, model) {
-  if (model === 'default' || !harnessHonorsEffort(harness)) return undefined
-  return reasoningEffortsFor(harness)[0]
-}
 
 export function profileForBridgeTarget(target) {
   const parts = target.modelId.split('/')
@@ -43,7 +26,6 @@ export function profileForBridgeTarget(target) {
       { target: target.modelId, backend: target.backend },
     )
   }
-  const reasoningEffort = liveReasoningEffort(harness, model)
   return {
     name: `Braid live ${target.modelId}`,
     description: 'Opt-in packed CLI Bridge smoke profile',
@@ -51,8 +33,9 @@ export function profileForBridgeTarget(target) {
     harness,
     model: {
       ...(provider === undefined ? {} : { provider }),
+      // No pinned effort: harness-wide effort lists do not prove what the selected model accepts
+      // (Codex lists `none`, its current default model rejects it), so each runner uses its default.
       default: model,
-      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     },
   }
 }

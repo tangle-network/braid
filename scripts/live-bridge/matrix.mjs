@@ -4,11 +4,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import {
-  harnessHonorsEffort,
-  harnessTypeSchema,
-  reasoningEffortsFor,
-} from '@tangle-network/agent-interface'
+import { harnessTypeSchema } from '@tangle-network/agent-interface'
 
 import {
   bridgeLaunchEnvironment,
@@ -246,16 +242,6 @@ async function runTargetPolicyMatrix() {
   )
 }
 
-function assertLiveEffortValid(profile) {
-  const effort = profile.model.reasoningEffort
-  if (effort === undefined) return
-  assert.equal(harnessHonorsEffort(profile.harness), true, profile.name)
-  assert.ok(
-    reasoningEffortsFor(profile.harness).includes(effort),
-    `${profile.name} pins ${effort}, which ${profile.harness} does not accept`,
-  )
-}
-
 async function runConfigurationMatrix() {
   const glm = defaultTargetPolicy.definitions[0]
   const piGlm = {
@@ -269,7 +255,7 @@ async function runConfigurationMatrix() {
     description: 'Opt-in packed CLI Bridge smoke profile',
     version: '0.1.0',
     harness: 'opencode',
-    model: { provider: 'zai-coding-plan', default: 'glm-5.2', reasoningEffort: 'none' },
+    model: { provider: 'zai-coding-plan', default: 'glm-5.2' },
   })
   assert.deepEqual(profileForBridgeTarget(piGlm), {
     name: `Braid live ${piGlm.modelId}`,
@@ -279,7 +265,6 @@ async function runConfigurationMatrix() {
     model: {
       provider: 'deepseek',
       default: 'deepseek-v4-flash',
-      reasoningEffort: 'none',
     },
   })
   assert.deepEqual(
@@ -304,24 +289,19 @@ async function runConfigurationMatrix() {
       modelId: 'codex/gpt-5-codex',
       backend: 'codex',
     }).model,
-    { default: 'gpt-5-codex', reasoningEffort: 'none' },
+    { default: 'gpt-5-codex' },
   )
-  for (const target of [...targetDefinitions, ...releaseRunnerTargetDefinitions]) {
-    assertLiveEffortValid(profileForBridgeTarget(target))
-  }
-  for (const harness of harnessTypeSchema.options) {
-    for (const modelId of [`${harness}/default`, `${harness}/provider/model`]) {
-      const profile = profileForBridgeTarget({
-        key: `${harness}-probe`,
-        label: `${harness} probe`,
-        modelId,
-        backend: harness,
-      })
-      assertLiveEffortValid(profile)
-      if (profile.model.default === 'default' || !harnessHonorsEffort(harness))
-        assert.equal(profile.model.reasoningEffort, undefined, modelId)
-      else assert.notEqual(profile.model.reasoningEffort, undefined, modelId)
-    }
+  // Live profiles never pin an effort: a harness-wide list cannot prove the routed model accepts it.
+  const probes = harnessTypeSchema.options.flatMap((harness) =>
+    [`${harness}/default`, `${harness}/provider/model`].map((modelId) => ({
+      key: `${harness}-probe`,
+      label: `${harness} probe`,
+      modelId,
+      backend: harness,
+    })),
+  )
+  for (const target of [...targetDefinitions, ...releaseRunnerTargetDefinitions, ...probes]) {
+    assert.equal(profileForBridgeTarget(target).model.reasoningEffort, undefined, target.modelId)
   }
   assert.throws(
     () => profileForBridgeTarget({ ...piGlm, backend: 'codex' }),
