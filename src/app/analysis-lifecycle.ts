@@ -1,5 +1,5 @@
-import type { ExactAnalystRunEvent } from '@tangle-network/agent-eval'
 import type { AnalysisRecord } from '../domain/entities.js'
+import type { ExactAnalystRunEvent } from '@tangle-network/agent-eval'
 import type { RetainedRunAdmissionRecord } from '../domain/run-contracts.js'
 import {
   type AnalysisIdentity,
