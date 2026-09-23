@@ -1393,6 +1393,8 @@ async function runProof({
   let materialization
   // The last identity the flow verified; the failure-state capture can time out while Braid is wedged.
   let verifiedIdentity
+  // Braid's stop result; a later proof step can fail before proofData records it.
+  let stopResult
   let client
   let proofData
   let proofError
@@ -1574,6 +1576,7 @@ async function runProof({
     )
     const stop = await stopThroughBraid(packed.binary, config, identity.run.id, timeoutMs)
     stopped = true
+    stopResult = stop
     const providerExecution = await providerExecutionLedgerEvidence(
       client,
       identity.controlRef,
@@ -1643,7 +1646,7 @@ async function runProof({
       exitTimeoutMs,
       executionStarted: runObserved,
       stopped,
-      stopResult: proofData?.stop,
+      stopResult: proofData?.stop ?? stopResult,
     })
   } catch (error) {
     cleanupError = error
