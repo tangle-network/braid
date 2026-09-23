@@ -235,6 +235,10 @@ Detected local bridge processes are suggestions and are not trusted until endpoi
 
 The runner list comes from live bridge model discovery and current provider support.
 
+Before setup persists a selection, Braid sends a one-token model probe through the selected Bridge route.
+
+For Pi, the probe uses its supported total completion cap and omits the unsupported visible-only cap.
+
 The effective model sent to the provider remains `<runner>/<model>` according to the provider adapter rather than hand-built in a view.
 
 Catalog discovery therefore maps `pi/tangle-router/glm-5.2` to profile runner `pi` plus profile model `tangle-router/glm-5.2`; the connection route never becomes profile identity.

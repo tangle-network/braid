@@ -2117,7 +2117,7 @@ test('first-run model validation rejects a non-marker completion body', async ()
   )
 })
 
-test('first-run model validation authorizes its token limit in a separate AgentProfile field', async () => {
+test('first-run Pi model validation uses the supported total completion cap', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-production-validation-profile-'))
   const setup = await loadProductionSetup({
     workspace: root,
@@ -2178,7 +2178,7 @@ test('first-run model validation authorizes its token limit in a separate AgentP
   assert.equal(validationProfile.model?.default, 'tangle-router/glm-5.2')
   assert.equal(validationProfile.model?.provider, 'tangle-router')
   assert.equal(validationProfile.model?.reasoningEffort, 'high')
-  assert.equal(validationProfile.model?.maxVisibleOutputTokens, 1)
+  assert.equal(validationProfile.model?.maxVisibleOutputTokens, undefined)
   assert.equal(validationProfile.model?.maxTotalOutputTokens, 1)
   assert.equal(validationProfile.model?.metadata, undefined)
   assert.equal('effort' in (body ?? {}), false)
