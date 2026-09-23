@@ -35,7 +35,7 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 | 0:00–0:06 | Empty terminal in the repository | `braid` | "Braid is a terminal for coding agents. One agent profile, any supported runner." |
 | 0:06–0:16 | Braid opens with the profile and the Local CLI Bridge connection | `/runner pi`, then type: `Run the tests and tell me which one fails.` | "This turn runs through Pi on my machine." |
 | 0:16–0:26 | Pi's answer streams; the status line shows runner and model | `/runner codex`, `/model default`, then type: `Fix the failing test.` | "Same profile, same conversation. The next turn runs through Codex with its default model." |
-| 0:26–0:36 | Codex's answer streams | `/runner opencode`, `/model tangle-router/glm-5.3`, `/connection select <tangle-sandbox-id>`, then type: `Add edge-case tests for Unicode input and run the full suite.` | "Now the same profile runs through OpenCode in a Tangle cloud sandbox." |
+| 0:26–0:36 | Codex's answer streams | `/connection select <tangle-sandbox-id>`, `/runner opencode`, `/model tangle-router/glm-5.3`, then type: `Add edge-case tests for Unicode input and run the full suite.` | "Now the same profile runs through OpenCode in a Tangle cloud sandbox." |
 | 0:36–0:42 | Sandbox run starts; the placement and usage labels appear | `/detach` | "I detach. The run keeps working in the sandbox." |
 | 0:42–0:48 | `/quit`, then the laptop lid closes (cut) | `/quit` | "Braid is closed. So is the laptop." |
 | 0:48–0:58 | Lid opens. New terminal. | `braid --conversation <id>`, then `/reconnect` | "Reopen the conversation and reconnect. Braid replays what happened while I was away, without duplicates." |

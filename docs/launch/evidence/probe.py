@@ -103,12 +103,11 @@ def record(entry):
 
 
 def zai_key():
-    for line in (Path.home() / '.pi' / 'agent' / '.env').read_text().splitlines():
-        if line.startswith('ZAI_API_KEY='):
-            key = line.split('=', 1)[1].strip().strip('"\'')
-            ACTIVE_SECRETS.add(key)
-            return key
-    raise SystemExit('ZAI_API_KEY is not configured')
+    key = os.environ.get('ZAI_API_KEY', '')
+    if len(key) < 4:
+        raise SystemExit('Set ZAI_API_KEY in the probe environment for Claude Code')
+    ACTIVE_SECRETS.add(key)
+    return key
 
 
 def harness_env(argv):

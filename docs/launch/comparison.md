@@ -106,11 +106,12 @@ cd docs/launch/evidence
 export PROBE_WORK_ROOT="$(mktemp -d)"
 export PROBE_OUTPUT_DIR="$PROBE_WORK_ROOT/capture"
 export PROBE_OPENCODE_REAL=1  # on this host, bypasses the wrapper for OpenCode
+: "${ZAI_API_KEY:?Set ZAI_API_KEY in the environment for Claude Code}"
 for h in claude codex opencode pi; do python3 probe.py turn1 $h; python3 probe.py resume $h; python3 probe.py control $h; python3 probe.py hangup $h; done
 python3 probe.py bg
 python3 probe.py serve
 ```
 
-The probe reads a Z.AI key from `~/.pi/agent/.env` for Claude Code.
+The Claude Code probe reads `ZAI_API_KEY` from the environment and passes it to Z.AI's Anthropic-compatible endpoint.
 It masks the known credential values and standard auth forms before saving output under `PROBE_OUTPUT_DIR`.
 By default, that output is in a temporary directory outside the checkout.

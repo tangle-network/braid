@@ -10,11 +10,25 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 import probe
 
 
 class ProbeEvidenceTest(unittest.TestCase):
+    def test_claude_credential_requires_explicit_environment_input(self):
+        secret = 'synthetic-zai-key-1234567890'
+        try:
+            with mock.patch.dict(os.environ, {'ZAI_API_KEY': secret}):
+                with mock.patch.object(Path, 'read_text', side_effect=AssertionError('private file read')):
+                    self.assertEqual(secret, probe.zai_key())
+                    self.assertEqual(secret, probe.harness_env(['claude', '-p'])['ANTHROPIC_AUTH_TOKEN'])
+        finally:
+            probe.ACTIVE_SECRETS.discard(secret)
+        with mock.patch.dict(os.environ, {'ZAI_API_KEY': ''}):
+            with self.assertRaisesRegex(SystemExit, 'Set ZAI_API_KEY'):
+                probe.zai_key()
+
     def test_credential_forms_are_redacted_before_storage(self):
         secret = 'synthetic-key-value-1234567890'
         bearer = 'synthetic.bearer.value-1234567890'
