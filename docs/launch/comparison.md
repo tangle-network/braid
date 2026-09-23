@@ -1,13 +1,16 @@
-# Braid, Claude Code, Codex CLI, OpenCode, and Pi: observed capabilities (draft)
+# Braid, Claude Code, Codex CLI, OpenCode, and Pi: observed capabilities
 
-> Draft for Drew's review. Not published.
-> Every row below comes from a command run on 2026-09-23 or from a cited Braid proof record.
-> This page reports whether a capability was present when we tried it. It does not rank answer quality.
+Every row below comes from a command run on 2026-09-23 or from a cited Braid proof record.
+This page reports whether a capability was present when we tried it. It does not rank answer quality.
 
 ## What we tested and how
 
 We ran each CLI in a new throwaway directory with short, cheap prompts.
-The script is [`evidence/probe.py`](evidence/probe.py); every run is a row in [`evidence/results.jsonl`](evidence/results.jsonl), with redacted output in [`evidence/raw/`](evidence/raw/).
+The script is [`evidence/probe.py`](evidence/probe.py); every run is a row in [`evidence/results.jsonl`](evidence/results.jsonl).
+Each current row links to its own redacted raw output.
+The first probe used fixed raw filenames: eight historical outputs were overwritten, and two manual cleanup rows had no separate capture.
+Those 10 rows are marked `raw_unavailable` in the ledger.
+The corrected runs keep separate files for each attempt.
 Versions are in [`evidence/versions.txt`](evidence/versions.txt): Claude Code 2.1.280, Codex CLI 0.156.1, OpenCode 1.18.32, Pi 0.87.1, Braid 0.3.0 built from `ff3f20aa3`.
 
 Claude Code, OpenCode, and Pi requested the GLM-5.2 alias on the Z.AI coding plan.
@@ -32,7 +35,8 @@ The reproduction commands below select that real binary explicitly for OpenCode.
 The original terminal-close detector also matched `sleep` text in each CLI's prompt before the shell task began.
 All six earlier terminal-close rows are marked `invalid` in `results.jsonl`, including the wrapper-affected OpenCode row.
 The corrected probe waits for an actual `sleep` executable with the exact duration, under the launched process or in the attached server's workspace.
-It observed that child before closing each client terminal in the five recheck rows at the end of `results.jsonl`.
+It observed that child before closing each client terminal in the five recheck rows near the end of `results.jsonl`.
+The final OpenCode serve rerun allocated a loopback port and confirmed the spawned server owned its listening socket before attaching.
 
 ## Results
 
@@ -41,7 +45,7 @@ It observed that child before closing each client terminal in the five recheck r
 | One non-interactive turn with machine-readable events and token counts | Yes: `-p --output-format json`, one result with usage and cost | Yes: `exec --json`, 4 events with usage | Yes: `run --format json`, 3 events with tokens and cost | Yes: `-p --mode json`, 47 events with usage and cost | Yes, offline test provider only: `braid rpc` emitted `run.usage` and `run.finished`, and `export` wrote a conversation record with run receipts ([fixture evidence](evidence/braid-fixture/)) |
 | Resume a session in a new process after the first exits | Yes (`--resume <id>`) | Yes (`exec resume <id>`) | Yes (`run --session <id>`) | Yes (`--session <id>`) | Yes on 0.3.0 through CLI Bridge: LIVE-04 (restart reconciliation) passed on Pi, and LIVE-02 continued one conversation from Pi to Codex ([evidence](../../artifacts/verification/live/bridge/evidence.json)) |
 | A started shell task finishes after the client terminal closes | No: the shell child stopped; no completion marker | No completion marker; the shell child was still present 2 s after close | **Yes:** with the real binary, the completion marker appeared after close | No: the shell child stopped; no completion marker | Not tested locally. Tangle Sandbox retained runs: see the cloud row |
-| Detached or served work that outlives the launching client | **Yes**: `claude --bg` returned in 0.7 s, the task finished, and `claude logs`, `stop`, and `rm` worked | Not tested. `--help` lists `agents` (sessions on a shared local daemon), `queue`, and `remote-control` | **Yes for the shell task:** with `opencode serve` running, the task finished after the `run --attach` client's terminal closed; the server was still running at measurement time | Not observed in `--help` | `/detach` and `/reconnect`, retained Tangle Sandbox connections only |
+| Detached or served work that outlives the launching client | **Yes**: `claude --bg` returned in 0.7 s, the task finished, and `claude logs`, `stop`, and `rm` worked | Not tested. `--help` lists `agents` (sessions on a shared local daemon), `queue`, and `remote-control` | **Yes for the shell task:** with `opencode serve` running on a port owned by the spawned server, the task finished after the `run --attach` client's terminal closed; the server was still running at measurement time | Not observed in `--help` | `/detach` and `/reconnect`, retained Tangle Sandbox connections only |
 | Run the agent in a hosted cloud environment | Not tested. `--help` lists `--cloud` and `--remote-control` | Not tested. `--help` lists `cloud` (browse Codex Cloud tasks and apply them locally) | Not observed in `--help`; `serve` and `attach <url>` connect to a server you run | Not observed in `--help` | Yes, from Braid's own production proofs (below); no cloud resources were created for this page |
 | Turn survives the client process being killed, then continues | Not tested | Not tested | Not tested | Not tested | Yes on Tangle Sandbox: SIGKILL, restart, and exact replay in 3 of 3 proofs on 2026-08-15, before 0.2.2 |
 | Fork a conversation | Listed in `--help` (`--fork-session`) | Listed in `--help` (`fork`) | Listed in `--help` (`--fork`) | Listed in `--help` (`--fork`) | `/fork`, `/branch`, `/clone`; `/fork --runner` hands off to another runner |
@@ -91,7 +95,7 @@ None of them was produced for this page.
 ## Spend
 
 The first comparison probe used about 21 billed model turns across the four CLIs, all with one-line prompts.
-The corrected terminal-close recheck added five short model turns.
+The corrected terminal-close recheck and server ownership check added six short model turns.
 The Braid Bridge attempts admitted up to three more Pi runs; we did not confirm whether they reached the model.
 No Tangle Sandbox credential was used, and no cloud resource was created.
 

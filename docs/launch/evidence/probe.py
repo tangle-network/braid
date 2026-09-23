@@ -18,7 +18,9 @@ import json
 import os
 import re
 import secrets
+import select
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -112,7 +114,7 @@ def zai_key():
 def harness_env(argv):
     env = {k: v for k, v in os.environ.items()
            if not (k.startswith('CLAUDE_CODE_') or k in ('CLAUDECODE', 'CLAUDE_PID'))}
-    if 'opencode' in argv[:2]:
+    if argv and (Path(argv[0]).name == 'opencode' or 'opencode' in argv[:2]):
         # This host wraps `opencode run` so each non-interactive call gets a disposable
         # data dir. Naming the series keeps one data dir across calls, which matches a
         # stock OpenCode install where sessions persist between runs.
@@ -147,9 +149,17 @@ def run(argv, cwd, timeout=300):
 
 def save_raw(name, out, err):
     RAW.mkdir(parents=True, exist_ok=True)
-    (RAW / f'{name}.stdout').write_text(redact(out))
+    capture_id = secrets.token_hex(8)
+    stdout = RAW / f'{name}-{capture_id}.stdout'
+    with stdout.open('x') as handle:
+        handle.write(redact(out))
+    files = {'capture_id': capture_id, 'stdout': str(stdout.relative_to(OUTPUT_ROOT))}
     if err.strip():
-        (RAW / f'{name}.stderr').write_text(redact(err))
+        stderr = RAW / f'{name}-{capture_id}.stderr'
+        with stderr.open('x') as handle:
+            handle.write(redact(err))
+        files['stderr'] = str(stderr.relative_to(OUTPUT_ROOT))
+    return files
 
 
 def jsonl(text):
@@ -237,14 +247,14 @@ def step_turn1(harness):
     prompt = f'Remember this code for later: {nonce}. Reply with exactly: OK'
     argv = turn_argv(harness, prompt)
     code, out, err, seconds = run(argv, cwd)
-    save_raw(f'{harness}-turn1', out, err)
+    raw = save_raw(f'{harness}-turn1', out, err)
     session, text, usage = extract(harness, out)
     state[harness] = {'nonce': nonce, 'cwd': str(cwd), 'session': session}
     save_state(state)
     record({'step': 'turn1', 'harness': harness, 'argv': [redact(a) for a in argv], 'cwd': redact(str(cwd)),
             'exit': code, 'seconds': seconds, 'session_id_present': bool(session),
             'structured_events': len(jsonl(out)) or (1 if harness == 'claude' and session else 0),
-            'usage_fields': usage, 'assistant_text': text[:200]})
+            'usage_fields': usage, 'assistant_text': text[:200], 'raw': raw})
 
 
 def recall(harness, resume):
@@ -255,11 +265,12 @@ def recall(harness, resume):
     argv = turn_argv(harness, prompt, state['session'] if resume else None)
     code, out, err, seconds = run(argv, cwd)
     name = 'resume' if resume else 'control'
-    save_raw(f'{harness}-{name}', out, err)
+    raw = save_raw(f'{harness}-{name}', out, err)
     session, text, usage = extract(harness, out)
     record({'step': name, 'harness': harness, 'argv': [redact(a) for a in argv], 'cwd': redact(cwd),
             'exit': code, 'seconds': seconds, 'same_session_id': session == state['session'],
-            'nonce_in_assistant_text': nonce in text, 'assistant_text': text[:200], 'usage_fields': usage})
+            'nonce_in_assistant_text': nonce in text, 'assistant_text': text[:200],
+            'usage_fields': usage, 'raw': raw})
 
 
 def pty_command(argv):
@@ -364,14 +375,14 @@ def step_hangup(harness):
         argv = ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
                 *MODELS['codex'], prompt]
     elif harness == 'opencode':
-        argv = ['opencode', 'run', '--pure', '--auto', *MODELS['opencode'], prompt]
+        argv = [opencode_binary(), 'run', '--pure', '--auto', *MODELS['opencode'], prompt]
     else:
         argv = ['pi', '-p', '-ne', *MODELS['pi'], prompt]
     observed, out, err = hangup_task(harness, argv, cwd, seconds)
-    save_raw(f'{harness}-hangup', out, err)
+    raw = save_raw(f'{harness}-hangup', out, err)
     record({'step': 'hangup', 'harness': harness, 'argv': [redact(a) for a in argv],
             'cwd': redact(str(cwd)), 'mode': 'foreground CLI under a pty; pty closed after the task started',
-            **observed})
+            'raw': raw, **observed})
 
 
 def step_bg():
@@ -381,47 +392,107 @@ def step_bg():
               'sleep 20.5 && echo finished > marker.txt . Then reply DONE.')
     argv = ['claude', '--bg', '--permission-mode', 'bypassPermissions', *MODELS['claude'], prompt]
     code, out, err, seconds = run(argv, cwd, timeout=120)
-    save_raw('claude-bg-launch', out, err)
+    launch_raw = save_raw('claude-bg-launch', out, err)
     match = re.search(r'backgrounded \S+ ([a-z0-9]{6,12})', re.sub(r'\x1b\[[0-9;]*m', '', out))
     sleepers = wait_for_sleep('20.5', 150, cwd=cwd)
     time.sleep(35)
     session_id = match.group(1) if match else None
     logs = run(['claude', 'logs', session_id], cwd, timeout=60) if session_id else ('n/a', '', '', 0)
-    save_raw('claude-bg-logs', logs[1], logs[2])
+    logs_raw = save_raw('claude-bg-logs', logs[1], logs[2])
     record({'step': 'bg', 'harness': 'claude', 'argv': [redact(a) for a in argv], 'cwd': redact(str(cwd)),
             'launcher_exit': code, 'launcher_seconds': seconds, 'launcher_output': redact(out.strip())[:300],
             'session_id': session_id, 'task_started_after_launcher_exit': bool(sleepers),
-            'marker_written': marker.exists(), 'logs_exit': logs[0]})
+            'marker_written': marker.exists(), 'logs_exit': logs[0],
+            'raw': {'launch': launch_raw, 'logs': logs_raw}})
     if session_id:
         stop = run(['claude', 'stop', session_id], cwd, timeout=60)
         remove = run(['claude', 'rm', session_id], cwd, timeout=60)
         record({'step': 'bg-cleanup', 'harness': 'claude', 'stop_exit': stop[0], 'rm_exit': remove[0],
                 'stop_output': redact(stop[1] + stop[2]).strip()[:300],
-                'rm_output': redact(remove[1] + remove[2]).strip()[:300]})
+                'rm_output': redact(remove[1] + remove[2]).strip()[:300],
+                'raw': {'stop': save_raw('claude-bg-stop', stop[1], stop[2]),
+                        'remove': save_raw('claude-bg-remove', remove[1], remove[2])}})
+
+
+def opencode_binary():
+    binary = Path.home() / '.opencode' / 'bin' / 'opencode'
+    if not binary.is_file():
+        raise SystemExit(f'OpenCode binary is missing at {binary}')
+    return str(binary)
+
+
+def free_loopback_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        return reservation.getsockname()[1]
+
+
+def owns_listening_port(pid, port):
+    """Check the server child owns the IPv4 listening socket before attaching."""
+    try:
+        listeners = set()
+        for line in Path('/proc/net/tcp').read_text().splitlines()[1:]:
+            fields = line.split()
+            if fields[3] == '0A' and int(fields[1].split(':')[1], 16) == port:
+                listeners.add(fields[9])
+        return any(os.readlink(fd).removeprefix('socket:[').removesuffix(']') in listeners
+                   for fd in Path(f'/proc/{pid}/fd').iterdir())
+    except OSError:
+        return False
+
+
+def wait_for_own_server(server, port, timeout=30):
+    output = bytearray()
+    deadline = time.monotonic() + timeout
+    expected = f'opencode server listening on http://127.0.0.1:{port}'.encode()
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([server.stdout], [], [], 0.25)
+        if ready:
+            chunk = os.read(server.stdout.fileno(), 4096)
+            if chunk:
+                output.extend(chunk)
+        if expected in output and server.poll() is None and owns_listening_port(server.pid, port):
+            return True, output.decode(errors='replace')
+        if server.poll() is not None:
+            break
+    return False, output.decode(errors='replace')
 
 
 def step_serve():
     cwd = workdir('opencode', 'serve')
-    port = '4917'
-    server = subprocess.Popen(['setsid', 'opencode', 'serve', '--pure', '--port', port], cwd=cwd,
-                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                              env=harness_env(['opencode', 'serve']))
-    time.sleep(6)
+    port = free_loopback_port()
+    serve_argv = [opencode_binary(), 'serve', '--pure', '--hostname', '127.0.0.1',
+                  '--port', str(port)]
+    server = subprocess.Popen(serve_argv, cwd=cwd, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              start_new_session=True, env=harness_env(['opencode', 'serve']))
+    ready, startup_output = wait_for_own_server(server, port)
     prompt = ('Use your shell tool to run exactly this command and wait for it: '
               'sleep 20.6 && echo finished > marker.txt . Then reply DONE.')
-    argv = ['opencode', 'run', '--attach', f'http://127.0.0.1:{port}', '--dir', str(cwd), '--auto',
-            *MODELS['opencode'], prompt]
-    observed, out, err = hangup_task('opencode', argv, cwd, '20.6', shell_runs_in_server=True)
-    save_raw('opencode-serve-client', out, err)
-    server_alive = server.poll() is None
-    os.killpg(server.pid, signal.SIGTERM)
+    argv = [opencode_binary(), 'run', '--attach', f'http://127.0.0.1:{port}',
+            '--dir', str(cwd), '--auto', *MODELS['opencode'], prompt]
+    observed, out, err = {'invalid': 'The probe server did not own its requested listening port'}, '', ''
     try:
-        server.communicate(timeout=15)
-    except subprocess.TimeoutExpired:
-        os.killpg(server.pid, signal.SIGKILL)
-    record({'step': 'serve', 'harness': 'opencode', 'argv': [redact(a) for a in argv], 'cwd': redact(str(cwd)),
+        if ready:
+            observed, out, err = hangup_task('opencode', argv, cwd, '20.6',
+                                             shell_runs_in_server=True)
+        server_alive = server.poll() is None
+    finally:
+        if server.poll() is None:
+            os.killpg(server.pid, signal.SIGTERM)
+        try:
+            remaining_output, _ = server.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            os.killpg(server.pid, signal.SIGKILL)
+            remaining_output, _ = server.communicate(timeout=10)
+    raw = {'server': save_raw('opencode-serve-server',
+                              startup_output + remaining_output.decode(errors='replace'), ''),
+           'client': save_raw('opencode-serve-client', out, err)}
+    record({'step': 'serve', 'harness': 'opencode', 'argv': [redact(a) for a in argv],
+            'serve_argv': [redact(a) for a in serve_argv], 'cwd': redact(str(cwd)),
             'mode': 'opencode serve in its own session; client under a pty; client pty closed after the task started',
-            'server_alive_at_end': server_alive, **observed})
+            'server_port': port, 'server_owned_listening_port_before_attach': ready,
+            'server_alive_at_end': server_alive, 'raw': raw, **observed})
 
 
 if __name__ == '__main__':

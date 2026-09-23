@@ -1,13 +1,4 @@
-# Braid 0.3.0 release notes (draft)
-
-> Draft for Drew's review. Not published.
-> Status on 2026-09-23: `@tangle-network/braid@0.3.0` is not on npm; `latest` is still `0.2.2`.
-> The release workflow holds publication until the protected live evidence passes.
-> Candidate run [35850968583](https://github.com/tangle-network/braid/actions/runs/35850968583) passed Linux x64 and macOS arm64 install smoke tests.
-> Protected Live Evidence run [35912417993](https://github.com/tangle-network/braid/actions/runs/35912417993) passed LIVE-08, LIVE-09, and LIVE-10. LIVE-06 and LIVE-07 were unavailable because the protected configuration lacked required keys.
-> A newer [run 35914271870](https://github.com/tangle-network/braid/actions/runs/35914271870) stopped at the LIVE-06 proof's cancellation-capability check. The full gate remains open.
-
-Braid 0.3.0 covers pull requests #35 through #68 (0.2.2 shipped #31 through #34).
+# Braid 0.3.0 release notes
 
 ## Added
 
@@ -49,7 +40,8 @@ The release also includes CLI Bridge proof fixes and a verified Pi-to-Codex hand
   Retained runs need `"providerOptions": {"lifecycle": "retained", "idleTtlSeconds": 1800}` on the connection in `.braid/config.json`.
   First-run setup cannot create a retained connection yet.
 
-Tangle Sandbox and Tangle Inference need a Tangle key: `<signup URL>`.
+Tangle Sandbox and Tangle Inference need a Tangle key.
+[Create a Tangle account and key](https://sandbox.tangle.tools/?utm_source=github&utm_medium=release&utm_campaign=braid-0.3.0&ref=braid) before selecting either connection.
 
 ## Current limit
 

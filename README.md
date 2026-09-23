@@ -1,19 +1,25 @@
 <div align="center">
   <h1>Braid</h1>
-  <p><strong>One AgentProfile. Any supported coding runner.</strong></p>
+  <p><strong>One coding-agent profile across Pi, Codex, and OpenCode, on your machine or in a Tangle cloud sandbox.</strong></p>
   <p>
     <a href="https://github.com/tangle-network/braid/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tangle-network/braid/actions/workflows/ci.yml/badge.svg"></a>
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-7aa2f7"></a>
   </p>
 </div>
 
-Braid is a durable terminal client for coding agents.
+Braid is a terminal client for coding agents.
 
 A portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) defines one agent's identity, instructions, model, runner preference, tools, and permissions.
 
-Braid sends each turn through [`agent-runtime`](https://github.com/tangle-network/agent-runtime) and keeps the conversation, branches, runs, interactions, activity, graph, supervisors, and trace analyses together.
+Braid sends each turn through [`agent-runtime`](https://github.com/tangle-network/agent-runtime) and keeps the conversation, branches, runs, interactions, and usage records together.
+Choose a local runner through CLI Bridge, Tangle inference, or a Tangle Sandbox for each turn.
 
 Braid is a terminal client, not another agent loop.
+
+<img alt="Braid terminal opening a conversation fork preview" src="artifacts/verification/w6/80x24-fork-preview.gif">
+
+The terminal capture above uses a packed 0.3.0 development build and a deterministic conversation fixture.
+The [launch comparison](docs/launch/comparison.md) separates live runner and cloud proofs from fixture captures.
 
 The [component design map](docs/components/README.md) links each visible surface to its owning contract and source component.
 
@@ -33,6 +39,30 @@ The first-run flow selects an `AgentProfile` and a connection.
 A connection supplies transport and credential references.
 
 Credential values stay in the operating-system credential facility or their bounded response path.
+
+For a local runner, install and start [CLI Bridge](https://github.com/drewstone/cli-bridge#install) in another terminal.
+Sign in to each runner you want to use, then choose **Local CLI Bridge** during Braid setup.
+For example, from the CLI Bridge checkout:
+
+```bash
+pnpm install
+BRIDGE_BACKENDS=codex,opencode pnpm start
+```
+
+Braid connects to the default local service at `http://127.0.0.1:3344`; it does not start the runners.
+Pi on Linux also needs bubblewrap and `PI_EXECUTOR=host BRIDGE_JAIL_MODE=fs-jail BRIDGE_BACKENDS=pi` ([CLI Bridge requirements](https://github.com/drewstone/cli-bridge#install)).
+
+For Tangle inference or a Tangle Sandbox, [create a Tangle account and key](https://sandbox.tangle.tools/?utm_source=github&utm_medium=readme&utm_campaign=braid-0.3.0&ref=braid).
+Enter the key in setup, or provide it to Braid through `BRAID_TANGLE_AUTH`:
+
+```bash
+export BRAID_TANGLE_AUTH=YOUR_TANGLE_KEY
+braid
+```
+
+First-run setup creates an ephemeral sandbox connection.
+It deletes its environment after one turn.
+To use `/detach` and `/reconnect`, set that connection's `providerOptions` to `{"lifecycle":"retained","idleTtlSeconds":1800}` in your workspace's `.braid/config.json` before starting a run.
 
 Use these launch forms when needed:
 

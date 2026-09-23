@@ -1,19 +1,21 @@
-# How Braid leads to Tangle signups (draft, internal)
+# How Braid leads to Tangle signups (internal)
 
-> Internal draft for Drew. It maps what Braid 0.3.0 actually uses from Tangle, where a user meets it, and where each launch asset asks for a signup.
-> File references are for the team; none of them belong in public copy.
+This maps what Braid 0.3.0 uses from Tangle, where a user meets it, and where the launch assets offer an account path.
+File references are for the team.
 
 ## The funnel in one line
 
 A developer installs Braid for free and uses local runners through CLI Bridge.
 They need a Tangle key the first time they choose **Tangle Inference** or **Tangle Sandbox**.
-That choice is the conversion point, and Braid shows no signup link there today.
+That choice is the conversion point.
+Braid's first-run credential screen has no signup link, so the README and release notes give the account path before setup.
+First-run sandbox connections are ephemeral; retained runs require a manual config edit.
 
 ## Tangle features Braid uses
 
 | Tangle feature | Code path | When the user sees it | Can the launch claim it? |
 | --- | --- | --- | --- |
-| Tangle Sandbox, ephemeral runs | `src/bin/production-setup-discovery.ts:83` offers the connection; endpoint `https://sandbox.tangle.tools` in `src/adapters/connections/production-connection-types.ts:29` | First-run setup lists **Tangle Sandbox** beside Local CLI Bridge and Tangle Inference. Each turn gets a fresh cloud environment that is deleted after the turn. | Yes from the 20-job production cohort on 2026-08-12. The protected 0.3.0 LIVE-07 row still needs a passing receipt. |
+| Tangle Sandbox, ephemeral runs | `src/bin/production-setup-discovery.ts:83` offers the connection; endpoint `https://sandbox.tangle.tools` in `src/adapters/connections/production-connection-types.ts:29` | First-run setup lists **Tangle Sandbox** beside Local CLI Bridge and Tangle Inference. Each turn gets a fresh cloud environment that is deleted after the turn. | Yes from the 20-job production cohort on 2026-08-12. Cite the completed 0.3.0 release receipt for a 0.3.0 live claim. |
 | Tangle Sandbox, retained runs with detach and reconnect | `src/app/production-composition.ts:299-326` selects the retained port; `src/adapters/runtime/tangle-sandbox-retention.ts` sets the idle timeout | `/detach`, then `braid --conversation <id>` and `/reconnect` after a restart | Yes, with proof dates. Needs a manual `config.json` edit, because setup cannot create a retained connection. |
 | Native terminal inside the sandbox | `src/bin/native-interactive-actions.ts`, `src/adapters/runtime/tangle-retained-interactive-execution.ts` | `/interactive <prompt>` and `/attach` open the runner's own UI in the cloud session | LIVE-08 passed native terminal input after reconnect in protected run 35912417993. It did not test a question, permission, or plan response. |
 | Tangle router for model calls | Endpoint `https://router.tangle.tools` in `src/adapters/connections/production-connection-endpoints.ts:11`; model ids such as `tangle-router/glm-5.3` in the profile | The model name in the status line; the **Tangle Inference** connection | Yes. |
@@ -38,25 +40,29 @@ For Braid to showcase them, three pieces would need to exist:
 The interaction path already exists; see `/approve` and `respond_interaction`.
 Only the delivery channel is missing.
 
-## Signup call to action for each asset
+## Account path for each asset
 
-The signup URL is not decided. Every placement below uses `<signup URL>` until Drew picks it.
-Tag every link with its asset, for example `?utm_source=braid&utm_medium=<asset>`.
+The approved campaign route is `https://sandbox.tangle.tools/?utm_source=<source>&utm_medium=<medium>&utm_campaign=braid-0.3.0&ref=braid`.
+The live root and signup paths returned HTTP 200 on 2026-09-23; the signup site is a client-side app.
+The root route matches the GTM tracking convention.
+`ref=braid` does not currently persist to a signup record.
 
-| Asset | Placement | Wording |
+| Asset | Route | Placement |
 | --- | --- | --- |
-| Release notes | One line after Upgrade notes | "Tangle Sandbox and Tangle Inference need a Tangle key: `<signup URL>`." |
-| README hero | Comment on the `BRAID_TANGLE_AUTH` line of the quickstart | "only for Tangle inference or Tangle Sandbox: get a key at `<signup URL>`" |
-| Demo video | End card, beside the repository URL | "Cloud sandbox: `<signup URL>`" |
-| Comparison page | None in the body. One footer link to the repository | A comparison with a signup button reads as a sales page, and the house rules forbid it. |
-| Braid itself (product change, not in this PR) | The credential error at `src/bin/production-setup-credentials.ts:250` and the setup screen for Tangle connections | "…requires a credential; enter it in setup or set BRAID_TANGLE_AUTH. Get a key at `<signup URL>`." This is the one moment when the user already wants a key. |
+| README | `utm_source=github&utm_medium=readme` | Tangle key setup paragraph |
+| GitHub release notes | `utm_source=github&utm_medium=release` | Upgrade notes |
+| Demo description | `utm_source=github&utm_medium=social` | Link below the video; the end card shows the short domain |
+| Comparison | No account link | Keep the measurement page free of a signup prompt |
+| Braid first-run screen | No account link in 0.3.0 | The release instructions supply the route; adding a link to setup requires a separate product change and release proof |
 
 ## Measuring it
 
 - **Braid installs:** npm downloads for `@tangle-network/braid`.
 - **Braid traffic on Tangle:** aggregate router request counts with `x-tangle-client: braid/*`, without API keys or account identifiers. This is a request count, not a user count; sandbox traffic is outside it.
-- **Signups from launch assets:** aggregate signup counts by `utm_source=braid`, split by `utm_medium`. Respect the signup site's own consent settings.
+- **Campaign visits:** aggregate page visits by UTM source and medium, subject to the signup site's consent settings.
+- **Outside signups:** total signups by day in the launch window. The platform does not persist a signup source today, so this is a time-window count.
 
 Report these as separate totals.
+Do not claim that the time-window signup count came from Braid.
 Do not join signup records to router requests under the current [product contract](../01-product-contract.md#product-quality-measures) and [security rules](../07-security-and-privacy.md#telemetry-and-privacy).
 Braid excludes account identifiers from telemetry and requires explicit consent for opt-in usage or retention metrics.

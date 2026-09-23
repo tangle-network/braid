@@ -2,6 +2,7 @@
 
 import os
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -39,16 +40,52 @@ class ProbeEvidenceTest(unittest.TestCase):
             probe.RESULTS = probe.OUTPUT_ROOT / 'results.jsonl'
             probe.ACTIVE_SECRETS.add(secret)
             try:
-                probe.save_raw('auth-failure', f'Authorization: Bearer {secret}',
-                               f'ANTHROPIC_AUTH_TOKEN={secret}')
+                raw = probe.save_raw('auth-failure', f'Authorization: Bearer {secret}',
+                                     f'ANTHROPIC_AUTH_TOKEN={secret}')
                 with redirect_stdout(StringIO()) as printed:
-                    probe.record({'diagnostic': {'message': f'token was {secret}'}})
+                    probe.record({'diagnostic': {'message': f'token was {secret}'}, 'raw': raw})
                 saved = ''.join(path.read_text() for path in probe.OUTPUT_ROOT.rglob('*')
                                 if path.is_file())
                 self.assertNotIn(secret, saved + printed.getvalue())
+                self.assertTrue((probe.OUTPUT_ROOT / raw['stdout']).is_file())
+                self.assertTrue((probe.OUTPUT_ROOT / raw['stderr']).is_file())
             finally:
                 probe.ACTIVE_SECRETS.remove(secret)
                 probe.OUTPUT_ROOT, probe.RAW, probe.RESULTS = old_root, old_raw, old_results
+
+    def test_repeated_captures_keep_distinct_raw_files(self):
+        old_root, old_raw = probe.OUTPUT_ROOT, probe.RAW
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_ROOT = Path(directory)
+            probe.RAW = probe.OUTPUT_ROOT / 'raw'
+            try:
+                first = probe.save_raw('repeat', 'first output', '')
+                second = probe.save_raw('repeat', 'second output', '')
+                self.assertNotEqual(first['capture_id'], second['capture_id'])
+                self.assertEqual('first output', (probe.OUTPUT_ROOT / first['stdout']).read_text())
+                self.assertEqual('second output', (probe.OUTPUT_ROOT / second['stdout']).read_text())
+            finally:
+                probe.OUTPUT_ROOT, probe.RAW = old_root, old_raw
+
+    def test_attach_requires_the_server_child_to_own_the_port(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(('127.0.0.1', 0))
+            listener.listen()
+            port = listener.getsockname()[1]
+            self.assertTrue(probe.owns_listening_port(os.getpid(), port))
+            child = subprocess.Popen(
+                [sys.executable, '-c',
+                 f'print("opencode server listening on http://127.0.0.1:{port}", flush=True); '
+                 'import time; time.sleep(2)'],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
+            )
+            try:
+                ready, output = probe.wait_for_own_server(child, port, timeout=0.5)
+                self.assertFalse(ready)
+                self.assertIn(str(port), output)
+            finally:
+                os.killpg(child.pid, signal.SIGKILL)
+                child.communicate()
 
     def test_prompt_text_cannot_count_as_started_shell_child(self):
         with tempfile.TemporaryDirectory() as directory:
