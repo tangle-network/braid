@@ -309,14 +309,16 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
           'processCleanup',
           'providerEvidence',
           'providerExecution',
-          'accountIdentityConsistency',
-          'usageDelta',
           'telemetry',
           'spend',
           'timing',
         ]
           .map((key) => [key, {}])
           .concat(
+            [
+              ['accountIdentityConsistency', { stable: true, identityDigest: 'c'.repeat(64) }],
+              ['usageDelta', { activeSandboxes: 0 }],
+            ],
             [
               ['usage', { activeSandboxes: 0 }],
               ['accountIdentities', { identityDigest: 'c'.repeat(64) }],

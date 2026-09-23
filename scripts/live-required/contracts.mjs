@@ -851,6 +851,26 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
         validCanonicalSha256(value.identityDigest, `${label} identityDigest`)
     }
   }
+  const sample = (field, phase) =>
+    receipt.observations[field].find((entry) => entry.phase === phase).value
+  // The sampled values must support the reported delta and identity facts, not merely coexist with them.
+  const sampledDelta =
+    sample('usage', 'after').activeSandboxes - sample('usage', 'before').activeSandboxes
+  if (
+    sampledDelta !== 0 ||
+    receipt.observations.usageDelta.activeSandboxes !== sampledDelta ||
+    receipt.facts.activeResourceDelta !== sampledDelta
+  )
+    throw new Error(
+      `Passed Tangle interactive proof sampled an activeSandboxes delta of ${String(sampledDelta)}`,
+    )
+  const beforeIdentity = sample('accountIdentities', 'before').identityDigest
+  if (
+    sample('accountIdentities', 'after').identityDigest !== beforeIdentity ||
+    receipt.observations.accountIdentityConsistency.stable !== true ||
+    receipt.observations.accountIdentityConsistency.identityDigest !== beforeIdentity
+  )
+    throw new Error('Passed Tangle interactive proof sampled an unstable account identity')
 }
 
 function validatePassedTangleWorkspaceForkReceipt(receipt) {

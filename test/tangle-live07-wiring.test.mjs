@@ -540,8 +540,8 @@ function interactiveObservations(overrides = {}) {
       { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
       { phase: 'after', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
     ],
-    accountIdentityConsistency: {},
-    usageDelta: {},
+    accountIdentityConsistency: { stable: true, identityDigest: 'c'.repeat(64) },
+    usageDelta: { activeSandboxes: 0 },
     telemetry: {},
     spend: {},
     timing: {},
@@ -1389,6 +1389,29 @@ test('LIVE-08 requires observed before and after usage and identity samples', ()
         ],
       },
       /identityDigest must be a canonical SHA-256 digest/u,
+    ],
+    [
+      {
+        usage: [
+          { phase: 'before', status: 'observed', value: { activeSandboxes: 1 } },
+          { phase: 'after', status: 'observed', value: { activeSandboxes: 2 } },
+        ],
+      },
+      /sampled an activeSandboxes delta of 1/u,
+    ],
+    [{ usageDelta: { activeSandboxes: 3 } }, /sampled an activeSandboxes delta of 0/u],
+    [
+      {
+        accountIdentities: [
+          { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+          { phase: 'after', status: 'observed', value: { identityDigest: 'd'.repeat(64) } },
+        ],
+      },
+      /unstable account identity/u,
+    ],
+    [
+      { accountIdentityConsistency: { stable: true, identityDigest: 'd'.repeat(64) } },
+      /unstable account identity/u,
     ],
     [{ usage: {} }, /observations\.usage phase records/u],
     [{ usage: [observed('before')] }, /observed after sample in observations\.usage/u],
