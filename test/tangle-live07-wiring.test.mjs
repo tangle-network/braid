@@ -34,8 +34,9 @@ import {
   interactiveMaterializationEvidence,
   interactiveProofCommandSequence,
   interactiveRetainedBox,
-  interactiveStopOperationId,
   sandboxConfiguration as interactiveSandboxConfiguration,
+  interactiveStopOperationId,
+  isBraidHelpSurfaceVisible,
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
   waitForInteractiveIdentityFrame,
@@ -63,6 +64,14 @@ import {
 } from '../scripts/live-required/workspace-request.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+test('interactive help probe ignores the permanent commands footer', () => {
+  const footer = 'type / for commands · Alt+Enter newline · paste'
+  const help = `${footer}\nhelp\nsearch: all commands\n/attach — Reattach a retained run`
+
+  assert.equal(isBraidHelpSurfaceVisible(footer), false)
+  assert.equal(isBraidHelpSurfaceVisible(help), true)
+})
 
 test('direct inference proves unavailable cancellation without another generation', async () => {
   const requests = []

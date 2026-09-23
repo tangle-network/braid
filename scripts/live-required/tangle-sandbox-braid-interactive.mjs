@@ -754,15 +754,30 @@ async function stateFrameVersion(path) {
 
 async function proveTuiReturned(runtime, timeoutMs, label) {
   const before = runtime.output.length
+  assert.equal(
+    isBraidHelpSurfaceVisible(runtime.screen),
+    false,
+    `${label} started with the Braid help surface already open`,
+  )
   runtime.write('/help\r')
-  await waitFor(`${label} returned to Braid`, () => /Commands/iu.test(runtime.screen), timeoutMs)
+  await waitFor(
+    `${label} returned to Braid`,
+    () => isBraidHelpSurfaceVisible(runtime.screen),
+    timeoutMs,
+  )
   runtime.write('\u001b')
   await waitFor(
     `${label} closed the Braid help surface`,
-    () => !/Commands/iu.test(runtime.screen),
+    () => !isBraidHelpSurfaceVisible(runtime.screen),
     timeoutMs,
   )
   return { outputBytes: runtime.output.length - before }
+}
+
+/** Detects the help panel without matching the permanent `type / for commands` footer. */
+export function isBraidHelpSurfaceVisible(screen) {
+  if (typeof screen !== 'string') throw new TypeError('Braid terminal screen must be a string')
+  return /search:[^\S\r\n]+all commands/iu.test(screen)
 }
 
 function eventKind(event) {
