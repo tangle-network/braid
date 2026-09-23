@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
@@ -45,6 +45,7 @@ const outputRoot = process.env.BRAID_LIVE_DEMO_OUTPUT
 const packageProofPath = process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   ? process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   : join(repository, 'artifacts', 'verification', 'w6', 'package-proof.json')
+const packageSource = resolve(process.env.BRAID_LIVE_DEMO_PACKAGE_SOURCE ?? repository)
 const columns = 160
 const rows = 30
 
@@ -174,26 +175,38 @@ async function verifyWorkspace(workspace) {
 
 async function main() {
   const baseUrl = assertLocalEndpoint(endpoint)
-  const [agentEvalPackage, sourcePackage, packageProofBytes, commitResult, bridge] =
-    await Promise.all([
-      readFile(
-        join(repository, 'node_modules', '@tangle-network', 'agent-eval', 'package.json'),
-      ).then(JSON.parse),
-      readFile(join(repository, 'package.json'), 'utf8').then(JSON.parse),
-      readFile(packageProofPath),
-      run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
-      bridgeProof(baseUrl),
-    ])
-  const sourceCommit = commitResult.stdout.trim()
+  const [
+    sourcePackage,
+    packageProofBytes,
+    sourceIdentity,
+    sourceStatus,
+    driverIdentity,
+    driverStatus,
+    bridge,
+  ] = await Promise.all([
+    readFile(join(packageSource, 'package.json'), 'utf8').then(JSON.parse),
+    readFile(packageProofPath),
+    run('git', ['rev-parse', 'HEAD', 'HEAD^{tree}', '--show-toplevel'], {
+      cwd: packageSource,
+    }),
+    run('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: packageSource,
+    }),
+    run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
+    run('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: repository,
+    }),
+    bridgeProof(baseUrl),
+  ])
+  assert.equal(sourceStatus.stdout.trim(), '', 'The package source checkout must be clean')
+  assert.equal(driverStatus.stdout.trim(), '', 'The live demo driver checkout must be clean')
+  const [sourceCommit, sourceTreeSha256, sourceRoot] = sourceIdentity.stdout.trim().split('\n')
+  assert.equal(sourceRoot, packageSource, 'The package source must be a checkout root')
+  const driverCommit = driverIdentity.stdout.trim()
   const packageProof = JSON.parse(packageProofBytes.toString('utf8'))
   const route = bridge.target.modelId
   const profile = liveDemoProfileForRoute(route)
   const analystProfile = liveDemoProfileForRoute(route, LIVE_DEMO_ANALYST_PROFILE)
-  const analysisRuntime = {
-    manager: 'bundled uv',
-    pythonVersion: '3.12',
-    version: agentEvalPackage.version,
-  }
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
     tarballPath:
@@ -203,10 +216,17 @@ async function main() {
   try {
     assertExactPackageProof(packageProof, {
       commit: sourceCommit,
+      treeSha256: sourceTreeSha256,
       version: sourcePackage.version,
       tarball: packed.tarballName,
       tarballSha256: packed.tarballSha256,
     })
+    const packedPackage = JSON.parse(await readFile(join(packed.packageRoot, 'package.json')))
+    const analysisRuntime = {
+      manager: 'bundled uv',
+      pythonVersion: '3.12',
+      version: packedPackage.dependencies['@tangle-network/agent-eval'],
+    }
     const { workspace, profilePath } = await createLiveDemoWorkspace(temporaryRoot, {
       profile,
       analystProfile,
@@ -420,11 +440,13 @@ async function main() {
       capturedAt: new Date().toISOString(),
       source: {
         commit: sourceCommit,
+        treeSha256: sourceTreeSha256,
         packageVersion: sourcePackage.version,
         tarball: packed.tarballName,
         tarballSha256: packed.tarballSha256,
         packageProofSha256: sha256(packageProofBytes),
       },
+      driver: { commit: driverCommit },
       route: {
         connection: 'Local CLI Bridge',
         endpoint: baseUrl,

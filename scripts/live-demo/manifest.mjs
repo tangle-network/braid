@@ -14,6 +14,7 @@ export function packageTarballPath(proofPath, proof) {
 export function assertExactPackageProof(proof, expected) {
   assert.ok(proof && typeof proof === 'object', 'The package proof is not an object')
   assert.equal(proof.gitCommit, expected.commit, 'The package proof commit differs')
+  assert.equal(proof.treeSha256, expected.treeSha256, 'The package proof source tree differs')
   assert.equal(proof.version, expected.version, 'The package proof version differs')
   assert.equal(proof.tarball, expected.tarball, 'The package proof tarball name differs')
   assert.equal(

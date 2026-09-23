@@ -277,12 +277,14 @@ test('live manifest rejects unsupported analysis findings', () => {
 test('live demo accepts only the exact package proof', () => {
   const proof = {
     gitCommit: 'a'.repeat(40),
+    treeSha256: 'e'.repeat(40),
     version: '0.1.0',
     tarball: 'tangle-network-braid-0.1.0.tgz',
     sha256: 'b'.repeat(64),
   }
   const expected = {
     commit: proof.gitCommit,
+    treeSha256: proof.treeSha256,
     version: proof.version,
     tarball: proof.tarball,
     tarballSha256: proof.sha256,
@@ -291,6 +293,7 @@ test('live demo accepts only the exact package proof', () => {
   assert.doesNotThrow(() => assertExactPackageProof(proof, expected))
   for (const [field, value] of [
     ['commit', 'c'.repeat(40)],
+    ['treeSha256', 'f'.repeat(40)],
     ['version', '0.1.1'],
     ['tarball', 'other.tgz'],
     ['tarballSha256', 'd'.repeat(64)],
