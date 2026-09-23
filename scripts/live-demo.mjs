@@ -170,6 +170,27 @@ async function waitForCompletedAnalysis(terminal, approvals, timeoutMs = 360_000
   )
 }
 
+async function waitForActiveProfile(terminal, profile, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastRecord
+  while (Date.now() < deadline) {
+    lastRecord = await terminal.captureState()
+    if (
+      lastRecord.view?.profileName === profile.name &&
+      lastRecord.view?.runner === profile.harness &&
+      lastRecord.view?.model === profile.model.default
+    )
+      return lastRecord
+    await pause(200)
+  }
+  throw new Error(
+    `Timed out waiting for active profile ${profile.name}; ` +
+      `observed profile=${lastRecord?.view?.profileName ?? 'missing'}, ` +
+      `runner=${lastRecord?.view?.runner ?? 'missing'}, ` +
+      `model=${lastRecord?.view?.model ?? 'missing'}`,
+  )
+}
+
 function transcriptEvidence(record) {
   const messages = record.state?.messages ?? []
   const parts = messages.flatMap((message) => message.parts ?? [])
@@ -387,12 +408,10 @@ async function main() {
     )
     terminal.input('\u001b')
     await terminal.waitForScreen(
-      (screen) =>
-        !screen.includes(`Selected ${analystProfile.name} · next runs use it`) &&
-        screen.includes(analystProfile.name) &&
-        screen.includes(`${analystProfile.harness} · ${analystProfile.model.default}`),
-      'trace analyst active route',
+      (screen) => !screen.includes(`Selected ${analystProfile.name} · next runs use it`),
+      'trace analyst picker close',
     )
+    await waitForActiveProfile(terminal, analystProfile)
     await pause(500)
 
     await typeText(terminal, `/ask ${LIVE_DEMO_QUESTION}`, 9)
