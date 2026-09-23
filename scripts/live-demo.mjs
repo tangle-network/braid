@@ -299,7 +299,7 @@ async function main() {
     await pause(900)
     terminal.input('\u001b')
     await terminal.waitForScreen(
-      (screen) => !screen.includes(`runner pi · model ${profile.model.default}`),
+      (screen) => !screen.includes('thinking high'),
       'AgentProfile close',
     )
     await pause(300)
