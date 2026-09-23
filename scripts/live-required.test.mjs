@@ -1044,12 +1044,16 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
   assert.equal(result.evidence.facts.exactResource, true)
   assert.equal(result.evidence.facts.activeResourceDelta, 0)
   assert.equal(result.evidence.observations.stress.detailed, true)
-  assert.equal(result.evidence.observations.stress.sessionSpend.rows[0].runner, 'opencode')
+  assert.equal(result.evidence.observations.stress.spend.rows[0].runner, 'opencode')
+  assert.equal(result.evidence.observations.stress.spend.rows[0].providerSessionId, '[REDACTED]')
+  assert.equal(result.evidence.observations.multirun.provider.runner, 'opencode')
+  const emitted = JSON.parse(safeJson(result.observations, {}))
+  assert.equal(emitted.multirun.provider.runner, 'opencode')
+  assert.equal(emitted.stress.spend.rows[0].providerSessionId, '[REDACTED]')
   assert.equal(
-    result.evidence.observations.stress.sessionSpend.rows[0].providerSessionId,
+    JSON.parse(safeJson({ sessionSpend: 'secret-session-value-123' }, {})).sessionSpend,
     '[REDACTED]',
   )
-  assert.equal(result.evidence.observations.multirun.provider.runner, 'opencode')
 })
 
 test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {

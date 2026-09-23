@@ -188,6 +188,12 @@ export async function runSandbox({
     exactResource: cohort.cleanup?.exactResourcesRemaining === 0,
     activeResourceDelta: typeof activeResourceDelta === 'number' ? activeResourceDelta : null,
   }
+  // Keep the measured spend in release evidence without treating its field name as a credential.
+  const { sessionSpend, ...stress } = cohort
+  const observations = {
+    stress: { ...stress, ...(sessionSpend === undefined ? {} : { spend: sessionSpend }) },
+    multirun,
+  }
   return {
     status: 'passed',
     measurement: scalarMeasurement('LIVE-07'),
@@ -201,7 +207,7 @@ export async function runSandbox({
       environmentId: localEnvironmentId,
       materializationDigest: firstRun?.materializationDigest ?? null,
       facts,
-      observations: { stress: cohort, multirun },
+      observations,
       environment,
       checks: [
         'marker',
@@ -214,7 +220,7 @@ export async function runSandbox({
         'exact-resource-cleanup',
       ],
     }),
-    observations: { stress: cohort, multirun },
+    observations,
   }
 }
 
