@@ -1,13 +1,16 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { canonicalDigest } from '../domain/canonical.js'
+import { containsControlCharacters, redactErrorMessage } from '../connection/redaction.js'
 import type { BraidEvent, BraidEventEnvelope, TurnUsage } from '../domain/events.js'
 import { reduceEvent } from '../domain/reducer.js'
 import { initialState, type BraidState } from '../domain/state.js'
+import { validateCanonicalProfile } from '../profile/profile-validation.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import { MemoryJournal } from './journal.js'
+import type { ApplicationAdmissionGate } from './admission-gate.js'
 
 export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
 
@@ -62,6 +65,7 @@ function usageFromFinal(event: Extract<RuntimeStreamEvent, { type: 'final' }>): 
 
 export class BraidApplication {
   readonly #execution: ExecutionPort
+  readonly #admission: ApplicationAdmissionGate
   readonly #ids: IdSource
   readonly #journal: MemoryJournal
   readonly #operations = new Map<string, OperationRecord>()
@@ -72,13 +76,19 @@ export class BraidApplication {
   constructor(options: {
     readonly profile: Readonly<AgentProfile>
     readonly execution: ExecutionPort
+    readonly admission: ApplicationAdmissionGate
     readonly clock: Clock
     readonly ids: IdSource
   }) {
     this.#execution = options.execution
+    this.#admission = options.admission
     this.#ids = options.ids
     this.#journal = new MemoryJournal(options.clock)
-    this.#state = initialState(structuredClone(options.profile))
+    const validation = validateCanonicalProfile(options.profile)
+    if (!validation.ok || validation.profile === undefined) {
+      throw new AppError('INVALID_PROFILE', 'Braid application profile is invalid or oversized')
+    }
+    this.#state = initialState(validation.profile)
   }
 
   state(): BraidState {
@@ -95,7 +105,9 @@ export class BraidApplication {
   }
 
   initialize(workspace: string): BraidState {
-    if (!workspace) throw new AppError('INVALID_WORKSPACE', 'Workspace must not be empty')
+    if (!workspace || containsControlCharacters(workspace)) {
+      throw new AppError('INVALID_WORKSPACE', 'Workspace must be non-empty printable text')
+    }
     if (this.#state.workspace === workspace) return this.state()
     if (this.#state.workspace !== null) {
       throw new AppError('ALREADY_INITIALIZED', 'Braid is already initialized')
@@ -109,8 +121,16 @@ export class BraidApplication {
     if (this.#state.workspace === null) {
       throw new AppError('NOT_INITIALIZED', 'Initialize a workspace before sending')
     }
-    if (!input.operationId) {
+    if (
+      typeof input.operationId !== 'string' ||
+      input.operationId.length === 0 ||
+      input.operationId.length > 256 ||
+      containsControlCharacters(input.operationId)
+    ) {
       throw new AppError('OPERATION_ID_REQUIRED', 'send requires operationId')
+    }
+    if (typeof text !== 'string' || text.length > 262_144) {
+      throw new AppError('MESSAGE_TOO_LARGE', 'Message exceeds the 262144-character limit')
     }
     if (!text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
 
@@ -167,7 +187,15 @@ export class BraidApplication {
     }
     this.#operations.set(input.operationId, operation)
     this.#activeAbort = new AbortController()
-    operation.completion = this.#execute(input.operationId, runId, text, this.#activeAbort)
+    operation.completion = this.#execute(
+      input.operationId,
+      runId,
+      turnId,
+      conversationId,
+      branchId,
+      text,
+      this.#activeAbort,
+    )
 
     return {
       operationId: input.operationId,
@@ -195,16 +223,30 @@ export class BraidApplication {
   async #execute(
     operationId: string,
     runId: string,
+    turnId: string,
+    conversationId: string,
+    branchId: string,
     text: string,
     abort: AbortController,
   ): Promise<void> {
     let terminalSeen = false
     try {
+      const profile = await this.#admission.admit({
+        operationId,
+        runId,
+        turnId,
+        branchId,
+        conversationId,
+        profile: this.#state.profile,
+        text,
+        workspace: this.#state.workspace ?? '',
+        signal: abort.signal,
+      })
       const stream = this.#execution.streamTurn({
         operationId,
         runId,
         text,
-        profile: this.#state.profile,
+        profile,
         signal: abort.signal,
       })
       for await (const runtimeEvent of stream) {
@@ -218,14 +260,14 @@ export class BraidApplication {
             status: runtimeEvent.status,
             finalText: runtimeEvent.text ?? '',
             usage: usageFromFinal(runtimeEvent),
-            ...(runtimeEvent.error ? { error: runtimeEvent.error.message } : {}),
+            ...(runtimeEvent.error ? { error: redactErrorMessage(runtimeEvent.error) } : {}),
           })
         }
       }
       if (!terminalSeen) throw new Error('Runtime stream ended without a final event')
     } catch (error) {
       if (!terminalSeen) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = redactErrorMessage(error)
         this.#commit({
           kind: 'run.finished',
           runId,

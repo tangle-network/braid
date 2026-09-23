@@ -101,6 +101,11 @@ test('blocked and unconfigured states remain explicit', async () => {
   const blocked = new BraidApplication({
     profile: DETERMINISTIC_PROFILE,
     execution,
+    admission: {
+      async admit(input) {
+        return input.profile
+      },
+    },
     clock: new FixedClock(),
     ids: new SequenceIds(),
   })

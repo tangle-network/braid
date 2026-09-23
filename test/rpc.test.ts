@@ -1,11 +1,46 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { FixedClock } from '../src/ports/clock.js'
+import { SequenceIds } from '../src/ports/ids.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
 
 async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
   yield `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`
+}
+
+async function oversizedStateApp(seedCount: number): Promise<BraidApplication> {
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution: {
+      async *streamTurn(input) {
+        yield {
+          type: 'final',
+          status: 'completed',
+          reason: 'seed complete',
+          text: '',
+          metadata: { tokenUsage: { input: 1, output: 0 } },
+          task: { id: input.runId, intent: 'seed' },
+          timestamp: '2026-08-01T00:00:00.000Z',
+        }
+      },
+    },
+    admission: {
+      async admit(input) {
+        return input.profile
+      },
+    },
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+  })
+  app.initialize('/workspace')
+  const seedText = 'x'.repeat(262_144)
+  for (let index = 0; index < seedCount; index += 1) {
+    await app.send({ operationId: `seed-${index}`, text: seedText }).completion
+  }
+  return app
 }
 
 test('JSONL send acknowledges before events and returns final semantic state', async () => {
@@ -185,6 +220,56 @@ test('JSONL rejects wrong optional types and unknown fields', async () => {
   assert.equal(app.state().messages.length, 0)
 })
 
+test('JSONL does not echo an invalid request identifier in an error response', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  let output = ''
+  await runRpc(
+    app,
+    requestInput([
+      {
+        version: 1,
+        requestId: '\u001b[31mforged',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const response = JSON.parse(output) as BraidResponse
+  assert.equal(response.type, 'error')
+  if (response.type !== 'error') assert.fail('missing invalid request error')
+  assert.equal(response.code, 'INVALID_REQUEST_ID')
+  assert.equal('requestId' in response, false)
+  assert.equal(output.includes('\u001b'), false)
+})
+
+test('JSONL reports an oversized input line instead of escaping the RPC loop', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  let output = ''
+  async function* input(): AsyncGenerator<string> {
+    yield 'x'.repeat(1_048_577)
+  }
+  const code = await runRpc(app, input(), {
+    write: (chunk) => {
+      output += chunk
+      return true
+    },
+  })
+  assert.equal(code, 1)
+  assert.deepEqual(JSON.parse(output), {
+    version: 1,
+    type: 'error',
+    code: 'INPUT_TOO_LARGE',
+    message: 'One JSONL request exceeds the input limit',
+    retryable: false,
+  })
+})
+
 test('JSONL operation replay returns current state after later sends', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   let output = ''
@@ -305,13 +390,7 @@ test('JSONL bounds direct-response replay while operation replay stays safe', as
 })
 
 test('JSONL evicts oldest responses when the replay payload budget is full', async () => {
-  const app = createBraidApplication({
-    fixture: 'deterministic',
-    profile: {
-      ...DETERMINISTIC_PROFILE,
-      description: 'x'.repeat(3 * 1024 * 1024),
-    },
-  })
+  const app = await oversizedStateApp(12)
   const states: Array<{ readonly requestId: string; readonly revision: number }> = []
   async function* input(): AsyncGenerator<string> {
     yield `${JSON.stringify({
@@ -351,13 +430,7 @@ test('JSONL evicts oldest responses when the replay payload budget is full', asy
 })
 
 test('JSONL rejects replay when one direct response exceeds the payload budget', async () => {
-  const app = createBraidApplication({
-    fixture: 'deterministic',
-    profile: {
-      ...DETERMINISTIC_PROFILE,
-      description: 'x'.repeat(RPC_REPLAY_MAX_BYTES),
-    },
-  })
+  const app = await oversizedStateApp(33)
   const responses: Array<{
     readonly type: BraidResponse['type']
     readonly code?: string
@@ -372,15 +445,11 @@ test('JSONL rejects replay when one direct response exceeds the payload budget',
         command: 'initialize',
         params: { workspace: '/workspace' },
       },
+      { version: 1, requestId: 'req-state', command: 'get_state' },
+      { version: 1, requestId: 'req-state', command: 'get_state' },
       {
         version: 1,
-        requestId: 'req-init',
-        command: 'initialize',
-        params: { workspace: '/workspace' },
-      },
-      {
-        version: 1,
-        requestId: 'req-init',
+        requestId: 'req-state',
         command: 'initialize',
         params: { workspace: '/other' },
       },

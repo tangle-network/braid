@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-01T23:28:12.161Z",
+  "generatedAt": "2026-08-03T08:29:58.420Z",
   "command": "pnpm run capture:w0",
   "fixture": "deterministic",
   "terminal": "node-pty/xterm-256color",
@@ -8,7 +8,7 @@
   "artifacts": [
     {
       "path": "40x12.png",
-      "sha256": "2f062a644ce89050128f97ac2ff76fb54776e60f3d635bed9b1767e5e8e87b59",
+      "sha256": "0071d0888263e5e685c7c69eea56663814ebc1d6579fc1f3cd255d40975bd926",
       "columns": 40,
       "rows": 12,
       "mode": "truecolor"
@@ -34,7 +34,7 @@
     },
     {
       "path": "120x40.png",
-      "sha256": "75207c5763f6f913b29f7f029fc175fea45fda10f50954f80817836e0eb29ad5",
+      "sha256": "7deffe5971398c2b209969899a80b1ab7069f7428cc1f27418bae9a2546fc7b3",
       "columns": 120,
       "rows": 40,
       "mode": "truecolor"
@@ -47,7 +47,7 @@
     },
     {
       "path": "200x60.png",
-      "sha256": "b06cb0ba7d5f693d3677e8c0bc1513335bff299a8b383059c7cbf17f894f4a2d",
+      "sha256": "c7f82b3182db44aef97d4699e78e62b499667cf3e95c0593c50627b8ccdd4db9",
       "columns": 200,
       "rows": 60,
       "mode": "truecolor"
@@ -60,7 +60,7 @@
     },
     {
       "path": "80x24-flow.gif",
-      "sha256": "2d4b1041dcfcf28c586567b63b52d95f4912fabacc111e2585afa3b653fda94e",
+      "sha256": "310c22e6566cf95abce60411a823e184609e6d6e4d570fa3eddd1b441ffaf953",
       "columns": 80,
       "rows": 24
     }

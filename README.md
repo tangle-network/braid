@@ -13,7 +13,10 @@ Provider packages own transport to CLI Bridge and Tangle.
 ## Status
 
 The W0 vertical slice is implemented: one `braid` binary, one reducer, one JSONL control interface, and one real Pi terminal transcript and composer all drive `agent-runtime`.
-The packed binary has deterministic keyboard and JSONL proof, but live CLI Bridge and Tangle connections are not implemented yet.
+The packed binary has deterministic keyboard and JSONL proof.
+W7 now provides safe profile source adapters, canonical validation, immutable selection and admission receipts, plus injected CLI Bridge and Tangle connection setup, health, and capability flows.
+The binary keeps non-secret admission ledgers and materialization receipts in the private `.braid/` workspace directory.
+Live provider materialization still requires the corresponding external services and is not claimed by local checks.
 The contract is based on current source inspection of `agent-runtime`, `agent-interface`, `cli-bridge`, `agent-eval`, Pi, Kimi Code, OpenCode, and Hermes Agent on 2026-08-01.
 
 ![Braid terminal at 80×24](artifacts/verification/w0/80x24.png)

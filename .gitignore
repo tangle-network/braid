@@ -1,4 +1,5 @@
 node_modules/
+.braid/
 dist/
 .test-dist/
 coverage/

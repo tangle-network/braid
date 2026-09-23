@@ -1,6 +1,8 @@
 import { AppError, type BraidApplication } from '../../app/application.js'
+import { containsControlCharacters, redactErrorMessage } from '../../connection/redaction.js'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
+import { type ProfileJsonLimits, parseBoundedProfileJson } from '../../profile/profile-json.js'
 import {
   BRAID_PROTOCOL_VERSION,
   type BraidRequest,
@@ -16,6 +18,13 @@ export interface RpcOutput {
 
 export const RPC_REPLAY_MAX_ENTRIES = 256
 export const RPC_REPLAY_MAX_BYTES = 8 * 1024 * 1024
+const RPC_INPUT_LIMITS: ProfileJsonLimits = Object.freeze({
+  maxBytes: 1_048_576,
+  maxDepth: 32,
+  maxNodes: 20_000,
+  maxStringLength: 262_144,
+  maxEntries: 2_048,
+})
 
 interface RequestRecord {
   readonly digest: string
@@ -30,7 +39,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function requestIdOf(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined
-  return typeof value.requestId === 'string' ? value.requestId : undefined
+  return typeof value.requestId === 'string' &&
+    value.requestId.length > 0 &&
+    value.requestId.length <= 256 &&
+    !containsControlCharacters(value.requestId)
+    ? value.requestId
+    : undefined
 }
 
 function assertAllowedKeys(
@@ -45,7 +59,7 @@ function assertAllowedKeys(
 function parseRequest(line: string): BraidRequest {
   let value: unknown
   try {
-    value = JSON.parse(line)
+    value = parseBoundedProfileJson(line, RPC_INPUT_LIMITS)
   } catch {
     throw new AppError('MALFORMED_JSON', 'Input is not valid JSON')
   }
@@ -53,7 +67,12 @@ function parseRequest(line: string): BraidRequest {
   if (value.version !== BRAID_PROTOCOL_VERSION) {
     throw new AppError('UNSUPPORTED_VERSION', 'Only protocol version 1 is supported')
   }
-  if (typeof value.requestId !== 'string' || value.requestId.length === 0) {
+  if (
+    typeof value.requestId !== 'string' ||
+    value.requestId.length === 0 ||
+    value.requestId.length > 256 ||
+    containsControlCharacters(value.requestId)
+  ) {
     throw new AppError('INVALID_REQUEST_ID', 'requestId must be a non-empty string')
   }
   if (typeof value.command !== 'string') {
@@ -68,8 +87,11 @@ function parseRequest(line: string): BraidRequest {
     case 'initialize':
       assertAllowedKeys(value, ['version', 'requestId', 'command', 'params'], 'initialize')
       assertAllowedKeys(params, ['workspace', 'subscribe'], 'initialize.params')
-      if (typeof params.workspace !== 'string') {
+      if (typeof params.workspace !== 'string' || params.workspace.length > 4_096) {
         throw new AppError('INVALID_PARAMS', 'initialize.params.workspace must be a string')
+      }
+      if (containsControlCharacters(params.workspace)) {
+        throw new AppError('INVALID_PARAMS', 'initialize.params.workspace must be printable text')
       }
       if (params.subscribe !== undefined && typeof params.subscribe !== 'boolean') {
         throw new AppError('INVALID_PARAMS', 'initialize.params.subscribe must be a boolean')
@@ -90,10 +112,15 @@ function parseRequest(line: string): BraidRequest {
     case 'send':
       assertAllowedKeys(value, ['version', 'requestId', 'operationId', 'command', 'params'], 'send')
       assertAllowedKeys(params, ['text', 'conversationId', 'branchId'], 'send.params')
-      if (typeof value.operationId !== 'string' || value.operationId.length === 0) {
+      if (
+        typeof value.operationId !== 'string' ||
+        value.operationId.length === 0 ||
+        value.operationId.length > 256 ||
+        containsControlCharacters(value.operationId)
+      ) {
         throw new AppError('OPERATION_ID_REQUIRED', 'send requires operationId')
       }
-      if (typeof params.text !== 'string') {
+      if (typeof params.text !== 'string' || params.text.length > 262_144) {
         throw new AppError('INVALID_PARAMS', 'send.params.text must be a string')
       }
       if (params.conversationId !== undefined && typeof params.conversationId !== 'string') {
@@ -101,6 +128,12 @@ function parseRequest(line: string): BraidRequest {
       }
       if (params.branchId !== undefined && typeof params.branchId !== 'string') {
         throw new AppError('INVALID_PARAMS', 'send.params.branchId must be a string')
+      }
+      if (
+        (params.conversationId !== undefined && containsControlCharacters(params.conversationId)) ||
+        (params.branchId !== undefined && containsControlCharacters(params.branchId))
+      ) {
+        throw new AppError('INVALID_PARAMS', 'send branch identifiers must be printable text')
       }
       return {
         version: 1,
@@ -127,17 +160,31 @@ function parseRequest(line: string): BraidRequest {
 async function* linesOf(input: RpcInput): AsyncGenerator<string> {
   const decoder = new TextDecoder()
   let buffered = ''
-  for await (const chunk of input) {
-    buffered += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
-    let newline = buffered.indexOf('\n')
-    while (newline >= 0) {
-      const line = buffered.slice(0, newline)
-      buffered = buffered.slice(newline + 1)
-      if (line.length > 0) yield line
-      newline = buffered.indexOf('\n')
+  const assertLineSize = (line: string): void => {
+    if (new TextEncoder().encode(line).byteLength > RPC_INPUT_LIMITS.maxBytes) {
+      throw new AppError('INPUT_TOO_LARGE', 'One JSONL request exceeds the input limit')
     }
   }
-  buffered += decoder.decode()
+  function* consume(text: string): Generator<string> {
+    let remaining = text
+    let newline = remaining.indexOf('\n')
+    while (newline >= 0) {
+      buffered += remaining.slice(0, newline)
+      assertLineSize(buffered)
+      const line = buffered
+      buffered = ''
+      if (line.length > 0) yield line
+      remaining = remaining.slice(newline + 1)
+      newline = remaining.indexOf('\n')
+    }
+    buffered += remaining
+    assertLineSize(buffered)
+  }
+  for await (const chunk of input) {
+    const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
+    yield* consume(text)
+  }
+  yield* consume(decoder.decode())
   if (buffered.length > 0) yield buffered
 }
 
@@ -148,7 +195,7 @@ function errorResponse(error: unknown, requestId?: string): ErrorResponse {
       type: 'error',
       ...(requestId ? { requestId } : {}),
       code: error.code,
-      message: error.message,
+      message: redactErrorMessage(error),
       retryable: false,
     }
   }
@@ -157,7 +204,7 @@ function errorResponse(error: unknown, requestId?: string): ErrorResponse {
     type: 'error',
     ...(requestId ? { requestId } : {}),
     code: 'INTERNAL_ERROR',
-    message: error instanceof Error ? error.message : String(error),
+    message: redactErrorMessage(error),
     retryable: false,
   }
 }
@@ -216,7 +263,7 @@ export async function runRpc(
     for await (const line of linesOf(input)) {
       let parsed: unknown
       try {
-        parsed = JSON.parse(line)
+        parsed = parseBoundedProfileJson(line, RPC_INPUT_LIMITS)
       } catch {
         parsed = undefined
       }
@@ -357,6 +404,9 @@ export async function runRpc(
       }
     }
     return 0
+  } catch (error) {
+    write(errorResponse(error))
+    return 1
   } finally {
     unsubscribe()
   }

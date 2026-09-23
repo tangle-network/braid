@@ -31,6 +31,10 @@ if (!packages.has('@earendil-works/pi-tui')) {
   violations.push('missing @earendil-works/pi-tui')
 }
 
+if (!packages.has('@tangle-network/agent-interface')) {
+  violations.push('missing @tangle-network/agent-interface')
+}
+
 if (violations.length > 0) {
   process.stderr.write(`Forbidden dependency graph entries:\n${violations.join('\n')}\n`)
   process.exitCode = 1

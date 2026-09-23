@@ -4,6 +4,7 @@ export interface CliOptions {
   readonly inline: boolean
   readonly noColor: boolean
   readonly workspace: string
+  readonly profile?: string
   readonly recordState?: string
   readonly help: boolean
   readonly version: boolean
@@ -17,6 +18,7 @@ Usage:
 
 Options:
   --workspace <path>          Workspace to open (default: current directory)
+  --profile <ref>             Select a canonical profile for this launch
   --inline                    Render in the main terminal buffer
   --no-color                  Disable color
   --fixture deterministic     Use the clearly labelled offline test provider
@@ -37,6 +39,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
   let inline = false
   let noColor = false
   let workspace = cwd
+  let profile: string | undefined
   let recordState: string | undefined
   let help = false
   let version = false
@@ -48,6 +51,9 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     else if (argument === '--no-color') noColor = true
     else if (argument === '--workspace') {
       workspace = requiredValue(argv, index, argument)
+      index += 1
+    } else if (argument === '--profile') {
+      profile = requiredValue(argv, index, argument)
       index += 1
     } else if (argument === '--record-state') {
       recordState = requiredValue(argv, index, argument)
@@ -68,6 +74,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     inline,
     noColor,
     workspace,
+    ...(profile === undefined ? {} : { profile }),
     ...(recordState ? { recordState } : {}),
     help,
     version,

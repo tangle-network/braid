@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { constants } from 'node:fs'
-import { mkdir, open, rename, rm, type FileHandle } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ProcessTerminal, TUI } from '@earendil-works/pi-tui'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { createBraidApplication } from '../app/composition.js'
+import { redactErrorMessage, redactProviderValue } from '../connection/redaction.js'
+import { withFileLock } from '../persistence/file-lock.js'
+import { readFileIdentity, replaceFileAtomically } from '../profile/profile-files.js'
+import { ProfileSourceRegistry } from '../profile/profile-sources.js'
 import { runRpc } from '../views/headless/rpc.js'
 import { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import { createBraidTheme } from '../views/tui/theme.js'
@@ -18,25 +20,22 @@ async function recordState(
   app: ReturnType<typeof createBraidApplication>,
 ): Promise<void> {
   const target = resolve(path)
-  const temporary = `${target}.${randomUUID()}.tmp`
-  await mkdir(dirname(target), { recursive: true })
-  let file: FileHandle | undefined = await open(
-    temporary,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-    0o600,
-  )
-  try {
-    await file.writeFile(
-      `${JSON.stringify({ schemaVersion: 1, state: app.state(), events: app.events() }, null, 2)}\n`,
-    )
-    await file.sync()
-    await file.close()
-    file = undefined
-    await rename(temporary, target)
-  } finally {
-    await file?.close().catch(() => {})
-    await rm(temporary, { force: true })
+  const safe = redactProviderValue({ state: app.state(), events: app.events() })
+  if (safe === null || typeof safe !== 'object' || Array.isArray(safe)) {
+    throw new Error('Recorded state could not be represented as an object')
   }
+  const bytes = new TextEncoder().encode(
+    `${JSON.stringify({ schemaVersion: 1, ...safe }, null, 2)}\n`,
+  )
+  await withFileLock(target, async () => {
+    const current = await readFileIdentity(target)
+    await replaceFileAtomically({
+      path: target,
+      bytes,
+      mode: 0o600,
+      expected: current?.identity,
+    })
+  })
 }
 
 async function main(): Promise<number> {
@@ -44,7 +43,7 @@ async function main(): Promise<number> {
   try {
     options = parseArgs(process.argv.slice(2), process.cwd())
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n\n${HELP}`)
+    process.stderr.write(`${redactErrorMessage(error)}\n\n${HELP}`)
     return 2
   }
   if (options.help) {
@@ -56,8 +55,16 @@ async function main(): Promise<number> {
     return 0
   }
 
+  const selectedProfileDocument =
+    options.profile === undefined
+      ? undefined
+      : await new ProfileSourceRegistry().resolve(options.profile)
   const app = createBraidApplication({
     ...(options.fixture ? { fixture: options.fixture, chunkDelayMs: 12 } : {}),
+    admissionStorageDirectory: join(resolve(options.workspace), '.braid'),
+    ...(selectedProfileDocument === undefined
+      ? {}
+      : { profileDocument: selectedProfileDocument, profile: selectedProfileDocument.profile }),
   })
 
   if (options.mode === 'rpc') {
@@ -116,6 +123,6 @@ main()
     process.exitCode = exitCode
   })
   .catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`)
+    process.stderr.write(`${redactErrorMessage(error)}\n`)
     process.exitCode = 1
   })
