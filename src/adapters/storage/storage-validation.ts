@@ -19,6 +19,7 @@ const POST_TERMINAL_SIDEBAND_EVENT_KINDS: ReadonlySet<string> = new Set([
   'run.cancel.requested',
   'run.control.acknowledged',
   'run.control.requested',
+  'run.focused',
   'run.interaction.responded',
   'run.interaction.response.requested',
   'run.queue.removed',
@@ -27,7 +28,7 @@ const POST_TERMINAL_SIDEBAND_EVENT_KINDS: ReadonlySet<string> = new Set([
 
 /**
  * A provider terminal event closes run output, not commands already racing with it.
- * These events record command settlement or local bookkeeping without reopening output.
+ * These events record command settlement or local navigation without reopening output.
  */
 export function canAppendAfterTerminal(event: Pick<JournalEvent, 'kind' | 'terminal'>): boolean {
   return event.terminal !== true && POST_TERMINAL_SIDEBAND_EVENT_KINDS.has(event.kind)
