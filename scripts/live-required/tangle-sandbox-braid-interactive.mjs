@@ -1391,6 +1391,8 @@ async function runProof({
   let recordPath
   let identity
   let materialization
+  // The last identity the flow verified; the failure-state capture can time out while Braid is wedged.
+  let verifiedIdentity
   let client
   let proofData
   let proofError
@@ -1470,6 +1472,7 @@ async function runProof({
         timeoutMs,
       })
     runObserved = stateDiagnostic(initialFrame).length > 0
+    verifiedIdentity = initialIdentity
     const initialAttach = await observeSandbox(
       client,
       initialIdentity.controlRef,
@@ -1522,6 +1525,7 @@ async function runProof({
       reconnectedIdentity.controlRef,
       'native reconnect provider control reference',
     )
+    verifiedIdentity = reconnectedIdentity
     const reconnectBeforeScreen = runtime.screen
     const reconnectActionRevision = runtime.terminalOutputRevision
     runtime.write(`${reconnectCommand}\r`)
@@ -1619,6 +1623,7 @@ async function runProof({
         )
       }
     }
+    identity ??= verifiedIdentity
     failures.push(new Error(`last Braid terminal screen: ${terminalDiagnostic(runtime)}`))
     proofError = new AggregateError(failures, 'Braid native interactive flow failed')
   }
