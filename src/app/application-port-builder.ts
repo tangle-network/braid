@@ -51,7 +51,7 @@ export interface PortBuilderInput {
   readonly clock: Clock
   readonly ids: IdSource
   readonly flush: () => Promise<void>
-  readonly nextStateChange: () => Promise<void>
+  readonly nextStateChange: (signal: AbortSignal) => Promise<void>
   readonly storageFailure: () => unknown
   readonly executeControl: (
     input: import('./application-ports.js').ControlEffectRequest,

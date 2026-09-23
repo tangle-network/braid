@@ -59,13 +59,22 @@ export function wireApplicationRuntime(
   const stateWaiters = new Set<() => void>()
   const setState = (state: BraidState): void => {
     input.setState(state)
-    const waiters = [...stateWaiters]
-    stateWaiters.clear()
-    for (const resolve of waiters) resolve()
+    for (const wake of [...stateWaiters]) wake()
   }
-  const nextStateChange = (): Promise<void> =>
+  // Aborting the signal removes the waiter, so abandoned waits do not accumulate on a quiet app.
+  const nextStateChange = (signal: AbortSignal): Promise<void> =>
     new Promise((resolve) => {
-      stateWaiters.add(resolve)
+      if (signal.aborted) {
+        resolve()
+        return
+      }
+      const wake = (): void => {
+        stateWaiters.delete(wake)
+        signal.removeEventListener('abort', wake)
+        resolve()
+      }
+      stateWaiters.add(wake)
+      signal.addEventListener('abort', wake, { once: true })
     })
   const transition = createTransitionHost({
     state: input.currentState,

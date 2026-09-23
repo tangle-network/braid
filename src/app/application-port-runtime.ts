@@ -37,7 +37,7 @@ export interface ApplicationPortRuntimeInput {
     options?: ControlDispatchOptions,
   ) => Promise<import('../ports/execution.js').ControlAcknowledgement>
   readonly flush: () => Promise<void>
-  readonly nextStateChange: () => Promise<void>
+  readonly nextStateChange: (signal: AbortSignal) => Promise<void>
   readonly storageFailure: () => unknown
   readonly send: (input: SendInput) => SendReceipt
   readonly afterRuntimeEvent?: import('./application-port-builder.js').PortBuilderInput['afterRuntimeEvent']

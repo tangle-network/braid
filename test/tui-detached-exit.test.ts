@@ -3,10 +3,10 @@ import test from 'node:test'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import type { StatusPort } from '../src/app/application-ports.js'
-import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { createRunLedger } from '../src/app/run-ledger.js'
 import { isTerminal, waitForIdle } from '../src/app/run-status.js'
+import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import { isLiveRunStatus } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
@@ -125,11 +125,18 @@ test('waiting for idle returns for a detached retained run instead of spinning',
     },
     ledger,
     isTerminal,
-    nextStateChange: () => new Promise<void>(() => undefined),
+    nextStateChange: (signal: AbortSignal) => {
+      subscriptions.push(signal)
+      return new Promise<void>(() => undefined)
+    },
   } as unknown as StatusPort
+  const subscriptions: AbortSignal[] = []
   const idle = await waitForIdle(context)
   assert.equal(idle.runs[0]?.status, 'detached')
   assert.ok(reads <= 3, `waitForIdle read state ${String(reads)} times`)
+  // An idle return must release its state-change subscription instead of leaving a waiter behind.
+  assert.ok(subscriptions.length > 0)
+  assert.ok(subscriptions.every((signal) => signal.aborted))
   await app.close()
 })
 

@@ -160,7 +160,7 @@ export type ReplayPort = StateReader &
 
 export interface StateChangeAccess {
   /** Resolves after the next committed state transition has replaced the current state. */
-  readonly nextStateChange: () => Promise<void>
+  readonly nextStateChange: (signal: AbortSignal) => Promise<void>
 }
 
 export type StatusPort = StateReader & LedgerAccess & StateChangeAccess
