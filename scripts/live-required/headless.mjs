@@ -601,9 +601,20 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
   }
 }
 
-export async function verifyUnavailableCancellation({ session, run, marker }) {
-  if (run?.capabilities?.controls?.cancel !== false) {
-    throw new Error(`turn ${run?.id ?? 'missing'} did not report cancellation as unavailable`)
+export function admittedCancellationSupport(run, admission) {
+  if (
+    typeof run?.id !== 'string' ||
+    admission?.runId !== run.id ||
+    typeof admission?.capabilities?.controls?.cancel !== 'boolean'
+  ) {
+    throw new Error(`turn ${run?.id ?? 'missing'} lacks a matching cancellation capability receipt`)
+  }
+  return admission.capabilities.controls.cancel
+}
+
+export async function verifyUnavailableCancellation({ session, run, admission, marker }) {
+  if (admittedCancellationSupport(run, admission) !== false) {
+    throw new Error(`turn ${run.id} did not report cancellation as unavailable`)
   }
   const request = {
     ...requestBase(
