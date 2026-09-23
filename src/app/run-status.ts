@@ -81,7 +81,11 @@ export async function waitForIdle(context: StatusPort): Promise<BraidState> {
         observe(operation.completion)
         waits.push(operation.completion)
       }
-      if (waits.length === 0 && !awaitsStateChange) return structuredClone(context.currentState())
+      if (waits.length === 0 && !awaitsStateChange) {
+        // A control acknowledgement can admit another live run; re-evaluate a changed state.
+        if (context.currentState().revision !== state.revision) continue
+        return structuredClone(context.currentState())
+      }
       await Promise.race([...waits, stateChanged])
     } finally {
       // Every exit from this iteration drops its waiter, including an early return.

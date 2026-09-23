@@ -8,7 +8,7 @@ import { createRunLedger } from '../src/app/run-ledger.js'
 import { isTerminal, waitForIdle } from '../src/app/run-status.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { isLiveRunStatus } from '../src/domain/state.js'
+import { type BraidState, isLiveRunStatus } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { TuiMainScreen } from '../src/startup/terminal-runtime.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
@@ -138,6 +138,61 @@ test('waiting for idle returns for a detached retained run instead of spinning',
   assert.ok(subscriptions.length > 0)
   assert.ok(subscriptions.every((signal) => signal.aborted))
   await app.close()
+})
+
+test('waiting for idle re-evaluates runs admitted while a control acknowledgement was pending', async () => {
+  const stateFor = (revision: number, runs: readonly { id: string; status: string }[]) =>
+    ({
+      revision,
+      runs,
+      activeRuns: runs.map((run) => ({ runId: run.id })),
+      activeRunId: null,
+    }) as unknown as BraidState
+  let state = stateFor(1, [{ id: 'run-controlled', status: 'running' }])
+  let releaseOther: (() => void) | undefined
+  const other = new Promise<void>((resolve) => {
+    releaseOther = resolve
+  })
+  const ledger = createRunLedger()
+  ledger.setControl('op-detach', {
+    digest: 'detach',
+    runId: 'run-controlled',
+    control: 'detach',
+    completion: Promise.resolve(state),
+    // The acknowledgement detaches this run and admits another live run on a different branch.
+    acknowledgement: new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
+      state = stateFor(2, [
+        { id: 'run-controlled', status: 'detached' },
+        { id: 'run-other', status: 'running' },
+      ])
+      return { operationId: 'op-detach', outcome: 'accepted' as const }
+    }),
+  })
+  ledger.setOperation({
+    digest: 'send-other',
+    runId: 'run-other',
+    admission: { operationId: 'op-other' } as unknown as RunAdmissionReceipt,
+    completion: other,
+  })
+  const context = {
+    currentState: () => state,
+    ledger,
+    isTerminal,
+    nextStateChange: (_signal: AbortSignal) => new Promise<void>(() => undefined),
+  } as unknown as StatusPort
+  let resolved = false
+  const idle = waitForIdle(context).then((result) => {
+    resolved = true
+    return result
+  })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(resolved, false, 'waitForIdle returned while another run was live')
+  state = stateFor(3, [
+    { id: 'run-controlled', status: 'detached' },
+    { id: 'run-other', status: 'completed' },
+  ])
+  releaseOther?.()
+  assert.equal((await idle).revision, 3)
 })
 
 test('waiting for idle holds a live run whose local operation settled until it turns terminal', async () => {
