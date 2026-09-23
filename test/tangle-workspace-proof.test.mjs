@@ -11,6 +11,7 @@ import {
 
 import {
   assertProofReceipt,
+  normalizeExternalFailure,
   PROOF_OPERATIONS,
   proofReceipt,
 } from '../scripts/live-required/contracts.mjs'
@@ -24,6 +25,8 @@ import {
   resourceCensusComparison,
   settledSourceState,
   sourceIdentityForRun,
+  uncapturedSourceIdentityError,
+  workspaceProofFailure,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
 const DIGEST = `sha256:${'1'.repeat(64)}`
@@ -829,4 +832,122 @@ test('LIVE-09 reconciles a source run that is still live when its send settles',
   // The stalled request is aborted and settles before settling reports the timeout.
   assert.equal(aborted, true)
   assert.equal(settledAfterAbort, true)
+})
+
+test('workspace proof failure keeps cleanup failures behind a proof failure', () => {
+  const primary = new Error('Source workspace marker was not materialized exactly')
+  const leaked = new Error('source environment sbx-1 cleanup failed')
+  const failure = workspaceProofFailure(primary, [leaked])
+  assert(failure instanceof AggregateError)
+  assert.equal(failure.code, 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE')
+  assert.deepEqual(failure.errors, [leaked, primary])
+  assert.equal(failure.primaryError, primary)
+  assert.deepEqual(failure.cleanupErrors, [leaked])
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  assert.match(
+    normalized.message,
+    /proof failed \(Source workspace marker was not materialized exactly\) and cleanup was incomplete/u,
+  )
+  assert.match(normalized.message, /marker was not materialized exactly/u)
+  assert.match(normalized.message, /sbx-1 cleanup failed/u)
+})
+
+test('workspace proof failure reports cleanup alone and passes a clean failure through', () => {
+  const primary = new Error('proof failed')
+  assert.equal(workspaceProofFailure(primary, []), primary)
+  assert.equal(workspaceProofFailure(undefined, []), undefined)
+  const unavailable = Object.assign(new Error('close failed'), { unavailable: true })
+  const failure = workspaceProofFailure(undefined, [unavailable, new Error('config failed')])
+  assert(failure instanceof AggregateError)
+  assert.equal(failure.code, 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE')
+  assert.equal(failure.errors.length, 2)
+  // A cleanup failure must fail the row, never read as an unavailable path.
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  assert.equal(normalized.code, 'LIVE_REAL_PATH_FAILED')
+  assert.match(normalized.message, /close failed/u)
+  assert.match(normalized.message, /config failed/u)
+})
+
+test('an admitted source run without a captured identity is a cleanup failure', () => {
+  const app = { state: () => ({ runs: [{ id: 'run-prior' }, { id: 'run-source' }] }) }
+  const error = uncapturedSourceIdentityError(app, new Set(['run-prior']), 'LIVE-09')
+  assert.match(
+    error.message,
+    /^LIVE-09 source identity was never captured for run run-source; source environment cleanup was not attempted$/u,
+  )
+  assert.equal(uncapturedSourceIdentityError(app, new Set(['run-prior', 'run-source'])), undefined)
+  const unreadable = uncapturedSourceIdentityError(
+    {
+      state: () => {
+        throw new Error('application closed')
+      },
+    },
+    new Set(),
+    'LIVE-10',
+  )
+  assert.match(unreadable.message, /^LIVE-10 source identity was never captured/u)
+  assert.equal(unreadable.cause.message, 'application closed')
+  const failure = workspaceProofFailure(new Error('source admission failed'), [error])
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  assert.match(normalized.message, /source environment cleanup was not attempted/u)
+})
+
+test('workspace resource cleanup keeps every failure, not only the first', async () => {
+  const run = {
+    id: 'run-source-leak',
+    status: 'running',
+    controlRef: { environmentId: 'sandbox-source-leak' },
+  }
+  const app = { state: () => ({ runs: [run], operations: [] }) }
+  const adapters = {
+    // The provider still reports the source, but exposes no destroy handle.
+    freshEnvironment: async () => ({}),
+  }
+  const result = await cleanupWorkspaceProofResources({
+    cleanupOwner: { app },
+    adapters,
+    source: { run, providerId: 'sandbox-source-leak' },
+    proofId: 'live-09-cleanup-errors',
+  })
+  assert.equal(result.sourceDestroyed, false)
+  assert.deepEqual(
+    result.cleanupErrors.map((error) => error.message),
+    [
+      'Braid did not expose source-run cancellation for cleanup',
+      'Tangle Sandbox did not expose source environment cleanup',
+    ],
+  )
+})
+
+test('workspace proof failure reports cleanup failures ahead of a verbose proof failure', () => {
+  const verbose = new AggregateError(
+    Array.from({ length: 10 }, (_, index) => new Error(`proof detail ${String(index)}`)),
+    'LIVE-09 proof failed',
+  )
+  const leaks = Array.from(
+    { length: 6 },
+    (_, index) => new Error(`source environment sbx-${String(index)} cleanup failed`),
+  )
+  // Workspace cleanup reports its credential and temporary-root failures as one nested aggregate.
+  const nested = [
+    ...leaks.slice(0, 4),
+    new AggregateError(leaks.slice(4), 'Braid workspace cleanup incomplete'),
+  ]
+  const failure = workspaceProofFailure(verbose, nested)
+  assert.deepEqual(failure.cleanupErrors, leaks)
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  for (const leak of leaks) assert.match(normalized.message, new RegExp(leak.message, 'u'))
+  assert.match(normalized.message, /LIVE workspace proof failed \(LIVE-09 proof failed\)/u)
+
+  // Seven cleanup leaves fill every remaining slot; the proof failure still leads the report.
+  const crowded = normalizeExternalFailure(
+    workspaceProofFailure(new Error('Source run did not complete'), [
+      ...leaks,
+      new Error('temporary root removal failed'),
+    ]),
+    'LIVE-09 built-in Tangle proof',
+    {},
+  )
+  assert.match(crowded.message, /proof failed \(Source run did not complete\)/u)
+  assert.match(crowded.message, /temporary root removal failed/u)
 })
