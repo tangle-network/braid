@@ -465,6 +465,15 @@ test('LIVE-07 release artifact validation requires complete multirun evidence an
           branchA: { ...validMultirunProof().workspace.branchA, gitStdout },
         },
       })),
+      {
+        ...validMultirunProof(),
+        workspace: {
+          branchA: {
+            ...validMultirunProof().workspace.branchA,
+            path: '.braid-live/OTHER_MARKER/marker.txt',
+          },
+        },
+      },
     ]) {
       await writeFile(artifactPath, `${JSON.stringify(proof)}\n`)
       const invalid = await readLiveTangleProof({

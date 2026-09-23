@@ -105,7 +105,10 @@ function assertBranchAWorkspaceProof(proof) {
       workspace.providerEnvironmentId === proof.runs[0].providerEnvironmentId,
     'LIVE-07 branch A workspace proof is not bound to the branch A provider environment',
   )
-  assert(text(workspace.path), 'LIVE-07 branch A workspace proof has no file path')
+  assert(
+    workspace.path === `.braid-live/${proof.markers.branchA}/marker.txt`,
+    'LIVE-07 branch A workspace proof used the wrong marker path',
+  )
   const expected = `${proof.markers.branchA}\n`
   assert(
     workspace.readValueJson === JSON.stringify(expected) &&
