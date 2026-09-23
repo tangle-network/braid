@@ -3,6 +3,8 @@ import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
 import type { RetainedExecutionPlan, RetainedTurnResult } from './retained-execution-contract.js'
 import type { RetainedExecutionState } from './retained-execution-state.js'
 
+const TERMINAL_STREAM_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed', 'cancelled'])
+
 export async function* streamRetainedExecution(input: {
   readonly runId: string
   readonly handle: RetainedRunHandle
@@ -54,14 +56,25 @@ export async function* streamRetainedExecution(input: {
     }
     signal.throwIfAborted()
     const providerSequence = Math.max(0, input.afterSequence - 1)
-    for await (const envelope of input.handle.events({
-      ...(input.after === undefined
-        ? {}
-        : { after: { cursor: input.after, sequence: providerSequence } }),
-      signal,
-    })) {
-      sequence = envelope.sequence + 1
-      yield { ...envelope, runId: input.runId, sequence }
+    let terminalStatusSeen = false
+    try {
+      for await (const envelope of input.handle.events({
+        ...(input.after === undefined
+          ? {}
+          : { after: { cursor: input.after, sequence: providerSequence } }),
+        signal,
+      })) {
+        sequence = envelope.sequence + 1
+        if (envelope.event.type === 'status' && TERMINAL_STREAM_STATUSES.has(envelope.event.status))
+          terminalStatusSeen = true
+        yield { ...envelope, runId: input.runId, sequence }
+      }
+    } catch (error) {
+      // A stream that already reported its terminal status carries no more run content, and
+      // the exact result endpoint stays authoritative. Sandbox SDK 0.45 ends a failed run's
+      // stream with a synthetic `done` that names the harness session, which the provider
+      // rejects; without this read, the run's failure detail and usage are lost.
+      if (!terminalStatusSeen || signal.aborted) throw error
     }
     const result =
       input.terminalResult === undefined ? await input.handle.result() : await input.terminalResult

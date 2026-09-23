@@ -33,6 +33,9 @@ The Runtime compatibility blocker is resolved by `0.252.1`; remaining release re
 
 The installed Tangle provider publishes `sandbox >=0.39.0 <1.0.0` as a peer range and depends on `agent-interface ^2.10.0`.
 Provider `1.6.0` accepts an id-less `stream.terminal` replay frame and has no string bound on replayed event data.
+Sandbox `0.45.0` ends a failed run's stream with an id-less synthetic `done` frame.
+That frame carries the harness-native session id that `streamPrompt` adopted from `session.updated`, so the provider rejects it.
+Braid reads the exact retained result when the stream fails after it has already reported a terminal status.
 
 Sandbox `0.45.0` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
 
@@ -749,6 +752,10 @@ An SSE connection ending without a terminal event triggers status reconciliation
 Duplicate event identifiers produce no duplicate transcript part, tool row, usage total, interaction, or terminal result.
 
 Terminal run status is immutable except for an explicit correction from unknown when external evidence becomes available.
+
+A provider `status` frame can make a run terminal before the stream's final event.
+Braid keeps reading that stream until the final event, which carries the exact result error, reason, and usage.
+Reading stops at the first event that contradicts the terminal status.
 
 ## Version and release order
 

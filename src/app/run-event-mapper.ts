@@ -309,7 +309,7 @@ function canonicalPart(part: Part, source: ProviderEventMeta): BraidMessagePart 
   }
 }
 
-function statusFromCanonical(
+export function statusFromCanonical(
   status: Extract<StreamEvent, { type: 'status' }>['status'],
 ): RunStatus {
   switch (status) {

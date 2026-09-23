@@ -1,10 +1,15 @@
 import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
-import { isRuntimeEventEnvelope } from '../domain/runtime-events.js'
-import { activeRunForBranch } from '../domain/state.js'
+import { type BraidRuntimeEvent, isRuntimeEventEnvelope } from '../domain/runtime-events.js'
+import { activeRunForBranch, type RunStatus } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
-import { eventIdFor, providerMeta } from './run-event-mapper.js'
+import {
+  eventIdFor,
+  providerMeta,
+  statusFromCanonical,
+  terminalStatus,
+} from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { reconnectRun } from './run-replay.js'
 
@@ -15,6 +20,8 @@ export async function executeRun(
   abort: AbortController,
 ): Promise<void> {
   let terminalSeen = false
+  // Set when a provider status frame made the run terminal before the stream's final event.
+  let awaitingFinal = false
   let eventSequence = 0
   try {
     const currentRun = context.currentState().runs.find((run) => run.id === admission.runId)
@@ -57,7 +64,9 @@ export async function executeRun(
     if (context.ledger.isDetached(admission.runId)) return
     for await (const runtimeEvent of context.execution.streamTurn(runtimeInput)) {
       if (context.ledger.isDetached(admission.runId)) break
-      if (context.isTerminal(context.findRun(admission.runId).status)) break
+      const status = context.findRun(admission.runId).status
+      const event = isRuntimeEventEnvelope(runtimeEvent) ? runtimeEvent.event : runtimeEvent
+      if (context.isTerminal(status) && !(awaitingFinal && continuesTerminal(status, event))) break
       if (terminalSeen) break
       if (isRuntimeEventEnvelope(runtimeEvent)) {
         const result = await context.ingestRuntimeEvent(runtimeEvent)
@@ -66,6 +75,7 @@ export async function executeRun(
           await context.flush()
           break
         }
+        awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
         continue
       }
       eventSequence += 1
@@ -85,6 +95,7 @@ export async function executeRun(
         await context.flush()
         break
       }
+      awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
     }
     if (context.ledger.isDetached(admission.runId)) return
     if (!terminalSeen) await finishWithoutTerminal(context, input, admission, abort)
@@ -104,6 +115,37 @@ export async function executeRun(
       !context.currentState().missingHistory.some((range) => range.runId === finalRun.id)
     )
       await drainQueue(context)
+  }
+}
+
+function reachedTerminalByStatus(
+  context: ExecutionRunPort,
+  runId: string,
+  result: { readonly accepted: boolean },
+  event: BraidRuntimeEvent,
+): boolean {
+  return (
+    result.accepted && event.type === 'status' && context.isTerminal(context.findRun(runId).status)
+  )
+}
+
+/**
+ * A provider can report a terminal status before the stream's final event.
+ * Only that final carries the exact result: its error, reason, and usage.
+ * Retained Tangle runs stream `status: failed` and then project the final from the result endpoint.
+ * Reading stops at the first event that would contradict the terminal status.
+ */
+function continuesTerminal(status: RunStatus, event: BraidRuntimeEvent): boolean {
+  switch (event.type) {
+    case 'final':
+      return terminalStatus(event.status) === status
+    case 'status':
+      return statusFromCanonical(event.status) === status
+    case 'interaction':
+    case 'interaction.cancel':
+      return false
+    default:
+      return true
   }
 }
 

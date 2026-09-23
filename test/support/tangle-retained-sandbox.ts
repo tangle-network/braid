@@ -131,6 +131,49 @@ export class FakeTangleRetainedSandbox {
     this.#settle(executionId, 'completed', text)
   }
 
+  /**
+   * Fail the execution with the stream Tangle Sandbox delivered on 2026-09-23.
+   * The harness names its native session, then the tail is a warning, `status: failed` with
+   * its detail, the harness's raw error, a repeated `status: failed`, and the `error` frame.
+   * The stream ends without `done`, so the Sandbox SDK 0.45 `streamPrompt` appends an id-less
+   * synthetic `done` that carries the native session id it adopted from `session.updated`.
+   * The exact result endpoint reports the same failure text.
+   */
+  fail(executionId: string, error: string): void {
+    const execution = this.#requireExecution(executionId)
+    const frame = (type: string, data: Record<string, unknown>) =>
+      ({
+        type,
+        id: `event-${executionId}-${execution.events.length + 1}`,
+        data: { type, ...data },
+      }) as SandboxEvent
+    const nativeSessionId = `ses_native_${executionId}`
+    execution.events.push(frame('session.updated', { sessionId: nativeSessionId }))
+    execution.events.push(frame('warning', { code: 'OPENCODE_ERROR', message: error }))
+    execution.events.push(frame('status', { status: 'failed', detail: error }))
+    execution.events.push(
+      frame('raw', {
+        backend: 'opencode',
+        event: { type: 'error', sessionID: 'ses_native', error: { name: 'APIError' } },
+      }),
+    )
+    execution.events.push(frame('status', { status: 'failed', detail: `${error} (exit code 1)` }))
+    execution.events.push(
+      frame('error', {
+        usageMode: 'cumulative',
+        tokensKnown: false,
+        usdKnown: false,
+        message: `opencode execution failed: ${error} (exit code 1)`,
+      }),
+    )
+    execution.events.push({
+      type: 'done',
+      data: { status: 'failed', sessionId: nativeSessionId, executionId },
+    } as SandboxEvent)
+    execution.error = `opencode execution failed: ${error} (exit code 1)`
+    this.#settle(executionId, 'failed', '')
+  }
+
   controlRefForExecution(executionId: string): AgentExactRunControlRef | null {
     const exact = this.#executions.get(executionId)?.controlRef
     return exact === undefined ? null : structuredClone(exact)
