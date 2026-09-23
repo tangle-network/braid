@@ -1787,7 +1787,8 @@ export function uncapturedSourceIdentityError(app, runIdsBeforeSource, row = 'LI
 // keeps billing after the run reports only its first error.
 // The list is flat with cleanup first: the failure report keeps a bounded number of messages, and a
 // leak must not be the part that gets truncated behind a verbose proof failure.
-export function workspaceProofFailure(primaryError, cleanupErrors) {
+export function workspaceProofFailure(primaryError, nestedCleanupErrors) {
+  const cleanupErrors = nestedCleanupErrors.flatMap(leafErrors)
   if (cleanupErrors.length === 0) return primaryError
   const failure = new AggregateError(
     primaryError === undefined ? cleanupErrors : [...cleanupErrors, primaryError],
@@ -1799,6 +1800,13 @@ export function workspaceProofFailure(primaryError, cleanupErrors) {
   failure.cleanupErrors = cleanupErrors
   if (primaryError !== undefined) failure.primaryError = primaryError
   return failure
+}
+
+// Aggregate headers spend report slots without naming a failed resource, so cleanup keeps leaves.
+function leafErrors(error) {
+  return error instanceof AggregateError && error.errors.length > 0
+    ? error.errors.flatMap(leafErrors)
+    : [error]
 }
 
 export function runWorkspaceForkProof(input) {

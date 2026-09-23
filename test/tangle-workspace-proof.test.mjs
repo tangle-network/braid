@@ -925,10 +925,13 @@ test('workspace proof failure reports cleanup failures ahead of a verbose proof 
     { length: 6 },
     (_, index) => new Error(`source environment sbx-${String(index)} cleanup failed`),
   )
-  const normalized = normalizeExternalFailure(
-    workspaceProofFailure(verbose, leaks),
-    'LIVE-09 built-in Tangle proof',
-    {},
-  )
+  // Workspace cleanup reports its credential and temporary-root failures as one nested aggregate.
+  const nested = [
+    ...leaks.slice(0, 4),
+    new AggregateError(leaks.slice(4), 'Braid workspace cleanup incomplete'),
+  ]
+  const failure = workspaceProofFailure(verbose, nested)
+  assert.deepEqual(failure.cleanupErrors, leaks)
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
   for (const leak of leaks) assert.match(normalized.message, new RegExp(leak.message, 'u'))
 })
