@@ -6,7 +6,7 @@ import type { ExecutionRunPort, SendAccess } from './application-ports.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
 import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
-import { continuesTerminal } from './run-final-recovery.js'
+import { continuesTerminal, recoverPendingFinal } from './run-final-recovery.js'
 import { reconnectRun } from './run-replay.js'
 
 export async function executeRun(
@@ -94,12 +94,16 @@ export async function executeRun(
       awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
     }
     if (context.ledger.isDetached(admission.runId)) return
+    if (!terminalSeen && awaitingFinal && !abort.signal.aborted)
+      await recoverPendingFinal(context, admission.runId)
     if (!terminalSeen) await finishWithoutTerminal(context, input, admission, abort)
   } catch (error) {
     if (context.ledger.isDetached(admission.runId)) return
     const message = safeRuntimeDiagnostic(error, 'RUNTIME_EXECUTION_ERROR')
     if (terminalSeen) throw error
-    if (!terminalSeen) await finishAfterError(context, input, admission, abort, message)
+    // The run is already terminal, so reconnection refuses it; read its final result once here.
+    if (awaitingFinal && !abort.signal.aborted) await recoverPendingFinal(context, admission.runId)
+    await finishAfterError(context, input, admission, abort, message)
   } finally {
     context.ledger.deleteAbort(admission.runId)
     context.ledger.clearExplicitlyCancelled(admission.runId)

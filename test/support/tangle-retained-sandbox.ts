@@ -82,6 +82,8 @@ export class FakeTangleRetainedSandbox {
    */
   replayTerminalFrames = false
   failDelete = false
+  /** Reject this many exact result reads with a transient transport error before answering. */
+  failResultReads = 0
   providerRunId?: string
 
   readonly #boxesByKey = new Map<string, FakeRetainedBox>()
@@ -346,6 +348,12 @@ export class FakeTangleRetainedSandbox {
             const execution = sandbox.#requireExecution(executionId)
             while (execution.status === 'running') {
               await sandbox.#wait(execution, options?.signal)
+            }
+            if (sandbox.failResultReads > 0) {
+              sandbox.failResultReads -= 1
+              throw Object.assign(new Error('Injected transient result read failure'), {
+                status: 503,
+              })
             }
             const success = execution.status === 'completed'
             return {

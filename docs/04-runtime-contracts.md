@@ -759,6 +759,9 @@ Reading stops at the first event that contradicts the terminal status.
 If Braid exits before that final event, the journal still shows a terminal `run.status.changed` with no `run.finished`.
 On restart Braid replays such an exactly bound run after its saved cursor, within a bounded deadline, to read the final result.
 That replay ingests only events that continue the committed status, so the terminal status never regresses.
+The whole replay races its deadline, so startup and new sends proceed even when a provider ignores the abort.
+A read that settles after the deadline commits nothing.
+When the stream or the final read fails in the same session, Braid runs this bounded replay once instead of waiting for a restart.
 
 ## Version and release order
 

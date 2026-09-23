@@ -172,6 +172,11 @@ export interface ExecutionPort {
       readonly controlRef?: AgentExactRunControlRef
       readonly signal: AbortSignal
       readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
+      /**
+       * The run is already terminal from a streamed status and awaits only its final result.
+       * A stream failure then falls back to the exact result instead of ending the replay.
+       */
+      readonly afterTerminalStatus?: boolean
     } & RetainedExecutionRecoveryContext,
   ): AsyncIterable<RuntimeEventEnvelope>
   nativeBoundary?(

@@ -85,21 +85,24 @@ export async function recoverPendingFinalResults(
   )
 }
 
-async function recoverPendingFinal(
+/**
+ * Replay one exactly bound, terminal-by-status run to read its final result, once.
+ * The whole read races the deadline, because a provider need not honor the abort signal:
+ * the caller always proceeds at the deadline, and a read that settles later commits nothing.
+ */
+export async function recoverPendingFinal(
   context: ReplayPort,
   runId: string,
-  timeoutMs: number,
+  timeoutMs = PENDING_FINAL_RECOVERY_TIMEOUT_MS,
 ): Promise<void> {
   const execution = context.execution
   if (execution.reconnect === undefined) return
+  const reconnect = execution.reconnect.bind(execution)
   const run = context.findRun(runId)
+  if (!mayAwaitFinalResult(run)) return
   const abort = new AbortController()
-  const timer = setTimeout(
-    () => abort.abort(new Error('Pending final result recovery deadline')),
-    timeoutMs,
-  )
-  try {
-    for await (const envelope of execution.reconnect({
+  const replay = (async () => {
+    for await (const envelope of reconnect({
       runId,
       ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
       afterSequence: run.lastProviderSequence,
@@ -107,18 +110,33 @@ async function recoverPendingFinal(
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
       ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
       signal: abort.signal,
+      afterTerminalStatus: true,
     })) {
+      // Checked before every ingest: nothing commits once the deadline has passed.
+      if (abort.signal.aborted) return
       const current = context.findRun(runId)
-      if (!continuesTerminal(current.status, envelope.event)) break
+      if (!continuesTerminal(current.status, envelope.event)) return
       // A gap would reopen the run for reconnection, so only the next event is ingested.
-      if (envelope.sequence > current.lastProviderSequence + 1) break
+      if (envelope.sequence > current.lastProviderSequence + 1) return
       const result = await context.ingestRuntimeEvent(envelope)
-      if (result.accepted && envelope.event.type === 'final') break
+      if (result.accepted && envelope.event.type === 'final') return
     }
+  })()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      abort.abort(new Error('Pending final result recovery deadline'))
+      resolve()
+    }, timeoutMs)
+  })
+  try {
+    await Promise.race([replay, deadline])
   } catch {
     // The run keeps its committed terminal status; only its final detail stays unavailable.
   } finally {
     clearTimeout(timer)
     abort.abort()
+    // An abandoned read may still settle; its outcome is deliberately ignored.
+    replay.catch(() => undefined)
   }
 }

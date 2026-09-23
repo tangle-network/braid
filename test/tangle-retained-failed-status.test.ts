@@ -106,6 +106,37 @@ test('a retained run that streams status failed records the exact result failure
   }
 })
 
+test('a failed final read after status failed is retried once in the same session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-tangle-failed-read-'))
+  const sandbox = new FakeTangleRetainedSandbox()
+  sandbox.failResultReads = 1
+  const opened = await openApp(sandbox, root, new MemoryCredentialStore())
+  try {
+    opened.app.initialize(root)
+    await opened.app.whenDurable()
+    const turn = opened.app.send({ operationId: 'operation-failed-read', text: 'Reply DONE.' })
+    await turn.admissionReady
+    await waitFor(() => sandbox.dispatches.length > 0)
+    sandbox.fail(sandbox.dispatches[0]?.executionId ?? '', FAILURE)
+    await turn.completion
+    const run = opened.app.state().runs.find((candidate) => candidate.id === turn.runId)
+    const trail = runTrail(opened, turn.runId)
+    const kinds = trail.map((event) => event.kind).join('\n')
+    assert.equal(sandbox.failResultReads, 0, 'the first result read must have failed')
+    assert.equal(run?.status, 'failed', kinds)
+    assert.equal(trail.filter((event) => event.kind === 'run.finished').length, 1, kinds)
+    assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
+    assert.equal(
+      trail.some((event) => event.kind === 'run.reconnecting' || event.kind === 'run.unknown'),
+      false,
+      kinds,
+    )
+  } finally {
+    await opened.app.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 for (const outcome of ['failed', 'completed'] as const) {
   test(`restart reads the final result of a run that exited terminal by status (provider ${outcome})`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'braid-tangle-failed-restart-'))

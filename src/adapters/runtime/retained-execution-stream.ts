@@ -15,6 +15,8 @@ export async function* streamRetainedExecution(input: {
   readonly afterSequence: number
   readonly after?: string
   readonly terminalResult?: Promise<RetainedTurnResult>
+  /** The run is already terminal from an earlier streamed status. */
+  readonly afterTerminalStatus?: boolean
 }): AsyncGenerator<RuntimeEventEnvelope> {
   const reader = new AbortController()
   const previous = input.state.replaceReader(input.runId, reader)
@@ -56,7 +58,7 @@ export async function* streamRetainedExecution(input: {
     }
     signal.throwIfAborted()
     const providerSequence = Math.max(0, input.afterSequence - 1)
-    let terminalStatusSeen = false
+    let terminalStatusSeen = input.afterTerminalStatus === true
     try {
       for await (const envelope of input.handle.events({
         ...(input.after === undefined
