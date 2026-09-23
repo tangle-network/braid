@@ -102,15 +102,28 @@ async function approveExpectedPermission(terminal, record, approvals) {
   )
   terminal.input('\r')
   const deadline = Date.now() + 30_000
+  let lastRecord = record
   while (Date.now() < deadline) {
     const next = await terminal.captureState()
+    lastRecord = next
     if (!next.view?.interactions?.some((item) => item.interactionId === permission.id)) {
       approvals.push({ tool: permission.tool, scope: 'once' })
       return true
     }
     await pause(200)
   }
-  throw new Error(`Braid did not resolve the one-time ${permission.tool} permission`)
+  const stillPending = lastRecord.view?.interactions?.some(
+    (item) => item.interactionId === permission.id,
+  )
+  const lastEventKind = lastRecord.events?.at(-1)?.kind ?? 'none'
+  throw new Error(
+    `Braid did not resolve the one-time ${permission.tool} permission; ` +
+      `still pending=${stillPending === true}; ` +
+      `revision=${lastRecord.view?.revision ?? 'missing'}; ` +
+      `last event=${lastEventKind}; ` +
+      `last error=${lastRecord.state?.lastError ?? 'none'}\n` +
+      `Terminal frame:\n${terminal.screen()}`,
+  )
 }
 
 async function waitForCompletedRun(terminal, approvals, timeoutMs = 300_000) {
