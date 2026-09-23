@@ -4,8 +4,9 @@ import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 const AGENT_EVAL_RPC_VERSION = AGENT_EVAL_VERSION
 const PYTHON_VERSION = '3.12'
 const RESOLUTION_CUTOFF = '2026-08-21T12:09:00Z'
-// Allow the pinned RPC release while keeping its transitive dependencies reproducible.
-const AGENT_EVAL_RPC_RESOLUTION_CUTOFF = '2026-09-02T03:23:00Z'
+// PyPI published both 0.183.0 artifacts by 2026-09-18T01:39:08.823413Z.
+// Allow that release while keeping its transitive dependencies on the earlier cutoff.
+const AGENT_EVAL_RPC_RESOLUTION_CUTOFF = '2026-09-18T01:40:00Z'
 const RUNTIME_PROBE = [
   'import importlib.metadata',
   'import sys',
