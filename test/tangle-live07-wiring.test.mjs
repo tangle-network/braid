@@ -36,6 +36,7 @@ import {
   interactiveRetainedBox,
   sandboxConfiguration as interactiveSandboxConfiguration,
   interactiveStopOperationId,
+  interactiveStopProviderEvidence,
   isBraidHelpSurfaceVisible,
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
@@ -72,6 +73,124 @@ test('interactive help probe ignores the permanent commands footer', () => {
 
   assert.equal(isBraidHelpSurfaceVisible(footer), false)
   assert.equal(isBraidHelpSurfaceVisible(help), true)
+})
+
+function interactiveStopFixture({ statuses, runs = [] }) {
+  const sessionRef = {
+    run: {
+      runId: 'run-interactive',
+      provider: 'tangle-sandbox',
+      environmentId: 'sandbox-interactive',
+      sessionId: 'session-interactive',
+      executionId: 'execution-interactive',
+      requestDigest: `sha256:${'a'.repeat(64)}`,
+    },
+    incarnationId: 'incarnation-1',
+  }
+  const controlRef = { ...sessionRef.run }
+  const calls = { status: 0, runs: 0, handleRef: undefined, sessionId: undefined }
+  const box = {
+    id: 'sandbox-interactive',
+    session(sessionId) {
+      calls.sessionId = sessionId
+      return {
+        interactive({ ref }) {
+          calls.handleRef = ref
+          return {
+            async status() {
+              const next = statuses[Math.min(calls.status, statuses.length - 1)]
+              calls.status += 1
+              return typeof next === 'function' ? next(sessionRef) : next
+            },
+          }
+        },
+        async runs() {
+          calls.runs += 1
+          return runs
+        },
+      }
+    },
+  }
+  return { box, controlRef, sessionRef, calls }
+}
+
+test('LIVE-08 provider evidence reads the exact interactive stop tombstone', async () => {
+  const fixture = interactiveStopFixture({
+    statuses: [
+      null,
+      (ref) => ({ state: 'running', ref: structuredClone(ref) }),
+      (ref) => ({ state: 'exited', ref: structuredClone(ref), reason: 'stopped', endedAt: 'now' }),
+    ],
+  })
+  let pauses = 0
+  const evidence = await interactiveStopProviderEvidence({
+    box: fixture.box,
+    controlRef: fixture.controlRef,
+    sessionRef: fixture.sessionRef,
+    timeoutMs: 60_000,
+    pause: async (milliseconds) => {
+      assert.equal(milliseconds, 1_000)
+      pauses += 1
+    },
+  })
+  assert.equal(pauses, 2)
+  assert.equal(fixture.calls.sessionId, 'session-interactive')
+  assert.equal(fixture.calls.handleRef, fixture.sessionRef)
+  assert.equal(fixture.calls.runs, 1)
+  assert.deepEqual(evidence, {
+    matched: true,
+    providerObserved: true,
+    source: 'interactive-status',
+    state: 'exited',
+    reason: 'stopped',
+    endedAt: 'now',
+    executionId: 'execution-interactive',
+    incarnationId: 'incarnation-1',
+    headlessExecutionCount: 0,
+  })
+})
+
+test('LIVE-08 provider evidence rejects extra, foreign, or unstopped executions', async () => {
+  const stopped = (ref) => ({ state: 'exited', ref: structuredClone(ref), reason: 'stopped' })
+  const cases = [
+    [{ statuses: [stopped], runs: [{ executionId: 'headless' }] }, /1 headless executions/u],
+    [
+      { statuses: [(ref) => ({ ...stopped(ref), reason: 'exited' })] },
+      /did not end through the exact stop request/u,
+    ],
+    [
+      { statuses: [(ref) => ({ ...stopped(ref), ref: { ...ref, incarnationId: 'other' } })] },
+      /incarnation|process reference/iu,
+    ],
+  ]
+  for (const [options, expected] of cases) {
+    const fixture = interactiveStopFixture(options)
+    await assert.rejects(
+      interactiveStopProviderEvidence({
+        box: fixture.box,
+        controlRef: fixture.controlRef,
+        sessionRef: fixture.sessionRef,
+        timeoutMs: 60_000,
+        pause: async () => undefined,
+      }),
+      expected,
+    )
+  }
+  const fixture = interactiveStopFixture({ statuses: [null] })
+  let clock = 0
+  await assert.rejects(
+    interactiveStopProviderEvidence({
+      box: fixture.box,
+      controlRef: fixture.controlRef,
+      sessionRef: fixture.sessionRef,
+      timeoutMs: 3_000,
+      pause: async (milliseconds) => {
+        clock += milliseconds
+      },
+      now: () => clock,
+    }),
+    /stopped status timed out/u,
+  )
 })
 
 test('interactive proof submits a slash command only after its text renders', async () => {
