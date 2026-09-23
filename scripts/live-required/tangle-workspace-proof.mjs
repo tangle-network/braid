@@ -592,6 +592,12 @@ export async function settledSourceState(
 ) {
   const statusIn = (candidate) => candidate.runs.find((run) => run.id === runId)?.status
   if (TERMINAL_RUN_STATUSES.has(statusIn(state))) return state
+  const run = state.runs.find((candidate) => candidate.id === runId)
+  // Without provider status, reconciliation only records `unknown`; report the state instead.
+  if (run?.capabilities?.controls?.status !== true)
+    throw new Error(
+      `Source run ${runId} stayed ${String(run?.status)} after its send settled, and its execution path does not report provider status (complete ${String(run?.complete)}, controlRef ${run?.controlRef === undefined ? 'missing' : 'present'})`,
+    )
   const deadline = now() + timeoutMs
   for (let attempt = 1; ; attempt += 1) {
     // A stalled status request is aborted at the deadline and settled before cleanup runs.

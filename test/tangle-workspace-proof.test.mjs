@@ -746,10 +746,11 @@ test('LIVE-10 receipts reject a replaced resource id hidden by stale census summ
 })
 
 test('LIVE-09 reconciles a source run that is still live when its send settles', async () => {
-  const live = { runs: [{ id: 'run-source', status: 'running', complete: false }] }
+  const capabilities = { controls: { status: true } }
+  const live = { runs: [{ id: 'run-source', status: 'running', complete: false, capabilities }] }
   const done = { runs: [{ id: 'run-source', status: 'completed', complete: true }] }
   // A transient status failure records `unknown`; settling must keep reconciling past it.
-  const unknown = { runs: [{ id: 'run-source', status: 'unknown', complete: false }] }
+  const unknown = { runs: [{ id: 'run-source', status: 'unknown', complete: false, capabilities }] }
   const reconciles = []
   const app = {
     reconcileRun: async (input) => {
@@ -786,6 +787,21 @@ test('LIVE-09 reconciles a source run that is still live when its send settles',
       now: () => clock,
     }),
     /Source run run-source stayed running for 5000ms after its send settled/u,
+  )
+
+  const statusless = {
+    runs: [
+      {
+        id: 'run-source',
+        status: 'running',
+        complete: false,
+        capabilities: { controls: { status: false } },
+      },
+    ],
+  }
+  await assert.rejects(
+    settledSourceState({ reconcileRun: assert.fail }, 'run-source', statusless),
+    /does not report provider status \(complete false, controlRef missing\)/u,
   )
 
   let aborted = false
