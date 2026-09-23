@@ -25,6 +25,8 @@ import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   observeRetainedResource,
+  readRetainedWorkspaceFile,
+  retainedBox,
 } from './tangle-sandbox-braid-stress.mjs'
 import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
@@ -112,11 +114,15 @@ function markerFor(proof, label) {
   return `BRAID_MULTIRUN_${proof}_${label}`.toUpperCase()
 }
 
+function markerPathFor(marker) {
+  return `.braid-live/${marker}/marker.txt`
+}
+
 function promptFor(marker, holdSeconds) {
   return [
     'Use the current Tangle Sandbox working directory for every command in this turn.',
-    `Write exactly ${marker} followed by a newline to .braid-live/${marker}/marker.txt.`,
-    `Read .braid-live/${marker}/marker.txt and print the result.`,
+    `Write exactly ${marker} followed by a newline to ${markerPathFor(marker)}.`,
+    `Read ${markerPathFor(marker)} and print the result.`,
     'Run git -C . rev-parse --is-inside-work-tree and print its result.',
     `Run sleep ${holdSeconds} before the final response so another branch can stream concurrently.`,
     `Reply with exactly ${marker}.`,
@@ -344,6 +350,27 @@ export async function sendCancellationAfterActivityBrowserDismissal(runtime, lab
   runtime.input('\u0003')
 }
 
+const ACTIVITY_DOWN = '\u001b[B'
+const ACTIVITY_UP = '\u001b[A'
+
+async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+  runtime.input('\u001bOQ')
+  await waitFor(`${label} activity browser`, () => /activity/iu.test(runtime.screen()), timeoutMs)
+  runtime.input('\t')
+  await pause(100)
+  runtime.input(direction)
+  runtime.input('\r')
+  const frame = await waitForFrame(
+    runtime,
+    `${label} focus`,
+    (candidate) => candidate.view.focusedRunId === runId,
+    timeoutMs,
+  )
+  runtime.input('\u001b')
+  await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
+  return frame
+}
+
 async function typeAndSubmit(runtime, value) {
   for (const character of value) {
     runtime.input(character)
@@ -569,6 +596,112 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
   return true
 }
 
+function messagesForRun(frame, runId) {
+  return (Array.isArray(frame?.state?.messages) ? frame.state.messages : []).filter(
+    (message) => message?.runId === runId,
+  )
+}
+
+export function assistantTranscriptForRun(frame, runId) {
+  return messagesForRun(frame, runId)
+    .filter((message) => message.role === 'assistant')
+    .map((message) => (typeof message.text === 'string' ? message.text : ''))
+    .filter((text) => text.length > 0)
+    .join('\n')
+}
+
+export function exactTranscriptMarkerLineCount(frame, runId, marker) {
+  if (typeof marker !== 'string' || marker.length === 0) return 0
+  return assistantTranscriptForRun(frame, runId)
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .filter((line) => line === marker).length
+}
+
+/** Counts failed tool calls and results in the current transcript part vocabulary. */
+export function failedToolPartCountForRun(frame, runId) {
+  return messagesForRun(frame, runId)
+    .flatMap((message) => (Array.isArray(message.parts) ? message.parts : []))
+    .filter(
+      (part) =>
+        (part?.kind === 'tool' || part?.kind === 'result') &&
+        (part?.status === 'failed' || typeof part?.error === 'string'),
+    ).length
+}
+
+export function assertBranchATranscript(frame, runId, marker) {
+  const transcript = assistantTranscriptForRun(frame, runId)
+  const transcriptMarkerLineCount = exactTranscriptMarkerLineCount(frame, runId, marker)
+  const failedToolPartCount = failedToolPartCountForRun(frame, runId)
+  assert.equal(
+    transcriptMarkerLineCount,
+    1,
+    `branch A transcript must contain one exact marker line (bytes=${Buffer.byteLength(transcript)})`,
+  )
+  assert.equal(
+    failedToolPartCount,
+    0,
+    `branch A transcript contains ${String(failedToolPartCount)} failed tool parts`,
+  )
+  return {
+    marker,
+    transcriptMarkerLineCount,
+    transcriptMarkerMatched: true,
+    transcriptBytes: Buffer.byteLength(transcript),
+    failedToolPartCount,
+  }
+}
+
+function execExitCode(result) {
+  if (Number.isInteger(result?.exitCode)) return result.exitCode
+  return Number.isInteger(result?.code) ? result.code : undefined
+}
+
+/** Reads branch A's marker file and Git state from the exact retained provider environment. */
+export async function assertBranchAWorkspace(client, controlRef, marker) {
+  const box = await retainedBox(client, controlRef, 'Branch A workspace proof')
+  const expectedValue = `${marker}\n`
+  const read = await readRetainedWorkspaceFile(client, controlRef, markerPathFor(marker), {
+    label: 'Branch A workspace proof',
+    box,
+  })
+  assert.equal(read.value, expectedValue, 'branch A provider file did not contain the exact marker')
+  const git = await box.exec('git -C . rev-parse --is-inside-work-tree')
+  const gitExitCode = execExitCode(git)
+  assert.equal(gitExitCode, 0, 'branch A provider Git check exited unsuccessfully')
+  const gitStdout = typeof git?.stdout === 'string' ? git.stdout.trim() : ''
+  assert.equal(gitStdout, 'true', 'branch A provider Git check did not return true')
+  return {
+    providerEnvironmentId: read.environmentId,
+    path: read.path,
+    readValueJson: JSON.stringify(read.value),
+    readValueBytesBase64: Buffer.from(read.value, 'utf8').toString('base64'),
+    readMatched: read.value === expectedValue,
+    gitExitCode,
+    gitStdout,
+    gitWorktree: gitStdout === 'true',
+  }
+}
+
+/** Evidence placeholder that keeps a failed proof explicit instead of omitting the fields. */
+export function missingBranchAWorkspaceEvidence(marker) {
+  return {
+    marker,
+    transcriptMarkerLineCount: 0,
+    transcriptMarkerMatched: false,
+    transcriptBytes: null,
+    failedToolPartCount: null,
+    providerEnvironmentId: null,
+    path: markerPathFor(marker),
+    readValueJson: null,
+    readValueBytesBase64: null,
+    readMatched: false,
+    gitExitCode: null,
+    gitStdout: null,
+    gitWorktree: false,
+  }
+}
+
 export async function runProof({
   targetRepository = process.env.BRAID_LIVE_REPOSITORY ?? repository,
   environment = process.env,
@@ -629,6 +762,8 @@ export async function runProof({
   let cancelFrame
   let finalFrame
   let restartedFrame
+  let branchATranscriptProof
+  let branchAWorkspaceProof
   let runAId
   let runBId
   let proofError
@@ -870,8 +1005,28 @@ export async function runProof({
       )
       const finalA = runFromFrame(finalFrame, runAId).viewRun
       assert.ok((finalA.contentBytes ?? 0) > 0, 'branch A completed without transcript content')
+      // The frame lists messages for the focused branch only, so read A's transcript in focus.
+      const transcriptFrame = await focusRunFromActivityBrowser(
+        runtime,
+        runAId,
+        ACTIVITY_DOWN,
+        'branch A transcript',
+        timeoutMs,
+      )
+      branchATranscriptProof = assertBranchATranscript(transcriptFrame, runAId, markerA)
+      // Restore B focus so restart replay compares against the same focused view as before.
+      finalFrame = await focusRunFromActivityBrowser(
+        runtime,
+        runBId,
+        ACTIVITY_UP,
+        'branch B refocus',
+        timeoutMs,
+      )
       assertUniqueEventIds(finalFrame, runAId, 'branch A completion')
       assertUniqueEventIds(finalFrame, runBId, 'branch B terminal state')
+    })
+    await phase('branch-a.provider-proof', async () => {
+      branchAWorkspaceProof = await assertBranchAWorkspace(client, controlA, markerA)
     })
     await phase('remote.status', async () => {
       await remoteStatus(client, controlA, 'completed', timeoutMs)
@@ -1045,6 +1200,7 @@ export async function runProof({
       lifecycle: 'retained',
       credentialConfigured: Boolean(values.credentialValue || values.credentialRef),
     },
+    markers: { branchA: markerA, branchB: markerB },
     conversations: {
       first: {
         conversationId: firstFrame?.state?.conversationId ?? null,
@@ -1093,6 +1249,13 @@ export async function runProof({
       renderedWorkStripCount: renderedWorkStripCount(terminalEvidence.concurrent?.screen ?? ''),
       independentConversations:
         firstFrame?.state?.conversationId !== secondFrame?.state?.conversationId,
+    },
+    workspace: {
+      branchA: {
+        ...missingBranchAWorkspaceEvidence(markerA),
+        ...(branchATranscriptProof ?? {}),
+        ...(branchAWorkspaceProof ?? {}),
+      },
     },
     focus: {
       beforeRunId: secondFrame?.view?.focusedRunId ?? null,

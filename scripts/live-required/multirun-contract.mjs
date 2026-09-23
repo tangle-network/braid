@@ -13,6 +13,7 @@ const REQUIRED_PHASES = Object.freeze([
   'cancel-b.dispatch',
   'cancel-b',
   'branch-a.complete',
+  'branch-a.provider-proof',
   'remote.status',
   'terminal.first.close',
   'terminal.restart',
@@ -21,7 +22,7 @@ const REQUIRED_PHASES = Object.freeze([
   'provider.observe',
 ])
 
-export const MULTIRUN_PROOF_SCHEMA = 'braid.live-required.multirun.v2'
+export const MULTIRUN_PROOF_SCHEMA = 'braid.live-required.multirun.v3'
 export { REQUIRED_PHASES as MULTIRUN_REQUIRED_PHASES }
 
 const PROVIDER_IDENTIFIER_KINDS = Object.freeze([
@@ -72,6 +73,49 @@ function assertRun(run, index) {
   assert(
     run.identifiers[0].id === run.providerEnvironmentId,
     `multirun proof run ${index} has a mismatched provider environment identity`,
+  )
+}
+
+/**
+ * Branch A must leave its marker in the retained provider workspace, not only in the transcript.
+ * The file bytes come from a provider read of the exact environment that ran branch A.
+ */
+function assertBranchAWorkspaceProof(proof) {
+  assert(object(proof.markers), 'LIVE-07 multirun marker evidence is missing')
+  assert(text(proof.markers.branchA), 'LIVE-07 branch A marker is missing')
+  assert(text(proof.markers.branchB), 'LIVE-07 branch B marker is missing')
+  assert(
+    proof.markers.branchA !== proof.markers.branchB,
+    'LIVE-07 branch markers are not independent',
+  )
+  const workspace = proof.workspace?.branchA
+  assert(object(workspace), 'LIVE-07 branch A workspace proof is missing')
+  assert(
+    workspace.marker === proof.markers.branchA,
+    'LIVE-07 branch A workspace proof used the wrong marker',
+  )
+  assert(
+    workspace.transcriptMarkerLineCount === 1 &&
+      workspace.transcriptMarkerMatched === true &&
+      workspace.failedToolPartCount === 0,
+    'LIVE-07 branch A transcript did not contain one exact marker line',
+  )
+  assert(
+    text(workspace.providerEnvironmentId) &&
+      workspace.providerEnvironmentId === proof.runs[0].providerEnvironmentId,
+    'LIVE-07 branch A workspace proof is not bound to the branch A provider environment',
+  )
+  assert(text(workspace.path), 'LIVE-07 branch A workspace proof has no file path')
+  const expected = `${proof.markers.branchA}\n`
+  assert(
+    workspace.readValueJson === JSON.stringify(expected) &&
+      workspace.readValueBytesBase64 === Buffer.from(expected, 'utf8').toString('base64') &&
+      workspace.readMatched === true,
+    'LIVE-07 branch A provider file did not contain the exact marker bytes',
+  )
+  assert(
+    workspace.gitExitCode === 0 && workspace.gitWorktree === true,
+    'LIVE-07 branch A provider workspace did not prove a Git worktree',
   )
 }
 
@@ -189,6 +233,8 @@ export function assertMultirunProof(proof) {
       proof.overlap.streamEventCounts.every((entry) => runIds.has(entry.runId)),
     'LIVE-07 multirun stream evidence does not map to both runs',
   )
+
+  assertBranchAWorkspaceProof(proof)
 
   assert(object(proof.focus), 'LIVE-07 focus evidence is missing')
   const [firstRun, secondRun] = proof.runs

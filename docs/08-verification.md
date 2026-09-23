@@ -494,6 +494,11 @@ It records the canonical cancellation dispatch event and operation before waitin
 
 It cancels only the selected run, closes Braid, replays both runs after restart, and confirms exact cleanup.
 
+After branch A completes, the proof focuses branch A and requires one transcript line that equals its marker and no failed tool part.
+It then reads the marker file from the exact retained provider environment that ran branch A.
+The file bytes must equal the marker and a newline, and `git -C . rev-parse --is-inside-work-tree` must print `true`.
+The artifact records those values under `workspace.branchA`; schema `braid.live-required.multirun.v3` requires them.
+
 The proof holds each provider turn for 180 seconds and allows 300 seconds per phase by default to absorb public startup variance.
 
 When a phase fails, its artifact retains the latest semantic terminal frame and the latest frame-capture error.
