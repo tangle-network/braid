@@ -2,7 +2,7 @@ import type { BraidEventEnvelope } from '../domain/events.js'
 import { eventRunId } from '../domain/events.js'
 import type { RunId } from '../domain/ids.js'
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
-import type { BraidRun, RunStatus } from '../domain/state.js'
+import { type BraidRun, isLiveRunStatus, type RunStatus } from '../domain/state.js'
 import type { ReplayPort } from './application-ports.js'
 import { statusFromCanonical, terminalStatus } from './run-event-mapper.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
@@ -51,11 +51,14 @@ function mayAwaitFinalResult(run: BraidRun): boolean {
  * `run.finished` followed. Missing or compacted history is not evidence, so it recovers nothing.
  */
 export function awaitsFinalResult(run: BraidRun, events: readonly BraidEventEnvelope[]): boolean {
+  // The latest decisive event wins: a restart can reconcile a live run before it later fails.
   let terminalByStatus = false
   for (const { event } of events) {
     if (eventRunId(event) !== run.id) continue
-    if (event.kind === 'run.finished' || event.kind === 'run.reconciled') return false
-    if (event.kind === 'run.status.changed' && event.status === run.status) terminalByStatus = true
+    if (event.kind === 'run.finished') terminalByStatus = false
+    else if (event.kind === 'run.reconciled' && !isLiveRunStatus(event.status))
+      terminalByStatus = false
+    else if (event.kind === 'run.status.changed') terminalByStatus = event.status === run.status
   }
   return terminalByStatus
 }

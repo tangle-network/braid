@@ -10,6 +10,9 @@ import {
   createDurableBraidApplication,
   type DurableBraidApplication,
 } from '../src/app/composition.js'
+import { awaitsFinalResult } from '../src/app/run-final-recovery.js'
+import type { BraidEventEnvelope } from '../src/domain/events.js'
+import type { BraidRun } from '../src/domain/state.js'
 import { RandomIds } from '../src/ports/ids.js'
 import {
   FakeTangleRetainedSandbox,
@@ -163,3 +166,21 @@ for (const outcome of ['failed', 'completed'] as const) {
     }
   })
 }
+
+test('pending final recovery follows the latest decisive journal event', () => {
+  const run = { id: 'run-pending', status: 'failed' } as unknown as BraidRun
+  const envelope = (event: Record<string, unknown>) =>
+    ({ event: { runId: 'run-pending', ...event } }) as unknown as BraidEventEnvelope
+  const reconciledLive = envelope({ kind: 'run.reconciled', status: 'running' })
+  const failed = envelope({ kind: 'run.status.changed', status: 'failed' })
+  const finished = envelope({ kind: 'run.finished' })
+  const reconciledFailed = envelope({ kind: 'run.reconciled', status: 'failed' })
+
+  // A restart may reconcile a live run before the run later fails ahead of its final.
+  assert.equal(awaitsFinalResult(run, [reconciledLive, failed]), true)
+  assert.equal(awaitsFinalResult(run, [failed]), true)
+  assert.equal(awaitsFinalResult(run, [failed, finished]), false)
+  assert.equal(awaitsFinalResult(run, [failed, reconciledFailed]), false)
+  assert.equal(awaitsFinalResult(run, [reconciledLive]), false)
+  assert.equal(awaitsFinalResult(run, []), false)
+})
