@@ -259,6 +259,8 @@ Provider session or environment loss marks the binding unavailable but does not 
 
 Graph integrity checks reject cycles, missing boundaries, cross-workspace environment bindings without an explicit edge, and terminal-run mutation.
 
+The user can focus a completed run to inspect its transcript without changing its provider output.
+
 ## Conversation export
 
 Export can target a whole conversation, one branch, one run, one analysis, or a redacted diagnostic bundle.
