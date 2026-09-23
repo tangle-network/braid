@@ -7,7 +7,9 @@ interface PackageDocument {
 
 function packageVersion(): string {
   const require = createRequire(import.meta.url)
-  for (const path of ['../package.json', '../../package.json']) {
+  // dist/version.js, src/version.ts under the test build, and the esbuild startup chunks in
+  // dist/startup/chunks/ each sit at a different depth below the package root.
+  for (const path of ['../package.json', '../../package.json', '../../../package.json']) {
     try {
       const document = require(path) as PackageDocument
       if (

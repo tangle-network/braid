@@ -3,6 +3,7 @@ import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { readConnectionCredential } from '../connections/production-connection-credentials.js'
 import { normalizeTangleInferenceRuntimeBaseUrl } from '../connections/production-connection-endpoints.js'
+import { withTangleRouterClient } from '../connections/tangle-router-client.js'
 import { endpointLocation, staticExecutionObservation } from './execution-observation-source.js'
 import type { PreparedExecution } from './prepared-execution.js'
 import {
@@ -41,12 +42,14 @@ export async function resolveTangleInferenceBackend(
   const createdAt = new Date().toISOString()
   const backend = Object.freeze({
     kind: 'executor' as const,
-    factory: createExecutor({
-      backend: 'router',
-      routerBaseUrl,
-      routerKey: credential ?? '',
-      ...(options.routerComplete === undefined ? {} : { complete: options.routerComplete }),
-    }),
+    factory: withTangleRouterClient(
+      createExecutor({
+        backend: 'router',
+        routerBaseUrl,
+        routerKey: credential ?? '',
+        ...(options.routerComplete === undefined ? {} : { complete: options.routerComplete }),
+      }),
+    ),
     profile,
     agentRunName: model,
   })
