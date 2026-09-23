@@ -307,7 +307,10 @@ function normalizedKey(value) {
 
 function credentialKey(value) {
   const key = normalizedKey(value)
-  return key !== 'credential_configured' && CREDENTIAL_KEY_PATTERN.test(key)
+  // Session spend is Braid's measured usage summary, not a provider session credential.
+  return (
+    !['credential_configured', 'session_spend'].includes(key) && CREDENTIAL_KEY_PATTERN.test(key)
+  )
 }
 
 function credentialLeafSecrets(value, secrets, seen) {

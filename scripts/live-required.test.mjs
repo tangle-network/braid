@@ -976,6 +976,9 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
     attemptedRuns: 3,
     concurrency: 2,
     cleanup: { exactProofs: 3, exactResourcesRemaining: 0, activeResourceDelta: 0 },
+    sessionSpend: {
+      rows: [{ runner: 'opencode', providerSessionId: 'private-provider-session-id' }],
+    },
     attempts: Array.from({ length: 3 }, (_, index) => ({
       index,
       proof: {
@@ -1008,6 +1011,12 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
   assert.equal(result.evidence.facts.exactResource, true)
   assert.equal(result.evidence.facts.activeResourceDelta, 0)
   assert.equal(result.evidence.observations.stress.detailed, true)
+  assert.equal(result.evidence.observations.stress.sessionSpend.rows[0].runner, 'opencode')
+  assert.equal(
+    result.evidence.observations.stress.sessionSpend.rows[0].providerSessionId,
+    '[REDACTED]',
+  )
+  assert.equal(result.evidence.observations.multirun.provider.runner, 'opencode')
 })
 
 test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {
