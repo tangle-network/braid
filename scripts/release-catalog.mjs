@@ -1,4 +1,22 @@
 export const REQUIREMENT_PATTERN = /\b[A-Z]{2,4}-[0-9]{2}\b/gu
+export const REQUIREMENT_PREFIXES = Object.freeze([
+  'PR',
+  'UX',
+  'AR',
+  'UP',
+  'PC',
+  'CF',
+  'AN',
+  'SE',
+  'ST',
+  'VT',
+  'LIVE',
+  'PERF',
+  'EVAL',
+  'VR',
+  'US',
+])
+export const EXPECTED_REQUIREMENT_COUNT = 154
 export const SHA256_PATTERN = /^[a-f0-9]{64}$/u
 export const SHA512_INTEGRITY_PATTERN =
   /^sha512-(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u
@@ -33,6 +51,26 @@ export const REQUIRED_CHECKS = new Map([
   ['install', { category: 'release', command: 'pnpm test:install' }],
   ['visual', { category: 'terminal', command: 'pnpm capture:visual' }],
   ['verify:release', { category: 'release', command: 'pnpm verify:release' }],
+])
+
+export const REQUIRED_CHECK_REQUIREMENTS = new Map([
+  ['repository', 'AR-01'],
+  ['unit', 'AR-03'],
+  ['contract', 'UP-01'],
+  ['rpc', 'VT-03'],
+  ['virtual-terminal', 'VT-01'],
+  ['pty', 'VT-05'],
+  ['storage', 'ST-01'],
+  ['security', 'SE-01'],
+  ['performance', 'PERF-01'],
+  ['live-bridge', 'LIVE-01'],
+  ['live-tangle', 'LIVE-06'],
+  ['live-supervisor', 'LIVE-11'],
+  ['live-analysis', 'LIVE-12'],
+  ['eval', 'EVAL-01'],
+  ['install', 'VR-10'],
+  ['visual', 'UX-01'],
+  ['verify:release', 'VR-01'],
 ])
 
 export const EXACT_REQUIREMENT_CHECK_CATEGORIES = new Map([

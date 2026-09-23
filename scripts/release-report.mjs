@@ -1,3 +1,11 @@
+function reportCell(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('|', '\\|')
+    .replaceAll('\n', ' ')
+    .replaceAll('\r', ' ')
+}
+
 export function renderReport(manifest) {
   const lines = [
     `# Braid ${manifest.braidVersion} release evidence`,
@@ -18,7 +26,7 @@ export function renderReport(manifest) {
     '| --- | --- | --- | --- | ---: |',
     ...manifest.checks.map(
       (check) =>
-        `| \`${check.id}\` | ${check.category} | \`${check.command}\` | ${check.environment} | ${check.durationMs} ms |`,
+        `| \`${reportCell(check.id)}\` | ${reportCell(check.category)} | \`${reportCell(check.command)}\` | ${reportCell(check.environment)} | ${check.durationMs} ms |`,
     ),
     '',
     'Every row above has a valid Ed25519 execution receipt from the pinned release key.',

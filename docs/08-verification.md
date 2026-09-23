@@ -407,7 +407,11 @@ The manifest contains the following top-level data.
     { "name": "@tangle-network/agent-runtime", "version": "<exact>", "integrity": "sha512-…" }
   ],
   "environments": [
-    { "id": "linux-release", "kind": "ci", "details": {} }
+    {
+      "id": "linux-release",
+      "kind": "ci",
+      "details": { "machine": "x86_64", "os": "linux", "node": "22.19.0", "region": "ci-1", "workspace": "isolated-release", "packageVersions": {}, "resourceIds": [], "billableResourceIds": [] }
+    }
   ],
   "checks": [],
   "requirements": {
@@ -427,35 +431,30 @@ The manifest contains the following top-level data.
 }
 ```
 
-Each check records identifier, category, required status, command, working directory, environment identifier, start and end, exit code, attempt count, measured fields, result, stdout and stderr artifact hashes, and failure details.
+Each check records identifier, category, required status, command, working directory, environment identifier, resource identifiers, start and end, exit code, attempt count, measured fields, result, stdout and stderr artifact hashes, and failure details.
 
 Each check also carries an Ed25519 receipt over every check field, including the exact command, build digest, exit code, and stdout and stderr digests.
 
 The verifier accepts only the public key pinned in `release/execution-public-key.pem`; the private key is supplied through `BRAID_RELEASE_SIGNING_KEY_PATH`, must have owner-only permissions, and is never stored in the repository or evidence.
-
 The verifier rejects check identifiers outside the fixed command list and the requirement identifiers extracted from these specification documents.
+Every requirement has an identically named check record and an identically named dedicated artifact, and each check and artifact is used exactly once across the requirement mappings and check output records.
 
 Every accepted check command must be one of the fixed commands below and its category must match that command.
-
+Each fixed command row has one declared owning requirement in the release catalog, so a generic passing command cannot be reassigned to an unrelated requirement merely because its category is admissible.
 Timestamps use canonical millisecond UTC form such as `2026-08-02T07:00:00.000Z`, and the recorded duration must equal their difference.
-
 Measurements are typed scalar values, full distributions, or explicit unavailable or uncaptured records with a reason.
-
 A distribution records unit, sample count, minimum, median, p90, p95, p99, and maximum as finite ordered numbers.
-
+Each PERF-01 through PERF-10 record also binds the exact metric, percentile, operator, target value, unit, workload, state, database fixture, event count, and repetition count required by the performance matrix.
 Passing checks set `failureDetails` to `null` and identify stdout and stderr as `{ "artifactId": "…", "sha256": "…" }`, including zero-byte output artifacts rather than omitting either stream.
-
 The release verifier requires every stable command row below, rejects every unreferenced check, and requires `UP-*`, `LIVE-*`, `PERF-*`, and `EVAL-*` requirements to cite an identically named check record of the appropriate category.
 
 Each requirement maps to one or more check identifiers and artifact identifiers.
-
 A zero, null, unavailable, or uncaptured measured field remains in the manifest with its reason.
 
 The verifier fails when a required identifier from any specification document is absent, duplicated, skipped, stale, unsigned, run against another build digest, or linked only to an inadmissible proof type.
 
 Live resource cleanup records each environment, checkpoint, session, temporary repository, and credential with confirmed or unresolved state.
-
-The release cannot complete with an unresolved externally billable test resource.
+The release cannot complete with an unresolved externally billable test resource, an omitted environment resource, or incomplete machine and package provenance.
 
 ## Required repository commands
 
