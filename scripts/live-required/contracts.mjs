@@ -820,8 +820,6 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     'processCleanup',
     'providerEvidence',
     'providerExecution',
-    'usage',
-    'accountIdentities',
     'accountIdentityConsistency',
     'usageDelta',
     'telemetry',
@@ -830,6 +828,21 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
   ]) {
     if (!record(receipt.observations[field]))
       throw new Error(`Passed Tangle interactive proof requires observations.${field}`)
+  }
+  // Usage and account identity are sampled per phase, so they are phase-record lists.
+  for (const field of ['usage', 'accountIdentities']) {
+    const samples = receipt.observations[field]
+    if (!Array.isArray(samples) || !samples.every(record))
+      throw new Error(
+        `Passed Tangle interactive proof requires observations.${field} phase records`,
+      )
+    for (const phase of ['before', 'after']) {
+      const matches = samples.filter((sample) => sample.phase === phase)
+      if (matches.length !== 1 || matches[0].status !== 'observed')
+        throw new Error(
+          `Passed Tangle interactive proof requires one observed ${phase} sample in observations.${field}`,
+        )
+    }
   }
 }
 

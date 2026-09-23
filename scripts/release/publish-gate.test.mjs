@@ -309,14 +309,19 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
           'processCleanup',
           'providerEvidence',
           'providerExecution',
-          'usage',
-          'accountIdentities',
           'accountIdentityConsistency',
           'usageDelta',
           'telemetry',
           'spend',
           'timing',
-        ].map((key) => [key, {}]),
+        ]
+          .map((key) => [key, {}])
+          .concat(
+            ['usage', 'accountIdentities'].map((key) => [
+              key,
+              ['before', 'after'].map((phase) => ({ phase, status: 'observed', value: {} })),
+            ]),
+          ),
       ),
     })
   if (row === 'LIVE-09')

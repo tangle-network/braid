@@ -522,28 +522,36 @@ function passedMultirunProof() {
   }
 }
 
+function interactiveObservations(overrides = {}) {
+  return {
+    checks: {},
+    configuration: {},
+    run: {},
+    sandbox: {},
+    identityContinuity: {},
+    processCleanup: {},
+    providerEvidence: {},
+    providerExecution: {},
+    usage: [
+      { phase: 'before', status: 'observed', value: {} },
+      { phase: 'after', status: 'observed', value: {} },
+    ],
+    accountIdentities: [
+      { phase: 'before', status: 'observed', value: {} },
+      { phase: 'after', status: 'observed', value: {} },
+    ],
+    accountIdentityConsistency: {},
+    usageDelta: {},
+    telemetry: {},
+    spend: {},
+    timing: {},
+    ...overrides,
+  }
+}
+
 function passedInteractiveProof(
   invocationId,
-  {
-    runner = 'pi',
-    observations = {
-      checks: {},
-      configuration: {},
-      run: {},
-      sandbox: {},
-      identityContinuity: {},
-      processCleanup: {},
-      providerEvidence: {},
-      providerExecution: {},
-      usage: {},
-      accountIdentities: {},
-      accountIdentityConsistency: {},
-      usageDelta: {},
-      telemetry: {},
-      spend: {},
-      timing: {},
-    },
-  } = {},
+  { runner = 'pi', observations = interactiveObservations() } = {},
 ) {
   const cloudControl = {
     provider: 'tangle-sandbox',
@@ -1363,6 +1371,26 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
       }),
     /observations\.checks/u,
   )
+})
+
+test('LIVE-08 requires observed before and after usage and identity samples', () => {
+  const observed = (phase) => ({ phase, status: 'observed', value: {} })
+  for (const [overrides, expected] of [
+    [{ usage: {} }, /observations\.usage phase records/u],
+    [{ usage: [observed('before')] }, /observed after sample in observations\.usage/u],
+    [
+      { accountIdentities: [observed('before'), { phase: 'after', status: 'unavailable' }] },
+      /observed after sample in observations\.accountIdentities/u,
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        passedInteractiveProof('live-required-phase-samples', {
+          observations: interactiveObservations(overrides),
+        }),
+      expected,
+    )
+  }
 })
 
 test('LIVE-08 rejects input evidence that only observed local terminal echo', () => {
