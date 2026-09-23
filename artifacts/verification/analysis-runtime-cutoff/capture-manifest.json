@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "capture": "scripts/capture-visual.mjs: analysis state",
+  "sourceCommit": "08a28482a9628c49127406a745336523a88715fc",
+  "packedTarballSha256": "bb0de61c5182c776770cd01cf98d405ba4854b87096aa3348fdd0ad879b47e12",
+  "provider": "controlled deterministic UI fixture; this is not a live analyst or managed Python result",
+  "terminal": {
+    "columns": 80,
+    "rows": 24,
+    "implementation": "packed Braid with node-pty and xterm-256color"
+  },
+  "keyboard": [
+    "/ask Where did this run waste time?",
+    "Enter"
+  ],
+  "assertion": "the controlled /ask flow opens a saved analysis view with two cited fixture findings",
+  "captureCommand": "BRAID_RELEASE_ARTIFACT_ROOT=<scratch> pnpm capture:visual",
+  "renderCommand": "agg --quiet --theme github-dark --font-size 16 --idle-time-limit 1 --last-frame-duration 2 --font-family 'DejaVu Sans Mono' 80x24-ask-controlled.cast 80x24-ask-controlled.gif",
+  "redaction": "the local workspace path in the terminal title was replaced with example-workspace before GIF rendering",
+  "artifacts": [
+    {
+      "path": "80x24-ask-controlled.cast",
+      "sha256": "a89f3a3f6bdded0de5c452ae0b2eadc7db76196ff51ccd66b3ce8ab786c61083"
+    },
+    {
+      "path": "80x24-ask-controlled.gif",
+      "sha256": "b30535ac8ad8939d6567b085fbd259972ffa386c219ecfa8730a7d95a13527aa"
+    },
+    {
+      "path": "80x24-ask-controlled.png",
+      "sha256": "57666b935b7225dab00e38e9894996d434dc162915b86844e5fd43c4f2154cd6"
+    },
+    {
+      "path": "80x24-ask-controlled.txt",
+      "sha256": "e038b88f1cf4bc7dbb7cf48f1dd3d62170f1f21f61ffbba5178a66f51aa52a6b"
+    }
+  ]
+}
