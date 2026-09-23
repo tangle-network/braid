@@ -11,6 +11,7 @@ import {
   proofReceipt,
 } from '../scripts/live-required/contracts.mjs'
 import {
+  admittedCancellationSupport,
   prepareProductionWorkspace,
   verifyUnavailableCancellation,
 } from '../scripts/live-required/headless.mjs'
@@ -243,6 +244,9 @@ test('direct inference proves unavailable cancellation without another generatio
     run: {
       id: 'run-completed-inference',
       status: 'completed',
+    },
+    admission: {
+      runId: 'run-completed-inference',
       capabilities: { controls: { cancel: false } },
     },
     marker: 'TANGLE_INFERENCE_CANCEL',
@@ -256,6 +260,44 @@ test('direct inference proves unavailable cancellation without another generatio
   assert.equal(requests.length, 1)
   assert.equal(requests[0].command, 'cancel')
   assert.equal(requests[0].params.runId, 'run-completed-inference')
+})
+
+test('direct inference reads cancellation support from the matching admission receipt', () => {
+  const projectedRun = { id: 'run-completed-inference', status: 'completed' }
+  assert.equal(
+    admittedCancellationSupport(projectedRun, {
+      runId: projectedRun.id,
+      capabilities: { controls: { cancel: false } },
+    }),
+    false,
+  )
+  assert.equal(
+    admittedCancellationSupport(projectedRun, {
+      runId: projectedRun.id,
+      capabilities: { controls: { cancel: true } },
+    }),
+    true,
+  )
+  assert.throws(
+    () => admittedCancellationSupport(projectedRun, undefined),
+    /matching cancellation capability receipt/u,
+  )
+  assert.throws(
+    () =>
+      admittedCancellationSupport(projectedRun, {
+        runId: 'another-run',
+        capabilities: { controls: { cancel: false } },
+      }),
+    /matching cancellation capability receipt/u,
+  )
+  assert.throws(
+    () =>
+      admittedCancellationSupport(projectedRun, {
+        runId: projectedRun.id,
+        capabilities: { controls: {} },
+      }),
+    /matching cancellation capability receipt/u,
+  )
 })
 
 function executionRecord(
