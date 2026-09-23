@@ -1003,7 +1003,8 @@ export async function cleanupWorkspaceProofResources({
   plan,
   sourceDestroyed = false,
 }) {
-  let cleanupError
+  // Keep every failure: a later environment leak must not hide behind an earlier step.
+  const cleanupErrors = []
   let resolvedCleanupOperationId = cleanupOperationId
   let resolvedCleanupResult = cleanupResult
   let resolvedSourceDestroyed = sourceDestroyed
@@ -1025,7 +1026,7 @@ export async function cleanupWorkspaceProofResources({
           ...(destination === undefined ? {} : { environmentId: String(destination.id) }),
         })
       } catch (error) {
-        cleanupError ??= error
+        cleanupErrors.push(error)
       }
     }
     const cleanupState = cleanupOwner.app.state()
@@ -1062,7 +1063,7 @@ export async function cleanupWorkspaceProofResources({
           }
         }
       } catch (error) {
-        cleanupError ??= error
+        cleanupErrors.push(error)
       }
     }
     if (!resolvedSourceDestroyed) {
@@ -1073,7 +1074,7 @@ export async function cleanupWorkspaceProofResources({
           resolvedCleanupOperationId ?? `op-live-required-${proofId}-cleanup`,
         )
       } catch (error) {
-        cleanupError ??= error
+        cleanupErrors.push(error)
       }
     }
     if (!resolvedSourceDestroyed) {
@@ -1081,12 +1082,12 @@ export async function cleanupWorkspaceProofResources({
         const sourceAdapters = adapters ?? providerAdapters(cleanupOwner)
         resolvedSourceDestroyed = await destroySource(sourceAdapters, source.providerId)
       } catch (error) {
-        cleanupError ??= error
+        cleanupErrors.push(error)
       }
     }
   }
   return {
-    cleanupError,
+    cleanupErrors,
     cleanupOperationId: resolvedCleanupOperationId,
     cleanupResult: resolvedCleanupResult,
     sourceDestroyed: resolvedSourceDestroyed,
@@ -1726,7 +1727,7 @@ async function runWorkspaceProof({
           plan,
           sourceDestroyed,
         })
-        if (cleanup.cleanupError !== undefined) cleanupErrors.push(cleanup.cleanupError)
+        cleanupErrors.push(...cleanup.cleanupErrors)
         cleanupOperationId = cleanup.cleanupOperationId
         cleanupResult = cleanup.cleanupResult
         sourceDestroyed = cleanup.sourceDestroyed

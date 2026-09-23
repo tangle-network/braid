@@ -890,3 +890,30 @@ test('an admitted source run without a captured identity is a cleanup failure', 
   const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
   assert.match(normalized.message, /source environment cleanup was not attempted/u)
 })
+
+test('workspace resource cleanup keeps every failure, not only the first', async () => {
+  const run = {
+    id: 'run-source-leak',
+    status: 'running',
+    controlRef: { environmentId: 'sandbox-source-leak' },
+  }
+  const app = { state: () => ({ runs: [run], operations: [] }) }
+  const adapters = {
+    // The provider still reports the source, but exposes no destroy handle.
+    freshEnvironment: async () => ({}),
+  }
+  const result = await cleanupWorkspaceProofResources({
+    cleanupOwner: { app },
+    adapters,
+    source: { run, providerId: 'sandbox-source-leak' },
+    proofId: 'live-09-cleanup-errors',
+  })
+  assert.equal(result.sourceDestroyed, false)
+  assert.deepEqual(
+    result.cleanupErrors.map((error) => error.message),
+    [
+      'Braid did not expose source-run cancellation for cleanup',
+      'Tangle Sandbox did not expose source environment cleanup',
+    ],
+  )
+})
