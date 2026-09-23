@@ -14,7 +14,7 @@ Project one immutable row for each non-terminal run or actionable queue entry.
 
 Show the strip only when at least two rows exist, and move full selection and details into Activity.
 
-Derive the `focus` label from the exact focused run while leaving conversation selection independent.
+Derive the `focus` label from the exact focused run and open its conversation branch when selected.
 
 Emit typed run intents and let the application own every control effect.
 
@@ -48,7 +48,9 @@ The narrow strip emits a visible `/activity` route instead of opening a permanen
 
 The activity browser emits `focus-run` when the selected run row is opened.
 
-The focused run remains separate from the selected conversation branch so background controls target the intended run.
+Selecting a run opens its conversation branch and gives that run foreground controls.
+
+Background controls still target an explicit run identifier.
 
 ## State
 

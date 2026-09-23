@@ -259,7 +259,9 @@ Provider session or environment loss marks the binding unavailable but does not 
 
 Graph integrity checks reject cycles, missing boundaries, cross-workspace environment bindings without an explicit edge, and terminal-run mutation.
 
-The user can focus a completed run to inspect its transcript without changing its provider output.
+Focusing a completed run selects its conversation and branch so the transcript matches the focused run.
+
+The focus action restores that branch's draft without changing provider output.
 
 ## Conversation export
 
