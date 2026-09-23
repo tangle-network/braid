@@ -3,9 +3,14 @@ import test from 'node:test'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import {
+  createInteractionRequest,
+  rebindInteractionRequest,
+} from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { runPlain } from '../src/bin/plain.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
+import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
 import { redactSensitiveText } from '../src/domain/secret-sanitizer.js'
 import { FixedClock } from '../src/ports/clock.js'
 import {
@@ -28,6 +33,7 @@ import type {
   DetailsQueryResult,
   GraphQueryResult,
 } from '../src/views/shared/semantic-query-types.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
   yield `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`
@@ -42,6 +48,14 @@ function deferred<T = void>(): {
     resolve = complete
   })
   return { promise, resolve }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for RPC state')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
 }
 
 function controllerFor(app: ReturnType<typeof createBraidApplication>) {
@@ -63,6 +77,194 @@ function resultFor<T>(responses: readonly BraidResponse[], requestId: string): T
   assert.notEqual(response.result, undefined, `missing result for ${requestId}`)
   return response.result as T
 }
+
+test('RPC answers a retained question after reconnect acknowledgement on the same process', async () => {
+  const journal = new MemoryJournal(new FixedClock('2026-09-23T00:00:00.000Z'))
+  const base = interactionResponseRunCapabilities()
+  const capabilities = {
+    ...base,
+    streaming: { ...base.streaming, replay: true, detach: true },
+    events: { ...base.events, cursor: true },
+    controls: { ...base.controls, status: true, recreate: true },
+  }
+  const source = createInteractionRequest({
+    id: 'question-reconnect-rpc',
+    kind: 'question',
+    title: 'Continue?',
+    answerSpec: {
+      fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
+    },
+    binding: {
+      runId: 'source-run',
+      provider: 'test-provider',
+      environmentId: 'environment-reconnect-rpc',
+      sessionId: 'session-reconnect-rpc',
+      executionId: 'source-run',
+      interactionId: 'question-reconnect-rpc',
+    },
+  })
+  const first = createBraidApplication({
+    fixture: 'deterministic',
+    journal,
+    execution: {
+      capabilities: () => capabilities,
+      admit: () => ({ providerSessionId: 'session-reconnect-rpc' }),
+      async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+        yield {
+          type: 'interaction',
+          request: rebindInteractionRequest(source, {
+            ...source.binding,
+            runId: input.runId,
+            executionId: input.runId,
+          }),
+        }
+        await new Promise<void>((resolve) => {
+          if (input.signal.aborted) resolve()
+          else input.signal.addEventListener('abort', () => resolve(), { once: true })
+        })
+      },
+      detachRun: async (input) => ({ operationId: input.operationId, outcome: 'accepted' }),
+    },
+  })
+  first.initialize('/workspace')
+  const sent = first.send({ operationId: 'operation-send-reconnect-rpc', text: 'ask' })
+  await waitFor(() => first.state().runs[0]?.interactions[0]?.status === 'pending')
+  const firstRun = first.state().runs[0]
+  assert(firstRun)
+  const firstRunId = firstRun.id
+  const detached = await first.detachRun({
+    operationId: 'operation-detach-reconnect-rpc',
+    runId: firstRunId,
+  })
+  await detached.completion
+  await sent.completion
+  await first.close()
+
+  const resumed = deferred()
+  let resumedCount = 0
+  let responseCount = 0
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    journal,
+    execution: {
+      capabilities: () => capabilities,
+      async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {},
+      async *reconnect(input) {
+        resumedCount += 1
+        await resumed.promise
+        yield {
+          runId: input.runId,
+          eventId: `${input.runId}-replayed-final`,
+          sequence: 2,
+          cursor: `${input.runId}-cursor-final`,
+          receivedAt: '2026-09-23T00:00:00.000Z',
+          event: {
+            type: 'final' as const,
+            status: 'completed' as const,
+            reason: 'answered after reconnect',
+            text: 'ANSWERED_AFTER_RECONNECT',
+            task: { id: input.runId, intent: 'reconnect question' },
+            timestamp: '2026-09-23T00:00:00.000Z',
+          },
+        }
+      },
+      status: async ({ runId }) => ({
+        runId,
+        status: responseCount > 0 ? 'completed' : 'waiting',
+        ...(responseCount > 0 ? { finalText: 'ANSWERED_AFTER_RECONNECT' } : {}),
+      }),
+      respondInteraction: async ({ command }) => {
+        responseCount += 1
+        resumed.resolve()
+        return { operationId: command.operationId, outcome: 'accepted' }
+      },
+    },
+  })
+  restarted.initialize('/workspace')
+  const pending = restarted.state().runs[0]?.interactions[0]
+  assert.equal(pending?.status, 'pending')
+  assert(pending)
+  const pendingId = pending.request.id
+  const responses: BraidResponse[] = []
+  async function* input(): AsyncGenerator<string> {
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'rpc-reconnect-init',
+      command: 'initialize',
+      params: { workspace: '/workspace', subscribe: true },
+    })}\n`
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'rpc-reconnect',
+      operationId: 'operation-reconnect-rpc',
+      command: 'reconnect',
+      params: { runId: firstRunId },
+    })}\n`
+    await waitFor(() =>
+      responses.some(
+        (response) => 'requestId' in response && response.requestId === 'rpc-reconnect',
+      ),
+    )
+    const reconnectResponse = responses.find(
+      (response) => 'requestId' in response && response.requestId === 'rpc-reconnect',
+    )
+    assert.equal(reconnectResponse?.type, 'ack', JSON.stringify(reconnectResponse))
+    assert.equal(restarted.state().runs[0]?.status, 'reconnecting')
+    const second = restarted.reconnectRun({
+      operationId: 'operation-reconnect-rpc',
+      runId: firstRunId,
+    })
+    await waitFor(() => resumedCount === 1)
+    assert.equal(resumedCount, 1, 'same-operation retry started a second replay stream')
+    assert.throws(
+      () =>
+        restarted.reconnectRun({ operationId: 'another-reconnect-operation', runId: firstRunId }),
+      /already has a reconnect operation/u,
+    )
+    void second.catch(() => undefined)
+    yield `${JSON.stringify({
+      version: 1,
+      requestId: 'rpc-answer',
+      operationId: 'operation-answer-rpc',
+      command: 'respond_interaction',
+      params: {
+        runId: firstRunId,
+        interactionId: pendingId,
+        response: {
+          id: pendingId,
+          outcome: 'accepted',
+          data: { continue: true },
+        },
+      },
+    })}\n`
+    await waitFor(() =>
+      responses.some((response) => 'requestId' in response && response.requestId === 'rpc-answer'),
+    )
+    await waitFor(() => restarted.state().runs[0]?.status === 'completed')
+  }
+  const code = await runRpc(createApplicationUiController(restarted), input(), {
+    write: responseWriter(responses),
+  })
+  assert.equal(code, 0)
+  assert.equal(responseCount, 1)
+  assert.equal(resumedCount, 1)
+  assert.equal(
+    responses.find((response) => 'requestId' in response && response.requestId === 'rpc-reconnect')
+      ?.type,
+    'ack',
+  )
+  assert.equal(
+    responses.find((response) => 'requestId' in response && response.requestId === 'rpc-answer')
+      ?.type,
+    'ack',
+  )
+  assert.equal(restarted.state().runs[0]?.status, 'completed')
+  assert.equal(restarted.state().runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(
+    restarted.events().filter((entry) => entry.event.kind === 'run.interaction.responded').length,
+    1,
+  )
+})
 
 test('headless fork requests use the canonical confidential schema and reject invalid fields', () => {
   const confidential = {

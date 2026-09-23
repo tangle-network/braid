@@ -853,6 +853,8 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     cloud.interaction?.interactionId !== receipt.facts.cloudInteractionId ||
     cloud.interaction?.kind !== 'question' ||
     cloud.interaction?.terminalStatus !== 'completed' ||
+    cloud.interaction?.reconnect?.runStatus !== 'reconnecting' ||
+    cloud.interaction?.reconnect?.interactionStatus !== 'pending' ||
     cloud.response?.operationId !== receipt.facts.cloudInteractionResponseOperationId ||
     cloud.response?.outcome !== 'accepted' ||
     cloud.firstProcess?.exitSignal !== 'SIGKILL' ||
@@ -864,13 +866,25 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     cloud.cleanup?.confirmed !== true
   )
     throw new Error('Passed LIVE-08 cloud interaction evidence is incomplete')
+  validRequiredString(
+    cloud.interaction.reconnect.operationId,
+    'Passed LIVE-08 cloud reconnect operationId',
+  )
+  if (cloud.interaction.reconnect.operationId === cloud.response.operationId)
+    throw new Error('Passed LIVE-08 cloud reconnect and response reused one operation')
   if (
     !Number.isSafeInteger(cloud.interaction.requestSequence) ||
+    !Number.isSafeInteger(cloud.interaction.reconnect.acknowledgedRevision) ||
+    !Number.isSafeInteger(cloud.interaction.reconnect.observedRevision) ||
+    !Number.isSafeInteger(cloud.interaction.reconnect.observedSequence) ||
     !Number.isSafeInteger(cloud.interaction.responseRequestedSequence) ||
     !Number.isSafeInteger(cloud.interaction.responseAcknowledgedSequence) ||
+    cloud.interaction.reconnect.acknowledgedRevision >
+      cloud.interaction.reconnect.observedRevision ||
+    cloud.interaction.reconnect.observedSequence >= cloud.interaction.responseRequestedSequence ||
     cloud.interaction.responseRequestedSequence >= cloud.interaction.responseAcknowledgedSequence
   )
-    throw new Error('Passed LIVE-08 cloud response events are missing or unordered')
+    throw new Error('Passed LIVE-08 cloud reconnect or response events are missing or unordered')
   for (const field of [
     'checks',
     'configuration',

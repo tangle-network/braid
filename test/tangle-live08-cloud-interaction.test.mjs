@@ -43,8 +43,12 @@ function proof() {
     event: { kind, payload: { runId: 'run-1', ...(value === undefined ? {} : { value }) } },
   })
   const pending = {
+    revision: 21,
+    sequence: 22,
     runs: [{ id: 'run-1', status: 'waiting', interactions: [{ status: 'pending', request }] }],
   }
+  const reconnected = structuredClone(pending)
+  reconnected.runs[0].status = 'reconnecting'
   return {
     firstResponses: [
       {
@@ -77,7 +81,7 @@ function proof() {
       }),
     ],
     initialState: pending,
-    reconnectedState: structuredClone(pending),
+    reconnectedState: reconnected,
     terminalState: {
       runs: [{ id: 'run-1', status: 'completed' }],
       messages: [{ runId: 'run-1', role: 'assistant', text: 'AFTER_ANSWER' }],
@@ -85,6 +89,7 @@ function proof() {
     runId: 'run-1',
     interactionId: request.id,
     operationId: 'operation-response-1',
+    reconnectAck: { type: 'ack', operationId: 'operation-reconnect-1', revision: 20 },
     responseAck: { type: 'ack', operationId: 'operation-response-1', outcome: 'accepted' },
     marker: 'AFTER_ANSWER',
   }
@@ -127,6 +132,7 @@ test('cloud answer uses the full retained request, not the projected event summa
 test('cloud proof requires one pending question before and after reconnect', () => {
   const valid = proof()
   assert.equal(assertCloudInteractionEvidence(valid).terminalStatus, 'completed')
+  assert.equal(assertCloudInteractionEvidence(valid).reconnect.runStatus, 'reconnecting')
   assert.throws(
     () => assertCloudInteractionEvidence({ ...valid, firstResponses: [] }),
     /one retained interaction/u,
@@ -138,6 +144,22 @@ test('cloud proof requires one pending question before and after reconnect', () 
         reconnectedState: { runs: [{ id: 'run-1', interactions: [] }] },
       }),
     /pending/u,
+  )
+  assert.throws(
+    () =>
+      assertCloudInteractionEvidence({
+        ...valid,
+        reconnectedState: valid.initialState,
+      }),
+    /reconnecting/u,
+  )
+  assert.throws(
+    () =>
+      assertCloudInteractionEvidence({
+        ...valid,
+        reconnectedState: { ...valid.reconnectedState, sequence: 23 },
+      }),
+    /preceded the observed reconnecting state/u,
   )
 })
 

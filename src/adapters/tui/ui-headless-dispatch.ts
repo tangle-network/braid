@@ -154,17 +154,37 @@ export async function dispatchHeadlessCommand(
         retryable: false,
       }
     }
-    const state =
-      intent.command === 'reconnect'
-        ? await context.app.reconnectRun({
-            operationId: intent.operationId ?? '',
-            runId,
-          })
-        : await context.app.reconcileRun({
-            operationId: intent.operationId ?? '',
-            runId,
-          })
-    return { kind: 'accepted', revision: state.revision }
+    if (intent.command === 'reconcile') {
+      const state = await context.app.reconcileRun({
+        operationId: intent.operationId ?? '',
+        runId,
+      })
+      return { kind: 'accepted', revision: state.revision }
+    }
+    let resolveStart: (() => void) | undefined
+    let rejectStart: ((error: unknown) => void) | undefined
+    const responseReady = new Promise<void>((resolve, reject) => {
+      resolveStart = resolve
+      rejectStart = reject
+    })
+    const reconnect = context.app.reconnectRun({
+      operationId: intent.operationId ?? '',
+      runId,
+      onInteractionReady: () => resolveStart?.(),
+    })
+    void reconnect.then(
+      () => resolveStart?.(),
+      (error: unknown) => rejectStart?.(error),
+    )
+    await responseReady
+    return {
+      kind: 'accepted',
+      ...(intent.operationId === undefined ? {} : { operationId: intent.operationId }),
+      runId,
+      control: 'reconnect',
+      revision: context.app.state().revision,
+      completion: reconnect.then(() => undefined),
+    }
   }
   if (intent.command === 'respond_interaction' || intent.command === 'cancel_interaction') {
     const runId = intent.params.runId

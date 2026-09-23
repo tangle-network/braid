@@ -600,6 +600,14 @@ function interactiveObservations(overrides = {}) {
         interactionId: 'question-cloud-1',
         kind: 'question',
         requestSequence: 12,
+        reconnect: {
+          operationId: 'operation-cloud-reconnect',
+          acknowledgedRevision: 20,
+          observedRevision: 21,
+          observedSequence: 22,
+          runStatus: 'reconnecting',
+          interactionStatus: 'pending',
+        },
         responseRequestedSequence: 23,
         responseAcknowledgedSequence: 24,
         terminalStatus: 'completed',
@@ -1461,6 +1469,20 @@ test('LIVE-08 rejects the former terminal-only passed receipt', () => {
         observations: { nativeTerminal: receipt.observations.nativeTerminal },
       }),
     /separate native terminal and cloud interaction evidence/u,
+  )
+})
+
+test('LIVE-08 rejects a response without a prior reconnecting state boundary', () => {
+  const receipt = passedInteractiveProof('live-required-no-reconnect-boundary').evidence
+  const wrongStatus = structuredClone(receipt)
+  wrongStatus.observations.cloudInteraction.interaction.reconnect.runStatus = 'waiting'
+  assert.throws(() => assertProofReceipt(wrongStatus), /cloud interaction evidence is incomplete/u)
+
+  const wrongOrder = structuredClone(receipt)
+  wrongOrder.observations.cloudInteraction.interaction.reconnect.observedSequence = 23
+  assert.throws(
+    () => assertProofReceipt(wrongOrder),
+    /cloud reconnect or response events are missing or unordered/u,
   )
 })
 

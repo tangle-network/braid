@@ -107,6 +107,7 @@ export function assertCloudInteractionEvidence({
   runId,
   interactionId,
   operationId,
+  reconnectAck,
   responseAck,
   marker,
 }) {
@@ -122,6 +123,25 @@ export function assertCloudInteractionEvidence({
   assert.equal(request.kind, 'question', 'cloud interaction was not a question')
   assert.equal(interactionState(initialState, runId, interactionId)?.status, 'pending')
   assert.equal(interactionState(reconnectedState, runId, interactionId)?.status, 'pending')
+  assert.equal(reconnectAck?.type, 'ack', 'cloud reconnect was not acknowledged')
+  assert.equal(
+    runFromState(reconnectedState, runId)?.status,
+    'reconnecting',
+    'cloud reconnect state is not reconnecting before the answer',
+  )
+  assert.ok(Number.isSafeInteger(reconnectAck.revision), 'cloud reconnect has no revision')
+  assert.ok(
+    Number.isSafeInteger(reconnectedState.revision),
+    'cloud reconnect state has no revision',
+  )
+  assert.ok(
+    Number.isSafeInteger(reconnectedState.sequence),
+    'cloud reconnect state has no sequence',
+  )
+  assert.ok(
+    reconnectAck.revision <= reconnectedState.revision,
+    'cloud reconnect state predates acknowledgement',
+  )
   assert.equal(responseAck?.type, 'ack', 'cloud interaction response was not acknowledged')
   assert.equal(responseAck?.operationId, operationId, 'cloud response operation changed identity')
   assert.equal(responseAck?.outcome, 'accepted', 'cloud response was not accepted')
@@ -140,6 +160,10 @@ export function assertCloudInteractionEvidence({
   )
   assert.equal(requested.length, 1, 'Braid did not retain one response request')
   assert.equal(responded.length, 1, 'Braid did not retain one response acknowledgement')
+  assert.ok(
+    reconnectedState.sequence < requested[0].sequence,
+    'cloud response request preceded the observed reconnecting state',
+  )
   assert.ok(requested[0].sequence < responded[0].sequence, 'response events are out of order')
   assert.equal(requested[0].event.payload.value.outcome, 'accepted')
   assert.equal(responded[0].event.payload.value.outcome, 'accepted')
@@ -150,6 +174,14 @@ export function assertCloudInteractionEvidence({
     interactionId,
     kind: request.kind,
     requestSequence: requestEvents[0].sequence,
+    reconnect: {
+      operationId: reconnectAck.operationId,
+      acknowledgedRevision: reconnectAck.revision,
+      observedRevision: reconnectedState.revision,
+      observedSequence: reconnectedState.sequence,
+      runStatus: 'reconnecting',
+      interactionStatus: 'pending',
+    },
     responseRequestedSequence: requested[0].sequence,
     responseAcknowledgedSequence: responded[0].sequence,
     terminalStatus: run.status,
@@ -272,17 +304,15 @@ export async function runCloudInteractionProof({
       'pending',
       'cloud interaction was not retained across Braid process restart',
     )
-    assertAck(
-      await rpcRoundTrip(
-        freshSession,
-        'reconnect',
-        { runId },
-        `op-braid-cloud-interaction-reconnect-${randomUUID()}`,
-      ),
+    const reconnectOperationId = `op-braid-cloud-interaction-reconnect-${randomUUID()}`
+    const reconnectAck = assertAck(
+      await rpcRoundTrip(freshSession, 'reconnect', { runId }, reconnectOperationId),
       'cloud interaction reconnect',
     )
+    assert.equal(reconnectAck.operationId, reconnectOperationId)
     const reconnected = (await stateRoundTrip(freshSession)).state
     assert.equal(interactionState(reconnected, runId, interaction.interactionId)?.status, 'pending')
+    assert.equal(runFromState(reconnected, runId)?.status, 'reconnecting')
     const reconnectedRef = runFromState(reconnected, runId)?.controlRef
     assertSameControlRef(controlRef, reconnectedRef, 'cloud interaction reconnect')
     // RPC events expose a safe summary; the full request is in Braid's retained state.
@@ -322,6 +352,7 @@ export async function runCloudInteractionProof({
       runId,
       interactionId: interaction.interactionId,
       operationId: responseOperationId,
+      reconnectAck,
       responseAck,
       marker,
     })
