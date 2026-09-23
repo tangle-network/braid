@@ -86,10 +86,18 @@ export async function* streamRetainedExecution(input: {
     }
     // A stalled result endpoint must not hold the turn open. Cancellation does not abort this
     // read: a cancelled run still reports its exact final result through the terminal promise.
-    const result = await abortable(
-      input.terminalResult ?? input.handle.result(),
-      AbortSignal.timeout(input.resultTimeoutMs ?? RESULT_READ_TIMEOUT_MS),
+    // A referenced timer, unlike AbortSignal.timeout, keeps the process alive until the deadline.
+    const deadline = new AbortController()
+    const timer = setTimeout(
+      () => deadline.abort(new DOMException('Retained result read timed out', 'TimeoutError')),
+      input.resultTimeoutMs ?? RESULT_READ_TIMEOUT_MS,
     )
+    let result: RetainedTurnResult
+    try {
+      result = await abortable(input.terminalResult ?? input.handle.result(), deadline.signal)
+    } finally {
+      clearTimeout(timer)
+    }
     sequence += 1
     yield input.plan.projectFinal({ runId: input.runId, sequence, result })
   } finally {
