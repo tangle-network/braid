@@ -5,12 +5,13 @@
 The failed protected Live Evidence run was `33712441720`, job `100514611475`, at Braid commit `a1ca4f56eb3e29c5371d8631db640b20b963dbb8`.
 The diagnostic artifact was `9877446888`, named `braid-live-evidence-diagnostic-a1ca4f56eb3e29c5371d8631db640b20b963dbb8`.
 The raw diagnostic was read from `/tmp/braid-live-diagnostic.AdsDwG`.
-The failed command was `pnpm test:live:tangle`, executed six times for `live-tangle`, `LIVE-06`, `LIVE-07`, `LIVE-08`, `LIVE-09`, and `LIVE-10`.
+The failed command was `pnpm test:live:tangle`, executed once.
+The release collector caches executions by command (`scripts/release/collector.mjs:368-383`), so it projected that one result onto six check rows: `live-tangle`, `LIVE-06`, `LIVE-07`, `LIVE-08`, `LIVE-09`, and `LIVE-10`.
 
 ## Verified findings
 
-- All six rows exited with code `1` and produced an `uncaptured` measurement.
-- Each raw failure said the Braid run `run-b485afe6-5ce0-4e46-b1c8-7e574b9db530` remained `streaming` with `retainedAdmission=interactive_started` and an exact control reference present.
+- All six rows carry the same exit code `1` and `uncaptured` measurement from that one execution.
+- The single raw failure said the Braid run `run-b485afe6-5ce0-4e46-b1c8-7e574b9db530` remained `streaming` with `retainedAdmission=interactive_started` and an exact control reference present.
 - The last terminal screen contained `or directory | (exit 1)`, matching the native-input shell write failing before its parent directory existed.
 - The candidate source at `a1ca4f56` builds `native-input.txt` under `.braid-live/<proofId>` and emits `>>` without creating that directory (`scripts/live-required/tangle-sandbox-braid-interactive.mjs:177-200`).
 - The diagnostic envelope recorded `liveResources: []` and `cleanup: []`, so it did not prove provider cleanup or provider absence.
