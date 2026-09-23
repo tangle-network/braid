@@ -207,7 +207,7 @@ function proofPrompts(coordinates, holdMs) {
   }
 }
 
-async function retainedBox(client, controlRef, label) {
+export async function retainedBox(client, controlRef, label) {
   if (!client) {
     throw new MissingIntegrationError(`${label} requires the Sandbox verification client`, {
       required: 'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY',
@@ -226,18 +226,30 @@ export async function readRetainedWorkspaceFile(
   client,
   controlRef,
   path,
-  { label = 'Workspace file read', allowMissing = false } = {},
+  { label = 'Workspace file read', allowMissing = false, box: providedBox } = {},
 ) {
-  const box = await retainedBox(client, controlRef, label)
+  const box = providedBox ?? (await retainedBox(client, controlRef, label))
+  if (!box || !retainedResourceIdentity(box, controlRef)) {
+    throw new MissingIntegrationError(`${label} did not resolve the exact retained Sandbox`, {
+      environmentId: controlRef?.environmentId,
+    })
+  }
   const relativePath = sandboxWorkspaceRelativePath(path)
   let value
   try {
     value = await box.read(relativePath)
   } catch (error) {
-    if (allowMissing) return undefined
+    if (allowMissing && isMissingWorkspaceFileError(error)) return undefined
     throw error
   }
   return { environmentId: box.id, path: relativePath, value }
+}
+
+function isMissingWorkspaceFileError(error) {
+  const status = error?.status ?? error?.statusCode
+  if (status === 404 || status === '404') return true
+  if (error?.code === 'NOT_FOUND' || error?.name === 'NotFoundError') return true
+  return /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
 }
 
 export function providerWorkspaceReadbackEvidence(

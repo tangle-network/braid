@@ -40,6 +40,7 @@ const PROOF_OPERATION_CHECKS = Object.freeze({
   [PROOF_OPERATIONS.tangleSandboxInteractive]: Object.freeze([
     'packed-binary',
     'interactive-command',
+    'initial-turn-ready',
     'input',
     'detach',
     'reconnect',
@@ -120,6 +121,7 @@ const PROOF_OPERATION_FACT_KEYS = Object.freeze({
     'stoppedStatus',
     'cloudControl',
     'exactResource',
+    'initialTurnReady',
     'processExitedBeforeWorkspaceCleanup',
     'terminalResize',
     'processGroupExitedBeforeWorkspaceCleanup',
@@ -475,6 +477,7 @@ function validateProofFacts(operation, status, facts) {
       key === 'processExitedBeforeWorkspaceCleanup' ||
       key === 'terminalResize' ||
       key === 'processGroupExitedBeforeWorkspaceCleanup' ||
+      key === 'initialTurnReady' ||
       key === 'providerInput' ||
       key === 'providerReconnect' ||
       key === 'singleProviderExecutionAttempt' ||
@@ -675,6 +678,7 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
   for (const field of [
     'providerInput',
     'providerReconnect',
+    'initialTurnReady',
     'singleProviderExecutionAttempt',
     'exactOwnedResourceSetCleanup',
     'accountIdentityStable',

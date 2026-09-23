@@ -42,6 +42,7 @@ import {
   assertStableAccountIdentity,
   assertVerifiedProcessCleanup,
   executionAttemptLedgerPath,
+  retainedBox,
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
   readRetainedWorkspaceFile,
@@ -50,7 +51,12 @@ import {
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
-import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
+import {
+  createTerminalOutputTracker,
+  waitForPiTerminalReady,
+  waitForTerminalQuiescence,
+} from './terminal-quiescence.mjs'
+import { withReadOnlyProviderObservation } from './provider-observation.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -81,6 +87,7 @@ const CONTROL_REF_FIELDS = Object.freeze([
 const INTERACTIVE_PROOF_CHECKS = Object.freeze([
   'packed-binary',
   'interactive-command',
+  'initial-turn-ready',
   'input',
   'detach',
   'reconnect',
@@ -263,11 +270,24 @@ export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironme
 }
 
 async function waitForProviderReadback(client, controlRef, path, expectedValue, timeoutMs, label) {
+  const deadline = performance.now() + timeoutMs
+  const box = await readOnlyProviderObservation(
+    `${label} retained Sandbox`,
+    () => retainedBox(client, controlRef, label),
+    deadline,
+  )
   const observation = await waitFor(
     `${label} provider readback`,
     () =>
-      readRetainedWorkspaceFile(client, controlRef, path, { label, allowMissing: true }).then(
-        (value) => (value?.value === expectedValue ? value : undefined),
+      readOnlyProviderObservation(
+        `${label} provider readback`,
+        () =>
+          readRetainedWorkspaceFile(client, controlRef, path, {
+            label,
+            allowMissing: true,
+            box,
+          }).then((value) => (value?.value === expectedValue ? value : undefined)),
+        deadline,
       ),
     timeoutMs,
   )
@@ -277,17 +297,38 @@ async function waitForProviderReadback(client, controlRef, path, expectedValue, 
   )
 }
 
+function readOnlyProviderObservation(
+  label,
+  operation,
+  deadline = performance.now() + DEFAULT_TIMEOUT_MS,
+) {
+  return withReadOnlyProviderObservation(label, operation, {
+    deadline,
+    pause: sleep,
+  })
+}
+
 async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt, timeoutMs) {
   const expectedValue = `${expectedAttempt}\n`
+  const deadline = performance.now() + timeoutMs
+  const box = await readOnlyProviderObservation(
+    'Execution-attempt retained Sandbox',
+    () => retainedBox(client, controlRef, 'Execution-attempt ledger'),
+    deadline,
+  )
   let previousValue
   let stableReads = 0
   const observation = await waitFor(
     'single provider execution attempt',
-    async () => {
-      const value = await readRetainedWorkspaceFile(client, controlRef, path, {
-        label: 'Execution-attempt ledger',
-        allowMissing: true,
-      })
+    () =>
+      readOnlyProviderObservation(
+        'Execution-attempt ledger provider readback',
+        async () => {
+          const value = await readRetainedWorkspaceFile(client, controlRef, path, {
+            label: 'Execution-attempt ledger',
+            allowMissing: true,
+            box,
+          })
       if (value?.value === undefined) return undefined
       assertSingleExecutionAttemptLedger(value.value, expectedAttempt)
       if (value.value === previousValue) stableReads += 1
@@ -296,7 +337,9 @@ async function waitForExecutionAttempt(client, controlRef, path, expectedAttempt
         stableReads = 1
       }
       return stableReads >= 3 ? value : undefined
-    },
+        },
+        deadline,
+      ),
     timeoutMs,
   )
   const ledger = assertSingleExecutionAttemptLedger(observation.value, expectedAttempt)
@@ -417,9 +460,9 @@ async function listAllSandboxResources(client) {
   }
 }
 
-async function observeInteractiveResource(client, controlRef, runId) {
+async function observeInteractiveResource(client, controlRef, runId, { box: providedBox } = {}) {
   const expectedName = interactiveResourceName(runId)
-  const box = await client.get(controlRef.environmentId)
+  const box = providedBox ?? (await retainedBox(client, controlRef, 'Interactive Sandbox observation'))
   if (box === null) {
     throw new Error(`Interactive Sandbox ${controlRef.environmentId} was not visible`)
   }
@@ -453,14 +496,19 @@ async function cleanupInteractiveByRunId(client, materialization) {
   const expectedName = interactiveResourceName(runId)
   const predicate = (resource) => isOwnedInteractiveResource(resource, expectedName)
   const listed = sameNameInteractiveResources(
-    await listAllSandboxResources(client),
+    await readOnlyProviderObservation('Interactive cleanup resource census', () =>
+      listAllSandboxResources(client),
+    ),
     expectedName,
     predicate,
   )
   const deletions = []
   const removedIds = []
   for (const resource of listed) {
-    const exact = await client.get(resource.id)
+    const exact = await readOnlyProviderObservation(
+      `Interactive cleanup resource ${resource.id} lookup`,
+      () => client.get(resource.id),
+    )
     if (exact === null) {
       deletions.push({
         id: resource.id,
@@ -477,7 +525,12 @@ async function cleanupInteractiveByRunId(client, materialization) {
       )
     }
     await exact.delete()
-    if ((await client.get(resource.id)) !== null) {
+    if (
+      (await readOnlyProviderObservation(
+        `Interactive cleanup resource ${resource.id} deletion check`,
+        () => client.get(resource.id),
+      )) !== null
+    ) {
       throw new Error(`Interactive run-derived resource ${resource.id} remained after delete`)
     }
     removedIds.push(resource.id)
@@ -490,7 +543,9 @@ async function cleanupInteractiveByRunId(client, materialization) {
     })
   }
   const remaining = sameNameInteractiveResources(
-    await listAllSandboxResources(client),
+    await readOnlyProviderObservation('Interactive cleanup remaining resource census', () =>
+      listAllSandboxResources(client),
+    ),
     expectedName,
     predicate,
   )
@@ -516,10 +571,14 @@ async function cleanupInteractiveByRunId(client, materialization) {
 async function waitFor(label, predicate, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    if (performance.now() >= deadline) {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`)
+    }
     const value = await predicate()
     if (value) return value
-    if (performance.now() >= deadline) throw new Error(`${label} timed out after ${timeoutMs}ms`)
-    await sleep(50)
+    const remainingMs = deadline - performance.now()
+    if (remainingMs <= 0) throw new Error(`${label} timed out after ${timeoutMs}ms`)
+    await sleep(Math.min(50, remainingMs))
   }
 }
 
@@ -576,6 +635,16 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
     },
     waitForTerminalQuiescence(timeoutMs, afterRevision) {
       return waitForTerminalQuiescence(outputTracker, { timeoutMs, afterRevision, pause: sleep })
+    },
+    waitForPiTerminalReady(timeoutMs, afterRevision, beforeScreen) {
+      return waitForPiTerminalReady({
+        tracker: outputTracker,
+        readScreen: () => terminalText(terminal),
+        timeoutMs,
+        afterRevision,
+        beforeScreen,
+        pause: sleep,
+      })
     },
     write(value) {
       child.write(value)
@@ -838,25 +907,39 @@ async function observeSandbox(
   expectedRunning,
   expectedGeometry,
 ) {
-  const resource = await observeInteractiveResource(client, controlRef, runId)
-  const box = await client.get(controlRef.environmentId)
-  assert.equal(box?.id, resource.id, 'Sandbox observation changed environment identity')
+  const deadline = performance.now() + timeoutMs
+  const box = await readOnlyProviderObservation(
+    'Interactive Sandbox identity observation',
+    () => retainedBox(client, controlRef, 'Interactive Sandbox observation'),
+    deadline,
+  )
+  const resource = await readOnlyProviderObservation(
+    'Interactive Sandbox ownership observation',
+    () => observeInteractiveResource(client, controlRef, runId, { box }),
+    deadline,
+  )
+  assert.equal(box.id, resource.id, 'Sandbox observation changed environment identity')
   assert.ok(box.terminals && typeof box.terminals.get === 'function')
   let terminal
   await waitFor(
     expectedRunning ? 'retained interactive terminal' : 'stopped retained interactive terminal',
-    async () => {
-      terminal = await box.terminals.get(controlRef.sessionId)
-      if (terminal !== null) assert.equal(terminal.sessionId, controlRef.sessionId)
-      if (expectedRunning) {
-        return (
-          terminal?.isRunning === true &&
-          (expectedGeometry === undefined ||
-            (terminal.cols === expectedGeometry.cols && terminal.rows === expectedGeometry.rows))
-        )
-      }
-      return terminal === null || terminal?.isRunning === false
-    },
+    () =>
+      readOnlyProviderObservation(
+        expectedRunning ? 'running interactive terminal observation' : 'stopped interactive terminal observation',
+        async () => {
+          terminal = await box.terminals.get(controlRef.sessionId)
+          if (terminal !== null) assert.equal(terminal.sessionId, controlRef.sessionId)
+          if (expectedRunning) {
+            return (
+              terminal?.isRunning === true &&
+              (expectedGeometry === undefined ||
+                (terminal.cols === expectedGeometry.cols && terminal.rows === expectedGeometry.rows))
+            )
+          }
+          return terminal === null || terminal?.isRunning === false
+        },
+        deadline,
+      ),
     timeoutMs,
   )
   const stopped = expectedRunning ? undefined : assertStoppedTerminal(terminal)
@@ -874,7 +957,11 @@ async function observeSandbox(
     if (typeof box.resourceUsage !== 'function') {
       resourceSample = undefined
     } else {
-      resourceSample = await box.resourceUsage()
+      resourceSample = await readOnlyProviderObservation(
+        'Interactive Sandbox resource usage observation',
+        () => box.resourceUsage(),
+        deadline,
+      )
     }
   } catch (error) {
     resourceSampleError = safeMessage(error)
@@ -897,7 +984,10 @@ async function observeSandbox(
 }
 
 async function cleanupExactSandbox(client, identity) {
-  const observed = await observeInteractiveResource(client, identity.controlRef, identity.run.id)
+  const observed = await readOnlyProviderObservation(
+    'Interactive cleanup ownership observation',
+    () => observeInteractiveResource(client, identity.controlRef, identity.run.id),
+  )
   const cleanup = await cleanupInteractiveByRunId(client, {
     runId: identity.run.id,
     phase: 'interactive_started',
@@ -1277,6 +1367,8 @@ async function runProof({
     const [interactiveCommand, inputCommand, detach, , attach, reconnectCommand] =
       interactiveProofCommandSequence(markers)
     const promptCount = occurrences(runtime.output, markers.output)
+    const interactiveBeforeScreen = runtime.screen
+    const interactiveActionRevision = runtime.terminalOutputRevision
     runtime.write(`${interactiveCommand}\r`)
     await waitFor(
       'native interactive output',
@@ -1290,7 +1382,11 @@ async function runProof({
       },
       timeoutMs,
     )
-    await runtime.waitForTerminalQuiescence(timeoutMs)
+    const initialReadiness = await runtime.waitForPiTerminalReady(
+      timeoutMs,
+      interactiveActionRevision,
+      interactiveBeforeScreen,
+    )
     const { frame: initialFrame, identity: initialIdentity } =
       await waitForInteractiveIdentityFrame({
         captureFrame: () => captureStateFrame(runtime, recordPath, timeoutMs),
@@ -1305,6 +1401,8 @@ async function runProof({
       true,
       { cols: 120, rows: 36 },
     )
+    const inputBeforeScreen = runtime.screen
+    const inputActionRevision = runtime.terminalOutputRevision
     runtime.write(`${inputCommand}\r`)
     const inputEvidence = await waitForProviderReadback(
       client,
@@ -1314,12 +1412,22 @@ async function runProof({
       timeoutMs,
       'interactive input',
     )
+    const inputReadiness = await runtime.waitForPiTerminalReady(
+      timeoutMs,
+      inputActionRevision,
+      inputBeforeScreen,
+    )
 
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
     const attachOutputRevision = runtime.terminalOutputRevision
+    const attachBeforeScreen = runtime.screen
     runtime.write(`${attach}\r`)
-    await runtime.waitForTerminalQuiescence(timeoutMs, attachOutputRevision)
+    const attachReadiness = await runtime.waitForPiTerminalReady(
+      timeoutMs,
+      attachOutputRevision,
+      attachBeforeScreen,
+    )
     const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
     await runtime.waitForTerminalQuiescence(timeoutMs, resizeOutputRevision)
@@ -1344,6 +1452,8 @@ async function runProof({
       reconnectedIdentity.controlRef,
       'native reconnect provider control reference',
     )
+    const reconnectBeforeScreen = runtime.screen
+    const reconnectActionRevision = runtime.terminalOutputRevision
     runtime.write(`${reconnectCommand}\r`)
     const reconnectEvidence = await waitForProviderReadback(
       client,
@@ -1352,6 +1462,11 @@ async function runProof({
       `${markers.reconnect}\n`,
       timeoutMs,
       'interactive reconnect input',
+    )
+    const reconnectReadiness = await runtime.waitForPiTerminalReady(
+      timeoutMs,
+      reconnectActionRevision,
+      reconnectBeforeScreen,
     )
     const executionAttempt = await waitForExecutionAttempt(
       client,
@@ -1405,6 +1520,10 @@ async function runProof({
       inputEvidence,
       reconnectEvidence,
       executionAttempt,
+      initialReadiness,
+      inputReadiness,
+      attachReadiness,
+      reconnectReadiness,
       sameLocalRun,
       sameProviderControlRef,
       identityContinuity: {
@@ -1555,6 +1674,9 @@ async function runProof({
     checks: {
       packedBinary: true,
       interactiveCommand: true,
+      initialTurnReady:
+        proofData.initialReadiness?.readiness?.state === 'ready' &&
+        proofData.initialReadiness?.transitioned === true,
       input: proofData.inputEvidence?.matched === true,
       detach: true,
       reconnect: true,
@@ -1600,6 +1722,12 @@ async function runProof({
       input: proofData.inputEvidence,
       reconnect: proofData.reconnectEvidence,
     },
+    terminalReadiness: {
+      initial: proofData.initialReadiness,
+      input: proofData.inputReadiness,
+      attach: proofData.attachReadiness,
+      reconnect: proofData.reconnectReadiness,
+    },
     executionAttempt: proofData.executionAttempt,
     usage: metrics.usage,
     accountIdentities: metrics.accountIdentities,
@@ -1635,6 +1763,7 @@ export async function runInteractiveProof({
       exactResource: proof.checks.exactSandboxCleanup,
       processExitedBeforeWorkspaceCleanup: proof.checks.processExitedBeforeWorkspaceCleanup,
       terminalResize: proof.checks.terminalResize,
+      initialTurnReady: proof.checks.initialTurnReady,
       processGroupExitedBeforeWorkspaceCleanup:
         proof.checks.processGroupExitedBeforeWorkspaceCleanup,
       providerInput: proof.checks.providerBoundInput,
