@@ -1792,9 +1792,10 @@ export function workspaceProofFailure(primaryError, nestedCleanupErrors) {
   if (cleanupErrors.length === 0) return primaryError
   const failure = new AggregateError(
     primaryError === undefined ? cleanupErrors : [...cleanupErrors, primaryError],
+    // The header carries the proof failure so it always occupies the first report slot.
     primaryError === undefined
       ? 'LIVE workspace proof cleanup incomplete'
-      : 'LIVE workspace proof failed and cleanup was incomplete',
+      : `LIVE workspace proof failed (${primaryError instanceof Error ? primaryError.message : String(primaryError)}) and cleanup was incomplete`,
   )
   failure.code = 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE'
   failure.cleanupErrors = cleanupErrors

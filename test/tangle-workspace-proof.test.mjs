@@ -844,7 +844,10 @@ test('workspace proof failure keeps cleanup failures behind a proof failure', ()
   assert.equal(failure.primaryError, primary)
   assert.deepEqual(failure.cleanupErrors, [leaked])
   const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
-  assert.match(normalized.message, /failed and cleanup was incomplete/u)
+  assert.match(
+    normalized.message,
+    /proof failed \(Source workspace marker was not materialized exactly\) and cleanup was incomplete/u,
+  )
   assert.match(normalized.message, /marker was not materialized exactly/u)
   assert.match(normalized.message, /sbx-1 cleanup failed/u)
 })
@@ -934,4 +937,17 @@ test('workspace proof failure reports cleanup failures ahead of a verbose proof 
   assert.deepEqual(failure.cleanupErrors, leaks)
   const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
   for (const leak of leaks) assert.match(normalized.message, new RegExp(leak.message, 'u'))
+  assert.match(normalized.message, /LIVE workspace proof failed \(LIVE-09 proof failed\)/u)
+
+  // Seven cleanup leaves fill every remaining slot; the proof failure still leads the report.
+  const crowded = normalizeExternalFailure(
+    workspaceProofFailure(new Error('Source run did not complete'), [
+      ...leaks,
+      new Error('temporary root removal failed'),
+    ]),
+    'LIVE-09 built-in Tangle proof',
+    {},
+  )
+  assert.match(crowded.message, /proof failed \(Source run did not complete\)/u)
+  assert.match(crowded.message, /temporary root removal failed/u)
 })
