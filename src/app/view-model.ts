@@ -60,9 +60,9 @@ export function buildAppView(state: BraidState): AppView {
 
   return Object.freeze({
     revision: state.revision,
-    profileName: state.profile.name ?? 'Unnamed profile',
-    runner: state.profile.harness ?? 'automatic',
-    model: state.profile.model?.default ?? 'automatic',
+    profileName: sanitizeTerminalText(state.profile.name ?? 'Unnamed profile'),
+    runner: sanitizeTerminalText(state.profile.harness ?? 'automatic'),
+    model: sanitizeTerminalText(state.profile.model?.default ?? 'automatic'),
     connection: fixture ? 'deterministic fixture' : 'not connected',
     status,
     statusText: sanitizeTerminalText(statusText),

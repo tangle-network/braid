@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtemp } from 'node:fs/promises'
+import { join } from 'node:path'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { MemoryStateKeyPort } from '../src/analysis/service.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { RPC_REPLAY_MAX_BYTES, RPC_REPLAY_MAX_ENTRIES, runRpc } from '../src/views/headless/rpc.js'
 
@@ -61,6 +64,103 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   if (finalState?.type !== 'state') assert.fail('missing final state')
   assert.equal(finalState.state.messages[1]?.text, 'Fixture response through pi: hello Braid')
   assert.equal(finalState.state.runs[0]?.status, 'completed')
+})
+
+test('JSONL graph reads the application projection after a real turn', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  let output = ''
+  const code = await runRpc(
+    app,
+    requestInput([
+      {
+        version: 1,
+        requestId: 'graph-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'graph-send',
+        operationId: 'graph-send-op',
+        command: 'send',
+        params: { text: 'graph me' },
+      },
+      { version: 1, requestId: 'graph-read', command: 'get_graph' },
+      { version: 1, requestId: 'graph-stop', command: 'shutdown' },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const responses = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+  const graph = responses.find(
+    (response) => response.type === 'graph' && response.requestId === 'graph-read',
+  )
+  assert.equal(code, 0)
+  assert.equal(graph?.type, 'graph')
+  if (graph?.type !== 'graph') assert.fail('missing graph response')
+  assert.ok(graph.graph.nodes.some((node) => node.kind === 'run'))
+  assert.ok(graph.graph.edges.length > 0)
+})
+
+test('JSONL slash analysis uses the same application command path as the TUI', async () => {
+  const directory = await mkdtemp('/tmp/braid-w11-rpc-analysis-')
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    analysisStatePath: join(directory, 'analysis.enc'),
+    analysisKey: new MemoryStateKeyPort(new Uint8Array(32).fill(5)),
+  })
+  let output = ''
+  const code = await runRpc(
+    app,
+    requestInput([
+      {
+        version: 1,
+        requestId: 'analysis-init',
+        command: 'initialize',
+        params: { workspace: '/workspace' },
+      },
+      {
+        version: 1,
+        requestId: 'analysis-send',
+        operationId: 'analysis-send-op',
+        command: 'send',
+        params: { text: 'capture a run' },
+      },
+      {
+        version: 1,
+        requestId: 'analysis-run',
+        operationId: 'analysis-run-op',
+        command: 'analysis',
+        params: { text: '/ask why did this run finish?' },
+      },
+      { version: 1, requestId: 'analysis-stop', command: 'shutdown' },
+    ]),
+    {
+      write: (chunk) => {
+        output += chunk
+        return true
+      },
+    },
+  )
+  const responses = output
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as BraidResponse)
+  const analysis = responses.find(
+    (response) => response.type === 'analysis' && response.requestId === 'analysis-run',
+  )
+  assert.equal(code, 0)
+  assert.equal(analysis?.type, 'analysis')
+  if (analysis?.type !== 'analysis') assert.fail('missing analysis response')
+  if (!('status' in analysis.result)) assert.fail('slash analysis returned a branch result')
+  assert.equal(analysis.result.status, 'complete')
 })
 
 test('JSONL requires initialize and stable operation identity', async () => {

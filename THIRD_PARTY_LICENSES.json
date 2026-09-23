@@ -43,6 +43,10 @@
     },
     {
       "license": "MIT",
+      "name": "@tangle-network/agent-trace-contract"
+    },
+    {
+      "license": "MIT",
       "name": "@tangle-network/sandbox"
     },
     {

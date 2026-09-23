@@ -1,250 +1,167 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
-import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidEvent, BraidEventEnvelope, TurnUsage } from '../domain/events.js'
-import { reduceEvent } from '../domain/reducer.js'
-import { initialState, type BraidState } from '../domain/state.js'
+import type { BraidEventEnvelope } from '../domain/events.js'
+import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
-import { MemoryJournal } from './journal.js'
+import type { AnalysisCommand } from '../analysis/commands.js'
+import type { AnalysisCommandResult } from '../analysis/command-path.js'
+import type { AnalysisService } from '../analysis/service.js'
+import type { AnalysisSourcePort } from '../analysis/source.js'
+import type { AnalysisRecord } from '../analysis/model.js'
+import type { ApplicationEvaluationInput, ApplicationEvaluationResult } from './evaluation-route.js'
+import type { W11Judge } from '../evaluation/w11-runner.js'
+import type { CancellationCommand, RuntimeSupervisorPort } from '../supervisor/runtime-supervisor.js'
+import { toJsonValue } from '../analysis/serialization.js'
+import { APPLICATION_SOURCE_ID } from './analysis-source.js'
+import { ApplicationAnalysisService } from './application-analysis.js'
+import { ApplicationComparisonService, type ApplicationComparison } from './application-comparison.js'
+import { ApplicationEvaluationService } from './application-evaluation.js'
+import { ApplicationGraphService } from './application-graph.js'
+import { ApplicationReceiptService } from './application-receipts.js'
+import { ApplicationRunService, type ApplicationRunCancellationReceipt, type SendInput, type SendReceipt } from './application-run.js'
+import { ApplicationStateStore, type ApplicationStateSubscriber } from './application-state.js'
+import { ApplicationSupervisorService, type ApplicationWorkerCancellationReceipt } from './application-supervisor.js'
 
-export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
+export type AppSubscriber = ApplicationStateSubscriber
+export type {
+  ApplicationRunCancellationReceipt as ApplicationCancellationReceipt,
+  SendInput,
+  SendReceipt,
+} from './application-run.js'
+export type { ApplicationWorkerCancellationReceipt } from './application-supervisor.js'
+export type { ApplicationComparison }
 
-export interface SendInput {
-  readonly operationId: string
-  readonly text: string
-  readonly conversationId?: string
-  readonly branchId?: string
-}
+export { AppError } from './errors.js'
 
-export interface SendReceipt {
-  readonly operationId: string
-  readonly runId: string
-  readonly revision: number
-  readonly replayed: boolean
-  readonly completion: Promise<BraidState>
-}
-
-interface OperationRecord {
-  readonly digest: string
-  readonly runId: string
-  completion: Promise<void>
-}
-
-export class AppError extends Error {
-  readonly code: string
-
-  constructor(code: string, message: string) {
-    super(message)
-    this.name = 'AppError'
-    this.code = code
-  }
-}
-
-function usageFromFinal(event: Extract<RuntimeStreamEvent, { type: 'final' }>): TurnUsage {
-  const metadata = event.metadata ?? {}
-  const tokenUsage =
-    metadata.tokenUsage && typeof metadata.tokenUsage === 'object'
-      ? (metadata.tokenUsage as Record<string, unknown>)
-      : {}
-  const input = typeof tokenUsage.input === 'number' ? tokenUsage.input : 0
-  const output = typeof tokenUsage.output === 'number' ? tokenUsage.output : 0
-  const costUsd = typeof metadata.costUsd === 'number' ? metadata.costUsd : undefined
-  const model = typeof metadata.model === 'string' ? metadata.model : undefined
-  return {
-    input,
-    output,
-    ...(costUsd === undefined ? {} : { costUsd }),
-    ...(model === undefined ? {} : { model }),
-  }
-}
-
+/** Stable application aggregate; domain work lives in the composed services. */
 export class BraidApplication {
-  readonly #execution: ExecutionPort
-  readonly #ids: IdSource
-  readonly #journal: MemoryJournal
-  readonly #operations = new Map<string, OperationRecord>()
-  readonly #subscribers = new Set<AppSubscriber>()
-  #state: BraidState
-  #activeAbort: AbortController | undefined
+  readonly #state: ApplicationStateStore
+  readonly #runs: ApplicationRunService
+  readonly #analysis: ApplicationAnalysisService
+  readonly #evaluation: ApplicationEvaluationService
+  readonly #comparison: ApplicationComparisonService
+  readonly #graph: ApplicationGraphService
+  readonly #supervisor: ApplicationSupervisorService
 
   constructor(options: {
     readonly profile: Readonly<AgentProfile>
     readonly execution: ExecutionPort
     readonly clock: Clock
     readonly ids: IdSource
+    readonly analysis?: AnalysisService
+    readonly analysisSource?: AnalysisSourcePort
+    readonly analysisSourceId?: () => string
+    readonly supervisor?: RuntimeSupervisorPort
   }) {
-    this.#execution = options.execution
-    this.#ids = options.ids
-    this.#journal = new MemoryJournal(options.clock)
-    this.#state = initialState(structuredClone(options.profile))
+    this.#state = new ApplicationStateStore(options.profile, options.clock)
+    const receipts = new ApplicationReceiptService({
+      commitReceipt: (operationId, targetId, receipt) =>
+        this.#state.commit({
+          kind: 'operation.receipt',
+          operationId,
+          targetId,
+          receipt: toJsonValue(receipt),
+        }),
+    })
+    this.#runs = new ApplicationRunService({
+      state: this.#state,
+      execution: options.execution,
+      ids: options.ids,
+      receipts,
+    })
+    this.#analysis = new ApplicationAnalysisService({
+      service: options.analysis,
+      sourceId: options.analysisSourceId ?? (() => APPLICATION_SOURCE_ID),
+    })
+    this.#evaluation = new ApplicationEvaluationService(options.analysis)
+    this.#comparison = new ApplicationComparisonService({
+      readAnalysisSource: () => options.analysisSource,
+      receipts,
+    })
+    this.#graph = new ApplicationGraphService(this.#state)
+    this.#supervisor = new ApplicationSupervisorService({
+      supervisor: options.supervisor,
+      receipts,
+    })
   }
 
   state(): BraidState {
-    return structuredClone(this.#state)
+    return this.#state.state()
   }
 
   events(): readonly BraidEventEnvelope[] {
-    return this.#journal.all()
+    return this.#state.events()
+  }
+
+  analysisRunId(): string | undefined {
+    return this.#runs.analysisRunId()
+  }
+
+  analysisTraces() {
+    return this.#runs.analysisTraces()
   }
 
   subscribe(subscriber: AppSubscriber): () => void {
-    this.#subscribers.add(subscriber)
-    return () => this.#subscribers.delete(subscriber)
+    return this.#state.subscribe(subscriber)
   }
 
   initialize(workspace: string): BraidState {
-    if (!workspace) throw new AppError('INVALID_WORKSPACE', 'Workspace must not be empty')
-    if (this.#state.workspace === workspace) return this.state()
-    if (this.#state.workspace !== null) {
-      throw new AppError('ALREADY_INITIALIZED', 'Braid is already initialized')
-    }
-    this.#commit({ kind: 'workspace.opened', workspace })
-    return this.state()
+    return this.#state.initialize(workspace)
   }
 
   send(input: SendInput): SendReceipt {
-    const text = input.text
-    if (this.#state.workspace === null) {
-      throw new AppError('NOT_INITIALIZED', 'Initialize a workspace before sending')
-    }
-    if (!input.operationId) {
-      throw new AppError('OPERATION_ID_REQUIRED', 'send requires operationId')
-    }
-    if (!text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
-
-    const conversationId = input.conversationId ?? this.#state.conversationId
-    const branchId = input.branchId ?? this.#state.branchId
-    if (conversationId !== this.#state.conversationId || branchId !== this.#state.branchId) {
-      throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is not open')
-    }
-
-    const digest = canonicalDigest({
-      command: 'send',
-      conversationId,
-      branchId,
-      text,
-      profile: this.#state.profile,
-    })
-    const previous = this.#operations.get(input.operationId)
-    if (previous) {
-      if (previous.digest !== digest) {
-        throw new AppError(
-          'OPERATION_CONFLICT',
-          `Operation ${input.operationId} was already used with different input`,
-        )
-      }
-      return {
-        operationId: input.operationId,
-        runId: previous.runId,
-        revision: this.#state.revision,
-        replayed: true,
-        completion: previous.completion.then(() => this.state()),
-      }
-    }
-    if (this.#state.activeRunId) {
-      throw new AppError('RUN_ACTIVE', `Run ${this.#state.activeRunId} is still active`)
-    }
-
-    if (this.#state.draft !== text) this.#commit({ kind: 'draft.changed', text })
-    const runId = this.#ids.next('run')
-    const turnId = this.#ids.next('turn')
-    this.#commit({
-      kind: 'run.requested',
-      operationId: input.operationId,
-      runId,
-      turnId,
-      userMessageId: this.#ids.next('message'),
-      assistantMessageId: this.#ids.next('message'),
-      text,
-    })
-
-    const operation: OperationRecord = {
-      digest,
-      runId,
-      completion: Promise.resolve(),
-    }
-    this.#operations.set(input.operationId, operation)
-    this.#activeAbort = new AbortController()
-    operation.completion = this.#execute(input.operationId, runId, text, this.#activeAbort)
-
-    return {
-      operationId: input.operationId,
-      runId,
-      revision: this.#state.revision,
-      replayed: false,
-      completion: operation.completion.then(() => this.state()),
-    }
+    return this.#runs.send(input)
   }
 
   cancelActive(): boolean {
-    if (!this.#activeAbort || this.#activeAbort.signal.aborted) return false
-    this.#activeAbort.abort(new Error('Cancelled by user'))
-    return true
+    return this.#runs.cancelActive()
   }
 
-  async waitForIdle(): Promise<BraidState> {
-    const activeRun = this.#state.activeRunId
-    if (!activeRun) return this.state()
-    const operation = [...this.#operations.values()].find((entry) => entry.runId === activeRun)
-    if (operation) await operation.completion
-    return this.state()
+  cancelRun(input: {
+    readonly operationId: string
+    readonly runId: string
+    readonly reason: string
+  }): ApplicationRunCancellationReceipt {
+    return this.#runs.cancelRun(input)
   }
 
-  async #execute(
+  graph() {
+    return this.#graph.graph()
+  }
+
+  supervisorSnapshot(supervisorId: string) {
+    return this.#supervisor.snapshot(supervisorId)
+  }
+
+  cancelWorker(command: CancellationCommand): Promise<ApplicationWorkerCancellationReceipt> {
+    return this.#supervisor.cancelWorker(command)
+  }
+
+  compare(input: Parameters<ApplicationComparisonService['compare']>[0]) {
+    return this.#comparison.compare(input)
+  }
+
+  compareSources(input: Parameters<ApplicationComparisonService['compareSources']>[0]) {
+    return this.#comparison.compareSources(input)
+  }
+
+  evaluateAnalysis(
+    record: AnalysisRecord,
+    judge: W11Judge,
+    evaluationInputs: readonly ApplicationEvaluationInput[],
+  ): Promise<ApplicationEvaluationResult> {
+    return this.#evaluation.evaluate(record, judge, evaluationInputs)
+  }
+
+  executeAnalysisCommand(
+    command: AnalysisCommand,
     operationId: string,
-    runId: string,
-    text: string,
-    abort: AbortController,
-  ): Promise<void> {
-    let terminalSeen = false
-    try {
-      const stream = this.#execution.streamTurn({
-        operationId,
-        runId,
-        text,
-        profile: this.#state.profile,
-        signal: abort.signal,
-      })
-      for await (const runtimeEvent of stream) {
-        if (runtimeEvent.type === 'text_delta' && runtimeEvent.text) {
-          this.#commit({ kind: 'run.text.delta', runId, text: runtimeEvent.text })
-        } else if (runtimeEvent.type === 'final') {
-          terminalSeen = true
-          this.#commit({
-            kind: 'run.finished',
-            runId,
-            status: runtimeEvent.status,
-            finalText: runtimeEvent.text ?? '',
-            usage: usageFromFinal(runtimeEvent),
-            ...(runtimeEvent.error ? { error: runtimeEvent.error.message } : {}),
-          })
-        }
-      }
-      if (!terminalSeen) throw new Error('Runtime stream ended without a final event')
-    } catch (error) {
-      if (!terminalSeen) {
-        const message = error instanceof Error ? error.message : String(error)
-        this.#commit({
-          kind: 'run.finished',
-          runId,
-          status: abort.signal.aborted ? 'aborted' : 'failed',
-          finalText: '',
-          usage: { input: 0, output: 0 },
-          error: message,
-        })
-      }
-    } finally {
-      if (this.#activeAbort === abort) this.#activeAbort = undefined
-    }
+  ): Promise<AnalysisCommandResult> {
+    return this.#analysis.execute(command, operationId)
   }
 
-  #commit(event: BraidEvent): void {
-    const envelope = this.#journal.envelope(this.#state, event)
-    const nextState = reduceEvent(this.#state, envelope)
-    this.#journal.append(envelope)
-    this.#state = nextState
-    for (const subscriber of this.#subscribers) subscriber(this.state(), structuredClone(envelope))
+  waitForIdle(): Promise<BraidState> {
+    return this.#runs.waitForIdle()
   }
 }

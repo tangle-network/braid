@@ -216,11 +216,11 @@ Each live check records date, region, machine, operating system, package version
 
 `agent-eval` evaluates only behaviors whose quality cannot be decided by exact assertions.
 
-The judge is calibrated on seeded good, bad, and trivial-baseline examples before release cases run.
+The judge is calibrated on independently labeled good, bad, and trivial-baseline examples before release cases run.
 
 Calibration contains at least 12 paired examples across cited analysis usefulness, fork explanation clarity, permission explanation clarity, and comparison honesty.
 
-The judge must prefer the intended better example on at least 11 of 12 pairs and reject the trivial baseline on every category before its release scores are admissible.
+The judge must prefer the independently labeled good example over the bad example on at least 11 of 12 pairs and reject the trivial baseline on every category before its release scores are admissible.
 
 The complete rubric, examples, model, effort, prompt, package version, raw outputs, scores, costs, and disagreements enter the evidence artifact.
 
@@ -345,7 +345,7 @@ Each row has a forced-process-kill test at every durable boundary.
 | EVAL-05 | Is reconnect status clear? | Distinguishes detached, reconnecting, cancelled, failed, expired, and unknown in plain language |
 | EVAL-06 | Is profile incompatibility clear? | Identifies the exact unsupported field and valid choices without silently weakening the profile |
 
-Each case runs on at least three representative source fixtures and includes a seeded poor output plus a trivial raw-data baseline.
+Each case runs on at least three representative source fixtures and includes a seeded bad output plus a trivial raw-data baseline.
 
 ## Release evidence manifest
 

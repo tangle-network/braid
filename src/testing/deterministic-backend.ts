@@ -49,14 +49,16 @@ export function deterministicBackend(
         }
         yield { type: 'text_delta', text: chunk }
       }
+      const timestamp = new Date().toISOString()
       yield {
         type: 'llm_call',
         model: 'fixture/deterministic',
         tokensIn: Math.max(1, input.text.split(/\s+/u).length),
         tokensOut: chunks.length,
         costUsd: 0,
-        latencyMs: options.chunkDelayMs ? options.chunkDelayMs * chunks.length : 0,
+        latencyMs: Math.max(1, options.chunkDelayMs ? options.chunkDelayMs * chunks.length : 0),
         finishReason: 'stop',
+        timestamp,
       }
     },
   }

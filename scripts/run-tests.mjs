@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { access, readdir } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 
 const root = new URL('../.test-dist/test/', import.meta.url)
@@ -16,11 +16,26 @@ async function testsUnder(directory) {
   return nested.flat()
 }
 
-const tests = (await testsUnder(root.pathname)).sort()
+const requested = process.argv.slice(2)
+const tests = (
+  requested.length > 0
+    ? requested.map((name) => join(root.pathname, name))
+    : await testsUnder(root.pathname)
+).sort()
 if (tests.length === 0) {
   process.stderr.write('No compiled tests found\n')
   process.exit(1)
 }
 
-const result = spawnSync(process.execPath, ['--test', ...tests], { stdio: 'inherit' })
-process.exit(result.status ?? 1)
+for (const test of tests) {
+  try {
+    await access(test)
+  } catch {
+    process.stderr.write(`Compiled test not found: ${test}\n`)
+    process.exit(1)
+  }
+  const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', test], {
+    stdio: 'inherit',
+  })
+  if (result.status !== 0) process.exit(result.status ?? 1)
+}

@@ -60,8 +60,8 @@ export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): Br
         turnId: event.turnId,
         operationId: event.operationId,
         status: 'streaming',
-        inputTokens: 0,
-        outputTokens: 0,
+        inputTokens: null,
+        outputTokens: null,
       }
       return {
         ...state,
@@ -120,6 +120,8 @@ export function reduceEvent(state: BraidState, envelope: BraidEventEnvelope): Br
         ),
       }
     }
+    case 'operation.receipt':
+      return { ...state, ...base }
     default: {
       const exhaustive: never = event
       return exhaustive

@@ -47,16 +47,21 @@
     "licenses:generate": "node scripts/generate-licenses.mjs",
     "licenses:check": "node scripts/generate-licenses.mjs --check",
     "test": "node scripts/clean-tests.mjs && tsc -p tsconfig.test.json && node scripts/run-tests.mjs",
+    "test:eval": "node scripts/clean-tests.mjs && tsc -p tsconfig.test.json && node scripts/run-tests.mjs w11-analysis.test.js w11-defect-coverage.test.js w11-repair.test.js",
+    "test:calibration": "node scripts/clean-tests.mjs && tsc -p tsconfig.test.json && node --test --test-concurrency=1 --test-name-pattern='judge|semantic evaluation' .test-dist/test/w11-analysis.test.js",
+    "test:terminal": "node scripts/clean-tests.mjs && tsc -p tsconfig.test.json && node scripts/run-tests.mjs tui.test.js",
+    "test:headless": "node scripts/clean-tests.mjs && tsc -p tsconfig.test.json && node scripts/run-tests.mjs rpc.test.js w11-defect-coverage.test.js w11-repair.test.js",
     "test:package": "pnpm run build && node scripts/verify-package.mjs",
     "pack:check": "pnpm pack --pack-destination .tmp",
+    "release:check": "pnpm run build && pnpm run test:package && pnpm run pack:check",
     "proof:w0": "pnpm run build && node scripts/verify-package.mjs --record artifacts/verification/w0/package-proof.json && node scripts/capture-w0.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-tui": "0.83.0",
-    "@tangle-network/agent-eval": "0.139.2",
-    "@tangle-network/agent-interface": "0.40.0",
-    "@tangle-network/agent-runtime": "0.117.0",
-    "@tangle-network/sandbox": "0.15.2",
+    "@tangle-network/agent-eval": "0.142.2",
+    "@tangle-network/agent-interface": "0.43.0",
+    "@tangle-network/agent-runtime": "0.123.0",
+    "@tangle-network/sandbox": "0.17.2",
     "chalk": "5.6.2"
   },
   "devDependencies": {

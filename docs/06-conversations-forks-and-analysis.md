@@ -406,7 +406,7 @@ Conflicting rules fail closed and require user response.
 | AN-03 | Every cited finding resolves to the frozen event or span range and an invalid citation is deterministically rejected. |
 | AN-04 | Analysis result shows source, analyst profile, model, tools, tokens, cost, wall time, completeness, deterministic checks, and every finding field. |
 | AN-05 | Failure, cost, tools, improvement, and comparison recipes execute through `agent-eval`, not duplicated Braid logic. |
-| AN-06 | A calibrated judge separates seeded useful and useless analyses before evaluating release cases. |
+| AN-06 | A calibrated judge separates independently labeled good and bad analyses before evaluating release cases. |
 | AN-07 | Promoting selected findings creates an explicit provenance attachment and excludes every unselected finding. |
 | AN-08 | Feedback export represents every supported user decision, honors disabled capture, and contains zero seeded secret values. |
 | AN-09 | Automation dry-run, match, conflict, expiry, use limit, profile change, workspace change, revoke, and secret-answer rejection cases all fail closed and leave exact non-secret rule, request, decision, and result events. |

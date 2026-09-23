@@ -17,8 +17,8 @@ export interface BraidRun {
   readonly turnId: string
   readonly operationId: string
   readonly status: RunStatus
-  readonly inputTokens: number
-  readonly outputTokens: number
+  readonly inputTokens: number | null
+  readonly outputTokens: number | null
   readonly costUsd?: number
   readonly model?: string
   readonly error?: string

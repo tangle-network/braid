@@ -1,19 +1,16 @@
 import {
-  Box,
-  CombinedAutocompleteProvider,
-  Container,
-  Editor,
-  Markdown,
   matchesKey,
-  Spacer,
-  Text,
   type TUI,
+  type Editor,
 } from '@earendil-works/pi-tui'
 import type { BraidApplication } from '../../app/application.js'
-import { buildAppView, type AppView, type MessageView } from '../../app/view-model.js'
+import { parseAnalysisCommand } from '../../analysis/commands.js'
+import { sanitizeDiagnosticText } from '../../analysis/diagnostics.js'
+import { sanitizeTerminalText } from '../shared/sanitize.js'
 import type { BraidState } from '../../domain/state.js'
 import { CommandPalette, type PaletteCommand } from './command-palette.js'
 import type { BraidTheme } from './theme.js'
+import { BraidTerminalRenderer } from './terminal-renderer.js'
 
 export interface BraidTerminalOptions {
   readonly app: BraidApplication
@@ -27,10 +24,7 @@ export class BraidTerminalApp {
   readonly #app: BraidApplication
   readonly #tui: TUI
   readonly #theme: BraidTheme
-  readonly #transcript = new Container()
-  readonly #dock = new Container()
-  readonly #editor: Editor
-  readonly #status = new Text('', 1, 0)
+  readonly #renderer: BraidTerminalRenderer
   readonly #nextOperationId: () => string
   readonly #done: Promise<void>
   readonly #resolveDone: () => void
@@ -40,6 +34,8 @@ export class BraidTerminalApp {
   #quitTimer: ReturnType<typeof setTimeout> | undefined
   #quitArmed = false
   #stopped = false
+  #analysisStatus = ''
+  #analysisFailed = false
 
   constructor(options: BraidTerminalOptions) {
     this.#app = options.app
@@ -52,33 +48,28 @@ export class BraidTerminalApp {
     })
     this.#resolveDone = resolveDone
 
-    this.#editor = new Editor(this.#tui, this.#theme.editor, { paddingX: 1 })
-    this.#editor.setAutocompleteProvider(
-      new CombinedAutocompleteProvider(
-        [
-          { name: 'help', description: 'Keyboard and commands' },
-          { name: 'quit', description: 'Close Braid' },
-        ],
-        options.workspace,
-        null,
-      ),
-    )
-    this.#editor.onSubmit = (text) => this.#submit(text)
-
-    this.#dock.addChild(this.#editor)
-    this.#dock.addChild(this.#status)
-    this.#mountLayout()
+    this.#renderer = new BraidTerminalRenderer({
+      tui: this.#tui,
+      theme: this.#theme,
+      workspace: options.workspace,
+      onSubmit: (text) => this.#submit(text),
+    })
+    this.#renderer.mount()
     this.#unsubscribe = this.#app.subscribe((state) => this.#render(state))
     this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleGlobalInput(data))
     this.#render(this.#app.state())
   }
 
   get editor(): Editor {
-    return this.#editor
+    return this.#renderer.editor
+  }
+
+  get commandFailed(): boolean {
+    return this.#analysisFailed
   }
 
   start(): Promise<void> {
-    this.#tui.setFocus(this.#editor)
+    this.#tui.setFocus(this.#renderer.editor)
     this.#tui.start()
     return this.#done
   }
@@ -86,84 +77,21 @@ export class BraidTerminalApp {
   stop(): void {
     if (this.#stopped) return
     this.#stopped = true
-    if (this.#quitTimer) clearTimeout(this.#quitTimer)
+    if (this.#quitTimer) {
+      clearTimeout(this.#quitTimer)
+      this.#quitTimer = undefined
+    }
     this.#removeInputListener()
     this.#unsubscribe()
     this.#tui.stop()
     this.#resolveDone()
   }
 
-  #mountLayout(): void {
-    this.#tui.addChild(this.#transcript)
-    this.#tui.addChild(this.#dock)
-  }
-
   #render(state: BraidState): void {
-    const view = buildAppView(state)
-    this.#transcript.clear()
-    this.#transcript.addChild(this.#header(view))
-    if (view.hiddenMessageCount > 0) {
-      this.#transcript.addChild(
-        new Text(this.#theme.muted(`${view.hiddenMessageCount} earlier messages hidden`), 1, 0),
-      )
-    }
-    for (const message of view.messages) this.#transcript.addChild(this.#message(message))
-    if (view.messages.length === 0) {
-      this.#transcript.addChild(new Spacer(1))
-      this.#transcript.addChild(
-        new Text(this.#theme.muted('Write a message, or press Ctrl+P for commands.'), 1, 0),
-      )
-    }
-
-    const effectiveStatus = this.#quitArmed ? 'aborted' : view.status
-    const statusColor =
-      effectiveStatus === 'failed'
-        ? this.#theme.danger
-        : effectiveStatus === 'running' ||
-            effectiveStatus === 'blocked' ||
-            effectiveStatus === 'aborted'
-          ? this.#theme.warning
-          : this.#theme.success
-    const statusText = this.#quitArmed ? 'press ctrl+c again to quit' : view.statusText
-    this.#status.setText(
-      `${statusColor(statusText)}  ${this.#theme.muted('ctrl+p commands · ctrl+c clear/cancel/quit')}`,
-    )
-    this.#editor.disableSubmit = view.status === 'running'
-    this.#editor.borderColor = view.status === 'running' ? this.#theme.warning : this.#theme.accent
-    this.#tui.requestRender()
-  }
-
-  #header(view: AppView): Text {
-    return new Text(
-      `${this.#theme.brand('braid')}  ${this.#theme.text(view.profileName)}  ${this.#theme.muted(
-        `${view.runner} · ${view.connection}`,
-      )}`,
-      1,
-      1,
-    )
-  }
-
-  #message(message: MessageView): Container {
-    const container = new Container()
-    if (message.role === 'user') {
-      const box = new Box(1, 0, this.#theme.userBackground)
-      box.addChild(new Markdown(message.text, 0, 0, this.#theme.markdown))
-      container.addChild(box)
-      return container
-    }
-
-    container.addChild(new Spacer(1))
-    if (message.text) {
-      container.addChild(new Markdown(message.text, 1, 0, this.#theme.markdown))
-    } else if (message.status === 'streaming') {
-      container.addChild(new Text(this.#theme.muted('Working…'), 1, 0))
-    }
-    if (message.status === 'failed' || message.status === 'blocked') {
-      container.addChild(new Text(this.#theme.danger(message.status), 1, 0))
-    } else if (message.status === 'aborted') {
-      container.addChild(new Text(this.#theme.warning('cancelled'), 1, 0))
-    }
-    return container
+    this.#renderer.render(state, {
+      analysisStatus: this.#analysisStatus,
+      quitArmed: this.#quitArmed,
+    })
   }
 
   #submit(rawText: string): void {
@@ -177,19 +105,151 @@ export class BraidTerminalApp {
       this.#openPalette()
       return
     }
+    if (text === '/graph') {
+      this.#renderer.editor.addToHistory(rawText)
+      this.#renderer.editor.setText('')
+      const graph = this.#app.graph()
+      this.#analysisFailed = false
+      this.#analysisStatus = `graph · ${graph.nodes.length} node(s) · ${graph.edges.length} edge(s) · ${graph.digest.slice(0, 16)}`
+      this.#render(this.#app.state())
+      return
+    }
+    if (text === '/cancel') {
+      this.#renderer.editor.addToHistory(rawText)
+      this.#renderer.editor.setText('')
+      this.#analysisFailed = !this.#app.cancelActive()
+      this.#analysisStatus = this.#analysisFailed
+        ? 'no active run to cancel'
+        : 'cancellation requested'
+      this.#render(this.#app.state())
+      return
+    }
+    if (text.startsWith('/supervisor ')) {
+      this.#renderer.editor.addToHistory(rawText)
+      this.#renderer.editor.setText('')
+      const supervisorId = text.slice('/supervisor '.length).trim()
+      if (!supervisorId || supervisorId.length > 256) {
+        this.#analysisFailed = true
+        this.#analysisStatus = 'supervisor requires a bounded identifier'
+        this.#render(this.#app.state())
+        return
+      }
+      this.#analysisStatus = 'loading supervisor'
+      this.#render(this.#app.state())
+      void this.#app
+        .supervisorSnapshot(supervisorId)
+        .then((snapshot) => {
+          this.#analysisFailed = false
+          this.#analysisStatus = `supervisor ${snapshot.status} · ${snapshot.workers.length} worker(s) · revision ${snapshot.revision}`
+        })
+        .catch((error: unknown) => this.#setControlError('supervisor failed', error))
+        .finally(() => this.#render(this.#app.state()))
+      return
+    }
+    if (text.startsWith('/cancel-worker ')) {
+      const parts = text.slice('/cancel-worker '.length).trim().split(/\s+/u)
+      const [supervisorId, runId, maybeWorkerId, ...reasonParts] = parts
+      if (!supervisorId || !runId || !maybeWorkerId) {
+        this.#analysisFailed = true
+        this.#analysisStatus = 'cancel-worker requires supervisor, run, and worker identifiers'
+        this.#render(this.#app.state())
+        return
+      }
+      const workerId = maybeWorkerId === '-' ? undefined : maybeWorkerId
+      const reason = reasonParts.filter(Boolean).join(' ') || 'Cancelled by user'
+      this.#renderer.editor.addToHistory(rawText)
+      this.#renderer.editor.setText('')
+      this.#analysisStatus = 'cancellation requested'
+      this.#render(this.#app.state())
+      void this.#app
+        .cancelWorker({
+          operationId: this.#nextOperationId(),
+          supervisorId,
+          runId,
+          ...(workerId ? { workerId } : {}),
+          reason,
+        })
+        .then((receipt) => {
+          this.#analysisFailed = false
+          this.#analysisStatus = `worker cancellation ${receipt.replayed ? 'replayed' : 'accepted'}`
+        })
+        .catch((error: unknown) => this.#setControlError('worker cancellation failed', error))
+        .finally(() => this.#render(this.#app.state()))
+      return
+    }
 
-    this.#editor.addToHistory(rawText)
-    this.#editor.setText('')
+    if (text.startsWith('/')) {
+      const parsed = parseAnalysisCommand(text)
+      if (!parsed) {
+        this.#analysisFailed = true
+        this.#analysisStatus = 'unknown command'
+        this.#render(this.#app.state())
+        return
+      }
+      if (parsed.status === 'invalid') {
+        this.#analysisFailed = true
+        this.#analysisStatus = parsed.message
+        this.#render(this.#app.state())
+        return
+      }
+      this.#renderer.editor.addToHistory(rawText)
+      this.#renderer.editor.setText('')
+      this.#analysisStatus = 'analysis running'
+      this.#render(this.#app.state())
+      if (parsed.command.command === 'compare') {
+        void this.#app
+          .compareSources({
+            operationId: this.#nextOperationId(),
+            baselineSourceId: parsed.command.baselineSourceId,
+            treatmentSourceId: parsed.command.treatmentSourceId,
+          })
+          .then((result) => {
+            this.#analysisFailed = false
+            this.#analysisStatus = `comparison complete · ${result.pairs.length} pair(s)`
+          })
+          .catch((error: unknown) => this.#setControlError('comparison failed', error))
+          .finally(() => this.#render(this.#app.state()))
+        return
+      }
+      void this.#app
+        .executeAnalysisCommand(parsed.command, this.#nextOperationId())
+        .then((result) => {
+          if ('status' in result) {
+            this.#analysisFailed = result.status !== 'complete'
+            this.#analysisStatus =
+              result.status === 'complete'
+                ? `analysis complete · ${result.findings.length} finding(s)`
+                : `analysis ${result.status}: ${result.error?.message ?? 'failed'}`
+            return
+          }
+          this.#analysisStatus = `fork created · ${result.branchId}`
+        })
+        .catch((error: unknown) => {
+          this.#setControlError('analysis failed', error)
+        })
+        .finally(() => this.#render(this.#app.state()))
+      return
+    }
+
+    this.#renderer.editor.addToHistory(rawText)
+    this.#renderer.editor.setText('')
     try {
       const receipt = this.#app.send({ operationId: this.#nextOperationId(), text: rawText })
       void receipt.completion.finally(() => {
-        this.#editor.disableSubmit = false
+        this.#renderer.editor.disableSubmit = false
         this.#tui.requestRender()
       })
     } catch {
-      this.#editor.setText(rawText)
+      this.#renderer.editor.setText(rawText)
       this.#tui.requestRender()
     }
+  }
+
+  #setControlError(prefix: string, error: unknown): void {
+    this.#analysisFailed = true
+    this.#analysisStatus = sanitizeTerminalText(
+      `${prefix}: ${sanitizeDiagnosticText(error instanceof Error ? error.message : String(error))}`,
+    )
   }
 
   #handleGlobalInput(data: string): { consume?: boolean } | undefined {
@@ -199,8 +259,8 @@ export class BraidTerminalApp {
       return { consume: true }
     }
     if (matchesKey(data, 'ctrl+c') && !this.#tui.hasOverlay()) {
-      if (this.#editor.getText()) {
-        this.#editor.setText('')
+      if (this.#renderer.editor.getText()) {
+        this.#renderer.editor.setText('')
         return { consume: true }
       }
       if (this.#app.cancelActive()) return { consume: true }
@@ -248,5 +308,19 @@ export class BraidTerminalApp {
   #handlePalette(command: PaletteCommand): void {
     this.#overlayClose?.()
     if (command === 'quit') this.stop()
+    else if (command === 'graph' || command === 'cancel') {
+      this.#renderer.editor.setText(`/${command}`)
+      this.#tui.setFocus(this.#renderer.editor)
+    } else if (command === 'supervisor') {
+      this.#renderer.editor.setText('/supervisor ')
+      this.#tui.setFocus(this.#renderer.editor)
+    } else if (command === 'cancel-worker') {
+      this.#renderer.editor.setText('/cancel-worker ')
+      this.#tui.setFocus(this.#renderer.editor)
+    } else if (command.startsWith('analysis:')) {
+      const name = command.slice('analysis:'.length)
+      this.#renderer.editor.setText(name === 'analyze' ? '/analyze ' : `/${name} `)
+      this.#tui.setFocus(this.#renderer.editor)
+    }
   }
 }

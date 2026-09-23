@@ -2,18 +2,39 @@ import {
   Container,
   Input,
   matchesKey,
+  type SelectItem,
   SelectList,
   Spacer,
   Text,
-  type SelectItem,
 } from '@earendil-works/pi-tui'
 import type { BraidTheme } from './theme.js'
+import { ANALYSIS_COMMAND_SPECS } from '../../analysis/commands.js'
 
-export type PaletteCommand = 'help' | 'quit'
+export type PaletteCommand =
+  | 'help'
+  | 'quit'
+  | 'graph'
+  | 'cancel'
+  | 'supervisor'
+  | 'cancel-worker'
+  | `analysis:${string}`
 
 const COMMANDS: SelectItem[] = [
   { value: 'help', label: '/help', description: 'Keyboard and commands' },
   { value: 'quit', label: '/quit', description: 'Close Braid' },
+  { value: 'graph', label: '/graph', description: 'Show the committed graph snapshot' },
+  { value: 'cancel', label: '/cancel', description: 'Cancel the active run' },
+  { value: 'supervisor', label: '/supervisor <id>', description: 'Read runtime supervisor state' },
+  {
+    value: 'cancel-worker',
+    label: '/cancel-worker <supervisor> <run> <worker|->',
+    description: 'Cancel one runtime worker or root',
+  },
+  ...ANALYSIS_COMMAND_SPECS.map((command) => ({
+    value: `analysis:${command.name}`,
+    label: command.usage,
+    description: command.summary,
+  })),
 ]
 
 export class CommandPalette extends Container {

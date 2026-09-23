@@ -1,8 +1,9 @@
 import type { AgentTaskStatus } from '@tangle-network/agent-runtime'
+import type { JsonValue } from '../analysis/serialization.js'
 
 export interface TurnUsage {
-  readonly input: number
-  readonly output: number
+  readonly input: number | null
+  readonly output: number | null
   readonly costUsd?: number
   readonly model?: string
 }
@@ -38,8 +39,16 @@ export type BraidEvent =
       readonly usage: TurnUsage
       readonly error?: string
     }
+  | {
+      readonly kind: 'operation.receipt'
+      readonly operationId: string
+      readonly targetId: string
+      readonly receipt: JsonValue
+    }
 
 export interface BraidEventEnvelope {
+  /** The journal-issued identity used by source freezes and graph provenance. */
+  readonly eventId?: string
   readonly sequence: number
   readonly revision: number
   readonly occurredAt: string

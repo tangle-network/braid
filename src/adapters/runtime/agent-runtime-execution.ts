@@ -1,4 +1,4 @@
-import { streamAgentTurn, type AgentTurnBackend } from '@tangle-network/agent-runtime/kernel'
+import { type AgentTurnBackend, streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
 import type { ExecuteTurnInput, ExecutionPort } from '../../ports/execution.js'
 
 export type AgentTurnBackendResolver = (

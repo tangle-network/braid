@@ -7,9 +7,10 @@
  * @source-license MIT
  * @adaptation Imports Pi's published Terminal type and follows Braid formatting.
  */
+
+import type { Terminal } from '@earendil-works/pi-tui'
 import type { Terminal as XtermTerminalType } from '@xterm/headless'
 import xterm from '@xterm/headless'
-import type { Terminal } from '@earendil-works/pi-tui'
 
 const XtermTerminal = xterm.Terminal
 
@@ -19,6 +20,7 @@ export class VirtualTerminal implements Terminal {
   private resizeHandler: (() => void) | undefined
   private _columns: number
   private _rows: number
+  private stopped = false
 
   constructor(columns = 80, rows = 24) {
     this._columns = columns
@@ -40,9 +42,12 @@ export class VirtualTerminal implements Terminal {
   async drainInput(_maxMs?: number, _idleMs?: number): Promise<void> {}
 
   stop(): void {
+    if (this.stopped) return
+    this.stopped = true
     this.xterm.write('\u001b[?2004l')
     this.inputHandler = undefined
     this.resizeHandler = undefined
+    this.xterm.dispose()
   }
 
   write(data: string): void {

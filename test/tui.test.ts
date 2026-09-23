@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { mkdtemp } from 'node:fs/promises'
+import { join } from 'node:path'
 import test from 'node:test'
 import { CombinedAutocompleteProvider, Editor, TUI, visibleWidth } from '@earendil-works/pi-tui'
+import { MemoryStateKeyPort } from '../src/analysis/service.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -51,6 +54,57 @@ test('the real Braid root renders and sends at all four reference sizes', async 
     view.stop()
     await done
   }
+})
+
+test('TUI slash analysis uses the application command path and encrypted state', async () => {
+  const directory = await mkdtemp('/tmp/braid-w11-tui-analysis-')
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TUI(terminal)
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    analysisStatePath: join(directory, 'analysis.enc'),
+    analysisKey: new MemoryStateKeyPort(new Uint8Array(32).fill(6)),
+  })
+  app.initialize('/workspace')
+  const view = new BraidTerminalApp({
+    app,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'tui-analysis-op',
+  })
+  const done = view.start()
+  terminal.sendInput('capture a run')
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().runs.length === 1)
+  await app.waitForIdle()
+  terminal.sendInput('/ask why did this run finish?')
+  terminal.sendInput('\r')
+  await waitUntil(() => terminal.getScrollBuffer().some((line) => /analysis complete/u.test(line)))
+  assert.equal(view.commandFailed, false)
+  view.stop()
+  await done
+})
+
+test('TUI prototype analysis commands fail the terminal command', async () => {
+  const terminal = new VirtualTerminal(80, 24)
+  const tui = new TUI(terminal)
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  app.initialize('/workspace')
+  const view = new BraidTerminalApp({
+    app,
+    tui,
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => 'tui-invalid-analysis-op',
+  })
+  const done = view.start()
+  terminal.sendInput('/failure')
+  terminal.sendInput('\r')
+  await waitUntil(() => terminal.getScrollBuffer().some((line) => /prototype/u.test(line)))
+  assert.equal(view.commandFailed, true)
+  view.stop()
+  await done
 })
 
 test('the editor preserves Unicode, multiline paste, undo, completion, and cursor on resize', async () => {

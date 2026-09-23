@@ -12,6 +12,7 @@ export class MemoryJournal {
 
   envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope {
     return {
+      eventId: `event-${state.sequence + 1}`,
       sequence: state.sequence + 1,
       revision: state.revision + 1,
       occurredAt: this.#clock.now(),

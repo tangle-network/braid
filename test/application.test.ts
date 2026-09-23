@@ -84,6 +84,34 @@ test('cancellation remains distinct from failure', async () => {
   assert.equal(buildAppView(state).status, 'aborted')
 })
 
+test('a terminal runtime failure is preserved when the stream fails afterward', async () => {
+  const execution: ExecutionPort = {
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      yield {
+        type: 'final',
+        status: 'failed',
+        reason: 'provider rejected the request',
+        text: '',
+        error: { kind: 'backend', message: 'provider rejected the request' },
+        task: { id: 'task-failed', intent: 'terminal failure test' },
+        timestamp: '2026-08-01T00:00:00.000Z',
+      }
+      throw new Error('late stream failure')
+    },
+  }
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution,
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+  })
+  app.initialize('/workspace')
+  const state = await app.send({ operationId: 'op-terminal-failure', text: 'fail' }).completion
+  assert.equal(state.runs[0]?.status, 'failed')
+  assert.equal(state.runs[0]?.inputTokens, null)
+  assert.match(state.runs[0]?.error ?? '', /provider rejected/u)
+})
+
 test('blocked and unconfigured states remain explicit', async () => {
   const execution: ExecutionPort = {
     async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {

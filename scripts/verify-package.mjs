@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
-import * as pty from 'node-pty'
 import xterm from '@xterm/headless'
+import * as pty from 'node-pty'
 
 const repository = new URL('../', import.meta.url).pathname
 const XtermTerminal = xterm.Terminal

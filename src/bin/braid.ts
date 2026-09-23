@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 
-import { constants } from 'node:fs'
-import { mkdir, open, rename, rm, type FileHandle } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { constants } from 'node:fs'
+import { type FileHandle, mkdir, open, rename, rm } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { ProcessTerminal, TUI } from '@earendil-works/pi-tui'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { createBraidApplication } from '../app/composition.js'
+import { runW11EvaluationCommand, type W11EvaluationCliOptions } from '../evaluation/cli.js'
+import { sanitizeDiagnosticText } from '../analysis/diagnostics.js'
+import { EnvironmentStateKeyPort } from '../analysis/service.js'
+import { BRAID_VERSION } from '../version.js'
 import { runRpc } from '../views/headless/rpc.js'
 import { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import { createBraidTheme } from '../views/tui/theme.js'
-import { BRAID_VERSION } from '../version.js'
-import { HELP, parseArgs, type CliOptions } from './args.js'
+import { type CliOptions, HELP, parseArgs } from './args.js'
 
 async function recordState(
   path: string,
@@ -44,7 +47,9 @@ async function main(): Promise<number> {
   try {
     options = parseArgs(process.argv.slice(2), process.cwd())
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n\n${HELP}`)
+    process.stderr.write(
+      `${sanitizeDiagnosticText(error instanceof Error ? error.message : String(error))}\n\n${HELP}`,
+    )
     return 2
   }
   if (options.help) {
@@ -56,8 +61,31 @@ async function main(): Promise<number> {
     return 0
   }
 
+  if (options.mode === 'eval') {
+    const required = (value: string | undefined, name: string): string => {
+      if (!value) throw new Error(`eval requires ${name}`)
+      return value
+    }
+    return runW11EvaluationCommand({
+      traceFile: required(options.traceFile, '--trace-file'),
+      sourceMetadata: required(options.sourceMetadata, '--source-metadata'),
+      repository: options.repository ?? '.braid/analysis-state.enc',
+      model: required(options.model, '--model'),
+      baseUrl: options.baseUrl ?? 'https://router.tangle.tools/v1',
+      operationId: options.operationId ?? `operation-${randomUUID()}`,
+      evaluationInputs: required(options.evaluationInputs, '--evaluation-inputs'),
+      workspace: options.workspace,
+    } satisfies W11EvaluationCliOptions)
+  }
+
   const app = createBraidApplication({
     ...(options.fixture ? { fixture: options.fixture, chunkDelayMs: 12 } : {}),
+    ...(options.fixture && process.env.BRAID_STATE_KEY
+      ? {
+          analysisStatePath: resolve(options.workspace, '.braid', 'analysis-state.enc'),
+          analysisKey: new EnvironmentStateKeyPort(),
+        }
+      : {}),
   })
 
   if (options.mode === 'rpc') {
@@ -108,7 +136,9 @@ async function main(): Promise<number> {
     view.stop()
   }
   if (options.recordState) await recordState(options.recordState, app)
-  return signalExitCode ?? 0
+  return (
+    signalExitCode ?? (view.commandFailed || app.state().runs.at(-1)?.status === 'failed' ? 1 : 0)
+  )
 }
 
 main()
@@ -116,6 +146,8 @@ main()
     process.exitCode = exitCode
   })
   .catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`)
+    process.stderr.write(
+      `${sanitizeDiagnosticText(error instanceof Error ? error.message : String(error))}\n`,
+    )
     process.exitCode = 1
   })

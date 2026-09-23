@@ -209,7 +209,7 @@ The release measures product quality with the following denominators.
 | Interaction outcome cases | Acceptance, decline, cancel, timeout, restart, and concurrent queue all pass |
 | Required fork cases | Conversation, cross-runner, and cloud workspace forks all show correct provenance |
 | Security checks | 100% of required checks pass with no unresolved critical or high finding |
-| Calibrated semantic cases | The judge separates seeded good and bad examples before scoring release cases |
+| Calibrated semantic cases | The judge separates independently labeled good and bad examples before scoring release cases |
 
 Usage and retention metrics may be added only with explicit user consent and must never include prompt content, tool arguments, secrets, or raw traces by default.
 
