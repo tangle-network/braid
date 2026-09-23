@@ -28,7 +28,9 @@ The public receipt contains digests, statuses, counts, paths, and timings withou
 
 ## State and invariants
 
-The provider session execution inventory must contain exactly the expected first, follow-up, and cancelled executions after replay and reconnect.
+For LIVE-07, the provider session execution inventory must contain exactly the expected first, follow-up, and cancelled executions after replay and reconnect.
+For LIVE-08, the interactive status for the exact admitted process reference must report `exited` with reason `stopped` after Braid stops the run.
+Interactive sessions use the interactive-control API, so the LIVE-08 headless execution inventory must stay empty.
 
 Input and reconnect checks pass only after the provider workspace contains the expected bytes.
 
