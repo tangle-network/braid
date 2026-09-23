@@ -632,6 +632,9 @@ async function sendSource(app, proofId, onIdentity = () => {}) {
     captureIdentity()
     throw error
   }
+  // The control reference usually lands after admission; capture it before judging the run so
+  // the caller can still destroy the exact source environment when the run did not complete.
+  captureIdentity()
   const run = sourceRunFor(terminal, receipt.runId)
   const source = sourceEnvironmentRecord(terminal, run)
   return Object.freeze({
