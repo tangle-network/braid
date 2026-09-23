@@ -11,6 +11,7 @@ import {
 
 import {
   assertProofReceipt,
+  normalizeExternalFailure,
   PROOF_OPERATIONS,
   proofReceipt,
 } from '../scripts/live-required/contracts.mjs'
@@ -24,6 +25,8 @@ import {
   resourceCensusComparison,
   settledSourceState,
   sourceIdentityForRun,
+  uncapturedSourceIdentityError,
+  workspaceProofFailure,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
 const DIGEST = `sha256:${'1'.repeat(64)}`
@@ -829,4 +832,61 @@ test('LIVE-09 reconciles a source run that is still live when its send settles',
   // The stalled request is aborted and settles before settling reports the timeout.
   assert.equal(aborted, true)
   assert.equal(settledAfterAbort, true)
+})
+
+test('workspace proof failure keeps cleanup failures behind a proof failure', () => {
+  const primary = new Error('Source workspace marker was not materialized exactly')
+  const leaked = new Error('source environment sbx-1 cleanup failed')
+  const failure = workspaceProofFailure(primary, [leaked])
+  assert(failure instanceof AggregateError)
+  assert.equal(failure.errors[0], primary)
+  const cleanup = failure.errors[1]
+  assert(cleanup instanceof AggregateError)
+  assert.equal(cleanup.code, 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE')
+  assert.deepEqual(cleanup.errors, [leaked])
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  assert.match(normalized.message, /failed and cleanup was incomplete/u)
+  assert.match(normalized.message, /marker was not materialized exactly/u)
+  assert.match(normalized.message, /cleanup incomplete/u)
+  assert.match(normalized.message, /sbx-1 cleanup failed/u)
+})
+
+test('workspace proof failure reports cleanup alone and passes a clean failure through', () => {
+  const primary = new Error('proof failed')
+  assert.equal(workspaceProofFailure(primary, []), primary)
+  assert.equal(workspaceProofFailure(undefined, []), undefined)
+  const unavailable = Object.assign(new Error('close failed'), { unavailable: true })
+  const failure = workspaceProofFailure(undefined, [unavailable, new Error('config failed')])
+  assert(failure instanceof AggregateError)
+  assert.equal(failure.code, 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE')
+  assert.equal(failure.errors.length, 2)
+  // A cleanup failure must fail the row, never read as an unavailable path.
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  assert.equal(normalized.code, 'LIVE_REAL_PATH_FAILED')
+  assert.match(normalized.message, /close failed/u)
+  assert.match(normalized.message, /config failed/u)
+})
+
+test('an admitted source run without a captured identity is a cleanup failure', () => {
+  const app = { state: () => ({ runs: [{ id: 'run-prior' }, { id: 'run-source' }] }) }
+  const error = uncapturedSourceIdentityError(app, new Set(['run-prior']), 'LIVE-09')
+  assert.match(
+    error.message,
+    /^LIVE-09 source identity was never captured for run run-source; source environment cleanup was not attempted$/u,
+  )
+  assert.equal(uncapturedSourceIdentityError(app, new Set(['run-prior', 'run-source'])), undefined)
+  const unreadable = uncapturedSourceIdentityError(
+    {
+      state: () => {
+        throw new Error('application closed')
+      },
+    },
+    new Set(),
+    'LIVE-10',
+  )
+  assert.match(unreadable.message, /^LIVE-10 source identity was never captured/u)
+  assert.equal(unreadable.cause.message, 'application closed')
+  const failure = workspaceProofFailure(new Error('source admission failed'), [error])
+  const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
+  assert.match(normalized.message, /source environment cleanup was not attempted/u)
 })

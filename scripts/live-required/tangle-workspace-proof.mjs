@@ -1197,9 +1197,10 @@ async function runWorkspaceProof({
   let resourceCensusResult
   let plan
   let sourceDestroyed = false
+  let runIdsBeforeSource
   let primaryError
   let completedResult
-  let cleanupFailure
+  const cleanupErrors = []
   try {
     opened = await openProofApplication({ repository, config, environment })
     if (trust !== undefined) {
@@ -1222,6 +1223,7 @@ async function runWorkspaceProof({
       }
       resourceCensusBefore = await adapters.resourceCensus()
     }
+    runIdsBeforeSource = new Set(opened.app.state().runs.map((run) => run.id))
     source = await sendSource(opened.app, proofId, (candidate) => {
       source ??= candidate
     })
@@ -1689,19 +1691,26 @@ async function runWorkspaceProof({
       }
     }
   } catch (error) {
+    // Rethrown after cleanup so a cleanup failure cannot be dropped behind it.
     primaryError = error
-    throw error
   } finally {
-    let cleanupError
     let cleanupOwner = restarted ?? opened
     let rescueOwner = false
+    if (source === undefined && runIdsBeforeSource !== undefined) {
+      const missing = uncapturedSourceIdentityError(
+        opened?.app,
+        runIdsBeforeSource,
+        confidential ? 'LIVE-10' : 'LIVE-09',
+      )
+      if (missing !== undefined) cleanupErrors.push(missing)
+    }
     if (source !== undefined) {
       if (cleanupOwner === undefined) {
         try {
           cleanupOwner = await openProofApplication({ repository, config, environment })
           rescueOwner = true
         } catch (error) {
-          cleanupError ??= error
+          cleanupErrors.push(error)
         }
       }
       if (cleanupOwner !== undefined && !sourceDestroyed) {
@@ -1717,7 +1726,7 @@ async function runWorkspaceProof({
           plan,
           sourceDestroyed,
         })
-        cleanupError ??= cleanup.cleanupError
+        if (cleanup.cleanupError !== undefined) cleanupErrors.push(cleanup.cleanupError)
         cleanupOperationId = cleanup.cleanupOperationId
         cleanupResult = cleanup.cleanupResult
         sourceDestroyed = cleanup.sourceDestroyed
@@ -1727,7 +1736,7 @@ async function runWorkspaceProof({
       try {
         await cleanupOwner.close()
       } catch (error) {
-        cleanupError ??= error
+        cleanupErrors.push(error)
       }
       if (restarted === cleanupOwner) restarted = undefined
       if (opened === cleanupOwner) opened = undefined
@@ -1735,22 +1744,55 @@ async function runWorkspaceProof({
     try {
       if (restarted !== undefined) await restarted.close()
     } catch (error) {
-      cleanupError ??= error
+      cleanupErrors.push(error)
     }
     try {
       if (opened !== undefined) await opened.close()
     } catch (error) {
-      cleanupError ??= error
+      cleanupErrors.push(error)
     }
     try {
       await config.cleanup()
     } catch (error) {
-      cleanupError ??= error
+      cleanupErrors.push(error)
     }
-    if (cleanupError !== undefined && primaryError === undefined) cleanupFailure = cleanupError
   }
-  if (cleanupFailure !== undefined) throw cleanupFailure
+  const failure = workspaceProofFailure(primaryError, cleanupErrors)
+  if (failure !== undefined) throw failure
   return completedResult
+}
+
+// A run admitted after this point may own a billable provider environment even
+// when its identity never reached the projection, so its absence is a cleanup
+// failure rather than a silent skip.
+export function uncapturedSourceIdentityError(app, runIdsBeforeSource, row = 'LIVE-09') {
+  let admitted
+  try {
+    admitted = app.state().runs.filter((run) => !runIdsBeforeSource.has(run.id))
+  } catch (error) {
+    return new Error(
+      `${row} source identity was never captured and the source run could not be read; source environment cleanup was not attempted`,
+      { cause: error },
+    )
+  }
+  if (admitted.length === 0) return undefined
+  const runIds = admitted.map((run) => run.id).join(', ')
+  return new Error(
+    `${row} source identity was never captured for run ${runIds}; source environment cleanup was not attempted`,
+  )
+}
+
+// Cleanup failures must survive a proof failure: a leaked retained environment
+// keeps billing after the run reports only its first error.
+export function workspaceProofFailure(primaryError, cleanupErrors) {
+  if (cleanupErrors.length === 0) return primaryError
+  const cleanup = new AggregateError(cleanupErrors, 'LIVE workspace proof cleanup incomplete')
+  cleanup.code = 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE'
+  if (primaryError === undefined) return cleanup
+  return new AggregateError(
+    [primaryError, cleanup],
+    'LIVE workspace proof failed and cleanup was incomplete',
+  )
 }
 
 export function runWorkspaceForkProof(input) {
