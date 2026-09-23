@@ -5,6 +5,7 @@ import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { parseOperationId } from '../dist/domain/ids.js'
 import {
+  assertProofReceipt,
   LiveRequiredError,
   PROOF_OPERATIONS,
   proofReceipt,
@@ -523,7 +524,7 @@ function passedMultirunProof() {
 }
 
 function interactiveObservations(overrides = {}) {
-  return {
+  const nativeTerminal = {
     checks: {},
     configuration: {},
     run: {},
@@ -546,6 +547,31 @@ function interactiveObservations(overrides = {}) {
     spend: {},
     timing: {},
     ...overrides,
+  }
+  return {
+    nativeTerminal,
+    cloudInteraction: {
+      status: 'passed',
+      runId: 'run-cloud-question',
+      controlRef: { environmentId: 'environment-cloud-question' },
+      interaction: {
+        interactionId: 'question-cloud-1',
+        kind: 'question',
+        requestSequence: 12,
+        responseRequestedSequence: 23,
+        responseAcknowledgedSequence: 24,
+        terminalStatus: 'completed',
+      },
+      response: { operationId: 'operation-cloud-response', outcome: 'accepted' },
+      firstProcess: { exitSignal: 'SIGKILL', descendantsVerified: true },
+      providerExecution: {
+        provider: 'tangle-sandbox',
+        source: 'sandbox-session-runs',
+        executionCount: 1,
+        matched: true,
+      },
+      cleanup: { confirmed: true },
+    },
   }
 }
 
@@ -578,7 +604,7 @@ function passedInteractiveProof(
         modelProvider: 'tangle-router',
         runner,
       },
-      runIds: ['run-interactive'],
+      runIds: ['run-interactive', 'run-cloud-question'],
       environmentId: 'environment-cloud-interactive',
       facts: {
         environmentId: 'environment-cloud-interactive',
@@ -598,6 +624,12 @@ function passedInteractiveProof(
         telemetryComplete: true,
         spendDisclosed: true,
         latencyObserved: true,
+        cloudInteractionRunId: 'run-cloud-question',
+        cloudInteractionEnvironmentId: 'environment-cloud-question',
+        cloudInteractionId: 'question-cloud-1',
+        cloudInteractionResponseOperationId: 'operation-cloud-response',
+        cloudInteractionCompleted: true,
+        cloudInteractionCleanup: true,
       },
       checks: [
         'packed-binary',
@@ -623,6 +655,11 @@ function passedInteractiveProof(
         'telemetry-complete',
         'spend-disclosed',
         'latency-observed',
+        'cloud-question-retained',
+        'cloud-process-reconnect',
+        'cloud-response-acknowledged',
+        'cloud-continued-once',
+        'cloud-exact-resource-cleanup',
       ],
       observations,
     }),
@@ -1369,8 +1406,28 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
       passedInteractiveProof('live-required-status-only-observations', {
         observations: { status: 'passed' },
       }),
-    /observations\.checks/u,
+    /separate native terminal and cloud interaction evidence/u,
   )
+})
+
+test('LIVE-08 rejects the former terminal-only passed receipt', () => {
+  const receipt = passedInteractiveProof('live-required-terminal-only').evidence
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        observations: { nativeTerminal: receipt.observations.nativeTerminal },
+      }),
+    /separate native terminal and cloud interaction evidence/u,
+  )
+})
+
+test('LIVE-07 OpenCode runner setting leaves LIVE-08 native Pi runner intact', () => {
+  const config = interactiveSandboxConfiguration({
+    TANGLE_API_KEY: 'protected-test-key',
+    BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
+  })
+  assert.equal(config.runner, 'pi')
 })
 
 test('LIVE-08 requires observed before and after usage and identity samples', () => {

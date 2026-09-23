@@ -246,7 +246,7 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
     return proofReceipt({
       ...common,
       operation: PROOF_OPERATIONS.tangleSandboxInteractive,
-      runIds: ['run-live-08'],
+      runIds: ['run-live-08', 'run-cloud-question'],
       environmentId: 'environment-live-08',
       facts: {
         environmentId: 'environment-live-08',
@@ -273,6 +273,12 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
         telemetryComplete: true,
         spendDisclosed: true,
         latencyObserved: true,
+        cloudInteractionRunId: 'run-cloud-question',
+        cloudInteractionEnvironmentId: 'environment-cloud-question',
+        cloudInteractionId: 'question-cloud-1',
+        cloudInteractionResponseOperationId: 'operation-cloud-response',
+        cloudInteractionCompleted: true,
+        cloudInteractionCleanup: true,
       },
       checks: [
         'packed-binary',
@@ -298,40 +304,69 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
         'telemetry-complete',
         'spend-disclosed',
         'latency-observed',
+        'cloud-question-retained',
+        'cloud-process-reconnect',
+        'cloud-response-acknowledged',
+        'cloud-continued-once',
+        'cloud-exact-resource-cleanup',
       ],
-      observations: Object.fromEntries(
-        [
-          'checks',
-          'configuration',
-          'run',
-          'sandbox',
-          'identityContinuity',
-          'processCleanup',
-          'providerEvidence',
-          'providerExecution',
-          'telemetry',
-          'spend',
-          'timing',
-        ]
-          .map((key) => [key, {}])
-          .concat(
-            [
-              ['accountIdentityConsistency', { stable: true, identityDigest: 'c'.repeat(64) }],
-              ['usageDelta', { activeSandboxes: 0 }],
-            ],
-            [
-              ['usage', { activeSandboxes: 0 }],
-              ['accountIdentities', { identityDigest: 'c'.repeat(64) }],
-            ].map(([key, value]) => [
-              key,
-              ['before', 'after'].map((phase) => ({
-                phase,
-                status: 'observed',
-                value: structuredClone(value),
-              })),
-            ]),
-          ),
-      ),
+      observations: {
+        nativeTerminal: Object.fromEntries(
+          [
+            'checks',
+            'configuration',
+            'run',
+            'sandbox',
+            'identityContinuity',
+            'processCleanup',
+            'providerEvidence',
+            'providerExecution',
+            'telemetry',
+            'spend',
+            'timing',
+          ]
+            .map((key) => [key, {}])
+            .concat(
+              [
+                ['accountIdentityConsistency', { stable: true, identityDigest: 'c'.repeat(64) }],
+                ['usageDelta', { activeSandboxes: 0 }],
+              ],
+              [
+                ['usage', { activeSandboxes: 0 }],
+                ['accountIdentities', { identityDigest: 'c'.repeat(64) }],
+              ].map(([key, value]) => [
+                key,
+                ['before', 'after'].map((phase) => ({
+                  phase,
+                  status: 'observed',
+                  value: structuredClone(value),
+                })),
+              ]),
+            ),
+        ),
+        cloudInteraction: {
+          status: 'passed',
+          runId: 'run-cloud-question',
+          controlRef: { environmentId: 'environment-cloud-question' },
+          interaction: {
+            interactionId: 'question-cloud-1',
+            kind: 'question',
+            requestSequence: 12,
+            responseRequestedSequence: 23,
+            responseAcknowledgedSequence: 24,
+            terminalStatus: 'completed',
+          },
+          response: { operationId: 'operation-cloud-response', outcome: 'accepted' },
+          firstProcess: { exitSignal: 'SIGKILL', descendantsVerified: true },
+          providerExecution: {
+            provider: 'tangle-sandbox',
+            source: 'sandbox-session-runs',
+            executionCount: 1,
+            matched: true,
+          },
+          cleanup: { confirmed: true },
+        },
+      },
     })
   if (row === 'LIVE-09')
     return proofReceipt({
