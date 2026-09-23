@@ -3,6 +3,7 @@ import type {
   NativeInteractiveExecutionControl,
   NativeInteractiveRunOutcome,
 } from '../../ports/native-interactive-execution.js'
+import { abortable } from './abortable.js'
 
 interface Deferred<T> {
   readonly promise: Promise<T>
@@ -111,14 +112,4 @@ function deferred<T>(): Deferred<T> {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
-}
-
-async function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  signal?.throwIfAborted()
-  if (signal === undefined) return promise
-  return new Promise<T>((resolve, reject) => {
-    const abort = (): void => reject(signal.reason)
-    signal.addEventListener('abort', abort, { once: true })
-    void promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
-  })
 }

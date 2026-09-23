@@ -1,7 +1,11 @@
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
+import { abortable } from './abortable.js'
 import type { RetainedExecutionPlan, RetainedTurnResult } from './retained-execution-contract.js'
 import type { RetainedExecutionState } from './retained-execution-state.js'
+
+// The event stream has ended, so the exact result is ready or the endpoint is stalled.
+const RESULT_READ_TIMEOUT_MS = 60_000
 
 const TERMINAL_STREAM_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed', 'cancelled'])
 
@@ -78,8 +82,11 @@ export async function* streamRetainedExecution(input: {
       // rejects; without this read, the run's failure detail and usage are lost.
       if (!terminalStatusSeen || signal.aborted) throw error
     }
-    const result =
-      input.terminalResult === undefined ? await input.handle.result() : await input.terminalResult
+    // A stalled result endpoint must not hold the turn open past cancellation or the deadline.
+    const result = await abortable(
+      input.terminalResult ?? input.handle.result(),
+      AbortSignal.any([signal, AbortSignal.timeout(RESULT_READ_TIMEOUT_MS)]),
+    )
     sequence += 1
     yield input.plan.projectFinal({ runId: input.runId, sequence, result })
   } finally {
