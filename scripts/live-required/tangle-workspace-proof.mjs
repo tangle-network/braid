@@ -571,32 +571,40 @@ const TERMINAL_RUN_STATUSES = new Set([
   'unknown',
 ])
 const SOURCE_SETTLE_TIMEOUT_MS = 180_000
+const SOURCE_SETTLE_INTERVAL_MS = 2_000
 
 /**
  * The send operation can settle while provider reconciliation still reports the run live.
- * Wait, bounded, for the provider-authoritative terminal state instead of judging a live run.
+ * Poll provider reconciliation, bounded, for the terminal state instead of judging a live run;
+ * Braid state alone cannot advance once the send's stream has ended.
  */
-export async function settledSourceState(app, runId, state, timeoutMs = SOURCE_SETTLE_TIMEOUT_MS) {
+export async function settledSourceState(
+  app,
+  runId,
+  state,
+  {
+    timeoutMs = SOURCE_SETTLE_TIMEOUT_MS,
+    intervalMs = SOURCE_SETTLE_INTERVAL_MS,
+    pause = (milliseconds) =>
+      new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
+    now = () => performance.now(),
+  } = {},
+) {
   const statusIn = (candidate) => candidate.runs.find((run) => run.id === runId)?.status
   if (TERMINAL_RUN_STATUSES.has(statusIn(state))) return state
-  let timer
-  const deadline = new Promise((_, reject) => {
-    timer = setTimeout(
-      () =>
-        reject(
-          new Error(
-            `Source run ${runId} stayed ${String(statusIn(app.state()))} for ${timeoutMs}ms after its send settled`,
-          ),
-        ),
-      timeoutMs,
-    )
-  })
-  try {
-    await Promise.race([app.waitForIdle(), deadline])
-  } finally {
-    clearTimeout(timer)
+  const deadline = now() + timeoutMs
+  for (let attempt = 1; ; attempt += 1) {
+    const reconciled = await app.reconcileRun({
+      operationId: `op-live-required-source-settle-${runId}-${String(attempt)}`,
+      runId,
+    })
+    if (TERMINAL_RUN_STATUSES.has(statusIn(reconciled))) return reconciled
+    if (now() >= deadline)
+      throw new Error(
+        `Source run ${runId} stayed ${String(statusIn(reconciled))} for ${timeoutMs}ms after its send settled`,
+      )
+    await pause(intervalMs)
   }
-  return app.state()
 }
 
 async function sendSource(app, proofId, onIdentity = () => {}) {

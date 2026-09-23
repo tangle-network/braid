@@ -745,34 +745,43 @@ test('LIVE-10 receipts reject a replaced resource id hidden by stale census summ
   )
 })
 
-test('LIVE-09 waits for a source run that is still live when its send settles', async () => {
-  let state = { runs: [{ id: 'run-source', status: 'running', complete: false }] }
-  let idleCalls = 0
+test('LIVE-09 reconciles a source run that is still live when its send settles', async () => {
+  const live = { runs: [{ id: 'run-source', status: 'running', complete: false }] }
+  const done = { runs: [{ id: 'run-source', status: 'completed', complete: true }] }
+  const reconciles = []
   const app = {
-    state: () => state,
-    waitForIdle: async () => {
-      idleCalls += 1
-      state = { runs: [{ id: 'run-source', status: 'completed', complete: true }] }
+    reconcileRun: async (input) => {
+      reconciles.push(input)
+      return reconciles.length < 3 ? live : done
     },
   }
-  const settled = await settledSourceState(app, 'run-source', state)
-  assert.equal(idleCalls, 1)
-  assert.equal(settled.runs[0].status, 'completed')
+  const pauses = []
+  const settled = await settledSourceState(app, 'run-source', live, {
+    pause: async (milliseconds) => pauses.push(milliseconds),
+  })
+  assert.equal(settled, done)
+  assert.deepEqual(
+    reconciles.map((input) => input.runId),
+    ['run-source', 'run-source', 'run-source'],
+  )
+  assert.equal(new Set(reconciles.map((input) => input.operationId)).size, 3)
+  assert.deepEqual(pauses, [2_000, 2_000])
 
   const terminal = { runs: [{ id: 'run-source', status: 'failed', complete: true }] }
   assert.equal(
-    await settledSourceState({ waitForIdle: assert.fail }, 'run-source', terminal),
+    await settledSourceState({ reconcileRun: assert.fail }, 'run-source', terminal),
     terminal,
   )
 
-  const stuck = { runs: [{ id: 'run-source', status: 'running', complete: false }] }
+  let clock = 0
   await assert.rejects(
-    settledSourceState(
-      { state: () => stuck, waitForIdle: () => new Promise(() => undefined) },
-      'run-source',
-      stuck,
-      20,
-    ),
-    /Source run run-source stayed running for 20ms after its send settled/u,
+    settledSourceState({ reconcileRun: async () => live }, 'run-source', live, {
+      timeoutMs: 5_000,
+      pause: async (milliseconds) => {
+        clock += milliseconds
+      },
+      now: () => clock,
+    }),
+    /Source run run-source stayed running for 5000ms after its send settled/u,
   )
 })
