@@ -561,6 +561,7 @@ function sourcePrompt(marker, path) {
   ].join(' ')
 }
 
+// `unknown` is excluded: later provider evidence can still correct it, so settling keeps polling.
 const TERMINAL_RUN_STATUSES = new Set([
   'completed',
   'failed',
@@ -568,7 +569,6 @@ const TERMINAL_RUN_STATUSES = new Set([
   'cancelled',
   'blocked',
   'expired',
-  'unknown',
 ])
 const SOURCE_SETTLE_TIMEOUT_MS = 180_000
 const SOURCE_SETTLE_INTERVAL_MS = 2_000
