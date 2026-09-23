@@ -1,12 +1,12 @@
- braid  Braid starter  completed
- W6 visual proof
-
- Fixture response through pi: W6 visual
- proof
-
-
-
+braid Braid starter completed
+branch-1  ·
+·  pi
+you  W6 visual proof
+      Fixture response through pi: W6
+visual proof
+> new message
 ────────────────────────────────────────
 
 ────────────────────────────────────────
- completed ctrl+c cancel/quit
+Enter send  ·  Ctrl+P commands
+completed  Ctrl+C clear/cancel/quit

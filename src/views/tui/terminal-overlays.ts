@@ -7,8 +7,9 @@ import { DetailsViewPanel } from './details.js'
 import { ForkPreviewPanel } from './fork-preview.js'
 import { GraphView } from './graph.js'
 import { HelpViewPanel } from './help.js'
+import { AnalysisViewPanel } from './analysis.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
-import { SearchableSelector } from './selector.js'
+import { SearchableSelector, selectorItems } from './selector.js'
 import type { BraidTheme } from './theme.js'
 import { UnavailablePanel } from './terminal-shell.js'
 
@@ -19,7 +20,7 @@ export interface TerminalOverlayOptions {
   readonly editor: Editor
   readonly dispatchCommand: (command: CommandName, args: readonly string[]) => void
   readonly openSurface: (
-    surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings',
+    surface: 'activity' | 'graph' | 'details' | 'analysis' | 'fork' | 'help' | 'settings',
   ) => void
   readonly openHelp: (query: string) => void
 }
@@ -89,8 +90,13 @@ export class TerminalOverlayController {
       | 'help',
   ): void {
     const view = this.#controller.view()
-    const items: SelectItem[] =
-      kind === 'graph'
+    const configured =
+      kind === 'graph' || kind === 'conversation' || kind === 'help'
+        ? undefined
+        : view.selectors?.[kind]
+    const items: SelectItem[] = configured
+      ? selectorItems(configured)
+      : kind === 'graph'
         ? view.graph.map((node) => ({ value: node.id, label: node.title, description: node.type }))
         : kind === 'conversation'
           ? [{ value: view.branch, label: view.branch, description: 'active branch' }]
@@ -148,7 +154,9 @@ export class TerminalOverlayController {
     this.#modals.open(help, { anchor: 'center', width: '86%', maxHeight: '90%' })
   }
 
-  openSurface(surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'): void {
+  openSurface(
+    surface: 'activity' | 'graph' | 'details' | 'analysis' | 'fork' | 'help' | 'settings',
+  ): void {
     const view = this.#controller.view()
     let panel: Component
     if (surface === 'activity') {
@@ -163,6 +171,10 @@ export class TerminalOverlayController {
       const details = new DetailsViewPanel(this.#theme)
       details.setView(view)
       panel = details
+    } else if (surface === 'analysis') {
+      const analysis = new AnalysisViewPanel(this.#theme)
+      analysis.setView(view)
+      panel = analysis
     } else if (surface === 'settings') {
       panel = new UnavailablePanel(
         this.#theme,
@@ -170,7 +182,9 @@ export class TerminalOverlayController {
         'Settings persistence is not exposed by the current application core',
       )
     } else if (surface === 'fork') {
-      const fork = new ForkPreviewPanel(this.#theme)
+      const fork = new ForkPreviewPanel(this.#theme, () => {
+        this.#dispatchCommand('fork', ['--confirm'])
+      })
       fork.setView(view)
       panel = fork
     } else if (surface === 'help') {

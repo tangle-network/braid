@@ -11,11 +11,12 @@ import type { InteractionResponseValue } from '../shared/intents.js'
 import type { AnswerSpecView, InteractionView } from '../shared/models.js'
 import { sanitizeDiff, sanitizeTerminalText } from '../shared/sanitize.js'
 import { SearchableSelector } from './selector.js'
+import { framePanel } from './surface-panel.js'
 import type { BraidTheme } from './theme.js'
 
 class SecretInput extends Input {
   override render(width: number): string[] {
-    const mask = Array.from(this.getValue(), () => '•').join('')
+    const mask = Array.from(this.getValue(), () => '*').join('')
     const cursor = this.focused ? CURSOR_MARKER : ''
     return new Text(`${mask}${cursor}`, 1, 0).render(width)
   }
@@ -28,6 +29,7 @@ export class InteractionShell extends Container implements Focusable {
   readonly #input: Input
   readonly #selector?: SearchableSelector
   readonly #validation = new Text('', 1, 0)
+  readonly #title: string
   #focused = false
   #responded = false
   #validationError: string | undefined
@@ -40,6 +42,7 @@ export class InteractionShell extends Container implements Focusable {
     super()
     this.#interaction = interaction
     this.#theme = theme
+    this.#title = `${sanitizeTerminalText(interaction.kind)} needed`
     this.#onRespond = onRespond
     this.#input =
       interaction.answerSpec.kind === 'secret' ||
@@ -124,6 +127,18 @@ export class InteractionShell extends Container implements Focusable {
     this.#input.handleInput(data)
   }
 
+  override render(width: number): string[] {
+    const inner = super.render(Math.max(1, width - 4))
+    return framePanel(
+      width,
+      this.#title,
+      inner,
+      this.#theme,
+      '1-5 choose  ·  enter submit  ·  esc cancel',
+      this.#focused,
+    )
+  }
+
   #addSubject(subject: NonNullable<InteractionView['subject']>): void {
     this.addChild(
       new Text(this.#theme.muted(`subject: ${sanitizeTerminalText(subject.title)}`), 1, 0),
@@ -148,7 +163,7 @@ export class InteractionShell extends Container implements Focusable {
 
   #outcomeHelp(interaction: InteractionView): string {
     return interaction.allowedOutcomes
-      .map((outcome, index) => `${index + 1}:${sanitizeTerminalText(outcome)}`)
+      .map((outcome, index) => `${index + 1} ${sanitizeTerminalText(outcome)}`)
       .join('  ')
   }
 

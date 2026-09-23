@@ -170,6 +170,53 @@ export interface SelectorView {
   readonly emptyMessage: string
 }
 
+export type SelectorKind =
+  | 'conversation'
+  | 'profile'
+  | 'connection'
+  | 'runner'
+  | 'model'
+  | 'effort'
+  | 'graph'
+
+export interface SetupView {
+  readonly step: 'profile' | 'connection' | 'review'
+  readonly title: string
+  readonly summary?: string
+  readonly profiles?: SelectorView
+  readonly connections?: SelectorView
+  readonly review?: readonly { readonly label: string; readonly value: string }[]
+  readonly warnings?: readonly string[]
+}
+
+export interface HealthCheckView {
+  readonly id: string
+  readonly name: string
+  readonly status: 'checking' | 'healthy' | 'stale' | 'blocked' | 'failed'
+  readonly detail: string
+}
+
+export interface HealthView {
+  readonly status: 'checking' | 'healthy' | 'stale' | 'offline' | 'failed'
+  readonly checkedAt?: string
+  readonly checks: readonly HealthCheckView[]
+  readonly action?: string
+}
+
+export interface ForkResultView {
+  readonly status: 'preparing' | 'created' | 'failed'
+  readonly kind: 'conversation' | 'workspace' | 'cross-runner'
+  readonly source: string
+  readonly destination: string
+  readonly receipt?: string
+  readonly detail?: string
+}
+
+export interface NoticeView {
+  readonly tone: 'info' | 'success' | 'warning' | 'danger'
+  readonly text: string
+}
+
 export interface ActivityItemView {
   readonly id: string
   readonly kind: 'run' | 'tool' | 'worker' | 'interaction' | 'analysis' | 'system'
@@ -278,6 +325,7 @@ export interface HelpView {
 export interface BraidViewModel {
   readonly revision: number
   readonly workspace: string | null
+  readonly conversationTitle?: string
   readonly profileName: string
   readonly profileDigest?: string
   readonly runner: string
@@ -285,6 +333,8 @@ export interface BraidViewModel {
   readonly effort?: string
   readonly connection: string
   readonly branch: string
+  readonly environment?: string
+  readonly providerSession?: string
   readonly status: ViewStatus
   readonly statusText: string
   readonly elapsedMs?: number
@@ -296,12 +346,32 @@ export interface BraidViewModel {
   readonly interactions: readonly InteractionView[]
   readonly activity: readonly ActivityItemView[]
   readonly graph: readonly GraphNodeView[]
+  readonly selectedNodeId?: string
   readonly details?: DetailsView
   readonly profileEditor?: ProfileEditorView
   readonly connectionSetup?: ConnectionSetupView
+  readonly selectors?: Readonly<Partial<Record<SelectorKind, SelectorView>>>
+  readonly setup?: SetupView
+  readonly health?: HealthView
   readonly analysis?: AnalysisView
   readonly forkPreview?: ForkPreviewView
+  readonly forkResult?: ForkResultView
+  readonly notice?: NoticeView
   readonly help?: HelpView
+  readonly demoStage?:
+    | 'profile'
+    | 'connection'
+    | 'runner'
+    | 'model'
+    | 'effort'
+    | 'prompt'
+    | 'streaming'
+    | 'permission'
+    | 'fork'
+    | 'fork-complete'
+    | 'cancelled'
+    | 'analysis'
+    | 'graph'
   readonly capabilities: CapabilityMap
   readonly draft: string
   readonly selectedSurface:
@@ -309,6 +379,7 @@ export interface BraidViewModel {
     | 'activity'
     | 'graph'
     | 'details'
+    | 'analysis'
     | 'fork'
     | 'help'
     | 'settings'

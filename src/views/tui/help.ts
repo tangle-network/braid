@@ -1,46 +1,42 @@
-import { Container, Spacer, Text } from '@earendil-works/pi-tui'
 import { COMMAND_DEFINITIONS } from '../shared/command-registry.js'
+import { SurfacePanel, safeText } from './surface-panel.js'
 import type { BraidTheme } from './theme.js'
-import { sanitizeTerminalText } from '../shared/sanitize.js'
 
-export class HelpViewPanel extends Container {
-  readonly #theme: BraidTheme
+export class HelpViewPanel extends SurfacePanel {
+  #query = ''
 
   constructor(theme: BraidTheme) {
-    super()
-    this.#theme = theme
+    super({ title: 'help', theme, footer: 'type a command in the composer  ·  esc close' })
   }
 
   setQuery(query: string): void {
-    this.clear()
-    this.addChild(new Text(this.#theme.brand('help'), 1, 0))
-    this.addChild(
-      new Text(this.#theme.muted(`search: ${sanitizeTerminalText(query) || 'all commands'}`), 1, 0),
-    )
-    this.addChild(new Spacer(1))
-    const normalized = query.trim().toLowerCase()
+    this.#query = query
+  }
+
+  protected body(): string[] {
+    const normalized = this.#query.trim().toLowerCase()
     const definitions = COMMAND_DEFINITIONS.filter(
       (definition) =>
         !normalized ||
         `${definition.name} ${definition.description}`.toLowerCase().includes(normalized),
     )
-    for (const definition of definitions) {
-      this.addChild(
-        new Text(
-          `${this.#theme.accent(definition.usage)} — ${sanitizeTerminalText(definition.description)}`,
-          1,
-          0,
-        ),
-      )
-    }
-    this.addChild(new Spacer(1))
-    this.addChild(
-      new Text(
-        this.#theme.muted('Ctrl+P commands · Ctrl+O conversations · Ctrl+G graph · Esc close'),
-        1,
-        0,
-      ),
+    const rows = [
+      'Ctrl+P  command palette',
+      'Ctrl+O  conversation search',
+      'Ctrl+K  profile / runner switcher',
+      'Ctrl+G  graph',
+      'F2      activity pane',
+      '?       compact help',
+      'Ctrl+C  clear, cancel, then quit',
+      '/help   search this compact guide',
+      '',
+    ]
+    rows.push(
+      ...definitions
+        .slice(0, 8)
+        .map((definition) => `${safeText(definition.usage)}  ${safeText(definition.description)}`),
     )
-    this.invalidate()
+    if (definitions.length > 8) rows.push(`+ ${definitions.length - 8} more commands in Ctrl+P`)
+    return rows
   }
 }

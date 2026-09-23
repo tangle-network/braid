@@ -1,9 +1,7 @@
- braid  Braid starter  pi · deterministic fixture
- W6 active streaming
-
- Working…
-
-
+braid Braid starter streaming
+branch-1  ·  /home/drew/code/.worktrees/braid-w6-ui  ·  pi
+you  W6 active streaming
+      streaming provider is still writing
 
 
 
@@ -18,7 +16,9 @@
 
 
 
+> queue next turn
 ────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────
- streaming  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit
+Enter send  ·  Shift+Enter newline  ·  Ctrl+P commands
+streaming  Ctrl+P commands  ·  F2 activity  ·  Ctrl+C clear/cancel/quit

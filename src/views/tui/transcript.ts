@@ -1,12 +1,10 @@
-import { Box, Container, Spacer, Text, truncateToWidth } from '@earendil-works/pi-tui'
+import { Container, Text, wrapTextWithAnsi } from '@earendil-works/pi-tui'
 import type { BraidViewModel, MessageView, TranscriptPartView } from '../shared/models.js'
-import { sanitizeDiff, sanitizeMarkdown, sanitizeTerminalText } from '../shared/sanitize.js'
-import { SafeMarkdown } from './safe-markdown.js'
+import { sanitizeTerminalText } from '../shared/sanitize.js'
 import type { BraidTheme } from './theme.js'
 
 export class TranscriptView extends Container {
   readonly #theme: BraidTheme
-  #headerText: Text | undefined
   #view: BraidViewModel | undefined
 
   constructor(theme: BraidTheme) {
@@ -17,85 +15,116 @@ export class TranscriptView extends Container {
   setView(view: BraidViewModel): void {
     this.#view = view
     this.clear()
-    this.#headerText = new Text(this.#header(view, 80), 1, 0)
-    this.addChild(this.#headerText)
+    this.addChild(new Text(this.#header(view), 0, 0))
+    this.addChild(new Text(this.#context(view), 0, 0))
     if (view.hiddenMessageCount > 0) {
       this.addChild(
-        new Text(this.#theme.muted(`${view.hiddenMessageCount} earlier messages hidden`), 1, 0),
+        new Text(this.#theme.muted(`${view.hiddenMessageCount} earlier messages hidden`), 0, 0),
       )
     }
-    for (const message of view.messages) this.addChild(this.#message(message))
+    for (const message of view.messages) this.#addMessage(message)
     if (view.messages.length === 0) {
-      this.addChild(new Spacer(1))
+      this.addChild(new Text(this.#theme.muted('No turns yet. Type a message to begin.'), 0, 0))
       this.addChild(
-        new Text(this.#theme.muted('Write a message, or press Ctrl+P for commands.'), 1, 0),
+        new Text(this.#theme.muted('Ctrl+P commands  ·  Ctrl+O conversations  ·  ? help'), 0, 0),
       )
     }
     this.invalidate()
   }
 
-  override render(width: number): string[] {
-    if (this.#view && this.#headerText) this.#headerText.setText(this.#header(this.#view, width))
-    return super.render(width)
-  }
-
-  #header(view: BraidViewModel, width: number): string {
+  #header(view: BraidViewModel): string {
     const profile = sanitizeTerminalText(view.profileName)
-    if (width < 80) {
-      return truncateToWidth(
-        `${this.#theme.brand('braid')}  ${this.#theme.text(profile)}  ${this.#theme.muted(view.statusText)}`,
-        Math.max(1, width - 2),
-        '…',
-      )
+    const status = sanitizeTerminalText(view.statusText)
+    if (view.conversationTitle) {
+      return `${this.#theme.brand('braid')}  ${sanitizeTerminalText(view.conversationTitle)}  ${this.#theme.muted(`· ${profile} · ${status}`)}`
     }
+    return `${this.#theme.brand('braid')} ${profile} ${status}`
+  }
+
+  #context(view: BraidViewModel): string {
+    const branch = sanitizeTerminalText(view.branch)
+    const workspace = sanitizeTerminalText(view.workspace ?? 'no workspace')
     const runner = sanitizeTerminalText(view.runner)
-    const connection = sanitizeTerminalText(view.connection)
-    return `${this.#theme.brand('braid')}  ${this.#theme.text(profile)}  ${this.#theme.muted(`${runner} · ${connection}`)}`
+    return this.#theme.muted(`${branch}  ·  ${workspace}  ·  ${runner}`)
   }
 
-  #message(message: MessageView): Container {
-    const container = new Container()
+  #addMessage(message: MessageView): void {
+    const prefix = message.role === 'user' ? this.#theme.accent('you') : this.#theme.brand('braid')
+    const text = sanitizeTerminalText(message.text)
     if (message.role === 'user') {
-      const box = new Box(1, 0, this.#theme.userBackground)
-      box.addChild(new SafeMarkdown(sanitizeMarkdown(message.text), 0, 0, this.#theme.markdown))
-      container.addChild(box)
-      return container
+      this.#addWrapped(`${prefix}  `, text, 0, this.#theme.text)
+      return
     }
-
-    container.addChild(new Spacer(1))
-    for (const part of message.parts) container.addChild(this.#part(part))
-    if (message.parts.length === 0 && message.text) {
-      container.addChild(
-        new SafeMarkdown(sanitizeMarkdown(message.text), 1, 0, this.#theme.markdown),
-      )
-    }
+    if (message.parts.length === 0 && text)
+      this.#addWrapped(`${prefix}  `, text, 0, this.#theme.text)
+    for (const part of message.parts) this.#addPart(part)
     if (message.status === 'failed' || message.status === 'blocked') {
-      container.addChild(new Text(this.#theme.danger(message.status), 1, 0))
+      this.addChild(new Text(`      ${this.#theme.danger(message.status)}`, 0, 0))
     } else if (message.status === 'cancelled' || message.status === 'aborted') {
-      container.addChild(new Text(this.#theme.warning('cancelled'), 1, 0))
+      this.addChild(new Text(`      ${this.#theme.warning('cancelled')}`, 0, 0))
     } else if (message.status === 'streaming') {
-      container.addChild(new Text(this.#theme.muted('Working…'), 1, 0))
+      this.addChild(
+        new Text(
+          `      ${this.#theme.warning('streaming')} ${this.#theme.muted('provider is still writing')}`,
+          0,
+          0,
+        ),
+      )
+    } else if (!message.parts.some((part) => part.kind === 'text') && text) {
+      this.#addWrapped('braid  ', text, 0, this.#theme.text)
     }
-    return container
   }
 
-  #part(part: TranscriptPartView): SafeMarkdown | Text | Container {
-    const text =
-      part.kind === 'artifact' || part.kind === 'tool'
-        ? sanitizeDiff(part.text)
-        : sanitizeMarkdown(part.text)
-    const label = part.kind === 'text' ? '' : `${part.kind} `
+  #addPart(part: TranscriptPartView): void {
+    const text = sanitizeTerminalText(part.text)
     const status =
       part.status === 'running'
         ? this.#theme.warning('…')
         : part.status === 'failed'
           ? this.#theme.danger('failed')
           : ''
-    const prefix = label ? this.#theme.muted(`${label}· `) : ''
-    if (!text) return new Text(`${prefix}${status}`, 1, 0)
-    const container = new Container()
-    if (label || status) container.addChild(new Text(`${prefix}${status}`, 1, 0))
-    container.addChild(new SafeMarkdown(text, 1, 0, this.#theme.markdown))
-    return container
+    if (part.kind === 'reasoning') {
+      this.#addWrapped(`      ${this.#theme.muted('~')} `, text, 0, this.#theme.muted)
+      return
+    }
+    if (part.kind === 'tool' || part.kind === 'result' || part.kind === 'artifact') {
+      const label = part.kind === 'tool' ? 'tool' : part.kind
+      const suffix = part.durationMs ? ` · ${part.durationMs}ms` : ''
+      this.#addWrapped(
+        `      ${this.#theme.accent(label)}${suffix}  `,
+        `${text} ${status}`,
+        0,
+        this.#theme.text,
+      )
+      return
+    }
+    if (part.kind === 'warning' || part.kind === 'error') {
+      this.#addWrapped(
+        `      ${this.#theme.warning(part.kind)}  `,
+        `${text} ${status}`,
+        0,
+        this.#theme.warning,
+      )
+      return
+    }
+    if (part.kind === 'text') {
+      this.#addWrapped('      ', text, 0, this.#theme.text)
+      return
+    }
+    this.#addWrapped(`      ${this.#theme.muted(part.kind)}  `, text, 0, this.#theme.text)
+  }
+
+  #addWrapped(
+    prefix: string,
+    text: string,
+    indent: number,
+    style: (value: string) => string,
+  ): void {
+    const safe = text || ' '
+    const lines = wrapTextWithAnsi(style(safe), 72)
+    for (const [index, line] of lines.entries()) {
+      const lead = index === 0 ? prefix : `${' '.repeat(indent)}      `
+      this.addChild(new Text(`${lead}${line}`, 0, 0))
+    }
   }
 }

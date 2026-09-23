@@ -50,6 +50,7 @@ export class BraidTerminalApp {
   #interactionOpen = false
   #interactionKey: string | undefined
   #pendingInteractionKey: string | undefined
+  #lastDemoSurface: BraidViewModel['selectedSurface'] = 'transcript'
 
   constructor(options: BraidTerminalOptions) {
     this.#controller = options.controller
@@ -93,7 +94,19 @@ export class BraidTerminalApp {
     options.tui.addChild(this.#shell)
     this.#unsubscribe = this.#controller.subscribe((view) => this.#render(view))
     this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleGlobalInput(data))
-    this.#render(this.#controller.view())
+    const initialView = this.#controller.view()
+    this.#render(initialView)
+    if (
+      initialView.demoStage === 'profile' ||
+      initialView.demoStage === 'connection' ||
+      initialView.demoStage === 'runner' ||
+      initialView.demoStage === 'model' ||
+      initialView.demoStage === 'effort'
+    )
+      this.#overlays.openSelector(initialView.demoStage)
+    else if (initialView.setup?.step === 'connection') this.#overlays.openSelector('connection')
+    else if (initialView.selectedSurface !== 'transcript')
+      this.#overlays.openSurface(initialView.selectedSurface)
     for (const message of options.startupMessages ?? [])
       this.#overlays.openUnavailable(message.title, message.reason)
   }
@@ -141,6 +154,15 @@ export class BraidTerminalApp {
       (!this.#interactionOpen || interactionKey !== this.#interactionKey)
     ) {
       this.openInteraction(interaction)
+    }
+    if (
+      view.demoStage &&
+      !interaction &&
+      view.selectedSurface !== 'transcript' &&
+      view.selectedSurface !== this.#lastDemoSurface
+    ) {
+      this.#lastDemoSurface = view.selectedSurface
+      this.#overlays.openSurface(view.selectedSurface)
     }
     this.#tui.requestRender()
   }
@@ -211,8 +233,20 @@ export class BraidTerminalApp {
       return
     }
     void this.#dispatch(intent).then((result) => {
-      if (result.kind === 'accepted' && command === 'fork') this.#overlays.openSurface('fork')
+      if (result.kind !== 'accepted') return
+      const demo = this.#controller.view().demoStage !== undefined
+      if (command === 'fork' && !demo) this.#overlays.openSurface('fork')
+      else if ((command === 'ask' || command === 'analyze' || command === 'compare') && !demo)
+        this.#overlays.openSurface('analysis')
+      else this.#continueDemo()
     })
+  }
+
+  #continueDemo(): void {
+    const stage = this.#controller.view().demoStage
+    if (stage === 'connection' || stage === 'runner' || stage === 'model' || stage === 'effort') {
+      this.#overlays.openSelector(stage)
+    }
   }
 
   #dispatch(intent: BraidIntent, restoreText?: string): Promise<UiDispatchResult> {

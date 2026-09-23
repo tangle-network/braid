@@ -23,7 +23,29 @@ export const UNSUPPORTED: Readonly<Record<string, string>> = Object.freeze({
   'settings.open': 'Settings persistence is not exposed by the current application core',
 })
 
-export type UiFixture = 'interaction' | 'fork'
+export type UiFixture =
+  | 'first-run'
+  | 'profile'
+  | 'connection'
+  | 'runner'
+  | 'model'
+  | 'effort'
+  | 'ready'
+  | 'streaming'
+  | 'interaction'
+  | 'permission'
+  | 'question'
+  | 'fork-preview'
+  | 'fork'
+  | 'fork-complete'
+  | 'analysis'
+  | 'graph'
+  | 'activity'
+  | 'reconnecting'
+  | 'failure'
+  | 'cancelled'
+  | 'unknown'
+  | 'demo'
 
 export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   runId: 'fixture-run-1',
@@ -113,11 +135,39 @@ export function capabilityMap(
             ? 'The current runtime does not acknowledge provider cancellation'
             : 'There is no active run to cancel',
         }
-  if (fixture === 'interaction') {
+  if (
+    fixture === 'interaction' ||
+    fixture === 'permission' ||
+    fixture === 'question' ||
+    fixture === 'demo'
+  ) {
     capabilities['interaction.respond'] = { available: true, source: 'provider' }
   }
-  if (fixture === 'fork') {
+  if (
+    fixture === 'fork' ||
+    fixture === 'fork-preview' ||
+    fixture === 'fork-complete' ||
+    fixture === 'demo'
+  ) {
     capabilities['conversation.fork'] = { available: true, source: 'provider' }
   }
+  if (fixture && fixture !== 'interaction' && fixture !== 'permission' && fixture !== 'question') {
+    for (const key of [
+      'profile.select',
+      'connection.select',
+      'run.runner',
+      'run.model',
+      'run.effort',
+    ]) {
+      capabilities[key] = { available: true, source: 'provider' }
+    }
+    capabilities['run.send'] = { available: true, source: 'provider' }
+    capabilities['analysis.ask'] = { available: true, source: 'provider' }
+    capabilities['analysis.recipe'] = { available: true, source: 'provider' }
+    capabilities['analysis.compare'] = { available: true, source: 'provider' }
+    capabilities['run.queue'] = { available: true, source: 'runtime' }
+    capabilities['run.steer'] = { available: true, source: 'runtime' }
+  }
+  if (fixture === 'demo') capabilities['run.cancel'] = { available: true, source: 'runtime' }
   return Object.freeze(capabilities)
 }

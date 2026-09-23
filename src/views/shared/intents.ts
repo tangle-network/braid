@@ -38,7 +38,7 @@ export type BraidIntent =
     }
   | {
       readonly type: 'open-surface'
-      readonly surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'
+      readonly surface: 'activity' | 'graph' | 'details' | 'analysis' | 'fork' | 'help' | 'settings'
       readonly query?: string
     }
   | { readonly type: 'resize'; readonly columns: number; readonly rows: number }

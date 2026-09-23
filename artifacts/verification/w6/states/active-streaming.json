@@ -5,7 +5,7 @@
     "binary": "packed real binary from clean npm install",
     "binarySha256": "99d3747711e42c537092eb4284d163a8cadea36fb35df339a90ce8154c7c3dbe",
     "tarball": "tangle-network-braid-0.1.0.tgz",
-    "tarballSha256": "47566fb3f7611b1e6756cbc4518314bc6a2a321f5aea3878e1b7171946474795"
+    "tarballSha256": "8072284201fc4b768b455ba46c04ac61996bba3f5322b40c2fe21392b1c27480"
   },
   "dimensions": {
     "columns": 80,
@@ -30,7 +30,7 @@
   },
   "capturePhase": "atomic-signal-frame",
   "captureRevision": 3,
-  "frame": " braid  Braid starter  pi · deterministic fixture\n W6 active streaming\n\n Working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\n streaming  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit\n",
+  "frame": "braid Braid starter streaming\nbranch-1  ·  /home/drew/code/.worktrees/braid-w6-ui  ·  pi\nyou  W6 active streaming\n      streaming provider is still writing\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n> queue next turn\n────────────────────────────────────────────────────────────────────────────────\n\n────────────────────────────────────────────────────────────────────────────────\nEnter send  ·  Shift+Enter newline  ·  Ctrl+P commands\nstreaming  Ctrl+P commands  ·  F2 activity  ·  Ctrl+C clear/cancel/quit\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",

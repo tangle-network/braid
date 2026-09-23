@@ -10,6 +10,7 @@ import {
 } from '@earendil-works/pi-tui'
 import type { SelectorView } from '../shared/models.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { framePanel } from './surface-panel.js'
 import type { BraidTheme } from './theme.js'
 
 export interface SearchableSelectorOptions {
@@ -38,6 +39,8 @@ export class SearchableSelector extends Container implements Focusable {
   #list: SelectList
   readonly #title: Text
   readonly #footer: Text
+  readonly #titleValue: string
+  readonly #footerValue: string
   readonly #onSelect: (item: SelectItem) => void
   readonly #onCancel: () => void
   #items: readonly SelectItem[]
@@ -52,14 +55,12 @@ export class SearchableSelector extends Container implements Focusable {
     this.#maxVisible = options.maxVisible ?? 8
     this.#onSelect = options.onSelect
     this.#onCancel = options.onCancel
-    this.#title = new Text(options.theme.brand(sanitizeTerminalText(options.title)), 1, 0)
-    this.#footer = new Text(
-      options.theme.muted(
-        sanitizeTerminalText(options.footer ?? 'type to filter · enter to choose · esc to close'),
-      ),
-      1,
-      0,
+    this.#titleValue = sanitizeTerminalText(options.title)
+    this.#footerValue = sanitizeTerminalText(
+      options.footer ?? 'type to filter · enter to choose · esc to close',
     )
+    this.#title = new Text(options.theme.brand(this.#titleValue), 1, 0)
+    this.#footer = new Text(options.theme.muted(this.#footerValue), 1, 0)
     this.#list = this.#createList()
     this.#input.setValue(options.query ?? '')
     this.#input.onSubmit = () => {
@@ -129,6 +130,11 @@ export class SearchableSelector extends Container implements Focusable {
     }
     this.#input.handleInput(data)
     this.#applyFilter()
+  }
+
+  override render(width: number): string[] {
+    const inner = super.render(Math.max(1, width - 4))
+    return framePanel(width, this.#titleValue, inner, this.#theme, this.#footerValue, this.#focused)
   }
 
   #applyFilter(): void {

@@ -1,7 +1,7 @@
- braid  Braid starter  pi · deterministic fixture                                            activity
- W6 visual proof
-                                                                                             completed run run-000001
- Fixture response through pi: W6 visual proof
+braid Braid starter completed                                                               activity
+branch-1  ·  /home/drew/code/.worktrees/braid-w6-ui  ·  pi                                  completed  ·  0 queued
+you  W6 visual proof                                                                        completed  run run-000001
+      Fixture response through pi: W6 visual proof                                          F2 hide  ·  Ctrl+G graph
 
 
 
@@ -32,9 +32,9 @@
 
 
 
-
-
+> new message
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- completed  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit
+Enter send  ·  Shift+Enter newline  ·  Ctrl+P commands
+completed  Ctrl+P commands  ·  F2 activity  ·  Ctrl+C clear/cancel/quit

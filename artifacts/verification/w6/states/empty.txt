@@ -1,9 +1,7 @@
- braid  Braid starter  pi · deterministic fixture
-
- Write a message, or press Ctrl+P for commands.
-
-
-
+braid Braid starter ready for a message
+branch-1  ·  /home/drew/code/.worktrees/braid-w6-ui  ·  pi
+No turns yet. Type a message to begin.
+Ctrl+P commands  ·  Ctrl+O conversations  ·  ? help
 
 
 
@@ -18,7 +16,9 @@
 
 
 
+> new message
 ────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────
- ready for a message  ctrl+p commands · ctrl+c clear/cancel/quit · ctrl+d exit
+Enter send  ·  Shift+Enter newline  ·  Ctrl+P commands
+ready for a message  Ctrl+P commands  ·  F2 activity  ·  Ctrl+C clear/cancel/qu…

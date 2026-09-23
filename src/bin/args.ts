@@ -2,7 +2,29 @@ export interface CliOptions {
   readonly mode: 'tui' | 'rpc'
   readonly plain: boolean
   readonly fixture?: 'deterministic'
-  readonly uiFixture?: 'interaction' | 'fork'
+  readonly uiFixture?:
+    | 'first-run'
+    | 'profile'
+    | 'connection'
+    | 'runner'
+    | 'model'
+    | 'effort'
+    | 'ready'
+    | 'streaming'
+    | 'interaction'
+    | 'permission'
+    | 'question'
+    | 'fork-preview'
+    | 'fork'
+    | 'fork-complete'
+    | 'analysis'
+    | 'graph'
+    | 'activity'
+    | 'reconnecting'
+    | 'failure'
+    | 'cancelled'
+    | 'unknown'
+    | 'demo'
   readonly inline: boolean
   readonly noColor: boolean
   readonly highContrast: boolean
@@ -39,7 +61,7 @@ Options:
   --model <name>               Set a run-level model preference
   --effort <level>             Set a run-level effort preference
   --fixture deterministic     Use the clearly labelled offline test provider
-  --ui-fixture <name>         Render a real interaction or fork preview fixture
+  --ui-fixture <name>         Render a deterministic product-state fixture
   --record-state <path>       Write final semantic state and events for verification
   -h, --help                  Show help
   -v, --version               Show version
@@ -92,9 +114,32 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
       index += 1
     } else if (argument === '--ui-fixture') {
       const value = requiredValue(argv, index, argument)
-      if (value !== 'interaction' && value !== 'fork')
-        throw new Error(`Unknown UI fixture: ${value}`)
-      uiFixture = value
+      const fixtures = new Set([
+        'first-run',
+        'profile',
+        'connection',
+        'runner',
+        'model',
+        'effort',
+        'ready',
+        'streaming',
+        'interaction',
+        'permission',
+        'question',
+        'fork-preview',
+        'fork',
+        'fork-complete',
+        'analysis',
+        'graph',
+        'activity',
+        'reconnecting',
+        'failure',
+        'cancelled',
+        'unknown',
+        'demo',
+      ])
+      if (!fixtures.has(value)) throw new Error(`Unknown UI fixture: ${value}`)
+      uiFixture = value as NonNullable<CliOptions['uiFixture']>
       index += 1
     } else if (argument === '--conversation') {
       conversation = requiredValue(argv, index, argument)
