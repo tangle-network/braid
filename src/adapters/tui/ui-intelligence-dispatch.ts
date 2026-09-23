@@ -356,18 +356,27 @@ async function dispatchSupervisorWorker(
   if (typeof text !== 'string') {
     invalid('INVALID_PARAMS', 'steer_worker requires supervisorId, workerId, and text')
   }
+  if (operationId === undefined) {
+    invalid('OPERATION_ID_REQUIRED', 'steer_worker requires operationId')
+  }
   try {
     const result = await context.app.intelligence.supervisor.steerWorker(
       reference.rootDir,
       reference.runtimeSupervisorId,
       reference.runtimeWorkerId,
       text,
+      operationId,
     )
     if (result.status === 'unavailable') {
       return unavailable(
         result.issue === undefined ? 'Worker steering is unavailable' : issueReason(result.issue),
       )
     }
+    context.setNotice(
+      result.effect === undefined
+        ? `steer queued for ${workerId}; awaiting runtime acknowledgement`
+        : `steer ${result.effect} for ${workerId}`,
+    )
     return accepted(context.app, { ...result, worker: workerId }, operationId)
   } catch (error) {
     return unavailable(
@@ -612,7 +621,7 @@ export async function dispatchIntelligenceIntent(
       return dispatchSupervisorCancel(context, intent.params, intent.operationId)
     case 'attach_worker':
       return unavailable(
-        'Worker attachment is unavailable: the runtime snapshot does not carry the retained interactive reference required to reconnect the exact worker',
+        'Worker attachment requires the interactive terminal surface; use the activity worker action',
       )
     default:
       return undefined

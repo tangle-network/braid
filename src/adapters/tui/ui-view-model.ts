@@ -9,6 +9,7 @@ import { sanitizeTerminalText } from '../../views/shared/sanitize.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
 import { sessionUsageFor, usageForRun } from '../../views/shared/usage-projection.js'
 import { capabilityMap } from './ui-capabilities.js'
+import type { RuntimeSupervisorCapabilities } from '../runtime/supervisor-control.js'
 import { entityDetailsFor } from './ui-entity-details.js'
 import {
   activityFor,
@@ -66,6 +67,7 @@ export function buildBraidViewModel(
   cleanupUncertain?: string,
   canRespond = false,
   graphQuery = '',
+  supervisorCapabilities?: RuntimeSupervisorCapabilities,
 ): BraidViewModel {
   const status = storageFailure ? ('storage-failure' as const) : statusFor(state)
   const latest = state.runs.at(-1)
@@ -201,7 +203,7 @@ export function buildBraidViewModel(
           }),
         }
       : {}),
-    capabilities: capabilityMap(state, canCancel, undefined, canRespond),
+    capabilities: capabilityMap(state, canCancel, undefined, canRespond, supervisorCapabilities),
     draft: sanitizeTerminalText(state.draft),
     selectedSurface,
     appearance: Object.freeze({

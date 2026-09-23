@@ -154,6 +154,9 @@ export class BraidTerminalApp {
       requestRender: () => this.#tui.requestRender(),
       columns: () => this.#tui.terminal.columns,
       rows: () => this.#tui.terminal.rows,
+      ...(options.nativeInteractive === undefined
+        ? {}
+        : { nativeInteractive: options.nativeInteractive }),
     })
     this.#interactions = new TerminalInteractionController({
       theme: this.#theme,

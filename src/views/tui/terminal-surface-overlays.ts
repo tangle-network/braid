@@ -19,6 +19,7 @@ import { UnavailablePanel } from './terminal-shell.js'
 import { createWorkerSteerPrompt } from './supervisor-actions.js'
 import type { BraidTheme } from './theme.js'
 import type { EntityBrowserRow } from './entity-browser.js'
+import type { NativeInteractiveUiActions } from '../shared/native-interactive-actions.js'
 
 export interface TerminalSurfaceOverlayOptions {
   readonly theme: BraidTheme
@@ -32,6 +33,7 @@ export interface TerminalSurfaceOverlayOptions {
   readonly openProfile: () => void
   readonly openConnection: () => void
   readonly focusRun?: (runId: string) => void
+  readonly nativeInteractive?: NativeInteractiveUiActions
 }
 
 export interface IntelligenceProgressHandle {
@@ -337,20 +339,44 @@ export class TerminalSurfaceOverlays {
       this.openUnavailable('attach unavailable', 'Select a runtime worker before attaching')
       return
     }
-    const result = await this.#options.controller.dispatch({
-      type: 'headless-command',
-      command: 'attach_worker',
-      operationId: this.#options.nextOperationId(),
-      params: { supervisorId: selected.supervisorId, workerId: selected.entityId },
-    })
-    if (result.kind !== 'accepted') {
+    const actions = this.#options.nativeInteractive
+    if (actions === undefined) {
       this.openUnavailable(
         'attach unavailable',
-        result.kind === 'unavailable' ? result.reason : result.message,
+        'Native terminal mode is unavailable in this interface',
       )
       return
     }
-    this.openUnavailable('attach unavailable', 'The runtime returned no terminal attachment')
+    const availability = actions.availability('attach-worker')
+    if (!availability.available) {
+      this.openUnavailable('attach unavailable', availability.reason ?? 'Worker attachment is unavailable')
+      return
+    }
+    this.#options.modals.closeTop()
+    let result: Awaited<ReturnType<NativeInteractiveUiActions['run']>>
+    try {
+      result = await actions.run({
+        action: 'attach-worker',
+        operationId: this.#options.nextOperationId(),
+        supervisorId: selected.supervisorId,
+        workerId: selected.entityId,
+      })
+    } catch (error) {
+      this.openUnavailable(
+        'attach unavailable',
+        error instanceof Error ? error.message : 'Worker attachment failed',
+      )
+      return
+    }
+    if (result.kind === 'unavailable') {
+      this.openUnavailable('attach unavailable', result.reason)
+      return
+    }
+    if (result.kind === 'error') {
+      this.openUnavailable('attach unavailable', result.message)
+      return
+    }
+    this.#setSupervisionStatus(`worker terminal returned for ${selected.title}`)
   }
 
   #openAnalysisPromotion(selected: ActivityItemView): void {

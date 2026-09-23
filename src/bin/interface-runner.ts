@@ -22,6 +22,7 @@ import type { CliOptions } from './args.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
+import { createNativeWorkerAttachPort } from './native-worker-attach.js'
 import { runPlain } from './plain.js'
 import {
   activateProductionConnection,
@@ -210,6 +211,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     view?: BraidTerminalApp
     signals?: ReturnType<typeof createInterfaceSignalLifecycle>
   } = {}
+  const workerAttach = createNativeWorkerAttachPort(active)
   const nativeInteractive = createNativeInteractiveUiActions({
     current: () => active.current,
     terminal: tui.terminal,
@@ -222,6 +224,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     resume: () => nativeLifecycle.view?.resume(),
     nextOperationId,
     holderId: `braid-terminal-${randomUUID()}`,
+    workerAttach,
   })
   const view = new BraidTerminalApp({
     controller,

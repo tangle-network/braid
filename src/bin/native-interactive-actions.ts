@@ -1,5 +1,8 @@
 import type { AgentInteractiveTerminalSession } from '@tangle-network/agent-interface'
-import { claimRetainedInteractiveControl } from '@tangle-network/agent-runtime/kernel'
+import {
+  claimRetainedInteractiveControl,
+  type RetainedInteractiveRunHandle,
+} from '@tangle-network/agent-runtime/kernel'
 import { createNativeTerminalTransport } from '../adapters/tui/native-terminal-transport.js'
 import type { BraidApplication } from '../app/application.js'
 import { activeRunForBranch, type BraidRun, type BraidState } from '../domain/state.js'
@@ -9,6 +12,9 @@ import type {
   NativeTerminalSignalPort,
   NativeTerminalTransportResult,
 } from '../ports/native-terminal-transport.js'
+import type {
+  NativeWorkerAttachPort,
+} from '../ports/native-worker-attach.js'
 import type {
   NativeInteractiveAvailability,
   NativeInteractiveCommand,
@@ -29,6 +35,7 @@ export interface NativeInteractiveActionsOptions {
   readonly resume: () => void
   readonly nextOperationId: () => string
   readonly holderId: string
+  readonly workerAttach?: NativeWorkerAttachPort
 }
 
 /** Coordinates one terminal viewer. Runtime and the application retain all durable state. */
@@ -38,10 +45,10 @@ export function createNativeInteractiveUiActions(
   let busy = false
   const actions: NativeInteractiveUiActions = {
     availability: (action: NativeInteractiveCommand['action']) =>
-      availability(options.current(), action, busy),
+      availability(options.current(), action, busy, options.workerAttach),
     run: async (command: NativeInteractiveCommand): Promise<NativeInteractiveCommandResult> => {
       if (busy) return { kind: 'unavailable', reason: 'A native terminal is already open' }
-      const available = availability(options.current(), command.action, false)
+      const available = availability(options.current(), command.action, false, options.workerAttach)
       if (!available.available) {
         return { kind: 'unavailable', reason: available.reason ?? 'Native terminal unavailable' }
       }
@@ -62,8 +69,19 @@ function availability(
   current: InteractiveApplicationHandle,
   action: NativeInteractiveCommand['action'],
   busy: boolean,
+  workerAttach: NativeWorkerAttachPort | undefined,
 ): NativeInteractiveAvailability {
   if (busy) return { available: false, reason: 'A native terminal is already open' }
+  if (action === 'attach-worker') {
+    return (
+      workerAttach?.availability?.() ?? {
+        available: workerAttach !== undefined,
+        ...(workerAttach === undefined
+          ? { reason: 'Runtime worker attachment is unavailable' }
+          : {}),
+      }
+    )
+  }
   if (current.nativeInteractive === undefined) {
     return {
       available: false,
@@ -92,6 +110,21 @@ async function runCommand(
   command: NativeInteractiveCommand,
 ): Promise<NativeInteractiveCommandResult> {
   const current = options.current()
+  if (command.action === 'attach-worker') {
+    const workerAttach = options.workerAttach
+    if (workerAttach === undefined) {
+      return { kind: 'unavailable', reason: 'Runtime worker attachment is unavailable' }
+    }
+    const attached = await workerAttach.attach({
+      operationId: command.operationId,
+      supervisorId: command.supervisorId,
+      workerId: command.workerId,
+    })
+    if (attached.status === 'unavailable') {
+      return { kind: 'unavailable', reason: attached.reason }
+    }
+    return presentHandle(options, attached.handle, { workerId: command.workerId })
+  }
   const execution = current.nativeInteractive
   if (execution === undefined) {
     return { kind: 'unavailable', reason: 'Native terminal support is unavailable' }
@@ -105,7 +138,7 @@ async function runCommand(
       mode: 'interactive',
     })
     await receipt.admissionReady
-    return present(options, current, execution, receipt.runId, receipt.completion)
+    return presentRun(options, current, execution, receipt.runId, receipt.completion)
   }
 
   const runId = command.runId ?? latestAttachableRun(current.app.state().runs)?.id
@@ -120,10 +153,10 @@ async function runCommand(
     operationId: options.nextOperationId(),
     runId,
   })
-  return present(options, current, execution, runId, reconnect)
+  return presentRun(options, current, execution, runId, reconnect)
 }
 
-async function present(
+async function presentRun(
   options: NativeInteractiveActionsOptions,
   current: InteractiveApplicationHandle,
   execution: NativeInteractiveExecutionControl,
@@ -132,6 +165,38 @@ async function present(
 ): Promise<NativeInteractiveCommandResult> {
   void runCompletion.catch(() => undefined)
   const handle = await execution.waitForHandle(runId)
+  return presentHandle(options, handle, {
+    runId,
+    onAttachFailure: (error) =>
+      detachAfterViewerFailure(current.app, runId, options.nextOperationId, error),
+    onRemoteExit: async (outcome) => {
+      execution.settle(runId, {
+        kind: 'exited',
+        ...(outcome.exitCode === undefined ? {} : { exitCode: outcome.exitCode }),
+        ...(outcome.exitSignal === undefined ? {} : { exitSignal: outcome.exitSignal }),
+      })
+      await runCompletion
+    },
+    onDetach: async () => {
+      await current.app.detachRun({ operationId: options.nextOperationId(), runId })
+      await runCompletion.catch(() => undefined)
+    },
+  })
+}
+
+interface NativeInteractivePresentationResult {
+  readonly runId?: string
+  readonly workerId?: string
+  readonly onAttachFailure?: (error: unknown) => Promise<void>
+  readonly onRemoteExit?: (outcome: Extract<NativeTerminalTransportResult['outcome'], { kind: 'remote-exit' }>) => Promise<void>
+  readonly onDetach?: () => Promise<void>
+}
+
+async function presentHandle(
+  options: NativeInteractiveActionsOptions,
+  handle: RetainedInteractiveRunHandle,
+  resultOptions: NativeInteractivePresentationResult,
+): Promise<NativeInteractiveCommandResult> {
   let terminalSession: AgentInteractiveTerminalSession
   try {
     const control = await claimRetainedInteractiveControl({
@@ -144,7 +209,7 @@ async function present(
       rows: positiveDimension(options.terminal.rows),
     })
   } catch (error) {
-    await detachAfterViewerFailure(current.app, runId, options.nextOperationId, error)
+    await resultOptions.onAttachFailure?.(error)
     throw error
   }
 
@@ -162,25 +227,21 @@ async function present(
 
   const outcome = result.outcome
   if (outcome.kind === 'remote-exit') {
-    execution.settle(runId, {
-      kind: 'exited',
-      ...(outcome.exitCode === undefined ? {} : { exitCode: outcome.exitCode }),
-      ...(outcome.exitSignal === undefined ? {} : { exitSignal: outcome.exitSignal }),
-    })
-    await runCompletion
+    await resultOptions.onRemoteExit?.(outcome)
     const cleanup = cleanupMessage(result)
-    return cleanup === undefined
-      ? { kind: 'returned', runId, outcome: 'exited' }
-      : { kind: 'error', message: cleanup }
+    if (cleanup !== undefined) return { kind: 'error', message: cleanup }
+    return resultOptions.workerId === undefined
+      ? { kind: 'returned', runId: resultOptions.runId ?? 'unknown', outcome: 'exited' }
+      : { kind: 'worker-returned', workerId: resultOptions.workerId, outcome: 'exited' }
   }
 
-  await current.app.detachRun({ operationId: options.nextOperationId(), runId })
-  await runCompletion.catch(() => undefined)
+  await resultOptions.onDetach?.()
   if (outcome.kind === 'detached') {
     const cleanup = cleanupMessage(result)
-    return cleanup === undefined
-      ? { kind: 'returned', runId, outcome: 'detached' }
-      : { kind: 'error', message: cleanup }
+    if (cleanup !== undefined) return { kind: 'error', message: cleanup }
+    return resultOptions.workerId === undefined
+      ? { kind: 'returned', runId: resultOptions.runId ?? 'unknown', outcome: 'detached' }
+      : { kind: 'worker-returned', workerId: resultOptions.workerId, outcome: 'detached' }
   }
   return {
     kind: 'error',

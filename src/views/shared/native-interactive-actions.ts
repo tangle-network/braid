@@ -7,6 +7,12 @@ export type NativeInteractiveCommand =
       readonly action: 'attach'
       readonly runId?: string
     }
+  | {
+      readonly action: 'attach-worker'
+      readonly operationId: string
+      readonly supervisorId: string
+      readonly workerId: string
+    }
 
 export interface NativeInteractiveAvailability {
   readonly available: boolean
@@ -17,6 +23,11 @@ export type NativeInteractiveCommandResult =
   | {
       readonly kind: 'returned'
       readonly runId: string
+      readonly outcome: 'detached' | 'exited'
+    }
+  | {
+      readonly kind: 'worker-returned'
+      readonly workerId: string
       readonly outcome: 'detached' | 'exited'
     }
   | {

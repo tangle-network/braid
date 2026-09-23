@@ -174,6 +174,12 @@ export type {
   NativeTerminalTransportResult,
 } from './ports/native-terminal-transport.js'
 export type {
+  NativeWorkerAttachAvailability,
+  NativeWorkerAttachPort,
+  NativeWorkerAttachRequest,
+  NativeWorkerAttachResult,
+} from './ports/native-worker-attach.js'
+export type {
   AppendResult,
   BackupReport,
   DestructionReport,

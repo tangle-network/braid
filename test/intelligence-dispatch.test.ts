@@ -315,7 +315,7 @@ test('runtime supervisors stay unbound until each runtime id is explicitly assig
   await app.close()
 })
 
-test('supervisor controls resolve public ids while non-idempotent steering and attach fail closed', async () => {
+test('supervisor controls resolve public ids while steering preserves retry identity and attach fails closed', async () => {
   const raw = supervisionSnapshot([{ id: 'runtime-worker-control', label: 'worker-control' }])
   const watcher = new RuntimeSupervisorWatcher(() => raw)
   let writeInput:
@@ -324,6 +324,7 @@ test('supervisor controls resolve public ids while non-idempotent steering and a
         readonly supervisorId: string
         readonly worker: string
         readonly message: string
+        readonly operationId: string
       }
     | undefined
   let workerCancelInput:
@@ -332,19 +333,28 @@ test('supervisor controls resolve public ids while non-idempotent steering and a
   let supervisorCancelInput: { readonly eventDir: string; readonly operationId: string } | undefined
   const runtimeController = new RuntimeSupervisorController({
     watcher,
-    write: (rootDir, supervisorId, worker, message, source) => {
-      writeInput = { rootDir, supervisorId, worker, message }
+    write: (rootDir, supervisorId, worker, options) => {
+      writeInput = {
+        rootDir,
+        supervisorId,
+        worker,
+        message: options.message,
+        operationId: options.operationId,
+      }
       return {
         worker,
         file: '/workspace/.agent/inbox/request.json',
         request: {
-          id: 'request-public-ids',
+          schemaVersion: 1,
+          operationId: options.operationId,
+          requestDigest: `sha256:${'1'.repeat(64)}`,
           at: NOW,
-          supervisorId,
           worker,
-          message,
-          source: source ?? 'braid',
+          message: options.message,
+          source: options.source ?? 'braid',
+          interrupt: options.interrupt ?? true,
         },
+        replayed: false,
       }
     },
     cancelWorker: (eventDir, worker, operationId) => {
@@ -403,9 +413,14 @@ test('supervisor controls resolve public ids while non-idempotent steering and a
       text: 'inspect the failing test',
     },
   })
-  assert.equal(steered.kind, 'unavailable')
-  if (steered.kind === 'unavailable') assert.match(steered.reason, /operation identifier/u)
-  assert.equal(writeInput, undefined)
+  assert.equal(steered.kind, 'accepted')
+  assert.deepEqual(writeInput, {
+    rootDir: '/workspace',
+    supervisorId: 'runtime-supervisor-live',
+    worker: 'runtime-worker-control',
+    message: 'inspect the failing test',
+    operationId: 'op-steer-public-worker',
+  })
 
   const cancelledWorker = await controller.dispatch({
     type: 'headless-command',
@@ -442,7 +457,7 @@ test('supervisor controls resolve public ids while non-idempotent steering and a
     params: { supervisorId: supervisor.id, workerId: worker.id },
   })
   assert.equal(attach.kind, 'unavailable')
-  if (attach.kind === 'unavailable') assert.match(attach.reason, /retained interactive reference/u)
+  if (attach.kind === 'unavailable') assert.match(attach.reason, /provider/u)
 
   writeInput = undefined
   const rejected = await controller.dispatch({

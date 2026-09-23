@@ -1,4 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
+import type { WorkerInteractiveProviderSource } from '@tangle-network/agent-runtime/kernel'
 import { connectionEndpoint } from '../adapters/connections/production-connection-endpoints.js'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
@@ -68,6 +69,7 @@ export interface ProductionComposition {
   readonly connection: ConnectionRecord
   readonly execution: ExecutionPort
   readonly nativeInteractive?: NativeInteractiveExecutionControl
+  readonly supervisorProviders?: () => Promise<WorkerInteractiveProviderSource | undefined>
   readonly backendResolver: AgentTurnBackendResolver
 }
 
@@ -189,6 +191,12 @@ export function createProductionComposition(
     }),
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
+  const supervisorProviders = workerProviderFactory(
+    connection,
+    resolverOptions,
+    profile,
+    config.workspaceRoot,
+  )
   const recoveryInput = (
     runId: string,
     providerSessionId: string | undefined,
@@ -254,8 +262,51 @@ export function createProductionComposition(
     connection,
     execution,
     ...(nativeInteractive === undefined ? {} : { nativeInteractive }),
+    ...(supervisorProviders === undefined ? {} : { supervisorProviders }),
     backendResolver,
   })
+}
+
+function workerProviderFactory(
+  connection: ConnectionRecord,
+  resolverOptions: ProductionBackendResolverOptions,
+  profile: Readonly<AgentProfile>,
+  workspaceRoot: string | undefined,
+): (() => Promise<WorkerInteractiveProviderSource | undefined>) | undefined {
+  if (
+    connection.kind !== 'cli-bridge' &&
+    !(connection.kind === 'tangle-sandbox' && connection.providerOptions.lifecycle === 'retained')
+  ) {
+    return undefined
+  }
+  let provider: WorkerInteractiveProviderSource | undefined
+  let loading: Promise<WorkerInteractiveProviderSource | undefined> | undefined
+  return async () => {
+    if (provider !== undefined) return provider
+    if (loading !== undefined) return loading
+    loading = (async () => {
+      const input: ExecuteTurnInput = {
+        operationId: `worker-attach-provider-${connection.id}`,
+        runId: `worker-attach-provider-${connection.id}`,
+        text: '',
+        profile,
+        connectionId: connection.id,
+        ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+        signal: new AbortController().signal,
+      }
+      const prepared =
+        connection.kind === 'cli-bridge'
+          ? await resolveProductionCliBridgeConnection(resolverOptions, input)
+          : await resolveProductionTangleRetainedConnection(resolverOptions, input)
+      provider = prepared.provider
+      return provider
+    })()
+    try {
+      return await loading
+    } finally {
+      loading = undefined
+    }
+  }
 }
 
 function retainedAdmissionSessionId(

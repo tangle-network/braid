@@ -169,8 +169,18 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
     options.journal ?? (isFixture ? createMemoryJournal(clock) : new FailClosedJournal(clock))
   const effectStorage =
     options.effectStorage ?? (isEffectStorage(journal) ? journal : new FailClosedJournal(clock))
-  const intelligence =
+  const configuredIntelligence: IntelligenceActionsOptions | undefined =
     options.intelligence ?? (isFixture ? undefined : { analyst: new UnavailableAnalyst() })
+  const intelligence =
+    configuredIntelligence === undefined && production?.supervisorProviders === undefined
+      ? undefined
+      : {
+          ...(configuredIntelligence ?? {}),
+          ...(configuredIntelligence?.supervisorProviders === undefined &&
+          production?.supervisorProviders !== undefined
+            ? { supervisorProviders: production.supervisorProviders }
+            : {}),
+        }
   return new BraidApplication({
     profile:
       options.profile ??
@@ -265,9 +275,17 @@ export async function createDurableBraidApplication(
       journal: scopedJournal,
       effectStorage: storage,
       conversationStorage: storage,
-      ...(options.intelligence === undefined
+      ...(options.intelligence === undefined && production?.supervisorProviders === undefined
         ? { intelligence: { analyst: new UnavailableAnalyst() } }
-        : { intelligence: options.intelligence }),
+        : {
+            intelligence: {
+              ...(options.intelligence ?? { analyst: new UnavailableAnalyst() }),
+              ...(options.intelligence?.supervisorProviders === undefined &&
+              production?.supervisorProviders !== undefined
+                ? { supervisorProviders: production.supervisorProviders }
+                : {}),
+            },
+          }),
       ...(options.effectCoordinator === undefined
         ? {}
         : { effectCoordinator: options.effectCoordinator }),

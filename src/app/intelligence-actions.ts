@@ -1,4 +1,7 @@
-import type { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
+import type {
+  RuntimeSupervisorController,
+  SupervisorWorkerProviderSource,
+} from '../adapters/runtime/supervisor-control.js'
 import type { RuntimeSupervisorWatcher } from '../adapters/runtime/supervisor-watch.js'
 import { AnalysisComparisonService } from './analysis-comparison.js'
 import type { AnalysisAnalyst } from './analysis-execution-session.js'
@@ -28,6 +31,9 @@ export class IntelligenceActions {
       ...(options.supervisorController === undefined
         ? {}
         : { controller: options.supervisorController }),
+      ...(options.supervisorProviders === undefined
+        ? {}
+        : { providers: options.supervisorProviders }),
     })
   }
 }
@@ -36,6 +42,7 @@ export interface IntelligenceActionsOptions {
   readonly analyst?: AnalysisAnalyst
   readonly supervisorWatcher?: RuntimeSupervisorWatcher
   readonly supervisorController?: RuntimeSupervisorController
+  readonly supervisorProviders?: SupervisorWorkerProviderSource
 }
 
 export function createIntelligenceActions(

@@ -92,6 +92,7 @@ export class ApplicationUiController implements BraidUiController {
 
   #project(state: BraidState, app: BraidApplication): BraidViewModel {
     const canRespond = app.canRespondToInteractions(interactionViews(state)[0]?.runId)
+    const supervisorCapabilities = app.intelligence.supervisor.capabilities()
     const view = withRunUsage(
       buildBraidViewModel(
         state,
@@ -102,6 +103,7 @@ export class ApplicationUiController implements BraidUiController {
         app.cleanupUncertain(),
         canRespond,
         this.#graphQuery,
+        supervisorCapabilities,
       ),
       state,
     )
@@ -115,7 +117,13 @@ export class ApplicationUiController implements BraidUiController {
         ? decorated
         : freezeView({
             ...decorated,
-            capabilities: capabilityMap(state, app.canCancel(), this.#fixture, canRespond),
+            capabilities: capabilityMap(
+              state,
+              app.canCancel(),
+              this.#fixture,
+              canRespond,
+              supervisorCapabilities,
+            ),
           })
     const intelligenceDecorated =
       this.#selectedIntelligenceData === undefined

@@ -1,6 +1,7 @@
 import { activeRunForBranch, isLiveRunStatus, type BraidState } from '../../domain/state.js'
 import type { CapabilityMap } from '../../views/shared/models.js'
 import type { UiFixture } from './ui-fixtures.js'
+import type { RuntimeSupervisorCapabilities } from '../runtime/supervisor-control.js'
 
 export const UNSUPPORTED = Object.freeze({
   'conversation.create': 'Conversation creation is not exposed by the current application core',
@@ -18,10 +19,6 @@ export const UNSUPPORTED = Object.freeze({
   'interaction.automation': 'Interaction automation requires the shared response contract',
   'run.interactive': 'Native terminal mode requires an interactive TUI and a supported provider',
   'run.attach': 'Native terminal attachment requires an interactive TUI and a retained session',
-  'supervisor.worker.attach':
-    'The runtime snapshot does not carry the retained interactive reference required to attach to an exact worker',
-  'supervisor.worker.steer':
-    'The runtime steer API generates a new request identifier on every call and cannot replay a caller operation identifier safely',
   'export.create': 'Redacted export is not exposed by the current storage adapter',
 } satisfies Readonly<Record<string, string>>)
 
@@ -30,6 +27,7 @@ export function capabilityMap(
   canCancel = true,
   fixture?: UiFixture,
   canRespond = false,
+  supervisorCapabilities?: RuntimeSupervisorCapabilities,
 ): CapabilityMap {
   const selectedActive = activeRunForBranch(state, state.conversationId, state.branchId)
   const active = selectedActive !== undefined
@@ -95,6 +93,12 @@ export function capabilityMap(
   const hasRunningSupervisor = state.supervisors.some(
     (supervisor) => supervisor.status === 'running',
   )
+  const discoveredSupervisorCapabilities = supervisorCapabilities ?? {
+    workerSteer: false,
+    workerAttach: false,
+    workerSteerReason: 'Runtime supervisor capabilities are not available',
+    workerAttachReason: 'Runtime supervisor capabilities are not available',
+  }
   capabilities['supervisor.refresh'] = hasWorkspace
     ? { available: true, source: 'runtime' }
     : {
@@ -102,11 +106,21 @@ export function capabilityMap(
         source: 'runtime',
         reason: 'Initialize a workspace before refreshing runtime supervision',
       }
-  capabilities['supervisor.worker.steer'] = {
-    available: false,
-    source: 'runtime',
-    reason: UNSUPPORTED['supervisor.worker.steer'],
-  }
+  capabilities['supervisor.worker.steer'] = discoveredSupervisorCapabilities.workerSteer
+    ? hasRunningWorker
+      ? { available: true, source: 'runtime' }
+      : {
+          available: false,
+          source: 'runtime',
+          reason: 'There is no running supervised worker to steer',
+        }
+    : {
+        available: false,
+        source: 'runtime',
+        reason:
+          discoveredSupervisorCapabilities.workerSteerReason ??
+          'Retry-safe worker steering is unavailable',
+      }
   capabilities['supervisor.worker.cancel'] = hasRunningWorker
     ? { available: true, source: 'runtime' }
     : {
@@ -121,11 +135,21 @@ export function capabilityMap(
         source: 'runtime',
         reason: 'There is no running supervisor to cancel',
       }
-  capabilities['supervisor.worker.attach'] = {
-    available: false,
-    source: 'runtime',
-    reason: UNSUPPORTED['supervisor.worker.attach'],
-  }
+  capabilities['supervisor.worker.attach'] = discoveredSupervisorCapabilities.workerAttach
+    ? hasRunningWorker
+      ? { available: true, source: 'runtime' }
+      : {
+          available: false,
+          source: 'runtime',
+          reason: 'There is no running supervised worker to attach',
+        }
+    : {
+        available: false,
+        source: 'runtime',
+        reason:
+          discoveredSupervisorCapabilities.workerAttachReason ??
+          'Exact worker attachment is unavailable',
+      }
   capabilities['interaction.respond'] = canRespond
     ? { available: true, source: 'runtime' }
     : {

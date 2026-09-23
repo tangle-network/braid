@@ -1,5 +1,9 @@
+import { discoverRuntimeSupervisorCapabilities } from '../adapters/runtime/supervisor-control.js'
 import type {
   RuntimeSupervisorController,
+  RuntimeSupervisorCapabilities,
+  SupervisorWorkerProviderSource,
+  SupervisorWorkerAttachResult,
   SupervisorCancelResult,
   SupervisorWorkerCancelResult,
   SupervisorWorkerSteerResult,
@@ -21,6 +25,7 @@ export class SupervisorService {
   readonly #host: AnalysisApplicationHost
   #watcher: RuntimeSupervisorSnapshotPort | undefined
   #controller: RuntimeSupervisorController | undefined
+  readonly #providers: SupervisorWorkerProviderSource | undefined
   #watcherLoad: Promise<RuntimeSupervisorSnapshotPort> | undefined
   #controllerLoad: Promise<RuntimeSupervisorController> | undefined
   #projectionQueue: Promise<void> = Promise.resolve()
@@ -30,11 +35,13 @@ export class SupervisorService {
     options: {
       readonly watcher?: RuntimeSupervisorSnapshotPort
       readonly controller?: RuntimeSupervisorController
+      readonly providers?: SupervisorWorkerProviderSource
     } = {},
   ) {
     this.#host = host
     this.#watcher = options.watcher
     this.#controller = options.controller
+    this.#providers = options.providers
   }
 
   async snapshot(input: SupervisorSnapshotRequest): Promise<SupervisorProjection> {
@@ -76,10 +83,37 @@ export class SupervisorService {
     supervisorId: string,
     workerIdOrLabel: string,
     message: string,
+    operationId: string,
     source?: string,
   ): Promise<SupervisorWorkerSteerResult> {
     const controller = await this.#loadController()
-    return controller.steerWorker(rootDir, supervisorId, workerIdOrLabel, message, source)
+    return controller.steerWorker(
+      rootDir,
+      supervisorId,
+      workerIdOrLabel,
+      message,
+      operationId,
+      source,
+    )
+  }
+
+  capabilities(): RuntimeSupervisorCapabilities {
+    return (
+      this.#controller?.capabilities() ??
+      discoverRuntimeSupervisorCapabilities({
+        ...(this.#providers === undefined ? {} : { providersConfigured: true }),
+      })
+    )
+  }
+
+  async attachWorker(
+    rootDir: string,
+    supervisorId: string,
+    workerIdOrLabel: string,
+    signal?: AbortSignal,
+  ): Promise<SupervisorWorkerAttachResult> {
+    const controller = await this.#loadController()
+    return controller.attachWorker(rootDir, supervisorId, workerIdOrLabel, signal)
   }
 
   async cancelWorker(
@@ -132,7 +166,10 @@ export class SupervisorService {
       this.#loadWatcher(),
       import('../adapters/runtime/supervisor-control.js'),
     ]).then(([watcher, { RuntimeSupervisorController }]) => {
-      const controller = new RuntimeSupervisorController({ watcher })
+      const controller = new RuntimeSupervisorController({
+        watcher,
+        ...(this.#providers === undefined ? {} : { providers: this.#providers }),
+      })
       this.#controller = controller
       return controller
     })
