@@ -19,6 +19,7 @@ import { releaseTargetDefinitions } from './live-bridge/bridge.mjs'
 import {
   castFor,
   createCapturedTerminal,
+  expectedDemoPermission,
   pause,
   terminalFailureDetail,
   terminalPageProgress,
@@ -90,11 +91,34 @@ function latestCompletedRun(record) {
   return run?.status === 'completed' && record.view?.status === 'completed' ? run : undefined
 }
 
-async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
+async function approveExpectedPermission(terminal, record, approvals) {
+  const permission = expectedDemoPermission(record)
+  if (permission === undefined) return false
+  assert.ok(approvals.length < 24, 'The live demo exceeded its permission approval limit')
+  await terminal.waitForScreen(
+    (screen) =>
+      screen.includes(`Permission: ${permission.tool}`) && screen.includes('→ Allow once'),
+    `one-time ${permission.tool} permission`,
+  )
+  terminal.input('\r')
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    const next = await terminal.captureState()
+    if (!next.view?.interactions?.some((item) => item.interactionId === permission.id)) {
+      approvals.push({ tool: permission.tool, scope: 'once' })
+      return true
+    }
+    await pause(200)
+  }
+  throw new Error(`Braid did not resolve the one-time ${permission.tool} permission`)
+}
+
+async function waitForCompletedRun(terminal, approvals, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
     lastRecord = await terminal.captureState()
+    if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     const run = latestCompletedRun(lastRecord)
     if (run !== undefined) return { record: lastRecord, run }
     const terminalRun = lastRecord.state?.runs?.at(-1)
@@ -110,11 +134,12 @@ async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
   )
 }
 
-async function waitForCompletedAnalysis(terminal, timeoutMs = 360_000) {
+async function waitForCompletedAnalysis(terminal, approvals, timeoutMs = 360_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
     lastRecord = await terminal.captureState(60_000)
+    if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     const analysis = lastRecord.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
     if (analysis?.status === 'complete') return lastRecord
     if (analysis?.status === 'failed' || analysis?.status === 'cancelled') {
@@ -307,12 +332,8 @@ async function main() {
     await typeText(terminal, LIVE_DEMO_PROMPT, 9)
     terminal.input('\r')
     await terminal.waitForScreen((screen) => screen.includes('working'), 'active coding turn')
-    terminal.input('\u001bOQ')
-    await terminal.waitForScreen((screen) => screen.includes('live work'), 'live-work pane')
-    await pause(900)
-    terminal.input('\u001bOQ')
-    await terminal.waitForScreen((screen) => !screen.includes('live work'), 'live-work pane close')
-    const coding = await waitForCompletedRun(terminal)
+    const approvals = []
+    const coding = await waitForCompletedRun(terminal, approvals)
     const transcript = transcriptEvidence(coding.record)
     assert.ok(
       transcript.assistantMessages.length > 0,
@@ -373,7 +394,7 @@ async function main() {
       (screen) => screen.includes('/ask · frozen question'),
       'trace analysis panel',
     )
-    const analysisRecord = await waitForCompletedAnalysis(terminal)
+    const analysisRecord = await waitForCompletedAnalysis(terminal, approvals)
     await terminal.waitForStable('completed trace analysis')
     const analysis = safeManifestAnalysis(analysisRecord)
     await terminal.waitForStable('final live demo frame')
@@ -488,6 +509,7 @@ async function main() {
                 status: 'blocked-upstream',
                 issue: 'https://github.com/tangle-network/agent-runtime/issues/762',
               },
+        approvedPermissions: approvals,
         workspaceProof,
       },
       analysis: {

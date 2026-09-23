@@ -16,6 +16,7 @@ import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import {
   castFor,
   createCapturedTerminal,
+  expectedDemoPermission,
   presentationTimeline,
   terminalFailureDetail,
   terminalPageProgress,
@@ -148,6 +149,32 @@ test('live demo failures preserve the sanitized Braid diagnostic', () => {
     }),
     'portable profile rejected',
   )
+})
+
+test('live demo permits only a single non-secret, one-time tool approval', () => {
+  const permission = {
+    kind: 'permission',
+    interactionId: 'interaction-bash',
+    prompt: 'Permission: bash',
+    secret: false,
+    allowedOutcomes: ['once', 'deny'],
+    responseScopes: ['once'],
+  }
+  assert.deepEqual(expectedDemoPermission({ view: { interactions: [permission] } }), {
+    id: 'interaction-bash',
+    tool: 'bash',
+  })
+  assert.equal(expectedDemoPermission({ view: { interactions: [] } }), undefined)
+  for (const rejected of [
+    { ...permission, kind: 'question' },
+    { ...permission, prompt: 'Permission: network' },
+    { ...permission, secret: true },
+    { ...permission, allowedOutcomes: ['session', 'deny'] },
+    { ...permission, responseScopes: ['session'] },
+  ]) {
+    assert.throws(() => expectedDemoPermission({ view: { interactions: [rejected] } }))
+  }
+  assert.throws(() => expectedDemoPermission({ view: { interactions: [permission, permission] } }))
 })
 
 test('jsonRequest aborts a response that never finishes', async () => {

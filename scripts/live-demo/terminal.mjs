@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { readFile, rm } from 'node:fs/promises'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
@@ -42,6 +43,30 @@ export function terminalFailureDetail(record) {
     errorPart?.text ??
     'no public error detail'
   )
+}
+
+export function expectedDemoPermission(record) {
+  const pending = record.view?.interactions ?? []
+  if (pending.length === 0) return undefined
+  assert.equal(pending.length, 1, 'The live demo cannot approve concurrent interactions')
+  const [interaction] = pending
+  assert.equal(
+    interaction.kind,
+    'permission',
+    'The live demo encountered a non-permission interaction',
+  )
+  assert.equal(interaction.secret, false, 'The live demo refuses a secret interaction')
+  const match = /^Permission: (bash|read|write|edit)$/u.exec(interaction.prompt)
+  assert.ok(match, `The live demo encountered an unexpected permission: ${interaction.prompt}`)
+  assert.ok(
+    interaction.allowedOutcomes?.includes('once'),
+    'The live demo permission does not allow one-time approval',
+  )
+  assert.ok(
+    interaction.responseScopes?.includes('once'),
+    'The live demo permission does not support one-time scope',
+  )
+  return { id: interaction.interactionId, tool: match[1] }
 }
 
 export function pause(milliseconds) {
