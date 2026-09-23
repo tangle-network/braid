@@ -842,6 +842,13 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
         throw new Error(
           `Passed Tangle interactive proof requires one observed ${phase} sample in observations.${field}`,
         )
+      const value = matches[0].value
+      const label = `Passed Tangle interactive proof observations.${field} ${phase} value`
+      if (!record(value)) throw new Error(`${label} must be an object`)
+      if (field === 'usage' && !Number.isFinite(value.activeSandboxes))
+        throw new Error(`${label} must report activeSandboxes`)
+      if (field === 'accountIdentities')
+        validCanonicalSha256(value.identityDigest, `${label} identityDigest`)
     }
   }
 }

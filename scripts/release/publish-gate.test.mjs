@@ -317,9 +317,16 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
         ]
           .map((key) => [key, {}])
           .concat(
-            ['usage', 'accountIdentities'].map((key) => [
+            [
+              ['usage', { activeSandboxes: 0 }],
+              ['accountIdentities', { identityDigest: 'c'.repeat(64) }],
+            ].map(([key, value]) => [
               key,
-              ['before', 'after'].map((phase) => ({ phase, status: 'observed', value: {} })),
+              ['before', 'after'].map((phase) => ({
+                phase,
+                status: 'observed',
+                value: structuredClone(value),
+              })),
             ]),
           ),
       ),

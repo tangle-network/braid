@@ -533,12 +533,12 @@ function interactiveObservations(overrides = {}) {
     providerEvidence: {},
     providerExecution: {},
     usage: [
-      { phase: 'before', status: 'observed', value: {} },
-      { phase: 'after', status: 'observed', value: {} },
+      { phase: 'before', status: 'observed', value: { activeSandboxes: 1 } },
+      { phase: 'after', status: 'observed', value: { activeSandboxes: 1 } },
     ],
     accountIdentities: [
-      { phase: 'before', status: 'observed', value: {} },
-      { phase: 'after', status: 'observed', value: {} },
+      { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+      { phase: 'after', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
     ],
     accountIdentityConsistency: {},
     usageDelta: {},
@@ -1374,12 +1374,31 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
 })
 
 test('LIVE-08 requires observed before and after usage and identity samples', () => {
-  const observed = (phase) => ({ phase, status: 'observed', value: {} })
+  const observed = (phase) => ({ phase, status: 'observed', value: { activeSandboxes: 0 } })
   for (const [overrides, expected] of [
+    [
+      { usage: [{ phase: 'before', status: 'observed' }, observed('after')] },
+      /usage before value must be an object/u,
+    ],
+    [{ usage: [observed('before'), { ...observed('after'), value: {} }] }, /activeSandboxes/u],
+    [
+      {
+        accountIdentities: [
+          { phase: 'before', status: 'observed', value: { identityDigest: 'x' } },
+          { phase: 'after', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+        ],
+      },
+      /identityDigest must be a canonical SHA-256 digest/u,
+    ],
     [{ usage: {} }, /observations\.usage phase records/u],
     [{ usage: [observed('before')] }, /observed after sample in observations\.usage/u],
     [
-      { accountIdentities: [observed('before'), { phase: 'after', status: 'unavailable' }] },
+      {
+        accountIdentities: [
+          { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+          { phase: 'after', status: 'unavailable' },
+        ],
+      },
       /observed after sample in observations\.accountIdentities/u,
     ],
   ]) {
