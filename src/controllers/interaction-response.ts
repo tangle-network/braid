@@ -1,32 +1,48 @@
 import {
   canonicalInteractionData,
-  interactionResponseDigest,
+  interactionRequestDigest,
+  interactionResponseFingerprint,
   validateInteractionData,
 } from '../domain/interaction.js'
-import type { InteractionRecord } from '../domain/interaction-state.js'
+import { canonicalDigest } from '../domain/canonical.js'
+import {
+  interactionKey,
+  interactionStatusIsUncertain,
+  type InteractionStatus,
+  type InteractionRecord,
+} from '../domain/interaction-state.js'
 import type { Clock } from '../ports/clock.js'
 import type {
   CancelInteractionInput,
-  InteractionAck,
   InteractionResponseResult,
   InteractionRuntimePort,
   RespondInteractionInput,
 } from '../ports/interactions.js'
 import type { IdSource } from '../ports/ids.js'
 import {
-  bindingMatches,
   acceptedCapabilityError,
+  bindingMatches,
   responseResult,
-  statusFromAck,
 } from './interaction-response-policy.js'
-import { bindingForRecord } from './interaction-controller-utils.js'
 import { InteractionError } from './interaction-error.js'
-import { recordInteractionFeedback } from './interaction-feedback.js'
 import type { InteractionPersistence } from './interaction-persistence.js'
+import type { Scheduler } from '../ports/scheduler.js'
+import { reconcilePendingResponse } from './interaction-response-reconciliation.js'
+import { tickInteractions } from './interaction-timeout.js'
+import { assertResponseInputBounded } from './interaction-input-bounds.js'
+import {
+  type OperationAuthority,
+  OperationConflictError,
+  assertOperationId,
+  type OperationRecord,
+} from '../domain/operation-authority.js'
+import { performInteractionResponse } from './interaction-response-effect.js'
+import { bindingForRecord } from './interaction-controller-utils.js'
 
 interface StoredResponseOperation {
   readonly key: string
-  readonly fingerprint?: string
+  readonly fingerprint: string
+  readonly requestDigest: string
   readonly promise: Promise<InteractionResponseResult>
 }
 
@@ -36,8 +52,12 @@ export class InteractionResponse {
   readonly #clock: Clock
   readonly #ids: IdSource
   readonly #automationRuleFor: (key: string) => string | undefined
-  readonly #responses = new Map<string, StoredResponseOperation>()
+  readonly #scheduler: Scheduler
+  readonly #secretKey: string | Uint8Array
+  readonly #operations: OperationAuthority
+  readonly #uncertainOperations = new Set<string>()
   readonly #timeoutOperations = new Map<string, string>()
+  readonly #timeoutHandles = new Map<string, unknown>()
   readonly #waitTimeouts = new Set<string>()
   #feedbackCaptureEnabled: boolean
 
@@ -48,6 +68,9 @@ export class InteractionResponse {
     readonly ids: IdSource
     readonly feedbackCapture: boolean
     readonly automationRuleFor: (key: string) => string | undefined
+    readonly scheduler: Scheduler
+    readonly secretKey: string | Uint8Array
+    readonly operationAuthority: OperationAuthority
   }) {
     this.#persistence = options.persistence
     this.#runtime = options.runtime
@@ -55,10 +78,49 @@ export class InteractionResponse {
     this.#ids = options.ids
     this.#feedbackCaptureEnabled = options.feedbackCapture
     this.#automationRuleFor = options.automationRuleFor
+    this.#scheduler = options.scheduler
+    this.#secretKey = options.secretKey
+    this.#operations = options.operationAuthority
+    this.#rehydrateCompletedOperations()
   }
 
   setFeedbackCapture(enabled: boolean): void {
     this.#feedbackCaptureEnabled = enabled
+  }
+
+  schedule(record: InteractionRecord): void {
+    if (record.deadlineAt === undefined || record.status !== 'pending') return
+    this.#clearTimeout(record.key)
+    const delay = Math.max(0, Date.parse(record.deadlineAt) - Date.parse(this.#clock.now()))
+    this.#timeoutHandles.set(
+      record.key,
+      this.#scheduler.set(() => {
+        this.#timeoutHandles.delete(record.key)
+        void this.tick().then(
+          () => {
+            const current = this.#persistence
+              .state()
+              .interactions.find((interaction) => interaction.key === record.key)
+            if (
+              current?.status === 'pending' &&
+              current.deadlineAt === record.deadlineAt &&
+              !this.#waitTimeouts.has(record.key)
+            ) {
+              this.schedule(current)
+            }
+          },
+          () => {},
+        )
+      }, delay),
+    )
+  }
+
+  dispose(): void {
+    for (const handle of this.#timeoutHandles.values()) this.#scheduler.clear(handle)
+    this.#timeoutHandles.clear()
+    this.#timeoutOperations.clear()
+    this.#waitTimeouts.clear()
+    this.#uncertainOperations.clear()
   }
 
   respond(input: RespondInteractionInput, automated = false): Promise<InteractionResponseResult> {
@@ -67,93 +129,53 @@ export class InteractionResponse {
 
   cancel(input: CancelInteractionInput): Promise<InteractionResponseResult> {
     return this.#respondInternal(
-      {
-        ...input,
-        response: { id: input.interactionId, outcome: 'cancelled' },
-      },
+      { ...input, response: { id: input.interactionId, outcome: 'cancelled' } },
       false,
     )
   }
 
   async tick(now = this.#clock.now()): Promise<void> {
-    const state = this.#persistence.state()
-    const due = state.interactions.filter(
-      (interaction) =>
-        interaction.status === 'pending' &&
-        interaction.deadlineAt !== undefined &&
-        !this.#waitTimeouts.has(interaction.key) &&
-        Date.parse(interaction.deadlineAt) <= Date.parse(now),
-    )
-    for (const interaction of due) {
-      const timeoutAction = interaction.request.onTimeout ?? 'wait'
-      if (timeoutAction === 'wait') {
-        this.#waitTimeouts.add(interaction.key)
-        continue
-      }
-      if (timeoutAction === 'default' && interaction.request.default) {
-        const defaultData = interaction.request.default.data
-        const validation = validateInteractionData(
-          interaction.request.answerSpec,
-          interaction.request.default.outcome,
-          defaultData === undefined ? undefined : canonicalInteractionData(defaultData),
-        )
-        if (validation.ok && !validation.containsSecret) {
-          const operationId =
-            this.#timeoutOperations.get(interaction.key) ?? this.#ids.next('operation')
-          this.#timeoutOperations.set(interaction.key, operationId)
-          await this.#respondInternal(
-            {
-              ...bindingForRecord(interaction),
-              operationId,
-              response: {
-                id: interaction.interactionId,
-                outcome: interaction.request.default.outcome,
-                ...(defaultData === undefined
-                  ? {}
-                  : { data: canonicalInteractionData(defaultData) }),
-              },
-            },
-            true,
-          )
-          continue
-        }
-      }
-      if (timeoutAction === 'fail') {
-        const operationId =
-          this.#timeoutOperations.get(interaction.key) ?? this.#ids.next('operation')
-        this.#timeoutOperations.set(interaction.key, operationId)
-        await this.#respondInternal(
-          {
-            ...bindingForRecord(interaction),
-            operationId,
-            response: { id: interaction.interactionId, outcome: 'declined' },
-          },
-          false,
-        )
-        continue
-      }
-      this.#persistence.commit({
-        kind: 'interaction.resolved',
-        key: interaction.key,
-        status: 'expired',
-        reason: 'Interaction timed out without a safe automatic response',
-      })
-    }
+    await tickInteractions({
+      persistence: this.#persistence,
+      timeoutOperations: this.#timeoutOperations,
+      waitTimeouts: this.#waitTimeouts,
+      respond: (input, automated) => this.#respondInternal(input, automated),
+      clearTimeout: (key) => this.#clearTimeout(key),
+      now,
+    })
   }
 
   #respondInternal(
     input: RespondInteractionInput,
     automated: boolean,
   ): Promise<InteractionResponseResult> {
+    try {
+      assertResponseInputBounded(input)
+    } catch (error) {
+      return Promise.reject(
+        new InteractionError(
+          'INVALID_INTERACTION',
+          error instanceof Error ? error.message : 'Interaction identity is invalid',
+        ),
+      )
+    }
     if (!input.operationId) {
       return Promise.reject(
         new InteractionError('OPERATION_ID_REQUIRED', 'This action requires operationId'),
       )
     }
-    const key = `${input.runId}:${input.interactionId}`
-    const record = this.#persistence
-      .state()
-      .interactions.find((interaction) => interaction.key === key)
+    try {
+      assertOperationId(input.operationId)
+    } catch (error) {
+      return Promise.reject(
+        new InteractionError(
+          'OPERATION_ID_REQUIRED',
+          error instanceof Error ? error.message : 'Invalid operation ID',
+        ),
+      )
+    }
+    const key = interactionKey(input.runId, input.interactionId)
+    const record = this.#persistence.state().interactions.find((item) => item.key === key)
     if (!record)
       return Promise.resolve(
         responseResult(input, 'stale', false, 'Interaction is not known in this run'),
@@ -168,11 +190,18 @@ export class InteractionResponse {
       )
     }
 
-    const containsSecret = record.request.answerSpec.fields.some((field) => field.type === 'secret')
-    const fingerprint = interactionResponseDigest(record.request, input.response)
-    const previous = this.#responses.get(input.operationId)
-    if (previous) {
-      if (previous.key !== key || (!containsSecret && previous.fingerprint !== fingerprint)) {
+    const requestDigest = record.requestDigest ?? interactionRequestDigest(record.request)
+    const fingerprint = interactionResponseFingerprint(
+      record.request,
+      input.response,
+      this.#secretKey,
+    )
+    const operationDigest = interactionOperationDigest(key, requestDigest, fingerprint)
+    let previous: OperationRecord<StoredResponseOperation> | undefined
+    try {
+      previous = this.#operations.get<StoredResponseOperation>(input.operationId, operationDigest)
+    } catch (error) {
+      if (error instanceof OperationConflictError) {
         return Promise.resolve(
           responseResult(
             input,
@@ -182,33 +211,63 @@ export class InteractionResponse {
           ),
         )
       }
-      return previous.promise.then((result) => ({ ...result, replayed: true }))
+      throw error
     }
+    if (previous) {
+      if (
+        this.#uncertainOperations.has(input.operationId) &&
+        record.resolution?.operationId === input.operationId &&
+        record.resolution.outcome === input.response.outcome &&
+        record.resolution.responseDigest === fingerprint
+      ) {
+        const resolved = this.#resolvedResult(record, input, fingerprint)
+        this.#operations.replace(input.operationId, operationDigest, {
+          ...previous.value,
+          promise: resolved,
+        })
+        return resolved.then((result) => ({
+          ...result,
+          replayed: true,
+        }))
+      }
+      return previous.value.promise.then((result) => ({ ...result, replayed: true }))
+    }
+
     const state = this.#persistence.state()
-    if (record.status !== 'pending') {
+    if (record.status === 'responding') {
+      const pending = record.pendingResponse
       if (
-        record.resolution &&
-        record.resolution.operationId === input.operationId &&
-        record.resolution.outcome === input.response.outcome
+        !pending ||
+        pending.operationId !== input.operationId ||
+        pending.requestDigest !== requestDigest ||
+        pending.responseDigest !== fingerprint
       ) {
         return Promise.resolve(
-          responseResult(input, 'already_resolved', false, 'Interaction was already resolved'),
+          responseResult(input, 'conflict', false, 'A different response is already in progress'),
         )
       }
-      if (
-        record.resolution &&
-        !containsSecret &&
-        record.resolution.dataDigest === fingerprint &&
-        record.resolution.outcome === input.response.outcome
-      ) {
-        return Promise.resolve(
-          responseResult(input, 'already_resolved', false, 'Interaction was already resolved'),
-        )
-      }
-      return Promise.resolve(
-        responseResult(input, 'conflict', false, 'Interaction was already resolved differently'),
-      )
+      return this.#reconcile(record, input, pending)
     }
+    if (interactionStatusIsUncertain(record.status) && record.pendingResponse) {
+      const pending = record.pendingResponse
+      if (
+        pending.operationId !== input.operationId ||
+        pending.requestDigest !== requestDigest ||
+        pending.responseDigest !== fingerprint
+      ) {
+        return Promise.resolve(
+          responseResult(
+            input,
+            'conflict',
+            false,
+            'A different uncertain response is already recorded',
+          ),
+        )
+      }
+      return this.#reconcile(record, input, pending)
+    }
+    if (record.status !== 'pending') return this.#resolvedResult(record, input, fingerprint)
+
     const validation = validateInteractionData(
       record.request.answerSpec,
       input.response.outcome,
@@ -228,13 +287,78 @@ export class InteractionResponse {
     )
     if (capabilityError)
       return Promise.resolve(responseResult(input, 'invalid', false, capabilityError))
+
+    let resolveOperation: (result: InteractionResponseResult) => void = () => {}
+    let rejectOperation: (error: unknown) => void = () => {}
+    const operationPromise = new Promise<InteractionResponseResult>((resolve, reject) => {
+      resolveOperation = resolve
+      rejectOperation = reject
+    })
     const operation: StoredResponseOperation = {
       key,
-      ...(fingerprint === undefined ? {} : { fingerprint }),
-      promise: this.#performResponse(record, input, validation, automated),
+      fingerprint,
+      requestDigest,
+      promise: operationPromise,
     }
-    this.#responses.set(input.operationId, operation)
+    this.#operations.remember(input.operationId, operationDigest, operation)
+    void this.#performResponse(record, input, validation, automated).then((result) => {
+      if (
+        result.status === 'transport_error' ||
+        result.status === 'unknown' ||
+        result.status === 'unknown_interaction' ||
+        result.status === 'unknown_run'
+      ) {
+        this.#uncertainOperations.add(input.operationId)
+      }
+      resolveOperation(result)
+    }, rejectOperation)
     return operation.promise
+  }
+
+  #reconcile(
+    record: InteractionRecord,
+    input: RespondInteractionInput,
+    pending: NonNullable<InteractionRecord['pendingResponse']>,
+  ): Promise<InteractionResponseResult> {
+    return reconcilePendingResponse({
+      persistence: this.#persistence,
+      runtime: this.#runtime,
+      clock: this.#clock,
+      clearTimeout: (key) => this.#clearTimeout(key),
+      record,
+      input,
+      pending,
+    })
+  }
+
+  #resolvedResult(
+    record: InteractionRecord,
+    input: RespondInteractionInput,
+    fingerprint: string,
+  ): Promise<InteractionResponseResult> {
+    if (
+      record.resolution &&
+      record.resolution.operationId === input.operationId &&
+      record.resolution.outcome === input.response.outcome &&
+      (record.resolution.responseDigest === undefined ||
+        record.resolution.responseDigest === fingerprint)
+    ) {
+      return Promise.resolve(
+        responseResult(input, 'already_resolved', false, 'Interaction was already resolved'),
+      )
+    }
+    if (
+      record.resolution &&
+      record.resolution.responseDigest === fingerprint &&
+      record.resolution.outcome === input.response.outcome
+    ) {
+      return Promise.resolve(
+        responseResult(input, 'already_resolved', false, 'Interaction was already resolved'),
+      )
+    }
+    return Promise.resolve(
+      responseResult(input, 'conflict', false, 'Interaction was already resolved differently'),
+    )
   }
 
   async #performResponse(
@@ -243,122 +367,101 @@ export class InteractionResponse {
     validation: Extract<ReturnType<typeof validateInteractionData>, { readonly ok: true }>,
     automated: boolean,
   ): Promise<InteractionResponseResult> {
-    const persistedPublicData = validation.containsSecret ? {} : validation.publicData
-    this.#persistence.commit({
-      kind: 'interaction.response.requested',
-      key: record.key,
-      runId: record.runId,
-      interactionId: record.interactionId,
-      operationId: input.operationId,
-      outcome: input.response.outcome,
-      ...(Object.keys(persistedPublicData).length === 0 ? {} : { publicData: persistedPublicData }),
-      ...(validation.dataDigest === undefined ? {} : { dataDigest: validation.dataDigest }),
-      containsSecret: validation.containsSecret,
-    })
-    let ack: InteractionAck
-    try {
-      ack = await this.#runtime.respondToInteraction({
-        ...bindingForRecord(record),
-        response: input.response,
-        operationId: input.operationId,
-        ...(input.signal === undefined ? {} : { signal: input.signal }),
-      })
-    } catch {
-      ack = {
-        status: 'transport_error',
-        runId: record.runId,
-        interactionId: record.interactionId,
-        operationId: input.operationId,
-        reason: 'The provider did not acknowledge the interaction response',
-      }
-    }
-    const outcomeStatus = statusFromAck(ack, input.response.outcome)
-    if (outcomeStatus === 'conflict') {
-      this.#persistence.commit({
-        kind: 'interaction.resolved',
-        key: record.key,
-        status: 'conflict',
-        reason: 'The provider rejected a conflicting interaction response',
-      })
-      return responseResult(
-        input,
-        'conflict',
-        false,
-        'The provider rejected a conflicting response',
-      )
-    }
-    if (outcomeStatus === 'unknown') {
-      this.#persistence.commit({
-        kind: 'interaction.resolved',
-        key: record.key,
-        status: 'unknown',
-        reason: 'The provider response outcome is unknown',
-      })
-      return responseResult(
-        input,
-        'transport_error',
-        false,
-        'The provider response outcome is unknown',
-      )
-    }
-    this.#persistence.commit({
-      kind: 'interaction.resolved',
-      key: record.key,
-      status: outcomeStatus,
-      resolution: {
-        outcome: ack.resolvedOutcome ?? input.response.outcome,
-        operationId: input.operationId,
-        ...(Object.keys(persistedPublicData).length === 0
-          ? {}
-          : { publicData: persistedPublicData }),
-        ...(validation.dataDigest === undefined ? {} : { dataDigest: validation.dataDigest }),
-        containsSecret: validation.containsSecret,
-        resolvedAt: this.#clock.now(),
-      },
-    })
-    recordInteractionFeedback({
+    return performInteractionResponse({
       persistence: this.#persistence,
+      runtime: this.#runtime,
       clock: this.#clock,
       ids: this.#ids,
-      enabled: this.#feedbackCaptureEnabled,
+      feedbackCaptureEnabled: this.#feedbackCaptureEnabled,
+      automationRuleFor: this.#automationRuleFor,
+      clearTimeout: (key) => this.#clearTimeout(key),
+      secretKey: this.#secretKey,
       record,
-      outcome: ack.resolvedOutcome ?? input.response.outcome,
-      automated,
-      ...(validation.dataDigest === undefined ? {} : { dataDigest: validation.dataDigest }),
-      publicData: validation.publicData,
-    })
-    if (automated) {
-      const ruleId = this.#automationRuleFor(record.key)
-      if (ruleId) {
-        this.#persistence.commit({
-          kind: 'automation.audit.recorded',
-          audit: {
-            id: this.#ids.next('audit'),
-            interactionKey: record.key,
-            ruleId,
-            kind: record.request.kind,
-            outcome: 'applied',
-            createdAt: this.#clock.now(),
-          },
-        })
-        this.#persistence.commit({ kind: 'automation.rule.used', ruleId })
-      }
-    }
-    if (ack.status === 'unknown_interaction')
-      return responseResult(input, 'unknown_interaction', false)
-    if (ack.status === 'unknown_run') return responseResult(input, 'unknown_run', false)
-    if (ack.status === 'declined') return responseResult(input, 'declined', false)
-    if (ack.status === 'cancelled') return responseResult(input, 'cancelled', false)
-    if (ack.status === 'expired') return responseResult(input, 'expired', false)
-    if (ack.status === 'already_resolved') return responseResult(input, 'already_resolved', false)
-    return responseResult(
       input,
-      input.response.outcome === 'declined'
-        ? 'declined'
-        : input.response.outcome === 'cancelled'
-          ? 'cancelled'
-          : 'accepted',
-      false,
-    )
+      validation,
+      automated,
+    })
   }
+
+  #clearTimeout(key: string): void {
+    const handle = this.#timeoutHandles.get(key)
+    if (handle !== undefined) {
+      this.#scheduler.clear(handle)
+      this.#timeoutHandles.delete(key)
+    }
+    this.#timeoutOperations.delete(key)
+    this.#waitTimeouts.delete(key)
+  }
+
+  #rehydrateCompletedOperations(): void {
+    const events = this.#persistence.events()
+    for (const record of this.#persistence.state().interactions) {
+      const status = rehydratedStatus(record.status)
+      if (status === undefined) continue
+      const event = [...events]
+        .reverse()
+        .find(
+          (envelope) =>
+            envelope.event.kind === 'interaction.response.requested' &&
+            envelope.event.key === record.key,
+        )?.event
+      if (event?.kind !== 'interaction.response.requested' || event.responseDigest === undefined) {
+        continue
+      }
+      const requestDigest = event.requestDigest ?? record.requestDigest
+      if (requestDigest === undefined) continue
+      const input: RespondInteractionInput = {
+        ...bindingForRecord(record),
+        operationId: event.operationId,
+        response: {
+          id: record.interactionId,
+          outcome: event.outcome,
+          ...(event.publicData === undefined
+            ? {}
+            : { data: canonicalInteractionData(event.publicData) }),
+        },
+      }
+      this.#operations.remember(
+        event.operationId,
+        interactionOperationDigest(record.key, requestDigest, event.responseDigest),
+        {
+          key: record.key,
+          fingerprint: event.responseDigest,
+          requestDigest,
+          promise: Promise.resolve(responseResult(input, status, false)),
+        },
+      )
+    }
+  }
+}
+
+function rehydratedStatus(
+  status: InteractionStatus,
+): InteractionResponseResult['status'] | undefined {
+  switch (status) {
+    case 'resolved':
+      return 'already_resolved'
+    case 'declined':
+    case 'cancelled':
+    case 'expired':
+    case 'conflict':
+    case 'identity_conflict':
+    case 'unsupported':
+      return status
+    default:
+      return undefined
+  }
+}
+
+function interactionOperationDigest(
+  key: string,
+  requestDigest: string,
+  responseDigest: string,
+): string {
+  return canonicalDigest({
+    schema: 'braid.interaction-response.v1',
+    key,
+    requestDigest,
+    responseDigest,
+  })
 }

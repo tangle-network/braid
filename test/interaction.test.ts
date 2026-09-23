@@ -62,6 +62,32 @@ function controller(
   return new InteractionController({ runtime, clock, ids: new SequenceIds() })
 }
 
+function bindingFor(
+  app: InteractionController,
+  runId: string,
+  interactionId: string,
+): {
+  readonly runId: string
+  readonly interactionId: string
+  readonly providerSessionId?: string
+  readonly requestRevision?: number
+} {
+  const record = app
+    .state()
+    .interactions.find(
+      (interaction) => interaction.runId === runId && interaction.interactionId === interactionId,
+    )
+  assert.ok(record)
+  return {
+    runId,
+    interactionId,
+    ...(record.providerSessionId === undefined
+      ? {}
+      : { providerSessionId: record.providerSessionId }),
+    ...(record.requestRevision === undefined ? {} : { requestRevision: record.requestRevision }),
+  }
+}
+
 test('canonical answer specifications render every field and mask secret fields', () => {
   const spec = {
     fields: [
@@ -158,8 +184,7 @@ test('SE-04 permission responses cannot select a scope the provider did not offe
   assert.match(app.views()[0]?.capabilityError ?? '', /permission scope/i)
   runtime.registerPending('run-limited-permission', 'limited-permission')
   const result = await app.respond({
-    runId: 'run-limited-permission',
-    interactionId: 'limited-permission',
+    ...bindingFor(app, 'run-limited-permission', 'limited-permission'),
     operationId: 'op-limited-permission',
     response: {
       id: 'limited-permission',
@@ -318,7 +343,7 @@ test('queue is stable FIFO and response binding, stale, replay, and conflict are
   assert.equal(first.queuePosition, 1)
   assert.equal(second.queuePosition, 2)
   assert.equal(app.state().interactions[0]?.deadlineAt, undefined)
-  assert.deepEqual(app.state().queue, ['run-1:first', 'run-1:second'])
+  assert.deepEqual(app.state().queue, ['5:run-1|5:first', '5:run-1|6:second'])
   assert.deepEqual(
     buildInteractionViews(app.state(), '2026-08-01T00:00:00.000Z').map(
       (view) => view.queuePosition,
@@ -327,8 +352,7 @@ test('queue is stable FIFO and response binding, stale, replay, and conflict are
   )
 
   const stale = await app.respond({
-    runId: 'run-1',
-    interactionId: 'first',
+    ...bindingFor(app, 'run-1', 'first'),
     providerSessionId: 'wrong-session',
     operationId: 'op-stale',
     response: { id: 'first', outcome: 'accepted', data: { value: 'x' } },
@@ -337,15 +361,13 @@ test('queue is stable FIFO and response binding, stale, replay, and conflict are
   assert.equal(runtime.calls.length, 0)
 
   const accepted = await app.respond({
-    runId: 'run-1',
-    interactionId: 'first',
+    ...bindingFor(app, 'run-1', 'first'),
     providerSessionId: 'session-1',
     operationId: 'op-first',
     response: { id: 'first', outcome: 'accepted', data: { value: 'x' } },
   })
   const replay = await app.respond({
-    runId: 'run-1',
-    interactionId: 'first',
+    ...bindingFor(app, 'run-1', 'first'),
     providerSessionId: 'session-1',
     operationId: 'op-first',
     response: { id: 'first', outcome: 'accepted', data: { value: 'x' } },
@@ -356,8 +378,7 @@ test('queue is stable FIFO and response binding, stale, replay, and conflict are
   assert.equal(runtime.calls.length, 1)
 
   const conflict = await app.respond({
-    runId: 'run-1',
-    interactionId: 'first',
+    ...bindingFor(app, 'run-1', 'first'),
     providerSessionId: 'session-1',
     operationId: 'op-different',
     response: { id: 'first', outcome: 'accepted', data: { value: 'different' } },
@@ -426,8 +447,7 @@ test('timeout applies only a safe default, while restart reconciliation never re
   resolved.receive({ runId: 'run-already', request: question('already') })
   resolvedRuntime.resolveExternally('run-already', 'already', 'accepted')
   const already = await resolved.respond({
-    runId: 'run-already',
-    interactionId: 'already',
+    ...bindingFor(resolved, 'run-already', 'already'),
     operationId: 'op-already',
     response: { id: 'already', outcome: 'accepted', data: { value: 'x' } },
   })
@@ -451,8 +471,7 @@ test('AN-09 late reconciliation cannot overwrite a response accepted concurrentl
   runtime.registerPending('run-race', 'race')
   const reconciliation = app.reconcile()
   const response = await app.respond({
-    runId: 'run-race',
-    interactionId: 'race',
+    ...bindingFor(app, 'run-race', 'race'),
     operationId: 'op-race',
     response: { id: 'race', outcome: 'accepted', data: { value: 'accepted' } },
   })
@@ -560,8 +579,7 @@ test('manual secret answers reach the provider once and never enter Braid record
   })
   runtime.registerPending('run-secret-manual', 'secret-manual')
   const result = await app.respond({
-    runId: 'run-secret-manual',
-    interactionId: 'secret-manual',
+    ...bindingFor(app, 'run-secret-manual', 'secret-manual'),
     providerSessionId: 'session-secret',
     operationId: 'op-secret-manual',
     response: {
@@ -589,8 +607,7 @@ test('manual secret answers reach the provider once and never enter Braid record
     initialEvents: app.events(),
   })
   const replay = await restored.respond({
-    runId: 'run-secret-manual',
-    interactionId: 'secret-manual',
+    ...bindingFor(restored, 'run-secret-manual', 'secret-manual'),
     providerSessionId: 'session-secret',
     operationId: 'op-secret-manual',
     response: {
@@ -633,8 +650,7 @@ test('capability negotiation disables unsupported answers and preserves cancel',
   assert.match(views[1]?.capabilityError ?? '', /one interaction/i)
   runtime.registerPending('run-capability', 'secret-capability')
   const cancelled = await app.cancel({
-    runId: 'run-capability',
-    interactionId: 'secret-capability',
+    ...bindingFor(app, 'run-capability', 'secret-capability'),
     operationId: 'op-capability-cancel',
   })
   assert.equal(cancelled.status, 'cancelled')

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "scope": "Braid W9 interaction implementation final working tree",
+  "base": "603c08a48ff307d3f54b1c20e5a2e5b5f2ef3149",
+  "head": "11937e7043b29ae2d345d0eddff79e584ff3cf9c",
+  "workingTreeIncluded": true,
+  "implementationAndTestFiles": 60,
+  "projectType": "TypeScript package",
+  "reviewers": ["A-correctness-security", "B-architecture-quality", "C-real-system-coverage"],
+  "mode": "serial",
+  "priorAudit": ".agent/critical-audit/2026-08-03T10-28-33Z",
+  "findings": 0,
+  "droppedFindings": 0,
+  "verification": {
+    "pnpm run check": "79 passed, 0 failed, 0 skipped, 0 cancelled",
+    "pnpm run test:package": "pass; rpcRecords=14; plainRecords=9",
+    "pnpm run pack:check": "pass",
+    "pnpm run capture:w0": "9 artifacts written",
+    "git diff --check": "pass",
+    "changedProductionOrReleaseFilesOver500Lines": 0
+  },
+  "notInspected": [
+    "Live CLI Bridge and Tangle provider services: no live provider implementation or credentials in this repository",
+    "Durable encrypted database and concurrent writer race: the current W9 journal is the supplied in-process journal contract"
+  ]
+}

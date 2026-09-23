@@ -3,6 +3,7 @@ import type {
   NonSecretInteractionData,
   SafeInteractionRequest,
 } from './interaction.js'
+import { lengthDelimitedIdentity } from './identity.js'
 
 export interface InteractionCapabilities {
   readonly kinds: readonly string[]
@@ -23,14 +24,45 @@ export type InteractionStatus =
   | 'expired'
   | 'unknown'
   | 'conflict'
+  | 'identity_conflict'
+  | 'unsupported'
+  | 'unknown_interaction'
+  | 'unknown_run'
+  | 'transport_error'
+
+export function interactionStatusIsUncertain(status: InteractionStatus): boolean {
+  return (
+    status === 'unknown' ||
+    status === 'transport_error' ||
+    status === 'unknown_interaction' ||
+    status === 'unknown_run'
+  )
+}
 
 export interface InteractionResolution {
   readonly outcome: InteractionOutcome
   readonly operationId: string
   readonly publicData?: NonSecretInteractionData
   readonly dataDigest?: string
+  readonly responseDigest?: string
   readonly containsSecret: boolean
   readonly resolvedAt: string
+}
+
+export interface PendingInteractionResponse {
+  readonly operationId: string
+  readonly outcome: InteractionOutcome
+  readonly requestDigest: string
+  readonly responseDigest: string
+  readonly requestRevision?: number
+  readonly providerSessionId?: string
+  readonly profileDigest?: string
+  readonly connectionId?: string
+  readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
+  readonly runner?: string
 }
 
 export interface InteractionRecord {
@@ -41,13 +73,19 @@ export interface InteractionRecord {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
   readonly request: SafeInteractionRequest
+  readonly requestDigest?: string
+  readonly requestRevision?: number
   readonly status: InteractionStatus
   readonly arrivalSequence: number
   readonly createdAt: string
   readonly updatedAt: string
   readonly deadlineAt?: string
+  readonly pendingResponse?: PendingInteractionResponse
   readonly resolution?: InteractionResolution
 }
 
@@ -87,6 +125,20 @@ export interface AutomationRuleRecord {
   readonly maximumUses?: number
   readonly uses: number
   readonly priority: number
+  readonly operationId?: string
+  readonly commandDigest?: string
+}
+
+export interface AutomationDryRunRecord {
+  readonly key: string
+  readonly eligible: boolean
+  readonly candidates: readonly {
+    readonly ruleId: string
+    readonly eligible: boolean
+    readonly reason?: string
+    readonly responseScope: AutomationRuleRecord['responseScope']
+  }[]
+  readonly replayed: boolean
 }
 
 export type AutomationAuditOutcome =
@@ -146,6 +198,17 @@ export type InteractionEvent =
       readonly interactionId: string
       readonly operationId: string
       readonly outcome: InteractionOutcome
+      readonly requestDigest?: string
+      readonly responseDigest?: string
+      readonly requestRevision?: number
+      readonly providerSessionId?: string
+      readonly profileDigest?: string
+      readonly connectionId?: string
+      readonly workspaceId?: string
+      readonly conversationId?: string
+      readonly branchId?: string
+      readonly model?: string
+      readonly runner?: string
       readonly publicData?: NonSecretInteractionData
       readonly dataDigest?: string
       readonly containsSecret: boolean
@@ -155,7 +218,17 @@ export type InteractionEvent =
       readonly key: string
       readonly status: Extract<
         InteractionStatus,
-        'resolved' | 'declined' | 'cancelled' | 'expired' | 'unknown' | 'conflict'
+        | 'resolved'
+        | 'declined'
+        | 'cancelled'
+        | 'expired'
+        | 'unknown'
+        | 'conflict'
+        | 'identity_conflict'
+        | 'unsupported'
+        | 'unknown_interaction'
+        | 'unknown_run'
+        | 'transport_error'
       >
       readonly resolution?: InteractionResolution
       readonly reason?: string
@@ -167,14 +240,33 @@ export type InteractionEvent =
   | {
       readonly kind: 'automation.rule.disabled'
       readonly ruleId: string
+      readonly operationId?: string
+      readonly commandDigest?: string
+    }
+  | {
+      readonly kind: 'automation.rule.updated'
+      readonly rule: AutomationRuleRecord
+    }
+  | {
+      readonly kind: 'automation.command.recorded'
+      readonly operationId: string
+      readonly commandDigest: string
+      readonly result: boolean | AutomationDryRunRecord
     }
   | {
       readonly kind: 'automation.rule.deleted'
       readonly ruleId: string
+      readonly operationId?: string
+      readonly commandDigest?: string
     }
   | {
       readonly kind: 'automation.rule.used'
       readonly ruleId: string
+    }
+  | {
+      readonly kind: 'automation.rule.applied'
+      readonly ruleId: string
+      readonly audit: AutomationAuditRecord
     }
   | {
       readonly kind: 'automation.audit.recorded'
@@ -194,7 +286,7 @@ export interface InteractionEventEnvelope {
 }
 
 export function interactionKey(runId: string, interactionId: string): string {
-  return `${runId}:${interactionId}`
+  return lengthDelimitedIdentity(runId, interactionId)
 }
 
 export function initialInteractionState(): InteractionQueueState {

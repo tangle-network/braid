@@ -104,6 +104,35 @@ async function runRpc(binary, cwd) {
   })
 }
 
+async function runPlain(binary, cwd) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(binary, ['--plain', '--fixture', 'deterministic', '--workspace', cwd], {
+      cwd,
+      env: cleanEnvironment({ NO_COLOR: '1' }),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`packed braid plain exited ${code}\n${stdout}\n${stderr}`))
+        return
+      }
+      resolve({ stdout, stderr })
+    })
+    child.stdin.end('hello from installed plain\n/quit\n')
+  })
+}
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
@@ -293,6 +322,14 @@ try {
   assert(help.stdout.includes('braid rpc'), 'packed --help omitted RPC mode')
 
   const rpc = await runRpc(binary, installRoot)
+  const plain = await runPlain(binary, installRoot)
+  assert(plain.stdout.includes('braid ready'), 'packed plain mode did not start')
+  assert(
+    plain.stdout.includes('Fixture response through pi: hello from installed plain'),
+    'packed plain mode did not complete the fixture turn',
+  )
+  assert(!plain.stdout.includes('\u001b'), 'packed plain mode emitted terminal controls')
+  assert(plain.stderr === '', 'plain wrote human logs to stderr during a successful run')
   const terminal80 = await runTerminal(binary, installRoot, {
     columns: 80,
     rows: 24,
@@ -355,6 +392,7 @@ try {
     sha256: createHash('sha256').update(tarballBytes).digest('hex'),
     version: version.stdout.trim(),
     rpcRecords: rpc.responses.length,
+    plainRecords: plain.stdout.split('\n').filter(Boolean).length,
     referenceSizes: [
       { columns: 40, rows: 12, events: terminal40.evidence.events.length },
       { columns: 80, rows: 24, events: terminal80.evidence.events.length },

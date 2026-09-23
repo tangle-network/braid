@@ -25,6 +25,17 @@ export type BraidEvent =
       readonly userMessageId: string
       readonly assistantMessageId: string
       readonly text: string
+      readonly requestDigest?: string
+      readonly profileDigest?: string
+      readonly workspaceId?: string
+      readonly conversationId?: string
+      readonly branchId?: string
+      readonly model?: string
+    }
+  | {
+      readonly kind: 'run.session.bound'
+      readonly runId: string
+      readonly providerSessionId: string
     }
   | {
       readonly kind: 'run.text.delta'
@@ -47,4 +58,17 @@ export interface BraidEventEnvelope {
   readonly revision: number
   readonly occurredAt: string
   readonly event: BraidEvent
+}
+
+export function eventIdentity(event: BraidEvent, eventId: string | undefined): string | undefined {
+  if (eventId === undefined) return undefined
+  const scope =
+    'runId' in event
+      ? event.runId
+      : event.kind === 'interaction.requested'
+        ? event.interaction.runId
+        : event.kind === 'interaction.resolved'
+          ? event.key
+          : event.kind
+  return `${Buffer.byteLength(scope, 'utf8')}:${scope}|${Buffer.byteLength(eventId, 'utf8')}:${eventId}`
 }

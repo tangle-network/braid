@@ -8,6 +8,7 @@ import { ProcessTerminal, TUI } from '@earendil-works/pi-tui'
 import { AlternateScreenTerminal } from '../adapters/tui/alternate-screen-terminal.js'
 import { createBraidApplication } from '../app/composition.js'
 import { runRpc } from '../views/headless/rpc.js'
+import { runPlain } from '../views/headless/plain.js'
 import { BraidTerminalApp } from '../views/tui/terminal-app.js'
 import { createBraidTheme } from '../views/tui/theme.js'
 import { BRAID_VERSION } from '../version.js'
@@ -58,10 +59,32 @@ async function main(): Promise<number> {
 
   const app = createBraidApplication({
     ...(options.fixture ? { fixture: options.fixture, chunkDelayMs: 12 } : {}),
+    ...(process.env.BRAID_SECRET_RESPONSE_KEY === undefined
+      ? {}
+      : { secretResponseKey: process.env.BRAID_SECRET_RESPONSE_KEY }),
   })
 
+  const output = {
+    write: (chunk: string) => process.stdout.write(chunk),
+    waitForDrain: () =>
+      new Promise<void>((resolveDrain) => process.stdout.once('drain', resolveDrain)),
+  }
+
   if (options.mode === 'rpc') {
-    const exitCode = await runRpc(app, process.stdin, process.stdout)
+    const exitCode = await runRpc(app, process.stdin, output)
+    if (options.recordState) await recordState(options.recordState, app)
+    return exitCode
+  }
+
+  if (options.mode === 'plain') {
+    const operation = { value: 0 }
+    const exitCode = await runPlain(
+      app,
+      process.stdin,
+      output,
+      resolve(options.workspace),
+      () => `op-plain-${String(++operation.value).padStart(6, '0')}`,
+    )
     if (options.recordState) await recordState(options.recordState, app)
     return exitCode
   }
@@ -106,6 +129,7 @@ async function main(): Promise<number> {
     process.off('SIGTERM', onTerminate)
     process.off('SIGHUP', onHangup)
     view.stop()
+    app.shutdown()
   }
   if (options.recordState) await recordState(options.recordState, app)
   return signalExitCode ?? 0

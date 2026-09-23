@@ -60,6 +60,7 @@ export {
   type CreateAutomationRuleInput,
   type InteractionControllerOptions,
   type InteractionSubscriber,
+  type UpdateAutomationRuleInput,
 } from './controllers/interaction-controller.js'
 export type {
   CancelInteractionInput,

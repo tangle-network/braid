@@ -42,7 +42,7 @@
     "lint": "biome lint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "boundaries": "node scripts/check-boundaries.mjs",
-    "dependencies:check": "node scripts/check-dependencies.mjs",
+    "dependencies:check": "node scripts/check-dependencies.mjs && node scripts/check-import-graph.mjs --base HEAD",
     "attribution": "node scripts/check-attribution.mjs",
     "licenses:generate": "node scripts/generate-licenses.mjs",
     "licenses:check": "node scripts/generate-licenses.mjs --check",

@@ -9,6 +9,17 @@ import {
   type InteractionSubject,
 } from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
+import {
+  assertBoundedStructure,
+  boundedText as boundedUtf8Text,
+  BoundError,
+  MAX_INTERACTION_FIELDS,
+  MAX_INTERACTION_TIMEOUT_MS,
+  MAX_RPC_LINE_BYTES,
+  MAX_SELECT_OPTIONS,
+  MAX_TEXT_BYTES,
+} from './bounds.js'
+import { keyedDigest } from './identity.js'
 import { sanitizeTerminalText } from '../views/shared/sanitize.js'
 
 export type InteractionOutcome = 'accepted' | 'declined' | 'cancelled'
@@ -74,7 +85,7 @@ export type InteractionRequestValidation = ParsedInteractionRequest | InvalidInt
 
 function boundedText(value: string, limit = 16_384): string {
   const safe = sanitizeTerminalText(value)
-  return safe.length <= limit ? safe : `${safe.slice(0, limit)}…`
+  return boundedUtf8Text(safe, Math.min(limit, MAX_TEXT_BYTES))
 }
 
 function safeSubject(subject: InteractionSubject | undefined): SafeInteractionSubject | undefined {
@@ -189,8 +200,26 @@ export type AnswerSpecValidation = AnswerSpecValidationSuccess | AnswerSpecValid
 
 /** Validate the canonical shape plus invariants the shared schema leaves open. */
 export function validateAnswerSpec(input: unknown): AnswerSpecValidation {
+  try {
+    assertBoundedStructure(input, {
+      maxBytes: MAX_TEXT_BYTES,
+      maxTotalBytes: MAX_RPC_LINE_BYTES,
+      maxDepth: 12,
+      maxArrayLength: MAX_INTERACTION_FIELDS,
+      maxObjectKeys: MAX_INTERACTION_FIELDS,
+      maxFields: MAX_INTERACTION_FIELDS * 2,
+    })
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [error instanceof Error ? error.message : 'Answer specification is too large'],
+    }
+  }
   const parsed = InteractionAnswerSpecSchema.safeParse(input)
   if (!parsed.success) return { ok: false, errors: ['Invalid answer specification'] }
+  if (parsed.data.fields.length > MAX_INTERACTION_FIELDS) {
+    return { ok: false, errors: ['Answer specification contains too many fields'] }
+  }
   const names = new Set<string>()
   for (const field of parsed.data.fields) {
     if (!field.name || names.has(field.name)) {
@@ -209,9 +238,12 @@ export function validateAnswerSpec(input: unknown): AnswerSpecValidation {
       }
     }
     if (field.type === 'select') {
+      if (field.options.length > MAX_SELECT_OPTIONS) {
+        return { ok: false, errors: ['Answer specification contains too many select options'] }
+      }
       const optionValues = new Set<string>()
       for (const option of field.options) {
-        if (!option.value || optionValues.has(option.value)) {
+        if (!option.value || !option.label || optionValues.has(option.value)) {
           return {
             ok: false,
             errors: ['Answer specification select options must be unique and non-empty'],
@@ -241,11 +273,32 @@ export function interactionAnswerTypes(
 }
 
 export function parseInteractionRequest(input: unknown): InteractionRequestValidation {
+  try {
+    assertBoundedStructure(input, {
+      maxBytes: MAX_TEXT_BYTES,
+      maxTotalBytes: MAX_RPC_LINE_BYTES,
+      maxDepth: 16,
+      maxArrayLength: MAX_INTERACTION_FIELDS,
+      maxObjectKeys: MAX_INTERACTION_FIELDS,
+      maxFields: MAX_INTERACTION_FIELDS * 4,
+    })
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [error instanceof BoundError ? error.message : 'Interaction request is too large'],
+    }
+  }
   const parsed = InteractionRequestSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, errors: ['Interaction request is not a valid canonical request'] }
   }
   const request = parsed.data
+  if (
+    request.timeoutMs !== undefined &&
+    (!Number.isSafeInteger(request.timeoutMs) || request.timeoutMs > MAX_INTERACTION_TIMEOUT_MS)
+  ) {
+    return { ok: false, errors: ['Interaction timeout is outside the supported bound'] }
+  }
   const spec = safeAnswerSpec(request.answerSpec)
   const specValidation = validateAnswerSpec(spec)
   if (!specValidation.ok) return specValidation
@@ -253,7 +306,8 @@ export function parseInteractionRequest(input: unknown): InteractionRequestValid
   const safeSubjectValue = request.subject === undefined ? undefined : safeSubject(request.subject)
   const safeKind = boundedText(request.kind, 256)
   const safeTitle = boundedText(request.title, 4_096)
-  if (!safeKind || !safeTitle) {
+  const safeId = boundedText(request.id, 512)
+  if (!safeId || !safeKind || !safeTitle) {
     return { ok: false, errors: ['Interaction request text is not renderable'] }
   }
   if (safeSubjectValue && !subjectTarget(safeSubjectValue)) {
@@ -262,8 +316,14 @@ export function parseInteractionRequest(input: unknown): InteractionRequestValid
   const defaultValidation = request.default
     ? validateInteractionData(spec, request.default.outcome, request.default.data)
     : undefined
+  if (
+    request.default !== undefined &&
+    (defaultValidation === undefined || !defaultValidation.ok || defaultValidation.containsSecret)
+  ) {
+    return { ok: false, errors: ['Interaction request contains an invalid default answer'] }
+  }
   const safeRequest: SafeInteractionRequest = {
-    id: request.id,
+    id: safeId,
     kind: safeKind,
     title: safeTitle,
     ...(request.body === undefined ? {} : { body: boundedText(request.body) }),
@@ -331,6 +391,18 @@ export function validateInteractionData(
   outcome: InteractionOutcome,
   data: InteractionData | undefined,
 ): InteractionDataValidation {
+  try {
+    assertBoundedStructure(data ?? {}, {
+      maxBytes: MAX_TEXT_BYTES,
+      maxTotalBytes: MAX_TEXT_BYTES,
+      maxDepth: 8,
+      maxArrayLength: MAX_INTERACTION_FIELDS,
+      maxObjectKeys: MAX_INTERACTION_FIELDS,
+      maxFields: MAX_INTERACTION_FIELDS,
+    })
+  } catch (error) {
+    return { ok: false, errors: [error instanceof Error ? error.message : 'Answer is too large'] }
+  }
   if (outcome !== 'accepted') {
     if (data !== undefined && Object.keys(data).length > 0) {
       return { ok: false, errors: ['Only accepted interactions may include answer data'] }
@@ -371,6 +443,21 @@ export function interactionResponseDigest(
 ): string | undefined {
   if (answerSpecContainsSecret(request.answerSpec)) return undefined
   return canonicalDigest({ outcome: response.outcome, data: response.data ?? {} })
+}
+
+export function interactionRequestDigest(request: SafeInteractionRequest): string {
+  return canonicalDigest({ schema: 'braid.interaction-request.v1', request })
+}
+
+export function interactionResponseFingerprint(
+  request: SafeInteractionRequest,
+  response: Pick<InteractionResponse, 'outcome' | 'data'>,
+  secretKey: string | Uint8Array,
+): string {
+  const value = { outcome: response.outcome, data: response.data ?? {} }
+  return answerSpecContainsSecret(request.answerSpec)
+    ? keyedDigest(value, secretKey)
+    : canonicalDigest(value)
 }
 
 export type PermissionScope = 'once' | 'session' | 'persistent' | 'deny'

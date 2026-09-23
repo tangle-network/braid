@@ -10,6 +10,8 @@ export type InteractionAckStatus =
   | 'cancelled'
   | 'expired'
   | 'conflict'
+  | 'identity_conflict'
+  | 'unsupported'
   | 'unknown_interaction'
   | 'unknown_run'
   | 'transport_error'
@@ -19,6 +21,17 @@ export interface InteractionAck {
   readonly runId: string
   readonly interactionId: string
   readonly operationId: string
+  readonly requestRevision?: number
+  readonly providerSessionId?: string
+  readonly requestDigest?: string
+  readonly responseDigest?: string
+  readonly profileDigest?: string
+  readonly connectionId?: string
+  readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
+  readonly runner?: string
   readonly resolvedOutcome?: InteractionResponse['outcome']
   readonly reason?: string
 }
@@ -30,9 +43,15 @@ export interface RespondToInteractionPortInput {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
   readonly response: InteractionResponse
   readonly operationId: string
+  readonly requestRevision?: number
+  readonly requestDigest?: string
+  readonly responseDigest?: string
   readonly signal?: AbortSignal
 }
 
@@ -43,14 +62,78 @@ export interface ReconcileInteractionInput {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
+  readonly operationId?: string
+  readonly requestRevision?: number
+  readonly requestDigest?: string
+  readonly responseDigest?: string
   readonly signal?: AbortSignal
 }
 
 export type ReconciledInteraction =
-  | { readonly status: 'pending' }
-  | { readonly status: 'resolved'; readonly outcome?: 'accepted' | 'declined' | 'cancelled' }
-  | { readonly status: 'expired' | 'cancelled' | 'missing' | 'unknown'; readonly reason?: string }
+  | {
+      readonly status: 'pending'
+      readonly runId?: string
+      readonly interactionId?: string
+      readonly profileDigest?: string
+      readonly connectionId?: string
+      readonly workspaceId?: string
+      readonly conversationId?: string
+      readonly branchId?: string
+      readonly model?: string
+      readonly runner?: string
+      readonly providerSessionId?: string
+      readonly operationId?: string
+      readonly requestRevision?: number
+      readonly requestDigest?: string
+      readonly responseDigest?: string
+    }
+  | {
+      readonly status: 'resolved'
+      readonly runId?: string
+      readonly interactionId?: string
+      readonly profileDigest?: string
+      readonly connectionId?: string
+      readonly workspaceId?: string
+      readonly conversationId?: string
+      readonly branchId?: string
+      readonly model?: string
+      readonly runner?: string
+      readonly providerSessionId?: string
+      readonly operationId?: string
+      readonly requestRevision?: number
+      readonly requestDigest?: string
+      readonly responseDigest?: string
+      readonly outcome?: 'accepted' | 'declined' | 'cancelled'
+      readonly reason?: string
+    }
+  | {
+      readonly status:
+        | 'expired'
+        | 'cancelled'
+        | 'missing'
+        | 'unknown'
+        | 'unknown_interaction'
+        | 'unknown_run'
+      readonly runId?: string
+      readonly interactionId?: string
+      readonly profileDigest?: string
+      readonly connectionId?: string
+      readonly workspaceId?: string
+      readonly conversationId?: string
+      readonly branchId?: string
+      readonly model?: string
+      readonly runner?: string
+      readonly providerSessionId?: string
+      readonly operationId?: string
+      readonly requestRevision?: number
+      readonly requestDigest?: string
+      readonly responseDigest?: string
+      readonly reason?: string
+    }
 
 /**
  * Adapter boundary for the shared runtime/provider interaction path.
@@ -80,6 +163,9 @@ export interface ReceiveInteractionInput {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
   readonly request: InteractionRequest
 }
@@ -98,7 +184,11 @@ export interface RespondInteractionInput {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
+  readonly requestRevision?: number
   readonly operationId: string
   readonly response: InteractionResponse
   readonly signal?: AbortSignal
@@ -111,13 +201,17 @@ export interface CancelInteractionInput {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
+  readonly requestRevision?: number
   readonly operationId: string
   readonly signal?: AbortSignal
 }
 
 export interface InteractionResponseResult {
-  readonly status: InteractionAckStatus | 'stale' | 'invalid'
+  readonly status: InteractionAckStatus | 'stale' | 'invalid' | 'unknown' | 'resolved'
   readonly key: string
   readonly operationId: string
   readonly replayed: boolean

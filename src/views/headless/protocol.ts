@@ -1,5 +1,10 @@
-import type { InteractionResponse } from '@tangle-network/agent-interface'
+import type {
+  InteractionData,
+  InteractionRequest,
+  InteractionResponse,
+} from '@tangle-network/agent-interface'
 import type { BraidEventEnvelope } from '../../domain/events.js'
+import type { AutomationRuleMatcher, AutomationRuleRecord } from '../../domain/interaction-state.js'
 import type { BraidState } from '../../domain/state.js'
 
 export const BRAID_PROTOCOL_VERSION = 1 as const
@@ -45,9 +50,79 @@ export interface RespondInteractionRequest {
     readonly profileDigest?: string
     readonly connectionId?: string
     readonly workspaceId?: string
+    readonly conversationId?: string
+    readonly branchId?: string
+    readonly model?: string
     readonly runner?: string
+    readonly requestRevision?: number
     readonly response: InteractionResponse
   }
+}
+
+export interface CancelInteractionRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly operationId: string
+  readonly command: 'cancel_interaction'
+  readonly params: Omit<RespondInteractionRequest['params'], 'response'>
+}
+
+export interface AutomationCreateRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly operationId: string
+  readonly command: 'automation_create'
+  readonly params: {
+    readonly interactionKey?: string
+    readonly request?: InteractionRequest
+    readonly matcher?: AutomationRuleMatcher
+    readonly answer: InteractionData
+    readonly responseScope: 'once' | 'session' | 'persistent'
+    readonly expiresAt?: string
+    readonly maximumUses?: number
+    readonly priority?: number
+  }
+}
+
+export interface AutomationUpdateRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly operationId: string
+  readonly command: 'automation_update'
+  readonly params: {
+    readonly ruleId: string
+    readonly interactionKey?: string
+    readonly request?: InteractionRequest
+    readonly matcher?: AutomationRuleMatcher
+    readonly answer?: InteractionData
+    readonly responseScope?: 'once' | 'session' | 'persistent'
+    readonly expiresAt?: string
+    readonly maximumUses?: number
+    readonly priority?: number
+  }
+}
+
+export interface AutomationDryRunRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly operationId: string
+  readonly command: 'automation_dry_run'
+  readonly params: { readonly key: string }
+}
+
+export interface AutomationRuleRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly operationId: string
+  readonly command: 'automation_disable' | 'automation_delete'
+  readonly params: { readonly ruleId: string }
+}
+
+export interface AutomationListRequest {
+  readonly version: 1
+  readonly requestId: string
+  readonly command: 'automation_list'
+  readonly params?: Record<string, never>
 }
 
 export interface ShutdownRequest {
@@ -62,6 +137,12 @@ export type BraidRequest =
   | GetStateRequest
   | SendRequest
   | RespondInteractionRequest
+  | CancelInteractionRequest
+  | AutomationCreateRequest
+  | AutomationUpdateRequest
+  | AutomationDryRunRequest
+  | AutomationRuleRequest
+  | AutomationListRequest
   | ShutdownRequest
 
 export interface AckResponse {
@@ -73,6 +154,10 @@ export interface AckResponse {
   readonly replayed?: boolean
   readonly interactionStatus?: string
   readonly reason?: string
+  readonly automation?:
+    | { readonly rule: AutomationRuleRecord }
+    | { readonly result: unknown }
+    | { readonly rules: readonly AutomationRuleRecord[] }
 }
 
 export interface EventResponse {

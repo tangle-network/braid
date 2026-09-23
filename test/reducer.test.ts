@@ -6,6 +6,10 @@ import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { parseInteractionRequest } from '../src/domain/interaction.js'
+import { MAX_TEXT_BYTES } from '../src/domain/bounds.js'
+import { interactionKey } from '../src/domain/interaction-state.js'
+import { interactionRequestDigest } from '../src/domain/interaction.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 
 function envelopes(events: readonly BraidEvent[]): BraidEventEnvelope[] {
   return events.map((event, index) => ({
@@ -48,12 +52,15 @@ test('10,000 streamed events replay without duplication or event loss', () => {
   const state = replayEvents(initialState(STARTER_PROFILE), envelopes(events))
   const view = buildAppView(state)
   assert.equal(state.sequence, deltaCount + 4)
-  assert.equal(state.messages[1]?.text.length, delta.length * deltaCount)
-  assert.equal(state.messages[1]?.text, response)
+  assert.equal(state.messages[1]?.text.length, MAX_TEXT_BYTES)
+  assert.equal(state.messages[1]?.text, response.slice(0, MAX_TEXT_BYTES))
   assert.equal(view.messages.length, 2)
   assert.equal(view.messages[1]?.text.length, 200_002)
   assert.equal(view.messages[1]?.text.startsWith('…\n'), true)
-  assert.equal(view.messages[1]?.text.endsWith(response.slice(-200_000)), true)
+  assert.equal(
+    view.messages[1]?.text.endsWith(response.slice(0, MAX_TEXT_BYTES).slice(-200_000)),
+    true,
+  )
 })
 
 test('replay rejects a sequence gap', () => {
@@ -84,7 +91,7 @@ test('replay rejects secret interaction data in a persisted response event', () 
   const requestEvent: BraidEvent = {
     kind: 'interaction.requested',
     interaction: {
-      key: 'run-secret-replay:secret-replay',
+      key: interactionKey('run-secret-replay', 'secret-replay'),
       runId: 'run-secret-replay',
       interactionId: 'secret-replay',
       request: parsed.request,
@@ -97,7 +104,7 @@ test('replay rejects secret interaction data in a persisted response event', () 
   const state = replayEvents(initialState(STARTER_PROFILE), envelopes([requestEvent]))
   const malicious: BraidEvent = {
     kind: 'interaction.response.requested',
-    key: 'run-secret-replay:secret-replay',
+    key: interactionKey('run-secret-replay', 'secret-replay'),
     runId: 'run-secret-replay',
     interactionId: 'secret-replay',
     operationId: 'op-secret-replay',
@@ -116,5 +123,70 @@ test('replay rejects secret interaction data in a persisted response event', () 
         },
       ]),
     /Secret interaction responses cannot contain public data/u,
+  )
+})
+
+test('replay rejects a resolution whose operation identity differs from its intent', () => {
+  const parsed = parseInteractionRequest({
+    id: 'resolution-identity',
+    kind: 'question',
+    title: 'Value',
+    answerSpec: { fields: [{ type: 'text', name: 'value', label: 'Value' }] },
+  })
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) assert.fail('request should parse')
+  const key = interactionKey('run-resolution', 'resolution-identity')
+  const requestEvent: BraidEvent = {
+    kind: 'interaction.requested',
+    interaction: {
+      key,
+      runId: 'run-resolution',
+      interactionId: 'resolution-identity',
+      request: parsed.request,
+      requestDigest: interactionRequestDigest(parsed.request),
+      status: 'pending',
+      arrivalSequence: 1,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    },
+  }
+  const responseDigest = canonicalDigest({ outcome: 'accepted', data: { value: 'answer' } })
+  const responseEvent: BraidEvent = {
+    kind: 'interaction.response.requested',
+    key,
+    runId: 'run-resolution',
+    interactionId: 'resolution-identity',
+    operationId: 'operation-right',
+    outcome: 'accepted',
+    requestDigest: interactionRequestDigest(parsed.request),
+    responseDigest,
+    containsSecret: false,
+  }
+  const state = replayEvents(
+    initialState(STARTER_PROFILE),
+    envelopes([requestEvent, responseEvent]),
+  )
+  assert.throws(
+    () =>
+      replayEvents(state, [
+        {
+          sequence: state.sequence + 1,
+          revision: state.revision + 1,
+          occurredAt: '2026-08-01T00:00:01.000Z',
+          event: {
+            kind: 'interaction.resolved',
+            key,
+            status: 'resolved',
+            resolution: {
+              outcome: 'accepted',
+              operationId: 'operation-wrong',
+              responseDigest,
+              containsSecret: false,
+              resolvedAt: '2026-08-01T00:00:01.000Z',
+            },
+          },
+        },
+      ]),
+    /operation does not match/u,
   )
 })

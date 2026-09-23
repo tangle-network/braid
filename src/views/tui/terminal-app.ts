@@ -104,7 +104,7 @@ export class BraidTerminalApp {
   }
 
   #render(state: BraidState): void {
-    const view = buildAppView(state, this.#app.interactionCapabilities())
+    const view = buildAppView(state, this.#app.interactionCapabilities(), this.#app.now())
     this.#transcript.clear()
     this.#transcript.addChild(this.#header(view))
     if (view.hiddenMessageCount > 0) {
@@ -113,8 +113,9 @@ export class BraidTerminalApp {
       )
     }
     for (const message of view.messages) this.#transcript.addChild(this.#message(message))
-    const interaction = view.interactions[0]
-    if (interaction) this.#transcript.addChild(this.#interaction(interaction))
+    for (const interaction of view.interactions) {
+      this.#transcript.addChild(this.#interaction(interaction))
+    }
     if (view.messages.length === 0) {
       this.#transcript.addChild(new Spacer(1))
       this.#transcript.addChild(
@@ -186,6 +187,13 @@ export class BraidTerminalApp {
         new Text(this.#theme.muted(`${view.subject.title}: ${view.subject.target}`), 1, 0),
       )
     }
+    for (const field of view.answerSpec.fields) {
+      const details =
+        field.type === 'select'
+          ? field.options.map((option) => `${option.label} (${option.value})`).join(', ')
+          : field.type
+      container.addChild(new Text(this.#theme.muted(`${field.label}: ${details}`), 1, 0))
+    }
     container.addChild(
       new Text(
         view.canRespond
@@ -203,7 +211,7 @@ export class BraidTerminalApp {
   #submit(rawText: string): void {
     const text = rawText.trim()
     if (!text) return
-    const interaction = this.#app.interactionController()?.views()[0]
+    const interaction = this.#app.interactionController().views()[0]
     if (interaction) {
       this.#submitInteraction(interaction, rawText)
       return
@@ -234,6 +242,11 @@ export class BraidTerminalApp {
   #submitInteraction(view: InteractionViewModel, rawText: string): void {
     if (!view.canRespond) return
     const intent = keyboardAnswerForView(view, rawText)
+    if (intent.kind === 'invalid') {
+      this.#editor.setText('')
+      this.#tui.requestRender()
+      return
+    }
     const response = responseForInteractionIntent(view.interactionId, intent)
     const operationId = this.#nextOperationId()
     this.#editor.setText('')
@@ -247,7 +260,11 @@ export class BraidTerminalApp {
         ...(view.profileDigest === undefined ? {} : { profileDigest: view.profileDigest }),
         ...(view.connectionId === undefined ? {} : { connectionId: view.connectionId }),
         ...(view.workspaceId === undefined ? {} : { workspaceId: view.workspaceId }),
+        ...(view.conversationId === undefined ? {} : { conversationId: view.conversationId }),
+        ...(view.branchId === undefined ? {} : { branchId: view.branchId }),
+        ...(view.model === undefined ? {} : { model: view.model }),
         ...(view.runner === undefined ? {} : { runner: view.runner }),
+        ...(view.requestRevision === undefined ? {} : { requestRevision: view.requestRevision }),
         operationId,
         response,
       })
@@ -257,12 +274,12 @@ export class BraidTerminalApp {
           result.status === 'stale' ||
           result.status === 'conflict'
         ) {
-          this.#editor.setText(rawText)
+          if (!view.answerSpec.containsSecret) this.#editor.setText(rawText)
         }
         this.#tui.requestRender()
       })
       .catch(() => {
-        this.#editor.setText(rawText)
+        if (!view.answerSpec.containsSecret) this.#editor.setText(rawText)
         this.#tui.requestRender()
       })
   }
@@ -274,7 +291,7 @@ export class BraidTerminalApp {
       return { consume: true }
     }
     if (matchesKey(data, 'escape')) {
-      const interaction = this.#app.interactionController()?.views()[0]
+      const interaction = this.#app.interactionController().views()[0]
       if (interaction) {
         void this.#app.cancelInteraction({
           runId: interaction.runId,
@@ -291,7 +308,15 @@ export class BraidTerminalApp {
           ...(interaction.workspaceId === undefined
             ? {}
             : { workspaceId: interaction.workspaceId }),
+          ...(interaction.conversationId === undefined
+            ? {}
+            : { conversationId: interaction.conversationId }),
+          ...(interaction.branchId === undefined ? {} : { branchId: interaction.branchId }),
+          ...(interaction.model === undefined ? {} : { model: interaction.model }),
           ...(interaction.runner === undefined ? {} : { runner: interaction.runner }),
+          ...(interaction.requestRevision === undefined
+            ? {}
+            : { requestRevision: interaction.requestRevision }),
           operationId: this.#nextOperationId(),
         })
         return { consume: true }

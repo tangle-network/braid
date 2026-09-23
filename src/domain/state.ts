@@ -28,12 +28,18 @@ export interface BraidRun {
   readonly costUsd?: number
   readonly model?: string
   readonly error?: string
+  readonly requestDigest?: string
+  readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly providerSessionId?: string
 }
 
 export interface BraidState {
   readonly schemaVersion: 1
   readonly revision: number
   readonly sequence: number
+  readonly appliedEventIds: readonly string[]
   readonly workspace: string | null
   readonly conversationId: string
   readonly branchId: string
@@ -54,6 +60,7 @@ export function initialState(profile: Readonly<AgentProfile>): BraidState {
     schemaVersion: 1,
     revision: 0,
     sequence: 0,
+    appliedEventIds: [],
     workspace: null,
     conversationId: 'conv-1',
     branchId: 'branch-1',

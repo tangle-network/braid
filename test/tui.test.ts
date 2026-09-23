@@ -89,7 +89,7 @@ test('interaction keyboard flow renders at all reference sizes and answers throu
     await waitUntil(() => app.state().interactions[0]?.status === 'resolved')
     assert.deepEqual(runtime.calls, [
       {
-        key: 'run-tui-interaction:tui-question',
+        key: '19:run-tui-interaction|12:tui-question',
         operationId: `op-tui-${columns}`,
         outcome: 'accepted',
       },

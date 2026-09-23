@@ -8,6 +8,9 @@ import type {
 import type { Clock } from '../ports/clock.js'
 import type { IdSource } from '../ports/ids.js'
 import type { InteractionRuntimePort } from '../ports/interactions.js'
+import type { Scheduler } from '../ports/scheduler.js'
+import type { OperationAuthority } from '../domain/operation-authority.js'
+import type { ApplicationStateStore } from '../app/application-state.js'
 
 export interface InteractionControllerOptions {
   readonly runtime: InteractionRuntimePort
@@ -16,10 +19,17 @@ export interface InteractionControllerOptions {
   readonly initialState?: InteractionQueueState
   readonly initialEvents?: readonly InteractionEventEnvelope[]
   readonly feedbackCapture?: boolean
+  readonly scheduler?: Scheduler
+  readonly secretResponseKey?: string | Uint8Array
+  readonly operationAuthority?: OperationAuthority
+  readonly applicationState?: ApplicationStateStore
   readonly defaultContext?: {
     readonly profileDigest?: string
     readonly connectionId?: string
     readonly workspaceId?: string
+    readonly conversationId?: string
+    readonly branchId?: string
+    readonly model?: string
     readonly runner?: string
   }
 }
@@ -31,6 +41,19 @@ export interface CreateAutomationRuleInput {
   readonly matcher?: AutomationRuleMatcher
   readonly answer: InteractionData
   readonly responseScope: 'once' | 'session' | 'persistent'
+  readonly expiresAt?: string
+  readonly maximumUses?: number
+  readonly priority?: number
+}
+
+export interface UpdateAutomationRuleInput {
+  readonly operationId: string
+  readonly ruleId: string
+  readonly request?: InteractionRequest
+  readonly interactionKey?: string
+  readonly matcher?: AutomationRuleMatcher
+  readonly answer?: InteractionData
+  readonly responseScope?: 'once' | 'session' | 'persistent'
   readonly expiresAt?: string
   readonly maximumUses?: number
   readonly priority?: number

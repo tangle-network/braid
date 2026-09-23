@@ -1,5 +1,5 @@
 export interface CliOptions {
-  readonly mode: 'tui' | 'rpc'
+  readonly mode: 'tui' | 'rpc' | 'plain'
   readonly fixture?: 'deterministic'
   readonly inline: boolean
   readonly noColor: boolean
@@ -14,11 +14,13 @@ export const HELP = `braid — a universal terminal interface for agent profiles
 Usage:
   braid [options]
   braid rpc [options]
+  braid --plain [options]
 
 Options:
   --workspace <path>          Workspace to open (default: current directory)
   --inline                    Render in the main terminal buffer
   --no-color                  Disable color
+  --plain                     Emit readable non-interactive text
   --fixture deterministic     Use the clearly labelled offline test provider
   --record-state <path>       Write final semantic state and events for verification
   -h, --help                  Show help
@@ -44,6 +46,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     if (argument === 'rpc' && index === 0) mode = 'rpc'
+    else if (argument === '--plain') mode = 'plain'
     else if (argument === '--inline') inline = true
     else if (argument === '--no-color') noColor = true
     else if (argument === '--workspace') {

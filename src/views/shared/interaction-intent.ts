@@ -5,11 +5,13 @@ export type InteractionKeyboardIntent =
   | { readonly kind: 'accept'; readonly data: InteractionData }
   | { readonly kind: 'decline' }
   | { readonly kind: 'cancel' }
+  | { readonly kind: 'invalid'; readonly reason: string }
 
 export function responseForInteractionIntent(
   interactionId: string,
   intent: InteractionKeyboardIntent,
 ): InteractionResponse {
+  if (intent.kind === 'invalid') throw new Error(intent.reason)
   return intent.kind === 'accept'
     ? { id: interactionId, outcome: 'accepted', data: intent.data }
     : { id: interactionId, outcome: intent.kind === 'decline' ? 'declined' : 'cancelled' }
@@ -72,9 +74,12 @@ export function keyboardAnswerForView(
   const data: Record<string, string | number | boolean | string[]> = {}
   for (const field of fields) {
     const value = assignments.get(field.name)
-    if (value === undefined || value === '') continue
+    if (value === undefined || value === '') {
+      if (field.required) return { kind: 'invalid', reason: `${field.label} is required` }
+      continue
+    }
     const parsed = parseFieldValue(field, value)
-    if (parsed === undefined) return { kind: 'accept', data: {} }
+    if (parsed === undefined) return { kind: 'invalid', reason: `${field.label} is invalid` }
     data[field.name] = parsed
   }
   return { kind: 'accept', data }

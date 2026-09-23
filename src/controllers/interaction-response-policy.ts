@@ -17,6 +17,7 @@ import type {
   InteractionRecord,
   InteractionStatus,
 } from '../domain/interaction-state.js'
+import { interactionKey } from '../domain/interaction-state.js'
 
 export function permissionGrant(data: NonSecretInteractionData): string | undefined {
   const grant = data.grant
@@ -28,7 +29,15 @@ export function bindingMatches(
   record: InteractionRecord,
   input: Pick<
     RespondInteractionInput,
-    'providerSessionId' | 'profileDigest' | 'connectionId' | 'workspaceId' | 'runner'
+    | 'providerSessionId'
+    | 'profileDigest'
+    | 'connectionId'
+    | 'workspaceId'
+    | 'conversationId'
+    | 'branchId'
+    | 'model'
+    | 'runner'
+    | 'requestRevision'
   >,
 ): boolean {
   return (
@@ -36,6 +45,10 @@ export function bindingMatches(
     record.profileDigest === input.profileDigest &&
     record.connectionId === input.connectionId &&
     record.workspaceId === input.workspaceId &&
+    record.conversationId === input.conversationId &&
+    record.branchId === input.branchId &&
+    record.model === input.model &&
+    record.requestRevision === input.requestRevision &&
     record.runner === input.runner
   )
 }
@@ -48,7 +61,7 @@ export function responseResult(
 ): InteractionResponseResult {
   return {
     status,
-    key: `${input.runId}:${input.interactionId}`,
+    key: interactionKey(input.runId, input.interactionId),
     operationId: input.operationId,
     replayed,
     ...(reason === undefined ? {} : { reason }),
@@ -60,7 +73,17 @@ export function statusFromAck(
   responseOutcome: InteractionResponse['outcome'],
 ): Extract<
   InteractionStatus,
-  'resolved' | 'declined' | 'cancelled' | 'expired' | 'unknown' | 'conflict'
+  | 'resolved'
+  | 'declined'
+  | 'cancelled'
+  | 'expired'
+  | 'unknown'
+  | 'conflict'
+  | 'identity_conflict'
+  | 'unsupported'
+  | 'unknown_interaction'
+  | 'unknown_run'
+  | 'transport_error'
 > {
   switch (ack.status) {
     case 'accepted':
@@ -77,10 +100,16 @@ export function statusFromAck(
       return 'expired'
     case 'conflict':
       return 'conflict'
+    case 'identity_conflict':
+      return 'identity_conflict'
+    case 'unsupported':
+      return 'unsupported'
     case 'unknown_interaction':
+      return 'unknown_interaction'
     case 'unknown_run':
+      return 'unknown_run'
     case 'transport_error':
-      return 'unknown'
+      return 'transport_error'
     default: {
       const exhaustive: never = ack.status
       return exhaustive
@@ -99,7 +128,13 @@ export function acceptedCapabilityError(
   publicData: NonSecretInteractionData,
   capabilities?: InteractionCapabilities,
 ): string | undefined {
+  if (capabilities && !capabilities.responseIdempotency) {
+    return 'This provider cannot safely replay interaction responses'
+  }
   if (response.outcome !== 'accepted') return undefined
+  if (!['question', 'permission', 'plan'].includes(record.request.kind)) {
+    return 'This interaction kind is not supported by Braid'
+  }
   if (record.request.kind === 'permission') {
     const grant = permissionGrant(publicData)
     const scope =
@@ -153,6 +188,82 @@ export function acceptedCapabilityError(
     if (!scope || !capabilities.scopes.includes(scope)) {
       return 'This provider does not support the selected permission scope'
     }
+  }
+  return undefined
+}
+
+export function ackIdentityError(
+  ack: InteractionAck,
+  record: InteractionRecord,
+  input: RespondInteractionInput,
+  requestDigest: string,
+  responseDigest: string,
+): string | undefined {
+  if (ack.runId !== record.runId || ack.interactionId !== record.interactionId) {
+    return 'Provider acknowledgement run or interaction identity does not match'
+  }
+  if (ack.operationId !== input.operationId)
+    return 'Provider acknowledgement operation does not match'
+  if ((ack.requestRevision ?? undefined) !== (record.requestRevision ?? undefined)) {
+    return 'Provider acknowledgement request revision does not match'
+  }
+  if ((ack.providerSessionId ?? undefined) !== (record.providerSessionId ?? undefined)) {
+    return 'Provider acknowledgement session does not match'
+  }
+  if ((ack.requestDigest ?? undefined) !== requestDigest) {
+    return 'Provider acknowledgement request does not match'
+  }
+  if ((ack.responseDigest ?? undefined) !== responseDigest) {
+    return 'Provider acknowledgement response does not match'
+  }
+  if ((ack.profileDigest ?? undefined) !== (record.profileDigest ?? undefined)) {
+    return 'Provider acknowledgement profile does not match'
+  }
+  if ((ack.connectionId ?? undefined) !== (record.connectionId ?? undefined)) {
+    return 'Provider acknowledgement connection does not match'
+  }
+  if ((ack.workspaceId ?? undefined) !== (record.workspaceId ?? undefined)) {
+    return 'Provider acknowledgement workspace does not match'
+  }
+  if ((ack.conversationId ?? undefined) !== (record.conversationId ?? undefined)) {
+    return 'Provider acknowledgement conversation does not match'
+  }
+  if ((ack.branchId ?? undefined) !== (record.branchId ?? undefined)) {
+    return 'Provider acknowledgement branch does not match'
+  }
+  if ((ack.model ?? undefined) !== (record.model ?? undefined)) {
+    return 'Provider acknowledgement model does not match'
+  }
+  if ((ack.runner ?? undefined) !== (record.runner ?? undefined)) {
+    return 'Provider acknowledgement runner does not match'
+  }
+  return undefined
+}
+
+export function ackOutcomeError(
+  ack: InteractionAck,
+  responseOutcome: InteractionResponse['outcome'],
+): string | undefined {
+  if (
+    (ack.status === 'accepted' || ack.status === 'already_resolved') &&
+    ack.resolvedOutcome !== undefined &&
+    ack.resolvedOutcome !== responseOutcome
+  ) {
+    return 'Provider acknowledgement outcome does not match the submitted response'
+  }
+  if (
+    ack.status === 'declined' &&
+    ack.resolvedOutcome !== undefined &&
+    ack.resolvedOutcome !== 'declined'
+  ) {
+    return 'Provider acknowledgement outcome does not match declined status'
+  }
+  if (
+    ack.status === 'cancelled' &&
+    ack.resolvedOutcome !== undefined &&
+    ack.resolvedOutcome !== 'cancelled'
+  ) {
+    return 'Provider acknowledgement outcome does not match cancelled status'
   }
   return undefined
 }

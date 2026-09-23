@@ -1,12 +1,21 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
+import { InteractionController } from '../controllers/interaction-controller.js'
+import type {
+  AutomationDryRunInput,
+  AutomationDryRunResult,
+  CreateAutomationRuleInput,
+  UpdateAutomationRuleInput,
+} from '../controllers/interaction-controller-types.js'
+import { boundedText, MAX_TEXT_BYTES, utf8Bytes } from '../domain/bounds.js'
 import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidEvent, BraidEventEnvelope, TurnUsage } from '../domain/events.js'
-import { reduceEvent } from '../domain/reducer.js'
+import type { BraidEventEnvelope } from '../domain/events.js'
+import type { AutomationRuleRecord } from '../domain/interaction-state.js'
+import { redactedProfile, sensitiveProfileValues } from '../domain/profile.js'
 import { initialState, type BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
+import type { Scheduler } from '../ports/scheduler.js'
 import type {
   CancelInteractionInput,
   InteractionReceiveResult,
@@ -15,69 +24,21 @@ import type {
   ReceiveInteractionInput,
   RespondInteractionInput,
 } from '../ports/interactions.js'
-import { InteractionController } from '../controllers/interaction-controller.js'
-import { MemoryJournal } from './journal.js'
+import { UnavailableInteractionRuntime } from '../adapters/runtime/unavailable-interaction-runtime.js'
+import { AppError } from './errors.js'
+import { ApplicationStateStore, type AppSubscriber } from './application-state.js'
+import { RunAdmissionService, type SendInput, type SendReceipt } from './run-admission.js'
+import { RunExecutionService } from './run-execution.js'
+import { OperationAuthority } from '../domain/operation-authority.js'
 
-export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
-
-export interface SendInput {
-  readonly operationId: string
-  readonly text: string
-  readonly conversationId?: string
-  readonly branchId?: string
-}
-
-export interface SendReceipt {
-  readonly operationId: string
-  readonly runId: string
-  readonly revision: number
-  readonly replayed: boolean
-  readonly completion: Promise<BraidState>
-}
-
-interface OperationRecord {
-  readonly digest: string
-  readonly runId: string
-  completion: Promise<void>
-}
-
-export class AppError extends Error {
-  readonly code: string
-
-  constructor(code: string, message: string) {
-    super(message)
-    this.name = 'AppError'
-    this.code = code
-  }
-}
-
-function usageFromFinal(event: Extract<RuntimeStreamEvent, { type: 'final' }>): TurnUsage {
-  const metadata = event.metadata ?? {}
-  const tokenUsage =
-    metadata.tokenUsage && typeof metadata.tokenUsage === 'object'
-      ? (metadata.tokenUsage as Record<string, unknown>)
-      : {}
-  const input = typeof tokenUsage.input === 'number' ? tokenUsage.input : 0
-  const output = typeof tokenUsage.output === 'number' ? tokenUsage.output : 0
-  const costUsd = typeof metadata.costUsd === 'number' ? metadata.costUsd : undefined
-  const model = typeof metadata.model === 'string' ? metadata.model : undefined
-  return {
-    input,
-    output,
-    ...(costUsd === undefined ? {} : { costUsd }),
-    ...(model === undefined ? {} : { model }),
-  }
-}
+export { AppError }
+export type { AppSubscriber, SendInput, SendReceipt }
 
 export class BraidApplication {
-  readonly #execution: ExecutionPort
-  readonly #ids: IdSource
-  readonly #journal: MemoryJournal
-  readonly #operations = new Map<string, OperationRecord>()
-  readonly #subscribers = new Set<AppSubscriber>()
-  readonly #interactionController?: InteractionController
-  #state: BraidState
-  #activeAbort: AbortController | undefined
+  readonly #clock: Clock
+  readonly #state: ApplicationStateStore
+  readonly #interactionController: InteractionController
+  readonly #admission: RunAdmissionService
 
   constructor(options: {
     readonly profile: Readonly<AgentProfile>
@@ -86,243 +47,160 @@ export class BraidApplication {
     readonly ids: IdSource
     readonly interactionRuntime?: InteractionRuntimePort
     readonly feedbackCapture?: boolean
+    readonly initialEvents?: readonly BraidEventEnvelope[]
+    readonly journalKey?: Uint8Array
+    readonly secretResponseKey?: string | Uint8Array
+    readonly scheduler?: Scheduler
   }) {
-    this.#execution = options.execution
-    this.#ids = options.ids
-    this.#journal = new MemoryJournal(options.clock)
-    this.#state = initialState(structuredClone(options.profile))
-    const interactionRuntime = options.interactionRuntime ?? options.execution.interactions
-    if (interactionRuntime) {
-      this.#interactionController = new InteractionController({
-        runtime: interactionRuntime,
-        clock: options.clock,
-        ids: options.ids,
-        ...(options.feedbackCapture === undefined
+    this.#clock = options.clock
+    const initialEvents = options.initialEvents ?? []
+    const safeProfile = redactedProfile(options.profile)
+    this.#state = new ApplicationStateStore({
+      initialState: initialState(safeProfile),
+      clock: options.clock,
+      initialEvents,
+      ...(options.journalKey === undefined ? {} : { journalKey: options.journalKey }),
+    })
+    const operations = new OperationAuthority()
+    const interactionRuntime =
+      options.interactionRuntime ??
+      options.execution.interactions ??
+      new UnavailableInteractionRuntime()
+    const state = this.#state.state()
+    this.#interactionController = new InteractionController({
+      runtime: interactionRuntime,
+      clock: options.clock,
+      ids: options.ids,
+      ...(options.secretResponseKey === undefined && options.journalKey === undefined
+        ? {}
+        : { secretResponseKey: options.secretResponseKey ?? options.journalKey }),
+      ...(options.feedbackCapture === undefined
+        ? {}
+        : { feedbackCapture: options.feedbackCapture }),
+      ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
+      operationAuthority: operations,
+      applicationState: this.#state,
+      defaultContext: {
+        profileDigest: canonicalDigest(state.profile),
+        conversationId: state.conversationId,
+        branchId: state.branchId,
+        ...(state.profile.model?.default === undefined
           ? {}
-          : { feedbackCapture: options.feedbackCapture }),
-      })
-      this.#interactionController.subscribe((_state, envelope) =>
-        this.#commit(envelope.event, envelope.eventId),
-      )
-    }
+          : { model: state.profile.model.default }),
+        ...(typeof state.profile.harness === 'string' ? { runner: state.profile.harness } : {}),
+      },
+    })
+    const execution = new RunExecutionService({
+      execution: options.execution,
+      profile: structuredClone(options.profile),
+      protectedValues: sensitiveProfileValues(options.profile),
+      state: this.#state,
+      receiveQuestion: (input) => this.#interactionController.receive(input),
+    })
+    this.#admission = new RunAdmissionService({
+      state: this.#state,
+      ids: options.ids,
+      operations,
+      execution,
+    })
+    this.#admission.rehydrate(initialEvents)
   }
 
   state(): BraidState {
-    return structuredClone(this.#state)
+    return this.#state.state()
   }
 
   events(): readonly BraidEventEnvelope[] {
-    return this.#journal.all()
+    return this.#state.events()
+  }
+
+  now(): string {
+    return this.#clock.now()
   }
 
   subscribe(subscriber: AppSubscriber): () => void {
-    this.#subscribers.add(subscriber)
-    return () => this.#subscribers.delete(subscriber)
+    return this.#state.subscribe(subscriber)
   }
 
-  interactionController(): InteractionController | undefined {
+  interactionController(): InteractionController {
     return this.#interactionController
   }
 
-  interactionCapabilities(): InteractionRuntimePort['capabilities'] | undefined {
-    return this.#interactionController?.capabilities()
+  interactionCapabilities(): InteractionRuntimePort['capabilities'] {
+    return this.#interactionController.capabilities()
   }
 
   receiveInteraction(input: ReceiveInteractionInput): InteractionReceiveResult & {
     readonly automation: Promise<InteractionResponseResult | undefined>
   } {
-    if (!this.#interactionController) {
-      throw new AppError(
-        'INTERACTION_UNAVAILABLE',
-        'The selected runtime does not expose interaction responses',
-      )
-    }
     return this.#interactionController.receive(input)
   }
 
   respondInteraction(input: RespondInteractionInput): Promise<InteractionResponseResult> {
-    if (!this.#interactionController) {
-      return Promise.reject(
-        new AppError(
-          'INTERACTION_UNAVAILABLE',
-          'The selected runtime does not expose interaction responses',
-        ),
-      )
-    }
     return this.#interactionController.respond(input)
   }
 
   cancelInteraction(input: CancelInteractionInput): Promise<InteractionResponseResult> {
-    if (!this.#interactionController) {
-      return Promise.reject(
-        new AppError(
-          'INTERACTION_UNAVAILABLE',
-          'The selected runtime does not expose interaction responses',
-        ),
-      )
-    }
     return this.#interactionController.cancel(input)
+  }
+
+  createAutomationRule(input: CreateAutomationRuleInput): AutomationRuleRecord {
+    return this.#interactionController.createAutomationRule(input)
+  }
+
+  updateAutomationRule(input: UpdateAutomationRuleInput): AutomationRuleRecord {
+    return this.#interactionController.updateAutomationRule(input)
+  }
+
+  dryRunAutomation(input: AutomationDryRunInput): Promise<AutomationDryRunResult> {
+    return this.#interactionController.dryRun(input)
+  }
+
+  disableAutomationRule(operationId: string, ruleId: string): boolean {
+    return this.#interactionController.disableAutomationRule(operationId, ruleId)
+  }
+
+  deleteAutomationRule(operationId: string, ruleId: string): boolean {
+    return this.#interactionController.deleteAutomationRule(operationId, ruleId)
+  }
+
+  waitForAutomation(): Promise<void> {
+    return this.#interactionController.waitForAutomation()
   }
 
   reconcileInteractions(input?: {
     readonly runId?: string
     readonly signal?: AbortSignal
   }): Promise<void> {
-    if (!this.#interactionController) return Promise.resolve()
     return this.#interactionController.reconcile(input)
   }
 
   initialize(workspace: string): BraidState {
-    if (!workspace) throw new AppError('INVALID_WORKSPACE', 'Workspace must not be empty')
-    if (this.#state.workspace === workspace) return this.state()
-    if (this.#state.workspace !== null) {
+    if (!workspace || utf8Bytes(workspace) > MAX_TEXT_BYTES) {
+      throw new AppError('INVALID_WORKSPACE', 'Workspace must be a bounded non-empty string')
+    }
+    const state = this.#state.state()
+    if (state.workspace === workspace) return state
+    if (state.workspace !== null) {
       throw new AppError('ALREADY_INITIALIZED', 'Braid is already initialized')
     }
-    this.#commit({ kind: 'workspace.opened', workspace })
-    return this.state()
+    this.#state.commit({ kind: 'workspace.opened', workspace: boundedText(workspace) })
+    return this.#state.state()
   }
 
   send(input: SendInput): SendReceipt {
-    const text = input.text
-    if (this.#state.workspace === null) {
-      throw new AppError('NOT_INITIALIZED', 'Initialize a workspace before sending')
-    }
-    if (!input.operationId) {
-      throw new AppError('OPERATION_ID_REQUIRED', 'send requires operationId')
-    }
-    if (!text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
-
-    const conversationId = input.conversationId ?? this.#state.conversationId
-    const branchId = input.branchId ?? this.#state.branchId
-    if (conversationId !== this.#state.conversationId || branchId !== this.#state.branchId) {
-      throw new AppError('UNKNOWN_BRANCH', 'The requested conversation branch is not open')
-    }
-
-    const digest = canonicalDigest({
-      command: 'send',
-      conversationId,
-      branchId,
-      text,
-      profile: this.#state.profile,
-    })
-    const previous = this.#operations.get(input.operationId)
-    if (previous) {
-      if (previous.digest !== digest) {
-        throw new AppError(
-          'OPERATION_CONFLICT',
-          `Operation ${input.operationId} was already used with different input`,
-        )
-      }
-      return {
-        operationId: input.operationId,
-        runId: previous.runId,
-        revision: this.#state.revision,
-        replayed: true,
-        completion: previous.completion.then(() => this.state()),
-      }
-    }
-    if (this.#state.activeRunId) {
-      throw new AppError('RUN_ACTIVE', `Run ${this.#state.activeRunId} is still active`)
-    }
-
-    if (this.#state.draft !== text) this.#commit({ kind: 'draft.changed', text })
-    const runId = this.#ids.next('run')
-    const turnId = this.#ids.next('turn')
-    this.#commit({
-      kind: 'run.requested',
-      operationId: input.operationId,
-      runId,
-      turnId,
-      userMessageId: this.#ids.next('message'),
-      assistantMessageId: this.#ids.next('message'),
-      text,
-    })
-
-    const operation: OperationRecord = {
-      digest,
-      runId,
-      completion: Promise.resolve(),
-    }
-    this.#operations.set(input.operationId, operation)
-    this.#activeAbort = new AbortController()
-    operation.completion = this.#execute(input.operationId, runId, text, this.#activeAbort)
-
-    return {
-      operationId: input.operationId,
-      runId,
-      revision: this.#state.revision,
-      replayed: false,
-      completion: operation.completion.then(() => this.state()),
-    }
+    return this.#admission.send(input)
   }
 
   cancelActive(): boolean {
-    if (!this.#activeAbort || this.#activeAbort.signal.aborted) return false
-    this.#activeAbort.abort(new Error('Cancelled by user'))
-    return true
+    return this.#admission.cancelActive()
   }
 
-  async waitForIdle(): Promise<BraidState> {
-    const activeRun = this.#state.activeRunId
-    if (!activeRun) return this.state()
-    const operation = [...this.#operations.values()].find((entry) => entry.runId === activeRun)
-    if (operation) await operation.completion
-    return this.state()
+  waitForIdle(): Promise<BraidState> {
+    return this.#admission.waitForIdle()
   }
 
-  async #execute(
-    operationId: string,
-    runId: string,
-    text: string,
-    abort: AbortController,
-  ): Promise<void> {
-    let terminalSeen = false
-    try {
-      const stream = this.#execution.streamTurn({
-        operationId,
-        runId,
-        text,
-        profile: this.#state.profile,
-        signal: abort.signal,
-      })
-      for await (const runtimeEvent of stream) {
-        if (runtimeEvent.type === 'text_delta' && runtimeEvent.text) {
-          this.#commit({ kind: 'run.text.delta', runId, text: runtimeEvent.text })
-        } else if (runtimeEvent.type === 'final') {
-          terminalSeen = true
-          this.#commit({
-            kind: 'run.finished',
-            runId,
-            status: runtimeEvent.status,
-            finalText: runtimeEvent.text ?? '',
-            usage: usageFromFinal(runtimeEvent),
-            ...(runtimeEvent.error ? { error: runtimeEvent.error.message } : {}),
-          })
-        }
-      }
-      if (!terminalSeen) throw new Error('Runtime stream ended without a final event')
-    } catch (error) {
-      if (!terminalSeen) {
-        const message = error instanceof Error ? error.message : String(error)
-        this.#commit({
-          kind: 'run.finished',
-          runId,
-          status: abort.signal.aborted ? 'aborted' : 'failed',
-          finalText: '',
-          usage: { input: 0, output: 0 },
-          error: message,
-        })
-      }
-    } finally {
-      if (this.#activeAbort === abort) this.#activeAbort = undefined
-    }
-  }
-
-  #commit(event: BraidEvent, eventId?: string): void {
-    const envelope = this.#journal.envelope(this.#state, event, eventId)
-    const nextState = reduceEvent(this.#state, envelope)
-    this.#journal.append(envelope)
-    this.#state = nextState
-    for (const subscriber of this.#subscribers) subscriber(this.state(), structuredClone(envelope))
+  shutdown(): void {
+    this.#interactionController.dispose()
   }
 }

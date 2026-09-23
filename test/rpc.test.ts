@@ -59,6 +59,12 @@ test('keyboard and headless interaction submission share one canonical response'
         params: {
           runId: 'run-equivalence',
           interactionId: 'interaction-equivalence',
+          ...(view.profileDigest === undefined ? {} : { profileDigest: view.profileDigest }),
+          ...(view.conversationId === undefined ? {} : { conversationId: view.conversationId }),
+          ...(view.branchId === undefined ? {} : { branchId: view.branchId }),
+          ...(view.model === undefined ? {} : { model: view.model }),
+          ...(view.runner === undefined ? {} : { runner: view.runner }),
+          ...(view.requestRevision === undefined ? {} : { requestRevision: view.requestRevision }),
           response: keyboardResponse,
         },
       },
@@ -85,7 +91,7 @@ test('keyboard and headless interaction submission share one canonical response'
   assert.equal(app.state().interactions[0]?.status, 'resolved')
   assert.deepEqual(runtime.calls, [
     {
-      key: 'run-equivalence:interaction-equivalence',
+      key: '15:run-equivalence|23:interaction-equivalence',
       operationId: 'op-equivalence',
       outcome: 'accepted',
     },
@@ -388,12 +394,12 @@ test('JSONL bounds direct-response replay while operation replay stays safe', as
   assert.deepEqual(replayAcks[1], replayAcks[0])
 })
 
-test('JSONL evicts oldest responses when the replay payload budget is full', async () => {
+test('JSONL replays bounded state without duplicating the operation', async () => {
   const app = createBraidApplication({
     fixture: 'deterministic',
     profile: {
       ...DETERMINISTIC_PROFILE,
-      description: 'x'.repeat(3 * 1024 * 1024),
+      description: 'x'.repeat(256 * 1024),
     },
   })
   const states: Array<{ readonly requestId: string; readonly revision: number }> = []
@@ -430,66 +436,20 @@ test('JSONL evicts oldest responses when the replay payload budget is full', asy
 
   assert.equal(a.length, 2)
   assert.equal(c.length, 2)
-  assert.ok((a[1]?.revision ?? 0) > (a[0]?.revision ?? 0))
+  assert.equal(a[1]?.revision, a[0]?.revision)
   assert.equal(c[1]?.revision, c[0]?.revision)
 })
 
-test('JSONL rejects replay when one direct response exceeds the payload budget', async () => {
-  const app = createBraidApplication({
-    fixture: 'deterministic',
-    profile: {
-      ...DETERMINISTIC_PROFILE,
-      description: 'x'.repeat(RPC_REPLAY_MAX_BYTES),
-    },
-  })
-  const responses: Array<{
-    readonly type: BraidResponse['type']
-    readonly code?: string
-    readonly bytes: number
-  }> = []
-  await runRpc(
-    app,
-    requestInput([
-      {
-        version: 1,
-        requestId: 'req-init',
-        command: 'initialize',
-        params: { workspace: '/workspace' },
-      },
-      {
-        version: 1,
-        requestId: 'req-init',
-        command: 'initialize',
-        params: { workspace: '/workspace' },
-      },
-      {
-        version: 1,
-        requestId: 'req-init',
-        command: 'initialize',
-        params: { workspace: '/other' },
-      },
-      { version: 1, requestId: 'req-stop', command: 'shutdown' },
-    ]),
-    {
-      write: (chunk) => {
-        const response = JSON.parse(chunk) as BraidResponse
-        responses.push({
-          type: response.type,
-          ...(response.type === 'error' ? { code: response.code } : {}),
-          bytes: Buffer.byteLength(chunk),
-        })
-        return true
-      },
-    },
-  )
-  const oversized = responses.find(
-    (response) => response.type === 'state' && response.bytes > RPC_REPLAY_MAX_BYTES,
-  )
-  const errors = responses.filter((response) => response.type === 'error')
-
-  assert.ok(oversized)
-  assert.deepEqual(
-    errors.map((error) => error.code),
-    ['REQUEST_REPLAY_UNAVAILABLE', 'REQUEST_ID_CONFLICT'],
+test('profiles exceeding the external string bound are rejected before JSONL state exists', () => {
+  assert.throws(
+    () =>
+      createBraidApplication({
+        fixture: 'deterministic',
+        profile: {
+          ...DETERMINISTIC_PROFILE,
+          description: 'x'.repeat(RPC_REPLAY_MAX_BYTES),
+        },
+      }),
+    /UTF-8 byte limit/u,
   )
 })

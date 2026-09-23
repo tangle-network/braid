@@ -31,7 +31,11 @@ function visibleTail(text: string): string {
   return `…\n${text.slice(-MAX_VISIBLE_MESSAGE_CHARS)}`
 }
 
-export function buildAppView(state: BraidState, capabilities?: InteractionCapabilities): AppView {
+export function buildAppView(
+  state: BraidState,
+  capabilities?: InteractionCapabilities,
+  now = new Date().toISOString(),
+): AppView {
   const hiddenMessageCount = Math.max(0, state.messages.length - MAX_VISIBLE_MESSAGES)
   const messages = state.messages.slice(-MAX_VISIBLE_MESSAGES).map((message) => ({
     id: message.id,
@@ -41,7 +45,7 @@ export function buildAppView(state: BraidState, capabilities?: InteractionCapabi
   }))
   const fixture = state.profile.model?.default === 'fixture/deterministic'
   const latestRun = state.runs.at(-1)
-  const interactions = buildInteractionViews(state, new Date().toISOString(), capabilities)
+  const interactions = buildInteractionViews(state, now, capabilities)
   const status = state.interactions.some(
     (interaction) => interaction.status === 'pending' || interaction.status === 'responding',
   )
@@ -70,9 +74,9 @@ export function buildAppView(state: BraidState, capabilities?: InteractionCapabi
 
   return Object.freeze({
     revision: state.revision,
-    profileName: state.profile.name ?? 'Unnamed profile',
-    runner: state.profile.harness ?? 'automatic',
-    model: state.profile.model?.default ?? 'automatic',
+    profileName: sanitizeTerminalText(state.profile.name ?? 'Unnamed profile'),
+    runner: sanitizeTerminalText(state.profile.harness ?? 'automatic'),
+    model: sanitizeTerminalText(state.profile.model?.default ?? 'automatic'),
     connection: fixture ? 'deterministic fixture' : 'not connected',
     status,
     statusText: sanitizeTerminalText(statusText),

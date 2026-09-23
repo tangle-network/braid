@@ -12,6 +12,8 @@ import { sanitizeTerminalText } from './sanitize.js'
 
 export type InteractionSurface = 'question' | 'permission' | 'plan' | 'generic'
 
+const KNOWN_INTERACTION_KINDS = new Set(['question', 'permission', 'plan'])
+
 export type AnswerFieldView =
   | {
       readonly type: 'text'
@@ -89,7 +91,11 @@ export interface InteractionViewModel {
   readonly profileDigest?: string
   readonly connectionId?: string
   readonly workspaceId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+  readonly model?: string
   readonly runner?: string
+  readonly requestRevision?: number
   readonly kind: string
   readonly surface: InteractionSurface
   readonly title: string
@@ -296,6 +302,7 @@ export function buildInteractionView(
   const remaining = remainingMs(record, now)
   const answerSpec = buildAnswerSpecViewForCapabilities(record.request.answerSpec, capabilities)
   const unsupportedKind = capabilities && !capabilities.kinds.includes(record.request.kind)
+  const unknownKind = !KNOWN_INTERACTION_KINDS.has(record.request.kind)
   const supportsSecret = !answerSpec.containsSecret || capabilities?.secretAnswers !== false
   const serialQueueBlocked =
     capabilities?.concurrentRequests === false && ordered[0]?.key !== record.key
@@ -314,7 +321,11 @@ export function buildInteractionView(
     ...(record.profileDigest === undefined ? {} : { profileDigest: record.profileDigest }),
     ...(record.connectionId === undefined ? {} : { connectionId: record.connectionId }),
     ...(record.workspaceId === undefined ? {} : { workspaceId: record.workspaceId }),
+    ...(record.conversationId === undefined ? {} : { conversationId: record.conversationId }),
+    ...(record.branchId === undefined ? {} : { branchId: record.branchId }),
+    ...(record.model === undefined ? {} : { model: record.model }),
     ...(record.runner === undefined ? {} : { runner: record.runner }),
+    ...(record.requestRevision === undefined ? {} : { requestRevision: record.requestRevision }),
     kind: text(record.request.kind, 256),
     surface: surfaceFor(record.request.kind),
     title: text(record.request.title),
@@ -333,23 +344,29 @@ export function buildInteractionView(
       supportsSecret &&
       !permissionScopeUnavailable &&
       !unsupportedKind &&
+      !unknownKind &&
       !serialQueueBlocked,
     canCancel: active,
-    ...(unsupportedKind
-      ? { capabilityError: `This provider does not support ${record.request.kind} interactions.` }
-      : !supportsSecret
-        ? { capabilityError: 'This provider cannot receive secret answers.' }
-        : permissionScopeUnavailable
-          ? {
-              capabilityError:
-                'This provider does not support any permission scope offered by the request.',
-            }
-          : serialQueueBlocked
+    ...(unknownKind
+      ? {
+          capabilityError:
+            'This interaction kind is not supported by Braid and can only be cancelled.',
+        }
+      : unsupportedKind
+        ? { capabilityError: `This provider does not support ${record.request.kind} interactions.` }
+        : !supportsSecret
+          ? { capabilityError: 'This provider cannot receive secret answers.' }
+          : permissionScopeUnavailable
             ? {
                 capabilityError:
-                  'This provider accepts one interaction at a time; respond to the first request.',
+                  'This provider does not support any permission scope offered by the request.',
               }
-            : {}),
+            : serialQueueBlocked
+              ? {
+                  capabilityError:
+                    'This provider accepts one interaction at a time; respond to the first request.',
+                }
+              : {}),
   })
 }
 

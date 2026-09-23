@@ -1,5 +1,9 @@
 import { canonicalDigest } from '../domain/canonical.js'
-import { answerSpecContainsSecret, parseInteractionRequest } from '../domain/interaction.js'
+import {
+  answerSpecContainsSecret,
+  interactionRequestDigest,
+  parseInteractionRequest,
+} from '../domain/interaction.js'
 import {
   interactionKey,
   type InteractionRecord,
@@ -10,6 +14,7 @@ import type { InteractionReceiveResult, ReceiveInteractionInput } from '../ports
 import { InteractionError } from './interaction-error.js'
 import { addMilliseconds } from './interaction-controller-utils.js'
 import type { InteractionPersistence } from './interaction-persistence.js'
+import { assertReceiveInputBounded } from './interaction-input-bounds.js'
 
 export interface AdmissionResult extends InteractionReceiveResult {
   readonly record?: InteractionRecord
@@ -23,6 +28,9 @@ export class InteractionAdmission {
         readonly profileDigest?: string
         readonly connectionId?: string
         readonly workspaceId?: string
+        readonly conversationId?: string
+        readonly branchId?: string
+        readonly model?: string
         readonly runner?: string
       }
     | undefined
@@ -34,6 +42,9 @@ export class InteractionAdmission {
       readonly profileDigest?: string
       readonly connectionId?: string
       readonly workspaceId?: string
+      readonly conversationId?: string
+      readonly branchId?: string
+      readonly model?: string
       readonly runner?: string
     }
   }) {
@@ -43,6 +54,14 @@ export class InteractionAdmission {
   }
 
   receive(input: ReceiveInteractionInput): AdmissionResult {
+    try {
+      assertReceiveInputBounded(input)
+    } catch (error) {
+      throw new InteractionError(
+        'INVALID_INTERACTION',
+        error instanceof Error ? error.message : 'Interaction identity is invalid',
+      )
+    }
     const parsed = parseInteractionRequest(input.request)
     if (!parsed.ok) {
       throw new InteractionError('INVALID_INTERACTION', parsed.errors[0] ?? 'Invalid interaction')
@@ -51,10 +70,22 @@ export class InteractionAdmission {
     const state = this.#persistence.state()
     const existing = state.interactions.find((item) => item.key === key)
     if (existing) {
-      if (canonicalDigest(existing.request) !== canonicalDigest(parsed.safeRequest)) {
+      const requestDigest = interactionRequestDigest(parsed.safeRequest)
+      if (
+        (existing.requestDigest ?? canonicalDigest(existing.request)) !== requestDigest ||
+        existing.providerSessionId !== input.providerSessionId ||
+        existing.profileDigest !== (input.profileDigest ?? this.#defaultContext?.profileDigest) ||
+        existing.connectionId !== (input.connectionId ?? this.#defaultContext?.connectionId) ||
+        existing.workspaceId !== (input.workspaceId ?? this.#defaultContext?.workspaceId) ||
+        existing.conversationId !==
+          (input.conversationId ?? this.#defaultContext?.conversationId) ||
+        existing.branchId !== (input.branchId ?? this.#defaultContext?.branchId) ||
+        existing.model !== (input.model ?? this.#defaultContext?.model) ||
+        existing.runner !== (input.runner ?? this.#defaultContext?.runner)
+      ) {
         throw new InteractionError(
-          'INTERACTION_CONFLICT',
-          'Interaction identity was reused with different content',
+          'IDENTITY_CONFLICT',
+          'Interaction identity was reused with different binding or content',
         )
       }
       return {
@@ -80,8 +111,13 @@ export class InteractionAdmission {
       ...this.#contextValue('profileDigest', input.profileDigest),
       ...this.#contextValue('connectionId', input.connectionId),
       ...this.#contextValue('workspaceId', input.workspaceId),
+      ...this.#contextValue('conversationId', input.conversationId),
+      ...this.#contextValue('branchId', input.branchId),
+      ...this.#contextValue('model', input.model),
       ...this.#contextValue('runner', input.runner),
       request: parsed.safeRequest,
+      requestDigest: interactionRequestDigest(parsed.safeRequest),
+      requestRevision: state.revision + 1,
       status: 'pending',
       arrivalSequence: state.sequence + 1,
       createdAt,
@@ -104,9 +140,27 @@ export class InteractionAdmission {
   }
 
   #contextValue(
-    name: 'profileDigest' | 'connectionId' | 'workspaceId' | 'runner',
+    name:
+      | 'profileDigest'
+      | 'connectionId'
+      | 'workspaceId'
+      | 'conversationId'
+      | 'branchId'
+      | 'model'
+      | 'runner',
     value: string | undefined,
-  ): Partial<Pick<InteractionRecord, 'profileDigest' | 'connectionId' | 'workspaceId' | 'runner'>> {
+  ): Partial<
+    Pick<
+      InteractionRecord,
+      | 'profileDigest'
+      | 'connectionId'
+      | 'workspaceId'
+      | 'conversationId'
+      | 'branchId'
+      | 'model'
+      | 'runner'
+    >
+  > {
     const selected = value ?? this.#defaultContext?.[name]
     return selected === undefined ? {} : { [name]: selected }
   }

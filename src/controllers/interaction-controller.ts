@@ -10,6 +10,8 @@ import type {
   RespondInteractionInput,
 } from '../ports/interactions.js'
 import type { InteractionQueueState } from '../domain/interaction-state.js'
+import { randomBytes } from 'node:crypto'
+import type { Scheduler } from '../ports/scheduler.js'
 import { InteractionAdmission } from './interaction-admission.js'
 import { InteractionAutomationRules } from './interaction-automation-rules.js'
 import { InteractionPersistence } from './interaction-persistence.js'
@@ -21,7 +23,12 @@ import type {
   CreateAutomationRuleInput,
   InteractionControllerOptions,
   InteractionSubscriber,
+  UpdateAutomationRuleInput,
 } from './interaction-controller-types.js'
+import { SystemScheduler } from '../ports/scheduler.js'
+import { OperationAuthority } from '../domain/operation-authority.js'
+
+const DEFAULT_SECRET_RESPONSE_KEY = randomBytes(32)
 
 export { InteractionError } from './interaction-error.js'
 export type {
@@ -31,6 +38,7 @@ export type {
   CreateAutomationRuleInput,
   InteractionControllerOptions,
   InteractionSubscriber,
+  UpdateAutomationRuleInput,
 } from './interaction-controller-types.js'
 
 export class InteractionController implements InteractionControllerPort {
@@ -41,15 +49,21 @@ export class InteractionController implements InteractionControllerPort {
   readonly #response: InteractionResponse
   readonly #reconciliation: InteractionReconciliation
   readonly #automation: InteractionAutomationRules
+  readonly #scheduler: Scheduler
 
   constructor(options: InteractionControllerOptions) {
     this.#runtime = options.runtime
     this.#clock = options.clock
+    this.#scheduler = options.scheduler ?? new SystemScheduler()
+    const operationAuthority = options.operationAuthority ?? new OperationAuthority()
     this.#persistence = new InteractionPersistence({
       clock: options.clock,
       ids: options.ids,
       ...(options.initialState === undefined ? {} : { initialState: options.initialState }),
       ...(options.initialEvents === undefined ? {} : { initialEvents: options.initialEvents }),
+      ...(options.applicationState === undefined
+        ? {}
+        : { applicationState: options.applicationState }),
     })
     this.#admission = new InteractionAdmission({
       persistence: this.#persistence,
@@ -63,6 +77,9 @@ export class InteractionController implements InteractionControllerPort {
       clock: options.clock,
       ids: options.ids,
       feedbackCapture: options.feedbackCapture !== false,
+      scheduler: this.#scheduler,
+      secretKey: options.secretResponseKey ?? DEFAULT_SECRET_RESPONSE_KEY,
+      operationAuthority,
       automationRuleFor: (key) => automationRef.service?.ruleIdForInteraction(key),
     })
     this.#automation = new InteractionAutomationRules({
@@ -71,13 +88,23 @@ export class InteractionController implements InteractionControllerPort {
       ids: options.ids,
       capabilities: options.runtime.capabilities,
       ...(options.defaultContext === undefined ? {} : { defaultContext: options.defaultContext }),
-      respond: (input, automated) => this.#response.respond(input, automated),
+      operationAuthority,
+      respond: (input, automated) => this.#respondWithReconciliation(input, automated),
     })
     automationRef.service = this.#automation
     this.#reconciliation = new InteractionReconciliation({
       persistence: this.#persistence,
       runtime: options.runtime,
+      clock: options.clock,
     })
+    for (const interaction of this.#persistence.state().interactions) {
+      this.#response.schedule(interaction)
+    }
+    if ((options.initialEvents?.length ?? 0) > 0) {
+      queueMicrotask(() => void this.reconcile().then(() => this.#scheduleAutomation()))
+    } else {
+      this.#scheduleAutomation()
+    }
   }
 
   state(): InteractionQueueState {
@@ -111,6 +138,7 @@ export class InteractionController implements InteractionControllerPort {
     if (!admission.record) {
       return { ...admission, automation: Promise.resolve(undefined) }
     }
+    this.#response.schedule(admission.record)
     return {
       key: admission.key,
       replayed: admission.replayed,
@@ -125,19 +153,26 @@ export class InteractionController implements InteractionControllerPort {
   }
 
   respond(input: RespondInteractionInput): Promise<InteractionResponseResult> {
-    return this.#response.respond(input)
+    return this.#respondWithReconciliation(input, false)
   }
 
   cancel(input: CancelInteractionInput): Promise<InteractionResponseResult> {
     return this.#response.cancel(input)
   }
 
-  reconcile(input: { readonly runId?: string; readonly signal?: AbortSignal } = {}): Promise<void> {
-    return this.#reconciliation.reconcile(input)
+  async reconcile(
+    input: { readonly runId?: string; readonly signal?: AbortSignal } = {},
+  ): Promise<void> {
+    await this.#reconciliation.reconcile(input)
+    this.#automation.reconcileOutcomes()
   }
 
   tick(now = this.#clock.now()): Promise<void> {
     return this.#response.tick(now)
+  }
+
+  dispose(): void {
+    this.#response.dispose()
   }
 
   waitForAutomation(): Promise<void> {
@@ -145,18 +180,45 @@ export class InteractionController implements InteractionControllerPort {
   }
 
   createAutomationRule(input: CreateAutomationRuleInput) {
-    return this.#automation.create(input)
+    return this.#automation.commands.create(input)
+  }
+
+  updateAutomationRule(input: UpdateAutomationRuleInput) {
+    return this.#automation.commands.update(input)
   }
 
   dryRun(input: AutomationDryRunInput): Promise<AutomationDryRunResult> {
-    return this.#automation.dryRun(input)
+    return this.#automation.commands.dryRun(input)
   }
 
   disableAutomationRule(operationId: string, ruleId: string): boolean {
-    return this.#automation.disable(operationId, ruleId)
+    return this.#automation.commands.disable(operationId, ruleId)
   }
 
   deleteAutomationRule(operationId: string, ruleId: string): boolean {
-    return this.#automation.delete(operationId, ruleId)
+    return this.#automation.commands.delete(operationId, ruleId)
+  }
+
+  #scheduleAutomation(): void {
+    for (const interaction of this.#persistence.state().interactions) {
+      if (interaction.status === 'pending') this.#automation.schedule(interaction)
+    }
+  }
+
+  async #respondWithReconciliation(
+    input: RespondInteractionInput,
+    automated: boolean,
+  ): Promise<InteractionResponseResult> {
+    const result = await this.#response.respond(input, automated)
+    if (
+      result.status === 'transport_error' ||
+      result.status === 'unknown' ||
+      result.status === 'unknown_interaction' ||
+      result.status === 'unknown_run'
+    ) {
+      await this.#reconciliation.reconcile({ runId: input.runId })
+    }
+    this.#automation.reconcileOutcomes()
+    return result
   }
 }
