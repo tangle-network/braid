@@ -7,6 +7,7 @@ import {
   scalarMeasurement,
 } from './contracts.mjs'
 import {
+  admittedCancellationSupport,
   closeSession,
   configEvidence,
   prepareProductionWorkspace,
@@ -72,7 +73,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
       marker: tokenMarker('TANGLE_INFERENCE'),
       prompt: `Reply with exactly ${tokenMarker('TANGLE_INFERENCE')}.`,
     })
-    if (normal.run.capabilities?.controls?.cancel === true) {
+    if (admittedCancellationSupport(normal.run, normal.response.admission)) {
       cancelled = await runHeadlessCancellation({
         binary,
         config,
@@ -85,6 +86,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
       cancellation = await verifyUnavailableCancellation({
         session: normal.session,
         run: normal.run,
+        admission: normal.response.admission,
         marker: 'TANGLE_INFERENCE_CANCEL',
       })
     }
