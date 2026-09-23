@@ -788,10 +788,29 @@ test('LIVE-09 reconciles a source run that is still live when its send settles',
     /Source run run-source stayed running for 5000ms after its send settled/u,
   )
 
+  let aborted = false
+  let settledAfterAbort = false
   await assert.rejects(
-    settledSourceState({ reconcileRun: () => new Promise(() => undefined) }, 'run-source', live, {
-      timeoutMs: 20,
-    }),
+    settledSourceState(
+      {
+        reconcileRun: ({ signal }) =>
+          new Promise((_, reject) => {
+            signal.addEventListener('abort', () => {
+              aborted = true
+              setTimeout(() => {
+                settledAfterAbort = true
+                reject(new Error('aborted'))
+              }, 5)
+            })
+          }),
+      },
+      'run-source',
+      live,
+      { timeoutMs: 20 },
+    ),
     /reconciliation exceeded the 20ms settle deadline/u,
   )
+  // The stalled request is aborted and settles before settling reports the timeout.
+  assert.equal(aborted, true)
+  assert.equal(settledAfterAbort, true)
 })

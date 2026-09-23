@@ -594,30 +594,36 @@ export async function settledSourceState(
   if (TERMINAL_RUN_STATUSES.has(statusIn(state))) return state
   const deadline = now() + timeoutMs
   for (let attempt = 1; ; attempt += 1) {
-    // A stalled status request must not outlive the deadline and delay the source cleanup.
+    // A stalled status request is aborted at the deadline and settled before cleanup runs.
+    const controller = new AbortController()
     let timer
-    const expired = new Promise((_, reject) => {
+    let timedOut = false
+    const request = app.reconcileRun({
+      operationId: `op-live-required-source-settle-${runId}-${String(attempt)}`,
+      runId,
+      signal: controller.signal,
+    })
+    const expired = new Promise((resolvePromise) => {
       timer = setTimeout(
-        () =>
-          reject(
-            new Error(
-              `Source run ${runId} reconciliation exceeded the ${timeoutMs}ms settle deadline`,
-            ),
-          ),
+        () => {
+          timedOut = true
+          controller.abort()
+          resolvePromise()
+        },
         Math.max(0, deadline - now()),
       )
     })
     let reconciled
     try {
-      reconciled = await Promise.race([
-        app.reconcileRun({
-          operationId: `op-live-required-source-settle-${runId}-${String(attempt)}`,
-          runId,
-        }),
-        expired,
-      ])
+      reconciled = await Promise.race([request, expired])
     } finally {
       clearTimeout(timer)
+    }
+    if (timedOut) {
+      await request.catch(() => undefined)
+      throw new Error(
+        `Source run ${runId} reconciliation exceeded the ${timeoutMs}ms settle deadline`,
+      )
     }
     if (TERMINAL_RUN_STATUSES.has(statusIn(reconciled))) return reconciled
     if (now() >= deadline)

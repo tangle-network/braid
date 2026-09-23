@@ -502,6 +502,30 @@ test('status reconciliation never regresses a committed terminal run from a stal
   assert.equal(app.state().runs[0]?.status, 'completed')
 })
 
+test('status reconciliation forwards the caller abort signal to the provider status request', async () => {
+  let received: AbortSignal | undefined
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+      yield finalEvent('terminal')
+    },
+    status: async (input) => {
+      received = input.signal
+      return { runId: input.runId, status: 'completed' }
+    },
+  }
+  const app = appFor(execution)
+  const receipt = app.send({ operationId: 'op-status-signal', text: 'reconcile' })
+  await receipt.completion
+  const controller = new AbortController()
+  await app.reconcileRun({
+    operationId: 'op-reconcile-signal',
+    runId: receipt.runId,
+    signal: controller.signal,
+  })
+  assert.equal(received, controller.signal)
+})
+
 test('native continuation requires and records a matching provider boundary proof', async () => {
   const controlRef = {
     runId: 'provider-run-native',

@@ -99,6 +99,7 @@ export async function reconcileRun(
       ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
       ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     })
   } catch (error) {
     if (!context.isTerminal(run.status))
