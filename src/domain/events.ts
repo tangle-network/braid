@@ -180,8 +180,11 @@ export interface DomainBraidEventMap {
     readonly detail?: string
     readonly provider?: ProviderEventMeta
   }
-  /** Records the one run whose controls receive unqualified user actions. */
-  readonly 'run.focused': { readonly runId: RunId | null }
+  /** Older records lack selection and changed only the target of unqualified controls. */
+  readonly 'run.focused': {
+    readonly runId: RunId | null
+    readonly selection?: { readonly conversationId: ConversationId; readonly branchId: BranchId }
+  }
   /**
    * A cancellation correction must carry the durable cancel operation id.
    * Ordinary provider reconciliation has no operation id.

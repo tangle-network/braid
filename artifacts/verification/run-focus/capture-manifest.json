@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-23T23:09:46.575Z",
+  "command": "pnpm capture:run-focus",
+  "execution": "local deterministic fixture; not provider integration proof",
+  "storage": "encrypted SQLite, closed and reopened before keyboard navigation",
+  "keyboard": "F2, Tab, Down, Enter, Escape to select completed Alpha from Beta",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.4",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.20.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "40x12.txt",
+      "sha256": "3d4d85272304be5c25bbdf92423abc9b8cfec1c87419b5f9a12c47c0a833259d",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12.png",
+      "sha256": "5e0edb75cc7b74303c3ba2365e395b907ac91250da03250cb3f1eba9026b1d0b",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24.txt",
+      "sha256": "4ae0e63df5fc6dfa3ce505c28e635d4f3b51431d65c04f8f3a6a0bc000bb27f7",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24.png",
+      "sha256": "07a7a67516bba4b1313a6d3a5f1620b17a3956b19d1934818acb153fafbde1ad",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-keyboard.gif",
+      "sha256": "57abb7f1120268bc95bc5a896724963c338345f8c9c47907b128b7d3f3eb684a",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40.txt",
+      "sha256": "2a939a043cc609d20a6fbc8d7342af9b4c659806cb175d3c7f505004e90c8347",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40.png",
+      "sha256": "04e1c3b6a1670cd7fb4859d2c296e64d6c2e25ef76595327aa5615907fcdaca4",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60.txt",
+      "sha256": "81959476221cbd90d9f08069c7f80a2eb130e7f5fd042c73dc12ad671421db2d",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60.png",
+      "sha256": "f5e1101452b166a074abcf129b9cdea5ff386885f9618dcc613e6dc22d003ea7",
+      "columns": 200,
+      "rows": 60
+    }
+  ]
+}

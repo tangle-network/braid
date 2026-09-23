@@ -620,10 +620,10 @@ test('conversation commands work through the real terminal input path', async ()
   await done
 })
 
-test('cancel command follows the focused live run across conversations', async () => {
+test('cancel command follows the focused run and its conversation during concurrent work', async () => {
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 10_000 })
   app.initialize('/workspace')
-  await app.conversations.lifecycle.create({
+  const first = await app.conversations.lifecycle.create({
     operationId: 'op-tui-focus-cancel-create-first',
     title: 'Parallel run A',
   })
@@ -634,7 +634,7 @@ test('cancel command follows the focused live run across conversations', async (
   await firstRun.admissionReady
   await waitUntil(() => app.state().activeRuns.length === 1)
 
-  const second = await app.conversations.lifecycle.create({
+  await app.conversations.lifecycle.create({
     operationId: 'op-tui-focus-cancel-create-second',
     title: 'Parallel run B',
   })
@@ -648,9 +648,9 @@ test('cancel command follows the focused live run across conversations', async (
 
   const controller = createApplicationUiController(app)
   const before = controller.view()
-  assert.equal(before.conversationId, second.id)
-  assert.equal(before.conversationTitle, second.title)
-  assert.equal(before.activeRunId, secondRun.runId)
+  assert.equal(before.conversationId, first.id)
+  assert.equal(before.conversationTitle, first.title)
+  assert.equal(before.activeRunId, firstRun.runId)
   assert.equal(before.focusedRunId, firstRun.runId)
 
   const terminal = new VirtualTerminal(80, 24)

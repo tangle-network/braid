@@ -548,8 +548,17 @@ export class BraidApplication {
     operationId(input.operationId, 'focus-run')
     const run = this.#state.runs.find((candidate) => candidate.id === input.runId)
     if (!run) throw new AppError('UNKNOWN_RUN', `Run ${input.runId} is unknown`)
-    if (this.#state.focusedRunId === run.id) return this.state()
-    this.#commit({ kind: 'run.focused', runId: run.id })
+    if (
+      this.#state.focusedRunId === run.id &&
+      this.#state.conversationId === run.conversationId &&
+      this.#state.branchId === run.branchId
+    )
+      return this.state()
+    this.#commit({
+      kind: 'run.focused',
+      runId: run.id,
+      selection: { conversationId: run.conversationId, branchId: run.branchId },
+    })
     return this.state()
   }
 

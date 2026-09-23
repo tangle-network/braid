@@ -94,6 +94,8 @@ Queue draining leaves entries behind a live run and starts eligible entries on o
 
 Conversation and branch selection focus the active run for the selected target without stopping background readers.
 
+Run focus selects that run's conversation and branch while preserving every other reader.
+
 Control requests carry the explicit target run identifier so a background run cannot receive focus-dependent control by accident.
 
 Restart reconciliation scans every locally live run and performs provider status or replay recovery concurrently.
