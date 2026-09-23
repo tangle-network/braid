@@ -114,7 +114,7 @@ function assertBranchAWorkspaceProof(proof) {
     'LIVE-07 branch A provider file did not contain the exact marker bytes',
   )
   assert(
-    workspace.gitExitCode === 0 && workspace.gitWorktree === true,
+    workspace.gitExitCode === 0 && workspace.gitStdout === 'true' && workspace.gitWorktree === true,
     'LIVE-07 branch A provider workspace did not prove a Git worktree',
   )
 }

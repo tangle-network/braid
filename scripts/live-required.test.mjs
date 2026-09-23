@@ -459,6 +459,12 @@ test('LIVE-07 release artifact validation requires complete multirun evidence an
         ...validMultirunProof(),
         cancellation: { ...validMultirunProof().cancellation, dispatch: null },
       },
+      ...['', 'false'].map((gitStdout) => ({
+        ...validMultirunProof(),
+        workspace: {
+          branchA: { ...validMultirunProof().workspace.branchA, gitStdout },
+        },
+      })),
     ]) {
       await writeFile(artifactPath, `${JSON.stringify(proof)}\n`)
       const invalid = await readLiveTangleProof({
