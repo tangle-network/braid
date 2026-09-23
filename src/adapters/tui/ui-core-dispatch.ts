@@ -318,7 +318,7 @@ function responseForIntent(
                 ['allow_once', 'allow_session', 'allow_always'].includes(rawValue)
               ? rawValue
               : 'allow_once'
-    return { id: interactionId, outcome: 'accepted', data: { grant } }
+    return { id: interactionId, outcome: 'accepted', data: { grant: [grant] } }
   }
   if (!field || rawValue === undefined) return { id: interactionId, outcome: 'accepted' }
   const fieldValue = field.type === 'select' ? [String(rawValue)] : rawValue

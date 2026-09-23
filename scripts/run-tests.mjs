@@ -115,6 +115,7 @@ const scopeFiles = {
     'tui-conversations.test.js',
     'tui-core-workflows.test.js',
     'tui-interaction-security.test.js',
+    'tui-permission-response.test.js',
     'tui-refresh-lifecycle.test.js',
     'tui.test.js',
     'w6-ui.test.js',
