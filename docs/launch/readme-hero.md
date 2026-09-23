@@ -35,7 +35,7 @@ Without a Tangle key, choose **Local CLI Bridge** during setup and Braid uses th
 
 - The headline names three runners because they are the ones with live proof.
   `claude-code` is a valid runner name but has no current live proof; add it only after one exists.
-- Pi-then-Codex in one conversation is proven on 0.3.0: the 0.3.0 packed CLI Bridge release proof ([`artifacts/verification/live/bridge/evidence.json`](../../artifacts/verification/live/bridge/evidence.json), merged in [#68](https://github.com/tangle-network/braid/pull/68)): LIVE-01..05 passed on Braid `5cafc42ff` with CLI Bridge `de0c588`, and LIVE-02 handed one conversation from Pi (`pi/tangle-router/glm-5.2`) to `codex/default`.
+- Pi-then-Codex in one conversation is proven on 0.3.0: the 0.3.0 packed CLI Bridge release proof ([`artifacts/verification/live/bridge/evidence.json`](artifacts/verification/live/bridge/evidence.json), merged in [#68](https://github.com/tangle-network/braid/pull/68)): LIVE-01..05 passed on Braid `5cafc42ff` with CLI Bridge `de0c588`, and LIVE-02 handed one conversation from Pi (`pi/tangle-router/glm-5.2`) to `codex/default`.
   Users need a CLI Bridge that includes [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235) (`git pull && pnpm install`, then restart it).
 - The two remaining proofs predate 0.3.0: 2026-08-15 and 2026-09-01.
   Replace them with 0.3.0 receipts once a Live Evidence run passes and uploads its bundle.
