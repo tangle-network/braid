@@ -30,6 +30,7 @@ interface FakeExecution {
   status: 'running' | 'completed' | 'cancelled' | 'failed'
   text: string
   error?: string
+  failureReported?: boolean
   readonly waiters: Set<() => void>
 }
 
@@ -141,25 +142,18 @@ export class FakeTangleRetainedSandbox {
    */
   fail(executionId: string, error: string): void {
     const execution = this.#requireExecution(executionId)
-    const frame = (type: string, data: Record<string, unknown>) =>
-      ({
-        type,
-        id: `event-${executionId}-${execution.events.length + 1}`,
-        data: { type, ...data },
-      }) as SandboxEvent
-    const nativeSessionId = `ses_native_${executionId}`
-    execution.events.push(frame('session.updated', { sessionId: nativeSessionId }))
-    execution.events.push(frame('warning', { code: 'OPENCODE_ERROR', message: error }))
-    execution.events.push(frame('status', { status: 'failed', detail: error }))
+    if (execution.failureReported !== true) this.reportFailure(executionId, error)
     execution.events.push(
-      frame('raw', {
+      this.#frame(execution, 'raw', {
         backend: 'opencode',
         event: { type: 'error', sessionID: 'ses_native', error: { name: 'APIError' } },
       }),
     )
-    execution.events.push(frame('status', { status: 'failed', detail: `${error} (exit code 1)` }))
     execution.events.push(
-      frame('error', {
+      this.#frame(execution, 'status', { status: 'failed', detail: `${error} (exit code 1)` }),
+    )
+    execution.events.push(
+      this.#frame(execution, 'error', {
         usageMode: 'cumulative',
         tokensKnown: false,
         usdKnown: false,
@@ -168,10 +162,40 @@ export class FakeTangleRetainedSandbox {
     )
     execution.events.push({
       type: 'done',
-      data: { status: 'failed', sessionId: nativeSessionId, executionId },
+      data: { status: 'failed', sessionId: this.#nativeSessionId(executionId), executionId },
     } as SandboxEvent)
     execution.error = `opencode execution failed: ${error} (exit code 1)`
     this.#settle(executionId, 'failed', '')
+  }
+
+  /**
+   * Stream the head of that failure, through `status: failed`, while the execution and its
+   * result stay unsettled. `fail` later completes the same stream.
+   */
+  reportFailure(executionId: string, error: string): void {
+    const execution = this.#requireExecution(executionId)
+    execution.failureReported = true
+    execution.events.push(
+      this.#frame(execution, 'session.updated', { sessionId: this.#nativeSessionId(executionId) }),
+    )
+    execution.events.push(
+      this.#frame(execution, 'warning', { code: 'OPENCODE_ERROR', message: error }),
+    )
+    execution.events.push(this.#frame(execution, 'status', { status: 'failed', detail: error }))
+    for (const waiter of execution.waiters) waiter()
+    execution.waiters.clear()
+  }
+
+  #nativeSessionId(executionId: string): string {
+    return `ses_native_${executionId}`
+  }
+
+  #frame(execution: FakeExecution, type: string, data: Record<string, unknown>): SandboxEvent {
+    return {
+      type,
+      id: `event-${execution.executionId}-${execution.events.length + 1}`,
+      data: { type, ...data },
+    } as SandboxEvent
   }
 
   controlRefForExecution(executionId: string): AgentExactRunControlRef | null {

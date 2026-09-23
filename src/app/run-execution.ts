@@ -1,16 +1,12 @@
 import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
 import { type BraidRuntimeEvent, isRuntimeEventEnvelope } from '../domain/runtime-events.js'
-import { activeRunForBranch, type RunStatus } from '../domain/state.js'
+import { activeRunForBranch } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
-import {
-  eventIdFor,
-  providerMeta,
-  statusFromCanonical,
-  terminalStatus,
-} from './run-event-mapper.js'
+import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
+import { continuesTerminal } from './run-final-recovery.js'
 import { reconnectRun } from './run-replay.js'
 
 export async function executeRun(
@@ -127,26 +123,6 @@ function reachedTerminalByStatus(
   return (
     result.accepted && event.type === 'status' && context.isTerminal(context.findRun(runId).status)
   )
-}
-
-/**
- * A provider can report a terminal status before the stream's final event.
- * Only that final carries the exact result: its error, reason, and usage.
- * Retained Tangle runs stream `status: failed` and then project the final from the result endpoint.
- * Reading stops at the first event that would contradict the terminal status.
- */
-function continuesTerminal(status: RunStatus, event: BraidRuntimeEvent): boolean {
-  switch (event.type) {
-    case 'final':
-      return terminalStatus(event.status) === status
-    case 'status':
-      return statusFromCanonical(event.status) === status
-    case 'interaction':
-    case 'interaction.cancel':
-      return false
-    default:
-      return true
-  }
 }
 
 async function finishWithoutTerminal(

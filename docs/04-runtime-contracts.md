@@ -756,6 +756,9 @@ Terminal run status is immutable except for an explicit correction from unknown 
 A provider `status` frame can make a run terminal before the stream's final event.
 Braid keeps reading that stream until the final event, which carries the exact result error, reason, and usage.
 Reading stops at the first event that contradicts the terminal status.
+If Braid exits before that final event, the journal still shows a terminal `run.status.changed` with no `run.finished`.
+On restart Braid replays such an exactly bound run after its saved cursor, within a bounded deadline, to read the final result.
+That replay ingests only events that continue the committed status, so the terminal status never regresses.
 
 ## Version and release order
 

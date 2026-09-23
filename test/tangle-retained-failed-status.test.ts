@@ -6,7 +6,10 @@ import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { TangleRetainedExecutionPort } from '../src/adapters/runtime/tangle-retained-execution.js'
-import { createDurableBraidApplication } from '../src/app/composition.js'
+import {
+  createDurableBraidApplication,
+  type DurableBraidApplication,
+} from '../src/app/composition.js'
 import { RandomIds } from '../src/ports/ids.js'
 import {
   FakeTangleRetainedSandbox,
@@ -24,9 +27,11 @@ const profile = defineAgentProfile({
 const FAILURE =
   'Trusted pricing is unavailable for the direct provider selected for model "tangle-router/glm-5.3".'
 
-test('a retained run that streams status failed records the exact result failure', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'braid-tangle-failed-'))
-  const sandbox = new FakeTangleRetainedSandbox()
+function openApp(
+  sandbox: FakeTangleRetainedSandbox,
+  root: string,
+  credentialStore: MemoryCredentialStore,
+): Promise<DurableBraidApplication> {
   const prepare = (input: { readonly runId: string; readonly providerSessionId?: string }) =>
     prepareFakeTangleRetainedConnection({
       sandbox,
@@ -37,10 +42,10 @@ test('a retained run that streams status failed records the exact result failure
         ? {}
         : { providerSessionId: input.providerSessionId }),
     })
-  const opened = await createDurableBraidApplication({
+  return createDurableBraidApplication({
     path: join(root, 'braid.db'),
     workspaceRoot: root,
-    credentialStore: new MemoryCredentialStore(),
+    credentialStore,
     profile,
     execution: new TangleRetainedExecutionPort({
       resolve: (input) =>
@@ -52,27 +57,42 @@ test('a retained run that streams status failed records the exact result failure
     }),
     ids: new RandomIds(),
   })
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for retained state')
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+}
+
+function runTrail(opened: DurableBraidApplication, runId: string) {
+  return opened.app
+    .events()
+    .filter((entry) => 'runId' in entry.event && entry.event.runId === runId)
+    .map((entry) => entry.event)
+}
+
+test('a retained run that streams status failed records the exact result failure', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-tangle-failed-'))
+  const sandbox = new FakeTangleRetainedSandbox()
+  const opened = await openApp(sandbox, root, new MemoryCredentialStore())
   try {
     opened.app.initialize(root)
     await opened.app.whenDurable()
     const turn = opened.app.send({ operationId: 'operation-failed-status', text: 'Reply DONE.' })
     await turn.admissionReady
-    const deadline = Date.now() + 5_000
-    while (sandbox.dispatches.length === 0 && Date.now() < deadline)
-      await new Promise((resolve) => setTimeout(resolve, 2))
+    await waitFor(() => sandbox.dispatches.length > 0)
     sandbox.fail(sandbox.dispatches[0]?.executionId ?? '', FAILURE)
     await turn.completion
     const run = opened.app.state().runs.find((candidate) => candidate.id === turn.runId)
-    const trail = opened.app
-      .events()
-      .filter((entry) => 'runId' in entry.event && entry.event.runId === turn.runId)
-      .map((entry) => entry.event)
+    const trail = runTrail(opened, turn.runId)
     const kinds = trail.map((event) => event.kind).join('\n')
     assert.equal(run?.status, 'failed', kinds)
     assert.equal(run?.complete, true, kinds)
     // The status frame alone carries no result; the exact result's failure must reach the run.
-    const finished = trail.filter((event) => event.kind === 'run.finished')
-    assert.equal(finished.length, 1, kinds)
+    assert.equal(trail.filter((event) => event.kind === 'run.finished').length, 1, kinds)
     // Braid persists typed diagnostics, never provider prose, so the result failure arrives as codes.
     assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
     assert.equal(run?.terminalReason, 'RUNTIME_FINAL_REASON', kinds)
@@ -82,3 +102,64 @@ test('a retained run that streams status failed records the exact result failure
     await rm(root, { recursive: true, force: true })
   }
 })
+
+for (const outcome of ['failed', 'completed'] as const) {
+  test(`restart reads the final result of a run that exited terminal by status (provider ${outcome})`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'braid-tangle-failed-restart-'))
+    const sandbox = new FakeTangleRetainedSandbox()
+    const credentials = new MemoryCredentialStore()
+    let first: DurableBraidApplication | undefined
+    let restarted: DurableBraidApplication | undefined
+    try {
+      first = await openApp(sandbox, root, credentials)
+      first.app.initialize(root)
+      await first.app.whenDurable()
+      const turn = first.app.send({ operationId: 'operation-failed-restart', text: 'Reply DONE.' })
+      await turn.admissionReady
+      await waitFor(() => sandbox.dispatches.length > 0)
+      const executionId = sandbox.dispatches[0]?.executionId ?? ''
+      // Braid exits after it commits `status: failed` and before the final event arrives.
+      sandbox.reportFailure(executionId, FAILURE)
+      const app = first.app
+      await waitFor(
+        () =>
+          app.state().runs.find((candidate) => candidate.id === turn.runId)?.status === 'failed',
+      )
+      await first.app.whenDurable()
+      const before = runTrail(first, turn.runId)
+      assert.equal(before.filter((event) => event.kind === 'run.finished').length, 0)
+      await first.app.close()
+      first = undefined
+
+      if (outcome === 'failed') sandbox.fail(executionId, FAILURE)
+      else sandbox.complete(executionId, 'DONE')
+      restarted = await openApp(sandbox, root, credentials)
+      await restarted.app.whenDurable()
+      const run = restarted.app.state().runs.find((candidate) => candidate.id === turn.runId)
+      const trail = runTrail(restarted, turn.runId)
+      const kinds = trail.map((event) => event.kind).join('\n')
+      // The committed terminal status never regresses, whatever the provider replays.
+      assert.equal(run?.status, 'failed', kinds)
+      assert.equal(run?.complete, true, kinds)
+      assert.equal(
+        trail.some((event) => event.kind === 'run.reconnecting' || event.kind === 'run.unknown'),
+        false,
+        kinds,
+      )
+      const finished = trail.filter((event) => event.kind === 'run.finished')
+      if (outcome === 'failed') {
+        assert.equal(finished.length, 1, kinds)
+        assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
+        assert.equal(run?.terminalReason, 'RUNTIME_FINAL_REASON', kinds)
+      } else {
+        // A final that contradicts the committed status is not ingested.
+        assert.equal(finished.length, 0, kinds)
+        assert.equal(run?.error, undefined, kinds)
+      }
+    } finally {
+      await first?.app.close()
+      await restarted?.app.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+}

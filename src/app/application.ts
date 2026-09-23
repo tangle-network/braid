@@ -65,6 +65,7 @@ import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { snapshotRunExecution } from './run-execution-snapshot.js'
 import { createRunLedger } from './run-ledger.js'
+import { recoverPendingFinalResults } from './run-final-recovery.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
 import { shutdownApplication } from './shutdown-controller.js'
@@ -328,7 +329,12 @@ export class BraidApplication {
       state: () => this.#state,
       ledger: this.#ledger,
     })
-    const runReconciliation = reconcileRestartRun(this.#portViews.restart)
+    const runReconciliation = reconcileRestartRun(this.#portViews.restart).then(() =>
+      recoverPendingFinalResults(
+        this.#portViews.replay,
+        this.#journal.loadEvents?.bind(this.#journal),
+      ),
+    )
     this.#restartReconciliation = runReconciliation
       .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
       .catch((error: unknown) => {
