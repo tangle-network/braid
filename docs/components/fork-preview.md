@@ -68,7 +68,7 @@ The configured adapter capability must agree with the provider-backed source env
 
 Braid does not downgrade a confidential request to an ordinary workspace fork when any requirement is absent.
 
-The installed Tangle provider `1.1.4` with Sandbox `0.37.0` narrows `branching.confidential` to `false` when the selected adapter configuration lacks snapshot-restore inputs.
+The installed Tangle provider `1.6.0` with Sandbox `0.45.0` always narrows `branching.confidential` to `false` because the deployed Tangle job carries no snapshot-restore inputs.
 
 This is installed-provider behavior, not a live capability observation.
 
