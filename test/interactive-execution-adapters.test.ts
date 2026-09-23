@@ -25,7 +25,9 @@ import type { PreparedTangleRetainedConnection } from '../src/adapters/runtime/p
 import {
   assertInteractiveProvider,
   interactiveEnvironment,
+  interactiveMaterializationReceipt,
 } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
@@ -537,6 +539,27 @@ test('retained runtime receives the canonical workspace request without a provid
 
   assert.deepEqual(environment.workspace, workspaceRequest)
   assert.equal(Object.hasOwn(environment, 'cwd'), false)
+})
+
+test('interactive admission binds the requested resources to its materialization digest', async () => {
+  const fixture = interactiveFixture()
+  const resources = { cpu: 2, memoryMb: 4_096, diskMb: 10_240, gpu: 'l4' }
+  const prepared = { ...fixture.prepared, resourceRequest: resources }
+  const input = executionInput('run/resources', async () => {})
+  const withoutResources = await interactivePort(fixture, new NativeInteractiveRunBroker()).admit(
+    input,
+  )
+  const withResources = await new TangleRetainedInteractiveExecutionPort({
+    broker: new NativeInteractiveRunBroker(),
+    resolve: async () => prepared,
+  }).admit(input)
+
+  assert.deepEqual(interactiveEnvironment(prepared, input.runId).resources, resources)
+  assert.equal(
+    interactiveMaterializationReceipt(prepared).resourceRequestDigest,
+    canonicalDigest(resources),
+  )
+  assert.notEqual(withResources.materializationDigest, withoutResources.materializationDigest)
 })
 
 test('native interactive admission does not advertise structured responses it cannot route', async () => {

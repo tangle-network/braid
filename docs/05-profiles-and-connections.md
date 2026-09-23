@@ -281,7 +281,8 @@ A Tangle Sandbox connection can set `resources` to request CPU cores, memory, di
 Braid sends that request with every ephemeral, retained, and interactive environment create.
 CPU, memory, and disk must be positive integers, and disk must be a whole number of GiB.
 Braid rejects provider-native resource options and resources on other connection kinds.
-The environment request digest in the materialization receipt includes the resource request.
+Headless materialization receipts include the resource request in the environment request digest.
+Interactive materialization receipts include a separate digest of the resource request.
 The environment view shows the requested resources beside any values the provider reports.
 
 The ephemeral path deletes its environment after one turn.

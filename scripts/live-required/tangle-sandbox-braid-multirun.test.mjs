@@ -230,7 +230,7 @@ test('branch A transcript proof rejects tool failures and requires one exact mar
           runId: 'run-a',
           role: 'assistant',
           text: 'wrote the marker\nMARKER_A',
-          parts: [{ kind: 'tool', text: 'write', status: 'complete' }],
+          parts: [{ kind: 'tool-call', text: 'write', status: 'complete' }],
         },
         { runId: 'run-b', role: 'assistant', text: 'MARKER_A', parts: [] },
       ],
@@ -248,8 +248,8 @@ test('branch A transcript proof rejects tool failures and requires one exact mar
     failedToolPartCount: 0,
   })
   for (const part of [
-    { kind: 'tool', status: 'failed' },
-    { kind: 'result', status: 'complete', error: 'RUNTIME_TOOL_ERROR' },
+    { kind: 'tool-call', status: 'failed' },
+    { kind: 'tool-result', status: 'complete', error: 'RUNTIME_TOOL_ERROR' },
   ]) {
     assert.throws(
       () =>

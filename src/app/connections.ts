@@ -256,6 +256,9 @@ function freezeConnectionRecord(record: ConnectionRecord): ConnectionRecord {
     ...(record.providerOptions.capabilityHints === undefined
       ? {}
       : { capabilityHints: Object.freeze([...record.providerOptions.capabilityHints]) }),
+    ...(record.providerOptions.resources === undefined
+      ? {}
+      : { resources: Object.freeze({ ...record.providerOptions.resources }) }),
   })
   const lastHealth = Object.freeze({ ...record.lastHealth })
   const lastModelVerification =

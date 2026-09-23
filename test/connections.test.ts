@@ -129,6 +129,37 @@ test('connection records stay secret-free and selection is exact', () => {
   )
 })
 
+test('connection resource requests cannot change through source or registry references', () => {
+  const resources = { cpu: 2, memoryMb: 4_096 }
+  const record = {
+    ...connection('tangle-sandbox', 'frozen-resources', 'https://sandbox.test'),
+    providerOptions: { transport: 'https' as const, resources },
+  }
+  const registry = new ConnectionRegistry([record])
+  const stored = registry.get(record.id)
+  assert.ok(stored)
+  const storedResources = stored.providerOptions.resources
+  assert.ok(storedResources)
+  assert.notEqual(storedResources, resources)
+  assert.equal(Object.isFrozen(storedResources), true)
+  assert.equal(Reflect.set(storedResources, 'cpu', 9), false)
+  resources.cpu = 8
+  assert.deepEqual(registry.select({ connectionId: record.id }).record.providerOptions.resources, {
+    cpu: 2,
+    memoryMb: 4_096,
+  })
+
+  const updatedResources = { cpu: 3 }
+  const updated = registry.upsert({
+    ...record,
+    updatedAt: '2026-08-03T12:00:01.000Z',
+    providerOptions: { transport: 'https', resources: updatedResources },
+  })
+  updatedResources.cpu = 7
+  assert.equal(updated.providerOptions.resources?.cpu, 3)
+  assert.equal(Object.isFrozen(updated.providerOptions.resources), true)
+})
+
 test('Tangle inference keeps its saved root while Runtime receives the v1 API root', () => {
   assert.equal(
     normalizeTangleInferenceRuntimeBaseUrl('https://router.tangle.tools'),

@@ -618,13 +618,13 @@ export function exactTranscriptMarkerLineCount(frame, runId, marker) {
     .filter((line) => line === marker).length
 }
 
-/** Counts failed tool calls and results in the current transcript part vocabulary. */
+/** Counts failed tool calls and results in the persisted state part vocabulary. */
 export function failedToolPartCountForRun(frame, runId) {
   return messagesForRun(frame, runId)
     .flatMap((message) => (Array.isArray(message.parts) ? message.parts : []))
     .filter(
       (part) =>
-        (part?.kind === 'tool' || part?.kind === 'result') &&
+        (part?.kind === 'tool-call' || part?.kind === 'tool-result') &&
         (part?.status === 'failed' || typeof part?.error === 'string'),
     ).length
 }
