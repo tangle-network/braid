@@ -21,6 +21,8 @@ export async function* streamRetainedExecution(input: {
   readonly terminalResult?: Promise<RetainedTurnResult>
   /** The run is already terminal from an earlier streamed status. */
   readonly afterTerminalStatus?: boolean
+  /** Bounds the exact result read once the event stream has ended. */
+  readonly resultTimeoutMs?: number
 }): AsyncGenerator<RuntimeEventEnvelope> {
   const reader = new AbortController()
   const previous = input.state.replaceReader(input.runId, reader)
@@ -82,10 +84,11 @@ export async function* streamRetainedExecution(input: {
       // rejects; without this read, the run's failure detail and usage are lost.
       if (!terminalStatusSeen || signal.aborted) throw error
     }
-    // A stalled result endpoint must not hold the turn open past cancellation or the deadline.
+    // A stalled result endpoint must not hold the turn open. Cancellation does not abort this
+    // read: a cancelled run still reports its exact final result through the terminal promise.
     const result = await abortable(
       input.terminalResult ?? input.handle.result(),
-      AbortSignal.any([signal, AbortSignal.timeout(RESULT_READ_TIMEOUT_MS)]),
+      AbortSignal.timeout(input.resultTimeoutMs ?? RESULT_READ_TIMEOUT_MS),
     )
     sequence += 1
     yield input.plan.projectFinal({ runId: input.runId, sequence, result })

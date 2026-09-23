@@ -5,7 +5,7 @@ import type { RetainedExecutionPlan } from '../src/adapters/runtime/retained-exe
 import type { RetainedExecutionState } from '../src/adapters/runtime/retained-execution-state.js'
 import { streamRetainedExecution } from '../src/adapters/runtime/retained-execution-stream.js'
 
-test('a stalled result read after a failed status stops when the run is cancelled', async () => {
+test('a stalled result read after a failed status stops at its deadline', async () => {
   const handle = {
     controlRef: { environmentId: 'sandbox-stalled' },
     async *events() {
@@ -24,19 +24,20 @@ test('a stalled result read after a failed status stops when the run is cancelle
     clearReader: () => undefined,
   } as unknown as RetainedExecutionState
   const plan = { projectFinal: assert.fail } as unknown as RetainedExecutionPlan
-  const cancel = new AbortController()
   const stream = streamRetainedExecution({
     runId: 'run-stalled',
     handle,
     plan,
     state,
-    signal: cancel.signal,
+    signal: new AbortController().signal,
     includeObservation: false,
     afterSequence: 1,
+    resultTimeoutMs: 20,
   })
   const first = await stream.next()
   assert.equal(first.done, false)
-  const pending = stream.next()
-  setTimeout(() => cancel.abort(new Error('run cancelled')), 10)
-  await assert.rejects(pending, /run cancelled/u)
+  await assert.rejects(stream.next(), (error: unknown) => {
+    assert.equal((error as Error).name, 'TimeoutError')
+    return true
+  })
 })

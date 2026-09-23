@@ -62,7 +62,15 @@ export async function executeRun(
       if (context.ledger.isDetached(admission.runId)) break
       const status = context.findRun(admission.runId).status
       const event = isRuntimeEventEnvelope(runtimeEvent) ? runtimeEvent.event : runtimeEvent
-      if (context.isTerminal(status) && !(awaitingFinal && continuesTerminal(status, event))) break
+      if (context.isTerminal(status)) {
+        if (!(awaitingFinal && continuesTerminal(status, event))) break
+        // A gap after a terminal status would record reconnection and reopen the proven run.
+        if (
+          isRuntimeEventEnvelope(runtimeEvent) &&
+          runtimeEvent.sequence > context.findRun(admission.runId).lastProviderSequence + 1
+        )
+          break
+      }
       if (terminalSeen) break
       if (isRuntimeEventEnvelope(runtimeEvent)) {
         const result = await context.ingestRuntimeEvent(runtimeEvent)
