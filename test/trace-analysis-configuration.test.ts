@@ -46,6 +46,13 @@ import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 const NOW = '2026-08-03T20:00:00.000Z'
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 }
 
+test('managed analysis cutoff includes the pinned RPC release artifacts', () => {
+  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, '0.183.0')
+  // https://pypi.org/pypi/agent-eval-rpc/0.183.0/json
+  const lastArtifactPublishedAt = Date.parse('2026-09-18T01:39:08.823Z')
+  assert.ok(Date.parse(MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF) > lastArtifactPublishedAt)
+})
+
 test('managed analysis uses bundled uv with exact isolated runtime versions', () => {
   const launcher = '/opt/braid/node_modules/@dataiku/uv/bin.cjs'
   const runner = managedAnalysisRunner({
