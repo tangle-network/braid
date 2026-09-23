@@ -1,4 +1,4 @@
-import { isLiveRunStatus, type BraidRun, type BraidState, type RunStatus } from '../domain/state.js'
+import { type BraidRun, type BraidState, isLiveRunStatus, type RunStatus } from '../domain/state.js'
 import type { StateReader, StatusPort } from './application-ports.js'
 import { AppError } from './errors.js'
 
@@ -31,31 +31,65 @@ export async function waitForRun(context: StatusPort, runId: string): Promise<Br
   return structuredClone(context.currentState())
 }
 
+/**
+ * Waits until no live run remains.
+ * A detached retained run keeps its remote work but is not live, so it never holds the wait.
+ * A live run whose local operation has settled, or that has no operation, can still be
+ * advanced by provider reconciliation, so the wait resumes on the next state transition.
+ * Every iteration awaits an unsettled operation or a state transition; re-awaiting a settled
+ * promise would loop on microtasks and starve timers.
+ */
 export async function waitForIdle(context: StatusPort): Promise<BraidState> {
   await Promise.resolve()
+  const settled = new WeakSet<Promise<unknown>>()
+  const observed = new WeakSet<Promise<unknown>>()
+  const observe = (completion: Promise<unknown>): void => {
+    if (observed.has(completion)) return
+    observed.add(completion)
+    const markSettled = () => settled.add(completion)
+    completion.then(markSettled, markSettled)
+  }
   for (;;) {
-    const state = context.currentState()
-    const runIds = new Set(
-      (state.activeRuns ?? [])
-        .filter((run) => {
-          const record = state.runs.find((candidate) => candidate.id === run.runId)
-          return record !== undefined && isLiveRunStatus(record.status)
-        })
-        .map((run) => run.runId),
-    )
-    if (runIds.size === 0 && state.activeRunId !== null) runIds.add(state.activeRunId)
-    const waits: Promise<unknown>[] = []
-    for (const runId of runIds) {
-      const control = context.ledger.controlForRun(runId)
-      if (control) {
-        await control.acknowledgement
-        const controlledRun = context.currentState().runs.find((run) => run.id === runId)
-        if (controlledRun === undefined || isTerminal(controlledRun.status)) continue
+    const subscription = new AbortController()
+    try {
+      // Subscribe before reading so a transition during the checks below still wakes the wait.
+      const stateChanged = context.nextStateChange(subscription.signal)
+      const state = context.currentState()
+      const isLive = (runId: string): boolean => {
+        const record = state.runs.find((candidate) => candidate.id === runId)
+        return record !== undefined && isLiveRunStatus(record.status)
       }
-      const operation = context.ledger.operationForRun(runId)
-      if (operation) waits.push(operation.completion)
+      const runIds = new Set(
+        (state.activeRuns ?? []).map((run) => run.runId).filter((runId) => isLive(runId)),
+      )
+      if (runIds.size === 0 && state.activeRunId !== null && isLive(state.activeRunId))
+        runIds.add(state.activeRunId)
+      const waits: Promise<unknown>[] = []
+      let awaitsStateChange = false
+      for (const runId of runIds) {
+        const control = context.ledger.controlForRun(runId)
+        if (control) {
+          await control.acknowledgement
+          const controlledRun = context.currentState().runs.find((run) => run.id === runId)
+          if (controlledRun === undefined || !isLiveRunStatus(controlledRun.status)) continue
+        }
+        const operation = context.ledger.operationForRun(runId)
+        if (operation === undefined || settled.has(operation.completion)) {
+          awaitsStateChange = true
+          continue
+        }
+        observe(operation.completion)
+        waits.push(operation.completion)
+      }
+      if (waits.length === 0 && !awaitsStateChange) {
+        // A control acknowledgement can admit another live run; re-evaluate a changed state.
+        if (context.currentState().revision !== state.revision) continue
+        return structuredClone(context.currentState())
+      }
+      await Promise.race([...waits, stateChanged])
+    } finally {
+      // Every exit from this iteration drops its waiter, including an early return.
+      subscription.abort()
     }
-    if (waits.length === 0) return structuredClone(context.currentState())
-    await Promise.all(waits)
   }
 }

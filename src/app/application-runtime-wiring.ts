@@ -55,9 +55,30 @@ export interface ApplicationRuntimeWiring {
 export function wireApplicationRuntime(
   input: ApplicationRuntimeWiringInput,
 ): ApplicationRuntimeWiring {
+  // setState is the single post-construction state mutation, so waiters observe the new state.
+  const stateWaiters = new Set<() => void>()
+  const setState = (state: BraidState): void => {
+    input.setState(state)
+    for (const wake of [...stateWaiters]) wake()
+  }
+  // Aborting the signal removes the waiter, so abandoned waits do not accumulate on a quiet app.
+  const nextStateChange = (signal: AbortSignal): Promise<void> =>
+    new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve()
+        return
+      }
+      const wake = (): void => {
+        stateWaiters.delete(wake)
+        signal.removeEventListener('abort', wake)
+        resolve()
+      }
+      stateWaiters.add(wake)
+      signal.addEventListener('abort', wake, { once: true })
+    })
   const transition = createTransitionHost({
     state: input.currentState,
-    setState: input.setState,
+    setState,
     journal: input.journal,
     clock: input.clock,
     providerEventKeys: input.ledger,
@@ -82,6 +103,7 @@ export function wireApplicationRuntime(
     effects: input.effects,
     journal: input.journal,
     flush: input.flush,
+    nextStateChange,
     storageFailure: input.storageFailure,
     executeControl: input.executeControl,
     admitPersistedSend: input.admitPersistedSend,

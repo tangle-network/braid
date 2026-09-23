@@ -51,6 +51,7 @@ export interface PortBuilderInput {
   readonly clock: Clock
   readonly ids: IdSource
   readonly flush: () => Promise<void>
+  readonly nextStateChange: (signal: AbortSignal) => Promise<void>
   readonly storageFailure: () => unknown
   readonly executeControl: (
     input: import('./application-ports.js').ControlEffectRequest,
@@ -118,7 +119,11 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
     ledger: input.ledger,
     ingestRuntimeEvent: ingestion.ingestRuntimeEvent,
   }
-  const status: StatusPort = { ...input.state, ledger: input.ledger }
+  const status: StatusPort = {
+    ...input.state,
+    ledger: input.ledger,
+    nextStateChange: input.nextStateChange,
+  }
   const executionRun: ExecutionRunPort = {
     ...input.state,
     ...input.journal,
