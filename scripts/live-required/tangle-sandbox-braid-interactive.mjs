@@ -41,6 +41,7 @@ import {
   createProviderObservationDeadline,
   waitForProviderObservation,
 } from './provider-observation.mjs'
+import { runCloudInteractionProof } from './tangle-sandbox-braid-cloud-interaction.mjs'
 import {
   accountIdentity,
   assertStableAccountIdentity,
@@ -111,6 +112,11 @@ const INTERACTIVE_PROOF_CHECKS = Object.freeze([
   'telemetry-complete',
   'spend-disclosed',
   'latency-observed',
+  'cloud-question-retained',
+  'cloud-process-reconnect',
+  'cloud-response-acknowledged',
+  'cloud-continued-once',
+  'cloud-exact-resource-cleanup',
 ])
 const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_AUTH',
@@ -150,19 +156,24 @@ function sanitizedEnvironment(environment) {
 }
 
 export function sandboxConfiguration(environment) {
-  return connectionConfiguration(configurationEnvironment(environment), {
-    prefix: 'BRAID_TANGLE_SANDBOX',
-    kind: 'tangle-sandbox',
-    endpointNames: ['BRAID_TANGLE_ENDPOINT'],
-    modelNames: ['BRAID_TANGLE_MODEL'],
-    runnerNames: ['BRAID_TANGLE_RUNNER'],
-    providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
-    modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
-    fallbackEndpoint: 'https://sandbox.tangle.tools',
-    fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
-    fallbackRunner: 'pi',
-    fallbackModelProvider: 'tangle-router',
-  })
+  return {
+    ...connectionConfiguration(configurationEnvironment(environment), {
+      prefix: 'BRAID_TANGLE_SANDBOX',
+      kind: 'tangle-sandbox',
+      endpointNames: ['BRAID_TANGLE_ENDPOINT'],
+      modelNames: ['BRAID_TANGLE_MODEL'],
+      runnerNames: [],
+      providerNames: ['BRAID_TANGLE_SANDBOX_PROVIDER'],
+      modelProviderNames: ['BRAID_TANGLE_SANDBOX_MODEL_PROVIDER'],
+      fallbackEndpoint: 'https://sandbox.tangle.tools',
+      fallbackModel: DEFAULT_TANGLE_ROUTER_MODEL,
+      fallbackRunner: 'pi',
+      fallbackModelProvider: 'tangle-router',
+    }),
+    // The canonical interaction and native terminal proofs use different runners.
+    // LIVE-07 may set BRAID_TANGLE_SANDBOX_RUNNER=opencode for its own cohort.
+    runner: 'pi',
+  }
 }
 
 export function isCancellableInteractiveRunStatus(status) {
@@ -1868,37 +1879,54 @@ export async function runInteractiveProof({
   invocationId = proofInvocation('live-tangle'),
 } = {}) {
   const startedAt = new Date().toISOString()
-  const proof = await runProof({ repository: targetRepository, environment })
+  const nativeTerminal = await runProof({ repository: targetRepository, environment })
+  const cloudInteraction = await runCloudInteractionProof({
+    repository: targetRepository,
+    environment,
+    values: sandboxConfiguration(environment),
+  })
+  assert.equal(
+    nativeTerminal.binary.tarballSha256,
+    cloudInteraction.binary.tarballSha256,
+    'LIVE-08 subproofs installed different Braid tarballs',
+  )
   const evidence = proofReceipt({
     invocationId,
     operation: PROOF_OPERATIONS.tangleSandboxInteractive,
     startedAt,
     completedAt: new Date().toISOString(),
-    config: proof.configuration,
-    runIds: [proof.run.localRunId],
-    environmentId: proof.run.controlRef.environmentId,
+    config: nativeTerminal.configuration,
+    runIds: [nativeTerminal.run.localRunId, cloudInteraction.runId],
+    environmentId: nativeTerminal.run.controlRef.environmentId,
     facts: {
-      environmentId: proof.run.controlRef.environmentId,
-      localRunId: proof.run.localRunId,
-      stoppedStatus: proof.run.stoppedStatus,
-      cloudControl: proof.run.controlRef,
-      exactResource: proof.checks.exactSandboxCleanup,
-      processExitedBeforeWorkspaceCleanup: proof.checks.processExitedBeforeWorkspaceCleanup,
-      terminalResize: proof.checks.terminalResize,
+      environmentId: nativeTerminal.run.controlRef.environmentId,
+      localRunId: nativeTerminal.run.localRunId,
+      stoppedStatus: nativeTerminal.run.stoppedStatus,
+      cloudControl: nativeTerminal.run.controlRef,
+      exactResource: nativeTerminal.checks.exactSandboxCleanup,
+      processExitedBeforeWorkspaceCleanup:
+        nativeTerminal.checks.processExitedBeforeWorkspaceCleanup,
+      terminalResize: nativeTerminal.checks.terminalResize,
       processGroupExitedBeforeWorkspaceCleanup:
-        proof.checks.processGroupExitedBeforeWorkspaceCleanup,
-      providerInput: proof.checks.providerBoundInput,
-      providerReconnect: proof.checks.providerBoundReconnect,
-      singleProviderExecution: proof.checks.singleProviderExecution,
-      exactOwnedResourceSetCleanup: proof.checks.exactOwnedResourceSetCleanup,
-      accountIdentityStable: proof.checks.accountIdentityStable,
-      activeResourceDelta: proof.usageDelta.activeSandboxes,
-      telemetryComplete: proof.checks.telemetryComplete,
-      spendDisclosed: proof.checks.spendDisclosed,
-      latencyObserved: proof.checks.latencyObserved,
+        nativeTerminal.checks.processGroupExitedBeforeWorkspaceCleanup,
+      providerInput: nativeTerminal.checks.providerBoundInput,
+      providerReconnect: nativeTerminal.checks.providerBoundReconnect,
+      singleProviderExecution: nativeTerminal.checks.singleProviderExecution,
+      exactOwnedResourceSetCleanup: nativeTerminal.checks.exactOwnedResourceSetCleanup,
+      accountIdentityStable: nativeTerminal.checks.accountIdentityStable,
+      activeResourceDelta: nativeTerminal.usageDelta.activeSandboxes,
+      telemetryComplete: nativeTerminal.checks.telemetryComplete,
+      spendDisclosed: nativeTerminal.checks.spendDisclosed,
+      latencyObserved: nativeTerminal.checks.latencyObserved,
+      cloudInteractionRunId: cloudInteraction.runId,
+      cloudInteractionEnvironmentId: cloudInteraction.controlRef.environmentId,
+      cloudInteractionId: cloudInteraction.interaction.interactionId,
+      cloudInteractionResponseOperationId: cloudInteraction.response.operationId,
+      cloudInteractionCompleted: cloudInteraction.interaction.terminalStatus === 'completed',
+      cloudInteractionCleanup: cloudInteraction.cleanup.confirmed === true,
     },
     checks: INTERACTIVE_PROOF_CHECKS,
-    observations: proof,
+    observations: { nativeTerminal, cloudInteraction },
     environment,
   })
   return {

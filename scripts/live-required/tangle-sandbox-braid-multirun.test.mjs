@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertMultirunProof } from './multirun-contract.mjs'
+import { assertMultirunProof, MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   activityBrowserOpen,
+  assertBranchATranscript,
+  assertBranchAWorkspace,
   assertFrameHasConcurrentRuns,
   assertSuccessfulTerminalExit,
+  assistantTranscriptForRun,
   cancellationDispatchVisible,
+  exactTranscriptMarkerLineCount,
+  failedToolPartCountForRun,
   frameCancellationDispatch,
   frameEventIds,
+  missingBranchAWorkspaceEvidence,
   renderedWorkStripCount,
   sendCancellationAfterActivityBrowserDismissal,
   terminalFailureEvidence,
@@ -216,6 +222,127 @@ test('multirun failure evidence retains the latest semantic frame and capture er
   assert.equal(evidence.outputTail, 'terminal output')
 })
 
+test('branch A transcript proof rejects tool failures and requires one exact marker line', () => {
+  const transcriptFrame = {
+    state: {
+      messages: [
+        {
+          runId: 'run-a',
+          role: 'assistant',
+          text: 'wrote the marker\nMARKER_A',
+          parts: [{ kind: 'tool-call', text: 'write', status: 'complete' }],
+        },
+        { runId: 'run-b', role: 'assistant', text: 'MARKER_A', parts: [] },
+      ],
+    },
+  }
+  assert.equal(assistantTranscriptForRun(transcriptFrame, 'run-a'), 'wrote the marker\nMARKER_A')
+  assert.equal(exactTranscriptMarkerLineCount(transcriptFrame, 'run-a', 'MARKER_A'), 1)
+  assert.equal(exactTranscriptMarkerLineCount(transcriptFrame, 'run-a', ''), 0)
+  assert.equal(failedToolPartCountForRun(transcriptFrame, 'run-a'), 0)
+  assert.deepEqual(assertBranchATranscript(transcriptFrame, 'run-a', 'MARKER_A'), {
+    marker: 'MARKER_A',
+    transcriptMarkerLineCount: 1,
+    transcriptMarkerMatched: true,
+    transcriptBytes: Buffer.byteLength('wrote the marker\nMARKER_A'),
+    failedToolPartCount: 0,
+  })
+  for (const part of [
+    { kind: 'tool-call', status: 'failed' },
+    { kind: 'tool-result', status: 'complete', error: 'RUNTIME_TOOL_ERROR' },
+  ]) {
+    assert.throws(
+      () =>
+        assertBranchATranscript(
+          {
+            state: {
+              messages: [{ runId: 'run-a', role: 'assistant', text: 'MARKER_A', parts: [part] }],
+            },
+          },
+          'run-a',
+          'MARKER_A',
+        ),
+      /1 failed tool parts/u,
+    )
+  }
+  assert.throws(
+    () => assertBranchATranscript({ state: { messages: [] } }, 'run-a', 'MARKER_A'),
+    /one exact marker line/u,
+  )
+  assert.throws(
+    () =>
+      assertBranchATranscript(
+        {
+          state: {
+            messages: [
+              { runId: 'run-a', role: 'assistant', text: 'MARKER_A\nMARKER_A', parts: [] },
+            ],
+          },
+        },
+        'run-a',
+        'MARKER_A',
+      ),
+    /one exact marker line/u,
+  )
+})
+
+function retainedWorkspaceBox({ value, gitExitCode = 0, gitStdout = 'true\n' }) {
+  const controlRef = { environmentId: 'sandbox-branch-a', sessionId: 'session-branch-a' }
+  const reads = []
+  const box = {
+    id: controlRef.environmentId,
+    name: `braid-${controlRef.sessionId}`,
+    metadata: { owner: 'braid', lifecycle: 'retained', providerSessionId: controlRef.sessionId },
+    async read(path) {
+      reads.push(path)
+      return value
+    },
+    async exec() {
+      return { exitCode: gitExitCode, stdout: gitStdout }
+    },
+  }
+  return { controlRef, reads, client: { get: async (id) => (id === box.id ? box : null) } }
+}
+
+test('branch A workspace proof reads exact marker bytes from the retained provider workspace', async () => {
+  const passing = retainedWorkspaceBox({ value: 'MARKER_A\n' })
+  assert.deepEqual(await assertBranchAWorkspace(passing.client, passing.controlRef, 'MARKER_A'), {
+    providerEnvironmentId: 'sandbox-branch-a',
+    path: '.braid-live/MARKER_A/marker.txt',
+    readValueJson: JSON.stringify('MARKER_A\n'),
+    readValueBytesBase64: Buffer.from('MARKER_A\n', 'utf8').toString('base64'),
+    readMatched: true,
+    gitExitCode: 0,
+    gitStdout: 'true',
+    gitWorktree: true,
+  })
+  assert.deepEqual(passing.reads, ['.braid-live/MARKER_A/marker.txt'])
+
+  const wrongBytes = retainedWorkspaceBox({ value: 'MARKER_A' })
+  await assert.rejects(
+    assertBranchAWorkspace(wrongBytes.client, wrongBytes.controlRef, 'MARKER_A'),
+    /did not contain the exact marker/u,
+  )
+  const notGit = retainedWorkspaceBox({ value: 'MARKER_A\n', gitExitCode: 128, gitStdout: '' })
+  await assert.rejects(
+    assertBranchAWorkspace(notGit.client, notGit.controlRef, 'MARKER_A'),
+    /Git check exited unsuccessfully/u,
+  )
+  const missing = retainedWorkspaceBox({ value: 'MARKER_A\n' })
+  await assert.rejects(
+    assertBranchAWorkspace({ get: async () => null }, missing.controlRef, 'MARKER_A'),
+    /did not resolve the exact retained Sandbox/u,
+  )
+})
+
+test('missing branch A workspace evidence cannot satisfy the multirun contract', () => {
+  const missing = missingBranchAWorkspaceEvidence('MARKER_A')
+  assert.equal(missing.readMatched, false)
+  assert.equal(missing.gitWorktree, false)
+  assert.equal(missing.transcriptMarkerLineCount, 0)
+  assert.equal(missing.path, '.braid-live/MARKER_A/marker.txt')
+})
+
 test('multirun release contract rejects missing, failed, or unclean evidence', () => {
   assert.throws(() => assertMultirunProof(undefined), /evidence is missing/u)
   assert.throws(
@@ -223,8 +350,7 @@ test('multirun release contract rejects missing, failed, or unclean evidence', (
     /evidence has an unsupported schema/u,
   )
   assert.throws(
-    () =>
-      assertMultirunProof({ schemaVersion: 'braid.live-required.multirun.v2', status: 'failed' }),
+    () => assertMultirunProof({ schemaVersion: MULTIRUN_PROOF_SCHEMA, status: 'failed' }),
     /evidence did not pass/u,
   )
 })

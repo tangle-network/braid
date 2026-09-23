@@ -88,6 +88,9 @@ Deadline updates do not rebuild the transcript.
 Tests cover every answer shape, keyboard acceptance, decline, timeout, cancel, duplicate event, response retry, restart, secret canaries, and unknown shapes.
 
 Live proof must keep a retained cloud interaction answerable after Braid reconnect and continue exactly once.
+The restarted Braid process must acknowledge reconnect and show the pending question in a durable `reconnecting` state before the response request.
+The release evidence must include that state boundary, the cloud interaction request, the durable Braid response acknowledgement, and the provider completion.
+The native terminal detach and reconnect proof is separate evidence and cannot satisfy the interaction response claim.
 
 ## Non-goals
 
