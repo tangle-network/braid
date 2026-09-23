@@ -389,7 +389,7 @@ test('usage and cancellation unavailable states cannot pass strict conformance',
 })
 
 test('interaction conformance ignores a pending interaction from another run', async () => {
-  const result = { targetKey: 'pi-test', requests: [] }
+  const result = { operationNamespace: 'proof-execution-a', targetKey: 'pi-test', requests: [] }
   const session = {
     send() {
       assert.fail('foreign interaction must not be answered')
@@ -964,7 +964,7 @@ test('failed release operations cancel active work and await RPC exit', async ()
       return { code: 0, signal: null }
     },
   }
-  const result = { targetKey: 'pi-test', requests: [] }
+  const result = { operationNamespace: 'proof-execution-a', targetKey: 'pi-test', requests: [] }
 
   const receipt = await cancelFailedTarget(session, result, {
     operationPrefix: 'interactive',

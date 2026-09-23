@@ -33,8 +33,9 @@ export function profileForBridgeTarget(target) {
     harness,
     model: {
       ...(provider === undefined ? {} : { provider }),
+      // No pinned effort: harness-wide effort lists do not prove what the selected model accepts
+      // (Codex lists `none`, its current default model rejects it), so each runner uses its default.
       default: model,
-      reasoningEffort: 'none',
     },
   }
 }
