@@ -312,6 +312,40 @@ test('duplicate ingestion does not duplicate a part and a sequence gap waits for
   await receipt.completion
 })
 
+test('a sequence gap after a failed status never reopens the proven terminal run', async () => {
+  const envelope = (sequence: number, event: RuntimeEventEnvelope['event']) =>
+    ({
+      runId: '',
+      eventId: `provider-gap-${String(sequence)}`,
+      sequence,
+      cursor: `cursor-${String(sequence)}`,
+      receivedAt: '2026-08-01T00:00:00.000Z',
+      event,
+    }) as RuntimeEventEnvelope
+  const execution: ExecutionPort = {
+    capabilities: () => REPLAY_CAPABILITIES,
+    async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope> {
+      yield { ...envelope(1, { type: 'status', status: 'failed' }), runId: input.runId }
+      // Sequence 2 never arrives; ingesting 3 would record a gap and reconnection.
+      yield {
+        ...envelope(3, { type: 'text_delta', text: 'after the gap' }),
+        runId: input.runId,
+      }
+    },
+    reconnect: () => ({
+      async *[Symbol.asyncIterator](): AsyncIterator<RuntimeEventEnvelope> {
+        yield* []
+      },
+    }),
+  }
+  const app = appFor(execution)
+  const state = await app.send({ operationId: 'op-gap-after-failed', text: 'fail' }).completion
+  assert.equal(state.runs[0]?.status, 'failed')
+  const kinds = app.events().map((entry) => entry.event.kind)
+  assert.equal(kinds.includes('run.reconnecting'), false)
+  assert.equal(kinds.includes('history.missing'), false)
+})
+
 test('a disconnected live iterator reconnects and replays before declaring an unknown run', async () => {
   const execution: ExecutionPort = {
     capabilities: () => REPLAY_CAPABILITIES,

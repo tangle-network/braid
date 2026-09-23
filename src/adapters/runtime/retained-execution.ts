@@ -145,6 +145,7 @@ export class RetainedExecutionPort implements ExecutionPort {
       readonly providerSessionId?: string
       readonly controlRef?: AgentExactRunControlRef
       readonly signal: AbortSignal
+      readonly afterTerminalStatus?: boolean
     } & RetainedExecutionRecoveryContext & {
         readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
       },
@@ -213,6 +214,7 @@ export class RetainedExecutionPort implements ExecutionPort {
         includeObservation: (input.afterSequence ?? 0) === 0,
         afterSequence: input.afterSequence ?? 0,
         ...(input.after === undefined ? {} : { after: input.after }),
+        ...(input.afterTerminalStatus === true ? { afterTerminalStatus: true } : {}),
       })
       return
     }
@@ -236,6 +238,7 @@ export class RetainedExecutionPort implements ExecutionPort {
       includeObservation: (input.afterSequence ?? 0) === 0,
       afterSequence: input.afterSequence ?? 0,
       ...(input.after === undefined ? {} : { after: input.after }),
+      ...(input.afterTerminalStatus === true ? { afterTerminalStatus: true } : {}),
     })
   }
 

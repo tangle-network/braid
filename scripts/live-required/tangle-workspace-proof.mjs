@@ -241,14 +241,58 @@ export function checkpointIdForOperation(state, operationId) {
   return state.checkpoints.find((candidate) => candidate.operationId === operationId)?.id
 }
 
-function sourceRunFor(state, runId) {
+const MAX_FAILURE_DETAIL_LENGTH = 300
+
+function boundedDetail(value) {
+  return String(value).slice(0, MAX_FAILURE_DETAIL_LENGTH)
+}
+
+/**
+ * Collect the failure detail Braid persisted for a run.
+ * Braid stores typed diagnostic codes, not provider prose.
+ * The detail is the run error, the terminal reason, status details, and warning codes.
+ */
+function sourceRunFailureDetail(run) {
+  const activity = run.activity ?? []
+  const labels = (type, withDetail) =>
+    [
+      ...new Set(
+        activity
+          .filter(
+            (entry) => entry.type === type && (!withDetail || typeof entry.detail === 'string'),
+          )
+          .map((entry) => (withDetail ? `${entry.label}: ${entry.detail}` : entry.label)),
+      ),
+    ].join(', ')
+  const statuses = labels('status', true)
+  const warnings = labels('run.warning', false)
+  return [
+    ...(typeof run.error === 'string' ? [`error ${boundedDetail(run.error)}`] : []),
+    ...(typeof run.terminalReason === 'string'
+      ? [`reason ${boundedDetail(run.terminalReason)}`]
+      : []),
+    ...(statuses.length === 0 ? [] : [`status ${boundedDetail(statuses)}`]),
+    ...(warnings.length === 0 ? [] : [`warnings ${boundedDetail(warnings)}`]),
+  ]
+}
+
+/**
+ * Judge the source run. `providerDetail` is the exact provider result failure, read separately
+ * because Braid never persists provider prose.
+ */
+export function sourceRunFor(state, runId, providerDetail) {
   const run = state.runs.find((candidate) => candidate.id === runId)
   if (run === undefined) throw new Error(`Source run ${runId} is missing from durable state`)
   if (run.status !== 'completed' || run.complete !== true) {
-    const error = typeof run.error === 'string' ? `; error: ${run.error.slice(0, 300)}` : ''
     const environment = state.environments.some((candidate) => candidate.id === run.environmentId)
+    const detail = [
+      ...sourceRunFailureDetail(run),
+      ...(typeof providerDetail === 'string' && providerDetail.length > 0
+        ? [`provider result ${boundedDetail(providerDetail)}`]
+        : []),
+    ]
     throw new Error(
-      `Source run ${runId} did not complete (status ${run.status}, complete ${String(run.complete)}, controlRef ${run.controlRef === undefined ? 'missing' : 'present'}, environment record ${environment ? 'present' : 'missing'}${error})`,
+      `Source run ${runId} did not complete (status ${run.status}, complete ${String(run.complete)}, controlRef ${run.controlRef === undefined ? 'missing' : 'present'}, environment record ${environment ? 'present' : 'missing'})${detail.length === 0 ? '' : `: ${detail.join('; ')}`}`,
     )
   }
   if (run.controlRef === undefined)
@@ -284,15 +328,19 @@ export function runtimeModuleRoot(repository, environment = process.env) {
 
 async function runtimeModules(repository, environment) {
   const dist = runtimeModuleRoot(repository, environment)
-  const [startup, application, credentials, connections, profiles, canonical] = await Promise.all([
-    import(pathToFileURL(join(dist, 'bin', 'production-startup.js')).href),
-    import(pathToFileURL(join(dist, 'bin', 'production-application.js')).href),
-    import(pathToFileURL(join(dist, 'bin', 'production-credential-context.js')).href),
-    import(pathToFileURL(join(dist, 'adapters', 'connections', 'production-connections.js')).href),
-    import(pathToFileURL(join(dist, 'adapters', 'agent-interface', 'profile-runtime.js')).href),
-    import(pathToFileURL(join(dist, 'domain', 'canonical.js')).href),
-  ])
-  return { startup, application, credentials, connections, profiles, canonical }
+  const [startup, application, credentials, connections, profiles, canonical, redaction] =
+    await Promise.all([
+      import(pathToFileURL(join(dist, 'bin', 'production-startup.js')).href),
+      import(pathToFileURL(join(dist, 'bin', 'production-application.js')).href),
+      import(pathToFileURL(join(dist, 'bin', 'production-credential-context.js')).href),
+      import(
+        pathToFileURL(join(dist, 'adapters', 'connections', 'production-connections.js')).href
+      ),
+      import(pathToFileURL(join(dist, 'adapters', 'agent-interface', 'profile-runtime.js')).href),
+      import(pathToFileURL(join(dist, 'domain', 'canonical.js')).href),
+      import(pathToFileURL(join(dist, 'domain', 'secret-sanitizer.js')).href),
+    ])
+  return { startup, application, credentials, connections, profiles, canonical, redaction }
 }
 
 async function openProofApplication({ repository, config, environment }) {
@@ -540,7 +588,53 @@ function providerAdapters(opened) {
     },
     freshEnvironment: (environmentId) =>
       getTangleSandboxEnvironment(opened.connection, options, environmentId),
+    // Read the exact retained result through the runtime reconnect path Braid itself uses.
+    retainedResult: async (controlRef) => {
+      if (typeof createProvider !== 'function')
+        throw new Error('The production connection does not expose the selected Tangle provider')
+      providerPromise ??= createProvider(opened.connection, options)
+      const provider = await providerPromise
+      const { reconnectRetainedRun } = await import('@tangle-network/agent-runtime/kernel')
+      const handle = await reconnectRetainedRun({ provider, controlRef })
+      if (handle === null) throw new Error('the provider no longer holds the exact run')
+      return handle.result()
+    },
   })
+}
+
+const PROVIDER_RESULT_TIMEOUT_MS = 30_000
+
+/**
+ * Explain a source run that did not complete with the provider's exact result failure.
+ * This is diagnostic only: a read failure is reported in place of the detail, never thrown.
+ */
+export async function providerFailureDetail(
+  adapters,
+  run,
+  redact = (text) => text,
+  timeoutMs = PROVIDER_RESULT_TIMEOUT_MS,
+) {
+  if (run === undefined || (run.status === 'completed' && run.complete === true)) return undefined
+  if (run.controlRef === undefined) return 'unavailable: no exact control reference'
+  let timer
+  try {
+    const result = await Promise.race([
+      adapters.retainedResult(run.controlRef),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`the read exceeded ${String(timeoutMs)}ms`)),
+          timeoutMs,
+        )
+      }),
+    ])
+    if (result?.success === true) return 'succeeded'
+    const error = typeof result?.error === 'string' ? `: ${redact(result.error)}` : ''
+    return `failed${error}`
+  } catch (error) {
+    return `unavailable: ${redact(error instanceof Error ? error.message : String(error))}`
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function markerFor(proofId, label) {
@@ -640,7 +734,7 @@ export async function settledSourceState(
   }
 }
 
-async function sendSource(app, proofId, onIdentity = () => {}) {
+async function sendSource(app, proofId, onIdentity = () => {}, explainFailure = async () => {}) {
   const initial = app.state()
   const marker = markerFor(proofId, 'SOURCE')
   const path = markerPath(proofId)
@@ -676,7 +770,8 @@ async function sendSource(app, proofId, onIdentity = () => {}) {
   // The control reference usually lands after admission; capture it before judging the run so
   // the caller can still destroy the exact source environment when the run did not complete.
   captureIdentity()
-  const run = sourceRunFor(terminal, receipt.runId)
+  const judged = terminal.runs.find((candidate) => candidate.id === receipt.runId)
+  const run = sourceRunFor(terminal, receipt.runId, await explainFailure(judged))
   const source = sourceEnvironmentRecord(terminal, run)
   return Object.freeze({
     marker,
@@ -1225,9 +1320,17 @@ async function runWorkspaceProof({
       resourceCensusBefore = await adapters.resourceCensus()
     }
     runIdsBeforeSource = new Set(opened.app.state().runs.map((run) => run.id))
-    source = await sendSource(opened.app, proofId, (candidate) => {
-      source ??= candidate
-    })
+    source = await sendSource(
+      opened.app,
+      proofId,
+      (candidate) => {
+        source ??= candidate
+      },
+      (run) =>
+        providerFailureDetail(adapters, run, (text) =>
+          opened.modules.redaction.redactSensitiveText(text),
+        ),
+    )
     if (confidential) {
       sourceConfidential = confidentialBranchingCapability(
         source.run.capabilities.environment,

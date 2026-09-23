@@ -30,6 +30,7 @@ interface FakeExecution {
   status: 'running' | 'completed' | 'cancelled' | 'failed'
   text: string
   error?: string
+  failureReported?: boolean
   readonly waiters: Set<() => void>
 }
 
@@ -81,6 +82,8 @@ export class FakeTangleRetainedSandbox {
    */
   replayTerminalFrames = false
   failDelete = false
+  /** Reject this many exact result reads with a transient transport error before answering. */
+  failResultReads = 0
   providerRunId?: string
 
   readonly #boxesByKey = new Map<string, FakeRetainedBox>()
@@ -129,6 +132,72 @@ export class FakeTangleRetainedSandbox {
 
   complete(executionId: string, text: string): void {
     this.#settle(executionId, 'completed', text)
+  }
+
+  /**
+   * Fail the execution with the stream Tangle Sandbox delivered on 2026-09-23.
+   * The harness names its native session, then the tail is a warning, `status: failed` with
+   * its detail, the harness's raw error, a repeated `status: failed`, and the `error` frame.
+   * The stream ends without `done`, so the Sandbox SDK 0.45 `streamPrompt` appends an id-less
+   * synthetic `done` that carries the native session id it adopted from `session.updated`.
+   * The exact result endpoint reports the same failure text.
+   */
+  fail(executionId: string, error: string): void {
+    const execution = this.#requireExecution(executionId)
+    if (execution.failureReported !== true) this.reportFailure(executionId, error)
+    execution.events.push(
+      this.#frame(execution, 'raw', {
+        backend: 'opencode',
+        event: { type: 'error', sessionID: 'ses_native', error: { name: 'APIError' } },
+      }),
+    )
+    execution.events.push(
+      this.#frame(execution, 'status', { status: 'failed', detail: `${error} (exit code 1)` }),
+    )
+    execution.events.push(
+      this.#frame(execution, 'error', {
+        usageMode: 'cumulative',
+        tokensKnown: false,
+        usdKnown: false,
+        message: `opencode execution failed: ${error} (exit code 1)`,
+      }),
+    )
+    execution.events.push({
+      type: 'done',
+      data: { status: 'failed', sessionId: this.#nativeSessionId(executionId), executionId },
+    } as SandboxEvent)
+    execution.error = `opencode execution failed: ${error} (exit code 1)`
+    this.#settle(executionId, 'failed', '')
+  }
+
+  /**
+   * Stream the head of that failure, through `status: failed`, while the execution and its
+   * result stay unsettled. `fail` later completes the same stream.
+   */
+  reportFailure(executionId: string, error: string): void {
+    const execution = this.#requireExecution(executionId)
+    execution.failureReported = true
+    execution.events.push(
+      this.#frame(execution, 'session.updated', { sessionId: this.#nativeSessionId(executionId) }),
+    )
+    execution.events.push(
+      this.#frame(execution, 'warning', { code: 'OPENCODE_ERROR', message: error }),
+    )
+    execution.events.push(this.#frame(execution, 'status', { status: 'failed', detail: error }))
+    for (const waiter of execution.waiters) waiter()
+    execution.waiters.clear()
+  }
+
+  #nativeSessionId(executionId: string): string {
+    return `ses_native_${executionId}`
+  }
+
+  #frame(execution: FakeExecution, type: string, data: Record<string, unknown>): SandboxEvent {
+    return {
+      type,
+      id: `event-${execution.executionId}-${execution.events.length + 1}`,
+      data: { type, ...data },
+    } as SandboxEvent
   }
 
   controlRefForExecution(executionId: string): AgentExactRunControlRef | null {
@@ -279,6 +348,12 @@ export class FakeTangleRetainedSandbox {
             const execution = sandbox.#requireExecution(executionId)
             while (execution.status === 'running') {
               await sandbox.#wait(execution, options?.signal)
+            }
+            if (sandbox.failResultReads > 0) {
+              sandbox.failResultReads -= 1
+              throw Object.assign(new Error('Injected transient result read failure'), {
+                status: 503,
+              })
             }
             const success = execution.status === 'completed'
             return {

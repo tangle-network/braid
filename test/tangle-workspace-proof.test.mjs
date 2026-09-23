@@ -22,9 +22,11 @@ import {
   confidentialNegativeChecks,
   confidentialRefusalChecks,
   parseConfidentialTrustPolicy,
+  providerFailureDetail,
   resourceCensusComparison,
   settledSourceState,
   sourceIdentityForRun,
+  sourceRunFor,
   uncapturedSourceIdentityError,
   workspaceProofFailure,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
@@ -950,4 +952,93 @@ test('workspace proof failure reports cleanup failures ahead of a verbose proof 
   )
   assert.match(crowded.message, /proof failed \(Source run did not complete\)/u)
   assert.match(crowded.message, /temporary root removal failed/u)
+})
+
+const PRICING_FAILURE =
+  'opencode execution failed: Trusted pricing is unavailable for the direct provider selected for model "tangle-router/glm-5.3". (exit code 1)'
+
+// The durable shape Braid recorded for the LIVE-09 source run on 2026-09-23.
+function failedSourceState(overrides = {}) {
+  return {
+    runs: [
+      {
+        id: 'run-source',
+        status: 'failed',
+        complete: true,
+        environmentId: 'env-source',
+        controlRef: { runId: 'run-source', environmentId: 'sandbox-source' },
+        activity: [
+          { type: 'admission', label: 'admitted', detail: 'profile abc' },
+          { type: 'status', label: 'starting' },
+          { type: 'run.warning', label: 'OPENCODE_ERROR' },
+          { type: 'status', label: 'failed', detail: 'RUNTIME_STATUS' },
+        ],
+        ...overrides,
+      },
+    ],
+    environments: [{ id: 'env-source' }],
+  }
+}
+
+test('LIVE-09 explains a failed source run with the detail Braid stored and the provider result', () => {
+  assert.throws(
+    () => sourceRunFor(failedSourceState(), 'run-source'),
+    (error) =>
+      error.message ===
+      'Source run run-source did not complete (status failed, complete true, controlRef present, environment record present): status failed: RUNTIME_STATUS; warnings OPENCODE_ERROR',
+  )
+  assert.throws(
+    () =>
+      sourceRunFor(
+        failedSourceState({ error: 'RUNTIME_FINAL_ERROR', terminalReason: 'RUNTIME_FINAL_REASON' }),
+        'run-source',
+        `failed: ${PRICING_FAILURE}`,
+      ),
+    (error) =>
+      error.message.endsWith(
+        `: error RUNTIME_FINAL_ERROR; reason RUNTIME_FINAL_REASON; status failed: RUNTIME_STATUS; warnings OPENCODE_ERROR; provider result failed: ${PRICING_FAILURE}`,
+      ),
+  )
+  const completed = failedSourceState({ status: 'completed', activity: [] })
+  assert.equal(sourceRunFor(completed, 'run-source', 'ignored').id, 'run-source')
+})
+
+test('LIVE-09 reads the exact provider result only for a source run that did not complete', async () => {
+  const run = failedSourceState().runs[0]
+  const reads = []
+  const adapters = {
+    retainedResult: async (controlRef) => {
+      reads.push(controlRef)
+      return { success: false, error: `${PRICING_FAILURE} token=secret-value` }
+    },
+  }
+  const redact = (text) => text.replace(/token=\S+/u, 'token=[REDACTED]')
+  assert.equal(
+    await providerFailureDetail(adapters, run, redact),
+    `failed: ${PRICING_FAILURE} token=[REDACTED]`,
+  )
+  assert.deepEqual(reads, [run.controlRef])
+  assert.equal(
+    await providerFailureDetail({ retainedResult: assert.fail }, { ...run, status: 'completed' }),
+    undefined,
+  )
+  assert.equal(
+    await providerFailureDetail({ retainedResult: assert.fail }, { ...run, controlRef: undefined }),
+    'unavailable: no exact control reference',
+  )
+  assert.equal(
+    await providerFailureDetail(
+      {
+        retainedResult: async () => {
+          throw new Error('the provider no longer holds the exact run')
+        },
+      },
+      run,
+    ),
+    'unavailable: the provider no longer holds the exact run',
+  )
+  assert.equal(
+    await providerFailureDetail({ retainedResult: () => new Promise(() => {}) }, run, undefined, 5),
+    'unavailable: the read exceeded 5ms',
+  )
 })

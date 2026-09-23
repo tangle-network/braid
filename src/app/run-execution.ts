@@ -1,11 +1,12 @@
 import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
-import { isRuntimeEventEnvelope } from '../domain/runtime-events.js'
+import { type BraidRuntimeEvent, isRuntimeEventEnvelope } from '../domain/runtime-events.js'
 import { activeRunForBranch } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
 import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
+import { continuesTerminal, recoverPendingFinal } from './run-final-recovery.js'
 import { reconnectRun } from './run-replay.js'
 
 export async function executeRun(
@@ -15,6 +16,8 @@ export async function executeRun(
   abort: AbortController,
 ): Promise<void> {
   let terminalSeen = false
+  // Set when a provider status frame made the run terminal before the stream's final event.
+  let awaitingFinal = false
   let eventSequence = 0
   try {
     const currentRun = context.currentState().runs.find((run) => run.id === admission.runId)
@@ -57,7 +60,17 @@ export async function executeRun(
     if (context.ledger.isDetached(admission.runId)) return
     for await (const runtimeEvent of context.execution.streamTurn(runtimeInput)) {
       if (context.ledger.isDetached(admission.runId)) break
-      if (context.isTerminal(context.findRun(admission.runId).status)) break
+      const status = context.findRun(admission.runId).status
+      const event = isRuntimeEventEnvelope(runtimeEvent) ? runtimeEvent.event : runtimeEvent
+      if (context.isTerminal(status)) {
+        if (!(awaitingFinal && continuesTerminal(status, event))) break
+        // A gap after a terminal status would record reconnection and reopen the proven run.
+        if (
+          isRuntimeEventEnvelope(runtimeEvent) &&
+          runtimeEvent.sequence > context.findRun(admission.runId).lastProviderSequence + 1
+        )
+          break
+      }
       if (terminalSeen) break
       if (isRuntimeEventEnvelope(runtimeEvent)) {
         const result = await context.ingestRuntimeEvent(runtimeEvent)
@@ -66,6 +79,7 @@ export async function executeRun(
           await context.flush()
           break
         }
+        awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
         continue
       }
       eventSequence += 1
@@ -85,14 +99,19 @@ export async function executeRun(
         await context.flush()
         break
       }
+      awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
     }
     if (context.ledger.isDetached(admission.runId)) return
+    if (!terminalSeen && awaitingFinal && !abort.signal.aborted)
+      await recoverPendingFinal(context, admission.runId)
     if (!terminalSeen) await finishWithoutTerminal(context, input, admission, abort)
   } catch (error) {
     if (context.ledger.isDetached(admission.runId)) return
     const message = safeRuntimeDiagnostic(error, 'RUNTIME_EXECUTION_ERROR')
     if (terminalSeen) throw error
-    if (!terminalSeen) await finishAfterError(context, input, admission, abort, message)
+    // The run is already terminal, so reconnection refuses it; read its final result once here.
+    if (awaitingFinal && !abort.signal.aborted) await recoverPendingFinal(context, admission.runId)
+    await finishAfterError(context, input, admission, abort, message)
   } finally {
     context.ledger.deleteAbort(admission.runId)
     context.ledger.clearExplicitlyCancelled(admission.runId)
@@ -105,6 +124,17 @@ export async function executeRun(
     )
       await drainQueue(context)
   }
+}
+
+function reachedTerminalByStatus(
+  context: ExecutionRunPort,
+  runId: string,
+  result: { readonly accepted: boolean },
+  event: BraidRuntimeEvent,
+): boolean {
+  return (
+    result.accepted && event.type === 'status' && context.isTerminal(context.findRun(runId).status)
+  )
 }
 
 async function finishWithoutTerminal(

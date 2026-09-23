@@ -1,7 +1,13 @@
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import type { RuntimeEventEnvelope } from '../../domain/runtime-events.js'
+import { abortable } from './abortable.js'
 import type { RetainedExecutionPlan, RetainedTurnResult } from './retained-execution-contract.js'
 import type { RetainedExecutionState } from './retained-execution-state.js'
+
+// The event stream has ended, so the exact result is ready or the endpoint is stalled.
+const RESULT_READ_TIMEOUT_MS = 60_000
+
+const TERMINAL_STREAM_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed', 'cancelled'])
 
 export async function* streamRetainedExecution(input: {
   readonly runId: string
@@ -13,6 +19,10 @@ export async function* streamRetainedExecution(input: {
   readonly afterSequence: number
   readonly after?: string
   readonly terminalResult?: Promise<RetainedTurnResult>
+  /** The run is already terminal from an earlier streamed status. */
+  readonly afterTerminalStatus?: boolean
+  /** Bounds the exact result read once the event stream has ended. */
+  readonly resultTimeoutMs?: number
 }): AsyncGenerator<RuntimeEventEnvelope> {
   const reader = new AbortController()
   const previous = input.state.replaceReader(input.runId, reader)
@@ -54,17 +64,40 @@ export async function* streamRetainedExecution(input: {
     }
     signal.throwIfAborted()
     const providerSequence = Math.max(0, input.afterSequence - 1)
-    for await (const envelope of input.handle.events({
-      ...(input.after === undefined
-        ? {}
-        : { after: { cursor: input.after, sequence: providerSequence } }),
-      signal,
-    })) {
-      sequence = envelope.sequence + 1
-      yield { ...envelope, runId: input.runId, sequence }
+    let terminalStatusSeen = input.afterTerminalStatus === true
+    try {
+      for await (const envelope of input.handle.events({
+        ...(input.after === undefined
+          ? {}
+          : { after: { cursor: input.after, sequence: providerSequence } }),
+        signal,
+      })) {
+        sequence = envelope.sequence + 1
+        if (envelope.event.type === 'status' && TERMINAL_STREAM_STATUSES.has(envelope.event.status))
+          terminalStatusSeen = true
+        yield { ...envelope, runId: input.runId, sequence }
+      }
+    } catch (error) {
+      // A stream that already reported its terminal status carries no more run content, and
+      // the exact result endpoint stays authoritative. Sandbox SDK 0.45 ends a failed run's
+      // stream with a synthetic `done` that names the harness session, which the provider
+      // rejects; without this read, the run's failure detail and usage are lost.
+      if (!terminalStatusSeen || signal.aborted) throw error
     }
-    const result =
-      input.terminalResult === undefined ? await input.handle.result() : await input.terminalResult
+    // A stalled result endpoint must not hold the turn open. Cancellation does not abort this
+    // read: a cancelled run still reports its exact final result through the terminal promise.
+    // A referenced timer, unlike AbortSignal.timeout, keeps the process alive until the deadline.
+    const deadline = new AbortController()
+    const timer = setTimeout(
+      () => deadline.abort(new DOMException('Retained result read timed out', 'TimeoutError')),
+      input.resultTimeoutMs ?? RESULT_READ_TIMEOUT_MS,
+    )
+    let result: RetainedTurnResult
+    try {
+      result = await abortable(input.terminalResult ?? input.handle.result(), deadline.signal)
+    } finally {
+      clearTimeout(timer)
+    }
     sequence += 1
     yield input.plan.projectFinal({ runId: input.runId, sequence, result })
   } finally {
