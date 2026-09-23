@@ -23,19 +23,22 @@ Use only evidence from the named source commit or its immutable release artifact
 
 | Package | Version | Evidence |
 | --- | ---: | --- |
-| `@tangle-network/agent-interface` | `2.3.0` | Exact package and lockfile entry |
-| `@tangle-network/agent-eval` | `0.173.1` | Exact package and lockfile entry |
-| `@tangle-network/agent-provider-cli-bridge` | `1.0.0` | Exact package and lockfile entry |
-| `@tangle-network/agent-provider-tangle` | `1.1.4` | Exact package, lockfile entry, and SDK release |
-| `@tangle-network/agent-runtime` | `0.192.2` | Exact package and lockfile entry |
-| `@tangle-network/sandbox` | `0.37.0` | Exact package and lockfile entry |
+| `@tangle-network/agent-interface` | `2.11.0` | Exact package, lockfile entry, and workspace override |
+| `@tangle-network/agent-eval` | `0.183.0` | Exact package and lockfile entry |
+| `@tangle-network/agent-provider-cli-bridge` | `1.0.3` | Exact package and lockfile entry |
+| `@tangle-network/agent-provider-tangle` | `1.6.0` | Exact package and lockfile entry |
+| `@tangle-network/agent-runtime` | `0.252.1` | Exact package and lockfile entry |
+| `@tangle-network/sandbox` | `0.45.0` | Exact package and lockfile entry |
 
-`pnpm outdated --format json` returned `{}` on 2026-09-02.
-The production graph contains 95 packages and no file, link, or workspace dependency.
+Every version is the newest release that satisfies all peer ranges on 2026-09-22.
+Runtime `0.252.1` bounds Sandbox to `>=0.36.4 <0.46.0` and Eval to `>=0.183.0 <0.184.0`.
+Knowledge `17.1.0` also bounds Eval to `<0.184.0`, and the provider needs Sandbox `>=0.39.0`.
+`pnpm outdated` on 2026-09-22 reported no outdated `@tangle-network` package.
+`pnpm list --prod --depth Infinity` resolves 86 distinct packages and no file, link, or workspace dependency.
 
-The Tangle provider release is commit `446273812a4fb2c31552dbc16c48e0e4c7983495`.
-Release run `33709902215`, exact-main CI `33709902283`, and upstream evidence run `33710001054` passed.
-The npm package has a registry signature and SLSA provenance.
+Provider `1.6.0` accepts the id-less `stream.terminal` frame that ends every production sidecar replay.
+Provider `1.1.4` rejected that frame with `RETAINED_EVENT_STREAM_INVALID`, so retained headless runs ended `unknown`.
+The provider `1.6.0` npm package has a registry signature and SLSA provenance.
 
 ## Product state
 

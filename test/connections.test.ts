@@ -525,7 +525,11 @@ test('sandbox success=false fails closed despite a conflicting success status', 
     | undefined
   assert.equal(tokenUsage?.input, 17)
   assert.equal(tokenUsage?.output, 3)
-  assert.equal(terminal.metadata?.costUsd, 0.004)
+  // A Sandbox cost without a provider or billing receipt is an estimate, not a
+  // billed amount, so Runtime reports it as estimated and leaves costUsd unset.
+  assert.equal(terminal.metadata?.costUsd, undefined)
+  assert.equal(terminal.metadata?.usdKnown, false)
+  assert.equal(terminal.metadata?.estimatedCostUsd, 0.004)
   assert.equal(deleted, 1)
 })
 

@@ -75,6 +75,11 @@ export class FakeTangleRetainedSandbox {
   }> = []
   readonly cancellations: AgentRunCancellationRequest[] = []
   failDispatch = false
+  /**
+   * Append the production replay tail on settlement: a buffered `done` frame with its
+   * replay id, then the sidecar's `stream.terminal` announcement, which carries no `id:`.
+   */
+  replayTerminalFrames = false
   failDelete = false
   providerRunId?: string
 
@@ -351,6 +356,19 @@ export class FakeTangleRetainedSandbox {
     const execution = this.#requireExecution(executionId)
     execution.status = status
     execution.text = text
+    if (this.replayTerminalFrames) {
+      const { sessionId } = execution
+      const doneId = `event-${executionId}-${execution.events.length + 1}`
+      execution.events.push({
+        type: 'done',
+        id: doneId,
+        data: { executionId, sessionId, outcome: { type: status } },
+      } as SandboxEvent)
+      execution.events.push({
+        type: 'stream.terminal',
+        data: { executionId, sessionId, status, reason: 'execution_terminal', lastEventId: doneId },
+      } as unknown as SandboxEvent)
+    }
     for (const waiter of execution.waiters) waiter()
     execution.waiters.clear()
   }

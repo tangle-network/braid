@@ -11,41 +11,45 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 ## Evidence baseline
 
 The following published versions were resolved in this worktree.
-Their installed manifests, declarations, and implementations were inspected directly on 2026-09-02.
+Their installed manifests, declarations, and implementations were inspected directly on 2026-09-22.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.3.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.192.2` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.173.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `1.0.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `1.1.4` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
-| `@tangle-network/sandbox` | `0.37.0` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.11.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.252.1` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.183.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `1.0.3` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-tangle` | `1.6.0` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
+| `@tangle-network/sandbox` | `0.45.0` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-The effective local Runtime installation resolves `agent-eval >=0.173.0 <0.174.0`, `agent-interface ^2.3.0`, and `sandbox >=0.36.4 <0.38.0` through the exact workspace lockfile.
+The effective local Runtime installation resolves `agent-eval >=0.183.0 <0.184.0`, `agent-interface ^2.10.0`, and `sandbox >=0.36.4 <0.46.0` through the exact workspace lockfile.
 
-Published Runtime `0.192.2` declares `agent-interface ^2.3.0`, `agent-eval >=0.173.0 <0.174.0`, and `sandbox >=0.36.4 <0.38.0`.
+Published Runtime `0.252.1` declares `agent-interface ^2.10.0`, `agent-eval >=0.183.0 <0.184.0`, and `sandbox >=0.36.4 <0.46.0`.
+Sandbox `0.45.0` is therefore the newest Sandbox inside the Runtime peer range, and Eval `0.183.0` is the newest Eval inside it.
 
 The published Runtime compatibility rerelease now matches Braid's Interface and provider dependency contracts.
 
-The Runtime compatibility blocker is resolved by `0.192.2`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
+The Runtime compatibility blocker is resolved by `0.252.1`; remaining release requirements stay defined by `docs/08-verification.md` and `docs/09-delivery-plan.md`.
 
-The installed Tangle provider publishes `sandbox >=0.34.6 <1.0.0` as a peer range.
+The installed Tangle provider publishes `sandbox >=0.39.0 <1.0.0` as a peer range and depends on `agent-interface ^2.10.0`.
+Provider `1.6.0` accepts an id-less `stream.terminal` replay frame and has no string bound on replayed event data.
 
-Sandbox `0.37.0` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
+Sandbox `0.45.0` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
 
 Braid exercises the exact dependency cohort in the table above through the workspace lockfile.
 
 The installed set is peer-compatible.
-Runtime `0.192.2` requires Sandbox `>=0.36.4 <0.38.0`.
+Runtime `0.252.1` requires Sandbox `>=0.36.4 <0.46.0`, and the Tangle provider requires Sandbox `>=0.39.0`.
 
 The lockfile pins the registry integrity for every installed package.
 
 `pnpm peers check` reports no peer dependency issues for this worktree.
 
-`pnpm outdated --format json` returns `{}` for this worktree.
+`pnpm outdated` reports no outdated `@tangle-network` package for this worktree on 2026-09-22.
+It reports only `@types/node`, `koffi`, `@biomejs/biome`, `@napi-rs/keyring`, and `@earendil-works/pi-tui`, which are outside this cohort.
+Sandbox `0.46.0` is published but lies outside the Runtime `0.252.1` peer range.
 
-The workspace overrides pin Interface `2.3.0` and Knowledge `13.0.1`, keeping the public Runtime peer ranges compatible with Braid's dependency graph.
+The workspace overrides pin Interface `2.11.0` and Knowledge `17.1.0`, keeping the public Runtime peer ranges compatible with Braid's dependency graph.
 
 Historical snapshot: [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
 
@@ -227,7 +231,7 @@ Braid therefore reports that path as unsupported instead of treating environment
 
 ### Runtime cancellation contract
 
-Runtime `0.192.2` publishes the following provider-neutral operation:
+Runtime `0.252.1` publishes the following provider-neutral operation:
 
 ```ts
 cancel(request: {
