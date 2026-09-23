@@ -17,11 +17,28 @@ Braid keeps every conversation, branch, run, and usage record in one encrypted l
 
 ```bash
 npm install --global @tangle-network/braid
-export BRAID_TANGLE_AUTH=<your Tangle key>   # only for Tangle inference or Tangle Sandbox
-braid                                         # first run: pick a profile and a connection
+braid  # first run: pick a profile and a connection
 ```
 
-Without a Tangle key, choose **Local CLI Bridge** during setup and Braid uses the runners installed on your machine.
+For Tangle inference or Tangle Sandbox, enter your key during setup or set it before starting Braid:
+
+```bash
+export BRAID_TANGLE_AUTH=YOUR_TANGLE_KEY
+braid
+```
+
+For local runners, install and start [CLI Bridge](https://github.com/drewstone/cli-bridge#install) in another terminal before choosing **Local CLI Bridge** during Braid setup:
+
+```bash
+git clone https://github.com/drewstone/cli-bridge.git
+cd cli-bridge
+pnpm install
+BRIDGE_BACKENDS=codex,opencode pnpm start
+```
+
+Install and sign in to the runners you want to use, as described in the CLI Bridge setup guide.
+Braid connects to the service at `http://127.0.0.1:3344`; it does not launch runners itself.
+To enable Pi on Linux, add `pi` to `BRIDGE_BACKENDS` and set `PI_EXECUTOR=host BRIDGE_JAIL_MODE=fs-jail` with bubblewrap installed ([Pi requirements](https://github.com/drewstone/cli-bridge/blob/main/README.md#L163-L165)).
 
 ### What has been proven
 

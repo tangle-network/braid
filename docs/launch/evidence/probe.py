@@ -26,13 +26,15 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-RAW = HERE / 'raw'
-STATE = HERE / 'state.json'
-RESULTS = HERE / 'results.jsonl'
 WORK_ROOT = Path(os.environ.get('PROBE_WORK_ROOT', tempfile.gettempdir())) / 'braid-probe'
+OUTPUT_ROOT = Path(os.environ.get('PROBE_OUTPUT_DIR', WORK_ROOT / 'capture'))
+RAW = OUTPUT_ROOT / 'raw'
+STATE = OUTPUT_ROOT / 'state.json'
+RESULTS = OUTPUT_ROOT / 'results.jsonl'
 
-# Claude Code, OpenCode, and Pi use the same model, GLM-5.2 on the Z.AI coding plan.
-# Codex CLI only runs OpenAI models, so it keeps its configured default at low effort.
+# Claude Code, OpenCode, and Pi request GLM-5.2 on the Z.AI coding plan.
+# The provider reported GLM-5.3 for Pi in the first recorded turn.
+# Codex uses this host's configured default at low effort.
 # Claude Code reaches Z.AI through Z.AI's Anthropic-compatible endpoint because the
 # probe host has no valid Anthropic login (see calibration-auth-failures.jsonl).
 MODELS = {
@@ -45,16 +47,35 @@ ZAI_ANTHROPIC_BASE_URL = 'https://api.z.ai/api/anthropic'
 
 SECRET_PATTERNS = [
     re.compile(r'sk-[A-Za-z0-9_\-]{16,}'),
-    re.compile(r'(?i)(api[_-]?key|bearer|authorization)["\']?\s*[:=]\s*["\']?[A-Za-z0-9_\-\.]{16,}'),
     re.compile(r'ghp_[A-Za-z0-9]{20,}'),
     re.compile(r'eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}'),
+    re.compile(r'(?i)\bBearer\s+[A-Za-z0-9._~+/-]+'),
+    re.compile(r'(?i)\b(?:ANTHROPIC_AUTH_TOKEN|[A-Za-z0-9_]*(?:API_KEY|AUTH_TOKEN|ACCESS_TOKEN|SECRET_KEY))\s*[:=]\s*["\']?[^\s"\',}]+'),
+    re.compile(r'(?i)\bAuthorization\s*:\s*(?:Bearer|Basic|Token)\s+[^\s"\',}]+'),
 ]
+SECRET_ENV_NAME = re.compile(r'(?i)(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)$')
+ACTIVE_SECRETS = {value for name, value in os.environ.items()
+                  if SECRET_ENV_NAME.search(name) and len(value) >= 4}
 
 
 def redact(text):
+    for secret in sorted(ACTIVE_SECRETS, key=len, reverse=True):
+        text = text.replace(secret, '[REDACTED]')
     for pattern in SECRET_PATTERNS:
         text = pattern.sub('[REDACTED]', text)
+    if any(secret in text for secret in ACTIVE_SECRETS):
+        raise ValueError('credential remained after redaction')
     return text.replace(str(Path.home()), '~')
+
+
+def redact_record(value):
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, list):
+        return [redact_record(item) for item in value]
+    if isinstance(value, dict):
+        return {key: redact_record(item) for key, item in value.items()}
+    return value
 
 
 def load_state():
@@ -62,6 +83,7 @@ def load_state():
 
 
 def save_state(state):
+    OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps(state, indent=2) + '\n')
 
 
@@ -71,6 +93,8 @@ def workdir(harness, step):
 
 
 def record(entry):
+    entry = redact_record(entry)
+    OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     with RESULTS.open('a') as handle:
         handle.write(json.dumps(entry) + '\n')
     print(json.dumps(entry, indent=2))
@@ -79,7 +103,9 @@ def record(entry):
 def zai_key():
     for line in (Path.home() / '.pi' / 'agent' / '.env').read_text().splitlines():
         if line.startswith('ZAI_API_KEY='):
-            return line.split('=', 1)[1].strip().strip('"\'')
+            key = line.split('=', 1)[1].strip().strip('"\'')
+            ACTIVE_SECRETS.add(key)
+            return key
     raise SystemExit('ZAI_API_KEY is not configured')
 
 
@@ -94,7 +120,10 @@ def harness_env(argv):
         if os.environ.get('PROBE_OPENCODE_REAL') == '1':
             # The same wrapper starts OpenCode under GNU `timeout`, which moves it out of the
             # terminal's foreground process group. Terminal-close steps use the real binary.
-            env['PATH'] = str(Path.home() / '.opencode' / 'bin') + os.pathsep + env['PATH']
+            real_binary = Path.home() / '.opencode' / 'bin' / 'opencode'
+            if not real_binary.is_file():
+                raise SystemExit(f'OpenCode binary is missing at {real_binary}')
+            env['PATH'] = str(real_binary.parent) + os.pathsep + env['PATH']
     if argv and argv[0] == 'claude' or 'claude' in argv[:4]:
         env['ANTHROPIC_BASE_URL'] = ZAI_ANTHROPIC_BASE_URL
         env['ANTHROPIC_AUTH_TOKEN'] = zai_key()
@@ -117,7 +146,7 @@ def run(argv, cwd, timeout=300):
 
 
 def save_raw(name, out, err):
-    RAW.mkdir(exist_ok=True)
+    RAW.mkdir(parents=True, exist_ok=True)
     (RAW / f'{name}.stdout').write_text(redact(out))
     if err.strip():
         (RAW / f'{name}.stderr').write_text(redact(err))
@@ -243,12 +272,54 @@ def shell_quote(value):
     return "'" + value.replace("'", "'\\''") + "'"
 
 
-def wait_for(pattern, seconds):
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        found = subprocess.run(['pgrep', '-f', pattern], capture_output=True, text=True).stdout.split()
+def descendant_pids(root_pid):
+    children = {}
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            status = (entry / 'status').read_text()
+            parent = int(next(line.split()[1] for line in status.splitlines()
+                              if line.startswith('PPid:')))
+        except (OSError, StopIteration, ValueError):
+            continue
+        children.setdefault(parent, []).append(int(entry.name))
+    found = set()
+    pending = [root_pid]
+    while pending:
+        for child in children.get(pending.pop(), []):
+            if child not in found:
+                found.add(child)
+                pending.append(child)
+    return found
+
+
+def actual_sleep_pids(seconds, root_pid=None, cwd=None):
+    candidates = descendant_pids(root_pid) if root_pid is not None else (
+        int(entry.name) for entry in Path('/proc').iterdir() if entry.name.isdigit())
+    found = []
+    for pid in candidates:
+        try:
+            base = Path(os.readlink(f'/proc/{pid}/exe')).name
+            argv = (Path(f'/proc/{pid}/cmdline').read_bytes().rstrip(b'\0').split(b'\0'))
+            process_cwd = Path(os.readlink(f'/proc/{pid}/cwd')) if cwd else None
+        except OSError:
+            continue
+        if base == 'sleep' and argv[1:] == [seconds.encode()] and (
+            cwd is None or process_cwd == Path(cwd)
+        ):
+            found.append(pid)
+    return found
+
+
+def wait_for_sleep(seconds, timeout, root_pid=None, cwd=None, process=None):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        found = actual_sleep_pids(seconds, root_pid=root_pid, cwd=cwd)
         if found:
             return found
+        if process is not None and process.poll() is not None:
+            break
         time.sleep(0.5)
     return []
 
@@ -257,22 +328,28 @@ def alive(pids):
     return [pid for pid in pids if Path(f'/proc/{pid}').exists()]
 
 
-def hangup_task(harness, argv, cwd, marker_seconds, client_pattern):
+def hangup_task(harness, argv, cwd, marker_seconds, shell_runs_in_server=False):
     marker = Path(cwd) / 'marker.txt'
     proc = subprocess.Popen(pty_command(argv), cwd=cwd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             env=harness_env(argv))
-    sleepers = wait_for(f'sleep {marker_seconds}', 150)
-    clients_before = wait_for(client_pattern, 1)
-    os.kill(proc.pid, signal.SIGKILL)
+    sleepers = wait_for_sleep(marker_seconds, 150,
+                              root_pid=None if shell_runs_in_server else proc.pid,
+                              cwd=cwd if shell_runs_in_server else None, process=proc)
+    marker_existed_at_close = marker.exists()
+    if proc.poll() is None:
+        os.kill(proc.pid, signal.SIGKILL)
     out, err = proc.communicate(timeout=10)
     time.sleep(2)
-    clients_after_close = alive(clients_before)
-    time.sleep(float(marker_seconds) + 10)
+    sleepers_after_close = alive(sleepers)
+    if sleepers:
+        time.sleep(float(marker_seconds) + 10)
     return {
         'task_started_before_close': bool(sleepers),
-        'harness_processes_alive_2s_after_close': len(clients_after_close),
-        'marker_written_after_close': marker.exists(),
+        'marker_existed_at_close': marker_existed_at_close,
+        'shell_children_alive_2s_after_close': len(sleepers_after_close),
+        'marker_written_after_close': marker.exists() and not marker_existed_at_close,
+        **({'invalid': 'No actual sleep child started before the PTY closed'} if not sleepers else {}),
     }, out, err
 
 
@@ -283,18 +360,14 @@ def step_hangup(harness):
               f'sleep {seconds} && echo finished > marker.txt . Then reply DONE.')
     if harness == 'claude':
         argv = ['claude', '-p', '--permission-mode', 'bypassPermissions', *MODELS['claude'], prompt]
-        pattern = 'claude -p --permission-mode'
     elif harness == 'codex':
         argv = ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
                 *MODELS['codex'], prompt]
-        pattern = 'codex exec --skip-git-repo-check --dangerously'
     elif harness == 'opencode':
         argv = ['opencode', 'run', '--pure', '--auto', *MODELS['opencode'], prompt]
-        pattern = 'opencode run --pure --auto'
     else:
         argv = ['pi', '-p', '-ne', *MODELS['pi'], prompt]
-        pattern = 'pi -p -ne --provider'
-    observed, out, err = hangup_task(harness, argv, cwd, seconds, pattern)
+    observed, out, err = hangup_task(harness, argv, cwd, seconds)
     save_raw(f'{harness}-hangup', out, err)
     record({'step': 'hangup', 'harness': harness, 'argv': [redact(a) for a in argv],
             'cwd': redact(str(cwd)), 'mode': 'foreground CLI under a pty; pty closed after the task started',
@@ -310,7 +383,7 @@ def step_bg():
     code, out, err, seconds = run(argv, cwd, timeout=120)
     save_raw('claude-bg-launch', out, err)
     match = re.search(r'backgrounded \S+ ([a-z0-9]{6,12})', re.sub(r'\x1b\[[0-9;]*m', '', out))
-    sleepers = wait_for('sleep 20.5', 150)
+    sleepers = wait_for_sleep('20.5', 150, cwd=cwd)
     time.sleep(35)
     session_id = match.group(1) if match else None
     logs = run(['claude', 'logs', session_id], cwd, timeout=60) if session_id else ('n/a', '', '', 0)
@@ -338,7 +411,7 @@ def step_serve():
               'sleep 20.6 && echo finished > marker.txt . Then reply DONE.')
     argv = ['opencode', 'run', '--attach', f'http://127.0.0.1:{port}', '--dir', str(cwd), '--auto',
             *MODELS['opencode'], prompt]
-    observed, out, err = hangup_task('opencode', argv, cwd, '20.6', 'opencode run --attach')
+    observed, out, err = hangup_task('opencode', argv, cwd, '20.6', shell_runs_in_server=True)
     save_raw('opencode-serve-client', out, err)
     server_alive = server.poll() is None
     os.killpg(server.pid, signal.SIGTERM)

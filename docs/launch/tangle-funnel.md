@@ -13,15 +13,15 @@ That choice is the conversion point, and Braid shows no signup link there today.
 
 | Tangle feature | Code path | When the user sees it | Can the launch claim it? |
 | --- | --- | --- | --- |
-| Tangle Sandbox, ephemeral runs | `src/bin/production-setup-discovery.ts:83` offers the connection; endpoint `https://sandbox.tangle.tools` in `src/adapters/connections/production-connection-types.ts:29` | First-run setup lists **Tangle Sandbox** beside Local CLI Bridge and Tangle Inference. Each turn gets a fresh cloud environment that is deleted after the turn. | Yes. 20-job production cohort on 2026-08-12; LIVE-07 reached in run 35832917283. |
+| Tangle Sandbox, ephemeral runs | `src/bin/production-setup-discovery.ts:83` offers the connection; endpoint `https://sandbox.tangle.tools` in `src/adapters/connections/production-connection-types.ts:29` | First-run setup lists **Tangle Sandbox** beside Local CLI Bridge and Tangle Inference. Each turn gets a fresh cloud environment that is deleted after the turn. | Yes from the 20-job production cohort on 2026-08-12. The protected 0.3.0 LIVE-07 row still needs a passing receipt. |
 | Tangle Sandbox, retained runs with detach and reconnect | `src/app/production-composition.ts:299-326` selects the retained port; `src/adapters/runtime/tangle-sandbox-retention.ts` sets the idle timeout | `/detach`, then `braid --conversation <id>` and `/reconnect` after a restart | Yes, with proof dates. Needs a manual `config.json` edit, because setup cannot create a retained connection. |
-| Native terminal inside the sandbox | `src/bin/native-interactive-actions.ts`, `src/adapters/runtime/tangle-retained-interactive-execution.ts` | `/interactive <prompt>` and `/attach` open the runner's own UI in the cloud session | Only after LIVE-08 has a receipt for its row. |
+| Native terminal inside the sandbox | `src/bin/native-interactive-actions.ts`, `src/adapters/runtime/tangle-retained-interactive-execution.ts` | `/interactive <prompt>` and `/attach` open the runner's own UI in the cloud session | LIVE-08 passed native terminal input after reconnect in protected run 35912417993. It did not test a question, permission, or plan response. |
 | Tangle router for model calls | Endpoint `https://router.tangle.tools` in `src/adapters/connections/production-connection-endpoints.ts:11`; model ids such as `tangle-router/glm-5.3` in the profile | The model name in the status line; the **Tangle Inference** connection | Yes. |
-| Router attribution of Braid usage | `src/adapters/connections/tangle-router-client.ts` (#64) adds `x-tangle-client: braid/<version>` to Tangle Inference turns, trace-analysis model calls, connection health checks, and the eval probe | Not visible to the user | Internal. This header is how the router can count Braid usage and link it to signups. Sandbox runs do not send it; their model calls go through the sandbox. |
+| Router attribution of Braid usage | `src/adapters/connections/tangle-router-client.ts` (#64) adds `x-tangle-client: braid/<version>` to Tangle Inference turns, trace-analysis model calls, connection health checks, and the eval probe | Not visible to the user | Internal. The router can count requests with this header in aggregate. Do not link them to account or signup records without explicit consent. Sandbox runs do not send it; their model calls go through the sandbox. |
 | Cost and usage disclosure | `src/views/shared/usage-projection.ts` sets cost status (`reported`, `estimated`, `observed-floor`, `unknown`); `src/views/tui/terminal-usage.ts` shows it | Footer shows `in N · out N · $X`; `/activity` shows `~$X` for estimates; unknown cost is left out, never shown as `$0` | Yes. The Runtime marks sandbox cost as an estimate when no billing receipt exists (#61). |
 | Trace analysis on Tangle models | `src/adapters/analysis/runtime-model-owner.ts:733` sends analysis calls through the run's route | `/ask`, `/analyze`, `/compare` | Yes for the feature. The live analysis proof (LIVE-12, #45) is from 2026-09-02, before the current dependency set. |
 | Confidential workspace forks | `src/app/confidential-workspace-fork.ts`, `src/app/conversation-branches.ts:396-401` | `/fork --workspace --confidential <JSON>` | **No.** Provider 1.6.0 reports no confidential placement, so Braid refuses every confidential fork. Market it only after a provider reports it and LIVE-10 proves attestation. |
-| Workspace forks | `src/app/conversation-branch-effects.ts` | `/fork --workspace` | Not yet. LIVE-09 fails on production because of an upstream router-path pricing defect in the sandbox. |
+| Workspace forks | `src/app/conversation-branch-effects.ts` | `/fork --workspace` | LIVE-09 passed on production in protected run 35912417993. Cite the approved full release evidence when it exists. |
 
 ## Phone and email: not in Braid
 
@@ -54,8 +54,9 @@ Tag every link with its asset, for example `?utm_source=braid&utm_medium=<asset>
 ## Measuring it
 
 - **Braid installs:** npm downloads for `@tangle-network/braid`.
-- **Braid users on Tangle:** router requests with `x-tangle-client: braid/*`, counted per API key.
-- **Signups from launch assets:** signups by `utm_source=braid`, split by `utm_medium`.
+- **Braid traffic on Tangle:** aggregate router request counts with `x-tangle-client: braid/*`, without API keys or account identifiers. This is a request count, not a user count; sandbox traffic is outside it.
+- **Signups from launch assets:** aggregate signup counts by `utm_source=braid`, split by `utm_medium`. Respect the signup site's own consent settings.
 
-A signup that never sends a Braid router request did not convert through the product.
-Report both numbers.
+Report these as separate totals.
+Do not join signup records to router requests under the current [product contract](../01-product-contract.md#product-quality-measures) and [security rules](../07-security-and-privacy.md#telemetry-and-privacy).
+Braid excludes account identifiers from telemetry and requires explicit consent for opt-in usage or retention metrics.

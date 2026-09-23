@@ -2,7 +2,7 @@
 
 > Draft for Drew's review. Not recorded or published.
 > Every on-screen action is a Braid 0.3.0 command registered in `src/views/shared/command-registry.ts` or a flag in `src/bin/args.ts`.
-> Record only after 0.3.0 is on npm, or from a packed candidate, and only while LIVE-07 and LIVE-08 pass on production.
+> Record only after 0.3.0 is on npm, or from a packed candidate after the full protected Live Evidence gate passes.
 
 ## What the demo must show
 
@@ -15,7 +15,7 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 
 ## Setup before recording (off camera)
 
-- A Local CLI Bridge on `http://127.0.0.1:3344`, started from the CLI Bridge checkout with `BRIDGE_JAIL_MODE=fs-jail BRIDGE_BACKENDS=pi,codex BRIDGE_PORT=3344 pnpm start`.
+- A Local CLI Bridge on `http://127.0.0.1:3344`, started from the CLI Bridge checkout with `PI_EXECUTOR=host BRIDGE_JAIL_MODE=fs-jail BRIDGE_BACKENDS=pi,codex BRIDGE_PORT=3344 pnpm start`.
   Pi on Linux needs `fs-jail`.
   The Bridge checkout must include the Pi jail fix ([drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235), merged as `de0c588`); without it, Pi fails with `EROFS` under `fs-jail`.
   The Bridge runs from source, so update it with `git pull && pnpm install` and restart it.
@@ -33,7 +33,7 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 | --- | --- | --- | --- |
 | 0:00–0:06 | Empty terminal in the repository | `braid` | "Braid is a terminal for coding agents. One agent profile, any supported runner." |
 | 0:06–0:16 | Braid opens with the profile and the Local CLI Bridge connection | `/runner pi`, then type: `Run the tests and tell me which one fails.` | "This turn runs through Pi on my machine." |
-| 0:16–0:26 | Pi's answer streams; the status line shows runner and model | `/runner codex`, then type: `Fix the failing test.` | "Same profile, same conversation. The next turn runs through Codex." |
+| 0:16–0:26 | Pi's answer streams; the status line shows runner and model | `/runner codex`, `/model default`, then type: `Fix the failing test.` | "Same profile, same conversation. The next turn runs through Codex with its default model." |
 | 0:26–0:36 | Codex's answer streams | `/connection select <tangle-sandbox-id>`, then type: `Add edge-case tests for Unicode input and run the full suite.` | "Now the same profile, in a Tangle cloud sandbox." |
 | 0:36–0:42 | Sandbox run starts; the placement and usage labels appear | `/detach` | "I detach. The run keeps working in the sandbox." |
 | 0:42–0:48 | `/quit`, then the laptop lid closes (cut) | `/quit` | "Braid is closed. So is the laptop." |
@@ -45,7 +45,7 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 
 | Claim in the voiceover | Evidence |
 | --- | --- |
-| Same profile on Pi and Codex | the 0.3.0 packed CLI Bridge release proof ([`artifacts/verification/live/bridge/evidence.json`](../../artifacts/verification/live/bridge/evidence.json), merged in [#68](https://github.com/tangle-network/braid/pull/68)): LIVE-01..05 passed on Braid `5cafc42ff` with CLI Bridge `de0c588`, and LIVE-02 handed one conversation from Pi (`pi/tangle-router/glm-5.2`) to `codex/default`. The earlier probe stall in [`evidence/braid-bridge/`](evidence/braid-bridge/) had three causes, all fixed: the Braid crash ([#66](https://github.com/tangle-network/braid/pull/66)), the Bridge jail ([drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235)), and the `none` effort that Codex rejects ([#67](https://github.com/tangle-network/braid/pull/67)). Leave `reasoningEffort` out of the demo profile. |
+| Same profile on Pi and Codex | The 0.3.0 packed CLI Bridge release proof ([`artifacts/verification/live/bridge/evidence.json`](../../artifacts/verification/live/bridge/evidence.json), merged in [#68](https://github.com/tangle-network/braid/pull/68)): LIVE-01..05 passed on Braid `5cafc42ff` with CLI Bridge `de0c588`, and LIVE-02 handed one conversation from Pi (`pi/tangle-router/glm-5.2`) to `codex/default`. The demo must set `/model default` after `/runner codex`; the runner override alone retains the Pi model. The earlier probe stall in [`evidence/braid-bridge/`](evidence/braid-bridge/) had three causes, all fixed: the Braid crash ([#66](https://github.com/tangle-network/braid/pull/66)), the Bridge jail ([drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235)), and the `none` effort that Codex rejects ([#67](https://github.com/tangle-network/braid/pull/67)). Leave `reasoningEffort` out of the demo profile. |
 | Same profile in a Tangle sandbox | LIVE-07 and the 2026-09-01 multirun proof (OpenCode in the sandbox). |
 | Keeps working after detach and quit; replay without duplicates | 2026-08-15 retained cohort (SIGKILL and restore, 3 of 3) and the 2026-09-01 multirun proof (`noDuplicateEventIds: true`). |
 | Cost labelled as an estimate | Runtime 0.252 reports sandbox cost without a billing receipt as an estimate (#61); Braid shows `~$` in `/activity` (`src/views/tui/terminal-usage.ts`). |
@@ -54,4 +54,4 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 
 - The runner inside the sandbox for the proof runs is OpenCode (and Pi for LIVE-08). Should shot 4 say which runner the sandbox uses?
 - `/connection select` needs the connection id. Name the retained connection something readable in `config.json` before recording.
-- An optional 10 s insert: `/interactive <prompt>` opens the runner's own terminal UI inside the sandbox. It is proven by LIVE-08 only, so keep it out unless that row has its own receipt.
+- An optional 10 s insert: `/interactive <prompt>` opens the runner's own terminal UI inside the sandbox. Include it only when the approved release evidence contains the native terminal receipt from LIVE-08.
