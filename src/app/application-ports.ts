@@ -190,6 +190,9 @@ export interface RuntimeEventIngestionResult {
 export interface ReconnectInput {
   readonly operationId: string
   readonly runId: string
+}
+
+export interface ReconcileInput extends ReconnectInput {
   /** Aborts the provider status request that reconciliation makes. */
   readonly signal?: AbortSignal
 }

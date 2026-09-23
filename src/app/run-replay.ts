@@ -1,13 +1,17 @@
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BraidState } from '../domain/state.js'
 import type { ProviderRunSnapshot } from '../ports/execution.js'
-import type { ReconnectInput, ReplayPort } from './application-ports.js'
+import type { ReconcileInput, ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
 import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
 import { safeRuntimeDiagnostic } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 interface RecoveryReconnectInput extends ReconnectInput {
+  readonly priorFailureDetail?: string
+}
+
+interface RecoveryReconcileInput extends ReconcileInput {
   readonly priorFailureDetail?: string
 }
 
@@ -80,7 +84,7 @@ export async function reconnectRun(
 
 export async function reconcileRun(
   context: ReplayPort,
-  input: RecoveryReconnectInput,
+  input: RecoveryReconcileInput,
 ): Promise<BraidState> {
   const run = context.findRun(input.runId)
   if (!run.capabilities.controls.status || !context.execution.status) {
