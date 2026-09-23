@@ -859,6 +859,14 @@ test('plain oversized input cancels a delayed run before the outer close', async
 
 test('plain output failure cancels the delayed run before the outer close', async () => {
   const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  const controller = controllerFor(app)
+  const dispatch = controller.dispatch.bind(controller)
+  const shutdownResults: unknown[] = []
+  controller.dispatch = (intent) => {
+    const result = dispatch(intent)
+    if (intent.type === 'shutdown') void result.then((value) => shutdownResults.push(value))
+    return result
+  }
   const outputFailed = deferred()
   let writes = 0
   const output = {
@@ -878,12 +886,13 @@ test('plain output failure cancels the delayed run before the outer close', asyn
   }
 
   await assert.rejects(
-    runPlain(controllerFor(app), '/workspace', input(), output),
+    runPlain(controller, '/workspace', input(), output),
     (error: unknown) => error instanceof Error && error.message === 'OUTPUT_FAILURE',
   )
   assert.equal(
     app.events().filter((entry) => entry.event.kind === 'application.shutdown.requested').length,
     1,
+    JSON.stringify({ shutdownResults, storageFailure: app.storageFailure() }),
   )
   await app.close()
   const eventsAfterClose = app.events().length
