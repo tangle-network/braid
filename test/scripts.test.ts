@@ -419,6 +419,7 @@ test('every scoped package alias forwards its declared file set', () => {
       'tui-conversations.test.js',
       'tui-core-workflows.test.js',
       'tui-interaction-security.test.js',
+      'tui-permission-response.test.js',
       'tui-refresh-lifecycle.test.js',
       'tui.test.js',
       'w6-ui.test.js',
@@ -492,6 +493,7 @@ test('every scoped package alias forwards its declared file set', () => {
     'tui-conversations.test.js',
     'tui-core-workflows.test.js',
     'tui-interaction-security.test.js',
+    'tui-permission-response.test.js',
     'usage-projection.test.js',
   ]
   for (const [alias, expected] of Object.entries(aliases)) {
