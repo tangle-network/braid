@@ -21,6 +21,8 @@
 - A failed retained run now records the provider's exact error, reason, and usage (#62).
 - Braid exits cleanly after you detach a retained run and press Ctrl+C twice (#56).
 - A CLI Bridge refusal during a retained start now reports the failure without terminating Braid (#66).
+- `/reconnect` now acknowledges a retained Tangle run with a pending question after Braid restarts (#70).
+  The stream stays active while the user answers it.
 - Trace analysis resolves its pinned analysis runtime again (#45).
 - A bare slash command submits on the first Enter while its completion row is visible (#39).
 
