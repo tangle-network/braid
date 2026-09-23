@@ -59,8 +59,15 @@ export function expectedDemoPermission(record) {
   const match = /^Permission: (bash|read|write|edit)$/u.exec(interaction.prompt)
   assert.ok(match, `The live demo encountered an unexpected permission: ${interaction.prompt}`)
   assert.ok(
-    interaction.allowedOutcomes?.includes('once'),
-    'The live demo permission does not allow one-time approval',
+    interaction.allowedOutcomes?.includes('accept'),
+    'The live demo permission does not allow acceptance',
+  )
+  assert.ok(
+    interaction.answerSpec?.kind === 'select' &&
+      interaction.answerSpec.options?.some(
+        (option) => option.value === 'allow_once' && option.label === 'Allow once',
+      ),
+    'The live demo permission does not offer one-time approval',
   )
   assert.ok(
     interaction.responseScopes?.includes('once'),

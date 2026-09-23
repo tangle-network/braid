@@ -157,7 +157,14 @@ test('live demo permits only a single non-secret, one-time tool approval', () =>
     interactionId: 'interaction-bash',
     prompt: 'Permission: bash',
     secret: false,
-    allowedOutcomes: ['once', 'deny'],
+    allowedOutcomes: ['accept', 'reject'],
+    answerSpec: {
+      kind: 'select',
+      options: [
+        { value: 'allow_once', label: 'Allow once' },
+        { value: 'deny', label: 'Deny' },
+      ],
+    },
     responseScopes: ['once'],
   }
   assert.deepEqual(expectedDemoPermission({ view: { interactions: [permission] } }), {
@@ -169,7 +176,8 @@ test('live demo permits only a single non-secret, one-time tool approval', () =>
     { ...permission, kind: 'question' },
     { ...permission, prompt: 'Permission: network' },
     { ...permission, secret: true },
-    { ...permission, allowedOutcomes: ['session', 'deny'] },
+    { ...permission, allowedOutcomes: ['reject'] },
+    { ...permission, answerSpec: { kind: 'select', options: [{ value: 'deny', label: 'Deny' }] } },
     { ...permission, responseScopes: ['session'] },
   ]) {
     assert.throws(() => expectedDemoPermission({ view: { interactions: [rejected] } }))
