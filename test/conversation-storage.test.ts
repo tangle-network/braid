@@ -3,6 +3,7 @@ import { mkdtemp, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { UnavailableExecutionPort } from '../src/adapters/runtime/unavailable-execution.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
@@ -16,6 +17,71 @@ import { StorageJournal } from '../src/app/storage-journal.js'
 import { assertBraidState } from '../src/domain/invariants.js'
 import { SystemClock } from '../src/ports/clock.js'
 import { SequenceIds } from '../src/ports/ids.js'
+
+test('completed runs remain focusable through encrypted storage and restart', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-terminal-focus-'))
+  const path = join(root, 'braid.sqlite')
+  const credentialStore = new MemoryCredentialStore()
+  const first = await createDurableBraidApplication({
+    path,
+    workspaceRoot: root,
+    credentialStore,
+    profile: DETERMINISTIC_PROFILE,
+    ids: new SequenceIds(),
+    execution: {
+      async *streamTurn(input): AsyncIterable<RuntimeStreamEvent> {
+        yield {
+          type: 'final',
+          status: 'completed',
+          reason: 'completed',
+          text: `completed ${input.text}`,
+          metadata: { tokenUsage: { input: 1, output: 1 } },
+          task: { id: input.runId, intent: input.text },
+          timestamp: '2026-09-23T00:00:00.000Z',
+        }
+      },
+    },
+  })
+  first.app.initialize(root)
+  await first.app.whenDurable()
+  const runA = first.app.send({ operationId: 'op-terminal-focus-a', text: 'first' })
+  await runA.completion
+  await first.app.conversations.lifecycle.create({
+    operationId: 'op-terminal-focus-conversation-b',
+    title: 'Second conversation',
+  })
+  const runB = first.app.send({ operationId: 'op-terminal-focus-b', text: 'second' })
+  await runB.completion
+  assert.equal(first.app.state().focusedRunId, runB.runId)
+
+  first.app.focusRun({ operationId: 'op-terminal-focus-inspect-a', runId: runA.runId })
+  await first.app.whenDurable()
+  assert.equal(first.app.state().focusedRunId, runA.runId)
+  assert.deepEqual(
+    first.app.state().runs.map((run) => run.status),
+    ['completed', 'completed'],
+  )
+  assert.equal(
+    (await first.storage.events()).some(
+      (row) => row.runId === runA.runId && row.kind === 'run.focused',
+    ),
+    true,
+  )
+  await first.storage.close()
+
+  const restarted = await createDurableBraidApplication({
+    path,
+    workspaceRoot: root,
+    credentialStore,
+    profile: DETERMINISTIC_PROFILE,
+  })
+  assert.equal(restarted.app.state().focusedRunId, runA.runId)
+  assert.deepEqual(
+    restarted.app.state().runs.map((run) => run.status),
+    ['completed', 'completed'],
+  )
+  await restarted.storage.close()
+})
 
 test('encrypted conversations survive restart and deleted content stays unavailable', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-conversation-storage-'))

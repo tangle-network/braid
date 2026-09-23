@@ -170,6 +170,7 @@ const POST_TERMINAL_SIDEBAND_KINDS = [
   'run.cancel.requested',
   'run.control.acknowledged',
   'run.control.requested',
+  'run.focused',
   'run.interaction.responded',
   'run.interaction.response.requested',
   'run.queue.removed',
