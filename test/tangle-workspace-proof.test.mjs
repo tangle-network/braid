@@ -787,4 +787,11 @@ test('LIVE-09 reconciles a source run that is still live when its send settles',
     }),
     /Source run run-source stayed running for 5000ms after its send settled/u,
   )
+
+  await assert.rejects(
+    settledSourceState({ reconcileRun: () => new Promise(() => undefined) }, 'run-source', live, {
+      timeoutMs: 20,
+    }),
+    /reconciliation exceeded the 20ms settle deadline/u,
+  )
 })
