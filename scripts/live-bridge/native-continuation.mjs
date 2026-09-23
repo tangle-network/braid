@@ -33,7 +33,7 @@ import { errorEvidence, writeEvidence } from './evidence.mjs'
 import { evidenceValue, redactString } from './redaction.mjs'
 
 export const NATIVE_CONTINUATION_RECEIPT_SCHEMA = 'braid.live-bridge.native-continuation.v1'
-export const NATIVE_CONTINUATION_MODEL = 'pi/tangle-router/deepseek-v4-flash'
+export const NATIVE_CONTINUATION_MODEL = 'pi/tangle-router/glm-5.2'
 export const NATIVE_CONTINUATION_EVIDENCE_PATH = join(
   repository,
   'artifacts',
