@@ -88,6 +88,9 @@ export class RetainedExecutionState {
     if (existing !== undefined && existing !== starting) {
       throw new Error('retained run already has an in-flight start')
     }
+    // The start owner awaits and reports the failure. Controls await this promise only when they
+    // race the start, so an unobserved rejection here must not crash the process.
+    starting.catch(() => undefined)
     this.#startingHandles.set(runId, starting)
     this.#touch(runId)
   }
