@@ -256,6 +256,12 @@ Model and route discovery come from the current runtime/provider API and are cac
 
 The saved connection keeps the user-facing Tangle router root, while the Runtime adapter derives the OpenAI-compatible `/v1` API root without rewriting connection identity.
 
+Every request Braid sends to the Tangle router carries `x-tangle-client: braid/<package version>`, so the router attributes the usage to Braid.
+This covers Runtime Router turns, trace-analysis model calls, connection health, model verification, and the semantic eval route probe.
+Runtime Router turns receive the header through `ExecutorContext.propagatedHeaders`, so Runtime keeps its own transport, retries, and usage parsing.
+The semantic eval judge's completions go through `profileChatClient`, which exposes no header option; those requests are not yet attributed (tangle-network/agent-runtime#1330).
+Sandbox turns reach the router through the sandbox sidecar and are outside this contract.
+
 The run preview distinguishes inference routing from sandbox placement and does not claim a workspace exists.
 
 Usage and cost display only provider-reported values and label unavailable pricing.

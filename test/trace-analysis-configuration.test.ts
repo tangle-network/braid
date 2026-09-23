@@ -31,6 +31,10 @@ import {
   createTraceAnalysisAnalyst,
   type TraceAnalysisAdapterOptions,
 } from '../src/adapters/analysis/trace-analysis-adapter.js'
+import {
+  BRAID_TANGLE_CLIENT,
+  TANGLE_CLIENT_HEADER,
+} from '../src/adapters/connections/tangle-router-client.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { AnalysisCapabilityError } from '../src/app/analysis-types.js'
 import type { ConnectionKind, ConnectionRecord } from '../src/domain/entities.js'
@@ -635,10 +639,12 @@ test('runtime-owned trace model call preserves canonical messages, limits, usage
 test('runtime-owned trace model retries one transient Router failure with the same call', async () => {
   let attempts = 0
   const idempotencyKeys: string[] = []
+  const clientNames: Array<string | string[] | undefined> = []
   const server = createServer((request, response) => {
     attempts += 1
     const key = request.headers['idempotency-key']
     if (typeof key === 'string') idempotencyKeys.push(key)
+    clientNames.push(request.headers[TANGLE_CLIENT_HEADER])
     if (attempts === 1) {
       response.statusCode = 502
       response.end('temporary router failure')
@@ -687,6 +693,8 @@ test('runtime-owned trace model retries one transient Router failure with the sa
     assert.equal(result.succeeded, true)
     assert.equal(attempts, 2)
     assert.deepEqual(idempotencyKeys, ['analysis-model-call-1', 'analysis-model-call-1'])
+    // Every attempt, including the retry, identifies Braid to the router.
+    assert.deepEqual(clientNames, [BRAID_TANGLE_CLIENT, BRAID_TANGLE_CLIENT])
     assert.equal(result.succeeded ? result.response.content : undefined, '{"answer":"recovered"}')
     assert.match(JSON.stringify(result.execution), /"maxAttempts":2/u)
   } finally {

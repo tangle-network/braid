@@ -20,6 +20,7 @@ import type {
   ConnectionModelVerificationOptions,
   ProductionConnectionOptions,
 } from './production-connection-types.js'
+import { tangleRouterClientHeaders } from './tangle-router-client.js'
 
 export async function healthForConnection(
   record: ConnectionRecord,
@@ -49,6 +50,7 @@ export async function healthForConnection(
       options.fetch,
       healthOptions.signal,
       record.kind === 'cli-bridge' ? stripCliBridgeVersion(endpoint) : undefined,
+      record.kind === 'tangle-inference' ? tangleRouterClientHeaders() : {},
     )
   } catch (error) {
     return healthFromError(error, checkedAt)
@@ -118,6 +120,7 @@ export async function verifyModelForConnection(
         Accept: 'application/json',
         'Content-Type': 'application/json',
         ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
+        ...(record.kind === 'tangle-inference' ? tangleRouterClientHeaders() : {}),
       },
       body: JSON.stringify(requestBody),
       ...(verificationOptions.signal ? { signal: verificationOptions.signal } : {}),
@@ -181,6 +184,7 @@ async function probeHttpHealth(
   fetcher: typeof fetch | undefined,
   signal?: AbortSignal,
   cliBridgeEndpoint?: string,
+  clientHeaders: Readonly<Record<string, string>> = {},
 ): Promise<ConnectionHealth> {
   const request = fetcher ?? globalThis.fetch
   if (typeof request !== 'function') {
@@ -192,6 +196,7 @@ async function probeHttpHealth(
       headers: {
         Accept: 'application/json',
         ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
+        ...clientHeaders,
       },
       ...(signal ? { signal } : {}),
     })

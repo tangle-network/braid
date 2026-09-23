@@ -6,6 +6,7 @@ import type {
 } from '@tangle-network/agent-eval'
 import { type AgentProfile, agentProfileSchema } from '@tangle-network/agent-interface'
 import { profileChatClient } from '@tangle-network/agent-runtime/kernel'
+import { tangleRouterClientHeaders } from '../adapters/connections/tangle-router-client.js'
 import { evalSha256, redactEvalValue } from './records.js'
 import type { EvalProviderIdentity, RecordedJudgeCall } from './types.js'
 
@@ -107,7 +108,10 @@ async function jsonFetch(
   try {
     const response = await fetchImpl(url, {
       method: 'GET',
-      headers: config.apiKey === undefined ? {} : { authorization: `Bearer ${config.apiKey}` },
+      headers: {
+        ...tangleRouterClientHeaders(),
+        ...(config.apiKey === undefined ? {} : { authorization: `Bearer ${config.apiKey}` }),
+      },
       signal: controller.signal,
     })
     let body: unknown = null

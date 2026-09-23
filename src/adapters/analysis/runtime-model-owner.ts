@@ -26,6 +26,7 @@ import {
   snapshotAgentProfile,
 } from '../agent-interface/profile-runtime.js'
 import { portableBridgeModel } from '../connections/cli-bridge-model-route.js'
+import { withTangleRouterClient } from '../connections/tangle-router-client.js'
 import { AGENT_RUNTIME_VERSION } from '../runtime/agent-runtime-version.js'
 import {
   RetainedModelCallError,
@@ -729,12 +730,14 @@ export function createRuntimeTraceModelOwner(
         const { createExecutor, streamAgentTurn } = await import(
           '@tangle-network/agent-runtime/kernel'
         )
-        const executor = createExecutor({
-          backend: 'router',
-          routerBaseUrl: options.baseUrl,
-          routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
-          ...(options.complete === undefined ? {} : { complete: options.complete }),
-        })
+        const executor = withTangleRouterClient(
+          createExecutor({
+            backend: 'router',
+            routerBaseUrl: options.baseUrl,
+            routerKey: options.credential ?? LOCAL_ROUTER_BEARER,
+            ...(options.complete === undefined ? {} : { complete: options.complete }),
+          }),
+        )
         const backend = Object.freeze({
           kind: 'executor' as const,
           factory: executor,
