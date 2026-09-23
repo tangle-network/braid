@@ -284,6 +284,66 @@ test('reconnect recovers a persisted interactive intent exactly once', async () 
   await finish(reconnectIterator, broker, input.runId)
 })
 
+test('interactive intent recovery rejects a changed resource request before create', async () => {
+  const fixture = interactiveFixture()
+  const broker = new NativeInteractiveRunBroker()
+  const resources = { cpu: 2, memoryMb: 4_096 }
+  const originalPrepared = { ...fixture.prepared, resourceRequest: resources }
+  const admissions: RetainedInteractiveAdmission[] = []
+  const input = executionInput('run/resource-recovery', async (admission) => {
+    admissions.push(admission)
+    if (admission.phase === 'interactive_intent') throw new Error('simulated intent crash')
+  })
+  const original = new TangleRetainedInteractiveExecutionPort({
+    broker,
+    resolve: async () => originalPrepared,
+  })
+  const admitted = await original.admit(input)
+  assert.ok(admitted.materializationReceipt)
+  const receipt = { ...receiptFor(input), materializationReceipt: admitted.materializationReceipt }
+  await assert.rejects(() => original.streamTurn(input)[Symbol.asyncIterator]().next())
+  const intent = admissions[0]
+  assert.ok(intent?.phase === 'interactive_intent')
+  assert.equal(fixture.stats.createCalls, 0)
+
+  const changed = new TangleRetainedInteractiveExecutionPort({
+    broker,
+    resolve: async () => ({ ...originalPrepared, resourceRequest: { cpu: 4, memoryMb: 4_096 } }),
+  })
+  await assert.rejects(
+    () =>
+      changed
+        .reconnect({
+          runId: input.runId,
+          retainedAdmission: intent,
+          receipt,
+          onRetainedAdmission: async () => {},
+          signal: input.signal,
+        })
+        [Symbol.asyncIterator]()
+        .next(),
+    /interactive intent conflicts with replay material/u,
+  )
+  assert.equal(fixture.stats.createCalls, 0)
+
+  const matching = new TangleRetainedInteractiveExecutionPort({
+    broker,
+    resolve: async () => originalPrepared,
+  })
+  const iterator = matching
+    .reconnect({
+      runId: input.runId,
+      retainedAdmission: intent,
+      receipt,
+      onRetainedAdmission: async () => {},
+      signal: input.signal,
+    })
+    [Symbol.asyncIterator]()
+  await next(iterator)
+  assert.equal(fixture.stats.createCalls, 1)
+  await finish(iterator, broker, input.runId)
+})
+
 test('reconnect rejects a provider session mismatch before attaching', async () => {
   const fixture = interactiveFixture()
   const broker = new NativeInteractiveRunBroker()

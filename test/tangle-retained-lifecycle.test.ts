@@ -23,6 +23,7 @@ import { ConnectionRegistry } from '../src/app/connections.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
+import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import {
   FakeTangleRetainedSandbox,
@@ -498,6 +499,75 @@ test('retained Tangle environments carry the connection resource request', async
     memoryMB: 4_096,
     diskGB: 10,
   })
+})
+
+test('retained intent recovery rejects a changed resource request before create', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const configured = setup(sandbox)
+  const base = await prepareFakeTangleRetainedConnection({
+    sandbox,
+    profile,
+    runId: configured.input.runId,
+  })
+  const resources = { cpu: 2, memoryMb: 4_096 }
+  const prepared = { ...base, resourceRequest: resources }
+  const originalPlan = createTangleRetainedPlan(prepared, configured.input.runId)
+  const admissions: RetainedRunAdmissionRecord[] = []
+  await assert.rejects(() =>
+    startTangleRetainedRun(originalPlan, {
+      ...configured.input,
+      onRetainedAdmission: async (admission) => {
+        admissions.push(admission)
+        if (admission.phase === 'intent') throw new Error('simulated intent crash')
+      },
+    }),
+  )
+  const intent = admissions[0]
+  assert.ok(intent?.phase === 'intent')
+  assert.equal(sandbox.createCalls.length, 0)
+  const receipt = createAdmissionReceipt({
+    runId: configured.input.runId,
+    turnId: configured.input.turnId,
+    operationId: configured.input.operationId,
+    conversationId: 'conversation-resource-recovery',
+    branchId: 'branch-resource-recovery',
+    admittedAt: now,
+    profile,
+    connectionId: configured.connection.id,
+    capabilities: originalPlan.capabilities,
+    provider: originalPlan.providerName,
+    materializationReceipt: originalPlan.materializationReceipt,
+    text: configured.input.text,
+  })
+  const changedPlan = createTangleRetainedPlan(
+    { ...prepared, resourceRequest: { cpu: 4, memoryMb: 4_096 } },
+    configured.input.runId,
+    undefined,
+    { retainedAdmission: intent, receipt },
+  )
+  await assert.rejects(
+    () =>
+      changedPlan.recover!({
+        admission: intent,
+        receipt,
+        onRetainedAdmission: async () => {},
+      }),
+    /retained run intent conflicts with replay material/u,
+  )
+  assert.equal(sandbox.createCalls.length, 0)
+
+  const matchingPlan = createTangleRetainedPlan(prepared, configured.input.runId, undefined, {
+    retainedAdmission: intent,
+    receipt,
+  })
+  assert.ok(
+    await matchingPlan.recover!({
+      admission: intent,
+      receipt,
+      onRetainedAdmission: async () => {},
+    }),
+  )
+  assert.equal(sandbox.createCalls.length, 1)
 })
 
 test('ambiguous dispatch failure never deletes the retained environment', async () => {
