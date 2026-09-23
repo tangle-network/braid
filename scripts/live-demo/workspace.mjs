@@ -1,17 +1,16 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+export const LIVE_DEMO_MODEL_ROUTE = 'pi/tangle-router/glm-5.2'
+
 export const LIVE_DEMO_PROFILE = Object.freeze({
   name: 'Release engineer',
   description: 'Implements one bounded change and proves it with tests.',
   harness: 'pi',
   model: {
-    default: 'openai-codex/gpt-5.6-luna',
-    provider: 'openai-codex',
+    default: 'glm-5.2',
+    provider: 'tangle-router',
     reasoningEffort: 'high',
-    maxVisibleOutputTokens: 32768,
-    maxReasoningTokens: 65536,
-    maxTotalOutputTokens: 98304,
   },
   prompt: {
     instructions: [
@@ -27,12 +26,9 @@ export const LIVE_DEMO_ANALYST_PROFILE = Object.freeze({
   description: 'Reviews a completed run and cites the retained execution evidence.',
   harness: 'pi',
   model: {
-    default: 'openai-codex/gpt-5.6-luna',
-    provider: 'openai-codex',
+    default: 'glm-5.2',
+    provider: 'tangle-router',
     reasoningEffort: 'high',
-    maxVisibleOutputTokens: 16384,
-    maxReasoningTokens: 32768,
-    maxTotalOutputTokens: 49152,
   },
   prompt: {
     instructions: [

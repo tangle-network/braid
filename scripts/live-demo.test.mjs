@@ -24,6 +24,7 @@ import {
 import {
   liveDemoProfileForRoute,
   LIVE_DEMO_ANALYST_PROFILE,
+  LIVE_DEMO_MODEL_ROUTE,
   LIVE_DEMO_PROFILE,
 } from './live-demo/workspace.mjs'
 
@@ -112,17 +113,20 @@ test('live demo timeline starts on the configured screen and preserves captured 
   )
 })
 
-test('live demo profile leaves native tool policy with the selected harness', () => {
+test('live demo Pi profiles use the verified route without unsupported output caps', () => {
+  assert.equal(LIVE_DEMO_MODEL_ROUTE, 'pi/tangle-router/glm-5.2')
   assert.equal(LIVE_DEMO_PROFILE.harness, 'pi')
-  assert.equal(LIVE_DEMO_PROFILE.model.default, 'openai-codex/gpt-5.6-luna')
-  assert.equal(LIVE_DEMO_PROFILE.model.provider, 'openai-codex')
-  assert.equal('tools' in LIVE_DEMO_PROFILE, false)
-  assert.equal('permissions' in LIVE_DEMO_PROFILE, false)
   assert.equal(LIVE_DEMO_ANALYST_PROFILE.harness, 'pi')
-  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.default, 'openai-codex/gpt-5.6-luna')
-  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.provider, 'openai-codex')
-  assert.equal('tools' in LIVE_DEMO_ANALYST_PROFILE, false)
-  assert.equal('permissions' in LIVE_DEMO_ANALYST_PROFILE, false)
+  for (const profile of [LIVE_DEMO_PROFILE, LIVE_DEMO_ANALYST_PROFILE]) {
+    assert.equal(profile.model.default, 'glm-5.2')
+    assert.equal(profile.model.provider, 'tangle-router')
+    assert.equal(profile.model.reasoningEffort, 'high')
+    assert.equal('maxVisibleOutputTokens' in profile.model, false)
+    assert.equal('maxReasoningTokens' in profile.model, false)
+    assert.equal('maxTotalOutputTokens' in profile.model, false)
+    assert.equal('tools' in profile, false)
+    assert.equal('permissions' in profile, false)
+  }
 })
 
 test('live demo profiles follow the advertised Pi route without a model fallback', () => {

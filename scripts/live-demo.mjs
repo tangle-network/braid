@@ -29,6 +29,7 @@ import {
   createLiveDemoWorkspace,
   liveDemoProfileForRoute,
   LIVE_DEMO_ANALYST_PROFILE,
+  LIVE_DEMO_MODEL_ROUTE,
   LIVE_DEMO_PROFILE,
   LIVE_DEMO_PROMPT,
   LIVE_DEMO_QUESTION,
@@ -73,12 +74,13 @@ async function bridgeProof(baseUrl) {
   const backend = health.backends?.find((candidate) => candidate.name === LIVE_DEMO_PROFILE.harness)
   assert.equal(health.status, 'ok', 'CLI Bridge is not healthy')
   assert.equal(backend?.state, 'ready', `${LIVE_DEMO_PROFILE.harness} is not ready in CLI Bridge`)
+  const requestedModel = process.env.BRAID_LIVE_DEMO_MODEL ?? LIVE_DEMO_MODEL_ROUTE
   const [target] = releaseTargetDefinitions(
-    [],
+    [{ backend: LIVE_DEMO_PROFILE.harness, modelId: requestedModel }],
     { ok: true, body: models },
     { body: health },
   ).filter((candidate) => candidate.backend === LIVE_DEMO_PROFILE.harness)
-  assert.ok(target, 'CLI Bridge does not advertise a ready Pi model')
+  assert.equal(target?.modelId, requestedModel, `CLI Bridge does not advertise ${requestedModel}`)
   return { health, backend, target }
 }
 
@@ -271,11 +273,7 @@ async function main() {
     await typeText(terminal, '/profile', 24)
     terminal.input('\r')
     await terminal.waitForScreen(
-      (screen) =>
-        screen.includes(profile.name) &&
-        screen.includes(
-          `thinking high · limits visible ${profile.model.maxVisibleOutputTokens.toLocaleString('en-US')} · reasoning ${profile.model.maxReasoningTokens.toLocaleString('en-US')} · total ${profile.model.maxTotalOutputTokens.toLocaleString('en-US')}`,
-        ),
+      (screen) => screen.includes(profile.name) && screen.includes('thinking high'),
       'AgentProfile details',
     )
     await pause(900)
