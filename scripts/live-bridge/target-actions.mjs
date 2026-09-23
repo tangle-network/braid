@@ -73,8 +73,19 @@ function requestIdFor(operationPrefix, action, targetKey) {
     : `${operationPrefix}-${action}-${targetKey}`
 }
 
-function operationIdFor(operationPrefix, action, targetKey) {
-  return `op-${operationPrefix}-${action}-${targetKey}`
+// Braid forwards a control's operation id to the CLI Bridge, which keeps it in its durable store.
+// A fixed id that a later proof reuses against the same Bridge data directory names a different
+// request, so the Bridge answers `conflict` and Braid reports the cancel as rejected.
+// The per-execution namespace keeps each proof's ids distinct; a retry inside one proof still matches.
+function operationIdFor(result, operationPrefix, action, targetKey) {
+  if (typeof result.operationNamespace !== 'string' || result.operationNamespace.length === 0) {
+    throw new LiveBridgeError(
+      'LIVE_OPERATION_NAMESPACE_MISSING',
+      'The live target has no execution namespace for its operation ids',
+      exitCodes.failed,
+    )
+  }
+  return `op-${operationPrefix}-${result.operationNamespace}-${action}-${targetKey}`
 }
 
 export async function runNormalTurn(
@@ -90,7 +101,7 @@ export async function runNormalTurn(
     ...requestBase(
       requestIdFor(operationPrefix, 'send', target.key),
       'send',
-      operationIdFor(operationPrefix, 'send', target.key),
+      operationIdFor(result, operationPrefix, 'send', target.key),
     ),
     params: {
       conversationId: result.conversationId,
@@ -193,7 +204,7 @@ export async function verifyCancel(
       ...requestBase(
         requestIdFor(operationPrefix, 'cancel', target.key),
         'cancel_run',
-        operationIdFor(operationPrefix, 'cancel', target.key),
+        operationIdFor(result, operationPrefix, 'cancel', target.key),
       ),
       params: { runId: finalRun.id, reason: 'live packed smoke cancellation' },
     }
@@ -221,7 +232,7 @@ export async function verifyCancel(
     ...requestBase(
       requestIdFor(operationPrefix, 'cancel-send', target.key),
       'send',
-      operationIdFor(operationPrefix, 'cancel-send', target.key),
+      operationIdFor(result, operationPrefix, 'cancel-send', target.key),
     ),
     params: {
       conversationId: result.conversationId,
@@ -276,7 +287,7 @@ export async function verifyCancel(
     ...requestBase(
       requestIdFor(operationPrefix, 'cancel', target.key),
       'cancel_run',
-      operationIdFor(operationPrefix, 'cancel', target.key),
+      operationIdFor(result, operationPrefix, 'cancel', target.key),
     ),
     params: { runId: cancelSendResponse.runId, reason: 'live packed smoke cancellation' },
   }
@@ -337,7 +348,7 @@ export async function verifyInteraction(
     ...requestBase(
       requestIdFor(operationPrefix, 'interaction', result.targetKey),
       'respond_interaction',
-      operationIdFor(operationPrefix, 'interaction', result.targetKey),
+      operationIdFor(result, operationPrefix, 'interaction', result.targetKey),
     ),
     params: {
       runId: interaction.runId,
@@ -399,7 +410,7 @@ export async function finishTarget(session, result, { operationPrefix = 'live' }
     ...requestBase(
       requestIdFor(operationPrefix, 'shutdown', result.targetKey),
       'shutdown',
-      operationIdFor(operationPrefix, 'shutdown', result.targetKey),
+      operationIdFor(result, operationPrefix, 'shutdown', result.targetKey),
     ),
     params: { mode: 'wait' },
   }
@@ -419,7 +430,7 @@ export async function cancelFailedTarget(session, result, { operationPrefix, tim
     ...requestBase(
       requestIdFor(operationPrefix, 'failure-shutdown', result.targetKey),
       'shutdown',
-      operationIdFor(operationPrefix, 'failure-shutdown', result.targetKey),
+      operationIdFor(result, operationPrefix, 'failure-shutdown', result.targetKey),
     ),
     params: { mode: 'cancel' },
   }

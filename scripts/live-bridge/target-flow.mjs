@@ -65,6 +65,7 @@ export async function executeTarget(
   let session
   let credentialInstallation
   const result = {
+    operationNamespace: config.operationNamespace,
     targetKey: target.key,
     workspace: config.workspace,
     label: target.definition.label,
