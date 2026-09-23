@@ -7,6 +7,7 @@ import {
   scalarMeasurement,
 } from './contracts.mjs'
 import {
+  admittedCancellationSupport,
   closeSession,
   configEvidence,
   prepareProductionWorkspace,
@@ -72,7 +73,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
       marker: tokenMarker('TANGLE_INFERENCE'),
       prompt: `Reply with exactly ${tokenMarker('TANGLE_INFERENCE')}.`,
     })
-    if (normal.run.capabilities?.controls?.cancel === true) {
+    if (admittedCancellationSupport(normal.run, normal.response.admission)) {
       cancelled = await runHeadlessCancellation({
         binary,
         config,
@@ -85,6 +86,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
       cancellation = await verifyUnavailableCancellation({
         session: normal.session,
         run: normal.run,
+        admission: normal.response.admission,
         marker: 'TANGLE_INFERENCE_CANCEL',
       })
     }
@@ -186,6 +188,12 @@ export async function runSandbox({
     exactResource: cohort.cleanup?.exactResourcesRemaining === 0,
     activeResourceDelta: typeof activeResourceDelta === 'number' ? activeResourceDelta : null,
   }
+  // Keep the measured spend in release evidence without treating its field name as a credential.
+  const { sessionSpend, ...stress } = cohort
+  const observations = {
+    stress: { ...stress, ...(sessionSpend === undefined ? {} : { spend: sessionSpend }) },
+    multirun,
+  }
   return {
     status: 'passed',
     measurement: scalarMeasurement('LIVE-07'),
@@ -199,7 +207,7 @@ export async function runSandbox({
       environmentId: localEnvironmentId,
       materializationDigest: firstRun?.materializationDigest ?? null,
       facts,
-      observations: { stress: cohort, multirun },
+      observations,
       environment,
       checks: [
         'marker',
@@ -212,7 +220,7 @@ export async function runSandbox({
         'exact-resource-cleanup',
       ],
     }),
-    observations: { stress: cohort, multirun },
+    observations,
   }
 }
 

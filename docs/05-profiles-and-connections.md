@@ -205,6 +205,7 @@ interface ConnectionTransportOptions {
   transport?: 'http' | 'https' | 'sse'
   lifecycle?: 'ephemeral' | 'retained'
   idleTtlSeconds?: number
+  resources?: { cpu?: number; memoryMb?: number; diskMb?: number; gpu?: string }
 }
 ```
 
@@ -281,6 +282,14 @@ New setup records default to ephemeral lifecycle.
 A connection configuration can set retained lifecycle with an idle limit from 60 through 604,800 seconds.
 
 An idle limit is rejected for an ephemeral connection, and a retained connection without one is rejected.
+
+A Tangle Sandbox connection can set `resources` to request CPU cores, memory, disk, and a GPU class.
+Braid sends that request with every ephemeral, retained, and interactive environment create.
+CPU, memory, and disk must be positive integers, and disk must be a whole number of GiB.
+Braid rejects provider-native resource options and resources on other connection kinds.
+Headless materialization receipts include the resource request in the environment request digest.
+Interactive materialization receipts include a separate digest of the resource request.
+The environment view shows the requested resources beside any values the provider reports.
 
 The ephemeral path deletes its environment after one turn.
 

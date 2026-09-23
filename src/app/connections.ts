@@ -219,6 +219,7 @@ function assertSecretFree(record: ConnectionRecord): void {
     record.providerOptions.region,
     record.providerOptions.account,
     record.providerOptions.lifecycle,
+    record.providerOptions.resources?.gpu,
     ...(record.providerOptions.capabilityHints ?? []),
     ...(record.confidentialAttestationPolicy?.acceptedMeasurements ?? []),
     ...(record.confidentialAttestationPolicy?.acceptedPolicyIds ?? []),
@@ -255,6 +256,9 @@ function freezeConnectionRecord(record: ConnectionRecord): ConnectionRecord {
     ...(record.providerOptions.capabilityHints === undefined
       ? {}
       : { capabilityHints: Object.freeze([...record.providerOptions.capabilityHints]) }),
+    ...(record.providerOptions.resources === undefined
+      ? {}
+      : { resources: Object.freeze({ ...record.providerOptions.resources }) }),
   })
   const lastHealth = Object.freeze({ ...record.lastHealth })
   const lastModelVerification =

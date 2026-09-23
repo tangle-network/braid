@@ -311,7 +311,7 @@ function validMultirunProof() {
     },
   ]
   return {
-    schemaVersion: 'braid.live-required.multirun.v2',
+    schemaVersion: 'braid.live-required.multirun.v3',
     status: 'passed',
     provider: {
       endpoint: 'https://sandbox.tangle.tools',
@@ -325,6 +325,24 @@ function validMultirunProof() {
       second: { conversationId: 'conversation-b', branchId: 'branch-b' },
     },
     runs,
+    markers: { branchA: 'MARKER_A', branchB: 'MARKER_B' },
+    workspace: {
+      branchA: {
+        marker: 'MARKER_A',
+        transcriptMarkerLineCount: 1,
+        transcriptMarkerMatched: true,
+        transcriptBytes: 8,
+        failedToolPartCount: 0,
+        providerEnvironmentId: 'environment-a',
+        path: '.braid-live/MARKER_A/marker.txt',
+        readValueJson: JSON.stringify('MARKER_A\n'),
+        readValueBytesBase64: Buffer.from('MARKER_A\n', 'utf8').toString('base64'),
+        readMatched: true,
+        gitExitCode: 0,
+        gitStdout: 'true',
+        gitWorktree: true,
+      },
+    },
     overlap: {
       activeRunCount: 2,
       streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
@@ -440,6 +458,21 @@ test('LIVE-07 release artifact validation requires complete multirun evidence an
       {
         ...validMultirunProof(),
         cancellation: { ...validMultirunProof().cancellation, dispatch: null },
+      },
+      ...['', 'false'].map((gitStdout) => ({
+        ...validMultirunProof(),
+        workspace: {
+          branchA: { ...validMultirunProof().workspace.branchA, gitStdout },
+        },
+      })),
+      {
+        ...validMultirunProof(),
+        workspace: {
+          branchA: {
+            ...validMultirunProof().workspace.branchA,
+            path: '.braid-live/OTHER_MARKER/marker.txt',
+          },
+        },
       },
     ]) {
       await writeFile(artifactPath, `${JSON.stringify(proof)}\n`)
@@ -976,6 +1009,9 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
     attemptedRuns: 3,
     concurrency: 2,
     cleanup: { exactProofs: 3, exactResourcesRemaining: 0, activeResourceDelta: 0 },
+    sessionSpend: {
+      rows: [{ runner: 'opencode', providerSessionId: 'private-provider-session-id' }],
+    },
     attempts: Array.from({ length: 3 }, (_, index) => ({
       index,
       proof: {
@@ -1008,6 +1044,16 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
   assert.equal(result.evidence.facts.exactResource, true)
   assert.equal(result.evidence.facts.activeResourceDelta, 0)
   assert.equal(result.evidence.observations.stress.detailed, true)
+  assert.equal(result.evidence.observations.stress.spend.rows[0].runner, 'opencode')
+  assert.equal(result.evidence.observations.stress.spend.rows[0].providerSessionId, '[REDACTED]')
+  assert.equal(result.evidence.observations.multirun.provider.runner, 'opencode')
+  const emitted = JSON.parse(safeJson(result.observations, {}))
+  assert.equal(emitted.multirun.provider.runner, 'opencode')
+  assert.equal(emitted.stress.spend.rows[0].providerSessionId, '[REDACTED]')
+  assert.equal(
+    JSON.parse(safeJson({ sessionSpend: 'secret-session-value-123' }, {})).sessionSpend,
+    '[REDACTED]',
+  )
 })
 
 test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {

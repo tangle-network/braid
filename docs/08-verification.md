@@ -378,6 +378,15 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-11 | Runtime supervisor | Real root and worker stream, spend and status update, typed steering effect, typed cancellation effect, and reconnectable control |
 | LIVE-12 | `agent-eval` trace analysis | Real source run freezes, the selected profile and connection execute analyst model calls through `agent-runtime`, usage and cost receipts settle, citations resolve, source remains unchanged, and selected finding promotion records provenance |
 
+`LIVE-08` requires separate native terminal and canonical cloud interaction observations from the same candidate tarball.
+The native Pi proof checks terminal input, detach, reconnect, provider readback, and cleanup.
+The cloud proof starts an OpenCode turn with an advertised question response capability.
+It records the pending question, kills Braid, and reconnects a fresh Braid process.
+Before it answers through `respond_interaction`, the fresh process must acknowledge reconnect and show a durable `reconnecting` state with the question still pending.
+The response request must follow that state sequence.
+The proof requires one durable response request and acknowledgement, one completed provider execution, and exact Sandbox cleanup.
+Native terminal input alone cannot pass `LIVE-08`.
+
 If a required live provider is unavailable, the release is blocked and the manifest reports the unavailable check rather than marking it skipped or simulated.
 
 `LIVE-10` reads `branching.confidential` from the selected connection's configured adapter before it creates the source proof environment.
@@ -493,6 +502,11 @@ It closes the activity browser before sending cancellation to the selected run.
 It records the canonical cancellation dispatch event and operation before waiting for provider acknowledgement.
 
 It cancels only the selected run, closes Braid, replays both runs after restart, and confirms exact cleanup.
+
+After branch A completes, the proof focuses branch A and requires one transcript line that equals its marker and no failed tool part.
+It then reads the marker file from the exact retained provider environment that ran branch A.
+The file bytes must equal the marker and a newline, and `git -C . rev-parse --is-inside-work-tree` must print `true`.
+The artifact records those values under `workspace.branchA`; schema `braid.live-required.multirun.v3` requires them.
 
 The proof holds each provider turn for 180 seconds and allows 300 seconds per phase by default to absorb public startup variance.
 

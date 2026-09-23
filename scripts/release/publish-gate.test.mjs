@@ -110,6 +110,24 @@ function multirunProof(releaseBinding) {
       second: { conversationId: second.conversationId, branchId: second.branchId },
     },
     runs: [first, second],
+    markers: { branchA: 'MARKER_A', branchB: 'MARKER_B' },
+    workspace: {
+      branchA: {
+        marker: 'MARKER_A',
+        transcriptMarkerLineCount: 1,
+        transcriptMarkerMatched: true,
+        transcriptBytes: 8,
+        failedToolPartCount: 0,
+        providerEnvironmentId: first.providerEnvironmentId,
+        path: '.braid-live/MARKER_A/marker.txt',
+        readValueJson: JSON.stringify('MARKER_A\n'),
+        readValueBytesBase64: Buffer.from('MARKER_A\n', 'utf8').toString('base64'),
+        readMatched: true,
+        gitExitCode: 0,
+        gitStdout: 'true',
+        gitWorktree: true,
+      },
+    },
     overlap: {
       activeRunCount: 2,
       independentConversations: true,
@@ -246,7 +264,7 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
     return proofReceipt({
       ...common,
       operation: PROOF_OPERATIONS.tangleSandboxInteractive,
-      runIds: ['run-live-08'],
+      runIds: ['run-live-08', 'run-cloud-question'],
       environmentId: 'environment-live-08',
       facts: {
         environmentId: 'environment-live-08',
@@ -273,6 +291,12 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
         telemetryComplete: true,
         spendDisclosed: true,
         latencyObserved: true,
+        cloudInteractionRunId: 'run-cloud-question',
+        cloudInteractionEnvironmentId: 'environment-cloud-question',
+        cloudInteractionId: 'question-cloud-1',
+        cloudInteractionResponseOperationId: 'operation-cloud-response',
+        cloudInteractionCompleted: true,
+        cloudInteractionCleanup: true,
       },
       checks: [
         'packed-binary',
@@ -298,40 +322,77 @@ function proofReceiptForRow(row, environment, multirun, { refusal = false } = {}
         'telemetry-complete',
         'spend-disclosed',
         'latency-observed',
+        'cloud-question-retained',
+        'cloud-process-reconnect',
+        'cloud-response-acknowledged',
+        'cloud-continued-once',
+        'cloud-exact-resource-cleanup',
       ],
-      observations: Object.fromEntries(
-        [
-          'checks',
-          'configuration',
-          'run',
-          'sandbox',
-          'identityContinuity',
-          'processCleanup',
-          'providerEvidence',
-          'providerExecution',
-          'telemetry',
-          'spend',
-          'timing',
-        ]
-          .map((key) => [key, {}])
-          .concat(
-            [
-              ['accountIdentityConsistency', { stable: true, identityDigest: 'c'.repeat(64) }],
-              ['usageDelta', { activeSandboxes: 0 }],
-            ],
-            [
-              ['usage', { activeSandboxes: 0 }],
-              ['accountIdentities', { identityDigest: 'c'.repeat(64) }],
-            ].map(([key, value]) => [
-              key,
-              ['before', 'after'].map((phase) => ({
-                phase,
-                status: 'observed',
-                value: structuredClone(value),
-              })),
-            ]),
-          ),
-      ),
+      observations: {
+        nativeTerminal: Object.fromEntries(
+          [
+            'checks',
+            'configuration',
+            'run',
+            'sandbox',
+            'identityContinuity',
+            'processCleanup',
+            'providerEvidence',
+            'providerExecution',
+            'telemetry',
+            'spend',
+            'timing',
+          ]
+            .map((key) => [key, {}])
+            .concat(
+              [
+                ['accountIdentityConsistency', { stable: true, identityDigest: 'c'.repeat(64) }],
+                ['usageDelta', { activeSandboxes: 0 }],
+              ],
+              [
+                ['usage', { activeSandboxes: 0 }],
+                ['accountIdentities', { identityDigest: 'c'.repeat(64) }],
+              ].map(([key, value]) => [
+                key,
+                ['before', 'after'].map((phase) => ({
+                  phase,
+                  status: 'observed',
+                  value: structuredClone(value),
+                })),
+              ]),
+            ),
+        ),
+        cloudInteraction: {
+          status: 'passed',
+          runId: 'run-cloud-question',
+          controlRef: { environmentId: 'environment-cloud-question' },
+          interaction: {
+            interactionId: 'question-cloud-1',
+            kind: 'question',
+            requestSequence: 12,
+            reconnect: {
+              operationId: 'operation-cloud-reconnect',
+              acknowledgedRevision: 20,
+              observedRevision: 21,
+              observedSequence: 22,
+              runStatus: 'reconnecting',
+              interactionStatus: 'pending',
+            },
+            responseRequestedSequence: 23,
+            responseAcknowledgedSequence: 24,
+            terminalStatus: 'completed',
+          },
+          response: { operationId: 'operation-cloud-response', outcome: 'accepted' },
+          firstProcess: { exitSignal: 'SIGKILL', descendantsVerified: true },
+          providerExecution: {
+            provider: 'tangle-sandbox',
+            source: 'sandbox-session-runs',
+            executionCount: 1,
+            matched: true,
+          },
+          cleanup: { confirmed: true },
+        },
+      },
     })
   if (row === 'LIVE-09')
     return proofReceipt({

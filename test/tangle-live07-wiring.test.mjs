@@ -5,11 +5,13 @@ import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
 import { parseOperationId } from '../dist/domain/ids.js'
 import {
+  assertProofReceipt,
   LiveRequiredError,
   PROOF_OPERATIONS,
   proofReceipt,
 } from '../scripts/live-required/contracts.mjs'
 import {
+  admittedCancellationSupport,
   prepareProductionWorkspace,
   verifyUnavailableCancellation,
 } from '../scripts/live-required/headless.mjs'
@@ -242,6 +244,9 @@ test('direct inference proves unavailable cancellation without another generatio
     run: {
       id: 'run-completed-inference',
       status: 'completed',
+    },
+    admission: {
+      runId: 'run-completed-inference',
       capabilities: { controls: { cancel: false } },
     },
     marker: 'TANGLE_INFERENCE_CANCEL',
@@ -255,6 +260,44 @@ test('direct inference proves unavailable cancellation without another generatio
   assert.equal(requests.length, 1)
   assert.equal(requests[0].command, 'cancel')
   assert.equal(requests[0].params.runId, 'run-completed-inference')
+})
+
+test('direct inference reads cancellation support from the matching admission receipt', () => {
+  const projectedRun = { id: 'run-completed-inference', status: 'completed' }
+  assert.equal(
+    admittedCancellationSupport(projectedRun, {
+      runId: projectedRun.id,
+      capabilities: { controls: { cancel: false } },
+    }),
+    false,
+  )
+  assert.equal(
+    admittedCancellationSupport(projectedRun, {
+      runId: projectedRun.id,
+      capabilities: { controls: { cancel: true } },
+    }),
+    true,
+  )
+  assert.throws(
+    () => admittedCancellationSupport(projectedRun, undefined),
+    /matching cancellation capability receipt/u,
+  )
+  assert.throws(
+    () =>
+      admittedCancellationSupport(projectedRun, {
+        runId: 'another-run',
+        capabilities: { controls: { cancel: false } },
+      }),
+    /matching cancellation capability receipt/u,
+  )
+  assert.throws(
+    () =>
+      admittedCancellationSupport(projectedRun, {
+        runId: projectedRun.id,
+        capabilities: { controls: {} },
+      }),
+    /matching cancellation capability receipt/u,
+  )
 })
 
 function executionRecord(
@@ -451,7 +494,7 @@ function passedMultirunProof() {
     },
   ]
   return {
-    schemaVersion: 'braid.live-required.multirun.v2',
+    schemaVersion: 'braid.live-required.multirun.v3',
     status: 'passed',
     provider: {
       endpoint: 'https://sandbox.tangle.tools',
@@ -465,6 +508,24 @@ function passedMultirunProof() {
       second: { conversationId: 'conversation-b', branchId: 'branch-b' },
     },
     runs,
+    markers: { branchA: 'MARKER_A', branchB: 'MARKER_B' },
+    workspace: {
+      branchA: {
+        marker: 'MARKER_A',
+        transcriptMarkerLineCount: 1,
+        transcriptMarkerMatched: true,
+        transcriptBytes: 8,
+        failedToolPartCount: 0,
+        providerEnvironmentId: 'environment-a',
+        path: '.braid-live/MARKER_A/marker.txt',
+        readValueJson: JSON.stringify('MARKER_A\n'),
+        readValueBytesBase64: Buffer.from('MARKER_A\n', 'utf8').toString('base64'),
+        readMatched: true,
+        gitExitCode: 0,
+        gitStdout: 'true',
+        gitWorktree: true,
+      },
+    },
     overlap: {
       activeRunCount: 2,
       streamEventCounts: runs.map(({ runId, eventCount }) => ({ runId, count: eventCount })),
@@ -523,7 +584,7 @@ function passedMultirunProof() {
 }
 
 function interactiveObservations(overrides = {}) {
-  return {
+  const nativeTerminal = {
     checks: {},
     configuration: {},
     run: {},
@@ -546,6 +607,39 @@ function interactiveObservations(overrides = {}) {
     spend: {},
     timing: {},
     ...overrides,
+  }
+  return {
+    nativeTerminal,
+    cloudInteraction: {
+      status: 'passed',
+      runId: 'run-cloud-question',
+      controlRef: { environmentId: 'environment-cloud-question' },
+      interaction: {
+        interactionId: 'question-cloud-1',
+        kind: 'question',
+        requestSequence: 12,
+        reconnect: {
+          operationId: 'operation-cloud-reconnect',
+          acknowledgedRevision: 20,
+          observedRevision: 21,
+          observedSequence: 22,
+          runStatus: 'reconnecting',
+          interactionStatus: 'pending',
+        },
+        responseRequestedSequence: 23,
+        responseAcknowledgedSequence: 24,
+        terminalStatus: 'completed',
+      },
+      response: { operationId: 'operation-cloud-response', outcome: 'accepted' },
+      firstProcess: { exitSignal: 'SIGKILL', descendantsVerified: true },
+      providerExecution: {
+        provider: 'tangle-sandbox',
+        source: 'sandbox-session-runs',
+        executionCount: 1,
+        matched: true,
+      },
+      cleanup: { confirmed: true },
+    },
   }
 }
 
@@ -578,7 +672,7 @@ function passedInteractiveProof(
         modelProvider: 'tangle-router',
         runner,
       },
-      runIds: ['run-interactive'],
+      runIds: ['run-interactive', 'run-cloud-question'],
       environmentId: 'environment-cloud-interactive',
       facts: {
         environmentId: 'environment-cloud-interactive',
@@ -598,6 +692,12 @@ function passedInteractiveProof(
         telemetryComplete: true,
         spendDisclosed: true,
         latencyObserved: true,
+        cloudInteractionRunId: 'run-cloud-question',
+        cloudInteractionEnvironmentId: 'environment-cloud-question',
+        cloudInteractionId: 'question-cloud-1',
+        cloudInteractionResponseOperationId: 'operation-cloud-response',
+        cloudInteractionCompleted: true,
+        cloudInteractionCleanup: true,
       },
       checks: [
         'packed-binary',
@@ -623,6 +723,11 @@ function passedInteractiveProof(
         'telemetry-complete',
         'spend-disclosed',
         'latency-observed',
+        'cloud-question-retained',
+        'cloud-process-reconnect',
+        'cloud-response-acknowledged',
+        'cloud-continued-once',
+        'cloud-exact-resource-cleanup',
       ],
       observations,
     }),
@@ -785,6 +890,14 @@ test('LIVE-07 rejects a passing canary presented as a stress cohort', async () =
   )
 })
 
+function withBranchAWorkspace(overrides) {
+  const proof = passedMultirunProof()
+  return {
+    ...proof,
+    workspace: { branchA: { ...proof.workspace.branchA, ...overrides } },
+  }
+}
+
 test('LIVE-07 requires passed, complete, and exact multirun evidence', async () => {
   const cases = [
     ['missing', undefined, /multirun evidence is missing/u],
@@ -801,6 +914,31 @@ test('LIVE-07 requires passed, complete, and exact multirun evidence', async () 
         cancellation: { ...passedMultirunProof().cancellation, dispatch: null },
       },
       /cancellation dispatch evidence is missing/u,
+    ],
+    [
+      'missing workspace proof',
+      { ...passedMultirunProof(), workspace: undefined },
+      /branch A workspace proof is missing/u,
+    ],
+    [
+      'wrong provider environment',
+      withBranchAWorkspace({ providerEnvironmentId: 'environment-b' }),
+      /not bound to the branch A provider environment/u,
+    ],
+    [
+      'transcript without marker',
+      withBranchAWorkspace({ transcriptMarkerLineCount: 0 }),
+      /one exact marker line/u,
+    ],
+    [
+      'unmatched provider bytes',
+      withBranchAWorkspace({ readValueJson: JSON.stringify('MARKER_A') }),
+      /exact marker bytes/u,
+    ],
+    [
+      'no git worktree',
+      withBranchAWorkspace({ gitExitCode: 128, gitWorktree: false }),
+      /did not prove a Git worktree/u,
     ],
   ]
   for (const [label, multirun, expected] of cases) {
@@ -1369,8 +1507,42 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
       passedInteractiveProof('live-required-status-only-observations', {
         observations: { status: 'passed' },
       }),
-    /observations\.checks/u,
+    /separate native terminal and cloud interaction evidence/u,
   )
+})
+
+test('LIVE-08 rejects the former terminal-only passed receipt', () => {
+  const receipt = passedInteractiveProof('live-required-terminal-only').evidence
+  assert.throws(
+    () =>
+      assertProofReceipt({
+        ...receipt,
+        observations: { nativeTerminal: receipt.observations.nativeTerminal },
+      }),
+    /separate native terminal and cloud interaction evidence/u,
+  )
+})
+
+test('LIVE-08 rejects a response without a prior reconnecting state boundary', () => {
+  const receipt = passedInteractiveProof('live-required-no-reconnect-boundary').evidence
+  const wrongStatus = structuredClone(receipt)
+  wrongStatus.observations.cloudInteraction.interaction.reconnect.runStatus = 'waiting'
+  assert.throws(() => assertProofReceipt(wrongStatus), /cloud interaction evidence is incomplete/u)
+
+  const wrongOrder = structuredClone(receipt)
+  wrongOrder.observations.cloudInteraction.interaction.reconnect.observedSequence = 23
+  assert.throws(
+    () => assertProofReceipt(wrongOrder),
+    /cloud reconnect or response events are missing or unordered/u,
+  )
+})
+
+test('LIVE-07 OpenCode runner setting leaves LIVE-08 native Pi runner intact', () => {
+  const config = interactiveSandboxConfiguration({
+    TANGLE_API_KEY: 'protected-test-key',
+    BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
+  })
+  assert.equal(config.runner, 'pi')
 })
 
 test('LIVE-08 requires observed before and after usage and identity samples', () => {

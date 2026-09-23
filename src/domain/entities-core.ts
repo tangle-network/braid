@@ -3,6 +3,7 @@ import type {
   AgentProfileValidationIssue,
   HarnessType,
   ReasoningEffort,
+  ResourceRequest,
 } from '@tangle-network/agent-interface'
 import type { IsoDateTime, MissingHistoryRange } from './entities-base.js'
 import type {
@@ -176,7 +177,12 @@ export interface ConnectionTransportOptions {
   readonly lifecycle?: 'ephemeral' | 'retained'
   /** Idle expiry for a retained cloud environment. */
   readonly idleTtlSeconds?: number
+  /** Compute requested for every cloud environment this connection creates. */
+  readonly resources?: ConnectionResourceRequest
 }
+
+/** Provider-neutral compute request; provider-native resource options are never stored. */
+export type ConnectionResourceRequest = Readonly<Omit<ResourceRequest, 'providerOptions'>>
 
 export interface RetentionPolicy {
   readonly completedRunDays?: number

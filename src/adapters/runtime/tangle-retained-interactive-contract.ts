@@ -58,6 +58,8 @@ export function interactiveMaterializationReceipt(
   prepared: PreparedTangleRetainedConnection,
 ): Readonly<Record<string, unknown>> {
   const workspaceRequestDigestValue = workspaceRequestDigest(prepared.workspaceRequest)
+  const resourceRequestDigest =
+    prepared.resourceRequest === undefined ? undefined : canonicalDigest(prepared.resourceRequest)
   return publicMaterializationReceipt({
     provider: prepared.provider.name,
     backend: 'environment-provider',
@@ -72,6 +74,7 @@ export function interactiveMaterializationReceipt(
     ...(workspaceRequestDigestValue === undefined
       ? {}
       : { workspaceRequestDigest: workspaceRequestDigestValue }),
+    ...(resourceRequestDigest === undefined ? {} : { resourceRequestDigest }),
   })
 }
 
@@ -91,6 +94,7 @@ export function interactiveEnvironment(
       surface: 'interactive-agent',
     },
     ...(prepared.workspaceRequest === undefined ? {} : { workspace: prepared.workspaceRequest }),
+    ...(prepared.resourceRequest === undefined ? {} : { resources: prepared.resourceRequest }),
     idempotencyKey,
   }
 }
