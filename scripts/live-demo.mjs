@@ -372,8 +372,8 @@ async function main() {
     await typeText(terminal, '/profile', 24)
     terminal.input('\r')
     await terminal.waitForScreen(
-      (screen) => screen.includes(profile.name) && screen.includes(analystProfile.name),
-      'trace analyst profile choice',
+      (screen) => screen.includes(profile.name) && screen.includes('enter select'),
+      'trace analyst profile picker',
     )
     await typeText(terminal, analystProfile.name, 24)
     await terminal.waitForScreen(
