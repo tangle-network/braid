@@ -39,6 +39,7 @@ import {
   isBraidHelpSurfaceVisible,
   isCancellableInteractiveRunStatus,
   stoppedRunFromState,
+  submitBraidCommand,
   waitForInteractiveIdentityFrame,
   waitForProviderReadback,
 } from '../scripts/live-required/tangle-sandbox-braid-interactive.mjs'
@@ -71,6 +72,33 @@ test('interactive help probe ignores the permanent commands footer', () => {
 
   assert.equal(isBraidHelpSurfaceVisible(footer), false)
   assert.equal(isBraidHelpSurfaceVisible(help), true)
+})
+
+test('interactive proof submits a slash command only after its text renders', async () => {
+  const events = []
+  let release
+  const runtime = {
+    terminalOutputRevision: 7,
+    write: (value) => events.push(['write', value]),
+    waitForTerminalQuiescence: (timeoutMs, afterRevision) => {
+      events.push(['quiescence', timeoutMs, afterRevision])
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    },
+  }
+
+  const submitted = submitBraidCommand(runtime, '/help', 5_000)
+  await Promise.resolve()
+  assert.deepEqual(events, [
+    ['write', '/help'],
+    ['quiescence', 5_000, 7],
+  ])
+  release()
+  await submitted
+  assert.deepEqual(events.at(-1), ['write', '\r'])
+  await assert.rejects(submitBraidCommand(runtime, '/help\r', 5_000), TypeError)
+  await assert.rejects(submitBraidCommand(runtime, 'help', 5_000), TypeError)
 })
 
 test('direct inference proves unavailable cancellation without another generation', async () => {
