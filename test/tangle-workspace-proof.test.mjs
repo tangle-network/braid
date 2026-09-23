@@ -839,15 +839,13 @@ test('workspace proof failure keeps cleanup failures behind a proof failure', ()
   const leaked = new Error('source environment sbx-1 cleanup failed')
   const failure = workspaceProofFailure(primary, [leaked])
   assert(failure instanceof AggregateError)
-  assert.equal(failure.errors[0], primary)
-  const cleanup = failure.errors[1]
-  assert(cleanup instanceof AggregateError)
-  assert.equal(cleanup.code, 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE')
-  assert.deepEqual(cleanup.errors, [leaked])
+  assert.equal(failure.code, 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE')
+  assert.deepEqual(failure.errors, [leaked, primary])
+  assert.equal(failure.primaryError, primary)
+  assert.deepEqual(failure.cleanupErrors, [leaked])
   const normalized = normalizeExternalFailure(failure, 'LIVE-09 built-in Tangle proof', {})
   assert.match(normalized.message, /failed and cleanup was incomplete/u)
   assert.match(normalized.message, /marker was not materialized exactly/u)
-  assert.match(normalized.message, /cleanup incomplete/u)
   assert.match(normalized.message, /sbx-1 cleanup failed/u)
 })
 
@@ -916,4 +914,21 @@ test('workspace resource cleanup keeps every failure, not only the first', async
       'Tangle Sandbox did not expose source environment cleanup',
     ],
   )
+})
+
+test('workspace proof failure reports cleanup failures ahead of a verbose proof failure', () => {
+  const verbose = new AggregateError(
+    Array.from({ length: 10 }, (_, index) => new Error(`proof detail ${String(index)}`)),
+    'LIVE-09 proof failed',
+  )
+  const leaks = Array.from(
+    { length: 6 },
+    (_, index) => new Error(`source environment sbx-${String(index)} cleanup failed`),
+  )
+  const normalized = normalizeExternalFailure(
+    workspaceProofFailure(verbose, leaks),
+    'LIVE-09 built-in Tangle proof',
+    {},
+  )
+  for (const leak of leaks) assert.match(normalized.message, new RegExp(leak.message, 'u'))
 })

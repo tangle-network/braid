@@ -1785,15 +1785,20 @@ export function uncapturedSourceIdentityError(app, runIdsBeforeSource, row = 'LI
 
 // Cleanup failures must survive a proof failure: a leaked retained environment
 // keeps billing after the run reports only its first error.
+// The list is flat with cleanup first: the failure report keeps a bounded number of messages, and a
+// leak must not be the part that gets truncated behind a verbose proof failure.
 export function workspaceProofFailure(primaryError, cleanupErrors) {
   if (cleanupErrors.length === 0) return primaryError
-  const cleanup = new AggregateError(cleanupErrors, 'LIVE workspace proof cleanup incomplete')
-  cleanup.code = 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE'
-  if (primaryError === undefined) return cleanup
-  return new AggregateError(
-    [primaryError, cleanup],
-    'LIVE workspace proof failed and cleanup was incomplete',
+  const failure = new AggregateError(
+    primaryError === undefined ? cleanupErrors : [...cleanupErrors, primaryError],
+    primaryError === undefined
+      ? 'LIVE workspace proof cleanup incomplete'
+      : 'LIVE workspace proof failed and cleanup was incomplete',
   )
+  failure.code = 'BRAID_WORKSPACE_CLEANUP_INCOMPLETE'
+  failure.cleanupErrors = cleanupErrors
+  if (primaryError !== undefined) failure.primaryError = primaryError
+  return failure
 }
 
 export function runWorkspaceForkProof(input) {
