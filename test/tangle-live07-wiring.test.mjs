@@ -522,28 +522,36 @@ function passedMultirunProof() {
   }
 }
 
+function interactiveObservations(overrides = {}) {
+  return {
+    checks: {},
+    configuration: {},
+    run: {},
+    sandbox: {},
+    identityContinuity: {},
+    processCleanup: {},
+    providerEvidence: {},
+    providerExecution: {},
+    usage: [
+      { phase: 'before', status: 'observed', value: { activeSandboxes: 1 } },
+      { phase: 'after', status: 'observed', value: { activeSandboxes: 1 } },
+    ],
+    accountIdentities: [
+      { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+      { phase: 'after', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+    ],
+    accountIdentityConsistency: { stable: true, identityDigest: 'c'.repeat(64) },
+    usageDelta: { activeSandboxes: 0 },
+    telemetry: {},
+    spend: {},
+    timing: {},
+    ...overrides,
+  }
+}
+
 function passedInteractiveProof(
   invocationId,
-  {
-    runner = 'pi',
-    observations = {
-      checks: {},
-      configuration: {},
-      run: {},
-      sandbox: {},
-      identityContinuity: {},
-      processCleanup: {},
-      providerEvidence: {},
-      providerExecution: {},
-      usage: {},
-      accountIdentities: {},
-      accountIdentityConsistency: {},
-      usageDelta: {},
-      telemetry: {},
-      spend: {},
-      timing: {},
-    },
-  } = {},
+  { runner = 'pi', observations = interactiveObservations() } = {},
 ) {
   const cloudControl = {
     provider: 'tangle-sandbox',
@@ -1363,6 +1371,68 @@ test('LIVE-08 rejects status-only observations from a passed receipt', () => {
       }),
     /observations\.checks/u,
   )
+})
+
+test('LIVE-08 requires observed before and after usage and identity samples', () => {
+  const observed = (phase) => ({ phase, status: 'observed', value: { activeSandboxes: 0 } })
+  for (const [overrides, expected] of [
+    [
+      { usage: [{ phase: 'before', status: 'observed' }, observed('after')] },
+      /usage before value must be an object/u,
+    ],
+    [{ usage: [observed('before'), { ...observed('after'), value: {} }] }, /activeSandboxes/u],
+    [
+      {
+        accountIdentities: [
+          { phase: 'before', status: 'observed', value: { identityDigest: 'x' } },
+          { phase: 'after', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+        ],
+      },
+      /identityDigest must be a canonical SHA-256 digest/u,
+    ],
+    [
+      {
+        usage: [
+          { phase: 'before', status: 'observed', value: { activeSandboxes: 1 } },
+          { phase: 'after', status: 'observed', value: { activeSandboxes: 2 } },
+        ],
+      },
+      /sampled an activeSandboxes delta of 1/u,
+    ],
+    [{ usageDelta: { activeSandboxes: 3 } }, /sampled an activeSandboxes delta of 0/u],
+    [
+      {
+        accountIdentities: [
+          { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+          { phase: 'after', status: 'observed', value: { identityDigest: 'd'.repeat(64) } },
+        ],
+      },
+      /unstable account identity/u,
+    ],
+    [
+      { accountIdentityConsistency: { stable: true, identityDigest: 'd'.repeat(64) } },
+      /unstable account identity/u,
+    ],
+    [{ usage: {} }, /observations\.usage phase records/u],
+    [{ usage: [observed('before')] }, /observed after sample in observations\.usage/u],
+    [
+      {
+        accountIdentities: [
+          { phase: 'before', status: 'observed', value: { identityDigest: 'c'.repeat(64) } },
+          { phase: 'after', status: 'unavailable' },
+        ],
+      },
+      /observed after sample in observations\.accountIdentities/u,
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        passedInteractiveProof('live-required-phase-samples', {
+          observations: interactiveObservations(overrides),
+        }),
+      expected,
+    )
+  }
 })
 
 test('LIVE-08 rejects input evidence that only observed local terminal echo', () => {

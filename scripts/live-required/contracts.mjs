@@ -820,8 +820,6 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     'processCleanup',
     'providerEvidence',
     'providerExecution',
-    'usage',
-    'accountIdentities',
     'accountIdentityConsistency',
     'usageDelta',
     'telemetry',
@@ -831,6 +829,48 @@ function validatePassedTangleSandboxInteractiveReceipt(receipt) {
     if (!record(receipt.observations[field]))
       throw new Error(`Passed Tangle interactive proof requires observations.${field}`)
   }
+  // Usage and account identity are sampled per phase, so they are phase-record lists.
+  for (const field of ['usage', 'accountIdentities']) {
+    const samples = receipt.observations[field]
+    if (!Array.isArray(samples) || !samples.every(record))
+      throw new Error(
+        `Passed Tangle interactive proof requires observations.${field} phase records`,
+      )
+    for (const phase of ['before', 'after']) {
+      const matches = samples.filter((sample) => sample.phase === phase)
+      if (matches.length !== 1 || matches[0].status !== 'observed')
+        throw new Error(
+          `Passed Tangle interactive proof requires one observed ${phase} sample in observations.${field}`,
+        )
+      const value = matches[0].value
+      const label = `Passed Tangle interactive proof observations.${field} ${phase} value`
+      if (!record(value)) throw new Error(`${label} must be an object`)
+      if (field === 'usage' && !Number.isFinite(value.activeSandboxes))
+        throw new Error(`${label} must report activeSandboxes`)
+      if (field === 'accountIdentities')
+        validCanonicalSha256(value.identityDigest, `${label} identityDigest`)
+    }
+  }
+  const sample = (field, phase) =>
+    receipt.observations[field].find((entry) => entry.phase === phase).value
+  // The sampled values must support the reported delta and identity facts, not merely coexist with them.
+  const sampledDelta =
+    sample('usage', 'after').activeSandboxes - sample('usage', 'before').activeSandboxes
+  if (
+    sampledDelta !== 0 ||
+    receipt.observations.usageDelta.activeSandboxes !== sampledDelta ||
+    receipt.facts.activeResourceDelta !== sampledDelta
+  )
+    throw new Error(
+      `Passed Tangle interactive proof sampled an activeSandboxes delta of ${String(sampledDelta)}`,
+    )
+  const beforeIdentity = sample('accountIdentities', 'before').identityDigest
+  if (
+    sample('accountIdentities', 'after').identityDigest !== beforeIdentity ||
+    receipt.observations.accountIdentityConsistency.stable !== true ||
+    receipt.observations.accountIdentityConsistency.identityDigest !== beforeIdentity
+  )
+    throw new Error('Passed Tangle interactive proof sampled an unstable account identity')
 }
 
 function validatePassedTangleWorkspaceForkReceipt(receipt) {
