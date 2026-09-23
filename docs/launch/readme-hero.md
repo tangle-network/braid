@@ -37,7 +37,7 @@ Without a Tangle key, choose **Local CLI Bridge** during setup and Braid uses th
   `claude-code` is a valid runner name but has no current live proof; add it only after one exists.
 - The 2026-08-09 Pi-then-Codex proof ([Pi](artifacts/verification/live-core/pi.json), [Codex](artifacts/verification/live-core/codex.json)) is off the proven list.
   The 0.3.0 rerun of that flow stalled (see `comparison.md`, "Not proven in this session").
-  Restore it only after a rerun passes on 0.3.0 with a Bridge that includes [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235).
+  Restore it only after a rerun passes on 0.3.0 with a Bridge that includes the merged jail fix [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235).
   Codex in the headline then rests on the packed CLI Bridge release proof of 2026-08-29 ([evidence](artifacts/verification/live/bridge/evidence.json)), which passed with effort `none` before Codex's default model stopped accepting it.
 - The two remaining proofs predate 0.3.0: 2026-08-15 and 2026-09-01.
   Replace them with 0.3.0 receipts once a Live Evidence run passes and uploads its bundle.

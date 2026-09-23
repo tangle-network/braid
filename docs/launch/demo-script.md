@@ -17,7 +17,8 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 
 - A Local CLI Bridge on `http://127.0.0.1:3344`, started from the CLI Bridge checkout with `BRIDGE_JAIL_MODE=fs-jail BRIDGE_BACKENDS=pi,codex BRIDGE_PORT=3344 pnpm start`.
   Pi on Linux needs `fs-jail`.
-  The Bridge build must include the Pi jail fix ([drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235)); without it, Pi fails with `EROFS` under `fs-jail`.
+  The Bridge checkout must include the Pi jail fix ([drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235), merged as `de0c588`); without it, Pi fails with `EROFS` under `fs-jail`.
+  The Bridge runs from source, so update it with `git pull && pnpm install` and restart it.
 - A profile effort that Codex's default model accepts: `low`, `medium`, `high`, `xhigh`, or `max`, or no effort at all.
   Codex rejects `none` with `Unsupported value: 'none' is not supported with the 'gpt-6-astra' model`.
 - A Tangle key in `BRAID_TANGLE_AUTH`, or saved during first-run setup.
@@ -44,7 +45,7 @@ The contrast is where the work runs: a Tangle sandbox, with the laptop off.
 
 | Claim in the voiceover | Evidence |
 | --- | --- |
-| Same profile on Pi and Codex | Braid proofs `artifacts/verification/live-core/pi.json` and `codex.json` (2026-08-09, before 0.3.0). The 0.3.0 rerun in this branch ([`evidence/braid-bridge/`](evidence/braid-bridge/)) stalled for three known causes: Braid crashed when the Bridge refused a turn (fixed in [#66](https://github.com/tangle-network/braid/pull/66)), the Bridge's `fs-jail` left Pi's session directory read-only (fix pending in [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235)), and Codex's default model rejects the profile's `none` effort. Rerun on 0.3.0 with the fixed Bridge before recording. |
+| Same profile on Pi and Codex | Braid proofs `artifacts/verification/live-core/pi.json` and `codex.json` (2026-08-09, before 0.3.0). The 0.3.0 rerun in this branch ([`evidence/braid-bridge/`](evidence/braid-bridge/)) stalled for three known causes: Braid crashed when the Bridge refused a turn (fixed in [#66](https://github.com/tangle-network/braid/pull/66)), the Bridge's `fs-jail` left Pi's session directory read-only (fixed in [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235)), and Codex's default model rejects the profile's `none` effort. Rerun on 0.3.0 with the fixed Bridge before recording. |
 | Same profile in a Tangle sandbox | LIVE-07 and the 2026-09-01 multirun proof (OpenCode in the sandbox). |
 | Keeps working after detach and quit; replay without duplicates | 2026-08-15 retained cohort (SIGKILL and restore, 3 of 3) and the 2026-09-01 multirun proof (`noDuplicateEventIds: true`). |
 | Cost labelled as an estimate | Runtime 0.252 reports sandbox cost without a billing receipt as an estimate (#61); Braid shows `~$` in `/activity` (`src/views/tui/terminal-usage.ts`). |

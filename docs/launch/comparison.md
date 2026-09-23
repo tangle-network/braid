@@ -76,7 +76,7 @@ None of them was produced for this page.
   Transcript: [`evidence/braid-bridge/`](evidence/braid-bridge/).
   A later diagnosis found three causes:
   - Braid crashed with an unhandled rejection when the Bridge refused a turn. [#66](https://github.com/tangle-network/braid/pull/66) fixes this.
-  - The Bridge's `fs-jail` left Pi's session directory read-only, so Pi failed with `EROFS`. The fix is pending upstream in [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235).
+  - The Bridge's `fs-jail` left Pi's session directory read-only, so Pi failed with `EROFS`. [drewstone/cli-bridge#235](https://github.com/drewstone/cli-bridge/pull/235) fixes this (merged as `de0c588`).
   - The probe profile pins effort `none` ([`evidence/braid-bridge/profile.json`](evidence/braid-bridge/profile.json)). Codex's default model rejects `none` and accepts only `low`, `medium`, `high`, `xhigh`, and `max`.
 
   Do not claim 0.3.0 local multi-runner behavior until a rerun passes on 0.3.0 with the fixed Bridge.
