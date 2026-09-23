@@ -22,6 +22,7 @@ import {
   confidentialRefusalChecks,
   parseConfidentialTrustPolicy,
   resourceCensusComparison,
+  settledSourceState,
   sourceIdentityForRun,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
@@ -741,5 +742,37 @@ test('LIVE-10 receipts reject a replaced resource id hidden by stale census summ
   assert.throws(
     () => assertProofReceipt(tampered),
     /resource census does not match its derived result/u,
+  )
+})
+
+test('LIVE-09 waits for a source run that is still live when its send settles', async () => {
+  let state = { runs: [{ id: 'run-source', status: 'running', complete: false }] }
+  let idleCalls = 0
+  const app = {
+    state: () => state,
+    waitForIdle: async () => {
+      idleCalls += 1
+      state = { runs: [{ id: 'run-source', status: 'completed', complete: true }] }
+    },
+  }
+  const settled = await settledSourceState(app, 'run-source', state)
+  assert.equal(idleCalls, 1)
+  assert.equal(settled.runs[0].status, 'completed')
+
+  const terminal = { runs: [{ id: 'run-source', status: 'failed', complete: true }] }
+  assert.equal(
+    await settledSourceState({ waitForIdle: assert.fail }, 'run-source', terminal),
+    terminal,
+  )
+
+  const stuck = { runs: [{ id: 'run-source', status: 'running', complete: false }] }
+  await assert.rejects(
+    settledSourceState(
+      { state: () => stuck, waitForIdle: () => new Promise(() => undefined) },
+      'run-source',
+      stuck,
+      20,
+    ),
+    /Source run run-source stayed running for 20ms after its send settled/u,
   )
 })

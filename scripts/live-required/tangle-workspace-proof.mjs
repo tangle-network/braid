@@ -244,8 +244,13 @@ export function checkpointIdForOperation(state, operationId) {
 function sourceRunFor(state, runId) {
   const run = state.runs.find((candidate) => candidate.id === runId)
   if (run === undefined) throw new Error(`Source run ${runId} is missing from durable state`)
-  if (run.status !== 'completed' || run.complete !== true)
-    throw new Error(`Source run ${runId} did not complete`)
+  if (run.status !== 'completed' || run.complete !== true) {
+    const error = typeof run.error === 'string' ? `; error: ${run.error.slice(0, 300)}` : ''
+    const environment = state.environments.some((candidate) => candidate.id === run.environmentId)
+    throw new Error(
+      `Source run ${runId} did not complete (status ${run.status}, complete ${String(run.complete)}, controlRef ${run.controlRef === undefined ? 'missing' : 'present'}, environment record ${environment ? 'present' : 'missing'}${error})`,
+    )
+  }
   if (run.controlRef === undefined)
     throw new Error(`Source run ${runId} has no exact provider control reference`)
   return run
@@ -556,6 +561,44 @@ function sourcePrompt(marker, path) {
   ].join(' ')
 }
 
+const TERMINAL_RUN_STATUSES = new Set([
+  'completed',
+  'failed',
+  'aborted',
+  'cancelled',
+  'blocked',
+  'expired',
+  'unknown',
+])
+const SOURCE_SETTLE_TIMEOUT_MS = 180_000
+
+/**
+ * The send operation can settle while provider reconciliation still reports the run live.
+ * Wait, bounded, for the provider-authoritative terminal state instead of judging a live run.
+ */
+export async function settledSourceState(app, runId, state, timeoutMs = SOURCE_SETTLE_TIMEOUT_MS) {
+  const statusIn = (candidate) => candidate.runs.find((run) => run.id === runId)?.status
+  if (TERMINAL_RUN_STATUSES.has(statusIn(state))) return state
+  let timer
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Source run ${runId} stayed ${String(statusIn(app.state()))} for ${timeoutMs}ms after its send settled`,
+          ),
+        ),
+      timeoutMs,
+    )
+  })
+  try {
+    await Promise.race([app.waitForIdle(), deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+  return app.state()
+}
+
 async function sendSource(app, proofId, onIdentity = () => {}) {
   const initial = app.state()
   const marker = markerFor(proofId, 'SOURCE')
@@ -584,7 +627,7 @@ async function sendSource(app, proofId, onIdentity = () => {}) {
   try {
     await receipt.admissionReady
     captureIdentity()
-    terminal = await receipt.completion
+    terminal = await settledSourceState(app, receipt.runId, await receipt.completion)
   } catch (error) {
     captureIdentity()
     throw error
