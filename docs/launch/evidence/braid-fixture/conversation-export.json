@@ -1,0 +1,337 @@
+{
+  "content": {
+    "analyses": [],
+    "branches": [
+      {
+        "conversationId": "conv-1",
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "draftId": "draft-branch-1",
+        "id": "branch-1",
+        "overrides": {},
+        "queueId": "queue-branch-1",
+        "status": "active",
+        "tipMessageId": "message-000004",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "conversation": {
+      "activeBranchId": "branch-1",
+      "archived": false,
+      "createdAt": "2026-08-01T00:00:00.000Z",
+      "id": "conv-1",
+      "retention": {},
+      "title": "New conversation",
+      "updatedAt": "2026-08-01T00:00:00.000Z",
+      "workspaceId": "workspace-2007c92ebb4add1856f485ae0a698bc5"
+    },
+    "feedbackDecisions": [],
+    "graphEdges": [
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "destination": "node-c766423e43f81ecef975a88c40bd2dbb",
+        "id": "edge-aec79b0868ed69978d5b3abfc8c565dc",
+        "kind": "attached",
+        "provenance": {},
+        "source": "node-360b8b7690e6a6a0caa4edd8c45f7899"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "destination": "node-9cc0d92342c4a6504b1984f599c19c47",
+        "id": "edge-86239d82883da5951ad83fab9923ae22",
+        "kind": "continued",
+        "provenance": { "operationId": "op-2" },
+        "source": "node-c766423e43f81ecef975a88c40bd2dbb"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "destination": "node-e8a21a0934a7fa46febe9154dc7f44e6",
+        "id": "edge-4b9638f72e6c8ebaef891e8e9912f17d",
+        "kind": "attached",
+        "provenance": { "operationId": "op-2" },
+        "source": "node-9cc0d92342c4a6504b1984f599c19c47"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "destination": "node-d2d78b784469ede229bf24540b4d7d47",
+        "id": "edge-722dd0983b51e841ec6c00fb1d16e821",
+        "kind": "attached",
+        "provenance": { "operationId": "op-2" },
+        "source": "node-9cc0d92342c4a6504b1984f599c19c47"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "destination": "node-e5d2bcfd6f167e7fb9442bd7adfd7611",
+        "id": "edge-994f3dd07e1f8d2425c91c2ee88b3341",
+        "kind": "attached",
+        "provenance": { "operationId": "op-2" },
+        "source": "node-d2d78b784469ede229bf24540b4d7d47"
+      }
+    ],
+    "graphNodes": [
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "node-360b8b7690e6a6a0caa4edd8c45f7899",
+        "reference": { "id": "conv-1", "kind": "conversation" },
+        "title": "New conversation",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "node-c766423e43f81ecef975a88c40bd2dbb",
+        "reference": { "id": "branch-1", "kind": "branch" },
+        "title": "Main",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "node-9cc0d92342c4a6504b1984f599c19c47",
+        "reference": { "id": "turn-000002", "kind": "turn" },
+        "title": "Turn",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "node-e8a21a0934a7fa46febe9154dc7f44e6",
+        "reference": { "id": "message-000003", "kind": "message" },
+        "title": "User message",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "node-d2d78b784469ede229bf24540b4d7d47",
+        "reference": { "id": "run-000001", "kind": "run" },
+        "title": "Run",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "node-e5d2bcfd6f167e7fb9442bd7adfd7611",
+        "reference": { "id": "message-000004", "kind": "message" },
+        "title": "Assistant message",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "messageParts": [
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "part-message-000003",
+        "kind": "text",
+        "messageId": "message-000003",
+        "ordinal": 0,
+        "text": "hello from the launch probe",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "part-message-000004",
+        "kind": "text",
+        "messageId": "message-000004",
+        "ordinal": 0,
+        "text": "",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "messages": [
+      {
+        "branchId": "branch-1",
+        "complete": true,
+        "conversationId": "conv-1",
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "message-000003",
+        "partIds": ["part-message-000003"],
+        "parts": [
+          { "id": "part-message-000003", "kind": "text", "text": "hello from the launch probe" }
+        ],
+        "role": "user",
+        "runId": "run-000001",
+        "status": "complete",
+        "text": "hello from the launch probe",
+        "turnId": "turn-000002",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "branchId": "branch-1",
+        "complete": true,
+        "conversationId": "conv-1",
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "message-000004",
+        "partIds": ["part-message-000004"],
+        "parts": [
+          {
+            "artifactId": "router:42f84b99",
+            "id": "router:42f84b99",
+            "kind": "artifact",
+            "metadata": {
+              "spend": {
+                "iterations": 1,
+                "ms": 62,
+                "tokens": { "cacheBreakdownKnown": false, "input": 8, "output": 12 },
+                "usd": 0,
+                "usdKnown": false
+              }
+            },
+            "source": {
+              "eventId": "run-000001:runtime:3",
+              "occurredAt": "2026-09-23T08:02:43.067Z",
+              "sequence": 3
+            },
+            "title": "agent-turn-result"
+          },
+          {
+            "id": "run-000001:text",
+            "kind": "text",
+            "source": {
+              "eventId": "run-000001:runtime:4",
+              "occurredAt": "2026-09-23T08:02:43.070Z",
+              "sequence": 4
+            },
+            "text": "Fixture response through pi: hello from the launch probe"
+          }
+        ],
+        "role": "assistant",
+        "runId": "run-000001",
+        "status": "complete",
+        "text": "Fixture response through pi: hello from the launch probe",
+        "turnId": "turn-000002",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "runs": [
+      {
+        "activity": [
+          {
+            "detail": "profile 44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+            "id": "run-000001:admission:local:admitted",
+            "label": "admitted",
+            "runId": "run-000001",
+            "type": "admission"
+          },
+          {
+            "id": "run-000001:run.artifact:run-000001:runtime:3:artifact",
+            "label": "artifact",
+            "runId": "run-000001",
+            "source": {
+              "eventId": "run-000001:runtime:3",
+              "occurredAt": "2026-09-23T08:02:43.067Z",
+              "sequence": 3
+            },
+            "type": "run.artifact"
+          }
+        ],
+        "branchId": "branch-1",
+        "capabilities": {
+          "controls": {
+            "cancel": true,
+            "queue": true,
+            "recreate": false,
+            "status": false,
+            "steer": false
+          },
+          "events": { "cursor": false, "sequence": true, "stableIdentity": false },
+          "sessions": { "continue": false, "messages": false },
+          "streaming": { "detach": false, "live": true, "replay": false, "turnIdempotency": true },
+          "usage": true
+        },
+        "complete": true,
+        "contentBytes": 213,
+        "conversationId": "conv-1",
+        "eventCount": 4,
+        "eventDetails": [
+          {
+            "eventId": "run-000001:runtime:1",
+            "occurredAt": "2026-09-23T08:02:42.997Z",
+            "sequence": 1,
+            "type": "backend_start"
+          }
+        ],
+        "id": "run-000001",
+        "inputTokens": 8,
+        "interactions": [],
+        "lastProviderSequence": 4,
+        "llmCalls": 1,
+        "llmLatencyMs": 62,
+        "model": "fixture/deterministic",
+        "operationId": "op-2",
+        "outputTokens": 12,
+        "receipt": {
+          "admissionStatus": "admitted",
+          "admittedAt": "2026-08-01T00:00:00.000Z",
+          "branchId": "branch-1",
+          "capabilities": {
+            "controls": {
+              "cancel": true,
+              "queue": true,
+              "recreate": false,
+              "status": false,
+              "steer": false
+            },
+            "events": { "cursor": false, "sequence": true, "stableIdentity": false },
+            "sessions": { "continue": false, "messages": false },
+            "streaming": {
+              "detach": false,
+              "live": true,
+              "replay": false,
+              "turnIdempotency": true
+            },
+            "usage": true
+          },
+          "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
+          "conversationId": "conv-1",
+          "digest": "68b4f2b4c122dd2eb3b617cc5d41bae483568a3754465869471574ffaa00f00f",
+          "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
+          "materializationReceipt": { "backendKind": "executor", "provider": "agent-runtime" },
+          "operationId": "op-2",
+          "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+          "provider": "agent-runtime",
+          "requestDigest": "d5c1ec2773c6e24860f3a0df947589a7960aa4e5c979feae973fa4a8c8c06c2c",
+          "requested": {
+            "interactions": {},
+            "model": "fixture/deterministic",
+            "profile": {
+              "description": "A portable starter profile for the Braid terminal",
+              "harness": "pi",
+              "model": {
+                "default": "fixture/deterministic",
+                "provider": "fixture",
+                "reasoningEffort": "none"
+              },
+              "name": "Braid starter"
+            },
+            "runner": "pi",
+            "text": "hello from the launch probe",
+            "workspaceRoot": "<scratch>/braid-rpc/ws-V1nUtH"
+          },
+          "runId": "run-000001",
+          "turnId": "turn-000002",
+          "version": 1
+        },
+        "startedAt": "2026-08-01T00:00:00.000Z",
+        "status": "completed",
+        "terminalAt": "2026-08-01T00:00:00.000Z",
+        "terminalReason": "RUNTIME_FINAL_REASON",
+        "turnId": "turn-000002",
+        "updatedAt": "2026-08-01T00:00:00.000Z",
+        "usdKnown": false
+      }
+    ],
+    "turns": [
+      {
+        "branchId": "branch-1",
+        "conversationId": "conv-1",
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "id": "turn-000002",
+        "runIds": ["run-000001"],
+        "status": "running",
+        "updatedAt": "2026-08-01T00:00:00.000Z",
+        "userMessageId": "message-000003"
+      }
+    ]
+  },
+  "contentDigest": "59e4346fd8eaca09566a89590b079be56aaef60e065fa226de45ac3d00052be7",
+  "conversationId": "conv-1",
+  "exportedAt": "2026-08-01T00:00:00.000Z",
+  "externalControlsDisabled": true,
+  "format": "braid-conversation",
+  "redacted": true,
+  "schemaVersion": 2
+}

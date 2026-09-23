@@ -1,0 +1,26 @@
+braid — a universal terminal interface for agent profiles
+
+Usage:
+  braid [options]
+  braid rpc [options]
+
+Options:
+  --workspace <path>          Workspace to open (default: current directory)
+  --config <path>             Production profile and connection configuration
+  --inline                    Render in the main terminal buffer
+  --plain                     Emit a readable non-interactive event stream
+  --no-color                  Disable color
+  --high-contrast              Use high-contrast semantic colors
+  --reduced-motion             Replace motion with stable status text
+  --conversation <id>         Open a conversation by id
+  --profile <path>             Select a canonical profile file for the run
+  --connection <id>            Select a connection for the run
+  --runner <name>              Set a run-level runner preference
+  --model <name>               Set a run-level model preference
+  --effort <level>             Set a run-level effort preference
+  --database-key-file <path>   Use a protected 0600 headless SQLite key file
+  --fixture deterministic     Use the clearly labelled offline test provider
+  --ui-fixture <name>         Render a named visual verification fixture
+  --record-state <path>       Write final semantic state and events for verification
+  -h, --help                  Show help
+  -v, --version               Show version
