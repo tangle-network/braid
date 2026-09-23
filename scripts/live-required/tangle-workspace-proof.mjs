@@ -244,8 +244,13 @@ export function checkpointIdForOperation(state, operationId) {
 function sourceRunFor(state, runId) {
   const run = state.runs.find((candidate) => candidate.id === runId)
   if (run === undefined) throw new Error(`Source run ${runId} is missing from durable state`)
-  if (run.status !== 'completed' || run.complete !== true)
-    throw new Error(`Source run ${runId} did not complete`)
+  if (run.status !== 'completed' || run.complete !== true) {
+    const error = typeof run.error === 'string' ? `; error: ${run.error.slice(0, 300)}` : ''
+    const environment = state.environments.some((candidate) => candidate.id === run.environmentId)
+    throw new Error(
+      `Source run ${runId} did not complete (status ${run.status}, complete ${String(run.complete)}, controlRef ${run.controlRef === undefined ? 'missing' : 'present'}, environment record ${environment ? 'present' : 'missing'}${error})`,
+    )
+  }
   if (run.controlRef === undefined)
     throw new Error(`Source run ${runId} has no exact provider control reference`)
   return run
@@ -556,6 +561,85 @@ function sourcePrompt(marker, path) {
   ].join(' ')
 }
 
+// `unknown` is excluded: later provider evidence can still correct it, so settling keeps polling.
+const TERMINAL_RUN_STATUSES = new Set([
+  'completed',
+  'failed',
+  'aborted',
+  'cancelled',
+  'blocked',
+  'expired',
+])
+const SOURCE_SETTLE_TIMEOUT_MS = 180_000
+const SOURCE_SETTLE_INTERVAL_MS = 2_000
+
+/**
+ * The send operation can settle while provider reconciliation still reports the run live.
+ * Poll provider reconciliation, bounded, for the terminal state instead of judging a live run;
+ * Braid state alone cannot advance once the send's stream has ended.
+ */
+export async function settledSourceState(
+  app,
+  runId,
+  state,
+  {
+    timeoutMs = SOURCE_SETTLE_TIMEOUT_MS,
+    intervalMs = SOURCE_SETTLE_INTERVAL_MS,
+    pause = (milliseconds) =>
+      new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
+    now = () => performance.now(),
+  } = {},
+) {
+  const statusIn = (candidate) => candidate.runs.find((run) => run.id === runId)?.status
+  if (TERMINAL_RUN_STATUSES.has(statusIn(state))) return state
+  const run = state.runs.find((candidate) => candidate.id === runId)
+  // Without provider status, reconciliation only records `unknown`; report the state instead.
+  if (run?.capabilities?.controls?.status !== true)
+    throw new Error(
+      `Source run ${runId} stayed ${String(run?.status)} after its send settled, and its execution path does not report provider status (complete ${String(run?.complete)}, controlRef ${run?.controlRef === undefined ? 'missing' : 'present'})`,
+    )
+  const deadline = now() + timeoutMs
+  for (let attempt = 1; ; attempt += 1) {
+    // A stalled status request is aborted at the deadline and settled before cleanup runs.
+    const controller = new AbortController()
+    let timer
+    let timedOut = false
+    const request = app.reconcileRun({
+      operationId: `op-live-required-source-settle-${runId}-${String(attempt)}`,
+      runId,
+      signal: controller.signal,
+    })
+    const expired = new Promise((resolvePromise) => {
+      timer = setTimeout(
+        () => {
+          timedOut = true
+          controller.abort()
+          resolvePromise()
+        },
+        Math.max(0, deadline - now()),
+      )
+    })
+    let reconciled
+    try {
+      reconciled = await Promise.race([request, expired])
+    } finally {
+      clearTimeout(timer)
+    }
+    if (timedOut) {
+      await request.catch(() => undefined)
+      throw new Error(
+        `Source run ${runId} reconciliation exceeded the ${timeoutMs}ms settle deadline`,
+      )
+    }
+    if (TERMINAL_RUN_STATUSES.has(statusIn(reconciled))) return reconciled
+    if (now() >= deadline)
+      throw new Error(
+        `Source run ${runId} stayed ${String(statusIn(reconciled))} for ${timeoutMs}ms after its send settled`,
+      )
+    await pause(intervalMs)
+  }
+}
+
 async function sendSource(app, proofId, onIdentity = () => {}) {
   const initial = app.state()
   const marker = markerFor(proofId, 'SOURCE')
@@ -584,11 +668,14 @@ async function sendSource(app, proofId, onIdentity = () => {}) {
   try {
     await receipt.admissionReady
     captureIdentity()
-    terminal = await receipt.completion
+    terminal = await settledSourceState(app, receipt.runId, await receipt.completion)
   } catch (error) {
     captureIdentity()
     throw error
   }
+  // The control reference usually lands after admission; capture it before judging the run so
+  // the caller can still destroy the exact source environment when the run did not complete.
+  captureIdentity()
   const run = sourceRunFor(terminal, receipt.runId)
   const source = sourceEnvironmentRecord(terminal, run)
   return Object.freeze({

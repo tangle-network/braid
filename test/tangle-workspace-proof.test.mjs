@@ -22,6 +22,7 @@ import {
   confidentialRefusalChecks,
   parseConfidentialTrustPolicy,
   resourceCensusComparison,
+  settledSourceState,
   sourceIdentityForRun,
 } from '../scripts/live-required/tangle-workspace-proof.mjs'
 
@@ -742,4 +743,90 @@ test('LIVE-10 receipts reject a replaced resource id hidden by stale census summ
     () => assertProofReceipt(tampered),
     /resource census does not match its derived result/u,
   )
+})
+
+test('LIVE-09 reconciles a source run that is still live when its send settles', async () => {
+  const capabilities = { controls: { status: true } }
+  const live = { runs: [{ id: 'run-source', status: 'running', complete: false, capabilities }] }
+  const done = { runs: [{ id: 'run-source', status: 'completed', complete: true }] }
+  // A transient status failure records `unknown`; settling must keep reconciling past it.
+  const unknown = { runs: [{ id: 'run-source', status: 'unknown', complete: false, capabilities }] }
+  const reconciles = []
+  const app = {
+    reconcileRun: async (input) => {
+      reconciles.push(input)
+      if (reconciles.length === 1) return unknown
+      return reconciles.length < 3 ? live : done
+    },
+  }
+  const pauses = []
+  const settled = await settledSourceState(app, 'run-source', live, {
+    pause: async (milliseconds) => pauses.push(milliseconds),
+  })
+  assert.equal(settled, done)
+  assert.deepEqual(
+    reconciles.map((input) => input.runId),
+    ['run-source', 'run-source', 'run-source'],
+  )
+  assert.equal(new Set(reconciles.map((input) => input.operationId)).size, 3)
+  assert.deepEqual(pauses, [2_000, 2_000])
+
+  const terminal = { runs: [{ id: 'run-source', status: 'failed', complete: true }] }
+  assert.equal(
+    await settledSourceState({ reconcileRun: assert.fail }, 'run-source', terminal),
+    terminal,
+  )
+
+  let clock = 0
+  await assert.rejects(
+    settledSourceState({ reconcileRun: async () => live }, 'run-source', live, {
+      timeoutMs: 5_000,
+      pause: async (milliseconds) => {
+        clock += milliseconds
+      },
+      now: () => clock,
+    }),
+    /Source run run-source stayed running for 5000ms after its send settled/u,
+  )
+
+  const statusless = {
+    runs: [
+      {
+        id: 'run-source',
+        status: 'running',
+        complete: false,
+        capabilities: { controls: { status: false } },
+      },
+    ],
+  }
+  await assert.rejects(
+    settledSourceState({ reconcileRun: assert.fail }, 'run-source', statusless),
+    /does not report provider status \(complete false, controlRef missing\)/u,
+  )
+
+  let aborted = false
+  let settledAfterAbort = false
+  await assert.rejects(
+    settledSourceState(
+      {
+        reconcileRun: ({ signal }) =>
+          new Promise((_, reject) => {
+            signal.addEventListener('abort', () => {
+              aborted = true
+              setTimeout(() => {
+                settledAfterAbort = true
+                reject(new Error('aborted'))
+              }, 5)
+            })
+          }),
+      },
+      'run-source',
+      live,
+      { timeoutMs: 20 },
+    ),
+    /reconciliation exceeded the 20ms settle deadline/u,
+  )
+  // The stalled request is aborted and settles before settling reports the timeout.
+  assert.equal(aborted, true)
+  assert.equal(settledAfterAbort, true)
 })

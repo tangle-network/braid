@@ -24,6 +24,7 @@ import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './appl
 import type { PortViews } from './application-port-builder.js'
 import type {
   ControlEffectRequest,
+  ReconcileInput,
   ReconnectInput,
   RuntimeEventIngestionResult,
 } from './application-ports.js'
@@ -597,7 +598,7 @@ export class BraidApplication {
     return reconnectRun(this.#portViews.replay, input)
   }
 
-  async reconcileRun(input: ReconnectInput): Promise<BraidState> {
+  async reconcileRun(input: ReconcileInput): Promise<BraidState> {
     return reconcileRun(this.#portViews.replay, input)
   }
 
