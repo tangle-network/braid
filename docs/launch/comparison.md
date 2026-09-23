@@ -6,7 +6,7 @@ This page reports whether a capability was present when we tried it. It does not
 ## What we tested and how
 
 We ran each CLI in a new throwaway directory with short, cheap prompts.
-The script is [`evidence/probe.py`](evidence/probe.py); every run is a row in [`evidence/results.jsonl`](evidence/results.jsonl).
+Every run is a row in [`evidence/results.jsonl`](evidence/results.jsonl), with its command, observed result, and evidence path.
 Each current row links to its own redacted raw output.
 The first probe used fixed raw filenames: eight historical outputs were overwritten, and two manual cleanup rows had no separate capture.
 Those 10 rows are marked `raw_unavailable` in the ledger.
@@ -31,7 +31,7 @@ All four did, so a pass on resume means the session carried the code.
 Two host-specific wrappers affected OpenCode rows.
 This machine wraps `opencode run` to give each call a disposable data directory, and it starts OpenCode under GNU `timeout`.
 The first OpenCode resume row is marked `invalid` in `results.jsonl` and was rerun with a named data directory.
-The reproduction commands below select that real binary explicitly for OpenCode.
+The corrected OpenCode terminal-close rows record the real binary in their commands.
 The original terminal-close detector also matched `sleep` text in each CLI's prompt before the shell task began.
 All six earlier terminal-close rows are marked `invalid` in `results.jsonl`, including the wrapper-affected OpenCode row.
 The corrected probe waits for an actual `sleep` executable with the exact duration, under the launched process or in the attached server's workspace.
@@ -99,19 +99,16 @@ The corrected terminal-close recheck and server ownership check added six short 
 The Braid Bridge attempts admitted up to three more Pi runs; we did not confirm whether they reached the model.
 No Tangle Sandbox credential was used, and no cloud resource was created.
 
-## Reproduce
+## Repeat the observations
 
-```bash
-cd docs/launch/evidence
-export PROBE_WORK_ROOT="$(mktemp -d)"
-export PROBE_OUTPUT_DIR="$PROBE_WORK_ROOT/capture"
-export PROBE_OPENCODE_REAL=1  # on this host, bypasses the wrapper for OpenCode
-: "${ZAI_API_KEY:?Set ZAI_API_KEY in the environment for Claude Code}"
-for h in claude codex opencode pi; do python3 probe.py turn1 $h; python3 probe.py resume $h; python3 probe.py control $h; python3 probe.py hangup $h; done
-python3 probe.py bg
-python3 probe.py serve
-```
+Use the recorded CLI versions, commands, and prompts in [`evidence/results.jsonl`](evidence/results.jsonl).
+Create a fresh temporary directory for each first turn and supply your own credentials.
+The Claude Code rows use Z.AI's Anthropic-compatible endpoint with `ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic` and an `ANTHROPIC_AUTH_TOKEN` supplied by the operator.
+Save the session identifier from the first turn, then use it for the resume command in a new process.
+Run the control command in a fresh session and check that it cannot recall the random code.
 
-The Claude Code probe reads `ZAI_API_KEY` from the environment and passes it to Z.AI's Anthropic-compatible endpoint.
-It masks the known credential values and standard auth forms before saving output under `PROBE_OUTPUT_DIR`.
-By default, that output is in a temporary directory outside the checkout.
+For a terminal-close row, run the recorded command under a PTY.
+Confirm that the requested `sleep` executable started before closing the client PTY.
+Check whether the completion marker appears after the PTY closes.
+For OpenCode's served row, use a dedicated loopback port and confirm that the spawned server owns it before attaching.
+The ledger marks invalid attempts and links each retained redacted output to its result.
