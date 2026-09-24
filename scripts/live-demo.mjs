@@ -48,6 +48,7 @@ const packageProofPath = process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   ? process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   : join(repository, 'artifacts', 'verification', 'w6', 'package-proof.json')
 const packageSource = resolve(process.env.BRAID_LIVE_DEMO_PACKAGE_SOURCE ?? repository)
+const directTarball = process.env.BRAID_LIVE_DEMO_DIRECT_TARBALL
 const columns = 160
 const rows = 30
 
@@ -305,7 +306,7 @@ async function main() {
     bridge,
   ] = await Promise.all([
     readFile(join(packageSource, 'package.json'), 'utf8').then(JSON.parse),
-    readFile(packageProofPath),
+    directTarball === undefined ? readFile(packageProofPath) : Promise.resolve(undefined),
     run('git', ['rev-parse', 'HEAD', 'HEAD^{tree}', '--show-toplevel'], {
       cwd: packageSource,
     }),
@@ -323,7 +324,9 @@ async function main() {
   const [sourceCommit, sourceTreeSha256, sourceRoot] = sourceIdentity.stdout.trim().split('\n')
   assert.equal(sourceRoot, packageSource, 'The package source must be a checkout root')
   const driverCommit = driverIdentity.stdout.trim()
-  const packageProof = JSON.parse(packageProofBytes.toString('utf8'))
+  const packageProof = packageProofBytes === undefined
+    ? undefined
+    : JSON.parse(packageProofBytes.toString('utf8'))
   const route = bridge.target.modelId
   const profile = liveDemoProfileForRoute(route)
   let analystProfile = liveDemoProfileForRoute(
@@ -343,7 +346,7 @@ async function main() {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
     tarballPath:
-      process.env.BRAID_RELEASE_TARBALL ?? packageTarballPath(packageProofPath, packageProof),
+      directTarball ?? process.env.BRAID_RELEASE_TARBALL ?? packageTarballPath(packageProofPath, packageProof),
   })
   let terminal
   let codingSession
@@ -351,13 +354,15 @@ async function main() {
   let manifestPath
   let manifestText
   try {
-    assertExactPackageProof(packageProof, {
-      commit: sourceCommit,
-      treeSha256: sourceTreeSha256,
-      version: sourcePackage.version,
-      tarball: packed.tarballName,
-      tarballSha256: packed.tarballSha256,
-    })
+    if (packageProof !== undefined) {
+      assertExactPackageProof(packageProof, {
+        commit: sourceCommit,
+        treeSha256: sourceTreeSha256,
+        version: sourcePackage.version,
+        tarball: packed.tarballName,
+        tarballSha256: packed.tarballSha256,
+      })
+    }
     const packedPackage = JSON.parse(await readFile(join(packed.packageRoot, 'package.json')))
     const analysisRuntime = {
       manager: 'bundled uv',
@@ -581,7 +586,8 @@ async function main() {
         packageVersion: sourcePackage.version,
         tarball: packed.tarballName,
         tarballSha256: packed.tarballSha256,
-        packageProofSha256: sha256(packageProofBytes),
+        packageProofSha256: packageProofBytes === undefined ? null : sha256(packageProofBytes),
+        verification: packageProofBytes === undefined ? 'direct-pack-unendorsed' : 'package-proof',
       },
       driver: { commit: driverCommit },
       route: {
