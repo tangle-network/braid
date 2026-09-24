@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 2,
+  "status": "passed",
+  "capturedAt": "2026-09-24T09:59:18.195Z",
+  "source": {
+    "commit": "e626d55083ab31d6322c86c9848ef7153e96346a",
+    "treeSha256": "b08a130b66dd7f7c147cf0bfee01ca9f36e19778",
+    "packageVersion": "0.3.0",
+    "tarball": "tangle-network-braid-0.3.0.tgz",
+    "tarballSha256": "5a892beb55e9554b276d1f396cae4dce267ef011656ac4f7b1a482b19203e517",
+    "packageProofSha256": null,
+    "verification": "direct-pack-unendorsed"
+  },
+  "driver": {
+    "commit": "9142cc7e758ae0687074b5e8850fda986aaf266f"
+  },
+  "route": {
+    "connection": "Local CLI Bridge",
+    "endpoint": "http://127.0.0.1:3345",
+    "runner": "pi",
+    "runnerVersion": "0.87.1",
+    "provider": "tangle-router",
+    "model": "glm-5.2"
+  },
+  "profile": {
+    "name": "Release engineer",
+    "reasoningEffort": "high"
+  },
+  "analysisProfile": {
+    "name": "Trace analyst",
+    "runner": "pi",
+    "model": "gpt-5-mini",
+    "reasoningEffort": "high",
+    "maxTotalOutputTokens": 16000
+  },
+  "task": {
+    "prompt": "Finish the slugify function. Normalize Unicode accents, treat underscores as punctuation, collapse punctuation and spaces to one dash, trim dashes, and lowercase. Add edge-case tests, run them, and summarize the proof.",
+    "runId": "run-49f4e65a-b262-4c69-9737-442feb1921f2",
+    "providerSessionId": "session-braid-run-49f4e65a-b262-4c69-9737-442feb1921f2",
+    "inputTokens": 3703,
+    "outputTokens": 2478,
+    "llmCalls": null,
+    "llmLatencyMs": null,
+    "normalizedToolCalls": 0,
+    "normalizedToolResults": 10,
+    "toolProjection": {
+      "status": "blocked-upstream",
+      "issue": "https://github.com/tangle-network/agent-runtime/issues/762"
+    },
+    "approvedPermissions": [
+      {
+        "tool": "bash",
+        "scope": "once"
+      },
+      {
+        "tool": "bash",
+        "scope": "once"
+      },
+      {
+        "tool": "read",
+        "scope": "once"
+      },
+      {
+        "tool": "read",
+        "scope": "once"
+      },
+      {
+        "tool": "read",
+        "scope": "once"
+      },
+      {
+        "tool": "write",
+        "scope": "once"
+      },
+      {
+        "tool": "write",
+        "scope": "once"
+      },
+      {
+        "tool": "bash",
+        "scope": "once"
+      },
+      {
+        "tool": "edit",
+        "scope": "once"
+      },
+      {
+        "tool": "bash",
+        "scope": "once"
+      }
+    ],
+    "sessionCleanup": {
+      "sessionId": "session-braid-run-49f4e65a-b262-4c69-9737-442feb1921f2",
+      "status": "closed"
+    },
+    "workspaceProof": {
+      "testOutput": "> test\n> node --test --test-reporter=spec\n\n(node:1891822) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u001b[32m✔ joins words with a dash \u001b[90m(1.58627ms)\u001b[39m\u001b[39m\n\u001b[32m✔ lowercases \u001b[90m(1.686363ms)\u001b[39m\u001b[39m\n\u001b[32m✔ normalizes precomposed accented characters \u001b[90m(0.365172ms)\u001b[39m\u001b[39m\n\u001b[32m✔ normalizes combining marks \u001b[90m(0.21812ms)\u001b[39m\u001b[39m\n\u001b[32m✔ treats underscores as punctuation \u001b[90m(0.375091ms)\u001b[39m\u001b[39m\n\u001b[32m✔ collapses punctuation and spaces into a single dash \u001b[90m(0.128628ms)\u001b[39m\u001b[39m\n\u001b[32m✔ trims leading and trailing dashes \u001b[90m(0.190105ms)\u001b[39m\u001b[39m\n\u001b[32m✔ keeps digits \u001b[90m(0.097177ms)\u001b[39m\u001b[39m\n\u001b[32m✔ returns empty string for punctuation-only input \u001b[90m(0.680569ms)\u001b[39m\u001b[39m\n\u001b[32m✔ returns empty string for empty input \u001b[90m(0.459273ms)\u001b[39m\u001b[39m\n\u001b[32m✔ round-trips a typical blog title \u001b[90m(0.265431ms)\u001b[39m\u001b[39m\n\u001b[34mℹ tests 11\u001b[39m\n\u001b[34mℹ suites 0\u001b[39m\n\u001b[34mℹ pass 11\u001b[39m\n\u001b[34mℹ fail 0\u001b[39m\n\u001b[34mℹ cancelled 0\u001b[39m\n\u001b[34mℹ skipped 0\u001b[39m\n\u001b[34mℹ todo 0\u001b[39m\n\u001b[34mℹ duration_ms 112.224444\u001b[39m\n(node:1891678) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)",
+      "samples": [
+        "cafe-deja-vu",
+        "ship-it"
+      ],
+      "sourceSha256": "24f36dec97231ec19821295ad3a39315656bb34c4ed6ab985dbbaafcf7b154a4",
+      "testSha256": "334cd64a7bae84f126f33159ce917d1e8d3a4b685ea166a43301ca7254dcc612"
+    }
+  },
+  "analysis": {
+    "question": "Did the completed run prove Unicode accent removal in slugify? Cite the edited source and passing test, then name one remaining gap.",
+    "runtimeManager": "bundled uv",
+    "pythonVersion": "3.12",
+    "agentEvalRpcVersion": "0.183.0",
+    "id": "analysis-0817aa0eca6e48f3adb3347cb3a1d2cbc2872ad7",
+    "status": "completed",
+    "findings": 3,
+    "supportedFindings": 3,
+    "citationSupport": "passed",
+    "configuredModel": "gpt-5-mini",
+    "observedModels": [
+      "pi/tangle-router/gpt-5-mini"
+    ],
+    "modelCalls": 3,
+    "inputTokens": 12375,
+    "outputTokens": 9403,
+    "costUsd": null,
+    "estimatedCostUsd": 0.10949875,
+    "costStatus": "estimated",
+    "modelCallEvidence": [
+      {
+        "sequence": 1,
+        "provider": "tangle-router",
+        "model": "pi/tangle-router/gpt-5-mini",
+        "inputTokens": 2104,
+        "outputTokens": 812,
+        "tokensKnown": true,
+        "costUsd": 0.010750000000000001,
+        "costStatus": "estimated",
+        "latencyMs": 44983,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 2,
+        "provider": "tangle-router",
+        "model": "pi/tangle-router/gpt-5-mini",
+        "inputTokens": 4183,
+        "outputTokens": 2897,
+        "tokensKnown": true,
+        "costUsd": 0.03419875,
+        "costStatus": "estimated",
+        "latencyMs": 103909,
+        "outcome": "succeeded"
+      },
+      {
+        "sequence": 3,
+        "provider": "tangle-router",
+        "model": "pi/tangle-router/gpt-5-mini",
+        "inputTokens": 6088,
+        "outputTokens": 5694,
+        "tokensKnown": true,
+        "costUsd": 0.06455000000000001,
+        "costStatus": "estimated",
+        "latencyMs": 150037,
+        "outcome": "succeeded"
+      }
+    ],
+    "modelLatencyMs": 298929,
+    "wallTimeMs": 333667
+  },
+  "terminal": {
+    "columns": 160,
+    "rows": 30,
+    "finalRevision": 1919
+  },
+  "artifacts": {
+    "braid-live.cast": "2fa6be21997128bf2102b1ddf732324f9577eee100191410de20551e95672640",
+    "braid-live.gif": "0db2c463e181b624ed40ac098d949d6fd6e25ee0777ff2a38a26bc983adfaebf",
+    "braid-live.png": "bb7aac2c49ffa7a286a390626706ecbccce81ae28258404404d9304d8e2a3dcb",
+    "braid-live.txt": "97766e90933028d8903f4fbd8daeaf9dff814eb9939f81bb4b2fe552d741187c"
+  }
+}
