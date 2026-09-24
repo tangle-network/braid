@@ -130,7 +130,7 @@ async function waitForCompletedRun(terminal, approvals, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
-    lastRecord = await terminal.captureState()
+    lastRecord = await terminal.captureState(60_000)
     if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     const run = latestCompletedRun(lastRecord)
     if (run !== undefined) return { record: lastRecord, run }
