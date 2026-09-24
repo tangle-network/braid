@@ -721,15 +721,16 @@ async function createBundle({ live10Refusal = false } = {}) {
     const evidenceIds =
       row === 'LIVE-10'
         ? [
+            // The collector snapshots live files under release/logs with content-addressed IDs.
             {
-              id: 'check-LIVE-10-attempt-1-evidence-live-07',
-              path: 'live/tangle/evidence.json',
+              id: `check-LIVE-10-attempt-1-evidence-00001-${sha256(rawBytes)}`,
+              path: `release/logs/check-LIVE-10-attempt-1-evidence-00001-${sha256(rawBytes)}.json`,
               sha256: sha256(rawBytes),
               mediaType: 'application/json',
             },
             {
-              id: 'check-LIVE-10-attempt-1-evidence-receipts',
-              path: 'live/tangle/receipts.json',
+              id: `check-LIVE-10-attempt-1-evidence-00002-${sha256(receiptBytes)}`,
+              path: `release/logs/check-LIVE-10-attempt-1-evidence-00002-${sha256(receiptBytes)}.json`,
               sha256: sha256(receiptBytes),
               mediaType: 'application/json',
             },
@@ -742,6 +743,13 @@ async function createBundle({ live10Refusal = false } = {}) {
               mediaType: 'application/json',
             },
           ]
+    for (const { path } of evidenceIds.filter(({ path }) => path.startsWith('release/logs/'))) {
+      await mkdir(join(liveEvidenceRoot, 'release/logs'), { recursive: true })
+      await writeFile(
+        join(liveEvidenceRoot, path),
+        path.includes('-00001-') ? rawBytes : receiptBytes,
+      )
+    }
     const record = releaseCheck({
       id: row,
       cwd: repository,
@@ -879,6 +887,21 @@ async function rewriteChecks(fixture, update) {
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`)
 }
 
+/** Rewrites the live receipts and every retained copy, as a forger with write access could. */
+async function rewriteReceipts(fixture, bytes) {
+  await writeFile(join(fixture.liveEvidenceRoot, 'live', 'tangle', 'receipts.json'), bytes)
+  await rewriteChecks(fixture, async (envelope) => {
+    for (const artifact of envelope.artifacts) {
+      const retained =
+        artifact.path === 'live/tangle/receipts.json' ||
+        artifact.id.startsWith('check-LIVE-10-attempt-1-evidence-00002-')
+      if (!retained) continue
+      artifact.sha256 = sha256(bytes)
+      await writeFile(join(fixture.liveEvidenceRoot, artifact.path), bytes)
+    }
+  })
+}
+
 async function assertRejected(mutate, pattern, bundleOptions = {}) {
   const fixture = await createBundle(bundleOptions)
   try {
@@ -930,11 +953,7 @@ test('publish gate accepts and rejects stale or tampered candidate-bound live ev
     receipts.flows.find(({ row }) => row === 'LIVE-10').evidence.releaseBinding.runtimeVersion =
       '0.185.1'
     const bytes = Buffer.from(`${JSON.stringify(receipts)}\n`)
-    await writeFile(path, bytes)
-    await rewriteChecks(fixture, (envelope) => {
-      for (const artifact of envelope.artifacts)
-        if (artifact.path === 'live/tangle/receipts.json') artifact.sha256 = sha256(bytes)
-    })
+    await rewriteReceipts(fixture, bytes)
   }, /runtimeVersion|differs from the candidate identity/u)
   await assertRejected(async (fixture) => {
     await rewriteChecks(fixture, (envelope) => {
@@ -965,11 +984,7 @@ test('publish gate accepts and rejects stale or tampered candidate-bound live ev
     receipts.flows.find(({ row }) => row === 'LIVE-09').evidence = undefined
     receipts.flows.find(({ row }) => row === 'LIVE-09').reason = 'fixture unavailable'
     const bytes = Buffer.from(`${JSON.stringify(receipts)}\n`)
-    await writeFile(path, bytes)
-    await rewriteChecks(fixture, (envelope) => {
-      for (const artifact of envelope.artifacts)
-        if (artifact.path === 'live/tangle/receipts.json') artifact.sha256 = sha256(bytes)
-    })
+    await rewriteReceipts(fixture, bytes)
   }, /LIVE-09 receipt did not pass/u)
   await assertRejected(async (fixture) => {
     const path = join(fixture.liveEvidenceRoot, 'live', 'tangle', 'evidence.json')
@@ -977,8 +992,12 @@ test('publish gate accepts and rejects stale or tampered candidate-bound live ev
     proof.releaseBinding.gitCommit = 'd'.repeat(40)
     const bytes = Buffer.from(`${JSON.stringify(proof)}\n`)
     await writeFile(path, bytes)
-    await rewriteChecks(fixture, (envelope) => {
-      envelope.artifacts.find(({ id }) => id.endsWith('evidence-live-07')).sha256 = sha256(bytes)
+    await rewriteChecks(fixture, async (envelope) => {
+      const artifact = envelope.artifacts.find(({ id }) =>
+        id.startsWith('check-LIVE-10-attempt-1-evidence-00001-'),
+      )
+      artifact.sha256 = sha256(bytes)
+      await writeFile(join(fixture.liveEvidenceRoot, artifact.path), bytes)
     })
   }, /LIVE-07 multirun evidence|differs from the candidate identity/u)
 })
@@ -1006,11 +1025,7 @@ test('publish gate accepts the LIVE-10 safety refusal variant and rejects tamper
         .refusal
       refusal.stateAfterDigest = 'b'.repeat(64)
       const bytes = Buffer.from(`${JSON.stringify(receipts)}\n`)
-      await writeFile(path, bytes)
-      await rewriteChecks(fixture, (envelope) => {
-        for (const artifact of envelope.artifacts)
-          if (artifact.path === 'live/tangle/receipts.json') artifact.sha256 = sha256(bytes)
-      })
+      await rewriteReceipts(fixture, bytes)
     },
     /state digest changed during refusal/u,
     { live10Refusal: true },
@@ -1030,11 +1045,7 @@ test('publish gate accepts the LIVE-10 safety refusal variant and rejects tamper
       census.after.ids = ['replacement']
       census.after.resources = [{ id: 'replacement', status: 'running' }]
       const bytes = Buffer.from(`${JSON.stringify(receipts)}\n`)
-      await writeFile(path, bytes)
-      await rewriteChecks(fixture, (envelope) => {
-        for (const artifact of envelope.artifacts)
-          if (artifact.path === 'live/tangle/receipts.json') artifact.sha256 = sha256(bytes)
-      })
+      await rewriteReceipts(fixture, bytes)
     },
     /resource census does not match its derived result/u,
     { live10Refusal: true },

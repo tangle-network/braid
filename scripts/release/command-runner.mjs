@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 import { RELEASE_COMMANDS, releaseCheckEntry } from '../release-check-catalog.mjs'
 import { PROCESS_TREE_STRATEGY, reapChildTree, terminateChildTree } from './process-tree.mjs'
@@ -69,6 +70,29 @@ function settledSpawnError({ startedMilliseconds, maxLogBytes, secrets, error })
     stderr: emptyCapture(maxLogBytes, secrets),
     structuredStdout: new StructuredOutputCapture().finish(),
   }
+}
+
+/**
+ * The stored stdout log is a bounded head, while release markers arrive last. The publish gate
+ * re-reads markers from that stored log, so a truncated log keeps its redacted marker lines.
+ */
+function retainReleaseMarkers(capture, structured, secrets) {
+  if (!capture.redactedTruncated || structured.bytes.length === 0) return capture
+  // Drop a partial final line so a cut marker cannot be parsed or duplicated.
+  const lastNewline = capture.bytes.lastIndexOf(0x0a)
+  const head = capture.bytes.subarray(0, lastNewline + 1)
+  const headLines = new Set(head.toString('utf8').split('\n'))
+  const markers = redactText(structured.bytes.toString('utf8'), secrets)
+    .split('\n')
+    .filter((line) => line.length > 0 && !headLines.has(line))
+  if (markers.length === 0) return capture
+  const bytes = Buffer.concat([head, Buffer.from(`${markers.join('\n')}\n`)])
+  return Object.freeze({
+    ...capture,
+    bytes,
+    redactedSha256: createHash('sha256').update(bytes).digest('hex'),
+    redactedByteLength: bytes.length,
+  })
 }
 
 export function catalogCommandArgv(command) {
@@ -155,6 +179,7 @@ export async function executeArgv({
       child.stdout?.destroy()
       child.stderr?.destroy()
       const completedMilliseconds = Date.now()
+      const structured = structuredStdout.finish()
       resolve({
         startedAt: timestamp(startedMilliseconds),
         completedAt: timestamp(completedMilliseconds),
@@ -166,9 +191,9 @@ export async function executeArgv({
         spawnError: spawnError ? redactText(spawnError.message, secrets) : null,
         processTreeStrategy: PROCESS_TREE_STRATEGY,
         cleanupConfirmed,
-        stdout: stdout.finish(),
+        stdout: retainReleaseMarkers(stdout.finish(), structured, secrets),
         stderr: stderr.finish(),
-        structuredStdout: structuredStdout.finish(),
+        structuredStdout: structured,
       })
     }
     const settleAfterBound = () => {

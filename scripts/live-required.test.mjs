@@ -19,6 +19,7 @@ import {
   resultSummary,
   safeJson,
   safeMessage,
+  tangleReceiptsArtifact,
 } from './live-required/contracts.mjs'
 import {
   closeSession,
@@ -1054,6 +1055,33 @@ test('LIVE-07 wiring carries cloud identity, cleanup proof, and observations int
     JSON.parse(safeJson({ sessionSpend: 'secret-session-value-123' }, {})).sessionSpend,
     '[REDACTED]',
   )
+})
+
+test('written Tangle receipts keep the LIVE-07 multirun proof valid', () => {
+  // Protected run 36035435604 passed every live row, then failed collection because the second
+  // sanitize pass over receipts.json truncated runs[].identifiers[] below the depth bound.
+  const evidence = proofReceipt(validTangleSandboxReceiptInput())
+  const written = JSON.parse(
+    safeJson(tangleReceiptsArtifact([{ row: 'LIVE-07', status: 'passed', evidence }]), {}),
+  )
+  const receipt = written.flows[0].evidence
+  assert.doesNotThrow(() => assertProofReceipt(receipt))
+  assert.equal(JSON.stringify(written).includes('[TRUNCATED]'), false)
+  assert.deepEqual(
+    receipt.observations.multirun.runs.map((run) => run.identifiers.length),
+    evidence.observations.multirun.runs.map((run) => run.identifiers.length),
+  )
+})
+
+test('public evidence copies shared references and marks only true cycles', () => {
+  const controlRef = { environmentId: 'environment-1' }
+  const cyclic = { name: 'loop' }
+  cyclic.self = cyclic
+  const emitted = JSON.parse(
+    safeJson({ initialControlRef: controlRef, finalControlRef: controlRef, cyclic }, {}),
+  )
+  assert.deepEqual(emitted.finalControlRef, { environmentId: 'environment-1' })
+  assert.equal(emitted.cyclic.self, '[CIRCULAR]')
 })
 
 test('passed Tangle Sandbox receipts reject null or forged acceptance facts', () => {
