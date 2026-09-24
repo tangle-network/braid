@@ -8,8 +8,8 @@ import type {
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
-  MANAGED_AGENT_EVAL_RPC_VERSION,
   MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF,
+  MANAGED_AGENT_EVAL_RPC_VERSION,
   MANAGED_ANALYSIS_PYTHON_VERSION,
   MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
   MANAGED_ANALYSIS_RUNTIME_PROBE,
@@ -321,6 +321,27 @@ test('analysis cost capacity admits the configured output and reasoning limits',
   assert.equal(result.engine.executionConfig.max_output_tokens, 32_768)
   assert.equal(result.engine.executionConfig.max_reasoning_tokens, 131_072)
   assert.equal(result.engine.executionConfig.max_cost_usd, 15.36)
+})
+
+test('a total-only Pi cap reserves reasoning without inventing a provider split', async () => {
+  const selected = connection('cli-bridge', 'total-only', 'http://127.0.0.1:4010')
+  const result = await createTraceAnalysisAdapter(
+    baseOptions(selected, {
+      profile: {
+        harness: 'pi',
+        model: {
+          default: 'tangle-router/glm-5.2',
+          provider: 'tangle-router',
+          maxTotalOutputTokens: 2_048,
+        },
+      },
+    }),
+  )
+
+  assert.equal(result.status, 'engine-configured')
+  if (result.status !== 'engine-configured') return
+  assert.equal(result.engine.executionConfig.max_output_tokens, 2_048)
+  assert.equal(result.engine.executionConfig.max_reasoning_tokens, 2_048)
 })
 
 test('defines a bounded cited-answer analyst for /ask', () => {

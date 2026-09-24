@@ -308,6 +308,8 @@ Callers that need only a terminal result may use `analyzeTraces(...)` with its a
 
 The analysis profile, model, effort, tool bounds, time limit, token limit, and cost limit are recorded before dispatch.
 
+When a model declares only a total completion-token limit, `/ask` applies that limit to the provider and allows reported reasoning tokens within the same total.
+
 The analyst uses canonical bounded trace tools and cannot mutate the source workspace or conversation.
 
 Analysis runs in a separate runtime execution context and has its own cancellation and cost.

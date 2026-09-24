@@ -238,24 +238,32 @@ function defaultModelCostCeiling(
 interface AnalysisTokenLimits {
   readonly maxOutputTokens: number
   readonly maxReasoningTokens: number
+  readonly runtimeReasoningTokens?: number
   readonly maxTotalOutputTokens?: number
 }
 
 function analysisTokenLimits(options: TraceAnalysisAdapterOptions): AnalysisTokenLimits {
   const model = options.profile.model
   const total = options.maxTotalOutputTokens ?? model?.maxTotalOutputTokens
+  const explicitVisible = options.maxOutputTokens ?? model?.maxVisibleOutputTokens
+  const explicitReasoning = options.maxReasoningTokens ?? model?.maxReasoningTokens
+  // Agent Eval counts reasoning inside completion tokens; a total-only cap does not set its share to zero.
+  const totalOnly =
+    total !== undefined && explicitVisible === undefined && explicitReasoning === undefined
   const visible =
-    options.maxOutputTokens ??
-    model?.maxVisibleOutputTokens ??
-    (total === undefined ? DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS : total)
+    explicitVisible ?? (total === undefined ? DEFAULT_ANALYSIS_MAX_OUTPUT_TOKENS : total)
   const reasoning =
-    options.maxReasoningTokens ??
-    model?.maxReasoningTokens ??
-    (total === undefined ? visible * DEFAULT_ANALYSIS_REASONING_MULTIPLIER : total - visible)
+    explicitReasoning ??
+    (totalOnly
+      ? total
+      : total === undefined
+        ? visible * DEFAULT_ANALYSIS_REASONING_MULTIPLIER
+        : total - visible)
   if (
     visible <= 0 ||
     reasoning < 0 ||
-    (total !== undefined && (visible > total || visible + reasoning > total))
+    (total !== undefined &&
+      (visible > total || reasoning > total || (!totalOnly && visible + reasoning > total)))
   ) {
     throw new RangeError(
       'Trace analysis visible and reasoning token limits exceed maxTotalOutputTokens',
@@ -264,6 +272,7 @@ function analysisTokenLimits(options: TraceAnalysisAdapterOptions): AnalysisToke
   return {
     maxOutputTokens: visible,
     maxReasoningTokens: reasoning,
+    ...(totalOnly ? {} : { runtimeReasoningTokens: reasoning }),
     ...(total === undefined ? {} : { maxTotalOutputTokens: total }),
   }
 }
@@ -386,7 +395,9 @@ export async function createTraceAnalysisAdapter(
       ...(credential === undefined ? {} : { credential }),
       model,
       ...(options.pricing === undefined ? {} : { pricing: { ...options.pricing } }),
-      ...(limits.maxReasoningTokens > 0 ? { maxReasoningTokens: limits.maxReasoningTokens } : {}),
+      ...(limits.runtimeReasoningTokens === undefined || limits.runtimeReasoningTokens <= 0
+        ? {}
+        : { maxReasoningTokens: limits.runtimeReasoningTokens }),
       ...(limits.maxTotalOutputTokens === undefined
         ? {}
         : { maxTotalOutputTokens: limits.maxTotalOutputTokens }),
