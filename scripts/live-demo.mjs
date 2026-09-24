@@ -7,6 +7,7 @@ import { join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
+import { releaseTargetDefinitions } from './live-bridge/bridge.mjs'
 import { configureWithPublicTui } from './live-core/setup-tui.mjs'
 import { jsonRequest } from './live-demo/http.mjs'
 import {
@@ -15,7 +16,6 @@ import {
   safeManifestAnalysis,
 } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
-import { releaseTargetDefinitions } from './live-bridge/bridge.mjs'
 import {
   castFor,
   createCapturedTerminal,
@@ -29,12 +29,12 @@ import {
 } from './live-demo/terminal.mjs'
 import {
   createLiveDemoWorkspace,
-  liveDemoProfileForRoute,
   LIVE_DEMO_ANALYST_PROFILE,
   LIVE_DEMO_MODEL_ROUTE,
   LIVE_DEMO_PROFILE,
   LIVE_DEMO_PROMPT,
   LIVE_DEMO_QUESTION,
+  liveDemoProfileForRoute,
 } from './live-demo/workspace.mjs'
 import { installPackedBraid } from './packed-binary.mjs'
 
@@ -78,13 +78,22 @@ async function bridgeProof(baseUrl) {
   assert.equal(health.status, 'ok', 'CLI Bridge is not healthy')
   assert.equal(backend?.state, 'ready', `${LIVE_DEMO_PROFILE.harness} is not ready in CLI Bridge`)
   const requestedModel = process.env.BRAID_LIVE_DEMO_MODEL ?? LIVE_DEMO_MODEL_ROUTE
-  const [target] = releaseTargetDefinitions(
-    [{ backend: LIVE_DEMO_PROFILE.harness, modelId: requestedModel }],
-    { ok: true, body: models },
-    { body: health },
-  ).filter((candidate) => candidate.backend === LIVE_DEMO_PROFILE.harness)
+  const analystRequestedModel = process.env.BRAID_LIVE_DEMO_ANALYST_MODEL ?? requestedModel
+  const advertisedTarget = (modelId) =>
+    releaseTargetDefinitions(
+      [{ backend: LIVE_DEMO_PROFILE.harness, modelId }],
+      { ok: true, body: models },
+      { body: health },
+    ).find((candidate) => candidate.backend === LIVE_DEMO_PROFILE.harness)
+  const target = advertisedTarget(requestedModel)
+  const analystTarget = advertisedTarget(analystRequestedModel)
   assert.equal(target?.modelId, requestedModel, `CLI Bridge does not advertise ${requestedModel}`)
-  return { health, backend, target }
+  assert.equal(
+    analystTarget?.modelId,
+    analystRequestedModel,
+    `CLI Bridge does not advertise ${analystRequestedModel}`,
+  )
+  return { health, backend, target, analystTarget }
 }
 
 function latestCompletedRun(record) {
@@ -307,7 +316,20 @@ async function main() {
   const packageProof = JSON.parse(packageProofBytes.toString('utf8'))
   const route = bridge.target.modelId
   const profile = liveDemoProfileForRoute(route)
-  const analystProfile = liveDemoProfileForRoute(route, LIVE_DEMO_ANALYST_PROFILE)
+  let analystProfile = liveDemoProfileForRoute(
+    bridge.analystTarget.modelId,
+    LIVE_DEMO_ANALYST_PROFILE,
+  )
+  const analystCapOverride = process.env.BRAID_LIVE_DEMO_ANALYST_MAX_TOTAL_OUTPUT_TOKENS
+  if (analystCapOverride !== undefined) {
+    assert.match(analystCapOverride, /^[1-9]\d*$/u, 'The analyst token cap must be positive')
+    const cap = Number(analystCapOverride)
+    assert.ok(Number.isSafeInteger(cap), 'The analyst token cap must be a safe integer')
+    analystProfile = {
+      ...analystProfile,
+      model: { ...analystProfile.model, maxTotalOutputTokens: cap },
+    }
+  }
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
     tarballPath:
