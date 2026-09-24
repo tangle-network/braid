@@ -2162,7 +2162,7 @@ test('first-run Pi model validation uses the supported total completion cap', as
 
   assert.equal(result.status, 'verified')
   assert.equal(body?.model, 'pi/tangle-router/glm-5.2')
-  assert.equal(body?.max_tokens, 1)
+  assert.equal(body?.max_tokens, 256)
   const validationProfile = body?.agent_profile as {
     readonly harness?: unknown
     readonly model?: {
@@ -2179,7 +2179,7 @@ test('first-run Pi model validation uses the supported total completion cap', as
   assert.equal(validationProfile.model?.provider, 'tangle-router')
   assert.equal(validationProfile.model?.reasoningEffort, 'high')
   assert.equal(validationProfile.model?.maxVisibleOutputTokens, undefined)
-  assert.equal(validationProfile.model?.maxTotalOutputTokens, 1)
+  assert.equal(validationProfile.model?.maxTotalOutputTokens, 256)
   assert.equal(validationProfile.model?.metadata, undefined)
   assert.equal('effort' in (body ?? {}), false)
 })
