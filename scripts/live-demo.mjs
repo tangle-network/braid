@@ -324,9 +324,8 @@ async function main() {
   const [sourceCommit, sourceTreeSha256, sourceRoot] = sourceIdentity.stdout.trim().split('\n')
   assert.equal(sourceRoot, packageSource, 'The package source must be a checkout root')
   const driverCommit = driverIdentity.stdout.trim()
-  const packageProof = packageProofBytes === undefined
-    ? undefined
-    : JSON.parse(packageProofBytes.toString('utf8'))
+  const packageProof =
+    packageProofBytes === undefined ? undefined : JSON.parse(packageProofBytes.toString('utf8'))
   const route = bridge.target.modelId
   const profile = liveDemoProfileForRoute(route)
   let analystProfile = liveDemoProfileForRoute(
@@ -346,7 +345,9 @@ async function main() {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
     tarballPath:
-      directTarball ?? process.env.BRAID_RELEASE_TARBALL ?? packageTarballPath(packageProofPath, packageProof),
+      directTarball ??
+      process.env.BRAID_RELEASE_TARBALL ??
+      packageTarballPath(packageProofPath, packageProof),
   })
   let terminal
   let codingSession
