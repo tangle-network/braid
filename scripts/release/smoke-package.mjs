@@ -156,7 +156,8 @@ try {
     await run('bash', [retryRegistryCommand, npm.file, ...npm.args], {
       cwd: smokeRoot,
       label: 'Registry package download',
-      timeoutMs: 5 * 60_000,
+      // Outlasts the retry script's 10-minute registry propagation window.
+      timeoutMs: 12 * 60_000,
     })
     const archives = (await readdir(packRoot)).filter((name) => name.endsWith('.tgz'))
     assert(archives.length === 1, 'Registry download did not produce exactly one tarball')
