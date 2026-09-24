@@ -76,7 +76,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   id: BRAID_QUESTION_ANALYST_ID,
   description: 'Answers one operator question against one frozen run with cited evidence.',
   area: 'question-answer',
-  version: '1.7.2',
+  version: '1.7.3',
   question: 'Answer the operator question about this frozen run.',
   instructions: [
     'FIRST PYTHON STEP: print(analyst_instructions) so you can read every prepared span ID and the full output contract.',
@@ -87,6 +87,8 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
     'For edited source, cite one exact expression from the edit, not the whole multiline edit.',
     'Copy each excerpt verbatim; never add leading or trailing whitespace or a newline.',
     'Never use an attribute label or a constructed JSON fragment as an excerpt.',
+    'Print the original span scalar before quoting it; JSON serialization can escape characters and change the excerpt.',
+    'Before SUBMIT, check each proposed excerpt is a substring of its original span scalar in Python.',
     'For numeric facts, quote a related model, status, or output string from the same span.',
     'Before SUBMIT, ensure each distinct request in Focus has one finding or one explicit limit.',
     'The final call must be SUBMIT(answer=answer, findings_json=json.dumps(findings)).',
