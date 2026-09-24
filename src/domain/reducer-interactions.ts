@@ -101,7 +101,8 @@ export function reduceInteractionEvent(
     case 'run.interaction.cancelled': {
       const run = findRun(state, event.runId)
       const current = interactionFor(run, event.interactionId)
-      if (current.status === 'cancelled') {
+      // A provider can close a question after Braid has durably accepted its answer.
+      if (current.status === 'cancelled' || current.status === 'resolved') {
         return providerProgress(state, run, event.provider, base)
       }
       if (current.status !== 'pending' && current.status !== 'responding') {

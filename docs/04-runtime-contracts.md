@@ -30,6 +30,9 @@ Sandbox `0.45.0` and Eval `0.187.2` are inside them.
 Sandbox interaction bindings name the inner adapter, such as `opencode`.
 The outer retained control reference names `tangle-sandbox`.
 Runtime `0.263.0` checks exact run, environment, session, execution, interaction, and response identity without equating those providers.
+Braid checks the same exact run, environment, session, and execution coordinates before responding.
+It keeps the inner provider in the response binding and does not equate it with the outer control provider.
+If the provider closes that question after Braid accepts an answer, Braid keeps the accepted decision and advances provider progress.
 The live release requirements remain in `docs/08-verification.md` and `docs/09-delivery-plan.md`.
 
 The installed Tangle provider publishes `sandbox >=0.39.0 <1.0.0` as a peer range and depends on `agent-interface ^2.10.0`.

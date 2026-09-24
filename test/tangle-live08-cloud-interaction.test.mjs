@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  interactionRequestDigest,
-  validateInteractionResponse,
-} from '@tangle-network/agent-interface'
+import { interactionRequestDigest } from '@tangle-network/agent-interface'
 import {
   assertCloudInteractionEvidence,
   cloudInteractionFailureSnapshot,
@@ -51,7 +48,8 @@ function proof() {
   const pending = {
     revision: 21,
     sequence: 22,
-    runs: [{ id: 'run-1', status: 'waiting', interactions: [{ status: 'pending', request }] }],
+    runs: [{ id: 'run-1', status: 'waiting' }],
+    interactions: [{ runId: 'run-1', interactionId: request.id, kind: 'question' }],
   }
   const reconnected = structuredClone(pending)
   reconnected.runs[0].status = 'reconnecting'
@@ -113,25 +111,27 @@ test('cloud question answer uses the declared shape', () => {
   )
 })
 
-test('cloud answer uses the full retained request, not the projected event summary', () => {
+test('cloud answer uses public event fields after the pending view confirms identity', () => {
   const evidence = proof()
   const projected = evidence.firstResponses[0].event.payload.interaction
-  assert.equal(
-    validateInteractionResponse(projected, cloudQuestionResponse(request, 'AFTER_ANSWER')).ok,
-    false,
-  )
+  assert.deepEqual(cloudQuestionResponse(projected, 'AFTER_ANSWER'), {
+    id: request.id,
+    outcome: 'accepted',
+    data: { q0: ['continue'] },
+  })
   assert.deepEqual(
-    retainedCloudQuestionRequest(evidence.reconnectedState, 'run-1', request.id),
-    request,
+    retainedCloudQuestionRequest(evidence.reconnectedState, 'run-1', request.id, projected),
+    projected,
   )
   assert.throws(
     () =>
       retainedCloudQuestionRequest(
-        { runs: [{ id: 'run-1', interactions: [{ status: 'pending', request: projected }] }] },
+        { interactions: [{ runId: 'other-run', interactionId: request.id, kind: 'question' }] },
         'run-1',
         request.id,
+        projected,
       ),
-    /belongs to another run/u,
+    /no longer pending/u,
   )
 })
 
@@ -147,7 +147,7 @@ test('cloud proof requires one pending question before and after reconnect', () 
     () =>
       assertCloudInteractionEvidence({
         ...valid,
-        reconnectedState: { runs: [{ id: 'run-1', interactions: [] }] },
+        reconnectedState: { runs: [{ id: 'run-1' }], interactions: [] },
       }),
     /pending/u,
   )
@@ -211,8 +211,10 @@ test('failed cloud question retains bounded state and provider status without pr
             status: 'failed',
             complete: true,
             error: secret,
-            interactions: [{ status: 'pending', request: { kind: 'question', title: secret } }],
           },
+        ],
+        interactions: [
+          { runId: 'run-1', interactionId: request.id, kind: 'question', prompt: secret },
         ],
       },
     },
