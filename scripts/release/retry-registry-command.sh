@@ -2,7 +2,9 @@
 
 set -euo pipefail
 
-attempts="${BRAID_REGISTRY_ATTEMPTS:-30}"
+# npm can take several minutes to serve a provenance publish ("being processed").
+# 0.3.0 appeared about 4 minutes after npm accepted it, so allow 10 minutes.
+attempts="${BRAID_REGISTRY_ATTEMPTS:-120}"
 delay_seconds="${BRAID_REGISTRY_DELAY_SECONDS:-5}"
 
 if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]]; then
