@@ -122,6 +122,7 @@ async function waitForCodingRunAdmission(baseUrl, startedAt, timeoutMs = 30_000)
     const sessions = await jsonRequest(`${baseUrl}/v1/sessions?limit=100`)
     const candidates = sessions.data.filter(
       (session) =>
+        typeof session.id === 'string' &&
         session.id.startsWith('session-braid-run-') &&
         Date.parse(session.created_at) >= startedAt,
     )
