@@ -8,8 +8,10 @@ import {
   type TraceAnalystDefinition,
 } from '@tangle-network/agent-eval'
 import { canonicalJson } from '../../domain/canonical.js'
+import { safeAnalysisText } from './trace-event-projection.js'
 
 export const BRAID_QUESTION_ANALYST_ID = 'question'
+const initialNavigationByContext = new WeakMap<AnalystContext, string>()
 
 const TOOL_SPAN_PATTERN = '"openinference\\.span\\.kind":"TOOL"'
 const TOOL_RESULT_PART_PATTERN = '"kind":"tool-result"'
@@ -28,14 +30,38 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function longestInputLeaf(value: unknown, depth = 0): number {
-  if (typeof value === 'string') return value.length
-  if (depth >= 8) return 0
-  if (Array.isArray(value))
-    return Math.max(0, ...value.map((item) => longestInputLeaf(item, depth + 1)))
-  if (record(value))
-    return Math.max(0, ...Object.values(value).map((item) => longestInputLeaf(item, depth + 1)))
-  return 0
+interface ScalarLeaf {
+  readonly path: string
+  readonly text: string
+}
+
+function longestScalarLeaf(value: unknown, path: string, depth = 0): ScalarLeaf | undefined {
+  if (typeof value === 'string') return value.length > 0 ? { path, text: value } : undefined
+  if (depth >= 8) return undefined
+  const children = Array.isArray(value)
+    ? value.map((item, index) => longestScalarLeaf(item, `${path}[${index}]`, depth + 1))
+    : record(value)
+      ? Object.entries(value).map(([key, item]) =>
+          longestScalarLeaf(item, `${path}.${key}`, depth + 1),
+        )
+      : []
+  return children.reduce<ScalarLeaf | undefined>(
+    (best, child) => (child && (!best || child.text.length > best.text.length) ? child : best),
+    undefined,
+  )
+}
+
+function scalarPreview(text: string): string | undefined {
+  const segment = [...text.matchAll(/[\x20-\x7e]{8,}/gu)]
+    .map((match) => match[0])
+    .sort((left, right) => right.length - left.length)[0]
+  const sample = segment?.slice(0, 64)
+  return sample && safeAnalysisText(sample) === sample ? sample : undefined
+}
+
+function navigationLine(entry: { readonly spanId: string; readonly leaf: ScalarLeaf }): string {
+  const sample = scalarPreview(entry.leaf.text)
+  return `span ${entry.spanId} ${entry.leaf.path}${sample ? ` exact sample: ${sample}` : ''}`
 }
 
 async function inputSpanHints(
@@ -43,7 +69,10 @@ async function inputSpanHints(
   traceId: string,
   hits: readonly { readonly span_id: string; readonly span_name: string }[],
   storeContext?: { readonly signal?: AbortSignal },
-): Promise<string[]> {
+): Promise<{
+  readonly hints: readonly string[]
+  readonly navigation: readonly string[]
+}> {
   const unique = [...new Map(hits.map((hit) => [hit.span_id, hit])).values()]
   const spans = new Map<string, { readonly attributes: Readonly<Record<string, unknown>> }>()
   for (let start = 0; start < unique.length; start += 100) {
@@ -55,25 +84,51 @@ async function inputSpanHints(
   }
   const calls = new Map<
     string,
-    { readonly hit: (typeof unique)[number]; readonly index: number; readonly score: number }
+    { readonly hit: (typeof unique)[number]; readonly index: number; readonly leaf: ScalarLeaf }
   >()
   unique.forEach((hit, index) => {
     const part = spans.get(hit.span_id)?.attributes['braid.message_part']
     if (!record(part)) return
-    const score = longestInputLeaf(part.input)
-    if (score === 0) return
+    const leaf = longestScalarLeaf(part.input, 'input')
+    if (!leaf) return
     const callId = typeof part.callId === 'string' ? part.callId : hit.span_id
     const previous = calls.get(callId)
-    if (previous === undefined || score >= previous.score) calls.set(callId, { hit, index, score })
+    if (previous === undefined || leaf.text.length >= previous.leaf.text.length)
+      calls.set(callId, { hit, index, leaf })
   })
-  const chosen = [...calls.values()]
-    .sort((left, right) => right.score - left.score || right.index - left.index)
-    .slice(0, 16)
-    .sort((left, right) => left.index - right.index)
-  return spanHints(
-    chosen.map((entry) => entry.hit),
-    chosen.length,
+  const ranked = [...calls.values()].sort(
+    (left, right) => right.leaf.text.length - left.leaf.text.length || right.index - left.index,
   )
+  const chosen = ranked.slice(0, 16).sort((left, right) => left.index - right.index)
+  return {
+    hints: spanHints(
+      chosen.map((entry) => entry.hit),
+      chosen.length,
+    ),
+    navigation: ranked
+      .slice(0, 2)
+      .map((entry) => navigationLine({ spanId: entry.hit.span_id, leaf: entry.leaf })),
+  }
+}
+
+async function resultNavigation(
+  store: TraceAnalysisStore,
+  traceId: string,
+  hits: readonly { readonly span_id: string }[],
+  storeContext?: { readonly signal?: AbortSignal },
+): Promise<string | undefined> {
+  const spanIds = [...new Set(hits.map((hit) => hit.span_id))].slice(-16)
+  if (spanIds.length === 0) return undefined
+  const viewed = await store.viewSpans({ trace_id: traceId, span_ids: spanIds }, storeContext)
+  const ranked = viewed.spans
+    .flatMap((span) => {
+      const part = span.attributes['braid.message_part']
+      if (!record(part)) return []
+      const leaf = longestScalarLeaf(part.result, 'result')
+      return leaf ? [{ spanId: span.span_id, leaf }] : []
+    })
+    .sort((left, right) => right.leaf.text.length - left.leaf.text.length)
+  return ranked[0] ? navigationLine(ranked[0]) : undefined
 }
 
 async function prepareQuestionContext(
@@ -105,13 +160,24 @@ async function prepareQuestionContext(
   )
   const partCallHits = partCalls.hits.filter((hit) => hit.span_name === 'braid.run.part.updated')
   const inputHints = await inputSpanHints(store, traceId, partCallHits, storeContext)
+  const resultHint = await resultNavigation(store, traceId, partResultHits, storeContext)
+  if (context) {
+    initialNavigationByContext.set(
+      context,
+      [
+        'Read these exact frozen spans with viewSpans before citing their original scalar leaves:',
+        ...inputHints.navigation,
+        ...(resultHint ? [resultHint] : []),
+      ].join('\n'),
+    )
+  }
   return [
     'The frozen source contains exactly one trace.',
     `Exact trace id: ${JSON.stringify(traceId)}.`,
     'Inspect these completed tool-result part spans first with viewSpans and their exact span_id values.',
     ...spanHints(partResultHits, 16),
     'If a write result only confirms success, inspect these exact normalized tool-call input spans for the edited source.',
-    ...inputHints,
+    ...inputHints.hints,
     'Other normalized TOOL spans:',
     ...spanHints(tools.hits, 12),
     ...(tools.has_more || partResults.has_more || partCalls.has_more
@@ -129,10 +195,13 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   id: BRAID_QUESTION_ANALYST_ID,
   description: 'Answers one operator question against one frozen run with cited evidence.',
   area: 'question-answer',
-  version: '1.7.5',
-  question: 'Answer the operator question about this frozen run.',
+  version: '1.7.6',
+  question: (context: AnalystContext) =>
+    ['Answer the operator question about this frozen run.', initialNavigationByContext.get(context)]
+      .filter(Boolean)
+      .join('\n'),
   instructions: [
-    'FIRST PYTHON STEP: print(analyst_instructions) so you can read every prepared span ID and the full output contract.',
+    'FIRST PYTHON STEP: print(analyst_instructions) alone, with no other call or trailing expression.',
     'OUTPUT CONTRACT:',
     'Omit subject from every finding.',
     'Return one to five findings.',

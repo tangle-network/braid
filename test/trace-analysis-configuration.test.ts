@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
+import { createTraceAnalyst } from '@tangle-network/agent-eval'
 import type {
   ExternalOptimizerModelCallRequest,
   ExternalOptimizerModelExecutionObservation,
@@ -351,7 +352,7 @@ test('a total-only Pi cap reserves reasoning without inventing a provider split'
 test('defines a bounded cited-answer analyst for /ask', () => {
   const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
-  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.5')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.6')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
@@ -466,15 +467,36 @@ test('large Pi traces give /ask completed part IDs while provider events are red
   const view = await store.viewTrace({ trace_id: traceId })
   assert.ok('oversized' in view)
 
-  const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext?.(store, {
+  const context = {
     runId: 'analysis-navigation-repro',
     correlationId: 'analysis-navigation-repro',
     tags: { focus: 'Did the run prove Unicode accent removal in slugify?' },
-  })
+  }
+  const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext?.(store, context)
   assert.ok(prepared)
+  let question = ''
+  const analyst = createTraceAnalyst(BRAID_QUESTION_ANALYST_DEFINITION, {
+    engine: {
+      id: 'capture-question',
+      description: 'Captures the final analyst input for the reproduced trace.',
+      version: '1.0.0',
+      executionConfig: {},
+      async analyze(request) {
+        question = request.question
+        throw new Error('captured analyst input')
+      },
+    },
+  })
+  await assert.rejects(analyst.analyze(store, context), /captured analyst input/u)
+  assert.match(question.slice(0, 1_059), /span-update-800/u)
+  assert.match(question.slice(0, 1_059), /span-update-820/u)
+  assert.match(question.slice(0, 1_059), /input\.content/u)
+  assert.match(question.slice(0, 1_059), /result\.content\[0\]\.text/u)
+  assert.match(question.slice(0, 1_059), /Focus: Did the run prove Unicode accent removal/u)
+  assert.ok(question.endsWith(`Focus: ${context.tags.focus}`))
   assert.match(
     BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')[0] ?? '',
-    /FIRST PYTHON STEP: print\(analyst_instructions\)/u,
+    /FIRST PYTHON STEP: print\(analyst_instructions\) alone/u,
   )
   assert.match(prepared, /"span_id":"span-update-900"/u)
   assert.match(prepared, /"span_id":"span-update-1100"/u)
