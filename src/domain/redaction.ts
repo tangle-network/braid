@@ -3,10 +3,39 @@ import {
   redactStructuredValueWithNumericTelemetry,
   STRUCTURED_REDACTION_MARKER,
 } from './bounded-structured.js'
+import type { AnalysisRecord } from './entities.js'
+import { isEventId, isMessageId, isMessagePartId } from './ids.js'
 import { safeProviderDiagnostic } from './provider-values.js'
 
 export const MAX_PROFILE_BYTES = 16 * 1024 * 1024
 export const MAX_CONVERSATION_IMPORT_EVENT_BYTES = 4 * 1024 * 1024
+// Leave room for the journal envelope inside SQLite's 4 MiB transaction limit.
+export const MAX_ANALYSIS_EVENT_BYTES = 3 * 1024 * 1024
+
+function analysisEvent(value: unknown): value is { readonly analysis: AnalysisRecord } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const kind = (value as { readonly kind?: unknown }).kind
+  return kind === 'analysis.created' || kind === 'analysis.updated' || kind === 'analysis.completed'
+}
+
+function sameSourceIds(original: AnalysisRecord, redacted: AnalysisRecord): boolean {
+  const source = original.sourceRange
+  const safe = redacted.sourceRange
+  if (source === undefined || safe === undefined) return source === safe
+  for (const [field, valid] of [
+    ['eventIds', isEventId],
+    ['messageIds', isMessageId],
+    ['messagePartIds', isMessagePartId],
+  ] as const) {
+    const before: readonly unknown[] = source[field]
+    const after: unknown = safe[field]
+    if (!Array.isArray(before) || !Array.isArray(after) || before.length !== after.length) {
+      return false
+    }
+    if (before.some((id, index) => !valid(id) || id !== after[index])) return false
+  }
+  return true
+}
 
 export {
   isSensitiveFieldName,
@@ -73,11 +102,23 @@ export function redactBraidEvent<T>(event: T): T {
     typeof event === 'object' &&
     !Array.isArray(event) &&
     (event as { readonly kind?: unknown }).kind === 'conversation.imported'
-  return redactStructuredValueWithNumericTelemetry(
+  const isAnalysisEvent = analysisEvent(event)
+  const redacted = redactStructuredValueWithNumericTelemetry(
     event,
     undefined,
     importEvent
       ? { maxDepth: 32, maxItems: 500_000, maxBytes: MAX_CONVERSATION_IMPORT_EVENT_BYTES }
-      : { maxItems: 20_000 },
+      : isAnalysisEvent
+        ? { maxItems: 100_000, maxBytes: MAX_ANALYSIS_EVENT_BYTES }
+        : { maxItems: 20_000 },
   ) as T
+  if (isAnalysisEvent) {
+    if (!analysisEvent(redacted) || !sameSourceIds(event.analysis, redacted.analysis)) {
+      throw new RangeError('Analysis source identifiers exceed the bounded event payload')
+    }
+    if (Buffer.byteLength(JSON.stringify(redacted), 'utf8') > MAX_ANALYSIS_EVENT_BYTES) {
+      throw new RangeError('Analysis event exceeds the bounded event payload')
+    }
+  }
+  return redacted
 }

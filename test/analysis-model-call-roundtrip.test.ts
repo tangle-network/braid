@@ -1,16 +1,28 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
+import {
+  commitApplicationEvent,
+  commitApplicationEventAsync,
+} from '../src/app/application-support.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { importAnalysisModelCalls } from '../src/app/conversation-import-analyses.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { AnalysisRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createAnalysisId, createEventId } from '../src/domain/ids.js'
+import { redactBraidEvent } from '../src/domain/redaction.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
+import { credentialRef } from '../src/ports/credentials.js'
 import {
   analysisMeasuredModelCallLine,
   analysisMeasuredModelCallSummary,
@@ -214,6 +226,140 @@ test('analysis model calls survive event replay and appear as concise detail lin
     wallTimeMs: 88,
   })
   assert.match(terminalDetail?.lines.join('\n') ?? '', /model call #1 openai\/gpt-5\.6-luna/u)
+})
+
+test('large analysis source ranges retain valid event IDs through encrypted commit and replay', async (t) => {
+  const initial = initialState(DETERMINISTIC_PROFILE)
+  const sourceEventIds = Array.from({ length: 2_500 }, (_, index) =>
+    createEventId(`event-source-${index}-${'a'.repeat(16)}`),
+  )
+  const analysis: AnalysisRecord = {
+    id: createAnalysisId('analysis-large-source-range'),
+    source: {
+      conversationId: initial.conversationId,
+      branchId: initial.branchId,
+      digest: canonicalDigest({ source: 'large-source-range' }),
+      complete: true,
+    },
+    sourceRange: {
+      eventIds: sourceEventIds,
+      messageIds: [],
+      messagePartIds: [],
+      firstSequence: 1,
+      lastSequence: sourceEventIds.length,
+    },
+    status: 'preparing',
+    findings: [],
+    createdAt: startedAt,
+    updatedAt: startedAt,
+  }
+  const journal = new MemoryJournal(new FixedClock(startedAt))
+  const sanitizedSensitive = redactBraidEvent({
+    kind: 'analysis.created',
+    analysis: { ...analysis, request: { apiKey: 'secret-canary' } },
+  })
+  assert.equal(JSON.stringify(sanitizedSensitive).includes('secret-canary'), false)
+  const providerEventIds = new Set<string>()
+  const committed = commitApplicationEvent({
+    state: initial,
+    event: { kind: 'analysis.created', analysis },
+    journal,
+    clock: new FixedClock(startedAt),
+    providerEventKeys: {
+      hasProviderEvent: (key) => providerEventIds.has(key),
+      addProviderEvent: (key) => {
+        providerEventIds.add(key)
+      },
+    },
+    subscribers: new Set(),
+  })
+  assert.deepEqual(committed.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
+  assert.deepEqual(
+    replayEvents(initial, journal.all()).analyses[0]?.sourceRange?.eventIds,
+    sourceEventIds,
+  )
+
+  const root = await mkdtemp(join(tmpdir(), 'braid-analysis-range-'))
+  const databasePath = join(root, 'braid.sqlite')
+  const credentials = new MemoryCredentialStore()
+  const databaseKeyRef = credentialRef('cred:v1:analysis-range-test')
+  let storage = await openSqliteStorage({
+    path: databasePath,
+    workspaceRoot: root,
+    credentialStore: credentials,
+    databaseKeyRef,
+  })
+  t.after(async () => {
+    await storage.close()
+    await rm(root, { force: true, recursive: true })
+  })
+  const durableJournal = await StorageJournal.fromStorage(storage, new FixedClock(startedAt))
+  const durable = await commitApplicationEventAsync({
+    state: initial,
+    event: { kind: 'analysis.created', analysis },
+    journal: durableJournal,
+    clock: new FixedClock(startedAt),
+    providerEventKeys: {
+      hasProviderEvent: (key) => providerEventIds.has(key),
+      addProviderEvent: (key) => {
+        providerEventIds.add(key)
+      },
+    },
+    subscribers: new Set(),
+  })
+  assert.deepEqual(durable.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
+  const firstSourceEventId = sourceEventIds[0]
+  assert.ok(firstSourceEventId)
+  assert.equal((await readFile(databasePath)).includes(Buffer.from(firstSourceEventId)), false)
+  await storage.close()
+  storage = await openSqliteStorage({
+    path: databasePath,
+    workspaceRoot: root,
+    credentialStore: credentials,
+    databaseKeyRef,
+  })
+  const reopenedJournal = await StorageJournal.fromStorage(storage, new FixedClock(startedAt))
+  const restored = replayEvents(initial, reopenedJournal.replay())
+  assert.deepEqual(restored.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
+  const replayed = replayEvents(restored, reopenedJournal.replay())
+  assert.equal(replayed.sequence, restored.sequence)
+  assert.deepEqual(replayed.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
+
+  const oversizedIds = Array.from({ length: 13_000 }, (_, index) =>
+    createEventId(`event-over-${index}-${'a'.repeat(230)}`),
+  )
+  const oversizedJournal = new MemoryJournal(new FixedClock(startedAt))
+  assert.throws(
+    () =>
+      commitApplicationEvent({
+        state: initial,
+        event: {
+          kind: 'analysis.created',
+          analysis: {
+            ...analysis,
+            id: createAnalysisId('analysis-oversized-source-range'),
+            sourceRange: {
+              eventIds: oversizedIds,
+              messageIds: [],
+              messagePartIds: [],
+              firstSequence: 1,
+              lastSequence: oversizedIds.length,
+            },
+          },
+        },
+        journal: oversizedJournal,
+        clock: new FixedClock(startedAt),
+        providerEventKeys: {
+          hasProviderEvent: (key) => providerEventIds.has(key),
+          addProviderEvent: (key) => {
+            providerEventIds.add(key)
+          },
+        },
+        subscribers: new Set(),
+      }),
+    /bounded event payload/u,
+  )
+  assert.equal(oversizedJournal.all().length, 0)
 })
 
 test('analysis model-call summary keeps partial telemetry explicit', () => {
