@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { jsonRequest } from './live-demo/http.mjs'
+import { jsonRequest, pollJsonRequest } from './live-demo/http.mjs'
 import {
   assertExactPackageProof,
   packageTarballPath,
@@ -207,6 +207,38 @@ test('jsonRequest aborts a response that never finishes', async () => {
       /aborted|timeout|fetch failed|test bound/iu,
     )
     assert.ok(performance.now() - startedAt < 1_500)
+  } finally {
+    await closeServer(server)
+  }
+})
+
+test('a timed-out status observation can be retried without hiding HTTP failures', async () => {
+  let requests = 0
+  const server = createServer((_request, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.write('{"terminal":')
+      return
+    }
+    if (requests === 2) {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"terminal":false}')
+      return
+    }
+    response.writeHead(503, { 'content-type': 'application/json' })
+    response.end('{"error":"unavailable"}')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address === 'object')
+  const url = `http://127.0.0.1:${address.port}/v1/runs/run-timeout`
+  try {
+    assert.equal(await pollJsonRequest(url, 100), undefined)
+    assert.deepEqual(await pollJsonRequest(url, 100), { terminal: false })
+    await assert.rejects(pollJsonRequest(url, 100), /HTTP 503/u)
+    assert.equal(requests, 3)
   } finally {
     await closeServer(server)
   }

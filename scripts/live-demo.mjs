@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
 import { releaseTargetDefinitions } from './live-bridge/bridge.mjs'
 import { configureWithPublicTui } from './live-core/setup-tui.mjs'
-import { jsonRequest } from './live-demo/http.mjs'
+import { jsonRequest, pollJsonRequest } from './live-demo/http.mjs'
 import {
   assertExactPackageProof,
   packageTarballPath,
@@ -165,13 +165,23 @@ async function closeCodingSession(baseUrl, codingSession) {
 async function waitForCompletedRun(terminal, approvals, baseUrl, runId, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
+  let statusPollTimeouts = 0
   while (Date.now() < deadline) {
     if (permissionVisible(normalizeTerminal(terminal.screen()))) {
       lastRecord = await terminal.captureState(60_000)
       assert.equal(lastRecord.state?.runs?.at(-1)?.id, runId)
       if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     }
-    const bridgeRun = await jsonRequest(`${baseUrl}/v1/runs/${runId}`)
+    const runUrl = `${baseUrl}/v1/runs/${runId}`
+    const bridgeRun = await pollJsonRequest(runUrl)
+    if (bridgeRun === undefined) {
+      statusPollTimeouts += 1
+      process.stderr.write(
+        `GET ${runUrl} timed out; retry ${statusPollTimeouts} within coding deadline\n`,
+      )
+      await pause(500)
+      continue
+    }
     if (!bridgeRun.terminal) {
       await pause(500)
       continue
@@ -188,7 +198,7 @@ async function waitForCompletedRun(terminal, approvals, baseUrl, runId, timeoutM
     await pause(500)
   }
   throw new Error(
-    `Timed out waiting for the coding turn; last status=${lastRecord?.view?.status ?? 'unknown'}`,
+    `Timed out waiting for the coding turn; last status=${lastRecord?.view?.status ?? 'unknown'}; status poll timeouts=${statusPollTimeouts}`,
   )
 }
 

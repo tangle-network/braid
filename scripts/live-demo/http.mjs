@@ -12,3 +12,12 @@ export async function jsonRequest(url, timeoutMs = LIVE_DEMO_HTTP_TIMEOUT_MS) {
   assert.ok(response.ok, `${url} returned HTTP ${response.status}`)
   return response.json()
 }
+
+export async function pollJsonRequest(url, timeoutMs = LIVE_DEMO_HTTP_TIMEOUT_MS) {
+  try {
+    return await jsonRequest(url, timeoutMs)
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') return undefined
+    throw error
+  }
+}
