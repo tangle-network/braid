@@ -104,7 +104,7 @@ async function approveExpectedPermission(terminal, record, approvals) {
   const deadline = Date.now() + 30_000
   let lastRecord = record
   while (Date.now() < deadline) {
-    const next = await terminal.captureState()
+    const next = await terminal.captureState(60_000)
     lastRecord = next
     if (!next.view?.interactions?.some((item) => item.interactionId === permission.id)) {
       approvals.push({ tool: permission.tool, scope: 'once' })
