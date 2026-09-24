@@ -11,16 +11,75 @@ import { canonicalJson } from '../../domain/canonical.js'
 
 export const BRAID_QUESTION_ANALYST_ID = 'question'
 
-async function prepareQuestionContext(store: TraceAnalysisStore): Promise<string> {
-  const overview = await store.getOverview({})
+const TOOL_SPAN_PATTERN = '"openinference\\.span\\.kind":"TOOL"'
+const PROVIDER_EVENT_PATTERN = '"name":"braid\\.run\\.provider\\.event"'
+
+function spanHints(
+  hits: readonly { readonly span_id: string; readonly span_name: string }[],
+  limit: number,
+): string[] {
+  return [...new Map(hits.map((hit) => [hit.span_id, hit])).values()]
+    .slice(-limit)
+    .map((hit) => JSON.stringify({ span_id: hit.span_id, span_name: hit.span_name }))
+}
+
+async function prepareQuestionContext(
+  store: TraceAnalysisStore,
+  context?: AnalystContext,
+): Promise<string> {
+  const storeContext = context?.signal === undefined ? undefined : { signal: context.signal }
+  const overview = await store.getOverview({}, storeContext)
   const traceId = overview.total_traces === 1 ? overview.sample_trace_ids[0] : undefined
   if (traceId === undefined) {
     return 'Start with getDatasetOverview. Do not print the question or analyst instructions.'
   }
+  const [tools, providerResults, providerMessages, providerEvents] = await Promise.all([
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: TOOL_SPAN_PATTERN, max_matches: 128 },
+      storeContext,
+    ),
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: 'toolResult', max_matches: 128 },
+      storeContext,
+    ),
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: 'message_end', max_matches: 128 },
+      storeContext,
+    ),
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: PROVIDER_EVENT_PATTERN, max_matches: 128 },
+      storeContext,
+    ),
+  ])
+  const providerResultHits = providerResults.hits.filter(
+    (hit) => hit.span_name === 'braid.run.provider.event',
+  )
+  const providerMessageHits = providerMessages.hits.filter(
+    (hit) => hit.span_name === 'braid.run.provider.event',
+  )
+  const providerHints = spanHints(
+    providerResultHits.length > 0
+      ? providerResultHits
+      : providerMessageHits.length > 0
+        ? providerMessageHits
+        : providerEvents.hits,
+    providerMessageHits.length > 0 && providerResultHits.length === 0 ? 20 : 16,
+  )
   return [
     'The frozen source contains exactly one trace.',
     `Exact trace id: ${JSON.stringify(traceId)}.`,
-    'Call viewTrace for this exact id in your first code step.',
+    'Use viewSpans with exact span_id values below to inspect source changes and test results.',
+    ...spanHints(tools.hits, 12),
+    ...providerHints,
+    ...(tools.has_more ||
+    providerResults.has_more ||
+    providerMessages.has_more ||
+    providerEvents.has_more
+      ? ['The span list is bounded and may omit later events.']
+      : []),
+    'If these spans do not answer Focus, call searchTrace with content terms and use each hit.span_id.',
+    'An oversized viewTrace summary lists span names and counts, not span IDs.',
+    'Treat this list as navigation only; cite evidence after reading the exact spans.',
     'Do not spend a model step printing the question or analyst instructions.',
   ].join('\n')
 }
@@ -29,7 +88,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   id: BRAID_QUESTION_ANALYST_ID,
   description: 'Answers one operator question against one frozen run with cited evidence.',
   area: 'question-answer',
-  version: '1.5.0',
+  version: '1.6.0',
   question: 'Answer the operator question about this frozen run.',
   instructions: [
     'OUTPUT CONTRACT:',
@@ -43,7 +102,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
     'Never pass either output positionally or pass the findings list without JSON encoding.',
     'Answer only the operator question shown after "Focus:".',
     'Use the trace tools before you answer.',
-    'Follow PREPARED CONTEXT and inspect its exact trace id first.',
+    'Follow PREPARED CONTEXT and inspect its exact span IDs first.',
     'Answer every distinct request in Focus with a finding or an explicit limitation finding.',
     'Write each finding claim as a direct answer, not as a defect label.',
     'Cite the exact trace span that supports each claim.',

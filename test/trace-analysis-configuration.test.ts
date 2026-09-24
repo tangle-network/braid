@@ -5,6 +5,10 @@ import type {
   ExternalOptimizerModelCallRequest,
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
+import {
+  createBoundedTraceAnalysisStore,
+  otlpTextToTraceAnalysisStore,
+} from '@tangle-network/agent-eval/traces'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
@@ -347,7 +351,7 @@ test('a total-only Pi cap reserves reasoning without inventing a provider split'
 test('defines a bounded cited-answer analyst for /ask', () => {
   const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
-  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.5.0')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.6.0')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
@@ -364,6 +368,69 @@ test('defines a bounded cited-answer analyst for /ask', () => {
     /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u,
   )
   assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Copy each excerpt verbatim/u)
+})
+
+test('large Pi traces give /ask provider tool-result span IDs instead of summary names', async () => {
+  const traceId = 'run-large-navigation-repro'
+  const span = (index: number, spanId: string, name: string, attributes: Record<string, unknown>) =>
+    JSON.stringify({
+      trace_id: traceId,
+      span_id: spanId,
+      name,
+      kind: 'SPAN_KIND_INTERNAL',
+      start_time: new Date(Date.UTC(2026, 8, 24) + index * 1_000).toISOString(),
+      end_time: new Date(Date.UTC(2026, 8, 24) + index * 1_000).toISOString(),
+      status: { code: 'STATUS_CODE_OK' },
+      resource: { attributes: { 'service.name': 'braid' } },
+      attributes,
+    })
+  const lines = Array.from({ length: 1_203 }, (_, index) =>
+    span(index, `span-update-${index}`, 'braid.run.part.updated', {
+      'braid.message_part': 'partial output '.repeat(40),
+    }),
+  )
+  lines.push(
+    ...Array.from({ length: 63 }, (_, index) =>
+      span(1_203 + index, `span-provider-${index}`, 'braid.run.provider.event', {
+        'braid.runtime_event':
+          index === 36 || index === 44
+            ? {
+                type: 'unknown',
+                originalType: 'message_end',
+                payload: {
+                  role: 'toolResult',
+                  content:
+                    index === 36
+                      ? 'slugify now normalizes Unicode accents'
+                      : 'node --test: pass 9, fail 0',
+                },
+              }
+            : { type: 'unknown', originalType: 'usage', payload: {} },
+      }),
+    ),
+  )
+  const store = createBoundedTraceAnalysisStore(
+    otlpTextToTraceAnalysisStore(`${lines.join('\n')}\n`),
+  )
+  const view = await store.viewTrace({ trace_id: traceId })
+  assert.ok('oversized' in view)
+
+  const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext?.(store, {
+    runId: 'analysis-navigation-repro',
+    correlationId: 'analysis-navigation-repro',
+    tags: { focus: 'Did the run prove Unicode accent removal in slugify?' },
+  })
+  assert.ok(prepared)
+  assert.match(prepared, /"span_id":"span-provider-36"/u)
+  assert.match(prepared, /"span_id":"span-provider-44"/u)
+  assert.match(prepared, /span names and counts, not span IDs/u)
+  assert.doesNotMatch(prepared, /"span_id":"braid\.run\.part\.updated"/u)
+  const exact = await store.viewSpans({
+    trace_id: traceId,
+    span_ids: ['span-provider-36', 'span-provider-44'],
+  })
+  assert.deepEqual(exact.missing_span_ids, [])
+  assert.equal(exact.spans.length, 2)
 })
 
 test('resolves the selected connection credential in memory and never exposes it in configuration', async () => {

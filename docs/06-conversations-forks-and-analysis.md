@@ -311,6 +311,7 @@ The analysis profile, model, effort, tool bounds, time limit, token limit, and c
 When a model declares only a total completion-token limit, `/ask` applies that limit to the provider and allows reported reasoning tokens within the same total.
 
 The analyst uses canonical bounded trace tools and cannot mutate the source workspace or conversation.
+For a large trace, `/ask` prepares exact tool and provider-event span identifiers so the analyst can inspect source changes and test results without mistaking summary names for identifiers.
 
 Analysis runs in a separate runtime execution context and has its own cancellation and cost.
 
