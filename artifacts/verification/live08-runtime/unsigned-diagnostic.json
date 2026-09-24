@@ -1,0 +1,34 @@
+{
+  "status": "passed",
+  "tarballSha256": "23bfc8074970a0786490a2f26fe256563096810fe4a2a7e1f5c132f40d2128c7",
+  "interaction": {
+    "interactionId": "interaction-2eb04a8983be795a4b1178c1d5c1a497822e424fbd6f3f2f",
+    "kind": "question",
+    "requestSequence": 21,
+    "reconnect": {
+      "operationId": "op-braid-cloud-interaction-reconnect-e82167f6-4d77-4a5d-83c7-c0ed33614235",
+      "acknowledgedRevision": 23,
+      "observedRevision": 23,
+      "observedSequence": 23,
+      "runStatus": "reconnecting",
+      "interactionStatus": "pending"
+    },
+    "responseRequestedSequence": 24,
+    "responseAcknowledgedSequence": 27,
+    "terminalStatus": "completed"
+  },
+  "response": {
+    "operationId": "op-braid-cloud-interaction-response-69686ed8-9bae-4f5e-9e94-eeb25bf5f904",
+    "outcome": "accepted"
+  },
+  "cleanup": {
+    "id": "sandbox-61794b39f69f",
+    "attempts": [
+      {
+        "attempt": 1,
+        "deleted": true
+      }
+    ],
+    "confirmed": true
+  }
+}

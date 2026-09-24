@@ -7,6 +7,7 @@ import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { UnavailableExecutionPort } from '../src/adapters/runtime/unavailable-execution.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
+import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { BraidApplication } from '../src/app/application.js'
 import {
   createBraidApplication,
@@ -18,7 +19,7 @@ import { assertBraidState } from '../src/domain/invariants.js'
 import { SystemClock } from '../src/ports/clock.js'
 import { SequenceIds } from '../src/ports/ids.js'
 
-test('completed runs remain focusable through encrypted storage and restart', async () => {
+test('focusing a completed run opens its transcript after legacy focus replay and restart', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-terminal-focus-'))
   const path = join(root, 'braid.sqlite')
   const credentialStore = new MemoryCredentialStore()
@@ -44,30 +45,73 @@ test('completed runs remain focusable through encrypted storage and restart', as
   })
   first.app.initialize(root)
   await first.app.whenDurable()
+  const conversationA = first.app.state().conversationId
+  const branchA = first.app.state().branchId
   const runA = first.app.send({ operationId: 'op-terminal-focus-a', text: 'first' })
   await runA.completion
-  await first.app.conversations.lifecycle.create({
+  await first.app.conversations.drafts.set({
+    operationId: 'op-terminal-focus-a-draft',
+    text: 'draft for A',
+  })
+  const conversationB = await first.app.conversations.lifecycle.create({
     operationId: 'op-terminal-focus-conversation-b',
     title: 'Second conversation',
   })
   const runB = first.app.send({ operationId: 'op-terminal-focus-b', text: 'second' })
   await runB.completion
+  await first.app.conversations.drafts.set({
+    operationId: 'op-terminal-focus-b-draft',
+    text: 'draft for B',
+  })
   assert.equal(first.app.state().focusedRunId, runB.runId)
+  assert.equal(first.app.state().draft, 'draft for B')
+  assert.equal(buildBraidViewModel(first.app.state()).messages.at(-1)?.text, 'completed second')
 
-  first.app.focusRun({ operationId: 'op-terminal-focus-inspect-a', runId: runA.runId })
-  await first.app.whenDurable()
-  assert.equal(first.app.state().focusedRunId, runA.runId)
+  const legacyJournal = await StorageJournal.fromStorage(first.storage, new SystemClock())
+  const legacyFocus = legacyJournal.envelope(first.app.state(), {
+    kind: 'run.focused',
+    runId: runA.runId,
+  })
+  await legacyJournal.append(legacyFocus)
+  await first.storage.close()
+
+  const migrated = await createDurableBraidApplication({
+    path,
+    workspaceRoot: root,
+    credentialStore,
+    profile: DETERMINISTIC_PROFILE,
+  })
+  assert.equal(migrated.app.state().focusedRunId, runA.runId)
+  assert.equal(migrated.app.state().conversationId, conversationB.id)
+  assert.equal(migrated.app.state().draft, 'draft for B')
+  assert.equal(buildBraidViewModel(migrated.app.state()).messages.at(-1)?.text, 'completed second')
+
+  migrated.app.focusRun({ operationId: 'op-terminal-focus-inspect-a', runId: runA.runId })
+  await migrated.app.whenDurable()
+  assert.equal(migrated.app.state().focusedRunId, runA.runId)
+  assert.equal(migrated.app.state().conversationId, conversationA)
+  assert.equal(migrated.app.state().branchId, branchA)
+  assert.equal(migrated.app.state().draft, 'draft for A')
+  assert.equal(
+    migrated.app.state().conversations.find((item) => item.id === conversationA)?.activeBranchId,
+    branchA,
+  )
+  assert.equal(buildBraidViewModel(migrated.app.state()).messages.at(-1)?.text, 'completed first')
   assert.deepEqual(
-    first.app.state().runs.map((run) => run.status),
+    migrated.app.state().runs.map((run) => run.status),
     ['completed', 'completed'],
   )
+  const focusedSequence = migrated.app.state().sequence
+  migrated.app.focusRun({ operationId: 'op-terminal-focus-inspect-a', runId: runA.runId })
+  await migrated.app.whenDurable()
+  assert.equal(migrated.app.state().sequence, focusedSequence)
   assert.equal(
-    (await first.storage.events()).some(
+    (await migrated.storage.events()).filter(
       (row) => row.runId === runA.runId && row.kind === 'run.focused',
-    ),
-    true,
+    ).length,
+    2,
   )
-  await first.storage.close()
+  await migrated.storage.close()
 
   const restarted = await createDurableBraidApplication({
     path,
@@ -76,6 +120,10 @@ test('completed runs remain focusable through encrypted storage and restart', as
     profile: DETERMINISTIC_PROFILE,
   })
   assert.equal(restarted.app.state().focusedRunId, runA.runId)
+  assert.equal(restarted.app.state().conversationId, conversationA)
+  assert.equal(restarted.app.state().branchId, branchA)
+  assert.equal(restarted.app.state().draft, 'draft for A')
+  assert.equal(buildBraidViewModel(restarted.app.state()).messages.at(-1)?.text, 'completed first')
   assert.deepEqual(
     restarted.app.state().runs.map((run) => run.status),
     ['completed', 'completed'],

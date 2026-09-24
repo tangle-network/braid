@@ -101,10 +101,15 @@ export function reduceInteractionEvent(
     case 'run.interaction.cancelled': {
       const run = findRun(state, event.runId)
       const current = interactionFor(run, event.interactionId)
-      if (current.status === 'cancelled') {
+      // A provider close cannot decide an in-flight response; its durable result must settle first.
+      if (
+        current.status === 'cancelled' ||
+        current.status === 'resolved' ||
+        current.status === 'responding'
+      ) {
         return providerProgress(state, run, event.provider, base)
       }
-      if (current.status !== 'pending' && current.status !== 'responding') {
+      if (current.status !== 'pending') {
         throw interactionInvariant(
           `Interaction ${event.interactionId} cannot transition from ${current.status} to cancelled`,
         )

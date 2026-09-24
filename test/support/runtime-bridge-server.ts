@@ -34,6 +34,7 @@ export interface RuntimeBridgeRequest {
 }
 
 export interface RuntimeBridgeServerOptions {
+  readonly maxOpenNativeSessions?: number
   readonly advertisedModels?: ReadonlyArray<{
     readonly id: string
     readonly backend: string
@@ -72,6 +73,7 @@ export interface RuntimeBridgeServer {
   readonly endpoint: string
   readonly requests: RuntimeBridgeRequest[]
   readonly sessions: RuntimeBridgeSession[]
+  readonly closedSessions: string[]
   readonly cancellations: RuntimeBridgeCancellationRequest[]
   readonly replays: RuntimeBridgeReplayRequest[]
   complete(runId?: string): void
@@ -388,6 +390,7 @@ export async function startRuntimeBridgeServer(
 ): Promise<RuntimeBridgeServer> {
   const requests: RuntimeBridgeRequest[] = []
   const sessions: RuntimeBridgeSession[] = []
+  const closedSessions: string[] = []
   const cancellations: RuntimeBridgeCancellationRequest[] = []
   const replays: RuntimeBridgeReplayRequest[] = []
   interface RunCoordinates {
@@ -438,6 +441,9 @@ export async function startRuntimeBridgeServer(
   })
 
   const sessionView = (session: RuntimeBridgeSession) => {
+    const lastRun = Array.from(runs.values())
+      .filter((run) => run.sessionId === session.id)
+      .at(-1)
     const activeRun = Array.from(runs.values()).find(
       (run) => run.sessionId === session.id && !run.terminal,
     )
@@ -447,8 +453,12 @@ export async function startRuntimeBridgeServer(
       create_request_digest: session.createRequestDigest,
       backend: bridgeBackendForModel(session.model),
       model: session.model,
-      status: activeRun === undefined ? 'idle' : 'running',
-      run_id: activeRun?.id ?? null,
+      status: closedSessions.includes(session.id)
+        ? 'closed'
+        : activeRun === undefined
+          ? 'idle'
+          : 'running',
+      run_id: lastRun?.id ?? null,
       context_boundary: null,
     }
   }
@@ -550,6 +560,15 @@ export async function startRuntimeBridgeServer(
       return
     }
     if (request.method === 'GET' && path === '/v1/capabilities') {
+      if (
+        options.maxOpenNativeSessions !== undefined &&
+        nativeSessions.size - closedSessions.length >= options.maxOpenNativeSessions
+      ) {
+        writeJson(response, 503, {
+          error: { type: 'backend_not_ready', message: 'native session capacity is exhausted' },
+        })
+        return
+      }
       const model = url.searchParams.get('model')
       if (model === null || model.length === 0) {
         response.writeHead(400, { 'content-type': 'application/json' })
@@ -826,6 +845,21 @@ export async function startRuntimeBridgeServer(
       writeJson(response, 200, sessionView(session))
       return
     }
+    const closeSessionMatch = /^\/v1\/sessions\/([^/]+)\/close$/u.exec(path)
+    if (request.method === 'POST' && closeSessionMatch !== null) {
+      const session = nativeSessions.get(decodeURIComponent(closeSessionMatch[1] ?? ''))
+      if (session === undefined) {
+        writeJson(response, 404, { error: { type: 'not_found_error' } })
+        return
+      }
+      if (Array.from(runs.values()).some((run) => run.sessionId === session.id && !run.terminal)) {
+        writeJson(response, 409, { error: { type: 'active_run' } })
+        return
+      }
+      if (!closedSessions.includes(session.id)) closedSessions.push(session.id)
+      writeJson(response, 200, { closed: true, session: sessionView(session) })
+      return
+    }
     const turnMatch = /^\/v1\/sessions\/([^/]+)\/turns$/u.exec(path)
     if (request.method === 'POST' && turnMatch !== null) {
       const session = nativeSessions.get(decodeURIComponent(turnMatch[1] ?? ''))
@@ -958,6 +992,7 @@ export async function startRuntimeBridgeServer(
     endpoint: `http://127.0.0.1:${address.port}`,
     requests,
     sessions,
+    closedSessions,
     cancellations,
     replays,
     complete: (runId) => {

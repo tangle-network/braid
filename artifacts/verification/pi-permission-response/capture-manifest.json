@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "capture": "test/tui-permission-response.test.ts",
+  "provider": "controlled response-capable fixture; not a live Pi provider run",
+  "terminal": {
+    "columns": 80,
+    "rows": 24,
+    "implementation": "BraidTerminalApp with VirtualTerminal"
+  },
+  "keyboard": [
+    "run bash",
+    "Enter",
+    "Enter on Allow once"
+  ],
+  "assertion": "provider received grant as one select value and Braid recorded one response request",
+  "captureCommand": "pnpm exec tsc -p tsconfig.test.json --outDir .test-dist-permission-capture && BRAID_PERMISSION_CAPTURE_ROOT=artifacts/verification/pi-permission-response node --test .test-dist-permission-capture/test/tui-permission-response.test.js",
+  "renderCommand": "agg --quiet --theme github-dark --font-size 16 --speed 1 --idle-time-limit 2 --last-frame-duration 2 80x24-permission-response.cast 80x24-permission-response.gif",
+  "artifacts": [
+    {
+      "path": "80x24-permission-response.cast",
+      "sha256": "cc8e951c03a7434a768f888935a5d6387e84bdc665ab0c6ada6c5ff4bb633462"
+    },
+    {
+      "path": "80x24-permission-response.gif",
+      "sha256": "bea75d9addc35ba31befce2bd1c2f04dffa38cbdd079ddb3036a61f7ccb9527d"
+    },
+    {
+      "path": "80x24-permission-prompt.png",
+      "sha256": "f0854ad0d473f89eb92b528f0e21d06f04712d5fa0573bf77bde379315e6d63b"
+    },
+    {
+      "path": "80x24-permission-prompt.txt",
+      "sha256": "8b848aea93b93e5395e56f6a21d201c299309162fdd67a4256de414d734ee8d0"
+    },
+    {
+      "path": "80x24-permission-resolved.txt",
+      "sha256": "07a60b4498183456aa5d84e826813d9387f112c626e0d71ab97edcdfd74838cd"
+    }
+  ]
+}

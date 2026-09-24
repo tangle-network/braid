@@ -29,9 +29,9 @@ Run rows also carry conversation and branch identity.
 
 Selecting a run emits `focus-run` for that exact run.
 
-The runs view states that Enter opens details and focuses controls.
+The runs view states that Enter opens details, selects the run's branch, and focuses controls.
 
-The focused row includes a `controls` label, which stays separate from conversation selection.
+The focused row includes a `controls` label.
 
 Selecting another entity opens its details without changing run focus.
 

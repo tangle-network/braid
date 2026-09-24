@@ -259,7 +259,9 @@ Provider session or environment loss marks the binding unavailable but does not 
 
 Graph integrity checks reject cycles, missing boundaries, cross-workspace environment bindings without an explicit edge, and terminal-run mutation.
 
-The user can focus a completed run to inspect its transcript without changing its provider output.
+Focusing a completed run selects its conversation and branch so the transcript matches the focused run.
+
+The focus action restores that branch's draft without changing provider output.
 
 ## Conversation export
 
@@ -306,9 +308,18 @@ Callers that need only a terminal result may use `analyzeTraces(...)` with its a
 
 The analysis profile, model, effort, tool bounds, time limit, token limit, and cost limit are recorded before dispatch.
 
+When a model declares only a total completion-token limit, `/ask` applies that limit to the provider and allows reported reasoning tokens within the same total.
+
 The analyst uses canonical bounded trace tools and cannot mutate the source workspace or conversation.
+For a large trace, `/ask` puts a short navigation cue with exact normalized span identifiers and original scalar paths in the analyst's initial input.
+It also prepares completed tool results and selects tool calls with original input text across the run.
+The analyst inspects result content and write inputs to cite source changes and test results.
 
 Analysis runs in a separate runtime execution context and has its own cancellation and cost.
+
+After each one-shot native CLI Bridge analyst call settles, Braid closes its exact provider session through the provider API.
+
+The run reference and recorded admission remain durable.
 
 One request can select explicit analyst identifiers, comma-separated recipe aliases, or every available trace analyst with `all`.
 

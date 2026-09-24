@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "capture": "scripts/capture-visual.mjs: analysis state",
+  "sourceCommit": "c3c639d604db8bf290b2dcba28e3f7dcd6954be0",
+  "packedTarballSha256": "cab3a02d55d3c1e77b5bd4a24235dfd563e33553e4688dd3cde25fac39398c9f",
+  "packedBinarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+  "provider": "controlled deterministic UI fixture; this is not a live analyst or managed Python result",
+  "terminal": {
+    "columns": 80,
+    "rows": 24,
+    "implementation": "packed Braid with node-pty and xterm-256color"
+  },
+  "keyboard": [
+    "/ask Where did this run waste time?",
+    "Enter"
+  ],
+  "assertion": "the controlled /ask flow opens a saved analysis view with two cited fixture findings",
+  "captureCommand": "BRAID_RELEASE_TARBALL=<exact c3c639d60 tarball> BRAID_RELEASE_ARTIFACT_ROOT=<scratch> pnpm capture:visual",
+  "renderCommand": "agg --quiet --theme github-dark --font-size 16 --idle-time-limit 1 --last-frame-duration 2 --font-family 'DejaVu Sans Mono' 80x24-ask-controlled.cast 80x24-ask-controlled.gif",
+  "redaction": "the local workspace path in the terminal title was replaced with example-workspace before GIF rendering",
+  "realIntegrationLimit": "the exact-head real Pi coding turn completed, but the live /ask analyst call failed because CLI Bridge rejected an empty agent_profile.model.metadata object; this capture does not establish live analysis success",
+  "artifacts": [
+    {
+      "path": "80x24-ask-controlled.cast",
+      "sha256": "e98714f963064956995a9876c7344d410ac8bd769caa945b7013575be21345e6"
+    },
+    {
+      "path": "80x24-ask-controlled.gif",
+      "sha256": "7849dbc0f268b224b6028f7e2fd76e2d114a9f271db4feffcffeb0e5749c715f"
+    },
+    {
+      "path": "80x24-ask-controlled.png",
+      "sha256": "f72895d9103e4a6fd9b53a02106f2a468dc52dbfd9d05087fbacbc0c5062b669"
+    },
+    {
+      "path": "80x24-ask-controlled.txt",
+      "sha256": "e038b88f1cf4bc7dbb7cf48f1dd3d62170f1f21f61ffbba5178a66f51aa52a6b"
+    }
+  ]
+}

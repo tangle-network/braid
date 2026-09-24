@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  interactionRequestDigest,
-  validateInteractionResponse,
-} from '@tangle-network/agent-interface'
+import { interactionRequestDigest } from '@tangle-network/agent-interface'
 import {
   assertCloudInteractionEvidence,
+  cloudInteractionFailureSnapshot,
+  cloudProviderEventTypeProjection,
+  cloudProviderEventTypeSnapshot,
+  cloudProviderFailureProjection,
   cloudQuestionResponse,
+  cloudRecoveryDetailCategory,
+  refreshBraidFailureState,
   retainedCloudQuestionRequest,
 } from '../scripts/live-required/tangle-sandbox-braid-cloud-interaction.mjs'
 
@@ -45,7 +48,8 @@ function proof() {
   const pending = {
     revision: 21,
     sequence: 22,
-    runs: [{ id: 'run-1', status: 'waiting', interactions: [{ status: 'pending', request }] }],
+    runs: [{ id: 'run-1', status: 'waiting' }],
+    interactions: [{ runId: 'run-1', interactionId: request.id, kind: 'question' }],
   }
   const reconnected = structuredClone(pending)
   reconnected.runs[0].status = 'reconnecting'
@@ -107,25 +111,27 @@ test('cloud question answer uses the declared shape', () => {
   )
 })
 
-test('cloud answer uses the full retained request, not the projected event summary', () => {
+test('cloud answer uses public event fields after the pending view confirms identity', () => {
   const evidence = proof()
   const projected = evidence.firstResponses[0].event.payload.interaction
-  assert.equal(
-    validateInteractionResponse(projected, cloudQuestionResponse(request, 'AFTER_ANSWER')).ok,
-    false,
-  )
+  assert.deepEqual(cloudQuestionResponse(projected, 'AFTER_ANSWER'), {
+    id: request.id,
+    outcome: 'accepted',
+    data: { q0: ['continue'] },
+  })
   assert.deepEqual(
-    retainedCloudQuestionRequest(evidence.reconnectedState, 'run-1', request.id),
-    request,
+    retainedCloudQuestionRequest(evidence.reconnectedState, 'run-1', request.id, projected),
+    projected,
   )
   assert.throws(
     () =>
       retainedCloudQuestionRequest(
-        { runs: [{ id: 'run-1', interactions: [{ status: 'pending', request: projected }] }] },
+        { interactions: [{ runId: 'other-run', interactionId: request.id, kind: 'question' }] },
         'run-1',
         request.id,
+        projected,
       ),
-    /belongs to another run/u,
+    /no longer pending/u,
   )
 })
 
@@ -141,7 +147,7 @@ test('cloud proof requires one pending question before and after reconnect', () 
     () =>
       assertCloudInteractionEvidence({
         ...valid,
-        reconnectedState: { runs: [{ id: 'run-1', interactions: [] }] },
+        reconnectedState: { runs: [{ id: 'run-1' }], interactions: [] },
       }),
     /pending/u,
   )
@@ -188,5 +194,163 @@ test('cloud proof rejects duplicate or unacknowledged response and missing conti
         terminalState: { runs: [{ id: 'run-1', status: 'waiting' }] },
       }),
     /did not continue/u,
+  )
+})
+
+test('failed cloud question retains bounded state and provider status without prompt or credential text', () => {
+  const secret = 'test-secret-must-not-appear'
+  const responses = [
+    {
+      type: 'state',
+      revision: 17,
+      sequence: 18,
+      state: {
+        runs: [
+          {
+            id: 'run-1',
+            status: 'failed',
+            complete: true,
+            error: secret,
+          },
+        ],
+        interactions: [
+          { runId: 'run-1', interactionId: request.id, kind: 'question', prompt: secret },
+        ],
+      },
+    },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      type: 'event',
+      sequence: index + 1,
+      event: {
+        kind: index === 29 ? 'run.finished' : 'run.part.updated',
+        payload: { runId: 'run-1', text: secret, value: { text: secret } },
+      },
+    })),
+  ]
+  const braid = cloudInteractionFailureSnapshot(responses, 'run-1', true)
+  assert.equal(braid.questionRequested, true)
+  assert.equal(braid.responseCount, 31)
+  assert.equal(braid.runEventCount, 30)
+  assert.equal(braid.lastEvents.length, 24)
+  assert.equal(braid.eventCounts['run.finished'], 1)
+  assert.equal(braid.latestState.status, 'failed')
+  assert.deepEqual(braid.latestState.interactions, [{ kind: 'question', status: 'pending' }])
+
+  const provider = cloudProviderFailureProjection(
+    {
+      status: 'failed',
+      failureReason: { code: 'runner_failed', message: `provider rejected ${secret}` },
+      raw: { token: secret },
+    },
+    Array.from({ length: 10 }, (_, index) => ({
+      executionId: `execution-${index}`,
+      status: 'failed',
+      eventCount: index + 1,
+      output: secret,
+    })),
+  )
+  assert.equal(provider.sessionStatus, 'failed')
+  assert.equal(provider.failureCode, 'runner_failed')
+  assert.equal(provider.executionCount, 10)
+  assert.equal(provider.executions.length, 8)
+  assert.equal(Object.hasOwn(provider, 'failureMessage'), false)
+  assert.doesNotMatch(JSON.stringify({ braid, provider }), /test-secret-must-not-appear/u)
+})
+
+test('cloud failure classifies recovery and provider event types without retaining unknown text', () => {
+  const secret = 'test-secret-must-not-appear'
+  const recovery = cloudInteractionFailureSnapshot(
+    [
+      {
+        type: 'event',
+        event: {
+          kind: 'history.missing',
+          payload: { range: { runId: 'run-1', fromSequence: 3, toSequence: 4 } },
+        },
+      },
+      {
+        type: 'event',
+        sequence: 22,
+        event: {
+          kind: 'run.unknown',
+          payload: { runId: 'run-1', detail: 'RUNTIME_RECONCILIATION_ERROR' },
+        },
+      },
+      {
+        type: 'state',
+        state: {
+          lastError: secret,
+          runs: [
+            { id: 'run-1', status: 'unknown', lastProviderSequence: 2, lastCursor: 'cursor-2' },
+          ],
+        },
+      },
+    ],
+    'run-1',
+    true,
+  )
+  assert.equal(recovery.historyGapCount, 1)
+  assert.equal(recovery.unknownDetailCategory, 'reconnect-error')
+  assert.equal(recovery.latestState.lastProviderSequence, 2)
+  assert.equal(recovery.latestState.cursorPresent, true)
+  assert.equal(cloudRecoveryDetailCategory(secret), 'unclassified')
+
+  const eventTypes = cloudProviderEventTypeProjection([
+    { type: 'status', data: { type: 'interaction', detail: secret } },
+    { type: secret, data: { event: { type: secret } } },
+  ])
+  assert.deepEqual(eventTypes.types, { status: 1, other: 1 })
+  assert.deepEqual(eventTypes.nestedTypes, { interaction: 1, other: 1 })
+  assert.doesNotMatch(JSON.stringify({ recovery, eventTypes }), /test-secret-must-not-appear/u)
+})
+
+test('provider event diagnostic replays one exact execution through the public session API', async () => {
+  let options
+  const session = {
+    async *events(input) {
+      options = input
+      yield { type: 'status', data: { type: 'interaction', prompt: 'not retained' } }
+      yield { type: 'done', data: {} }
+    },
+  }
+  const snapshot = await cloudProviderEventTypeSnapshot(session, 'run-1')
+  assert.equal(options.since, '0')
+  assert.equal(options.executionId, 'run-1')
+  assert.equal(snapshot.observed, true)
+  assert.equal(snapshot.eventCount, 2)
+  assert.deepEqual(snapshot.types, { status: 1, done: 1 })
+  assert.deepEqual(snapshot.nestedTypes, { interaction: 1 })
+  assert.doesNotMatch(JSON.stringify(snapshot), /not retained/u)
+})
+
+test('failure diagnostic refreshes the live Braid run state with a bounded read', async () => {
+  let requested
+  const session = {
+    closed: false,
+    send(request) {
+      requested = request
+    },
+    async waitFor(label, predicate, timeoutMs) {
+      assert.equal(label, 'cloud interaction failure state')
+      assert.equal(timeoutMs, 5_000)
+      assert.equal(predicate({ type: 'state', requestId: requested.requestId }), true)
+      return { type: 'state', requestId: requested.requestId }
+    },
+  }
+  assert.deepEqual(await refreshBraidFailureState(session), { attempted: true, received: true })
+  assert.equal(requested.command, 'get_state')
+  assert.deepEqual(requested.params, { projection: 'full' })
+  assert.deepEqual(await refreshBraidFailureState({ closed: true }), {
+    attempted: false,
+    received: false,
+  })
+  assert.deepEqual(
+    await refreshBraidFailureState({
+      closed: false,
+      send() {
+        throw Object.assign(new Error('provider secret'), { code: 'RPC_INPUT_CLOSED' })
+      },
+    }),
+    { attempted: true, received: false, reasonCode: 'RPC_INPUT_CLOSED' },
   )
 })

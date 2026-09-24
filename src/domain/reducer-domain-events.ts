@@ -96,8 +96,38 @@ export function applyDomainEvent(
       }
     }
     case 'run.focused': {
-      if (event.runId !== null) find(state.runs, event.runId, 'Run')
-      return normalizeActiveRuns({ ...state, focusedRunId: event.runId }, event.runId)
+      if (event.runId === null) {
+        if (event.selection !== undefined)
+          throw new DomainInvariantError('A cleared run focus cannot select a branch')
+        return normalizeActiveRuns({ ...state, focusedRunId: null }, null)
+      }
+      const run = find(state.runs, event.runId, 'Run')
+      if (event.selection === undefined)
+        return normalizeActiveRuns({ ...state, focusedRunId: run.id }, run.id)
+      if (
+        event.selection.conversationId !== run.conversationId ||
+        event.selection.branchId !== run.branchId
+      )
+        throw new DomainInvariantError(`Run ${run.id} focus selects another branch`)
+      const conversation = find(state.conversations, run.conversationId, 'Conversation')
+      const branch = find(state.branches, run.branchId, 'Branch')
+      if (branch.conversationId !== conversation.id)
+        throw new DomainInvariantError(`Run ${run.id} branch belongs to another conversation`)
+      return normalizeActiveRuns(
+        {
+          ...state,
+          conversationId: conversation.id,
+          branchId: branch.id,
+          conversations: upsert(state.conversations, {
+            ...conversation,
+            activeBranchId: branch.id,
+            updatedAt: at,
+          }),
+          draft: state.drafts.find((draft) => draft.branchId === branch.id)?.text ?? '',
+          focusedRunId: run.id,
+        },
+        run.id,
+      )
     }
     case 'run.retained.admitted':
       return applyRetainedAdmission(state, event, at)

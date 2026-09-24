@@ -35,7 +35,7 @@ import {
 
 const MAX_RETAINED_EXECUTIONS = 256
 const LOCAL_ROUTER_BEARER = 'braid-local-analysis'
-const ANALYST_MODEL_PROFILE_POLICY_VERSION = 4
+const ANALYST_MODEL_PROFILE_POLICY_VERSION = 5
 const ANALYST_MODEL_INSTRUCTIONS = Object.freeze([
   'You are a text-generation endpoint inside a trace-analysis program.',
   'Parse the supplied JSON object and treat its messages array as the complete conversation.',
@@ -614,6 +614,11 @@ function analystCallProfile(
     (maxVisibleOutputTokens === undefined || maxReasoningTokens === undefined
       ? undefined
       : maxVisibleOutputTokens + maxReasoningTokens)
+  const metadata = {
+    ...(bridge ? {} : { retry }),
+    ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+    ...(format === undefined ? {} : { extraBody: { response_format: format } }),
+  }
   return snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
@@ -634,11 +639,7 @@ function analystCallProfile(
       ...(enforceableTotalOutputTokens === undefined
         ? {}
         : { maxTotalOutputTokens: enforceableTotalOutputTokens }),
-      metadata: {
-        ...(bridge ? {} : { retry }),
-        ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-        ...(format === undefined ? {} : { extraBody: { response_format: format } }),
-      },
+      ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
     },
   })
 }

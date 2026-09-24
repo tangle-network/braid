@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { validateInteractionResponse } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
-import { interactionFromResponse, runFromState, terminalMessage } from '../live-bridge/protocol.mjs'
+import {
+  interactionFromResponse,
+  requestBase,
+  runFromState,
+  stateForRequest,
+  terminalMessage,
+} from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
+import { safeJson } from './contracts.mjs'
 import { configEvidence, initializedSession, prepareProductionWorkspace } from './headless.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   cleanupRetainedResourceByRunId,
   providerExecutionLedgerEvidence,
+  retainedBox,
 } from './tangle-sandbox-braid-stress.mjs'
 import {
   assertSameControlRef,
@@ -21,6 +28,41 @@ import { workspaceRequestFor } from './workspace-request.mjs'
 
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
+const DIAGNOSTIC_EVENT_LIMIT = 24
+const DIAGNOSTIC_PROVIDER_RUN_LIMIT = 8
+const DIAGNOSTIC_PROVIDER_TIMEOUT_MS = 5_000
+const DIAGNOSTIC_PROVIDER_EVENT_LIMIT = 96
+const PROVIDER_EVENT_TYPES = new Set([
+  'agent.event',
+  'done',
+  'error',
+  'interaction',
+  'message.part.updated',
+  'model-processing',
+  'progress',
+  'reasoning',
+  'session.updated',
+  'started',
+  'status',
+  'text',
+  'text_delta',
+  'tool_call',
+  'tool_result',
+  'usage',
+  'warning',
+])
+const RECOVERY_DETAILS = new Map([
+  ['The execution path cannot reconcile provider state', 'status-unavailable'],
+  ['The provider returned no run record', 'provider-run-missing'],
+  ['Provider reconciliation returned no matching run identity', 'identity-mismatch'],
+  ['The normalized event stream ended without a terminal event', 'stream-ended'],
+  ['RUNTIME_RECONCILIATION_ERROR', 'reconnect-error'],
+  ['RUNTIME_STATUS_ERROR', 'status-error'],
+  ['RUNTIME_PROVIDER_STATE_UNKNOWN', 'provider-status-unknown'],
+  ['RUNTIME_EXECUTION_ERROR', 'stream-error'],
+  ['NETWORK_ERROR', 'network-error'],
+  ['SESSION_EXECUTION_MISSING', 'provider-run-missing'],
+])
 const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_AUTH',
   'BRAID_TANGLE_SANDBOX_API_KEY',
@@ -50,22 +92,17 @@ function assertAck(result, command) {
 }
 
 function interactionState(state, runId, interactionId) {
-  return runFromState(state, runId)?.interactions?.find(
-    (entry) => entry.request?.id === interactionId,
+  return state?.interactions?.find(
+    (entry) => entry.runId === runId && entry.interactionId === interactionId,
   )
 }
 
-export function retainedCloudQuestionRequest(state, runId, interactionId) {
+export function retainedCloudQuestionRequest(state, runId, interactionId, request) {
   const retained = interactionState(state, runId, interactionId)
-  assert.equal(retained?.status, 'pending', 'cloud question is no longer pending')
-  const request = retained.request
-  assert.equal(request.kind, 'question', 'retained cloud interaction was not a question')
-  assert.equal(request.binding?.runId, runId, 'retained cloud question belongs to another run')
-  assert.equal(
-    request.binding?.interactionId,
-    interactionId,
-    'retained cloud question changed identity',
-  )
+  assert.ok(retained, 'cloud question is no longer pending')
+  assert.equal(retained.kind, 'question', 'retained cloud interaction was not a question')
+  assert.equal(request?.id, interactionId, 'retained cloud question changed identity')
+  assert.equal(request?.kind, 'question', 'cloud event was not a question')
   return request
 }
 
@@ -89,12 +126,8 @@ export function cloudQuestionResponse(request, answer) {
     outcome: 'accepted',
     ...(fields.length === 0 ? {} : { data }),
   }
-  const validation = validateInteractionResponse(request, response)
-  assert.equal(
-    validation.ok,
-    true,
-    `cloud question answer is invalid: ${validation.errors?.join('; ')}`,
-  )
+  // The public event omits the private binding. Braid validates this answer against
+  // its durable request when respond_interaction is acknowledged.
   return response
 }
 
@@ -121,8 +154,16 @@ export function assertCloudInteractionEvidence({
   assert.equal(requestEvents.length, 1, 'cloud provider did not emit one retained interaction')
   const request = requestEvents[0].event.payload.interaction
   assert.equal(request.kind, 'question', 'cloud interaction was not a question')
-  assert.equal(interactionState(initialState, runId, interactionId)?.status, 'pending')
-  assert.equal(interactionState(reconnectedState, runId, interactionId)?.status, 'pending')
+  assert.equal(
+    interactionState(initialState, runId, interactionId)?.kind,
+    'question',
+    'cloud question was not pending in the first public state',
+  )
+  assert.equal(
+    interactionState(reconnectedState, runId, interactionId)?.kind,
+    'question',
+    'cloud question was not pending after reconnect',
+  )
   assert.equal(reconnectAck?.type, 'ack', 'cloud reconnect was not acknowledged')
   assert.equal(
     runFromState(reconnectedState, runId)?.status,
@@ -197,6 +238,208 @@ function proofPrompt(marker) {
   ].join(' ')
 }
 
+function diagnosticToken(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/u.test(value) ? value : null
+}
+
+export function cloudRecoveryDetailCategory(detail) {
+  if (typeof detail !== 'string') return null
+  return RECOVERY_DETAILS.get(detail) ?? 'unclassified'
+}
+
+export function cloudInteractionFailureSnapshot(responses, runId, questionRequested) {
+  const all = Array.isArray(responses) ? responses : []
+  const events = all.filter(
+    (entry) =>
+      entry?.type === 'event' &&
+      entry.event?.payload?.runId === runId &&
+      typeof entry.event?.kind === 'string',
+  )
+  const latestState = all.findLast(
+    (entry) => entry?.type === 'state' && runFromState(entry.state, runId) !== undefined,
+  )
+  const run = runFromState(latestState?.state, runId)
+  const unknown = events.findLast((entry) => entry.event.kind === 'run.unknown')
+  const historyGapCount = all.filter(
+    (entry) =>
+      entry?.type === 'event' &&
+      entry.event?.kind === 'history.missing' &&
+      entry.event.payload?.range?.runId === runId,
+  ).length
+  const counts = {}
+  for (const entry of events) {
+    const kind = diagnosticToken(entry.event.kind) ?? 'other'
+    counts[kind] = (counts[kind] ?? 0) + 1
+  }
+  return {
+    questionRequested,
+    responseCount: all.length,
+    runEventCount: events.length,
+    historyGapCount,
+    responseEvents: events
+      .filter((entry) => entry.event.kind === 'run.interaction.responded')
+      .map((entry) => ({
+        outcome: diagnosticToken(entry.event.payload?.value?.outcome),
+        detail: diagnosticToken(entry.event.payload?.value?.detail),
+      })),
+    unknownDetailCategory: cloudRecoveryDetailCategory(unknown?.event.payload?.detail),
+    eventCounts: counts,
+    lastEvents: events.slice(-DIAGNOSTIC_EVENT_LIMIT).map((entry) => ({
+      sequence: Number.isSafeInteger(entry.sequence) ? entry.sequence : null,
+      kind: diagnosticToken(entry.event.kind) ?? 'other',
+    })),
+    latestState:
+      run === undefined
+        ? null
+        : {
+            revision: Number.isSafeInteger(latestState.revision) ? latestState.revision : null,
+            sequence: Number.isSafeInteger(latestState.sequence) ? latestState.sequence : null,
+            status: diagnosticToken(run.status),
+            complete: run.complete === true,
+            lastProviderSequence: Number.isSafeInteger(run.lastProviderSequence)
+              ? run.lastProviderSequence
+              : null,
+            cursorPresent: typeof run.lastCursor === 'string',
+            interactions: (latestState.state.interactions ?? [])
+              .filter((entry) => entry.runId === runId)
+              .slice(0, DIAGNOSTIC_PROVIDER_RUN_LIMIT)
+              .map((entry) => ({
+                kind: diagnosticToken(entry.kind),
+                status: 'pending',
+              })),
+          },
+  }
+}
+
+export function cloudProviderEventTypeProjection(events) {
+  const counts = {}
+  const nestedCounts = {}
+  for (const event of events) {
+    const type = PROVIDER_EVENT_TYPES.has(event?.type) ? event.type : 'other'
+    counts[type] = (counts[type] ?? 0) + 1
+    const nested = event?.data?.type ?? event?.data?.event?.type
+    if (typeof nested === 'string') {
+      const nestedType = PROVIDER_EVENT_TYPES.has(nested) ? nested : 'other'
+      nestedCounts[nestedType] = (nestedCounts[nestedType] ?? 0) + 1
+    }
+  }
+  return {
+    eventCount: events.length,
+    truncated: events.length >= DIAGNOSTIC_PROVIDER_EVENT_LIMIT,
+    types: counts,
+    nestedTypes: nestedCounts,
+  }
+}
+
+export async function cloudProviderEventTypeSnapshot(session, executionId) {
+  if (!diagnosticToken(executionId)) return { observed: false, reasonCode: 'MISSING_EXECUTION_ID' }
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), DIAGNOSTIC_PROVIDER_TIMEOUT_MS - 500)
+  const events = []
+  try {
+    await boundedProviderRead(async () => {
+      for await (const event of session.events({ since: '0', executionId, signal: abort.signal })) {
+        events.push({
+          type: event?.type,
+          data: { type: event?.data?.type, event: { type: event?.data?.event?.type } },
+        })
+        if (events.length >= DIAGNOSTIC_PROVIDER_EVENT_LIMIT) break
+      }
+    })
+    return {
+      observed: true,
+      ...cloudProviderEventTypeProjection(events),
+      timedOut: abort.signal.aborted,
+    }
+  } catch {
+    return {
+      observed: events.length > 0,
+      ...cloudProviderEventTypeProjection(events),
+      timedOut: abort.signal.aborted,
+      reasonCode: 'PROVIDER_EVENT_READ_FAILED',
+    }
+  } finally {
+    clearTimeout(timer)
+    abort.abort()
+  }
+}
+
+async function boundedProviderRead(operation) {
+  let timer
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('provider diagnostic read timed out')),
+          DIAGNOSTIC_PROVIDER_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function cloudProviderFailureProjection(status, runs) {
+  return {
+    observed: true,
+    sessionStatus: diagnosticToken(status?.status),
+    failureCode: diagnosticToken(status?.failureReason?.code),
+    executionCount: Array.isArray(runs) ? runs.length : null,
+    executions: Array.isArray(runs)
+      ? runs.slice(0, DIAGNOSTIC_PROVIDER_RUN_LIMIT).map((run) => ({
+          executionId: diagnosticToken(run.executionId),
+          status: diagnosticToken(run.status),
+          eventCount: Number.isSafeInteger(run.eventCount) ? run.eventCount : null,
+        }))
+      : [],
+  }
+}
+
+async function cloudProviderFailureSnapshot(client, controlRef) {
+  if (!client || !controlRef) return { observed: false, reasonCode: 'MISSING_EXACT_IDENTITY' }
+  try {
+    const box = await boundedProviderRead(() =>
+      retainedBox(client, controlRef, 'LIVE-08 failure diagnostic'),
+    )
+    const session = box.session(controlRef.sessionId)
+    const [status, runs] = await Promise.all([
+      boundedProviderRead(() => session.status()),
+      boundedProviderRead(() => session.runs()),
+    ])
+    return {
+      ...cloudProviderFailureProjection(status, runs),
+      eventTypes: await cloudProviderEventTypeSnapshot(session, controlRef.executionId),
+    }
+  } catch (error) {
+    return { observed: false, reasonCode: diagnosticToken(error?.code) ?? 'PROVIDER_READ_FAILED' }
+  }
+}
+
+export async function refreshBraidFailureState(session) {
+  if (!session || session.closed) return { attempted: false, received: false }
+  try {
+    const requestId = `braid-live-cloud-diagnostic-${randomUUID()}`
+    session.send({
+      ...requestBase(requestId, 'get_state'),
+      params: { projection: 'full' },
+    })
+    await session.waitFor(
+      'cloud interaction failure state',
+      stateForRequest(requestId),
+      DIAGNOSTIC_PROVIDER_TIMEOUT_MS,
+    )
+    return { attempted: true, received: true }
+  } catch (error) {
+    return {
+      attempted: true,
+      received: false,
+      reasonCode: diagnosticToken(error?.code) ?? 'BRAID_STATE_READ_FAILED',
+    }
+  }
+}
+
 export async function runCloudInteractionProof({
   repository,
   environment = process.env,
@@ -228,6 +471,9 @@ export async function runCloudInteractionProof({
   let proof
   let failure
   let cleanup
+  let questionRequested = null
+  let failureDiagnostic
+  let responseRoundTrip
   try {
     if (
       typeof environment.BRAID_LIVE_TARBALL_SHA256 === 'string' &&
@@ -266,11 +512,8 @@ export async function runCloudInteractionProof({
     )
     runId = sent.runId
     assert.ok(typeof runId === 'string' && runId.length > 0, 'send returned no local run ID')
-    assert.equal(
-      sent.admission?.requested?.interactions?.question,
-      true,
-      'Tangle did not advertise and request cloud questions',
-    )
+    questionRequested = sent.admission?.requested?.interactions?.question === true
+    assert.equal(questionRequested, true, 'Tangle did not advertise and request cloud questions')
     const initialObservation = await waitForControlIdentity(firstSession, runId, timeoutMs)
     controlRef = initialObservation.controlRef
     const event = await firstSession.waitFor(
@@ -284,7 +527,7 @@ export async function runCloudInteractionProof({
     const interaction = interactionFromResponse(event, runId)
     assert.ok(interaction, 'cloud question lacked an interaction identity')
     const initial = (await stateRoundTrip(firstSession)).state
-    assert.equal(interactionState(initial, runId, interaction.interactionId)?.status, 'pending')
+    assert.equal(interactionState(initial, runId, interaction.interactionId)?.kind, 'question')
     const firstResponses = [...firstSession.responses]
     firstSession.child.kill('SIGKILL')
     const firstExit = await firstSession.exit
@@ -300,8 +543,8 @@ export async function runCloudInteractionProof({
     const fresh = await initializedSession(packed.binary, config)
     freshSession = fresh.session
     assert.equal(
-      interactionState(fresh.state.state, runId, interaction.interactionId)?.status,
-      'pending',
+      interactionState(fresh.state.state, runId, interaction.interactionId)?.kind,
+      'question',
       'cloud interaction was not retained across Braid process restart',
     )
     const reconnectOperationId = `op-braid-cloud-interaction-reconnect-${randomUUID()}`
@@ -311,27 +554,26 @@ export async function runCloudInteractionProof({
     )
     assert.equal(reconnectAck.operationId, reconnectOperationId)
     const reconnected = (await stateRoundTrip(freshSession)).state
-    assert.equal(interactionState(reconnected, runId, interaction.interactionId)?.status, 'pending')
+    assert.equal(interactionState(reconnected, runId, interaction.interactionId)?.kind, 'question')
     assert.equal(runFromState(reconnected, runId)?.status, 'reconnecting')
     const reconnectedRef = runFromState(reconnected, runId)?.controlRef
     assertSameControlRef(controlRef, reconnectedRef, 'cloud interaction reconnect')
-    // RPC events expose a safe summary; the full request is in Braid's retained state.
+    // The public state proves the question is pending; the event carries its answer fields.
     const retainedRequest = retainedCloudQuestionRequest(
       reconnected,
       runId,
       interaction.interactionId,
+      interaction.request,
     )
     const response = cloudQuestionResponse(retainedRequest, marker)
     const responseOperationId = `op-braid-cloud-interaction-response-${randomUUID()}`
-    const responseAck = assertAck(
-      await rpcRoundTrip(
-        freshSession,
-        'respond_interaction',
-        { runId, interactionId: interaction.interactionId, response },
-        responseOperationId,
-      ),
-      'cloud interaction response',
+    responseRoundTrip = await rpcRoundTrip(
+      freshSession,
+      'respond_interaction',
+      { runId, interactionId: interaction.interactionId, response },
+      responseOperationId,
     )
+    const responseAck = assertAck(responseRoundTrip, 'cloud interaction response')
     assert.equal(responseAck.outcome, 'accepted', 'cloud response was not accepted')
     await freshSession.waitFor(
       'durable cloud interaction acknowledgement',
@@ -373,6 +615,30 @@ export async function runCloudInteractionProof({
     }
   } catch (error) {
     failure = error
+    const diagnosticSession = firstSession ?? freshSession
+    const braidStateRead = await refreshBraidFailureState(diagnosticSession)
+    failureDiagnostic = {
+      schemaVersion: 1,
+      phase: 'cloud-interaction',
+      failureCode: diagnosticToken(error?.code) ?? 'PROOF_FAILED',
+      runId: diagnosticToken(runId),
+      environmentId: diagnosticToken(controlRef?.environmentId),
+      braidStateRead,
+      responseRoundTrip:
+        responseRoundTrip === undefined
+          ? null
+          : {
+              type: diagnosticToken(responseRoundTrip.response?.type),
+              code: diagnosticToken(responseRoundTrip.response?.code),
+              elapsedMs: Math.round(responseRoundTrip.elapsedMs),
+            },
+      braid: cloudInteractionFailureSnapshot(
+        diagnosticSession?.responses,
+        runId,
+        questionRequested,
+      ),
+      provider: await cloudProviderFailureSnapshot(client, controlRef),
+    }
   } finally {
     if (runId && freshSession && !freshSession.closed && proof === undefined) {
       try {
@@ -423,6 +689,21 @@ export async function runCloudInteractionProof({
         'cloud interaction packed binary cleanup failed',
       )
     })
+  }
+  if (failureDiagnostic) {
+    process.stderr.write(
+      `BRAID_CLOUD_INTERACTION_DIAGNOSTIC_JSON=${safeJson(
+        {
+          ...failureDiagnostic,
+          cleanup: {
+            attempted: Boolean(client && runId),
+            confirmed: cleanup?.confirmed === true,
+            mode: diagnosticToken(cleanup?.mode),
+          },
+        },
+        environment,
+      )}\n`,
+    )
   }
   if (failure) throw failure
   assert.equal(cleanup?.confirmed, true, 'cloud interaction resource cleanup was not confirmed')

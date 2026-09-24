@@ -1,6 +1,7 @@
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { providerEventKey } from '../domain/events.js'
+import { assertAnalysisRecord } from '../domain/invariants-run.js'
 import type { RunId } from '../domain/ids.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import { redactBraidEvent } from '../domain/redaction.js'
@@ -454,13 +455,26 @@ export interface CommitApplicationEventInput {
   readonly journal: ApplicationJournal
   readonly clock: Clock
   readonly providerEventKeys: Pick<RunLedger, 'hasProviderEvent' | 'addProviderEvent'>
+  readonly publishState: (state: BraidState) => void
   readonly subscribers: ReadonlySet<AppSubscriber>
+}
+
+function redactedEventForCommit(event: BraidEvent): BraidEvent {
+  const redacted = redactBraidEvent(event)
+  if (
+    redacted.kind === 'analysis.created' ||
+    redacted.kind === 'analysis.updated' ||
+    redacted.kind === 'analysis.completed'
+  ) {
+    assertAnalysisRecord(redacted.analysis)
+  }
+  return redacted
 }
 
 export function commitApplicationEvent(input: CommitApplicationEventInput): BraidState {
   const key = providerEventKey(input.event)
   if (key && input.providerEventKeys.hasProviderEvent(key)) return input.state
-  const redacted = redactBraidEvent(input.event)
+  const redacted = redactedEventForCommit(input.event)
   const envelope = input.journal.envelope
     ? input.journal.envelope(input.state, redacted)
     : {
@@ -480,6 +494,7 @@ export function commitApplicationEvent(input: CommitApplicationEventInput): Brai
   if (appendResult?.appended === false) return input.state
   const nextState = reduceEvent(input.state, envelope)
   if (key) input.providerEventKeys.addProviderEvent(key)
+  input.publishState(nextState)
   for (const subscriber of input.subscribers) {
     try {
       subscriber(structuredClone(nextState), structuredClone(envelope))
@@ -495,7 +510,7 @@ export async function commitApplicationEventAsync(
 ): Promise<BraidState> {
   const key = providerEventKey(input.event)
   if (key && input.providerEventKeys.hasProviderEvent(key)) return input.state
-  const redacted = redactBraidEvent(input.event)
+  const redacted = redactedEventForCommit(input.event)
   const envelope = input.journal.envelope
     ? input.journal.envelope(input.state, redacted)
     : {
@@ -510,6 +525,7 @@ export async function commitApplicationEventAsync(
     : await input.journal.append(envelope)
   if (result?.appended === false) return input.state
   if (key) input.providerEventKeys.addProviderEvent(key)
+  input.publishState(nextState)
   for (const subscriber of input.subscribers) {
     try {
       subscriber(structuredClone(nextState), structuredClone(envelope))

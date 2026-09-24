@@ -218,6 +218,10 @@
       "name": "signal-exit"
     },
     {
+      "license": "BSD-3-Clause",
+      "name": "smol-toml"
+    },
+    {
       "license": "CC-BY-3.0",
       "name": "spdx-exceptions"
     },

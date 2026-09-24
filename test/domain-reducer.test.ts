@@ -310,6 +310,39 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
   const afterResponseRequested = reduceEvent(duplicateInteraction, responseRequested(5))
   const duplicateResponseRequested = reduceEvent(afterResponseRequested, responseRequested(6))
   assert.equal(duplicateResponseRequested.runs[0]?.interactions[0]?.status, 'responding')
+  const cancelledDuringResponse = envelope(
+    {
+      kind: 'run.interaction.cancelled',
+      runId,
+      interactionId,
+      provider: {
+        eventId: 'provider-transition-cancelled-during-response',
+        providerSequence: 2,
+        occurredAt: at,
+      },
+    },
+    7,
+    createEventId('event-transition-cancelled-during-response'),
+  )
+  const afterCancelDuringResponse = reduceEvent(duplicateResponseRequested, cancelledDuringResponse)
+  assert.equal(afterCancelDuringResponse.runs[0]?.interactions[0]?.status, 'responding')
+  assert.equal(
+    afterCancelDuringResponse.runs[0]?.interactions[0]?.responseOperation?.operationId,
+    createOperationId('operation-transition-response'),
+  )
+  const acceptedAfterCancel = reduceEvent(afterCancelDuringResponse, responded(8))
+  assert.equal(acceptedAfterCancel.runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(acceptedAfterCancel.runs[0]?.lastProviderSequence, 2)
+  const replayedAfterCancel = replayEvents(initialState(STARTER_PROFILE), [
+    ...prefix,
+    interactionEvent(3),
+    interactionEvent(4, providerInteractionId, 1, 'provider-transition-3'),
+    responseRequested(5),
+    responseRequested(6),
+    cancelledDuringResponse,
+    responded(8),
+  ])
+  assert.equal(replayedAfterCancel.runs[0]?.interactions[0]?.status, 'resolved')
   const afterResponded = reduceEvent(duplicateResponseRequested, responded(7))
   const duplicateResponded = reduceEvent(afterResponded, responded(8))
   assert.equal(duplicateResponded.runs[0]?.interactions[0]?.status, 'resolved')
@@ -321,27 +354,25 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
     () => reduceEvent(afterResponded, responded(8, 'operation-transition-other-response')),
     /different response result/u,
   )
-  assert.throws(
-    () =>
-      reduceEvent(
-        duplicateResponded,
-        envelope(
-          {
-            kind: 'run.interaction.cancelled',
-            runId,
-            interactionId,
-            provider: {
-              eventId: 'provider-transition-cancelled',
-              providerSequence: 7,
-              occurredAt: at,
-            },
-          },
-          9,
-          createEventId('event-transition-cancelled'),
-        ),
-      ),
-    /cannot transition from resolved to cancelled/u,
+  const afterLateProviderCancel = reduceEvent(
+    duplicateResponded,
+    envelope(
+      {
+        kind: 'run.interaction.cancelled',
+        runId,
+        interactionId,
+        provider: {
+          eventId: 'provider-transition-cancelled',
+          providerSequence: 7,
+          occurredAt: at,
+        },
+      },
+      9,
+      createEventId('event-transition-cancelled'),
+    ),
   )
+  assert.equal(afterLateProviderCancel.runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(afterLateProviderCancel.runs[0]?.lastProviderSequence, 7)
 
   let evicted = beforeInteraction
   for (let index = 0; index < 257; index += 1) {

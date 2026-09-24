@@ -1,0 +1,24 @@
+ permission                                                  Braid starter · pi
+────────────────────────────────────────────────────────────────────────────────
+ Permission: bash
+>
+→ Allow once
+  Deny
+ › alt+1 approve · alt+2 reject · alt+3 cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ move · enter choose · ←/esc cancel · alt+a automate
