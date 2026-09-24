@@ -470,6 +470,8 @@ Retained headless Tangle runs may request an answer when the effective environme
 
 Braid binds that response to the exact runtime run, provider session, interaction, and operation identifiers.
 
+If provider cancellation arrives during an in-flight response, Braid retains the response operation until its durable result settles.
+
 The ephemeral Tangle path and the native interactive-agent path do not expose the generic Braid interaction-response operation, so Braid reports it as unsupported instead of auto-answering.
 
 Braid displays a resumable interaction only after the provider exposes a durable response operation and the deployment reports response deduplication.
