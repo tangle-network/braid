@@ -29,6 +29,7 @@ export const LIVE_DEMO_ANALYST_PROFILE = Object.freeze({
     default: 'glm-5.2',
     provider: 'tangle-router',
     reasoningEffort: 'high',
+    maxTotalOutputTokens: 2048,
   },
   prompt: {
     instructions: [

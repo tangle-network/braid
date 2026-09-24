@@ -114,7 +114,7 @@ test('live demo timeline starts on the configured screen and preserves captured 
   )
 })
 
-test('live demo Pi profiles use the verified route without unsupported output caps', () => {
+test('live demo Pi profiles use the verified route and a total-only analyst cap', () => {
   assert.equal(LIVE_DEMO_MODEL_ROUTE, 'pi/tangle-router/glm-5.2')
   assert.equal(LIVE_DEMO_PROFILE.harness, 'pi')
   assert.equal(LIVE_DEMO_ANALYST_PROFILE.harness, 'pi')
@@ -124,10 +124,11 @@ test('live demo Pi profiles use the verified route without unsupported output ca
     assert.equal(profile.model.reasoningEffort, 'high')
     assert.equal('maxVisibleOutputTokens' in profile.model, false)
     assert.equal('maxReasoningTokens' in profile.model, false)
-    assert.equal('maxTotalOutputTokens' in profile.model, false)
     assert.equal('tools' in profile, false)
     assert.equal('permissions' in profile, false)
   }
+  assert.equal('maxTotalOutputTokens' in LIVE_DEMO_PROFILE.model, false)
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.maxTotalOutputTokens, 2048)
 })
 
 test('live demo profiles follow the advertised Pi route without a model fallback', () => {

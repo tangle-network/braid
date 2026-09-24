@@ -127,10 +127,30 @@ async function waitForCodingRunAdmission(baseUrl, startedAt, timeoutMs = 30_000)
         Date.parse(session.created_at) >= startedAt,
     )
     assert.ok(candidates.length <= 1, 'The live demo found multiple new coding sessions')
-    if (candidates[0]?.run_id) return candidates[0].run_id
+    if (candidates[0]?.run_id) return { sessionId: candidates[0].id, runId: candidates[0].run_id }
     await pause(200)
   }
   throw new Error('The live demo did not observe the coding run admission in CLI Bridge')
+}
+
+async function closeCodingSession(baseUrl, codingSession) {
+  const sessionUrl = `${baseUrl}/v1/sessions/${encodeURIComponent(codingSession.sessionId)}`
+  const before = await jsonRequest(sessionUrl)
+  assert.equal(before.id, codingSession.sessionId)
+  assert.equal(before.run_id, codingSession.runId, 'The coding session changed runs before close')
+  const response = await fetch(`${sessionUrl}/close`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(10_000),
+  })
+  assert.ok(response.ok, `Coding session close returned HTTP ${response.status}`)
+  const closed = await response.json()
+  assert.equal(closed.closed, true)
+  assert.equal(closed.session?.id, codingSession.sessionId)
+  assert.equal(closed.session?.status, 'closed')
+  const after = await jsonRequest(sessionUrl)
+  assert.equal(after.id, codingSession.sessionId)
+  assert.equal(after.status, 'closed')
+  process.stderr.write(`Closed exact coding session ${codingSession.sessionId}\n`)
 }
 
 async function waitForCompletedRun(terminal, approvals, baseUrl, runId, timeoutMs = 300_000) {
@@ -294,6 +314,10 @@ async function main() {
       process.env.BRAID_RELEASE_TARBALL ?? packageTarballPath(packageProofPath, packageProof),
   })
   let terminal
+  let codingSession
+  let taskError
+  let manifestPath
+  let manifestText
   try {
     assertExactPackageProof(packageProof, {
       commit: sourceCommit,
@@ -389,7 +413,8 @@ async function main() {
     await typeText(terminal, LIVE_DEMO_PROMPT, 9)
     terminal.input('\r')
     await terminal.waitForScreen((screen) => screen.includes('working'), 'active coding turn')
-    const codingRunId = await waitForCodingRunAdmission(baseUrl, codingStartedAt)
+    codingSession = await waitForCodingRunAdmission(baseUrl, codingStartedAt)
+    const codingRunId = codingSession.runId
     const approvals = []
     const coding = await waitForCompletedRun(terminal, approvals, baseUrl, codingRunId)
     const transcript = transcriptEvidence(coding.record)
@@ -491,6 +516,9 @@ async function main() {
     )
     assertPublicCapture(`${cast}\n${heroScreen}`)
     await terminal.closeNormally()
+    const closedCodingSessionId = codingSession.sessionId
+    await closeCodingSession(baseUrl, codingSession)
+    codingSession = undefined
 
     await mkdir(outputRoot, { recursive: true })
     const castPath = join(outputRoot, 'braid-live.cast')
@@ -498,7 +526,7 @@ async function main() {
     const gifPath = join(outputRoot, 'braid-live.gif')
     const pngPath = join(outputRoot, 'braid-live.png')
     const textPath = join(outputRoot, 'braid-live.txt')
-    const manifestPath = join(outputRoot, 'braid-live.json')
+    manifestPath = join(outputRoot, 'braid-live.json')
     const frameCast = castFor(
       { ...terminal, events: terminal.events.slice(0, hero.eventCount) },
       'Braid · completed trace analysis',
@@ -566,6 +594,7 @@ async function main() {
                 issue: 'https://github.com/tangle-network/agent-runtime/issues/762',
               },
         approvedPermissions: approvals,
+        sessionCleanup: { sessionId: closedCodingSessionId, status: 'closed' },
         workspaceProof,
       },
       analysis: {
@@ -586,13 +615,34 @@ async function main() {
       ),
     }
     assertPublicCapture(JSON.stringify(manifest))
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-    process.stdout.write(`${JSON.stringify(manifest, null, 2)}\n`)
-  } finally {
-    await terminal?.dispose()
-    await packed.cleanup()
-    await rm(temporaryRoot, { force: true, recursive: true })
+    manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+  } catch (error) {
+    taskError = error
   }
+  const cleanupErrors = []
+  for (const cleanup of [
+    () => terminal?.dispose(),
+    async () => {
+      if (codingSession) await closeCodingSession(baseUrl, codingSession)
+    },
+    () => packed.cleanup(),
+    () => rm(temporaryRoot, { force: true, recursive: true }),
+  ]) {
+    try {
+      await cleanup()
+    } catch (error) {
+      cleanupErrors.push(error)
+    }
+  }
+  if (taskError) {
+    if (cleanupErrors.length > 0)
+      process.stderr.write(`Live demo cleanup failed: ${cleanupErrors.join('; ')}\n`)
+    throw taskError
+  }
+  if (cleanupErrors.length > 0) throw new AggregateError(cleanupErrors, 'Live demo cleanup failed')
+  assert.ok(manifestPath && manifestText, 'The live demo did not prepare its evidence manifest')
+  await writeFile(manifestPath, manifestText)
+  process.stdout.write(manifestText)
 }
 
 await main()
