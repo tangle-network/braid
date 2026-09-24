@@ -13,6 +13,7 @@ export const BRAID_QUESTION_ANALYST_ID = 'question'
 
 const TOOL_SPAN_PATTERN = '"openinference\\.span\\.kind":"TOOL"'
 const TOOL_RESULT_PART_PATTERN = '"kind":"tool-result"'
+const TOOL_CALL_PART_PATTERN = '"kind":"tool-call"'
 
 function spanHints(
   hits: readonly { readonly span_id: string; readonly span_name: string }[],
@@ -33,7 +34,7 @@ async function prepareQuestionContext(
   if (traceId === undefined) {
     return 'Read analyst_instructions first, then start with getDatasetOverview.'
   }
-  const [tools, partResults] = await Promise.all([
+  const [tools, partResults, partCalls] = await Promise.all([
     store.searchTrace(
       { trace_id: traceId, regex_pattern: TOOL_SPAN_PATTERN, max_matches: 128 },
       storeContext,
@@ -42,18 +43,25 @@ async function prepareQuestionContext(
       { trace_id: traceId, regex_pattern: TOOL_RESULT_PART_PATTERN, max_matches: 128 },
       storeContext,
     ),
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: TOOL_CALL_PART_PATTERN, max_matches: 128 },
+      storeContext,
+    ),
   ])
   const partResultHits = partResults.hits.filter(
     (hit) => hit.span_name === 'braid.run.part.updated',
   )
+  const partCallHits = partCalls.hits.filter((hit) => hit.span_name === 'braid.run.part.updated')
   return [
     'The frozen source contains exactly one trace.',
     `Exact trace id: ${JSON.stringify(traceId)}.`,
     'Inspect these completed tool-result part spans first with viewSpans and their exact span_id values.',
     ...spanHints(partResultHits, 16),
+    'If a write result only confirms success, inspect these exact normalized tool-call input spans for the edited source.',
+    ...spanHints(partCallHits, 16),
     'Other normalized TOOL spans:',
     ...spanHints(tools.hits, 12),
-    ...(tools.has_more || partResults.has_more
+    ...(tools.has_more || partResults.has_more || partCalls.has_more
       ? ['The span list is bounded and may omit later events.']
       : []),
     'If these spans do not answer Focus, use at most three focused searchTrace calls, one term at a time.',
@@ -68,7 +76,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   id: BRAID_QUESTION_ANALYST_ID,
   description: 'Answers one operator question against one frozen run with cited evidence.',
   area: 'question-answer',
-  version: '1.7.0',
+  version: '1.7.1',
   question: 'Answer the operator question about this frozen run.',
   instructions: [
     'FIRST PYTHON STEP: print(analyst_instructions) so you can read every prepared span ID and the full output contract.',
@@ -84,6 +92,9 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
     'Answer only the operator question shown after "Focus:".',
     'Use the trace tools before you answer.',
     'Follow PREPARED CONTEXT and inspect its exact span IDs first.',
+    "For braid.run.part.updated tool results, read span.attributes['braid.message_part'].result.content[i].text when present.",
+    "For tool calls, read span.attributes['braid.message_part'].input when the result only confirms a write.",
+    'A top-level span.status of UNSET is trace metadata, not evidence that the tool result is missing.',
     'Do not batch trace searches; stop searching once source and test evidence answer Focus.',
     'Answer every distinct request in Focus with a finding or an explicit limitation finding.',
     'Write each finding claim as a direct answer, not as a defect label.',
