@@ -7,8 +7,11 @@ import {
 import {
   assertCloudInteractionEvidence,
   cloudInteractionFailureSnapshot,
+  cloudProviderEventTypeProjection,
+  cloudProviderEventTypeSnapshot,
   cloudProviderFailureProjection,
   cloudQuestionResponse,
+  cloudRecoveryDetailCategory,
   refreshBraidFailureState,
   retainedCloudQuestionRequest,
 } from '../scripts/live-required/tangle-sandbox-braid-cloud-interaction.mjs'
@@ -250,6 +253,72 @@ test('failed cloud question retains bounded state and provider status without pr
   assert.equal(provider.executions.length, 8)
   assert.equal(Object.hasOwn(provider, 'failureMessage'), false)
   assert.doesNotMatch(JSON.stringify({ braid, provider }), /test-secret-must-not-appear/u)
+})
+
+test('cloud failure classifies recovery and provider event types without retaining unknown text', () => {
+  const secret = 'test-secret-must-not-appear'
+  const recovery = cloudInteractionFailureSnapshot(
+    [
+      {
+        type: 'event',
+        event: {
+          kind: 'history.missing',
+          payload: { range: { runId: 'run-1', fromSequence: 3, toSequence: 4 } },
+        },
+      },
+      {
+        type: 'event',
+        sequence: 22,
+        event: {
+          kind: 'run.unknown',
+          payload: { runId: 'run-1', detail: 'RUNTIME_RECONCILIATION_ERROR' },
+        },
+      },
+      {
+        type: 'state',
+        state: {
+          lastError: secret,
+          runs: [
+            { id: 'run-1', status: 'unknown', lastProviderSequence: 2, lastCursor: 'cursor-2' },
+          ],
+        },
+      },
+    ],
+    'run-1',
+    true,
+  )
+  assert.equal(recovery.historyGapCount, 1)
+  assert.equal(recovery.unknownDetailCategory, 'reconnect-error')
+  assert.equal(recovery.latestState.lastProviderSequence, 2)
+  assert.equal(recovery.latestState.cursorPresent, true)
+  assert.equal(cloudRecoveryDetailCategory(secret), 'unclassified')
+
+  const eventTypes = cloudProviderEventTypeProjection([
+    { type: 'status', data: { type: 'interaction', detail: secret } },
+    { type: secret, data: { event: { type: secret } } },
+  ])
+  assert.deepEqual(eventTypes.types, { status: 1, other: 1 })
+  assert.deepEqual(eventTypes.nestedTypes, { interaction: 1, other: 1 })
+  assert.doesNotMatch(JSON.stringify({ recovery, eventTypes }), /test-secret-must-not-appear/u)
+})
+
+test('provider event diagnostic replays one exact execution through the public session API', async () => {
+  let options
+  const session = {
+    async *events(input) {
+      options = input
+      yield { type: 'status', data: { type: 'interaction', prompt: 'not retained' } }
+      yield { type: 'done', data: {} }
+    },
+  }
+  const snapshot = await cloudProviderEventTypeSnapshot(session, 'run-1')
+  assert.equal(options.since, '0')
+  assert.equal(options.executionId, 'run-1')
+  assert.equal(snapshot.observed, true)
+  assert.equal(snapshot.eventCount, 2)
+  assert.deepEqual(snapshot.types, { status: 1, done: 1 })
+  assert.deepEqual(snapshot.nestedTypes, { interaction: 1 })
+  assert.doesNotMatch(JSON.stringify(snapshot), /not retained/u)
 })
 
 test('failure diagnostic refreshes the live Braid run state with a bounded read', async () => {

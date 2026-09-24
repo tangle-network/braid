@@ -32,6 +32,38 @@ const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DIAGNOSTIC_EVENT_LIMIT = 24
 const DIAGNOSTIC_PROVIDER_RUN_LIMIT = 8
 const DIAGNOSTIC_PROVIDER_TIMEOUT_MS = 5_000
+const DIAGNOSTIC_PROVIDER_EVENT_LIMIT = 96
+const PROVIDER_EVENT_TYPES = new Set([
+  'agent.event',
+  'done',
+  'error',
+  'interaction',
+  'message.part.updated',
+  'model-processing',
+  'progress',
+  'reasoning',
+  'session.updated',
+  'started',
+  'status',
+  'text',
+  'text_delta',
+  'tool_call',
+  'tool_result',
+  'usage',
+  'warning',
+])
+const RECOVERY_DETAILS = new Map([
+  ['The execution path cannot reconcile provider state', 'status-unavailable'],
+  ['The provider returned no run record', 'provider-run-missing'],
+  ['Provider reconciliation returned no matching run identity', 'identity-mismatch'],
+  ['The normalized event stream ended without a terminal event', 'stream-ended'],
+  ['RUNTIME_RECONCILIATION_ERROR', 'reconnect-error'],
+  ['RUNTIME_STATUS_ERROR', 'status-error'],
+  ['RUNTIME_PROVIDER_STATE_UNKNOWN', 'provider-status-unknown'],
+  ['RUNTIME_EXECUTION_ERROR', 'stream-error'],
+  ['NETWORK_ERROR', 'network-error'],
+  ['SESSION_EXECUTION_MISSING', 'provider-run-missing'],
+])
 const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_AUTH',
   'BRAID_TANGLE_SANDBOX_API_KEY',
@@ -212,6 +244,11 @@ function diagnosticToken(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/u.test(value) ? value : null
 }
 
+export function cloudRecoveryDetailCategory(detail) {
+  if (typeof detail !== 'string') return null
+  return RECOVERY_DETAILS.get(detail) ?? 'unclassified'
+}
+
 export function cloudInteractionFailureSnapshot(responses, runId, questionRequested) {
   const all = Array.isArray(responses) ? responses : []
   const events = all.filter(
@@ -224,6 +261,13 @@ export function cloudInteractionFailureSnapshot(responses, runId, questionReques
     (entry) => entry?.type === 'state' && runFromState(entry.state, runId) !== undefined,
   )
   const run = runFromState(latestState?.state, runId)
+  const unknown = events.findLast((entry) => entry.event.kind === 'run.unknown')
+  const historyGapCount = all.filter(
+    (entry) =>
+      entry?.type === 'event' &&
+      entry.event?.kind === 'history.missing' &&
+      entry.event.payload?.range?.runId === runId,
+  ).length
   const counts = {}
   for (const entry of events) {
     const kind = diagnosticToken(entry.event.kind) ?? 'other'
@@ -233,6 +277,8 @@ export function cloudInteractionFailureSnapshot(responses, runId, questionReques
     questionRequested,
     responseCount: all.length,
     runEventCount: events.length,
+    historyGapCount,
+    unknownDetailCategory: cloudRecoveryDetailCategory(unknown?.event.payload?.detail),
     eventCounts: counts,
     lastEvents: events.slice(-DIAGNOSTIC_EVENT_LIMIT).map((entry) => ({
       sequence: Number.isSafeInteger(entry.sequence) ? entry.sequence : null,
@@ -246,6 +292,10 @@ export function cloudInteractionFailureSnapshot(responses, runId, questionReques
             sequence: Number.isSafeInteger(latestState.sequence) ? latestState.sequence : null,
             status: diagnosticToken(run.status),
             complete: run.complete === true,
+            lastProviderSequence: Number.isSafeInteger(run.lastProviderSequence)
+              ? run.lastProviderSequence
+              : null,
+            cursorPresent: typeof run.lastCursor === 'string',
             interactions: (run.interactions ?? [])
               .slice(0, DIAGNOSTIC_PROVIDER_RUN_LIMIT)
               .map((entry) => ({
@@ -253,6 +303,59 @@ export function cloudInteractionFailureSnapshot(responses, runId, questionReques
                 status: diagnosticToken(entry.status),
               })),
           },
+  }
+}
+
+export function cloudProviderEventTypeProjection(events) {
+  const counts = {}
+  const nestedCounts = {}
+  for (const event of events) {
+    const type = PROVIDER_EVENT_TYPES.has(event?.type) ? event.type : 'other'
+    counts[type] = (counts[type] ?? 0) + 1
+    const nested = event?.data?.type ?? event?.data?.event?.type
+    if (typeof nested === 'string') {
+      const nestedType = PROVIDER_EVENT_TYPES.has(nested) ? nested : 'other'
+      nestedCounts[nestedType] = (nestedCounts[nestedType] ?? 0) + 1
+    }
+  }
+  return {
+    eventCount: events.length,
+    truncated: events.length >= DIAGNOSTIC_PROVIDER_EVENT_LIMIT,
+    types: counts,
+    nestedTypes: nestedCounts,
+  }
+}
+
+export async function cloudProviderEventTypeSnapshot(session, executionId) {
+  if (!diagnosticToken(executionId)) return { observed: false, reasonCode: 'MISSING_EXECUTION_ID' }
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), DIAGNOSTIC_PROVIDER_TIMEOUT_MS - 500)
+  const events = []
+  try {
+    await boundedProviderRead(async () => {
+      for await (const event of session.events({ since: '0', executionId, signal: abort.signal })) {
+        events.push({
+          type: event?.type,
+          data: { type: event?.data?.type, event: { type: event?.data?.event?.type } },
+        })
+        if (events.length >= DIAGNOSTIC_PROVIDER_EVENT_LIMIT) break
+      }
+    })
+    return {
+      observed: true,
+      ...cloudProviderEventTypeProjection(events),
+      timedOut: abort.signal.aborted,
+    }
+  } catch {
+    return {
+      observed: events.length > 0,
+      ...cloudProviderEventTypeProjection(events),
+      timedOut: abort.signal.aborted,
+      reasonCode: 'PROVIDER_EVENT_READ_FAILED',
+    }
+  } finally {
+    clearTimeout(timer)
+    abort.abort()
   }
 }
 
@@ -300,7 +403,10 @@ async function cloudProviderFailureSnapshot(client, controlRef) {
       boundedProviderRead(() => session.status()),
       boundedProviderRead(() => session.runs()),
     ])
-    return cloudProviderFailureProjection(status, runs)
+    return {
+      ...cloudProviderFailureProjection(status, runs),
+      eventTypes: await cloudProviderEventTypeSnapshot(session, controlRef.executionId),
+    }
   } catch (error) {
     return { observed: false, reasonCode: diagnosticToken(error?.code) ?? 'PROVIDER_READ_FAILED' }
   }
