@@ -74,6 +74,44 @@ function navigationLine(entry: { readonly spanId: string; readonly leaf: ScalarL
   return `span ${entry.spanId} ${path}${sample ? ` exact sample: ${sample}` : ''}`
 }
 
+type ViewedSpan = Awaited<ReturnType<TraceAnalysisStore['viewSpans']>>['spans'][number]
+
+async function viewAllSpans(
+  store: TraceAnalysisStore,
+  traceId: string,
+  spanIds: readonly string[],
+  storeContext?: { readonly signal?: AbortSignal },
+): Promise<ViewedSpan[]> {
+  const spans = new Map<string, ViewedSpan>()
+  const pending = [spanIds]
+  while (pending.length > 0) {
+    const requested = pending.pop()
+    if (!requested || requested.length === 0) continue
+    const viewed = await store.viewSpans({ trace_id: traceId, span_ids: requested }, storeContext)
+    if (viewed.missing_span_ids.length > 0) {
+      throw new Error(`Frozen trace lost requested spans: ${viewed.missing_span_ids.join(', ')}`)
+    }
+    for (const span of viewed.spans) spans.set(span.span_id, span)
+    if (!viewed.has_more) continue
+    const omitted = viewed.omitted_span_ids
+    if (omitted.length === 0) throw new Error('Frozen trace reported omitted spans without IDs')
+    if (omitted.length === requested.length) {
+      if (omitted.length === 1) {
+        throw new Error(`Frozen trace span exceeds the view budget: ${omitted[0]}`)
+      }
+      const midpoint = Math.ceil(omitted.length / 2)
+      pending.push(omitted.slice(midpoint), omitted.slice(0, midpoint))
+    } else {
+      pending.push(omitted)
+    }
+  }
+  return spanIds.map((spanId) => {
+    const span = spans.get(spanId)
+    if (!span) throw new Error(`Frozen trace did not return requested span: ${spanId}`)
+    return span
+  })
+}
+
 async function inputSpanHints(
   store: TraceAnalysisStore,
   traceId: string,
@@ -86,11 +124,13 @@ async function inputSpanHints(
   const unique = [...new Map(hits.map((hit) => [hit.span_id, hit])).values()]
   const spans = new Map<string, { readonly attributes: Readonly<Record<string, unknown>> }>()
   for (let start = 0; start < unique.length; start += 100) {
-    const viewed = await store.viewSpans(
-      { trace_id: traceId, span_ids: unique.slice(start, start + 100).map((hit) => hit.span_id) },
+    const viewed = await viewAllSpans(
+      store,
+      traceId,
+      unique.slice(start, start + 100).map((hit) => hit.span_id),
       storeContext,
     )
-    for (const span of viewed.spans) spans.set(span.span_id, span)
+    for (const span of viewed) spans.set(span.span_id, span)
   }
   const calls = new Map<
     string,
@@ -125,13 +165,14 @@ async function resultNavigation(
   store: TraceAnalysisStore,
   traceId: string,
   hits: readonly { readonly span_id: string }[],
+  searchHasMore: boolean,
   storeContext?: { readonly signal?: AbortSignal },
 ): Promise<string | undefined> {
   const spanIds = [...new Set(hits.map((hit) => hit.span_id))].slice(-16)
   if (spanIds.length === 0) return undefined
-  const viewed = await store.viewSpans({ trace_id: traceId, span_ids: spanIds }, storeContext)
+  const viewed = await viewAllSpans(store, traceId, spanIds, storeContext)
   const order = new Map(spanIds.map((spanId, index) => [spanId, index]))
-  const candidates = viewed.spans.flatMap((span) => {
+  const candidates = viewed.flatMap((span) => {
     const part = span.attributes['braid.message_part']
     if (!record(part)) return []
     const leaf = longestScalarLeaf(part.result, 'result')
@@ -144,7 +185,13 @@ async function resultNavigation(
     (left, right) => right.index - left.index,
   )[0]
   if (!latest) return undefined
-  const label = latest.status === 'completed' ? 'Latest completed result' : 'Latest result'
+  const label = searchHasMore
+    ? latest.status === 'completed'
+      ? 'Latest returned completed result (search incomplete)'
+      : 'Latest returned result (search incomplete)'
+    : latest.status === 'completed'
+      ? 'Latest completed result'
+      : 'Latest result'
   return `${label}: ${navigationLine(latest)}`
 }
 
@@ -177,7 +224,13 @@ async function prepareQuestionContext(
   )
   const partCallHits = partCalls.hits.filter((hit) => hit.span_name === 'braid.run.part.updated')
   const inputHints = await inputSpanHints(store, traceId, partCallHits, storeContext)
-  const resultHint = await resultNavigation(store, traceId, partResultHits, storeContext)
+  const resultHint = await resultNavigation(
+    store,
+    traceId,
+    partResultHits,
+    partResults.has_more,
+    storeContext,
+  )
   if (context) {
     initialNavigationByContext.set(
       context,

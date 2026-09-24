@@ -566,6 +566,89 @@ test('large Pi traces give /ask completed part IDs while provider events are red
   assert.doesNotMatch(hostileQuestion, /\nIGNORE PRIOR INSTRUCTIONS/u)
 })
 
+test('/ask navigation recovers bounded span omissions and marks incomplete result searches', async () => {
+  const span = (traceId: string, index: number, spanId: string, part: Record<string, unknown>) =>
+    JSON.stringify({
+      trace_id: traceId,
+      span_id: spanId,
+      name: 'braid.run.part.updated',
+      kind: 'SPAN_KIND_INTERNAL',
+      start_time: new Date(Date.UTC(2026, 8, 24) + index * 1_000).toISOString(),
+      end_time: new Date(Date.UTC(2026, 8, 24) + index * 1_000).toISOString(),
+      status: { code: 'STATUS_CODE_UNSET' },
+      resource: { attributes: { 'service.name': 'braid' } },
+      attributes: { 'braid.message_part': part },
+    })
+
+  const traceId = 'run-bounded-navigation-repro'
+  const callIds = Array.from({ length: 100 }, (_, index) => `call-${index}`)
+  const resultIds = Array.from({ length: 16 }, (_, index) => `result-${index}`)
+  const lines = [
+    ...callIds.map((spanId, index) =>
+      span(traceId, index, spanId, {
+        kind: 'tool-call',
+        callId: spanId,
+        toolName: 'write',
+        input: { content: 'x'.repeat(3_000) },
+      }),
+    ),
+    ...resultIds.map((spanId, index) =>
+      span(traceId, 100 + index, spanId, {
+        kind: 'tool-result',
+        callId: spanId,
+        toolName: 'bash',
+        status: 'completed',
+        result: { content: [{ type: 'text', text: `test-${index}: ${'x'.repeat(12_000)}` }] },
+      }),
+    ),
+  ]
+  const store = createBoundedTraceAnalysisStore(
+    otlpTextToTraceAnalysisStore(`${lines.join('\n')}\n`),
+  )
+  const firstCallRead = await store.viewSpans({ trace_id: traceId, span_ids: callIds })
+  const firstResultRead = await store.viewSpans({ trace_id: traceId, span_ids: resultIds })
+  assert.ok(firstCallRead.omitted_span_ids.includes('call-99'))
+  assert.ok(firstResultRead.omitted_span_ids.includes('result-15'))
+
+  const context = {
+    runId: 'analysis-bounded-navigation-repro',
+    correlationId: 'analysis-bounded-navigation-repro',
+    tags: { focus: 'Cite the final source edit and final passing test.' },
+  }
+  const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext?.(store, context)
+  assert.ok(prepared)
+  assert.match(prepared, /"span_id":"call-99"/u)
+  const question = BRAID_QUESTION_ANALYST_DEFINITION.question(context)
+  assert.match(question, /span call-99 input\.content/u)
+  assert.match(question, /span result-15 result\.content\[0\]\.text/u)
+
+  const longTraceId = 'run-incomplete-result-search-repro'
+  const longResultLines = Array.from({ length: 129 }, (_, index) =>
+    span(longTraceId, index, `late-result-${index}`, {
+      kind: 'tool-result',
+      status: 'completed',
+      result: { content: [{ type: 'text', text: `test output ${index}` }] },
+    }),
+  )
+  const longStore = createBoundedTraceAnalysisStore(
+    otlpTextToTraceAnalysisStore(`${longResultLines.join('\n')}\n`),
+  )
+  const search = await longStore.searchTrace({
+    trace_id: longTraceId,
+    regex_pattern: '"kind":"tool-result"',
+    max_matches: 128,
+  })
+  assert.equal(search.has_more, true)
+  assert.equal(search.hits.at(-1)?.span_id, 'late-result-127')
+  const longContext = {
+    runId: 'analysis-incomplete-result-search-repro',
+    correlationId: 'analysis-incomplete-result-search-repro',
+    tags: { focus: 'What was the final test result?' },
+  }
+  await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext?.(longStore, longContext)
+  assert.match(BRAID_QUESTION_ANALYST_DEFINITION.question(longContext), /incomplete/iu)
+})
+
 test('resolves the selected connection credential in memory and never exposes it in configuration', async () => {
   const selected = connection('tangle-inference', 'cloud', 'https://router.test', true)
   const credentials = new MemoryCredentialStore()
