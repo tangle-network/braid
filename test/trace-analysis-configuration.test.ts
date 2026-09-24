@@ -351,7 +351,7 @@ test('a total-only Pi cap reserves reasoning without inventing a provider split'
 test('defines a bounded cited-answer analyst for /ask', () => {
   const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
-  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.1')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.2')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
