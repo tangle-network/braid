@@ -18,7 +18,8 @@ Braid is a terminal client, not another agent loop.
 
 <img alt="Braid terminal opening a conversation fork preview" src="artifacts/verification/w6/80x24-fork-preview.gif">
 
-The terminal capture above uses a packed 0.3.0 development build and a deterministic conversation fixture.
+The terminal capture above is a deterministic conversation fixture from a packed 0.3.0 development build.
+It does not show a live runner or cloud call.
 The [launch comparison](docs/launch/comparison.md) separates live runner and cloud proofs from fixture captures.
 
 The [component design map](docs/components/README.md) links each visible surface to its owning contract and source component.

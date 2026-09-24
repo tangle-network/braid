@@ -25,15 +25,24 @@
   The stream stays active while the user answers it.
 - Trace analysis resolves its pinned analysis runtime again (#45).
 - A bare slash command submits on the first Enter while its completion row is visible (#39).
+- Pi first-run validation sends the total token cap supported by CLI Bridge (#72).
+- Selecting a completed run or switching to a focused run now opens the intended conversation (#73, #74).
+- One-time Pi tool permission grants send the selected value the runner expects (#75).
+- Trace analysis preserves large source ranges, accepts Pi responses without optional model metadata, and closes one-shot native analyst sessions (#78, #79, #82).
+- Trace analysis includes its pinned RPC release in managed cutoff checks and honors profiles with only a total output-token limit (#76, #84).
+- `/ask` retrieves exact spans from long Pi traces and reads normalized file-write inputs (#86, #88).
+  It checks the latest completed test result before citing source or tests.
+- Pi connection setup bounds its total validation time (#85).
 
 ## Changed
 
-Braid pins this dependency set: agent-interface 2.11.0, agent-runtime 0.252.1, agent-provider-tangle 1.6.0, agent-provider-cli-bridge 1.0.3, sandbox 0.45.0, agent-eval 0.183.0 (#36, #38, #40, #43, #49, #61).
+Braid pins this dependency set: agent-interface 2.11.0, agent-runtime 0.252.1, agent-provider-tangle 1.6.0, agent-provider-cli-bridge 1.1.0, sandbox 0.45.0, agent-eval 0.183.0 (#36, #38, #40, #43, #49, #61).
 The release also includes CLI Bridge proof fixes and a verified Pi-to-Codex handoff (#67, #68).
 
 ## Upgrade notes
 
-- Install with `npm install --global @tangle-network/braid@0.3.0` after it publishes. Node.js 22.19 or newer is required; Linux and macOS only.
+- When npm lists 0.3.0, install with `npm install --global @tangle-network/braid@0.3.0`.
+  Node.js 22.19 or newer is required; Linux and macOS only.
 - **Upgrade from 0.2.2 if you use Tangle Sandbox.** Since 2026-09-17 the production sidecar ends every replay with a terminal frame that has no event id.
   0.2.2 bundles agent-provider-tangle 0.13.1, which throws `Tangle session event arrived without a stable id` on that frame.
   The production sidecar fix (agent-dev-container #7817) is deployed as of 2026-09-23.

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { jsonRequest, pollJsonRequest } from './live-demo/http.mjs'
+import { bridgeSetupJsonRequest, jsonRequest, pollJsonRequest } from './live-demo/http.mjs'
 import {
   assertExactPackageProof,
   packageTarballPath,
@@ -23,10 +23,10 @@ import {
   visibleModelCallNumbers,
 } from './live-demo/terminal.mjs'
 import {
-  liveDemoProfileForRoute,
   LIVE_DEMO_ANALYST_PROFILE,
   LIVE_DEMO_MODEL_ROUTE,
   LIVE_DEMO_PROFILE,
+  liveDemoProfileForRoute,
 } from './live-demo/workspace.mjs'
 
 function isAlive(pid) {
@@ -239,6 +239,27 @@ test('a timed-out status observation can be retried without hiding HTTP failures
     assert.deepEqual(await pollJsonRequest(url, 100), { terminal: false })
     await assert.rejects(pollJsonRequest(url, 100), /HTTP 503/u)
     assert.equal(requests, 3)
+  } finally {
+    await closeServer(server)
+  }
+})
+
+test('Bridge setup retries the observed 503 before admission', async () => {
+  let requests = 0
+  const server = createServer((_request, response) => {
+    requests += 1
+    response.writeHead(requests === 1 ? 503 : 200, { 'content-type': 'application/json' })
+    response.end(requests === 1 ? '{"error":"degraded"}' : '{"status":"ok"}')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address === 'object')
+  try {
+    assert.deepEqual(await bridgeSetupJsonRequest(`http://127.0.0.1:${address.port}/health`), {
+      status: 'ok',
+    })
+    assert.equal(requests, 2)
   } finally {
     await closeServer(server)
   }
