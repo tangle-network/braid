@@ -33,10 +33,13 @@
 - `/ask` retrieves exact spans from long Pi traces and reads normalized file-write inputs (#86, #88).
   It checks the latest completed test result before citing source or tests.
 - Pi connection setup bounds its total validation time (#85).
+- A retained Sandbox question reaches Braid when the runner and Sandbox use different provider names (#89).
+  The response remains bound to the exact run, environment, session, and execution.
+- An in-flight question response survives a late provider cancellation; its durable result decides the final state (#90).
 
 ## Changed
 
-Braid pins this dependency set: agent-interface 2.11.0, agent-runtime 0.252.1, agent-provider-tangle 1.6.0, agent-provider-cli-bridge 1.1.0, sandbox 0.45.0, agent-eval 0.183.0 (#36, #38, #40, #43, #49, #61).
+Braid pins this dependency set: agent-interface 2.11.0, agent-runtime 0.263.0, agent-provider-tangle 1.6.0, agent-provider-cli-bridge 1.1.0, sandbox 0.45.0, agent-eval 0.187.2 (#36, #38, #40, #43, #49, #61, #89).
 The release also includes CLI Bridge proof fixes and a verified Pi-to-Codex handoff (#67, #68).
 
 ## Upgrade notes
