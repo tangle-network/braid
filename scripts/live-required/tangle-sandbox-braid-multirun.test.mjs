@@ -14,6 +14,7 @@ import {
   frameCancellationDispatch,
   frameEventIds,
   missingBranchAWorkspaceEvidence,
+  promptFor,
   renderedWorkStripCount,
   sendCancellationAfterActivityBrowserDismissal,
   terminalFailureEvidence,
@@ -284,6 +285,21 @@ test('branch A transcript proof rejects tool failures and requires one exact mar
       ),
     /one exact marker line/u,
   )
+})
+
+test('branch A prompt labels the file result while reserving the exact marker line for the final reply', () => {
+  const prompt = promptFor('MARKER_A', 180)
+  assert.match(prompt, /report the result before sleep as contents=MARKER_A on one line/u)
+  assert.match(prompt, /Do not print the file contents as a bare line or code block/u)
+  assert.match(prompt, /After sleep, reply with exactly MARKER_A/u)
+  const frame = {
+    state: {
+      messages: [
+        { runId: 'run-a', role: 'assistant', text: 'contents=MARKER_A\nMARKER_A', parts: [] },
+      ],
+    },
+  }
+  assert.equal(assertBranchATranscript(frame, 'run-a', 'MARKER_A').transcriptMarkerLineCount, 1)
 })
 
 function retainedWorkspaceBox({ value, gitExitCode = 0, gitStdout = 'true\n' }) {
