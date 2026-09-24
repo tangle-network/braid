@@ -52,9 +52,9 @@ const NOW = '2026-08-03T20:00:00.000Z'
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 }
 
 test('managed analysis cutoff includes the pinned RPC release artifacts', () => {
-  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, '0.183.0')
-  // https://pypi.org/pypi/agent-eval-rpc/0.183.0/json
-  const lastArtifactPublishedAt = Date.parse('2026-09-18T01:39:08.823Z')
+  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, '0.187.2')
+  // https://pypi.org/pypi/agent-eval-rpc/0.187.2/json
+  const lastArtifactPublishedAt = Date.parse('2026-09-24T10:53:16.342Z')
   assert.ok(Date.parse(MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF) > lastArtifactPublishedAt)
 })
 

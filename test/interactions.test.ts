@@ -485,7 +485,7 @@ test('application answers a local interaction through its original provider bind
   provider.release()
 })
 
-test('interaction bindings use provider environment identity instead of the local projection id', async () => {
+test('interaction bindings preserve inner provider and exact outer environment identity', async () => {
   const providerEnvironmentId = 'provider-environment-opaque'
   const providerSessionId = 'provider-session-opaque'
   let command: InteractionResponseCommand | undefined
@@ -495,7 +495,7 @@ test('interaction bindings use provider environment identity instead of the loca
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
       const controlRef: AgentExactRunControlRef = {
         runId: input.runId,
-        provider: 'test-provider',
+        provider: 'tangle-sandbox',
         environmentId: providerEnvironmentId,
         sessionId: providerSessionId,
         executionId: input.runId,
@@ -505,7 +505,7 @@ test('interaction bindings use provider environment identity instead of the loca
         type: 'braid.execution.observed',
         observation: {
           kind: 'remote-service',
-          provider: 'test-provider',
+          provider: 'tangle-sandbox',
           providerEnvironmentId,
           lifecycle: 'ready',
           lifecycleMode: 'retained',
@@ -525,7 +525,7 @@ test('interaction bindings use provider environment identity instead of the loca
         request: questionRequest(providerInteractionId, {
           binding: {
             runId: controlRef.runId,
-            provider: controlRef.provider,
+            provider: 'opencode',
             environmentId: controlRef.environmentId,
             sessionId: controlRef.sessionId,
             executionId: controlRef.executionId,
@@ -555,6 +555,7 @@ test('interaction bindings use provider environment identity instead of the loca
   assert.ok(localInteraction)
   assert.notEqual(run.environmentId, providerEnvironmentId)
   assert.equal(run.controlRef?.environmentId, providerEnvironmentId)
+  assert.equal(localInteraction.responseBinding.provider, 'opencode')
   await app.respondInteraction({
     operationId: 'operation-respond-provider-environment',
     runId: run.id,
@@ -562,6 +563,7 @@ test('interaction bindings use provider environment identity instead of the loca
     response: { id: localInteraction.request.id, outcome: 'declined' },
   })
   assert.equal(command?.binding.environmentId, providerEnvironmentId)
+  assert.equal(command?.binding.provider, 'opencode')
 })
 
 test('declined and cancelled interaction outcomes remain distinct after restart', async () => {

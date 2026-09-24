@@ -1317,6 +1317,26 @@ test('provider diagnostics retain a safe nested transport code', () => {
   )
 })
 
+test('a published event is visible in application state before subscriber delivery', async () => {
+  const app = createBraidApplication({ fixture: 'deterministic' })
+  const observed: Array<{ kind: string; published: number; visible: number }> = []
+  app.subscribe((state, envelope) => {
+    observed.push({
+      kind: envelope.event.kind,
+      published: state.revision,
+      visible: app.state().revision,
+    })
+  })
+  app.initialize('/workspace')
+  await app.send({ operationId: 'op-subscriber-state-order', text: 'hello' }).completion
+
+  assert.ok(observed.some((entry) => entry.kind === 'run.requested'))
+  assert.deepEqual(
+    observed.filter((entry) => entry.visible !== entry.published),
+    [],
+  )
+})
+
 test('subscriber failures cannot alter a completed run', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   app.subscribe(() => {

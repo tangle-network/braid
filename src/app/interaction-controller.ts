@@ -249,7 +249,6 @@ function assertBinding(
     binding.runId !== input.runId ||
     (exact !== undefined &&
       (binding.runId !== exact.runId ||
-        binding.provider !== exact.provider ||
         binding.environmentId !== exact.environmentId ||
         binding.sessionId !== exact.sessionId ||
         binding.executionId !== exact.executionId)) ||

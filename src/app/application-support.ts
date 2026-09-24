@@ -455,6 +455,7 @@ export interface CommitApplicationEventInput {
   readonly journal: ApplicationJournal
   readonly clock: Clock
   readonly providerEventKeys: Pick<RunLedger, 'hasProviderEvent' | 'addProviderEvent'>
+  readonly publishState: (state: BraidState) => void
   readonly subscribers: ReadonlySet<AppSubscriber>
 }
 
@@ -493,6 +494,7 @@ export function commitApplicationEvent(input: CommitApplicationEventInput): Brai
   if (appendResult?.appended === false) return input.state
   const nextState = reduceEvent(input.state, envelope)
   if (key) input.providerEventKeys.addProviderEvent(key)
+  input.publishState(nextState)
   for (const subscriber of input.subscribers) {
     try {
       subscriber(structuredClone(nextState), structuredClone(envelope))
@@ -523,6 +525,7 @@ export async function commitApplicationEventAsync(
     : await input.journal.append(envelope)
   if (result?.appended === false) return input.state
   if (key) input.providerEventKeys.addProviderEvent(key)
+  input.publishState(nextState)
   for (const subscriber of input.subscribers) {
     try {
       subscriber(structuredClone(nextState), structuredClone(envelope))

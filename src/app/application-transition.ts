@@ -71,16 +71,15 @@ function commitEventInternal(host: TransitionHost, event: BraidEvent, recovery: 
     return
   }
   try {
-    host.setState(
-      commitApplicationEvent({
-        state: host.state(),
-        event,
-        journal: host.journal,
-        clock: host.clock,
-        providerEventKeys: host.providerEventKeys,
-        subscribers: host.subscribers,
-      }),
-    )
+    commitApplicationEvent({
+      state: host.state(),
+      event,
+      journal: host.journal,
+      clock: host.clock,
+      providerEventKeys: host.providerEventKeys,
+      publishState: host.setState,
+      subscribers: host.subscribers,
+    })
   } catch (error) {
     host.markStorageFailure(error)
     throw error
@@ -113,16 +112,15 @@ export function commitEventsAndWaitAtRevision(
     if (failure !== undefined) throw failure
     assertExpectedRevision(host.state(), expectedRevision)
     for (const event of events) {
-      host.setState(
-        await commitApplicationEventAsync({
-          state: host.state(),
-          event,
-          journal: host.journal,
-          clock: host.clock,
-          providerEventKeys: host.providerEventKeys,
-          subscribers: host.subscribers,
-        }),
-      )
+      await commitApplicationEventAsync({
+        state: host.state(),
+        event,
+        journal: host.journal,
+        clock: host.clock,
+        providerEventKeys: host.providerEventKeys,
+        publishState: host.setState,
+        subscribers: host.subscribers,
+      })
     }
   })
   const next = task.catch((error: unknown) => {
@@ -171,16 +169,15 @@ function commitEventAndWaitInternal(
   const task = predecessor.then(async () => {
     const failure = host.storageFailure()
     if (!recovery && failure !== undefined) throw failure
-    host.setState(
-      await commitApplicationEventAsync({
-        state: host.state(),
-        event,
-        journal: host.journal,
-        clock: host.clock,
-        providerEventKeys: host.providerEventKeys,
-        subscribers: host.subscribers,
-      }),
-    )
+    await commitApplicationEventAsync({
+      state: host.state(),
+      event,
+      journal: host.journal,
+      clock: host.clock,
+      providerEventKeys: host.providerEventKeys,
+      publishState: host.setState,
+      subscribers: host.subscribers,
+    })
   })
   const next = task.catch((error: unknown) => {
     host.markStorageFailure(error)

@@ -641,7 +641,7 @@ test('interaction response recovers the retained handle and preserves retry ackn
     binding: {
       requestDigest: `sha256:${'b'.repeat(64)}`,
       runId: 'run-interaction',
-      provider: exact.provider,
+      provider: 'opencode',
       environmentId: exact.environmentId,
       sessionId: exact.sessionId,
       executionId: exact.executionId,

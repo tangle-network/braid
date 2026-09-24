@@ -463,7 +463,6 @@ export class RetainedExecutionPort implements ExecutionPort {
     }
     const exact = resolved.handle.controlRef
     if (
-      binding.provider !== exact.provider ||
       binding.environmentId !== exact.environmentId ||
       binding.sessionId !== exact.sessionId ||
       binding.executionId !== exact.executionId

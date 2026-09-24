@@ -271,6 +271,7 @@ test('large analysis source ranges retain valid event IDs through encrypted comm
         providerEventIds.add(key)
       },
     },
+    publishState: () => undefined,
     subscribers: new Set(),
   })
   assert.deepEqual(committed.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
@@ -305,6 +306,7 @@ test('large analysis source ranges retain valid event IDs through encrypted comm
         providerEventIds.add(key)
       },
     },
+    publishState: () => undefined,
     subscribers: new Set(),
   })
   assert.deepEqual(durable.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
@@ -355,6 +357,7 @@ test('large analysis source ranges retain valid event IDs through encrypted comm
             providerEventIds.add(key)
           },
         },
+        publishState: () => undefined,
         subscribers: new Set(),
       }),
     /bounded event payload/u,

@@ -321,27 +321,25 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
     () => reduceEvent(afterResponded, responded(8, 'operation-transition-other-response')),
     /different response result/u,
   )
-  assert.throws(
-    () =>
-      reduceEvent(
-        duplicateResponded,
-        envelope(
-          {
-            kind: 'run.interaction.cancelled',
-            runId,
-            interactionId,
-            provider: {
-              eventId: 'provider-transition-cancelled',
-              providerSequence: 7,
-              occurredAt: at,
-            },
-          },
-          9,
-          createEventId('event-transition-cancelled'),
-        ),
-      ),
-    /cannot transition from resolved to cancelled/u,
+  const afterLateProviderCancel = reduceEvent(
+    duplicateResponded,
+    envelope(
+      {
+        kind: 'run.interaction.cancelled',
+        runId,
+        interactionId,
+        provider: {
+          eventId: 'provider-transition-cancelled',
+          providerSequence: 7,
+          occurredAt: at,
+        },
+      },
+      9,
+      createEventId('event-transition-cancelled'),
+    ),
   )
+  assert.equal(afterLateProviderCancel.runs[0]?.interactions[0]?.status, 'resolved')
+  assert.equal(afterLateProviderCancel.runs[0]?.lastProviderSequence, 7)
 
   let evicted = beforeInteraction
   for (let index = 0; index < 257; index += 1) {
