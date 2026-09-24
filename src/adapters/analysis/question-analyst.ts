@@ -35,6 +35,12 @@ interface ScalarLeaf {
   readonly text: string
 }
 
+function leafPath(parent: string, key: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(key)
+    ? `${parent}.${key}`
+    : `${parent}[${JSON.stringify(key)}]`
+}
+
 function longestScalarLeaf(value: unknown, path: string, depth = 0): ScalarLeaf | undefined {
   if (typeof value === 'string') return value.length > 0 ? { path, text: value } : undefined
   if (depth >= 8) return undefined
@@ -42,7 +48,7 @@ function longestScalarLeaf(value: unknown, path: string, depth = 0): ScalarLeaf 
     ? value.map((item, index) => longestScalarLeaf(item, `${path}[${index}]`, depth + 1))
     : record(value)
       ? Object.entries(value).map(([key, item]) =>
-          longestScalarLeaf(item, `${path}.${key}`, depth + 1),
+          longestScalarLeaf(item, leafPath(path, key), depth + 1),
         )
       : []
   return children.reduce<ScalarLeaf | undefined>(
@@ -61,7 +67,11 @@ function scalarPreview(text: string): string | undefined {
 
 function navigationLine(entry: { readonly spanId: string; readonly leaf: ScalarLeaf }): string {
   const sample = scalarPreview(entry.leaf.text)
-  return `span ${entry.spanId} ${entry.leaf.path}${sample ? ` exact sample: ${sample}` : ''}`
+  const path =
+    entry.leaf.path.length <= 160 && safeAnalysisText(entry.leaf.path) === entry.leaf.path
+      ? entry.leaf.path
+      : '[inspect span for leaf path]'
+  return `span ${entry.spanId} ${path}${sample ? ` exact sample: ${sample}` : ''}`
 }
 
 async function inputSpanHints(
@@ -120,15 +130,22 @@ async function resultNavigation(
   const spanIds = [...new Set(hits.map((hit) => hit.span_id))].slice(-16)
   if (spanIds.length === 0) return undefined
   const viewed = await store.viewSpans({ trace_id: traceId, span_ids: spanIds }, storeContext)
-  const ranked = viewed.spans
-    .flatMap((span) => {
-      const part = span.attributes['braid.message_part']
-      if (!record(part)) return []
-      const leaf = longestScalarLeaf(part.result, 'result')
-      return leaf ? [{ spanId: span.span_id, leaf }] : []
-    })
-    .sort((left, right) => right.leaf.text.length - left.leaf.text.length)
-  return ranked[0] ? navigationLine(ranked[0]) : undefined
+  const order = new Map(spanIds.map((spanId, index) => [spanId, index]))
+  const candidates = viewed.spans.flatMap((span) => {
+    const part = span.attributes['braid.message_part']
+    if (!record(part)) return []
+    const leaf = longestScalarLeaf(part.result, 'result')
+    return leaf
+      ? [{ spanId: span.span_id, leaf, status: part.status, index: order.get(span.span_id) ?? -1 }]
+      : []
+  })
+  const completed = candidates.filter((entry) => entry.status === 'completed')
+  const latest = (completed.length > 0 ? completed : candidates).sort(
+    (left, right) => right.index - left.index,
+  )[0]
+  if (!latest) return undefined
+  const label = latest.status === 'completed' ? 'Latest completed result' : 'Latest result'
+  return `${label}: ${navigationLine(latest)}`
 }
 
 async function prepareQuestionContext(
@@ -214,6 +231,9 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
     'Before SUBMIT, check each proposed excerpt is a substring of that leaf string in Python.',
     'For numeric facts, quote a related model, status, or output string from the same span.',
     'Before SUBMIT, ensure each distinct request in Focus has one finding or one explicit limit.',
+    'For a passing-test claim, cite an assertion for the behavior named in Focus and a later passing test run.',
+    'Reconcile test results in time order; an earlier failure is not the final outcome after a later passing run.',
+    'Describe a remaining gap only if it remains in the final source and test state.',
     'The final call must be SUBMIT(answer=answer, findings_json=json.dumps(findings)).',
     'Never pass either output positionally or pass the findings list without JSON encoding.',
     'Answer only the operator question shown after "Focus:".',
