@@ -42,7 +42,8 @@ export const LIVE_DEMO_ANALYST_PROFILE = Object.freeze({
 export const LIVE_DEMO_PROMPT =
   'Finish the slugify function. Normalize Unicode accents, treat underscores as punctuation, collapse punctuation and spaces to one dash, trim dashes, and lowercase. Add edge-case tests, run them, and summarize the proof.'
 
-export const LIVE_DEMO_QUESTION = 'What changed, what was verified, and what should I review?'
+export const LIVE_DEMO_QUESTION =
+  'Did the completed run prove Unicode accent removal in slugify? Cite the edited source and passing test, then name one remaining gap.'
 
 /** Build the public demo profile from the route the live bridge actually advertises. */
 export function liveDemoProfileForRoute(route, baseProfile = LIVE_DEMO_PROFILE) {
