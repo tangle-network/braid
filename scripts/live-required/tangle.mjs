@@ -4,6 +4,7 @@ import {
   PROOF_OPERATIONS,
   proofInvocation,
   proofReceipt,
+  safeJson,
   scalarMeasurement,
 } from './contracts.mjs'
 import {
@@ -28,6 +29,129 @@ import { runConfidentialProof, runWorkspaceForkProof } from './tangle-workspace-
 const TANGLE_ROWS = Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'])
 const MINIMUM_SANDBOX_STRESS_RUNS = 3
 const MINIMUM_SANDBOX_STRESS_CONCURRENCY = 2
+const SANDBOX_SOAK_DIAGNOSTIC_PREFIX = 'BRAID_SANDBOX_SOAK_DIAGNOSTIC_JSON='
+const SOAK_PHASES = new Set([
+  'workspace',
+  'firstProcess.initialize',
+  'firstProcess.send',
+  'firstProcess.observeControl',
+  'firstProcess.waitVisible',
+  'firstProcess.sigkill',
+  'freshProcess.initialize',
+  'freshProcess.reconnect',
+  'freshProcess.observeControl',
+  'freshProcess.waitTerminal',
+  'followUp.send',
+  'followUp.observeControl',
+  'followUp.waitTerminal',
+  'followUp.prepareContinuityChallenge',
+  'followUp.verifyWorkspace',
+  'cancel.send',
+  'cancel.observeControl',
+  'cancel.retrySameBody',
+  'cancel.retryChangedBody',
+  'cancel.waitCompletion',
+  'cancel.verifyRemote',
+  'cancel.verifySessionExecutions',
+  'cancel.restart.closeFirstProcess',
+  'cancel.restart.closeRetryProcess',
+  'cancel.restart.initialize',
+  'cancel.first',
+])
+const SOAK_FAILURE_CODES = new Set([
+  'MISSING_INTEGRATION',
+  'RPC_TIMEOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+])
+
+function soakFailureFingerprint(failure) {
+  let fingerprint = failure?.fingerprint
+  let httpStatus = null
+  let code = null
+  for (
+    let depth = 0;
+    depth < 5 && fingerprint !== null && typeof fingerprint === 'object';
+    depth++
+  ) {
+    if (
+      httpStatus === null &&
+      Number.isSafeInteger(fingerprint.status) &&
+      fingerprint.status >= 100 &&
+      fingerprint.status <= 599
+    ) {
+      httpStatus = fingerprint.status
+    }
+    if (code === null && SOAK_FAILURE_CODES.has(fingerprint.code)) code = fingerprint.code
+    fingerprint = fingerprint.cause
+  }
+  return { httpStatus, code }
+}
+
+function soakFailureCategory(failure, fingerprint) {
+  if (fingerprint.httpStatus !== null) {
+    return fingerprint.httpStatus >= 500 ? 'external-http-5xx' : 'external-http-non-5xx'
+  }
+  if (['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(fingerprint.code)) {
+    return 'network'
+  }
+  if (fingerprint.code === 'RPC_TIMEOUT') return 'rpc-timeout'
+  if (failure?.name === 'MissingIntegrationError') return 'integration-contract'
+  if (failure?.name === 'AssertionError') return 'assertion'
+  return 'unclassified'
+}
+
+function nonnegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null
+}
+
+function finiteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+export function sandboxSoakDiagnostic(cohort) {
+  return {
+    schema: 'braid.live07.sandbox-soak-diagnostic.v1',
+    requestedRuns: nonnegativeInteger(cohort?.requestedRuns),
+    attemptedRuns: nonnegativeInteger(cohort?.attemptedRuns),
+    stoppedAfterCanary: cohort?.stoppedAfterCanary === true,
+    attempts: (cohort?.attempts ?? []).slice(0, 20).map((attempt) => {
+      const proof = attempt?.proof
+      const failure = proof?.failure
+      const fingerprint = soakFailureFingerprint(failure)
+      const completedPhases = Object.keys(proof?.timing ?? {}).filter((name) =>
+        SOAK_PHASES.has(name),
+      )
+      const cleanup = proof?.cleanup
+      return {
+        index: nonnegativeInteger(attempt?.index),
+        status: proof?.status === 'passed' ? 'passed' : 'failed',
+        failureCategory: soakFailureCategory(failure, fingerprint),
+        failureHttpStatus: fingerprint.httpStatus,
+        failureCode: fingerprint.code,
+        lastCompletedPhase: completedPhases.at(-1) ?? null,
+        firstRunAdmitted: typeof proof?.progress?.firstRunId === 'string',
+        controlObserved: proof?.progress?.firstControlRef !== undefined,
+        cleanup: {
+          exactResource: cleanup?.exactResource === true,
+          matchedCount: nonnegativeInteger(cleanup?.identity?.matchedCount),
+          remainingCount: Array.isArray(cleanup?.identity?.remainingIds)
+            ? cleanup.identity.remainingIds.length
+            : null,
+          activeResourceDelta: finiteNumber(cleanup?.activeResourceDelta),
+          usageObservationComplete: cleanup?.usageObservationComplete === true,
+          failureCategory: soakFailureCategory(
+            proof?.cleanupFailure,
+            soakFailureFingerprint(proof?.cleanupFailure),
+          ),
+          failureHttpStatus: soakFailureFingerprint(proof?.cleanupFailure).httpStatus,
+        },
+      }
+    }),
+  }
+}
 
 function requiredMeasurement(row, result) {
   if (result?.status === 'unavailable') return undefined
@@ -131,10 +255,14 @@ export async function runSandbox({
   invocationId,
   stressRunner = runBraidSandboxSoak,
   multirunRunner = runMultirunProof,
+  diagnosticWriter = (line) => process.stderr.write(line),
 }) {
   const startedAt = new Date().toISOString()
   const cohort = await stressRunner({ repository, environment, binary })
   if (cohort.status !== 'passed') {
+    diagnosticWriter(
+      `${SANDBOX_SOAK_DIAGNOSTIC_PREFIX}${safeJson(sandboxSoakDiagnostic(cohort), environment)}\n`,
+    )
     const unresolved = cohort.failures?.join('; ')
     throw new Error(
       `LIVE-07 Braid Tangle Sandbox stress failed: ${unresolved ?? 'no failure details'}`,

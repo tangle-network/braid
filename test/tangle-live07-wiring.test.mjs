@@ -890,6 +890,81 @@ test('LIVE-07 rejects a passing canary presented as a stress cohort', async () =
   )
 })
 
+test('LIVE-07 retains bounded canary failure and cleanup diagnostics without error text', async () => {
+  const secret = 'secret-not-in-the-environment'
+  const lines = []
+  await assert.rejects(
+    runSandbox({
+      repository,
+      environment: {},
+      binary: 'unused-injected-binary',
+      invocationId: 'live-required-test-canary-diagnostic',
+      diagnosticWriter: (line) => lines.push(line),
+      stressRunner: async () => ({
+        status: 'failed',
+        requestedRuns: 3,
+        attemptedRuns: 1,
+        stoppedAfterCanary: true,
+        failures: ['attempted 1 of 3 requested runs', 'run 1 did not pass exact proof'],
+        attempts: [
+          {
+            index: 0,
+            proof: {
+              status: 'failed',
+              failure: {
+                name: 'Error',
+                message: `provider echoed ${secret}`,
+                fingerprint: { name: 'Error', cause: { name: 'ApiError', status: 503 } },
+              },
+              timing: { workspace: { elapsedMs: 1 }, 'firstProcess.send': { elapsedMs: 2 } },
+              progress: { firstRunId: 'run-1' },
+              cleanup: {
+                exactResource: true,
+                identity: { matchedCount: 1, remainingIds: [] },
+                activeResourceDelta: 0,
+                usageObservationComplete: true,
+              },
+              cleanupFailure: { name: 'Error', message: secret },
+            },
+          },
+        ],
+      }),
+    }),
+    /LIVE-07 Braid Tangle Sandbox stress failed/u,
+  )
+  assert.equal(lines.length, 1)
+  assert.match(lines[0], /^BRAID_SANDBOX_SOAK_DIAGNOSTIC_JSON=/u)
+  assert.doesNotMatch(lines[0], new RegExp(secret, 'u'))
+  const diagnostic = JSON.parse(lines[0].split('=', 2)[1])
+  assert.deepEqual(diagnostic, {
+    schema: 'braid.live07.sandbox-soak-diagnostic.v1',
+    requestedRuns: 3,
+    attemptedRuns: 1,
+    stoppedAfterCanary: true,
+    attempts: [
+      {
+        index: 0,
+        status: 'failed',
+        failureCategory: 'external-http-5xx',
+        failureHttpStatus: 503,
+        failureCode: null,
+        lastCompletedPhase: 'firstProcess.send',
+        firstRunAdmitted: true,
+        controlObserved: false,
+        cleanup: {
+          exactResource: true,
+          matchedCount: 1,
+          remainingCount: 0,
+          activeResourceDelta: 0,
+          usageObservationComplete: true,
+          failureCategory: 'unclassified',
+          failureHttpStatus: null,
+        },
+      },
+    ],
+  })
+})
+
 function withBranchAWorkspace(overrides) {
   const proof = passedMultirunProof()
   return {
