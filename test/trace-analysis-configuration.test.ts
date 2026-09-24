@@ -351,7 +351,7 @@ test('a total-only Pi cap reserves reasoning without inventing a provider split'
 test('defines a bounded cited-answer analyst for /ask', () => {
   const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
-  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.6.0')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.0')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
@@ -370,7 +370,7 @@ test('defines a bounded cited-answer analyst for /ask', () => {
   assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Copy each excerpt verbatim/u)
 })
 
-test('large Pi traces give /ask provider tool-result span IDs instead of summary names', async () => {
+test('large Pi traces give /ask completed part IDs while provider events are redacted', async () => {
   const traceId = 'run-large-navigation-repro'
   const span = (index: number, spanId: string, name: string, attributes: Record<string, unknown>) =>
     JSON.stringify({
@@ -386,26 +386,18 @@ test('large Pi traces give /ask provider tool-result span IDs instead of summary
     })
   const lines = Array.from({ length: 1_203 }, (_, index) =>
     span(index, `span-update-${index}`, 'braid.run.part.updated', {
-      'braid.message_part': 'partial output '.repeat(40),
+      'braid.message_part':
+        index === 900
+          ? { kind: 'tool-result', toolName: 'edit', result: 'slugify strips Unicode accents' }
+          : index === 1_100
+            ? { kind: 'tool-result', toolName: 'bash', result: 'node --test: pass 7, fail 0' }
+            : { kind: 'text', text: 'partial output '.repeat(40) },
     }),
   )
   lines.push(
     ...Array.from({ length: 63 }, (_, index) =>
       span(1_203 + index, `span-provider-${index}`, 'braid.run.provider.event', {
-        'braid.runtime_event':
-          index === 36 || index === 44
-            ? {
-                type: 'unknown',
-                originalType: 'message_end',
-                payload: {
-                  role: 'toolResult',
-                  content:
-                    index === 36
-                      ? 'slugify now normalizes Unicode accents'
-                      : 'node --test: pass 9, fail 0',
-                },
-              }
-            : { type: 'unknown', originalType: 'usage', payload: {} },
+        'braid.runtime_event': { type: 'unknown', payload: { redacted: true } },
       }),
     ),
   )
@@ -425,14 +417,16 @@ test('large Pi traces give /ask provider tool-result span IDs instead of summary
     BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')[0] ?? '',
     /FIRST PYTHON STEP: print\(analyst_instructions\)/u,
   )
-  assert.match(prepared, /"span_id":"span-provider-36"/u)
-  assert.match(prepared, /"span_id":"span-provider-44"/u)
+  assert.match(prepared, /"span_id":"span-update-900"/u)
+  assert.match(prepared, /"span_id":"span-update-1100"/u)
   assert.match(prepared, /span names and counts, not span IDs/u)
+  assert.match(prepared, /at most three focused searchTrace calls/u)
+  assert.match(prepared, /HTTP 429/u)
   assert.doesNotMatch(prepared, /Do not spend a model step printing/u)
-  assert.doesNotMatch(prepared, /"span_id":"braid\.run\.part\.updated"/u)
+  assert.doesNotMatch(prepared, /"span_id":"span-provider-/u)
   const exact = await store.viewSpans({
     trace_id: traceId,
-    span_ids: ['span-provider-36', 'span-provider-44'],
+    span_ids: ['span-update-900', 'span-update-1100'],
   })
   assert.deepEqual(exact.missing_span_ids, [])
   assert.equal(exact.spans.length, 2)
