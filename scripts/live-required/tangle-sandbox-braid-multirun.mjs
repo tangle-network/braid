@@ -118,14 +118,14 @@ function markerPathFor(marker) {
   return `.braid-live/${marker}/marker.txt`
 }
 
-function promptFor(marker, holdSeconds) {
+export function promptFor(marker, holdSeconds) {
   return [
     'Use the current Tangle Sandbox working directory for every command in this turn.',
     `Write exactly ${marker} followed by a newline to ${markerPathFor(marker)}.`,
-    `Read ${markerPathFor(marker)} and print the result.`,
+    `Read ${markerPathFor(marker)} and report the result before sleep as contents=${marker} on one line. Do not print the file contents as a bare line or code block.`,
     'Run git -C . rev-parse --is-inside-work-tree and print its result.',
     `Run sleep ${holdSeconds} before the final response so another branch can stream concurrently.`,
-    `Reply with exactly ${marker}.`,
+    `After sleep, reply with exactly ${marker}.`,
   ].join(' ')
 }
 
