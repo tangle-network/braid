@@ -24,6 +24,58 @@ function spanHints(
     .map((hit) => JSON.stringify({ span_id: hit.span_id, span_name: hit.span_name }))
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function longestInputLeaf(value: unknown, depth = 0): number {
+  if (typeof value === 'string') return value.length
+  if (depth >= 8) return 0
+  if (Array.isArray(value))
+    return Math.max(0, ...value.map((item) => longestInputLeaf(item, depth + 1)))
+  if (record(value))
+    return Math.max(0, ...Object.values(value).map((item) => longestInputLeaf(item, depth + 1)))
+  return 0
+}
+
+async function inputSpanHints(
+  store: TraceAnalysisStore,
+  traceId: string,
+  hits: readonly { readonly span_id: string; readonly span_name: string }[],
+  storeContext?: { readonly signal?: AbortSignal },
+): Promise<string[]> {
+  const unique = [...new Map(hits.map((hit) => [hit.span_id, hit])).values()]
+  const spans = new Map<string, { readonly attributes: Readonly<Record<string, unknown>> }>()
+  for (let start = 0; start < unique.length; start += 100) {
+    const viewed = await store.viewSpans(
+      { trace_id: traceId, span_ids: unique.slice(start, start + 100).map((hit) => hit.span_id) },
+      storeContext,
+    )
+    for (const span of viewed.spans) spans.set(span.span_id, span)
+  }
+  const calls = new Map<
+    string,
+    { readonly hit: (typeof unique)[number]; readonly index: number; readonly score: number }
+  >()
+  unique.forEach((hit, index) => {
+    const part = spans.get(hit.span_id)?.attributes['braid.message_part']
+    if (!record(part)) return
+    const score = longestInputLeaf(part.input)
+    if (score === 0) return
+    const callId = typeof part.callId === 'string' ? part.callId : hit.span_id
+    const previous = calls.get(callId)
+    if (previous === undefined || score >= previous.score) calls.set(callId, { hit, index, score })
+  })
+  const chosen = [...calls.values()]
+    .sort((left, right) => right.score - left.score || right.index - left.index)
+    .slice(0, 16)
+    .sort((left, right) => left.index - right.index)
+  return spanHints(
+    chosen.map((entry) => entry.hit),
+    chosen.length,
+  )
+}
+
 async function prepareQuestionContext(
   store: TraceAnalysisStore,
   context?: AnalystContext,
@@ -52,13 +104,14 @@ async function prepareQuestionContext(
     (hit) => hit.span_name === 'braid.run.part.updated',
   )
   const partCallHits = partCalls.hits.filter((hit) => hit.span_name === 'braid.run.part.updated')
+  const inputHints = await inputSpanHints(store, traceId, partCallHits, storeContext)
   return [
     'The frozen source contains exactly one trace.',
     `Exact trace id: ${JSON.stringify(traceId)}.`,
     'Inspect these completed tool-result part spans first with viewSpans and their exact span_id values.',
     ...spanHints(partResultHits, 16),
     'If a write result only confirms success, inspect these exact normalized tool-call input spans for the edited source.',
-    ...spanHints(partCallHits, 16),
+    ...inputHints,
     'Other normalized TOOL spans:',
     ...spanHints(tools.hits, 12),
     ...(tools.has_more || partResults.has_more || partCalls.has_more
@@ -76,7 +129,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   id: BRAID_QUESTION_ANALYST_ID,
   description: 'Answers one operator question against one frozen run with cited evidence.',
   area: 'question-answer',
-  version: '1.7.4',
+  version: '1.7.5',
   question: 'Answer the operator question about this frozen run.',
   instructions: [
     'FIRST PYTHON STEP: print(analyst_instructions) so you can read every prepared span ID and the full output contract.',
@@ -98,7 +151,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
     'Use the trace tools before you answer.',
     'Follow PREPARED CONTEXT and inspect its exact span IDs first.',
     "For braid.run.part.updated tool results, read span.attributes['braid.message_part'].result.content[i].text when present.",
-    "For tool calls, inspect string fields inside span.attributes['braid.message_part'].input, such as input.content for a write.",
+    "For tool calls, inspect original string fields inside span.attributes['braid.message_part'].input, such as input.content or input.edits[i].newText.",
     'A top-level span.status of UNSET is trace metadata, not evidence that the tool result is missing.',
     'Do not batch trace searches; stop searching once source and test evidence answer Focus.',
     'Answer every distinct request in Focus with a finding or an explicit limitation finding.',

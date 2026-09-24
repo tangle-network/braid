@@ -351,7 +351,7 @@ test('a total-only Pi cap reserves reasoning without inventing a provider split'
 test('defines a bounded cited-answer analyst for /ask', () => {
   const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
-  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.4')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.5')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
@@ -387,29 +387,70 @@ test('large Pi traces give /ask completed part IDs while provider events are red
   const lines = Array.from({ length: 1_203 }, (_, index) =>
     span(index, `span-update-${index}`, 'braid.run.part.updated', {
       'braid.message_part':
-        index === 800
+        (index >= 100 && index < 116) || (index >= 950 && index < 969)
           ? {
               kind: 'tool-call',
-              toolName: 'write',
-              input: { path: 'src/slugify.js', content: "value.normalize('NFKD')" },
+              callId: `read-${index}`,
+              toolName: 'read',
+              input: { path: `file-${index}.txt` },
             }
-          : index === 900
+          : index >= 200 && index < 207
             ? {
                 kind: 'tool-result',
-                toolName: 'write',
+                callId: `read-${index - 100}`,
+                toolName: 'read',
                 status: 'completed',
-                result: {
-                  content: [{ type: 'text', text: 'Successfully wrote to src/slugify.js' }],
-                },
+                result: { content: [{ type: 'text', text: `Read file-${index - 100}.txt` }] },
               }
-            : index === 1_100
+            : index === 800
               ? {
-                  kind: 'tool-result',
-                  toolName: 'bash',
-                  status: 'completed',
-                  result: { content: [{ type: 'text', text: 'node --test: pass 7, fail 0' }] },
+                  kind: 'tool-call',
+                  callId: 'write-source',
+                  toolName: 'write',
+                  input: {
+                    path: 'src/slugify.js',
+                    content: "value.normalize('NFD').replace(/\\p{M}/gu, '')",
+                  },
                 }
-              : { kind: 'text', text: 'partial output '.repeat(40) },
+              : index === 820
+                ? {
+                    kind: 'tool-call',
+                    callId: 'write-test',
+                    toolName: 'write',
+                    input: {
+                      path: 'test/slugify.test.js',
+                      content: "test('accents', () => slugify('Café'))",
+                    },
+                  }
+                : index === 840
+                  ? {
+                      kind: 'tool-call',
+                      callId: 'edit-test',
+                      toolName: 'edit',
+                      input: {
+                        path: 'test/slugify.test.js',
+                        edits: [{ oldText: 'uber-strasse', newText: 'uber-stra-e' }],
+                      },
+                    }
+                  : index === 900
+                    ? {
+                        kind: 'tool-result',
+                        toolName: 'write',
+                        status: 'completed',
+                        result: {
+                          content: [{ type: 'text', text: 'Successfully wrote to src/slugify.js' }],
+                        },
+                      }
+                    : index === 1_100
+                      ? {
+                          kind: 'tool-result',
+                          toolName: 'bash',
+                          status: 'completed',
+                          result: {
+                            content: [{ type: 'text', text: 'node --test: pass 7, fail 0' }],
+                          },
+                        }
+                      : { kind: 'text', text: 'partial output '.repeat(40) },
     }),
   )
   lines.push(
@@ -438,6 +479,8 @@ test('large Pi traces give /ask completed part IDs while provider events are red
   assert.match(prepared, /"span_id":"span-update-900"/u)
   assert.match(prepared, /"span_id":"span-update-1100"/u)
   assert.match(prepared, /"span_id":"span-update-800"/u)
+  assert.match(prepared, /"span_id":"span-update-820"/u)
+  assert.match(prepared, /"span_id":"span-update-840"/u)
   assert.match(prepared, /write result only confirms success/u)
   assert.match(prepared, /span names and counts, not span IDs/u)
   assert.match(prepared, /at most three focused searchTrace calls/u)
@@ -457,8 +500,9 @@ test('large Pi traces give /ask completed part IDs while provider events are red
   assert.equal(exact.spans[0]?.status, 'UNSET')
   assert.deepEqual(exact.spans[0]?.attributes['braid.message_part'], {
     kind: 'tool-call',
+    callId: 'write-source',
     toolName: 'write',
-    input: { path: 'src/slugify.js', content: "value.normalize('NFKD')" },
+    input: { path: 'src/slugify.js', content: "value.normalize('NFD').replace(/\\p{M}/gu, '')" },
   })
   assert.deepEqual(exact.spans[1]?.attributes['braid.message_part'], {
     kind: 'tool-result',
