@@ -460,6 +460,9 @@ async function main() {
       'activity browser close',
     )
     await pause(300)
+    const closedCodingSessionId = codingSession.sessionId
+    await closeCodingSession(baseUrl, codingSession)
+    codingSession = undefined
 
     await typeText(terminal, '/profile', 24)
     terminal.input('\r')
@@ -538,9 +541,6 @@ async function main() {
     )
     assertPublicCapture(`${cast}\n${heroScreen}`)
     await terminal.closeNormally()
-    const closedCodingSessionId = codingSession.sessionId
-    await closeCodingSession(baseUrl, codingSession)
-    codingSession = undefined
 
     await mkdir(outputRoot, { recursive: true })
     const castPath = join(outputRoot, 'braid-live.cast')
