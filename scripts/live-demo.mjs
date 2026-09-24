@@ -20,6 +20,7 @@ import {
   castFor,
   createCapturedTerminal,
   expectedDemoPermission,
+  normalizeTerminal,
   pause,
   terminalFailureDetail,
   terminalPageProgress,
@@ -91,6 +92,10 @@ function latestCompletedRun(record) {
   return run?.status === 'completed' && record.view?.status === 'completed' ? run : undefined
 }
 
+function permissionVisible(screen) {
+  return /\bPermission: (bash|read|write|edit)\b/u.test(screen) && screen.includes('→ Allow once')
+}
+
 async function approveExpectedPermission(terminal, record, approvals) {
   const permission = expectedDemoPermission(record)
   if (permission === undefined) return false
@@ -100,38 +105,48 @@ async function approveExpectedPermission(terminal, record, approvals) {
       screen.includes(`Permission: ${permission.tool}`) && screen.includes('→ Allow once'),
     `one-time ${permission.tool} permission`,
   )
+  const priorScreen = normalizeTerminal(terminal.screen())
   terminal.input('\r')
-  const deadline = Date.now() + 30_000
-  let lastRecord = record
-  while (Date.now() < deadline) {
-    const next = await terminal.captureState(60_000)
-    lastRecord = next
-    if (!next.view?.interactions?.some((item) => item.interactionId === permission.id)) {
-      approvals.push({ tool: permission.tool, scope: 'once' })
-      return true
-    }
-    await pause(200)
-  }
-  const stillPending = lastRecord.view?.interactions?.some(
-    (item) => item.interactionId === permission.id,
+  await terminal.waitForScreen(
+    (screen) => screen !== priorScreen && !screen.includes('→ Allow once'),
+    `one-time ${permission.tool} permission response`,
+    60_000,
   )
-  const lastEventKind = lastRecord.events?.at(-1)?.kind ?? 'none'
-  throw new Error(
-    `Braid did not resolve the one-time ${permission.tool} permission; ` +
-      `still pending=${stillPending === true}; ` +
-      `revision=${lastRecord.view?.revision ?? 'missing'}; ` +
-      `last event=${lastEventKind}; ` +
-      `last error=${lastRecord.state?.lastError ?? 'none'}\n` +
-      `Terminal frame:\n${terminal.screen()}`,
-  )
+  approvals.push({ tool: permission.tool, scope: 'once' })
+  return true
 }
 
-async function waitForCompletedRun(terminal, approvals, timeoutMs = 300_000) {
+async function waitForCodingRunAdmission(baseUrl, startedAt, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const sessions = await jsonRequest(`${baseUrl}/v1/sessions?limit=100`)
+    const candidates = sessions.data.filter(
+      (session) =>
+        session.id.startsWith('session-braid-run-') &&
+        Date.parse(session.created_at) >= startedAt,
+    )
+    assert.ok(candidates.length <= 1, 'The live demo found multiple new coding sessions')
+    if (candidates[0]?.run_id) return candidates[0].run_id
+    await pause(200)
+  }
+  throw new Error('The live demo did not observe the coding run admission in CLI Bridge')
+}
+
+async function waitForCompletedRun(terminal, approvals, baseUrl, runId, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
+    if (permissionVisible(normalizeTerminal(terminal.screen()))) {
+      lastRecord = await terminal.captureState(60_000)
+      assert.equal(lastRecord.state?.runs?.at(-1)?.id, runId)
+      if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
+    }
+    const bridgeRun = await jsonRequest(`${baseUrl}/v1/runs/${runId}`)
+    if (!bridgeRun.terminal) {
+      await pause(500)
+      continue
+    }
     lastRecord = await terminal.captureState(60_000)
-    if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     const run = latestCompletedRun(lastRecord)
     if (run !== undefined) return { record: lastRecord, run }
     const terminalRun = lastRecord.state?.runs?.at(-1)
@@ -151,6 +166,12 @@ async function waitForCompletedAnalysis(terminal, approvals, timeoutMs = 900_000
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
+    await terminal.waitForScreen(
+      (screen) =>
+        permissionVisible(screen) || /analyst: .* · (completed|failed|cancelled)\b/u.test(screen),
+      'terminal trace analysis result',
+      Math.max(1, deadline - Date.now()),
+    )
     lastRecord = await terminal.captureState(60_000)
     if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     const analysis = lastRecord.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
@@ -363,11 +384,13 @@ async function main() {
     )
     await pause(300)
 
+    const codingStartedAt = Date.now()
     await typeText(terminal, LIVE_DEMO_PROMPT, 9)
     terminal.input('\r')
     await terminal.waitForScreen((screen) => screen.includes('working'), 'active coding turn')
+    const codingRunId = await waitForCodingRunAdmission(baseUrl, codingStartedAt)
     const approvals = []
-    const coding = await waitForCompletedRun(terminal, approvals)
+    const coding = await waitForCompletedRun(terminal, approvals, baseUrl, codingRunId)
     const transcript = transcriptEvidence(coding.record)
     assert.ok(
       transcript.assistantMessages.length > 0,
