@@ -750,6 +750,44 @@ test('runtime-owned trace model lowers visible and aggregate ceilings without an
   assert.equal(receivedBody?.max_completion_tokens, 320)
 })
 
+test('CLI Bridge analyst profile omits empty model metadata before Pi materialization', async () => {
+  const bridge = await startRuntimeBridgeServer({
+    expectedBearer: 'credential-never-recorded',
+    responseText: '{"answer":"bridge ok"}',
+  })
+  try {
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        name: 'Trace analyst',
+        harness: 'pi',
+        model: { default: 'tangle-router/glm-5.2', provider: 'tangle-router' },
+      },
+      connection: connection('cli-bridge', 'runtime-bridge-empty-metadata', bridge.endpoint),
+      baseUrl: bridge.endpoint,
+      credential: 'credential-never-recorded',
+      model: 'pi/tangle-router/glm-5.2',
+      onRetainedAdmission: retainAnalysisAdmissions([]),
+    })
+
+    const result = await owner.call({
+      callId: 'analysis-model-call-no-metadata',
+      request: {
+        model: 'pi/tangle-router/glm-5.2',
+        messages: [{ role: 'user', content: 'Summarize the frozen trace.' }],
+        maxTokens: 64,
+      },
+      endpointFormat: 'chat-completions',
+      signal: new AbortController().signal,
+    })
+    assert.equal(result.succeeded, true, result.succeeded ? '' : result.error)
+    const profile = bridge.requests[0]?.session?.body.agent_profile as AgentProfile | undefined
+    assert.ok(profile)
+    assert.equal(Object.hasOwn(profile.model ?? {}, 'metadata'), false)
+  } finally {
+    await bridge.close()
+  }
+})
+
 test('runtime-owned CLI Bridge analysis uses the harness executor with portable profile authority', async () => {
   const bridge = await startRuntimeBridgeServer({
     expectedBearer: 'credential-never-recorded',
