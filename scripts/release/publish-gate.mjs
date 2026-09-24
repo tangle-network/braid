@@ -227,14 +227,33 @@ async function assertLive10ReleaseMarker({ root, check, envelope }) {
   )
 }
 
-async function assertLive07Artifact({ root, envelope, identity }) {
+/**
+ * The collector snapshots live files under release/logs with content-addressed IDs, so the
+ * retained LIVE-10 artifact is found by digest and both copies are re-hashed.
+ */
+async function retainedLive10Artifact({ root, envelope, path, label }) {
+  const bytes = await readContainedFile(root, path)
+  const digest = sha256(bytes)
   const candidates = envelope.artifacts.filter(
-    ({ id, path }) => id.startsWith('check-LIVE-10-attempt-') && path === LIVE07_ARTIFACT_PATH,
+    (candidate) =>
+      typeof candidate?.id === 'string' &&
+      candidate.id.startsWith('check-LIVE-10-attempt-') &&
+      candidate.sha256 === digest,
   )
-  assert(candidates.length === 1, 'LIVE-10 has no unique retained LIVE-07 artifact')
+  assert(candidates.length === 1, `LIVE-10 has no unique retained ${label} artifact`)
   const artifact = candidates[0]
-  const bytes = await readContainedFile(root, artifact.path)
-  assert(sha256(bytes) === artifact.sha256, 'LIVE-07 artifact digest changed')
+  const retained = await readContainedFile(root, artifact.path)
+  assert(sha256(retained) === artifact.sha256, `${label} artifact digest changed`)
+  return { artifact, bytes }
+}
+
+async function assertLive07Artifact({ root, envelope, identity }) {
+  const { artifact, bytes } = await retainedLive10Artifact({
+    root,
+    envelope,
+    path: LIVE07_ARTIFACT_PATH,
+    label: 'LIVE-07',
+  })
   const proof = JSON.parse(bytes.toString('utf8'))
   assertMultirunProof(proof)
   assertLiveEvidenceBinding(proof.releaseBinding, identity, 'LIVE-07 multirun evidence')
@@ -248,13 +267,12 @@ async function assertLive07Artifact({ root, envelope, identity }) {
 }
 
 async function assertLive10Receipt({ root, envelope, identity }) {
-  const path = 'live/tangle/receipts.json'
-  const bytes = await readContainedFile(root, path)
-  const artifact = envelope.artifacts.find(
-    (candidate) => candidate?.id?.startsWith('check-LIVE-10-attempt-') && candidate.path === path,
-  )
-  assert(artifact, 'LIVE-10 has no retained receipt artifact')
-  assert(sha256(bytes) === artifact.sha256, 'LIVE-10 receipt artifact digest changed')
+  const { artifact, bytes } = await retainedLive10Artifact({
+    root,
+    envelope,
+    path: 'live/tangle/receipts.json',
+    label: 'LIVE-10 receipt',
+  })
   const receipts = JSON.parse(bytes.toString('utf8'))
   assertTangleReceipts(receipts, identity)
   const aggregateCheck = envelope.checks.find(({ id }) => id === 'live-tangle')

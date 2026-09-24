@@ -320,6 +320,34 @@ test('low-entropy control values stay redacted without corrupting structured rel
   assert.equal(evidence.measurements[0]?.value, 1000)
 })
 
+test('truncated stdout logs keep the release markers the publish gate re-reads', async () => {
+  // Protected run 36041074555 printed more than the 64 KiB log bound before its markers, so the
+  // stored LIVE-10 log had no BRAID_RELEASE_RESULT_JSON and the publish gate rejected it.
+  const script = [
+    "process.stdout.write('frame '.repeat(4096) + '\\n')",
+    "process.stdout.write('BRAID_RELEASE_RESULT_JSON=' + JSON.stringify({ status: 'passed' }) + '\\n')",
+    "process.stdout.write('BRAID_RELEASE_MEASUREMENTS_JSON=' + JSON.stringify({ measurements: [{ kind: 'scalar', name: 'LIVE-10', unit: 'verified-flow', value: 1 }] }) + '\\n')",
+  ].join(';')
+  const processResult = await executeArgv({
+    file: process.execPath,
+    args: ['-e', script],
+    cwd: process.cwd(),
+    environment: process.env,
+    maxLogBytes: 1024,
+  })
+  assert.equal(processResult.stdout.redactedTruncated, true)
+  assert.equal(
+    processResult.stdout.redactedSha256,
+    createHash('sha256').update(processResult.stdout.bytes).digest('hex'),
+  )
+  assert.equal(processResult.stdout.redactedByteLength, processResult.stdout.bytes.length)
+  const evidence = structuredChildEvidence('live', processResult.stdout.bytes, 1, 'LIVE-10')
+  assert.equal(evidence.result, 'passed')
+  assert.deepEqual(evidence.measurements, [
+    { kind: 'scalar', name: 'LIVE-10', unit: 'verified-flow', value: 1 },
+  ])
+})
+
 test('structured failure reasons redact credential values before they enter release evidence', () => {
   const credential = 'TOPSECRET_MARKER_VALUE'
   const secrets = collectCredentialSecrets({ BRAID_EVAL_API_KEY: credential })
