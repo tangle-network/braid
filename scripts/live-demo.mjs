@@ -147,7 +147,7 @@ async function waitForCompletedRun(terminal, approvals, timeoutMs = 300_000) {
   )
 }
 
-async function waitForCompletedAnalysis(terminal, approvals, timeoutMs = 360_000) {
+async function waitForCompletedAnalysis(terminal, approvals, timeoutMs = 900_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
