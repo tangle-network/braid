@@ -235,9 +235,12 @@ Detected local bridge processes are suggestions and are not trusted until endpoi
 
 The runner list comes from live bridge model discovery and current provider support.
 
-Before setup persists a selection, Braid sends a one-token model probe through the selected Bridge route.
+Before setup persists a selection, Braid probes the selected Bridge route for an exact `OK` completion.
 
-For Pi, the probe uses its supported total completion cap and omits the unsupported visible-only cap.
+Other runners use one visible output token.
+
+Pi uses at most 256 total completion tokens because hidden reasoning shares that cap.
+The probe respects a smaller authored total and omits the unsupported visible-only cap.
 
 The effective model sent to the provider remains `<runner>/<model>` according to the provider adapter rather than hand-built in a view.
 
