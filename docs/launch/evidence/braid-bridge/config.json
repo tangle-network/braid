@@ -1,0 +1,19 @@
+{
+  "format": "braid-startup-config",
+  "schemaVersion": 2,
+  "databaseKeyFile": "<scratch>/braid-bridge/db.key",
+  "profile": "profiles/launch-probe.json",
+  "connectionId": "connection-launch-bridge",
+  "connections": [
+    {
+      "id": "connection-launch-bridge",
+      "kind": "cli-bridge",
+      "name": "Local CLI Bridge",
+      "endpoint": "http://127.0.0.1:3391",
+      "providerOptions": { "transport": "local", "capabilityHints": ["stream", "usage"] },
+      "createdAt": "2026-09-23T08:07:30.000Z",
+      "updatedAt": "2026-09-23T08:07:30.000Z",
+      "lastHealth": { "status": "unknown" }
+    }
+  ]
+}

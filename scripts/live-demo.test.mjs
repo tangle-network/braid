@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { jsonRequest } from './live-demo/http.mjs'
+import { bridgeSetupJsonRequest, jsonRequest, pollJsonRequest } from './live-demo/http.mjs'
 import {
   assertExactPackageProof,
   packageTarballPath,
@@ -16,15 +16,17 @@ import { assertPublicCapture } from './live-demo/public-safety.mjs'
 import {
   castFor,
   createCapturedTerminal,
+  expectedDemoPermission,
   presentationTimeline,
   terminalFailureDetail,
   terminalPageProgress,
   visibleModelCallNumbers,
 } from './live-demo/terminal.mjs'
 import {
-  liveDemoProfileForRoute,
   LIVE_DEMO_ANALYST_PROFILE,
+  LIVE_DEMO_MODEL_ROUTE,
   LIVE_DEMO_PROFILE,
+  liveDemoProfileForRoute,
 } from './live-demo/workspace.mjs'
 
 function isAlive(pid) {
@@ -112,17 +114,21 @@ test('live demo timeline starts on the configured screen and preserves captured 
   )
 })
 
-test('live demo profile leaves native tool policy with the selected harness', () => {
+test('live demo Pi profiles use the verified route and a total-only analyst cap', () => {
+  assert.equal(LIVE_DEMO_MODEL_ROUTE, 'pi/tangle-router/glm-5.2')
   assert.equal(LIVE_DEMO_PROFILE.harness, 'pi')
-  assert.equal(LIVE_DEMO_PROFILE.model.default, 'openai-codex/gpt-5.6-luna')
-  assert.equal(LIVE_DEMO_PROFILE.model.provider, 'openai-codex')
-  assert.equal('tools' in LIVE_DEMO_PROFILE, false)
-  assert.equal('permissions' in LIVE_DEMO_PROFILE, false)
   assert.equal(LIVE_DEMO_ANALYST_PROFILE.harness, 'pi')
-  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.default, 'openai-codex/gpt-5.6-luna')
-  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.provider, 'openai-codex')
-  assert.equal('tools' in LIVE_DEMO_ANALYST_PROFILE, false)
-  assert.equal('permissions' in LIVE_DEMO_ANALYST_PROFILE, false)
+  for (const profile of [LIVE_DEMO_PROFILE, LIVE_DEMO_ANALYST_PROFILE]) {
+    assert.equal(profile.model.default, 'glm-5.2')
+    assert.equal(profile.model.provider, 'tangle-router')
+    assert.equal(profile.model.reasoningEffort, 'high')
+    assert.equal('maxVisibleOutputTokens' in profile.model, false)
+    assert.equal('maxReasoningTokens' in profile.model, false)
+    assert.equal('tools' in profile, false)
+    assert.equal('permissions' in profile, false)
+  }
+  assert.equal('maxTotalOutputTokens' in LIVE_DEMO_PROFILE.model, false)
+  assert.equal(LIVE_DEMO_ANALYST_PROFILE.model.maxTotalOutputTokens, 2048)
 })
 
 test('live demo profiles follow the advertised Pi route without a model fallback', () => {
@@ -146,6 +152,40 @@ test('live demo failures preserve the sanitized Braid diagnostic', () => {
   )
 })
 
+test('live demo permits only a single non-secret, one-time tool approval', () => {
+  const permission = {
+    kind: 'permission',
+    interactionId: 'interaction-bash',
+    prompt: 'Permission: bash',
+    secret: false,
+    allowedOutcomes: ['accept', 'reject'],
+    answerSpec: {
+      kind: 'select',
+      options: [
+        { value: 'allow_once', label: 'Allow once' },
+        { value: 'deny', label: 'Deny' },
+      ],
+    },
+    responseScopes: ['once'],
+  }
+  assert.deepEqual(expectedDemoPermission({ view: { interactions: [permission] } }), {
+    id: 'interaction-bash',
+    tool: 'bash',
+  })
+  assert.equal(expectedDemoPermission({ view: { interactions: [] } }), undefined)
+  for (const rejected of [
+    { ...permission, kind: 'question' },
+    { ...permission, prompt: 'Permission: network' },
+    { ...permission, secret: true },
+    { ...permission, allowedOutcomes: ['reject'] },
+    { ...permission, answerSpec: { kind: 'select', options: [{ value: 'deny', label: 'Deny' }] } },
+    { ...permission, responseScopes: ['session'] },
+  ]) {
+    assert.throws(() => expectedDemoPermission({ view: { interactions: [rejected] } }))
+  }
+  assert.throws(() => expectedDemoPermission({ view: { interactions: [permission, permission] } }))
+})
+
 test('jsonRequest aborts a response that never finishes', async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' })
@@ -167,6 +207,59 @@ test('jsonRequest aborts a response that never finishes', async () => {
       /aborted|timeout|fetch failed|test bound/iu,
     )
     assert.ok(performance.now() - startedAt < 1_500)
+  } finally {
+    await closeServer(server)
+  }
+})
+
+test('a timed-out status observation can be retried without hiding HTTP failures', async () => {
+  let requests = 0
+  const server = createServer((_request, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.write('{"terminal":')
+      return
+    }
+    if (requests === 2) {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"terminal":false}')
+      return
+    }
+    response.writeHead(503, { 'content-type': 'application/json' })
+    response.end('{"error":"unavailable"}')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address === 'object')
+  const url = `http://127.0.0.1:${address.port}/v1/runs/run-timeout`
+  try {
+    assert.equal(await pollJsonRequest(url, 100), undefined)
+    assert.deepEqual(await pollJsonRequest(url, 100), { terminal: false })
+    await assert.rejects(pollJsonRequest(url, 100), /HTTP 503/u)
+    assert.equal(requests, 3)
+  } finally {
+    await closeServer(server)
+  }
+})
+
+test('Bridge setup retries the observed 503 before admission', async () => {
+  let requests = 0
+  const server = createServer((_request, response) => {
+    requests += 1
+    response.writeHead(requests === 1 ? 503 : 200, { 'content-type': 'application/json' })
+    response.end(requests === 1 ? '{"error":"degraded"}' : '{"status":"ok"}')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address === 'object')
+  try {
+    assert.deepEqual(await bridgeSetupJsonRequest(`http://127.0.0.1:${address.port}/health`), {
+      status: 'ok',
+    })
+    assert.equal(requests, 2)
   } finally {
     await closeServer(server)
   }
@@ -273,12 +366,14 @@ test('live manifest rejects unsupported analysis findings', () => {
 test('live demo accepts only the exact package proof', () => {
   const proof = {
     gitCommit: 'a'.repeat(40),
+    treeSha256: 'e'.repeat(40),
     version: '0.1.0',
     tarball: 'tangle-network-braid-0.1.0.tgz',
     sha256: 'b'.repeat(64),
   }
   const expected = {
     commit: proof.gitCommit,
+    treeSha256: proof.treeSha256,
     version: proof.version,
     tarball: proof.tarball,
     tarballSha256: proof.sha256,
@@ -287,6 +382,7 @@ test('live demo accepts only the exact package proof', () => {
   assert.doesNotThrow(() => assertExactPackageProof(proof, expected))
   for (const [field, value] of [
     ['commit', 'c'.repeat(40)],
+    ['treeSha256', 'f'.repeat(40)],
     ['version', '0.1.1'],
     ['tarball', 'other.tgz'],
     ['tarballSha256', 'd'.repeat(64)],

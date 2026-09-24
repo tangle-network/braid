@@ -3,22 +3,24 @@ import { execFile } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
+import { releaseTargetDefinitions } from './live-bridge/bridge.mjs'
 import { configureWithPublicTui } from './live-core/setup-tui.mjs'
-import { jsonRequest } from './live-demo/http.mjs'
+import { bridgeSetupJsonRequest, jsonRequest, pollJsonRequest } from './live-demo/http.mjs'
 import {
   assertExactPackageProof,
   packageTarballPath,
   safeManifestAnalysis,
 } from './live-demo/manifest.mjs'
 import { assertPublicCapture } from './live-demo/public-safety.mjs'
-import { releaseTargetDefinitions } from './live-bridge/bridge.mjs'
 import {
   castFor,
   createCapturedTerminal,
+  expectedDemoPermission,
+  normalizeTerminal,
   pause,
   terminalFailureDetail,
   terminalPageProgress,
@@ -27,11 +29,12 @@ import {
 } from './live-demo/terminal.mjs'
 import {
   createLiveDemoWorkspace,
-  liveDemoProfileForRoute,
   LIVE_DEMO_ANALYST_PROFILE,
+  LIVE_DEMO_MODEL_ROUTE,
   LIVE_DEMO_PROFILE,
   LIVE_DEMO_PROMPT,
   LIVE_DEMO_QUESTION,
+  liveDemoProfileForRoute,
 } from './live-demo/workspace.mjs'
 import { installPackedBraid } from './packed-binary.mjs'
 
@@ -44,6 +47,8 @@ const outputRoot = process.env.BRAID_LIVE_DEMO_OUTPUT
 const packageProofPath = process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   ? process.env.BRAID_LIVE_DEMO_PACKAGE_PROOF
   : join(repository, 'artifacts', 'verification', 'w6', 'package-proof.json')
+const packageSource = resolve(process.env.BRAID_LIVE_DEMO_PACKAGE_SOURCE ?? repository)
+const directTarball = process.env.BRAID_LIVE_DEMO_DIRECT_TARBALL
 const columns = 160
 const rows = 30
 
@@ -67,19 +72,29 @@ function assertLocalEndpoint(value) {
 
 async function bridgeProof(baseUrl) {
   const [health, models] = await Promise.all([
-    jsonRequest(`${baseUrl}/health`),
-    jsonRequest(`${baseUrl}/v1/models`),
+    bridgeSetupJsonRequest(`${baseUrl}/health`),
+    bridgeSetupJsonRequest(`${baseUrl}/v1/models`),
   ])
   const backend = health.backends?.find((candidate) => candidate.name === LIVE_DEMO_PROFILE.harness)
   assert.equal(health.status, 'ok', 'CLI Bridge is not healthy')
   assert.equal(backend?.state, 'ready', `${LIVE_DEMO_PROFILE.harness} is not ready in CLI Bridge`)
-  const [target] = releaseTargetDefinitions(
-    [],
-    { ok: true, body: models },
-    { body: health },
-  ).filter((candidate) => candidate.backend === LIVE_DEMO_PROFILE.harness)
-  assert.ok(target, 'CLI Bridge does not advertise a ready Pi model')
-  return { health, backend, target }
+  const requestedModel = process.env.BRAID_LIVE_DEMO_MODEL ?? LIVE_DEMO_MODEL_ROUTE
+  const analystRequestedModel = process.env.BRAID_LIVE_DEMO_ANALYST_MODEL ?? requestedModel
+  const advertisedTarget = (modelId) =>
+    releaseTargetDefinitions(
+      [{ backend: LIVE_DEMO_PROFILE.harness, modelId }],
+      { ok: true, body: models },
+      { body: health },
+    ).find((candidate) => candidate.backend === LIVE_DEMO_PROFILE.harness)
+  const target = advertisedTarget(requestedModel)
+  const analystTarget = advertisedTarget(analystRequestedModel)
+  assert.equal(target?.modelId, requestedModel, `CLI Bridge does not advertise ${requestedModel}`)
+  assert.equal(
+    analystTarget?.modelId,
+    analystRequestedModel,
+    `CLI Bridge does not advertise ${analystRequestedModel}`,
+  )
+  return { health, backend, target, analystTarget }
 }
 
 function latestCompletedRun(record) {
@@ -87,11 +102,92 @@ function latestCompletedRun(record) {
   return run?.status === 'completed' && record.view?.status === 'completed' ? run : undefined
 }
 
-async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
+function permissionVisible(screen) {
+  return /\bPermission: (bash|read|write|edit)\b/u.test(screen) && screen.includes('→ Allow once')
+}
+
+async function approveExpectedPermission(terminal, record, approvals) {
+  const permission = expectedDemoPermission(record)
+  if (permission === undefined) return false
+  assert.ok(approvals.length < 24, 'The live demo exceeded its permission approval limit')
+  await terminal.waitForScreen(
+    (screen) =>
+      screen.includes(`Permission: ${permission.tool}`) && screen.includes('→ Allow once'),
+    `one-time ${permission.tool} permission`,
+  )
+  const priorScreen = normalizeTerminal(terminal.screen())
+  terminal.input('\r')
+  await terminal.waitForScreen(
+    (screen) => screen !== priorScreen && !screen.includes('→ Allow once'),
+    `one-time ${permission.tool} permission response`,
+    60_000,
+  )
+  approvals.push({ tool: permission.tool, scope: 'once' })
+  return true
+}
+
+async function waitForCodingRunAdmission(baseUrl, startedAt, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const sessions = await jsonRequest(`${baseUrl}/v1/sessions?limit=100`)
+    const candidates = sessions.data.filter(
+      (session) =>
+        typeof session.id === 'string' &&
+        session.id.startsWith('session-braid-run-') &&
+        Date.parse(session.created_at) >= startedAt,
+    )
+    assert.ok(candidates.length <= 1, 'The live demo found multiple new coding sessions')
+    if (candidates[0]?.run_id) return { sessionId: candidates[0].id, runId: candidates[0].run_id }
+    await pause(200)
+  }
+  throw new Error('The live demo did not observe the coding run admission in CLI Bridge')
+}
+
+async function closeCodingSession(baseUrl, codingSession) {
+  const sessionUrl = `${baseUrl}/v1/sessions/${encodeURIComponent(codingSession.sessionId)}`
+  const before = await jsonRequest(sessionUrl)
+  assert.equal(before.id, codingSession.sessionId)
+  assert.equal(before.run_id, codingSession.runId, 'The coding session changed runs before close')
+  const response = await fetch(`${sessionUrl}/close`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(10_000),
+  })
+  assert.ok(response.ok, `Coding session close returned HTTP ${response.status}`)
+  const closed = await response.json()
+  assert.equal(closed.closed, true)
+  assert.equal(closed.session?.id, codingSession.sessionId)
+  assert.equal(closed.session?.status, 'closed')
+  const after = await jsonRequest(sessionUrl)
+  assert.equal(after.id, codingSession.sessionId)
+  assert.equal(after.status, 'closed')
+  process.stderr.write(`Closed exact coding session ${codingSession.sessionId}\n`)
+}
+
+async function waitForCompletedRun(terminal, approvals, baseUrl, runId, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
+  let statusPollTimeouts = 0
   while (Date.now() < deadline) {
-    lastRecord = await terminal.captureState()
+    if (permissionVisible(normalizeTerminal(terminal.screen()))) {
+      lastRecord = await terminal.captureState(60_000)
+      assert.equal(lastRecord.state?.runs?.at(-1)?.id, runId)
+      if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
+    }
+    const runUrl = `${baseUrl}/v1/runs/${runId}`
+    const bridgeRun = await pollJsonRequest(runUrl)
+    if (bridgeRun === undefined) {
+      statusPollTimeouts += 1
+      process.stderr.write(
+        `GET ${runUrl} timed out; retry ${statusPollTimeouts} within coding deadline\n`,
+      )
+      await pause(500)
+      continue
+    }
+    if (!bridgeRun.terminal) {
+      await pause(500)
+      continue
+    }
+    lastRecord = await terminal.captureState(60_000)
     const run = latestCompletedRun(lastRecord)
     if (run !== undefined) return { record: lastRecord, run }
     const terminalRun = lastRecord.state?.runs?.at(-1)
@@ -103,15 +199,22 @@ async function waitForCompletedRun(terminal, timeoutMs = 300_000) {
     await pause(500)
   }
   throw new Error(
-    `Timed out waiting for the coding turn; last status=${lastRecord?.view?.status ?? 'unknown'}`,
+    `Timed out waiting for the coding turn; last status=${lastRecord?.view?.status ?? 'unknown'}; status poll timeouts=${statusPollTimeouts}`,
   )
 }
 
-async function waitForCompletedAnalysis(terminal, timeoutMs = 360_000) {
+async function waitForCompletedAnalysis(terminal, approvals, timeoutMs = 900_000) {
   const deadline = Date.now() + timeoutMs
   let lastRecord
   while (Date.now() < deadline) {
+    await terminal.waitForScreen(
+      (screen) =>
+        permissionVisible(screen) || /analyst: .* · (completed|failed|cancelled)\b/u.test(screen),
+      'terminal trace analysis result',
+      Math.max(1, deadline - Date.now()),
+    )
     lastRecord = await terminal.captureState(60_000)
+    if (await approveExpectedPermission(terminal, lastRecord, approvals)) continue
     const analysis = lastRecord.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)
     if (analysis?.status === 'complete') return lastRecord
     if (analysis?.status === 'failed' || analysis?.status === 'cancelled') {
@@ -126,6 +229,27 @@ async function waitForCompletedAnalysis(terminal, timeoutMs = 360_000) {
   }
   throw new Error(
     `Timed out waiting for /ask; last status=${lastRecord?.view?.activity?.filter((item) => item.kind === 'analysis').at(-1)?.status ?? 'unknown'}`,
+  )
+}
+
+async function waitForActiveProfile(terminal, profile, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastRecord
+  while (Date.now() < deadline) {
+    lastRecord = await terminal.captureState()
+    if (
+      lastRecord.view?.profileName === profile.name &&
+      lastRecord.view?.runner === profile.harness &&
+      lastRecord.view?.model === profile.model.default
+    )
+      return lastRecord
+    await pause(200)
+  }
+  throw new Error(
+    `Timed out waiting for active profile ${profile.name}; ` +
+      `observed profile=${lastRecord?.view?.profileName ?? 'missing'}, ` +
+      `runner=${lastRecord?.view?.runner ?? 'missing'}, ` +
+      `model=${lastRecord?.view?.model ?? 'missing'}`,
   )
 }
 
@@ -172,39 +296,80 @@ async function verifyWorkspace(workspace) {
 
 async function main() {
   const baseUrl = assertLocalEndpoint(endpoint)
-  const [agentEvalPackage, sourcePackage, packageProofBytes, commitResult, bridge] =
-    await Promise.all([
-      readFile(
-        join(repository, 'node_modules', '@tangle-network', 'agent-eval', 'package.json'),
-      ).then(JSON.parse),
-      readFile(join(repository, 'package.json'), 'utf8').then(JSON.parse),
-      readFile(packageProofPath),
-      run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
-      bridgeProof(baseUrl),
-    ])
-  const sourceCommit = commitResult.stdout.trim()
-  const packageProof = JSON.parse(packageProofBytes.toString('utf8'))
+  const [
+    sourcePackage,
+    packageProofBytes,
+    sourceIdentity,
+    sourceStatus,
+    driverIdentity,
+    driverStatus,
+    bridge,
+  ] = await Promise.all([
+    readFile(join(packageSource, 'package.json'), 'utf8').then(JSON.parse),
+    directTarball === undefined ? readFile(packageProofPath) : Promise.resolve(undefined),
+    run('git', ['rev-parse', 'HEAD', 'HEAD^{tree}', '--show-toplevel'], {
+      cwd: packageSource,
+    }),
+    run('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: packageSource,
+    }),
+    run('git', ['rev-parse', 'HEAD'], { cwd: repository }),
+    run('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: repository,
+    }),
+    bridgeProof(baseUrl),
+  ])
+  assert.equal(sourceStatus.stdout.trim(), '', 'The package source checkout must be clean')
+  assert.equal(driverStatus.stdout.trim(), '', 'The live demo driver checkout must be clean')
+  const [sourceCommit, sourceTreeSha256, sourceRoot] = sourceIdentity.stdout.trim().split('\n')
+  assert.equal(sourceRoot, packageSource, 'The package source must be a checkout root')
+  const driverCommit = driverIdentity.stdout.trim()
+  const packageProof =
+    packageProofBytes === undefined ? undefined : JSON.parse(packageProofBytes.toString('utf8'))
   const route = bridge.target.modelId
   const profile = liveDemoProfileForRoute(route)
-  const analystProfile = liveDemoProfileForRoute(route, LIVE_DEMO_ANALYST_PROFILE)
-  const analysisRuntime = {
-    manager: 'bundled uv',
-    pythonVersion: '3.12',
-    version: agentEvalPackage.version,
+  let analystProfile = liveDemoProfileForRoute(
+    bridge.analystTarget.modelId,
+    LIVE_DEMO_ANALYST_PROFILE,
+  )
+  const analystCapOverride = process.env.BRAID_LIVE_DEMO_ANALYST_MAX_TOTAL_OUTPUT_TOKENS
+  if (analystCapOverride !== undefined) {
+    assert.match(analystCapOverride, /^[1-9]\d*$/u, 'The analyst token cap must be positive')
+    const cap = Number(analystCapOverride)
+    assert.ok(Number.isSafeInteger(cap), 'The analyst token cap must be a safe integer')
+    analystProfile = {
+      ...analystProfile,
+      model: { ...analystProfile.model, maxTotalOutputTokens: cap },
+    }
   }
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'braid-live-demo-'))
   const packed = await installPackedBraid(repository, {
     tarballPath:
-      process.env.BRAID_RELEASE_TARBALL ?? packageTarballPath(packageProofPath, packageProof),
+      directTarball ??
+      process.env.BRAID_RELEASE_TARBALL ??
+      packageTarballPath(packageProofPath, packageProof),
   })
   let terminal
+  let codingSession
+  let taskError
+  let manifestPath
+  let manifestText
   try {
-    assertExactPackageProof(packageProof, {
-      commit: sourceCommit,
-      version: sourcePackage.version,
-      tarball: packed.tarballName,
-      tarballSha256: packed.tarballSha256,
-    })
+    if (packageProof !== undefined) {
+      assertExactPackageProof(packageProof, {
+        commit: sourceCommit,
+        treeSha256: sourceTreeSha256,
+        version: sourcePackage.version,
+        tarball: packed.tarballName,
+        tarballSha256: packed.tarballSha256,
+      })
+    }
+    const packedPackage = JSON.parse(await readFile(join(packed.packageRoot, 'package.json')))
+    const analysisRuntime = {
+      manager: 'bundled uv',
+      pythonVersion: '3.12',
+      version: packedPackage.dependencies['@tangle-network/agent-eval'],
+    }
     const { workspace, profilePath } = await createLiveDemoWorkspace(temporaryRoot, {
       profile,
       analystProfile,
@@ -271,30 +436,25 @@ async function main() {
     await typeText(terminal, '/profile', 24)
     terminal.input('\r')
     await terminal.waitForScreen(
-      (screen) =>
-        screen.includes(profile.name) &&
-        screen.includes(
-          `thinking high · limits visible ${profile.model.maxVisibleOutputTokens.toLocaleString('en-US')} · reasoning ${profile.model.maxReasoningTokens.toLocaleString('en-US')} · total ${profile.model.maxTotalOutputTokens.toLocaleString('en-US')}`,
-        ),
+      (screen) => screen.includes(profile.name) && screen.includes('thinking high'),
       'AgentProfile details',
     )
     await pause(900)
     terminal.input('\u001b')
     await terminal.waitForScreen(
-      (screen) => !screen.includes(`runner pi · model ${profile.model.default}`),
+      (screen) => !screen.includes('thinking high'),
       'AgentProfile close',
     )
     await pause(300)
 
+    const codingStartedAt = Date.now()
     await typeText(terminal, LIVE_DEMO_PROMPT, 9)
     terminal.input('\r')
     await terminal.waitForScreen((screen) => screen.includes('working'), 'active coding turn')
-    terminal.input('\u001bOQ')
-    await terminal.waitForScreen((screen) => screen.includes('live work'), 'live-work pane')
-    await pause(900)
-    terminal.input('\u001bOQ')
-    await terminal.waitForScreen((screen) => !screen.includes('live work'), 'live-work pane close')
-    const coding = await waitForCompletedRun(terminal)
+    codingSession = await waitForCodingRunAdmission(baseUrl, codingStartedAt)
+    const codingRunId = codingSession.runId
+    const approvals = []
+    const coding = await waitForCompletedRun(terminal, approvals, baseUrl, codingRunId)
     const transcript = transcriptEvidence(coding.record)
     assert.ok(
       transcript.assistantMessages.length > 0,
@@ -316,12 +476,15 @@ async function main() {
       'activity browser close',
     )
     await pause(300)
+    const closedCodingSessionId = codingSession.sessionId
+    await closeCodingSession(baseUrl, codingSession)
+    codingSession = undefined
 
     await typeText(terminal, '/profile', 24)
     terminal.input('\r')
     await terminal.waitForScreen(
-      (screen) => screen.includes(profile.name) && screen.includes(analystProfile.name),
-      'trace analyst profile choice',
+      (screen) => screen.includes(profile.name) && screen.includes('enter select'),
+      'trace analyst profile picker',
     )
     await typeText(terminal, analystProfile.name, 24)
     await terminal.waitForScreen(
@@ -335,12 +498,10 @@ async function main() {
     )
     terminal.input('\u001b')
     await terminal.waitForScreen(
-      (screen) =>
-        !screen.includes(`Selected ${analystProfile.name} · next runs use it`) &&
-        screen.includes(analystProfile.name) &&
-        screen.includes(`${analystProfile.harness} · ${analystProfile.model.default}`),
-      'trace analyst active route',
+      (screen) => !screen.includes(`Selected ${analystProfile.name} · next runs use it`),
+      'trace analyst picker close',
     )
+    await waitForActiveProfile(terminal, analystProfile)
     await pause(500)
 
     await typeText(terminal, `/ask ${LIVE_DEMO_QUESTION}`, 9)
@@ -355,7 +516,7 @@ async function main() {
       (screen) => screen.includes('/ask · frozen question'),
       'trace analysis panel',
     )
-    const analysisRecord = await waitForCompletedAnalysis(terminal)
+    const analysisRecord = await waitForCompletedAnalysis(terminal, approvals)
     await terminal.waitForStable('completed trace analysis')
     const analysis = safeManifestAnalysis(analysisRecord)
     await terminal.waitForStable('final live demo frame')
@@ -403,7 +564,7 @@ async function main() {
     const gifPath = join(outputRoot, 'braid-live.gif')
     const pngPath = join(outputRoot, 'braid-live.png')
     const textPath = join(outputRoot, 'braid-live.txt')
-    const manifestPath = join(outputRoot, 'braid-live.json')
+    manifestPath = join(outputRoot, 'braid-live.json')
     const frameCast = castFor(
       { ...terminal, events: terminal.events.slice(0, hero.eventCount) },
       'Braid · completed trace analysis',
@@ -422,11 +583,14 @@ async function main() {
       capturedAt: new Date().toISOString(),
       source: {
         commit: sourceCommit,
+        treeSha256: sourceTreeSha256,
         packageVersion: sourcePackage.version,
         tarball: packed.tarballName,
         tarballSha256: packed.tarballSha256,
-        packageProofSha256: sha256(packageProofBytes),
+        packageProofSha256: packageProofBytes === undefined ? null : sha256(packageProofBytes),
+        verification: packageProofBytes === undefined ? 'direct-pack-unendorsed' : 'package-proof',
       },
+      driver: { commit: driverCommit },
       route: {
         connection: 'Local CLI Bridge',
         endpoint: baseUrl,
@@ -468,6 +632,8 @@ async function main() {
                 status: 'blocked-upstream',
                 issue: 'https://github.com/tangle-network/agent-runtime/issues/762',
               },
+        approvedPermissions: approvals,
+        sessionCleanup: { sessionId: closedCodingSessionId, status: 'closed' },
         workspaceProof,
       },
       analysis: {
@@ -488,13 +654,34 @@ async function main() {
       ),
     }
     assertPublicCapture(JSON.stringify(manifest))
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-    process.stdout.write(`${JSON.stringify(manifest, null, 2)}\n`)
-  } finally {
-    await terminal?.dispose()
-    await packed.cleanup()
-    await rm(temporaryRoot, { force: true, recursive: true })
+    manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+  } catch (error) {
+    taskError = error
   }
+  const cleanupErrors = []
+  for (const cleanup of [
+    () => terminal?.dispose(),
+    async () => {
+      if (codingSession) await closeCodingSession(baseUrl, codingSession)
+    },
+    () => packed.cleanup(),
+    () => rm(temporaryRoot, { force: true, recursive: true }),
+  ]) {
+    try {
+      await cleanup()
+    } catch (error) {
+      cleanupErrors.push(error)
+    }
+  }
+  if (taskError) {
+    if (cleanupErrors.length > 0)
+      process.stderr.write(`Live demo cleanup failed: ${cleanupErrors.join('; ')}\n`)
+    throw taskError
+  }
+  if (cleanupErrors.length > 0) throw new AggregateError(cleanupErrors, 'Live demo cleanup failed')
+  assert.ok(manifestPath && manifestText, 'The live demo did not prepare its evidence manifest')
+  await writeFile(manifestPath, manifestText)
+  process.stdout.write(manifestText)
 }
 
 await main()

@@ -1,0 +1,8 @@
+{
+  "name": "Launch probe",
+  "description": "One profile used for two runners in the Braid 0.3.0 launch probe",
+  "version": "0.1.0",
+  "harness": "pi",
+  "model": { "provider": "tangle-router", "default": "glm-5.2", "reasoningEffort": "none" },
+  "prompt": { "instructions": ["Answer in one short line."] }
+}
