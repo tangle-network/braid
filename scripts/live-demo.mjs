@@ -71,10 +71,17 @@ function assertLocalEndpoint(value) {
 }
 
 async function bridgeProof(baseUrl) {
-  const [health, models] = await Promise.all([
-    jsonRequest(`${baseUrl}/health`),
-    jsonRequest(`${baseUrl}/v1/models`),
-  ])
+  const observed = async (path) => {
+    const url = `${baseUrl}${path}`
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const value = await pollJsonRequest(url)
+      if (value !== undefined) return value
+      process.stderr.write(`GET ${url} timed out; setup attempt ${attempt}/3\n`)
+      if (attempt < 3) await pause(500)
+    }
+    throw new Error(`GET ${url} timed out during Bridge setup`)
+  }
+  const [health, models] = await Promise.all([observed('/health'), observed('/v1/models')])
   const backend = health.backends?.find((candidate) => candidate.name === LIVE_DEMO_PROFILE.harness)
   assert.equal(health.status, 'ok', 'CLI Bridge is not healthy')
   assert.equal(backend?.state, 'ready', `${LIVE_DEMO_PROFILE.harness} is not ready in CLI Bridge`)
