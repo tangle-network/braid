@@ -5,6 +5,10 @@ import type {
   ExternalOptimizerModelCallRequest,
   ExternalOptimizerModelExecutionObservation,
 } from '@tangle-network/agent-eval/campaign'
+import {
+  createBoundedTraceAnalysisStore,
+  otlpTextToTraceAnalysisStore,
+} from '@tangle-network/agent-eval/traces'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
@@ -347,12 +351,12 @@ test('a total-only Pi cap reserves reasoning without inventing a provider split'
 test('defines a bounded cited-answer analyst for /ask', () => {
   const instructions = BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.id, BRAID_QUESTION_ANALYST_ID)
-  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.5.0')
+  assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.version, '1.7.0')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.toolGroup, 'singleTrace')
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
   assert.equal(typeof BRAID_QUESTION_ANALYST_DEFINITION.prepareContext, 'function')
-  assert.deepEqual(instructions.slice(0, 3), [
+  assert.deepEqual(instructions.slice(1, 4), [
     'OUTPUT CONTRACT:',
     'Omit subject from every finding.',
     'Return one to five findings.',
@@ -364,6 +368,68 @@ test('defines a bounded cited-answer analyst for /ask', () => {
     /SUBMIT\(answer=answer, findings_json=json\.dumps\(findings\)\)/u,
   )
   assert.match(BRAID_QUESTION_ANALYST_DEFINITION.instructions, /Copy each excerpt verbatim/u)
+})
+
+test('large Pi traces give /ask completed part IDs while provider events are redacted', async () => {
+  const traceId = 'run-large-navigation-repro'
+  const span = (index: number, spanId: string, name: string, attributes: Record<string, unknown>) =>
+    JSON.stringify({
+      trace_id: traceId,
+      span_id: spanId,
+      name,
+      kind: 'SPAN_KIND_INTERNAL',
+      start_time: new Date(Date.UTC(2026, 8, 24) + index * 1_000).toISOString(),
+      end_time: new Date(Date.UTC(2026, 8, 24) + index * 1_000).toISOString(),
+      status: { code: 'STATUS_CODE_OK' },
+      resource: { attributes: { 'service.name': 'braid' } },
+      attributes,
+    })
+  const lines = Array.from({ length: 1_203 }, (_, index) =>
+    span(index, `span-update-${index}`, 'braid.run.part.updated', {
+      'braid.message_part':
+        index === 900
+          ? { kind: 'tool-result', toolName: 'edit', result: 'slugify strips Unicode accents' }
+          : index === 1_100
+            ? { kind: 'tool-result', toolName: 'bash', result: 'node --test: pass 7, fail 0' }
+            : { kind: 'text', text: 'partial output '.repeat(40) },
+    }),
+  )
+  lines.push(
+    ...Array.from({ length: 63 }, (_, index) =>
+      span(1_203 + index, `span-provider-${index}`, 'braid.run.provider.event', {
+        'braid.runtime_event': { type: 'unknown', payload: { redacted: true } },
+      }),
+    ),
+  )
+  const store = createBoundedTraceAnalysisStore(
+    otlpTextToTraceAnalysisStore(`${lines.join('\n')}\n`),
+  )
+  const view = await store.viewTrace({ trace_id: traceId })
+  assert.ok('oversized' in view)
+
+  const prepared = await BRAID_QUESTION_ANALYST_DEFINITION.prepareContext?.(store, {
+    runId: 'analysis-navigation-repro',
+    correlationId: 'analysis-navigation-repro',
+    tags: { focus: 'Did the run prove Unicode accent removal in slugify?' },
+  })
+  assert.ok(prepared)
+  assert.match(
+    BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')[0] ?? '',
+    /FIRST PYTHON STEP: print\(analyst_instructions\)/u,
+  )
+  assert.match(prepared, /"span_id":"span-update-900"/u)
+  assert.match(prepared, /"span_id":"span-update-1100"/u)
+  assert.match(prepared, /span names and counts, not span IDs/u)
+  assert.match(prepared, /at most three focused searchTrace calls/u)
+  assert.match(prepared, /HTTP 429/u)
+  assert.doesNotMatch(prepared, /Do not spend a model step printing/u)
+  assert.doesNotMatch(prepared, /"span_id":"span-provider-/u)
+  const exact = await store.viewSpans({
+    trace_id: traceId,
+    span_ids: ['span-update-900', 'span-update-1100'],
+  })
+  assert.deepEqual(exact.missing_span_ids, [])
+  assert.equal(exact.spans.length, 2)
 })
 
 test('resolves the selected connection credential in memory and never exposes it in configuration', async () => {

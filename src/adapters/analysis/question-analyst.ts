@@ -11,17 +11,56 @@ import { canonicalJson } from '../../domain/canonical.js'
 
 export const BRAID_QUESTION_ANALYST_ID = 'question'
 
-async function prepareQuestionContext(store: TraceAnalysisStore): Promise<string> {
-  const overview = await store.getOverview({})
+const TOOL_SPAN_PATTERN = '"openinference\\.span\\.kind":"TOOL"'
+const TOOL_RESULT_PART_PATTERN = '"kind":"tool-result"'
+
+function spanHints(
+  hits: readonly { readonly span_id: string; readonly span_name: string }[],
+  limit: number,
+): string[] {
+  return [...new Map(hits.map((hit) => [hit.span_id, hit])).values()]
+    .slice(-limit)
+    .map((hit) => JSON.stringify({ span_id: hit.span_id, span_name: hit.span_name }))
+}
+
+async function prepareQuestionContext(
+  store: TraceAnalysisStore,
+  context?: AnalystContext,
+): Promise<string> {
+  const storeContext = context?.signal === undefined ? undefined : { signal: context.signal }
+  const overview = await store.getOverview({}, storeContext)
   const traceId = overview.total_traces === 1 ? overview.sample_trace_ids[0] : undefined
   if (traceId === undefined) {
-    return 'Start with getDatasetOverview. Do not print the question or analyst instructions.'
+    return 'Read analyst_instructions first, then start with getDatasetOverview.'
   }
+  const [tools, partResults] = await Promise.all([
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: TOOL_SPAN_PATTERN, max_matches: 128 },
+      storeContext,
+    ),
+    store.searchTrace(
+      { trace_id: traceId, regex_pattern: TOOL_RESULT_PART_PATTERN, max_matches: 128 },
+      storeContext,
+    ),
+  ])
+  const partResultHits = partResults.hits.filter(
+    (hit) => hit.span_name === 'braid.run.part.updated',
+  )
   return [
     'The frozen source contains exactly one trace.',
     `Exact trace id: ${JSON.stringify(traceId)}.`,
-    'Call viewTrace for this exact id in your first code step.',
-    'Do not spend a model step printing the question or analyst instructions.',
+    'Inspect these completed tool-result part spans first with viewSpans and their exact span_id values.',
+    ...spanHints(partResultHits, 16),
+    'Other normalized TOOL spans:',
+    ...spanHints(tools.hits, 12),
+    ...(tools.has_more || partResults.has_more
+      ? ['The span list is bounded and may omit later events.']
+      : []),
+    'If these spans do not answer Focus, use at most three focused searchTrace calls, one term at a time.',
+    'Do not loop through search terms or retry a trace-tool HTTP 429; inspect returned hit.span_id values.',
+    'An oversized viewTrace summary lists span names and counts, not span IDs.',
+    'Treat this list as navigation only; cite evidence after reading the exact spans.',
+    'The instruction variable may be shortened in a preview; read its full value before using trace tools.',
   ].join('\n')
 }
 
@@ -29,9 +68,10 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   id: BRAID_QUESTION_ANALYST_ID,
   description: 'Answers one operator question against one frozen run with cited evidence.',
   area: 'question-answer',
-  version: '1.5.0',
+  version: '1.7.0',
   question: 'Answer the operator question about this frozen run.',
   instructions: [
+    'FIRST PYTHON STEP: print(analyst_instructions) so you can read every prepared span ID and the full output contract.',
     'OUTPUT CONTRACT:',
     'Omit subject from every finding.',
     'Return one to five findings.',
@@ -43,7 +83,8 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
     'Never pass either output positionally or pass the findings list without JSON encoding.',
     'Answer only the operator question shown after "Focus:".',
     'Use the trace tools before you answer.',
-    'Follow PREPARED CONTEXT and inspect its exact trace id first.',
+    'Follow PREPARED CONTEXT and inspect its exact span IDs first.',
+    'Do not batch trace searches; stop searching once source and test evidence answer Focus.',
     'Answer every distinct request in Focus with a finding or an explicit limitation finding.',
     'Write each finding claim as a direct answer, not as a defect label.',
     'Cite the exact trace span that supports each claim.',
