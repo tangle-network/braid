@@ -80,7 +80,7 @@ async function prepareQuestionContext(
     'If these spans do not answer Focus, call searchTrace with content terms and use each hit.span_id.',
     'An oversized viewTrace summary lists span names and counts, not span IDs.',
     'Treat this list as navigation only; cite evidence after reading the exact spans.',
-    'Do not spend a model step printing the question or analyst instructions.',
+    'The instruction variable may be shortened in a preview; read its full value before using trace tools.',
   ].join('\n')
 }
 
@@ -91,6 +91,7 @@ export const BRAID_QUESTION_ANALYST_DEFINITION = Object.freeze({
   version: '1.6.0',
   question: 'Answer the operator question about this frozen run.',
   instructions: [
+    'FIRST PYTHON STEP: print(analyst_instructions) so you can read every prepared span ID and the full output contract.',
     'OUTPUT CONTRACT:',
     'Omit subject from every finding.',
     'Return one to five findings.',

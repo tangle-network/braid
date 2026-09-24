@@ -356,7 +356,7 @@ test('defines a bounded cited-answer analyst for /ask', () => {
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.requireStructuredFindings, true)
   assert.equal(BRAID_QUESTION_ANALYST_DEFINITION.minimumEvidenceCitations, 1)
   assert.equal(typeof BRAID_QUESTION_ANALYST_DEFINITION.prepareContext, 'function')
-  assert.deepEqual(instructions.slice(0, 3), [
+  assert.deepEqual(instructions.slice(1, 4), [
     'OUTPUT CONTRACT:',
     'Omit subject from every finding.',
     'Return one to five findings.',
@@ -421,9 +421,14 @@ test('large Pi traces give /ask provider tool-result span IDs instead of summary
     tags: { focus: 'Did the run prove Unicode accent removal in slugify?' },
   })
   assert.ok(prepared)
+  assert.match(
+    BRAID_QUESTION_ANALYST_DEFINITION.instructions.split('\n')[0] ?? '',
+    /FIRST PYTHON STEP: print\(analyst_instructions\)/u,
+  )
   assert.match(prepared, /"span_id":"span-provider-36"/u)
   assert.match(prepared, /"span_id":"span-provider-44"/u)
   assert.match(prepared, /span names and counts, not span IDs/u)
+  assert.doesNotMatch(prepared, /Do not spend a model step printing/u)
   assert.doesNotMatch(prepared, /"span_id":"braid\.run\.part\.updated"/u)
   const exact = await store.viewSpans({
     trace_id: traceId,
