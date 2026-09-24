@@ -312,6 +312,10 @@ The analyst uses canonical bounded trace tools and cannot mutate the source work
 
 Analysis runs in a separate runtime execution context and has its own cancellation and cost.
 
+After each one-shot native CLI Bridge analyst call settles, Braid closes its exact provider session through the provider API.
+
+The run reference and recorded admission remain durable.
+
 One request can select explicit analyst identifiers, comma-separated recipe aliases, or every available trace analyst with `all`.
 
 Braid validates and removes duplicate selections before dispatch.
