@@ -125,29 +125,48 @@ export function sandboxSoakDiagnostic(cohort) {
         SOAK_PHASES.has(name),
       )
       const cleanup = proof?.cleanup
+      const cleanupFailure = proof?.cleanupFailure
+      const cleanupFingerprint = soakFailureFingerprint(cleanupFailure)
+      const progress = proof?.progress
       return {
         index: nonnegativeInteger(attempt?.index),
-        status: proof?.status === 'passed' ? 'passed' : 'failed',
-        failureCategory: soakFailureCategory(failure, fingerprint),
+        status: ['passed', 'failed'].includes(proof?.status) ? proof.status : null,
+        failureCategory:
+          failure === undefined || failure === null
+            ? null
+            : soakFailureCategory(failure, fingerprint),
         failureHttpStatus: fingerprint.httpStatus,
         failureCode: fingerprint.code,
         lastCompletedPhase: completedPhases.at(-1) ?? null,
-        firstRunAdmitted: typeof proof?.progress?.firstRunId === 'string',
-        controlObserved: proof?.progress?.firstControlRef !== undefined,
-        cleanup: {
-          exactResource: cleanup?.exactResource === true,
-          matchedCount: nonnegativeInteger(cleanup?.identity?.matchedCount),
-          remainingCount: Array.isArray(cleanup?.identity?.remainingIds)
-            ? cleanup.identity.remainingIds.length
-            : null,
-          activeResourceDelta: finiteNumber(cleanup?.activeResourceDelta),
-          usageObservationComplete: cleanup?.usageObservationComplete === true,
-          failureCategory: soakFailureCategory(
-            proof?.cleanupFailure,
-            soakFailureFingerprint(proof?.cleanupFailure),
-          ),
-          failureHttpStatus: soakFailureFingerprint(proof?.cleanupFailure).httpStatus,
-        },
+        firstRunAdmitted:
+          progress === undefined || progress === null
+            ? null
+            : typeof progress.firstRunId === 'string',
+        controlObserved:
+          progress === undefined || progress === null
+            ? null
+            : progress.firstControlRef !== undefined,
+        cleanup:
+          cleanup === undefined || cleanup === null
+            ? null
+            : {
+                exactResource:
+                  typeof cleanup.exactResource === 'boolean' ? cleanup.exactResource : null,
+                matchedCount: nonnegativeInteger(cleanup?.identity?.matchedCount),
+                remainingCount: Array.isArray(cleanup?.identity?.remainingIds)
+                  ? cleanup.identity.remainingIds.length
+                  : null,
+                activeResourceDelta: finiteNumber(cleanup?.activeResourceDelta),
+                usageObservationComplete:
+                  typeof cleanup.usageObservationComplete === 'boolean'
+                    ? cleanup.usageObservationComplete
+                    : null,
+                failureCategory:
+                  cleanupFailure === undefined || cleanupFailure === null
+                    ? null
+                    : soakFailureCategory(cleanupFailure, cleanupFingerprint),
+                failureHttpStatus: cleanupFingerprint.httpStatus,
+              },
       }
     }),
   }

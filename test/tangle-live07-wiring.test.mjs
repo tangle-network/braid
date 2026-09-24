@@ -26,7 +26,11 @@ import {
   waitForProviderObservation,
 } from '../scripts/live-required/provider-observation.mjs'
 import { supervisorProfile } from '../scripts/live-required/supervisor.mjs'
-import { runSandbox, runTangleFlows } from '../scripts/live-required/tangle.mjs'
+import {
+  runSandbox,
+  runTangleFlows,
+  sandboxSoakDiagnostic,
+} from '../scripts/live-required/tangle.mjs'
 import { sandboxEnvironment } from '../scripts/live-required/tangle-sandbox-braid-execution-soak.mjs'
 import {
   assertInteractiveTelemetry,
@@ -962,6 +966,48 @@ test('LIVE-07 retains bounded canary failure and cleanup diagnostics without err
         },
       },
     ],
+  })
+})
+
+test('LIVE-07 diagnostic keeps absent proof fields distinct from observed false', () => {
+  const diagnostic = sandboxSoakDiagnostic({
+    requestedRuns: 3,
+    attemptedRuns: 2,
+    stoppedAfterCanary: false,
+    attempts: [
+      { index: 0, proof: { status: 'passed' } },
+      { index: 1, proof: { status: 'failed', progress: {}, cleanup: { exactResource: false } } },
+    ],
+  })
+  assert.deepEqual(diagnostic.attempts[0], {
+    index: 0,
+    status: 'passed',
+    failureCategory: null,
+    failureHttpStatus: null,
+    failureCode: null,
+    lastCompletedPhase: null,
+    firstRunAdmitted: null,
+    controlObserved: null,
+    cleanup: null,
+  })
+  assert.deepEqual(diagnostic.attempts[1], {
+    index: 1,
+    status: 'failed',
+    failureCategory: null,
+    failureHttpStatus: null,
+    failureCode: null,
+    lastCompletedPhase: null,
+    firstRunAdmitted: false,
+    controlObserved: false,
+    cleanup: {
+      exactResource: false,
+      matchedCount: null,
+      remainingCount: null,
+      activeResourceDelta: null,
+      usageObservationComplete: null,
+      failureCategory: null,
+      failureHttpStatus: null,
+    },
   })
 })
 
