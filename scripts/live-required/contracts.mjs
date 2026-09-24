@@ -284,7 +284,10 @@ const CLOUD_CONTROL_KEYS = Object.freeze([
 ])
 const CREDENTIAL_KEY_PATTERN =
   /(?:^|_)(?:access_key|api_key|auth|authorization|bearer|client_secret|cookie|credential|password|passwd|private_key|secret|session|token)(?:_|$)/u
-const MAX_PUBLIC_DEPTH = 8
+// Receipts are sanitized once when built and again inside the written receipts artifact, which adds
+// four wrapper levels above observations. The bound must cover both passes, or validators reject the
+// truncated identity fields.
+const MAX_PUBLIC_DEPTH = 16
 
 const REQUIRED_RELEASE_MEASUREMENTS = Object.freeze({
   'live-tangle': Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10']),
@@ -403,10 +406,17 @@ function sanitizePublicValue(value, environment, secrets, seen = new Set(), dept
     }
   }
   if (typeof value !== 'object') return '[UNAVAILABLE]'
+  // `seen` holds only the current ancestor path, so a shared reference is copied and only a true
+  // cycle is replaced.
   if (seen.has(value)) return '[CIRCULAR]'
-  seen.add(value)
-  if (Array.isArray(value))
-    return value.map((entry) => sanitizePublicValue(entry, environment, secrets, seen, depth + 1))
+  if (Array.isArray(value)) {
+    seen.add(value)
+    const output = value.map((entry) =>
+      sanitizePublicValue(entry, environment, secrets, seen, depth + 1),
+    )
+    seen.delete(value)
+    return output
+  }
   const output = {}
   let keys
   try {
@@ -414,6 +424,7 @@ function sanitizePublicValue(value, environment, secrets, seen = new Set(), dept
   } catch {
     return '[UNAVAILABLE]'
   }
+  seen.add(value)
   for (const key of keys) {
     if (credentialKey(key)) {
       output[key] = '[REDACTED]'
@@ -429,6 +440,7 @@ function sanitizePublicValue(value, environment, secrets, seen = new Set(), dept
     const sanitized = sanitizePublicValue(nested, environment, secrets, seen, depth + 1)
     if (sanitized !== undefined) output[key] = sanitized
   }
+  seen.delete(value)
   return output
 }
 
