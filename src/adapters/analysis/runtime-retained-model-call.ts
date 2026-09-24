@@ -1,6 +1,9 @@
 import type { AgentExactRunControlRef, AgentProfile } from '@tangle-network/agent-interface'
 import type { AgentTurnResult } from '@tangle-network/agent-interface/environment-provider'
-import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
+import {
+  closeExactCliBridgeSession,
+  createCliBridgeProvider,
+} from '@tangle-network/agent-provider-cli-bridge'
 import { startRetainedRun } from '@tangle-network/agent-runtime/kernel'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { RetainedRunAdmissionRecorder } from '../../domain/run-contracts.js'
@@ -46,12 +49,13 @@ export async function runRetainedCliBridgeModelCall(
       profile: input.profile,
     }),
   )
-  const provider = createCliBridgeProvider({
+  const providerOptions = {
     baseUrl: input.baseUrl,
     bearerToken: input.bearerToken,
     defaultModel: input.model,
     fetch: globalThis.fetch,
-  })
+  }
+  const provider = createCliBridgeProvider(providerOptions)
   const handle = await startRetainedRun({
     provider,
     environment: {
@@ -70,14 +74,29 @@ export async function runRetainedCliBridgeModelCall(
     },
     onAdmission: input.onAdmission,
   })
+  let outcome: { readonly result: AgentTurnResult } | { readonly error: unknown }
   try {
-    return {
-      result: await resultWithCancellation(handle, input.signal, digest),
-      controlRef: handle.controlRef,
-    }
+    outcome = { result: await resultWithCancellation(handle, input.signal, digest) }
   } catch (error) {
-    throw new RetainedModelCallError(handle.controlRef, error)
+    outcome = { error }
   }
+  if (handle.capabilities.nativeContinuation?.atomicBoundary) {
+    try {
+      await closeExactCliBridgeSession(providerOptions, handle.controlRef)
+    } catch (cleanupError) {
+      throw new RetainedModelCallError(
+        handle.controlRef,
+        'error' in outcome
+          ? new AggregateError(
+              [outcome.error, cleanupError],
+              'Retained model call failed and its native session could not be closed',
+            )
+          : cleanupError,
+      )
+    }
+  }
+  if ('error' in outcome) throw new RetainedModelCallError(handle.controlRef, outcome.error)
+  return { result: outcome.result, controlRef: handle.controlRef }
 }
 
 async function resultWithCancellation(

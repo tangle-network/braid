@@ -18,7 +18,7 @@ Their installed manifests, declarations, and implementations were inspected dire
 | [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.11.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.252.1` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.183.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `1.0.3` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-cli-bridge` | `1.1.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, exact native session close, durable interaction response, explicit cancel, and host cwd support |
 | `@tangle-network/agent-provider-tangle` | `1.6.0` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
 | `@tangle-network/sandbox` | `0.45.0` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
@@ -369,6 +369,8 @@ Its public turn type accepts requested interactions through Interface, and its r
 It reads the exact capability document for one model route from `GET /v1/capabilities?model=…` before it admits a run.
 
 Its Pi route publishes native retained sessions and permission interactions; every other route publishes the durable one-shot run contract without them.
+
+The provider closes a completed native session only after verifying the exact terminal run and session binding; the run ledger remains readable after close.
 
 It answers an interaction through `POST /v1/runs/:runId/interactions/:interactionId/respond` on the retained environment and session, and advertises `interactions.responseIdempotency` for the routes that record every acknowledgement.
 

@@ -788,6 +788,55 @@ test('CLI Bridge analyst profile omits empty model metadata before Pi materializ
   }
 })
 
+test('sequential Pi analyst calls release each completed native session before the next capability probe', async () => {
+  const bridge = await startRuntimeBridgeServer({
+    expectedBearer: 'credential-never-recorded',
+    responseText: '{"answer":"bridge ok"}',
+    maxOpenNativeSessions: 1,
+  })
+  try {
+    const admissions: RetainedRunAdmissionRecord[] = []
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        name: 'Trace analyst',
+        harness: 'pi',
+        model: { default: 'tangle-router/glm-5.2', provider: 'tangle-router' },
+      },
+      connection: connection('cli-bridge', 'runtime-bridge-session-close', bridge.endpoint),
+      baseUrl: bridge.endpoint,
+      credential: 'credential-never-recorded',
+      model: 'pi/tangle-router/glm-5.2',
+      onRetainedAdmission: retainAnalysisAdmissions(admissions),
+    })
+    const request = {
+      endpointFormat: 'chat-completions' as const,
+      request: {
+        model: 'pi/tangle-router/glm-5.2',
+        messages: [{ role: 'user' as const, content: 'Summarize the frozen trace.' }],
+        maxTokens: 64,
+      },
+      signal: new AbortController().signal,
+    }
+    const first = await owner.call({ ...request, callId: 'analysis-close-call-1' })
+    assert.equal(first.succeeded, true, first.succeeded ? '' : first.error)
+    const second = await owner.call({ ...request, callId: 'analysis-close-call-2' })
+    assert.equal(second.succeeded, true, second.succeeded ? '' : second.error)
+    assert.equal(bridge.sessions.length, 2)
+    assert.deepEqual(
+      bridge.closedSessions,
+      bridge.sessions.map((session) => session.id),
+    )
+    assert.deepEqual(
+      admissions.map((admission) => admission.phase),
+      ['intent', 'environment', 'dispatched', 'intent', 'environment', 'dispatched'],
+    )
+    assert.match(JSON.stringify(first.execution), /"retained"/u)
+    assert.match(JSON.stringify(second.execution), /"retained"/u)
+  } finally {
+    await bridge.close()
+  }
+})
+
 test('runtime-owned CLI Bridge analysis uses the harness executor with portable profile authority', async () => {
   const bridge = await startRuntimeBridgeServer({
     expectedBearer: 'credential-never-recorded',
