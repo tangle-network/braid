@@ -2,13 +2,21 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { validateInteractionResponse } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
-import { interactionFromResponse, runFromState, terminalMessage } from '../live-bridge/protocol.mjs'
+import {
+  interactionFromResponse,
+  requestBase,
+  runFromState,
+  stateForRequest,
+  terminalMessage,
+} from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
+import { safeJson } from './contracts.mjs'
 import { configEvidence, initializedSession, prepareProductionWorkspace } from './headless.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   cleanupRetainedResourceByRunId,
   providerExecutionLedgerEvidence,
+  retainedBox,
 } from './tangle-sandbox-braid-stress.mjs'
 import {
   assertSameControlRef,
@@ -21,6 +29,9 @@ import { workspaceRequestFor } from './workspace-request.mjs'
 
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
+const DIAGNOSTIC_EVENT_LIMIT = 24
+const DIAGNOSTIC_PROVIDER_RUN_LIMIT = 8
+const DIAGNOSTIC_PROVIDER_TIMEOUT_MS = 5_000
 const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_AUTH',
   'BRAID_TANGLE_SANDBOX_API_KEY',
@@ -197,6 +208,127 @@ function proofPrompt(marker) {
   ].join(' ')
 }
 
+function diagnosticToken(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/u.test(value) ? value : null
+}
+
+export function cloudInteractionFailureSnapshot(responses, runId, questionRequested) {
+  const all = Array.isArray(responses) ? responses : []
+  const events = all.filter(
+    (entry) =>
+      entry?.type === 'event' &&
+      entry.event?.payload?.runId === runId &&
+      typeof entry.event?.kind === 'string',
+  )
+  const latestState = all.findLast(
+    (entry) => entry?.type === 'state' && runFromState(entry.state, runId) !== undefined,
+  )
+  const run = runFromState(latestState?.state, runId)
+  const counts = {}
+  for (const entry of events) {
+    const kind = diagnosticToken(entry.event.kind) ?? 'other'
+    counts[kind] = (counts[kind] ?? 0) + 1
+  }
+  return {
+    questionRequested,
+    responseCount: all.length,
+    runEventCount: events.length,
+    eventCounts: counts,
+    lastEvents: events.slice(-DIAGNOSTIC_EVENT_LIMIT).map((entry) => ({
+      sequence: Number.isSafeInteger(entry.sequence) ? entry.sequence : null,
+      kind: diagnosticToken(entry.event.kind) ?? 'other',
+    })),
+    latestState:
+      run === undefined
+        ? null
+        : {
+            revision: Number.isSafeInteger(latestState.revision) ? latestState.revision : null,
+            sequence: Number.isSafeInteger(latestState.sequence) ? latestState.sequence : null,
+            status: diagnosticToken(run.status),
+            complete: run.complete === true,
+            interactions: (run.interactions ?? [])
+              .slice(0, DIAGNOSTIC_PROVIDER_RUN_LIMIT)
+              .map((entry) => ({
+                kind: diagnosticToken(entry.request?.kind),
+                status: diagnosticToken(entry.status),
+              })),
+          },
+  }
+}
+
+async function boundedProviderRead(operation) {
+  let timer
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('provider diagnostic read timed out')),
+          DIAGNOSTIC_PROVIDER_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function cloudProviderFailureProjection(status, runs) {
+  return {
+    observed: true,
+    sessionStatus: diagnosticToken(status?.status),
+    failureCode: diagnosticToken(status?.failureReason?.code),
+    executionCount: Array.isArray(runs) ? runs.length : null,
+    executions: Array.isArray(runs)
+      ? runs.slice(0, DIAGNOSTIC_PROVIDER_RUN_LIMIT).map((run) => ({
+          executionId: diagnosticToken(run.executionId),
+          status: diagnosticToken(run.status),
+          eventCount: Number.isSafeInteger(run.eventCount) ? run.eventCount : null,
+        }))
+      : [],
+  }
+}
+
+async function cloudProviderFailureSnapshot(client, controlRef) {
+  if (!client || !controlRef) return { observed: false, reasonCode: 'MISSING_EXACT_IDENTITY' }
+  try {
+    const box = await boundedProviderRead(() =>
+      retainedBox(client, controlRef, 'LIVE-08 failure diagnostic'),
+    )
+    const session = box.session(controlRef.sessionId)
+    const [status, runs] = await Promise.all([
+      boundedProviderRead(() => session.status()),
+      boundedProviderRead(() => session.runs()),
+    ])
+    return cloudProviderFailureProjection(status, runs)
+  } catch (error) {
+    return { observed: false, reasonCode: diagnosticToken(error?.code) ?? 'PROVIDER_READ_FAILED' }
+  }
+}
+
+export async function refreshBraidFailureState(session) {
+  if (!session || session.closed) return { attempted: false, received: false }
+  try {
+    const requestId = `braid-live-cloud-diagnostic-${randomUUID()}`
+    session.send({
+      ...requestBase(requestId, 'get_state'),
+      params: { projection: 'full' },
+    })
+    await session.waitFor(
+      'cloud interaction failure state',
+      stateForRequest(requestId),
+      DIAGNOSTIC_PROVIDER_TIMEOUT_MS,
+    )
+    return { attempted: true, received: true }
+  } catch (error) {
+    return {
+      attempted: true,
+      received: false,
+      reasonCode: diagnosticToken(error?.code) ?? 'BRAID_STATE_READ_FAILED',
+    }
+  }
+}
+
 export async function runCloudInteractionProof({
   repository,
   environment = process.env,
@@ -228,6 +360,8 @@ export async function runCloudInteractionProof({
   let proof
   let failure
   let cleanup
+  let questionRequested = null
+  let failureDiagnostic
   try {
     if (
       typeof environment.BRAID_LIVE_TARBALL_SHA256 === 'string' &&
@@ -266,11 +400,8 @@ export async function runCloudInteractionProof({
     )
     runId = sent.runId
     assert.ok(typeof runId === 'string' && runId.length > 0, 'send returned no local run ID')
-    assert.equal(
-      sent.admission?.requested?.interactions?.question,
-      true,
-      'Tangle did not advertise and request cloud questions',
-    )
+    questionRequested = sent.admission?.requested?.interactions?.question === true
+    assert.equal(questionRequested, true, 'Tangle did not advertise and request cloud questions')
     const initialObservation = await waitForControlIdentity(firstSession, runId, timeoutMs)
     controlRef = initialObservation.controlRef
     const event = await firstSession.waitFor(
@@ -373,6 +504,22 @@ export async function runCloudInteractionProof({
     }
   } catch (error) {
     failure = error
+    const diagnosticSession = firstSession ?? freshSession
+    const braidStateRead = await refreshBraidFailureState(diagnosticSession)
+    failureDiagnostic = {
+      schemaVersion: 1,
+      phase: 'cloud-interaction',
+      failureCode: diagnosticToken(error?.code) ?? 'PROOF_FAILED',
+      runId: diagnosticToken(runId),
+      environmentId: diagnosticToken(controlRef?.environmentId),
+      braidStateRead,
+      braid: cloudInteractionFailureSnapshot(
+        diagnosticSession?.responses,
+        runId,
+        questionRequested,
+      ),
+      provider: await cloudProviderFailureSnapshot(client, controlRef),
+    }
   } finally {
     if (runId && freshSession && !freshSession.closed && proof === undefined) {
       try {
@@ -423,6 +570,21 @@ export async function runCloudInteractionProof({
         'cloud interaction packed binary cleanup failed',
       )
     })
+  }
+  if (failureDiagnostic) {
+    process.stderr.write(
+      `BRAID_CLOUD_INTERACTION_DIAGNOSTIC_JSON=${safeJson(
+        {
+          ...failureDiagnostic,
+          cleanup: {
+            attempted: Boolean(client && runId),
+            confirmed: cleanup?.confirmed === true,
+            mode: diagnosticToken(cleanup?.mode),
+          },
+        },
+        environment,
+      )}\n`,
+    )
   }
   if (failure) throw failure
   assert.equal(cleanup?.confirmed, true, 'cloud interaction resource cleanup was not confirmed')

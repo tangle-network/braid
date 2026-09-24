@@ -6,7 +6,10 @@ import {
 } from '@tangle-network/agent-interface'
 import {
   assertCloudInteractionEvidence,
+  cloudInteractionFailureSnapshot,
+  cloudProviderFailureProjection,
   cloudQuestionResponse,
+  refreshBraidFailureState,
   retainedCloudQuestionRequest,
 } from '../scripts/live-required/tangle-sandbox-braid-cloud-interaction.mjs'
 
@@ -188,5 +191,95 @@ test('cloud proof rejects duplicate or unacknowledged response and missing conti
         terminalState: { runs: [{ id: 'run-1', status: 'waiting' }] },
       }),
     /did not continue/u,
+  )
+})
+
+test('failed cloud question retains bounded state and provider status without prompt or credential text', () => {
+  const secret = 'test-secret-must-not-appear'
+  const responses = [
+    {
+      type: 'state',
+      revision: 17,
+      sequence: 18,
+      state: {
+        runs: [
+          {
+            id: 'run-1',
+            status: 'failed',
+            complete: true,
+            error: secret,
+            interactions: [{ status: 'pending', request: { kind: 'question', title: secret } }],
+          },
+        ],
+      },
+    },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      type: 'event',
+      sequence: index + 1,
+      event: {
+        kind: index === 29 ? 'run.finished' : 'run.part.updated',
+        payload: { runId: 'run-1', text: secret, value: { text: secret } },
+      },
+    })),
+  ]
+  const braid = cloudInteractionFailureSnapshot(responses, 'run-1', true)
+  assert.equal(braid.questionRequested, true)
+  assert.equal(braid.responseCount, 31)
+  assert.equal(braid.runEventCount, 30)
+  assert.equal(braid.lastEvents.length, 24)
+  assert.equal(braid.eventCounts['run.finished'], 1)
+  assert.equal(braid.latestState.status, 'failed')
+  assert.deepEqual(braid.latestState.interactions, [{ kind: 'question', status: 'pending' }])
+
+  const provider = cloudProviderFailureProjection(
+    {
+      status: 'failed',
+      failureReason: { code: 'runner_failed', message: `provider rejected ${secret}` },
+      raw: { token: secret },
+    },
+    Array.from({ length: 10 }, (_, index) => ({
+      executionId: `execution-${index}`,
+      status: 'failed',
+      eventCount: index + 1,
+      output: secret,
+    })),
+  )
+  assert.equal(provider.sessionStatus, 'failed')
+  assert.equal(provider.failureCode, 'runner_failed')
+  assert.equal(provider.executionCount, 10)
+  assert.equal(provider.executions.length, 8)
+  assert.equal(Object.hasOwn(provider, 'failureMessage'), false)
+  assert.doesNotMatch(JSON.stringify({ braid, provider }), /test-secret-must-not-appear/u)
+})
+
+test('failure diagnostic refreshes the live Braid run state with a bounded read', async () => {
+  let requested
+  const session = {
+    closed: false,
+    send(request) {
+      requested = request
+    },
+    async waitFor(label, predicate, timeoutMs) {
+      assert.equal(label, 'cloud interaction failure state')
+      assert.equal(timeoutMs, 5_000)
+      assert.equal(predicate({ type: 'state', requestId: requested.requestId }), true)
+      return { type: 'state', requestId: requested.requestId }
+    },
+  }
+  assert.deepEqual(await refreshBraidFailureState(session), { attempted: true, received: true })
+  assert.equal(requested.command, 'get_state')
+  assert.deepEqual(requested.params, { projection: 'full' })
+  assert.deepEqual(await refreshBraidFailureState({ closed: true }), {
+    attempted: false,
+    received: false,
+  })
+  assert.deepEqual(
+    await refreshBraidFailureState({
+      closed: false,
+      send() {
+        throw Object.assign(new Error('provider secret'), { code: 'RPC_INPUT_CLOSED' })
+      },
+    }),
+    { attempted: true, received: false, reasonCode: 'RPC_INPUT_CLOSED' },
   )
 })
