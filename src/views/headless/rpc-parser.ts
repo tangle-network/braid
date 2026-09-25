@@ -7,7 +7,6 @@ import {
 import {
   BRAID_PROTOCOL_VERSION,
   type BraidRequest,
-  type GenericRpcRequest,
   type RpcCommandName,
 } from './protocol.js'
 import {
@@ -333,9 +332,9 @@ function assertCommand(value: unknown): value is RpcCommandName {
 
 function genericRequest(
   value: Record<string, unknown>,
-  command: GenericRpcRequest['command'],
+  command: Exclude<RpcCommandName, 'initialize' | 'get_state' | 'send' | 'shutdown'>,
   params: Record<string, unknown>,
-): GenericRpcRequest {
+): BraidRequest {
   const operationId = value.operationId
   if (operationId !== undefined && (typeof operationId !== 'string' || operationId.length === 0)) {
     throw new RpcParseError('INVALID_OPERATION_ID', 'operationId must be a non-empty string')
@@ -349,7 +348,7 @@ function genericRequest(
     command,
     params,
     ...(typeof operationId === 'string' ? { operationId } : {}),
-  } as GenericRpcRequest
+  } as BraidRequest
 }
 
 export function parseRequest(line: string): BraidRequest {
