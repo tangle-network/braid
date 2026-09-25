@@ -50,13 +50,52 @@ export interface ShutdownRequest {
   }
 }
 
-export interface GenericRpcRequest {
+type SpecializedRpcCommand =
+  | 'initialize'
+  | 'get_state'
+  | 'send'
+  | 'shutdown'
+  | 'queue'
+  | 'steer'
+  | 'cancel'
+  | 'detach'
+  | 'reconnect'
+  | 'reconcile'
+
+type GenericRpcCommand = Exclude<RpcCommandName, SpecializedRpcCommand>
+
+type ReadOnlyGenericRpcCommand =
+  | 'subscribe'
+  | 'unsubscribe'
+  | 'list_profiles'
+  | 'validate_profile'
+  | 'list_connections'
+  | 'list_conversations'
+  | 'automation_list'
+  | 'get_graph'
+  | 'get_activity'
+  | 'get_details'
+  | 'refresh_supervision'
+
+type MutatingGenericRpcCommand = Exclude<GenericRpcCommand, ReadOnlyGenericRpcCommand>
+
+interface GenericRpcRequestBase {
   readonly version: 1
   readonly requestId: string
-  readonly operationId?: string
-  readonly command: Exclude<RpcCommandName, 'initialize' | 'get_state' | 'send' | 'shutdown'>
   readonly params: Readonly<Record<string, unknown>>
 }
+
+export interface ReadOnlyGenericRpcRequest extends GenericRpcRequestBase {
+  readonly command: ReadOnlyGenericRpcCommand
+  readonly operationId?: string
+}
+
+export interface MutatingGenericRpcRequest extends GenericRpcRequestBase {
+  readonly command: MutatingGenericRpcCommand
+  readonly operationId: string
+}
+
+export type GenericRpcRequest = ReadOnlyGenericRpcRequest | MutatingGenericRpcRequest
 
 interface RunControlRequestBase {
   readonly version: 1
@@ -69,7 +108,11 @@ interface RunControlRequestBase {
 
 export interface QueueRequest extends RunControlRequestBase {
   readonly command: 'queue'
-  readonly params: { readonly runId?: string; readonly text: string }
+  readonly params: {
+    readonly conversationId?: string
+    readonly branchId?: string
+    readonly text: string
+  }
 }
 
 export interface SteerRequest extends RunControlRequestBase {
