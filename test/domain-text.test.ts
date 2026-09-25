@@ -118,9 +118,14 @@ test('regression: quoted, escaped and prefixed secret names never leak at any st
     assert.doesNotMatch(redactSensitiveText(input), new RegExp(canary), `batch: ${input}`)
     for (let split = 0; split <= input.length; split += 1) {
       const chunks = [input.slice(0, split), input.slice(split)]
-      assert.doesNotMatch(sanitizeTextChunks(chunks), new RegExp(canary), `chunks@${split}: ${input}`)
+      assert.doesNotMatch(
+        sanitizeTextChunks(chunks),
+        new RegExp(canary),
+        `chunks@${split}: ${input}`,
+      )
       const incremental = new IncrementalSecretTextSanitizer()
-      const streamed = chunks.map((chunk) => incremental.push(chunk)).join('') + incremental.finish()
+      const streamed =
+        chunks.map((chunk) => incremental.push(chunk)).join('') + incremental.finish()
       assert.doesNotMatch(streamed, new RegExp(canary), `incremental@${split}: ${input}`)
     }
   }
@@ -139,7 +144,9 @@ test('regression: the README first run creates a profile Braid can load', async 
   const workspace = mkdtempSync(join(tmpdir(), 'braid-readme-first-run-'))
   mkdirSync(join(workspace, '.braid'))
   writeFileSync(join(workspace, '.braid', 'profile.json'), `${block[1]}\n`)
-  const [source] = trustedProfileSources({ workspace } as Parameters<typeof trustedProfileSources>[0])
+  const [source] = trustedProfileSources({ workspace } as Parameters<
+    typeof trustedProfileSources
+  >[0])
   assert.ok(source)
   const record = await resolveProfileSource(source)
   assert.equal(record.profile.name, 'Coding agent')

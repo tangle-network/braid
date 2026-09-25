@@ -37,10 +37,13 @@ function legacyCredentialOriginAllowed(
 ): boolean {
   const origin = new URL(endpoint).origin
   if (record.kind === 'tangle-sandbox')
-    return origin === new URL(options.defaultSandboxEndpoint ?? DEFAULT_TANGLE_SANDBOX_ENDPOINT).origin
+    return (
+      origin === new URL(options.defaultSandboxEndpoint ?? DEFAULT_TANGLE_SANDBOX_ENDPOINT).origin
+    )
   if (record.kind === 'tangle-inference')
     return (
-      origin === new URL(options.defaultInferenceEndpoint ?? DEFAULT_TANGLE_INFERENCE_ENDPOINT).origin
+      origin ===
+      new URL(options.defaultInferenceEndpoint ?? DEFAULT_TANGLE_INFERENCE_ENDPOINT).origin
     )
   return isLoopbackEndpoint(endpoint)
 }

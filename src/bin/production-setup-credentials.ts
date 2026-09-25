@@ -306,10 +306,7 @@ export async function prepareProductionSelection(
     : Buffer.from(configuredAuth ?? '', 'utf8')
   // The stored value names the origin it authenticates; a later endpoint edit needs setup again.
   const secret = Buffer.from(
-    bindCredentialToOrigin(
-      plainSecret,
-      connectionEndpoint(selection.connection),
-    ),
+    bindCredentialToOrigin(plainSecret, connectionEndpoint(selection.connection)),
   )
   plainSecret.fill(0)
   try {
