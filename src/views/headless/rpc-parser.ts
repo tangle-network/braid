@@ -333,7 +333,7 @@ function assertCommand(value: unknown): value is RpcCommandName {
 
 function genericRequest(
   value: Record<string, unknown>,
-  command: Exclude<RpcCommandName, 'initialize' | 'get_state' | 'send' | 'shutdown'>,
+  command: GenericRpcRequest['command'],
   params: Record<string, unknown>,
 ): GenericRpcRequest {
   const operationId = value.operationId
