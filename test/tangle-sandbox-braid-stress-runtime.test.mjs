@@ -6,8 +6,8 @@ import {
   assertExactRemoteStatus,
   assertRestartedCancellationRun,
   assertVerifiedProcessCleanup,
-  cleanupOwnedRetainedResources,
   closeBraidWithProof,
+  cleanupOwnedRetainedResources,
   telemetryDisclosure,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
 

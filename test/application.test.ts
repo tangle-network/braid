@@ -9,12 +9,12 @@ import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
+import { MemoryJournal } from '../src/app/journal.js'
+import { createProfileRecord } from '../src/app/profiles.js'
 import {
   createInteractionRequest,
   rebindInteractionRequest,
 } from '../src/app/interaction-request.js'
-import { MemoryJournal } from '../src/app/journal.js'
-import { createProfileRecord } from '../src/app/profiles.js'
 import { safeRuntimeDiagnostic } from '../src/app/provider-values.js'
 import { runEffectRequest } from '../src/app/run-admission.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'

@@ -6,10 +6,10 @@ import {
   type AgentEnvironmentCapabilities,
   type AgentProfile,
   type ContextTransferReceipt,
-  ContextTransferReceiptSchema,
-  ContextTransferRequestSchema,
   canonicalAgentProfileDigest,
   canonicalCandidateDigest,
+  ContextTransferReceiptSchema,
+  ContextTransferRequestSchema,
 } from '@tangle-network/agent-interface'
 
 const PROFILE_MATERIALIZATION_SCHEMA = 'cli-bridge.profile-materialization.v2'
