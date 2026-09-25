@@ -4,6 +4,7 @@ import { createServer, type IncomingHttpHeaders } from 'node:http'
 import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { type ExecutorFactory, streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
+import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import { createProductionConnectionAdapter } from '../src/adapters/connections/production-connections.js'
 import {
   BRAID_TANGLE_CLIENT,
@@ -42,10 +43,13 @@ function connection(kind: ConnectionKind, id: string, endpoint: string): Connect
   }
 }
 
-async function storedCredential(id: string) {
+async function storedCredential(id: string, endpoint: string) {
   const credentials = new MemoryCredentialStore()
   const ref = credentialRef(`cred:v1:${id}`)
-  await credentials.store({ ref, value: Buffer.from(`${id}-secret`) })
+  await credentials.store({
+    ref,
+    value: bindCredentialToOrigin(Buffer.from(`${id}-secret`), endpoint),
+  })
   return { credentials, credentialRefResolver: () => ref }
 }
 
@@ -93,7 +97,7 @@ test('tangle-inference turns send the client header through the Runtime Router t
     const inference = connection('tangle-inference', 'attribution-turn', router.endpoint)
     const backend = await createProductionBackendResolver({
       connections: new ConnectionRegistry([inference]),
-      ...(await storedCredential('attribution-turn')),
+      ...(await storedCredential('attribution-turn', router.endpoint)),
       select: () => ({ connection: { connectionId: inference.id } }),
     })({
       operationId: 'operation-attribution',
@@ -152,7 +156,11 @@ test('tangle-inference health and model verification identify Braid; CLI Bridge 
   }
   const inference = createProductionConnectionAdapter(
     connection('tangle-inference', 'attribution-health', 'https://router.test/v1'),
-    { ...(await storedCredential('attribution-health')), fetch: fetcher, now: () => at },
+    {
+      ...(await storedCredential('attribution-health', 'https://router.test')),
+      fetch: fetcher,
+      now: () => at,
+    },
   )
   await inference.health()
   await inference.verifyModel?.('gpt-5', { now: () => at })
@@ -164,7 +172,11 @@ test('tangle-inference health and model verification identify Braid; CLI Bridge 
   seen.length = 0
   const bridge = createProductionConnectionAdapter(
     connection('cli-bridge', 'attribution-bridge', 'http://127.0.0.1:4010'),
-    { ...(await storedCredential('attribution-bridge')), fetch: fetcher, now: () => at },
+    {
+      ...(await storedCredential('attribution-bridge', 'http://127.0.0.1:4010')),
+      fetch: fetcher,
+      now: () => at,
+    },
   )
   await bridge.health()
   assert.equal(seen.length, 1)

@@ -36,6 +36,7 @@ import {
   createTraceAnalysisAnalyst,
   type TraceAnalysisAdapterOptions,
 } from '../src/adapters/analysis/trace-analysis-adapter.js'
+import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import {
   BRAID_TANGLE_CLIENT,
   TANGLE_CLIENT_HEADER,
@@ -654,7 +655,10 @@ test('resolves the selected connection credential in memory and never exposes it
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:analysis-cloud')
   const secret = 'analysis-secret-never-persisted'
-  await credentials.store({ ref: portRef, value: Buffer.from(secret) })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from(secret), 'https://router.test'),
+  })
   const result = await createTraceAnalysisAdapter(
     baseOptions(selected, {
       credentials,
@@ -674,7 +678,10 @@ test('trace analysis forwards the injected router transport', async () => {
   const selected = connection('tangle-inference', 'router-transport', 'https://router.test', true)
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:router-transport')
-  await credentials.store({ ref: portRef, value: Buffer.from('router-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('router-secret'), 'https://router.test'),
+  })
   const options = baseOptions(selected, {
     credentials,
     credentialRefResolver: () => portRef,

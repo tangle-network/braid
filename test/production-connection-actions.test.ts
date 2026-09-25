@@ -3,6 +3,7 @@ import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import type { ProductionConnectionOptions } from '../src/adapters/connections/production-connections.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import type { BraidApplication } from '../src/app/application.js'
@@ -26,6 +27,13 @@ import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { type CredentialPort, type CredentialRef, credentialRef } from '../src/ports/credentials.js'
+
+/** Setup stores the secret bound to its endpoint origin; return the secret after checking the binding. */
+function storedSecret(bytes: Uint8Array): string {
+  const text = new TextDecoder().decode(bytes)
+  assert.match(text, /^braid-credential-v1\nhttps?:\/\/[^\n]+\n/u)
+  return text.slice(text.indexOf('\n', 'braid-credential-v1\n'.length) + 1)
+}
 
 const at = '2026-08-09T00:00:00.000Z'
 
@@ -326,7 +334,7 @@ test('create stores Tangle authentication by reference and updates config, catal
     }
     const handle = await fixture.credentials.resolve(storedRef)
     try {
-      assert.equal(new TextDecoder().decode(handle.read()), rawCredential)
+      assert.equal(storedSecret(handle.read()), rawCredential)
     } finally {
       handle.dispose()
     }
@@ -1063,7 +1071,10 @@ test('saved connection identity overrides stale journal data for list, select, a
   }
   await fixture.credentials.store({
     ref: portCredentialRef(newCredential),
-    value: Buffer.from('new-authoritative-secret'),
+    value: bindCredentialToOrigin(
+      Buffer.from('new-authoritative-secret'),
+      'https://new-authoritative.example.test',
+    ),
   })
   fixture.catalog.upsert(saved)
   await saveProductionStartupSelection(fixture.configPath, startupSelection(base), {
@@ -1141,7 +1152,7 @@ test('retrying the same create operation is idempotent across config, catalog, c
     if (created?.credentialRef === undefined) throw new Error('retry record has no credential ref')
     const stored = await fixture.credentials.resolve(portCredentialRef(created.credentialRef))
     try {
-      assert.equal(new TextDecoder().decode(stored.read()), originalCredential)
+      assert.equal(storedSecret(stored.read()), originalCredential)
     } finally {
       stored.dispose()
     }
@@ -1193,8 +1204,8 @@ test('the same create operation in two workspaces gets isolated credential refer
     const firstHandle = await sharedCredentials.resolve(portCredentialRef(firstRef))
     const secondHandle = await sharedCredentials.resolve(portCredentialRef(secondRef))
     try {
-      assert.equal(new TextDecoder().decode(firstHandle.read()), 'first-workspace-secret')
-      assert.equal(new TextDecoder().decode(secondHandle.read()), 'second-workspace-secret')
+      assert.equal(storedSecret(firstHandle.read()), 'first-workspace-secret')
+      assert.equal(storedSecret(secondHandle.read()), 'second-workspace-secret')
     } finally {
       firstHandle.dispose()
       secondHandle.dispose()

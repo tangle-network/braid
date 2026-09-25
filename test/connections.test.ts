@@ -215,7 +215,10 @@ test('health checks are read-only and classify HTTP responses without storing se
 
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:inference-health')
-  await credentials.store({ ref: portRef, value: Buffer.from('health-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('health-secret'), 'https://router.test'),
+  })
   const inference = createProductionConnectionAdapter(
     connection('tangle-inference', 'unauthorized', 'https://router.test', true),
     {
@@ -369,7 +372,10 @@ test('the capability document decides whether a route can answer an interaction'
 test('production resolver routes chat connections through agent-runtime', async () => {
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:resolver')
-  await credentials.store({ ref: portRef, value: Buffer.from('resolver-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('resolver-secret'), 'https://router.test'),
+  })
   const inference = connection('tangle-inference', 'resolver', 'https://router.test', true)
   const registry = new ConnectionRegistry([inference])
   const calls: Array<Record<string, unknown>> = []
@@ -405,7 +411,10 @@ test('CLI Bridge and sandbox resolvers expose only supported runtime backend sha
   const sandbox = connection('tangle-sandbox', 'sandbox', 'https://sandbox.test', true)
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox')
-  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('sandbox-secret'), 'https://sandbox.test'),
+  })
   let sandboxCreateOptions: Readonly<Record<string, unknown>> | undefined
   const clientFactory = async (_input: SandboxClientFactoryInput) => ({
     create: async (options?: Readonly<Record<string, unknown>>) => {
@@ -511,7 +520,10 @@ test('ephemeral sandbox creates carry the connection resource request', async ()
   const sandbox = { ...base, providerOptions: { ...base.providerOptions, resources } }
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox-resources')
-  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('sandbox-secret'), 'https://sandbox.test'),
+  })
   let sandboxCreateOptions: Readonly<Record<string, unknown>> | undefined
   let creates = 0
   const options: ProductionBackendResolverOptions = {
@@ -573,7 +585,10 @@ test('sandbox success=false fails closed despite a conflicting success status', 
   const sandbox = connection('tangle-sandbox', 'failed-turn', 'https://sandbox.test', true)
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox-failed-turn')
-  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('sandbox-secret'), 'https://sandbox.test'),
+  })
   let deleted = 0
   const options: ProductionBackendResolverOptions = {
     connections: new ConnectionRegistry([sandbox]),
@@ -647,7 +662,10 @@ test('ephemeral sandboxes reject interactions that cannot survive cleanup', asyn
       )
       const credentials = new MemoryCredentialStore()
       const portRef = credentialRef(`cred:v1:sandbox-${status}`)
-      await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+      await credentials.store({
+        ref: portRef,
+        value: bindCredentialToOrigin(Buffer.from('sandbox-secret'), 'https://sandbox.test'),
+      })
       let deleted = 0
       const options: ProductionBackendResolverOptions = {
         connections: new ConnectionRegistry([sandbox]),
@@ -741,7 +759,10 @@ test('sandbox creation receives the Runtime abort signal', { timeout: 2_000 }, a
   const sandbox = connection('tangle-sandbox', 'create-abort', 'https://sandbox.test', true)
   const credentials = new MemoryCredentialStore()
   const portRef = credentialRef('cred:v1:sandbox-create-abort')
-  await credentials.store({ ref: portRef, value: Buffer.from('sandbox-secret') })
+  await credentials.store({
+    ref: portRef,
+    value: bindCredentialToOrigin(Buffer.from('sandbox-secret'), 'https://sandbox.test'),
+  })
   let createStarted: (() => void) | undefined
   const started = new Promise<void>((resolve) => {
     createStarted = resolve

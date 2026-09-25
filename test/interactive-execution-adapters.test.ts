@@ -27,8 +27,8 @@ import {
   interactiveEnvironment,
   interactiveMaterializationReceipt,
 } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
-import { canonicalDigest } from '../src/domain/canonical.js'
 import { TangleRetainedInteractiveExecutionPort } from '../src/adapters/runtime/tangle-retained-interactive-execution.js'
+import { canonicalDigest } from '../src/domain/canonical.js'
 import type { RunAdmissionReceipt } from '../src/domain/receipts.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
