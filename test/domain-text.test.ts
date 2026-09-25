@@ -101,3 +101,28 @@ test('authorization schemes redact the credential after the scheme across stream
     }
   }
 })
+
+test('regression: quoted, escaped and prefixed secret names never leak at any stream split', async () => {
+  const { IncrementalSecretTextSanitizer } = await import('../src/domain/secret-sanitizer.js')
+  const canary = 'canary7Q3z'
+  const inputs = [
+    `{"token":"${canary}"}`,
+    `{"api_key": "${canary}"}`,
+    `{\\"token\\":\\"${canary}\\"}`,
+    `TANGLE_API_KEY=${canary}`,
+    `export OPENAI_API_KEY="${canary}"`,
+    `X-Api-Key: ${canary}`,
+    `'client_secret': '${canary}'`,
+  ]
+  for (const input of inputs) {
+    assert.doesNotMatch(redactSensitiveText(input), new RegExp(canary), `batch: ${input}`)
+    for (let split = 0; split <= input.length; split += 1) {
+      const chunks = [input.slice(0, split), input.slice(split)]
+      assert.doesNotMatch(sanitizeTextChunks(chunks), new RegExp(canary), `chunks@${split}: ${input}`)
+      const incremental = new IncrementalSecretTextSanitizer()
+      const streamed = chunks.map((chunk) => incremental.push(chunk)).join('') + incremental.finish()
+      assert.doesNotMatch(streamed, new RegExp(canary), `incremental@${split}: ${input}`)
+    }
+  }
+  assert.equal(redactSensitiveText('sort order: ascending'), 'sort order: ascending')
+})
