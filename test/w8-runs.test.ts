@@ -288,13 +288,14 @@ test('duplicate ingestion does not duplicate a part and a sequence gap waits for
     eventId: 'provider-4',
     sequence: 4,
     receivedAt: '2026-08-01T00:00:00.000Z',
-    event: { type: 'text_delta', text: 'D' },
+    event: { type: 'text_delta', text: 'D\n' },
   })
   assert.deepEqual(gap, { accepted: false, duplicate: false, sequenceGap: { from: 2, to: 3 } })
   for (const [sequence, text] of [
     [2, 'B'],
     [3, 'C'],
-    [4, 'D'],
+    // Streamed text is released a complete line at a time.
+    [4, 'D\n'],
   ] as const) {
     const result = app.ingestRuntimeEvent({
       runId: receipt.runId,
@@ -305,7 +306,7 @@ test('duplicate ingestion does not duplicate a part and a sequence gap waits for
     })
     assert.equal(result.accepted, true)
   }
-  assert.equal(app.state().messages[1]?.text, 'ABCD')
+  assert.equal(app.state().messages[1]?.text, 'ABCD\n')
   assert.equal(app.state().runs[0]?.eventCount, 4)
   release?.()
   app.cancelActive()

@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { canonicalCandidateJson } from '../adapters/agent-interface/profile-runtime.js'
-import { isLoopbackEndpoint } from '../adapters/connections/production-connection-endpoints.js'
+import { bindCredentialToOrigin } from '../adapters/connections/production-connection-credentials.js'
+import {
+  connectionEndpoint,
+  isLoopbackEndpoint,
+} from '../adapters/connections/production-connection-endpoints.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
 import {
   assertNoSymlinkPath,
@@ -297,9 +301,14 @@ export async function prepareProductionSelection(
     credentialId,
     portRef,
   })
-  const secret = hasSuppliedCredential
+  const plainSecret = hasSuppliedCredential
     ? Buffer.from(suppliedCredential)
     : Buffer.from(configuredAuth ?? '', 'utf8')
+  // The stored value names the origin it authenticates; a later endpoint edit needs setup again.
+  const secret = Buffer.from(
+    bindCredentialToOrigin(plainSecret, connectionEndpoint(selection.connection)),
+  )
+  plainSecret.fill(0)
   try {
     try {
       const storedRef = await store.store({

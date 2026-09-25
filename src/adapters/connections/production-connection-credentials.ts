@@ -2,8 +2,73 @@ import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { CredentialPort, CredentialRef } from '../../ports/credentials.js'
 import { credentialRef } from '../../ports/credentials.js'
-import { isLoopbackEndpoint } from './production-connection-endpoints.js'
+import {
+  DEFAULT_TANGLE_INFERENCE_ENDPOINT,
+  isLoopbackEndpoint,
+} from './production-connection-endpoints.js'
+import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from './production-connection-types.js'
 import type { ProductionConnectionOptions } from './production-connection-types.js'
+
+const BOUND_CREDENTIAL_HEADER = 'braid-credential-v1\n'
+
+/**
+ * Stores a secret together with the origin it was issued for. The binding lives
+ * in the operating-system credential store, so editing the workspace endpoint
+ * cannot redirect the secret to another origin.
+ */
+export function bindCredentialToOrigin(secret: Uint8Array, endpoint: string): Uint8Array {
+  const origin = new URL(endpoint).origin
+  const header = new TextEncoder().encode(`${BOUND_CREDENTIAL_HEADER}${origin}\n`)
+  const bound = new Uint8Array(header.length + secret.length)
+  bound.set(header, 0)
+  bound.set(secret, header.length)
+  return bound
+}
+
+/**
+ * Credentials stored before origin binding carry no origin. They stay usable
+ * only where they could have been issued: the connection kind's default Tangle
+ * origin, or a loopback CLI Bridge.
+ */
+function legacyCredentialOriginAllowed(
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+  endpoint: string,
+): boolean {
+  const origin = new URL(endpoint).origin
+  if (record.kind === 'tangle-sandbox')
+    return (
+      origin === new URL(options.defaultSandboxEndpoint ?? DEFAULT_TANGLE_SANDBOX_ENDPOINT).origin
+    )
+  if (record.kind === 'tangle-inference')
+    return (
+      origin ===
+      new URL(options.defaultInferenceEndpoint ?? DEFAULT_TANGLE_INFERENCE_ENDPOINT).origin
+    )
+  return isLoopbackEndpoint(endpoint)
+}
+
+function credentialForOrigin(
+  value: string,
+  record: ConnectionRecord,
+  options: ProductionConnectionOptions,
+  endpoint: string,
+): string {
+  if (!value.startsWith(BOUND_CREDENTIAL_HEADER)) {
+    if (legacyCredentialOriginAllowed(record, options, endpoint)) return value
+  } else {
+    const rest = value.slice(BOUND_CREDENTIAL_HEADER.length)
+    const newline = rest.indexOf('\n')
+    const boundOrigin = newline < 0 ? '' : rest.slice(0, newline)
+    const secret = newline < 0 ? '' : rest.slice(newline + 1).trim()
+    if (boundOrigin === new URL(endpoint).origin && secret.length > 0) return secret
+  }
+  throw new ConnectionError(
+    'CONNECTION_CREDENTIAL_REAUTH_REQUIRED',
+    'The stored credential was not issued for this endpoint origin; run setup to authenticate the new endpoint',
+    { connectionId: record.id },
+  )
+}
 
 export async function readConnectionCredential(
   record: ConnectionRecord,
@@ -36,7 +101,7 @@ export async function readConnectionCredential(
         { connectionId: record.id },
       )
     }
-    return value
+    return credentialForOrigin(value, record, options, endpoint)
   } catch (error) {
     if (error instanceof ConnectionError) throw error
     throw new ConnectionError(

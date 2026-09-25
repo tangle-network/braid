@@ -101,3 +101,53 @@ test('authorization schemes redact the credential after the scheme across stream
     }
   }
 })
+
+test('regression: quoted, escaped and prefixed secret names never leak at any stream split', async () => {
+  const { IncrementalSecretTextSanitizer } = await import('../src/domain/secret-sanitizer.js')
+  const canary = 'canary7Q3z'
+  const inputs = [
+    `{"token":"${canary}"}`,
+    `{"api_key": "${canary}"}`,
+    `{\\"token\\":\\"${canary}\\"}`,
+    `TANGLE_API_KEY=${canary}`,
+    `export OPENAI_API_KEY="${canary}"`,
+    `X-Api-Key: ${canary}`,
+    `'client_secret': '${canary}'`,
+  ]
+  for (const input of inputs) {
+    assert.doesNotMatch(redactSensitiveText(input), new RegExp(canary), `batch: ${input}`)
+    for (let split = 0; split <= input.length; split += 1) {
+      const chunks = [input.slice(0, split), input.slice(split)]
+      assert.doesNotMatch(
+        sanitizeTextChunks(chunks),
+        new RegExp(canary),
+        `chunks@${split}: ${input}`,
+      )
+      const incremental = new IncrementalSecretTextSanitizer()
+      const streamed =
+        chunks.map((chunk) => incremental.push(chunk)).join('') + incremental.finish()
+      assert.doesNotMatch(streamed, new RegExp(canary), `incremental@${split}: ${input}`)
+    }
+  }
+  assert.equal(redactSensitiveText('sort order: ascending'), 'sort order: ascending')
+})
+
+test('regression: the README first run creates a profile Braid can load', async () => {
+  const { readFileSync, mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { trustedProfileSources } = await import('../src/bin/production-profile-projection.js')
+  const { resolveProfileSource } = await import('../src/app/profile-sources.js')
+  const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
+  const block = /cat > \.braid\/profile\.json <<'EOF'\n([\s\S]*?)\nEOF\n/u.exec(readme)
+  assert.ok(block?.[1], 'README must show how to create .braid/profile.json before the first run')
+  const workspace = mkdtempSync(join(tmpdir(), 'braid-readme-first-run-'))
+  mkdirSync(join(workspace, '.braid'))
+  writeFileSync(join(workspace, '.braid', 'profile.json'), `${block[1]}\n`)
+  const [source] = trustedProfileSources({ workspace } as Parameters<
+    typeof trustedProfileSources
+  >[0])
+  assert.ok(source)
+  const record = await resolveProfileSource(source)
+  assert.equal(record.profile.name, 'Coding agent')
+})

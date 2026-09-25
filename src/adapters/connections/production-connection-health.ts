@@ -238,7 +238,8 @@ function healthFromError(error: unknown, checkedAt: IsoDateTime): ConnectionHeal
       error.code === 'CONNECTION_CREDENTIAL_REQUIRED' ||
       error.code === 'CONNECTION_CREDENTIAL_REF_UNMAPPED' ||
       error.code === 'CONNECTION_CREDENTIAL_UNAVAILABLE' ||
-      error.code === 'CONNECTION_CREDENTIAL_INVALID'
+      error.code === 'CONNECTION_CREDENTIAL_INVALID' ||
+      error.code === 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED'
     ) {
       return {
         status: 'unauthorized',
@@ -322,7 +323,8 @@ function modelVerificationFromError(
       error.code === 'CONNECTION_CREDENTIAL_REQUIRED' ||
       error.code === 'CONNECTION_CREDENTIAL_REF_UNMAPPED' ||
       error.code === 'CONNECTION_CREDENTIAL_UNAVAILABLE' ||
-      error.code === 'CONNECTION_CREDENTIAL_INVALID'
+      error.code === 'CONNECTION_CREDENTIAL_INVALID' ||
+      error.code === 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED'
     ) {
       return {
         model,

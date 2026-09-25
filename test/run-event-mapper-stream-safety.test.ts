@@ -176,13 +176,14 @@ test('incremental controls remain suppressed across OSC and CSI boundaries, incl
 test('stream finalization preserves pending safe text and resets the run', () => {
   const sanitizer = new ApplicationStreamSanitizer()
   const runId = 'finalize-stream'
-  assert.equal(mappedText(sanitizer, runId, 1, 'safe Bearer '), 'safe ')
-  assert.equal(mappedText(sanitizer, runId, 2, `${BEARER_CANARY} tail`), '[redacted bearer] tail')
+  // Text is released a line at a time, so completeness is asserted over the whole stream.
+  const head = mappedText(sanitizer, runId, 1, 'safe Bearer ')
+  const body = mappedText(sanitizer, runId, 2, `${BEARER_CANARY} tail`)
   assert.equal(sanitizer.activeStreamCount, 1)
-  assert.equal(sanitizer.finish(runId, 'text'), '')
+  assert.equal(`${head}${body}${sanitizer.finish(runId, 'text')}`, 'safe [redacted bearer] tail')
   sanitizer.reset(runId)
   assert.equal(sanitizer.activeStreamCount, 0)
-  assert.equal(mappedText(sanitizer, runId, 1, 'new stream'), 'new stream')
+  assert.equal(mappedText(sanitizer, runId, 1, 'new stream\n'), 'new stream\n')
 })
 
 test('interleaved streams and application instances never share sanitizer state', () => {
@@ -192,9 +193,8 @@ test('interleaved streams and application instances never share sanitizer state'
   const firstPrefix = mappedText(first, runId, 1, 'token=')
   const secondBody = mappedText(second, runId, 1, ASSIGNMENT_CANARY)
   const firstBody = mappedText(first, runId, 2, `${ASSIGNMENT_CANARY} tail`)
-  assert.equal(firstPrefix, '[redacted secret]')
-  assert.equal(secondBody, ASSIGNMENT_CANARY)
-  assert.equal(firstBody, ' tail')
+  assert.equal(`${firstPrefix}${firstBody}${first.finish(runId, 'text')}`, '[redacted secret] tail')
+  assert.equal(`${secondBody}${second.finish(runId, 'text')}`, ASSIGNMENT_CANARY)
 
   const interleaved = new ApplicationStreamSanitizer()
   const runA = mappedText(interleaved, 'run-a', 1, 'Bearer ')

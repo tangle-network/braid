@@ -24,6 +24,7 @@ import {
   portableBridgeModel,
   qualifyBridgeProfileModel,
 } from '../src/adapters/connections/cli-bridge-model-route.js'
+import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveProductionCliBridgeConnection } from '../src/adapters/runtime/production-backend-resolver.js'
@@ -298,7 +299,10 @@ test('normal composition streams a configured Tangle inference turn through agen
   const record = connection('tangle-inference', 'cloud', 'https://router.test', true)
   const credentials = new MemoryCredentialStore()
   const ref = credentialRef('cred:v1:credential-cloud')
-  await credentials.store({ ref, value: Buffer.from('test-only-provider-secret') })
+  await credentials.store({
+    ref,
+    value: bindCredentialToOrigin(Buffer.from('test-only-provider-secret'), 'https://router.test'),
+  })
   const calls: Array<Record<string, unknown>> = []
   const result = await runProductionTurn(
     composition(
