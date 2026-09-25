@@ -5,7 +5,6 @@ export const SECRET_TRUNCATION_MARKER = '… [truncated]'
 const MAX_PENDING_BYTES = 4096
 const MAX_LOOKBEHIND_CHARS = 1024
 const BIDI_CONTROLS = /\p{Bidi_Control}/gu
-const BIDI_CHARACTER = /\p{Bidi_Control}/u
 // A secret name may sit inside JSON quotes (escaped or not) and may carry an
 // identifier prefix such as TANGLE_API_KEY or X-Api-Key; the value may be quoted.
 const SECRET_NAME_SOURCE = String.raw`(?:\\?["'])?(?:[A-Za-z0-9]+[_.-])*(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_ -]*key|access[_ -]*key|private[_ -]*key|client[_ -]*secret|signature|cookie|header|query|fragment)(?:\\?["'])?`
@@ -33,69 +32,9 @@ const INCOMPLETE_ASSIGNMENT = new RegExp(
 const INCOMPLETE_BARE_CREDENTIAL =
   /(?:sk-|github_pat_|gh[pousr]_|AKIA|AIza|xox[baprs]-)[A-Za-z0-9_-]*$/u
 
-const STREAM_BEARER_PREFIX = 'bearer'
-const STREAM_URL_PREFIXES = ['http://', 'https://'] as const
-const STREAM_SECRET_NAMES = [
-  'password',
-  'passwd',
-  'passphrase',
-  'token',
-  'secret',
-  'credential',
-  'authorization',
-  'auth',
-  'key',
-  'api_key',
-  'api-key',
-  'api key',
-  'access_key',
-  'access-key',
-  'access key',
-  'private_key',
-  'private-key',
-  'private key',
-  'client_secret',
-  'client-secret',
-  'client secret',
-  'signature',
-  'cookie',
-  'header',
-  'query',
-  'fragment',
-] as const
-const STREAM_BARE_PREFIXES = [
-  { prefix: 'sk-', minimumBodyBytes: 20 },
-  { prefix: 'github_pat_', minimumBodyBytes: 20 },
-  { prefix: 'ghp_', minimumBodyBytes: 20 },
-  { prefix: 'gho_', minimumBodyBytes: 20 },
-  { prefix: 'ghu_', minimumBodyBytes: 20 },
-  { prefix: 'ghs_', minimumBodyBytes: 20 },
-  { prefix: 'ghr_', minimumBodyBytes: 20 },
-  { prefix: 'AKIA', minimumBodyBytes: 16 },
-  { prefix: 'AIza', minimumBodyBytes: 30 },
-  { prefix: 'xoxb-', minimumBodyBytes: 20 },
-  { prefix: 'xoxa-', minimumBodyBytes: 20 },
-  { prefix: 'xoxp-', minimumBodyBytes: 20 },
-  { prefix: 'xoxr-', minimumBodyBytes: 20 },
-  { prefix: 'xoxs-', minimumBodyBytes: 20 },
-] as const
 const STREAM_MAX_PENDING_BYTES = 4096
 
 type PendingSecret = 'bearer' | 'assignment' | 'bare' | 'url'
-
-type IncrementalRedactionState =
-  | 'normal'
-  | 'candidate'
-  | 'assignment-gap'
-  | 'assignment-value'
-  | 'assignment-scheme-gap'
-  | 'assignment-scheme-token'
-  | 'bearer-gap'
-  | 'bearer-discard'
-  | 'bare-token'
-  | 'bare-discard'
-  | 'url-body'
-  | 'url-discard'
 
 function isHighSurrogate(character: string): boolean {
   return (
@@ -107,73 +46,6 @@ function isLowSurrogate(character: string): boolean {
   return (
     character.length === 1 && character.charCodeAt(0) >= 0xdc00 && character.charCodeAt(0) <= 0xdfff
   )
-}
-
-function isStreamAssignmentBoundary(character: string | undefined): boolean {
-  return character === undefined || /[\s,;{[(]/u.test(character)
-}
-
-function isStreamBearerBoundary(character: string | undefined): boolean {
-  return character === undefined || !/[A-Za-z0-9_]/u.test(character)
-}
-
-function isStreamUrlCharacter(character: string): boolean {
-  const code = character.codePointAt(0) ?? 0
-  return code > 0x20 && code !== 0x7f && !/[<>"']/u.test(character)
-}
-
-function isStreamAssignmentDelimiter(character: string): boolean {
-  return /[\s,;}\])}]/u.test(character)
-}
-
-function isStreamBearerDelimiter(character: string): boolean {
-  return /[\s,;]/u.test(character)
-}
-
-function isStreamBareCharacter(character: string): boolean {
-  return /[A-Za-z0-9_-]/u.test(character)
-}
-
-function streamCaseInsensitivePrefix(value: string, prefix: string): boolean {
-  return prefix.startsWith(value.toLowerCase())
-}
-
-function streamCandidateIsPrefix(value: string): boolean {
-  return (
-    streamCaseInsensitivePrefix(value, STREAM_BEARER_PREFIX) ||
-    STREAM_URL_PREFIXES.some((prefix) => streamCaseInsensitivePrefix(value, prefix)) ||
-    streamSecretNameIsPrefix(value) ||
-    STREAM_BARE_PREFIXES.some(({ prefix }) => prefix.startsWith(value))
-  )
-}
-
-function streamAssignmentName(value: string): boolean {
-  return STREAM_SECRET_NAMES.some((name) => streamSecretNameMatches(value, name, true))
-}
-
-function streamSecretNameIsPrefix(value: string): boolean {
-  if (value.length === 0) return false
-  return STREAM_SECRET_NAMES.some((name) => streamSecretNameMatches(value, name, false))
-}
-
-function streamSecretNameMatches(value: string, name: string, complete: boolean): boolean {
-  const words = name.split(/[_ -]+/u)
-  const lowerValue = value.toLowerCase()
-  let offset = 0
-  for (const [index, word] of words.entries()) {
-    if (offset === lowerValue.length) return !complete || index < words.length
-    const remainder = lowerValue.slice(offset)
-    if (remainder.length < word.length) return !complete && word.startsWith(remainder)
-    if (!remainder.startsWith(word)) return false
-    offset += word.length
-    if (index === words.length - 1) return offset === lowerValue.length
-    while (offset < lowerValue.length && /[_ -]/u.test(lowerValue[offset] ?? '')) offset += 1
-  }
-  return !complete && offset === lowerValue.length
-}
-
-function streamBarePrefix(value: string): (typeof STREAM_BARE_PREFIXES)[number] | undefined {
-  return STREAM_BARE_PREFIXES.find(({ prefix }) => prefix === value)
 }
 
 function isUrlDelimiter(character: string | undefined): boolean {
