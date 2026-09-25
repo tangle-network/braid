@@ -349,7 +349,7 @@ function genericRequest(
     command,
     params,
     ...(typeof operationId === 'string' ? { operationId } : {}),
-  }
+  } as GenericRpcRequest
 }
 
 export function parseRequest(line: string): BraidRequest {
