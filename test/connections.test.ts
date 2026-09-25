@@ -3,6 +3,10 @@ import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { createCliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import { streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
+import {
+  bindCredentialToOrigin,
+  readConnectionCredential,
+} from '../src/adapters/connections/production-connection-credentials.js'
 import { normalizeTangleInferenceRuntimeBaseUrl } from '../src/adapters/connections/production-connection-endpoints.js'
 import {
   createProductionConnectionAdapter,
@@ -834,4 +838,30 @@ test('CLI Bridge materializes portable models into routes and rejects incompatib
   } finally {
     await bridgeServer.close()
   }
+})
+
+test('regression: a stored credential is released only to the origin it was issued for', async () => {
+  const credentials = new MemoryCredentialStore()
+  const boundRef = credentialRef('cred:v1:bound')
+  const legacyRef = credentialRef('cred:v1:legacy')
+  await credentials.store({
+    ref: boundRef,
+    value: bindCredentialToOrigin(Buffer.from('bound-secret'), 'https://router.tangle.tools/v1'),
+  })
+  await credentials.store({ ref: legacyRef, value: Buffer.from('legacy-secret') })
+  const read = (ref: typeof boundRef, endpoint: string) =>
+    readConnectionCredential(
+      connection('tangle-inference', 'origin-binding', endpoint, true),
+      { credentials, credentialRefResolver: () => ref },
+      endpoint,
+    )
+  assert.equal(await read(boundRef, 'https://router.tangle.tools'), 'bound-secret')
+  // An edited workspace endpoint keeps the same credential reference; the secret must not follow it.
+  await assert.rejects(read(boundRef, 'https://attacker.example'), {
+    code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED',
+  })
+  assert.equal(await read(legacyRef, 'https://router.tangle.tools'), 'legacy-secret')
+  await assert.rejects(read(legacyRef, 'https://attacker.example'), {
+    code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED',
+  })
 })
