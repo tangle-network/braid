@@ -126,3 +126,21 @@ test('regression: quoted, escaped and prefixed secret names never leak at any st
   }
   assert.equal(redactSensitiveText('sort order: ascending'), 'sort order: ascending')
 })
+
+test('regression: the README first run creates a profile Braid can load', async () => {
+  const { readFileSync, mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { trustedProfileSources } = await import('../src/bin/production-profile-projection.js')
+  const { resolveProfileSource } = await import('../src/app/profile-sources.js')
+  const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
+  const block = /cat > \.braid\/profile\.json <<'EOF'\n([\s\S]*?)\nEOF\n/u.exec(readme)
+  assert.ok(block?.[1], 'README must show how to create .braid/profile.json before the first run')
+  const workspace = mkdtempSync(join(tmpdir(), 'braid-readme-first-run-'))
+  mkdirSync(join(workspace, '.braid'))
+  writeFileSync(join(workspace, '.braid', 'profile.json'), `${block[1]}\n`)
+  const [source] = trustedProfileSources({ workspace } as Parameters<typeof trustedProfileSources>[0])
+  assert.ok(source)
+  const record = await resolveProfileSource(source)
+  assert.equal(record.profile.name, 'Coding agent')
+})

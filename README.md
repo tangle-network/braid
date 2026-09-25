@@ -32,10 +32,26 @@ The published package currently targets Linux and macOS.
 
 ```bash
 npm install --global @tangle-network/braid
+```
+
+Braid runs an `AgentProfile` from your workspace.
+A clean workspace has none, so create one before the first run:
+
+```bash
+mkdir -p .braid
+cat > .braid/profile.json <<'EOF'
+{
+  "name": "Coding agent",
+  "harness": "opencode",
+  "model": { "provider": "tangle-router", "default": "tangle-router/glm-5.3" },
+  "prompt": { "instructions": ["Inspect the repository before changing it."] }
+}
+EOF
 braid
 ```
 
-The first-run flow selects an `AgentProfile` and a connection.
+Braid also reads `braid.profile.json`, or any file passed with `--profile <path>`.
+The first-run flow selects that `AgentProfile` and a connection.
 
 A connection supplies transport and credential references.
 
