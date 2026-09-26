@@ -47,6 +47,7 @@ export interface ConfigurationWizardOptions extends ConfigurationSessionOptions 
 export type TerminalConfigurationOptions = ConfigurationSessionOptions &
   Pick<ConfigurationWizardOptions, 'onCommit'> & {
     readonly openOnStart?: boolean
+    readonly onCancel?: () => void
     readonly confirmation?: ConfigurationWizardOptions['confirmation']
     readonly diagnostics?: readonly string[]
     readonly requiresCredential?: ConfigurationWizardOptions['requiresCredential']

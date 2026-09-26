@@ -375,3 +375,14 @@ An independent security review and static analysis run are required before the f
 | SE-10 | Deletion tests destroy the selected conversation key, find zero seeded marker after replay of every artifact readable by every active key, preserve graph tombstones, distinguish provider session, trace, checkpoint, and environment deletion, and never perform an unconfirmed external deletion. |
 | SE-11 | Dependency, provenance, license, static-analysis, and vulnerability checks have no unresolved critical or high finding in the release manifest. |
 | SE-12 | The exact packed candidate passes the threat fixtures, clean installation, and real frozen-trace `/ask` flow before release. |
+
+## Replace a connection credential
+
+Run `braid --reauthenticate` in the configured workspace.
+Keep the same configuration path and database key options.
+Select the connection and enter its new credential in the masked prompt.
+Review its destination before applying.
+CLI Bridge receives a bounded model check before Braid saves the credential.
+Tangle connections remain explicitly unverified until a real request succeeds.
+Braid keeps the existing conversation database.
+Cancel leaves the saved configuration unchanged.

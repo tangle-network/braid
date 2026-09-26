@@ -203,7 +203,10 @@ export class TerminalOverlayController {
       theme: this.#theme,
       requestRender: this.#requestRender,
       onComplete: () => {},
-      onCancel: () => this.#modals.closeTop(),
+      onCancel: () => {
+        this.#modals.closeTop()
+        configuration.onCancel?.()
+      },
     })
     this.#modals.open(wizard, { anchor: 'center', width: '82%', minWidth: 36, maxHeight: '90%' })
   }
