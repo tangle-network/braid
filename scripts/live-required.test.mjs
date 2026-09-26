@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { countProtectedWork, observeOwnedSandbox, ProtectedWork } from './proof-tools.mjs'
 import { connectionConfiguration } from './live-required/configuration.mjs'
 import {
   assertProofReceipt,
@@ -59,6 +60,21 @@ import { MULTIRUN_REQUIRED_PHASES } from './live-required/multirun-contract.mjs'
 import { readLiveTangleProof } from './release/live-tangle-proof.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+test('protected counters keep unobserved transport distinct from observed zero', async () => {
+  const work = new ProtectedWork(false)
+  await work.span('LIVE-09', 'observed-predicate', async () => countProtectedWork('polls'))
+  const unobserved = work.snapshot().rows.find((row) => row.row === 'LIVE-09').counters
+  assert.equal(unobserved.polls, 1)
+  assert.equal(unobserved.parentRequests, null)
+  assert.equal(unobserved.parentCreates, null)
+  await work.span('LIVE-07', 'owned-transport-observed', async () =>
+    observeOwnedSandbox({ fetch: () => Promise.resolve() }),
+  )
+  const observed = work.snapshot().rows.find((row) => row.row === 'LIVE-07').counters
+  assert.equal(observed.parentRequests, 0)
+  assert.equal(observed.parentCreates, 0)
+})
 
 test('cloud execution stress reports exact small-sample latency distributions', () => {
   assert.deepEqual(

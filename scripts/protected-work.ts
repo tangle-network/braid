@@ -9,6 +9,14 @@ type Counter =
   | 'parentRequests'
   | 'parentCreates'
   | 'censusBarriers'
+const COUNTERS: readonly Counter[] = [
+  'polls',
+  'frameRequests',
+  'stateRequests',
+  'parentRequests',
+  'parentCreates',
+  'censusBarriers',
+]
 interface Span {
   readonly row: Row
   readonly name: string
@@ -26,7 +34,7 @@ export class ProtectedWork {
   readonly startedAt = new Date().toISOString()
   readonly startedMs = performance.now()
   readonly #spans: Span[] = []
-  readonly #counts = new Map<Row, Record<Counter, number>>()
+  readonly #counts = new Map<Row, Partial<Record<Counter, number>>>()
   readonly #windows: ProofWindow[] = []
 
   constructor(
@@ -51,16 +59,15 @@ export class ProtectedWork {
     }
   }
 
+  observed(row: Row, ...counters: Counter[]): void {
+    const counts = this.#counts.get(row) ?? {}
+    for (const counter of counters) counts[counter] ??= 0
+    this.#counts.set(row, counts)
+  }
+
   count(row: Row, counter: Counter): void {
-    const counts = this.#counts.get(row) ?? {
-      polls: 0,
-      frameRequests: 0,
-      stateRequests: 0,
-      parentRequests: 0,
-      parentCreates: 0,
-      censusBarriers: 0,
-    }
-    counts[counter] += 1
+    const counts = this.#counts.get(row) ?? {}
+    counts[counter] = (counts[counter] ?? 0) + 1
     this.#counts.set(row, counts)
   }
 
@@ -77,7 +84,9 @@ export class ProtectedWork {
       proofWindows: this.#windows.map((window) => window.snapshot()),
       rows: rows.map((row) => ({
         row,
-        counters: this.#counts.get(row) ?? null,
+        counters: Object.fromEntries(
+          COUNTERS.map((counter) => [counter, this.#counts.get(row)?.[counter] ?? null]),
+        ),
         awaitedSpanCount: this.#spans.filter((span) => span.row === row).length,
         spans: this.#spans
           .filter((span) => span.row === row)
@@ -91,7 +100,8 @@ export class ProtectedWork {
       })),
       coverage: {
         polls: 'Instrumented proof-parent predicate evaluations only',
-        parentRequests: 'Actual proof-parent Sandbox.fetch requests; SDK retries counted',
+        parentRequests:
+          'Actual wrapped LIVE-07/LIVE-08 proof-parent Sandbox.fetch calls; SDK retries counted',
         parentCreates:
           'Actual proof-parent POST /v1/sandboxes; excludes packed children and fork allocations',
         fullSandboxCreateRequests: null,
@@ -99,6 +109,7 @@ export class ProtectedWork {
         serialWaitBarriers: null,
         runnerSlotSeconds: null,
         fullWorkflowWallSeconds: null,
+        missingCounters: 'Null means this row has no instrumented observation for that counter',
       },
     }
   }
@@ -143,6 +154,7 @@ export function observeOwnedSandbox<T extends object>(client: T): T {
   if (typeof original !== 'function')
     throw new Error('Sandbox transport observation is unavailable')
   const active = context.getStore()
+  active?.work.observed(active.row, 'parentRequests', 'parentCreates')
   const wrapped = (...args: unknown[]) => {
     active?.work.count(active.row, 'parentRequests')
     const options = args[1]

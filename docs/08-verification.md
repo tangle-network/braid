@@ -958,5 +958,6 @@ Counters cover actual instrumented predicate, state, frame, census-barrier and o
 Packed-child requests, full CREATE totals, runner occupancy and full workflow wall remain explicitly unmeasured in this artifact.
 Collect those boundaries separately before setting a CI ratchet.
 Never infer CREATE requests from unique environments or account cumulative usage.
+Unobserved row counters are null; zero requires an instrumented observation boundary.
 Validate counter changes against a complete protected wall before promoting a speed claim.
 The first target is under 11 minutes 40 seconds and at least 1.2x; the final target is under five minutes.
