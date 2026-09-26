@@ -1,5 +1,6 @@
 import { envKeyProvider } from '@tangle-network/agent-runtime/kernel'
 import type { CliOptions } from './args.js'
+import { DEFAULT_CLI_BRIDGE_ENDPOINT } from './production-bridge-client.js'
 import {
   createProductionCredentialContext,
   type ProductionCredentialContext,
@@ -28,6 +29,9 @@ export function createRuntimeStartupOptions(
           key: BRIDGE_MODEL_TOKEN_KEY,
           baseUrlKey: BRIDGE_MODEL_BASE_URL_KEY,
           provider: envKeyProvider(),
+          bridgeOrigin: new URL(
+            process.env.BRAID_CLI_BRIDGE_ENDPOINT ?? DEFAULT_CLI_BRIDGE_ENDPOINT,
+          ).origin,
         }
   const base: ProductionStartupLoadOptions = {
     workspace,

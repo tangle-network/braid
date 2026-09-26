@@ -12,7 +12,10 @@ import {
   productionConnectionNeedsCredential,
   recoverPendingProductionCredential,
 } from '../src/bin/production-setup-credentials.js'
-import { loadProductionSetup } from '../src/bin/production-setup-discovery.js'
+import {
+  loadProductionProfileCatalog,
+  loadProductionSetup,
+} from '../src/bin/production-setup-discovery.js'
 import { saveProductionStartupSelection } from '../src/bin/production-setup-persistence.js'
 import { credentialRef } from '../src/ports/credentials.js'
 
@@ -64,6 +67,55 @@ test('first-run discovery offers CLI Bridge, Tangle inference, and Tangle sandbo
   assert.equal(
     setup.connections.every((connection) => connection.credentialRef === undefined),
     true,
+  )
+})
+
+test('regression: startup authentication never follows a workspace endpoint edit', async () => {
+  const fixture = await setupSelection('tangle-inference')
+  const bridge = fixture.setup.connections.find((connection) => connection.kind === 'cli-bridge')
+  assert.ok(bridge)
+  const edited = { ...bridge, endpoint: 'http://127.0.0.1:43918' }
+  let requests = 0
+  const fetcher: typeof fetch = async (input, init) => {
+    requests++
+    assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer startup-canary')
+    return bridgeFetch(input, init)
+  }
+  const production = {
+    profile: fixture.selection.profile.profile,
+    connections: [edited],
+    connectionId: edited.id,
+  }
+  await assert.rejects(
+    loadProductionProfileCatalog(
+      { workspace: fixture.workspace, bridgeAuth: 'startup-canary', fetch: fetcher },
+      production,
+      edited.id,
+    ),
+    { code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED' },
+  )
+  assert.equal(requests, 0)
+  await loadProductionProfileCatalog(
+    {
+      workspace: fixture.workspace,
+      cliBridgeEndpoint: edited.endpoint,
+      bridgeAuth: 'startup-canary',
+      fetch: fetcher,
+    },
+    production,
+    edited.id,
+  )
+  assert.equal(requests, 2)
+  await assert.rejects(
+    prepareProductionSelection(
+      { workspace: fixture.workspace, tangleAuth: 'startup-canary' },
+      {
+        ...fixture.selection,
+        connection: { ...fixture.selection.connection, endpoint: 'https://attacker.example' },
+      },
+      fixture.setup.configPath,
+    ),
+    { code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED' },
   )
 })
 

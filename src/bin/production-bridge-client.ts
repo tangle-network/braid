@@ -6,6 +6,7 @@ import {
 import { redactSensitiveText } from '../domain/redaction.js'
 
 export const DEFAULT_BRIDGE_DISCOVERY_TIMEOUT_MS = 10_000
+export const DEFAULT_CLI_BRIDGE_ENDPOINT = 'http://127.0.0.1:3344'
 export const DEFAULT_MODEL_VALIDATION_TIMEOUT_MS = 60_000
 export const MAX_BRIDGE_DISCOVERY_BODY_BYTES = 1024 * 1024
 export const MAX_MODEL_VALIDATION_BODY_BYTES = 1024 * 1024

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { once } from 'node:events'
 import {
   access,
   chmod,
@@ -11,6 +12,8 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { join, relative } from 'node:path'
 import test from 'node:test'
 import {
@@ -28,6 +31,7 @@ import { bindCredentialToOrigin } from '../src/adapters/connections/production-c
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveProductionCliBridgeConnection } from '../src/adapters/runtime/production-backend-resolver.js'
+import { prepareCliBridgeProviderRoute } from '../src/adapters/runtime/production-cli-bridge-backend.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createBraidApplication,
@@ -222,6 +226,7 @@ test('retained CLI Bridge turns forward request-scoped model credentials only on
     const result = await runProductionTurn(
       composition(record, {
         bridgeModelCredential: {
+          bridgeOrigin: new URL(bridge.endpoint).origin,
           key: 'BRAID_TEST_MODEL_TOKEN',
           baseUrlKey: 'BRAID_TEST_MODEL_BASE_URL',
           provider: {
@@ -249,6 +254,86 @@ test('retained CLI Bridge turns forward request-scoped model credentials only on
     assert.equal(seen.baseUrl, 'https://chatgpt.com/backend-api')
   } finally {
     await bridge.close()
+  }
+
+  let redirectedRequests = 0
+  const destination = createServer((_request, response) => {
+    redirectedRequests += 1
+    response.writeHead(400).end('Synthetic request rejected')
+  })
+  destination.listen(0, '127.0.0.1')
+  await once(destination, 'listening')
+  const destinationEndpoint = `http://127.0.0.1:${(destination.address() as AddressInfo).port}`
+  const redirecting = createServer((request, response) => {
+    if (request.method === 'POST') {
+      response.writeHead(307, { location: `${destinationEndpoint}/v1/chat/completions` }).end()
+    } else {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(bridgeCapabilityDocument('opencode/gpt-5')))
+    }
+  })
+  redirecting.listen(0, '127.0.0.1')
+  await once(redirecting, 'listening')
+  try {
+    const endpoint = `http://127.0.0.1:${(redirecting.address() as AddressInfo).port}`
+    const record = connection('cli-bridge', 'redirect-model', endpoint)
+    const prepared = await prepareCliBridgeProviderRoute(
+      {
+        connections: new ConnectionRegistry([record]),
+        select: () => ({ connection: { connectionId: record.id } }),
+        bridgeModelCredential: {
+          bridgeOrigin: new URL(endpoint).origin,
+          key: 'token',
+          baseUrlKey: 'base-url',
+          provider: {
+            get: async (key) =>
+              key === 'token' ? 'redirect-model-canary' : 'https://router.tangle.tools',
+          },
+        },
+      },
+      record.id,
+      endpoint,
+      'opencode',
+      'opencode/gpt-5',
+    )
+    const environment = await prepared.provider.create({
+      profile: { name: 'Redirect refusal', harness: 'opencode', model: { default: 'gpt-5' } },
+      idempotencyKey: 'model-credential-redirect-refusal',
+    })
+    assert.ok(environment.dispatch)
+    await assert.rejects(environment.dispatch({ prompt: 'Synthetic redirect boundary' }))
+    assert.equal(redirectedRequests, 0, 'A model credential request must not follow another origin')
+    let credentialReads = 0
+    await assert.rejects(
+      prepareCliBridgeProviderRoute(
+        {
+          connections: new ConnectionRegistry([record]),
+          select: () => ({ connection: { connectionId: record.id } }),
+          bridgeModelCredential: {
+            bridgeOrigin: new URL(destinationEndpoint).origin,
+            key: 'token',
+            baseUrlKey: 'base-url',
+            provider: {
+              get: async () => {
+                credentialReads += 1
+                return 'redirect-model-canary'
+              },
+            },
+          },
+        },
+        record.id,
+        endpoint,
+        'opencode',
+        'opencode/gpt-5',
+      ),
+      /not authorized for the selected Bridge origin/u,
+    )
+    assert.equal(credentialReads, 0, 'An edited endpoint must fail before resolving a model token')
+  } finally {
+    await Promise.all([
+      new Promise<void>((resolve) => destination.close(() => resolve())),
+      new Promise<void>((resolve) => redirecting.close(() => resolve())),
+    ])
   }
 })
 
@@ -1508,7 +1593,7 @@ test('headless key-backed Bridge auth works without OS keyring and keeps credent
     }
 
     const orphan = await prepareProductionSelection(
-      { ...restartedOptions, bridgeAuth: 'orphan-headless-secret' },
+      { ...restartedOptions, cliBridgeEndpoint: endpoint, bridgeAuth: 'orphan-headless-secret' },
       selection,
       configPath,
     )

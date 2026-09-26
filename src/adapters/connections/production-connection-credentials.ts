@@ -2,11 +2,7 @@ import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { CredentialPort, CredentialRef } from '../../ports/credentials.js'
 import { credentialRef } from '../../ports/credentials.js'
-import {
-  DEFAULT_TANGLE_INFERENCE_ENDPOINT,
-  isLoopbackEndpoint,
-} from './production-connection-endpoints.js'
-import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from './production-connection-types.js'
+import { isLoopbackEndpoint } from './production-connection-endpoints.js'
 import type { ProductionConnectionOptions } from './production-connection-types.js'
 
 const BOUND_CREDENTIAL_HEADER = 'braid-credential-v1\n'
@@ -25,38 +21,8 @@ export function bindCredentialToOrigin(secret: Uint8Array, endpoint: string): Ui
   return bound
 }
 
-/**
- * Credentials stored before origin binding carry no origin. They stay usable
- * only where they could have been issued: the connection kind's default Tangle
- * origin, or a loopback CLI Bridge.
- */
-function legacyCredentialOriginAllowed(
-  record: ConnectionRecord,
-  options: ProductionConnectionOptions,
-  endpoint: string,
-): boolean {
-  const origin = new URL(endpoint).origin
-  if (record.kind === 'tangle-sandbox')
-    return (
-      origin === new URL(options.defaultSandboxEndpoint ?? DEFAULT_TANGLE_SANDBOX_ENDPOINT).origin
-    )
-  if (record.kind === 'tangle-inference')
-    return (
-      origin ===
-      new URL(options.defaultInferenceEndpoint ?? DEFAULT_TANGLE_INFERENCE_ENDPOINT).origin
-    )
-  return isLoopbackEndpoint(endpoint)
-}
-
-function credentialForOrigin(
-  value: string,
-  record: ConnectionRecord,
-  options: ProductionConnectionOptions,
-  endpoint: string,
-): string {
-  if (!value.startsWith(BOUND_CREDENTIAL_HEADER)) {
-    if (legacyCredentialOriginAllowed(record, options, endpoint)) return value
-  } else {
+function credentialForOrigin(value: string, record: ConnectionRecord, endpoint: string): string {
+  if (value.startsWith(BOUND_CREDENTIAL_HEADER)) {
     const rest = value.slice(BOUND_CREDENTIAL_HEADER.length)
     const newline = rest.indexOf('\n')
     const boundOrigin = newline < 0 ? '' : rest.slice(0, newline)
@@ -101,7 +67,7 @@ export async function readConnectionCredential(
         { connectionId: record.id },
       )
     }
-    return credentialForOrigin(value, record, options, endpoint)
+    return credentialForOrigin(value, record, endpoint)
   } catch (error) {
     if (error instanceof ConnectionError) throw error
     throw new ConnectionError(

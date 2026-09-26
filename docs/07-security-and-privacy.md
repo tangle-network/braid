@@ -89,6 +89,10 @@ Every response uses a stable operation identifier and waits for a provider ackno
 
 Credential values are stored in the operating-system credential facility and referenced by opaque identifier.
 
+Each stored connection credential carries its endpoint origin.
+A changed origin or an old credential without a binding requires authentication through setup.
+Startup credentials from environment variables use their trusted startup endpoint and cannot follow a workspace endpoint edit.
+
 macOS uses Keychain, Windows uses Credential Manager, and Linux uses the current supported Secret Service implementation.
 
 A Linux environment without a usable Secret Service cannot persist a credential silently.

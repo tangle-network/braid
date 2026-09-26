@@ -19,6 +19,7 @@ import {
 } from './production-bridge-client.js'
 import type { ProductionSetupVerification } from './production-setup-types.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 
 function validationTimeout(options: ProductionStartupLoadOptions): number {
   const timeout = options.modelValidationTimeoutMs ?? DEFAULT_MODEL_VALIDATION_TIMEOUT_MS
@@ -97,7 +98,8 @@ async function validationCredential(
   selection: ConfigurationSelection,
   endpoint: string,
 ): Promise<string | undefined> {
-  if (selection.connection.credentialRef === undefined) return options.bridgeAuth
+  if (selection.connection.credentialRef === undefined)
+    return startupCredentialForEndpoint(options, selection.connection.kind, endpoint)
   return readConnectionCredential(
     selection.connection,
     {
