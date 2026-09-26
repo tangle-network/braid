@@ -7,7 +7,6 @@ import {
   BRAID_PROTOCOL_VERSION,
   type BraidResponse,
   type ErrorResponse,
-  type GenericRpcRequest,
   type StateProjection,
 } from './protocol.js'
 import { linesOf, parseRequest, RpcParseError, requestIdOf } from './rpc-parser.js'
@@ -396,7 +395,7 @@ export async function runRpc(
             return 0
           }
           default: {
-            const generic = request as GenericRpcRequest
+            const generic = request
             const awaitControlCompletion =
               generic.command === 'cancel_run' || generic.command === 'detach'
             if (awaitControlCompletion) bufferedEvents = []
@@ -404,7 +403,7 @@ export async function runRpc(
               type: 'headless-command',
               command: generic.command,
               ...(generic.operationId ? { operationId: generic.operationId } : {}),
-              params: generic.params,
+              params: generic.params ?? {},
             })
             if (result.kind !== 'accepted') {
               await respond(errorResponse(result, request.requestId))
