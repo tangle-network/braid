@@ -389,6 +389,7 @@ class ProofRedactor {
   readonly #generic = new IncrementalSecretTextSanitizer(Number.MAX_SAFE_INTEGER)
   readonly #secrets: readonly string[]
   readonly #marker: string
+  readonly #maximumPending: number
   readonly #emit: (value: string) => void
   #literalPending = ''
   #suppressedBytes = 0
@@ -399,9 +400,11 @@ class ProofRedactor {
     minimum: number,
     marker: string,
     emit: (value: string) => void,
+    maximumPending = MAX_PENDING_CHARS,
   ) {
     this.#secrets = uniqueSecrets(secrets, minimum)
     this.#marker = marker
+    this.#maximumPending = maximumPending
     this.#emit = emit
   }
 
@@ -420,7 +423,7 @@ class ProofRedactor {
       const sanitized = this.#generic.push(part)
       this.#suppressedBytes =
         sanitized.length === 0 ? this.#suppressedBytes + Buffer.byteLength(part) : 0
-      if (this.#suppressedBytes > MAX_PENDING_CHARS) this.#close()
+      if (this.#suppressedBytes > this.#maximumPending) this.#close()
       else this.#literal(sanitized, false)
     }
   }
@@ -449,7 +452,7 @@ class ProofRedactor {
         if (length > 0) boundary = Math.min(boundary, value.length - length)
       }
     }
-    if (value.length - boundary > MAX_PENDING_CHARS) {
+    if (value.length - boundary > this.#maximumPending) {
       this.#close()
       return
     }
@@ -472,9 +475,15 @@ export class StreamingRedactor {
   #retained = ''
   #finished = false
   constructor(maxBytes = 256_000, _holdChars = 512, secrets: readonly unknown[] = []) {
-    this.#redactor = new ProofRedactor(secrets, 1, '[redacted]', (value) => {
-      this.#retained = appendBounded(this.#retained, value, maxBytes)
-    })
+    this.#redactor = new ProofRedactor(
+      secrets,
+      1,
+      '[redacted]',
+      (value) => {
+        this.#retained = appendBounded(this.#retained, value, maxBytes)
+      },
+      8_192,
+    )
   }
   push(chunk: string): string {
     if (!this.#finished) this.#redactor.push(chunk)

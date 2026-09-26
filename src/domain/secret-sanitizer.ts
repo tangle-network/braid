@@ -272,7 +272,7 @@ export class SecretTextSanitizer {
       this.#pendingSecret = undefined
       return
     }
-    const pending = this.#pendingSecret
+    let pending = this.#pendingSecret
     let index = 0
     if (pending.valueStarted !== true)
       while (index < value.length && /\s/u.test(value[index] ?? '')) index += 1
@@ -280,6 +280,23 @@ export class SecretTextSanitizer {
       this.#pending = ''
       if (final) this.#pendingSecret = undefined
       return
+    }
+    if (pending.kind === 'assignment' && pending.valueStarted !== true) {
+      if (value[index] === '\\' && index + 1 === value.length && !final) {
+        this.#pending = '\\'
+        return
+      }
+      const escapedQuote = value[index] === '\\' && value[index + 1] === '"'
+      const quote = escapedQuote
+        ? '"'
+        : ['"', "'"].includes(value[index] ?? '')
+          ? value[index]
+          : undefined
+      if (quote !== undefined) {
+        pending = { ...pending, quote, escapedQuote, valueStarted: true, escapeCount: 0 }
+        this.#pendingSecret = pending
+        index += escapedQuote ? 2 : 1
+      }
     }
     if (pending.quote !== undefined) {
       let escapeCount = pending.escapeCount ?? 0

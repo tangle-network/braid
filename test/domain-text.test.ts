@@ -176,6 +176,14 @@ test('regression: overflow preserves bearer, quoted-value and Unicode URL bounda
   assert.equal(prefix.length, 4_084)
   const chunks = [prefix + 'c'.repeat(1_024), 'c'.repeat(5_000), '\nordinary-after']
   assert.equal(sanitizeTextChunks(chunks), `${'x'.repeat(4_076)} [redacted bearer]\nordinary-after`)
+  const assignmentPrefix = `${'x'.repeat(4_077)} token=`
+  const assignmentChunks = [
+    assignmentPrefix + '"' + 'q'.repeat(1_023),
+    `${'q'.repeat(6_000)} START-VALUE-QUOTE-CANARY" ordinary-after`,
+  ]
+  const assignment = sanitizeTextChunks(assignmentChunks)
+  assert(!assignment.includes('START-VALUE-QUOTE-CANARY'))
+  assert(assignment.includes(' ordinary-after'))
 })
 
 test('regression: the README first run creates a profile Braid can load', async () => {
