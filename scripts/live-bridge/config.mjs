@@ -72,7 +72,26 @@ export async function installPackedTargetCredential(installRoot, config, credent
       dataDirectory: join(config.workspace, '.xdg-data', 'braid'),
     })
     if (context === undefined) throw new Error('headless credential context was not created')
-    const secret = Buffer.from(token)
+    const { bindCredentialToOrigin } = await import(
+      pathToFileURL(
+        join(
+          installRoot,
+          'node_modules',
+          '@tangle-network',
+          'braid',
+          'dist',
+          'adapters',
+          'connections',
+          'production-connection-credentials.js',
+        ),
+      ).href
+    )
+    const endpoint = config.connection.endpoint
+    if (endpoint === undefined)
+      throw new Error('The live Bridge credential has no selected endpoint')
+    const plainSecret = Buffer.from(token)
+    const secret = Buffer.from(bindCredentialToOrigin(plainSecret, endpoint))
+    plainSecret.fill(0)
     try {
       await context.store.store({
         ref: credential.credentialRef,
