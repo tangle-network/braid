@@ -8,7 +8,14 @@ import * as pty from 'node-pty'
 import { nativeInstallEnvironment } from './native-install-environment.mjs'
 
 export const repository = new URL('../', import.meta.url).pathname
-const SOURCE_EXCLUSIONS = new Set(['.git', 'node_modules', 'dist', '.test-dist', 'artifacts'])
+const SOURCE_EXCLUSIONS = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  '.test-dist',
+  '.script-dist',
+  'artifacts',
+])
 
 export async function sourceDigest(root) {
   const files = []

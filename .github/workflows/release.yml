@@ -68,6 +68,9 @@ jobs:
       - name: Build and use one immutable candidate
         run: pnpm release:prepare
 
+      - name: Retain private proof tools outside the npm archive
+        run: cp -a .script-dist "$BRAID_RELEASE_ARTIFACT_ROOT/proof-tools"
+
       - name: Read candidate metadata
         id: metadata
         run: |
@@ -216,6 +219,9 @@ jobs:
           name: braid-release-${{ inputs.commit }}
           path: ${{ runner.temp }}/braid-release
 
+      - name: Restore the exact private proof tools
+        run: cp -a "$RUNNER_TEMP/braid-release/proof-tools" .script-dist
+
       - name: Verify the protected live-evidence run
         if: inputs.live_evidence_run_id != ''
         env:
@@ -305,6 +311,9 @@ jobs:
         run: |
           npm install --global npm@11.18.0
           test "$(npm --version)" = 11.18.0
+
+      - name: Restore the exact private proof tools
+        run: cp -a "$RUNNER_TEMP/braid-release/proof-tools" .script-dist
 
       - name: Check the registry version
         id: registry

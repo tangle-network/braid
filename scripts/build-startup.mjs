@@ -1,3 +1,4 @@
+import { prepareProofTools } from './build-proof-tools.mjs'
 import { build } from 'esbuild'
 
 const root = new URL('../', import.meta.url).pathname
@@ -37,3 +38,5 @@ await build({
     'koffi',
   ],
 })
+
+await prepareProofTools({ force: true })

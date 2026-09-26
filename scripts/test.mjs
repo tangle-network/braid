@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createTestDist, removeTestDist } from './test-dist.mjs'
+import { prepareProofTools } from './build-proof-tools.mjs'
 
 const repository = resolve(fileURLToPath(new URL('../', import.meta.url)))
 const args = process.argv.slice(2).filter((argument) => argument !== '--')
@@ -25,6 +26,8 @@ function run(command, commandArgs) {
 
 let failure
 try {
+  await prepareProofTools({ force: true })
+  run('pnpm', ['exec', 'tsc', '-p', 'tsconfig.proof-tools.json', '--noEmit'])
   run(process.execPath, ['scripts/clean-tests.mjs'])
   run('pnpm', ['exec', 'tsc', '-p', 'tsconfig.test.json', '--outDir', testDist])
   run(process.execPath, ['scripts/run-tests.mjs', ...args])

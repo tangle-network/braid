@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["scripts/proof-tools.ts"],
+  "exclude": ["dist", ".script-dist", ".test-dist", "node_modules"]
+}

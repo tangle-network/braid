@@ -219,6 +219,10 @@ URLs open only after scheme normalization and permit `https` by default.
 
 All model, runner, tool, file, diff, URL, log, error, profile, and provider strings are untrusted terminal content.
 
+Credential redaction retains value boundaries across chunks, including oversized bearer values, quoted values with escaped quotes, and Unicode URLs.
+Sensitive URLs and credential assignments are removed as a whole.
+Release proof captures use the same sanitizer and fail closed when their redaction buffer limit is reached.
+
 Raw C0 and C1 controls are removed except normalized newline and tab where the component explicitly permits them.
 
 ESC, CSI, DCS, APC, PM, and OSC sequences from untrusted content are rendered as visible escaped text or removed with an audit marker.

@@ -1,3 +1,4 @@
+import { proofHarnessTools } from '../proof-tools.mjs'
 import { exitCodes } from './constants.mjs'
 import { LiveBridgeError } from './errors.mjs'
 import { runEventPayload } from './protocol.mjs'
@@ -22,15 +23,7 @@ function text(value) {
   return typeof value === 'string' && value.length > 0
 }
 
-function routeParts(route) {
-  if (!text(route)) return undefined
-  const parts = route.split('/')
-  if (parts.length < 2 || parts.some((part) => part.length === 0)) return undefined
-  const runner = parts.shift()
-  const provider = parts.length > 1 ? parts.shift() : undefined
-  const model = parts.join('/')
-  return { runner, provider, model }
-}
+const { routeParts } = await proofHarnessTools()
 
 function same(value, expected, label, details) {
   if (value !== expected)
