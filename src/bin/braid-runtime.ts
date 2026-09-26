@@ -1,11 +1,7 @@
 import { resolve } from 'node:path'
-import { createUnavailableTraceAnalysisAnalyst } from '../adapters/analysis/trace-analysis-adapter.js'
 import type { ProfileConnectionDispatchOptions } from '../adapters/tui/profile-connection-dispatch.js'
 import type { BraidApplication } from '../app/application.js'
-import { createBraidApplication } from '../app/composition.js'
 import type { ConnectionRegistry } from '../app/connections.js'
-import { createMemoryJournal } from '../app/journal.js'
-import { SystemClock } from '../ports/clock.js'
 import type { StartupPreview } from '../startup/preview-runtime.js'
 import type { CliOptions } from './args.js'
 import { openFixtureApplication } from './fixture-application.js'
@@ -14,6 +10,10 @@ import {
   openProductionApplication,
 } from './production-application.js'
 import { loadProductionProfileCatalog, loadProductionSetup } from './production-setup.js'
+import {
+  createReauthenticationSetup,
+  openSetupApplication,
+} from './production-setup-application.js'
 import type { ProductionStartupSetup } from './production-setup-types.js'
 import {
   loadProductionStartup,
@@ -88,6 +88,10 @@ async function openApplication(
   const { startupOptions, credentialContext } = createRuntimeStartupOptions(options, workspace)
   try {
     const production = await loadProductionStartup(startupOptions)
+    if (options.reauthenticate) {
+      const setup = createReauthenticationSetup(production, startupOptions)
+      return openSetupApplication(setup, startupOptions, credentialContext)
+    }
     const configured = await openConfiguredApplication(startupOptions, production)
     const restoredConnectionId = configured.app.state().selectedConnectionId ?? undefined
     const restoredConnectionAvailable =
@@ -117,6 +121,7 @@ async function openApplication(
     }
   } catch (error) {
     if (
+      options.reauthenticate === true ||
       !(error instanceof ProductionStartupError) ||
       error.code !== 'PRODUCTION_CONFIGURATION_NOT_FOUND'
     ) {
@@ -125,38 +130,7 @@ async function openApplication(
     }
     try {
       const setup = await loadProductionSetup(startupOptions)
-      const journal = createMemoryJournal(new SystemClock())
-      const app = createBraidApplication({
-        journal,
-        effectStorage: journal,
-        intelligence: { analyst: createUnavailableTraceAnalysisAnalyst() },
-      })
-      const releaseContext = credentialContext?.acquire()
-      return {
-        app,
-        close: async () => {
-          try {
-            await app.close()
-          } finally {
-            releaseContext?.()
-          }
-        },
-        setup,
-        startupOptions,
-        profileConnectionOptions: {
-          profiles: setup.profiles,
-          connections: setup.connections,
-          productionConnection: {
-            ...(startupOptions.fetch === undefined ? {} : { fetch: startupOptions.fetch }),
-            ...(startupOptions.credentialStore === undefined
-              ? {}
-              : { credentials: startupOptions.credentialStore }),
-            ...(startupOptions.credentialRefResolver === undefined
-              ? {}
-              : { credentialRefResolver: startupOptions.credentialRefResolver }),
-          },
-        },
-      }
+      return openSetupApplication(setup, startupOptions, credentialContext)
     } catch (setupError) {
       credentialContext?.dispose()
       throw setupError

@@ -12,6 +12,7 @@ import type { ConnectionRecord } from '../domain/entities.js'
 import { createConnectionId } from '../domain/ids.js'
 import { productionActiveProfile } from './production-active-profile.js'
 import {
+  DEFAULT_CLI_BRIDGE_ENDPOINT,
   normalizeBridgeEndpoint,
   ProductionBridgeRequestError,
 } from './production-bridge-client.js'
@@ -23,7 +24,7 @@ import { recoverPendingProductionCredential } from './production-setup-credentia
 import type { ProductionStartupSetup } from './production-setup-types.js'
 import { ProductionStartupError, type ProductionStartupLoadOptions } from './production-startup.js'
 
-export const DEFAULT_CLI_BRIDGE_ENDPOINT = 'http://127.0.0.1:3344'
+export { DEFAULT_CLI_BRIDGE_ENDPOINT } from './production-bridge-client.js'
 
 function cliBridgeEndpoint(options: ProductionStartupLoadOptions): string {
   return options.cliBridgeEndpoint ?? DEFAULT_CLI_BRIDGE_ENDPOINT

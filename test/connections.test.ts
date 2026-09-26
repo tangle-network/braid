@@ -881,8 +881,19 @@ test('regression: a stored credential is released only to the origin it was issu
   await assert.rejects(read(boundRef, 'https://attacker.example'), {
     code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED',
   })
-  assert.equal(await read(legacyRef, 'https://router.tangle.tools'), 'legacy-secret')
+  await assert.rejects(read(legacyRef, 'https://router.tangle.tools'), {
+    code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED',
+  })
   await assert.rejects(read(legacyRef, 'https://attacker.example'), {
     code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED',
   })
+  const legacyBridge = connection('cli-bridge', 'legacy-loopback', 'http://127.0.0.1:43918', true)
+  await assert.rejects(
+    readConnectionCredential(
+      legacyBridge,
+      { credentials, credentialRefResolver: () => legacyRef },
+      legacyBridge.endpoint ?? '',
+    ),
+    { code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED' },
+  )
 })

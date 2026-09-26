@@ -24,6 +24,7 @@ import type { ProductionCredentialContext } from './production-credential-contex
 import { defaultProductionCredentialRefResolver } from './production-credential-reference.js'
 import { resolveProductionDatabaseKeyFile } from './production-key-path.js'
 import type { ProductionStartupLoadOptions } from './production-setup-types.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 
 const MAX_PENDING_CREDENTIAL_BYTES = 16 * 1024
 
@@ -242,11 +243,14 @@ export async function prepareProductionSelection(
             options.workspace,
           ),
         }
-  const configuredAuth =
-    selection.connection.kind === 'cli-bridge'
-      ? preparedOptions.bridgeAuth
-      : preparedOptions.tangleAuth
   const hasSuppliedCredential = suppliedCredential !== undefined && suppliedCredential.length > 0
+  const configuredAuth = hasSuppliedCredential
+    ? undefined
+    : startupCredentialForEndpoint(
+        preparedOptions,
+        selection.connection.kind,
+        connectionEndpoint(selection.connection),
+      )
   const hasConfiguredAuth = configuredAuth !== undefined && configuredAuth.trim().length > 0
   if (!hasSuppliedCredential && !hasConfiguredAuth) {
     if (productionConnectionNeedsCredential(preparedOptions, selection.connection)) {

@@ -116,7 +116,9 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
             : { workspaceRequest: setup.workspaceRequest }),
           diagnostics: setup.diagnostics,
           openOnStart: true,
+          ...(options.reauthenticate ? { onCancel: () => view.stop() } : {}),
           requiresCredential: (connection) =>
+            (options.reauthenticate === true && connection.credentialRef !== undefined) ||
             productionConnectionNeedsCredential(startupOptions, connection),
           confirmation: (selection) =>
             describeProductionSelection(selection, workspace, verification),

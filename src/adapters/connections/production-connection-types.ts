@@ -100,12 +100,17 @@ export type TangleRetainedControlLookup = (
   input: TangleRetainedControlLookupInput,
 ) => Promise<AgentExactRunControlRef | null>
 
+export interface OriginBoundBridgeModelCredential extends BridgeModelCredential {
+  /** Explicitly authorized Bridge destination, independent of workspace configuration. */
+  readonly bridgeOrigin: string
+}
+
 export interface ProductionConnectionOptions {
   readonly credentials?: CredentialPort
   /** Map Braid's durable credential id to the credential-port's opaque ref. */
   readonly credentialRefResolver?: (ref: CredentialRefId) => CredentialRef | Promise<CredentialRef>
   /** Request-scoped model credential for a loopback CLI Bridge. */
-  readonly bridgeModelCredential?: BridgeModelCredential
+  readonly bridgeModelCredential?: OriginBoundBridgeModelCredential
   readonly fetch?: typeof fetch
   /** Injectable Runtime Router transport for tests and embedded deployments. */
   readonly routerComplete?: RouterTransportConfig['complete']

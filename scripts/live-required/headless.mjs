@@ -102,13 +102,26 @@ async function installGeneratedCredential({
   dataDirectory,
   credentialId,
   value,
+  endpoint,
   kind,
   createCredentialContext,
 }) {
   let context
   let contextFactory
   const portRef = `cred:v1:${credentialId}`
-  const secret = Buffer.from(value)
+  const { bindCredentialToOrigin } = await import(
+    pathToFileURL(
+      join(
+        resolve(repository, 'dist'),
+        'adapters',
+        'connections',
+        'production-connection-credentials.js',
+      ),
+    ).href
+  )
+  const plainSecret = Buffer.from(value)
+  const secret = Buffer.from(bindCredentialToOrigin(plainSecret, endpoint))
+  plainSecret.fill(0)
   const contextOptions = {
     workspace,
     configPath,
@@ -348,6 +361,7 @@ export async function prepareProductionWorkspace({
             dataDirectory,
             credentialId: generatedCredentialId,
             value: credentialValue,
+            endpoint,
             kind,
             createCredentialContext: credentialContextFactory,
           })

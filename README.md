@@ -88,7 +88,14 @@ braid --inline                 # keep normal terminal scrollback
 braid --plain                  # readable non-interactive output
 braid rpc                      # JSON Lines control interface
 braid --conversation <id>      # open a durable Braid conversation
+braid --reauthenticate         # replace a saved connection credential
 ```
+
+If an upgrade rejects an older credential, use `braid --reauthenticate` in the same workspace.
+Keep the same `--config` and `--database-key-file` options.
+Select the connection and enter its credential in the masked prompt.
+Review the destination before applying.
+This keeps the existing conversation database.
 
 `--profile`, `--connection`, `--runner`, `--model`, and `--effort` select defaults for the opened or new branch.
 

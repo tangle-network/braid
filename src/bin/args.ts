@@ -1,6 +1,7 @@
 export interface CliOptions {
   readonly mode: 'tui' | 'rpc'
   readonly plain: boolean
+  readonly reauthenticate?: true
   readonly fixture?: 'deterministic'
   readonly uiFixture?:
     | 'interaction'
@@ -37,6 +38,7 @@ Usage:
 Options:
   --workspace <path>          Workspace to open (default: current directory)
   --config <path>             Production profile and connection configuration
+  --reauthenticate            Replace credentials in the existing configuration
   --inline                    Render in the main terminal buffer
   --plain                     Emit a readable non-interactive event stream
   --no-color                  Disable color
@@ -69,6 +71,7 @@ function requiredValue(args: readonly string[], index: number, flag: string): st
 export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
   let mode: CliOptions['mode'] = 'tui'
   let plain = false
+  let reauthenticate = false
   let fixture: CliOptions['fixture']
   let uiFixture: CliOptions['uiFixture']
   let inline = false
@@ -93,6 +96,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     if (argument === 'rpc' && index === 0) mode = 'rpc'
     else if (argument === '--inline') inline = true
     else if (argument === '--plain') plain = true
+    else if (argument === '--reauthenticate') reauthenticate = true
     else if (argument === '--no-color') noColor = true
     else if (argument === '--high-contrast') highContrast = true
     else if (argument === '--reduced-motion') reducedMotion = true
@@ -161,9 +165,14 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     throw new CliUsageError('--ui-fixture requires --fixture deterministic')
   }
 
+  if (reauthenticate && (mode === 'rpc' || plain || fixture !== undefined)) {
+    throw new CliUsageError('--reauthenticate requires the production interactive terminal')
+  }
+
   return {
     mode,
     plain,
+    ...(reauthenticate ? { reauthenticate: true as const } : {}),
     ...(fixture ? { fixture } : {}),
     ...(uiFixture ? { uiFixture } : {}),
     inline,

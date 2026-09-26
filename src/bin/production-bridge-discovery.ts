@@ -8,6 +8,7 @@ import {
   safeBridgeDetail,
 } from './production-bridge-client.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 
 export interface BridgeModel {
   readonly id: string
@@ -47,12 +48,13 @@ export async function discoverBridge(
   options: ProductionStartupLoadOptions,
   endpoint: string,
 ): Promise<BridgeDiscoveryResult> {
+  const auth = startupCredentialForEndpoint(options, 'cli-bridge', endpoint)
   const [healthResult, modelsResult] = await Promise.allSettled([
     requestBridge({
       endpoint,
       path: 'health',
       ...(options.fetch === undefined ? {} : { fetcher: options.fetch }),
-      ...(options.bridgeAuth === undefined ? {} : { auth: options.bridgeAuth }),
+      ...(auth === undefined ? {} : { auth }),
       timeoutMs: discoveryTimeout(options),
       maxBodyBytes: MAX_BRIDGE_DISCOVERY_BODY_BYTES,
     }),
@@ -60,7 +62,7 @@ export async function discoverBridge(
       endpoint,
       path: 'models',
       ...(options.fetch === undefined ? {} : { fetcher: options.fetch }),
-      ...(options.bridgeAuth === undefined ? {} : { auth: options.bridgeAuth }),
+      ...(auth === undefined ? {} : { auth }),
       timeoutMs: discoveryTimeout(options),
       maxBodyBytes: MAX_BRIDGE_DISCOVERY_BODY_BYTES,
     }),

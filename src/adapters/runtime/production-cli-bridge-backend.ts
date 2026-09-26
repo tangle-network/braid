@@ -5,7 +5,6 @@ import type {
 } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
-import type { BridgeModelCredential } from '@tangle-network/agent-runtime/kernel'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
@@ -15,6 +14,7 @@ import {
   materializeBridgeModelRoute,
 } from '../connections/cli-bridge-model-route.js'
 import { readConnectionCredential } from '../connections/production-connection-credentials.js'
+import type { OriginBoundBridgeModelCredential } from '../connections/production-connection-types.js'
 import {
   isLoopbackEndpoint,
   normalizeCliBridgeProviderBaseUrl,
@@ -43,7 +43,7 @@ export interface PreparedCliBridgeConnection {
   readonly workspace: string
   readonly bridgeUrl: string
   readonly bearerToken: string
-  readonly bridgeModelCredential?: BridgeModelCredential
+  readonly bridgeModelCredential?: OriginBoundBridgeModelCredential
   readonly fetch?: typeof fetch
   readonly providerSessionId: string
   readonly provider: CliBridgeProvider
@@ -224,17 +224,28 @@ function assertContextTransferDestination(
 
 function bridgeCredentialFetch(
   bridgeUrl: string,
-  credential: BridgeModelCredential,
+  credential: OriginBoundBridgeModelCredential,
   fetcher: typeof fetch,
 ): typeof fetch {
   if (!isLoopbackEndpoint(bridgeUrl)) {
     throw new Error('A request-scoped CLI Bridge model credential requires a loopback endpoint')
   }
+  const bridgeOrigin = new URL(bridgeUrl).origin
+  if (credential.bridgeOrigin !== bridgeOrigin) {
+    throw new Error(
+      'The CLI Bridge model credential is not authorized for the selected Bridge origin',
+    )
+  }
   return async (input, init) => {
     const url = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url,
     )
-    if (!usesBridgeModelCredential(url, init)) return fetcher(input, init)
+    if (url.origin !== bridgeOrigin) {
+      throw new Error('A CLI Bridge model credential request must use the selected Bridge origin')
+    }
+    // Fetch strips Authorization on redirects but preserves the model credential header.
+    const requestInit = { ...init, redirect: 'error' as const }
+    if (!usesBridgeModelCredential(url, init)) return fetcher(input, requestInit)
     const [token, baseUrl] = await Promise.all([
       credentialValue(credential, credential.key),
       credentialValue(credential, credential.baseUrlKey),
@@ -243,7 +254,7 @@ function bridgeCredentialFetch(
     const headers = new Headers(init?.headers)
     headers.set('x-cli-bridge-model-credential', token)
     headers.set('x-cli-bridge-model-base-url', upstream)
-    return fetcher(input, { ...init, headers })
+    return fetcher(input, { ...requestInit, headers })
   }
 }
 
@@ -257,7 +268,10 @@ function usesBridgeModelCredential(url: URL, init?: RequestInit): boolean {
   )
 }
 
-async function credentialValue(credential: BridgeModelCredential, key: string): Promise<string> {
+async function credentialValue(
+  credential: OriginBoundBridgeModelCredential,
+  key: string,
+): Promise<string> {
   let value: string | undefined
   try {
     value = await credential.provider.get(key)

@@ -49,6 +49,19 @@ test('command version comes from the package manifest', async () => {
   assert.equal(BRAID_VERSION, packageDocument.version)
 })
 
+test('regression: configured credential replacement has an interactive entry', () => {
+  assert.equal(parseArgs(['--reauthenticate'], '/workspace').reauthenticate, true)
+  for (const arguments_ of [
+    ['rpc', '--reauthenticate'],
+    ['--plain', '--reauthenticate'],
+    ['--fixture', 'deterministic', '--reauthenticate'],
+  ]) {
+    assert.throws(() => parseArgs(arguments_, '/workspace'), {
+      message: '--reauthenticate requires the production interactive terminal',
+    })
+  }
+})
+
 test('expected command-line mistakes remain actionable without echoing arbitrary values', () => {
   assert.throws(
     () => parseArgs(['--workspace'], '/workspace'),
