@@ -16,13 +16,13 @@ const validQueue: QueueRequest = {
 }
 
 // The public union must not fall back to an unchecked generic request for queue.
+// @ts-expect-error queue text is required to be a string
 const invalidQueueText: BraidRequest = {
   version: 1,
   requestId: 'queue-invalid-text',
   operationId: 'op-queue-invalid-text',
   command: 'queue',
   params: {
-    // @ts-expect-error queue text is required to be a string
     text: 42,
   },
 }

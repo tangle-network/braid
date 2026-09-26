@@ -101,9 +101,6 @@ interface RunControlRequestBase {
   readonly version: 1
   readonly requestId: string
   readonly operationId: string
-  readonly params?: {
-    readonly runId?: string
-  }
 }
 
 export interface QueueRequest extends RunControlRequestBase {
@@ -127,6 +124,7 @@ export interface CancelRequest extends RunControlRequestBase {
 
 export interface DetachRequest extends RunControlRequestBase {
   readonly command: 'detach'
+  readonly params?: { readonly runId?: string }
 }
 
 export interface ReconnectRequest extends RunControlRequestBase {

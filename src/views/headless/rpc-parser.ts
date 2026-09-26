@@ -4,11 +4,7 @@ import {
   type HeadlessCommandName,
   isMutatingHeadlessCommand,
 } from '../shared/headless-commands.js'
-import {
-  BRAID_PROTOCOL_VERSION,
-  type BraidRequest,
-  type RpcCommandName,
-} from './protocol.js'
+import { BRAID_PROTOCOL_VERSION, type BraidRequest, type RpcCommandName } from './protocol.js'
 import {
   assertBoundedIdentifier,
   assertBoundedRequestShape,
