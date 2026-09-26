@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 
 import { sleep } from '../live-bridge/process.mjs'
+import { countProtectedWork } from '../proof-tools.mjs'
 import {
   requestBase,
   responseForRequest,
@@ -139,6 +140,7 @@ export function latestCursorFromResponses(responses, runId) {
 export async function waitForControlIdentity(session, runId, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    countProtectedWork('polls')
     const observation = observationFromResponses(session.responses, runId)
     if (observation?.controlRef && observation.cursor !== undefined) return observation
     throwIfRunTerminated(session.responses, runId, 'exposing exact provider identity')
@@ -159,6 +161,7 @@ export async function waitForControlIdentity(session, runId, timeoutMs) {
 export async function waitForVisibleEvents(session, runId, timeoutMs, phase) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    countProtectedWork('polls')
     const visible = assertUniqueVisibleEvents(session.responses, runId, phase)
     if (visible.count > 0) return visible
     throwIfRunTerminated(session.responses, runId, 'emitting a stable visible provider event')
@@ -175,6 +178,7 @@ export async function waitForVisibleEvents(session, runId, timeoutMs, phase) {
 export async function waitForWorkspaceToolEvents(session, runId, timeoutMs, phase) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    countProtectedWork('polls')
     const visible = assertUniqueVisibleEvents(session.responses, runId, phase)
     const tools = workspaceToolEvents(visible)
     if (tools.length > 0) return visible
@@ -217,6 +221,7 @@ export async function rpcRoundTrip(session, command, params = {}, operationId, l
   const requestId = `braid-live-${command}-${randomUUID()}`
   const request = { ...requestBase(requestId, command, operationId), params }
   const started = performance.now()
+  if (command === 'get_state') countProtectedWork('stateRequests')
   session.send(request)
   const response = await session.waitFor(
     label,
@@ -250,6 +255,7 @@ export async function waitForRequestState(session, requestId, runId, timeoutMs) 
 export async function waitForTerminal(session, runId, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    countProtectedWork('polls')
     const existing = [...session.responses]
       .reverse()
       .find((response) => stateForRun(response, runId))

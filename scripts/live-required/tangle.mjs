@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { ProofWindow, createProtectedWork, protectedSpan } from '../proof-tools.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import {
   classifyExternalFailure,
@@ -275,9 +278,51 @@ export async function runSandbox({
   stressRunner = runBraidSandboxSoak,
   multirunRunner = runMultirunProof,
   diagnosticWriter = (line) => process.stderr.write(line),
+  work,
 }) {
   const startedAt = new Date().toISOString()
-  const cohort = await stressRunner({ repository, environment, binary })
+  let multirunPromise
+  let proofWindow
+  const overlap = work?.overlap === true
+  let cohort
+  let cohortError
+  try {
+    cohort = await protectedSpan('cohort', () =>
+      stressRunner({
+        repository,
+        environment,
+        binary,
+        ...(overlap
+          ? {
+              afterCanary: async () => {
+                proofWindow = new ProofWindow(['stress-1', 'stress-2', 'multirun'])
+                multirunPromise = protectedSpan('multirun', () =>
+                  multirunRunner({
+                    targetRepository: repository,
+                    environment,
+                    proofWindow,
+                    proofScope: 'multirun',
+                  }),
+                ).then(
+                  (value) => ({ status: 'fulfilled', value }),
+                  (reason) => {
+                    proofWindow.cleaned('multirun', false)
+                    return { status: 'rejected', reason }
+                  },
+                )
+                return proofWindow
+              },
+            }
+          : {}),
+      }),
+    )
+  } catch (error) {
+    cohortError = error
+    proofWindow?.fail()
+  }
+  // Join the sibling before interpreting cohort failure; its cleanup remains mandatory.
+  const overlappedMultirun = await multirunPromise
+  if (cohortError !== undefined) throw cohortError
   if (cohort.status !== 'passed') {
     diagnosticWriter(
       `${SANDBOX_SOAK_DIAGNOSTIC_PREFIX}${safeJson(sandboxSoakDiagnostic(cohort), environment)}\n`,
@@ -307,10 +352,15 @@ export async function runSandbox({
   if (proof?.status !== 'passed') {
     throw new Error('LIVE-07 Braid Tangle Sandbox stress has no passing canary proof')
   }
-  const multirun = await multirunRunner({
-    targetRepository: repository,
-    environment,
-  })
+  if (overlappedMultirun?.status === 'rejected') throw overlappedMultirun.reason
+  const multirun =
+    overlappedMultirun?.value ??
+    (await protectedSpan('multirun', () =>
+      multirunRunner({
+        targetRepository: repository,
+        environment,
+      }),
+    ))
   assertMultirunProof(multirun)
   const firstRun = proof.runs?.first
   const runIds = [
@@ -376,6 +426,7 @@ export async function runMatrixAdapter({
   environment,
   binary,
   invocationId = proofInvocation('live-tangle-matrix'),
+  work,
 }) {
   const configured =
     typeof environment.BRAID_TANGLE_LIVE_ADAPTER === 'string' &&
@@ -404,7 +455,9 @@ export async function runMatrixAdapter({
   }
   const runBuiltIn = async (row, runner) => {
     try {
-      const result = await runner({ repository, environment, binary, invocationId })
+      const result = await (work === undefined
+        ? runner({ repository, environment, binary, invocationId })
+        : work.span(row, 'row', () => runner({ repository, environment, binary, invocationId })))
       if (result.status === 'failed') throw new Error(`${row} built-in proof failed`)
       if (result.status !== 'passed') {
         addUnavailable(row, result.reason ?? `${row} built-in proof is unavailable`)
@@ -436,13 +489,14 @@ export async function runMatrixAdapter({
   }
 }
 
-export async function runTangleFlows({
+async function runTangleFlowsCore({
   repository,
   environment,
   inferenceRunner = runInference,
   sandboxRunner = runSandbox,
   interactiveRunner = runInteractiveProof,
   matrixRunner = runMatrixAdapter,
+  work,
 }) {
   const binary = await resolveBinary(repository, environment)
   const invocationId = proofInvocation('live-tangle')
@@ -461,7 +515,11 @@ export async function runTangleFlows({
   }
   let inference
   try {
-    inference = await inferenceRunner({ repository, environment, binary, invocationId })
+    inference = await (work === undefined
+      ? inferenceRunner({ repository, environment, binary, invocationId })
+      : work.span('LIVE-06', 'row', () =>
+          inferenceRunner({ repository, environment, binary, invocationId }),
+        ))
     const measurement = requiredMeasurement('LIVE-06', inference)
     if (measurement === undefined) {
       addUnavailable('LIVE-06', inference.reason ?? 'Tangle inference proof is unavailable')
@@ -474,7 +532,11 @@ export async function runTangleFlows({
     addUnavailable('LIVE-06', classified.message)
   }
   try {
-    const sandbox = await sandboxRunner({ repository, environment, binary, invocationId })
+    const sandbox = await (work === undefined
+      ? sandboxRunner({ repository, environment, binary, invocationId })
+      : work.span('LIVE-07', 'row', () =>
+          sandboxRunner({ repository, environment, binary, invocationId, work }),
+        ))
     const measurement = requiredMeasurement('LIVE-07', sandbox)
     if (measurement === undefined) {
       addUnavailable('LIVE-07', sandbox.reason ?? 'Tangle Sandbox proof is unavailable')
@@ -493,7 +555,11 @@ export async function runTangleFlows({
     addUnavailable('LIVE-07', classified.message)
   }
   try {
-    const interactive = await interactiveRunner({ repository, environment, invocationId })
+    const interactive = await (work === undefined
+      ? interactiveRunner({ repository, environment, invocationId })
+      : work.span('LIVE-08', 'row', () =>
+          interactiveRunner({ repository, environment, invocationId }),
+        ))
     const measurement = requiredMeasurement('LIVE-08', interactive)
     if (measurement === undefined) {
       addUnavailable('LIVE-08', interactive.reason ?? 'Tangle interactive proof is unavailable')
@@ -511,7 +577,7 @@ export async function runTangleFlows({
     addUnavailable('LIVE-08', messages.join('; ') || classified.message)
   }
   try {
-    const matrix = await matrixRunner({ repository, environment, binary, invocationId })
+    const matrix = await matrixRunner({ repository, environment, binary, invocationId, work })
     for (const row of TANGLE_ROWS.slice(3)) {
       const result = matrix.flows?.find((candidate) => candidate.row === row)
       if (result?.status === 'passed') {
@@ -536,5 +602,28 @@ export async function runTangleFlows({
     flows,
     measurements,
     unavailable,
+  }
+}
+
+export async function runTangleFlows(input) {
+  const work = createProtectedWork(input.environment)
+  try {
+    return await runTangleFlowsCore({ ...input, work })
+  } finally {
+    if (work !== undefined) {
+      const evidence = {
+        ...work.snapshot(),
+        workflowRunId: input.environment.GITHUB_RUN_ID ?? null,
+        sourceCommit: input.environment.GITHUB_SHA ?? null,
+        tarballSha256: input.environment.BRAID_LIVE_TARBALL_SHA256 ?? null,
+      }
+      const bytes = `${safeJson(evidence, input.environment)}\n`
+      const destination = input.environment.BRAID_PROTECTED_WORK_EVIDENCE
+      if (destination !== undefined) {
+        await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
+        await writeFile(destination, bytes, { mode: 0o600 })
+      }
+      process.stdout.write(`BRAID_PROTECTED_WORK_JSON=${bytes}`)
+    }
   }
 }

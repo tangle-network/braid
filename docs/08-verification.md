@@ -930,3 +930,34 @@ The comprehensive collector and verifier remain separate commands for explicit a
 | VR-08 | Every forced-kill boundary reconstructs a correct state with no duplicated external operation or displayed event. |
 | VR-09 | Judge calibration passes before semantic cases and the evidence manifest retains every raw input, output, score, cost, disagreement, package version, and artifact hash. |
 | VR-10 | Usage and execution proof preserves all known and unknown states, reports no missing value as zero, matches terminal and headless output, and contains no credential-bearing field. The registry package matches the approved tarball and repeats its clean-install smoke on every supported platform. |
+
+### Protected gate performance
+
+The protected workflow keeps its live cases, prompts, models, cleanup checks and installed analysis proof fixed.
+Run 36248246326 completed green in 827 seconds on September 26, 2026.
+This is one hosted full-gate observation, not a performance distribution.
+LIVE-07 consumed 547.372 seconds, including a 297.801-second durability cohort and a 249.540-second multirun proof.
+
+`BRAID_PROTECTED_OVERLAP=off` is the default and immediate rollback.
+`post-canary` keeps the complete canary before starting the remaining two stress proofs beside multirun.
+Each scope performs its own before-census before admission.
+Each scope confirms its exact owned deletions before the joined after-censuses.
+Failures close future admission and retain cleanup work.
+Fallback cleanup uses exact admitted run identities; shared Braid ownership labels do not authorize deletion.
+LIVE-10 remains sequential and retains its exact account resource census.
+
+These controls run only within GitHub Actions.
+`BRAID_PROTECTED_ROLLOUT` selects `internal`, `one-percent` or `broad`.
+The one-percent ring selects bucket zero from the SHA-256 of the actual workflow run identifier modulo 100.
+Keep overlap OFF until independent review and an internal full protected proof pass.
+Preserve UTC, served SHA, public archive identity and host load when evaluating each ring.
+
+`BRAID_PROTECTED_COUNTERS=1` records `live/tangle/protected-work.json` and a sanitized stdout receipt.
+The collector indexes that artifact with the existing live evidence.
+Counters cover actual instrumented predicate, state, frame, census-barrier and owned proof-parent Sandbox transport calls.
+Packed-child requests, full CREATE totals, runner occupancy and full workflow wall remain explicitly unmeasured in this artifact.
+Collect those boundaries separately before setting a CI ratchet.
+Never infer CREATE requests from unique environments or account cumulative usage.
+Unobserved row counters are null; zero requires an instrumented observation boundary.
+Validate counter changes against a complete protected wall before promoting a speed claim.
+The first target is under 11 minutes 40 seconds and at least 1.2x; the final target is under five minutes.

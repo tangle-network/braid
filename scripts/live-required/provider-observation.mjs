@@ -1,6 +1,7 @@
 import { NetworkError, QuotaError, ServerError, TimeoutError } from '@tangle-network/sandbox'
 
 import { sleep } from '../live-bridge/process.mjs'
+import { countProtectedWork } from '../proof-tools.mjs'
 
 export const PROVIDER_OBSERVATION_INTERVAL_MS = 500
 const defaultNow = () => performance.now()
@@ -126,6 +127,7 @@ export async function waitForProviderObservation(
   let transientFailures = 0
   let lastTransientError
   for (;;) {
+    countProtectedWork('polls')
     assertBeforeDeadline(deadline, label, attempts, transientFailures, lastTransientError)
     attempts += 1
     let delayMs = intervalMs

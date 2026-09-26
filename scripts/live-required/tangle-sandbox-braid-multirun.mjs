@@ -16,6 +16,7 @@ import {
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
 import { pause } from '../live-demo/terminal.mjs'
+import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof-tools.mjs'
 import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
@@ -24,6 +25,7 @@ import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
+  cleanupRetainedResourceByRunId,
   observeRetainedResource,
   readRetainedWorkspaceFile,
   retainedBox,
@@ -215,6 +217,7 @@ function createTerminal(
     try {
       previousMtime = (await stat(`${recordPath}.frame`)).mtimeNs
     } catch {}
+    countProtectedWork('frameRequests')
     process.kill(child.pid, 'SIGUSR2')
     const deadline = performance.now() + timeoutMs
     for (;;) {
@@ -310,6 +313,7 @@ async function waitFor(label, predicate, timeoutMs) {
   let lastError
   for (;;) {
     try {
+      countProtectedWork('polls')
       const value = await predicate()
       if (value) return value
     } catch (error) {
@@ -706,6 +710,8 @@ export async function runProof({
   targetRepository = process.env.BRAID_LIVE_REPOSITORY ?? repository,
   environment = process.env,
   outputPath: suppliedOutputPath,
+  proofWindow,
+  proofScope = 'multirun',
 } = {}) {
   const startedAt = new Date().toISOString()
   const startedClock = performance.now()
@@ -780,7 +786,7 @@ export async function runProof({
   const phase = async (name, operation) => {
     const start = performance.now()
     try {
-      const value = await operation()
+      const value = await protectedSpan(name, operation)
       phases[name] = { status: 'passed', elapsedMs: performance.now() - start }
       timings[name] = performance.now() - start
       return value
@@ -796,8 +802,14 @@ export async function runProof({
   }
 
   try {
-    client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
-    beforeAccount = await phase('account.before', () => accountSnapshot(client, 'before'))
+    client = observeOwnedSandbox(
+      new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue }),
+    )
+    beforeAccount = await phase('account.before', () =>
+      proofWindow === undefined
+        ? accountSnapshot(client, 'before')
+        : proofWindow.before(proofScope, () => accountSnapshot(client, 'before')),
+    )
     const binary = await phase('binary.resolve', () => resolveBinary(targetRepository, environment))
     config = await phase('workspace.prepare', () =>
       prepareProductionWorkspace({
@@ -823,6 +835,7 @@ export async function runProof({
     const firstConversation = firstFrame.state.conversationId
     const firstBranch = firstFrame.state.branchId
     await phase('branch-a.send', async () => {
+      proofWindow?.assertAdmission()
       await typeAndSubmit(runtime, promptFor(markerA, holdSeconds))
       firstFrame = await waitForFrame(
         runtime,
@@ -850,6 +863,7 @@ export async function runProof({
     const runARecord = runFromFrame(firstFrame, runAId)
     const controlA = exactControlRef(runARecord.stateRun.controlRef, 'branch A control')
     controls.set(runAId, controlA)
+    proofWindow?.admitted(proofScope, runAId, controlA.environmentId)
     identifiers.push(...identifiersForControl(controlA))
     await phase('branch-a.stream', async () => {
       firstFrame = await waitForFrame(
@@ -879,6 +893,7 @@ export async function runProof({
     )
     assert.notEqual(secondBranch, firstBranch, 'independent conversations reused the branch id')
     await phase('branch-b.send', async () => {
+      proofWindow?.assertAdmission()
       await typeAndSubmit(runtime, promptFor(markerB, holdSeconds))
       secondFrame = await waitForFrame(
         runtime,
@@ -906,6 +921,7 @@ export async function runProof({
     const runBRecord = runFromFrame(secondFrame, runBId)
     const controlB = exactControlRef(runBRecord.stateRun.controlRef, 'branch B control')
     controls.set(runBId, controlB)
+    proofWindow?.admitted(proofScope, runBId, controlB.environmentId)
     identifiers.push(...identifiersForControl(controlB))
     await phase('concurrent.stream', async () => {
       secondFrame = await waitForFrame(
@@ -1095,6 +1111,7 @@ export async function runProof({
   for (const [runId, controlRef] of controls) {
     try {
       const result = await cleanupRetainedResourceByControlRef(client, controlRef)
+      if (result.confirmed) proofWindow?.deleted(proofScope, controlRef.environmentId)
       cleanup.resources.push({
         runId,
         providerEnvironmentId: controlRef.environmentId,
@@ -1109,41 +1126,48 @@ export async function runProof({
     }
   }
   if (client !== undefined) {
-    const baselineIds = new Set((beforeAccount?.resources ?? []).map((resource) => resource.id))
-    const cleanedIds = new Set(cleanup.resources.map((resource) => resource.id))
-    try {
-      const remaining = await listBraidResources(client)
-      for (const resource of remaining) {
-        if (baselineIds.has(resource.id) || cleanedIds.has(resource.id)) continue
-        const box = await client.get(resource.id)
-        assert.ok(box, `new Braid resource ${resource.id} disappeared before cleanup`)
-        assert.equal(box.metadata?.owner, 'braid')
-        assert.equal(box.metadata?.lifecycle, 'retained')
-        await box.delete()
-        assert.equal(await client.get(resource.id), null)
-        cleanup.resources.push({
-          runId: null,
-          providerEnvironmentId: null,
-          id: resource.id,
-          discovered: true,
-          confirmed: true,
+    const cleanedRunIds = new Set(cleanup.resources.map((resource) => resource.runId))
+    const ownedRunIds = new Set([
+      ...runIds,
+      ...(runtime?.lastFrame === undefined ? [] : frameRunIds(runtime.lastFrame)),
+    ])
+    for (const runId of ownedRunIds) {
+      if (cleanedRunIds.has(runId)) continue
+      try {
+        const result = await cleanupRetainedResourceByRunId(client, runId)
+        cleanup.resources.push({ runId, ...result, recovered: true })
+      } catch (error) {
+        cleanup.errors.push({
+          runId,
+          phase: 'provider.exact-admission-cleanup',
+          error: safeMessage(error, environment),
         })
       }
-    } catch (error) {
-      cleanup.errors.push({
-        phase: 'provider.discovery-cleanup',
-        error: safeMessage(error, environment),
-      })
     }
   }
+  proofWindow?.cleaned(
+    proofScope,
+    proofError === undefined &&
+      cleanup.errors.length === 0 &&
+      cleanup.resources.length === controls.size &&
+      cleanup.resources.every((resource) => resource.confirmed === true),
+  )
   if (client !== undefined) {
     try {
-      afterAccount = await accountSnapshot(client, 'after')
+      afterAccount =
+        proofWindow === undefined
+          ? await accountSnapshot(client, 'after')
+          : await proofWindow.after(proofScope, () => accountSnapshot(client, 'after'))
       cleanup.activeResourceDelta =
         beforeAccount === undefined || afterAccount === undefined
           ? null
           : afterAccount.usage.activeSandboxes - beforeAccount.usage.activeSandboxes
       cleanup.accountStable = afterAccount.identityDigest === beforeAccount?.identityDigest
+      const baselineIds = new Set((beforeAccount?.resources ?? []).map((resource) => resource.id))
+      assert.ok(
+        afterAccount.resources.every((resource) => baselineIds.has(resource.id)),
+        'An unmatched retained Braid resource remained after exact owned cleanup',
+      )
     } catch (error) {
       cleanup.errors.push({ phase: 'account.after', error: safeMessage(error, environment) })
     }

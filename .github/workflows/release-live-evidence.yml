@@ -87,6 +87,9 @@ jobs:
       - name: Collect protected Tangle live evidence
         env:
           BRAID_LIVE_TANGLE_ENV_JSON: ${{ secrets.BRAID_LIVE_TANGLE_ENV_JSON }}
+          BRAID_PROTECTED_OVERLAP: ${{ vars.BRAID_PROTECTED_OVERLAP || 'off' }}
+          BRAID_PROTECTED_COUNTERS: ${{ vars.BRAID_PROTECTED_COUNTERS || '1' }}
+          BRAID_PROTECTED_ROLLOUT: ${{ vars.BRAID_PROTECTED_ROLLOUT || 'internal' }}
           BRAID_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-live-evidence
           BRAID_RELEASE_CHECKOUT: ${{ github.workspace }}
         run: |
