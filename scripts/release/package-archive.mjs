@@ -6,7 +6,14 @@ import { gunzipSync } from 'node:zlib'
 import { canonicalJson } from '../release-evidence.mjs'
 import { containedArtifactPath, readRegularFileNoFollow } from '../release-files.mjs'
 
-const SOURCE_EXCLUSIONS = new Set(['.git', 'node_modules', 'dist', '.test-dist', 'artifacts'])
+const SOURCE_EXCLUSIONS = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  '.test-dist',
+  '.script-dist',
+  'artifacts',
+])
 const HEX_SHA256 = /^[a-f0-9]{64}$/u
 
 function assert(condition, message) {

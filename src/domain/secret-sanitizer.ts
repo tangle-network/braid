@@ -9,7 +9,7 @@ const BIDI_CONTROLS = /\p{Bidi_Control}/gu
 // identifier prefix such as TANGLE_API_KEY or X-Api-Key; the value may be quoted.
 const SECRET_NAME_SOURCE = String.raw`(?:\\?["'])?(?:[A-Za-z0-9]+[_.-])*(?:password|passwd|passphrase|token|secret|credential|authorization|auth|key|api[_ -]*key|access[_ -]*key|private[_ -]*key|client[_ -]*secret|signature|cookie|header|query|fragment)(?:\\?["'])?`
 const SECRET_BOUNDARY_SOURCE = String.raw`(^|[\s,;{[(])`
-const SECRET_VALUE_SOURCE = String.raw`(?:\\?"[^"]*?\\?"|'[^']*'|[^\s,;}\])}]*)`
+const SECRET_VALUE_SOURCE = String.raw`(?:\\?"(?:\\.|[^"\\])*\\?"|'(?:\\.|[^'\\])*'|[^\s,;}\])}"']*)`
 const SECRET_ASSIGNMENT = new RegExp(
   String.raw`${SECRET_BOUNDARY_SOURCE}${SECRET_NAME_SOURCE}\s*[:=]\s*${SECRET_VALUE_SOURCE}`,
   'giu',
@@ -22,10 +22,10 @@ const BEARER_ASSIGNMENT = /\bBearer(?:\s+|\s*=\s*)[^\s,;]*/giu
 const BARE_CREDENTIAL =
   /(?:sk-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,})/gu
 const WEB_URL = /https?:\/\/[^\s\p{Cc}<>"']+/giu
-const INCOMPLETE_BEARER = /\bBearer(?:[\s]+|[\s]*=[\s]*)$/iu
+const INCOMPLETE_BEARER = /\bBearer(?:[\s]+|[\s]*=[\s]*)([^\s,;]*)$/iu
 const INCOMPLETE_URL = /(^|[\s([{<])https?:\/\/[^\s\p{Cc}<>"']*$/iu
 const INCOMPLETE_ASSIGNMENT = new RegExp(
-  String.raw`${SECRET_BOUNDARY_SOURCE}${SECRET_NAME_SOURCE}\s*[:=]\s*(?:\\?"[^"]*|'[^']*|[^\s,;}\])}]*)$`,
+  String.raw`${SECRET_BOUNDARY_SOURCE}${SECRET_NAME_SOURCE}\s*[:=]\s*((?:\\?"(?:\\.|[^"\\])*\\?|'(?:\\.|[^'\\])*\\?|[^\s,;}\])}"']*))$`,
   'iu',
 )
 
@@ -34,7 +34,14 @@ const INCOMPLETE_BARE_CREDENTIAL =
 
 const STREAM_MAX_PENDING_BYTES = 4096
 
-type PendingSecret = 'bearer' | 'assignment' | 'bare' | 'url'
+type PendingSecretKind = 'bearer' | 'assignment' | 'bare' | 'url'
+interface PendingSecret {
+  readonly kind: PendingSecretKind
+  readonly quote?: string
+  readonly escapedQuote?: boolean
+  readonly valueStarted?: boolean
+  readonly escapeCount?: number
+}
 
 function isHighSurrogate(character: string): boolean {
   return (
@@ -192,7 +199,7 @@ export class SecretTextSanitizer {
     if (incomplete !== undefined) {
       const prefix = stable.slice(0, incomplete.start)
       const boundary = incomplete.boundary
-      this.#pendingSecret = incomplete.kind
+      this.#pendingSecret = incomplete
       this.#pending = tail
       const before = redactStable(prefix + boundary)
       const marker = incomplete.kind === 'bearer' ? '[redacted bearer]' : '[redacted secret]'
@@ -204,7 +211,7 @@ export class SecretTextSanitizer {
     if (incompleteCredential !== undefined) {
       const prefix = stable.slice(0, incompleteCredential.start)
       const emitted = this.#append(`${redactStable(prefix)}[redacted credential]`)
-      this.#pendingSecret = 'bare'
+      this.#pendingSecret = { kind: 'bare' }
       this.#pending = tail
       this.#consumePendingSecret(final)
       return emitted
@@ -215,7 +222,7 @@ export class SecretTextSanitizer {
       const emitted = this.#append(
         `${redactStable(prefix + incompleteUrl.boundary)}[redacted link]`,
       )
-      this.#pendingSecret = 'url'
+      this.#pendingSecret = { kind: 'url' }
       this.#pending = tail
       this.#consumePendingSecret(final)
       return emitted
@@ -239,10 +246,14 @@ export class SecretTextSanitizer {
   #consumePendingSecret(final: boolean): void {
     if (this.#pendingSecret === undefined) return
     const value = this.#pending
-    if (this.#pendingSecret === 'url') {
-      const delimiter = [...value].findIndex(isUrlDelimiter)
-      if (delimiter < 0) {
-        this.#pending = final ? '' : value.slice(-MAX_LOOKBEHIND_CHARS)
+    if (this.#pendingSecret.kind === 'url') {
+      let delimiter = 0
+      for (const character of value) {
+        if (isUrlDelimiter(character)) break
+        delimiter += character.length
+      }
+      if (delimiter === value.length) {
+        this.#pending = ''
         if (final) this.#pendingSecret = undefined
         return
       }
@@ -250,10 +261,10 @@ export class SecretTextSanitizer {
       this.#pendingSecret = undefined
       return
     }
-    if (this.#pendingSecret === 'bare') {
+    if (this.#pendingSecret.kind === 'bare') {
       const delimiter = value.search(/[^A-Za-z0-9_-]/u)
       if (delimiter < 0) {
-        this.#pending = final ? '' : value.slice(-MAX_LOOKBEHIND_CHARS)
+        this.#pending = ''
         if (final) this.#pendingSecret = undefined
         return
       }
@@ -261,28 +272,57 @@ export class SecretTextSanitizer {
       this.#pendingSecret = undefined
       return
     }
+    let pending = this.#pendingSecret
     let index = 0
-    while (index < value.length && /\s/u.test(value[index] ?? '')) index += 1
+    if (pending.valueStarted !== true)
+      while (index < value.length && /\s/u.test(value[index] ?? '')) index += 1
     if (index === value.length) {
-      this.#pending = final ? '' : value.slice(-MAX_LOOKBEHIND_CHARS)
+      this.#pending = ''
       if (final) this.#pendingSecret = undefined
       return
     }
-    const quoted = value[index] === '"' || value[index] === "'"
-    if (quoted) {
-      const quote = value[index] ?? ''
-      const closing = value.indexOf(quote, index + 1)
+    if (pending.kind === 'assignment' && pending.valueStarted !== true) {
+      if (value[index] === '\\' && index + 1 === value.length && !final) {
+        this.#pending = '\\'
+        return
+      }
+      const escapedQuote = value[index] === '\\' && value[index + 1] === '"'
+      const quote = escapedQuote
+        ? '"'
+        : ['"', "'"].includes(value[index] ?? '')
+          ? value[index]
+          : undefined
+      if (quote !== undefined) {
+        pending = { ...pending, quote, escapedQuote, valueStarted: true, escapeCount: 0 }
+        this.#pendingSecret = pending
+        index += escapedQuote ? 2 : 1
+      }
+    }
+    if (pending.quote !== undefined) {
+      let escapeCount = pending.escapeCount ?? 0
+      let closing = -1
+      for (; index < value.length; index += 1) {
+        const character = value[index]
+        if (
+          character === pending.quote &&
+          (pending.escapedQuote === true ? escapeCount % 4 === 1 : escapeCount % 2 === 0)
+        ) {
+          closing = index
+          break
+        }
+        escapeCount = character === '\\' ? (escapeCount + 1) % 4 : 0
+      }
       if (closing < 0) {
-        this.#pending = final ? '' : value.slice(-MAX_LOOKBEHIND_CHARS)
-        if (final) this.#pendingSecret = undefined
+        this.#pending = ''
+        this.#pendingSecret = final ? undefined : { ...pending, escapeCount }
         return
       }
       this.#pending = value.slice(closing + 1)
     } else {
       const delimiter = value.slice(index).search(/[\s,;}\])}]/u)
       if (delimiter < 0) {
-        this.#pending = final ? '' : value.slice(-MAX_LOOKBEHIND_CHARS)
-        if (final) this.#pendingSecret = undefined
+        this.#pending = ''
+        this.#pendingSecret = final ? undefined : { ...pending, valueStarted: true }
         return
       }
       this.#pending = value.slice(index + delimiter)
@@ -350,16 +390,36 @@ export class IncrementalSecretTextSanitizer {
   }
 }
 
+function trailingBackslashes(value: string): number {
+  let count = 0
+  for (let index = value.length - 1; index >= 0 && value[index] === '\\'; index -= 1) count += 1
+  return count % 4
+}
+
 function incompleteSecret(
   stable: string,
   tail: string,
-): { readonly kind: PendingSecret; readonly start: number; readonly boundary: string } | undefined {
+): (PendingSecret & { readonly start: number; readonly boundary: string }) | undefined {
   const bearer = INCOMPLETE_BEARER.exec(stable)
-  if (bearer !== null) return { kind: 'bearer', start: bearer.index, boundary: '' }
+  if (bearer !== null && !/^[\s,;]/u.test(tail))
+    return {
+      kind: 'bearer',
+      start: bearer.index,
+      boundary: '',
+      valueStarted: (bearer[1]?.length ?? 0) > 0,
+    }
   const assignment = INCOMPLETE_ASSIGNMENT.exec(stable)
-  if (assignment === null || /^[\s,;}\])}]/u.test(tail[0] ?? '')) return undefined
+  if (assignment === null) return undefined
+  const value = assignment[2] ?? ''
+  const escapedQuote = value.startsWith('\\"')
+  const quote = escapedQuote ? '"' : ['"', "'"].includes(value[0] ?? '') ? value[0] : undefined
+  if (quote === undefined && /^[\s,;}\])}]/u.test(tail[0] ?? '')) return undefined
   return {
     kind: 'assignment',
+    ...(quote === undefined
+      ? {}
+      : { quote, escapedQuote, escapeCount: trailingBackslashes(value) }),
+    valueStarted: value.length > 0,
     start: assignment.index,
     boundary: assignment[1] ?? '',
   }

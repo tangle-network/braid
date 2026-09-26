@@ -1,3 +1,4 @@
+import { proofHarnessTools } from '../proof-tools.mjs'
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pnpmInvocation } from '../release/platform.mjs'
@@ -49,72 +50,17 @@ function bridgeModelIdForDefinition(definition) {
   return definition.bridgeModelId ?? definition.modelId
 }
 
-function targetKeyFor(backend, modelId) {
-  const suffix = modelId
-    .replace(`${backend}/`, '')
-    .replaceAll(/[^a-z0-9]+/giu, '-')
-    .replace(/^-|-$/gu, '')
-    .toLowerCase()
-  return `${backend}-${suffix || 'default'}`
-}
+const { releaseTargetDefinitions: releaseProofTargets } = await proofHarnessTools()
 
-function targetDefinitionForAdvertisedModel(backend, bridgeModelId) {
-  const modelId = bridgeModelId
-  const route = modelId.slice(`${backend}/`.length)
-  const parts = route.split('/')
-  const provider = parts.length > 1 ? parts.shift() : undefined
-  const model = parts.join('/')
-  if (provider === '' || model.length === 0 || parts.some((part) => part.length === 0))
-    return undefined
-  return {
-    key: targetKeyFor(backend, modelId),
-    label: provider === undefined ? `${backend} ${model}` : `${backend} ${provider}/${model}`,
-    modelId,
-    bridgeModelId,
-    backend,
-  }
-}
-
-/**
- * Selects one canonical target for every ready runner represented by the bridge catalog.
- *
- * Runner-only routes such as `codex/default` remain unqualified. Braid must not
- * invent a model provider that the bridge catalog did not advertise.
- */
 export function releaseTargetDefinitions(definitions, modelsResponse, healthResponse) {
-  const advertised = modelIds(modelsResponse)
-  const readyBackends = new Set(
-    healthResponse?.body?.backends
-      ?.filter((backend) => backend?.state === 'ready' && typeof backend.name === 'string')
-      .map((backend) => backend.name) ?? [],
-  )
-  const selected = []
-  const missingBackends = []
-  for (const backend of readyBackends) {
-    const preferred = definitions.find(
-      (definition) =>
-        definition.backend === backend &&
-        advertised.includes(bridgeModelIdForDefinition(definition)),
-    )
-    const candidate =
-      preferred === undefined
-        ? advertised.find((modelId) => modelId.startsWith(`${backend}/`))
-        : undefined
-    const definition =
-      preferred ??
-      (candidate === undefined ? undefined : targetDefinitionForAdvertisedModel(backend, candidate))
-    if (definition === undefined) missingBackends.push(backend)
-    else selected.push(definition)
-  }
-  if (missingBackends.length > 0) {
-    throw new LiveBridgeError(
-      'LIVE_RELEASE_RUNNER_MODEL_UNAVAILABLE',
-      `CLI Bridge has ready runners without an advertised model route: ${missingBackends.join(', ')}`,
-      exitCodes.unavailable,
-      { missingBackends, advertisedModels: advertised },
-    )
-  }
-  return selected
+  const ready = [
+    ...new Set(
+      healthResponse?.body?.backends
+        ?.filter((backend) => backend?.state === 'ready' && typeof backend.name === 'string')
+        .map((backend) => backend.name) ?? [],
+    ),
+  ]
+  return releaseProofTargets(definitions, modelIds(modelsResponse), ready)
 }
 
 export function selectBridgeTargets(

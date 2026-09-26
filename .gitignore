@@ -1,6 +1,7 @@
 node_modules
 __pycache__/
 dist/
+.script-dist/
 .test-dist/
 .test-dist-*/
 coverage/

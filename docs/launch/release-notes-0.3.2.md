@@ -8,6 +8,8 @@ Upgrade from 0.3.0 or 0.3.1.
   Braid no longer guesses their destination from a default endpoint or a loopback address.
 - Startup credentials cannot follow an endpoint edited in workspace configuration.
   CLI Bridge discovery, model validation, and setup preserve the trusted startup origin.
+- Redaction preserves secret boundaries for long bearer values, quoted values with escaped quotes, and credential URLs containing Unicode.
+  Release proof captures use the same sanitizer as Braid.
 - CLI Bridge model credentials stay on the selected origin.
   Credential-bearing requests reject redirects.
 

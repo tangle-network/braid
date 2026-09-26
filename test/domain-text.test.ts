@@ -132,6 +132,60 @@ test('regression: quoted, escaped and prefixed secret names never leak at any st
   assert.equal(redactSensitiveText('sort order: ascending'), 'sort order: ascending')
 })
 
+test('regression: overflow preserves bearer, quoted-value and Unicode URL boundaries', async () => {
+  const { IncrementalSecretTextSanitizer } = await import('../src/domain/secret-sanitizer.js')
+  const suffix = ' ordinary-after'
+  const cases = [
+    { input: `before Bearer ${'b'.repeat(16_384)}${suffix}`, canary: 'b'.repeat(128) },
+    {
+      input: `before {"token":"${'q'.repeat(6_000)} ${'w'.repeat(8_000)}"}${suffix}`,
+      canary: 'w'.repeat(128),
+    },
+    {
+      input: `before ${JSON.stringify({ token: 'first" second-secret-canary' })}${suffix}`,
+      canary: 'second-secret-canary',
+    },
+    {
+      input: `before ${JSON.stringify({ token: `${'q'.repeat(6_000)}" second-secret-canary` })}${suffix}`,
+      canary: 'second-secret-canary',
+    },
+    {
+      input: `before ${JSON.stringify(JSON.stringify({ token: `${'q'.repeat(6_000)}" second-secret-canary` })).slice(1, -1)}${suffix}`,
+      canary: 'second-secret-canary',
+    },
+    {
+      input: `before https://user:${'🙂'.repeat(5_000)}URL-TAIL-CANARY@owned.invalid/path${suffix}`,
+      canary: 'URL-TAIL-CANARY',
+    },
+  ]
+  for (const { input, canary } of cases) {
+    const batch = redactSensitiveText(input)
+    assert(!batch.includes(canary))
+    assert(batch.includes(suffix))
+    for (const step of [613, 2_048]) {
+      const stream = new IncrementalSecretTextSanitizer()
+      let output = ''
+      for (let offset = 0; offset < input.length; offset += step)
+        output += stream.push(input.slice(offset, offset + step))
+      output += stream.finish()
+      assert(!output.includes(canary))
+      assert(output.includes(suffix))
+    }
+  }
+  const prefix = `${'x'.repeat(4_076)} Bearer `
+  assert.equal(prefix.length, 4_084)
+  const chunks = [prefix + 'c'.repeat(1_024), 'c'.repeat(5_000), '\nordinary-after']
+  assert.equal(sanitizeTextChunks(chunks), `${'x'.repeat(4_076)} [redacted bearer]\nordinary-after`)
+  const assignmentPrefix = `${'x'.repeat(4_077)} token=`
+  const assignmentChunks = [
+    assignmentPrefix + '"' + 'q'.repeat(1_023),
+    `${'q'.repeat(6_000)} START-VALUE-QUOTE-CANARY" ordinary-after`,
+  ]
+  const assignment = sanitizeTextChunks(assignmentChunks)
+  assert(!assignment.includes('START-VALUE-QUOTE-CANARY'))
+  assert(assignment.includes(' ordinary-after'))
+})
+
 test('regression: the README first run creates a profile Braid can load', async () => {
   const { readFileSync, mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')

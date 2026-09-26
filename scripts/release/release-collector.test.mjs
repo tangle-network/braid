@@ -9,6 +9,8 @@ import { PassThrough } from 'node:stream'
 import { test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 
+import { StreamingRedactor } from '../live-bridge/capture.mjs'
+import { runCommand } from '../live-bridge/command.mjs'
 import { writeJsonAtomic } from './atomic-storage.mjs'
 import {
   bindingForCheck,
@@ -152,6 +154,47 @@ async function waitFor(predicate, timeoutMs = 2_000) {
   return true
 }
 
+test('actual proof child captures suppress quoted credentials and split literal matches', async () => {
+  const secret = 'synthetic-quoted-proof-canary-20260926'
+  const output = `ordinary-start\n${JSON.stringify({ token: secret, api_key: secret })}\nordinary-end\n`
+  const code = `const output=${JSON.stringify(output)};process.stdout.write(output.slice(0,25));setTimeout(()=>process.stdout.write(output.slice(25)),10)`
+  const live = await runCommand(process.execPath, ['-e', code], {
+    cwd: process.cwd(),
+    timeoutMs: 3_000,
+    maxOutputBytes: 4_096,
+  })
+  const release = await executeArgv({
+    file: process.execPath,
+    args: ['-e', code],
+    cwd: process.cwd(),
+    environment: { PATH: process.env.PATH, TERM: 'xterm' },
+    timeoutMs: 3_000,
+    maxLogBytes: 4_096,
+  })
+  assert.equal(live.code, 0)
+  assert.equal(live.cleanupOk, true)
+  assert.equal(release.exitCode, 0)
+  assert.equal(release.cleanupConfirmed, true)
+  for (const captured of [live.stdout, release.stdout.bytes.toString('utf8')]) {
+    assert(!captured.includes(secret))
+    assert(captured.includes('ordinary-start'))
+    assert(captured.includes('ordinary-end'))
+  }
+  for (const literal of ['abababab', 'aaaaaaaa', '𠜎astral𠜎']) {
+    const text = `${'x'.repeat(5_000)}${literal}${'y'.repeat(1_024)}`
+    for (const split of [0, 5_001, 5_002, 5_000 + literal.length]) {
+      const bounded = new BoundedCapture(10_000, [literal])
+      const streaming = new StreamingRedactor(10_000, 8, [literal])
+      for (const chunk of [text.slice(0, split), text.slice(split)]) {
+        bounded.push(Buffer.from(chunk))
+        streaming.push(chunk)
+      }
+      assert(!bounded.finish().bytes.toString('utf8').includes(literal))
+      assert(!streaming.finish().includes(literal))
+    }
+  }
+})
+
 test('redaction counts raw output without publishing a secret-derived digest', () => {
   const left = new BoundedCapture(32, ['secret-value'])
   const right = new BoundedCapture(32, ['secret-value'])
@@ -238,7 +281,8 @@ test('redaction catches chunk splits, truncation-boundary splits, and >1 MiB int
     const result = failClosed.finish()
     const retained = result.bytes.toString('utf8')
     assert.equal(result.redactionFailClosed, true)
-    assert(retained.includes('before-unterminated'))
+    assert(retained.includes('[REDACTED]'))
+    if (token.startsWith('Bearer')) assert(retained.includes('before-unterminated'))
     assert(!retained.includes(token.slice(0, 128)))
     assert(!retained.includes(token.slice(-128)))
     assert(!retained.includes('after-unterminated'))
@@ -274,7 +318,7 @@ test('environment sanitization unions explicit and innocent-name canaries withou
     [...secrets, 'bearer-canary'],
   )
   for (const canary of ['password', 'query-canary', 'bearer-canary']) assert(!text.includes(canary))
-  assert.equal(redactText('Invalid API key: phrase-canary'), 'Invalid API key: [REDACTED]')
+  assert.equal(redactText('Invalid API key: phrase-canary'), 'Invalid [REDACTED]')
 })
 
 test('low-entropy control values stay redacted without corrupting structured release markers', async () => {
@@ -294,7 +338,7 @@ test('low-entropy control values stay redacted without corrupting structured rel
     redactText('rows LIVE-01 through LIVE-10 short', secrets),
     'rows LIVE-01 through LIVE-10 short',
   )
-  assert.equal(redactText('TOKEN=short', secrets), 'TOKEN=[REDACTED]')
+  assert.equal(redactText('TOKEN=short', secrets), '[REDACTED]')
   const output =
     'BRAID_RELEASE_RESULT_JSON={"status":"passed"}\n' +
     'BRAID_RELEASE_MEASUREMENTS_JSON={"measurements":[{"kind":"scalar","name":"LIVE-01","unit":"count","value":1000}]}\n' +
