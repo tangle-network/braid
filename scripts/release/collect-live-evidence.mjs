@@ -53,7 +53,17 @@ for (const [name, value] of Object.entries(parsedEnvironment)) {
   )
   assert(typeof value === 'string', `Protected live environment ${name} is not text`)
 }
-const environment = { ...process.env, ...parsedEnvironment }
+const environment = {
+  ...process.env,
+  ...parsedEnvironment,
+  BRAID_PROTECTED_OVERLAP: process.env.BRAID_PROTECTED_OVERLAP ?? 'off',
+  BRAID_PROTECTED_COUNTERS: process.env.BRAID_PROTECTED_COUNTERS ?? '0',
+  BRAID_PROTECTED_ROLLOUT: process.env.BRAID_PROTECTED_ROLLOUT ?? 'internal',
+  CI: process.env.CI,
+  GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
+  GITHUB_RUN_ID: process.env.GITHUB_RUN_ID,
+  GITHUB_SHA: process.env.GITHUB_SHA,
+}
 delete environment.BRAID_LIVE_TANGLE_ENV_JSON
 
 const requirementBindingsPath = option('--requirements') ?? 'release/requirement-bindings.json'

@@ -348,6 +348,7 @@ export async function collectReleaseEvidence({
       BRAID_LIVE_SUPERVISOR_EVIDENCE: join(evidenceRoot, 'live', 'supervisor', 'evidence.json'),
       BRAID_LIVE_TANGLE_EVIDENCE: join(evidenceRoot, 'live', 'tangle', 'evidence.json'),
       BRAID_LIVE_TANGLE_RECEIPTS: join(evidenceRoot, 'live', 'tangle', 'receipts.json'),
+      BRAID_PROTECTED_WORK_EVIDENCE: join(evidenceRoot, 'live', 'tangle', 'protected-work.json'),
       ...(releaseBinding === undefined
         ? {}
         : { BRAID_RELEASE_LIVE_EVIDENCE_BINDING: releaseBinding }),

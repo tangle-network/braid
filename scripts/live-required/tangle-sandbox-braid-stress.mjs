@@ -11,6 +11,7 @@ import {
   TimeoutError,
 } from '@tangle-network/sandbox'
 import { sleep } from '../live-bridge/process.mjs'
+import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof-tools.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson } from './contracts.mjs'
 import {
@@ -100,7 +101,7 @@ function sandboxClient(values) {
   // another account and make identity or resource-delta evidence meaningless.
   const apiKey = values.credentialValue?.trim()
   if (!apiKey) return undefined
-  return new Sandbox({ baseUrl: values.endpoint, apiKey })
+  return observeOwnedSandbox(new Sandbox({ baseUrl: values.endpoint, apiKey }))
 }
 
 function sandboxConfiguration(environment) {
@@ -1019,6 +1020,7 @@ async function verifyRemoteCancellation(client, controlRef, marker, timeoutMs) {
   const deadline = performance.now() + Math.min(timeoutMs, 15_000)
   const samples = []
   for (;;) {
+    countProtectedWork('polls')
     const status = await session.status()
     assertExactRemoteStatus(status, controlRef, 'remote cancellation')
     samples.push({
@@ -1370,6 +1372,8 @@ export async function runBraidSandboxStress({
   repository: suppliedRepository = repository,
   binary: suppliedBinary,
   requireZeroActiveResourceDelta = false,
+  proofWindow,
+  proofScope,
 } = {}) {
   const startedAt = performance.now()
   const baseCoordinates = proofCoordinates()
@@ -1445,7 +1449,7 @@ export async function runBraidSandboxStress({
   const phase = async (name, task) => {
     const start = performance.now()
     try {
-      return await task()
+      return await protectedSpan(name, task)
     } finally {
       phases[name] = { elapsedMs: performance.now() - start }
     }
@@ -1462,8 +1466,20 @@ export async function runBraidSandboxStress({
         },
       )
     }
-    usageRecords.push(await usage(client, 'before'))
-    identityRecords.push(await accountIdentity(client, 'before'))
+    const observeBefore = async () => {
+      usageRecords.push(await usage(client, 'before'))
+      identityRecords.push(await accountIdentity(client, 'before'))
+      if (
+        proofWindow !== undefined &&
+        (usageRecords[0]?.error !== undefined ||
+          usageRecords[0]?.value == null ||
+          identityRecords[0]?.error !== undefined ||
+          identityRecords[0]?.value == null)
+      )
+        throw new Error('Protected before-census could not establish account usage and identity')
+    }
+    if (proofWindow === undefined) await observeBefore()
+    else await proofWindow.before(proofScope, observeBefore)
     binary = suppliedBinary ?? (await resolveBinary(suppliedRepository, environment))
     binarySha256 = sha256(await readFile(binary))
     config = await phase('workspace', () =>
@@ -1479,6 +1495,7 @@ export async function runBraidSandboxStress({
     const first = await phase('firstProcess.initialize', () => initializedSession(binary, config))
     firstSession = first.session
     const initialState = first.state.state
+    proofWindow?.assertAdmission()
     firstSendAttempted = true
     const send = await phase('firstProcess.send', () =>
       rpcRoundTrip(
@@ -1501,6 +1518,7 @@ export async function runBraidSandboxStress({
       waitForControlIdentity(firstSession, firstRunId, timeoutMs),
     )
     knownEnvironmentId = firstObservation.controlRef.environmentId
+    proofWindow?.admitted(proofScope, firstRunId, knownEnvironmentId)
     try {
       tagObservation = await observeRetainedResource(client, firstObservation.controlRef)
     } catch (error) {
@@ -2009,6 +2027,8 @@ export async function runBraidSandboxStress({
         cleanupConfirmed = cleanup.confirmed
         cleanupMode = cleanup.mode
         cleanupIdentity = cleanup
+        if (cleanup.confirmed && proofWindow !== undefined)
+          for (const id of cleanup.removedIds) proofWindow.deleted(proofScope, id)
         if (cleanup.matchedCount > 1) {
           const error = new MissingIntegrationError(
             'One Braid turn created more than one retained Sandbox resource',
@@ -2029,10 +2049,26 @@ export async function runBraidSandboxStress({
         cleanupError ??= error
         collectIntegrationNeed(error, unresolvedIntegrationNeeds)
       }
-      finalUsage = await usage(client, 'after')
-      usageRecords.push(finalUsage)
-      identityRecords.push(await accountIdentity(client, 'after'))
+      proofWindow?.cleaned(
+        proofScope,
+        cleanupConfirmed && cleanupError === undefined && failure === undefined,
+      )
+      const observeAfter = async () => {
+        finalUsage = await usage(client, 'after')
+        usageRecords.push(finalUsage)
+        identityRecords.push(await accountIdentity(client, 'after'))
+      }
+      try {
+        if (proofWindow === undefined) await observeAfter()
+        else await proofWindow.after(proofScope, observeAfter)
+      } catch (error) {
+        cleanupError ??= error
+        collectIntegrationNeed(error, unresolvedIntegrationNeeds)
+        finalUsage = { phase: 'after', value: undefined, error: errorDetails(error) }
+        usageRecords.push(finalUsage)
+      }
     } else {
+      proofWindow?.cleaned(proofScope, false)
       const error = new MissingIntegrationError(
         'Exact-tag cleanup could not run because no Sandbox cleanup client was configured',
         { required: 'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY or TANGLE_API_KEY' },

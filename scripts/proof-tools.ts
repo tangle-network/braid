@@ -4,6 +4,14 @@ import {
   IncrementalSecretTextSanitizer,
   redactSensitiveText,
 } from '../src/domain/secret-sanitizer.js'
+export {
+  ProtectedWork,
+  ProofWindow,
+  countProtectedWork,
+  createProtectedWork,
+  observeOwnedSandbox,
+  protectedSpan,
+} from './protected-work.js'
 
 export class LiveBridgeError extends Error {
   constructor(
