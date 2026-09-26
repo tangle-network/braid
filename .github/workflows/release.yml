@@ -74,6 +74,11 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           ARCHIVE="tangle-network-braid-${VERSION}.tgz"
           test -f "$BRAID_RELEASE_ARTIFACT_ROOT/candidate/$ARCHIVE"
+          # The GitHub release body is this versioned file; a release without one stops here.
+          test -s "docs/launch/release-notes-${VERSION}.md" || {
+            echo "docs/launch/release-notes-${VERSION}.md is missing or empty" >&2
+            exit 1
+          }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
 
@@ -547,7 +552,11 @@ jobs:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           TAG="v$VERSION"
-          NOTES="Published @tangle-network/braid@$VERSION from commit ${{ inputs.commit }}. The exact package completed candidate and registry install/use checks on Linux x64 and macOS arm64."
+          NOTES_FILE="$RUNNER_TEMP/release-notes-$VERSION.md"
+          {
+            cat "docs/launch/release-notes-$VERSION.md"
+            printf '\n---\n\nPublished @tangle-network/braid@%s from commit %s. The exact package completed candidate and registry install/use checks on Linux x64 and macOS arm64.\n' "$VERSION" "${{ inputs.commit }}"
+          } > "$NOTES_FILE"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             test "$(git rev-list -n 1 "$TAG")" = "${{ inputs.commit }}"
           else
@@ -555,9 +564,9 @@ jobs:
             git push origin "$TAG"
           fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes "$NOTES"
+            gh release edit "$TAG" --notes-file "$NOTES_FILE"
           else
-            gh release create "$TAG" --verify-tag --title "Braid $VERSION" --notes "$NOTES"
+            gh release create "$TAG" --verify-tag --title "Braid $VERSION" --notes-file "$NOTES_FILE"
           fi
           EVIDENCE_ARCHIVE="$RUNNER_TEMP/braid-evidence-$VERSION.tar.gz"
           tar --directory "$RUNNER_TEMP/braid-release" --create --gzip --file "$EVIDENCE_ARCHIVE" .
