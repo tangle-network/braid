@@ -10,7 +10,7 @@ import {
   type AutomationOverlayOpenOptions,
   AutomationOverlayWorkflow,
 } from './automation-overlay-workflow.js'
-import type { TerminalConfigurationOptions } from './configuration-wizard.js'
+import type { TerminalConfigurationOptions } from './configuration-wizard-options.js'
 import { ConnectionOverlayWorkflow } from './connection-overlay-workflow.js'
 import { ConnectionSetupViewPanel } from './connection-setup.js'
 import { ConversationOverlayController } from './conversation-overlays.js'

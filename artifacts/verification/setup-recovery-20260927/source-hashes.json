@@ -1,7 +1,10 @@
 {
   "src/bin/interface-runner.ts": "d80800c26c088b72e282508e01a727bb5472fca23b8acefb4782eb20b0557a92",
-  "src/views/tui/configuration-wizard.ts": "824850a5cfcba0bb15f87c4eb606c17f3c9d5d73e150734d29b035d95a8edc90",
+  "src/views/tui/configuration-wizard.ts": "f70d396fb6ed08894392dcc61cf13750afd95ad9d721053c990641e19aa8addd",
+  "src/views/tui/configuration-wizard-options.ts": "573b435b8421add48cf466f0a4c1f094b10afd5c73fa1a7e5edd896bcf669516",
   "src/views/tui/configuration-recovery.ts": "e36d2664e35696a712023805cd3f7185fb16c9cb18418b67e31e5a0482b6a4d8",
-  "src/views/tui/terminal-overlays.ts": "c9afb1087f5536c5bab360bf09110ff03b8ea83840a1ae3667e37775d5af7d40",
+  "src/views/tui/terminal-overlays.ts": "86942265116ea3cc1d0e997cb8d138bd5df7a442865674e386739e4e234f2736",
+  "src/views/tui/terminal-app.ts": "f28718537fa3b492b449b466113f82b233c5d7e80e30dbeda6f89993ea1f9b11",
+  "src/views/tui/setup-stage-rendering.ts": "9646a08e8bc2c350205b3f93cb1c8796b2fb18adb5ae1c2d77c49890e9cffb28",
   "test/configuration-wizard.test.ts": "c55cee23d6afcb6b69e02ba278e50fb6c9da5a206a16c24d18f04dc1a37c895e"
 }

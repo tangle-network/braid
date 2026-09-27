@@ -7,6 +7,7 @@ import type {
 } from '../../app/configuration-session.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
 import { ConfigurationReview } from './configuration-review.js'
+import { ConfigurationRecovery } from './configuration-recovery.js'
 import {
   CANCEL_CONFIGURATION,
   configurationExplanation,
@@ -19,7 +20,10 @@ import {
 import { SearchableSelector } from './selector.js'
 import type { BraidTheme } from './theme.js'
 
-export type ConfigurationStageControl = SearchableSelector | ConfigurationReview
+export type ConfigurationStageControl =
+  | SearchableSelector
+  | ConfigurationReview
+  | ConfigurationRecovery
 
 export interface ConfigurationStageOptions {
   readonly container: Container
@@ -35,6 +39,8 @@ export interface ConfigurationStageOptions {
   readonly onSelect: (value: string) => void
   readonly onCancel: () => void
   readonly requestRender?: () => void
+  readonly rows?: () => number
+  readonly onReload?: () => void
 }
 
 export function renderConfigurationStage(
@@ -42,6 +48,24 @@ export function renderConfigurationStage(
 ): ConfigurationStageControl {
   const { container, state, theme, busy, commitError, focused, onSelect, onCancel } = options
   container.clear()
+  if (state.step === 'profile' && state.profiles.length === 0) {
+    const recovery = new ConfigurationRecovery({
+      theme,
+      diagnostics: options.diagnostics,
+      busy,
+      canRetry: options.onReload !== undefined,
+      rows: options.rows ?? (() => 24),
+      ...(commitError === undefined ? {} : { error: commitError }),
+      ...(options.requestRender === undefined ? {} : { requestRender: options.requestRender }),
+      onRetry: () => options.onReload?.(),
+      onCancel,
+    })
+    recovery.focused = focused
+    container.addChild(recovery)
+    container.invalidate()
+    options.requestRender?.()
+    return recovery
+  }
   const applied = state.step === 'complete' && !busy && commitError === undefined
   container.addChild(new Text(theme.brand('braid setup'), 1, 0))
   if (state.step !== 'confirm' && state.step !== 'complete') {
