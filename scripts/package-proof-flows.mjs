@@ -114,19 +114,19 @@ export async function runRpc(binary, cwd) {
         item.requestId === requestValue.requestId && (item.type === 'error' || completes(item)),
       label,
     )
-    try {
-      await new Promise((resolveWrite, rejectWrite) => {
-        child.stdin.write(`${JSON.stringify(requestValue)}\n`, (error) => {
-          if (error) rejectWrite(error)
-          else resolveWrite()
-        })
+    const write = new Promise((resolveWrite, rejectWrite) => {
+      child.stdin.write(`${JSON.stringify(requestValue)}\n`, (error) => {
+        if (error) rejectWrite(error)
+        else resolveWrite()
       })
+    })
+    try {
+      const [, result] = await Promise.all([write, response])
+      return result
     } catch (error) {
       failWaiters(error)
-      await response.catch(() => undefined)
       throw error
     }
-    return await response
   }
 
   function runInState(response, runId) {
