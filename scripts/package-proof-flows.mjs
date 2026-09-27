@@ -1,161 +1,343 @@
+import { spawn } from 'node:child_process'
 import { readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createInterface } from 'node:readline'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 import { baselineEventEnd } from './package-proof-parity.mjs'
-import {
-  cleanEnvironment,
-  runFifoCommand,
-  shellArgument,
-  sleep,
-  waitFor,
-} from './package-proof-runtime.mjs'
+import { cleanEnvironment, sleep, waitFor } from './package-proof-runtime.mjs'
 
 const XtermTerminal = xterm.Terminal
 
 export async function runRpc(binary, cwd) {
-  const request = (value) => `printf '%s\\n' ${shellArgument(JSON.stringify(value))}`
-  const script = [
-    request({
-      version: 1,
-      requestId: 'req-init',
-      command: 'initialize',
-      params: { workspace: cwd, subscribe: true },
+  const child = spawn(binary, ['rpc', '--fixture', 'deterministic'], {
+    cwd,
+    env: cleanEnvironment({
+      NO_COLOR: '1',
+      NODE_NO_WARNINGS: '1',
+      BRAID_FIXTURE_CHUNK_DELAY_MS: '100',
+      BRAID_JOURNAL_PATH: join(cwd, 'rpc-events.jsonl'),
     }),
-    request({
-      version: 1,
-      requestId: 'req-send',
-      operationId: 'op-rpc-000001',
-      command: 'send',
-      params: {
-        conversationId: 'conv-1',
-        branchId: 'branch-1',
-        text: 'hello from package proof',
-      },
-    }),
-    request({
-      version: 1,
-      requestId: 'req-unavailable',
-      operationId: 'op-rpc-steer-000001',
-      command: 'steer',
-      params: { runId: 'run-000001', text: 'steer from package proof' },
-    }),
-    'sleep 1',
-    request({ version: 1, requestId: 'req-graph', command: 'get_graph', params: {} }),
-    request({
-      version: 1,
-      requestId: 'req-retry',
-      operationId: 'op-rpc-000001',
-      command: 'send',
-      params: {
-        conversationId: 'conv-1',
-        branchId: 'branch-1',
-        text: 'hello from package proof',
-      },
-    }),
-    request({
-      version: 1,
-      requestId: 'req-cancel-send',
-      operationId: 'op-rpc-cancel-send',
-      command: 'send',
-      params: { text: 'cancel from package proof' },
-    }),
-    request({
-      version: 1,
-      requestId: 'req-cancel',
-      operationId: 'op-rpc-cancel',
-      command: 'cancel_run',
-      params: { runId: 'run-000005', reason: 'package proof cancellation' },
-    }),
-    request({
-      version: 1,
-      requestId: 'req-stop',
-      operationId: 'op-rpc-shutdown',
-      command: 'shutdown',
-    }),
-  ].join('; ')
-  const result = await Promise.race([
-    runFifoCommand(
-      (stdoutPath, stderrPath) =>
-        `{ ${script}; } | exec ${shellArgument(binary)} rpc --fixture deterministic > ${shellArgument(stdoutPath)} 2> ${shellArgument(stderrPath)}`,
-      cwd,
-      cleanEnvironment({
-        NO_COLOR: '1',
-        NODE_NO_WARNINGS: '1',
-        BRAID_FIXTURE_CHUNK_DELAY_MS: '100',
-        BRAID_JOURNAL_PATH: join(cwd, 'rpc-events.jsonl'),
-      }),
-    ),
-    sleep(5_000).then(() => {
-      throw new Error('packed RPC did not exit')
-    }),
-  ])
-  const { stdout, stderr } = result
-  const responses = () =>
-    stdout
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => JSON.parse(line))
-  if (stderr) throw new Error(`packed RPC wrote stderr: ${stderr}`)
-  const allResponses = responses()
-  const firstState = allResponses
-    .filter((response) => response.type === 'state' && response.requestId === 'req-send')
-    .at(-1)?.state
-  if (!firstState) throw new Error('packed RPC did not return send state')
-  const state = allResponses.find(
-    (response) => response.type === 'state' && response.requestId === 'req-cancel',
-  )?.state
-  if (!state)
-    throw new Error(
-      `packed RPC did not return cancellation state; responses=${allResponses.map((response) => `${response.type}:${response.requestId ?? ''}:${response.code ?? ''}`).join(',')}`,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+  const allResponses = []
+  const queuedResponses = []
+  const waiters = []
+  let stderr = ''
+  let outputClosed = false
+  let streamFailure
+
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk
+  })
+
+  const childExit = new Promise((resolveExit) => {
+    child.once('error', (error) => {
+      streamFailure = error
+      outputClosed = true
+      failWaiters(error)
+      resolveExit({ error })
+    })
+    child.once('close', (code, signal) => resolveExit({ code, signal }))
+  })
+
+  function failWaiters(error) {
+    for (const waiter of waiters.splice(0)) {
+      clearTimeout(waiter.timer)
+      waiter.reject(error)
+    }
+  }
+
+  lines.on('line', (line) => {
+    let response
+    try {
+      response = JSON.parse(line)
+    } catch {
+      streamFailure = new Error(`packed RPC wrote a non-JSONL line: ${line.slice(0, 240)}`)
+      failWaiters(streamFailure)
+      return
+    }
+    if (!response || typeof response !== 'object') {
+      streamFailure = new Error('packed RPC wrote a non-object response')
+      failWaiters(streamFailure)
+      return
+    }
+    allResponses.push(response)
+    const index = waiters.findIndex((waiter) => waiter.matches(response))
+    if (index === -1) {
+      queuedResponses.push(response)
+      return
+    }
+    const [waiter] = waiters.splice(index, 1)
+    clearTimeout(waiter.timer)
+    waiter.resolve(response)
+  })
+
+  lines.on('close', () => {
+    outputClosed = true
+    failWaiters(new Error('packed RPC closed stdout before returning the requested response'))
+  })
+
+  child.stdin.on('error', (error) => {
+    streamFailure = new Error(`packed RPC input closed: ${error.message}`)
+    failWaiters(streamFailure)
+  })
+
+  function nextResponse(matches, label, timeoutMs = 5_000) {
+    const index = queuedResponses.findIndex(matches)
+    if (index !== -1) return Promise.resolve(queuedResponses.splice(index, 1)[0])
+    if (streamFailure) return Promise.reject(streamFailure)
+    if (outputClosed) return Promise.reject(new Error('packed RPC stdout is closed'))
+    return new Promise((resolveResponse, rejectResponse) => {
+      const waiter = {
+        matches,
+        resolve: resolveResponse,
+        reject: rejectResponse,
+        timer: undefined,
+      }
+      waiter.timer = setTimeout(() => {
+        const index = waiters.indexOf(waiter)
+        if (index !== -1) waiters.splice(index, 1)
+        rejectResponse(new Error(`timed out waiting for packed RPC ${label}`))
+      }, timeoutMs)
+      waiters.push(waiter)
+    })
+  }
+
+  async function request(requestValue, completes, label) {
+    if (streamFailure) throw streamFailure
+    const response = nextResponse(
+      (item) =>
+        item.requestId === requestValue.requestId && (item.type === 'error' || completes(item)),
+      label,
     )
-  const events = allResponses
-    .filter((response) => response.type === 'event')
-    .map((response) => response.event)
-  const baselineEvents = events.slice(0, baselineEventEnd(events))
-  const retryAck = allResponses.find(
-    (response) => response.type === 'ack' && response.requestId === 'req-retry',
-  )
-  const graphAck = allResponses.find(
-    (response) => response.type === 'ack' && response.requestId === 'req-graph',
-  )
-  const unavailable = allResponses.find(
-    (response) => response.type === 'error' && response.requestId === 'req-unavailable',
-  )
-  const cancelState = allResponses.find(
-    (response) => response.type === 'state' && response.requestId === 'req-cancel',
-  )
-  const shutdownAck = allResponses.find(
-    (response) => response.type === 'ack' && response.requestId === 'req-stop',
-  )
-  assert(retryAck?.replayed === true, 'packed RPC retry did not replay the operation')
-  assert(
-    Array.isArray(graphAck?.result?.nodes) &&
-      graphAck.result.nodes.some((node) => node?.type === 'conversation'),
-    'packed RPC graph command did not return the semantic graph',
-  )
-  assert(
-    unavailable?.code === 'CAPABILITY_UNAVAILABLE' &&
-      /steering.*supported by this run/u.test(unavailable.message ?? ''),
-    'packed RPC deterministic steering capability changed behavior',
-  )
-  assert(
-    cancelState?.state?.runs?.at(-1)?.status === 'aborted',
-    'packed RPC cancel did not abort the active run',
-  )
-  assert(
-    shutdownAck?.operationId === 'op-rpc-shutdown',
-    'packed RPC shutdown was not operation-bound',
-  )
-  return {
-    responses: allResponses,
-    state,
-    firstState,
-    events,
-    baselineEvents,
-    stderr,
-    flows: ['send', 'graph', 'unavailable', 'retry', 'cancel', 'shutdown'],
+    try {
+      await new Promise((resolveWrite, rejectWrite) => {
+        child.stdin.write(`${JSON.stringify(requestValue)}\n`, (error) => {
+          if (error) rejectWrite(error)
+          else resolveWrite()
+        })
+      })
+    } catch (error) {
+      failWaiters(error)
+      await response.catch(() => undefined)
+      throw error
+    }
+    return await response
+  }
+
+  function runInState(response, runId) {
+    return response.state?.runs?.find((run) => run.id === runId)
+  }
+
+  async function waitForChildExit(timeoutMs) {
+    let timer
+    const timedOut = new Promise((resolveExit) => {
+      timer = setTimeout(() => resolveExit(undefined), timeoutMs)
+    })
+    const result = await Promise.race([childExit, timedOut])
+    clearTimeout(timer)
+    return result
+  }
+
+  try {
+    const initialized = await request(
+      {
+        version: 1,
+        requestId: 'req-init',
+        command: 'initialize',
+        params: { workspace: cwd, subscribe: true },
+      },
+      (response) => response.type === 'ack',
+      'initialize acknowledgement',
+    )
+    if (initialized.type !== 'ack') throw new Error('packed RPC initialize was not acknowledged')
+    const initializedState = await nextResponse(
+      (response) => response.type === 'state' && response.requestId === 'req-init',
+      'initialized full state',
+    )
+    if (initializedState.projection !== 'full')
+      throw new Error('packed RPC initialize did not return full state')
+
+    const firstSend = await request(
+      {
+        version: 1,
+        requestId: 'req-send',
+        operationId: 'op-rpc-000001',
+        command: 'send',
+        params: {
+          conversationId: 'conv-1',
+          branchId: 'branch-1',
+          text: 'hello from package proof',
+        },
+      },
+      (response) => response.type === 'ack',
+      'first send acknowledgement',
+    )
+    if (firstSend.type !== 'ack' || typeof firstSend.runId !== 'string')
+      throw new Error('packed RPC first send was not acknowledged with a run identifier')
+    const firstRunId = firstSend.runId
+    const firstAdmission = await nextResponse(
+      (response) =>
+        response.type === 'state' &&
+        response.requestId === 'req-send' &&
+        runInState(response, firstRunId)?.status === 'streaming',
+      'first run admission state',
+    )
+    if (runInState(firstAdmission, firstRunId)?.status !== 'streaming')
+      throw new Error('packed RPC first send did not reach streaming state')
+
+    const unavailable = await request(
+      {
+        version: 1,
+        requestId: 'req-unavailable',
+        operationId: 'op-rpc-steer-000001',
+        command: 'steer',
+        params: { runId: firstRunId, text: 'steer from package proof' },
+      },
+      (response) => response.type === 'ack',
+      'unavailable steer response',
+    )
+    if (
+      unavailable.type !== 'error' ||
+      unavailable.code !== 'CAPABILITY_UNAVAILABLE' ||
+      !/steering.*supported by this run/u.test(unavailable.message ?? '')
+    ) {
+      throw new Error('packed RPC deterministic steering capability changed behavior')
+    }
+
+    const firstTerminal = await nextResponse(
+      (response) =>
+        response.type === 'state' &&
+        response.requestId === 'req-send' &&
+        runInState(response, firstRunId)?.status === 'completed',
+      'first run completion state',
+    )
+    const firstState = firstTerminal.state
+
+    const graphAck = await request(
+      { version: 1, requestId: 'req-graph', command: 'get_graph', params: {} },
+      (response) => response.type === 'ack',
+      'graph acknowledgement',
+    )
+    if (
+      graphAck.type !== 'ack' ||
+      !Array.isArray(graphAck.result?.nodes) ||
+      !graphAck.result.nodes.some((node) => node?.type === 'conversation')
+    ) {
+      throw new Error('packed RPC graph command did not return the semantic graph')
+    }
+
+    const retryAck = await request(
+      {
+        version: 1,
+        requestId: 'req-retry',
+        operationId: 'op-rpc-000001',
+        command: 'send',
+        params: {
+          conversationId: 'conv-1',
+          branchId: 'branch-1',
+          text: 'hello from package proof',
+        },
+      },
+      (response) => response.type === 'ack',
+      'idempotent retry acknowledgement',
+    )
+    if (retryAck.type !== 'ack' || retryAck.replayed !== true)
+      throw new Error('packed RPC retry did not replay the operation')
+
+    const cancelSend = await request(
+      {
+        version: 1,
+        requestId: 'req-cancel-send',
+        operationId: 'op-rpc-cancel-send',
+        command: 'send',
+        params: { text: 'cancel from package proof' },
+      },
+      (response) => response.type === 'ack',
+      'cancellation send acknowledgement',
+    )
+    if (cancelSend.type !== 'ack' || typeof cancelSend.runId !== 'string')
+      throw new Error('packed RPC cancellation send lacked its admitted run identifier')
+    const cancelRunId = cancelSend.runId
+    const cancelAdmission = await nextResponse(
+      (response) =>
+        response.type === 'state' &&
+        response.requestId === 'req-cancel-send' &&
+        runInState(response, cancelRunId)?.status === 'streaming',
+      'cancellation run admission state',
+    )
+    if (runInState(cancelAdmission, cancelRunId)?.status !== 'streaming')
+      throw new Error('packed RPC cancellation run was not active before cancel')
+
+    const cancelAck = await request(
+      {
+        version: 1,
+        requestId: 'req-cancel',
+        operationId: 'op-rpc-cancel',
+        command: 'cancel_run',
+        params: { runId: cancelRunId, reason: 'package proof cancellation' },
+      },
+      (response) => response.type === 'ack',
+      'cancel acknowledgement',
+    )
+    if (cancelAck.type !== 'ack' || cancelAck.runId !== cancelRunId)
+      throw new Error('packed RPC cancel acknowledgement targeted the wrong run')
+
+    const cancelTerminal = await nextResponse(
+      (response) =>
+        response.type === 'state' &&
+        response.requestId === 'req-cancel' &&
+        runInState(response, cancelRunId)?.status === 'aborted',
+      'cancellation terminal state',
+    )
+    if (runInState(cancelTerminal, cancelRunId)?.status !== 'aborted')
+      throw new Error('packed RPC cancel did not abort the admitted run')
+
+    const shutdownAck = await request(
+      {
+        version: 1,
+        requestId: 'req-stop',
+        operationId: 'op-rpc-shutdown',
+        command: 'shutdown',
+      },
+      (response) => response.type === 'ack',
+      'shutdown acknowledgement',
+    )
+    if (shutdownAck.type !== 'ack' || shutdownAck.operationId !== 'op-rpc-shutdown')
+      throw new Error('packed RPC shutdown was not operation-bound')
+
+    child.stdin.end()
+    const exit = await waitForChildExit(5_000)
+    if (!exit) throw new Error('packed RPC did not exit after shutdown')
+    if (exit.error) throw new Error(`packed RPC failed to start: ${exit.error.message}`)
+    if (streamFailure) throw new Error(`packed RPC stream failed: ${streamFailure.message}`)
+    if (exit.code !== 0) throw new Error(`packed RPC exited ${String(exit.code)} after shutdown`)
+    if (stderr) throw new Error(`packed RPC wrote stderr: ${stderr}`)
+
+    const state = cancelTerminal.state
+    const events = allResponses
+      .filter((response) => response.type === 'event')
+      .map((response) => response.event)
+    const baselineEvents = events.slice(0, baselineEventEnd(events))
+    return {
+      responses: allResponses,
+      state,
+      firstState,
+      events,
+      baselineEvents,
+      stderr,
+      flows: ['send', 'graph', 'unavailable', 'retry', 'cancel', 'shutdown'],
+    }
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+    await waitForChildExit(1_000)
+    if (stderr && error instanceof Error && !error.message.includes(stderr))
+      error.message += `\npacked RPC stderr: ${stderr}`
+    throw error
   }
 }
 
