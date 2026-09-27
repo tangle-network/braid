@@ -22,18 +22,21 @@ export interface WorkspaceRequestWorkflowOptions {
 export function mountWorkspaceRequestForm(
   options: WorkspaceRequestWorkflowOptions,
 ): WorkspaceRequestForm {
-  let initialRequest: ConfigurationSelection['workspaceRequest']
+  let selection: ConfigurationSelection | undefined
   try {
-    initialRequest = options.session.previewSelection().workspaceRequest
+    selection = options.session.previewSelection()
   } catch {
-    initialRequest = undefined
+    selection = undefined
   }
   return new WorkspaceRequestForm({
     theme: options.theme,
-    ...(initialRequest === undefined ? {} : { initialRequest }),
+    ...(selection?.workspaceRequest === undefined
+      ? {}
+      : { initialRequest: selection.workspaceRequest }),
+    ...(selection === undefined ? {} : { initialConnection: selection.connection }),
     ...(options.requestRender === undefined ? {} : { requestRender: options.requestRender }),
-    onSubmit: (request) => {
-      const next = options.session.submitWorkspace(request)
+    onSubmit: (request, lifetime) => {
+      const next = options.session.submitWorkspace(request, lifetime)
       if (next.error !== undefined) options.onInvalid(next)
       else if (configurationNeedsCredential(options.session, options.requiresCredential))
         options.onCredential(next)

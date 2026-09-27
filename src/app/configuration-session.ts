@@ -1,6 +1,7 @@
 import { compareCodeUnits } from '../domain/code-unit-order.js'
 import type { ConnectionHealth, ConnectionKind, ConnectionRecord } from '../domain/entities.js'
 import type { Digest } from '../domain/ids.js'
+import { redactSensitiveText } from '../domain/redaction.js'
 import { ConnectionRegistry } from './connections.js'
 import type { ProfileRecord } from './profile-types.js'
 import {
@@ -25,6 +26,7 @@ export type ConfigurationErrorCode =
   | 'PROFILE_REQUIRED'
   | 'CONNECTION_REQUIRED'
   | 'WORKSPACE_INVALID'
+  | 'FILE_LIFETIME_INVALID'
   | 'NO_PROFILES'
   | 'NO_CONNECTIONS'
   | 'ALREADY_FINISHED'
@@ -63,6 +65,38 @@ export interface ConfigurationSelection {
   readonly profileDigest: Digest
   readonly connectionDigest: Digest
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
+}
+
+export interface ConfigurationFileLifetime {
+  readonly lifecycle: 'ephemeral' | 'retained'
+  readonly idleTtlSeconds?: number
+}
+
+/** Uses the existing connection validator, without mutating the saved or live record. */
+export function connectionWithFileLifetime(
+  connection: ConnectionRecord,
+  lifetime: ConfigurationFileLifetime,
+): ConnectionRecord {
+  if (connection.kind !== 'tangle-sandbox') {
+    throw new ConfigurationSessionError(
+      'CONNECTION_REQUIRED',
+      'The selected connection has no cloud workspace',
+    )
+  }
+  if (
+    (connection.providerOptions.lifecycle ?? 'ephemeral') === lifetime.lifecycle &&
+    connection.providerOptions.idleTtlSeconds === lifetime.idleTtlSeconds
+  )
+    return connection
+  const providerOptions = { ...connection.providerOptions, lifecycle: lifetime.lifecycle }
+  delete providerOptions.idleTtlSeconds
+  if (lifetime.idleTtlSeconds !== undefined)
+    providerOptions.idleTtlSeconds = lifetime.idleTtlSeconds
+  return new ConnectionRegistry().upsert({
+    ...connection,
+    providerOptions,
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 export interface ConfigurationEffectiveValues {
@@ -180,8 +214,8 @@ function clearSelection(state: ConfigurationSessionState): ConfigurationSessionS
 }
 
 /**
- * Coordinates first-run choices without owning durable state or credentials.
- * The consumer decides how a committed selection changes the active run.
+ * Coordinates setup choices without owning durable state or credentials.
+ * The consumer decides how a committed selection changes the next run.
  */
 export class ConfigurationSession {
   readonly #profiles: readonly ProfileChoice[]
@@ -280,16 +314,36 @@ export class ConfigurationSession {
     return this.#state
   }
 
-  submitWorkspace(request: WorkspaceRequest | undefined): ConfigurationSessionState {
+  submitWorkspace(
+    request: WorkspaceRequest | undefined,
+    lifetime?: ConfigurationFileLifetime,
+  ): ConfigurationSessionState {
     this.#assertSelectable()
-    if (this.#state.step !== 'workspace') {
+    const connectionId = this.#state.selectedConnectionId
+    if (this.#state.step !== 'workspace' || connectionId === undefined) {
       return this.#fail('CONNECTION_REQUIRED', 'Choose a cloud workspace connection first')
     }
+    let workspaceRequest: Readonly<WorkspaceRequest> | undefined
     try {
-      this.#workspaceRequest = snapshotWorkspaceRequest(request)
+      workspaceRequest = snapshotWorkspaceRequest(request)
     } catch (error) {
       return this.#fail('WORKSPACE_INVALID', workspaceRequestErrorMessage(error))
     }
+    if (lifetime !== undefined) {
+      try {
+        const connection = this.#connectionRegistry.select({ connectionId }).record
+        this.#connectionRegistry.upsert(connectionWithFileLifetime(connection, lifetime))
+      } catch (error) {
+        return this.#fail(
+          'FILE_LIFETIME_INVALID',
+          redactSensitiveText(
+            error instanceof Error ? error.message : 'Invalid file lifetime',
+            512,
+          ),
+        )
+      }
+    }
+    this.#workspaceRequest = workspaceRequest
     this.#state = clearError({ ...this.#state, step: 'confirm' })
     return this.#state
   }
@@ -330,11 +384,12 @@ export class ConfigurationSession {
       this.#fail('CONNECTION_NOT_FOUND', 'The selected connection is no longer available')
       throw this.#state.error
     }
+    const selectedConnection = this.#connectionRegistry.select({ connectionId })
     const selected: ConfigurationSelection = Object.freeze({
       profile: profile.profile,
-      connection: connection.connection,
+      connection: selectedConnection.record,
       profileDigest: profile.digest,
-      connectionDigest: this.#connectionRegistry.select({ connectionId }).digest,
+      connectionDigest: selectedConnection.digest,
       ...(this.#workspaceRequest === undefined || connection.connection.kind !== 'tangle-sandbox'
         ? {}
         : { workspaceRequest: this.#workspaceRequest }),

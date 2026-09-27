@@ -73,7 +73,7 @@ function cliBridgeConnection(
   }
 }
 
-function tangleConnection(
+export function tangleConnection(
   kind: Extract<ConnectionRecord['kind'], 'tangle-inference' | 'tangle-sandbox'>,
   now: string,
 ): ConnectionRecord {
