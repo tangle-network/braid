@@ -1,9 +1,9 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { parseBranchId, parseConversationId } from '../domain/ids.js'
 import type { BraidState } from '../domain/state.js'
 import type { SendInput } from './application-types.js'
 import { AppError } from './errors.js'
 import { resolveEffectiveProfile } from './profile-selection.js'
+import { resolveConversationTarget } from './run-targets.js'
 
 export interface EffectiveRunConfiguration {
   readonly profile: Readonly<AgentProfile>
@@ -37,15 +37,20 @@ export function selectedRunConfiguration(
 export function effectiveRunConfiguration(
   state: BraidState,
   authoredProfile: Readonly<AgentProfile>,
-  input: Pick<SendInput, 'conversationId' | 'branchId' | 'mode'>,
+  input: Pick<SendInput, 'conversationId' | 'branchId' | 'mode'> & {
+    readonly operationId?: string
+  },
 ): EffectiveRunConfiguration {
-  const conversationId = parseConversationId(input.conversationId ?? state.conversationId)
+  const original =
+    input.operationId === undefined
+      ? undefined
+      : state.runs.find((run) => run.operationId === input.operationId)
+  const { conversationId, branchId } = resolveConversationTarget(state, input, original)
   const conversation = state.conversations.find(
     (candidate) => candidate.id === conversationId && candidate.deletedAt === undefined,
   )
   if (conversation === undefined)
     throw new AppError('UNKNOWN_CONVERSATION', 'The requested conversation is unavailable')
-  const branchId = parseBranchId(input.branchId ?? state.branchId)
   const branch = state.branches.find(
     (candidate) => candidate.id === branchId && candidate.conversationId === conversation.id,
   )

@@ -1,3 +1,4 @@
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { NativeContinuationPort } from './application-ports.js'
 import type { SendReceipt } from './application-types.js'
 import { AppError } from './errors.js'
@@ -11,17 +12,22 @@ export async function continueNative(
     readonly text: string
     readonly runId?: string
     readonly connectionId?: string
+    readonly profile?: Readonly<AgentProfile>
   },
 ): Promise<SendReceipt> {
   const state = context.currentState()
-  const profile = context.profile?.()
+  const profile = input.profile ?? context.profile?.()
+  const target =
+    input.runId === undefined ? undefined : state.runs.find((run) => run.id === input.runId)
+  if (input.runId !== undefined && target === undefined)
+    throw new AppError('UNKNOWN_RUN', 'The native continuation run is unavailable')
   const source =
     profile === undefined
       ? undefined
       : resolveNativeContinuationRun({
           state,
-          conversationId: state.conversationId,
-          branchId: state.branchId,
+          conversationId: target?.conversationId ?? state.conversationId,
+          branchId: target?.branchId ?? state.branchId,
           profile,
           ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
         })
@@ -51,6 +57,8 @@ export async function continueNative(
   return context.send({
     operationId: input.operationId,
     text: input.text,
+    conversationId: source.conversationId,
+    branchId: source.branchId,
     sessionId,
     nativeContextBoundaryProof: proof,
   })

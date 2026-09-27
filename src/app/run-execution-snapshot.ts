@@ -1,47 +1,12 @@
-import type {
-  AgentProfile,
-  PortableContextPlan as CanonicalPortableContextPlan,
-  ContextTransferReceipt as PortableContextTransferReceipt,
-  ContextTransferRequest as PortableContextTransferRequest,
-} from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
-import type {
-  ContextTransferReceipt,
-  NativeContextBoundaryProof,
-  PortableContextPlan,
-} from '../domain/receipts.js'
 import type { BraidState } from '../domain/state.js'
-import type { SendInput } from './application-types.js'
+import type { RunExecutionSnapshot, SendInput } from './application-types.js'
 import { continuationSessionFor } from './run-continuation.js'
+import { resolveConversationTarget } from './run-targets.js'
 import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
-/**
- * The private execution payload captured before a run can cross an async
- * boundary.  Its profile and all caller-owned nested values are independent
- * frozen copies; the durable receipt is intentionally a separate redacted
- * audit record.
- */
-export interface RunExecutionSnapshot {
-  readonly operationId: string
-  readonly text: string
-  readonly conversationId: string
-  readonly branchId: string
-  readonly profile: Readonly<AgentProfile>
-  readonly mode?: string
-  readonly connectionId?: string
-  /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
-  readonly workspaceRequest?: Readonly<WorkspaceRequest>
-  readonly workspaceRoot?: string
-  readonly sessionId?: string
-  /** Distinguishes the private linear continuation from caller-supplied reuse. */
-  readonly sessionSource?: 'caller' | 'continuation'
-  readonly contextPlan?: PortableContextPlan
-  readonly contextTransfer?: ContextTransferReceipt
-  readonly portableContextPlan?: CanonicalPortableContextPlan
-  readonly portableContextTransferRequest?: PortableContextTransferRequest
-  readonly portableContextTransferReceipt?: PortableContextTransferReceipt
-  readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
-}
+export type { RunExecutionSnapshot } from './application-types.js'
 
 export function snapshotRunExecution(
   input: SendInput,
@@ -51,26 +16,38 @@ export function snapshotRunExecution(
   mode?: string,
   workspaceRequest?: WorkspaceRequest,
 ): RunExecutionSnapshot {
-  const workspaceSnapshot = snapshotWorkspaceRequest(workspaceRequest)
+  const original = state.runs.find((run) => run.operationId === input.operationId)?.receipt
+  const target = {
+    conversationId: input.conversationId ?? original?.conversationId ?? state.conversationId,
+    branchId: input.branchId ?? original?.branchId ?? state.branchId,
+  }
+  const workspaceSnapshot = snapshotWorkspaceRequest(
+    original?.requested.workspaceRequest ?? workspaceRequest,
+  )
+  const workspaceRoot = original === undefined ? state.workspace : original.requested.workspaceRoot
+  const selectedConnection = original === undefined ? connectionId : original.requested.connectionId
+  const selectedMode = input.mode ?? (original === undefined ? mode : original.requested.mode)
+  const nativeProof = input.nativeContextBoundaryProof ?? original?.nativeContextBoundaryProof
   const snapshot = {
     operationId: input.operationId,
     text: input.text,
-    conversationId: input.conversationId ?? state.conversationId,
-    branchId: input.branchId ?? state.branchId,
+    ...target,
     profile: snapshotAgentProfile(profile),
-    ...(mode === undefined ? {} : { mode }),
-    ...(connectionId === undefined ? {} : { connectionId }),
+    ...(selectedMode === undefined ? {} : { mode: selectedMode }),
+    ...(selectedConnection === undefined ? {} : { connectionId: selectedConnection }),
     ...(workspaceSnapshot === undefined ? {} : { workspaceRequest: workspaceSnapshot }),
-    ...(state.workspace === null ? {} : { workspaceRoot: state.workspace }),
+    ...(workspaceRoot == null ? {} : { workspaceRoot }),
     ...(input.sessionId === undefined
       ? (() => {
-          const sessionId = continuationSessionFor({
-            state,
-            conversationId: input.conversationId ?? state.conversationId,
-            branchId: input.branchId ?? state.branchId,
-            profile,
-            ...(connectionId === undefined ? {} : { connectionId }),
-          })
+          const sessionId =
+            original === undefined
+              ? continuationSessionFor({
+                  state,
+                  ...target,
+                  profile,
+                  ...(connectionId === undefined ? {} : { connectionId }),
+                })
+              : original.requestedSessionId
           return sessionId === undefined
             ? {}
             : { sessionId, sessionSource: 'continuation' as const }
@@ -87,11 +64,21 @@ export function snapshotRunExecution(
     ...(input.portableContextTransferReceipt === undefined
       ? {}
       : { portableContextTransferReceipt: input.portableContextTransferReceipt }),
-    ...(input.nativeContextBoundaryProof === undefined
-      ? {}
-      : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),
+    ...(nativeProof === undefined ? {} : { nativeContextBoundaryProof: nativeProof }),
   }
   return freezeDeep(structuredClone(snapshot))
+}
+
+export function snapshotRunRetry(
+  input: SendInput,
+  state: BraidState,
+  original: RunExecutionSnapshot,
+): RunExecutionSnapshot {
+  const target = resolveConversationTarget(state, input, original)
+  const supplied = Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  )
+  return freezeDeep(structuredClone({ ...original, ...supplied, ...target }))
 }
 
 function freezeDeep<T>(value: T): T {

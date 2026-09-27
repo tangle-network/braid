@@ -207,9 +207,20 @@ export type {
   StoredJournalEvent,
 } from './ports/storage.js'
 export {
+  type AnalyzeRequest,
+  type AskRequest,
   BRAID_PROTOCOL_VERSION,
   type BraidRequest,
   type BraidResponse,
+  type CancelInteractionRequest,
+  type CancelRequest,
+  type CancelRunRequest,
+  type CompareRequest,
+  type DetachRequest,
+  type QueueRequest,
+  type RespondInteractionRequest,
+  type SendRequest,
+  type SteerRequest,
 } from './views/headless/protocol.js'
 export {
   COMMAND_DEFINITIONS,

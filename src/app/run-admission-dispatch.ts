@@ -85,6 +85,7 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
   })
   const abort = new AbortController()
   const operation = {
+    request: input,
     digest,
     runId,
     admission,
@@ -185,6 +186,7 @@ export async function sendRunAsync(
   assertAdmissionActive(signal)
   const abort = new AbortController()
   const operation = {
+    request: input,
     digest,
     runId: ids.runId,
     admission,

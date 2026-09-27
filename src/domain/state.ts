@@ -254,7 +254,9 @@ export function normalizeActiveRuns(state: BraidState, preferredRunId?: RunId | 
     requestedFocus !== null && requestedFocus !== undefined
       ? state.runs.find((run) => run.id === requestedFocus)
       : undefined
-  const fallback = activeRuns.at(-1)?.runId
+  const fallback = activeRuns
+    .filter((run) => run.conversationId === state.conversationId && run.branchId === state.branchId)
+    .at(-1)?.runId
   const focusedRunId = focusedRun?.id ?? fallback ?? null
   return {
     ...state,

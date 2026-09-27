@@ -187,6 +187,11 @@ export type LegacyBraidEvent =
       readonly operationId: string
       readonly control: BraidControlKind
       readonly digest: string
+      /** Present even for absent session/cursor values, so restart cannot rebind a retry. */
+      readonly binding?: {
+        readonly providerSessionId?: string
+        readonly cursor?: string
+      }
       readonly text?: string
       readonly reason?: string
     }
