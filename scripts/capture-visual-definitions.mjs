@@ -7,6 +7,7 @@ export function createStateDefinitions(normalized) {
     ...[40, 80, 120].map((columns) => commandPaletteDefinition(columns, normalized)),
     ...[40, 80, 120, 200].map((columns) => cancellationUnavailableDefinition(columns, normalized)),
     ...[40, 80, 120, 200].map((columns) => forkPreviewDefinition(columns, normalized)),
+    ...[40, 80, 120, 200].map((columns) => conversationForkPreviewDefinition(columns, normalized)),
     {
       name: 'empty',
       columns: 80,
@@ -292,6 +293,32 @@ function forkPreviewDefinition(columns, normalized) {
           normalized(terminal.screen()).includes('enter/y create fork') &&
           normalized(terminal.screen()).includes('confidential request: nitro · sealed'),
         `confidential fork fixture screen=${normalized(terminal.screen())}`,
+      )
+      const { point, record } = await terminal.captureState()
+      await terminal.closeNormally()
+      return { point, record }
+    },
+  }
+}
+
+function conversationForkPreviewDefinition(columns, normalized) {
+  const rows = columns === 40 ? 12 : columns === 80 ? 24 : columns === 120 ? 40 : 60
+  return {
+    name: `conversation-fork-preview-${columns}`,
+    columns,
+    rows,
+    run: async (terminal) => {
+      terminal.input('/fork')
+      await terminal.waitFor(
+        () => normalized(terminal.screen()).includes('/fork'),
+        'conversation fork command draft',
+      )
+      terminal.input('\r')
+      await terminal.waitFor(
+        () =>
+          normalized(terminal.screen()).includes('same conversation · new branch') &&
+          normalized(terminal.screen()).includes('enter/y create fork'),
+        'conversation fork preview',
       )
       const { point, record } = await terminal.captureState()
       await terminal.closeNormally()

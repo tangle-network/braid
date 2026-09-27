@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2"
+    "tarball": "tangle-network-braid-0.3.3.tgz",
+    "tarballSha256": "029671a868313d33b23d5d894f1fcd572dbf0b2df8463f932f855f8fd747a85d"
   },
   "dimensions": {
     "columns": 80,
@@ -17,7 +17,7 @@
       "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -29,18 +29,18 @@
     }
   },
   "capturePhase": "atomic-signal-frame",
-  "captureRevision": 13,
-  "frame": " › parallel run B\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› queue #1\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via local                             Ctrl+C cancel\nfocus Parallel run A · running · pi/fixture/deterministic  actions switch/cancel\nwork Parallel run B · running · pi/fixture/deterministic   actions switch/cancel\n",
+  "captureRevision": 14,
+  "frame": " › parallel run A\n\n working…\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────\n› queue #1\n\n\n─────────────────── type / for commands · Alt+Enter · paste ────────────────────\nprofile Braid starter · pi · via local                             Ctrl+C cancel\nfocus Parallel run A · running · pi/fixture/deterministic  actions switch/cancel\nwork Parallel run B · running · pi/fixture/deterministic   actions switch/cancel\n",
   "packedState": {
     "schemaVersion": 2,
     "capturePhase": "atomic-signal-frame",
     "state": {
       "schemaVersion": 2,
-      "revision": 13,
-      "sequence": 13,
-      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
-      "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
-      "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+      "revision": 14,
+      "sequence": 14,
+      "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle",
+      "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+      "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
       "conversations": [
         {
           "id": "conv-1",
@@ -50,16 +50,16 @@
           "updatedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "conversation-3357286c484d6547dab090595d5b97bb",
+          "id": "conversation-51244db78d117c2d6d71200ebd4a4809",
           "title": "Parallel run A",
-          "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+          "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
           "archived": false,
           "updatedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "conversation-dd3dd123ede23c82bb027a01014ac840",
+          "id": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
           "title": "Parallel run B",
-          "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+          "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
           "archived": false,
           "updatedAt": "2026-08-01T00:00:00.000Z"
         }
@@ -84,25 +84,25 @@
       "draft": "",
       "messages": [
         {
-          "id": "message-000007",
+          "id": "message-000003",
           "role": "user",
-          "text": "parallel run B",
+          "text": "parallel run A",
           "status": "complete",
-          "runId": "run-000005",
+          "runId": "run-000001",
           "parts": [
             {
-              "id": "part-message-000007",
+              "id": "part-message-000003",
               "kind": "text",
-              "text": "parallel run B"
+              "text": "parallel run A"
             }
           ]
         },
         {
-          "id": "message-000008",
+          "id": "message-000004",
           "role": "assistant",
           "text": "",
           "status": "streaming",
-          "runId": "run-000005",
+          "runId": "run-000001",
           "parts": []
         }
       ],
@@ -196,20 +196,20 @@
       "activeRuns": [
         {
           "runId": "run-000001",
-          "conversationId": "conversation-3357286c484d6547dab090595d5b97bb",
-          "branchId": "branch-3357286c484d6547dab090595d5b97bb"
+          "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+          "branchId": "branch-51244db78d117c2d6d71200ebd4a4809"
         },
         {
           "runId": "run-000005",
-          "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
-          "branchId": "branch-dd3dd123ede23c82bb027a01014ac840"
+          "conversationId": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
+          "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b"
         }
       ],
       "lastError": null
     },
     "view": {
-      "revision": 13,
-      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
+      "revision": 14,
+      "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -217,8 +217,8 @@
       "effort": "none",
       "runOverrides": {},
       "connection": "deterministic fixture",
-      "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
-      "conversationTitle": "Parallel run B",
+      "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+      "conversationTitle": "Parallel run A",
       "conversations": [
         {
           "id": "conv-1",
@@ -229,48 +229,48 @@
           "updatedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "conversation-3357286c484d6547dab090595d5b97bb",
+          "id": "conversation-51244db78d117c2d6d71200ebd4a4809",
           "title": "Parallel run A",
-          "branchId": "branch-3357286c484d6547dab090595d5b97bb",
-          "archived": false,
-          "active": false,
-          "updatedAt": "2026-08-01T00:00:00.000Z"
-        },
-        {
-          "id": "conversation-dd3dd123ede23c82bb027a01014ac840",
-          "title": "Parallel run B",
-          "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+          "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
           "archived": false,
           "active": true,
           "updatedAt": "2026-08-01T00:00:00.000Z"
+        },
+        {
+          "id": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
+          "title": "Parallel run B",
+          "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
+          "archived": false,
+          "active": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
         }
       ],
-      "branch": "branch-dd3dd123ede23c82bb027a01014ac840",
+      "branch": "branch-51244db78d117c2d6d71200ebd4a4809",
       "status": "running",
       "statusText": "Opened Parallel run B",
       "queueCount": 0,
       "queue": [],
       "messages": [
         {
-          "id": "message-000007",
+          "id": "message-000003",
           "role": "user",
-          "text": "parallel run B",
+          "text": "parallel run A",
           "status": "complete",
-          "runId": "run-000005",
+          "runId": "run-000001",
           "parts": [
             {
-              "id": "part-message-000007",
+              "id": "part-message-000003",
               "kind": "text",
-              "text": "parallel run B"
+              "text": "parallel run A"
             }
           ]
         },
         {
-          "id": "message-000008",
+          "id": "message-000004",
           "role": "assistant",
           "text": "",
           "status": "streaming",
-          "runId": "run-000005",
+          "runId": "run-000001",
           "parts": []
         }
       ],
@@ -279,8 +279,8 @@
         {
           "id": "run-000001",
           "turnId": "turn-000002",
-          "conversationId": "conversation-3357286c484d6547dab090595d5b97bb",
-          "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+          "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+          "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
           "operationId": "op-terminal-000003",
           "status": "running",
           "profileName": "Braid starter",
@@ -301,8 +301,8 @@
         {
           "id": "run-000005",
           "turnId": "turn-000006",
-          "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
-          "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+          "conversationId": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
+          "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
           "operationId": "op-terminal-000007",
           "status": "running",
           "profileName": "Braid starter",
@@ -364,14 +364,14 @@
         "attribution": "complete"
       },
       "environments": [],
-      "activeRunId": "run-000005",
+      "activeRunId": "run-000001",
       "focusedRunId": "run-000001",
       "workStrip": [
         {
           "id": "run-000001",
           "runId": "run-000001",
-          "conversationId": "conversation-3357286c484d6547dab090595d5b97bb",
-          "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+          "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+          "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
           "label": "Parallel run A",
           "state": "running",
           "runner": "pi",
@@ -388,8 +388,8 @@
         {
           "id": "run-000005",
           "runId": "run-000005",
-          "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
-          "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+          "conversationId": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
+          "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
           "label": "Parallel run B",
           "state": "running",
           "runner": "pi",
@@ -456,7 +456,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-02T04:41:38.820Z",
+          "occurredAt": "2026-09-27T10:10:34.400Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -468,7 +468,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-02T04:41:38.950Z",
+          "occurredAt": "2026-09-27T10:10:34.531Z",
           "sourceEventId": "run-000005:runtime:1",
           "runId": "run-000005",
           "entityType": "run",
@@ -486,7 +486,7 @@
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "conversation-3357286c484d6547dab090595d5b97bb",
+          "id": "conversation-51244db78d117c2d6d71200ebd4a4809",
           "type": "conversation",
           "title": "Parallel run A",
           "status": "complete",
@@ -495,7 +495,7 @@
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "conversation-dd3dd123ede23c82bb027a01014ac840",
+          "id": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
           "type": "conversation",
           "title": "Parallel run B",
           "status": "complete",
@@ -516,26 +516,26 @@
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "branch-3357286c484d6547dab090595d5b97bb",
+          "id": "branch-51244db78d117c2d6d71200ebd4a4809",
           "type": "branch",
           "title": "Main",
           "status": "complete",
           "depth": 1,
           "edgeLabel": "attached",
           "parentIds": [
-            "conversation:conversation-3357286c484d6547dab090595d5b97bb"
+            "conversation:conversation-51244db78d117c2d6d71200ebd4a4809"
           ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
         {
-          "id": "branch-dd3dd123ede23c82bb027a01014ac840",
+          "id": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
           "type": "branch",
           "title": "Main",
           "status": "complete",
           "depth": 1,
           "edgeLabel": "attached",
           "parentIds": [
-            "conversation:conversation-dd3dd123ede23c82bb027a01014ac840"
+            "conversation:conversation-65e27293ad3346c5ceead4bbfe3ba91b"
           ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
@@ -547,7 +547,7 @@
           "depth": 2,
           "edgeLabel": "continued",
           "parentIds": [
-            "branch:branch-3357286c484d6547dab090595d5b97bb"
+            "branch:branch-51244db78d117c2d6d71200ebd4a4809"
           ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
@@ -559,7 +559,7 @@
           "depth": 2,
           "edgeLabel": "continued",
           "parentIds": [
-            "branch:branch-dd3dd123ede23c82bb027a01014ac840"
+            "branch:branch-65e27293ad3346c5ceead4bbfe3ba91b"
           ],
           "startedAt": "2026-08-01T00:00:00.000Z"
         },
@@ -801,7 +801,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-release-live-separation"
+            "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle"
           }
         }
       },
@@ -813,63 +813,63 @@
           "value": {
             "kind": "conversation.created",
             "conversation": {
-              "id": "conversation-3357286c484d6547dab090595d5b97bb",
-              "workspaceId": "workspace-912a3955f3279ba9e10d8a64ea953839",
+              "id": "conversation-51244db78d117c2d6d71200ebd4a4809",
+              "workspaceId": "workspace-c9c9d7247f1612ea0cd887cf888f0925",
               "title": "Parallel run A",
-              "activeBranchId": "branch-3357286c484d6547dab090595d5b97bb",
+              "activeBranchId": "branch-51244db78d117c2d6d71200ebd4a4809",
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
               "archived": false,
               "retention": {}
             },
             "branch": {
-              "id": "branch-3357286c484d6547dab090595d5b97bb",
-              "conversationId": "conversation-3357286c484d6547dab090595d5b97bb",
+              "id": "branch-51244db78d117c2d6d71200ebd4a4809",
+              "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
               "overrides": {},
-              "draftId": "draft-3357286c484d6547dab090595d5b97bb",
-              "queueId": "queue-3357286c484d6547dab090595d5b97bb",
+              "draftId": "draft-51244db78d117c2d6d71200ebd4a4809",
+              "queueId": "queue-51244db78d117c2d6d71200ebd4a4809",
               "status": "active",
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "draft": {
-              "id": "draft-3357286c484d6547dab090595d5b97bb",
-              "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+              "id": "draft-51244db78d117c2d6d71200ebd4a4809",
+              "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
               "text": "",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "queue": {
-              "id": "queue-3357286c484d6547dab090595d5b97bb",
-              "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+              "id": "queue-51244db78d117c2d6d71200ebd4a4809",
+              "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
               "entryIds": [],
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "graphNodes": [
               {
-                "id": "node-7afafa6b1b985f71404a7f5a2180207c",
+                "id": "node-21b39cb03142ca296f28f2cd0bb9ea96",
                 "reference": {
                   "kind": "workspace",
-                  "id": "workspace-912a3955f3279ba9e10d8a64ea953839"
+                  "id": "workspace-c9c9d7247f1612ea0cd887cf888f0925"
                 },
                 "createdAt": "2026-08-01T00:00:00.000Z",
                 "updatedAt": "2026-08-01T00:00:00.000Z"
               },
               {
-                "id": "node-ff92bd25d2d7c1648d3987fb06b7e3b2",
+                "id": "node-40b0cc28f5d930cdacffe68f76aedac5",
                 "reference": {
                   "kind": "conversation",
-                  "id": "conversation-3357286c484d6547dab090595d5b97bb"
+                  "id": "conversation-51244db78d117c2d6d71200ebd4a4809"
                 },
                 "title": "Parallel run A",
                 "createdAt": "2026-08-01T00:00:00.000Z",
                 "updatedAt": "2026-08-01T00:00:00.000Z"
               },
               {
-                "id": "node-bc4d618862dd82dac07773fa9b4c1bce",
+                "id": "node-f261eb45a5631c7ad4fae112a5257997",
                 "reference": {
                   "kind": "branch",
-                  "id": "branch-3357286c484d6547dab090595d5b97bb"
+                  "id": "branch-51244db78d117c2d6d71200ebd4a4809"
                 },
                 "title": "Main",
                 "createdAt": "2026-08-01T00:00:00.000Z",
@@ -878,20 +878,20 @@
             ],
             "graphEdges": [
               {
-                "id": "edge-954544c54ef9cf6da26e28314b07dd34",
+                "id": "edge-d17a1c141d33eb7c87e99ce590094751",
                 "kind": "attached",
-                "source": "node-7afafa6b1b985f71404a7f5a2180207c",
-                "destination": "node-ff92bd25d2d7c1648d3987fb06b7e3b2",
+                "source": "node-21b39cb03142ca296f28f2cd0bb9ea96",
+                "destination": "node-40b0cc28f5d930cdacffe68f76aedac5",
                 "provenance": {
                   "operationId": "op-terminal-000001"
                 },
                 "createdAt": "2026-08-01T00:00:00.000Z"
               },
               {
-                "id": "edge-a053dc4666ed1c0a6c54623b9645e809",
+                "id": "edge-e6fc3d1b344ab37b3880b383a6c036d2",
                 "kind": "attached",
-                "source": "node-ff92bd25d2d7c1648d3987fb06b7e3b2",
-                "destination": "node-bc4d618862dd82dac07773fa9b4c1bce",
+                "source": "node-40b0cc28f5d930cdacffe68f76aedac5",
+                "destination": "node-f261eb45a5631c7ad4fae112a5257997",
                 "provenance": {
                   "operationId": "op-terminal-000001"
                 },
@@ -901,11 +901,11 @@
             "operation": {
               "id": "op-terminal-000001",
               "kind": "conversation-create",
-              "requestDigest": "48980aa94da03a7e51291c78b58311398ef929aca0ff8a1337ced5badf315b70",
+              "requestDigest": "8a94b848297c95653cd4ae962c02ccac57c9a54d607a6ba4b72d62a41d5aca69",
               "status": "acknowledged",
               "target": {
                 "kind": "conversation",
-                "id": "conversation-3357286c484d6547dab090595d5b97bb"
+                "id": "conversation-51244db78d117c2d6d71200ebd4a4809"
               },
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
@@ -922,19 +922,19 @@
           "value": {
             "kind": "draft.recorded",
             "draft": {
-              "id": "draft-3357286c484d6547dab090595d5b97bb",
-              "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+              "id": "draft-51244db78d117c2d6d71200ebd4a4809",
+              "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
               "text": "parallel run A",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "operation": {
               "id": "op-terminal-000002",
               "kind": "draft-update",
-              "requestDigest": "50f7ad0330f1821905d8b13ca1c8e819d6e7444648552b7cdc77d7cf34d8f790",
+              "requestDigest": "0dc94b5428ec1992a4488cbcef250feb3967b6702976ad1aa03e4f23df8ea362",
               "status": "acknowledged",
               "target": {
                 "kind": "branch",
-                "id": "branch-3357286c484d6547dab090595d5b97bb"
+                "id": "branch-51244db78d117c2d6d71200ebd4a4809"
               },
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
@@ -955,8 +955,8 @@
             "runId": "run-000001",
             "turnId": "turn-000002",
             "operationId": "op-terminal-000003",
-            "conversationId": "conversation-3357286c484d6547dab090595d5b97bb",
-            "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+            "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+            "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
             "admittedAt": "2026-08-01T00:00:00.000Z",
             "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
             "requested": {
@@ -1006,10 +1006,10 @@
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "359d55d819797962eb7335eebc57e41ebb397fa179ba02a2c4a824e3f29eb5b5",
+            "requestDigest": "e3d39f08de7a4173deba9c3256d3ec3c0a6bda549df9bca39f1d26104b0b6462",
             "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
             "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-            "digest": "07bba1eb7af03f0b9cf93cde76f21b498b8d4a1579290b4b10139bfb8ff10ee5"
+            "digest": "a4979302748256647790f53fa09af05036b02fbff4f2d055a268672f80b37f00"
           },
           "status": "admitted"
         }
@@ -1022,10 +1022,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000003-87d9d3389e6e1eff46c94d6d",
+              "id": "effect-op-terminal-000003-2977812b4e559f841e07e972",
               "operationId": "op-terminal-000003",
               "effectKind": "run.execute",
-              "requestDigest": "87d9d3389e6e1eff46c94d6d44e8b95e49f751790a6d0222ad8506ca2a26e5c8",
+              "requestDigest": "2977812b4e559f841e07e972161b92846ef88c0511471f85ca6c99b2cdd90f4d",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -1044,13 +1044,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-02T04:41:38.820Z",
+            "occurredAt": "2026-09-27T10:10:34.400Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-ea992221-062b-41a3-9072-3055e9e4b237",
+              "id": "turn-0360f737-13a5-45b8-8e09-a6dee5dea00d",
               "intent": "parallel run A",
               "metadata": {
                 "identity": {
@@ -1060,11 +1060,11 @@
               }
             },
             "session": {
-              "id": "4e7d47ec-8467-4f99-8ab4-f3f87babb834",
+              "id": "15084381-e2d1-4f81-a392-4c66c71686f6",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-02T04:41:38.820Z",
-              "updatedAt": "2026-09-02T04:41:38.820Z",
+              "createdAt": "2026-09-27T10:10:34.400Z",
+              "updatedAt": "2026-09-27T10:10:34.400Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -1086,16 +1086,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-ea992221-062b-41a3-9072-3055e9e4b237"
+                  "id": "turn-0360f737-13a5-45b8-8e09-a6dee5dea00d"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-ea992221-062b-41a3-9072-3055e9e4b237:attempt:71d8804b-6ad7-4397-9c44-264bb9980631",
-                  "materializationReceiptDigest": "sha256:4d1e3cbb1745df9c65115e3aeb896e3af61bfb7b1ed4d46a5159ad1bcb982c10",
-                  "bindingDigest": "sha256:67b92b4136ea434cda497f15630f76f11f98f63102d2e34e5b56fc06947a28ae",
+                  "attemptId": "turn-0360f737-13a5-45b8-8e09-a6dee5dea00d:attempt:539266ca-ed41-45b3-8991-aaf3c6057e35",
+                  "materializationReceiptDigest": "sha256:0e404bb19b694571f4202503e9b25ae7df7f726ea99d7dc48cddeda32220e6de",
+                  "bindingDigest": "sha256:21d7613ca4606b1de899fbefb88aa50c478ba2629b9b742f620e329bb9eb91cb",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -1107,10 +1107,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-02T04:41:38.818Z"
+                "startedAt": "2026-09-27T10:10:34.398Z"
               }
             },
-            "timestamp": "2026-09-02T04:41:38.820Z"
+            "timestamp": "2026-09-27T10:10:34.400Z"
           }
         }
       },
@@ -1122,19 +1122,19 @@
           "value": {
             "kind": "draft.recorded",
             "draft": {
-              "id": "draft-3357286c484d6547dab090595d5b97bb",
-              "branchId": "branch-3357286c484d6547dab090595d5b97bb",
+              "id": "draft-51244db78d117c2d6d71200ebd4a4809",
+              "branchId": "branch-51244db78d117c2d6d71200ebd4a4809",
               "text": "",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "operation": {
               "id": "op-terminal-000004",
               "kind": "draft-update",
-              "requestDigest": "51b6a433d4a8487674eda9c6f528ec7290cb39c33b2975f99be496e3da1d8d88",
+              "requestDigest": "2ea75411b8ba00968130640931f23426726568305f26bda38983f1d9512512c0",
               "status": "acknowledged",
               "target": {
                 "kind": "branch",
-                "id": "branch-3357286c484d6547dab090595d5b97bb"
+                "id": "branch-51244db78d117c2d6d71200ebd4a4809"
               },
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
@@ -1151,63 +1151,63 @@
           "value": {
             "kind": "conversation.created",
             "conversation": {
-              "id": "conversation-dd3dd123ede23c82bb027a01014ac840",
-              "workspaceId": "workspace-912a3955f3279ba9e10d8a64ea953839",
+              "id": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
+              "workspaceId": "workspace-c9c9d7247f1612ea0cd887cf888f0925",
               "title": "Parallel run B",
-              "activeBranchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+              "activeBranchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
               "archived": false,
               "retention": {}
             },
             "branch": {
-              "id": "branch-dd3dd123ede23c82bb027a01014ac840",
-              "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
+              "id": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
+              "conversationId": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
               "overrides": {},
-              "draftId": "draft-dd3dd123ede23c82bb027a01014ac840",
-              "queueId": "queue-dd3dd123ede23c82bb027a01014ac840",
+              "draftId": "draft-65e27293ad3346c5ceead4bbfe3ba91b",
+              "queueId": "queue-65e27293ad3346c5ceead4bbfe3ba91b",
               "status": "active",
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "draft": {
-              "id": "draft-dd3dd123ede23c82bb027a01014ac840",
-              "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+              "id": "draft-65e27293ad3346c5ceead4bbfe3ba91b",
+              "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
               "text": "",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "queue": {
-              "id": "queue-dd3dd123ede23c82bb027a01014ac840",
-              "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+              "id": "queue-65e27293ad3346c5ceead4bbfe3ba91b",
+              "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
               "entryIds": [],
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "graphNodes": [
               {
-                "id": "node-7afafa6b1b985f71404a7f5a2180207c",
+                "id": "node-21b39cb03142ca296f28f2cd0bb9ea96",
                 "reference": {
                   "kind": "workspace",
-                  "id": "workspace-912a3955f3279ba9e10d8a64ea953839"
+                  "id": "workspace-c9c9d7247f1612ea0cd887cf888f0925"
                 },
                 "createdAt": "2026-08-01T00:00:00.000Z",
                 "updatedAt": "2026-08-01T00:00:00.000Z"
               },
               {
-                "id": "node-abc995f3f99223cafce75743c75cf09a",
+                "id": "node-e2c03a8926d43cafdcc9bbdb5f33c40f",
                 "reference": {
                   "kind": "conversation",
-                  "id": "conversation-dd3dd123ede23c82bb027a01014ac840"
+                  "id": "conversation-65e27293ad3346c5ceead4bbfe3ba91b"
                 },
                 "title": "Parallel run B",
                 "createdAt": "2026-08-01T00:00:00.000Z",
                 "updatedAt": "2026-08-01T00:00:00.000Z"
               },
               {
-                "id": "node-f2213381bae1e9660a4caf80a4f8c42a",
+                "id": "node-c15c712f313535d1ab41909143a840e6",
                 "reference": {
                   "kind": "branch",
-                  "id": "branch-dd3dd123ede23c82bb027a01014ac840"
+                  "id": "branch-65e27293ad3346c5ceead4bbfe3ba91b"
                 },
                 "title": "Main",
                 "createdAt": "2026-08-01T00:00:00.000Z",
@@ -1216,20 +1216,20 @@
             ],
             "graphEdges": [
               {
-                "id": "edge-ab3dbe666a89669920d2efca1efe5dac",
+                "id": "edge-93acb08f68b5aed664dc140b6c9ab7cc",
                 "kind": "attached",
-                "source": "node-7afafa6b1b985f71404a7f5a2180207c",
-                "destination": "node-abc995f3f99223cafce75743c75cf09a",
+                "source": "node-21b39cb03142ca296f28f2cd0bb9ea96",
+                "destination": "node-e2c03a8926d43cafdcc9bbdb5f33c40f",
                 "provenance": {
                   "operationId": "op-terminal-000005"
                 },
                 "createdAt": "2026-08-01T00:00:00.000Z"
               },
               {
-                "id": "edge-e53cdf368ed9e8ae761e4e7d75874824",
+                "id": "edge-1cd53ffe3a87898a8630edaf7e4278b8",
                 "kind": "attached",
-                "source": "node-abc995f3f99223cafce75743c75cf09a",
-                "destination": "node-f2213381bae1e9660a4caf80a4f8c42a",
+                "source": "node-e2c03a8926d43cafdcc9bbdb5f33c40f",
+                "destination": "node-c15c712f313535d1ab41909143a840e6",
                 "provenance": {
                   "operationId": "op-terminal-000005"
                 },
@@ -1239,11 +1239,11 @@
             "operation": {
               "id": "op-terminal-000005",
               "kind": "conversation-create",
-              "requestDigest": "faf34a5c8384eb1e6922697d4ff458e2a616f825a3103efe00dcd621d91a7f43",
+              "requestDigest": "14dc529cc4bc0e19b5772b2fddea8322b125962fd23bfef2957ecfa4c52103d2",
               "status": "acknowledged",
               "target": {
                 "kind": "conversation",
-                "id": "conversation-dd3dd123ede23c82bb027a01014ac840"
+                "id": "conversation-65e27293ad3346c5ceead4bbfe3ba91b"
               },
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
@@ -1260,19 +1260,19 @@
           "value": {
             "kind": "draft.recorded",
             "draft": {
-              "id": "draft-dd3dd123ede23c82bb027a01014ac840",
-              "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+              "id": "draft-65e27293ad3346c5ceead4bbfe3ba91b",
+              "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
               "text": "parallel run B",
               "updatedAt": "2026-08-01T00:00:00.000Z"
             },
             "operation": {
               "id": "op-terminal-000006",
               "kind": "draft-update",
-              "requestDigest": "a5029c6d5163b0e833d253895e8c0c06f904e037231ce4c18fac4fba08a94bb6",
+              "requestDigest": "c64d75b32e6e08845937be46b7155c0f93d77afc3c7e726d833bbd751c8691ce",
               "status": "acknowledged",
               "target": {
                 "kind": "branch",
-                "id": "branch-dd3dd123ede23c82bb027a01014ac840"
+                "id": "branch-65e27293ad3346c5ceead4bbfe3ba91b"
               },
               "createdAt": "2026-08-01T00:00:00.000Z",
               "updatedAt": "2026-08-01T00:00:00.000Z",
@@ -1293,8 +1293,8 @@
             "runId": "run-000005",
             "turnId": "turn-000006",
             "operationId": "op-terminal-000007",
-            "conversationId": "conversation-dd3dd123ede23c82bb027a01014ac840",
-            "branchId": "branch-dd3dd123ede23c82bb027a01014ac840",
+            "conversationId": "conversation-65e27293ad3346c5ceead4bbfe3ba91b",
+            "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
             "admittedAt": "2026-08-01T00:00:00.000Z",
             "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
             "requested": {
@@ -1344,10 +1344,10 @@
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "32df57017326cfaff15c78536d2fd3ec916d8e34f6ee403f23301a4c4961d9f1",
+            "requestDigest": "59752672be252424c3b41359c7bb4b7852971c7293eb45e84f0776da7c498862",
             "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
             "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-            "digest": "77f872be80d7f6bbb6f6fa7e980efc2ce0474304197dad88f1c5b20b6f5d0e23"
+            "digest": "dc8a4c4f330440a7dc525e8c3b8bb41f25d8e89f8a20ba2fdf581dd2687368e9"
           },
           "status": "admitted"
         }
@@ -1360,10 +1360,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000007-af782efe2d7a4a6d733747ba",
+              "id": "effect-op-terminal-000007-1ba4925ef5fa044a1a8ad3e8",
               "operationId": "op-terminal-000007",
               "effectKind": "run.execute",
-              "requestDigest": "af782efe2d7a4a6d733747ba21e0b617aa0fbdcf961f174cd9a817b53e9257d3",
+              "requestDigest": "1ba4925ef5fa044a1a8ad3e817fd750157ba199b7759dd3c12d5fcff3fd39a1c",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -1382,13 +1382,13 @@
           "source": {
             "eventId": "run-000005:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-02T04:41:38.950Z",
+            "occurredAt": "2026-09-27T10:10:34.531Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-307555c4-dfa8-4ba4-b937-8cef40d58003",
+              "id": "turn-225aac81-85eb-4da2-8726-fb95c582bf62",
               "intent": "parallel run B",
               "metadata": {
                 "identity": {
@@ -1398,11 +1398,11 @@
               }
             },
             "session": {
-              "id": "37ede3b0-a86f-4d7b-a059-8c4e407b4980",
+              "id": "7e95d4a7-e4ec-41e9-83d7-7f7b7974352c",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-02T04:41:38.950Z",
-              "updatedAt": "2026-09-02T04:41:38.950Z",
+              "createdAt": "2026-09-27T10:10:34.531Z",
+              "updatedAt": "2026-09-27T10:10:34.531Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -1424,16 +1424,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-307555c4-dfa8-4ba4-b937-8cef40d58003"
+                  "id": "turn-225aac81-85eb-4da2-8726-fb95c582bf62"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-307555c4-dfa8-4ba4-b937-8cef40d58003:attempt:5e3f7bda-31f0-4b35-896c-244c42d36fc1",
-                  "materializationReceiptDigest": "sha256:e799a02c508bda95ec55ca9c7496856d1e85f694e39b6c10145d7b81da44f619",
-                  "bindingDigest": "sha256:95aa379aeb23f45c094473f3463bf2c381e18070774f962ab15f1979b0ccb2fd",
+                  "attemptId": "turn-225aac81-85eb-4da2-8726-fb95c582bf62:attempt:f83100e5-67a8-4599-ad62-69659ae167c1",
+                  "materializationReceiptDigest": "sha256:8498838ec1cf26779666666e9520cea99a5074ea72016db77b9d355ee5ad84fa",
+                  "bindingDigest": "sha256:046444bbccb2d5ec47450a13979ba215e8291faa28727dbe96db1038f0db146a",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -1445,10 +1445,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-02T04:41:38.950Z"
+                "startedAt": "2026-09-27T10:10:34.530Z"
               }
             },
-            "timestamp": "2026-09-02T04:41:38.950Z"
+            "timestamp": "2026-09-27T10:10:34.531Z"
           }
         }
       },
@@ -1460,7 +1460,40 @@
           "runId": "run-000001",
           "value": {
             "kind": "run.focused",
-            "runId": "run-000001"
+            "runId": "run-000001",
+            "selection": {
+              "conversationId": "conversation-51244db78d117c2d6d71200ebd4a4809",
+              "branchId": "branch-51244db78d117c2d6d71200ebd4a4809"
+            }
+          }
+        }
+      },
+      {
+        "sequence": 14,
+        "revision": 14,
+        "kind": "draft.recorded",
+        "payload": {
+          "value": {
+            "kind": "draft.recorded",
+            "draft": {
+              "id": "draft-65e27293ad3346c5ceead4bbfe3ba91b",
+              "branchId": "branch-65e27293ad3346c5ceead4bbfe3ba91b",
+              "text": "",
+              "updatedAt": "2026-08-01T00:00:00.000Z"
+            },
+            "operation": {
+              "id": "op-terminal-000009",
+              "kind": "draft-update",
+              "requestDigest": "5434fd7b7d78cd1d3f0197600b4fc22da8e77920b503f850a0a4df467ac6eed1",
+              "status": "acknowledged",
+              "target": {
+                "kind": "branch",
+                "id": "branch-65e27293ad3346c5ceead4bbfe3ba91b"
+              },
+              "createdAt": "2026-08-01T00:00:00.000Z",
+              "updatedAt": "2026-08-01T00:00:00.000Z",
+              "acknowledgedAt": "2026-08-01T00:00:00.000Z"
+            }
           }
         }
       }

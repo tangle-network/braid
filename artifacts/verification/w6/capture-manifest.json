@@ -1,21 +1,21 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-09-02T04:41:58.474Z",
+  "generatedAt": "2026-09-27T10:10:59.667Z",
   "command": "pnpm capture:visual",
   "binary": "clean npm install from generated tarball",
   "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-  "tarball": "tangle-network-braid-0.3.0.tgz",
-  "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2",
+  "tarball": "tangle-network-braid-0.3.3.tgz",
+  "tarballSha256": "029671a868313d33b23d5d894f1fcd572dbf0b2df8463f932f855f8fd747a85d",
   "stateFixture": "deterministic",
   "liveDemoCommand": "pnpm capture:demo:live",
   "terminal": "node-pty/xterm-256color",
-  "node": "v24.13.0",
+  "node": "v24.18.0",
   "provenance": {
     "renderer": {
       "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -61,6 +61,29 @@
       "fork-preview.cast",
       "80x24-fork-preview.gif"
     ]
+  },
+  "conversationForkPreviewFlow": {
+    "steps": [
+      "type /fork",
+      "open the conversation fork preview",
+      "review its destination branch"
+    ],
+    "artifacts": [
+      "conversation-fork-preview.cast",
+      "80x24-conversation-fork-preview.gif"
+    ],
+    "beforeCapture": {
+      "sourceCommit": "afc8380e06dbb164532d6d7af753394375c81c42",
+      "source": "retained 2026-09-27 Braid 0.3.3 deterministic-provider capture",
+      "sourceKind": "normalized terminal text plus original walkthrough recording; no PNG was retained",
+      "sourceManifest": "references/conversation-fork-preview-before-source-manifest.json",
+      "sourceManifestSha256": "470e374b9585171860ab89f3d9c6d5b8e0112ac4b77baaccd3ae2d6d1ba70463",
+      "artifacts": [
+        "references/conversation-fork-preview-before-80x24.txt",
+        "references/conversation-fork-preview-before-walkthrough.cast",
+        "references/conversation-fork-preview-before-source-manifest.json"
+      ]
+    }
   },
   "states": [
     {
@@ -193,6 +216,54 @@
         "asciicast": "raw/fork-preview-200.cast",
         "ansi": "states/fork-preview-200.ansi",
         "png": "states/fork-preview-200.png"
+      }
+    },
+    {
+      "name": "conversation-fork-preview-40",
+      "columns": 40,
+      "rows": 12,
+      "artifacts": {
+        "semantic-state": "states/conversation-fork-preview-40.json",
+        "plain-frame": "states/conversation-fork-preview-40.txt",
+        "asciicast": "raw/conversation-fork-preview-40.cast",
+        "ansi": "states/conversation-fork-preview-40.ansi",
+        "png": "states/conversation-fork-preview-40.png"
+      }
+    },
+    {
+      "name": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24,
+      "artifacts": {
+        "semantic-state": "states/conversation-fork-preview-80.json",
+        "plain-frame": "states/conversation-fork-preview-80.txt",
+        "asciicast": "raw/conversation-fork-preview-80.cast",
+        "ansi": "states/conversation-fork-preview-80.ansi",
+        "png": "states/conversation-fork-preview-80.png"
+      }
+    },
+    {
+      "name": "conversation-fork-preview-120",
+      "columns": 120,
+      "rows": 40,
+      "artifacts": {
+        "semantic-state": "states/conversation-fork-preview-120.json",
+        "plain-frame": "states/conversation-fork-preview-120.txt",
+        "asciicast": "raw/conversation-fork-preview-120.cast",
+        "ansi": "states/conversation-fork-preview-120.ansi",
+        "png": "states/conversation-fork-preview-120.png"
+      }
+    },
+    {
+      "name": "conversation-fork-preview-200",
+      "columns": 200,
+      "rows": 60,
+      "artifacts": {
+        "semantic-state": "states/conversation-fork-preview-200.json",
+        "plain-frame": "states/conversation-fork-preview-200.txt",
+        "asciicast": "raw/conversation-fork-preview-200.cast",
+        "ansi": "states/conversation-fork-preview-200.ansi",
+        "png": "states/conversation-fork-preview-200.png"
       }
     },
     {
@@ -350,14 +421,14 @@
     },
     {
       "path": "40x12-plain.txt",
-      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
+      "sha256": "b71a0987e20a2373f6f91d24ee12773f097055cc5c714e2706257364bbdbea5f",
       "kind": "plain-frame",
       "columns": 40,
       "rows": 12
     },
     {
       "path": "40x12.png",
-      "sha256": "5f90dabe254659a5a84b1cfbea0b768c7f5e500f3be1847bb66a917c8db7e6bb",
+      "sha256": "8d9ecdffa828f4e761bf6fcd07598f6ae0b188a96a2524b6b72ae201fa2143b7",
       "kind": "png",
       "columns": 40,
       "rows": 12
@@ -371,14 +442,14 @@
     },
     {
       "path": "80x24-plain.txt",
-      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
+      "sha256": "b71a0987e20a2373f6f91d24ee12773f097055cc5c714e2706257364bbdbea5f",
       "kind": "plain-frame",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24.png",
-      "sha256": "3cf579c3b965c68cd7536f88117a641f1122a5412bc58654ab38278a22288f2a",
+      "sha256": "5fece6325552dedcf4135d56cc0522cb68669a7318823033d4d5f85a85bf6ca4",
       "kind": "png",
       "columns": 80,
       "rows": 24
@@ -392,14 +463,14 @@
     },
     {
       "path": "120x40-plain.txt",
-      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
+      "sha256": "b71a0987e20a2373f6f91d24ee12773f097055cc5c714e2706257364bbdbea5f",
       "kind": "plain-frame",
       "columns": 120,
       "rows": 40
     },
     {
       "path": "120x40.png",
-      "sha256": "84a3164aa0d2c729b87364c49c6e393cf47baa1cbe59a7a9c78ff3e795f2f259",
+      "sha256": "bde61097eaa2340950c20ecda2391e197d378304a11fd663817f1a718081e2f5",
       "kind": "png",
       "columns": 120,
       "rows": 40
@@ -413,21 +484,21 @@
     },
     {
       "path": "200x60-plain.txt",
-      "sha256": "ba1d8d763f6f643c94f97a5abeddfe6d4999ebed8e381f232e4a9f843a96d43c",
+      "sha256": "b71a0987e20a2373f6f91d24ee12773f097055cc5c714e2706257364bbdbea5f",
       "kind": "plain-frame",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "200x60.png",
-      "sha256": "0d0a7cbd683d1f9398d9379bc41d4c7aa3c0f999cf39b04735fbeec0a9e1dcae",
+      "sha256": "9ba27fe1e3d64bf39c4c02e03f6a653e4e8f1b64e84770bfc18b3437d0f7ff69",
       "kind": "png",
       "columns": 200,
       "rows": 60
     },
     {
       "path": "states/command-palette-40.json",
-      "sha256": "3530fe9c0191c2ab1fc576a985adcc2c7ae6227838628409d7720a0c28e80dd5",
+      "sha256": "9fec1c6d66a9b76963c145010a289cbd585063badd85bfa2c21b3b4166e7c80b",
       "kind": "semantic-state",
       "state": "command-palette-40",
       "columns": 40,
@@ -443,7 +514,7 @@
     },
     {
       "path": "raw/command-palette-40.cast",
-      "sha256": "2f65f175d121a30f05afb2562446d93ffa75e4158b90305a4829dbae03a938eb",
+      "sha256": "51209bbb6c84b0ed4a39a223b9666ba675d4dec0273e47c17c8555db8919d297",
       "kind": "asciicast",
       "state": "command-palette-40",
       "columns": 40,
@@ -451,7 +522,7 @@
     },
     {
       "path": "states/command-palette-40.ansi",
-      "sha256": "0dedcdb0fb98e232c30bd28ccf8c50358edb605634cf466291f3902fefb6f02e",
+      "sha256": "c4c5a3878db811fbad26d570c142abd61a76ed90b216e55d71c1c2bb93381274",
       "kind": "ansi",
       "state": "command-palette-40",
       "columns": 40,
@@ -459,7 +530,7 @@
     },
     {
       "path": "states/command-palette-40.png",
-      "sha256": "c03a11957fee4e2572e82f14889c406aba036e8996758756a00e063f80346192",
+      "sha256": "c5016cc79bffe8e356a9a0ce31ab5b184608de0ab66f528acf103dfead040bee",
       "kind": "png",
       "state": "command-palette-40",
       "columns": 40,
@@ -467,7 +538,7 @@
     },
     {
       "path": "states/command-palette-80.json",
-      "sha256": "db2b6c6f5277fe731d51934e359cdfd7a9bbcdf936c59718815354da80b1e215",
+      "sha256": "bdc1ee11a0d51fa6fadedd55ca2b2678abae220709f379ee916b6228951a231f",
       "kind": "semantic-state",
       "state": "command-palette-80",
       "columns": 80,
@@ -483,7 +554,7 @@
     },
     {
       "path": "raw/command-palette-80.cast",
-      "sha256": "1bdbaace2b90a5cf777e0646098727deb5882ccfc42d6893283fb0060110a524",
+      "sha256": "eaf164dc06f928db18e03f0240411eac49b5823b52e741e2b3251c53ca402230",
       "kind": "asciicast",
       "state": "command-palette-80",
       "columns": 80,
@@ -491,7 +562,7 @@
     },
     {
       "path": "states/command-palette-80.ansi",
-      "sha256": "b78072091afbc425704071fb57f12b0c8938b1c1a133f70a1a4451ec79c2ea71",
+      "sha256": "8c65ed7150066ebfffdca03aa49496555830551a5bf19a56fdf5922967cafced",
       "kind": "ansi",
       "state": "command-palette-80",
       "columns": 80,
@@ -499,7 +570,7 @@
     },
     {
       "path": "states/command-palette-80.png",
-      "sha256": "735c966aafc6c1613174f3d2161af29c7c3222a06a38577b549a8694aa9901f0",
+      "sha256": "5ca08819496ccde58a73e6311a0784d631dd7e44e4297d9ec239e8efbc7fa26a",
       "kind": "png",
       "state": "command-palette-80",
       "columns": 80,
@@ -507,7 +578,7 @@
     },
     {
       "path": "states/command-palette-120.json",
-      "sha256": "85d815f69e37d3ee25f4ef09d303dcc569a9639eee74e8929a68bc6ece6bff2f",
+      "sha256": "f1aae7a8c27fe8766e94f3396187975f5b51877f2396d768f9e9e858545db02b",
       "kind": "semantic-state",
       "state": "command-palette-120",
       "columns": 120,
@@ -523,7 +594,7 @@
     },
     {
       "path": "raw/command-palette-120.cast",
-      "sha256": "af9f24311646ac0e8f6e60918e1cf1e4cd4b39c7c5c32c46da0a6b152dba0849",
+      "sha256": "46b8497969d3396d3fc2dbddddf407df3ead9761f9b084566de623c18bcc4463",
       "kind": "asciicast",
       "state": "command-palette-120",
       "columns": 120,
@@ -531,7 +602,7 @@
     },
     {
       "path": "states/command-palette-120.ansi",
-      "sha256": "f210906bf6c1e409f47c8ac19d0342bec4c6f93e84cf56bf1a9eaf4e16663777",
+      "sha256": "3dd60a20987104236568ec31d855f08f17bc59a31176289330354188c387a3f8",
       "kind": "ansi",
       "state": "command-palette-120",
       "columns": 120,
@@ -539,7 +610,7 @@
     },
     {
       "path": "states/command-palette-120.png",
-      "sha256": "fcb10dcd65caa815d0cdd03c894ea10bc81b29b259569b493d168e71344867bf",
+      "sha256": "dbcde83883f041cd5eec76a1b4fd81b97485f5c7410eb86e5b7cb4b743085b00",
       "kind": "png",
       "state": "command-palette-120",
       "columns": 120,
@@ -547,7 +618,7 @@
     },
     {
       "path": "states/cancellation-unavailable-40.json",
-      "sha256": "6336a87fac6bbc4d4ce0a95826be63225d3f7c8837d883c82ab13c7878ba8129",
+      "sha256": "7bd760789481ff58ad2c49ee2f9300368fa941af5c5848afad767f8f8e5786e8",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -563,7 +634,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-40.cast",
-      "sha256": "9ff095afa03745397106e66912f7b102a58d286be5825fba83cc811d0c0893b7",
+      "sha256": "5f250a4b6379521661fae6ce615eb3d773a1f6cb364251bbdb1317f56181408f",
       "kind": "asciicast",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -571,7 +642,7 @@
     },
     {
       "path": "states/cancellation-unavailable-40.ansi",
-      "sha256": "c9b4bc6e935b953f36cf3c68fb4f525ebe4d6091f2aca21663253219af54015b",
+      "sha256": "09366b069fc1b084c803dbb366343032afbfcff77908d7cc3da23a76bdcd4f68",
       "kind": "ansi",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -579,7 +650,7 @@
     },
     {
       "path": "states/cancellation-unavailable-40.png",
-      "sha256": "fc880d621de03ad4ae2def4f6a9943683f74d994c5f4c34000c22660dbbe3e8b",
+      "sha256": "48ab09fda0d2704c05a3b39b22501b0570a926ad692d170a721b6c5a6a8728e6",
       "kind": "png",
       "state": "cancellation-unavailable-40",
       "columns": 40,
@@ -587,7 +658,7 @@
     },
     {
       "path": "states/cancellation-unavailable-80.json",
-      "sha256": "1ae1c79a8bc81a642a606f79f67fe71ecaac214d28a3d2bcadd83edc77f49160",
+      "sha256": "38178ab61cdaa926c287f3958b4b98d1421768e190d952c3bfef46a4b93fee98",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -603,7 +674,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-80.cast",
-      "sha256": "3a1a8533998ba5cb096d6059a4db66b505cb73ef828e4f1fc7bdf7cc8c1d9a19",
+      "sha256": "8b65fa12e780be76801d632d3b219ba932897d7d92505c9338f920069413b3c6",
       "kind": "asciicast",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -611,7 +682,7 @@
     },
     {
       "path": "states/cancellation-unavailable-80.ansi",
-      "sha256": "f70f5494a46be162e41478821337518335f19c9680c940188dd39997c5b39f10",
+      "sha256": "b33b1b0f10be8f9e60aaade0143e63faa8f921a7c9ff3408e6ac9d3ac0a70eef",
       "kind": "ansi",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -619,7 +690,7 @@
     },
     {
       "path": "states/cancellation-unavailable-80.png",
-      "sha256": "4ca1e878793e9198ccbb6aa4130fe7b908de2c19d03d8b66769c5e58a32d3086",
+      "sha256": "d0c7339557ff4345ffd54d38c1ed53d42a667809f97e1ab7f2e57349daaf6c87",
       "kind": "png",
       "state": "cancellation-unavailable-80",
       "columns": 80,
@@ -627,7 +698,7 @@
     },
     {
       "path": "states/cancellation-unavailable-120.json",
-      "sha256": "a86cf3805ab8fa600db68bab753ff911d7583521281243491d273b29f26771c6",
+      "sha256": "9971538ffb748a27118354a429e0fd4c5637d2dfcf58d7bf1aac020667548c70",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -643,7 +714,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-120.cast",
-      "sha256": "ddaf4d8b87981ed43e8b7974011e658f38a8bb9c80f294b17022aa3dbcebf644",
+      "sha256": "2125fc406890524dbfd27fe9a80a4cbaa531db9d2b88b56234ce695ba3220472",
       "kind": "asciicast",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -651,7 +722,7 @@
     },
     {
       "path": "states/cancellation-unavailable-120.ansi",
-      "sha256": "29cb87074cfe0e6ef471c657adad694d7a8841d10cebbc41127937b990654427",
+      "sha256": "26f22892f1489c25f134d6a9a80a25aa80c179c59d3862d8933651b6b6af9818",
       "kind": "ansi",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -659,7 +730,7 @@
     },
     {
       "path": "states/cancellation-unavailable-120.png",
-      "sha256": "ab1575eea4971e28e799efdb77c9d55fed4b26497c71655d097b1bd5bc3a0c62",
+      "sha256": "e04a1bc92326c6b1303b85001db06ef156c8ddf918bf4956d77024f2798fc379",
       "kind": "png",
       "state": "cancellation-unavailable-120",
       "columns": 120,
@@ -667,7 +738,7 @@
     },
     {
       "path": "states/cancellation-unavailable-200.json",
-      "sha256": "c14466cc6764e073ab20368d6a98cfe7919b4029666e4645bb3d31a0a6c3fb40",
+      "sha256": "6a5a1a5a3b32c3176f2342e3a249e821185b453b1e8cda3b3a64e2c8991e043d",
       "kind": "semantic-state",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -683,7 +754,7 @@
     },
     {
       "path": "raw/cancellation-unavailable-200.cast",
-      "sha256": "3b7c453bdc59ddb3b98cc89d172b4f47af9e9c197777195ab2908ff6969593c4",
+      "sha256": "e7c08996c2638378610b2b6be204e5b50c488895ac957ea93b0b8f60c33744ab",
       "kind": "asciicast",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -691,7 +762,7 @@
     },
     {
       "path": "states/cancellation-unavailable-200.ansi",
-      "sha256": "3506b874982658880973e07708053e798209ad5ccb66425c48fafe4527190fe5",
+      "sha256": "03fe8c39af227064097700554de731d2dcc9794b003ed8153ce2e592d8bbb23f",
       "kind": "ansi",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -699,7 +770,7 @@
     },
     {
       "path": "states/cancellation-unavailable-200.png",
-      "sha256": "50975f02cb4d2b8d0eb7f0208becb9b52aeb41703ca6b1d00af214d0a04480a5",
+      "sha256": "647ca1df7aca5ae9a53fff91744a81eb22714f42e2ec57f4dbb1e0c5334ceabe",
       "kind": "png",
       "state": "cancellation-unavailable-200",
       "columns": 200,
@@ -707,7 +778,7 @@
     },
     {
       "path": "states/fork-preview-40.json",
-      "sha256": "84bfd4d705c380fc2fff36d57181d2129bae5d30a09f27d2cab3c1ff101547c4",
+      "sha256": "d3efef720776c2d9b7f0075f5824c4c76163e095b053149412a5dc0b1b89e7e5",
       "kind": "semantic-state",
       "state": "fork-preview-40",
       "columns": 40,
@@ -715,7 +786,7 @@
     },
     {
       "path": "states/fork-preview-40.txt",
-      "sha256": "7c6d1807e473c5675b8189b91f347476eeddd05cb1431fb8b64141f235f6ce69",
+      "sha256": "de8014704d982c16241cb07e024bcdd68f456345e47b884ddf90263f1d7e9740",
       "kind": "plain-frame",
       "state": "fork-preview-40",
       "columns": 40,
@@ -723,7 +794,7 @@
     },
     {
       "path": "raw/fork-preview-40.cast",
-      "sha256": "f640bd40c5adad28941f798170fd3f4ec3ac56cbac7cc5f85e9a1007c56597a9",
+      "sha256": "0393dd8723220e7cbf031eb86e42c7ddbe5505b4548a57a8061ee36defe7a363",
       "kind": "asciicast",
       "state": "fork-preview-40",
       "columns": 40,
@@ -731,7 +802,7 @@
     },
     {
       "path": "states/fork-preview-40.ansi",
-      "sha256": "ab9d2590dadfdf980407ff374f263491bde846161c637459a74a558c5f82b6f8",
+      "sha256": "e17da2dd0591b9e44d02298463dc5e5e8b4a871652ad65b7d670bd02affc3efc",
       "kind": "ansi",
       "state": "fork-preview-40",
       "columns": 40,
@@ -739,7 +810,7 @@
     },
     {
       "path": "states/fork-preview-40.png",
-      "sha256": "24e0754d317b971ecfde9d5d64a82aa6a6f9b2caa0d28cc19a87a1e4b2e2316f",
+      "sha256": "8e3b2d6db074adeecea0bed8044d0c3f852e7ab3f578a5cb9cafb9a45c22f9a8",
       "kind": "png",
       "state": "fork-preview-40",
       "columns": 40,
@@ -747,7 +818,7 @@
     },
     {
       "path": "states/fork-preview.json",
-      "sha256": "ebe718d18f188d662d5df4408327c574d3d76258b290708e11e32a78823e5652",
+      "sha256": "bdf2de0ef8accee495301e0c9540ab95dda3e06954bd16d2b0702f7d1a7c5ba9",
       "kind": "semantic-state",
       "state": "fork-preview",
       "columns": 80,
@@ -755,7 +826,7 @@
     },
     {
       "path": "states/fork-preview.txt",
-      "sha256": "474f22468a9679e0b5fced0a0829de7de3a51d5a06e0217582d0798223e1b060",
+      "sha256": "05df71841da7ad0c9a9ddea9c0d59379434339d5ef01799d97e610f847aaaf31",
       "kind": "plain-frame",
       "state": "fork-preview",
       "columns": 80,
@@ -763,7 +834,7 @@
     },
     {
       "path": "raw/fork-preview.cast",
-      "sha256": "cbd9fcb1a8fdc86cdbe87f591656bf34ef22f279c84a132889de79c4cfc54224",
+      "sha256": "f3d2c96d93875fbf5fb73cc7fce6043343e3f8c1487fb828c56cc9a2768ac31b",
       "kind": "asciicast",
       "state": "fork-preview",
       "columns": 80,
@@ -771,7 +842,7 @@
     },
     {
       "path": "states/fork-preview.ansi",
-      "sha256": "140f894d3dddd4d5ba34998209b913270ef7cb21059bb1f5b0522956b23a2c79",
+      "sha256": "484ea6d51cdbef21003b0fc9f196e7861e2e4613976be8811def26527d0a9922",
       "kind": "ansi",
       "state": "fork-preview",
       "columns": 80,
@@ -779,7 +850,7 @@
     },
     {
       "path": "states/fork-preview.png",
-      "sha256": "b75d3be9485f6cf134e946dff780fddf7295fe7f9d9877d79f045cc42738e79d",
+      "sha256": "f18fbd289c698223cb28ccdc5bc15ee9a482a3ed70c006f915b595139cd786e1",
       "kind": "png",
       "state": "fork-preview",
       "columns": 80,
@@ -787,7 +858,7 @@
     },
     {
       "path": "states/fork-preview-120.json",
-      "sha256": "2de5a3622b55c7eb372ef2f9717f9ada2528e738e973bc71918d5da1245db08b",
+      "sha256": "0f2d7ec879b0fad4d5e26de591237d83d7371d809a90930296175332cb32c91d",
       "kind": "semantic-state",
       "state": "fork-preview-120",
       "columns": 120,
@@ -795,7 +866,7 @@
     },
     {
       "path": "states/fork-preview-120.txt",
-      "sha256": "b904b12f6aec89f6fe8eee19311d1e2dccf7b8bcfb2ec715b5082c3a36fb69af",
+      "sha256": "79eb7133ecbe1f7d8952319a958b26425f212a8e90979e44bea1ac20ffd2a9bf",
       "kind": "plain-frame",
       "state": "fork-preview-120",
       "columns": 120,
@@ -803,7 +874,7 @@
     },
     {
       "path": "raw/fork-preview-120.cast",
-      "sha256": "f3138e266edd522a7e3a21961c23cad10940e51c0df38ff1134395b4ba703320",
+      "sha256": "5efbf554b47b94cf0bf405d222d9859d464e45b9af068c634f5c7f3dd1fdab76",
       "kind": "asciicast",
       "state": "fork-preview-120",
       "columns": 120,
@@ -811,7 +882,7 @@
     },
     {
       "path": "states/fork-preview-120.ansi",
-      "sha256": "494920fd6a3e5718e85c20906aecaffc3d4595cd41b13f1398fec05f2539b102",
+      "sha256": "ab78df106c4765f4f10cc820565e1f52c3dc164a617a38537310edc21d48eec8",
       "kind": "ansi",
       "state": "fork-preview-120",
       "columns": 120,
@@ -819,7 +890,7 @@
     },
     {
       "path": "states/fork-preview-120.png",
-      "sha256": "c1cea59eaf8fc405f5a527b85edecad4b481ce9f9f0020511cd67059da532d76",
+      "sha256": "7179d25cb982af6ea95f3f358bc40e7a8dc7972dec9fde096950eb5f6e65ab8b",
       "kind": "png",
       "state": "fork-preview-120",
       "columns": 120,
@@ -827,7 +898,7 @@
     },
     {
       "path": "states/fork-preview-200.json",
-      "sha256": "e06d885015f0284124a6e7766b9aa8fc198d331c6d92616c6ed1f5b9cb87b14c",
+      "sha256": "1b9bd53cd108bb5775771f46c5a4eb7131da8e27a7aa7848a6355f2d8d9f9cc2",
       "kind": "semantic-state",
       "state": "fork-preview-200",
       "columns": 200,
@@ -835,7 +906,7 @@
     },
     {
       "path": "states/fork-preview-200.txt",
-      "sha256": "d559cfe78eae884535551effd046479fc6b94957e3fe976ba4c298ed40f39e36",
+      "sha256": "26a0baa528bbb4fe34b09983e0133411ced9a2d371993eac6fa9bd5192d95efe",
       "kind": "plain-frame",
       "state": "fork-preview-200",
       "columns": 200,
@@ -843,7 +914,7 @@
     },
     {
       "path": "raw/fork-preview-200.cast",
-      "sha256": "d4247cf2ac3800e4eda887831b77d57e2b247827895b00350103d80645e6abd6",
+      "sha256": "5904d78cf677605782ea37739dd2a5b8d259676222b08bb5d4ea694d8b3a507e",
       "kind": "asciicast",
       "state": "fork-preview-200",
       "columns": 200,
@@ -851,7 +922,7 @@
     },
     {
       "path": "states/fork-preview-200.ansi",
-      "sha256": "999dacef5c0fdcf754f9d3bebdd40239251001f83002cc03f59523467f7aaafe",
+      "sha256": "e2fdf484e895980637e8f20884a96e88e47db50beae0f63eb3d16b83446d20d9",
       "kind": "ansi",
       "state": "fork-preview-200",
       "columns": 200,
@@ -859,15 +930,175 @@
     },
     {
       "path": "states/fork-preview-200.png",
-      "sha256": "83725614456af770f686b070a6f2219f06a635a6102d7f34d1a091e55c441096",
+      "sha256": "99166e51e5d5efd0ecddaabe415dbc8dddebec30b68688473803d2b7c304100b",
       "kind": "png",
       "state": "fork-preview-200",
       "columns": 200,
       "rows": 60
     },
     {
+      "path": "states/conversation-fork-preview-40.json",
+      "sha256": "9da05a584ef368c964f0b0abff5563102dac72052e153af7b4dabb9cbcfbc502",
+      "kind": "semantic-state",
+      "state": "conversation-fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/conversation-fork-preview-40.txt",
+      "sha256": "f5187b599fb6c88356de269b2daf242898ea1d1a3f79377c41bb66c2ca37c36f",
+      "kind": "plain-frame",
+      "state": "conversation-fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/conversation-fork-preview-40.cast",
+      "sha256": "c0d67da14861dd15d7764ca2afc8487bd5b9a61ecb65845e4edb40c93f681a62",
+      "kind": "asciicast",
+      "state": "conversation-fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/conversation-fork-preview-40.ansi",
+      "sha256": "2463063a139361c79f8add799eb528131c0e4c44923147c624f07ab2e2e30f43",
+      "kind": "ansi",
+      "state": "conversation-fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/conversation-fork-preview-40.png",
+      "sha256": "6114eb4af4e7ef3957a52c362f05387a2917597913070a827695dc0950ebddb6",
+      "kind": "png",
+      "state": "conversation-fork-preview-40",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "states/conversation-fork-preview-80.json",
+      "sha256": "762e846bcb9982e979cada335c3ae46897eda8f47ed3b0fd6763b3abcecffbd2",
+      "kind": "semantic-state",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/conversation-fork-preview-80.txt",
+      "sha256": "e6919cd3a37337cb2b67bdabe48c112d930e8eaaf55978ab610f6cf84fca1e2b",
+      "kind": "plain-frame",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/conversation-fork-preview-80.cast",
+      "sha256": "0726909ad406781ad7434c179c05530eefbd0fb1876e0c0b0a585bbfa1ccce9f",
+      "kind": "asciicast",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/conversation-fork-preview-80.ansi",
+      "sha256": "18d2815f761e8510f7dea2a9de44c8d14633ea1f2964813ec0f3309fb8d92c0f",
+      "kind": "ansi",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/conversation-fork-preview-80.png",
+      "sha256": "ed23d5c0e8f318c344667b0c5aeadb343ed8bb45f2fec07c40bde15e9f69def2",
+      "kind": "png",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "states/conversation-fork-preview-120.json",
+      "sha256": "0489227343c0a30628ca3c1dbd64e723072c6d823068b7206362ab6bde584fb0",
+      "kind": "semantic-state",
+      "state": "conversation-fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/conversation-fork-preview-120.txt",
+      "sha256": "9fe43ef5315faa712520e03796170a5b01c554602e49b32d67deb80727bb2306",
+      "kind": "plain-frame",
+      "state": "conversation-fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/conversation-fork-preview-120.cast",
+      "sha256": "941327abf7594c1bebe2ebb194c09b3cf367e249b329668a68856e13804fa9ac",
+      "kind": "asciicast",
+      "state": "conversation-fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/conversation-fork-preview-120.ansi",
+      "sha256": "6f757e35f6614e3dd9115abb849307258b79a99477ad479ebac6d24a7f444200",
+      "kind": "ansi",
+      "state": "conversation-fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/conversation-fork-preview-120.png",
+      "sha256": "d2c1de2f171be818378fd2261996c1d20c0d8006380c9885782f8d734be6ee3e",
+      "kind": "png",
+      "state": "conversation-fork-preview-120",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "states/conversation-fork-preview-200.json",
+      "sha256": "492152f33423cb5f60d650da6a522e303332be55e977a0f3ac1dd49a0b64aeac",
+      "kind": "semantic-state",
+      "state": "conversation-fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/conversation-fork-preview-200.txt",
+      "sha256": "ee4f374bf2f6f2af5a692cf547b58115756de986f78b0dc1bcf5a29659d7a708",
+      "kind": "plain-frame",
+      "state": "conversation-fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/conversation-fork-preview-200.cast",
+      "sha256": "b9119864ff14a82743230a4fc296d86372059f929d346d55eb72ffd78ff018d8",
+      "kind": "asciicast",
+      "state": "conversation-fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/conversation-fork-preview-200.ansi",
+      "sha256": "cc5a79c65345cd2430ce5bc8e3a6f950527bdb023b45bc1eb030ba24ba698f21",
+      "kind": "ansi",
+      "state": "conversation-fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "states/conversation-fork-preview-200.png",
+      "sha256": "0746bb8c01911a030293a0dddcbee7cac963fc50d0b052c09edcf4c24c0cc291",
+      "kind": "png",
+      "state": "conversation-fork-preview-200",
+      "columns": 200,
+      "rows": 60
+    },
+    {
       "path": "states/empty.json",
-      "sha256": "6577645bde6f57ec3638a0361e02b622122d40d8f65a6d2a6c569218d984a729",
+      "sha256": "87e8c856b859d0228c9114043d7b93fccfe8195addec2f1ea05a746f0201bcf9",
       "kind": "semantic-state",
       "state": "empty",
       "columns": 80,
@@ -883,7 +1114,7 @@
     },
     {
       "path": "raw/empty.cast",
-      "sha256": "4f7ce102c3b90209c7118c01a74667e28bbf7cdcc44ad116a1facfaec692d591",
+      "sha256": "c70e54e00612c590dac2f50933224329129146448b63627e120bb74fa3b065ff",
       "kind": "asciicast",
       "state": "empty",
       "columns": 80,
@@ -891,7 +1122,7 @@
     },
     {
       "path": "states/empty.ansi",
-      "sha256": "497ca61084e30eb9ff6eacbb5fad32d98923f0f441e0b2d454177b3db022bed0",
+      "sha256": "28efe986269f52ec84b29fec2e3fb19a70a89a04fa5479ad3136820217c002d6",
       "kind": "ansi",
       "state": "empty",
       "columns": 80,
@@ -899,7 +1130,7 @@
     },
     {
       "path": "states/empty.png",
-      "sha256": "3dc0bc300853f497c62741b78d5b4c223c1ebdcee95efa26f2bbdda1a2c835fb",
+      "sha256": "382fb3e262ba63d50231410f08539d81600e5d4d431331fee6d70b8676f31e1e",
       "kind": "png",
       "state": "empty",
       "columns": 80,
@@ -907,7 +1138,7 @@
     },
     {
       "path": "states/active-streaming.json",
-      "sha256": "4fcb89e9b3b5391c06827f278b87b3bd6dbde88c9b4698d1990c82e2c3e3dc6a",
+      "sha256": "2f010ab827d1b8bdb6080be797e2dca55d4e44393b13111a0dc7e49e9cef0cfc",
       "kind": "semantic-state",
       "state": "active-streaming",
       "columns": 80,
@@ -923,7 +1154,7 @@
     },
     {
       "path": "raw/active-streaming.cast",
-      "sha256": "d2ed8515d04cfac997feabbac84eb82a7a4758dbe14e39753722b2308a8d2fce",
+      "sha256": "3bc557425b28b52d3c3100726290a137009e88f88324d33edd60b964f1df2458",
       "kind": "asciicast",
       "state": "active-streaming",
       "columns": 80,
@@ -931,7 +1162,7 @@
     },
     {
       "path": "states/active-streaming.ansi",
-      "sha256": "1af117ebdb8431023cb62c69876eaee32e3411464333f765a48a3207df3e2350",
+      "sha256": "5623e823fdef223fbaeb5a25b0c9cb4715851cdbcd050196462f053728055129",
       "kind": "ansi",
       "state": "active-streaming",
       "columns": 80,
@@ -939,7 +1170,7 @@
     },
     {
       "path": "states/active-streaming.png",
-      "sha256": "6608d9005f5972ee276b628e585c2f5d573672bbdebb31c3690c3e2b1c14392d",
+      "sha256": "2f35865a29b096e854ae6d18d647426c5ce531bc6a670306600b9f15b12b1f22",
       "kind": "png",
       "state": "active-streaming",
       "columns": 80,
@@ -947,7 +1178,7 @@
     },
     {
       "path": "states/multi-run.json",
-      "sha256": "0c4cf539d6a950c548ded9351a42f71c52c9f24ad11fcdca2aca68b269fd2367",
+      "sha256": "bd865d7a76a6d19c4c46585ae0aad7c4ac638d3cdb68319764f4e4e15e5e129a",
       "kind": "semantic-state",
       "state": "multi-run",
       "columns": 80,
@@ -955,7 +1186,7 @@
     },
     {
       "path": "states/multi-run.txt",
-      "sha256": "36b0587c50d807d83fc2cecaa1f31f90809019448d88a4e6033a347e99ff6be5",
+      "sha256": "995d8defef4afda9b88175022fedfebcda97edac38f322199ab33376f131f09d",
       "kind": "plain-frame",
       "state": "multi-run",
       "columns": 80,
@@ -963,7 +1194,7 @@
     },
     {
       "path": "raw/multi-run.cast",
-      "sha256": "1031cbc0c31312b4825b495c3f93afed89bc134592003970aeeebe09c1d15b1b",
+      "sha256": "7ecdcffa94b28fbd3d6654eb48a47b7043fa235fd1f15b1822476b0d9aee0689",
       "kind": "asciicast",
       "state": "multi-run",
       "columns": 80,
@@ -971,7 +1202,7 @@
     },
     {
       "path": "states/multi-run.ansi",
-      "sha256": "afec40929e74a8b5b7b415e865d5a3aca34d80363602c3c8e3d5316dd3fe5bc5",
+      "sha256": "b7572d3b5cf77b42475cd0def66864fe740940464c6958b5916a8c3e944db550",
       "kind": "ansi",
       "state": "multi-run",
       "columns": 80,
@@ -979,7 +1210,7 @@
     },
     {
       "path": "states/multi-run.png",
-      "sha256": "fc973aca146b6d00566df191c70928da9ad317136d993d0a64d7a6d29b6d681b",
+      "sha256": "d6fb9c97605c312487393c9b563d32f0353953f884d5113e0be6d5e9b9499806",
       "kind": "png",
       "state": "multi-run",
       "columns": 80,
@@ -987,7 +1218,7 @@
     },
     {
       "path": "states/supervision.json",
-      "sha256": "726724a7245a1220dfcbfe022680dae2e132af8884009a2cdb674d222a2d3812",
+      "sha256": "ede1774f5ea2da6dca947e59f1568eac0d1cb89040cc55aa6b7d8befd5e8de13",
       "kind": "semantic-state",
       "state": "supervision",
       "columns": 80,
@@ -1003,7 +1234,7 @@
     },
     {
       "path": "raw/supervision.cast",
-      "sha256": "672d80dac542b4ffa13d990b718e3b8672a72cc794e03a5e48a2e3e287443880",
+      "sha256": "21af03ba881e0f0ccc3c7ed498aa2f6cafef7d35904b5caffcb1d7dec9bebc23",
       "kind": "asciicast",
       "state": "supervision",
       "columns": 80,
@@ -1011,7 +1242,7 @@
     },
     {
       "path": "states/supervision.ansi",
-      "sha256": "7d59696271b3c8db6b44f0afd16c429f42ecb3cd3e83a62e067cbf2e4c0bb102",
+      "sha256": "f6856890414f4509d5b8ef09a9c0b6cdf853cab36a4f5d559321f9d42d5c24d7",
       "kind": "ansi",
       "state": "supervision",
       "columns": 80,
@@ -1019,7 +1250,7 @@
     },
     {
       "path": "states/supervision.png",
-      "sha256": "44fe67fb78d2fad8bf9ffb027faa37df9ad0bf7c35a7c23d18c80607cb1bd8b6",
+      "sha256": "587a00cee91e0765523a288ffb84d2f46e9ce746aaa3d78a72855aa4c3fdef31",
       "kind": "png",
       "state": "supervision",
       "columns": 80,
@@ -1027,7 +1258,7 @@
     },
     {
       "path": "states/interaction.json",
-      "sha256": "6464e63f67850144ec6d2c6040340069459497654fad914ad667afd1f4447600",
+      "sha256": "c0e77d2f3022e4d3c3ca2413a08a214a19a32a235c8ea18b802e9b8c186dbc45",
       "kind": "semantic-state",
       "state": "interaction",
       "columns": 80,
@@ -1043,7 +1274,7 @@
     },
     {
       "path": "raw/interaction.cast",
-      "sha256": "3e47cc5e6d2a717953888bf702d8af2da9961b0ea56ffb8fddd7ba5b125a080c",
+      "sha256": "773afc5b07794f856158274bfa6c95718b605f72c0f541b0a1fdd8485aa45a91",
       "kind": "asciicast",
       "state": "interaction",
       "columns": 80,
@@ -1051,7 +1282,7 @@
     },
     {
       "path": "states/interaction.ansi",
-      "sha256": "6e3323d5507a7127058805c2571a9fe87b94ab0a1023cffe241274c8689a4460",
+      "sha256": "670ba4a44b0583aad1a309489992a1a84b1fd334d6e2254ad6d6d39778237475",
       "kind": "ansi",
       "state": "interaction",
       "columns": 80,
@@ -1059,7 +1290,7 @@
     },
     {
       "path": "states/interaction.png",
-      "sha256": "11df539aad39face3c9ddb1c02cff49938ecb50cd8aa4a9ac0cd3bdaac70dff2",
+      "sha256": "df72ef6545b49d68ca2a5c3f0ac35c5e5066b8743643a747801a53a0c471a90b",
       "kind": "png",
       "state": "interaction",
       "columns": 80,
@@ -1067,7 +1298,7 @@
     },
     {
       "path": "states/automation.json",
-      "sha256": "7e1e8a3f633b0c1e957d9bf620dae28f7dc955282728888c95d4a44d2dc126a7",
+      "sha256": "d675a4358eaf7c356b90f04cf3edb0ef1b8b4a9d56a42dabb0b70aa60b706c1c",
       "kind": "semantic-state",
       "state": "automation",
       "columns": 80,
@@ -1083,7 +1314,7 @@
     },
     {
       "path": "raw/automation.cast",
-      "sha256": "be0b29e0d04a32715d01521c4b6f8eb11bdfc830e0ac4f1f4f2f56246425af73",
+      "sha256": "77199cdda73ed15424e601ff8b14c74949faeb948d2dbf721947ae57092896eb",
       "kind": "asciicast",
       "state": "automation",
       "columns": 80,
@@ -1091,7 +1322,7 @@
     },
     {
       "path": "states/automation.ansi",
-      "sha256": "aac283dceade3de3b63a7c2ed8f7a55c4e109d539a7e7afdeeb78b0e96708171",
+      "sha256": "83da9379f1e322ffda499c4a8d46427b8c194f387da13367498382fc23841279",
       "kind": "ansi",
       "state": "automation",
       "columns": 80,
@@ -1099,7 +1330,7 @@
     },
     {
       "path": "states/automation.png",
-      "sha256": "817a4c6a58e23bb7873e953212db97d04e46109f9189408fe129c1db4c5635e8",
+      "sha256": "6a27e51148f555568ea0e32f4b17e575d0d3e6110d2568fad2f14d0124cf444a",
       "kind": "png",
       "state": "automation",
       "columns": 80,
@@ -1107,7 +1338,7 @@
     },
     {
       "path": "states/graph-or-analysis.json",
-      "sha256": "55f487227617eaa4902e08c9ae823062c828e23c889cece135a4ad810fdc83b2",
+      "sha256": "fe25a6bff1d5eeaef5ff667426e179ea69762092d6d3b53367ac6f0f62465f15",
       "kind": "semantic-state",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -1123,7 +1354,7 @@
     },
     {
       "path": "raw/graph-or-analysis.cast",
-      "sha256": "8209dae0a51ded951a7f9e55bb1331953466a5d4a3c2c1f3b5f603fc427cf4af",
+      "sha256": "57982dd75d284f11b39dcb070880f08dc0cbcffa91733b56404058c70e9c4003",
       "kind": "asciicast",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -1131,7 +1362,7 @@
     },
     {
       "path": "states/graph-or-analysis.ansi",
-      "sha256": "d94610d5f65ab1dceb30250524232b6045b27f9d554022e6b00f54ed2b613387",
+      "sha256": "074ffdd9e6a93356b5d28e4085fb9ae0a3e761831b55fe2cc4189c5a718a8668",
       "kind": "ansi",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -1139,7 +1370,7 @@
     },
     {
       "path": "states/graph-or-analysis.png",
-      "sha256": "66ed37cd191ee807cb885ca31ccc592a5224d71d2de0ed05700a1cb57416321c",
+      "sha256": "6a5c4738f376484054dde9bee68ba0b89e9f1270e0c161cad510a0f79c24230a",
       "kind": "png",
       "state": "graph-or-analysis",
       "columns": 80,
@@ -1147,7 +1378,7 @@
     },
     {
       "path": "states/analysis.json",
-      "sha256": "97ba4ee858599af315e40724367f590e2a35f6002686582ea88a97cf4402bf13",
+      "sha256": "a564d4166253734c659e2aaf460c1d15cb942487a5d94ab59b39252876f185fd",
       "kind": "semantic-state",
       "state": "analysis",
       "columns": 80,
@@ -1163,7 +1394,7 @@
     },
     {
       "path": "raw/analysis.cast",
-      "sha256": "3451b471f427b40592356d76d600ba755d7ef6d34e2e0ba049eef91522f01856",
+      "sha256": "55a61583d3082ce35c98ef189c622c8368a10baae1069f0c3343a7bd6b6e8e18",
       "kind": "asciicast",
       "state": "analysis",
       "columns": 80,
@@ -1171,7 +1402,7 @@
     },
     {
       "path": "states/analysis.ansi",
-      "sha256": "0ffaf26248dc24066d3026a3b72f91774bef7b58a3b44b8754c923bf56ad5a1b",
+      "sha256": "c127181a162f8509901ae89c530185fbe24f33cba81c5f8a61efc432457ee365",
       "kind": "ansi",
       "state": "analysis",
       "columns": 80,
@@ -1179,7 +1410,7 @@
     },
     {
       "path": "states/analysis.png",
-      "sha256": "89c310127440a7b58657cab60725908c2f8f047c9bb37cfcbcbdbde8151e47c1",
+      "sha256": "080c7dc5f309b0132710b19dd75edcf300dd81e87b830d89bc821ee83ee315c2",
       "kind": "png",
       "state": "analysis",
       "columns": 80,
@@ -1187,7 +1418,7 @@
     },
     {
       "path": "states/comparison.json",
-      "sha256": "04e6f48d76bf786d64d45dcbad4c65c4ce4ef4bc18b2a6343bc4d56d7b27d9ea",
+      "sha256": "9c08416ae40144c09fa130da2fc299b8fdaad61353d73bb6ec5b9dd73e6ac921",
       "kind": "semantic-state",
       "state": "comparison",
       "columns": 80,
@@ -1203,7 +1434,7 @@
     },
     {
       "path": "raw/comparison.cast",
-      "sha256": "e1ee5ec2c4361d6b2a8b5132f26048e98f811e544f6352cbff2549aea818fb5d",
+      "sha256": "9312c858d1636ccb97ed0c24a481f0fe2758a3e989ab1749d745debdc1ac5a8b",
       "kind": "asciicast",
       "state": "comparison",
       "columns": 80,
@@ -1211,7 +1442,7 @@
     },
     {
       "path": "states/comparison.ansi",
-      "sha256": "5a91f3d8c46f4912cab17a46a1177356819340e5320bf1918501870c208d8646",
+      "sha256": "a9a9912b1cea1e988fa587467608917e3b3071443eba5225706259a8efe45d04",
       "kind": "ansi",
       "state": "comparison",
       "columns": 80,
@@ -1219,7 +1450,7 @@
     },
     {
       "path": "states/comparison.png",
-      "sha256": "dc6a1b468927d82bcec13a80097db8aff6440d89bd47b780e8af5fd42571e7af",
+      "sha256": "b94663f0cf543e180080ed470a8998778b19a3a77d1c7d5cda99d9780825e97b",
       "kind": "png",
       "state": "comparison",
       "columns": 80,
@@ -1227,7 +1458,7 @@
     },
     {
       "path": "states/profile.json",
-      "sha256": "e653e33608025f29f5a919c975944e065043774ae1d4721ce3a620940744a265",
+      "sha256": "fa7114321335dddea31cad45246c06e86d49b3d441ee178f81c03e4f6ab2c683",
       "kind": "semantic-state",
       "state": "profile",
       "columns": 80,
@@ -1243,7 +1474,7 @@
     },
     {
       "path": "raw/profile.cast",
-      "sha256": "4b9893616337194740b41711bbf4649fca3ea2643400132f91adf83a6b7cafa6",
+      "sha256": "1f4b8ecce6219a42d5f3bf5ab815b4c8de9358ed70317b114e8b1074cf7095a1",
       "kind": "asciicast",
       "state": "profile",
       "columns": 80,
@@ -1251,7 +1482,7 @@
     },
     {
       "path": "states/profile.ansi",
-      "sha256": "903308e3c3eb153310dc52e29ac03800173250aedd384aa5f26885963bb0c3bc",
+      "sha256": "ec9d97ec76a4fe26d8d165261b53cfa5b12394cf45cea8beb4e4a7c4c9b80bec",
       "kind": "ansi",
       "state": "profile",
       "columns": 80,
@@ -1259,7 +1490,7 @@
     },
     {
       "path": "states/profile.png",
-      "sha256": "bcafe4679af5d1bcdf38c852e0524ef69c2afab2f1ffb86b069aeda56d2851b4",
+      "sha256": "f89f55aa0f42807e3a02d31f611d65b866cc3ad8412530d1c62269e252defa63",
       "kind": "png",
       "state": "profile",
       "columns": 80,
@@ -1267,7 +1498,7 @@
     },
     {
       "path": "states/narrow.json",
-      "sha256": "f9c1c8b3893e0aaa2a2b722d2818a487386d09d0eb1b4fe32dbac7cae1630558",
+      "sha256": "c7188f65d292ff89c990ffdeb57f85f735caa437039f047630237db481377505",
       "kind": "semantic-state",
       "state": "narrow",
       "columns": 40,
@@ -1283,7 +1514,7 @@
     },
     {
       "path": "raw/narrow.cast",
-      "sha256": "2d390df2fb6484ba4f830224745d5cef5249fdff308b2d2c9719294ccb17a5fd",
+      "sha256": "17f51f54a04a9d0373a285b0bf5f7f8b33ff94a989fd2bfb3361fa8bdebaf377",
       "kind": "asciicast",
       "state": "narrow",
       "columns": 40,
@@ -1291,7 +1522,7 @@
     },
     {
       "path": "states/narrow.ansi",
-      "sha256": "9f1e20b3023d98fe8e280a1ab5aa10905b6db2c3cbf580754c1785868370738f",
+      "sha256": "872b1e120a848edd5c61cd82ea9378dd10079b574fb2fb579ccfab4120661e97",
       "kind": "ansi",
       "state": "narrow",
       "columns": 40,
@@ -1299,7 +1530,7 @@
     },
     {
       "path": "states/narrow.png",
-      "sha256": "55d137acb1a206386ad630617de73c9c51fbbc56a562f9aa3a9a92ccb4572b1d",
+      "sha256": "6a7354d3abd9e467bc08274011568b640a86c14e72f7e87db7984bfff8ebaf44",
       "kind": "png",
       "state": "narrow",
       "columns": 40,
@@ -1307,7 +1538,7 @@
     },
     {
       "path": "states/failure-or-reconnect.json",
-      "sha256": "cbf245272203c093bed2aebe378c0779ae9f8d0b7bbcaa64cd8cd980f145c4d1",
+      "sha256": "b1fc1f6704236b0b0ec971783a5dd8edca79af67fcb039904ebbf0e20b8ce59f",
       "kind": "semantic-state",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1323,7 +1554,7 @@
     },
     {
       "path": "raw/failure-or-reconnect.cast",
-      "sha256": "a018dc59093c30c2b7c98a82d9fd4c57c55964b9abe722a8b7eae84a35de794f",
+      "sha256": "bcb48371aeb798d68733a49e8333ff2d58b9a9c2bf2e27d00df742872c0a7255",
       "kind": "asciicast",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1331,7 +1562,7 @@
     },
     {
       "path": "states/failure-or-reconnect.ansi",
-      "sha256": "77360f03e8adde89ab52b77c4f5823f50839afb986b447d5bf75ecfec6cb7d2a",
+      "sha256": "42c1e0fbdff35909f6840314fcb9dc84b9b6bb7267747850b429a7b6c895d51f",
       "kind": "ansi",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1339,7 +1570,7 @@
     },
     {
       "path": "states/failure-or-reconnect.png",
-      "sha256": "e10dbd4d306ea87c758cad1245c9e203635a3a8dd7ac9815a81f828613e887c6",
+      "sha256": "1f48293263a1d28a0a7212ca0eb6d9f992e45b2b9f8d1942b7555278ea376586",
       "kind": "png",
       "state": "failure-or-reconnect",
       "columns": 80,
@@ -1354,7 +1585,7 @@
     },
     {
       "path": "80x24-automation.gif",
-      "sha256": "fa2c98e9dd53a2eb6213fa0a6ac7488f2a95555778801d6ed2bcbcfebcdfab66",
+      "sha256": "9d4ade713ecb8c6ba610be96b13d0db33b499a75bcd74bc371f50a91b6afbe1a",
       "kind": "automation-flow",
       "state": "automation",
       "columns": 80,
@@ -1362,7 +1593,7 @@
     },
     {
       "path": "80x24-multirun.gif",
-      "sha256": "24c417ba549c6fae8f79deb7009b0b6995b21d8917135c50b362d969ab7c8c7d",
+      "sha256": "f311c530be7cbff990b692b4ebf3f620ef53d653a8dcbf0af49e5e4ee00a1def",
       "kind": "multi-run-flow",
       "state": "multi-run",
       "columns": 80,
@@ -1370,7 +1601,7 @@
     },
     {
       "path": "fork-preview.cast",
-      "sha256": "4667fe4e5e5e9834405ba374bb7c3feac2dc8016deeee809e884c750bccb993c",
+      "sha256": "4fabb9eeb818d98beefe55fd10e3089ccc527245212e088cc9867b6d62c26b3d",
       "kind": "fork-preview-asciicast",
       "state": "fork-preview",
       "columns": 80,
@@ -1378,23 +1609,63 @@
     },
     {
       "path": "80x24-fork-preview.gif",
-      "sha256": "ca2328917ae8d107c27cec33d67f480382df0d82c425542c39e6eb43b6e1e7d8",
+      "sha256": "5b070d4f184b630c522789f3b87abb5bc6a6a72534745934a0a20b20f32cb8c0",
       "kind": "fork-preview-flow",
       "state": "fork-preview",
       "columns": 80,
       "rows": 24
     },
     {
+      "path": "conversation-fork-preview.cast",
+      "sha256": "f66c6a124c525271bc0c85adf99f861a02cea9c3822724e65cfd9a7586881c1c",
+      "kind": "conversation-fork-preview-asciicast",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-conversation-fork-preview.gif",
+      "sha256": "488f8b64df052b1229d5ae80723699917533e99fa172ecd363974e5b8cb0aaf5",
+      "kind": "conversation-fork-preview-flow",
+      "state": "conversation-fork-preview-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
       "path": "raw/transcript-keyboard.cast",
-      "sha256": "f958c02e2c97177a368f5907fec21c2bd4d4b997997888161baa27ca06c16d2c",
+      "sha256": "4424e5f88c733786a0a43ffe4a77217fcbf93d41de8845cb3ef5b2af43bb3253",
       "kind": "keyboard-asciicast",
       "columns": 80,
       "rows": 24
     },
     {
       "path": "80x24-transcript-keyboard.gif",
-      "sha256": "008a79bec890d70215ea1b366dc505817cd736012fa9f7d8eacfbe2a9879c8b9",
+      "sha256": "2a10621b6ee1aa9d61efff172fd2e4fce7b8e2519781fb368096c3b9be6429c6",
       "kind": "keyboard-flow",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "references/conversation-fork-preview-before-80x24.txt",
+      "sha256": "968525b77b476bef51eeac78b6b2ffafb67f969501f807ef01c21ce2953ce5f3",
+      "kind": "historical-before-text",
+      "state": "conversation-fork-preview-before-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "references/conversation-fork-preview-before-walkthrough.cast",
+      "sha256": "8931103956346dc0c4ed1e0ba1ed6b40946729b51e0162020779743dd08b6c1c",
+      "kind": "historical-before-asciicast",
+      "state": "conversation-fork-preview-before-80",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "references/conversation-fork-preview-before-source-manifest.json",
+      "sha256": "470e374b9585171860ab89f3d9c6d5b8e0112ac4b77baaccd3ae2d6d1ba70463",
+      "kind": "historical-before-provenance",
+      "state": "conversation-fork-preview-before-80",
       "columns": 80,
       "rows": 24
     }

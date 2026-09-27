@@ -18,8 +18,10 @@ const {
 } = releaseCatalog
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { canonicalJson } = await import('../scripts/release-evidence.mjs')
-// @ts-expect-error The release scripts are intentionally JavaScript entry points.
-const { assertForkPreviewFlow } = await import('../scripts/release-visual-proof.mjs')
+const { assertConversationForkPreviewFlow, assertForkPreviewFlow } = await import(
+  // @ts-expect-error The release scripts are intentionally JavaScript entry points.
+  '../scripts/release-visual-proof.mjs'
+)
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const visualCaptureSupport = await import('../scripts/capture-visual-support.mjs')
 const { assertFlowFrameIntegrity, captureProvenance } = visualCaptureSupport
@@ -114,6 +116,24 @@ test('visual proof binds the fork preview flow to its exact artifact pair', () =
   const tampered = structuredClone(visualProof)
   tampered.forkPreviewFlow.artifacts = ['states/empty.txt', '80x24-fork-preview.gif']
   assert.throws(() => assertForkPreviewFlow(tampered), /fork-preview artifacts differ/u)
+})
+
+test('visual proof binds the conversation fork preview to its keyboard artifacts', () => {
+  const visualProof = {
+    conversationForkPreviewFlow: {
+      steps: ['type /fork', 'open the conversation fork preview', 'review its destination branch'],
+      artifacts: ['conversation-fork-preview.cast', '80x24-conversation-fork-preview.gif'],
+    },
+  }
+
+  assert.doesNotThrow(() => assertConversationForkPreviewFlow(visualProof))
+
+  const tampered = structuredClone(visualProof)
+  tampered.conversationForkPreviewFlow.steps[2] = 'open another conversation'
+  assert.throws(
+    () => assertConversationForkPreviewFlow(tampered),
+    /conversation fork-preview steps differ/u,
+  )
 })
 
 test('packed startup readiness uses visible profile and composer contracts', () => {

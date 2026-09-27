@@ -7,6 +7,7 @@ import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { comparePairedArms } from '@tangle-network/agent-eval'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { capabilityMap } from '../src/adapters/tui/ui-capabilities.js'
+import { FIXTURE_FORK } from '../src/adapters/tui/ui-fixtures.js'
 import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-contracts.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
@@ -143,7 +144,7 @@ function forkView(): BraidViewModel {
     forkPreview: {
       kind: 'conversation',
       source: 'conversation:source / branch:main',
-      destination: 'conversation:copy / branch:fork',
+      destination: 'conversation:source / branch:fork',
       execution: {
         operationId: 'operation-fork-preview',
         planDigest: 'digest:fork-preview',
@@ -160,9 +161,9 @@ function forkView(): BraidViewModel {
           destination: 'profile:copy-digest',
         },
         {
-          label: 'working tree',
-          source: 'checkpoint:source',
-          destination: 'checkpoint:copy',
+          label: 'provider session',
+          source: 'session:source',
+          destination: 'session:new',
         },
       ],
       allowed: true,
@@ -276,7 +277,10 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
     const forkScreen = await renderOverlay(fork, columns, rows)
     assertFits(forkScreen, columns)
     assert.match(forkScreen.join('\n'), /source: conversation:source/u)
-    assert.match(forkScreen.join('\n'), /destination: conversation:copy/u)
+    assert.match(forkScreen.join('\n'), /source: conversation:source/u)
+    assert.match(forkScreen.join('\n'), /destination branch: branch:fork/u)
+    assert.match(forkScreen.join('\n'), /same conversation · new branch/u)
+    assert.doesNotMatch(forkScreen.join('\n'), /will create a new conversation/u)
     assert.match(forkScreen.join('\n'), /boundary: message:42/u)
     assert.doesNotMatch(forkScreen.join('\n'), /operation-fork-preview|digest:fork-preview/u)
     assert.match(forkScreen.join('\n'), /enter\/y create(?: fork)? .*←\/esc/u)
@@ -290,6 +294,70 @@ test('core workflow overlays keep mode, consequence, and controls visible at 40x
     }
     assert.match(graphScreen.join('\n'), /esc close/u)
   }
+})
+
+test('fork preview describes available and unavailable workspace and runner scope', async () => {
+  const base = forkView().forkPreview
+  const workspacePlan = FIXTURE_FORK.plan
+  assert.ok(base)
+  assert.ok(workspacePlan)
+  const cases = [
+    {
+      kind: 'workspace' as const,
+      plan: workspacePlan,
+      allowed: true,
+      summary: /workspace: new environment from checkpoint/u,
+    },
+    {
+      kind: 'cross-runner' as const,
+      plan: { ...workspacePlan, kind: 'cross-runner' as const, checkpoint: 'none' as const },
+      allowed: true,
+      summary: /runner: new session/u,
+    },
+    {
+      kind: 'workspace' as const,
+      plan: {
+        ...workspacePlan,
+        environment: 'unavailable' as const,
+        checkpoint: 'unavailable' as const,
+        allowed: false,
+      },
+      allowed: false,
+      summary: /workspace: fork unavailable/u,
+    },
+    {
+      kind: 'cross-runner' as const,
+      plan: {
+        ...workspacePlan,
+        kind: 'cross-runner' as const,
+        environment: 'unavailable' as const,
+        checkpoint: 'none' as const,
+        allowed: false,
+      },
+      allowed: false,
+      summary: /runner: transfer unavailable/u,
+    },
+  ]
+  for (const { kind, plan, allowed, summary } of cases) {
+    const panel = new ForkPreviewPanel(theme)
+    panel.setView({
+      ...baseView(),
+      forkPreview: { ...base, kind, plan, allowed },
+    })
+    const screen = await renderOverlay(panel, 80, 24)
+    assert.match(screen.join('\n'), summary)
+    assert.match(screen.join('\n'), /source: conversation:source/u)
+    assert.match(screen.join('\n'), /destination branch: branch:fork/u)
+  }
+
+  const missingPlanPanel = new ForkPreviewPanel(theme)
+  missingPlanPanel.setView({
+    ...baseView(),
+    forkPreview: { ...base, kind: 'workspace', allowed: true },
+  })
+  const missingPlanScreen = await renderOverlay(missingPlanPanel, 80, 24)
+  assert.match(missingPlanScreen.join('\n'), /workspace: checkpoint status unreported/u)
+  assert.doesNotMatch(missingPlanScreen.join('\n'), /new environment from checkpoint/u)
 })
 
 test('graph collapse and waiting navigation keep the selected run identity visible', () => {

@@ -1,6 +1,7 @@
+import { strict as assert } from 'node:assert'
 import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { createReadStream, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -97,6 +98,170 @@ export async function runDeterministicRpcProof(binary, repository) {
     if (lines.some((line) => !line.startsWith('{')))
       throw new Error('packed RPC wrote non-JSONL stdout')
     process.stdout.write(`Packed RPC proof passed: ${lines.length} JSONL responses\n`)
+    const firstTask = await execFileAsync(
+      process.execPath,
+      [join(repository, 'examples/rpc-first-task.mjs'), '--fixture'],
+      {
+        cwd: repository,
+        env: {
+          ...process.env,
+          BRAID_BIN: binary,
+          NO_COLOR: '1',
+          NODE_NO_WARNINGS: '1',
+        },
+      },
+    )
+    const firstTaskResult = JSON.parse(firstTask.stdout.trim())
+    assert.equal(firstTaskResult.status, 'completed')
+    assert.equal(
+      firstTaskResult.output,
+      'Fixture response through pi: Summarize the current workspace and suggest one next step.',
+    )
+    assert.equal(firstTaskResult.shutdownAcknowledged, true)
+    process.stdout.write(
+      `Packed first-task example passed with public output: ${firstTaskResult.runId}\n`,
+    )
+
+    const examplePath = join(repository, 'examples/rpc-first-task.mjs')
+    const fakeBinary = join(repository, 'scripts/packed-rpc/fake-first-task.mjs')
+    async function runFakeScenario(mode, extraEnv = {}) {
+      const requestLog = join(fifoRoot, `${mode}-requests.jsonl`)
+      const result = await execFileAsync(process.execPath, [examplePath], {
+        cwd: repository,
+        env: {
+          ...process.env,
+          BRAID_BIN: fakeBinary,
+          BRAID_WORKSPACE: repository,
+          BRAID_FIRST_TASK_FAKE_MODE: mode,
+          BRAID_FIRST_TASK_FAKE_REQUEST_LOG: requestLog,
+          NO_COLOR: '1',
+          NODE_NO_WARNINGS: '1',
+          ...extraEnv,
+        },
+        timeout: 15_000,
+      }).catch((error) => {
+        if (error.killed) throw new Error(`first-task scenario ${mode} exceeded its process bound`)
+        return { code: error.code, stdout: error.stdout, stderr: error.stderr }
+      })
+      const requests = readFileSync(requestLog, 'utf8')
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+      return {
+        code: result.code ?? 0,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        result: JSON.parse(result.stdout.trim()),
+        requests,
+      }
+    }
+
+    const priorWork = await runFakeScenario('active')
+    assert.equal(priorWork.code, 1)
+    assert.equal(priorWork.result.status, 'not_started')
+    assert.match(priorWork.result.reason, /Existing queued, active, detached, or unknown work/u)
+    assert.equal(
+      priorWork.requests.some((request) => request.command === 'send'),
+      false,
+    )
+    assert.equal(
+      priorWork.requests.some((request) => request.command === 'cancel'),
+      false,
+    )
+    assert.equal(
+      priorWork.requests.some(
+        (request) => request.command === 'shutdown' && request.params.mode === 'cancel',
+      ),
+      false,
+    )
+    assert.equal(priorWork.requests.at(-1)?.command, 'shutdown')
+    assert.equal(priorWork.requests.at(-1)?.params.mode, 'wait')
+
+    const interactionCancel = await runFakeScenario('interaction-cancel')
+    assert.equal(interactionCancel.code, 1)
+    assert.equal(interactionCancel.result.status, 'needs_input')
+    assert.equal(interactionCancel.result.interaction.prompt, '[secret input is hidden]')
+    assert.doesNotMatch(interactionCancel.stdout, /Do not print this secret prompt/u)
+    assert.equal(interactionCancel.result.cleanup.action, 'cancel')
+    assert.equal(interactionCancel.result.cleanup.confirmed, true)
+    assert.equal(
+      interactionCancel.requests.find((request) => request.command === 'cancel')?.params.runId,
+      'run-example',
+    )
+    assert.equal(
+      interactionCancel.requests.some((request) => request.command === 'respond_interaction'),
+      false,
+    )
+
+    const interactionDetach = await runFakeScenario('interaction-detach')
+    assert.equal(interactionDetach.code, 1)
+    assert.equal(interactionDetach.result.status, 'needs_input')
+    assert.equal(interactionDetach.result.cleanup.action, 'detach')
+    assert.equal(interactionDetach.result.cleanup.confirmed, true)
+    assert.equal(
+      interactionDetach.requests.find((request) => request.command === 'detach')?.params.runId,
+      'run-example',
+    )
+    assert.equal(
+      interactionDetach.requests.some((request) => request.command === 'cancel'),
+      false,
+    )
+
+    const timeoutScenario = await runFakeScenario('timeout', { BRAID_FIRST_TASK_TIMEOUT_MS: '1' })
+    assert.equal(timeoutScenario.code, 1)
+    assert.equal(timeoutScenario.result.status, 'timed_out')
+    assert.equal(timeoutScenario.result.cleanup.action, 'cancel')
+    assert.equal(timeoutScenario.result.cleanup.confirmed, true)
+    assert.equal(
+      timeoutScenario.requests.find((request) => request.command === 'cancel')?.params.runId,
+      'run-example',
+    )
+    assert.equal(timeoutScenario.requests.at(-1)?.params.mode, 'wait')
+
+    const ambiguousSend = await runFakeScenario('ambiguous-send')
+    assert.equal(ambiguousSend.code, 1)
+    assert.equal(ambiguousSend.result.status, 'submission_unknown')
+    assert.equal(ambiguousSend.result.runId, 'run-example')
+    assert.equal(
+      ambiguousSend.result.operationId,
+      ambiguousSend.requests.find((request) => request.command === 'send')?.operationId,
+    )
+    assert.equal(ambiguousSend.result.cleanup.action, 'cancel')
+    assert.equal(ambiguousSend.result.cleanup.confirmed, true)
+    assert.equal(
+      ambiguousSend.requests.find((request) => request.command === 'cancel')?.params.runId,
+      'run-example',
+    )
+
+    const noOutput = await runFakeScenario('missing-output')
+    assert.equal(noOutput.code, 1)
+    assert.equal(noOutput.result.status, 'missing_output')
+    assert.equal('output' in noOutput.result, false)
+
+    let missingBinary
+    try {
+      await execFileAsync(process.execPath, [examplePath], {
+        cwd: repository,
+        env: {
+          ...process.env,
+          BRAID_BIN: join(tmpdir(), `braid-missing-${randomUUID()}`),
+          BRAID_WORKSPACE: repository,
+          NO_COLOR: '1',
+        },
+        timeout: 3_000,
+      })
+    } catch (error) {
+      missingBinary = error
+    }
+    assert.ok(missingBinary)
+    assert.equal(missingBinary.killed, false)
+    const missingBinaryResult = JSON.parse(missingBinary.stdout.trim())
+    assert.equal(missingBinaryResult.status, 'not_started')
+    assert.match(missingBinaryResult.error, /Install Braid or set BRAID_BIN/u)
+    process.stdout.write(
+      'Packed first-task edge proofs passed: prior work, interaction, timeout, ambiguous send, output, and ENOENT\n',
+    )
   } finally {
     await rm(fifoRoot, { force: true, recursive: true })
     await rm(journalPath, { force: true })

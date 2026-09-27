@@ -1,4 +1,4 @@
- › parallel run B
+ › parallel run A
 
  working…
 

@@ -87,7 +87,7 @@ const fixtureFork: ForkPreviewView = {
     {
       label: 'conversation context',
       source: 'conv-1 / branch-1',
-      destination: 'conv-fork-1 / branch-1',
+      destination: 'conv-1 / branch-fork-1',
     },
     {
       label: 'profile snapshot',

@@ -48,13 +48,24 @@ Cancellation emits no external mutation.
 
 ## Fork kinds
 
-A conversation branch creates another history path in the same conversation.
+A conversation branch keeps the same conversation and creates another branch.
 
 A clone creates another Braid conversation from visible history.
 
-A workspace fork creates a destination environment from a checkpoint.
+A workspace fork keeps the same conversation, creates another branch, and creates a destination environment from a checkpoint.
 
-A cross-runner fork starts a new run from portable history and workspace state without claiming native provider continuity.
+A cross-runner fork keeps the same conversation, creates another branch, and starts a new runner session from portable history and workspace state without claiming native provider continuity.
+
+The summary states that the conversation stays the same and the branch changes.
+
+The source line names the conversation and source branch.
+
+The destination line names the new branch; the conversation ID is omitted when it matches the source.
+
+Workspace and cross-runner previews show their new environment or runner session only when the plan reports it available.
+Unavailable plans say the workspace fork or context transfer is unavailable. Missing plan details remain unreported.
+
+The /clone command creates a separate conversation and does not use this fork preview.
 
 Confidential placement is an option on a workspace fork, not a separate fork kind.
 

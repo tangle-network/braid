@@ -79,6 +79,16 @@ External effect results arrive as events and state transitions.
 
 An accepted send emits its admission state before completion and its terminal state after completion.
 
+The executable [first task example](../examples/rpc-first-task.mjs) initializes JSONL and discovers the send capability.
+
+It sends with the current conversation and branch IDs, waits for terminal state, and then shuts down with mode 'wait'.
+
+Run `pnpm test:rpc:packed:deterministic` for its deterministic packed-binary proof. Run `pnpm test:rpc:packed` to include the separate live-provider stage.
+
+Mutation IDs accept the `op-` or `operation-` prefix, such as `op-<uuid>`.
+
+A bare UUID fails validation.
+
 Errors use stable machine codes plus concise human text and never include secrets.
 
 ### Required commands

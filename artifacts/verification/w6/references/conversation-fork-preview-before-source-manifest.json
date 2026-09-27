@@ -1,0 +1,58 @@
+{
+  "sourceCommit": "afc8380e06dbb164532d6d7af753394375c81c42",
+  "kind": "deterministic-provider interface inspection; no model calls or cloud proof",
+  "files": [
+    {
+      "file": "receipt.json",
+      "bytes": 889,
+      "sha256": "5fe5a5594edf28ee1613fb10defc8bafc9d94649cfc788af2037e067a6ac3001"
+    },
+    {
+      "file": "receipt-short-operation-id.json",
+      "bytes": 937,
+      "sha256": "bd9e1f0f8235385884aed6951908de6dbf56c80f8b238584dbef7a4568d9e659"
+    },
+    {
+      "file": "operation-identifiers.json",
+      "bytes": 1807,
+      "sha256": "d35808c8940da83b6c6486dfe6a92dd0f284de33d427b1cbb10b0ac5dc365c58"
+    },
+    {
+      "file": "empty-80x24.txt",
+      "bytes": 138,
+      "sha256": "b270f5cb48eca9e9dd0b038d558d7fa90a764774a357a93472ed21b7d876c206",
+      "originalBytes": 349,
+      "originalSha256": "b9b94f92e40c8875d354c2f1d2f979baca14c817b2c8647ae8d1df10ba341419",
+      "normalization": "Trailing spaces and final blank rows removed; original terminal recording retained."
+    },
+    {
+      "file": "conversation-80x24.txt",
+      "bytes": 630,
+      "sha256": "92087ae6fc8edf3f9897b28394f1bc041934abbb626ca5d4875b4e0e9ef3bc30",
+      "originalBytes": 2191,
+      "originalSha256": "38342aeaa3002a43151282561d9311fe68cb8595052a27f571b697a1ef01d606",
+      "normalization": "Trailing spaces and final blank rows removed; original terminal recording retained."
+    },
+    {
+      "file": "activity-80x24.txt",
+      "bytes": 835,
+      "sha256": "16302abaf3982c2f40f5b5576927f3cf06d7c2fe8a959f7a312d863ae1130cba",
+      "originalBytes": 2292,
+      "originalSha256": "624d012680a430661b1e6ba82df5de3a112c638e225deff5461d286b7c607347",
+      "normalization": "Trailing spaces and final blank rows removed; original terminal recording retained."
+    },
+    {
+      "file": "fork-80x24.txt",
+      "bytes": 861,
+      "sha256": "968525b77b476bef51eeac78b6b2ffafb67f969501f807ef01c21ce2953ce5f3",
+      "originalBytes": 2272,
+      "originalSha256": "4d81194733c092c9c58f69039d9748d1536d00ec759801217375b8ebcb6d2740",
+      "normalization": "Trailing spaces and final blank rows removed; original terminal recording retained."
+    },
+    {
+      "file": "walkthrough.cast",
+      "bytes": 25054,
+      "sha256": "8931103956346dc0c4ed1e0ba1ed6b40946729b51e0162020779743dd08b6c1c"
+    }
+  ]
+}

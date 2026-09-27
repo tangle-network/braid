@@ -1,0 +1,24 @@
+ fork preview                                                      conversation
+────────────────────────────────────────────────────────────────────────────────
+ will create a new conversation from this source
+ source: conv-1 / branch-1
+ destination: conv-1 / branch-d032343c27387110818528aff434a706
+ boundary: message-000004 → 2 messages
+ provider session: current → new
+ workspace: current → shared
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ enter/y create fork · ←/esc cancel

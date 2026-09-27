@@ -63,6 +63,7 @@
     "test:coordination": "pnpm run test -- --scope coordination",
     "test:rpc": "pnpm run test -- --scope rpc",
     "test:rpc:packed": "pnpm run build && node scripts/test-rpc-packed.mjs",
+    "test:rpc:packed:deterministic": "pnpm run build && node scripts/test-rpc-packed.mjs --deterministic-only",
     "test:virtual-terminal": "pnpm run test -- --scope virtual-terminal",
     "test:pty": "pnpm run build && node scripts/test-pty.mjs",
     "test:storage": "pnpm run test -- --scope storage",
