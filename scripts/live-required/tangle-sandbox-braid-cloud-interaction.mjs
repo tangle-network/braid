@@ -16,6 +16,9 @@ import {
   cleanupRetainedResourceByRunId,
   providerExecutionLedgerEvidence,
   retainedBox,
+  usage,
+  accountIdentity,
+  assertStableAccountIdentity,
 } from './tangle-sandbox-braid-stress.mjs'
 import {
   assertSameControlRef,
@@ -444,6 +447,9 @@ export async function runCloudInteractionProof({
   repository,
   environment = process.env,
   values,
+  proofWindow,
+  proofScope,
+  admissionAfter,
 } = {}) {
   assert.ok(
     values?.credentialValue,
@@ -474,6 +480,8 @@ export async function runCloudInteractionProof({
   let questionRequested = null
   let failureDiagnostic
   let responseRoundTrip
+  const identityRecords = []
+  let beforeUsage
   try {
     if (
       typeof environment.BRAID_LIVE_TARBALL_SHA256 === 'string' &&
@@ -494,9 +502,26 @@ export async function runCloudInteractionProof({
       providerOptions: { lifecycle: 'retained', idleTtlSeconds },
     })
     client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
+    if (proofWindow !== undefined) {
+      await proofWindow.before(proofScope, async () => {
+        beforeUsage = await usage(client, 'before')
+        identityRecords.push(await accountIdentity(client, 'before'))
+        assert.equal(
+          beforeUsage.value?.activeSandboxes,
+          0,
+          'Protected cloud before-census must be zero',
+        )
+        assert.ok(
+          identityRecords[0]?.value && !identityRecords[0]?.error,
+          'Protected cloud account identity was unavailable',
+        )
+      })
+      await proofWindow.reserve(proofScope, 1, admissionAfter)
+    }
     const marker = `BRAID_CLOUD_INTERACTION_${randomUUID().replaceAll('-', '').toUpperCase()}`
     const first = await initializedSession(packed.binary, config)
     firstSession = first.session
+    proofWindow?.assertAdmission()
     const sent = assertAck(
       await rpcRoundTrip(
         firstSession,
@@ -516,6 +541,7 @@ export async function runCloudInteractionProof({
     assert.equal(questionRequested, true, 'Tangle did not advertise and request cloud questions')
     const initialObservation = await waitForControlIdentity(firstSession, runId, timeoutMs)
     controlRef = initialObservation.controlRef
+    proofWindow?.admitted(proofScope, runId, controlRef.environmentId)
     const event = await firstSession.waitFor(
       'real cloud question',
       (entry) =>
@@ -674,6 +700,33 @@ export async function runCloudInteractionProof({
           [failure, error].filter(Boolean),
           'cloud interaction Sandbox cleanup failed',
         )
+      }
+    }
+    if (proofWindow !== undefined) {
+      if (cleanup?.confirmed && controlRef?.environmentId)
+        proofWindow.deleted(proofScope, controlRef.environmentId)
+      proofWindow.cleaned(
+        proofScope,
+        failure === undefined && (runId === undefined || cleanup?.confirmed === true),
+      )
+      if (client !== undefined) {
+        await proofWindow
+          .after(proofScope, async () => {
+            const afterUsage = await usage(client, 'after')
+            identityRecords.push(await accountIdentity(client, 'after'))
+            assert.equal(
+              afterUsage.value?.activeSandboxes,
+              beforeUsage?.value?.activeSandboxes,
+              'Protected cloud active usage changed',
+            )
+            assertStableAccountIdentity(identityRecords)
+          })
+          .catch((error) => {
+            failure = new AggregateError(
+              [failure, error].filter(Boolean),
+              'cloud epoch census failed',
+            )
+          })
       }
     }
     if (config)

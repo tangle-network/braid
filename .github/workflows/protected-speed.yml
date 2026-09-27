@@ -1,0 +1,147 @@
+name: Protected Speed
+
+on:
+  workflow_dispatch:
+    inputs:
+      harness_candidate_run_id:
+        description: Successful signed Release publish=false run for the current main harness
+        required: true
+        type: string
+      overlap:
+        description: Private scheduling flag; off is the immediate rollback
+        required: true
+        default: off
+        type: choice
+        options: [off, post-canary, epoch-pipeline]
+      rollout:
+        description: Protected scheduling rollout ring
+        required: true
+        default: internal
+        type: choice
+        options: [internal, one-percent, broad]
+
+concurrency:
+  group: braid-protected-account-proof
+  cancel-in-progress: false
+
+jobs:
+  protected-speed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: release-live
+    permissions:
+      actions: read
+      contents: read
+    env:
+      BRAID_SPEED_HARNESS_RUN_ID: ${{ inputs.harness_candidate_run_id }}
+      BRAID_PROTECTED_OVERLAP: ${{ inputs.overlap }}
+      BRAID_PROTECTED_ROLLOUT: ${{ inputs.rollout }}
+      BRAID_PROTECTED_COUNTERS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          path: harness
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: b5cb7bc0ba7ec213c0666cef826d5a797701e5d9
+          path: frozen-app
+
+      - name: Require clean exact identities and current main harness
+        run: |
+          set -euo pipefail
+          test "$(git -C harness rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C frozen-app rev-parse HEAD)" = b5cb7bc0ba7ec213c0666cef826d5a797701e5d9
+          git -C harness fetch origin main
+          test "$(git -C harness rev-parse origin/main)" = "$GITHUB_SHA"
+          test -z "$(git -C harness status --porcelain=v1 --untracked-files=all)"
+          test -z "$(git -C frozen-app status --porcelain=v1 --untracked-files=all)"
+
+      - name: Verify both successful Release workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BRAID_RELEASE_RUN_ID=36294457062 \
+          BRAID_RELEASE_EXPECT_WORKFLOW=.github/workflows/release.yml \
+          BRAID_RELEASE_EXPECT_COMMIT=b5cb7bc0ba7ec213c0666cef826d5a797701e5d9 \
+          BRAID_RELEASE_EXPECT_BRANCH=main \
+          node harness/scripts/release/verify-workflow-run.mjs
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.BRAID_SPEED_HARNESS_RUN_ID}/jobs?per_page=100`, {
+            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+          })
+          assert(response.ok, 'Harness Release job metadata unavailable')
+          const result = await response.json()
+          assert(result.total_count <= 100, 'Harness Release jobs exceed verified page')
+          for (const name of ['verify-live-10', 'publish']) {
+            const jobs = result.jobs.filter((job) => job.name === name)
+            assert(jobs.length === 1 && jobs[0].conclusion === 'skipped', `Harness Release must be publish=false: ${name}`)
+          }
+          console.log('Harness Release protected/publish jobs skipped; signed candidate only')
+          NODE
+          BRAID_RELEASE_RUN_ID="$BRAID_SPEED_HARNESS_RUN_ID" \
+          BRAID_RELEASE_EXPECT_WORKFLOW=.github/workflows/release.yml \
+          BRAID_RELEASE_EXPECT_COMMIT="$GITHUB_SHA" \
+          BRAID_RELEASE_EXPECT_BRANCH=main \
+          node harness/scripts/release/verify-workflow-run.mjs
+
+      - name: Download the original signed app candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-b5cb7bc0ba7ec213c0666cef826d5a797701e5d9
+          path: ${{ runner.temp }}/braid-speed-app-candidate
+          github-token: ${{ github.token }}
+          run-id: '36294457062'
+
+      - name: Download the separately signed current harness candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: braid-release-${{ github.sha }}
+          path: ${{ runner.temp }}/braid-speed-harness-candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.harness_candidate_run_id }}
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: harness/package.json
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: harness/pnpm-lock.yaml
+
+      - name: Install the pinned private harness dependencies once
+        run: pnpm --dir harness install --frozen-lockfile
+
+      - name: Verify signatures, public bytes and frozen semantic inputs before live admission
+        run: |
+          node harness/scripts/release/collect-speed-evidence.mjs \
+            --app-checkout "$GITHUB_WORKSPACE/frozen-app" \
+            --harness-checkout "$GITHUB_WORKSPACE/harness" \
+            --app-candidate "$RUNNER_TEMP/braid-speed-app-candidate" \
+            --harness-candidate "$RUNNER_TEMP/braid-speed-harness-candidate" \
+            --artifact-root "$RUNNER_TEMP/braid-speed-evidence" --preflight
+
+      - name: Run the frozen app with the separately identified private harness
+        env:
+          BRAID_LIVE_TANGLE_ENV_JSON: ${{ secrets.BRAID_LIVE_TANGLE_ENV_JSON }}
+        run: |
+          node harness/scripts/release/collect-speed-evidence.mjs \
+            --app-checkout "$GITHUB_WORKSPACE/frozen-app" \
+            --harness-checkout "$GITHUB_WORKSPACE/harness" \
+            --app-candidate "$RUNNER_TEMP/braid-speed-app-candidate" \
+            --harness-candidate "$RUNNER_TEMP/braid-speed-harness-candidate" \
+            --artifact-root "$RUNNER_TEMP/braid-speed-evidence"
+
+      - name: Preserve dual identity, full-wall counters and exact frozen gate output
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: braid-protected-speed-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/braid-speed-evidence
+          if-no-files-found: error
+          retention-days: 90

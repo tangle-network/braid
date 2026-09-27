@@ -19,6 +19,7 @@ import {
   readRequirementIds,
 } from './build-identity.mjs'
 import { releaseChildEnvironment } from './child-environment.mjs'
+import { assertFrozenConfiguration } from './collect-speed-evidence.mjs'
 import { structuredChildEvidence } from './collection-contract.mjs'
 import { collectReleaseEvidence } from './collector.mjs'
 import { executeArgv } from './command-runner.mjs'
@@ -33,6 +34,21 @@ import {
   sanitizeEnvironment,
 } from './redaction.mjs'
 import { StructuredOutputCapture } from './structured-output.mjs'
+
+test('frozen speed configuration admits both actual key fields and rejects overrides', () => {
+  const environment = {
+    BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools/v1',
+    BRAID_TANGLE_MODEL: 'glm-5.3',
+    BRAID_TANGLE_SANDBOX_ENDPOINT: 'https://sandbox.tangle.tools',
+    BRAID_TANGLE_SANDBOX_MODEL: 'tangle-router/glm-5.3',
+    BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
+    TANGLE_API_KEY: 'test-sandbox-reference',
+    BRAID_TANGLE_API_KEY: 'test-router-reference',
+  }
+  assertFrozenConfiguration(environment)
+  assert.throws(() => assertFrozenConfiguration({ ...environment, TANGLE_API_KEY: '' }))
+  assert.throws(() => assertFrozenConfiguration({ ...environment, BRAID_TANGLE_SOAK_RUNS: '1' }))
+})
 
 function octal(value, width) {
   return `${value.toString(8).padStart(width - 1, '0')}\0`

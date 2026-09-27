@@ -1438,6 +1438,8 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
 async function runProof({
   repository: targetRepository = repository,
   environment = process.env,
+  proofWindow,
+  proofScope = 'native-08',
 } = {}) {
   const timeoutMs = positiveEnvironment(
     environment,
@@ -1503,8 +1505,26 @@ async function runProof({
     client = observeOwnedSandbox(
       new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue }),
     )
-    usageRecords.push(await usage(client, 'before'))
-    identityRecords.push(await accountIdentity(client, 'before'))
+    const observeBefore = async () => {
+      usageRecords.push(await usage(client, 'before'))
+      identityRecords.push(await accountIdentity(client, 'before'))
+      if (proofWindow !== undefined) {
+        assert.equal(
+          usageRecords[0]?.value?.activeSandboxes,
+          0,
+          'Protected native before-census must be zero',
+        )
+        assert.ok(
+          identityRecords[0]?.value && !identityRecords[0]?.error,
+          'Protected native account identity was unavailable',
+        )
+      }
+    }
+    if (proofWindow === undefined) await observeBefore()
+    else {
+      await proofWindow.before(proofScope, observeBefore)
+      await proofWindow.reserve(proofScope, 1)
+    }
     recordPath = join(config.root, 'interactive-state.json')
     runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs)
     await waitFor('packed Braid TUI startup', () => /Braid/iu.test(runtime.screen), timeoutMs)
@@ -1526,6 +1546,7 @@ async function runProof({
     const promptCount = occurrences(runtime.output, markers.output)
     const interactiveBeforeScreen = runtime.screen
     const interactiveActionRevision = runtime.terminalOutputRevision
+    proofWindow?.assertAdmission()
     runtime.write(`${interactiveCommand}\r`)
     await waitFor(
       'native interactive output',
@@ -1551,6 +1572,11 @@ async function runProof({
       })
     runObserved = stateDiagnostic(initialFrame).length > 0
     verifiedIdentity = initialIdentity
+    proofWindow?.admitted(
+      proofScope,
+      initialIdentity.run.id,
+      initialIdentity.controlRef.environmentId,
+    )
     const initialAttach = await observeSandbox(
       client,
       initialIdentity.controlRef,
@@ -1727,9 +1753,26 @@ async function runProof({
     cleanupError = error
   }
 
+  if (proofWindow !== undefined) {
+    if (cleanup?.cleanup?.confirmed && cleanup?.identity?.controlRef?.environmentId) {
+      const exact = cleanup.identity
+      proofWindow.admitted(proofScope, exact.run.id, exact.controlRef.environmentId)
+      proofWindow.deleted(proofScope, exact.controlRef.environmentId)
+    }
+    proofWindow.cleaned(
+      proofScope,
+      proofError === undefined &&
+        cleanupError === undefined &&
+        cleanup?.cleanup?.confirmed === true,
+    )
+  }
   if (client !== undefined) {
-    usageRecords.push(await usage(client, 'after'))
-    identityRecords.push(await accountIdentity(client, 'after'))
+    const observeAfter = async () => {
+      usageRecords.push(await usage(client, 'after'))
+      identityRecords.push(await accountIdentity(client, 'after'))
+    }
+    if (proofWindow === undefined) await observeAfter()
+    else await proofWindow.after(proofScope, observeAfter)
   }
   if (proofError === undefined && cleanupError === undefined) {
     try {
@@ -1883,14 +1926,49 @@ export async function runInteractiveProof({
   repository: targetRepository = repository,
   environment = process.env,
   invocationId = proofInvocation('live-tangle'),
+  proofWindow,
 } = {}) {
   const startedAt = new Date().toISOString()
-  const nativeTerminal = await runProof({ repository: targetRepository, environment })
-  const cloudInteraction = await runCloudInteractionProof({
-    repository: targetRepository,
-    environment,
-    values: sandboxConfiguration(environment),
-  })
+  let nativeTerminal
+  let cloudInteraction
+  if (proofWindow === undefined) {
+    nativeTerminal = await runProof({ repository: targetRepository, environment })
+    cloudInteraction = await runCloudInteractionProof({
+      repository: targetRepository,
+      environment,
+      values: sandboxConfiguration(environment),
+    })
+  } else {
+    const settle = async (scope, operation) => {
+      try {
+        return await operation()
+      } catch (error) {
+        proofWindow.cleaned(scope, false)
+        throw error
+      }
+    }
+    const results = await Promise.allSettled([
+      settle('native-08', () =>
+        runProof({ repository: targetRepository, environment, proofWindow }),
+      ),
+      settle('cloud-08', () =>
+        runCloudInteractionProof({
+          repository: targetRepository,
+          environment,
+          values: sandboxConfiguration(environment),
+          proofWindow,
+          proofScope: 'cloud-08',
+          admissionAfter: 'native-08',
+        }),
+      ),
+    ])
+    const errors = results
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason)
+    if (errors.length > 0) throw new AggregateError(errors, 'Interactive epoch proofs failed')
+    nativeTerminal = results[0].value
+    cloudInteraction = results[1].value
+  }
   assert.equal(
     nativeTerminal.binary.tarballSha256,
     cloudInteraction.binary.tarballSha256,
