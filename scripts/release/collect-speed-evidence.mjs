@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, readdir, realpath, symlink, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { cp, lstat, mkdir, readdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const APP_COMMIT = 'b5cb7bc0ba7ec213c0666cef826d5a797701e5d9'
@@ -55,6 +55,22 @@ const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const git = (repository, ...args) =>
   execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim()
 const moduleAt = (repository, path) => import(pathToFileURL(join(repository, path)).href)
+
+export function assertFrozenConfiguration(environment) {
+  for (const [name, value] of Object.entries(CONFIGURATION))
+    assert(environment[name] === value, `Frozen effective configuration differs: ${name}`)
+  const credentialFields = ['TANGLE_API_KEY', 'BRAID_TANGLE_API_KEY']
+  assert.deepEqual(
+    Object.keys(environment).sort(),
+    [...Object.keys(CONFIGURATION), ...credentialFields].sort(),
+    'Protected environment differs from the frozen seven-field configuration',
+  )
+  for (const name of credentialFields)
+    assert(
+      typeof environment[name] === 'string' && environment[name].length > 0,
+      'Protected credential reference is empty',
+    )
+}
 
 function inside(root, path) {
   const child = relative(root, path)
@@ -592,14 +608,7 @@ async function main() {
     BRAID_PROTECTED_ROLLOUT: receipt.rollout,
     BRAID_PROTECTED_COUNTERS: '1',
   }
-  for (const [name, value] of Object.entries(CONFIGURATION))
-    assert(protectedEnvironment[name] === value, `Frozen effective configuration differs: ${name}`)
-  for (const name of Object.keys(protectedEnvironment))
-    assert(
-      name in CONFIGURATION ||
-        /^BRAID_TANGLE(?:_SANDBOX)?_(?:CREDENTIAL_REF|AUTH|API_KEY|BEARER)$/u.test(name),
-      'Protected environment includes an unfrozen override',
-    )
+  assertFrozenConfiguration(protectedEnvironment)
   receipt.effectiveConfiguration = CONFIGURATION
   receipt.requiredDefaults = {
     stressRuns: 3,

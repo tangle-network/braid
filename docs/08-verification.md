@@ -972,4 +972,5 @@ Independent review checks scheduling reachability; matching source expressions a
 The original b5 canonical publish gate must pass all six checks after collection.
 The indexed speed receipt records both commits, trees, source and output digests, and the actual workflow SHA and run identifier.
 This workflow cannot publish a package or create a tag.
+Canonical and speed workflows share one concurrency group to preserve the proof account's zero census.
 Overlap defaults to OFF; select an enabled mode only for its authorized rollout ring.

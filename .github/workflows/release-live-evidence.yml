@@ -13,7 +13,7 @@ on:
         type: string
 
 concurrency:
-  group: release-live-evidence-${{ inputs.commit }}
+  group: braid-protected-account-proof
   cancel-in-progress: false
 
 jobs:

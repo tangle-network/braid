@@ -21,7 +21,7 @@ on:
         options: [internal, one-percent, broad]
 
 concurrency:
-  group: protected-speed-public-braid-0.3.2
+  group: braid-protected-account-proof
   cancel-in-progress: false
 
 jobs:
