@@ -71,7 +71,9 @@ export class WorkspaceRequestForm extends Container implements Focusable {
     this.#requestRender = options.requestRender
     this.#connection = options.initialConnection
     this.#lifecycle = options.initialConnection?.providerOptions.lifecycle ?? 'ephemeral'
-    this.#idleTtl.setValue(String(options.initialConnection?.providerOptions.idleTtlSeconds ?? 3600))
+    this.#idleTtl.setValue(
+      String(options.initialConnection?.providerOptions.idleTtlSeconds ?? 3600),
+    )
     this.#fixedRequest = Object.freeze({
       ...(options.initialRequest?.environment === undefined
         ? {}
@@ -263,7 +265,9 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       for (const lifecycle of ['ephemeral', 'retained'] as const) {
         const selected = lifecycle === this.#lifecycle
         const label = `${selected ? '>' : ' '} ${lifecycle}`
-        this.addChild(new Text(selected ? this.#theme.brand(label) : this.#theme.muted(label), 1, 0))
+        this.addChild(
+          new Text(selected ? this.#theme.brand(label) : this.#theme.muted(label), 1, 0),
+        )
       }
       this.addChild(
         new Text(
@@ -281,8 +285,7 @@ export class WorkspaceRequestForm extends Container implements Focusable {
         if (this.#ttlFocused) this.addChild(this.#idleTtl)
         else this.addChild(new Text(this.#theme.muted(`> ${this.#idleTtl.getValue()}`), 1, 0))
       }
-      if (this.#error !== undefined)
-        this.addChild(new Text(this.#theme.danger(this.#error), 1, 0))
+      if (this.#error !== undefined) this.addChild(new Text(this.#theme.danger(this.#error), 1, 0))
       this.addChild(new Text(this.#theme.muted('↑/↓ choose · enter · shift-tab back · esc'), 1, 0))
       this.invalidate()
       return
@@ -301,9 +304,8 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       }
     }
     if (this.#connection !== undefined) {
-      const lifetime = this.#lifecycle === 'retained'
-        ? `retained ${this.#idleTtl.getValue()}s idle`
-        : 'ephemeral'
+      const lifetime =
+        this.#lifecycle === 'retained' ? `retained ${this.#idleTtl.getValue()}s idle` : 'ephemeral'
       this.addChild(new Text(this.#theme.muted(`files: ${lifetime} · ctrl+l edit`), 1, 0))
     }
     this.addChild(new Text(this.#theme.muted('tab/enter continues · shift-tab · esc'), 1, 0))
