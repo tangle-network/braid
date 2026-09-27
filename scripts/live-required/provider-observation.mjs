@@ -127,12 +127,12 @@ export async function waitForProviderObservation(
   let transientFailures = 0
   let lastTransientError
   for (;;) {
-    countProtectedWork('polls')
     assertBeforeDeadline(deadline, label, attempts, transientFailures, lastTransientError)
     attempts += 1
     let delayMs = intervalMs
     let value
     try {
+      countProtectedWork('polls')
       value = await observe()
     } catch (error) {
       if (deadline.now() >= deadline.deadline) {
