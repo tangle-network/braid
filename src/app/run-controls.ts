@@ -7,6 +7,7 @@ import type { ControlOperationRecord, ControlReceipt, QueueReceipt } from './app
 import { AppError } from './errors.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import { isTerminal } from './run-status.js'
+import { resolveRunTarget } from './run-targets.js'
 
 export function queueRunInput(
   context: QueuePort,
@@ -14,12 +15,11 @@ export function queueRunInput(
 ): QueueReceipt {
   if (!input.operationId) throw new AppError('OPERATION_ID_REQUIRED', 'queue requires operationId')
   if (!input.text.trim()) throw new AppError('EMPTY_MESSAGE', 'Queued input must not be empty')
-  const runId = input.runId ?? context.currentState().activeRunId
-  if (!runId) throw new AppError('NO_ACTIVE_RUN', 'Queue input requires an active run')
-  const run = context.findRun(runId)
   const existing = context
     .currentState()
     .queuedInputs.find((queued) => queued.operationId === input.operationId)
+  const run = resolveRunTarget(context.currentState(), input, existing?.runId)
+  const runId = run.id
   if (existing) {
     if (existing.text !== input.text || existing.runId !== runId)
       throw new AppError('OPERATION_CONFLICT', `Operation ${input.operationId} has different input`)
@@ -30,6 +30,7 @@ export function queueRunInput(
       revision: context.currentState().revision,
     }
   }
+  if (isTerminal(run.status)) throw new AppError('UNKNOWN_RUN', `Run ${run.id} is not active`)
   if (!run.capabilities.controls.queue)
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Queued input is not supported by this run')
   if (context.currentState().queuedInputs.length >= 4096)
@@ -57,15 +58,18 @@ export async function steerRun(
   context: ControlPort,
   input: { readonly operationId: string; readonly runId?: string; readonly text: string },
 ): Promise<ControlReceipt> {
-  const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  const previous = context.ledger.getControl(input.operationId)
+  const run = resolveRunTarget(context.currentState(), input, previous?.runId)
   if (!run.capabilities.controls.steer || !context.execution.steerRun)
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Live steering is not supported by this run')
+  const providerSessionId =
+    previous === undefined ? run.providerSessionId : previous.providerSessionId
   const request: ControlEffectRequest = {
     operationId: input.operationId,
     runId: run.id,
     control: 'steer',
     text: input.text,
-    ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
   }
   return control(context, request, 'steer')
@@ -81,16 +85,19 @@ export async function cancelRun(
     readonly legacy?: boolean
   },
 ): Promise<ControlReceipt> {
-  const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  const previous = context.ledger.getControl(input.operationId)
+  const run = resolveRunTarget(context.currentState(), input, previous?.runId)
   if (context.ledger.getControl(input.operationId) === undefined && isTerminal(run.status))
     throw new AppError('UNKNOWN_RUN', `Run ${run.id} is not active`)
   if (!run.capabilities.controls.cancel && !input.legacy)
     throw new AppError('CAPABILITY_UNAVAILABLE', 'This run does not advertise cancellation support')
+  const providerSessionId =
+    previous === undefined ? run.providerSessionId : previous.providerSessionId
   const request: ControlEffectRequest = {
     operationId: input.operationId,
     runId: run.id,
     control: 'cancel',
-    ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
     recovery: retainedExecutionRecoveryContext(run, context.currentState().workspace),
     ...(input.reason === undefined ? {} : { reason: input.reason }),
@@ -103,20 +110,24 @@ export async function detachRun(
   context: ControlPort,
   input: { readonly operationId: string; readonly runId?: string },
 ): Promise<ControlReceipt> {
-  const run = context.findRun(input.runId ?? context.currentState().activeRunId ?? '')
+  const previous = context.ledger.getControl(input.operationId)
+  const run = resolveRunTarget(context.currentState(), input, previous?.runId)
   if (
     !run.capabilities.streaming.detach ||
     !run.capabilities.controls.recreate ||
     !context.execution.detachRun
   )
     throw new AppError('CAPABILITY_UNAVAILABLE', 'This run cannot be detached')
+  const cursor = previous === undefined ? run.lastCursor : previous.cursor
+  const providerSessionId =
+    previous === undefined ? run.providerSessionId : previous.providerSessionId
   const request: ControlEffectRequest = {
     operationId: input.operationId,
     runId: run.id,
     control: 'detach',
-    ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
+    ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
-    ...(run.lastCursor === undefined ? {} : { cursor: run.lastCursor }),
+    ...(cursor === undefined ? {} : { cursor }),
     recovery: retainedExecutionRecoveryContext(run, context.currentState().workspace),
   }
   return control(context, request, 'detach')
@@ -235,6 +246,12 @@ async function control(
       operationId: request.operationId,
       control: controlKind,
       digest,
+      binding: {
+        ...(request.providerSessionId === undefined
+          ? {}
+          : { providerSessionId: request.providerSessionId }),
+        ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+      },
       ...(request.reason === undefined ? {} : { reason: request.reason }),
       ...(request.text === undefined ? {} : { text: request.text }),
     }

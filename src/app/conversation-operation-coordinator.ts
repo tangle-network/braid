@@ -8,6 +8,10 @@ interface PendingOperation {
 export class ConversationOperationCoordinator {
   readonly #pending = new Map<string, PendingOperation>()
 
+  has(operationId: string): boolean {
+    return this.#pending.has(operationId)
+  }
+
   run<T>(operationId: string, digest: string, action: () => Promise<T>): Promise<T> {
     const current = this.#pending.get(operationId)
     if (current !== undefined) {

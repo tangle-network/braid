@@ -26,11 +26,13 @@ export function legacyCancel(host: LegacyCancelHost, input: CancelInput): Cancel
   const opId = operationId(input.operationId, 'cancel')
   const state = host.state()
   const previous = host.ledger.getControl(opId)
-  const runId = input.runId ?? state.activeRunId ?? previous?.runId
+  const runId = input.runId ?? previous?.runId ?? state.activeRunId
   if (!runId) throw new AppError('UNKNOWN_RUN', 'There is no run to cancel')
   const run = state.runs.find((candidate) => candidate.id === runId)
   const reason = redactSensitiveText(input.reason ?? DEFAULT_CANCEL_REASON)
-  const digest = cancelRequestDigest(runId, reason, run?.providerSessionId)
+  const providerSessionId =
+    previous === undefined ? run?.providerSessionId : previous.providerSessionId
+  const digest = cancelRequestDigest(runId, reason, providerSessionId)
 
   if (previous) {
     if (previous.digest !== digest) {

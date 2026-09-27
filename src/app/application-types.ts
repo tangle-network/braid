@@ -1,4 +1,5 @@
 import type {
+  AgentProfile,
   PortableContextPlan as CanonicalPortableContextPlan,
   ContextTransferReceipt as PortableContextTransferReceipt,
   ContextTransferRequest as PortableContextTransferRequest,
@@ -12,6 +13,7 @@ import type {
 } from '../domain/receipts.js'
 import type { BraidState, RunStatus } from '../domain/state.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
+import type { WorkspaceRequest } from './workspace-request.js'
 
 export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
 
@@ -28,6 +30,34 @@ export interface SendInput {
   /** Canonical context plan used by a provider-owned fresh session. */
   readonly portableContextPlan?: CanonicalPortableContextPlan
   /** Canonical request and receipt are kept separate from Braid's compact receipt. */
+  readonly portableContextTransferRequest?: PortableContextTransferRequest
+  readonly portableContextTransferReceipt?: PortableContextTransferReceipt
+  readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
+}
+
+/**
+ * The private execution payload captured before a run can cross an async
+ * boundary.  Its profile and all caller-owned nested values are independent
+ * frozen copies; the durable receipt is intentionally a separate redacted
+ * audit record.
+ */
+export interface RunExecutionSnapshot {
+  readonly operationId: string
+  readonly text: string
+  readonly conversationId: string
+  readonly branchId: string
+  readonly profile: Readonly<AgentProfile>
+  readonly mode?: string
+  readonly connectionId?: string
+  /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
+  readonly workspaceRoot?: string
+  readonly sessionId?: string
+  /** Distinguishes the private linear continuation from caller-supplied reuse. */
+  readonly sessionSource?: 'caller' | 'continuation'
+  readonly contextPlan?: PortableContextPlan
+  readonly contextTransfer?: ContextTransferReceipt
+  readonly portableContextPlan?: CanonicalPortableContextPlan
   readonly portableContextTransferRequest?: PortableContextTransferRequest
   readonly portableContextTransferReceipt?: PortableContextTransferReceipt
   readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
@@ -78,6 +108,8 @@ export interface ShutdownRecord {
 }
 
 export interface OperationRecord {
+  /** Private, immutable request; never part of the durable/redacted ledger projection. */
+  readonly request?: RunExecutionSnapshot
   readonly digest: string
   readonly runId: string
   readonly admission: RunAdmissionReceipt

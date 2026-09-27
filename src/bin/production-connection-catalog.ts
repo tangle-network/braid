@@ -1,12 +1,17 @@
+import { readNoFollow } from '../adapters/persistence/safe-file.js'
 import type { BraidApplication } from '../app/application.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
 import { ConnectionRegistry } from '../app/connections.js'
 import { AppError } from '../app/errors.js'
 import { createProfileRecord } from '../app/profiles.js'
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from '../app/workspace-request.js'
 import { connectionRemovalBlockers } from '../domain/connection-removal.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import type { ConnectionRemovalPreview } from '../ports/connection-lifecycle.js'
-import type { ProductionConfigMutationLock } from './production-config-mutation-lock.js'
+import {
+  assertProductionConfigMutationLock,
+  type ProductionConfigMutationLock,
+} from './production-config-mutation-lock.js'
 import { persistProductionStartupSelection } from './production-setup-persistence.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
 
@@ -100,6 +105,25 @@ export function assertConnectionRevision(
   }
 }
 
+/** Metadata edits do not author a new workspace. Read it under the existing save lock. */
+function withSavedWorkspace(
+  configPath: string,
+  selection: ConfigurationSelection,
+): ConfigurationSelection {
+  if (selection.connection.kind !== 'tangle-sandbox' || selection.workspaceRequest !== undefined)
+    return selection
+  const bytes = readNoFollow(configPath, 2 * 1024 * 1024)
+  if (bytes === undefined) return selection
+  const document: unknown = JSON.parse(bytes.toString('utf8'))
+  if (document === null || typeof document !== 'object' || Array.isArray(document)) {
+    throw new Error('The saved production configuration must be an object')
+  }
+  const workspaceRequest = snapshotWorkspaceRequest(
+    (document as { readonly workspaceRequest?: WorkspaceRequest }).workspaceRequest,
+  )
+  return workspaceRequest === undefined ? selection : { ...selection, workspaceRequest }
+}
+
 export async function withPersistedConnectionCatalog<T>(input: {
   readonly configPath: string
   readonly mutationLock: ProductionConfigMutationLock
@@ -108,7 +132,9 @@ export async function withPersistedConnectionCatalog<T>(input: {
   readonly connections: readonly ConnectionRecord[]
   readonly action: () => Promise<T>
 }): Promise<T> {
-  const persistence = await persistProductionStartupSelection(input.configPath, input.selection, {
+  assertProductionConfigMutationLock(input.mutationLock, input.configPath)
+  const selection = withSavedWorkspace(input.configPath, input.selection)
+  const persistence = await persistProductionStartupSelection(input.configPath, selection, {
     ...(input.startupOptions.databaseKeyFile === undefined
       ? {}
       : { databaseKeyFile: input.startupOptions.databaseKeyFile }),

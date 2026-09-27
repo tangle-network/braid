@@ -8,6 +8,7 @@ import type {
 import type { UiDispatchContext } from './ui-dispatch-context.js'
 import { FIXTURE_INTERACTION } from './ui-fixtures.js'
 import { projectInteractionReceipt } from './ui-interaction-receipt.js'
+import { dispatchRunInput } from './ui-send-dispatch.js'
 
 export type CoreIntent = Exclude<
   BraidIntent,
@@ -20,35 +21,8 @@ export async function dispatchCoreIntent(
   context: UiDispatchContext,
 ): Promise<UiDispatchResult> {
   switch (intent.type) {
-    case 'send': {
-      const continuationRunId = context.app.nativeContinuationRunId({
-        ...(intent.conversationId ? { conversationId: intent.conversationId } : {}),
-        ...(intent.branchId ? { branchId: intent.branchId } : {}),
-      })
-      const receipt =
-        continuationRunId === undefined
-          ? context.app.send({
-              operationId: intent.operationId,
-              text: intent.text,
-              ...(intent.conversationId ? { conversationId: intent.conversationId } : {}),
-              ...(intent.branchId ? { branchId: intent.branchId } : {}),
-            })
-          : await context.app.continueNative({
-              operationId: intent.operationId,
-              text: intent.text,
-              runId: continuationRunId,
-            })
-      if (receipt.admissionReady !== undefined) await receipt.admissionReady
-      return {
-        kind: 'accepted',
-        operationId: receipt.operationId,
-        runId: receipt.runId,
-        revision: receipt.revision,
-        replayed: receipt.replayed,
-        admission: receipt.admission,
-        completion: receipt.completion.then(() => undefined),
-      }
-    }
+    case 'send':
+      return dispatchRunInput(intent, context.app)
     case 'cancel-run': {
       const receipt = await context.app.cancelRun({
         operationId: intent.operationId,
@@ -128,25 +102,8 @@ export async function dispatchCoreIntent(
       return dispatchInteractionResponse(intent, context)
     case 'create-interaction-automation':
       return dispatchInteractionAutomation(intent, context)
-    case 'queue': {
-      const receipt = context.app.queueInput({
-        operationId: intent.operationId,
-        text: intent.text,
-        ...(intent.runId === undefined ? {} : { runId: intent.runId }),
-      })
-      if (receipt.completion !== undefined) await receipt.completion
-      return {
-        kind: 'accepted',
-        operationId: receipt.operationId,
-        runId: receipt.runId,
-        control: 'queue',
-        position: receipt.position,
-        revision: receipt.revision,
-        ...(receipt.completion === undefined
-          ? {}
-          : { completion: receipt.completion.then(() => undefined) }),
-      }
-    }
+    case 'queue':
+      return dispatchRunInput(intent, context.app)
     case 'steer': {
       const receipt = await context.app.steer({
         operationId: intent.operationId,

@@ -8,6 +8,7 @@ import { createUiSubscriberDelivery } from '../src/adapters/tui/ui-subscriber-de
 import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import { cancelRequestDigest } from '../src/app/operation-ledger.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { createProfileRecord } from '../src/app/profiles.js'
@@ -1722,7 +1723,11 @@ test('cancel uses the operation ledger and replays after terminal completion', a
     app.events().filter((entry) => entry.event.kind === 'run.cancel.requested').length,
     1,
   )
-  const replay = app.cancel({ operationId: 'op-cancel-stable', runId: send.runId })
+  const next = app.send({ operationId: 'op-cancel-next', text: 'keep this turn active' })
+  await next.admissionReady
+  assert.equal(app.state().activeRunId, next.runId)
+  const replay = app.cancel({ operationId: 'op-cancel-stable' })
+  assert.equal(replay.runId, send.runId)
   assert.equal(replay.replayed, true)
   assert.equal((await replay.completion).runs[0]?.status, 'aborted')
   assert.equal(
@@ -1732,6 +1737,10 @@ test('cancel uses the operation ledger and replays after terminal completion', a
   assert.throws(
     () => app.cancel({ operationId: 'op-cancel-stable', runId: 'run-another' }),
     (error: unknown) => error instanceof AppError && error.code === 'OPERATION_CONFLICT',
+  )
+  assert.equal(
+    (await next.completion).runs.find((run) => run.id === next.runId)?.status,
+    'completed',
   )
 })
 
@@ -2593,79 +2602,115 @@ test('a restarted application replays the journal instead of redispatching', asy
   await send.completion
 })
 
-test('restart reconciles an in-flight cancellation to honest unknown and replays it', async () => {
-  const journal = new MemoryJournal(new FixedClock())
-  const seeded: readonly BraidEventEnvelope[] = [
-    {
-      sequence: 1,
-      revision: 1,
-      occurredAt: '2026-08-01T00:00:00.000Z',
-      event: { kind: 'workspace.opened', workspace: '/workspace' },
-    },
-    {
-      sequence: 2,
-      revision: 2,
-      occurredAt: '2026-08-01T00:00:00.000Z',
-      event: {
-        kind: 'run.requested',
-        operationId: 'op-send-restart',
-        runId: 'run-restart',
-        turnId: 'turn-restart',
-        userMessageId: 'message-user',
-        assistantMessageId: 'message-assistant',
-        text: 'restart this turn',
+for (const boundControl of [false, true]) {
+  const suffix = boundControl ? ' with the original control binding' : ''
+  test(`restart reconciles an in-flight cancellation to honest unknown and replays it${suffix}`, async () => {
+    const journal = new MemoryJournal(new FixedClock())
+    const seeded: BraidEventEnvelope[] = [
+      {
+        sequence: 1,
+        revision: 1,
+        occurredAt: '2026-08-01T00:00:00.000Z',
+        event: { kind: 'workspace.opened', workspace: '/workspace' },
       },
-    },
-    {
-      sequence: 3,
-      revision: 3,
-      occurredAt: '2026-08-01T00:00:00.000Z',
-      event: {
-        kind: 'run.cancel.requested',
+      {
+        sequence: 2,
+        revision: 2,
+        occurredAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          kind: 'run.requested',
+          operationId: 'op-send-restart',
+          runId: 'run-restart',
+          turnId: 'turn-restart',
+          userMessageId: 'message-user',
+          assistantMessageId: 'message-assistant',
+          text: 'restart this turn',
+        },
+      },
+      {
+        sequence: 3,
+        revision: 3,
+        occurredAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          kind: 'run.cancel.requested',
+          operationId: 'op-cancel-restart',
+          runId: 'run-restart',
+          reason: 'user requested cancellation',
+        },
+      },
+    ]
+    if (boundControl) {
+      seeded.splice(2, 0, {
+        sequence: 3,
+        revision: 3,
+        occurredAt: '2026-08-01T00:00:00.000Z',
+        event: {
+          kind: 'run.control.requested',
+          operationId: 'op-cancel-restart',
+          runId: 'run-restart',
+          control: 'cancel',
+          digest: cancelRequestDigest(
+            'run-restart',
+            'user requested cancellation',
+            'session-original',
+          ),
+          binding: { providerSessionId: 'session-original' },
+          reason: 'user requested cancellation',
+        },
+      })
+    }
+    for (const [index, envelope] of seeded.entries()) {
+      journal.append({ ...envelope, sequence: index + 1, revision: index + 1 })
+    }
+
+    const app = new BraidApplication({
+      profile: DETERMINISTIC_PROFILE,
+      execution: { streamTurn: async function* () {} },
+      clock: new FixedClock(),
+      ids: new SequenceIds(),
+      journal,
+      effectStorage: journal,
+    })
+
+    assert.equal(app.state().runs[0]?.status, 'unknown')
+    assert.equal(app.state().messages[1]?.status, 'incomplete')
+    const finalEvent = app.events().at(-1)?.event
+    assert.equal(finalEvent?.kind, 'run.finished')
+    if (finalEvent?.kind !== 'run.finished') assert.fail('missing restart reconciliation event')
+    assert.equal(finalEvent.status, 'unknown')
+    await app.whenDurable()
+    const restoredControl = await app.cancelRun({
+      operationId: 'op-cancel-restart',
+      runId: 'run-restart',
+      reason: 'user requested cancellation',
+      legacy: true,
+    })
+    assert.equal(restoredControl.replayed, true)
+    assert.equal(restoredControl.acknowledgement.outcome, 'unknown')
+    assert.equal(
+      restoredControl.acknowledgement.detail,
+      boundControl
+        ? 'Control acknowledgement requires provider reconciliation'
+        : 'Cancellation was requested before the provider acknowledged it',
+    )
+    const replayed = app.cancel({
+      operationId: 'op-cancel-restart',
+      runId: 'run-restart',
+      reason: 'user requested cancellation',
+    })
+    assert.equal(replayed.replayed, true)
+    assert.equal((await replayed.completion).runs[0]?.status, 'unknown')
+    await assert.rejects(
+      app.cancelRun({
         operationId: 'op-cancel-restart',
         runId: 'run-restart',
-        reason: 'user requested cancellation',
-      },
-    },
-  ]
-  for (const envelope of seeded) journal.append(envelope)
-
-  const app = new BraidApplication({
-    profile: DETERMINISTIC_PROFILE,
-    execution: { streamTurn: async function* () {} },
-    clock: new FixedClock(),
-    ids: new SequenceIds(),
-    journal,
-    effectStorage: journal,
+        reason: 'different cancellation input',
+        legacy: true,
+      }),
+      { code: 'OPERATION_CONFLICT' },
+    )
   })
-
-  assert.equal(app.state().runs[0]?.status, 'unknown')
-  assert.equal(app.state().messages[1]?.status, 'incomplete')
-  const finalEvent = app.events().at(-1)?.event
-  assert.equal(finalEvent?.kind, 'run.finished')
-  if (finalEvent?.kind !== 'run.finished') assert.fail('missing restart reconciliation event')
-  assert.equal(finalEvent.status, 'unknown')
-  await app.whenDurable()
-  const restoredControl = await app.cancelRun({
-    operationId: 'op-cancel-restart',
-    runId: 'run-restart',
-    reason: 'user requested cancellation',
-    legacy: true,
-  })
-  assert.equal(restoredControl.replayed, true)
-  assert.equal(restoredControl.acknowledgement.outcome, 'unknown')
-  assert.equal(
-    restoredControl.acknowledgement.detail,
-    'Cancellation was requested before the provider acknowledged it',
-  )
-  const replayed = app.cancel({
-    operationId: 'op-cancel-restart',
-    runId: 'run-restart',
-    reason: 'user requested cancellation',
-  })
-  assert.equal(replayed.replayed, true)
-  assert.equal((await replayed.completion).runs[0]?.status, 'unknown')
-})
+}
 
 test('terminal projection preserves complete sanitized response history', async () => {
   const oversized = `stored-history-marker\n${'line\n'.repeat(4_100)}${'x'.repeat(MAX_RENDERED_TEXT_CHARS + 1_024)}`

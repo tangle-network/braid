@@ -1,3 +1,4 @@
+import { AppError } from '../../app/errors.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import {
   dispatchProfileConnectionIntent,
@@ -20,6 +21,15 @@ export async function dispatchIntent(
   context: UiDispatchContext,
 ): Promise<UiDispatchResult> {
   try {
+    if (
+      intent.type === 'headless-command' &&
+      (intent.command === 'ask' || intent.command === 'analyze' || intent.command === 'compare') &&
+      (Object.hasOwn(intent.params, 'profileRef') || Object.hasOwn(intent.params, 'connectionId'))
+    )
+      throw new AppError(
+        'ANALYSIS_ROUTING_UNSUPPORTED',
+        'Analysis profileRef and connectionId overrides are not supported; omit them instead of selecting a different execution target implicitly',
+      )
     const profileConnectionResult = await dispatchProfileConnectionIntent(
       intent,
       context.profileConnections,

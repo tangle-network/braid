@@ -11,6 +11,11 @@ import {
 } from '@earendil-works/pi-tui'
 import type { WorkspaceRequest } from '@tangle-network/agent-interface'
 import {
+  type ConfigurationFileLifetime,
+  type ConfigurationSelection,
+  connectionWithFileLifetime,
+} from '../../app/configuration-session.js'
+import {
   compactWorkspaceRepositoryUrl,
   snapshotWorkspaceRequest,
   workspaceRequestErrorMessage,
@@ -30,12 +35,16 @@ const WORKSPACE_LABELS: Readonly<Record<WorkspaceField, string>> = {
 export interface WorkspaceRequestFormOptions {
   readonly theme: BraidTheme
   readonly initialRequest?: Readonly<WorkspaceRequest>
-  readonly onSubmit: (request: Readonly<WorkspaceRequest> | undefined) => void
+  readonly initialConnection?: ConfigurationSelection['connection']
+  readonly onSubmit: (
+    request: Readonly<WorkspaceRequest> | undefined,
+    lifetime?: ConfigurationFileLifetime,
+  ) => void
   readonly onCancel: () => void
   readonly requestRender?: () => void
 }
 
-/** Keyboard-first cloud workspace form with no provider-native fields. */
+/** Keyboard-first cloud workspace and connection-lifetime editor. Nothing is saved here. */
 export class WorkspaceRequestForm extends Container implements Focusable {
   readonly #theme: BraidTheme
   readonly #onSubmit: WorkspaceRequestFormOptions['onSubmit']
@@ -43,6 +52,11 @@ export class WorkspaceRequestForm extends Container implements Focusable {
   readonly #requestRender: (() => void) | undefined
   readonly #fixedRequest: Readonly<Pick<WorkspaceRequest, 'environment' | 'image'>>
   readonly #inputs = new Map<WorkspaceField, Input>()
+  readonly #connection: ConfigurationSelection['connection'] | undefined
+  readonly #idleTtl = new Input()
+  #lifecycle: ConfigurationFileLifetime['lifecycle']
+  #lifetimePage = false
+  #ttlFocused = false
   #values: Readonly<Record<WorkspaceField, string>>
   #fieldIndex = 0
   #focused = false
@@ -55,6 +69,11 @@ export class WorkspaceRequestForm extends Container implements Focusable {
     this.#onSubmit = options.onSubmit
     this.#onCancel = options.onCancel
     this.#requestRender = options.requestRender
+    this.#connection = options.initialConnection
+    this.#lifecycle = options.initialConnection?.providerOptions.lifecycle ?? 'ephemeral'
+    this.#idleTtl.setValue(
+      String(options.initialConnection?.providerOptions.idleTtlSeconds ?? 3600),
+    )
     this.#fixedRequest = Object.freeze({
       ...(options.initialRequest?.environment === undefined
         ? {}
@@ -92,6 +111,15 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       this.#cancel()
       return
     }
+    if (this.#lifetimePage) {
+      this.#handleLifetime(data)
+      return
+    }
+    if (matchesKey(data, 'ctrl+l') && this.#connection !== undefined) {
+      this.#lifetimePage = true
+      this.#redraw()
+      return
+    }
     if (matchesKey(data, 'shift+tab')) {
       if (this.#fieldIndex === 0) this.#cancel()
       else {
@@ -120,6 +148,35 @@ export class WorkspaceRequestForm extends Container implements Focusable {
     this.#requestRender?.()
   }
 
+  #handleLifetime(data: string): void {
+    if (matchesKey(data, 'shift+tab')) {
+      if (this.#ttlFocused) this.#ttlFocused = false
+      else this.#lifetimePage = false
+      this.#error = undefined
+      this.#redraw()
+      return
+    }
+    const keybindings = getKeybindings()
+    if (
+      keybindings.matches(data, 'tui.input.submit') ||
+      keybindings.matches(data, 'tui.input.tab')
+    ) {
+      if (this.#lifecycle === 'retained' && !this.#ttlFocused) {
+        this.#ttlFocused = true
+        this.#redraw()
+      } else this.#submit()
+      return
+    }
+    if (this.#ttlFocused) {
+      this.#idleTtl.handleInput(data)
+      this.#idleTtl.setValue(sanitizeTerminalText(this.#idleTtl.getValue()))
+    } else if (matchesKey(data, 'up') || matchesKey(data, 'down')) {
+      this.#lifecycle = this.#lifecycle === 'ephemeral' ? 'retained' : 'ephemeral'
+    }
+    this.#error = undefined
+    this.#redraw()
+  }
+
   #nextField(): void {
     if (this.#fieldIndex < WORKSPACE_FIELDS.length - 1) {
       this.#fieldIndex += 1
@@ -145,11 +202,38 @@ export class WorkspaceRequestForm extends Container implements Focusable {
           : {}
         : { cwd: { base: 'repository' as const, path: cwd } }),
     }
+    let snapshot: Readonly<WorkspaceRequest> | undefined
     try {
-      this.#onSubmit(snapshotWorkspaceRequest(request))
+      snapshot = snapshotWorkspaceRequest(request)
     } catch (error) {
       this.#error = workspaceRequestErrorMessage(error)
       this.#fieldIndex = errorFieldIndex(this.#error)
+      this.#lifetimePage = false
+      this.#redraw()
+      return
+    }
+    let lifetime: ConfigurationFileLifetime | undefined
+    if (this.#connection !== undefined) {
+      lifetime = {
+        lifecycle: this.#lifecycle,
+        ...(this.#lifecycle === 'retained'
+          ? { idleTtlSeconds: Number(this.#idleTtl.getValue().trim()) }
+          : {}),
+      }
+      try {
+        connectionWithFileLifetime(this.#connection, lifetime)
+      } catch {
+        this.#error = 'Retained idle limit: 60..604800 whole seconds.'
+        this.#lifetimePage = true
+        this.#ttlFocused = this.#lifecycle === 'retained'
+        this.#redraw()
+        return
+      }
+    }
+    try {
+      this.#onSubmit(snapshot, lifetime)
+    } catch (error) {
+      this.#error = workspaceRequestErrorMessage(error)
       this.#redraw()
     }
   }
@@ -160,7 +244,12 @@ export class WorkspaceRequestForm extends Container implements Focusable {
 
   #syncFocus(): void {
     for (const input of this.#inputs.values()) input.focused = false
+    this.#idleTtl.focused = false
     if (!this.#focused || this.#closed) return
+    if (this.#lifetimePage) {
+      this.#idleTtl.focused = this.#ttlFocused
+      return
+    }
     const field = WORKSPACE_FIELDS[this.#fieldIndex]
     if (field !== undefined) {
       const input = this.#inputs.get(field)
@@ -171,6 +260,36 @@ export class WorkspaceRequestForm extends Container implements Focusable {
   #render(): void {
     this.#syncFocus()
     this.clear()
+    if (this.#lifetimePage) {
+      this.addChild(new Text(this.#theme.brand('files · lifetime'), 1, 0))
+      for (const lifecycle of ['ephemeral', 'retained'] as const) {
+        const selected = lifecycle === this.#lifecycle
+        const label = `${selected ? '>' : ' '} ${lifecycle}`
+        this.addChild(
+          new Text(selected ? this.#theme.brand(label) : this.#theme.muted(label), 1, 0),
+        )
+      }
+      this.addChild(
+        new Text(
+          this.#theme.muted(
+            this.#lifecycle === 'ephemeral'
+              ? 'Files end with the sandbox. Not a backup.'
+              : 'Keep files between tasks, until idle expiry.',
+          ),
+          1,
+          0,
+        ),
+      )
+      if (this.#lifecycle === 'retained') {
+        this.addChild(new Text(this.#theme.muted('idle seconds (60..604800)'), 1, 0))
+        if (this.#ttlFocused) this.addChild(this.#idleTtl)
+        else this.addChild(new Text(this.#theme.muted(`> ${this.#idleTtl.getValue()}`), 1, 0))
+      }
+      if (this.#error !== undefined) this.addChild(new Text(this.#theme.danger(this.#error), 1, 0))
+      this.addChild(new Text(this.#theme.muted('↑/↓ choose · enter · shift-tab back · esc'), 1, 0))
+      this.invalidate()
+      return
+    }
     this.addChild(new Text(this.#theme.brand('workspace · cloud sandbox'), 1, 0))
     this.addChild(new Text(this.#theme.muted('blank = repository root'), 1, 0))
     for (const [index, field] of WORKSPACE_FIELDS.entries()) {
@@ -183,6 +302,11 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       if (this.#error !== undefined && index === this.#fieldIndex) {
         this.addChild(new Text(this.#theme.danger(sanitizeTerminalText(this.#error)), 1, 0))
       }
+    }
+    if (this.#connection !== undefined) {
+      const lifetime =
+        this.#lifecycle === 'retained' ? `retained ${this.#idleTtl.getValue()}s idle` : 'ephemeral'
+      this.addChild(new Text(this.#theme.muted(`files: ${lifetime} · ctrl+l edit`), 1, 0))
     }
     this.addChild(new Text(this.#theme.muted('tab/enter continues · shift-tab · esc'), 1, 0))
     this.invalidate()

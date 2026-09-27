@@ -1,4 +1,5 @@
 import type { BraidApplication } from '../../app/application.js'
+import { AppError } from '../../app/errors.js'
 import type { BraidState } from '../../domain/state.js'
 import type {
   BraidIntent,
@@ -20,6 +21,7 @@ import { errorResult } from './ui-dispatch-error.js'
 import { FIXTURE_FORK, FIXTURE_INTERACTION, type UiFixture } from './ui-fixtures.js'
 import { withIntelligenceResult } from './ui-intelligence-result-view.js'
 import { interactionViews, toEvent, toHeadlessState } from './ui-projection.js'
+import { bindRunIntent } from './ui-run-targets.js'
 import { createUiSubscriberDelivery, type UiSubscriberDelivery } from './ui-subscriber-delivery.js'
 import { buildBraidViewModel, type UiAppearanceOptions } from './ui-view-model.js'
 
@@ -279,11 +281,21 @@ export class ApplicationUiController implements BraidUiController {
       this.#notify()
     }
     try {
+      const boundIntent = bindRunIntent(app, intent)
+      const targetWasBound = boundIntent !== intent
+      intent = boundIntent
       const [dispatchIntent, profileConnections] = await Promise.all([
         this.#dispatcher(),
         this.#profileConnectionServices(),
       ])
-      if (app !== this.#app) return this.dispatch(intent)
+      if (app !== this.#app) {
+        if (targetWasBound)
+          throw new AppError(
+            'APPLICATION_CHANGED',
+            'The connection changed before this operation was dispatched',
+          )
+        return this.dispatch(intent)
+      }
       const result = await dispatchIntent(intent, {
         app,
         profileConnections,

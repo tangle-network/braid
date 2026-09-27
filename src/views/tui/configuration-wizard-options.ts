@@ -15,6 +15,7 @@ export interface ConfigurationWizardOptions extends ConfigurationSessionOptions 
   readonly onCommit: ConfigurationCommit
   readonly onComplete: (selection: ConfigurationSelection) => void
   readonly onCancel: () => void
+  readonly current?: () => ConfigurationDiscovery
   readonly confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues
   readonly diagnostics?: readonly string[]
   readonly requestRender?: () => void
@@ -24,7 +25,7 @@ export interface ConfigurationWizardOptions extends ConfigurationSessionOptions 
 }
 
 export type TerminalConfigurationOptions = ConfigurationSessionOptions &
-  Pick<ConfigurationWizardOptions, 'onCommit'> & {
+  Pick<ConfigurationWizardOptions, 'onCommit' | 'current'> & {
     readonly openOnStart?: boolean
     readonly onCancel?: () => void
     readonly confirmation?: ConfigurationWizardOptions['confirmation']
