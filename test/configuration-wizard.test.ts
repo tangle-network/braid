@@ -230,7 +230,7 @@ test('a failed apply stays recoverable and Escape cancels the staged selection',
   assert.equal(cancelled, true)
 })
 
-test('an empty catalog explains the dead end and only Escape closes setup', () => {
+test('an empty catalog offers setup guidance before closing', () => {
   let cancelled = false
   const wizard = new ConfigurationWizard({
     theme,
@@ -244,7 +244,9 @@ test('an empty catalog explains the dead end and only Escape closes setup', () =
   })
   wizard.focused = true
   wizard.handleInput('\r')
-  assert.match(wizard.render(80).join('\n'), /No AgentProfiles are available/u)
+  assert.match(wizard.render(80).join('\n'), /Setup instructions/u)
+  assert.equal(cancelled, false)
+  wizard.handleInput('\u001b')
   assert.equal(cancelled, false)
   wizard.handleInput('\u001b')
   assert.equal(cancelled, true)

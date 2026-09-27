@@ -1,4 +1,5 @@
 import { Container, type Focusable } from '@earendil-works/pi-tui'
+import { redactSensitiveText } from '../../domain/redaction.js'
 import {
   type ConfigurationEffectiveValues,
   type ConfigurationSelection,
@@ -13,6 +14,7 @@ import {
   mountConfigurationCredential,
   PreparedCredential,
 } from './configuration-credential.js'
+import { ConfigurationRecovery } from './configuration-recovery.js'
 import type { ConfigurationReview } from './configuration-review.js'
 import {
   APPLY_SELECTION,
@@ -30,8 +32,13 @@ import { mountWorkspaceRequestForm } from './workspace-request-workflow.js'
 type ConfigurationControl =
   | SearchableSelector
   | ConfigurationReview
+  | ConfigurationRecovery
   | ConfigurationCredential
   | WorkspaceRequestForm
+
+export interface ConfigurationDiscovery extends ConfigurationSessionOptions {
+  readonly diagnostics: readonly string[]
+}
 
 export interface ConfigurationWizardOptions extends ConfigurationSessionOptions {
   readonly theme: BraidTheme
@@ -41,6 +48,8 @@ export interface ConfigurationWizardOptions extends ConfigurationSessionOptions 
   readonly confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues
   readonly diagnostics?: readonly string[]
   readonly requestRender?: () => void
+  readonly rows?: () => number
+  readonly onReload?: () => Promise<ConfigurationDiscovery>
   readonly requiresCredential?: (connection: ConfigurationSelection['connection']) => boolean
 }
 
@@ -50,20 +59,25 @@ export type TerminalConfigurationOptions = ConfigurationSessionOptions &
     readonly onCancel?: () => void
     readonly confirmation?: ConfigurationWizardOptions['confirmation']
     readonly diagnostics?: readonly string[]
+    readonly onReload?: () => Promise<ConfigurationDiscovery>
     readonly requiresCredential?: ConfigurationWizardOptions['requiresCredential']
   }
 
 /** Keyboard-first profile, destination, credential, and review flow. */
 export class ConfigurationWizard extends Container implements Focusable {
   readonly #theme: BraidTheme
-  readonly #session: ConfigurationSession
+  #session: ConfigurationSession
   readonly #onCommit: ConfigurationWizardOptions['onCommit']
   readonly #onComplete: ConfigurationWizardOptions['onComplete']
   readonly #onCancel: ConfigurationWizardOptions['onCancel']
   readonly #confirmation: ConfigurationWizardOptions['confirmation']
-  readonly #diagnostics: readonly string[]
+  #diagnostics: readonly string[]
   readonly #requestRender: (() => void) | undefined
   readonly #requiresCredential: ConfigurationWizardOptions['requiresCredential']
+  readonly #onReload: ConfigurationWizardOptions['onReload']
+  readonly #rows: () => number
+  #reloading = false
+  #closed = false
   #selector: ConfigurationControl
   #focused = false
   #busy = false
@@ -81,6 +95,8 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#diagnostics = Object.freeze([...(options.diagnostics ?? [])])
     this.#requestRender = options.requestRender
     this.#requiresCredential = options.requiresCredential
+    this.#onReload = options.onReload
+    this.#rows = options.rows ?? (() => 24)
     this.#selector = new SearchableSelector({
       title: 'configuration',
       items: [],
@@ -100,11 +116,43 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#selector.focused = value
   }
 
+  goBack(): boolean {
+    if (this.#selector instanceof ConfigurationRecovery && this.#selector.goBack()) return true
+    this.#cancel()
+    return true
+  }
+
+  dispose(): void {
+    this.#closed = true
+    if (!this.#busy || this.#reloading) this.#clearCredential()
+  }
+
   handleInput(data: string): void {
     this.#selector.handleInput(data)
   }
 
   #renderStage(state: ConfigurationSessionState): void {
+    if (state.step === 'profile' && state.profiles.length === 0) {
+      this.clear()
+      this.#selector = new ConfigurationRecovery({
+        theme: this.#theme,
+        diagnostics: this.#diagnostics,
+        busy: this.#reloading,
+        canRetry: this.#onReload !== undefined,
+        rows: this.#rows,
+        ...(this.#commitError === undefined ? {} : { error: this.#commitError }),
+        ...(this.#requestRender === undefined ? {} : { requestRender: this.#requestRender }),
+        onRetry: () => {
+          void this.#reload()
+        },
+        onCancel: () => this.#cancel(),
+      })
+      this.#selector.focused = this.#focused
+      this.addChild(this.#selector)
+      this.invalidate()
+      this.#requestRender?.()
+      return
+    }
     this.#selector = renderConfigurationStage({
       container: this,
       session: this.#session,
@@ -186,6 +234,33 @@ export class ConfigurationWizard extends Container implements Focusable {
     if (value === APPLY_SELECTION) void this.#apply()
   }
 
+  async #reload(): Promise<void> {
+    if (this.#busy || this.#closed || this.#onReload === undefined) return
+    this.#busy = true
+    this.#reloading = true
+    this.#commitError = undefined
+    this.#renderStage(this.#session.state)
+    try {
+      const discovered = await this.#onReload()
+      if (this.#closed) return
+      this.#session = new ConfigurationSession(discovered)
+      this.#diagnostics = Object.freeze([...discovered.diagnostics])
+      if (discovered.profiles.length === 0) this.#commitError = 'No agents found. See diagnostics.'
+    } catch (error) {
+      if (this.#closed) return
+      const detail = redactSensitiveText(
+        error instanceof Error ? error.message : 'Discovery could not complete.',
+        512,
+      )
+      this.#diagnostics = Object.freeze([...new Set([...this.#diagnostics, detail])])
+      this.#commitError = 'Discovery failed. See diagnostics.'
+    } finally {
+      this.#busy = false
+      this.#reloading = false
+      if (!this.#closed) this.#renderStage(this.#session.state)
+    }
+  }
+
   async #apply(): Promise<void> {
     let selection: ConfigurationSelection
     try {
@@ -217,7 +292,8 @@ export class ConfigurationWizard extends Container implements Focusable {
   }
 
   #cancel(): void {
-    if (this.#busy) return
+    if (this.#busy && !this.#reloading) return
+    this.#closed = true
     this.#clearCredential()
     this.#session.cancel()
     this.#onCancel()

@@ -202,13 +202,20 @@ export class TerminalOverlayController {
       ...(requiresCredential === undefined ? {} : { requiresCredential }),
       theme: this.#theme,
       requestRender: this.#requestRender,
+      rows: this.#rows,
       onComplete: () => {},
       onCancel: () => {
         this.#modals.closeTop()
         configuration.onCancel?.()
       },
     })
-    this.#modals.open(wizard, { anchor: 'center', width: '82%', minWidth: 36, maxHeight: '90%' })
+    this.#modals.open(wizard, {
+      anchor: 'center',
+      width: '82%',
+      minWidth: 36,
+      maxHeight: '90%',
+      onClose: () => wizard.dispose(),
+    })
   }
 
   openCommandPalette(): void {

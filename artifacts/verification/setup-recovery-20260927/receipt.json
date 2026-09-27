@@ -1,0 +1,83 @@
+{
+  "capturedAt": "2026-09-27T04:39:06.344Z",
+  "source": "Actual PTY output from public0.3.2 before and compiled source after; isolated state, unavailable loopback bridge",
+  "candidateBinarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+  "newModelCalls": 0,
+  "productionCredentialsUsed": false,
+  "applyExecuted": false,
+  "captures": [
+    {
+      "name": "after-40x12",
+      "columns": 40,
+      "rows": 12,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-0Jg786/workspace",
+      "workspaceEntries": [],
+      "configWritten": false
+    },
+    {
+      "name": "after-80x24",
+      "columns": 80,
+      "rows": 24,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-Ffa1mQ/workspace",
+      "workspaceEntries": [],
+      "configWritten": false
+    },
+    {
+      "name": "after-120x40",
+      "columns": 120,
+      "rows": 40,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-wqgos5/workspace"
+    },
+    {
+      "name": "retry-empty",
+      "columns": 120,
+      "rows": 40,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-wqgos5/workspace"
+    },
+    {
+      "name": "diagnostics",
+      "columns": 120,
+      "rows": 40,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-wqgos5/workspace"
+    },
+    {
+      "name": "instructions",
+      "columns": 120,
+      "rows": 40,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-wqgos5/workspace"
+    },
+    {
+      "name": "profile-recovered",
+      "columns": 120,
+      "rows": 40,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-wqgos5/workspace"
+    },
+    {
+      "name": "connection-recovered",
+      "columns": 120,
+      "rows": 40,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-wqgos5/workspace",
+      "workspaceEntries": [
+        ".braid"
+      ],
+      "configWritten": false
+    },
+    {
+      "name": "after-200x60",
+      "columns": 200,
+      "rows": 60,
+      "binary": "/home/drew/code/_wt/braid-first-use-20260927/dist/bin/braid.js",
+      "workspace": "/tmp/braid-recovery-20260927-1NzkCM/workspace",
+      "workspaceEntries": [],
+      "configWritten": false
+    }
+  ]
+}

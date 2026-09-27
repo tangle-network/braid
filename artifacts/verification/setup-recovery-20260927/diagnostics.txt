@@ -1,0 +1,28 @@
+
+
+
+
+
+
+
+
+
+
+
+
+           Discovery details
+            CLI Bridge discovery /health at http://127.0.0.1:9 failed: The CLI Bridge at http://127.0.0.1:9
+            could not be reached
+
+            CLI Bridge discovery /v1/models at http://127.0.0.1:9 failed: The CLI Bridge at
+            http://127.0.0.1:9 could not be reached
+
+            profile.json: Profile file does not exist:
+            /tmp/braid-recovery-20260927-wqgos5/workspace/.braid/profile.json
+
+            braid.profile.json: Profile file does not exist:
+            /tmp/braid-recovery-20260927-wqgos5/workspace/braid.profile.json
+
+            No trusted AgentProfile or compatible advertised model was discovered at http://127.0.0.1:9;
+            configure a profile or start a ready CLI Bridge backend
+           ↑↓/PgUp/PgDn · 1-14/14 · esc back

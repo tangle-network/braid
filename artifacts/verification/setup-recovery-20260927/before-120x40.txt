@@ -1,0 +1,29 @@
+
+
+
+
+
+
+
+
+
+
+
+            braid setup
+            Choose the AgentProfile for this run.
+            notice · CLI Bridge discovery /health at http://127.0.0.1:9 failed: The CLI Bridge at
+            http://127.0.0.1:9 could not be reached
+            notice · CLI Bridge discovery /v1/models at http://127.0.0.1:9 failed: The CLI Bridge at
+            http://127.0.0.1:9 could not be reached
+            notice · profile.json: Profile file does not exist:
+            /tmp/braid-recovery-20260927-ckxA75/workspace/.braid/profile.json
+            notice · braid.profile.json: Profile file does not exist:
+            /tmp/braid-recovery-20260927-ckxA75/workspace/braid.profile.json
+            notice · No trusted AgentProfile or compatible advertised model was discovered at
+            http://127.0.0.1:9; configure a profile or start a ready CLI Bridge backend
+            profile · choose an AgentProfile
+           ──────────────────────────────────────────────────────────────────────────────────────────────────
+           >
+           → No profiles available           ←/esc close
+           ──────────────────────────────────────────────────────────────────────────────────────────────────
+            filter · enter choose · ←/esc cancel

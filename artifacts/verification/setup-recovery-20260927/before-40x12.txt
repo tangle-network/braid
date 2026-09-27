@@ -1,0 +1,12 @@
+ braid setup
+ Choose the AgentProfile for this run.
+ notice · CLI Bridge discovery /health
+ at http://127.0.0.1:9 failed: The CLI
+ Bridge at http://127.0.0.1:9 could not
+ be reached
+ notice · CLI Bridge discovery
+ /v1/models at http://127.0.0.1:9
+ failed: The CLI Bridge at
+ http://127.0.0.1:9 could not be
+ reached
+ notice · profile.json: Profile file

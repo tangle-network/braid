@@ -1,0 +1,30 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Ask Braid starter anything.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+› send unavailable
+
+
+───────────────────────── type / for commands · Alt+Enter newline · paste ──────────────────────────
+profile Braid starter · runner automatic · model automatic · backend not connected
