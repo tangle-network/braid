@@ -96,6 +96,7 @@ Helpers remain in the same document as the component whose behavior they serve.
 | `ComposerView` | `src/views/tui/composer-view.ts` | [transcript-composer.md](transcript-composer.md) |
 | `ConfigurationCredential` | `src/views/tui/configuration-credential.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
 | `PreparedCredential` | `src/views/tui/configuration-credential.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
+| `ConfigurationRecovery` | `src/views/tui/configuration-recovery.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
 | `ResponsiveText` | `src/views/tui/configuration-responsive-text.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
 | `ConfigurationReview` | `src/views/tui/configuration-review.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
 | `ConfigurationWizard` | `src/views/tui/configuration-wizard.ts` | [profiles-and-connections.md](profiles-and-connections.md) |
