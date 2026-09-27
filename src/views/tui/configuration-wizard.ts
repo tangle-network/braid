@@ -55,13 +55,14 @@ export class ConfigurationWizard extends Container implements Focusable {
 
   constructor(options: ConfigurationWizardOptions) {
     super()
+    const current = options.current?.() ?? options
     this.#theme = options.theme
-    this.#session = new ConfigurationSession(options)
+    this.#session = new ConfigurationSession(current)
     this.#onCommit = options.onCommit
     this.#onComplete = options.onComplete
     this.#onCancel = options.onCancel
     this.#confirmation = options.confirmation
-    this.#diagnostics = Object.freeze([...(options.diagnostics ?? [])])
+    this.#diagnostics = Object.freeze([...(current.diagnostics ?? [])])
     this.#requestRender = options.requestRender
     this.#requiresCredential = options.requiresCredential
     this.#onReload = options.onReload
