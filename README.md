@@ -1,442 +1,101 @@
-<div align="center">
-  <h1>Braid</h1>
-  <p><strong>One coding-agent profile across Pi, Codex, and OpenCode, on your machine or in a Tangle cloud sandbox.</strong></p>
-  <p>
-    <a href="https://github.com/tangle-network/braid/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tangle-network/braid/actions/workflows/ci.yml/badge.svg"></a>
-    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-7aa2f7"></a>
-  </p>
-</div>
+# Braid
 
-Braid is a terminal client for coding agents.
+**One terminal for coding agents, conversation branches, and reviews of finished runs.**
 
-A portable [`AgentProfile`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) defines one agent's identity, instructions, model, runner preference, tools, and permissions.
+Use Pi, Codex, or OpenCode through the same interface, on your machine or in a Tangle cloud sandbox.
+Keep the instructions you give an agent, compare different approaches, and see which runner, model, and workspace each turn used.
 
-Braid sends each turn through [`agent-runtime`](https://github.com/tangle-network/agent-runtime) and keeps the conversation, branches, runs, interactions, and usage records together.
-Choose a local runner through CLI Bridge, Tangle inference, or a Tangle Sandbox for each turn.
+[Install and start](#start-with-a-local-coding-agent) · [Cloud setup](docs/getting-started.md#use-a-tangle-cloud-sandbox) · [Commands](#while-you-work)
 
-Braid is a terminal client, not another agent loop.
+![Braid reviewing a completed code change, with citations to the edited function and passing tests](docs/assets/run-review.png)
 
-<img alt="Braid terminal opening a conversation fork preview" src="artifacts/verification/w6/80x24-fork-preview.gif">
+A real run: the agent fixed a `slugify` function and passed eight tests.
+Then `/ask` reviewed the result, citing the code and test output and identifying a coverage gap.
+[Read the captured example](docs/examples/coding-review.md).
 
-The terminal capture above is a deterministic conversation fixture from a packed 0.3.0 development build.
-It does not show a live runner or cloud call.
-The [launch comparison](docs/launch/comparison.md) separates live runner and cloud proofs from fixture captures.
+## Start with a local coding agent
 
-The [component design map](docs/components/README.md) links each visible surface to its owning contract and source component.
+You need **Node.js 22.19+**, **Linux or macOS**, and a coding agent that is installed and signed in.
+Start [CLI Bridge](https://github.com/drewstone/cli-bridge#install) in a separate terminal; it connects Braid to your local coding tools.
+[The setup guide](docs/getting-started.md#use-a-local-coding-agent) has the complete commands.
 
-## Install
-
-Braid requires Node.js 22.19 or newer.
-
-The published package currently targets Linux and macOS.
+With CLI Bridge running at `http://127.0.0.1:3344`:
 
 ```bash
 npm install --global @tangle-network/braid
-```
-
-Braid runs an `AgentProfile` from your workspace.
-A clean workspace has none, so create one before the first run:
-
-```bash
-mkdir -p .braid
-cat > .braid/profile.json <<'EOF'
-{
-  "name": "Coding agent",
-  "harness": "opencode",
-  "model": { "provider": "tangle-router", "default": "tangle-router/glm-5.3" },
-  "prompt": { "instructions": ["Inspect the repository before changing it."] }
-}
-EOF
+cd your-project
 braid
 ```
 
-Braid also reads `braid.profile.json`, or any file passed with `--profile <path>`.
-The first-run flow selects that `AgentProfile` and a connection.
-
-A connection supplies transport and credential references.
-
-Credential values stay in the operating-system credential facility or their bounded response path.
-
-For a local runner, install and start [CLI Bridge](https://github.com/drewstone/cli-bridge#install) in another terminal.
-Sign in to each runner you want to use, then choose **Local CLI Bridge** during Braid setup.
-For example, from the CLI Bridge checkout:
-
-```bash
-pnpm install
-BRIDGE_BACKENDS=codex,opencode pnpm start
-```
-
-Braid connects to the default local service at `http://127.0.0.1:3344`; it does not start the runners.
-Pi on Linux also needs bubblewrap and `PI_EXECUTOR=host BRIDGE_JAIL_MODE=fs-jail BRIDGE_BACKENDS=pi` ([CLI Bridge requirements](https://github.com/drewstone/cli-bridge#install)).
-
-For Tangle inference or a Tangle Sandbox, [create a Tangle account and key](https://sandbox.tangle.tools/?utm_source=github&utm_medium=readme&utm_campaign=braid-0.3.0&ref=braid).
-Enter the key in setup, or provide it to Braid through `BRAID_TANGLE_AUTH`:
-
-```bash
-export BRAID_TANGLE_AUTH=YOUR_TANGLE_KEY
-braid
-```
-
-First-run setup creates an ephemeral sandbox connection.
-It deletes its environment after one turn.
-To use `/detach` and `/reconnect`, set that connection's `providerOptions` to `{"lifecycle":"retained","idleTtlSeconds":1800}` in your workspace's `.braid/config.json` before starting a run.
-
-Use these launch forms when needed:
-
-```bash
-braid --inline                 # keep normal terminal scrollback
-braid --plain                  # readable non-interactive output
-braid rpc                      # JSON Lines control interface
-braid --conversation <id>      # open a durable Braid conversation
-braid --reauthenticate         # replace a saved connection credential
-```
-
-If an upgrade rejects an older credential, use `braid --reauthenticate` in the same workspace.
-Keep the same `--config` and `--database-key-file` options.
-Select the connection and enter its credential in the masked prompt.
-Review the destination before applying.
-This keeps the existing conversation database.
-
-`--profile`, `--connection`, `--runner`, `--model`, and `--effort` select defaults for the opened or new branch.
-
-They do not rewrite the profile source.
-
-## Operating model
-
-The profile defines who the agent is.
-
-The connection defines where requests go and which credentials they use.
-
-The runner defines which coding program executes one run.
-
-The SDK field `harness` stores that runner preference.
-
-Braid owns the user-visible conversation graph, durable event journal, branch choices, interaction decisions, activity views, and terminal/headless presentation.
-
-The execution route is:
+1. Choose a profile from the runner and model combinations advertised by your bridge.
+2. Choose **Local CLI Bridge**, review the selection, and apply it.
+3. Type a task in the conversation, for example:
 
 ```text
-AgentProfile + user turn
-        │
-        ▼
-      Braid
-        │  profile snapshot · connection · run limits
-        ▼
-  agent-runtime
-        │
-        ├── CLI Bridge ── selected local runner
-        ├── Tangle inference
-        └── Tangle sandbox ── remote workspace
-        │
-        ▼
-normalized events, receipts, activity, and final output
+Find where this project handles authentication. Explain the flow and cite the files. Do not edit anything.
 ```
 
-Braid does not launch runner processes directly, parse private runner output, materialize profile files, schedule sandboxes, run trace judges, or implement billing.
+The transcript shows the response and tool activity.
+The status line identifies the selected runner and model.
+Use `/help` for commands, or `/quit` to leave.
 
-An admitted run stores an immutable profile snapshot, effective runner, model, reasoning effort, configured output limits, connection, provider session, environment, and capability snapshot.
+A **profile** is the saved set of instructions and settings for an agent.
+Braid can generate one from your bridge's model catalog, so this local path needs no profile JSON.
+If setup says **No AgentProfiles**, [check discovery or supply a profile](docs/getting-started.md#setup-has-no-profiles).
 
-Configured limits are not measured usage.
+**Prefer a cloud workspace?** Follow [Tangle Sandbox setup](docs/getting-started.md#use-a-tangle-cloud-sandbox).
+It requires a Tangle account, an API key, and available credit.
+New cloud connections delete the sandbox after one turn; choose retained execution before relying on files or background work.
 
-This is the shape of a profile using the current routed model example:
+## While you work
 
-```ts
-import type { AgentProfile } from '@tangle-network/agent-interface'
-
-const profile: AgentProfile = {
-  name: 'Release engineer',
-  harness: 'pi',
-  model: {
-    provider: 'tangle-router',
-    default: 'tangle-router/glm-5.3',
-    reasoningEffort: 'high',
-  },
-  prompt: {
-    instructions: [
-      'Inspect the repository before changing it.',
-      'Run focused checks and report exact evidence.',
-    ],
-  },
-  tools: { read: true, write: true, shell: true },
-  permissions: { read: 'allow', write: 'ask', shell: 'ask' },
-}
-```
-
-## Parallel work: Work Strip, activity, and focus
-
-Braid admits one run per conversation branch at a time.
-
-Different branches and conversations can stream concurrently while each branch preserves its own turn order.
-
-Inputs for an active run queue by default.
-
-`/queue <text>` always adds the next turn.
-
-`/steer <text>` sends live steering only when that run reports steering support.
-
-`Alt+S` switches between queue and steer when both actions are available.
-
-The Work Strip appears when at least two active, queued, waiting, or detached work items need attention.
-
-Each item shows its branch, state, runner and model, pending interaction count, and available actions.
-
-Standard terminals show up to three items, wide terminals show up to eight, and narrow terminals show one bounded count with `/activity to switch`.
-
-`/activity` opens a full-screen browser instead of adding a permanent side panel.
-
-`Tab` cycles `all`, `runs`, `analyses`, and `workers` scopes.
-
-In the `runs` scope, `Enter` opens details and focuses controls for that exact run.
-
-Changing focus does not pause, cancel, detach, or reassign another run.
-
-Controls carry the selected run identifier, so a background run cannot receive a focus-dependent action by accident.
-
-Direct turns, trace analyses, supervisors, and workers remain separate activity records with separate usage totals.
-
-An unbound supervisor remains workspace activity and is not attributed to the current turn.
-
-## Continue, branch, and fork
-
-### Native continuation
-
-An ordinary follow-up uses the exact provider session only when the current branch tip has the same profile and connection, the provider reports session continuation, and the provider proves the recorded message boundary with retry-safe request identity.
-
-Only the new user input is submitted because the provider session remains authoritative for its native context.
-
-If the provider cannot prove that boundary, Braid does not submit to the native session.
-
-Choose a fresh provider session with an explicit portable context transfer when that provider supports it.
-
-The transfer lists included, omitted, and transformed parts and requires acceptance when it changes the context.
-
-`--conversation <id>` attaches to Braid's durable record and recorded run bindings.
-
-It does not take over an arbitrary native runner process.
-
-`/interactive <prompt>` and `/attach [run-id]` are separate native-terminal operations.
-
-They require an interactive TUI and a retained provider session with native terminal support.
-
-### Conversation operations
-
-`/branch [message]` creates a new branch at a message boundary in the same conversation.
-
-It uses a new provider session and keeps the current environment shared.
-
-Pending interactions and queued work after the boundary are not inherited.
-
-`/clone` creates a separate conversation from the active branch tip with new conversation, branch, and execution identities.
-
-It may retain a reference to the same workspace, but it does not copy provider process memory.
-
-`/fork` opens a provenance preview before creating a branch.
-
-The preview shows the transcript boundary, profile, run overrides, provider session, environment, checkpoint, working-tree state, queued input, and pending interactions.
-
-The default is a conversation-only fork with a new provider session and shared environment.
-
-`/fork --runner <name>` creates a cross-runner handoff with a new provider session and explicit portable context.
-
-Hidden process memory, runner-specific todos, opaque tool state, and opaque tool identifiers do not transfer.
-
-`/fork --workspace` requests a real provider checkpoint and destination environment.
-
-It is available only when the provider reports retry-safe checkpoint and fork operations, lookup by idempotency key, and explicit cleanup.
-
-The source environment remains unchanged, and a failed fork does not destroy its checkpoint or source.
-
-The destination environment is not assumed to include external services, browser sessions, secrets, network connections, or provider process memory.
-
-## Interactions and secrets
-
-An interaction is a provider request with a stable identifier, kind, prompt, subject, timeout, allowed outcomes, and canonical `answerSpec`.
-
-Known kinds include questions, permissions, and plans.
-
-Unknown kinds render through the generic answer specification and fail closed if Braid cannot validate a response.
-
-`/approve [scope]` accepts an allowed response.
-
-`/reject [feedback]` declines it when the schema accepts feedback.
-
-The terminal validates text, number, boolean, select, and secret answers before dispatch.
-
-Permission controls expose only scopes declared by the provider.
-
-Secret answers are masked and sent only through the bounded response path.
-
-They are excluded from history, profiles, SQLite, logs, snapshots, screenshots, and trace artifacts.
-
-`/automate` manages scoped non-secret response rules.
-
-An answer specification containing a secret field cannot create or match an automation rule.
-
-Concurrent interactions remain attached to their source runs and display in stable arrival order.
-
-Response retries reuse the same operation identifier and never answer twice.
-
-## Trace analysis
-
-Trace analysis reads a frozen run or branch record in a separate execution.
-
-It does not send a question to the active agent and does not append a message to the analyzed branch.
-
-```text
-/ask <question>                         cited free-form question about the last eligible source
-/analyze failure,cost,tools             run selected named recipes
-/analyze all                            run every available trace analyst
-/compare <left> <right>                 compare two frozen sources
-```
-
-`/ask` uses the last completed or failed run unless a source is selected explicitly.
-
-Each analysis records its source digest, analyst profile, model, recipe, progress, findings, citations, completeness, usage, latency, cost, and cancellation state.
-
-The analysis activity scope uses `p` to promote a supported cited finding and `x` to cancel active analysis.
-
-Promotion creates an explicit attachment or a branch fork; it never changes the source implicitly.
-
-Comparisons show every measured field and asymmetry before any semantic interpretation.
-
-## Runtime supervisors and workers
-
-`/activity` reads runtime-owned supervisor snapshots through the shared Runtime API.
-
-It does not read `.agent/supervisor` files or infer identity from display text, timestamps, or row order.
-
-In the `workers` scope, `r` refreshes the snapshot, `s` opens a worker steering prompt, `x` requests cancellation, and `a` attaches to a running worker's retained terminal when available.
-
-Worker steering sends the exact runtime worker identifier with a stable operation identifier and displays a queued or acknowledged effect.
-
-Worker cancellation and supervisor cancellation use runtime-owned idempotent operations and display the acknowledged effect and terminated descendants when reported.
-
-Worker attachment resolves the projected Braid supervisor and worker to exact Runtime identifiers, then claims the retained interactive handle for that worker.
-
-It is available only in the interactive TUI when the selected worker is running and its provider exposes a retained terminal binding.
-
-That worker action is different from `/attach [run-id]`, which targets a retained native terminal session.
-
-When the runtime cannot acknowledge a control, Braid leaves the result queued or unknown.
-
-It never displays delivered steering or cancellation without the matching runtime effect.
-
-## Capability-aware commands
-
-Braid asks the active provider and Runtime for capabilities before it enables an action.
-
-Unavailable commands remain searchable and explain the exact missing capability.
-
-Common reasons include:
-
-| Action | Exact reason shown when the condition applies |
+| What you want to do | Command |
 | --- | --- |
-| Worker steer | `There is no running supervised worker to steer` |
-| Worker cancel | `There is no running supervised worker to cancel` |
-| Supervisor cancel | `There is no running supervisor to cancel` |
-| Worker attach without an interactive TUI | `Worker terminals require an interactive TUI` |
-| Worker attach without a running worker | `There is no running supervised worker to attach` |
-| Worker attach with a stale selection | `The selected worker is not running` |
-| Worker attach with a missing target | `The selected worker is not present under the selected supervisor` |
-| Worker attach without a retained binding | `The worker has no retained terminal binding` |
-| Worker attach without provider support | `The worker provider cannot attach a terminal` |
-| Worker attach without a configured provider | `Select the worker's Tangle Sandbox connection first` |
-| Native terminal | `Select a retained Tangle Sandbox connection with native terminal support` |
-| Native session attach | `No retained native session is available` |
-| Interaction response | `Interaction response is not exposed by the current runtime adapter` |
-| Provider cancellation | `The current runtime does not acknowledge provider cancellation` |
-| Live steering | `The current runtime does not report steering support` |
-| Queued input | `The current runtime does not report queued input support` |
+| See running work, waiting questions, and usage | `/activity` or `F2` |
+| Try another approach from this conversation | `/fork` |
+| Inspect the conversation's branches | `/graph` |
+| Add the next task while a run continues | `/queue <task>` |
+| Stop the selected run | `/cancel` |
+| Ask what a completed run established | `/ask <question>` |
+| Change the next turn's runner or model | `/runner`, then `/model` |
 
-A missing capability never becomes a simulated success.
+`/fork` previews what carries over before you confirm.
+A conversation fork shares the workspace by default; `/fork --workspace` requests a separate workspace when the provider supports it.
+Changing runners uses a new provider session with an explicit context transfer.
+It does not copy a runner's private memory.
 
-## Tangle Sandbox lifecycle
+`/ask` runs a separate analysis of a completed or failed run.
+It can make additional model calls and charges; its findings cite the saved run without changing that conversation.
+Read the [analysis setup and commands](docs/getting-started.md#review-a-finished-run) before using it.
 
-New Tangle Sandbox connections default to one ephemeral cloud turn and delete the environment after the turn.
+Commands that need an unavailable provider feature explain what is missing.
+See the [conversation and control reference](docs/06-conversations-forks-and-analysis.md) for continuation, permissions, queueing, and worker controls.
 
-Retained execution is an explicit connection choice.
+## Your work, accounts, and costs
 
-Braid requires exact retained-run control and provider-backed lookup before it creates a retained environment, so restart can recover an uncommitted dispatch.
+- **Local work:** CLI Bridge uses the coding tools and accounts you configure.
+  Their subscription limits and API charges still apply.
+- **Cloud work:** Tangle provides model access and sandbox compute.
+  Review the selected connection, workspace source, and lifecycle before sending a task.
+- **Saved work:** Braid keeps conversations and run records in an encrypted local database.
+  A saved conversation does not imply that a remote process or its files still exist.
+- **Credentials:** enter keys through the masked setup prompt.
+  Keep them out of profiles and prompts; inspect exported run content before sharing it.
+- **Usage:** reported, estimated, and unavailable costs remain distinct.
+  An unavailable cost is not zero.
 
-The provider reports lifecycle, replay, control, interaction, continuation, workspace, placement, resource, and usage capabilities per run.
+[Security and storage](docs/07-security-and-privacy.md) · [Profiles and connections](docs/05-profiles-and-connections.md) · [Recorded capability comparisons](docs/launch/comparison.md)
 
-Braid shows requested, verified, sampled, estimated, and unavailable values separately.
+## Use Braid from another program
 
-It never guesses machine identity, IP address, effective resources, storage, or cost when the provider does not report them.
+`braid rpc` exposes JSON Lines commands over the same application core.
+For scripts and integrations, start with the [headless interface guide](docs/components/headless-and-accessibility.md).
+For terminal scrollback, use `braid --inline`; for plain text, use `braid --plain`.
 
-## Commands at a glance
+## Contribute
 
-| Need | Command or key |
-| --- | --- |
-| Select profile and route | `/profile`, `/connection`, `/runner`, `/model`, `/effort` |
-| Open activity and focus a run | `/activity`, `F2`, `Enter` on a run row |
-| Navigate conversation work | `/graph`, `/branch`, `/clone`, `/fork` |
-| Answer an interaction | `/approve`, `/reject`, `/automate` |
-| Queue, steer, or cancel a run | `/queue`, `/steer`, `/cancel` |
-| Detach and recover retained work | `/detach`, `/reconnect`, `/reconcile` |
-| Use a native terminal | `/interactive`, `/attach` |
-| Analyze or compare work | `/ask`, `/analyze`, `/compare` |
-| Drive Braid from another process | `braid rpc` |
+Read the [product contract](docs/01-product-contract.md), [component map](docs/components/README.md), and [verification guide](docs/08-verification.md).
+Braid uses [agent-runtime](https://github.com/tangle-network/agent-runtime) for execution and [pi-tui](https://www.npmjs.com/package/@earendil-works/pi-tui) for terminal rendering.
+See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution.
 
-Run `/help [query]` for the complete command and key registry.
-
-The command palette uses the same capability explanations as direct invocation.
-
-## Headless mode
-
-`braid rpc` exposes JSON Lines commands over the same application core as the terminal.
-
-Headless clients can inspect state, send, queue, steer, cancel, detach, reconnect, reconcile, respond to interactions, manage automation, branch, clone, fork, analyze, compare, inspect activity, control workers, and export records.
-
-Worker terminal attachment remains an interactive-TUI action.
-
-Mutating requests carry stable operation identifiers, so retries can be recognized instead of dispatched twice.
-
-Plain output and headless state contain no terminal control sequences.
-
-## Ownership and safety boundaries
-
-| Boundary | Owner |
-| --- | --- |
-| Portable agent definition and compatibility helpers | `agent-interface` |
-| Run admission, lifecycle, normalized events, replay, and runtime control | `agent-runtime` |
-| Local runner process and native profile materialization | CLI Bridge |
-| Inference and remote workspace lifecycle | Tangle provider and sandbox packages |
-| Trace analysis and paired comparison | `agent-eval` |
-| Conversation journal, branches, graph, interactions, projections, and interfaces | Braid |
-
-Components render immutable view models and emit typed intents.
-
-Controllers own workflows, cancellation, event reduction, and side effects through ports.
-
-Untrusted terminal content is sanitized before rendering, and OSC control sequences are suppressed by default.
-
-No credential value, secret interaction answer, provider-private state, or raw secret-bearing trace enters a profile, SQLite record, log, snapshot, screenshot, or export.
-
-## Development and proof
-
-```bash
-pnpm install --frozen-lockfile
-pnpm check
-pnpm capture:visual
-```
-
-`pnpm check` runs the repository's formatting, lint, type, boundary, dependency, attribution, license, test, live, and release checks.
-
-`pnpm capture:visual` records terminal state at 40×12, 80×24, 120×40, and 200×60 and exercises the keyboard path.
-
-The [verification plan](docs/08-verification.md) defines the required live, headless, terminal, security, installation, and release evidence.
-
-The [delivery plan](docs/09-delivery-plan.md) records dependency order and completion criteria.
-
-The [product contract](docs/01-product-contract.md), [experience specification](docs/02-experience-specification.md), [runtime contracts](docs/04-runtime-contracts.md), and [conversation/fork/analysis contract](docs/06-conversations-forks-and-analysis.md) define the behavior and ownership boundaries.
-
-## Open-source foundation
-
-Braid uses the MIT-licensed [`@earendil-works/pi-tui`](https://www.npmjs.com/package/@earendil-works/pi-tui) package for terminal rendering and input primitives.
-
-See the [renderer decision](docs/decisions/001-pi-tui-renderer.md), [runtime boundary](docs/decisions/002-runtime-boundary.md), [upstream strategy](docs/10-upstream-strategy.md), and [third-party notices](THIRD_PARTY_NOTICES.md) for the reuse boundary.
-
-## License
-
-[MIT](LICENSE)
+[MIT license](LICENSE).

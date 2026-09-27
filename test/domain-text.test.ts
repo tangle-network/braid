@@ -186,15 +186,17 @@ test('regression: overflow preserves bearer, quoted-value and Unicode URL bounda
   assert(assignment.includes(' ordinary-after'))
 })
 
-test('regression: the README first run creates a profile Braid can load', async () => {
+test('regression: the linked cloud setup supplies a profile Braid can load', async () => {
   const { readFileSync, mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const { trustedProfileSources } = await import('../src/bin/production-profile-projection.js')
   const { resolveProfileSource } = await import('../src/app/profile-sources.js')
   const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
-  const block = /cat > \.braid\/profile\.json <<'EOF'\n([\s\S]*?)\nEOF\n/u.exec(readme)
-  assert.ok(block?.[1], 'README must show how to create .braid/profile.json before the first run')
+  assert.ok(readme.includes('docs/getting-started.md'), 'README must link to setup instructions')
+  const guide = readFileSync(join(process.cwd(), 'docs/getting-started.md'), 'utf8')
+  const block = /```json\n([\s\S]*?)\n```/u.exec(guide)
+  assert.ok(block?.[1], 'The setup guide must supply a profile for first-run cloud setup')
   const workspace = mkdtempSync(join(tmpdir(), 'braid-readme-first-run-'))
   mkdirSync(join(workspace, '.braid'))
   writeFileSync(join(workspace, '.braid', 'profile.json'), `${block[1]}\n`)
