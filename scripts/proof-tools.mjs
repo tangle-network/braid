@@ -3,6 +3,12 @@ import { prepareProofTools } from './build-proof-tools.mjs'
 const tools = await import(await prepareProofTools())
 
 export const {
+  ProtectedWork,
+  ProofWindow,
+  countProtectedWork,
+  createProtectedWork,
+  observeOwnedSandbox,
+  protectedSpan,
   LiveBridgeError,
   proofHarnessTools,
   parseProofTargetPolicy,

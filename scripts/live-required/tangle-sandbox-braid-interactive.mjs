@@ -9,6 +9,7 @@ import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 import { sleep } from '../live-bridge/process.mjs'
+import { countProtectedWork, observeOwnedSandbox } from '../proof-tools.mjs'
 import {
   processTreeEnvironment,
   terminateTrackedProcessTree,
@@ -620,6 +621,7 @@ async function cleanupInteractiveByRunId(
 async function waitFor(label, predicate, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    countProtectedWork('polls')
     const value = await predicate()
     if (value) return value
     if (performance.now() >= deadline) throw new Error(`${label} timed out after ${timeoutMs}ms`)
@@ -812,6 +814,7 @@ export async function interactiveStopProviderEvidence({
   const deadline = now() + timeoutMs
   let exited
   for (;;) {
+    countProtectedWork('polls')
     const status = await handle.status()
     if (status) {
       assertSameInteractiveRef(agentInterface, sessionRef, status.ref, `${label} status`)
@@ -991,6 +994,7 @@ export async function waitForInteractiveIdentityFrame({ captureFrame, timeoutMs 
   )
   const deadline = performance.now() + timeoutMs
   for (;;) {
+    countProtectedWork('polls')
     const frame = await captureFrame()
     const identity = recoverInteractiveIdentity(frame)
     if (identity !== undefined) return { frame, identity }
@@ -1496,7 +1500,9 @@ async function runProof({
       credentialRef: values.credentialRef,
       credentialValue: values.credentialValue,
     })
-    client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
+    client = observeOwnedSandbox(
+      new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue }),
+    )
     usageRecords.push(await usage(client, 'before'))
     identityRecords.push(await accountIdentity(client, 'before'))
     recordPath = join(config.root, 'interactive-state.json')

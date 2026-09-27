@@ -11,6 +11,7 @@ const execute = promisify(execFile)
 const schema = 'braid.proof-tools.v1'
 const requiredInputs = [
   'scripts/proof-tools.ts',
+  'scripts/protected-work.ts',
   'scripts/proof-tools.mjs',
   'scripts/build-proof-tools.mjs',
   'src/domain/secret-sanitizer.ts',

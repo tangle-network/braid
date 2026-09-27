@@ -907,15 +907,19 @@ export async function runBraidSandboxSoak({
     'concurrency',
   ),
   stressRunner = runBraidSandboxStress,
+  afterCanary,
 } = {}) {
   const requestedRuns = boundedInteger(runs, DEFAULT_RUNS, MAX_RUNS, 'runs')
   const requestedConcurrency = Math.min(
     boundedInteger(concurrency, DEFAULT_CONCURRENCY, MAX_CONCURRENCY, 'concurrency'),
     requestedRuns,
   )
+  if (afterCanary !== undefined && (requestedRuns !== 3 || requestedConcurrency !== 2))
+    throw new Error('Post-canary overlap requires the frozen three-proof, two-worker cohort')
   const startedAt = new Date().toISOString()
   const attempts = []
   let completionSequence = 0
+  let proofWindow
 
   const attempt = async (index, requireZeroActiveResourceDelta) => {
     const attemptStartedAt = new Date().toISOString()
@@ -927,8 +931,12 @@ export async function runBraidSandboxSoak({
         binary,
         requireZeroActiveResourceDelta,
         attemptIndex: index,
+        ...(index === 0 || proofWindow === undefined
+          ? {}
+          : { proofWindow, proofScope: `stress-${index}` }),
       })
     } catch (error) {
+      if (index !== 0 && proofWindow !== undefined) proofWindow.cleaned(`stress-${index}`, false)
       if (error && typeof error === 'object' && error.unavailable === true) throw error
       proof = {
         status: 'failed',
@@ -938,6 +946,8 @@ export async function runBraidSandboxSoak({
         },
       }
     }
+    if (index !== 0 && proofWindow !== undefined && proof?.status !== 'passed')
+      proofWindow.cleaned(`stress-${index}`, false)
     return {
       index,
       completionSequence: completionSequence++,
@@ -961,6 +971,7 @@ export async function runBraidSandboxSoak({
   }
 
   let nextIndex = 1
+  proofWindow = await afterCanary?.()
   let stop = false
   const workers = Array.from(
     { length: Math.min(requestedConcurrency, requestedRuns - 1) },
@@ -975,7 +986,8 @@ export async function runBraidSandboxSoak({
       }
     },
   )
-  await Promise.all(workers)
+  const settledWorkers = await Promise.allSettled(workers)
+  for (const result of settledWorkers) if (result.status === 'rejected') throw result.reason
   attempts.sort((left, right) => left.index - right.index)
   return finish({
     attempts,
