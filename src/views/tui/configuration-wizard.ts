@@ -47,7 +47,7 @@ export class ConfigurationWizard extends Container implements Focusable {
   readonly #rows: () => number
   #reloading = false
   #closed = false
-  #selector: ConfigurationControl
+  #selector!: ConfigurationControl
   #focused = false
   #busy = false
   #commitError: string | undefined
@@ -67,7 +67,7 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#requiresCredential = options.requiresCredential
     this.#onReload = options.onReload
     this.#rows = options.rows ?? (() => 24)
-    this.#selector = this.#renderStage(this.#session.state)
+    this.#renderStage(this.#session.state)
   }
 
   get focused(): boolean {
@@ -94,7 +94,7 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#selector.handleInput(data)
   }
 
-  #renderStage(state: ConfigurationSessionState): ConfigurationControl {
+  #renderStage(state: ConfigurationSessionState): void {
     this.#selector = renderConfigurationStage({
       container: this,
       session: this.#session,
@@ -112,7 +112,6 @@ export class ConfigurationWizard extends Container implements Focusable {
       onCancel: () => this.#cancel(),
       ...(this.#requestRender === undefined ? {} : { requestRender: this.#requestRender }),
     })
-    return this.#selector
   }
 
   #select(value: string): void {
