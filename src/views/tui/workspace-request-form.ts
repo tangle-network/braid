@@ -113,6 +113,11 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       this.#handleLifetime(data)
       return
     }
+    if (matchesKey(data, 'ctrl+l') && this.#connection !== undefined) {
+      this.#lifetimePage = true
+      this.#redraw()
+      return
+    }
     if (matchesKey(data, 'shift+tab')) {
       if (this.#fieldIndex === 0) this.#cancel()
       else {
@@ -176,11 +181,6 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       this.#redraw()
       return
     }
-    if (this.#connection !== undefined) {
-      this.#lifetimePage = true
-      this.#redraw()
-      return
-    }
     this.#submit()
   }
 
@@ -222,12 +222,18 @@ export class WorkspaceRequestForm extends Container implements Focusable {
         connectionWithFileLifetime(this.#connection, lifetime)
       } catch {
         this.#error = 'Retained idle limit: 60..604800 whole seconds.'
+        this.#lifetimePage = true
         this.#ttlFocused = this.#lifecycle === 'retained'
         this.#redraw()
         return
       }
     }
-    this.#onSubmit(snapshot, lifetime)
+    try {
+      this.#onSubmit(snapshot, lifetime)
+    } catch (error) {
+      this.#error = workspaceRequestErrorMessage(error)
+      this.#redraw()
+    }
   }
 
   #trimmed(field: WorkspaceField): string {
@@ -293,6 +299,12 @@ export class WorkspaceRequestForm extends Container implements Focusable {
       if (this.#error !== undefined && index === this.#fieldIndex) {
         this.addChild(new Text(this.#theme.danger(sanitizeTerminalText(this.#error)), 1, 0))
       }
+    }
+    if (this.#connection !== undefined) {
+      const lifetime = this.#lifecycle === 'retained'
+        ? `retained ${this.#idleTtl.getValue()}s idle`
+        : 'ephemeral'
+      this.addChild(new Text(this.#theme.muted(`files: ${lifetime} · ctrl+l edit`), 1, 0))
     }
     this.addChild(new Text(this.#theme.muted('tab/enter continues · shift-tab · esc'), 1, 0))
     this.invalidate()
