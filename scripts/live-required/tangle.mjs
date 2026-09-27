@@ -279,19 +279,36 @@ export async function runSandbox({
   multirunRunner = runMultirunProof,
   diagnosticWriter = (line) => process.stderr.write(line),
   work,
+  proofWindow: suppliedProofWindow,
 }) {
   const startedAt = new Date().toISOString()
   let multirunPromise
-  let proofWindow
+  let proofWindow = suppliedProofWindow
   const overlap = work?.overlap === true
   let cohort
   let cohortError
+  if (suppliedProofWindow !== undefined)
+    multirunPromise = protectedSpan('multirun', () =>
+      multirunRunner({
+        targetRepository: repository,
+        environment,
+        proofWindow,
+        proofScope: 'multirun',
+      }),
+    ).then(
+      (value) => ({ status: 'fulfilled', value }),
+      (reason) => {
+        proofWindow.cleaned('multirun', false)
+        return { status: 'rejected', reason }
+      },
+    )
   try {
     cohort = await protectedSpan('cohort', () =>
       stressRunner({
         repository,
         environment,
         binary,
+        ...(suppliedProofWindow === undefined ? {} : { proofWindow: suppliedProofWindow }),
         ...(overlap
           ? {
               afterCanary: async () => {
@@ -427,6 +444,8 @@ export async function runMatrixAdapter({
   binary,
   invocationId = proofInvocation('live-tangle-matrix'),
   work,
+  proofWindow,
+  rows = ['LIVE-09', 'LIVE-10'],
 }) {
   const configured =
     typeof environment.BRAID_TANGLE_LIVE_ADAPTER === 'string' &&
@@ -456,8 +475,10 @@ export async function runMatrixAdapter({
   const runBuiltIn = async (row, runner) => {
     try {
       const result = await (work === undefined
-        ? runner({ repository, environment, binary, invocationId })
-        : work.span(row, 'row', () => runner({ repository, environment, binary, invocationId })))
+        ? runner({ repository, environment, binary, invocationId, proofWindow })
+        : work.span(row, 'row', () =>
+            runner({ repository, environment, binary, invocationId, proofWindow }),
+          ))
       if (result.status === 'failed') throw new Error(`${row} built-in proof failed`)
       if (result.status !== 'passed') {
         addUnavailable(row, result.reason ?? `${row} built-in proof is unavailable`)
@@ -470,10 +491,10 @@ export async function runMatrixAdapter({
       addUnavailable(row, classified.message)
     }
   }
-  await runBuiltIn('LIVE-09', runWorkspaceForkProof)
-  await runBuiltIn('LIVE-10', runConfidentialProof)
+  if (rows.includes('LIVE-09')) await runBuiltIn('LIVE-09', runWorkspaceForkProof)
+  if (rows.includes('LIVE-10')) await runBuiltIn('LIVE-10', runConfidentialProof)
   const status =
-    flows.length === 2 && flows.every((flow) => flow.status === 'passed')
+    flows.length === rows.length && flows.every((flow) => flow.status === 'passed')
       ? 'passed'
       : flows.every((flow) => flow.status === 'unavailable')
         ? 'unavailable'
@@ -489,6 +510,144 @@ export async function runMatrixAdapter({
   }
 }
 
+async function runEpochFlows({
+  repository,
+  environment,
+  inferenceRunner,
+  sandboxRunner,
+  interactiveRunner,
+  matrixRunner,
+  work,
+}) {
+  const binary = await resolveBinary(repository, environment)
+  const invocationId = proofInvocation('live-tangle')
+  const flows = []
+  const measurements = []
+  const unavailable = []
+  const accept = (row, result) => {
+    const measurement = requiredMeasurement(row, result)
+    if (measurement === undefined)
+      throw new Error(result.reason ?? `${row} built-in proof is unavailable`)
+    flows.push({
+      row,
+      status: result.status,
+      evidence: result.evidence,
+      ...(result.observations === undefined ? {} : { observations: result.observations }),
+    })
+    measurements.push(measurement)
+  }
+  const failed = (row, error) => {
+    const classified = classifyExternalFailure(error, `${row} built-in Tangle proof`, environment)
+    const message =
+      row === 'LIVE-08'
+        ? interactiveFailureMessages(error, environment).join('; ') || classified.message
+        : classified.message
+    flows.push({ row, status: 'unavailable', reason: message })
+    unavailable.push({ row, reason: message })
+  }
+  const invoke = async (row, runner, extra = {}) => {
+    try {
+      accept(
+        row,
+        await work.span(row, 'row', () =>
+          runner({ repository, environment, binary, invocationId, ...extra }),
+        ),
+      )
+    } catch (error) {
+      failed(row, error)
+    }
+  }
+  await invoke('LIVE-06', inferenceRunner)
+  const proofWindow = new ProofWindow(
+    ['stress-0', 'stress-1', 'stress-2', 'multirun', 'native-08', 'cloud-08', 'workspace-09'],
+    4,
+  )
+  work.window(proofWindow)
+  const owned = async (scopes, operation) => {
+    try {
+      return await operation()
+    } catch (error) {
+      for (const scope of scopes) proofWindow.cleaned(scope, false)
+      throw error
+    }
+  }
+  const matrix = async (row, epoch) => {
+    try {
+      const result = await owned(epoch ? ['workspace-09'] : [], () =>
+        matrixRunner({
+          repository,
+          environment,
+          binary,
+          invocationId,
+          work,
+          rows: [row],
+          ...(epoch ? { proofWindow } : {}),
+        }),
+      )
+      const flow = result.flows?.find((candidate) => candidate.row === row)
+      const measurement = result.measurements?.find((candidate) => candidate.name === row)
+      if (flow?.status !== 'passed' || measurement === undefined)
+        throw new Error(flow?.reason ?? result.reason ?? `${row} matrix proof unavailable`)
+      flows.push(flow)
+      measurements.push(measurement)
+    } catch (error) {
+      if (epoch) proofWindow.cleaned('workspace-09', false)
+      failed(row, error)
+    }
+  }
+  await Promise.allSettled([
+    invoke(
+      'LIVE-07',
+      (input) =>
+        owned(['stress-0', 'stress-1', 'stress-2', 'multirun'], () => sandboxRunner(input)),
+      { work, proofWindow },
+    ),
+    invoke('LIVE-08', (input) => owned(['native-08', 'cloud-08'], () => interactiveRunner(input)), {
+      proofWindow,
+    }),
+    matrix('LIVE-09', true),
+  ])
+  // Confidential refusal has an unchanged independent census and runs exclusively.
+  await matrix('LIVE-10', false)
+  const windowEvidence = proofWindow.snapshot()
+  const expectedResources = {
+    'stress-0': 1,
+    'stress-1': 1,
+    'stress-2': 1,
+    multirun: 2,
+    'native-08': 1,
+    'cloud-08': 1,
+    'workspace-09': 2,
+  }
+  if (
+    windowEvidence.failure ||
+    windowEvidence.beforeObserved.length !== 7 ||
+    windowEvidence.cleanupSettled.length !== 7 ||
+    windowEvidence.reservedPeak > 4 ||
+    !(windowEvidence.stressPairWorkOverlapMs > 0) ||
+    !(windowEvidence.stressPairIdentifiedResourceOverlapMs > 0) ||
+    windowEvidence.exactResources.some((resource) => !resource.deleted) ||
+    Object.entries(expectedResources).some(
+      ([scope, count]) =>
+        windowEvidence.exactResources.filter((resource) => resource.scope === scope).length !==
+        count,
+    )
+  )
+    throw new Error(
+      'Protected epoch lost a frozen case, concurrency, resource budget, or exact cleanup boundary',
+    )
+  flows.sort((left, right) => TANGLE_ROWS.indexOf(left.row) - TANGLE_ROWS.indexOf(right.row))
+  measurements.sort(
+    (left, right) => TANGLE_ROWS.indexOf(left.name) - TANGLE_ROWS.indexOf(right.name),
+  )
+  return {
+    status: measurements.length === TANGLE_ROWS.length ? 'passed' : 'partial',
+    flows,
+    measurements,
+    unavailable,
+  }
+}
+
 async function runTangleFlowsCore({
   repository,
   environment,
@@ -498,6 +657,16 @@ async function runTangleFlowsCore({
   matrixRunner = runMatrixAdapter,
   work,
 }) {
+  if (work?.pipeline)
+    return runEpochFlows({
+      repository,
+      environment,
+      inferenceRunner,
+      sandboxRunner,
+      interactiveRunner,
+      matrixRunner,
+      work,
+    })
   const binary = await resolveBinary(repository, environment)
   const invocationId = proofInvocation('live-tangle')
   const flows = []

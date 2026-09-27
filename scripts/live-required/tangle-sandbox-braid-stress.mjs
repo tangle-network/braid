@@ -1374,6 +1374,7 @@ export async function runBraidSandboxStress({
   requireZeroActiveResourceDelta = false,
   proofWindow,
   proofScope,
+  admissionAfter,
 } = {}) {
   const startedAt = performance.now()
   const baseCoordinates = proofCoordinates()
@@ -1478,7 +1479,18 @@ export async function runBraidSandboxStress({
       )
         throw new Error('Protected before-census could not establish account usage and identity')
     }
-    if (proofWindow === undefined) await observeBefore()
+    if (proofWindow?.resourceBudget !== undefined) {
+      const original = observeBefore
+      await proofWindow.before(proofScope, async () => {
+        await original()
+        assert.equal(
+          usageRecords[0]?.value?.activeSandboxes,
+          0,
+          'Protected before-census must observe zero active Sandboxes',
+        )
+      })
+      await proofWindow.reserve(proofScope, 1, admissionAfter)
+    } else if (proofWindow === undefined) await observeBefore()
     else await proofWindow.before(proofScope, observeBefore)
     binary = suppliedBinary ?? (await resolveBinary(suppliedRepository, environment))
     binarySha256 = sha256(await readFile(binary))
@@ -1496,6 +1508,7 @@ export async function runBraidSandboxStress({
     firstSession = first.session
     const initialState = first.state.state
     proofWindow?.assertAdmission()
+    proofWindow?.startedWork(proofScope)
     firstSendAttempted = true
     const send = await phase('firstProcess.send', () =>
       rpcRoundTrip(
@@ -1944,6 +1957,7 @@ export async function runBraidSandboxStress({
     }
     collectIntegrationNeed(error, unresolvedIntegrationNeeds)
   } finally {
+    proofWindow?.finishedWork(proofScope)
     for (const [label, session] of [
       ['retry', retrySession],
       ['fresh', freshSession],

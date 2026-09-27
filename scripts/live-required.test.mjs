@@ -6,7 +6,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
-import { countProtectedWork, observeOwnedSandbox, ProtectedWork } from './proof-tools.mjs'
+import {
+  countProtectedWork,
+  observeOwnedSandbox,
+  ProtectedWork,
+  ProofWindow,
+} from './proof-tools.mjs'
 import { connectionConfiguration } from './live-required/configuration.mjs'
 import {
   createProviderObservationDeadline,
@@ -64,6 +69,22 @@ import { MULTIRUN_REQUIRED_PHASES } from './live-required/multirun-contract.mjs'
 import { readLiveTangleProof } from './release/live-tangle-proof.mjs'
 
 const repository = resolve(new URL('../', import.meta.url).pathname)
+
+test('exact resource registration stays idempotent through native cleanup', async () => {
+  const window = new ProofWindow(['native'], 4)
+  await window.before('native', async () => {})
+  await window.reserve('native', 1)
+  window.admitted('native', 'run-native', 'env-native')
+  window.admitted('native', 'run-native', 'env-native')
+  assert.throws(() => window.admitted('native', 'other-run', 'env-native'), /reused/)
+  assert.throws(() => window.admitted('native', 'run-native', 'other-env'), /exceeded/)
+  window.deleted('native', 'env-native')
+  window.cleaned('native', true)
+  await window.after('native', async () => {})
+  assert.equal(window.snapshot().exactResources.length, 1)
+  assert.equal(window.snapshot().exactResources[0].deleted, true)
+  assert.equal(window.snapshot().reservedPeak, 1)
+})
 
 test('protected counters keep unobserved transport distinct from observed zero', async () => {
   const work = new ProtectedWork(false)

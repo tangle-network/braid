@@ -808,8 +808,20 @@ export async function runProof({
     beforeAccount = await phase('account.before', () =>
       proofWindow === undefined
         ? accountSnapshot(client, 'before')
-        : proofWindow.before(proofScope, () => accountSnapshot(client, 'before')),
+        : proofWindow.before(proofScope, async () => {
+            const observed = await accountSnapshot(client, 'before')
+            if (proofWindow.resourceBudget !== undefined)
+              assert.equal(
+                observed.usage.activeSandboxes,
+                0,
+                'Protected multirun before-census must be zero',
+              )
+            return observed
+          }),
     )
+    if (proofWindow?.resourceBudget !== undefined) {
+      await proofWindow.reserve(proofScope, 2)
+    }
     const binary = await phase('binary.resolve', () => resolveBinary(targetRepository, environment))
     config = await phase('workspace.prepare', () =>
       prepareProductionWorkspace({

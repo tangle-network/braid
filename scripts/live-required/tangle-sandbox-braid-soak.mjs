@@ -908,6 +908,7 @@ export async function runBraidSandboxSoak({
   ),
   stressRunner = runBraidSandboxStress,
   afterCanary,
+  proofWindow: suppliedProofWindow,
 } = {}) {
   const requestedRuns = boundedInteger(runs, DEFAULT_RUNS, MAX_RUNS, 'runs')
   const requestedConcurrency = Math.min(
@@ -919,7 +920,7 @@ export async function runBraidSandboxSoak({
   const startedAt = new Date().toISOString()
   const attempts = []
   let completionSequence = 0
-  let proofWindow
+  let proofWindow = suppliedProofWindow
 
   const attempt = async (index, requireZeroActiveResourceDelta) => {
     const attemptStartedAt = new Date().toISOString()
@@ -931,12 +932,22 @@ export async function runBraidSandboxSoak({
         binary,
         requireZeroActiveResourceDelta,
         attemptIndex: index,
-        ...(index === 0 || proofWindow === undefined
+        ...(proofWindow === undefined || (index === 0 && suppliedProofWindow === undefined)
           ? {}
-          : { proofWindow, proofScope: `stress-${index}` }),
+          : {
+              proofWindow,
+              proofScope: `stress-${index}`,
+              admissionAfter:
+                index === 0
+                  ? undefined
+                  : suppliedProofWindow === undefined
+                    ? undefined
+                    : 'stress-0',
+            }),
       })
     } catch (error) {
-      if (index !== 0 && proofWindow !== undefined) proofWindow.cleaned(`stress-${index}`, false)
+      if (proofWindow !== undefined && (index !== 0 || suppliedProofWindow !== undefined))
+        proofWindow.cleaned(`stress-${index}`, false)
       if (error && typeof error === 'object' && error.unavailable === true) throw error
       proof = {
         status: 'failed',
@@ -946,7 +957,11 @@ export async function runBraidSandboxSoak({
         },
       }
     }
-    if (index !== 0 && proofWindow !== undefined && proof?.status !== 'passed')
+    if (
+      proofWindow !== undefined &&
+      (index !== 0 || suppliedProofWindow !== undefined) &&
+      proof?.status !== 'passed'
+    )
       proofWindow.cleaned(`stress-${index}`, false)
     return {
       index,
@@ -956,6 +971,31 @@ export async function runBraidSandboxSoak({
       requireZeroActiveResourceDelta,
       proof,
     }
+  }
+
+  if (suppliedProofWindow !== undefined) {
+    if (requestedRuns !== 3 || requestedConcurrency !== 2)
+      throw new Error('Epoch pipeline requires the frozen three-proof, two-worker cohort')
+    const settled = await Promise.allSettled([
+      attempt(0, false),
+      attempt(1, false),
+      attempt(2, false),
+    ])
+    for (const entry of settled) {
+      if (entry.status === 'rejected') throw entry.reason
+      attempts.push(entry.value)
+    }
+    return finish({
+      attempts,
+      requestedRuns,
+      concurrency: requestedConcurrency,
+      startedAt,
+      stoppedAfterCanary:
+        suppliedProofWindow.snapshot().caseWork.some((work) => work.scope === 'stress-0') &&
+        !suppliedProofWindow
+          .snapshot()
+          .caseWork.some((work) => ['stress-1', 'stress-2'].includes(work.scope)),
+    })
   }
 
   const canary = await attempt(0, false)

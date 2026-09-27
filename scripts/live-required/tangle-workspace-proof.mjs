@@ -1251,6 +1251,8 @@ async function runWorkspaceProof({
   environment = process.env,
   invocationId = proofInvocation('live-tangle-workspace'),
   confidential = false,
+  proofWindow,
+  proofScope = 'workspace-09',
 }) {
   const proofId = `${Date.now()}-${randomUUID().replaceAll('-', '')}`
   const startedAt = new Date().toISOString()
@@ -1297,6 +1299,7 @@ async function runWorkspaceProof({
   let primaryError
   let completedResult
   const cleanupErrors = []
+  let epochAdapters
   try {
     opened = await openProofApplication({ repository, config, environment })
     if (trust !== undefined) {
@@ -1308,6 +1311,16 @@ async function runWorkspaceProof({
       )
     }
     const adapters = providerAdapters(opened)
+    epochAdapters = adapters
+    if (proofWindow !== undefined) {
+      if (confidential) throw new Error('LIVE-10 must remain exclusive outside the epoch')
+      resourceCensusBefore = await proofWindow.before(proofScope, async () => {
+        const observed = await adapters.resourceCensus()
+        assertCondition(observed.count === 0, 'Protected workspace before-census must be zero')
+        return observed
+      })
+      await proofWindow.reserve(proofScope, 2)
+    }
     let verifier
     if (confidential) {
       const capabilities = await adapters.capabilities()
@@ -1320,11 +1333,14 @@ async function runWorkspaceProof({
       resourceCensusBefore = await adapters.resourceCensus()
     }
     runIdsBeforeSource = new Set(opened.app.state().runs.map((run) => run.id))
+    proofWindow?.assertAdmission()
     source = await sendSource(
       opened.app,
       proofId,
       (candidate) => {
         source ??= candidate
+        if (candidate.providerId && candidate.run?.id)
+          proofWindow?.admitted(proofScope, candidate.run.id, candidate.providerId)
       },
       (run) =>
         providerFailureDetail(adapters, run, (text) =>
@@ -1514,6 +1530,7 @@ async function runWorkspaceProof({
       )
       if (destination === undefined) throw new Error('Braid did not persist the forked environment')
       destinationProviderId = providerEnvironmentId(destination, 'Destination environment')
+      proofWindow?.admitted(proofScope, source.run.id, destinationProviderId)
       assertCondition(
         destinationProviderId !== source.providerId,
         'Fork reused the source environment',
@@ -1859,6 +1876,48 @@ async function runWorkspaceProof({
       await config.cleanup()
     } catch (error) {
       cleanupErrors.push(error)
+    }
+  }
+  if (proofWindow !== undefined) {
+    if (sourceDestroyed && source?.providerId) proofWindow.deleted(proofScope, source.providerId)
+    if (destinationProviderId && ['deleted', 'already_absent'].includes(cleanupResult?.environment))
+      proofWindow.deleted(proofScope, destinationProviderId)
+    proofWindow.cleaned(
+      proofScope,
+      primaryError === undefined &&
+        cleanupErrors.length === 0 &&
+        sourceDestroyed &&
+        completedResult !== undefined,
+    )
+    if (epochAdapters !== undefined) {
+      try {
+        resourceCensusAfter = await proofWindow.after(proofScope, () =>
+          epochAdapters.resourceCensus(),
+        )
+        resourceCensusResult = resourceCensusComparison(resourceCensusBefore, resourceCensusAfter)
+        assertCondition(
+          resourceCensusResult.unchanged,
+          'Protected workspace account census changed after exact cleanup',
+        )
+        if (completedResult !== undefined)
+          completedResult = {
+            ...completedResult,
+            evidence: {
+              ...completedResult.evidence,
+              completedAt: new Date().toISOString(),
+              observations: {
+                ...completedResult.evidence.observations,
+                epochResourceCensus: {
+                  before: resourceCensusBefore,
+                  after: resourceCensusAfter,
+                  ...resourceCensusResult,
+                },
+              },
+            },
+          }
+      } catch (error) {
+        cleanupErrors.push(error)
+      }
     }
   }
   const failure = workspaceProofFailure(primaryError, cleanupErrors)
