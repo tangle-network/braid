@@ -1,0 +1,24 @@
+ fork preview                                                      conversation
+────────────────────────────────────────────────────────────────────────────────
+ same conversation · new branch
+ source: conv-1
+ source branch: branch-1
+ destination branch: branch-b751849ce25a2afdd3432c2435901c1b
+ boundary: branch-1 → 0 messages
+ provider session: current → new
+ workspace: current → shared
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ enter/y create fork · ←/esc cancel

@@ -64,15 +64,10 @@ export class ForkPreviewPanel extends Container implements Focusable {
       this.#canConfirm = forkExecutionIdentity(preview) !== undefined
       this.#title = 'fork preview'
       this.#context = sanitizeTerminalText(preview.kind)
-      this.addChild(
-        this.#line(
-          this.#theme.muted(
-            `will create a new ${sanitizeTerminalText(preview.kind)} from this source`,
-          ),
-        ),
-      )
-      this.addChild(this.#line(`source: ${sanitizeTerminalText(preview.source)}`))
-      this.addChild(this.#line(`destination: ${sanitizeTerminalText(preview.destination)}`))
+      this.addChild(this.#line(this.#theme.muted('same conversation · new branch')))
+      const addedScope = forkAdditionalScope(preview)
+      if (addedScope !== undefined) this.addChild(this.#line(this.#theme.muted(addedScope)))
+      this.#addForkIdentities(preview.source, preview.destination)
 
       const boundaryField = preview.fields.find((field) => isBoundaryField(field.label))
       this.addChild(
@@ -186,6 +181,37 @@ export class ForkPreviewPanel extends Container implements Focusable {
     return true
   }
 
+  #addForkIdentities(source: string, destination: string): void {
+    const sourceIdentity = splitForkIdentity(source)
+    const destinationIdentity = splitForkIdentity(destination)
+    if (
+      sourceIdentity !== undefined &&
+      destinationIdentity !== undefined &&
+      sourceIdentity.conversation === destinationIdentity.conversation
+    ) {
+      this.addChild(this.#line(`source: ${sourceIdentity.conversation}`))
+      this.addChild(this.#line(`source branch: ${sourceIdentity.branch}`))
+      this.addChild(this.#line(`destination branch: ${destinationIdentity.branch}`))
+      return
+    }
+    this.#addIdentity('source', source, sourceIdentity)
+    this.#addIdentity('destination', destination, destinationIdentity)
+  }
+
+  #addIdentity(
+    label: 'source' | 'destination',
+    value: string,
+    identity: ReturnType<typeof splitForkIdentity>,
+  ): void {
+    if (identity === undefined) {
+      this.addChild(this.#line(`${label}: ${sanitizeTerminalText(value)}`))
+      return
+    }
+    this.addChild(this.#line(`${label}: ${identity.conversation}`))
+    const branchLabel = label === 'source' ? 'source branch' : 'destination branch'
+    this.addChild(this.#line(`${branchLabel}: ${identity.branch}`))
+  }
+
   #line(value: string): TruncatedText {
     return new TruncatedText(value, 1, 0)
   }
@@ -193,4 +219,46 @@ export class ForkPreviewPanel extends Container implements Focusable {
 
 function isBoundaryField(label: string): boolean {
   return /boundary|context|through|message|turn/iu.test(sanitizeTerminalText(label))
+}
+
+function forkAdditionalScope(
+  preview: NonNullable<BraidViewModel['forkPreview']>,
+): string | undefined {
+  switch (preview.kind) {
+    case 'conversation':
+      return undefined
+    case 'workspace':
+      if (
+        preview.allowed &&
+        preview.plan?.environment === 'new' &&
+        preview.plan.checkpoint === 'required'
+      ) {
+        return 'workspace: new environment from checkpoint'
+      }
+      if (!preview.allowed || preview.plan?.environment === 'unavailable') {
+        return 'workspace: fork unavailable'
+      }
+      return 'workspace: checkpoint status unreported'
+    case 'cross-runner':
+      if (
+        preview.allowed &&
+        preview.plan?.environment === 'new' &&
+        preview.plan.providerSession === 'new'
+      ) {
+        return 'runner: new session'
+      }
+      if (!preview.allowed || preview.plan?.environment === 'unavailable') {
+        return 'runner: transfer unavailable'
+      }
+      return 'runner: transfer status unreported'
+  }
+}
+
+function splitForkIdentity(value: string): { conversation: string; branch: string } | undefined {
+  const delimiter = value.indexOf(' / ')
+  if (delimiter === -1) return undefined
+  return {
+    conversation: sanitizeTerminalText(value.slice(0, delimiter)),
+    branch: sanitizeTerminalText(value.slice(delimiter + 3)),
+  }
 }

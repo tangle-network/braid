@@ -56,7 +56,12 @@ async function waitFor(predicate: () => boolean, detail: () => string): Promise<
   }
 }
 
-for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as const) {
+for (const [columns, rows] of [
+  [40, 12],
+  [80, 24],
+  [120, 40],
+  [200, 60],
+] as const) {
   test(`cloud setup keyboard and durable user path ${columns}x${rows} (SDK double, not live Tangle)`, async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'braid-cloud-user-path-'))
     const workspace = join(root, 'workspace')
@@ -79,7 +84,9 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
         profile: initialProfile,
         connection,
         profileDigest: initialProfile.digest,
-        connectionDigest: new ConnectionRegistry([connection]).select({ connectionId: connection.id }).digest,
+        connectionDigest: new ConnectionRegistry([connection]).select({
+          connectionId: connection.id,
+        }).digest,
       },
       configPath,
       new TextEncoder().encode('cloud-setup-secret-canary'),
@@ -90,22 +97,25 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
     const openApplication = (
       selectedOptions: ProductionStartupLoadOptions,
       production: ProductionCompositionConfig,
-    ) => openProductionApplication({
-      workspace,
-      statePath,
-      startupOptions: selectedOptions,
-      production: {
-        ...production,
-        connectionOptions: { ...production.connectionOptions, sandboxClient: sandbox.client() },
-      },
-    })
+    ) =>
+      openProductionApplication({
+        workspace,
+        statePath,
+        startupOptions: selectedOptions,
+        production: {
+          ...production,
+          connectionOptions: { ...production.connectionOptions, sandboxClient: sandbox.client() },
+        },
+      })
     const active: ProductionApplicationSlot = {
       current: await openApplication(
         startupOptions,
         productionConfigForSelection(prepared.selection, startupOptions),
       ),
     }
-    await activateProductionConnection(active.current.app, connection.id, [prepared.selection.connection])
+    await activateProductionConnection(active.current.app, connection.id, [
+      prepared.selection.connection,
+    ])
     const controller = createApplicationUiController(active.current.app)
     const configuration = await createProductionSetupEditor({
       workspace,
@@ -131,7 +141,11 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
       nextOperationId: () => `operation-cloud-keyboard-${columns}-${++operation}`,
     })
     const done = view.start()
-    const screen = () => terminal.getViewport().map((line) => line.trimEnd()).join('\n')
+    const screen = () =>
+      terminal
+        .getViewport()
+        .map((line) => line.trimEnd())
+        .join('\n')
     const expectScreen = (pattern: RegExp) => waitFor(() => pattern.test(screen()), screen)
     const capture = (label: string) => {
       assert.doesNotMatch(screen(), /cloud-setup-secret-canary/u)
@@ -143,7 +157,9 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
     }
     try {
       await terminal.waitForRender()
-      await input('/setup', '\r')
+      await input('\u000b')
+      await expectScreen(/Setup/u)
+      await input('\u001b[B', '\r')
       await expectScreen(/choose an AgentProfile/u)
       capture('open from an already-configured terminal')
       await input('\u001b[B', '\r')
@@ -153,7 +169,7 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
       assert.match(screen(), /files: ephemeral/u)
       await input(requested.repoUrl, '\r', requested.gitRef, '\r', requested.cwd.path, '\u000c')
       await expectScreen(/files · lifetime/u)
-      await input('\u001b[B', '\r', '\u0015', '1800')
+      await input('\u001b[B', '\r', '\u0005', '\u0015', '1800')
       capture('retained file lifetime before save')
       await input('\r')
       await expectScreen(/review and/u)
@@ -173,7 +189,9 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
       assert.equal(savedConnection?.providerOptions.idleTtlSeconds, 1800)
       const savedBytes = await readFile(configPath)
       const savedApp = active.current.app
-      await input('\u001b', '/setup', '\r')
+      await input('\u001b', '\u000b')
+      await expectScreen(/Setup/u)
+      await input('\u001b[B', '\r')
       await expectScreen(/choose an AgentProfile/u)
       await input('\r', '\r')
       await expectScreen(/workspace · cloud sandbox/u)
@@ -190,7 +208,10 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
       assert.equal(sandbox.dispatches.length, 0)
 
       await input('CLOUD_SETUP_LATER_TASK', '\r')
-      await waitFor(() => sandbox.dispatches.length === 1, () => JSON.stringify(controller.state()))
+      await waitFor(
+        () => sandbox.dispatches.length === 1,
+        () => JSON.stringify(controller.state()),
+      )
       const dispatch = sandbox.dispatches[0]
       assert.ok(dispatch)
       const run = active.current.app.state().runs.at(-1)
@@ -218,14 +239,19 @@ for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]] as cons
       assert.equal(active.current.app.state().runs.at(-1)?.status, 'completed')
       capture('later explicit task completed through production admission')
       assert.equal(httpRequests, 0)
-      t.diagnostic(JSON.stringify({
-        proof: 'cloud-setup-production-keyboard',
-        transport: 'existing FakeTangleRetainedSandbox SDK double; no live provider',
-        columns, rows, creates: sandbox.createCalls.length, dispatches: sandbox.dispatches.length,
-        requested: run.receipt.requested.workspaceRequest,
-        receiptDigest: run.receipt.digest,
-        frames,
-      }))
+      t.diagnostic(
+        JSON.stringify({
+          proof: 'cloud-setup-production-keyboard',
+          transport: 'existing FakeTangleRetainedSandbox SDK double; no live provider',
+          columns,
+          rows,
+          creates: sandbox.createCalls.length,
+          dispatches: sandbox.dispatches.length,
+          requested: run.receipt.requested.workspaceRequest,
+          receiptDigest: run.receipt.digest,
+          frames,
+        }),
+      )
     } finally {
       for (const dispatch of sandbox.dispatches) sandbox.complete(dispatch.executionId, 'cleanup')
       view.stop()

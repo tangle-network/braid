@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2"
+    "tarball": "tangle-network-braid-0.3.3.tgz",
+    "tarballSha256": "029671a868313d33b23d5d894f1fcd572dbf0b2df8463f932f855f8fd747a85d"
   },
   "dimensions": {
     "columns": 80,
@@ -17,7 +17,7 @@
       "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 8,
       "sequence": 8,
-      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
+      "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -176,7 +176,7 @@
     },
     "view": {
       "revision": 8,
-      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
+      "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -336,7 +336,7 @@
           "title": "event backend_start",
           "status": "failed",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-02T04:41:54.163Z",
+          "occurredAt": "2026-09-27T10:10:53.302Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -348,7 +348,7 @@
           "title": "error",
           "status": "failed",
           "detail": "RUNTIME_BACKEND_ERROR",
-          "occurredAt": "2026-09-02T04:41:54.170Z",
+          "occurredAt": "2026-09-27T10:10:53.308Z",
           "sourceEventId": "run-000001:runtime:2",
           "runId": "run-000001",
           "entityType": "run",
@@ -613,7 +613,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-release-live-separation"
+            "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle"
           }
         }
       },
@@ -709,10 +709,10 @@
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "301e21ee3aa22132a7a234b384c510bdabdf6d7523903a1568504d154ed0328c",
+            "requestDigest": "0a0baa44e52bd6907f65066ec826fb8e3f6a5be983f57667d28d0cb019aab4eb",
             "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
             "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-            "digest": "9df8f658fbdadfd267ecfffd21dd95c2460ecd86f581e950d8872828e0b1dd74"
+            "digest": "1236babf53f9b9b8025af70850ccb752c3a142a04af01aeb6bb3818fe65ba81b"
           },
           "status": "admitted"
         }
@@ -725,10 +725,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-bfde260e83a6fa013fe4686b",
+              "id": "effect-op-terminal-000002-11e3c2582c9b09ae2369661d",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "bfde260e83a6fa013fe4686b626ea5f079db5ed378ad196532ce6da9986e45d5",
+              "requestDigest": "11e3c2582c9b09ae2369661deb191590e1abf79116a3e1c3c3e59348d518a294",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -747,13 +747,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-02T04:41:54.163Z",
+            "occurredAt": "2026-09-27T10:10:53.302Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-efeef76b-eafe-40c2-921b-1fec00ab0a1c",
+              "id": "turn-d7d8f6ad-3f33-4ea0-a29c-bedce6a12d1f",
               "intent": "W6 failure state",
               "metadata": {
                 "identity": {
@@ -763,11 +763,11 @@
               }
             },
             "session": {
-              "id": "d8a99a48-1de2-4fef-9fcf-0a31b23c6c39",
+              "id": "b3d1ce98-48d2-42d2-94b8-5e4267200c57",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-02T04:41:54.163Z",
-              "updatedAt": "2026-09-02T04:41:54.163Z",
+              "createdAt": "2026-09-27T10:10:53.302Z",
+              "updatedAt": "2026-09-27T10:10:53.302Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -789,16 +789,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-efeef76b-eafe-40c2-921b-1fec00ab0a1c"
+                  "id": "turn-d7d8f6ad-3f33-4ea0-a29c-bedce6a12d1f"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-efeef76b-eafe-40c2-921b-1fec00ab0a1c:attempt:4c9534fd-25a2-4812-b1c5-84b3f3947c4e",
-                  "materializationReceiptDigest": "sha256:187646e7e5e56a31f71dc822e80dc2467fc3d16d6ab34e3ab0d6bc349fc9965c",
-                  "bindingDigest": "sha256:687ea8b3a2912fb12bc352f443f1090c51fff5d7fb15f935df94aea08c971aa0",
+                  "attemptId": "turn-d7d8f6ad-3f33-4ea0-a29c-bedce6a12d1f:attempt:6655a236-ef8c-43c3-99e0-139cb71fb98a",
+                  "materializationReceiptDigest": "sha256:d696eddf298722f3d773c6b98365fb255159ac1d7139bafc4d472d7b869f0e62",
+                  "bindingDigest": "sha256:bd32be6ec461b115b2a1652473df42bb314401ae7248484406acca0e3554ed58",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -810,10 +810,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-02T04:41:54.161Z"
+                "startedAt": "2026-09-27T10:10:53.299Z"
               }
             },
-            "timestamp": "2026-09-02T04:41:54.163Z"
+            "timestamp": "2026-09-27T10:10:53.302Z"
           }
         }
       },
@@ -826,7 +826,7 @@
           "source": {
             "eventId": "run-000001:runtime:2",
             "providerSequence": 2,
-            "occurredAt": "2026-09-02T04:41:54.170Z",
+            "occurredAt": "2026-09-27T10:10:53.308Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "error": {
@@ -845,7 +845,7 @@
           "source": {
             "eventId": "run-000001:runtime:3",
             "providerSequence": 3,
-            "occurredAt": "2026-09-02T04:41:54.174Z",
+            "occurredAt": "2026-09-27T10:10:53.312Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "status": "failed",
@@ -869,10 +869,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-bfde260e83a6fa013fe4686b",
+              "id": "effect-op-terminal-000002-11e3c2582c9b09ae2369661d",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "bfde260e83a6fa013fe4686b626ea5f079db5ed378ad196532ce6da9986e45d5",
+              "requestDigest": "11e3c2582c9b09ae2369661deb191590e1abf79116a3e1c3c3e59348d518a294",
               "kind": "send",
               "status": "failed",
               "attempt": 1,

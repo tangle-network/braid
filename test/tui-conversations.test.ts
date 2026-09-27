@@ -199,6 +199,8 @@ test('fork preview executes the existing plan and branch navigation works with a
   let screen = await settle(terminal)
   assert.match(screen, /fork preview/u)
   assert.match(screen, /enter\/y create fork/u)
+  assert.match(screen, /same conversation · new branch/u)
+  assert.doesNotMatch(screen, /will create a new conversation/u)
   const beforeFork = app.state().branches.length
   terminal.sendInput('y')
   await settle(terminal)

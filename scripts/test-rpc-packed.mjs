@@ -4,14 +4,19 @@ import { runPackedFirstRun } from './packed-rpc/first-run-tui.mjs'
 import { runBuiltStartupProof } from './packed-rpc/production-startup.mjs'
 
 const repository = new URL('../', import.meta.url).pathname
+const deterministicOnly = process.argv.includes('--deterministic-only')
 const packed = await installPackedBraid(repository)
 
 try {
   await runBuiltStartupProof(packed.binary, repository)
-  const startupProof = await runPackedFirstRun(packed.binary, repository)
-  process.stdout.write(
-    `Packed first-run setup, immediate send, restart, and persisted ${startupProof.model} send passed\n`,
-  )
+  if (deterministicOnly) {
+    process.stdout.write('Live-provider first-run proof skipped by deterministic-only mode\n')
+  } else {
+    const startupProof = await runPackedFirstRun(packed.binary, repository)
+    process.stdout.write(
+      `Packed first-run setup, immediate send, restart, and persisted ${startupProof.model} send passed\n`,
+    )
+  }
   await runDeterministicRpcProof(packed.binary, repository)
 } finally {
   await packed.cleanup()

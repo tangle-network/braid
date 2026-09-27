@@ -1,13 +1,13 @@
  fork preview                                                                                                                                                                                 workspace
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- will create a new workspace from this source
+ same conversation · new branch
+ workspace: new environment from checkpoint
  source: workspace:/workspace
  destination: workspace:/workspace-fork
- boundary: conv-1 / branch-1 → conv-fork-1 / branch-1
+ boundary: conv-1 / branch-1 → conv-1 / branch-fork-1
  profile snapshot: digest:fixture-source → digest:fixture-copy
  workspace state: checkpoint:fixture-1 → checkpoint:fixture-1
  confidential request: nitro · sealed
-
 
 
 

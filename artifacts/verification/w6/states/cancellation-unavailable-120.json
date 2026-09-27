@@ -4,8 +4,8 @@
   "source": {
     "binary": "packed real binary from clean npm install",
     "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
-    "tarball": "tangle-network-braid-0.3.0.tgz",
-    "tarballSha256": "cb51febdbd1f5ba9a98e7248a54142debf157de7098383db1784157922e9e0f2"
+    "tarball": "tangle-network-braid-0.3.3.tgz",
+    "tarballSha256": "029671a868313d33b23d5d894f1fcd572dbf0b2df8463f932f855f8fd747a85d"
   },
   "dimensions": {
     "columns": 120,
@@ -17,7 +17,7 @@
       "package": "@earendil-works/pi-tui@0.84.4",
       "pty": "node-pty@1.1.0",
       "emulator": "@xterm/headless@6.0.0",
-      "node": "v24.13.0",
+      "node": "v24.18.0",
       "terminal": "xterm-256color"
     },
     "raster": {
@@ -38,7 +38,7 @@
       "schemaVersion": 2,
       "revision": 6,
       "sequence": 6,
-      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
+      "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle",
       "conversationId": "conv-1",
       "branchId": "branch-1",
       "conversations": [
@@ -171,7 +171,7 @@
     },
     "view": {
       "revision": 6,
-      "workspace": "/home/drew/code/.worktrees/braid-release-live-separation",
+      "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle",
       "profileName": "Braid starter",
       "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
       "runner": "pi",
@@ -320,7 +320,7 @@
           "title": "event backend_start",
           "status": "running",
           "detail": "sequence 1",
-          "occurredAt": "2026-09-02T04:41:24.489Z",
+          "occurredAt": "2026-09-27T10:10:12.258Z",
           "sourceEventId": "run-000001:runtime:1",
           "runId": "run-000001",
           "entityType": "run",
@@ -586,7 +586,7 @@
         "payload": {
           "value": {
             "kind": "workspace.opened",
-            "workspace": "/home/drew/code/.worktrees/braid-release-live-separation"
+            "workspace": "/home/drew/code/.worktrees/braid-fork-preview-rpc-lifecycle"
           }
         }
       },
@@ -682,10 +682,10 @@
               "provider": "agent-runtime"
             },
             "admissionStatus": "admitted",
-            "requestDigest": "7dc562129ef66fdb1d4af0369d9ba6b47d583980967b09d1779a52bbce1f6c36",
+            "requestDigest": "8b3f32b67731887d68af4bb7a2b482624357cba59336607ec47a25aabe66405b",
             "capabilitiesDigest": "34f74481bbc016dda8db96c63dc5895e62f6054b9f68b314e6c98d33cdd4fcbe",
             "materializationDigest": "46c7162244a3aa789bd2703e2805a3faa0da1a87d83d97484fa26294a0b00671",
-            "digest": "8d11453d277c6b4875849773b2d58a1ba74b9965ed420e499ab2c70149f2b200"
+            "digest": "626ceba115b25733a581363dfce28bfd3b07f6934abf6400fe076a4dc51fe47a"
           },
           "status": "admitted"
         }
@@ -698,10 +698,10 @@
           "value": {
             "kind": "effect.upserted",
             "effect": {
-              "id": "effect-op-terminal-000002-d405a9592e48daee9ff07157",
+              "id": "effect-op-terminal-000002-25d63769cffbda0d8acb16fa",
               "operationId": "op-terminal-000002",
               "effectKind": "run.execute",
-              "requestDigest": "d405a9592e48daee9ff07157862f0d38b2facc5176caef47ace82f2424f270ff",
+              "requestDigest": "25d63769cffbda0d8acb16fa6ba140c979d4bfa8517981808f82d3707edb5420",
               "kind": "send",
               "status": "pending",
               "attempt": 1,
@@ -720,13 +720,13 @@
           "source": {
             "eventId": "run-000001:runtime:1",
             "providerSequence": 1,
-            "occurredAt": "2026-09-02T04:41:24.489Z",
+            "occurredAt": "2026-09-27T10:10:12.258Z",
             "receivedAt": "2026-08-01T00:00:00.000Z"
           },
           "unknown": {
             "type": "backend_start",
             "task": {
-              "id": "turn-e2ae395f-88c5-4e41-98ee-df5612dc3f26",
+              "id": "turn-81f151fe-bf34-427e-90e4-e6562c7a7aa9",
               "intent": "W6 provider cancellation unavailable",
               "metadata": {
                 "identity": {
@@ -736,11 +736,11 @@
               }
             },
             "session": {
-              "id": "dcc0d518-a26a-436d-8648-7d42a80aa662",
+              "id": "c6690390-6b15-4632-9806-05e04d4a44da",
               "backend": "executor",
               "status": "active",
-              "createdAt": "2026-09-02T04:41:24.489Z",
-              "updatedAt": "2026-09-02T04:41:24.489Z",
+              "createdAt": "2026-09-27T10:10:12.258Z",
+              "updatedAt": "2026-09-27T10:10:12.258Z",
               "metadata": "[unavailable]"
             },
             "backend": "router",
@@ -762,16 +762,16 @@
                 },
                 "execution": {
                   "kind": "request",
-                  "id": "turn-e2ae395f-88c5-4e41-98ee-df5612dc3f26"
+                  "id": "turn-81f151fe-bf34-427e-90e4-e6562c7a7aa9"
                 },
                 "materializer": "router-prompt-model"
               },
               "executionBindings": [
                 {
                   "status": "known",
-                  "attemptId": "turn-e2ae395f-88c5-4e41-98ee-df5612dc3f26:attempt:a1bcf847-ac24-4d0d-b9f4-69f83e01838b",
-                  "materializationReceiptDigest": "sha256:f01da5c0b48853e81564dd462f37311250802934f41d86049d6a607a73e48d5c",
-                  "bindingDigest": "sha256:eb0a19a9fd06346d28df4d8e1220e20cc2091ded7f6350c59a6a057b5209b0f6",
+                  "attemptId": "turn-81f151fe-bf34-427e-90e4-e6562c7a7aa9:attempt:b06f7132-fc11-465b-bf13-a8b921064fca",
+                  "materializationReceiptDigest": "sha256:eb003f7be51ff2c59bb6e9e22f17d7cac5acbe35f15397d744e163bce73db497",
+                  "bindingDigest": "sha256:a5128d69f7ac7cae36214495206da05fa276b9820eb08257fe508314b27d90e5",
                   "descriptor": {
                     "kind": "router-request",
                     "transport": "http",
@@ -783,10 +783,10 @@
                 "timeoutMs": null
               },
               "timing": {
-                "startedAt": "2026-09-02T04:41:24.485Z"
+                "startedAt": "2026-09-27T10:10:12.256Z"
               }
             },
-            "timestamp": "2026-09-02T04:41:24.489Z"
+            "timestamp": "2026-09-27T10:10:12.258Z"
           }
         }
       },

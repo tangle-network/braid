@@ -505,10 +505,29 @@ try {
       )
         throw new Error('automation capture did not contain the rule manager')
       if (
-        definition.name.startsWith('fork-preview') &&
+        (definition.name.startsWith('fork-preview') ||
+          definition.name.startsWith('conversation-fork-preview-')) &&
         result.record.view?.forkPreview?.allowed !== true
       )
         throw new Error('fork capture did not contain an allowed fork preview')
+      if (definition.name.startsWith('conversation-fork-preview-')) {
+        const preview = result.record.view?.forkPreview
+        const [sourceConversation, sourceBranch] = preview?.source.split(' / ') ?? []
+        const [destinationConversation, destinationBranch] = preview?.destination.split(' / ') ?? []
+        if (
+          preview?.kind !== 'conversation' ||
+          !sourceConversation ||
+          sourceConversation !== destinationConversation ||
+          !sourceBranch ||
+          !destinationBranch ||
+          sourceBranch === destinationBranch ||
+          !normalized(result.point.screen).includes('same conversation · new branch')
+        ) {
+          throw new Error(
+            'conversation fork capture did not show the same conversation and a new branch',
+          )
+        }
+      }
       if (
         definition.name.startsWith('fork-preview') &&
         JSON.stringify(result.record).includes('fixture-confidential-')
@@ -640,6 +659,31 @@ try {
   ]
   artifacts.push(...forkPreviewArtifacts)
 
+  const conversationForkPreviewCast = join(outputRoot, 'conversation-fork-preview.cast')
+  const conversationForkPreviewGif = join(outputRoot, '80x24-conversation-fork-preview.gif')
+  await writeFile(
+    conversationForkPreviewCast,
+    await readFile(join(rawRoot, 'conversation-fork-preview-80-frame.cast')),
+  )
+  await writeCastGif(conversationForkPreviewCast, conversationForkPreviewGif)
+  const conversationForkPreviewArtifacts = [
+    await artifactFor(
+      conversationForkPreviewCast,
+      'conversation-fork-preview-asciicast',
+      80,
+      24,
+      'conversation-fork-preview-80',
+    ),
+    await artifactFor(
+      conversationForkPreviewGif,
+      'conversation-fork-preview-flow',
+      80,
+      24,
+      'conversation-fork-preview-80',
+    ),
+  ]
+  artifacts.push(...conversationForkPreviewArtifacts)
+
   const keyboardFlow = await transcriptKeyboardCapture()
   const keyboardCast = join(rawRoot, 'transcript-keyboard.cast')
   const keyboardGif = join(outputRoot, '80x24-transcript-keyboard.gif')
@@ -650,6 +694,21 @@ try {
     await artifactFor(keyboardGif, 'keyboard-flow', 80, 24),
   ]
   artifacts.push(...keyboardArtifacts)
+
+  const conversationForkBeforeFiles = [
+    ['references/conversation-fork-preview-before-80x24.txt', 'historical-before-text'],
+    ['references/conversation-fork-preview-before-walkthrough.cast', 'historical-before-asciicast'],
+    [
+      'references/conversation-fork-preview-before-source-manifest.json',
+      'historical-before-provenance',
+    ],
+  ]
+  const conversationForkBeforeArtifacts = await Promise.all(
+    conversationForkBeforeFiles.map(([path, kind]) =>
+      artifactFor(join(outputRoot, path), kind, 80, 24, 'conversation-fork-preview-before-80'),
+    ),
+  )
+  artifacts.push(...conversationForkBeforeArtifacts)
 
   const manifestPath = join(outputRoot, 'capture-manifest.json')
   const provenance = await captureProvenance()
@@ -686,6 +745,23 @@ try {
         forkPreviewFlow: {
           steps: ['type /fork', 'open the fork preview', 'review confidential workspace fields'],
           artifacts: forkPreviewArtifacts.map((artifact) => artifact.path),
+        },
+        conversationForkPreviewFlow: {
+          steps: [
+            'type /fork',
+            'open the conversation fork preview',
+            'review its destination branch',
+          ],
+          artifacts: conversationForkPreviewArtifacts.map((artifact) => artifact.path),
+          beforeCapture: {
+            sourceCommit: 'afc8380e06dbb164532d6d7af753394375c81c42',
+            source: 'retained 2026-09-27 Braid 0.3.3 deterministic-provider capture',
+            sourceKind:
+              'normalized terminal text plus original walkthrough recording; no PNG was retained',
+            sourceManifest: conversationForkBeforeArtifacts[2].path,
+            sourceManifestSha256: conversationForkBeforeArtifacts[2].sha256,
+            artifacts: conversationForkBeforeArtifacts.map((artifact) => artifact.path),
+          },
         },
         states: stateManifests,
         artifacts,

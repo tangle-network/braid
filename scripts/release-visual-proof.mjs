@@ -10,6 +10,15 @@ const FORK_PREVIEW_STEPS = [
   'review confidential workspace fields',
 ]
 const FORK_PREVIEW_ARTIFACTS = ['fork-preview.cast', '80x24-fork-preview.gif']
+const CONVERSATION_FORK_PREVIEW_STEPS = [
+  'type /fork',
+  'open the conversation fork preview',
+  'review its destination branch',
+]
+const CONVERSATION_FORK_PREVIEW_ARTIFACTS = [
+  'conversation-fork-preview.cast',
+  '80x24-conversation-fork-preview.gif',
+]
 
 async function sha256(path) {
   return createHash('sha256')
@@ -26,6 +35,19 @@ export function assertForkPreviewFlow(visualProof) {
     JSON.stringify(visualProof.forkPreviewFlow?.artifacts) ===
       JSON.stringify(FORK_PREVIEW_ARTIFACTS),
     'Visual proof fork-preview artifacts differ',
+  )
+}
+
+export function assertConversationForkPreviewFlow(visualProof) {
+  assert(
+    JSON.stringify(visualProof.conversationForkPreviewFlow?.steps) ===
+      JSON.stringify(CONVERSATION_FORK_PREVIEW_STEPS),
+    'Visual proof conversation fork-preview steps differ',
+  )
+  assert(
+    JSON.stringify(visualProof.conversationForkPreviewFlow?.artifacts) ===
+      JSON.stringify(CONVERSATION_FORK_PREVIEW_ARTIFACTS),
+    'Visual proof conversation fork-preview artifacts differ',
   )
 }
 
@@ -148,6 +170,29 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
     'Visual proof is missing the fork-preview GIF',
   )
   assertForkPreviewFlow(visualProof)
+  assertConversationForkPreviewFlow(visualProof)
+  assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === 'conversation-fork-preview.cast' &&
+        artifact.kind === 'conversation-fork-preview-asciicast' &&
+        artifact.state === 'conversation-fork-preview-80' &&
+        artifact.columns === 80 &&
+        artifact.rows === 24,
+    ),
+    'Visual proof is missing the conversation fork-preview asciicast',
+  )
+  assert(
+    visualProof.artifacts.some(
+      (artifact) =>
+        artifact.path === '80x24-conversation-fork-preview.gif' &&
+        artifact.kind === 'conversation-fork-preview-flow' &&
+        artifact.state === 'conversation-fork-preview-80' &&
+        artifact.columns === 80 &&
+        artifact.rows === 24,
+    ),
+    'Visual proof is missing the conversation fork-preview GIF',
+  )
   assert(
     JSON.stringify(visualProof.keyboardFlow?.steps) ===
       JSON.stringify(['8 completed turns', 'Page Up', 'Alt+Home', 'Page Down', 'Alt+End']),
@@ -167,6 +212,10 @@ export async function validateVisualProof({ packageProof, visualProof, artifactR
     'active-streaming',
     'interaction',
     'fork-preview',
+    'conversation-fork-preview-40',
+    'conversation-fork-preview-80',
+    'conversation-fork-preview-120',
+    'conversation-fork-preview-200',
     'graph-or-analysis',
     'narrow',
     'failure-or-reconnect',
