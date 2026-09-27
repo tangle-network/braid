@@ -336,7 +336,10 @@ export class ConfigurationSession {
       } catch (error) {
         return this.#fail(
           'FILE_LIFETIME_INVALID',
-          redactSensitiveText(error instanceof Error ? error.message : 'Invalid file lifetime', 512),
+          redactSensitiveText(
+            error instanceof Error ? error.message : 'Invalid file lifetime',
+            512,
+          ),
         )
       }
     }
