@@ -1,0 +1,26 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+           Setup instructions
+            Local: install and sign in to Pi, Codex, or OpenCode. Start CLI Bridge in another terminal, then
+            choose Retry discovery.
+
+            Have a profile? Save it as .braid/profile.json or braid.profile.json in this workspace, then
+            retry.
+
+            For a profile elsewhere, leave setup and restart Braid with --profile <path>.
+
+            Cloud: create a profile using the cloud setup guide, then retry.
+
+            Setup guide: https://github.com/tangle-network/braid/blob/main/docs/getting-started.md
+           ↑↓/PgUp/PgDn · 1-11/11 · esc back

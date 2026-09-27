@@ -1,19 +1,18 @@
 import { Container, type Focusable } from '@earendil-works/pi-tui'
 import {
-  type ConfigurationEffectiveValues,
   type ConfigurationSelection,
   ConfigurationSession,
-  type ConfigurationSessionOptions,
   type ConfigurationSessionState,
 } from '../../app/configuration-session.js'
+import { redactSensitiveText } from '../../domain/redaction.js'
 import {
-  type ConfigurationCommit,
   ConfigurationCredential,
   configurationNeedsCredential,
   mountConfigurationCredential,
   PreparedCredential,
 } from './configuration-credential.js'
-import type { ConfigurationReview } from './configuration-review.js'
+import { ConfigurationRecovery } from './configuration-recovery.js'
+import type { ConfigurationWizardOptions } from './configuration-wizard-options.js'
 import {
   APPLY_SELECTION,
   BACK_TO_CONNECTION,
@@ -21,49 +20,33 @@ import {
   BACK_TO_WORKSPACE,
   CANCEL_CONFIGURATION,
 } from './configuration-wizard-presentation.js'
-import { SearchableSelector } from './selector.js'
-import { renderConfigurationStage } from './setup-stage-rendering.js'
-import type { BraidTheme } from './theme.js'
+import {
+  type ConfigurationStageControl,
+  renderConfigurationStage,
+} from './setup-stage-rendering.js'
 import type { WorkspaceRequestForm } from './workspace-request-form.js'
 import { mountWorkspaceRequestForm } from './workspace-request-workflow.js'
 
 type ConfigurationControl =
-  | SearchableSelector
-  | ConfigurationReview
+  | ConfigurationStageControl
   | ConfigurationCredential
   | WorkspaceRequestForm
 
-export interface ConfigurationWizardOptions extends ConfigurationSessionOptions {
-  readonly theme: BraidTheme
-  readonly onCommit: ConfigurationCommit
-  readonly onComplete: (selection: ConfigurationSelection) => void
-  readonly onCancel: () => void
-  readonly confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues
-  readonly diagnostics?: readonly string[]
-  readonly requestRender?: () => void
-  readonly requiresCredential?: (connection: ConfigurationSelection['connection']) => boolean
-}
-
-export type TerminalConfigurationOptions = ConfigurationSessionOptions &
-  Pick<ConfigurationWizardOptions, 'onCommit'> & {
-    readonly openOnStart?: boolean
-    readonly onCancel?: () => void
-    readonly confirmation?: ConfigurationWizardOptions['confirmation']
-    readonly diagnostics?: readonly string[]
-    readonly requiresCredential?: ConfigurationWizardOptions['requiresCredential']
-  }
-
 /** Keyboard-first profile, destination, credential, and review flow. */
 export class ConfigurationWizard extends Container implements Focusable {
-  readonly #theme: BraidTheme
-  readonly #session: ConfigurationSession
+  readonly #theme: ConfigurationWizardOptions['theme']
+  #session: ConfigurationSession
   readonly #onCommit: ConfigurationWizardOptions['onCommit']
   readonly #onComplete: ConfigurationWizardOptions['onComplete']
   readonly #onCancel: ConfigurationWizardOptions['onCancel']
   readonly #confirmation: ConfigurationWizardOptions['confirmation']
-  readonly #diagnostics: readonly string[]
+  #diagnostics: readonly string[]
   readonly #requestRender: (() => void) | undefined
   readonly #requiresCredential: ConfigurationWizardOptions['requiresCredential']
+  readonly #onReload: ConfigurationWizardOptions['onReload']
+  readonly #rows: () => number
+  #reloading = false
+  #closed = false
   #selector: ConfigurationControl
   #focused = false
   #busy = false
@@ -81,14 +64,9 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#diagnostics = Object.freeze([...(options.diagnostics ?? [])])
     this.#requestRender = options.requestRender
     this.#requiresCredential = options.requiresCredential
-    this.#selector = new SearchableSelector({
-      title: 'configuration',
-      items: [],
-      theme: options.theme,
-      onSelect: () => {},
-      onCancel: () => this.#cancel(),
-    })
-    this.#renderStage(this.#session.state)
+    this.#onReload = options.onReload
+    this.#rows = options.rows ?? (() => 24)
+    this.#selector = this.#renderStage(this.#session.state)
   }
 
   get focused(): boolean {
@@ -100,17 +78,30 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#selector.focused = value
   }
 
+  goBack(): boolean {
+    if (this.#selector instanceof ConfigurationRecovery && this.#selector.goBack()) return true
+    this.#cancel()
+    return true
+  }
+
+  dispose(): void {
+    this.#closed = true
+    if (!this.#busy || this.#reloading) this.#clearCredential()
+  }
+
   handleInput(data: string): void {
     this.#selector.handleInput(data)
   }
 
-  #renderStage(state: ConfigurationSessionState): void {
+  #renderStage(state: ConfigurationSessionState): ConfigurationControl {
     this.#selector = renderConfigurationStage({
       container: this,
       session: this.#session,
       state,
       theme: this.#theme,
       ...(this.#confirmation === undefined ? {} : { confirmation: this.#confirmation }),
+      rows: this.#rows,
+      ...(this.#onReload === undefined ? {} : { onReload: this.#reload }),
       credentialPrepared: this.#credential.prepared,
       diagnostics: this.#diagnostics,
       busy: this.#busy,
@@ -120,21 +111,25 @@ export class ConfigurationWizard extends Container implements Focusable {
       onCancel: () => this.#cancel(),
       ...(this.#requestRender === undefined ? {} : { requestRender: this.#requestRender }),
     })
+    return this.#selector
   }
 
   #select(value: string): void {
     if (this.#busy) return
     const state = this.#session.state
     if (value === CANCEL_CONFIGURATION) {
-      if (state.profiles.length === 0 || state.connections.length === 0) {
-        this.#commitError =
-          state.profiles.length === 0
-            ? 'No AgentProfiles are available. Press ←/esc to leave setup.'
-            : 'No connections are available. Press ←/esc to leave setup.'
+      if (state.connections.length === 0) {
+        this.#commitError = 'No connections are available. Press ←/esc to leave setup.'
         this.#renderStage(state)
         return
       }
       this.#cancel()
+      return
+    }
+    if (value === BACK_TO_PROFILE) {
+      this.#clearCredential()
+      this.#commitError = undefined
+      this.#renderStage(this.#session.backTo('profile'))
       return
     }
     if (state.step === 'profile') {
@@ -145,12 +140,6 @@ export class ConfigurationWizard extends Container implements Focusable {
       return
     }
     if (state.step === 'connection') {
-      if (value === BACK_TO_PROFILE) {
-        this.#clearCredential()
-        this.#commitError = undefined
-        this.#renderStage(this.#session.backTo('profile'))
-        return
-      }
       const next = this.#session.selectConnection(value)
       this.#commitError = next.error?.message
       if (next.error === undefined && next.step === 'workspace') this.#renderWorkspace()
@@ -177,13 +166,34 @@ export class ConfigurationWizard extends Container implements Focusable {
       this.#renderWorkspace()
       return
     }
-    if (value === BACK_TO_PROFILE) {
-      this.#clearCredential()
-      this.#commitError = undefined
-      this.#renderStage(this.#session.backTo('profile'))
-      return
-    }
     if (value === APPLY_SELECTION) void this.#apply()
+  }
+
+  #reload = async (): Promise<void> => {
+    if (this.#busy || this.#closed || this.#onReload === undefined) return
+    this.#busy = true
+    this.#reloading = true
+    this.#commitError = undefined
+    this.#renderStage(this.#session.state)
+    try {
+      const discovered = await this.#onReload()
+      if (this.#closed) return
+      this.#session = new ConfigurationSession(discovered)
+      this.#diagnostics = Object.freeze([...discovered.diagnostics])
+      if (discovered.profiles.length === 0) this.#commitError = 'No agents found. See diagnostics.'
+    } catch (error) {
+      if (this.#closed) return
+      const detail = redactSensitiveText(
+        error instanceof Error ? error.message : 'Discovery could not complete.',
+        512,
+      )
+      this.#diagnostics = Object.freeze([...new Set([...this.#diagnostics, detail])])
+      this.#commitError = 'Discovery failed. See diagnostics.'
+    } finally {
+      this.#busy = false
+      this.#reloading = false
+      if (!this.#closed) this.#renderStage(this.#session.state)
+    }
   }
 
   async #apply(): Promise<void> {
@@ -217,7 +227,8 @@ export class ConfigurationWizard extends Container implements Focusable {
   }
 
   #cancel(): void {
-    if (this.#busy) return
+    if (this.#busy && !this.#reloading) return
+    this.#closed = true
     this.#clearCredential()
     this.#session.cancel()
     this.#onCancel()

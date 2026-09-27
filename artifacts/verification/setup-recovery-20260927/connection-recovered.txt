@@ -1,0 +1,28 @@
+
+
+
+
+
+
+
+
+
+
+
+            braid setup
+            Choose where this profile should run.
+            notice · CLI Bridge discovery /health at http://127.0.0.1:9 failed: The CLI Bridge at
+            http://127.0.0.1:9 could not be reached
+            notice · CLI Bridge discovery /v1/models at http://127.0.0.1:9 failed: The CLI Bridge at
+            http://127.0.0.1:9 could not be reached
+            notice · braid.profile.json: Profile file does not exist:
+            /tmp/braid-recovery-20260927-eFPWEO/workspace/braid.profile.json
+            connection · choose a connection
+           ──────────────────────────────────────────────────────────────────────────────────────────────────
+           >
+           → Local CLI Bridge                CLI · unreachable · unconfigured
+             Tangle Inference                Inference · unknown · unconfigured
+             Tangle Sandbox                  Sandbox · unknown · unconfigured
+             ← change AgentProfile           return to the previous step
+           ──────────────────────────────────────────────────────────────────────────────────────────────────
+            filter · enter choose · ←/esc cancel

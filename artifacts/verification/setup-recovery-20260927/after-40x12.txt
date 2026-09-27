@@ -1,0 +1,8 @@
+Connect a coding agent to start
+Start CLI Bridge or add a profile.
+Then choose Retry discovery.
+→ Retry discovery
+  Setup instructions
+  Show diagnostics
+  Leave setup
+enter choose · ↑↓ move · esc leave

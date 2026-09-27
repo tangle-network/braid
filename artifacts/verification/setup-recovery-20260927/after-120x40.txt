@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+           Connect a coding agent to start
+           Start CLI Bridge in another terminal.
+           Or save .braid/profile.json, then retry.
+           → Retry discovery
+             Setup instructions
+             Show diagnostics
+             Leave setup
+           enter choose · ↑↓ move · esc leave

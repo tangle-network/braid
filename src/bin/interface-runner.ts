@@ -31,6 +31,7 @@ import { ProductionConnectionActions } from './production-connection-actions.js'
 import { productionConfigPath } from './production-key-path.js'
 import {
   describeProductionSelection,
+  loadProductionSetup,
   type ProductionStartupSetup,
   productionConnectionNeedsCredential,
   transitionProductionSelection,
@@ -115,6 +116,9 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
             ? {}
             : { workspaceRequest: setup.workspaceRequest }),
           diagnostics: setup.diagnostics,
+          ...(options.reauthenticate
+            ? {}
+            : { onReload: () => loadProductionSetup(startupOptions) }),
           openOnStart: true,
           ...(options.reauthenticate ? { onCancel: () => view.stop() } : {}),
           requiresCredential: (connection) =>

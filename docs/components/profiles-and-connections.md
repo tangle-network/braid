@@ -25,6 +25,7 @@ Represent a non-blank Sandbox cwd as a canonical repository-relative POSIX path.
 | Component | Responsibility |
 | --- | --- |
 | `ConfigurationWizard` | Select profile, connection, and cloud workspace request through one staged workflow. |
+| `ConfigurationRecovery` | Offer discovery retry, instructions, diagnostics, and exit when no profile is available. |
 | `ConfigurationCredential` | Collect a required credential through a bounded secret path. |
 | `PreparedCredential` | Hold the commit or rollback capability for a staged secret write. |
 | `ConfigurationReview` | Show the effective selection before durable activation. |
@@ -69,6 +70,14 @@ The request digest includes both workspace values, so changing either value crea
 ## Workflow
 
 Discovery loads available profiles, connections, models, and provider capabilities.
+
+When no profile is available, setup offers retry, instructions, diagnostics, and exit.
+
+Retry reloads existing profile files and the provider catalog without saving configuration or choosing a profile.
+
+Only one retry runs at a time.
+
+Closing setup discards late discovery results.
 
 Selection validates the exact profile and workspace request against the selected connection capabilities.
 
@@ -119,6 +128,8 @@ Lists use bounded summaries rather than full profile documents.
 Tests cover create, edit, validate, test, activate, restart, staged credential recovery, shared credential removal, unsupported fields, and secret canaries.
 
 Keyboard proof walks from profile selection through connection review and back without losing state.
+
+[Recovery captures and recordings](../../artifacts/verification/setup-recovery-20260927/README.md) show profile discovery after startup and cancellation during delayed discovery.
 
 ## Non-goals
 

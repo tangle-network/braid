@@ -1,0 +1,37 @@
+{
+  "capturedAt": "2026-09-27T04:48:45.530Z",
+  "source": "Actual keyboard/PTY with task-owned delayed discovery HTTP service; not provider/model proof",
+  "endpoint": "http://127.0.0.1:42747",
+  "newModelCalls": 0,
+  "requests": [
+    {
+      "path": "/health",
+      "delayed": false,
+      "at": "2026-09-27T04:48:42.303Z",
+      "respondedAt": "2026-09-27T04:48:42.304Z"
+    },
+    {
+      "path": "/v1/models",
+      "delayed": false,
+      "at": "2026-09-27T04:48:42.305Z",
+      "respondedAt": "2026-09-27T04:48:42.306Z"
+    },
+    {
+      "path": "/health",
+      "delayed": true,
+      "at": "2026-09-27T04:48:42.408Z",
+      "respondedAt": "2026-09-27T04:48:43.634Z"
+    },
+    {
+      "path": "/v1/models",
+      "delayed": true,
+      "at": "2026-09-27T04:48:42.408Z",
+      "respondedAt": "2026-09-27T04:48:43.634Z"
+    }
+  ],
+  "delayedRequests": 2,
+  "duplicateRetryRequests": false,
+  "lateRedraw": false,
+  "workspaceEntries": [],
+  "configWritten": false
+}

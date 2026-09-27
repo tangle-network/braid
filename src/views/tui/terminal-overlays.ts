@@ -10,7 +10,7 @@ import {
   type AutomationOverlayOpenOptions,
   AutomationOverlayWorkflow,
 } from './automation-overlay-workflow.js'
-import type { TerminalConfigurationOptions } from './configuration-wizard.js'
+import type { TerminalConfigurationOptions } from './configuration-wizard-options.js'
 import { ConnectionOverlayWorkflow } from './connection-overlay-workflow.js'
 import { ConnectionSetupViewPanel } from './connection-setup.js'
 import { ConversationOverlayController } from './conversation-overlays.js'
@@ -202,13 +202,20 @@ export class TerminalOverlayController {
       ...(requiresCredential === undefined ? {} : { requiresCredential }),
       theme: this.#theme,
       requestRender: this.#requestRender,
+      rows: this.#rows,
       onComplete: () => {},
       onCancel: () => {
         this.#modals.closeTop()
         configuration.onCancel?.()
       },
     })
-    this.#modals.open(wizard, { anchor: 'center', width: '82%', minWidth: 36, maxHeight: '90%' })
+    this.#modals.open(wizard, {
+      anchor: 'center',
+      width: '82%',
+      minWidth: 36,
+      maxHeight: '90%',
+      onClose: () => wizard.dispose(),
+    })
   }
 
   openCommandPalette(): void {
