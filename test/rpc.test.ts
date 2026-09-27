@@ -394,6 +394,132 @@ test('JSONL send acknowledges before events and returns final semantic state', a
   assert.equal(typeof finalState.state.runs[0]?.usdKnown, 'boolean')
 })
 
+test('JSONL conflicting operation retries keep admission behind every response', async () => {
+  for (const order of ['conflict-first', 'accepted-first'] as const) {
+    const app = createBraidApplication({ fixture: 'deterministic' })
+    const realController = controllerFor(app)
+    const operationId = `op-rpc-barrier-${order}`
+    const firstRequestId = `req-barrier-first-${order}`
+    const conflictRequestId = `req-barrier-conflict-${order}`
+    const admitted = deferred<void>()
+    const conflictDispatched = deferred<void>()
+    const releaseFirst = deferred<void>()
+    const releaseConflict = deferred<void>()
+    const firstAcknowledged = deferred<void>()
+    const responses: BraidResponse[] = []
+    let admissionVisibleBeforeSecondResponse = false
+    const controller: BraidUiController = {
+      view: () => realController.view(),
+      state: () => realController.state(),
+      events: () => realController.events(),
+      subscribe: (subscriber, options) =>
+        realController.subscribe((view, event) => {
+          if (event?.kind === 'run.requested') admitted.resolve()
+          subscriber(view, event)
+        }, options),
+      initialize: (workspace) => realController.initialize(workspace),
+      waitForIdle: () => realController.waitForIdle(),
+      dispatch: async (intent) => {
+        const result = await realController.dispatch(intent)
+        if (intent.type === 'send' && intent.operationId === operationId) {
+          if (result.kind === 'accepted') await releaseFirst.promise
+          else if (intent.text === 'different input') {
+            conflictDispatched.resolve()
+            await releaseConflict.promise
+          }
+        }
+        return result
+      },
+      close: () => realController.close?.() ?? Promise.resolve(),
+    }
+
+    async function* input(): AsyncGenerator<string> {
+      yield `${JSON.stringify({
+        version: 1,
+        requestId: `req-barrier-init-${order}`,
+        command: 'initialize',
+        params: { workspace: '/workspace', subscribe: true },
+      })}\n`
+      yield `${JSON.stringify({
+        version: 1,
+        requestId: firstRequestId,
+        operationId,
+        command: 'send',
+        params: { conversationId: 'conv-1', branchId: 'branch-1', text: 'first input' },
+      })}\n`
+      await admitted.promise
+      yield `${JSON.stringify({
+        version: 1,
+        requestId: conflictRequestId,
+        operationId,
+        command: 'send',
+        params: { conversationId: 'conv-1', branchId: 'branch-1', text: 'different input' },
+      })}\n`
+      await conflictDispatched.promise
+      if (order === 'conflict-first') {
+        releaseConflict.resolve()
+        await waitFor(() =>
+          responses.some(
+            (response) => response.type === 'error' && response.requestId === conflictRequestId,
+          ),
+        )
+        admissionVisibleBeforeSecondResponse = responses.some(
+          (response) => response.type === 'event' && response.event.kind === 'run.requested',
+        )
+        releaseFirst.resolve()
+        await firstAcknowledged.promise
+      } else {
+        releaseFirst.resolve()
+        await firstAcknowledged.promise
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        admissionVisibleBeforeSecondResponse = responses.some(
+          (response) => response.type === 'event' && response.event.kind === 'run.requested',
+        )
+        releaseConflict.resolve()
+        await waitFor(() =>
+          responses.some(
+            (response) => response.type === 'error' && response.requestId === conflictRequestId,
+          ),
+        )
+      }
+      yield `${JSON.stringify({
+        version: 1,
+        requestId: `req-barrier-stop-${order}`,
+        operationId: `op-barrier-stop-${order}`,
+        command: 'shutdown',
+      })}\n`
+    }
+
+    const code = await runRpc(controller, input(), {
+      write: (chunk) => {
+        const response = JSON.parse(chunk) as BraidResponse
+        responses.push(response)
+        if (response.type === 'ack' && response.requestId === firstRequestId)
+          firstAcknowledged.resolve()
+        return true
+      },
+    })
+    const firstAck = responses.findIndex(
+      (response) => response.type === 'ack' && response.requestId === firstRequestId,
+    )
+    const conflictResponse = responses.findIndex(
+      (response) => response.type === 'error' && response.requestId === conflictRequestId,
+    )
+    const firstAdmission = responses.findIndex(
+      (response) => response.type === 'event' && response.event.kind === 'run.requested',
+    )
+    const conflict = responses[conflictResponse]
+
+    assert.equal(code, 0)
+    assert.equal(conflict?.type, 'error')
+    if (conflict?.type !== 'error') assert.fail(`missing conflict response for ${order}`)
+    assert.equal(conflict.code, 'OPERATION_CONFLICT')
+    assert.equal(admissionVisibleBeforeSecondResponse, false)
+    assert.ok(firstAdmission > firstAck)
+    assert.ok(firstAdmission > conflictResponse)
+  }
+})
+
 test('JSONL shutdown acknowledges only after application completion and close', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
   const realController = controllerFor(app)

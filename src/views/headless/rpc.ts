@@ -367,7 +367,6 @@ export async function runRpc(
             ...(result.data === undefined ? {} : { result: result.data }),
             command: request.command,
           })
-          releaseSendAck(request.operationId)
           if (admissionState) await respond(admissionState)
           if (result.completion) {
             trackCompletion(result.completion, async () => {
@@ -453,9 +452,10 @@ export async function runRpc(
     } finally {
       if (request.command === 'send') {
         const remaining = (sendAcks.get(request.operationId) ?? 1) - 1
-        if (remaining === 0) sendAcks.delete(request.operationId)
-        else sendAcks.set(request.operationId, remaining)
-        releaseSendAck(request.operationId)
+        if (remaining === 0) {
+          sendAcks.delete(request.operationId)
+          releaseSendAck(request.operationId)
+        } else sendAcks.set(request.operationId, remaining)
       }
     }
   }

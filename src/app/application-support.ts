@@ -119,6 +119,7 @@ export function restoreApplicationOperations(
   target: RestoreOperationsTarget,
 ): void {
   const acknowledgements = new Map<string, ControlAcknowledgement>()
+  const restoredControlRequests = new Set<string>()
   for (const operation of target.state().operations) {
     if (operation.kind !== 'cancel-run' || operation.target?.kind !== 'run') continue
     const run = target.state().runs.find((candidate) => candidate.id === operation.target?.id)
@@ -181,7 +182,7 @@ export function restoreApplicationOperations(
       }
     } else if (event.kind === 'run.cancel.requested') {
       // A modern control request precedes this compatibility event in the same batch.
-      if (target.ledger.getControl(event.operationId) !== undefined) continue
+      if (restoredControlRequests.has(event.operationId)) continue
       const restoredRun = target.state().runs.find((run) => run.id === event.runId)
       target.ledger.setControl(event.operationId, {
         digest: cancelRequestDigest(
@@ -203,6 +204,7 @@ export function restoreApplicationOperations(
         ...(event.reason === undefined ? {} : { reason: event.reason }),
       })
     } else if (event.kind === 'run.control.requested') {
+      restoredControlRequests.add(event.operationId)
       const restoredRun = target.state().runs.find((run) => run.id === event.runId)
       const providerSessionId =
         event.binding === undefined
