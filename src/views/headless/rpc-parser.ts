@@ -47,17 +47,17 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
   set_draft: ['conversationId', 'branchId', 'text'],
   import_conversation: ['content', 'source', 'title'],
   send: ['conversationId', 'branchId', 'text'],
-  queue: ['conversationId', 'branchId', 'text'],
+  queue: ['runId', 'conversationId', 'branchId', 'text'],
   remove_queued: ['conversationId', 'branchId', 'queueId'],
-  steer: ['runId', 'text'],
-  cancel: ['runId', 'reason'],
-  detach: ['runId'],
+  steer: ['runId', 'conversationId', 'branchId', 'text'],
+  cancel: ['runId', 'conversationId', 'branchId', 'reason'],
+  detach: ['runId', 'conversationId', 'branchId'],
   reconnect: ['runId'],
   reconcile: ['runId'],
   respond_interaction: ['runId', 'interactionId', 'response'],
   cancel_interaction: ['runId', 'interactionId'],
   ...AUTOMATION_PARAMETER_KEYS,
-  cancel_run: ['runId', 'reason'],
+  cancel_run: ['runId', 'conversationId', 'branchId', 'reason'],
   branch: ['conversationId', 'branchId', 'messageId', 'text'],
   clone: ['conversationId', 'branchId', 'title'],
   plan_fork: [
@@ -137,17 +137,17 @@ const PARAMETER_TYPES: Readonly<
   set_draft: { conversationId: 'string', branchId: 'string', text: 'string' },
   import_conversation: { content: 'string', source: 'string', title: 'string' },
   send: { conversationId: 'string', branchId: 'string', text: 'string' },
-  queue: { conversationId: 'string', branchId: 'string', text: 'string' },
+  queue: { runId: 'string', conversationId: 'string', branchId: 'string', text: 'string' },
   remove_queued: { conversationId: 'string', branchId: 'string', queueId: 'string' },
-  steer: { runId: 'string', text: 'string' },
-  cancel: { runId: 'string', reason: 'string' },
-  detach: { runId: 'string' },
+  steer: { runId: 'string', conversationId: 'string', branchId: 'string', text: 'string' },
+  cancel: { runId: 'string', conversationId: 'string', branchId: 'string', reason: 'string' },
+  detach: { runId: 'string', conversationId: 'string', branchId: 'string' },
   reconnect: { runId: 'string' },
   reconcile: { runId: 'string' },
   respond_interaction: { runId: 'string', interactionId: 'string', response: 'record' },
   cancel_interaction: { runId: 'string', interactionId: 'string' },
   ...AUTOMATION_PARAMETER_TYPES,
-  cancel_run: { runId: 'string', reason: 'string' },
+  cancel_run: { runId: 'string', conversationId: 'string', branchId: 'string', reason: 'string' },
   branch: { conversationId: 'string', branchId: 'string', messageId: 'string', text: 'string' },
   clone: { conversationId: 'string', branchId: 'string', title: 'string' },
   plan_fork: {
@@ -224,7 +224,7 @@ const REQUIRED_PARAMETERS: Readonly<Partial<Record<HeadlessCommandName, readonly
   set_draft: ['text'],
   queue: ['text'],
   remove_queued: ['queueId'],
-  steer: ['runId', 'text'],
+  steer: ['text'],
   cancel: [],
   detach: [],
   reconnect: ['runId'],
@@ -389,6 +389,15 @@ export function parseRequest(line: string): BraidRequest {
     throw new RpcParseError('OPERATION_ID_REQUIRED', `${command} requires operationId`)
   }
   assertParameterTypes(command, params)
+  if (
+    (command === 'ask' || command === 'analyze' || command === 'compare') &&
+    (Object.hasOwn(params, 'profileRef') || Object.hasOwn(params, 'connectionId'))
+  ) {
+    throw new RpcParseError(
+      'ANALYSIS_ROUTING_UNSUPPORTED',
+      'Analysis profileRef and connectionId overrides are not supported; omit them to use the selected configuration',
+    )
+  }
   const normalizedParams = normalizeForkParameters(command, params)
 
   switch (command) {

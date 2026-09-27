@@ -35,25 +35,31 @@ export interface DurableSendRuntime {
   readonly sendAsync: DurableSendInput['sendAsync']
 }
 
-export function createDurableSender(
-  runtime: DurableSendRuntime,
-): (input: RunExecutionSnapshot) => SendReceipt {
+export interface DurableSender {
+  (input: RunExecutionSnapshot): SendReceipt
+  pending(operationId: string): RunExecutionSnapshot | undefined
+}
+
+export function createDurableSender(runtime: DurableSendRuntime): DurableSender {
   const pending = new Map<
     string,
     {
       readonly operationId: string
+      readonly input: RunExecutionSnapshot
       readonly digest: string
       readonly receipt: SendReceipt
     }
   >()
 
-  return (input) => {
+  const send = (input: RunExecutionSnapshot): SendReceipt => {
     const state = runtime.currentState()
     const scope = runScope(input)
     const digest = runtime.requestDigest(state, input)
     const persisted = runtime.admitPersistedSend(input.operationId, digest)
     if (persisted) return persisted
-    const inFlight = pending.get(scope)
+    const inFlight =
+      [...pending.values()].find((entry) => entry.operationId === input.operationId) ??
+      pending.get(scope)
     if (inFlight) {
       if (inFlight.operationId !== input.operationId)
         throw new AppError(
@@ -80,7 +86,7 @@ export function createDurableSender(
       registerAdmission: runtime.registerAdmission,
       sendAsync: runtime.sendAsync,
     })
-    const reservation = { operationId: input.operationId, digest, receipt }
+    const reservation = { operationId: input.operationId, input, digest, receipt }
     pending.set(scope, reservation)
     const clear = () => {
       if (pending.get(scope) === reservation) pending.delete(scope)
@@ -88,6 +94,10 @@ export function createDurableSender(
     receipt.admissionReady?.then(clear, clear)
     return receipt
   }
+  return Object.assign(send, {
+    pending: (operationId: string) =>
+      [...pending.values()].find((entry) => entry.operationId === operationId)?.input,
+  })
 }
 
 export function durableSend(input: DurableSendInput): SendReceipt {

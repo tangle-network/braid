@@ -107,7 +107,12 @@ export async function dispatchHeadlessCommand(
       }
     }
     return dispatchCoreIntent(
-      { type: intent.command, operationId: intent.operationId ?? '', text },
+      {
+        type: intent.command,
+        operationId: intent.operationId ?? '',
+        text,
+        ...(typeof intent.params.runId === 'string' ? { runId: intent.params.runId } : {}),
+      },
       context,
     )
   }

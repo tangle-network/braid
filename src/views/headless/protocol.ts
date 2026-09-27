@@ -1,3 +1,4 @@
+import type { InteractionResponse } from '@tangle-network/agent-interface'
 import type { RunAdmissionReceipt } from '../../domain/receipts.js'
 import { HEADLESS_COMMAND_NAMES, type HeadlessCommandName } from '../shared/headless-commands.js'
 import type { UiEvent } from '../shared/intents.js'
@@ -61,6 +62,12 @@ type SpecializedRpcCommand =
   | 'detach'
   | 'reconnect'
   | 'reconcile'
+  | 'cancel_run'
+  | 'respond_interaction'
+  | 'cancel_interaction'
+  | 'ask'
+  | 'analyze'
+  | 'compare'
 
 type GenericRpcCommand = Exclude<RpcCommandName, SpecializedRpcCommand>
 
@@ -103,28 +110,77 @@ interface RunControlRequestBase {
   readonly operationId: string
 }
 
+interface RunTargetParams {
+  readonly runId?: string
+  readonly conversationId?: string
+  readonly branchId?: string
+}
+
 export interface QueueRequest extends RunControlRequestBase {
   readonly command: 'queue'
-  readonly params: {
-    readonly conversationId?: string
-    readonly branchId?: string
-    readonly text: string
-  }
+  readonly params: RunTargetParams & { readonly text: string }
 }
 
 export interface SteerRequest extends RunControlRequestBase {
   readonly command: 'steer'
-  readonly params: { readonly runId?: string; readonly text: string }
+  readonly params: RunTargetParams & { readonly text: string }
 }
 
 export interface CancelRequest extends RunControlRequestBase {
   readonly command: 'cancel'
-  readonly params: { readonly runId?: string; readonly reason?: string }
+  readonly params: RunTargetParams & { readonly reason?: string }
+}
+
+export interface CancelRunRequest extends RunControlRequestBase {
+  readonly command: 'cancel_run'
+  readonly params: RunTargetParams & { readonly reason?: string }
 }
 
 export interface DetachRequest extends RunControlRequestBase {
   readonly command: 'detach'
-  readonly params?: { readonly runId?: string }
+  readonly params?: RunTargetParams
+}
+
+export interface RespondInteractionRequest extends RunControlRequestBase {
+  readonly command: 'respond_interaction'
+  readonly params: {
+    readonly runId: string
+    readonly interactionId: string
+    readonly response: InteractionResponse
+  }
+}
+
+export interface CancelInteractionRequest extends RunControlRequestBase {
+  readonly command: 'cancel_interaction'
+  readonly params: { readonly runId: string; readonly interactionId: string }
+}
+
+/** Analysis still uses the selected configuration; per-request routing is not implemented. */
+interface UnsupportedAnalysisRouting {
+  readonly profileRef?: never
+  readonly connectionId?: never
+}
+
+export interface AskRequest extends RunControlRequestBase {
+  readonly command: 'ask'
+  readonly params: UnsupportedAnalysisRouting & {
+    readonly source: string
+    readonly question: string
+  }
+}
+
+export interface AnalyzeRequest extends RunControlRequestBase {
+  readonly command: 'analyze'
+  readonly params: UnsupportedAnalysisRouting & {
+    readonly source: string
+    readonly recipe?: string
+    readonly analystIds?: readonly string[]
+  }
+}
+
+export interface CompareRequest extends RunControlRequestBase {
+  readonly command: 'compare'
+  readonly params: UnsupportedAnalysisRouting & { readonly left: string; readonly right: string }
 }
 
 export interface ReconnectRequest extends RunControlRequestBase {
@@ -149,6 +205,12 @@ export type BraidRequest =
   | DetachRequest
   | ReconnectRequest
   | ReconcileRequest
+  | CancelRunRequest
+  | RespondInteractionRequest
+  | CancelInteractionRequest
+  | AskRequest
+  | AnalyzeRequest
+  | CompareRequest
 
 export interface AckResponse {
   readonly version: 1

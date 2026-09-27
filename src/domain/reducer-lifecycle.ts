@@ -382,8 +382,14 @@ function reduceRequestedRun(
       drafts: state.drafts.map((draft) =>
         draft.branchId === branchId ? { ...draft, text: '', updatedAt: occurredAt } : draft,
       ),
-      focusedRunId: event.runId,
-      activeRunId: event.runId,
+      focusedRunId:
+        state.conversationId === conversationId && state.branchId === branchId
+          ? event.runId
+          : state.focusedRunId,
+      activeRunId:
+        state.conversationId === conversationId && state.branchId === branchId
+          ? event.runId
+          : state.activeRunId,
       lastError: null,
       messages: [...state.messages, userMessage, assistantMessage],
       messageParts: [

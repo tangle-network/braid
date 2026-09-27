@@ -1,13 +1,13 @@
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { providerEventKey } from '../domain/events.js'
-import { assertAnalysisRecord } from '../domain/invariants-run.js'
 import type { RunId } from '../domain/ids.js'
+import { assertAnalysisRecord } from '../domain/invariants-run.js'
 import type { RunAdmissionReceipt } from '../domain/receipts.js'
 import { redactBraidEvent } from '../domain/redaction.js'
 import { reduceEvent } from '../domain/reducer.js'
 import { usageSnapshotForRun } from '../domain/run-usage.js'
-import { isLiveRunStatus, type BraidState } from '../domain/state.js'
+import { type BraidState, isLiveRunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort } from '../ports/effect-storage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
@@ -119,6 +119,7 @@ export function restoreApplicationOperations(
   target: RestoreOperationsTarget,
 ): void {
   const acknowledgements = new Map<string, ControlAcknowledgement>()
+  const restoredControlRequests = new Set<string>()
   for (const operation of target.state().operations) {
     if (operation.kind !== 'cancel-run' || operation.target?.kind !== 'run') continue
     const run = target.state().runs.find((candidate) => candidate.id === operation.target?.id)
@@ -180,6 +181,8 @@ export function restoreApplicationOperations(
         if (isLiveRunStatus(run.status)) target.ledger.setAbort(run.id, new AbortController())
       }
     } else if (event.kind === 'run.cancel.requested') {
+      // A modern control request precedes this compatibility event in the same batch.
+      if (restoredControlRequests.has(event.operationId)) continue
       const restoredRun = target.state().runs.find((run) => run.id === event.runId)
       target.ledger.setControl(event.operationId, {
         digest: cancelRequestDigest(
@@ -201,15 +204,22 @@ export function restoreApplicationOperations(
         ...(event.reason === undefined ? {} : { reason: event.reason }),
       })
     } else if (event.kind === 'run.control.requested') {
+      restoredControlRequests.add(event.operationId)
       const restoredRun = target.state().runs.find((run) => run.id === event.runId)
+      const providerSessionId =
+        event.binding === undefined
+          ? restoredRun?.providerSessionId
+          : event.binding.providerSessionId
       const digest =
-        event.control === 'cancel'
-          ? cancelRequestDigest(
-              event.runId,
-              event.reason ?? DEFAULT_CANCEL_REASON,
-              restoredRun?.providerSessionId,
-            )
-          : event.digest
+        event.binding !== undefined
+          ? event.digest
+          : event.control === 'cancel'
+            ? cancelRequestDigest(
+                event.runId,
+                event.reason ?? DEFAULT_CANCEL_REASON,
+                providerSessionId,
+              )
+            : event.digest
       target.ledger.setControl(event.operationId, {
         digest,
         runId: event.runId,
@@ -220,9 +230,8 @@ export function restoreApplicationOperations(
           detail: 'Control acknowledgement requires provider reconciliation',
         }),
         completion: Promise.resolve(target.state()),
-        ...(restoredRun?.providerSessionId === undefined
-          ? {}
-          : { providerSessionId: restoredRun.providerSessionId }),
+        ...(providerSessionId === undefined ? {} : { providerSessionId }),
+        ...(event.binding?.cursor === undefined ? {} : { cursor: event.binding.cursor }),
         ...(event.reason === undefined ? {} : { reason: event.reason }),
         ...(event.text === undefined ? {} : { text: event.text }),
       })

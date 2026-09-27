@@ -62,12 +62,12 @@ import {
 } from './run-admission.js'
 import { resolveNativeContinuationRun } from './run-continuation.js'
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
-import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
-import { snapshotRunExecution } from './run-execution-snapshot.js'
+import { snapshotRunExecution, snapshotRunRetry } from './run-execution-snapshot.js'
 import { recoverPendingFinalResults } from './run-final-recovery.js'
 import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
+import { resolveConversationTarget } from './run-targets.js'
 import { shutdownApplication } from './shutdown-controller.js'
 import { snapshotWorkspaceRequest } from './workspace-request.js'
 
@@ -150,7 +150,7 @@ export class BraidApplication {
   readonly #asynchronousJournal: boolean
   readonly #portViews: PortViews
   readonly #transition: TransitionHost
-  readonly #durableSender: (input: RunExecutionSnapshot) => SendReceipt
+  readonly #durableSender: ReturnType<typeof createDurableSender>
   #transitionTail: Promise<void> = Promise.resolve()
   #storageFailure: unknown
   #cleanupUncertain: string | undefined
@@ -434,19 +434,54 @@ export class BraidApplication {
     if (Buffer.byteLength(input.text, 'utf8') > MAX_MESSAGE_BYTES)
       throw new AppError('MESSAGE_TOO_LARGE', 'Message must not exceed 1 MiB')
     if (!input.text.trim()) throw new AppError('EMPTY_MESSAGE', 'Message must not be empty')
+    const pending = this.#durableSender.pending(input.operationId)
+    if (pending !== undefined)
+      return this.#durableSender(snapshotRunRetry(input, this.#state, pending))
+    const previous = this.#ledger.getOperation(input.operationId)
+    if (previous?.request !== undefined) {
+      const retry = snapshotRunRetry(input, this.#state, previous.request)
+      const receipt = this.#portViews.admission.admitPersistedSend(
+        input.operationId,
+        this.#portViews.admission.fingerprint({
+          effectKind: 'run.execute',
+          request: runEffectRequest(retry),
+        }),
+      )
+      if (receipt !== undefined) return receipt
+      throw new AppError('OPERATION_CONFLICT', 'The original send receipt is unavailable')
+    }
+    const resolvedInput = {
+      ...input,
+      ...resolveConversationTarget(
+        this.#state,
+        input,
+        this.#state.runs.find((run) => run.operationId === input.operationId),
+      ),
+    }
     const configuration = effectiveRunConfiguration(
       this.#state,
       this.runtimeSelection.profile(),
-      input,
+      resolvedInput,
     )
     const snapshot = snapshotRunExecution(
-      input,
+      resolvedInput,
       this.#state,
       configuration.profile,
       configuration.connectionId,
       configuration.mode,
       this.#workspaceRequest,
     )
+    if (previous !== undefined) {
+      const receipt = this.#portViews.admission.admitPersistedSend(
+        input.operationId,
+        this.#portViews.admission.fingerprint({
+          effectKind: 'run.execute',
+          request: runEffectRequest(snapshot),
+        }),
+      )
+      if (receipt !== undefined) return receipt
+      throw new AppError('OPERATION_CONFLICT', 'The original send receipt is unavailable')
+    }
     validateNativeProof(this.#portViews.admission, snapshot)
     if (this.#asynchronousJournal || admissionIsAsync(this.#execution)) {
       assertWritable(this.#storageFailure)
@@ -469,15 +504,15 @@ export class BraidApplication {
   nativeContinuationRunId(
     input: Pick<SendInput, 'conversationId' | 'branchId'> = {},
   ): string | undefined {
+    const target = resolveConversationTarget(this.#state, input)
     const configuration = effectiveRunConfiguration(
       this.#state,
       this.runtimeSelection.profile(),
-      input,
+      target,
     )
     return resolveNativeContinuationRun({
       state: this.#state,
-      conversationId: input.conversationId ?? this.#state.conversationId,
-      branchId: input.branchId ?? this.#state.branchId,
+      ...target,
       profile: configuration.profile,
       ...(configuration.connectionId === undefined
         ? {}
@@ -668,12 +703,19 @@ export class BraidApplication {
     readonly text: string
     readonly runId?: string
   }): Promise<SendReceipt> {
+    const source =
+      input.runId === undefined ? undefined : this.#state.runs.find((run) => run.id === input.runId)
+    if (input.runId !== undefined && source === undefined)
+      throw new AppError('UNKNOWN_RUN', 'The native continuation run is unavailable')
     const configuration = effectiveRunConfiguration(
       this.#state,
       this.runtimeSelection.profile(),
-      {},
+      source === undefined
+        ? {}
+        : { conversationId: source.conversationId, branchId: source.branchId },
     )
     return continueNative(this.#portViews.nativeContinuation, {
+      profile: configuration.profile,
       ...input,
       operationId: operationId(input.operationId, 'continue'),
       ...(configuration.connectionId === undefined

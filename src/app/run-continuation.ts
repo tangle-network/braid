@@ -13,12 +13,6 @@ export interface ContinuationInput {
 
 /** Return the completed run at the requested branch tip with matching identity. */
 function continuationRunFor(input: ContinuationInput): BraidState['runs'][number] | undefined {
-  if (
-    input.conversationId !== input.state.conversationId ||
-    input.branchId !== input.state.branchId
-  )
-    return undefined
-
   const previous = input.state.runs
     .filter((run) => run.conversationId === input.conversationId && run.branchId === input.branchId)
     .at(-1)

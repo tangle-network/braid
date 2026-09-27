@@ -14,4 +14,7 @@ export interface RequestRecord {
   readonly responses: string[]
   bytes: number
   replayable: boolean
+  /** Settles after the correlated acknowledgement/error, not the runtime run. */
+  dispatch?: Promise<void>
+  pending?: boolean
 }
