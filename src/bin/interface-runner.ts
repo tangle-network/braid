@@ -23,20 +23,10 @@ import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
 import { runPlain } from './plain.js'
-import {
-  activateProductionConnection,
-  productionConfigForSelection,
-} from './production-application.js'
 import { ProductionConnectionActions } from './production-connection-actions.js'
 import { productionConfigPath } from './production-key-path.js'
-import {
-  describeProductionSelection,
-  loadProductionSetup,
-  type ProductionStartupSetup,
-  productionConnectionNeedsCredential,
-  transitionProductionSelection,
-} from './production-setup.js'
-import { productionConnectionsForSelection } from './production-setup-persistence.js'
+import type { ProductionStartupSetup } from './production-setup.js'
+import { createProductionSetupEditor } from './production-setup-editor.js'
 import type { ProductionApplicationSlot } from './production-setup-transition.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
 
@@ -53,10 +43,6 @@ interface InterfaceRunnerInput {
     production: ProductionCompositionConfig,
   ) => Promise<import('./production-setup-transition.js').ProductionApplicationHandle>
 }
-
-type TerminalConfiguration = NonNullable<
-  ConstructorParameters<typeof BraidTerminalApp>[0]['configuration']
->
 
 export async function runInterface(input: InterfaceRunnerInput): Promise<number> {
   const { options, workspace, active, setup, startupOptions } = input
@@ -101,54 +87,6 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     options.uiFixture,
     profileConnectionOptions,
   )
-
-  let verification = setup?.verification
-  const configuration: TerminalConfiguration | undefined =
-    setup === undefined || startupOptions === undefined
-      ? undefined
-      : {
-          profiles: setup.profiles,
-          connections: setup.connections,
-          ...(setup.initialProfileId === undefined
-            ? {}
-            : { initialProfileId: setup.initialProfileId }),
-          ...(setup.workspaceRequest === undefined
-            ? {}
-            : { workspaceRequest: setup.workspaceRequest }),
-          diagnostics: setup.diagnostics,
-          ...(options.reauthenticate
-            ? {}
-            : { onReload: () => loadProductionSetup(startupOptions) }),
-          openOnStart: true,
-          ...(options.reauthenticate ? { onCancel: () => view.stop() } : {}),
-          requiresCredential: (connection) =>
-            (options.reauthenticate === true && connection.credentialRef !== undefined) ||
-            productionConnectionNeedsCredential(startupOptions, connection),
-          confirmation: (selection) =>
-            describeProductionSelection(selection, workspace, verification),
-          onCommit: async (selection, credential) => {
-            verification = await transitionProductionSelection({
-              setup,
-              startupOptions,
-              selection,
-              workspace,
-              ...(credential === undefined ? {} : { credential }),
-              controller,
-              active,
-              activate: (next, preparedSelection) =>
-                activateProductionConnection(
-                  next.app,
-                  preparedSelection.connection.id,
-                  productionConnectionsForSelection(preparedSelection, setup.connections),
-                ),
-              openApplication: (selection, selectedOptions) =>
-                input.openConfiguredApplication(
-                  selectedOptions,
-                  productionConfigForSelection(selection, selectedOptions, setup.connections),
-                ),
-            })
-          },
-        }
 
   let operation = 0
   const nextOperationId = options.fixture
@@ -201,6 +139,22 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     return 2
   }
 
+  const configuration =
+    startupOptions === undefined
+      ? undefined
+      : await createProductionSetupEditor({
+          workspace,
+          startupOptions,
+          ...(setup === undefined ? {} : { setup }),
+          ...(input.profileConnectionOptions?.profiles === undefined
+            ? {}
+            : { profiles: input.profileConnectionOptions.profiles }),
+          active,
+          controller,
+          currentCatalog,
+          ...(options.reauthenticate ? { reauthenticate: true, onCancel: () => view.stop() } : {}),
+          openApplication: input.openConfiguredApplication,
+        })
   const tui =
     input.startupPreview?.tui ??
     new TuiMainScreen(options.inline ? new ProcessTerminal() : new AlternateScreenTerminal())
