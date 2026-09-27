@@ -253,6 +253,15 @@ export class TerminalOverlayController {
         label: 'Profile',
         description: `${view.profileName} · selected agent`,
       },
+      ...(this.#configuration === undefined
+        ? []
+        : [
+            {
+              value: 'setup',
+              label: 'Setup',
+              description: 'Edit profile, connection, and cloud workspace',
+            },
+          ]),
       {
         value: 'connection',
         label: 'Connection',
@@ -277,12 +286,13 @@ export class TerminalOverlayController {
     const selector = new SearchableSelector({
       title: 'Run configuration',
       items,
-      maxVisible: 5,
+      maxVisible: this.#configuration === undefined ? 5 : 6,
       theme: this.#theme,
       footer: 'enter to change · ←/esc close',
       onSelect: (item) => {
         this.#modals.closeTop()
-        if (item.value === 'profile') this.openProfile()
+        if (item.value === 'setup') this.openConfiguration()
+        else if (item.value === 'profile') this.openProfile()
         else if (item.value === 'connection') this.openConnection()
         else this.#startOverrideEntry(item.value as 'runner' | 'model' | 'effort')
       },
