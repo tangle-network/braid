@@ -89,7 +89,11 @@ async function run() {
       { unavailable: true },
     )
   }
-  if (scope === 'live-tangle') return runTangleFlows({ repository, environment: process.env })
+  if (scope === 'live-tangle')
+    return runTangleFlows({
+      repository: resolve(process.env.BRAID_RELEASE_CHECKOUT ?? repository),
+      environment: process.env,
+    })
   if (scope === 'live-analysis') return runTraceAnalysis({ repository, environment: process.env })
   if (scope === 'live-supervisor')
     return runSupervisorCheck({ repository, environment: process.env })

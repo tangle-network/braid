@@ -961,3 +961,15 @@ Never infer CREATE requests from unique environments or account cumulative usage
 Unobserved row counters are null; zero requires an instrumented observation boundary.
 Validate counter changes against a complete protected wall before promoting a speed claim.
 The first target is under 11 minutes 40 seconds and at least 1.2x; the final target is under five minutes.
+
+`Protected Speed` verifies two signed identities before admission.
+The application remains the original b5 candidate from Release run 36294457062 and the public 0.3.2 archive.
+The current main harness requires its own successful signed Release candidate.
+Its application archive is never the field input.
+The wrapper restores the frozen public application and each signed private sidecar without rebuilding or overlaying source.
+It verifies the dependency lock, effective configuration, private dependency closure, prompts, validators and existing validation expressions.
+Independent review checks scheduling reachability; matching source expressions alone cannot prove it.
+The original b5 canonical publish gate must pass all six checks after collection.
+The indexed speed receipt records both commits, trees, source and output digests, and the actual workflow SHA and run identifier.
+This workflow cannot publish a package or create a tag.
+Overlap defaults to OFF; select an enabled mode only for its authorized rollout ring.
