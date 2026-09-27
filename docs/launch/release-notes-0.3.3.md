@@ -3,7 +3,8 @@
 ## Setup
 
 - Setup offers Retry when profile discovery fails or returns no profiles.
-  Retry reloads the profile catalog and returns to connection setup when a profile becomes available.
+  Retry discovery reloads the available profile catalog.
+  Select a discovered profile to continue to connection setup.
 - Setup shows discovery details on request.
   Cancel exits setup without applying configuration.
 - Escape during a pending discovery request closes setup without a later redraw.
