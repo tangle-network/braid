@@ -73,7 +73,7 @@ function cliBridgeConnection(
   }
 }
 
-function tangleConnection(
+export function tangleConnection(
   kind: Extract<ConnectionRecord['kind'], 'tangle-inference' | 'tangle-sandbox'>,
   now: string,
 ): ConnectionRecord {
@@ -160,7 +160,7 @@ export async function loadProductionProfileCatalog(
   production: ProductionCompositionConfig,
   connectionId: string,
 ): Promise<readonly ProfileRecord[]> {
-  const connection = production.connections.find((record) => record.id === connectionId)
+  const connection = production.connections.find((record) => record.id === connectionId);
   if (connection === undefined) {
     throw new ProductionStartupError(
       'PRODUCTION_CONNECTION_REQUIRED',
