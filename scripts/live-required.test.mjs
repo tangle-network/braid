@@ -9,6 +9,10 @@ import { pathToFileURL } from 'node:url'
 import { countProtectedWork, observeOwnedSandbox, ProtectedWork } from './proof-tools.mjs'
 import { connectionConfiguration } from './live-required/configuration.mjs'
 import {
+  createProviderObservationDeadline,
+  waitForProviderObservation,
+} from './live-required/provider-observation.mjs'
+import {
   assertProofReceipt,
   classifyExternalFailure,
   normalizeExternalFailure,
@@ -74,6 +78,35 @@ test('protected counters keep unobserved transport distinct from observed zero',
   const observed = work.snapshot().rows.find((row) => row.row === 'LIVE-07').counters
   assert.equal(observed.parentRequests, 0)
   assert.equal(observed.parentCreates, 0)
+})
+
+test('provider poll counters exclude an observer rejected by an expired deadline', async () => {
+  const work = new ProtectedWork(false)
+  let clock = 0
+  let observerCalls = 0
+  const now = () => clock
+  const deadline = createProviderObservationDeadline('expired observation', 1, { now })
+  clock = 1
+  const observe = async () => {
+    observerCalls += 1
+    return 'observed'
+  }
+  await work.span('LIVE-07', 'expired observation', async () =>
+    assert.rejects(
+      waitForProviderObservation('expired observation', observe, 1, { deadline }),
+      (error) => error.code === 'PROVIDER_OBSERVATION_TIMEOUT' && error.attempts === 0,
+    ),
+  )
+  assert.equal(observerCalls, 0)
+  assert.equal(work.snapshot().rows.find((row) => row.row === 'LIVE-07').counters.polls, null)
+  await work.span('LIVE-07', 'admitted observation', async () =>
+    assert.equal(
+      await waitForProviderObservation('admitted observation', observe, 1, { now }),
+      'observed',
+    ),
+  )
+  assert.equal(observerCalls, 1)
+  assert.equal(work.snapshot().rows.find((row) => row.row === 'LIVE-07').counters.polls, 1)
 })
 
 test('cloud execution stress reports exact small-sample latency distributions', () => {
