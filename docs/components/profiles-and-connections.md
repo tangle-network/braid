@@ -29,7 +29,7 @@ Represent a non-blank Sandbox cwd as a canonical repository-relative POSIX path.
 | `ConfigurationCredential` | Collect a required credential through a bounded secret path. |
 | `PreparedCredential` | Hold the commit or rollback capability for a staged secret write. |
 | `ConfigurationReview` | Show the effective selection before durable activation. |
-| `WorkspaceRequestForm` | Edit the repository URL, ref, and repository-relative cwd for a cloud workspace request. |
+| `WorkspaceRequestForm` | Edit the repository URL, ref, repository-relative cwd, lifecycle, and idle TTL for a cloud workspace request. |
 | `ResponsiveText` | Present configuration detail without breaking narrow layouts. |
 | `ProfileEditorViewPanel` | Create or edit canonical profile fields. |
 | `ProfileCompatibilityPanel` | Explain supported, ignored, or blocking fields from real capability data. |

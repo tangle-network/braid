@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-28T06:59:11.422Z",
+  "source": {
+    "package": "@tangle-network/braid",
+    "version": "0.3.3",
+    "revision": "64ca8e10914d7f333514ec1d3237480da3887c4a"
+  },
+  "execution": {
+    "runId": "run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
+    "providerSessionId": "session-braid-run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
+    "sandboxId": "sandbox-8e207ddb92f5"
+  },
+  "terminal": {
+    "columns": 120,
+    "rows": 40,
+    "emulator": "@xterm/headless@6.0.0"
+  },
+  "sourceTranscripts": {
+    "directory": "/home/drew/.local/state/fleet/recovery/session-recovery-20260926/braid-cloud-recovery-20260928",
+    "uncut": true,
+    "files": [
+      {
+        "name": "corrected-first-run.typescript",
+        "bytes": 60316,
+        "sha256": "4b1a4015d535739d0f08f21f6cb85d4675295195831d34915fdcf7b4cc225e7d"
+      },
+      {
+        "name": "corrected-reconnect-valid.typescript",
+        "bytes": 26049,
+        "sha256": "4c0a69c7adabb88bc164f94e006c0fdd3283c5bc25e5dabe775cf1c7865152bb"
+      }
+    ]
+  },
+  "playback": {
+    "format": "asciinema v2 plus GIF",
+    "durationSeconds": 16.1,
+    "eventOrderPreserved": true,
+    "normalizedTiming": true,
+    "chunkCharacters": 256,
+    "secondsPerChunk": 0.04,
+    "sessionGapSeconds": 1.5,
+    "note": "The original PTY files have no per-event timing sidecar. Replay durations are illustrative, not wall-clock measurements."
+  },
+  "observedStates": [
+    {
+      "name": "workspace-retained",
+      "evidence": "Workspace form selected retained with idle TTL 300 seconds."
+    },
+    {
+      "name": "write-permission",
+      "evidence": "The run requested permission to write braid-reconnect-proof.txt."
+    },
+    {
+      "name": "run-detached",
+      "evidence": "After detach and quit, the run remained detached while bash was active."
+    },
+    {
+      "name": "run-remote-running",
+      "evidence": "After reopening the same conversation and reconnecting, the TUI showed running remotely."
+    },
+    {
+      "name": "result-recovered",
+      "evidence": "The run completed and displayed retained-reconnect-20260928 verified."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/retained-reconnect.cast",
+      "bytes": 105359,
+      "sha256": "7320c0714fc37c87b5a441588f42bf11f17ac804258457799c5de3bc0a632832"
+    },
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/retained-reconnect.gif",
+      "bytes": 717343,
+      "sha256": "5aa77e0b5e077e1cd93f941ec11379109e9c9141c069c9dab35bdea7edc3ab42"
+    },
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/workspace-retained.png",
+      "bytes": 7908,
+      "sha256": "e4d51fe9d607d1f12a77bc82e1acd65fa492ac4a0f058add7db88f9a8b7e3aff"
+    },
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/write-permission.png",
+      "bytes": 11785,
+      "sha256": "c9c5b75455014b8905d025c1df9bf41490c8aa0cdb75c6a8db6bf997d2926db4"
+    },
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/run-detached.png",
+      "bytes": 12308,
+      "sha256": "57b29824fa1743f72536d2b939dc8962c607b3dc2144ce7dcbbbb79afeef342f"
+    },
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/run-remote-running.png",
+      "bytes": 15627,
+      "sha256": "f607684f3760d8319a36427e41348f1d5eedcac414346db5ea2b11df23bcf296"
+    },
+    {
+      "path": "docs/launch/evidence/braid-retained-reconnect-20260928/result-recovered.png",
+      "bytes": 16591,
+      "sha256": "01fcc87cda70d6305a4a59da17ca8ad5692f245698f5c90deb41da9bd0e46500"
+    }
+  ]
+}
