@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "package": "@tangle-network/braid",
+    "version": "0.3.3",
+    "revision": "64ca8e10914d7f333514ec1d3237480da3887c4a"
+  },
+  "buildProvenance": {
+    "kind": "post-release source build",
+    "packageVersionMetadata": "0.3.3",
+    "publicRelease": {
+      "package": "@tangle-network/braid",
+      "version": "0.3.3",
+      "tag": "v0.3.3",
+      "sourceRevision": "afc8380e06dbb164532d6d7af753394375c81c42"
+    },
+    "usedPublishedArtifact": false
+  },
+  "execution": {
+    "runId": "run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
+    "conversationId": "conv-1",
+    "providerSessionId": "session-braid-run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
+    "environmentId": "environment-94dda626a8b5145e4744dc5c8f572dba"
+  },
+  "captures": {
+    "detached": {
+      "file": "first-state-valid.json",
+      "bytes": 140745,
+      "sha256": "e1445827fe5c4ace2e710791480a1933e938930f9f1c7a2f054f8b5a8771a240",
+      "status": "detached",
+      "assistantStatus": "streaming",
+      "cursor": "109"
+    },
+    "completed": {
+      "file": "reconnect-state-valid.json",
+      "bytes": 95306,
+      "sha256": "cee6fc70b7b4dca9854bc48a0ab7cd1c7094042fd745840998595190716ba82f",
+      "status": "completed",
+      "assistantStatus": "complete",
+      "cursor": "157"
+    }
+  },
+  "providerRunResults": {
+    "write": {
+      "tool": "write",
+      "input": {
+        "content": "retained-reconnect-20260928",
+        "path": "braid-reconnect-proof.txt"
+      },
+      "result": "Successfully wrote to braid-reconnect-proof.txt"
+    },
+    "wait": {
+      "tool": "bash",
+      "input": {
+        "command": "sleep 25",
+        "timeout": 30
+      },
+      "result": "(no output)"
+    },
+    "read": {
+      "tool": "read",
+      "input": {
+        "path": "braid-reconnect-proof.txt"
+      },
+      "result": "retained-reconnect-20260928"
+    },
+    "assistantResponse": "retained-reconnect-20260928 verified"
+  }
+}

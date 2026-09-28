@@ -96,7 +96,7 @@ A cloud workspace does not automatically receive your local files or browser ses
 First-run setup creates an **ephemeral** sandbox connection.
 That connection deletes its environment after one turn.
 
-For retained execution, use `/quit` after applying setup, before sending a task.
+For retained execution on public Braid 0.3.3, use `/quit` after applying setup, before sending a task.
 Edit the selected sandbox connection's `providerOptions` in `.braid/config.json`:
 
 ```json

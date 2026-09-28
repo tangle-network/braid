@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-28T07:16:17.968Z",
+  "source": {
+    "package": "@tangle-network/braid",
+    "version": "0.3.3",
+    "revision": "64ca8e10914d7f333514ec1d3237480da3887c4a"
+  },
+  "buildProvenance": {
+    "kind": "post-release source build",
+    "packageVersionMetadata": "0.3.3",
+    "publicRelease": {
+      "package": "@tangle-network/braid",
+      "version": "0.3.3",
+      "tag": "v0.3.3",
+      "sourceRevision": "afc8380e06dbb164532d6d7af753394375c81c42"
+    },
+    "usedPublishedArtifact": false
+  },
+  "execution": {
+    "runId": "run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
+    "providerSessionId": "session-braid-run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
+    "sandboxId": "sandbox-8e207ddb92f5",
+    "conversationId": "conv-1"
+  },
+  "terminal": {
+    "columns": 120,
+    "rows": 40,
+    "emulator": "@xterm/headless@6.0.0"
+  },
+  "sourceRecords": {
+    "archive": "Fleet recovery scratch: session-recovery-20260926/braid-cloud-recovery-20260928",
+    "uncutPtyTranscripts": [
+      {
+        "name": "corrected-first-run.typescript",
+        "bytes": 60316,
+        "sha256": "4b1a4015d535739d0f08f21f6cb85d4675295195831d34915fdcf7b4cc225e7d"
+      },
+      {
+        "name": "corrected-reconnect-valid.typescript",
+        "bytes": 26049,
+        "sha256": "4c0a69c7adabb88bc164f94e006c0fdd3283c5bc25e5dabe775cf1c7865152bb"
+      }
+    ],
+    "runStateCaptures": [
+      {
+        "name": "first-state-valid.json",
+        "bytes": 140745,
+        "sha256": "e1445827fe5c4ace2e710791480a1933e938930f9f1c7a2f054f8b5a8771a240"
+      },
+      {
+        "name": "reconnect-state-valid.json",
+        "bytes": 95306,
+        "sha256": "cee6fc70b7b4dca9854bc48a0ab7cd1c7094042fd745840998595190716ba82f"
+      }
+    ],
+    "inventoryResponses": [
+      {
+        "name": "sandbox-list-after-corrected.json",
+        "bytes": 45479,
+        "sha256": "d8f8a8e173a5d5eeaa35009c4ae449bad8a730b1c06ada5f2d6a719a30174ed5"
+      },
+      {
+        "name": "sandbox-list-after-delete.json",
+        "bytes": 135311,
+        "sha256": "8bebb034cd5d7ba0bd03dccafaada302fedc8a5f53e369c315534f0be8e9bfc9"
+      }
+    ]
+  },
+  "playback": {
+    "format": "asciinema v2 plus GIF",
+    "durationSeconds": 16.1,
+    "eventCount": 316,
+    "eventOrderPreserved": true,
+    "normalizedTiming": true,
+    "chunkCharacters": 256,
+    "secondsPerChunk": 0.04,
+    "sessionGapSeconds": 1.5,
+    "note": "The source PTY files have no per-event timing sidecar. Replay timing is illustrative, not wall-clock measurement."
+  },
+  "observedStates": [
+    {
+      "name": "workspace-retained",
+      "evidence": "Workspace form selected retained with idle TTL 300 seconds."
+    },
+    {
+      "name": "write-permission",
+      "evidence": "The run requested permission to write braid-reconnect-proof.txt."
+    },
+    {
+      "name": "run-detached",
+      "evidence": "Saved run state was detached and assistant state was streaming at cursor 109."
+    },
+    {
+      "name": "run-remote-running",
+      "evidence": "After reopening the same conversation and reconnecting, the TUI showed running remotely."
+    },
+    {
+      "name": "result-recovered",
+      "evidence": "Completed run at cursor 157; provider read tool returned the exact file content and the assistant returned the verified response."
+    }
+  ],
+  "claimScope": {
+    "providerReadbackReceiptIncluded": true,
+    "manualTangleFsCatReceiptIncluded": false,
+    "inventoryReceipt": "Redacted before/after inventory projection with source hashes; the delete command stdout was not retained."
+  },
+  "artifacts": [
+    {
+      "name": "README.md",
+      "bytes": 2682,
+      "sha256": "cb7e697434e64e6eee3d2840c60fcbdb54f8826bcc08ef9730cd107b40e0fe12"
+    },
+    {
+      "name": "retained-reconnect.cast",
+      "bytes": 105359,
+      "sha256": "7320c0714fc37c87b5a441588f42bf11f17ac804258457799c5de3bc0a632832"
+    },
+    {
+      "name": "retained-reconnect.gif",
+      "bytes": 717343,
+      "sha256": "5aa77e0b5e077e1cd93f941ec11379109e9c9141c069c9dab35bdea7edc3ab42"
+    },
+    {
+      "name": "workspace-retained.png",
+      "bytes": 7908,
+      "sha256": "e4d51fe9d607d1f12a77bc82e1acd65fa492ac4a0f058add7db88f9a8b7e3aff"
+    },
+    {
+      "name": "write-permission.png",
+      "bytes": 11785,
+      "sha256": "c9c5b75455014b8905d025c1df9bf41490c8aa0cdb75c6a8db6bf997d2926db4"
+    },
+    {
+      "name": "run-detached.png",
+      "bytes": 12308,
+      "sha256": "57b29824fa1743f72536d2b939dc8962c607b3dc2144ce7dcbbbb79afeef342f"
+    },
+    {
+      "name": "run-remote-running.png",
+      "bytes": 15627,
+      "sha256": "f607684f3760d8319a36427e41348f1d5eedcac414346db5ea2b11df23bcf296"
+    },
+    {
+      "name": "result-recovered.png",
+      "bytes": 16591,
+      "sha256": "01fcc87cda70d6305a4a59da17ca8ad5692f245698f5c90deb41da9bd0e46500"
+    },
+    {
+      "name": "run-result.json",
+      "bytes": 1941,
+      "sha256": "e584eef27cb1878ad8b85d8a749d4987cd0a1fbf3e63d305a273d8c318a06b43"
+    },
+    {
+      "name": "sandbox-inventory-receipt.json",
+      "bytes": 972,
+      "sha256": "73adac1c859ecd155f2025cc517150d7d54bfd690d65b1b8b4c980c726b46a9b"
+    }
+  ]
+}

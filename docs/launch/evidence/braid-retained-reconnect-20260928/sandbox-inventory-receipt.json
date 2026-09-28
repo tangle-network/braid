@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "targetSandboxId": "sandbox-8e207ddb92f5",
+  "beforeCleanup": {
+    "sourceFile": "sandbox-list-after-corrected.json",
+    "sourceBytes": 45479,
+    "sourceSha256": "d8f8a8e173a5d5eeaa35009c4ae449bad8a730b1c06ada5f2d6a719a30174ed5",
+    "responseEntryCount": 50,
+    "targetPresent": true,
+    "targetStatus": "running",
+    "targetName": "braid-session-braid-run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7"
+  },
+  "afterCleanup": {
+    "sourceFile": "sandbox-list-after-delete.json",
+    "sourceBytes": 135311,
+    "sourceSha256": "8bebb034cd5d7ba0bd03dccafaada302fedc8a5f53e369c315534f0be8e9bfc9",
+    "responseEntryCount": 200,
+    "targetPresent": false
+  },
+  "redaction": "Only the target sandbox record and aggregate counts are included. Other sandbox records remain in the Fleet recovery source files.",
+  "limitation": "This receipt proves inventory presence before and absence after cleanup; it does not include the delete command stdout."
+}
