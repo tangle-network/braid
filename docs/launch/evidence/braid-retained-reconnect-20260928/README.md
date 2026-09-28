@@ -1,8 +1,12 @@
 # Retained cloud reconnect evidence
 
-This receipt covers one real Braid 0.3.3 run against Tangle Sandbox.
+This receipt covers one real internal Tangle Sandbox run from Braid source commit `64ca8e10914d7f333514ec1d3237480da3887c4a`.
 
-The source revision is `64ca8e10914d7f333514ec1d3237480da3887c4a`.
+That checkout's package version metadata was `0.3.3`.
+The published `@tangle-network/braid@0.3.3` package came from tag `v0.3.3` at commit `afc8380e06dbb164532d6d7af753394375c81c42`.
+This run used a later source build.
+It exercises a Workspace lifecycle selector added after the public release; [public 0.3.3 setup](../../../getting-started.md) uses the connection configuration shown there.
+The recorded operator run does not demonstrate an outside-user flow.
 
 The run ID is `run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7`.
 

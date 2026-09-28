@@ -5,6 +5,17 @@
     "version": "0.3.3",
     "revision": "64ca8e10914d7f333514ec1d3237480da3887c4a"
   },
+  "buildProvenance": {
+    "kind": "post-release source build",
+    "packageVersionMetadata": "0.3.3",
+    "publicRelease": {
+      "package": "@tangle-network/braid",
+      "version": "0.3.3",
+      "tag": "v0.3.3",
+      "sourceRevision": "afc8380e06dbb164532d6d7af753394375c81c42"
+    },
+    "usedPublishedArtifact": false
+  },
   "execution": {
     "runId": "run-c82ed4ec-a28f-46bb-9575-e388c45ff8f7",
     "conversationId": "conv-1",

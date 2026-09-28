@@ -91,14 +91,24 @@ Enter your key in the masked prompt.
 Review the workspace source and connection before applying them.
 A cloud workspace does not automatically receive your local files or browser sessions.
 
-### Connect a cloud workspace
+### Keep a cloud workspace between turns
 
 First-run setup creates an **ephemeral** sandbox connection.
 That connection deletes its environment after one turn.
 
-During setup, open the Workspace form and press `Ctrl+L` before applying it to keep the environment between turns.
-Choose **retained** and set the idle timeout in seconds, from 60 to 604800.
-It defaults to 3600 seconds.
+For retained execution on public Braid 0.3.3, use `/quit` after applying setup, before sending a task.
+Edit the selected sandbox connection's `providerOptions` in `.braid/config.json`:
+
+```json
+{
+  "lifecycle": "retained",
+  "idleTtlSeconds": 1800
+}
+```
+
+This is the `providerOptions` value, not a replacement for the whole configuration file.
+Preserve the connection's other fields.
+Restart Braid with `braid` before sending your first task; configuration file edits are loaded at startup.
 Retained execution requires provider support and is subject to the configured idle timeout and account limits.
 
 During a retained run, `/detach` leaves the run with its provider.
