@@ -16,10 +16,6 @@ The Workspace form selected retained lifecycle with a 300-second idle timeout.
 
 The asciinema cast and GIF replay the uncut PTY output in event order.
 
-The two source transcripts are retained under `/home/drew/.local/state/fleet/recovery/session-recovery-20260926/braid-cloud-recovery-20260928/`.
-
-Their SHA-256 digests and byte counts appear in `manifest.json`.
-
 The source transcripts have no per-event timing sidecar.
 
 The 16.1-second playback uses normalized timing and a 1.5-second process boundary.
@@ -40,14 +36,22 @@ The PNGs render states from the source PTY output at 120×40 with `@xterm/headle
 - [Run visible as running remotely after reconnect](run-remote-running.png)
 - [Recovered result](result-recovered.png)
 
-After `/detach` and `/quit`, the saved run state was detached and incomplete at cursor 109.
+## Machine-readable receipts
 
-The reconnect reopened the same conversation and completed at cursor 157.
+[`run-result.json`](run-result.json) records the detached and completed run states, cursor positions, and provider tool results.
+
+The provider `read` tool returned `retained-reconnect-20260928`.
 
 The assistant returned `retained-reconnect-20260928 verified`.
 
-The read tool returned the exact file contents, `retained-reconnect-20260928`.
+[`sandbox-inventory-receipt.json`](sandbox-inventory-receipt.json) shows the target sandbox present as running before cleanup and absent from the later 200-entry inventory.
 
-An independent Tangle CLI read verified the sandbox file before cleanup.
+The receipts include source file hashes and omit unrelated sandbox records.
 
-The sandbox was deleted after the check, and a later inventory did not contain its ID.
+The raw source captures remain in Fleet recovery scratch; their names, sizes, and hashes appear in `manifest.json`.
+
+This artifact relies on the Braid provider run's recorded `read` result.
+
+It does not rely on the separate manual `tangle fs cat` observation, whose output was not retained.
+
+The inventory receipt does not contain the raw delete command output.
