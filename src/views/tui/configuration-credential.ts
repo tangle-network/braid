@@ -22,6 +22,7 @@ export type ConfigurationCommit = (
 
 export class PreparedCredential {
   #value: OwnedSecretBytes | undefined
+  #committed = false
 
   get value(): OwnedSecretBytes | undefined {
     return this.#value
@@ -31,8 +32,18 @@ export class PreparedCredential {
     return this.#value !== undefined
   }
 
+  get committed(): boolean {
+    return this.#committed
+  }
+
+  markCommitted(): void {
+    // Keep only the acknowledgement after the caller clears the secret bytes.
+    this.#committed = this.prepared
+  }
+
   replace(value: OwnedSecretBytes): void {
     this.clear()
+    this.#committed = false
     this.#value = value
   }
 
@@ -40,6 +51,28 @@ export class PreparedCredential {
     this.#value?.fill(0)
     this.#value = undefined
   }
+}
+
+export function credentialStatus(
+  selection: ConfigurationSelection,
+  prepared: boolean,
+  committed: boolean,
+): string {
+  if (committed) return 'saved securely · value hidden'
+  if (selection.connection.credentialRef !== undefined) {
+    return 'configured outside Braid · value hidden'
+  }
+  return prepared ? 'ready for secure storage · value hidden' : 'not configured'
+}
+
+export function compactCredentialStatus(
+  selection: ConfigurationSelection,
+  prepared: boolean,
+  committed: boolean,
+): string {
+  if (committed) return 'saved · hidden'
+  if (selection.connection.credentialRef !== undefined) return 'hidden'
+  return prepared ? 'ready · hidden' : 'not set'
 }
 
 interface MountedCredentialOptions extends ConfigurationCredentialOptions {
