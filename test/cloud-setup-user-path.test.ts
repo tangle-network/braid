@@ -7,6 +7,8 @@ import { TuiMainScreen } from '@earendil-works/pi-tui'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { createBraidApplication } from '../src/app/composition.js'
+import { MemoryJournal } from '../src/app/journal.js'
 import { ConfigurationSession } from '../src/app/configuration-session.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import type { ProductionCompositionConfig } from '../src/app/production-composition.js'
@@ -27,6 +29,7 @@ import {
 } from '../src/bin/production-startup.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
+import { FixedClock } from '../src/ports/clock.js'
 import { FakeTangleRetainedSandbox } from './support/tangle-retained-sandbox.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
@@ -261,3 +264,87 @@ for (const [columns, rows] of [
     }
   })
 }
+
+test('explicit setup A→B→A selects the final connection across a reopened app', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-setup-reselection-'))
+  const workspace = join(root, 'workspace')
+  await mkdir(workspace, { mode: 0o700 })
+  const configPath = join(root, 'config.json')
+  const credentials = new MemoryCredentialStore()
+  const startupOptions: ProductionStartupLoadOptions = {
+    workspace,
+    configPath,
+    credentialStore: credentials,
+  }
+  const selectedProfile = profile('Reselection profile')
+  const a = tangleConnection('tangle-sandbox', '2026-09-29T00:00:00.000Z')
+  const prepared = await prepareProductionSelection(
+    startupOptions,
+    {
+      profile: selectedProfile,
+      connection: a,
+      profileDigest: selectedProfile.digest,
+      connectionDigest: new ConnectionRegistry([a]).select({ connectionId: a.id }).digest,
+    },
+    configPath,
+    new TextEncoder().encode('setup-reselection-secret'),
+  )
+  const selectedA = prepared.selection.connection
+  const b = {
+    ...selectedA,
+    id: 'connection-tangle-sandbox-b' as typeof selectedA.id,
+    name: 'Tangle Sandbox B',
+  }
+  const catalog = new ConnectionRegistry([selectedA, b])
+  const journal = new MemoryJournal(new FixedClock())
+  const openApplication = async () => {
+    const app = createBraidApplication({ fixture: 'deterministic', journal })
+    app.initialize(workspace)
+    await app.whenDurable()
+    return { app, connections: catalog, close: () => app.close() }
+  }
+  let active: ProductionApplicationSlot | undefined
+  try {
+    await saveProductionStartupSelection(configPath, prepared.selection, {
+      connections: catalog.list(),
+    })
+    await prepared.commit()
+    active = { current: await openApplication() }
+    await activateProductionConnection(active.current.app, selectedA.id, catalog.list())
+    const controller = {
+      replaceApplication: async () => undefined,
+    }
+    const editor = await createProductionSetupEditor({
+      workspace,
+      startupOptions,
+      active,
+      controller,
+      currentCatalog: () => catalog,
+      openApplication,
+    })
+    for (const connection of [selectedA, b, selectedA]) {
+      const discovery = editor.current?.()
+      assert.ok(discovery)
+      const staged = new ConfigurationSession(discovery)
+      staged.selectProfile(staged.state.selectedProfileId ?? '')
+      staged.selectConnection(connection.id)
+      staged.submitWorkspace(requested)
+      await editor.onCommit(staged.confirm())
+      assert.equal(
+        active.current.app.state().selectedConnectionId,
+        connection.id,
+        'the saved setup change must become the effective connection',
+      )
+      assert.equal(active.current.app.runtimeSelection.connectionId(), connection.id)
+      assert.equal((await loadProductionStartup(startupOptions)).connectionId, connection.id)
+    }
+    const task = await active.current.app.send({
+      operationId: 'op-aba-run',
+      text: 'run through final A selection',
+    }).completion
+    assert.equal(task.runs.at(-1)?.receipt.requested.connectionId, selectedA.id)
+  } finally {
+    await active?.current.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})

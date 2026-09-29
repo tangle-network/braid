@@ -8,6 +8,7 @@
   A successful credential save is shown as saved and hidden; a pending or failed save is never shown as complete.
 - Open Setup from the run switcher.
   Setup saves the selection without starting a task.
+- Switching from connection A to B and back to A now applies A to the next task.
 
 ## Runs and conversations
 
