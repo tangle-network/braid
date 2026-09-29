@@ -11,6 +11,14 @@ on:
         description: Successful candidate Release workflow run
         required: true
         type: string
+      mode:
+        description: Raw Router diagnostic or installed Braid task
+        required: true
+        default: braid
+        type: choice
+        options:
+          - raw
+          - braid
 
 concurrency:
   group: braid-protected-account-proof
@@ -68,10 +76,11 @@ jobs:
           cd candidate-source
           pnpm install --frozen-lockfile
           pnpm run build
-      - name: One bounded authenticated Gemini task from installed candidate
+      - name: Run one bounded Gemini probe
         env:
           BRAID_LIVE_TANGLE_ENV_JSON: ${{ secrets.BRAID_LIVE_TANGLE_ENV_JSON }}
           BRAID_PROBE_SOURCE: ${{ github.workspace }}/candidate-source
           BRAID_PROBE_ARTIFACT_ROOT: ${{ runner.temp }}/braid-model-probe
           BRAID_PROBE_COMMIT: ${{ inputs.commit }}
+          BRAID_PROBE_MODE: ${{ inputs.mode }}
         run: node scripts/release/model-probe.mjs
