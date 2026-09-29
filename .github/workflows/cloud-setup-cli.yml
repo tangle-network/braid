@@ -7,6 +7,7 @@ on:
       - 'src/bin/**'
       - 'src/views/tui/**'
       - 'scripts/proof-cloud-setup-cli.mjs'
+      - 'test/configuration-credential-flow.test.ts'
       - '.github/workflows/cloud-setup-cli.yml'
 
 permissions:
@@ -22,21 +23,31 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.19.0
           cache: pnpm
+      - name: Record exact source and toolchain
+        run: |
+          git rev-parse HEAD
+          node --version
+          pnpm --version
       - name: Install exact repository dependencies
         run: pnpm install --frozen-lockfile
       - name: Build current CLI
         run: pnpm build
       - name: Exercise candidate setup and later submission
         run: node scripts/proof-cloud-setup-cli.mjs dist/bin/braid.js
+      - name: Exercise 80-column setup
+        run: node scripts/proof-cloud-setup-cli.mjs dist/bin/braid.js --compact
       - name: Identify and install current public CLI without publishing
         if: always()
         run: |
           npm view @tangle-network/braid dist-tags --json
+          npm view @tangle-network/braid@latest version dist.integrity gitHead --json
           npm install --prefix "$RUNNER_TEMP/braid-cloud-public" @tangle-network/braid@latest
       - name: Probe current public CLI setup re-entry
         if: always()
