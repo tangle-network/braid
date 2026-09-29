@@ -63,7 +63,10 @@ import {
   openBoundSqliteDatabase,
 } from '../src/adapters/storage/sqlite-bound-open.js'
 import { assertPersistablePayload } from '../src/adapters/storage/sqlite-crypto.js'
-import type { SqliteDatabase } from '../src/adapters/storage/sqlite-driver.js'
+import {
+  loadCipherDatabaseFactory,
+  type SqliteDatabase,
+} from '../src/adapters/storage/sqlite-driver.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { prepareConversationImport } from '../src/app/conversation-import-document.js'
 import { providerEventFor } from '../src/app/run-event-mapper.js'
@@ -1191,4 +1194,45 @@ test('backup and restore enforce the approved root, descriptor identity, and no-
     (error: unknown) => error instanceof StorageError && error.code === 'STORAGE_INPUT_IDENTITY',
   )
   await storage.close()
+})
+
+test('native SQLite reuses a verified file descriptor on a third open', async () => {
+  if (process.platform !== 'linux') return
+  const root = await mkdtemp(join(tmpdir(), 'braid-sqlite-native-reopen-'))
+  const path = join(root, 'braid.sqlite')
+  let first: ReturnType<typeof openBoundSqliteDatabase> | undefined
+  let second: ReturnType<typeof openBoundSqliteDatabase> | undefined
+  let third: ReturnType<typeof openBoundSqliteDatabase> | undefined
+  try {
+    const factory = loadCipherDatabaseFactory()
+    first = openBoundSqliteDatabase(path, factory, 5_000)
+    first.database.pragma('journal_mode = WAL')
+    first.database.exec('CREATE TABLE probe (value TEXT)')
+    first.database.exec("INSERT INTO probe (value) VALUES ('bound')")
+    second = openBoundSqliteDatabase(path, factory, 5_000)
+    second.database.pragma('journal_mode = WAL')
+    closeBoundSqliteDatabase(first)
+    first = undefined
+    assert.throws(
+      () =>
+        openBoundSqliteDatabase(
+          path,
+          () =>
+            ({
+              open: true,
+              pragma: () => [{ name: 'main', file: path }],
+              close: () => undefined,
+            }) as unknown as SqliteDatabase,
+          5_000,
+        ),
+      (error: unknown) => error instanceof StorageError && error.code === 'STORAGE_PATH_RACE',
+    )
+    third = openBoundSqliteDatabase(path, factory, 5_000)
+    assert.deepEqual(third.database.prepare('SELECT value FROM probe').all(), [{ value: 'bound' }])
+  } finally {
+    if (third) closeBoundSqliteDatabase(third)
+    if (second) closeBoundSqliteDatabase(second)
+    if (first) closeBoundSqliteDatabase(first)
+    await rm(root, { recursive: true, force: true })
+  }
 })

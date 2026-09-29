@@ -1,7 +1,11 @@
 import { closeSync, constants, fchmodSync, fstatSync, openSync, readdirSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { descriptorPath, openAt, unlinkAt } from '../persistence/posix-at.js'
-import type { SqliteDatabase, SqliteDatabaseFactory } from './sqlite-driver.js'
+import {
+  isNativeCipherDatabaseFactory,
+  type SqliteDatabase,
+  type SqliteDatabaseFactory,
+} from './sqlite-driver.js'
 import { StorageError } from './sqlite-errors.js'
 
 export interface BoundSqliteDatabase {
@@ -12,6 +16,10 @@ export interface BoundSqliteDatabase {
 
 const REQUIRED_PARENT_FLAGS = constants.O_DIRECTORY | (constants.O_NOFOLLOW ?? 0)
 const REQUIRED_FILE_FLAGS = constants.O_RDWR | (constants.O_NOFOLLOW ?? 0)
+
+// SQLite's Unix VFS may retain a proven descriptor to preserve POSIX locks and
+// reuse it for a later connection without a new open(2) call.
+const witnessedNativeDescriptors = new Map<number, ReturnType<typeof fstatSync>>()
 
 function unsupported(message: string): StorageError {
   return new StorageError('STORAGE_PATH_RACE_UNSUPPORTED', message)
@@ -40,18 +48,68 @@ function liveFileDescriptors(): ReadonlySet<number> {
   return descriptors
 }
 
+function witnessedNativeDescriptor(expected: ReturnType<typeof fstatSync>): boolean {
+  let found = false
+  for (const [descriptor, known] of witnessedNativeDescriptors) {
+    try {
+      const current = fstatSync(descriptor)
+      if (!sameInode(known, current)) {
+        witnessedNativeDescriptors.delete(descriptor)
+        continue
+      }
+      if (sameInode(expected, current)) found = true
+    } catch {
+      witnessedNativeDescriptors.delete(descriptor)
+    }
+  }
+  return found
+}
+
+function nativeDatabaseNamesExpectedFile(database: SqliteDatabase, path: string): boolean {
+  if (!database.open) return false
+  try {
+    const list: unknown = database.pragma('database_list')
+    return (
+      Array.isArray(list) &&
+      list.some(
+        (row) =>
+          row !== null &&
+          typeof row === 'object' &&
+          (row as { readonly name?: unknown }).name === 'main' &&
+          (row as { readonly file?: unknown }).file === path,
+      )
+    )
+  } catch {
+    return false
+  }
+}
+
 function assertDatabaseDescriptorIdentity(
   before: ReadonlySet<number>,
   expected: ReturnType<typeof fstatSync>,
   path: string,
+  factory: SqliteDatabaseFactory,
+  database: SqliteDatabase,
 ): void {
+  const nativeFactory = isNativeCipherDatabaseFactory(factory)
   for (const descriptor of liveFileDescriptors()) {
     if (before.has(descriptor)) continue
     try {
-      if (sameInode(expected, fstatSync(descriptor))) return
+      const current = fstatSync(descriptor)
+      if (!sameInode(expected, current)) continue
+      if (nativeFactory) witnessedNativeDescriptors.set(descriptor, current)
+      return
     } catch {
       // A concurrent close cannot establish the required identity.
     }
+  }
+  if (
+    process.platform === 'linux' &&
+    nativeFactory &&
+    witnessedNativeDescriptor(expected) &&
+    nativeDatabaseNamesExpectedFile(database, path)
+  ) {
+    return
   }
   throw new StorageError(
     'STORAGE_PATH_RACE',
@@ -165,7 +223,7 @@ export function openBoundSqliteDatabase(
     fchmodSync(fileDescriptor, 0o600)
     const descriptorsBefore = liveFileDescriptors()
     database = factory(descriptorPath(fileDescriptor), { timeout })
-    assertDatabaseDescriptorIdentity(descriptorsBefore, metadata, normalizedPath)
+    assertDatabaseDescriptorIdentity(descriptorsBefore, metadata, normalizedPath, factory, database)
     return { database, fileDescriptor, newDatabase: opened.newDatabase }
   } catch (error) {
     try {
