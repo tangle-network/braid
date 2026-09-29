@@ -188,6 +188,7 @@ export async function createProductionSetupEditor(
           verification,
           ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
         }
+        const connectionOperationId = `operation-setup-connection-${randomUUID()}`
         verification = await transitionProductionSelection({
           setup,
           startupOptions,
@@ -240,6 +241,7 @@ export async function createProductionSetupEditor(
               next.app,
               prepared.connection.id,
               productionConnectionsForSelection(prepared, connections),
+              connectionOperationId,
             )
           },
         })

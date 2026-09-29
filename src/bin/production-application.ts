@@ -66,6 +66,7 @@ export async function activateProductionConnection(
   app: BraidApplication,
   connectionId: string,
   connections: readonly import('../domain/entities.js').ConnectionRecord[],
+  explicitOperationId?: string,
 ): Promise<void> {
   const digest = canonicalDigest({
     connectionId,
@@ -83,7 +84,7 @@ export async function activateProductionConnection(
     connections,
   })
   await service.select({
-    operationId: `operation-startup-connection-${digest.slice(0, 32)}`,
+    operationId: explicitOperationId ?? `operation-startup-connection-${digest.slice(0, 32)}`,
     connectionId,
   })
 }
