@@ -32,6 +32,7 @@ export interface ConfigurationStageOptions {
   readonly theme: BraidTheme
   readonly confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues
   readonly credentialPrepared: boolean
+  readonly credentialCommitted?: boolean
   readonly diagnostics: readonly string[]
   readonly busy: boolean
   readonly commitError?: string
@@ -86,6 +87,7 @@ export function renderConfigurationStage(
             state,
             options.confirmation,
             options.credentialPrepared,
+            applied && options.credentialCommitted === true,
           ),
           title: applied ? 'selection applied' : configurationTitle(state, busy, commitError),
           ...(commitError === undefined ? {} : { error: commitError }),
