@@ -61,6 +61,8 @@ jobs:
         with:
           node-version: 22.19.0
           cache: pnpm
+      - name: Install probe source dependencies
+        run: pnpm install --frozen-lockfile
       - name: Install and build exact candidate source
         run: |
           cd candidate-source
