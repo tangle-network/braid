@@ -52,7 +52,6 @@ export class ConfigurationWizard extends Container implements Focusable {
   #busy = false
   #commitError: string | undefined
   readonly #credential = new PreparedCredential()
-  #credentialCommitted = false
 
   constructor(options: ConfigurationWizardOptions) {
     super()
@@ -105,7 +104,7 @@ export class ConfigurationWizard extends Container implements Focusable {
       rows: this.#rows,
       ...(this.#onReload === undefined ? {} : { onReload: this.#reload }),
       credentialPrepared: this.#credential.prepared,
-      credentialCommitted: this.#credentialCommitted,
+      credentialCommitted: this.#credential.committed,
       diagnostics: this.#diagnostics,
       busy: this.#busy,
       ...(this.#commitError === undefined ? {} : { commitError: this.#commitError }),
@@ -210,19 +209,15 @@ export class ConfigurationWizard extends Container implements Focusable {
     }
     this.#busy = true
     this.#commitError = undefined
-    this.#credentialCommitted = false
-    const credentialPrepared = this.#credential.prepared
     this.#renderStage(this.#session.state)
     try {
       await this.#onCommit(selection, this.#credential.value)
-      // Keep only the acknowledgement, never the bytes, after secure storage succeeds.
-      this.#credentialCommitted = credentialPrepared
+      this.#credential.markCommitted()
       this.#clearCredential()
       this.#busy = false
       this.#renderStage(this.#session.state)
       this.#onComplete(selection)
     } catch (error) {
-      this.#credentialCommitted = false
       this.#clearCredential()
       this.#busy = false
       this.#commitError =
