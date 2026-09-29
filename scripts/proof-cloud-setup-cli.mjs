@@ -29,6 +29,7 @@ const requested = {
   cwd: { base: 'repository', path: 'src' },
 }
 const credential = randomBytes(24).toString('hex')
+const credentialB = randomBytes(24).toString('hex')
 const requests = []
 const server = createServer((request, response) => {
   requests.push({
@@ -77,6 +78,7 @@ async function key(value) {
 }
 function capture(label) {
   assert.ok(!raw.includes(credential), 'credential appeared in terminal output')
+  assert.ok(!raw.includes(credentialB), 'B credential appeared in terminal output')
   frames.push({ label, screen: screen.trim() })
 }
 async function snapshot() {
@@ -95,7 +97,7 @@ async function snapshot() {
   }, 'SIGUSR2 state snapshot')
   return value
 }
-async function openSetup() {
+async function openSetup(connectionKeys = ['\r']) {
   await key('\u000b')
   await expect(/Setup/u)
   capture('setup menu')
@@ -104,7 +106,7 @@ async function openSetup() {
   await expect(/choose an AgentProfile/u)
   await key('\r')
   await expect(/choose a connection/u)
-  await key('\r')
+  for (const choiceKey of connectionKeys) await key(choiceKey)
   await expect(/workspace · cloud sandbox/u)
 }
 async function start(endpoint, phase) {
@@ -213,6 +215,19 @@ try {
           updatedAt: '2026-09-29T00:00:00.000Z',
           lastHealth: { status: 'unknown' },
         },
+        {
+          id: 'connection-tangle-sandbox-b',
+          kind: 'tangle-sandbox',
+          name: 'Tangle Sandbox B (loopback refusal)',
+          endpoint,
+          providerOptions: {
+            transport: 'local',
+            capabilityHints: ['stream', 'placement', 'usage'],
+          },
+          createdAt: '2026-09-29T00:00:00.000Z',
+          updatedAt: '2026-09-29T00:00:00.000Z',
+          lastHealth: { status: 'unknown' },
+        },
       ],
       databaseKeyFile: keyPath,
     })}\n`,
@@ -269,21 +284,58 @@ try {
     const afterSave = await snapshot()
     assert.equal(afterSave.state.runs.length, 0)
     await key('\u001b')
+    await expect(/new message/u)
     await reopenedWorkspace('reopened in same process')
     assert.deepEqual(await readFile(configPath), savedBytes)
+    assert.equal(requests.length, 0)
+    await openSetup(['\u001b[B', '\r'])
+    await key('\u000c')
+    await expect(/files · lifetime/u)
+    await key('\r')
+    await expect(/credential · Tangle Sandbox B/u)
+    await key(credentialB)
+    await key('\r')
+    await expect(/review and/u)
+    await key('\r')
+    await expect(/selection applied/u)
+    const selectedBBytes = await readFile(configPath)
+    const selectedB = JSON.parse(selectedBBytes.toString('utf8'))
+    assert.equal(selectedB.connectionId, 'connection-tangle-sandbox-b')
+    assert.ok(!selectedBBytes.includes(credentialB))
+    const afterB = await snapshot()
+    assert.equal(afterB.state.runConfiguration.connectionId, 'connection-tangle-sandbox-b')
+    await key('\u001b')
+    await expect(/new message/u)
+    await openSetup(['\u001b[A', '\r'])
+    await key('\u000c')
+    await expect(/files · lifetime/u)
+    await key('\r')
+    await key('\r')
+    await expect(/review and/u)
+    await key('\r')
+    await expect(/selection applied/u)
+    const selectedABytes = await readFile(configPath)
+    const selectedA = JSON.parse(selectedABytes.toString('utf8'))
+    assert.equal(selectedA.connectionId, 'connection-tangle-sandbox')
+    const afterA = await snapshot()
+    assert.equal(afterA.state.runConfiguration.connectionId, 'connection-tangle-sandbox')
+    await key('\u001b')
+    assert.deepEqual(await readFile(configPath), selectedABytes)
     assert.equal(requests.length, 0)
     // A later user submission must reach the existing authenticated provider preflight.
     await key('CLOUD_SETUP_LATER_TASK\r')
     await expect(/SERVER_ERROR/u)
     assert.ok(requests.length > 0)
     assert.ok(requests.some((request) => request.credentialReceived))
+    const afterTask = await snapshot()
+    assert.equal(afterTask.state.runConfiguration.connectionId, 'connection-tangle-sandbox')
     capture('later explicit submission; unchanged provider refusal')
     await key('\u001b')
     await stop()
     const beforeReloadRequests = requests.length
     await start(endpoint, 'disk-reloaded-cli')
     await reopenedWorkspace('reopened after encrypted disk reload')
-    assert.deepEqual(await readFile(configPath), savedBytes)
+    assert.deepEqual(await readFile(configPath), selectedABytes)
     assert.equal(requests.length, beforeReloadRequests)
     await key('CLOUD_SETUP_RELOADED_TASK\r')
     await expect(/SERVER_ERROR/u)
@@ -294,7 +346,7 @@ try {
     evidence.savedWorkspaceRequest = saved.workspaceRequest
     evidence.savedLifecycle = connection.providerOptions.lifecycle
     evidence.result =
-      'save, same-process reopen, cancel, disk reload and authenticated preflight verified; no cloud task completed'
+      'save, A→B→A, same-process reopen, encrypted reload and authenticated A preflight verified; no cloud task completed'
   }
   await stop()
   evidence.exit = exit

@@ -6,6 +6,7 @@ import { StorageError } from './sqlite-errors.js'
 export const SQLITE_DRIVER_PACKAGE = 'better-sqlite3-multiple-ciphers'
 export const SQLITE_DRIVER_VERSION = '13.0.3'
 const RAW_KEY_PREFIX = Buffer.from('raw:', 'ascii')
+const nativeCipherFactories = new WeakSet<SqliteDatabaseFactory>()
 
 export type SqliteValue = string | number | bigint | Buffer | null
 
@@ -88,7 +89,7 @@ export function loadCipherDatabaseFactory(): SqliteDatabaseFactory {
       'The encrypted SQLite module has no constructor',
     )
   }
-  return (filename, options) => {
+  const factory: SqliteDatabaseFactory = (filename, options) => {
     try {
       return new (Constructor as new (path: string, options: unknown) => SqliteDatabase)(
         filename,
@@ -102,6 +103,12 @@ export function loadCipherDatabaseFactory(): SqliteDatabaseFactory {
       )
     }
   }
+  nativeCipherFactories.add(factory)
+  return factory
+}
+
+export function isNativeCipherDatabaseFactory(factory: SqliteDatabaseFactory): boolean {
+  return nativeCipherFactories.has(factory)
 }
 
 export function configureCipherDatabase(
