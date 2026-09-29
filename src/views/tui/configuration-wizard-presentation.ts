@@ -6,6 +6,7 @@ import type {
   ConfigurationSessionState,
 } from '../../app/configuration-session.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { compactCredentialStatus, credentialStatus } from './configuration-credential.js'
 import { shortDigest } from './configuration-presenters.js'
 import {
   compactWorkspaceRequestSummary,
@@ -214,28 +215,6 @@ export function configurationReviewSummaries(
       credentialCommitted,
     ),
   }
-}
-
-function credentialStatus(
-  selection: ConfigurationSelection,
-  prepared: boolean,
-  committed: boolean,
-): string {
-  if (committed) return 'saved securely · value hidden'
-  if (selection.connection.credentialRef !== undefined) {
-    return 'configured outside Braid · value hidden'
-  }
-  return prepared ? 'ready for secure storage · value hidden' : 'not configured'
-}
-
-function compactCredentialStatus(
-  selection: ConfigurationSelection,
-  prepared: boolean,
-  committed: boolean,
-): string {
-  if (committed) return 'saved · hidden'
-  if (selection.connection.credentialRef !== undefined) return 'hidden'
-  return prepared ? 'ready · hidden' : 'not set'
 }
 
 function effectiveValues(
