@@ -6,6 +6,7 @@ import type {
   ConfigurationSessionState,
 } from '../../app/configuration-session.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
+import { compactCredentialStatus, credentialStatus } from './configuration-credential.js'
 import { shortDigest } from './configuration-presenters.js'
 import {
   compactWorkspaceRequestSummary,
@@ -145,6 +146,7 @@ export function reviewSummary(
   state: ConfigurationSessionState,
   confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues,
   credentialPrepared = false,
+  credentialCommitted = false,
 ): readonly string[] {
   try {
     const selection = session.previewSelection()
@@ -163,7 +165,7 @@ export function reviewSummary(
           ? effective.unsupported.map(sanitizeTerminalText).join(', ')
           : 'none'
       }`,
-      `credentials ${credentialStatus(selection, credentialPrepared)}`,
+      `credentials ${credentialStatus(selection, credentialPrepared, credentialCommitted)}`,
     ]
   } catch {
     return ['Effective values are unavailable until both choices are selected.']
@@ -175,6 +177,7 @@ export function compactReviewSummary(
   state: ConfigurationSessionState,
   confirmation?: (selection: ConfigurationSelection) => ConfigurationEffectiveValues,
   credentialPrepared = false,
+  credentialCommitted = false,
 ): readonly string[] {
   try {
     const selection = session.previewSelection()
@@ -184,7 +187,7 @@ export function compactReviewSummary(
     const unsupported = effective.unsupported.length > 0 ? effective.unsupported.join(', ') : 'none'
     return [
       `profile ${profile?.label ?? selection.profile.displayName} → ${connection?.label ?? selection.connection.name}`,
-      `cred ${compactCredentialStatus(selection, credentialPrepared)} · conn ${selection.connection.kind} · digest ${compactDigest(selection.profileDigest)}`,
+      `cred ${compactCredentialStatus(selection, credentialPrepared, credentialCommitted)} · conn ${selection.connection.kind} · digest ${compactDigest(selection.profileDigest)}`,
       `runner: ${shortValue(effective.runner, 14)} · model: ${shortValue(effective.model, 16)}`,
       `effort: ${shortValue(effective.effort, 12)} · start in: ${shortValue(effective.workdir, 18)}`,
       ...compactWorkspaceRequestSummary(effective.workspaceRequest),
@@ -200,23 +203,18 @@ export function configurationReviewSummaries(
   state: ConfigurationSessionState,
   confirmation: ((selection: ConfigurationSelection) => ConfigurationEffectiveValues) | undefined,
   credentialPrepared: boolean,
+  credentialCommitted = false,
 ): { readonly summary: readonly string[]; readonly compactSummary: readonly string[] } {
   return {
-    summary: reviewSummary(session, state, confirmation, credentialPrepared),
-    compactSummary: compactReviewSummary(session, state, confirmation, credentialPrepared),
+    summary: reviewSummary(session, state, confirmation, credentialPrepared, credentialCommitted),
+    compactSummary: compactReviewSummary(
+      session,
+      state,
+      confirmation,
+      credentialPrepared,
+      credentialCommitted,
+    ),
   }
-}
-
-function credentialStatus(selection: ConfigurationSelection, prepared: boolean): string {
-  if (selection.connection.credentialRef !== undefined) {
-    return 'configured outside Braid · value hidden'
-  }
-  return prepared ? 'ready for secure storage · value hidden' : 'not configured'
-}
-
-function compactCredentialStatus(selection: ConfigurationSelection, prepared: boolean): string {
-  if (selection.connection.credentialRef !== undefined) return 'hidden'
-  return prepared ? 'ready · hidden' : 'not set'
 }
 
 function effectiveValues(

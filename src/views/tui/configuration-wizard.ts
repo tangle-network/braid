@@ -27,11 +27,6 @@ import {
 import type { WorkspaceRequestForm } from './workspace-request-form.js'
 import { mountWorkspaceRequestForm } from './workspace-request-workflow.js'
 
-type ConfigurationControl =
-  | ConfigurationStageControl
-  | ConfigurationCredential
-  | WorkspaceRequestForm
-
 /** Keyboard-first profile, destination, credential, and review flow. */
 export class ConfigurationWizard extends Container implements Focusable {
   readonly #theme: ConfigurationWizardOptions['theme']
@@ -47,7 +42,7 @@ export class ConfigurationWizard extends Container implements Focusable {
   readonly #rows: () => number
   #reloading = false
   #closed = false
-  #selector!: ConfigurationControl
+  #selector!: ConfigurationStageControl | ConfigurationCredential | WorkspaceRequestForm
   #focused = false
   #busy = false
   #commitError: string | undefined
@@ -104,6 +99,7 @@ export class ConfigurationWizard extends Container implements Focusable {
       rows: this.#rows,
       ...(this.#onReload === undefined ? {} : { onReload: this.#reload }),
       credentialPrepared: this.#credential.prepared,
+      credentialCommitted: this.#credential.committed,
       diagnostics: this.#diagnostics,
       busy: this.#busy,
       ...(this.#commitError === undefined ? {} : { commitError: this.#commitError }),
@@ -211,6 +207,7 @@ export class ConfigurationWizard extends Container implements Focusable {
     this.#renderStage(this.#session.state)
     try {
       await this.#onCommit(selection, this.#credential.value)
+      this.#credential.markCommitted()
       this.#clearCredential()
       this.#busy = false
       this.#renderStage(this.#session.state)

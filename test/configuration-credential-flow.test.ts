@@ -90,7 +90,48 @@ test('first-run Tangle selection masks, transfers, and clears credential bytes',
     callbackBuffer?.every((byte) => byte === 0),
     true,
   )
-  assert.doesNotMatch(wizard.render(80).join('\n'), /terminal-secret-canary/u)
+  for (const width of [40, 80]) {
+    const applied = wizard.render(width).join('\n')
+    assert.match(applied, /credentials saved securely|cred saved/u)
+    assert.doesNotMatch(applied, /not configured|not set|ready for secure storage/u)
+    assert.doesNotMatch(applied, /terminal-secret-canary/u)
+  }
+})
+
+test('pending and rejected credential commits do not report saved credentials', async () => {
+  let callbackBuffer: Uint8Array | undefined
+  let rejectCommit: ((error: Error) => void) | undefined
+  const wizard = new ConfigurationWizard({
+    theme,
+    profiles: [profile],
+    connections: [connection('tangle-inference')],
+    requiresCredential: () => true,
+    onCommit: (_selection, credential) => {
+      callbackBuffer = credential
+      return new Promise<void>((_resolve, reject) => {
+        rejectCommit = reject
+      })
+    },
+    onComplete: () => assert.fail('A rejected save cannot complete setup'),
+    onCancel: () => {},
+  })
+  wizard.focused = true
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  wizard.handleInput('rejected-secret-canary')
+  wizard.handleInput('\r')
+  wizard.handleInput('\r')
+  assert.doesNotMatch(wizard.render(80).join('\n'), /credentials saved|cred saved/u)
+  assert.ok(rejectCommit)
+  rejectCommit(new Error('Storage failed'))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.ok(callbackBuffer)
+  assert.ok(callbackBuffer.every((byte) => byte === 0))
+  for (const width of [40, 80]) {
+    const failed = wizard.render(width).join('\n')
+    assert.match(failed, /Storage failed/u)
+    assert.doesNotMatch(failed, /credentials saved|cred saved|rejected-secret-canary/u)
+  }
 })
 
 test('Escape from credential input returns to connection choice without committing', () => {
