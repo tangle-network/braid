@@ -93,22 +93,11 @@ A cloud workspace does not automatically receive your local files or browser ses
 
 ### Keep a cloud workspace between turns
 
-First-run setup creates an **ephemeral** sandbox connection.
-That connection deletes its environment after one turn.
-
-For retained execution on public Braid 0.3.3, use `/quit` after applying setup, before sending a task.
-Edit the selected sandbox connection's `providerOptions` in `.braid/config.json`:
-
-```json
-{
-  "lifecycle": "retained",
-  "idleTtlSeconds": 1800
-}
-```
-
-This is the `providerOptions` value, not a replacement for the whole configuration file.
-Preserve the connection's other fields.
-Restart Braid with `braid` before sending your first task; configuration file edits are loaded at startup.
+Setup defaults to an **ephemeral** sandbox connection, which deletes its environment after one turn.
+To keep the workspace between turns, select **Tangle Sandbox** and open the **files · lifetime** page with Ctrl+L.
+Choose **retained**, then enter the idle timeout in seconds, such as `1800`.
+Review the workspace source, lifetime, and masked credential before applying the selection.
+You can reopen Setup to inspect or change these values before sending a task.
 Retained execution requires provider support and is subject to the configured idle timeout and account limits.
 
 During a retained run, `/detach` leaves the run with its provider.
