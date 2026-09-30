@@ -11,14 +11,14 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 ## Evidence baseline
 
 The following published versions were resolved in this worktree.
-Their installed manifests, declarations, and implementations were inspected directly on 2026-09-24.
+Their installed manifests, declarations, and implementations were inspected directly on 2026-09-30.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.11.0` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.13.1` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
 | [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.263.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
 | [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.187.2` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `1.1.0` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, exact native session close, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-cli-bridge` | `1.1.1` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, exact native session close, durable interaction response, explicit cancel, and host cwd support |
 | `@tangle-network/agent-provider-tangle` | `1.6.0` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
 | `@tangle-network/sandbox` | `0.45.0` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
@@ -52,7 +52,7 @@ The lockfile pins the registry integrity for every installed package.
 
 `pnpm peers check` reports no peer dependency issues for this worktree.
 
-The workspace overrides pin Interface `2.11.0` and Knowledge `17.1.3`.
+The workspace overrides pin Interface `2.13.1`, Knowledge `17.1.3`, and Undici `8.11.2`.
 
 Historical snapshot: [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
 
@@ -135,6 +135,10 @@ Therefore the existence of interaction types or methods does not prove that a Br
 An `AgentEnvironmentProvider` reports profile, streaming, session, workspace, branching, placement, usage, and confidentiality capabilities.
 
 An environment can stream or dispatch turns, expose provider sessions, read and write, execute commands, checkpoint, fork, report placement, refresh, and destroy when its adapter implements those operations.
+
+Workspace creation from a checkpoint requires an explicit provider capability and provider support for the field.
+Braid currently rejects checkpoint-bearing requests because its request identity and provider dispatch do not preserve the field.
+Neither installed provider advertises `create.workspaceCheckpoint`; workspace branching checkpoints remain separate.
 
 An `AgentSession` can report status, replay events, return a result, accept a new prompt, and cancel when implemented.
 
