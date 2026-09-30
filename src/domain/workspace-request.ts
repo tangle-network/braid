@@ -15,6 +15,9 @@ export function snapshotWorkspaceRequest(
       'Workspace providerOptions are not persisted; use a provider credential reference',
     )
   }
+  if (parsed.checkpoint !== undefined) {
+    throw new Error('Workspace checkpoint restore is not supported by Braid yet')
+  }
   if (
     parsed.environment === undefined &&
     parsed.image === undefined &&
@@ -79,6 +82,9 @@ export function workspaceRequestErrorMessage(error: unknown): string {
   }
   if (/providerOptions are not persisted/iu.test(message)) {
     return 'providerOptions are not persisted'
+  }
+  if (/Workspace checkpoint restore is not supported by Braid yet/iu.test(message)) {
+    return 'starting a workspace from a checkpoint is not supported yet'
   }
   if (/must be a valid URL|Invalid URL/iu.test(message)) return 'repoUrl must be a valid URL'
   return 'workspace request invalid'

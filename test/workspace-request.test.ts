@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { defineAgentProfile, WorkspaceRequestSchema } from '@tangle-network/agent-interface'
 import { exactAdmissionRequestDigest } from '../src/app/run-admission-request.js'
 import { snapshotRunExecution } from '../src/app/run-execution-snapshot.js'
 import { retainedExecutionRecoveryContext } from '../src/app/run-recovery-context.js'
@@ -68,6 +68,31 @@ test('provider options are never persisted, even when the canonical schema accep
     thrownMessage({ ...validRequest, providerOptions: { imagePullSecret: 'secret-ref' } }),
     'providerOptions are not persisted',
   )
+})
+
+test('checkpoint restore requests fail closed until a provider supports workspace creation from checkpoints', () => {
+  const checkpoint = {
+    checkpointId: 'checkpoint-restore',
+    provider: 'tangle-sandbox',
+    source: {
+      runId: 'run-checkpoint-restore',
+      provider: 'tangle-sandbox',
+      environmentId: 'environment-checkpoint-restore',
+      sessionId: 'session-checkpoint-restore',
+      executionId: 'execution-checkpoint-restore',
+      requestDigest: `sha256:${'0'.repeat(64)}`,
+    },
+    idempotencyKey: 'op-workspace-checkpoint',
+    requestDigest: `sha256:${'0'.repeat(64)}`,
+    createdAt: '2026-09-30T00:00:00.000Z',
+  } as const
+  for (const request of [{ checkpoint }, { environment: 'universal', checkpoint }]) {
+    assert.equal(WorkspaceRequestSchema.safeParse(request).success, true)
+    assert.equal(
+      thrownMessage(request),
+      'starting a workspace from a checkpoint is not supported yet',
+    )
+  }
 })
 
 test('canonical workspace validation reports bounded actionable messages', () => {
