@@ -1,0 +1,273 @@
+{
+  "version": 1,
+  "title": "Braid 0.3.4 installed CLI proof media",
+  "executionTarget": "Installed 0.3.4 candidate archive on Linux x64, Node v22.23.2.",
+  "provider": "Local loopback fixture; authenticated reads succeed and every write receives HTTP 503.",
+  "liveProviderCalls": false,
+  "cloudTasksOrResourcesCreated": false,
+  "keyboardInputRecorded": false,
+  "renderedPromptsMayAppear": true,
+  "processBoundaryMarkerType": "asciicast v2 m events with process phase, PID, and exit code.",
+  "recordings": [
+    {
+      "dimensions": "40x12",
+      "original": "40x12-original.cast",
+      "fastCast": "40x12-4x.cast",
+      "playbackSpeed": "4x",
+      "fastCastTransform": "Each event timestamp divided by four; event order and payloads preserved.",
+      "sourceCommit": "3b627e9199186ccfb523f07d8c52effe02e46281",
+      "candidateArchiveSha256": "f13e3bea3bbdda567cc125cde9cbbe1889625e0972fa2303da17210c47e102d9",
+      "installedBinary": "/tmp/braid-3b627e-installed/node_modules/@tangle-network/braid/dist/bin/braid.js",
+      "nodeVersion": "v22.23.2",
+      "harnessPid": 2354201,
+      "cliPids": [
+        2355008,
+        2359249
+      ],
+      "cliExitCodes": [
+        0,
+        0
+      ],
+      "log": "/tmp/braid-0.3.4-delivery-20260929/installed-cli-setup-loopback-media-final-40x12.log",
+      "loopbackRequests": 26,
+      "taskPostAttempts": [
+        5,
+        5
+      ],
+      "taskRunStatuses": [
+        "unknown",
+        "unknown"
+      ],
+      "reopenedRunStatus": "unknown",
+      "taskMessagePersistedAfterEncryptedReload": true,
+      "continuation": "CONTEXT_TRANSFER_UNAVAILABLE; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes",
+      "rejectedDraftRetainedAndCleared": true,
+      "temporaryStateRemoved": true,
+      "credentialCanaryAssertionsPassed": true,
+      "outputEvents": 137,
+      "inputEvents": 0,
+      "recordingSeconds": 33.191,
+      "recordingSecondsAt4x": 8.298,
+      "headerTimestampUnixSeconds": 1790733697,
+      "processBoundaries": [
+        {
+          "phase": "configured-cli",
+          "pid": 2355008,
+          "exitCode": 0,
+          "startSeconds": 0.717,
+          "endSeconds": 17.801,
+          "startSecondsAt4x": 0.179,
+          "endSecondsAt4x": 4.45,
+          "startMarker": "process-start:configured-cli:pid-2355008",
+          "endMarker": "process-exit:configured-cli:0"
+        },
+        {
+          "phase": "disk-reloaded-cli",
+          "pid": 2359249,
+          "exitCode": 0,
+          "startSeconds": 17.855,
+          "endSeconds": 33.191,
+          "startSecondsAt4x": 4.464,
+          "endSecondsAt4x": 8.298,
+          "startMarker": "process-start:disk-reloaded-cli:pid-2359249",
+          "endMarker": "process-exit:disk-reloaded-cli:0"
+        }
+      ]
+    },
+    {
+      "dimensions": "80x24",
+      "original": "80x24-original.cast",
+      "fastCast": "80x24-4x.cast",
+      "playbackSpeed": "4x",
+      "fastCastTransform": "Each event timestamp divided by four; event order and payloads preserved.",
+      "sourceCommit": "3b627e9199186ccfb523f07d8c52effe02e46281",
+      "candidateArchiveSha256": "f13e3bea3bbdda567cc125cde9cbbe1889625e0972fa2303da17210c47e102d9",
+      "installedBinary": "/tmp/braid-3b627e-installed/node_modules/@tangle-network/braid/dist/bin/braid.js",
+      "nodeVersion": "v22.23.2",
+      "harnessPid": 2354270,
+      "cliPids": [
+        2354676,
+        2359098
+      ],
+      "cliExitCodes": [
+        0,
+        0
+      ],
+      "log": "/tmp/braid-0.3.4-delivery-20260929/installed-cli-setup-loopback-media-final-80x24.log",
+      "loopbackRequests": 26,
+      "taskPostAttempts": [
+        5,
+        5
+      ],
+      "taskRunStatuses": [
+        "unknown",
+        "unknown"
+      ],
+      "reopenedRunStatus": "unknown",
+      "taskMessagePersistedAfterEncryptedReload": true,
+      "continuation": "CONTEXT_TRANSFER_UNAVAILABLE; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes",
+      "rejectedDraftRetainedAndCleared": true,
+      "temporaryStateRemoved": true,
+      "credentialCanaryAssertionsPassed": true,
+      "outputEvents": 147,
+      "inputEvents": 0,
+      "recordingSeconds": 33.308,
+      "recordingSecondsAt4x": 8.327,
+      "headerTimestampUnixSeconds": 1790733696,
+      "processBoundaries": [
+        {
+          "phase": "configured-cli",
+          "pid": 2354676,
+          "exitCode": 0,
+          "startSeconds": 0.058,
+          "endSeconds": 18.087,
+          "startSecondsAt4x": 0.015,
+          "endSecondsAt4x": 4.522,
+          "startMarker": "process-start:configured-cli:pid-2354676",
+          "endMarker": "process-exit:configured-cli:0"
+        },
+        {
+          "phase": "disk-reloaded-cli",
+          "pid": 2359098,
+          "exitCode": 0,
+          "startSeconds": 18.187,
+          "endSeconds": 33.308,
+          "startSecondsAt4x": 4.547,
+          "endSecondsAt4x": 8.327,
+          "startMarker": "process-start:disk-reloaded-cli:pid-2359098",
+          "endMarker": "process-exit:disk-reloaded-cli:0"
+        }
+      ]
+    },
+    {
+      "dimensions": "120x40",
+      "original": "120x40-original.cast",
+      "fastCast": "120x40-4x.cast",
+      "playbackSpeed": "4x",
+      "fastCastTransform": "Each event timestamp divided by four; event order and payloads preserved.",
+      "sourceCommit": "3b627e9199186ccfb523f07d8c52effe02e46281",
+      "candidateArchiveSha256": "f13e3bea3bbdda567cc125cde9cbbe1889625e0972fa2303da17210c47e102d9",
+      "installedBinary": "/tmp/braid-3b627e-installed/node_modules/@tangle-network/braid/dist/bin/braid.js",
+      "nodeVersion": "v22.23.2",
+      "harnessPid": 2354245,
+      "cliPids": [
+        2354900,
+        2358716
+      ],
+      "cliExitCodes": [
+        0,
+        0
+      ],
+      "log": "/tmp/braid-0.3.4-delivery-20260929/installed-cli-setup-loopback-media-final-120x40.log",
+      "loopbackRequests": 26,
+      "taskPostAttempts": [
+        5,
+        5
+      ],
+      "taskRunStatuses": [
+        "unknown",
+        "unknown"
+      ],
+      "reopenedRunStatus": "unknown",
+      "taskMessagePersistedAfterEncryptedReload": true,
+      "continuation": "CONTEXT_TRANSFER_UNAVAILABLE; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes",
+      "rejectedDraftRetainedAndCleared": true,
+      "temporaryStateRemoved": true,
+      "credentialCanaryAssertionsPassed": true,
+      "outputEvents": 145,
+      "inputEvents": 0,
+      "recordingSeconds": 28.734,
+      "recordingSecondsAt4x": 7.184,
+      "headerTimestampUnixSeconds": 1790733697,
+      "processBoundaries": [
+        {
+          "phase": "configured-cli",
+          "pid": 2354900,
+          "exitCode": 0,
+          "startSeconds": 0.144,
+          "endSeconds": 15.498,
+          "startSecondsAt4x": 0.036,
+          "endSecondsAt4x": 3.874,
+          "startMarker": "process-start:configured-cli:pid-2354900",
+          "endMarker": "process-exit:configured-cli:0"
+        },
+        {
+          "phase": "disk-reloaded-cli",
+          "pid": 2358716,
+          "exitCode": 0,
+          "startSeconds": 15.512,
+          "endSeconds": 28.734,
+          "startSecondsAt4x": 3.878,
+          "endSecondsAt4x": 7.184,
+          "startMarker": "process-start:disk-reloaded-cli:pid-2358716",
+          "endMarker": "process-exit:disk-reloaded-cli:0"
+        }
+      ]
+    },
+    {
+      "dimensions": "200x60",
+      "original": "200x60-original.cast",
+      "fastCast": "200x60-4x.cast",
+      "playbackSpeed": "4x",
+      "fastCastTransform": "Each event timestamp divided by four; event order and payloads preserved.",
+      "sourceCommit": "3b627e9199186ccfb523f07d8c52effe02e46281",
+      "candidateArchiveSha256": "f13e3bea3bbdda567cc125cde9cbbe1889625e0972fa2303da17210c47e102d9",
+      "installedBinary": "/tmp/braid-3b627e-installed/node_modules/@tangle-network/braid/dist/bin/braid.js",
+      "nodeVersion": "v22.23.2",
+      "harnessPid": 2354233,
+      "cliPids": [
+        2354723,
+        2358797
+      ],
+      "cliExitCodes": [
+        0,
+        0
+      ],
+      "log": "/tmp/braid-0.3.4-delivery-20260929/installed-cli-setup-loopback-media-final-200x60.log",
+      "loopbackRequests": 26,
+      "taskPostAttempts": [
+        5,
+        5
+      ],
+      "taskRunStatuses": [
+        "unknown",
+        "unknown"
+      ],
+      "reopenedRunStatus": "unknown",
+      "taskMessagePersistedAfterEncryptedReload": true,
+      "continuation": "CONTEXT_TRANSFER_UNAVAILABLE; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes",
+      "rejectedDraftRetainedAndCleared": true,
+      "temporaryStateRemoved": true,
+      "credentialCanaryAssertionsPassed": true,
+      "outputEvents": 217,
+      "inputEvents": 0,
+      "recordingSeconds": 31.383,
+      "recordingSecondsAt4x": 7.846,
+      "headerTimestampUnixSeconds": 1790733696,
+      "processBoundaries": [
+        {
+          "phase": "configured-cli",
+          "pid": 2354723,
+          "exitCode": 0,
+          "startSeconds": 0.386,
+          "endSeconds": 16.851,
+          "startSecondsAt4x": 0.097,
+          "endSecondsAt4x": 4.213,
+          "startMarker": "process-start:configured-cli:pid-2354723",
+          "endMarker": "process-exit:configured-cli:0"
+        },
+        {
+          "phase": "disk-reloaded-cli",
+          "pid": 2358797,
+          "exitCode": 0,
+          "startSeconds": 16.94,
+          "endSeconds": 31.383,
+          "startSecondsAt4x": 4.235,
+          "endSecondsAt4x": 7.846,
+          "startMarker": "process-start:disk-reloaded-cli:pid-2358797",
+          "endMarker": "process-exit:disk-reloaded-cli:0"
+        }
+      ]
+    }
+  ]
+}
