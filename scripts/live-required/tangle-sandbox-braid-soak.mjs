@@ -263,8 +263,49 @@ function addRunSnapshotFailures(failures, runs, name) {
   return snapshot
 }
 
+// Braid's public run diagnostic is `CODE` or `CODE: detail`; only the code and
+// a declared HTTP status are retained, never provider-derived detail text.
+const RUN_ERROR_CODE = /^([A-Z][A-Z0-9_]{1,63})(?::\s|$)/u
+const RUN_ERROR_HTTP_STATUS = /\bHTTP ([1-5]\d{2})\b/u
+const RUN_TERMINAL_STATUSES = new Set([
+  'completed',
+  'failed',
+  'aborted',
+  'cancelled',
+  'expired',
+  'blocked',
+  'unknown',
+])
+
+/** Public stop point of a failed proof: terminal run status and its diagnostic code. */
+export function proofRunFailure(failure) {
+  const details = failure?.details
+  const status = RUN_TERMINAL_STATUSES.has(details?.status) ? details.status : null
+  const runError = typeof details?.runError === 'string' ? details.runError : ''
+  const code = RUN_ERROR_CODE.exec(runError)?.[1] ?? null
+  const httpStatus = code === null ? null : Number(RUN_ERROR_HTTP_STATUS.exec(runError)?.[1])
+  return {
+    runStatus: status,
+    runError: code,
+    runErrorHttpStatus: Number.isSafeInteger(httpStatus) ? httpStatus : null,
+  }
+}
+
+function notPassedFailure(proof) {
+  const failedPhase = Object.entries(proof?.timing ?? {}).findLast(
+    ([, record]) => record?.outcome === 'threw',
+  )?.[0]
+  const { runStatus, runError } = proofRunFailure(proof?.failure)
+  const stop = [
+    failedPhase === undefined ? undefined : `failed in ${failedPhase}`,
+    runStatus === null ? undefined : `Braid run became ${runStatus}`,
+    runError === null ? undefined : `run error ${runError}`,
+  ].filter(Boolean)
+  return stop.length === 0 ? 'status was not passed' : `status was not passed (${stop.join('; ')})`
+}
+
 export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
-  if (proof?.status !== 'passed') return ['status was not passed']
+  if (proof?.status !== 'passed') return [notPassedFailure(proof)]
   const failures = []
   const progress = proof.progress
   const firstControlRef = progress?.firstControlRef

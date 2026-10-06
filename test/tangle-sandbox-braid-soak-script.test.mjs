@@ -642,3 +642,30 @@ test('sandbox soak stops scheduling after a post-canary failure', async () => {
   assert.ok(started.includes(0))
   assert.ok(started.includes(1))
 })
+
+test('sandbox soak names where a failed proof stopped and the Braid run error code', () => {
+  assert.deepEqual(
+    proofFailures({
+      status: 'failed',
+      failure: {
+        name: 'MissingIntegrationError',
+        message: 'provider-echoed detail',
+        details: {
+          status: 'failed',
+          runError: 'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal',
+        },
+      },
+      timing: {
+        'firstProcess.observeControl': { elapsedMs: 1, outcome: 'settled' },
+        'firstProcess.waitVisible': { elapsedMs: 2, outcome: 'threw' },
+        totalMs: 3,
+      },
+    }),
+    [
+      'status was not passed (failed in firstProcess.waitVisible; Braid run became failed; run error RUNTIME_PROVIDER_PAYMENT_REQUIRED)',
+    ],
+  )
+  assert.deepEqual(proofFailures({ status: 'failed', timing: { totalMs: 1 } }), [
+    'status was not passed',
+  ])
+})

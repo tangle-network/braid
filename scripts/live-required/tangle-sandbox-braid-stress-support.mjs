@@ -210,9 +210,10 @@ function throwIfRunTerminated(responses, runId, pendingProof) {
     const run = runFromState(response.state, runId)
     const status = terminalStatus(run)
     if (!status) continue
+    const runError = typeof run.error === 'string' && run.error.length > 0 ? run.error : undefined
     throw new MissingIntegrationError(
-      `Braid run ${runId} became ${status} before ${pendingProof}`,
-      { runId, status, required: pendingProof },
+      `Braid run ${runId} became ${status}${runError === undefined ? '' : ` with ${runError}`} before ${pendingProof}`,
+      { runId, status, ...(runError === undefined ? {} : { runError }), required: pendingProof },
     )
   }
 }

@@ -56,7 +56,7 @@ function providerToken(scope: string, field: RegExp): string | undefined {
 export function providerHttpFailureDiagnostic(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const match = PROVIDER_HTTP_FAILURE.exec(value)
-  if (match === null) return undefined
+  if (match === null) return relayedRouterRefusalDiagnostic(value)
   const status = Number(match[1])
   const body = match[2] ?? ''
   const scopes = [PROVIDER_ERROR_OBJECT.exec(body)?.[1], body].filter(
@@ -69,4 +69,34 @@ export function providerHttpFailureDiagnostic(value: unknown): string | undefine
     .filter((found, index, all) => all.indexOf(found) === index)
   const detail = tokens.length === 0 ? '' : ` (${tokens.join('/')})`
   return `${providerFailureClass(status)}: provider returned HTTP ${status}${detail}`
+}
+
+// CLI runners such as opencode relay Router's refusal message but drop its HTTP
+// status and error tokens. Router pairs each of these public sentences with one
+// fixed status and error type/code, so the sentence alone identifies the refusal.
+const RELAYED_ROUTER_REFUSALS: ReadonlyArray<
+  readonly [sentence: string, status: number, tokens: string]
+> = Object.freeze([
+  [
+    'Inference requires verified paid access.',
+    402,
+    'insufficient_funds/payment_required',
+  ],
+  [
+    'Email verification is required before using paid Router access.',
+    403,
+    'authentication_error/email_verification_required',
+  ],
+  [
+    'This API key is scoped to another product.',
+    403,
+    'authentication_error/product_scope_mismatch',
+  ],
+])
+
+function relayedRouterRefusalDiagnostic(value: string): string | undefined {
+  const refusal = RELAYED_ROUTER_REFUSALS.find(([sentence]) => value.includes(sentence))
+  if (refusal === undefined) return undefined
+  const [, status, tokens] = refusal
+  return `${providerFailureClass(status)}: runner relayed Router HTTP ${status} refusal (${tokens})`
 }
