@@ -778,7 +778,13 @@ function latencySummary(attempts) {
         .sort()
         .map((phase) => [
           phase,
-          distribution(attempts.map((attempt) => attempt.proof?.timing?.[phase]?.elapsedMs)),
+          // A phase that threw measured time to failure, not phase latency.
+          distribution(
+            attempts.map((attempt) => {
+              const record = attempt.proof?.timing?.[phase]
+              return record?.outcome === 'threw' ? undefined : record?.elapsedMs
+            }),
+          ),
         ]),
     ),
   }
