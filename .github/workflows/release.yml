@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   candidate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -95,7 +95,7 @@ jobs:
 
   endorse-candidate:
     needs: candidate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 10
     environment: release
     permissions:
@@ -156,9 +156,10 @@ jobs:
       matrix:
         include:
           - id: linux-x64
-            os: ubuntu-latest
+            os: [self-hosted, ci-public]
             platform: linux
             architecture: x64
+          # The publication proof requires a macOS arm64 smoke record; only this leg stays GitHub-hosted.
           - id: macos-arm64
             os: macos-15
             platform: darwin
@@ -200,11 +201,13 @@ jobs:
   verify-live-10:
     needs: [candidate, endorse-candidate, platform-smoke]
     if: inputs.publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 15
     permissions:
       actions: read
       contents: read
+    outputs:
+      publish: ${{ steps.registry.outputs.status == 'available' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -250,9 +253,30 @@ jobs:
           BRAID_RELEASE_EXPECT_VERSION: ${{ needs.candidate.outputs.version }}
         run: node scripts/release/verify-publish-gate.mjs
 
+      - name: Install the pinned npm client
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = 11.18.0
+
+      - name: Check the registry version
+        id: registry
+        env:
+          ARCHIVE: ${{ needs.candidate.outputs.archive }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          RESULT="$(node scripts/release/check-registry-collision.mjs \
+            --package "@tangle-network/braid@$VERSION" \
+            --tarball "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" \
+            --json)"
+          printf '%s\n' "$RESULT"
+          STATUS="$(RESULT="$RESULT" node -e "process.stdout.write(JSON.parse(process.env.RESULT).status)")"
+          printf 'status=%s\n' "$STATUS" >> "$GITHUB_OUTPUT"
+
+  # npm trusted publishing accepts OIDC only from GitHub-hosted runners, so this
+  # job runs only when verify-live-10 found the version absent from the registry.
   publish:
     needs: [candidate, endorse-candidate, platform-smoke, verify-live-10]
-    if: ${{ inputs.publish && needs.verify-live-10.result == 'success' }}
+    if: ${{ inputs.publish && needs.verify-live-10.result == 'success' && needs.verify-live-10.outputs.publish == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: npm
@@ -312,28 +336,31 @@ jobs:
           npm install --global npm@11.18.0
           test "$(npm --version)" = 11.18.0
 
-      - name: Restore the exact private proof tools
-        run: cp -a "$RUNNER_TEMP/braid-release/proof-tools" .script-dist
-
-      - name: Check the registry version
-        id: registry
-        env:
-          ARCHIVE: ${{ needs.candidate.outputs.archive }}
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: |
-          RESULT="$(node scripts/release/check-registry-collision.mjs \
-            --package "@tangle-network/braid@$VERSION" \
-            --tarball "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" \
-            --json)"
-          printf '%s\n' "$RESULT"
-          STATUS="$(RESULT="$RESULT" node -e "process.stdout.write(JSON.parse(process.env.RESULT).status)")"
-          printf 'status=%s\n' "$STATUS" >> "$GITHUB_OUTPUT"
-
       - name: Publish the approved tarball
-        if: steps.registry.outputs.status == 'available'
         env:
           ARCHIVE: ${{ needs.candidate.outputs.archive }}
         run: npm publish "$RUNNER_TEMP/braid-release/candidate/$ARCHIVE" --provenance --access public
+
+  npm-provenance:
+    needs: [candidate, verify-live-10, publish]
+    if: ${{ !cancelled() && inputs.publish && needs.verify-live-10.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
+    runs-on: [self-hosted, ci-public]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+
+      - name: Install the pinned npm client
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = 11.18.0
 
       - name: Verify and retain npm provenance
         env:
@@ -357,15 +384,17 @@ jobs:
           retention-days: 90
 
   post-publish-smoke:
-    needs: [candidate, publish]
+    needs: [candidate, npm-provenance]
+    if: ${{ !cancelled() && needs.npm-provenance.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - id: linux-x64
-            os: ubuntu-latest
+            os: [self-hosted, ci-public]
             platform: linux
             architecture: x64
+          # The publication proof requires a macOS arm64 smoke record; only this leg stays GitHub-hosted.
           - id: macos-arm64
             os: macos-15
             platform: darwin
@@ -407,7 +436,8 @@ jobs:
 
   finalize:
     needs: [candidate, platform-smoke, post-publish-smoke]
-    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && needs.platform-smoke.result == 'success' && needs.post-publish-smoke.result == 'success' }}
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 20
     environment: release
     permissions:
@@ -458,7 +488,8 @@ jobs:
 
   endorse-final:
     needs: [candidate, finalize]
-    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && needs.finalize.result == 'success' }}
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 10
     environment: release
     permissions:
@@ -514,7 +545,8 @@ jobs:
 
   tag-and-report:
     needs: [candidate, endorse-final]
-    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && needs.endorse-final.result == 'success' }}
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 10
     permissions:
       contents: write

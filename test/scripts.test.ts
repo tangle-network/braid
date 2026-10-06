@@ -1011,8 +1011,10 @@ test('release keys stay isolated while publication uses the installed product', 
   assert.match(publish, /needs: \[candidate, endorse-candidate, platform-smoke, verify-live-10\]/u)
   assert.match(
     publish,
-    /if: \$\{\{ inputs\.publish && needs\.verify-live-10\.result == 'success' \}\}/u,
+    /if: \$\{\{ inputs\.publish && needs\.verify-live-10\.result == 'success' && needs\.verify-live-10\.outputs\.publish == 'true' \}\}/u,
   )
+  assert.match(liveGate, /publish: \$\{\{ steps\.registry\.outputs\.status == 'available' \}\}/u)
+  assert.match(liveGate, /node scripts\/release\/check-registry-collision\.mjs/u)
   assert.match(liveEvidenceWorkflow, /environment: release-live/u)
   assert.match(liveEvidenceWorkflow, /verify-workflow-run\.mjs/u)
   assert.match(liveEvidenceWorkflow, /collect-live-evidence\.mjs/u)
@@ -1028,9 +1030,7 @@ test('release keys stay isolated while publication uses the installed product', 
   assert.match(liveCollector, /BRAID_LIVE_BINARY: packed\.binary/u)
   assert.match(liveCollector, /BRAID_LIVE_PACKAGE_ROOT: packed\.packageRoot/u)
   assert.doesNotMatch(publish, /already exists; checking|if npm view/iu)
-  assert.match(publish, /node scripts\/release\/check-registry-collision\.mjs/u)
   assert.match(publish, /node scripts\/release\/verify-candidate-identity\.mjs/u)
-  assert.match(publish, /if: steps\.registry\.outputs\.status == 'available'/u)
 
   const candidateSmoke = job('platform-smoke', 'publish')
   const registrySmoke = job('post-publish-smoke', 'finalize')
