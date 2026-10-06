@@ -774,18 +774,16 @@ function latencySummary(attempts) {
   return {
     totalMs: distribution(attempts.map((attempt) => attempt.proof?.timing?.totalMs)),
     phases: Object.fromEntries(
-      [...phases]
-        .sort()
-        .map((phase) => [
-          phase,
-          // A phase that threw measured time to failure, not phase latency.
-          distribution(
-            attempts.map((attempt) => {
-              const record = attempt.proof?.timing?.[phase]
-              return record?.outcome === 'threw' ? undefined : record?.elapsedMs
-            }),
-          ),
-        ]),
+      [...phases].sort().map((phase) => [
+        phase,
+        // A phase that threw measured time to failure, not phase latency.
+        distribution(
+          attempts.map((attempt) => {
+            const record = attempt.proof?.timing?.[phase]
+            return record?.outcome === 'threw' ? undefined : record?.elapsedMs
+          }),
+        ),
+      ]),
     ),
   }
 }
